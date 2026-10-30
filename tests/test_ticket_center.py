@@ -569,7 +569,7 @@ def test_the_dashboard_shows_the_tickets_to_attend_and_the_latest_activity():
 def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activity():
     from datetime import date
 
-    from src.modules.ticket_center import ACTIVITY_WEEKS, DURATION_BUCKETS, STATISTICS_VERSIONS, ticket_statistics, ticket_time_spent
+    from src.modules.ticket_center import DURATION_BUCKETS, STATISTICS_VERSIONS, TICKET_SCOPES, ticket_statistics, ticket_time_spent
 
     def ticket(number, ticket_type, status, priority='P3', created='2026-10-05T09:00', resolved='', created_by='ANA', assigned='',
                fixed='', version='0.9.0', module=''):
@@ -591,13 +591,25 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     ]
     events = [{'kind': 'comment', 'created_at': '2026-10-12T10:00:00+01:00'}, {'kind': 'change', 'created_at': '2026-10-12T15:00:00+01:00'},
               {'kind': 'comment', 'created_at': '2026-01-01T10:00:00+01:00'}]
-    stats = ticket_statistics(tickets, events, today=today)
-    # Resolved or closed of every ticket; the median time of those resolved in the last 30 days (6 h, 2 and 10 days)
-    # against the 30 days before (12 days); the tickets opened in each window; comments and screenshots per ticket.
-    assert stats['health'] == {
-        'total': 7, 'done': 4, 'rate': 57, 'resolve_time': '2d', 'resolve_count': 3, 'resolve_previous': '12d',
-        'resolve_change': -83, 'created': 5, 'created_change': 5, 'window': 30, 'comments': 2.0, 'screenshots': 0.6,
+    # A view of each period, This month first shown: the tickets opened in it, and those resolved or closed in it for
+    # the times to resolve and the versions that fixed them, against the period before.
+    statistics = ticket_statistics(tickets, events, today=today)
+    scopes = {scope['key']: scope for scope in statistics['scopes']}
+    assert list(scopes) == list(TICKET_SCOPES) and statistics['scope'] == 'month'
+    assert [(scope['choice'], scope['range']) for scope in statistics['scopes']] == [
+        ('This week', 'Week of 19 Oct 2026'), ('This month', 'October 2026'), ('This quarter', 'Q4 2026'), ('This year', '2026'),
+        ('All time', 'Every ticket')]
+    # October: 5 tickets opened (3 of them resolved), and 3 resolved (6 h, 10 days and 2 days) against 1 in September.
+    assert scopes['month']['health'] == {
+        'total': 5, 'done': 3, 'rate': 60, 'resolve_time': '2d', 'resolve_count': 3, 'resolve_previous': '12d',
+        'resolve_change': -83, 'created': 5, 'created_change': 5, 'comments': 2.0, 'screenshots': 0.4,
     }
+    stats = scopes['all']
+    assert stats['health'] == {
+        'total': 7, 'done': 4, 'rate': 57, 'resolve_time': '6d', 'resolve_count': 4, 'resolve_previous': '',
+        'resolve_change': None, 'created': 7, 'created_change': None, 'comments': 2.0, 'screenshots': 0.6,
+    }
+    assert [part['key'] for part in scopes['week']['mix'][0]['segments']] == [] and scopes['month']['mix'][0]['total'] == 5
     # Donuts of every ticket, each part listing its tickets as the chips name them.
     mix = {donut['key']: donut for donut in stats['mix']}
     assert [(part['key'], part['count'], part['percent']) for part in mix['type']['segments']] == [('bug', 3, 43), ('improvement', 2, 29), ('new_feature', 2, 29)]
@@ -612,12 +624,17 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     assert [(item['priority'], item['count']) for item in resolved['by_priority']] == [('P3', 4)]
     # Time Spent: that time added up, in all, on average, its median and the longest; where it goes; per week; and by
     # module, assignee and reporter (the most first), type and priority (in their order) and version (the latest first).
-    spent = ticket_time_spent(tickets, events, today=today)
+    # Of the tickets resolved or closed in each period, This month first shown; over it by day, week or month.
+    time_spent = ticket_time_spent(tickets, events, today=today)
+    spent_scopes = {scope['key']: scope for scope in time_spent['scopes']}
+    assert time_spent['scope'] == 'month' and (spent_scopes['month']['count'], spent_scopes['month']['total']) == (3, '12d 6h')
+    days = spent_scopes['month']['series']
+    assert (days['title'], len(days['spans']), days['spans'][10]['count'], days['spans'][19]['future']) == ('Time spent per day', 31, 1, True)
+    spent = spent_scopes['all']
     assert (spent['total'], spent['count'], spent['average'], spent['median'], spent['longest']) == (
         '24d 6h', 4, '6d 1h', '6d', {'id': 5, 'title': 'T5', 'took': '12d'})
     assert [(part['status'], part['percent']) for part in spent['where']] == [('new', 100), ('in_progress', 0), ('waiting_info', 0)]
-    weeks = spent['periods'][0]['spans']
-    assert (len(weeks), weeks[-2]['count'], weeks[-1]['count'], weeks[-1]['total']) == (12, 2, 0, '—')
+    assert [(span['label'], span['count']) for span in spent['series']['spans']] == [('Sep 2026', 1), ('Oct 2026', 3)]
     groups = {group['key']: group['rows'] for group in spent['groups']}
     assert [(row['key'], row['total'], row['count'], row['share']) for row in groups['module']] == [('', '24d 6h', 4, 100.0)]
     assert [(row['key'], row['total'], row['average']) for row in groups['type']] == [
@@ -632,21 +649,23 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     changes = [{'ticket_id': 9, 'kind': 'change', 'changes_json': '{"status": ["new", "in_progress"]}', 'created_at': '2026-10-20T15:00:00+01:00'},
                {'ticket_id': 9, 'kind': 'change', 'changes_json': '{"status": ["in_progress", "waiting_info"]}', 'created_at': '2026-10-20T21:00:00+01:00'},
                {'ticket_id': 9, 'kind': 'change', 'changes_json': '{"status": ["waiting_info", "resolved"]}', 'created_at': '2026-10-21T09:00:00+01:00'}]
-    assert [(part['status'], part['total'], part['percent']) for part in ticket_time_spent(timed, changes, today=today)['where']] == [
+    assert [(part['status'], part['total'], part['percent']) for part in ticket_time_spent(timed, changes, today=today)['scopes'][-1]['where']] == [
         ('new', '6h', 25), ('in_progress', '6h', 25), ('waiting_info', '12h', 50)]
     opened = stats['durations']['open']
     assert ([bucket['total'] for bucket in opened['buckets']], opened['median'], opened['p90']) == ([0, 0, 0, 0, 1, 1, 0], '46 days', '79 days')
-    # Backlog: created, resolved (not rejected) and open by the end of each week, today last.
-    week = next(backlog for backlog in stats['backlogs'] if backlog['period'] == 'week')
-    assert [(entry['created'], entry['resolved'], entry['open']) for entry in week['periods'][-3:]] == [(5, 2, 2), (7, 4, 2), (7, 4, 2)]
-    assert (week['created'], week['resolved'], week['open'], week['peak'], week['width']) == (7, 4, 2, 7, 120)
-    assert week['lines']['created'].endswith('115,6.0') and week['areas']['resolved'].startswith('M5,100 L5,100.0')
+    # Backlog: created, resolved (not rejected) and open by the end of each day of October, its line up to today.
+    month = scopes['month']['backlog']
+    assert (month['unit'], len(month['periods']), month['periods'][18]['future'], month['periods'][19]['future']) == ('day', 31, False, True)
+    assert [(entry['created'], entry['resolved'], entry['open']) for entry in month['periods'][10:13]] == [(5, 2, 2), (6, 3, 2), (6, 3, 2)]
+    assert (month['created'], month['resolved'], month['open'], month['peak'], month['width']) == (7, 4, 2, 7, 310)
+    assert month['lines']['created'].endswith('185,6.0') and month['areas']['resolved'].startswith('M5,100 L5,86.57')
+    assert [entry['label'] for entry in stats['backlog']['periods']] == ['Aug 2026', 'Sep 2026', 'Oct 2026']
     # Fixed in and opened with each version, by version number (v0.9.1 and 0.9.1 are the same).
     assert [(row['label'], row['total']) for row in stats['versions']['fixed']['rows']] == [('v0.9.1', 2), ('v0.10.0', 1)]
     assert (stats['versions']['unversioned'], STATISTICS_VERSIONS) == (1, 10)
     # With the versions of the tool, the latest ten, also those without tickets.
     releases = [f'0.{minor}.{patch}' for minor in (8, 9, 10) for patch in range(5)]
-    fixed = ticket_statistics(tickets, events, today=today, versions=releases)['versions']['fixed']
+    fixed = ticket_statistics(tickets, events, today=today, versions=releases)['scopes'][-1]['versions']['fixed']
     assert [row['label'] for row in fixed['rows']] == ['v0.9.0', 'v0.9.1', 'v0.9.2', 'v0.9.3', 'v0.9.4', 'v0.10.0', 'v0.10.1', 'v0.10.2',
                                                        'v0.10.3', 'v0.10.4']
     assert [row['total'] for row in fixed['rows']][:2] == [0, 2] and fixed['rows'][0]['segments'] == [] and fixed['earlier'] == 0
@@ -658,16 +677,19 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     assert (assignee['username'], assignee['groups']) == ('ej', {'open': 1, 'resolved': 1, 'rejected': 1})
     assert stats['people']['unassigned_open'] == 1
     assert [(row['key'], row['total'], row['open']) for row in stats['modules']] == [('', 5, 0), ('scoring', 2, 2)]
-    # Activity of each day of the last 26 weeks, from Monday; the comment of January is older.
-    activity = stats['activity']
-    assert len(activity['weeks']) == ACTIVITY_WEEKS and activity['weeks'][-1]['days'][0]['day'] == '2026-10-19'
-    assert activity['weeks'][-1]['days'][1]['future'] and not activity['weeks'][-1]['days'][0]['future']
-    assert (activity['opened'], activity['comments'], activity['changes'], activity['resolved']) == (7, 1, 1, 4)
-    monday = activity['weeks'][-2]['days'][0]
+    # Activity of each day of October, by weeks from Monday: the days outside it and those to come are blank.
+    activity = scopes['month']['activity']
+    assert (activity['week_count'], activity['weeks'][0]['days'][0]['day'], activity['weeks'][-1]['days'][0]['day']) == (5, '2026-09-28', '2026-10-26')
+    assert activity['weeks'][0]['days'][0]['future'] and not activity['weeks'][0]['days'][3]['future']
+    assert activity['weeks'][3]['days'][1]['future'] and not activity['weeks'][3]['days'][0]['future']
+    assert (activity['opened'], activity['comments'], activity['changes'], activity['resolved']) == (5, 1, 1, 3)
+    monday = activity['weeks'][2]['days'][0]
     assert (monday['day'], monday['total'], monday['level']) == ('2026-10-12', 3, 4)
     assert monday['tip'] == 'Mon 12 Oct 2026: 1 opened, 1 comment, 1 change, 1 resolved'
     assert activity['busiest']['total'] == 3
-    empty = ticket_statistics([], today=today)
+    # Every ticket: from the first activity (the comment of January), the last 53 weeks at most.
+    assert (stats['activity']['weeks'][0]['days'][0]['day'], stats['activity']['comments']) == ('2025-12-29', 2)
+    empty = ticket_statistics([], today=today)['scopes'][-1]
     assert (empty['health']['rate'], empty['mix'][0]['segments'], empty['activity']['busiest']) == (0, [], None)
 
 

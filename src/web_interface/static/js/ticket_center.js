@@ -382,8 +382,8 @@
     apply();
   }
 
-  // The charts over time (Created vs resolved and Backlog over time) show the period chosen in either of them, Weekly by
-  // default; this browser remembers it.
+  // The chart of the tickets created and resolved of the dashboard shows the period chosen, Weekly by default; this
+  // browser remembers it.
   const trends = [...document.querySelectorAll('[data-tickets-trend]')];
   if (trends.length) {
     const trendKey = 'ticket-center:trend-period';
@@ -406,25 +406,28 @@
     }));
   }
 
-  // The cards of the Statistics panel with two views (Resolved or Open, Fixed in or Opened with, Reporters or Assignees)
-  // show the one chosen, the first by default; this browser remembers it for each card.
-  document.querySelectorAll('[data-tickets-switch]').forEach((card) => {
-    const switchKey = `ticket-center:statistics:${card.dataset.ticketsSwitch}`;
-    const choices = [...card.querySelectorAll('[data-switch-choice]')];
-    const title = card.querySelector('[data-switch-title]');
-    const choose = (view) => {
-      const chosen = choices.find((button) => button.dataset.switchChoice === view);
-      if (!chosen) return;
-      choices.forEach((button) => button.setAttribute('aria-pressed', String(button === chosen)));
-      card.querySelectorAll('[data-switch-view]').forEach((part) => { part.hidden = part.dataset.switchView !== view; });
-      if (title) title.textContent = chosen.dataset.title;
-    };
-    try { choose(window.localStorage.getItem(switchKey)); } catch (_) { /* The first view. */ }
-    choices.forEach((button) => button.addEventListener('click', () => {
-      choose(button.dataset.switchChoice);
-      try { window.localStorage.setItem(switchKey, button.dataset.switchChoice); } catch (_) { /* Not remembered. */ }
-    }));
+  // The views chosen in Statistics and Time Spent: the period (This month by default, the same in both) and, in each card
+  // with two views, Resolved or Open, Fixed in or Opened with, Reporters or Assignees (the first by default). Every switch
+  // of a name shows the same view, and this browser remembers it; a switch owns the choices and views not inside
+  // another one.
+  const switches = [...document.querySelectorAll('[data-tickets-switch]')];
+  const owned = (card, selector) => [...card.querySelectorAll(selector)].filter((element) => element.closest('[data-tickets-switch]') === card);
+  const chooseView = (name, view) => switches.filter((card) => card.dataset.ticketsSwitch === name).forEach((card) => {
+    const choices = owned(card, '[data-switch-choice]');
+    const chosen = choices.find((button) => button.dataset.switchChoice === view);
+    if (!chosen) return;
+    choices.forEach((button) => button.setAttribute('aria-pressed', String(button === chosen)));
+    owned(card, '[data-switch-view]').forEach((part) => { part.hidden = part.dataset.switchView !== view; });
+    const title = owned(card, '[data-switch-title]')[0];
+    if (title && chosen.dataset.title) title.textContent = chosen.dataset.title;
   });
+  new Set(switches.map((card) => card.dataset.ticketsSwitch)).forEach((name) => {
+    try { chooseView(name, window.localStorage.getItem(`ticket-center:statistics:${name}`)); } catch (_) { /* The default view. */ }
+  });
+  switches.forEach((card) => owned(card, '[data-switch-choice]').forEach((button) => button.addEventListener('click', () => {
+    chooseView(card.dataset.ticketsSwitch, button.dataset.switchChoice);
+    try { window.localStorage.setItem(`ticket-center:statistics:${card.dataset.ticketsSwitch}`, button.dataset.switchChoice); } catch (_) { /* Not remembered. */ }
+  })));
 
   // The dashboard and the Statistics panel tell what each count, bar, part and day is, over it (data-tip), with the mouse
   // or the keyboard.

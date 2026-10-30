@@ -48,32 +48,32 @@ Each tile, and each count, bar and cell of the **Dashboard** panel, lists its ti
 
 ## Statistics
 
-The **Statistics** tab shows how the tickets are going, with every bar coloured by type (Bug, Improvement, New Feature) and what each part is when the mouse is over it:
+The **Statistics** tab shows how the tickets of a period are going, with every bar coloured by type (Bug, Improvement, New Feature) and what each part is when the mouse is over it. **Period**, at its top, chooses **This week** (from Monday), **This month** (by default), **This quarter**, **This year** or **All time**; Time Spent follows the same choice, and the browser remembers it. Each view counts the tickets opened in the period, and those resolved or closed in it for the times to resolve and the versions that fixed them; the comparisons are with the period before (last week, last month…), and All time has none. A part that lists its tickets lists all those of its value, of any period.
 
-- **Resolution rate**: the share of every ticket resolved or closed, as a ring. **Time to resolve · 30 days**: the median time from opened to resolved of the tickets resolved in the last 30 days, and how much faster or slower it is than in the 30 days before. **Opened · 30 days**: the tickets opened in the last 30 days and how many more or fewer than in the 30 days before. **Comments per ticket**, with the screenshots per ticket.
-- **Every ticket**: three donuts of every ticket by type, status and priority, with the count and share of each; a part, or its line in the legend, lists its tickets.
+- **Resolution rate**: the share of the tickets opened in the period already resolved or closed, as a ring. **Time to resolve**: the median time from opened to resolved of the tickets resolved in the period, and how much faster or slower it is than in the period before. **Tickets opened**: those opened in the period and how many more or fewer than in the period before. **Comments per ticket**, with the screenshots per ticket.
+- **Every ticket**: three donuts of the tickets opened in the period by type, status and priority, with the count and share of each; a part, or its line in the legend, lists its tickets.
 - **Time to resolve**: the tickets resolved or closed by the time they took (under a day, 1–3 days, 3–7 days, 1–2 weeks, 2–4 weeks, 1–3 months, more), with their median, average and the time 9 in 10 of them took, and the median of each type and priority. **Open** shows instead the age of the open tickets by the same groups.
-- **Backlog over time**: the tickets created, resolved (or closed) and open by the end of each period, with the same choice as **Created vs resolved** (Daily to Yearly, which changes both charts). A ticket is open from the day it was opened to the day it was resolved, closed or rejected.
+- **Backlog**: the tickets created, resolved (or closed) and open by the end of each day (this week and this month), week (this quarter) or month (this year and all time) of the period, up to today. A ticket is open from the day it was opened to the day it was resolved, closed or rejected.
 - **Tickets fixed in each version**: the tickets resolved or closed in each of the latest 10 versions of the tool, as the Changelog lists them (also those without tickets), by their **Fixed in version**; **Opened with** shows those opened with each version.
-- **Tickets per module**: every ticket of each module, the module with most first; a row lists its tickets.
+- **Tickets per module**: the tickets of each module, the module with most first; a row lists its tickets.
 - **Tickets per reporter**: the tickets each user opened; **Assignees** shows those of each assignee, open, resolved or closed, and rejected, and how many open tickets nobody attends. A row lists the tickets of that reporter or assignee.
-- **Activity**: a calendar of the last 26 weeks, a column per week from Monday, darker the more tickets were opened, commented and changed that day, with the totals and the busiest day.
+- **Activity**: a calendar of the days of the period (all time: from the first activity, the last 53 weeks at most), a column per week from Monday, darker the more tickets were opened, commented and changed that day, with the totals and the busiest day.
 
 Each browser remembers the view chosen in each card.
 
 ## Time Spent
 
-The **Time Spent** tab adds up the time from opened to resolved or closed of every ticket resolved or closed. A note at its top says how it is measured:
+The **Time Spent** tab adds up the time from opened to resolved or closed of the tickets resolved or closed in the period chosen at its top (**This week**, **This month** by default, **This quarter**, **This year** or **All time**, the same choice as Statistics). A note at its top says how it is measured:
 
 - The time of a ticket is the **calendar time** from the moment it was opened to the moment it was resolved or closed, 24 hours a day (nights and weekends included): the tool does not record working hours.
-- Only the tickets resolved or closed count; the open and rejected ones are left out. The totals add up the time of those tickets; the average and the median are per ticket.
+- Only the tickets resolved or closed in the period count; the open and rejected ones are left out. The totals add up the time of those tickets; the average and the median are per ticket.
 - Times are written in days of 24 hours, hours and minutes (`13d 4h`, `7h 12m`, `42m`), as everywhere in Ticket Center.
 
 It shows:
 
 - **Figures**: the time spent in all, the tickets resolved or closed, the average and the median per ticket, and the longest one, with a link to it.
 - **Where the time goes**: the time those tickets spent **New**, **In Progress** and **Waiting for Info** until resolved, by the changes of status of their timelines (a ticket starts New), with its share and its average per ticket.
-- **Time spent per week** (the last 12 weeks) or **per month** (the last 12 months): the time of the tickets resolved in each.
+- **Time spent per day** (this week and this month), **per week** (this quarter) or **per month** (this year and all time): the time of the tickets resolved in each.
 - **By module**, **By type** and **By priority**, then **By assignee**, **By reporter** and **By version that fixed them**, three in a row: the time of each in all, with its tickets and its average per ticket under its name, the most time first (types and priorities in their order, versions the latest first); a row lists its tickets.
 
 ## New Ticket
