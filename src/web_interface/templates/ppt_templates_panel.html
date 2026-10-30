@@ -1,5 +1,6 @@
 {# PPT Templates of the workspace, opened from the PPT Templates button of the PPT Designs library (ppt_designer.html):
-   import, rename, set the default, duplicate, delete, export, create, and edit one in the viewer and its Designer. #}
+   order (by the tab on the left of each name), import, rename, set the default, duplicate, delete, export, create, and
+   edit one in the viewer and its Designer. #}
 <div class="ds-templates-head">
   <div><p class="eyebrow">PPT Templates Library</p><h2 id="ds-templates-title">PPT Templates</h2></div>
   <span class="pill ds-total-badge">Total Templates: {{ workspace_catalogues | length }}</span>
@@ -17,10 +18,11 @@
 <div class="table-wrap catalogue-workspace-table-wrap">
   <table class="catalogue-workspace-table">
     <thead><tr><th>Template name</th><th>Created</th><th>Last Updated</th><th>Last Updated by</th><th>Default</th><th>Actions</th></tr></thead>
-    <tbody>
+    <tbody data-catalogue-order-url="/api/ppt-designer/templates/order">
       {% for catalogue in workspace_catalogues %}
-      <tr>
-        <td>
+      <tr data-template-name="{{ catalogue.name }}">
+        <td class="catalogue-name-cell">
+          <button type="button" class="catalogue-drag-handle" data-catalogue-drag-handle aria-label="Move template {{ catalogue.name }}" title="Drag to order the PPT Templates (or press the up and down arrow keys)">⠿</button>
           <form class="catalogue-rename-form" action="/ppt-designer/templates/{{ catalogue.identifier | urlencode }}/rename" method="post" autocomplete="off">
             <input type="text" name="catalogue_name" value="{{ catalogue.name }}" aria-label="Name for {{ catalogue.name }}" maxlength="80" required autocomplete="off" data-no-persist data-catalogue-auto-rename>
           </form>

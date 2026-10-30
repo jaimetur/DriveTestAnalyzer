@@ -3736,6 +3736,7 @@ function bindCatalogueAutoRename(input) {
     if (!previousIdentifier || !identifier || previousIdentifier === identifier) return;
     const row = input.closest('tr');
     if (!row) return;
+    if (row.dataset.templateName !== undefined) row.dataset.templateName = identifier;
     const previousName = decodeURIComponent(previousIdentifier);
     const oldSegment = `/ppt-designer/templates/${encodeURIComponent(previousName)}/`;
     const newSegment = `/ppt-designer/templates/${encodeURIComponent(identifier)}/`;
@@ -3784,7 +3785,7 @@ function bindCatalogueAutoRename(input) {
         savedValue = String(payload.name || name).trim();
         input.value = savedValue;
         input.setAttribute('aria-label', `Name for ${savedValue}`);
-        const previousIdentifier = input.form.action.match(/\/workspace-config\/report-templates\/([^/]+)\/rename$/)?.[1];
+        const previousIdentifier = input.form.action.match(/\/(?:ppt-designer\/templates|workspace-config\/report-templates)\/([^/]+)\/rename$/)?.[1];
         updateCatalogueIdentifier(previousIdentifier, payload.identifier);
       } catch (error) {
         input.value = savedValue;
@@ -3805,6 +3806,90 @@ function bindCatalogueAutoRename(input) {
   });
 }
 document.querySelectorAll('[data-catalogue-auto-rename]').forEach(bindCatalogueAutoRename);
+
+// PPT Templates ordered by the tab on the left of their names, as the Reporting Jobs: dragged (mouse, pen or touch) or
+// moved with the up and down arrow keys, each move saves the order of the workspace at once.
+function bindCatalogueTemplateOrder(body) {
+  if (body.dataset.catalogueOrderBound) return;
+  body.dataset.catalogueOrderBound = '1';
+  // Only the rows shown (a phone shows one card a page).
+  const rows = () => Array.from(body.rows).filter((row) => row.dataset.templateName !== undefined && row.getClientRects().length);
+  const currentOrder = () => Array.from(body.rows).map((row) => row.dataset.templateName).filter((name) => name !== undefined);
+  let savedOrder = currentOrder();
+  const saveOrder = async () => {
+    const names = currentOrder();
+    if (JSON.stringify(names) === JSON.stringify(savedOrder)) return;
+    try {
+      const response = await fetch(body.dataset.catalogueOrderUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+        body: JSON.stringify({names}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'The order of the PPT Templates could not be saved.');
+      savedOrder = Array.isArray(payload.order) ? payload.order : names;
+      document.dispatchEvent(new CustomEvent('catalogue:templates-ordered', {detail: {order: savedOrder}}));
+    } catch (error) {
+      // The rows go back to the order saved.
+      savedOrder.forEach((name) => {
+        const row = Array.from(body.rows).find((element) => element.dataset.templateName === name);
+        if (row) body.append(row);
+      });
+      showInfoDialog(error instanceof Error ? error.message : 'The order of the PPT Templates could not be saved.', {
+        title: 'Template Order Not Saved', tone: 'error',
+      });
+    }
+  };
+  body.addEventListener('pointerdown', (event) => {
+    const handle = event.target.closest('[data-catalogue-drag-handle]');
+    const row = handle?.closest('tr[data-template-name]');
+    if (!row || event.button !== 0) return;
+    event.preventDefault();
+    try { handle.setPointerCapture?.(event.pointerId); } catch {}
+    handle.focus({preventScroll: true});
+    row.classList.add('is-dragging');
+    // The dialog scrolls while the pointer is near its top or bottom.
+    const scroller = row.closest('.ds-templates-dialog') || document.scrollingElement;
+    const move = (moveEvent) => {
+      const frame = scroller === document.scrollingElement ? {top: 0, bottom: window.innerHeight} : scroller.getBoundingClientRect();
+      if (moveEvent.clientY < frame.top + 50) scroller.scrollTop -= 14;
+      else if (moveEvent.clientY > frame.bottom - 50) scroller.scrollTop += 14;
+      const others = rows().filter((element) => element !== row);
+      const next = others.find((element) => {
+        const box = element.getBoundingClientRect();
+        return moveEvent.clientY < box.top + box.height / 2;
+      });
+      if (next) {
+        if (row.nextElementSibling !== next) next.before(row);
+      } else if (others.length && others[others.length - 1].nextElementSibling !== row) others[others.length - 1].after(row);
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      row.classList.remove('is-dragging');
+      void saveOrder();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+  });
+  body.addEventListener('keydown', (event) => {
+    const handle = event.target.closest('[data-catalogue-drag-handle]');
+    const row = handle?.closest('tr[data-template-name]');
+    if (!row || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    const shown = rows();
+    const target = shown[shown.indexOf(row) + (event.key === 'ArrowUp' ? -1 : 1)];
+    if (!target) return;
+    if (event.key === 'ArrowUp') target.before(row); else target.after(row);
+    row.scrollIntoView({block: 'nearest'});
+    handle.focus();
+    void saveOrder();
+  });
+}
+document.querySelectorAll('tbody[data-catalogue-order-url]').forEach(bindCatalogueTemplateOrder);
 
 document.querySelectorAll('.catalogue-editor-picker-form').forEach((form) => {
   // The server-selected template is authoritative. Browsers can restore a
@@ -3915,8 +4000,10 @@ function bindCatalogueImportForm(form) {
   });
 }
 document.querySelectorAll('[data-catalogue-import-form]').forEach(bindCatalogueImportForm);
-// The controls of a list of templates drawn again (PPT Templates of PPT Designer): rename, import and confirmed deletes.
+// The controls of a list of templates drawn again (PPT Templates of PPT Designer): order, rename, import and confirmed
+// deletes.
 window.bindCatalogueTemplateControls = (root) => {
+  root.querySelectorAll('tbody[data-catalogue-order-url]').forEach(bindCatalogueTemplateOrder);
   root.querySelectorAll('[data-catalogue-auto-rename]').forEach(bindCatalogueAutoRename);
   root.querySelectorAll('[data-catalogue-import-form]').forEach(bindCatalogueImportForm);
   root.querySelectorAll('form[data-confirm]').forEach(bindConfirmForm);

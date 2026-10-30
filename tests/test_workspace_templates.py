@@ -1,6 +1,8 @@
 from pathlib import Path
+import html
 import io
 import json
+import re
 import sqlite3
 import zipfile
 
@@ -405,3 +407,94 @@ def test_database_management_groups_template_registry_with_workspace_tables(clie
     assert 'value="report_templates"' in groups['Workspace Tables']
     assert 'PPT Templates' in groups['Workspace Tables']
     assert 'value="report_templates"' not in groups['Config Tables']
+
+
+def _template_names(repo):
+    return [str(row['name']) for row in repo.list_report_templates()]
+
+
+def test_template_library_keeps_the_order_given_and_adds_new_templates_last(tmp_path):
+    repo = Repository(tmp_path / 'a.db', tmp_path / 'app.db')
+    repo.initialize()
+    for name in ('Beta', 'alpha', 'Gamma'):
+        repo.add_report_template(name, b'x')
+    # Until it is ordered, the library is sorted by name (and new templates take their place by name).
+    assert _template_names(repo) == ['alpha', 'Beta', 'Gamma']
+    # Names it does not know are left out and the templates it does not name follow in their order.
+    assert repo.reorder_report_templates(['Gamma', 'Missing', 'alpha']) == ['Gamma', 'alpha', 'Beta']
+    repo.add_report_template('Delta', b'x')
+    repo.rename_report_template('alpha', 'Alpha 2')
+    assert _template_names(repo) == ['Gamma', 'Alpha 2', 'Beta', 'Delta']
+    repo.delete_report_template('Gamma')
+    repo.add_report_template('Epsilon', b'x')
+    assert _template_names(repo) == ['Alpha 2', 'Beta', 'Delta', 'Epsilon']
+
+
+def test_template_order_route_saves_the_order_for_every_list_and_records_it(client):
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    repo = app_module.repository
+    for name in ('Order B', 'Order A'):
+        repo.add_report_template(name, b'x')
+    names = [str(option['name']) for option in sorted(app_module.report_catalogue_options(),
+                                                      key=app_module.report_template_library_key)]
+    wanted = [names[-1], *names[:-1]]
+
+    response = client.post('/api/ppt-designer/templates/order', json={'names': wanted})
+    assert response.status_code == 200 and response.json() == {'order': wanted}
+    assert [option['name'] for option in app_module.report_catalogue_options()] == wanted
+    library = client.get('/api/ppt-designer/templates-library').json()
+    # The Template of a new PPT Design and the rows of PPT Templates follow it.
+    assert [row['name'] for row in library['templates']] == wanted
+    rows = re.findall(r'<tr data-template-name="([^"]+)"', library['html'])
+    assert [html.unescape(name) for name in rows] == wanted
+    [event] = [row for row in repo.list_logs(limit=20) if row['action'] == 'reorder_report_templates']
+    assert json.loads(event['details']) == {'previous_order': names, 'order': wanted}
+
+    # The same order again records nothing.
+    client.post('/api/ppt-designer/templates/order', json={'names': wanted})
+    assert len([row for row in repo.list_logs(limit=20) if row['action'] == 'reorder_report_templates']) == 1
+
+
+def test_template_package_carries_the_order_of_its_library(client, tmp_path):
+    source = app_module.workspace_registry.create('Ordered source')
+    destination = app_module.workspace_registry.create('Ordered destination')
+    source_repo = Repository(source.database_path, app_module.repository.global_db_path)
+    destination_repo = Repository(destination.database_path, app_module.repository.global_db_path)
+    for repo in (source_repo, destination_repo):
+        repo.initialize()
+    for name in ('One', 'Two', 'Three'):
+        source_repo.add_report_template(name, name.encode())
+    destination_repo.add_report_template('Local', b'local')
+    destination_repo.add_report_template('Two', b'previous')
+    package_path = tmp_path / 'templates.zip'
+
+    # A library still sorted by name brings no order: the destination stays sorted by name.
+    app_module.build_export_archive_file('ppt-templates', package_path, [source.id])
+    app_module._apply_import_archive(package_path, app_module.read_import_manifest(package_path),
+                                     destination_workspace_ids=[destination.id], importing_user='super')
+    assert _template_names(destination_repo) == ['Local', 'One', 'Three', 'Two']
+
+    # An ordered one: its templates keep their order, before those only the destination has.
+    source_repo.reorder_report_templates(['Three', 'One', 'Two'])
+    app_module.build_export_archive_file('ppt-templates', package_path, [source.id])
+    manifest = app_module.read_import_manifest(package_path)
+    assert [(item['name'], item['position']) for item in manifest['report_templates']] == [('Three', 1), ('One', 2), ('Two', 3)]
+    app_module._apply_import_archive(package_path, manifest, destination_workspace_ids=[destination.id], importing_user='super')
+    assert _template_names(destination_repo) == ['Three', 'One', 'Two', 'Local']
+
+
+def test_template_restore_brings_back_the_order_of_the_backup(client, tmp_path):
+    repo = app_module.repository
+    for name in ('Restore A', 'Restore B'):
+        repo.add_report_template(name, b'x')
+    current = _template_names(repo)
+    repo.reorder_report_templates(list(reversed(current)))
+    archive_path = app_module.create_recurring_database_backup({
+        'components': ['report_templates'], 'backup_path': str(tmp_path / 'backups'),
+        'max_backups': 30, 'workspace_ids': [app_module.active_workspace.id],
+    })
+    repo.reorder_report_templates(current)
+    repo.add_report_template('After backup', b'x')
+
+    app_module.restore_database_backup(archive_path, ['report_templates'])
+    assert _template_names(repo) == [*reversed(current), 'After backup']

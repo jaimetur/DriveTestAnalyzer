@@ -2860,13 +2860,16 @@
   }
   // The templates as they are now (one saved from the Designer meanwhile included): the list of PPT Templates and the
   // PPT Template a new PPT Design chooses.
+  function setTemplates(templates) {
+    const chosen = $('ds-template').value === BLANK_TEMPLATE ? BLANK_TEMPLATE
+      : templateRows().find(row => row.identifier === $('ds-template').value)?.name || '';
+    config.templates = templates;
+    templateOptions(definition ? (designs[activeId]?.template || chosen) : chosen);
+  }
   async function refreshTemplatesLibrary() {
     if (!$('ds-templates-body')) return;
     const result = await api('/templates-library');
-    const chosen = $('ds-template').value === BLANK_TEMPLATE ? BLANK_TEMPLATE
-      : templateRows().find(row => row.identifier === $('ds-template').value)?.name || '';
-    config.templates = result.templates;
-    templateOptions(definition ? (designs[activeId]?.template || chosen) : chosen);
+    setTemplates(result.templates);
     library();
     const body = $('ds-templates-body');
     body.innerHTML = result.html;
@@ -2879,6 +2882,12 @@
       if (event.target === event.currentTarget) { overlay('ds-templates-overlay', false); return; }
       const edit = event.target.closest('[data-edit-template]');
       if (edit) safe(() => openTemplateDesign(edit.dataset.editTemplate))();
+    });
+    // Templates dragged to another place: the Template of a new PPT Design lists them in that order.
+    document.addEventListener('catalogue:templates-ordered', event => {
+      const order = event.detail?.order || [];
+      const place = row => { const index = order.indexOf(row.name); return index < 0 ? order.length : index; };
+      setTemplates([...templateRows()].sort((left, right) => place(left) - place(right)));
     });
   }
   bind('ds-apply-filters', async () => {

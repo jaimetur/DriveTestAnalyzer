@@ -2624,14 +2624,14 @@ def install_design_routes(core):
         })
 
     def templates_library_context() -> dict:
-        """PPT Templates (the button of the library): the templates of the workspace, by name."""
+        """PPT Templates (the button of the library): the templates of the workspace, in the order of the library."""
         catalogues = core.report_catalogue_options()
         return {
             'workspace_catalogues': sorted((
                 {**catalogue, 'created_at': core.format_local_timestamp(catalogue.get('created_at')),
                  'updated_at': core.format_local_timestamp(catalogue.get('updated_at'))}
                 for catalogue in catalogues
-            ), key=lambda item: (core.nr_mode_free_sort_name(item['name']), str(item['name']).casefold())),
+            ), key=core.report_template_library_key),
             'template_names': [str(catalogue['name']) for catalogue in catalogues],
         }
 

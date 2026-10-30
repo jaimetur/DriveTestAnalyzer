@@ -11288,6 +11288,7 @@ def package_report_templates(
             'technology': technology, 'name': name, 'content': content,
             'is_default': area == 'default' or bool(previous and previous['is_default']),
             'uid': str(details.get('uid') or ''), 'created_by': str(details.get('created_by') or ''),
+            'position': details.get('position') if isinstance(details.get('position'), int) else None,
         }
     merge = merge_mode_templates(by_mode.values()) if by_mode else TemplateMerge()
     incoming = dict(current)
@@ -11328,7 +11329,8 @@ def _merge_report_templates(
     # A template of the workspace merged from its NSA and SA copies is also found by the identity of its SA copy.
     matcher = ItemMatcher([(str(row['name']), str(row['name']), str(row['uid'] or '')) for row in existing])
     has_default = any(bool(row['is_default']) for row in existing)
-    for template in incoming.values():
+    ordered = []
+    for index, template in enumerate(incoming.values()):
         incoming_uid = known_uids.get(str(template.get('uid') or ''), str(template.get('uid') or ''))
         target, name = matcher.match(incoming_uid, str(template['name']))
         creator = transfer_creator(template.get('created_by'), creators.get(str(target), '') if target else '', importing_user)
@@ -11352,6 +11354,12 @@ def _merge_report_templates(
                     designs[key] = {**definition, 'template_uid': incoming_uid}
                     designs_changed = True
         target_repository.set_report_template_identity(name, uid=incoming_uid, created_by=creator)
+        ordered.append((template.get('position'), index, name))
+    if any(position is not None for position, _index, _name in ordered):
+        # The templates keep the order they had in their workspace, before the templates only this one has (packages
+        # made before the order, or of a library ordered by name, leave new templates at the end).
+        target_repository.reorder_report_templates([name for _position, _index, name in sorted(
+            ordered, key=lambda item: (item[0] is None, item[0] or 0, item[1]))])
     renamed = matcher.summary()
     migrated, changed = migrate_designs_state(designs, known_renames, known_uids)
     if designs_changed or changed:
@@ -11364,12 +11372,14 @@ def _merge_report_templates(
 REPORT_TEMPLATES_METADATA_NAME = 'report-templates.json'
 
 
-def _report_templates_metadata(workspace: Workspace) -> list[dict[str, str]]:
-    """The identity and the creator of each PPT Template of a workspace, which its package carries in the manifest."""
+def _report_templates_metadata(workspace: Workspace) -> list[dict[str, Any]]:
+    """The identity, the creator and the place in the library (none while it is ordered by name) of each PPT Template of
+    a workspace, which its package carries in the manifest."""
     source_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     source_repository.initialize_template_registry()
     uids = source_repository.report_template_uids()
-    return [{'name': str(row['name']), 'uid': uids.get(str(row['name']), ''), 'created_by': str(row['created_by'] or '')}
+    return [{'name': str(row['name']), 'uid': uids.get(str(row['name']), ''), 'created_by': str(row['created_by'] or ''),
+             'position': row['position']}
             for row in source_repository.list_report_templates()]
 
 

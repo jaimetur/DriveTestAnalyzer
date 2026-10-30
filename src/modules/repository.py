@@ -321,7 +321,8 @@ CREATE TABLE IF NOT EXISTS {table} (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by TEXT NOT NULL DEFAULT '',
     created_by TEXT NOT NULL DEFAULT '',
-    uid TEXT NOT NULL DEFAULT ''
+    uid TEXT NOT NULL DEFAULT '',
+    position INTEGER
 );
 """
 TEMPLATE_SCHEMA = REPORT_TEMPLATES_TABLE_SQL.format(table='report_templates')
@@ -2449,6 +2450,9 @@ class Repository:
             conn.execute("ALTER TABLE report_templates ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
         for row in conn.execute("SELECT name FROM report_templates WHERE uid = ''").fetchall():
             conn.execute("UPDATE report_templates SET uid = ? WHERE name = ?", (uuid4().hex, row['name']))
+        # The place of each template in the library, once its editors drag them (none: after them, by name).
+        if 'position' not in columns:
+            conn.execute("ALTER TABLE report_templates ADD COLUMN position INTEGER")
         # Templates written before Operator_Vendor are converted once per workspace.
         conn.execute('CREATE TABLE IF NOT EXISTS workspace_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         rename_vendor_fields = not conn.execute(
@@ -2482,9 +2486,11 @@ class Repository:
             self._ensure_report_template_columns(conn)
 
     def list_report_templates(self) -> list[sqlite3.Row]:
+        """The templates in the order of the library: the one its editors gave them, then by name."""
         with self.connection() as conn:
             return conn.execute(
-                "SELECT name, content, is_default, created_at, updated_at, updated_by, created_by, uid FROM report_templates ORDER BY name COLLATE NOCASE",
+                "SELECT name, content, is_default, created_at, updated_at, updated_by, created_by, uid, position FROM report_templates "
+                "ORDER BY position IS NULL, position, name COLLATE NOCASE",
             ).fetchall()
 
     # ``updated_by`` records the user behind a template change. ``None`` keeps
@@ -2496,8 +2502,10 @@ class Repository:
             if is_default:
                 conn.execute("UPDATE report_templates SET is_default = 0")
             now = local_now_iso()
+            # A new template goes to the end of a library its editors ordered.
             conn.execute(
-                "INSERT INTO report_templates (name, content, is_default, created_at, updated_at, updated_by, created_by, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO report_templates (name, content, is_default, created_at, updated_at, updated_by, created_by, uid, position) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT MAX(position) + 1 FROM report_templates))",
                 (name, sqlite3.Binary(csv_with_slide_ids(normalize_catalog_layouts(content))), int(is_default), now, now, updated_by or '', updated_by or '', uuid4().hex),
             )
 
@@ -2545,6 +2553,18 @@ class Repository:
                 "UPDATE report_templates SET updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE name = ?",
                 (local_now_iso(), updated_by, name),
             )
+
+    def reorder_report_templates(self, names: list[str]) -> list[str]:
+        """Put the templates in the order of ``names``; those it does not name follow in their current order. Returns the
+        new order."""
+        with self.connection() as conn:
+            current = [str(row['name']) for row in conn.execute(
+                "SELECT name FROM report_templates ORDER BY position IS NULL, position, name COLLATE NOCASE").fetchall()]
+            chosen = [name for name in dict.fromkeys(str(value) for value in names) if name in current]
+            order = chosen + [name for name in current if name not in chosen]
+            conn.executemany("UPDATE report_templates SET position = ? WHERE name = ?",
+                             [(index, name) for index, name in enumerate(order, 1)])
+        return order
 
     def report_template_uids(self) -> dict[str, str]:
         """The identity of each template by name, giving one to those that have none."""

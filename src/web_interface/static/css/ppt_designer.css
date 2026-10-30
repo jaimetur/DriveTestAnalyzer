@@ -1881,6 +1881,14 @@
 .ds-templates-dialog .catalogue-new-template-form { margin-top: .8rem; }
 .ds-templates-dialog > .form-note { margin: .5rem 0 0; font-size: .76rem; }
 .ds-templates-dialog .lede code { padding: 0 .3rem; border-radius: 5px; background: #f1ecf8; font-size: .82em; }
+/* The tab on the left of each template name drags the template to another place of the list (or moves it with the up
+   and down arrow keys), as the tab of the Reporting Jobs. A phone, showing one card a page, has none. */
+@media (min-width: 641px) { .ds-templates-dialog td.catalogue-name-cell { position: relative; padding-left: 2.15rem; } }
+.ds-templates-dialog .catalogue-drag-handle { position: absolute; top: .55rem; bottom: .55rem; left: .4rem; width: 1.35rem; min-width: 0; height: auto; min-height: 0; margin: 0; padding: 0; border: 1px solid var(--ds-border); border-radius: 9px; background: var(--ds-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 14'%3E%3Cg fill='%235b3f8f'%3E%3Ccircle cx='1.5' cy='2' r='1'/%3E%3Ccircle cx='4.5' cy='2' r='1'/%3E%3Ccircle cx='1.5' cy='7' r='1'/%3E%3Ccircle cx='4.5' cy='7' r='1'/%3E%3Ccircle cx='1.5' cy='12' r='1'/%3E%3Ccircle cx='4.5' cy='12' r='1'/%3E%3C/g%3E%3C/svg%3E") center / .45rem auto no-repeat; box-shadow: none; color: transparent; font-size: 0 !important; cursor: grab; user-select: none; touch-action: none; transform: none; }
+.ds-templates-dialog .catalogue-drag-handle:hover, .ds-templates-dialog .catalogue-drag-handle:focus-visible { background-color: #e6dcf5; border-color: #9d7fd0; box-shadow: none; transform: none; outline: none; }
+.ds-templates-dialog .catalogue-drag-handle:active, .ds-templates-dialog tr.is-dragging .catalogue-drag-handle { cursor: grabbing; }
+.ds-templates-dialog .catalogue-workspace-table tr.is-dragging { opacity: .5; outline: 2px dashed var(--ds-color); outline-offset: -2px; }
+@media (max-width: 640px) { .ds-templates-dialog .catalogue-drag-handle { display: none; } }
 /* An action beside the count of Designs, as tall as it: white, outlined, with its icon (not one more pill). */
 .ppt-designer .ds-templates-open { display: inline-flex; align-items: center; gap: .5rem; min-height: 0; height: 2.55rem; padding: 0 1.1rem;
   border: 1.5px solid #8d65cf; border-radius: 999px; background: #fff; color: #56349a; font-size: .95rem; font-weight: 800;
