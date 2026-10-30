@@ -353,13 +353,13 @@ document.addEventListener('click', async (event) => {
   }
 });
 
-document.querySelectorAll('[data-workspace-calculated-dimensions-panel]').forEach((host) => {
-  const manage = host.querySelector('[data-workspace-manage-calculated-dimensions]');
+// CDR Tables Updates in Workspace: each update of the CDR tables with its own progress bar while it runs.
+(() => {
   const progressPanel = document.querySelector('[data-auto-calculated-field-progress]');
+  if (!(progressPanel instanceof HTMLElement)) return;
   const progressStatus = document.querySelector('[data-auto-calculated-field-progress-status]');
   const progressQueuedStatus = document.querySelector('[data-auto-calculated-field-queued-status]');
   const progressJobList = document.querySelector('[data-auto-calculated-field-job-list]');
-  const rematerializeButton = document.querySelector('[data-auto-calculated-field-rematerialize]');
   let progressTimer = null;
   let activeJobsSignature = null;
   // Each job of the CDR Tables Updates card is named by what it does.
@@ -498,7 +498,6 @@ document.querySelectorAll('[data-workspace-calculated-dimensions-panel]').forEac
       progressPanel.classList.toggle('is-processing', hasActiveJobs);
       progressPanel.classList.toggle('is-failed', failed);
       progressPanel.classList.toggle('is-stopped', stopped);
-      if (rematerializeButton instanceof HTMLButtonElement) rematerializeButton.disabled = hasActiveJobs;
       if (progressStatus instanceof HTMLElement) {
         progressStatus.className = `status-pill status-${failed ? 'failed' : hasActiveJobs || pending ? 'processing' : 'ready'}`;
         progressStatus.textContent = stopped ? 'Stopped' : failed ? 'Failed' : hasActiveJobs
@@ -516,17 +515,6 @@ document.querySelectorAll('[data-workspace-calculated-dimensions-panel]').forEac
         window.dispatchEvent(new CustomEvent('workspace-dataset-table-refresh-requested'));
       }
       activeJobsSignature = signature;
-      // The Auto-calculated Fields panel says when its fields are being materialized.
-      const fieldJobs = activeJobs.filter((job) => ['auto_calculated_fields', 'automatic_materialization'].includes(job.operation));
-      const panelStatus = host.querySelector('[data-auto-calculated-field-panel-status]');
-      const panelStatusText = panelStatus?.querySelector('[data-auto-calculated-field-panel-status-text]');
-      if (panelStatus instanceof HTMLElement && panelStatusText instanceof HTMLElement) {
-        panelStatus.hidden = fieldJobs.length === 0;
-        const running = fieldJobs.find((job) => job.status === 'processing') || fieldJobs[0];
-        panelStatusText.textContent = running
-          ? `${materializationJobLabel(running)}: ${running.status === 'queued' ? 'queued' : `${materializationJobProgressPercent(running)}% materialized`}.`
-          : '';
-      }
       if (progressTimer) window.clearTimeout(progressTimer);
       progressTimer = window.setTimeout(refreshMaterializationProgress, hasActiveJobs ? 900 : 5000);
     } catch (error) {
@@ -538,67 +526,14 @@ document.querySelectorAll('[data-workspace-calculated-dimensions-panel]').forEac
     }
   };
   window.addEventListener('auto-calculated-field-job-status', refreshMaterializationProgress);
-  // The fields of the panel as the editor leaves them (each row opens its field in the editor).
-  const renderPanelFields = (fields) => {
-    host.dataset.calculatedDimensions = JSON.stringify(fields);
-    const count = host.querySelector('[data-calculated-dimensions-count]');
-    if (count) count.textContent = `${fields.length} field${fields.length === 1 ? '' : 's'}`;
-    const listHost = host.querySelector('.workspace-calculated-dimensions-list');
-    if (!listHost) return;
-    listHost.querySelectorAll(':scope > .workspace-calculated-dimension-row, :scope > .form-note').forEach((row) => row.remove());
-    fields.forEach((field) => {
-      const row = document.createElement('div');
-      row.className = 'workspace-calculated-dimension-row';
-      row.dataset.calculatedDimensionName = field.name;
-      row.setAttribute('role', 'button'); row.tabIndex = 0; row.title = `Edit ${field.name}`;
-      const name = document.createElement('strong'); name.textContent = field.name;
-      const sources = document.createElement('span'); sources.textContent = (field.sources || []).map((source) => source.toUpperCase()).join(' / ');
-      row.append(name, sources);
-      listHost.append(row);
-    });
-    if (!fields.length) {
-      const empty = document.createElement('p'); empty.className = 'form-note';
-      empty.textContent = 'No auto-calculated fields have been created for this workspace.';
-      listHost.append(empty);
-    }
-  };
-  const openEditor = (focus = '') => window.AutoCalculatedFields?.open({
-    focus,
-    onChange: (fields) => { renderPanelFields(fields); void refreshMaterializationProgress(); },
-  });
   refreshMaterializationProgress();
-  rematerializeButton?.addEventListener('click', async () => {
-    const accepted = await showConfirmDialog(
-      'Every auto-calculated field will be materialized again in every applicable CDR table. This can take a while and runs in the background, shown in CDR Tables Updates. Continue?',
-      {title: 'Re-materialize All Fields', confirmLabel: 'Re-materialize All', tone: 'warning'},
-    );
-    if (!accepted || !(rematerializeButton instanceof HTMLButtonElement)) return;
-    rematerializeButton.disabled = true;
-    try {
-      const response = await fetch('/api/workspace/auto-calculated-fields/rematerialize', {
-        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.detail || 'Unable to rematerialize auto-calculated fields.');
-      monitorAutoCalculatedFieldJob(payload.materialization_status_url, payload.notice);
-      await refreshMaterializationProgress();
-    } catch (error) {
-      rematerializeButton.disabled = false;
-      showInfoDialog(error instanceof Error ? error.message : 'Unable to rematerialize auto-calculated fields.', {
-        title: 'Auto-calculated Fields', tone: 'error',
-      });
-    }
-  });
-  manage?.addEventListener('click', () => openEditor());
-  host.querySelector('[data-workspace-new-calculated-dimension]')?.addEventListener('click', () => openEditor('new'));
-  host.addEventListener('click', (event) => {
-    const row = event.target instanceof Element ? event.target.closest('[data-calculated-dimension-name]') : null;
-    if (row && host.contains(row)) openEditor(row.dataset.calculatedDimensionName);
-  });
-  host.addEventListener('keydown', (event) => {
-    const row = event.target instanceof Element ? event.target.closest('[data-calculated-dimension-name]') : null;
-    if (row && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openEditor(row.dataset.calculatedDimensionName); }
-  });
+})();
+
+// The Auto-calculated Fields button of PPT Designer opens the editor of the fields of the workspace.
+document.querySelectorAll('[data-workspace-calculated-dimensions-panel]').forEach((host) => {
+  host.querySelector('[data-workspace-manage-calculated-dimensions]')?.addEventListener('click', () => window.AutoCalculatedFields?.open({
+    onChange: (fields) => { host.dataset.calculatedDimensions = JSON.stringify(fields); },
+  }));
 });
 
 function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
@@ -627,7 +562,7 @@ function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
     'table.catalogue-workspace-table',
     'table.report-jobs-table', 'table.workspace-library-table', 'table.recovered-transfer-table',
     'table.operator-mappings-table', 'table.ds-designs-table',
-    '.report-charts-grid', '.workspace-calculated-dimensions-list',
+    '.report-charts-grid',
   ].join(', ');
   const compactViewport = window.matchMedia('(max-width: 640px)');
   const pageSize = 1;
@@ -638,10 +573,6 @@ function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
     if (collection.matches('.report-charts-grid')) {
       return Array.from(collection.querySelectorAll(':scope > .report-chart-card'))
         .filter((card) => !card.hidden && !card.hasAttribute('data-mobile-card-pagination-ignore'));
-    }
-    if (collection.matches('.workspace-calculated-dimensions-list')) {
-      return Array.from(collection.querySelectorAll(':scope > .workspace-calculated-dimension-row'))
-        .filter((row) => !row.hidden);
     }
     return Array.from(collection.tBodies)
       .flatMap((body) => Array.from(body.rows))
@@ -661,7 +592,7 @@ function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
       const pager = document.createElement('nav');
       pager.className = 'mobile-card-pagination app-pager';
       pager.hidden = true;
-      pager.setAttribute('aria-label', table.matches('.report-charts-grid') ? 'Chart pages' : (table.matches('.workspace-calculated-dimensions-list') ? 'Auto-calculated Fields pages' : 'Card pages'));
+      pager.setAttribute('aria-label', table.matches('.report-charts-grid') ? 'Chart pages' : 'Card pages');
       pager.innerHTML = '<button type="button" data-mobile-card-first aria-label="First page" title="First page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14M18 6l-6 6 6 6M12 6l-6 6 6 6"/></svg></button><button type="button" data-mobile-card-previous aria-label="Previous page" title="Previous page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button><span data-mobile-card-page-label>Page 1 of 1</span><button type="button" data-mobile-card-next aria-label="Next page" title="Next page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button><button type="button" data-mobile-card-last aria-label="Last page" title="Last page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5v14M6 6l6 6-6 6M12 6l6 6-6 6"/></svg></button>';
       const placeAfter = table.closest('.table-wrap, .data-table-wrap, .queue-table-wrap, .database-editor-wrap, .catalogue-workspace-table-wrap') || table;
       placeAfter.insertAdjacentElement('afterend', pager);
@@ -8264,9 +8195,9 @@ document.querySelectorAll('form[action="/workspace/calculated-dimensions/import"
       return;
     }
 
-    const panel = form.closest('[data-workspace-calculated-dimensions-panel]');
+    const panel = form.closest('[data-acf-panel]');
     let current = [];
-    try { current = JSON.parse(panel?.dataset.calculatedDimensions || '[]'); } catch (_error) { current = []; }
+    try { current = JSON.parse(panel?.dataset.fields || '[]'); } catch (_error) { current = []; }
     const currentNames = new Set(current.map((item) => String(item?.name || '').trim().toLocaleLowerCase()).filter(Boolean));
     const overwritten = [...new Set(imported
       .map((item) => String(item?.name || '').trim())

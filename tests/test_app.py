@@ -2030,28 +2030,22 @@ def test_workspace_calculated_dimensions_panel_exports_and_imports_json(client) 
     login(client)
     page = client.get('/workspace')
     assert page.status_code == 200
-    assert 'data-workspace-calculated-dimensions-panel' in page.text
+    # The fields are in Workspace Config; Workspace keeps the updates of the CDR tables and sends the former link there.
+    assert 'id="calculated-dimensions"' not in page.text and 'data-acf-panel' not in page.text
     assert 'data-auto-calculated-field-progress' in page.text
     assert 'data-auto-calculated-field-job-list' in page.text
     assert 'data-materialization-job-key="initial"' in page.text
-    assert '>Edit</button>' in page.text
-    assert 'Manage Auto-calculated Fields' not in page.text
-    assert 'workspace-calculated-dimensions-import-panel' in page.text
-    assert 'workspace-calculated-dimensions-list' in page.text
     assert 'combined-dataset-row' not in page.text
-    assert '>Export</a>' in page.text
-    assert '>Field<' in page.text
-    assert '>Applied to<' in page.text
-    assert page.text.index('workspace-calculated-dimensions-import-panel') < page.text.index('workspace-calculated-dimensions-list-panel')
-    assert page.text.index('<h2>Datasets</h2>') < page.text.index('id="calculated-dimensions"')
-    assert page.text.index('data-auto-calculated-field-progress') < page.text.index('id="calculated-dimensions"')
+    assert "window.location.replace('/workspace-config#auto-calculated-fields')" in page.text
     materialization_panel = page.text.split('data-auto-calculated-field-progress', 1)[1].split('</section>', 1)[0]
     assert '>CDR Tables Updates<' in materialization_panel and 'data-auto-calculated-field-progress-status' in materialization_panel
-    assert 'data-auto-calculated-field-rematerialize' not in materialization_panel
-    calculated_panel = page.text.split('id="calculated-dimensions"', 1)[1]
-    assert 'workspace-calculated-dimensions-intro' in calculated_panel
-    assert '<span>Re-materialize All Fields</span>' in calculated_panel
-    assert calculated_panel.index('data-workspace-manage-calculated-dimensions') < calculated_panel.index('workspace-calculated-dimensions-export-link') < calculated_panel.index('data-auto-calculated-field-rematerialize')
+    assert 'Re-materialize All Fields' not in materialization_panel
+    config = client.get('/workspace-config')
+    assert config.status_code == 200
+    calculated_panel = config.text.split('id="auto-calculated-fields"', 1)[1].split('</details>', 1)[0]
+    assert '<h2>Auto-calculated Fields</h2>' in calculated_panel and 'data-acf-panel-cards' in calculated_panel
+    assert calculated_panel.index('data-acf-panel-new') < calculated_panel.index('data-acf-panel-import') < calculated_panel.index('/workspace/calculated-dimensions/export') < calculated_panel.index('data-acf-panel-rematerialize')
+    assert 'action="/workspace/calculated-dimensions/import"' in calculated_panel
 
     current_definitions = client.get('/api/workspace/calculated-dimensions')
     assert current_definitions.status_code == 200
@@ -2085,6 +2079,8 @@ def test_workspace_calculated_dimensions_panel_exports_and_imports_json(client) 
         follow_redirects=False,
     )
     assert imported.status_code == 303
+    assert imported.headers['location'].startswith('/workspace-config?auto_fields_notice=')
+    assert imported.headers['location'].endswith('#auto-calculated-fields')
 
     assert any(item.name == 'Imported Group' for item in app_module.load_workspace_calculated_dimensions())
     assert not list(app_module.settings.slides_templates_dir.rglob('*.dimensions.json'))

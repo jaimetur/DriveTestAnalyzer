@@ -351,3 +351,65 @@ def test_pending_fields_are_reconciled_without_opening_workspace(client, monkeyp
     with core.AUTO_CALCULATED_FIELD_JOBS_LOCK:
         core.AUTO_CALCULATED_FIELD_JOBS.pop('running', None)
     assert queued == [core.active_workspace.id]
+
+
+def test_workspace_config_shows_a_card_per_field(client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.modules.cdr_reporting import CatalogEntry, catalogue_csv
+
+    login(client)
+    add_cdr(tmp_path, 'voice.csv', 'voice', pd.DataFrame({'Operator': ['EE'] * len(RATS), 'RAT': RATS}))
+    current = core.load_workspace_calculated_dimensions()
+    core.record_materialized_calculated_dimensions(core.repository, current)
+    core.repository.set_workspace_state('calculated_dimensions_need_materialization', '0')
+
+    # The panel is in Workspace Config, after the Mappings & Reference Data, with a card per field in their order.
+    page = client.get('/workspace-config')
+    assert page.status_code == 200
+    assert page.text.index('id="cdr-field-dictionary"') < page.text.index('id="auto-calculated-fields"') < page.text.index('id="scoring-export-panels"')
+    panel = page.text.split('id="auto-calculated-fields"', 1)[1].split('</details>', 1)[0]
+    assert 'data-acf-panel-new' in panel and '>Import JSON…</button>' in panel and '>Re-materialize All Fields</button>' in panel
+    assert 'href="/workspace/calculated-dimensions/export"' in panel and 'js/auto_calculated_fields_panel.js' in panel
+    cards = json.loads(panel.split("data-fields='", 1)[1].split("'", 1)[0])
+    assert [card['name'] for card in cards] == [item.name for item in current]
+    rat_group = next(card for card in cards if card['name'] == 'RAT_Group')
+    assert rat_group['kind'] == 'rules' and rat_group['rules'] == 14 and rat_group['values'][:3] == ['NR SA', 'VoNR', 'VoNR Mixed']
+    assert rat_group['inputs'] == ['RAT', 'RAT_A'] and rat_group['default_from'] == ['RAT', 'RAT_A'] and rat_group['default'] == ''
+    assert rat_group['sources'] == ['cdr-data', 'cdr-voice', 'cdr-speech'] and rat_group['state'] == 'up_to_date'
+    mode = next(card for card in cards if card['name'] == 'NR_Mode_from_RAT')
+    assert mode['values'] == ['SA', 'NSA'] and mode['default'] == 'Others' and mode['default_from'] == []
+
+    # A field the CDR tables do not hold as it is waits for an update, and is updating while one runs.
+    core.record_materialized_calculated_dimensions(core.repository, [item for item in current if item.name != 'RAT_Group'])
+    states = {card['name']: card['state'] for card in client.get('/api/workspace/auto-calculated-fields/cards').json()['fields']}
+    assert states['RAT_Group'] == 'pending' and states['NR_Mode_from_RAT'] == 'up_to_date'
+    with core.AUTO_CALCULATED_FIELD_JOBS_LOCK:
+        core.AUTO_CALCULATED_FIELD_JOBS['running'] = {'workspace_id': core.active_workspace.id, 'status': 'processing'}
+    try:
+        states = {card['name']: card['state'] for card in client.get('/api/workspace/auto-calculated-fields/cards').json()['fields']}
+    finally:
+        with core.AUTO_CALCULATED_FIELD_JOBS_LOCK:
+            core.AUTO_CALCULATED_FIELD_JOBS.pop('running', None)
+    assert states['RAT_Group'] == 'updating' and states['NR_Mode_from_RAT'] == 'up_to_date'
+
+    # Where each field is used and the values it gives in the CDRs.
+    reader = {'name': 'Is SA', 'sources': ['cdr-voice'], 'default': 'No', 'rules': [{'when': '[NR_Mode_from_RAT] = SA', 'value': 'Yes'}]}
+    assert client.post('/api/workspace/auto-calculated-fields/save', json={'field': reader}).status_code == 200
+    chart = CatalogEntry(slide=1, slide_title='Modes', slide_subtitle='', layout='Title + 2 rows + 2 columns + comments right',
+                         chart_title='Calls by RAT group', cdr_source='CDR-Voice',
+                         chart_type='Table', legend='', filters='NR_Mode_from_RAT IN (SA)', rows_split='Operator × RAT_Group',
+                         columns_split='', legend_position='Top', kpi='COUNT(RAT)')
+    monkeypatch.setattr(core, 'report_catalogue_options', lambda *_args: [{'name': 'Modes', 'content': catalogue_csv([chart])}])
+    core.repository.set_workspace_state('ppt_designs_v2', json.dumps({
+        'd1': {'name': 'From the template', 'template': 'Modes', 'filters': {}},
+        'd2': {'name': 'Filtered', 'template': 'Other', 'filters': {'Is SA': ['Yes']}},
+    }))
+    core.repository.save_query_builder_query('Groups', '', 'SELECT "RAT_Group", COUNT(*) FROM reporting_rows_voice GROUP BY 1', [], 'admin')
+    insights = client.get('/api/workspace/auto-calculated-fields/insights').json()
+    keys = {card['name']: card['key'] for card in client.get('/api/workspace/auto-calculated-fields/cards').json()['fields']}
+    assert insights['usage'][keys['RAT_Group']] == {'templates': ['Modes'], 'designs': ['From the template'], 'queries': ['Groups'], 'fields': []}
+    assert insights['usage'][keys['NR_Mode_from_RAT']] == {'templates': ['Modes'], 'designs': ['From the template'], 'queries': [], 'fields': ['Is SA']}
+    assert insights['usage'][keys['Is SA']]['designs'] == ['Filtered']
+    voice = insights['shares'][keys['NR_Mode_from_RAT']]['cdr-voice']
+    assert voice['rows'] == len(RATS) and voice['tried'] == len(RATS) and voice['other'] == 0 and voice['empty'] == 0
+    assert {item['value']: item['rows'] for item in voice['values']} == {'SA': 5, 'NSA': 2, 'Others': 4}
+    assert insights['shares'][keys['Test_Family']] == {}

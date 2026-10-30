@@ -426,6 +426,48 @@
     </div>
   </details>
 
+  <details id="auto-calculated-fields" class="panel collapsible-panel acf-panel" open data-panel-state-key="workspace-config:auto-calculated-fields">
+    <summary class="collapsible-summary">
+      <div><p class="eyebrow">CDR fields</p><h2>Auto-calculated Fields</h2></div>
+      <div class="summary-inline-actions">
+        {% if active_workspace %}<span class="pill live-pill" data-acf-panel-count>{{ auto_field_cards | length }} field{{ '' if auto_field_cards | length == 1 else 's' }}</span>{% endif %}
+        <span class="collapse-chip">Collapse</span>
+      </div>
+    </summary>
+    <div class="collapsible-panel-body">
+      {% if active_workspace %}
+      <p class="lede">The fields of <strong>"{{ active_workspace.name }}"</strong> that give each row of the CDRs of the types they apply to a value from rules on its other fields, used like any CDR field in filters, splits, charts and queries. Saving a field updates its CDR tables in the background (<a href="/workspace#cdr-tables-updates">CDR Tables Updates</a> in Workspace).</p>
+      {% if auto_fields_notice %}<div class="alert alert-success">{{ auto_fields_notice }}</div>{% endif %}
+      {% if auto_fields_error %}<div class="alert alert-error">{{ auto_fields_error }}</div>{% endif %}
+      <div class="acf-panel-host" data-acf-panel data-fields='{{ auto_field_cards | tojson }}'{% if can_edit_workspace_config %} data-can-edit{% endif %}>
+        <div class="acf-panel-toolbar">
+          <span class="acf-panel-tables" data-acf-panel-tables role="status"></span>
+          <label class="acf-panel-search"><span class="sr-only">Find a field</span><input type="search" placeholder="Find a field, value or CDR field" data-acf-panel-search data-no-persist></label>
+          <div class="acf-panel-types" role="group" aria-label="Show the fields of these CDR types">
+            {% for source, label in [('cdr-data', 'Data'), ('cdr-voice', 'Voice'), ('cdr-speech', 'Speech')] %}<button type="button" class="acf-type acf-type-{{ source[4:] }}" aria-pressed="false" data-acf-panel-type="{{ source }}" title="Show only the fields of CDR-{{ label | upper }}">{{ label }}</button>{% endfor %}
+          </div>
+          {% if can_edit_workspace_config %}<button type="button" class="acf-panel-new" data-acf-panel-new><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New Field</button>{% endif %}
+          <div class="acf-panel-more">
+            <button type="button" class="acf-panel-more-button" aria-haspopup="menu" aria-expanded="false" aria-label="More actions" title="More actions" data-acf-panel-more><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg></button>
+            <div class="acf-panel-menu" role="menu" hidden data-acf-panel-menu>
+              {% if can_edit_workspace_config %}<button type="button" role="menuitem" data-acf-panel-import><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Import JSON…</button>{% endif %}
+              <a role="menuitem" href="/workspace/calculated-dimensions/export"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V9M7 14l5-5 5 5M5 4h14"/></svg>Export All Fields</a>
+              {% if can_edit_workspace_config %}<button type="button" role="menuitem" data-acf-panel-rematerialize title="Work every field out again in every CDR table it applies to. Saving a field already updates the tables: use it only to repair them, for example after an interrupted update."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0 1.2 5.2M20 4v7h-7"/></svg>Re-materialize All Fields</button>{% endif %}
+            </div>
+          </div>
+          {% if can_edit_workspace_config %}<form action="/workspace/calculated-dimensions/import" method="post" enctype="multipart/form-data" hidden data-acf-panel-import-form>
+            <input type="file" name="dimensions_file" accept=".json,application/json" required data-no-persist>
+            <button type="submit">Import</button>
+          </form>{% endif %}
+        </div>
+        <div class="acf-cards" data-acf-panel-cards></div>
+        <p class="form-note acf-panel-empty" data-acf-panel-empty hidden></p>
+      </div>
+      <script defer src="{{ static_path('js/auto_calculated_fields_panel.js') }}?v={{ asset_version('js/auto_calculated_fields_panel.js') }}"></script>
+      {% else %}<p class="form-note">Open a workspace before managing its Auto-calculated Fields.</p>{% endif %}
+    </div>
+  </details>
+
   {% include 'scoring_config_panels.html' %}
 
   <details id="scoring-export-panels" class="panel collapsible-panel scoring-config-panel scoring-export-panels-panel" open data-panel-state-key="workspace-config:scoring-export-panels">

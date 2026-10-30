@@ -361,7 +361,7 @@ SECTION_ICONS: dict[str, str] = {
 # Builders lists them for each builder; App Logs and Admin are administrative tabs. None draws a line between them.
 MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
     'workspace': [('Select Workspace', 'Workspaces Management', 'folder'), ('Data Ingestion', 'Data Ingestion', 'upload'),
-                  ('Datasets', 'Datasets', 'table'), ('Auto-calculated Fields', 'Auto-calculated Fields', 'function')],
+                  ('Datasets', 'Datasets', 'table')],
     'datasets-analysis': [('Select CDR to Analyze', 'Select CDR', 'select'), ('Dataset Summary', 'Dataset Summary', 'summary'),
                           ('Charts and Scorecards', 'Charts and Scorecards', 'chart'),
                           ('Processed Metrics', 'Processed Metrics', 'gauge')],

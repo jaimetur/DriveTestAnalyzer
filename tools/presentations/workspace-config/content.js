@@ -43,12 +43,13 @@ module.exports = {
         { mini: 'bands', title: 'Spectrum Holdings', text: 'The bands and MHz of each operator, for the Spectrum of Network Insights.' },
       ],
       notes: 'Map Areas are the administrative areas the Points Lost Map colours: shipped for the main markets, downloaded from geoBoundaries for any other country or imported from a file. Main Cities lead every City filter, Serving Networks tell which networks serve each operator for the vendor mapping and the Non-Qualified Calls, and Spectrum Holdings feed the Spectrum panel of Network Insights.' },
-    { id: 'scoring', type: 'tiles', section: 'Scoring and reports', footer: 'Scoring and reports', kicker: 'Methodology and fields', title: 'How it scores and reads its CDRs', columns: 2,
+    { id: 'scoring', type: 'tiles', section: 'Scoring and reports', footer: 'Scoring and reports', kicker: 'Methodology and fields', title: 'How it scores and reads its CDRs', columns: 3,
       tiles: [
         { mini: 'gauge', title: 'Scoring & GAP Analysis Setup', text: 'Its methodology: environments, KPIs, weights, thresholds and GAP priorities.' },
         { mini: 'dictionary', title: 'CDR Field Dictionary', text: 'The columns of the CDRs each field is read from, changed only when needed.' },
+        { mini: 'formula', title: 'Auto-calculated Fields', text: 'Fields worked out for every CDR row from rules, a card each with its values and uses.' },
       ],
-      notes: 'The Scoring & GAP Analysis Setup holds the methodology of the workspace, with its environments, KPI definitions, weights, thresholds and GAP priorities, and the Scoring Export Panels. The CDR Field Dictionary tells which columns of the CDRs each field is read from.' },
+      notes: 'The Scoring & GAP Analysis Setup holds the methodology of the workspace, with its environments, KPI definitions, weights, thresholds and GAP priorities, and the Scoring Export Panels. The CDR Field Dictionary tells which columns of the CDRs each field is read from. The Auto-calculated Fields add fields worked out from rules to the CDRs: each card shows the CDR types of a field, the values it gives and where it is used.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Set once, every module follows',
       lead: 'Every filter, chart, table and report shows the labels, colours and order of the workspace.',
       links: [
@@ -56,7 +57,7 @@ module.exports = {
         { title: 'Map Areas', text: 'the areas of its countries' }, { title: 'Scoring & GAP Analysis Setup', text: 'its methodology' },
       ],
       modules: ['Workspace', 'Scoring & GAP Analysis', 'Network Insights', 'PPT Designer'],
-      note: 'They travel with the workspace in exports, transfers and backups, and never rewrite its CDRs.',
-      notes: 'Workspace Config is set once per workspace and every module follows it. Its settings travel with the workspace in exports, transfers and backups, and none of them rewrites the stored CDRs.' },
+      note: 'They travel with the workspace in exports, transfers and backups; only the Auto-calculated Fields add to its CDRs, a column each.',
+      notes: 'Workspace Config is set once per workspace and every module follows it. Its settings travel with the workspace in exports, transfers and backups; only the Auto-calculated Fields change the stored CDRs, adding a column each.' },
   ],
 };

@@ -66,10 +66,10 @@ module.exports = {
     { id: 'inspection', type: 'tiles', section: 'Datasets', footer: 'Inspection and enrichment', kicker: 'Dataset inspection and enrichment', title: 'See every row, enrich every CDR', columns: 3,
       tiles: [
         { mini: 'table', title: 'Dataset Preview', text: 'The persisted rows of a dataset in their own view, page by page.' },
-        { mini: 'formula', title: 'Auto-calculated Fields', text: 'Fields calculated for the CDRs of the workspace, which every module reads.' },
+        { mini: 'formula', title: 'Auto-calculated Fields', text: 'Fields calculated for the CDRs, set in Workspace Config; every module reads them.' },
         { mini: 'vendor', title: 'Vendor Mapping', text: 'Needed only for the Vendor Comparison: the vendor of the serving cell of every row.' },
       ],
-      notes: 'Preview opens the persisted rows of a dataset. Auto-calculated Fields add fields to the CDRs of the workspace, and Vendor Mapping gives the vendor of every row for the Vendor Comparison.' },
+      notes: 'Preview opens the persisted rows of a dataset. Auto-calculated Fields, set in Workspace Config, add fields to the CDRs of the workspace, and Vendor Mapping gives the vendor of every row for the Vendor Comparison.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Everything starts here',
       lead: 'Every other module reads the processed datasets of the active workspace.',
       links: [
@@ -77,7 +77,7 @@ module.exports = {
         { title: 'NetCheck CDR Support', text: 'the CDR tables and their fields' }, { title: 'Troubleshooting', text: 'when a dataset is not offered' },
       ],
       modules: ['CDR Analysis', 'PPT Designer', 'Scoring & GAP Analysis', 'Network Insights', 'Non-Qualified Calls', 'Reporting', 'Builders'],
-      note: 'Workspace Config holds the settings of the workspace: the Operator and Vendor Maps, the Serving Networks, the CDR Field Dictionary and the Scoring setup.',
+      note: 'Workspace Config holds the settings of the workspace: the Operator and Vendor Maps, the Serving Networks, the CDR Field Dictionary, the Auto-calculated Fields and the Scoring setup.',
       notes: 'Open the workspace first: every other module works on the processed datasets of the active workspace. Its settings are in Workspace Config.' },
   ],
 };

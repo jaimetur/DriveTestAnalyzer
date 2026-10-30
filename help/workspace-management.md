@@ -221,12 +221,12 @@ Its live task detail identifies the individual table being migrated. Opening a c
 
 The **CDR Tables Updates** card, below the Datasets cards, lists the background jobs that rewrite the CDR tables, each with its own label, message and progress bar:
 
-- **Auto-calculated Fields**: saving, importing or rematerializing auto-calculated fields (**Re-materialize All Fields** in the Auto-calculated Fields panel).
+- **Auto-calculated Fields**: saving, importing or rematerializing auto-calculated fields (**Re-materialize All Fields** in the Auto-calculated Fields panel of Workspace Config).
 - **Combined CDR-DATA**, **-VOICE** or **-SPEECH**: recreating a combined table, after a CDR is processed or mapped, or with **Recreate combined table**.
 - **Combined CDR tables**: bringing the combined tables in line with a CDR Stage, NR Mode or Active? change or a deleted CDR.
 - **CDR tables reconciliation**: the automatic check when a workspace opens with pending work or a report template needs new columns.
 
-Its pills sum up the state (**Up to date**, **N in progress**, **N queued**). With nothing to do it reads *All CDR tables are up to date*. While auto-calculated fields are materialized, the Auto-calculated Fields panel shows their progress with a link to this card. Whenever a job starts, changes state or ends, the Datasets cards, the combined CDR tables included, refresh their counts, status, progress and Updated values in place without reloading the Workspace page.
+Its pills sum up the state (**Up to date**, **N in progress**, **N queued**). With nothing to do it reads *All CDR tables are up to date*. While auto-calculated fields are materialized, the cards of the [Auto-calculated Fields](workspace-config.md#auto-calculated-fields) panel of Workspace Config show the progress on the CDR types of each field, and the panel links to this card. Whenever a job starts, changes state or ends, the Datasets cards, the combined CDR tables included, refresh their counts, status, progress and Updated values in place without reloading the Workspace page.
 
 ### Fixed CDR Fields
 
@@ -407,51 +407,7 @@ Smart Orchestrator Logs is reserved in the input-type catalogue so existing work
 
 ### Auto-calculated Fields
 
-An Auto-calculated Field gives each row of the CDRs a value worked out from its other fields, such as the NSA, SA or Others of each sample from its RAT. It becomes a column of every individual and combined CDR table of the types it applies to, so filters, splits, legends, KPIs and Query Builder use it like any other field.
-
-The **Auto-calculated Fields** panel follows Datasets in Workspace. **Edit** opens the editor of the fields, **New Field** opens it on a new one and each row of the list opens its field. The same editor opens from the PPT Templates editor and from PPT Designer (**Auto-Calculated Fields**).
-
-The editor lists the fields on the left, in the order they are worked out: a field can read the fields above it. The arrows of a field move it, and an order where a field would read one below it is refused. The field chosen is edited on the right:
-
-- **Name** and **Applies to**, the CDR types (CDR-Data, CDR-Voice, CDR-Speech) the field is a column of.
-- **What value each row gets**, built from **Rules** or written as a **Formula**:
-  - **Rules** are tried from top to bottom, and the first one whose condition holds gives the value. A rule has one or more conditions, combined so that all of them (AND) or any of them (OR) must hold, and its result. A condition is a field, an operator and its values. The field is chosen among the fields of the CDRs of the chosen types and the Auto-calculated Fields above; **+ or** adds another spelling of it, and the first one the CDR has is read (`[RAT] OR [RAT_A]`). While a value is typed, the values of the field in the CDRs are offered with their number of rows. Operators that take several values keep them as chips (Enter or a comma adds one). A rule that mixes AND and OR is edited as text.
-  - A **Formula** is Tableau-style: `IF condition THEN value`, any `ELSEIF condition THEN value`, an optional `ELSE value` and `END`, and a THEN or ELSE can hold another `IF … END`. Typing `[` offers the fields, and the buttons insert IF, ELSEIF, ELSE, AND, OR, a field or an operator. Switching from Rules to Formula writes the rules as a formula; switching back turns a formula without nested IF blocks into rules.
-  - **Operators and syntax** lists every operator with an example.
-- **When no rule gives a value**: the rows no rule takes are left empty, take a fixed value, or keep the value of another field (and, where that field is empty, a fixed value or nothing).
-- The field is checked while it is edited. An error keeps **Save** disabled and says what to change: a condition or formula that cannot be read, a field reading itself or one below it, a name the CDRs already have, or a name of a field the application keeps in the CDR tables (`NR_Mode`, the NR Mode of the CDR of each row, `Operator`, `Campaign` and so on). A warning tells which CDR types lack a field a condition reads: there those conditions are skipped.
-- **Result on the CDRs** tries the field before it is saved on up to 150,000 rows of each CDR type it applies to (every n-th row of each CDR): the rows of each value with their share, the rows each rule takes, and the rows no rule takes with what they get and the values they have in each field the rules read (why no rule takes them, such as calls whose result is `Dropped`).
-
-| Operator | Meaning | Example |
-|---|---|---|
-| `=`, `!=` | is, is not | `[Test_Result] = Completed` |
-| `IN`, `NOT IN` | is one of, is none of | `[RAT] IN (LTE, 'NR SA')` |
-| `CONTAINS`, `NOT CONTAINS` | contains (any of the values), does not contain | `[Test_Name] CONTAINS (YouTube, FDFS)` |
-| `STARTS WITH`, `NOT STARTS WITH` | starts with (any of the values), does not | `[RAT] STARTS WITH 'NR SA'` |
-| `ENDS WITH`, `NOT ENDS WITH` | ends with (any of the values), does not | `[RAT] ENDS WITH '/LTE'` |
-| `MATCHES`, `NOT MATCHES` | matches the regular expression, does not | `[Test_Name] MATCHES 'FDTT .* DL'` |
-| `>`, `>=`, `<`, `<=` | compares numbers | `[Mean_Data_Rate] > 100` |
-| `IS EMPTY`, `IS NOT EMPTY` | has no value, has one | `[Failure_Category] IS EMPTY` |
-
-Text comparisons ignore case. A value with spaces or symbols is quoted (`'NR SA'`, `\'` for a quote). In `MATCHES '(^|/)NR(/|$)'`, `(^|/)` is the start of the text or a `/`, and `(/|$)` a `/` or the end of the text: the pattern finds `NR` as one item of a list such as `NR/LTE` or `LTE/NR/GSM`, but not inside `LTE-5GNR`.
-
-**Save** (or Ctrl+S) saves the field alone and updates the CDR tables in the background, as the **CDR Tables Updates** card shows: only its column, and those of the fields that read it, in every individual and combined CDR table of its types. There is nothing else to save, and closing the editor asks only while the field has changes not saved. **Delete** removes a field and its column (refused while another field reads it), and **Duplicate** opens a copy below it, saved when it is saved.
-
-The update compares the fields with those the CDR tables hold, as the last complete update left them. A save that changes no CDR, such as a new order, updates nothing, and an update stopped half-way, or a change imported meanwhile, is caught up by the next one. An update left pending (fields imported or restored, saved while another update ran, or one a restart cut) starts on its own within half a minute, without anyone opening Workspace; after a failed one the next try waits ten minutes, and one stopped by hand waits for **Re-materialize All Fields**. **Re-materialize All Fields**, next to **Edit** and **Export**, works every field out again in every CDR table: it is only needed to repair them, for example after an interrupted update, and is disabled while any CDR table update runs. Workspace remains usable while an update runs; the **CDR Tables Updates** card shows one bar per active task, with the current table, phase and row operations.
-
-New workspaces start with these fields:
-
-- `Call_Family` (Voice and Speech): `MultiRAB`, `WhatsApp` or `VoLTE` from the Session Type, `CALL` otherwise.
-- `Test_Family` (Data): `YouTube`, `FDFS` or `FDTT` from the Test Name, otherwise the Type of Test.
-- `Test_Result_Group`: `Success` (Completed, Visible Completed) or `Failure` (Cutoff, Failed, Dropped) from the result of the test or call.
-- `RAT_Group`: the RAT of each sample with each technology on its own (`EN-DC`, `NR SA` with NE-DC, `LTE`, `VoNR`, `EPSFB`, `VoLTE`, `CSFB`, `2G/3G`, `No Service`) and its combinations grouped (`ENDC Mixed`, `NR SA Mixed`, `VoNR Mixed`, `VoLTE Mixed`, `LTE Mixed`), the RAT itself otherwise (`Unknown`).
-- `NR_Mode_from_RAT`: `SA` when the RAT of the sample used 5G SA (`NR SA`, `NE-DC`, `5G NR`, `VoNR`, `EPSFB`, or `NR` as an item of the list, as Voice and Speech CDRs write it), `NSA` when it used 5G NSA and no SA (`EN-DC`, `LTE-5GNR`), and `Others` otherwise (LTE, VoLTE, 2G and 3G, no service, unknown). It is the 5G mode of each sample, not **NR Mode**, which is the NR Mode of the CDR it comes from.
-
-Renaming a field keeps it the same field: its new name reaches the fields that read it, the PPT Templates (KPI, filters, splits and legends), the saved Designs and the SQL of the saved Query Builder queries of the workspace, where it is a column of the CDR tables (quoted or not; text values and comments are left as they are), and its column in the CDR tables is renamed. An import, transfer or restore that renames a field does the same (see [Matching and creators](administrator-config.md#matching-and-creators)).
-
-**Import** (a JSON file) adds the fields of the file and replaces those with the same name; **Export** downloads them all. Both keep the format of earlier versions, which import as they are (`[Field A] OR [Field B]`, the former `Field A|Field B` and unbracketed fields included).
-
-Fields are applied only to their selected CDR types. The combined tables keep the fields the conditions read, the preview-filter fields and the resulting Auto-calculated Fields, and a field leaves the CDR types it no longer applies to.
+The Auto-calculated Fields of the workspace, fields worked out for every CDR row from its other fields, are managed in Workspace Config: see [Auto-calculated Fields](workspace-config.md#auto-calculated-fields). Their updates of the CDR tables show in [CDR Tables Updates](#cdr-tables-updates).
 
 ## Troubleshooting
 

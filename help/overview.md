@@ -112,7 +112,7 @@ Workspace is the entry point for data and storage management.
 
 ### Auto-calculated Fields and combined CDR tables
 
-- Create, edit, duplicate, delete, import and export Auto-calculated Fields from the Workspace panel, with rules built from a field, an operator and values (or a formula), checked while they are edited and tried on the CDRs before saving.
+- Create, edit, duplicate, delete, import and export Auto-calculated Fields from their panel in Workspace Config, a card per field with its CDR types and the state of their tables, the values it gives in the CDRs and where it is used, with rules built from a field, an operator and values (or a formula), checked while they are edited and tried on the CDRs before saving.
 - A field is applied only to the CDR types selected in **Applies to**.
 - **Save** saves one field and updates its column in the CDR tables in the background; importing or **Re-materialize All Fields** starts a background job too. The CDR Tables Updates card shows its percentage and completion state.
 - Existing combined `CDR-Data`, `CDR-Voice` and `CDR-Speech` tables appear in their own card of Datasets, below the Final, Weekly and Daily CDRs. They include the Final CDRs and the Weekly and Daily CDRs that no Final CDR replaces yet (see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)). Preview them with the same filters as individual CDRs.

@@ -13912,6 +13912,7 @@ def render_admin_template(
             **spectrum_holdings_context(request),
             **serving_networks_context(request),
             **cdr_field_dictionary_context(request),
+            **(auto_calculated_fields_context(request) if workspace_config_page else {}),
             'recurring_backup': recurring_backup_settings(),
             'backup_workspace_content': backup_workspace_content(load_module_labels(repository)),
             # Until a selection is saved, every workspace is offered selected.
@@ -26678,15 +26679,15 @@ async def import_workspace_calculated_dimensions(
             ),
         )
     except (UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        return RedirectResponse(f'/workspace?{urlencode({"workspace_error": str(exc)})}#calculated-dimensions', status_code=303)
+        return RedirectResponse(f'/workspace-config?{urlencode({"auto_fields_error": str(exc)})}#auto-calculated-fields', status_code=303)
     notice = (
         f'Imported {len(imported)} auto-calculated fields. Applicable CDR tables are being updated '
         'in the background; you can continue working.'
         if affected_sources else
         f'Imported {len(imported)} auto-calculated fields; matching definitions were already up to date.'
     )
-    query = urlencode({'workspace_notice': notice, 'auto_fields_job_id': job['id']})
-    return RedirectResponse(f'/workspace?{query}#calculated-dimensions', status_code=303)
+    query = urlencode({'auto_fields_notice': notice, 'auto_fields_job_id': job['id']})
+    return RedirectResponse(f'/workspace-config?{query}#auto-calculated-fields', status_code=303)
 
 
 # ---- Auto-calculated Fields editor: one field checked, tried on the CDRs and saved at a time
@@ -26890,6 +26891,206 @@ def auto_calculated_fields_editor(user: SessionUser = Depends(current_user)) -> 
         'can_edit': user.role in WORKSPACE_EDITOR_ROLES,
         'workspace': active_workspace.name,
     }, headers={'Cache-Control': 'no-store'})
+
+
+# ---- Auto-calculated Fields panel of Workspace Config: one card per field
+
+# The values the fields give, by workspace, definitions and CDRs (they change only when one of those does).
+AUTO_FIELD_VALUE_SHARES: OrderedDict[tuple[Any, ...], dict[str, Any]] = OrderedDict()
+AUTO_FIELD_VALUE_SHARES_LOCK = Lock()
+# The values of a field a card names one by one (most rows first); the rest go together.
+AUTO_FIELD_CARD_VALUES = 8
+
+
+def auto_field_inputs(dimension: Any) -> list[str]:
+    """The fields a definition reads: those of its rules and default, and those its formula names."""
+    reads = calculated_dimension_reads(dimension) | set(re.findall(r'\[([^\]]+)\]', dimension.expression_text or ''))
+    return sorted({item.strip() for item in reads if item.strip()}, key=str.casefold)
+
+
+def auto_field_card(dimension: Any) -> dict[str, Any]:
+    """What the card of a field tells at a glance: the CDR types it applies to, its rules (or formula) and the values
+    they give, the fields it is worked out from and what it takes when no rule gives a value."""
+    editor = calculated_dimension_editor_json(dimension)
+    if dimension.expression is not None:
+        written = editor['formula_rules'] or []
+        values = [rule['value'] for rule in written] + ([editor['formula_else']] if editor['formula_else'] else [])
+    else:
+        written = editor['rules']
+        values = [rule['value'] for rule in written]
+    return {
+        'name': dimension.name, 'sources': list(dimension.sources),
+        'kind': 'formula' if dimension.expression is not None else 'rules', 'rules': len(written),
+        'values': list(dict.fromkeys(str(value) for value in values if str(value) != '')),
+        'inputs': auto_field_inputs(dimension), 'default': dimension.default,
+        'default_from': [alias for value in dimension.default_from for alias in split_calculated_dimension_aliases(value)],
+    }
+
+
+def auto_field_states(dimensions: tuple[Any, ...]) -> dict[str, str]:
+    """The state of the CDR tables for each field (by its key): ``up_to_date`` when they hold it as it is, ``updating``
+    while an update that brings it runs and ``pending`` until one does."""
+    held = materialized_calculated_dimensions(repository, dimensions)
+    changed = calculated_dimension_changes(held, dimensions)
+    with AUTO_CALCULATED_FIELD_JOBS_LOCK:
+        active = [dict(job) for job in AUTO_CALCULATED_FIELD_JOBS.values()
+                  if job.get('workspace_id') == active_workspace.id and job.get('status') in {'queued', 'processing'}]
+    persisted = read_persisted_auto_field_progress(active_workspace.id)
+    if persisted.get('status') in {'queued', 'processing'}:
+        active.append(persisted)
+    running = bool(active) or repository.get_workspace_state('calculated_dimensions_need_materialization') in {'1', 'processing'}
+    # Re-materialize All Fields works every field out again.
+    rebuilding = any(job.get('rebuild_all') for job in active)
+    states: dict[str, str] = {}
+    for item in dimensions:
+        key = _normalise_catalogue_dimension_name(item.name)
+        states[key] = 'updating' if running and (rebuilding or key in changed) else 'pending' if key in changed else 'up_to_date'
+    return states
+
+
+def auto_field_cards(dimensions: Iterable[Any]) -> list[dict[str, Any]]:
+    """The cards of the fields in their order, each with its key (that of its usage and values) and the state of its
+    CDR tables."""
+    dimensions = tuple(dimensions)
+    states = auto_field_states(dimensions)
+    cards = []
+    for item in dimensions:
+        key = _normalise_catalogue_dimension_name(item.name)
+        cards.append({**auto_field_card(item), 'key': key, 'state': states[key]})
+    return cards
+
+
+def auto_field_usage(dimensions: tuple[Any, ...]) -> dict[str, dict[str, list[str]]]:
+    """Where each field (by its key) is used: the PPT Templates whose charts show, split or filter by it, the PPT Designs
+    that filter by it or use one of those templates, the Query Builder queries that read it and the fields that read it."""
+    from src.modules.query_builder import rename_identifiers
+
+    normalize = _normalise_catalogue_dimension_name
+    names = {normalize(item.name): item.name for item in dimensions}
+    usage: dict[str, dict[str, set[str]]] = {key: {'templates': set(), 'designs': set(), 'queries': set(), 'fields': set()} for key in names}
+
+    def named(values: Iterable[Any]) -> set[str]:
+        return {normalize(str(value).strip()) for value in values if str(value or '').strip()} & names.keys()
+
+    condition = re.compile(r'^(?P<column>.+?)\s+(?:NOT\s+CONTAINS|NOT\s+IN|CONTAINS|IN|>=|<=|!=|=|>|<)\s+', re.I)
+    by_template: dict[str, set[str]] = {}
+    for template in report_catalogue_options():
+        found: set[str] = set()
+        for entry in parse_catalog_csv(template['content'], validate_filters=False):
+            parts = [entry.kpi]
+            for grouping in (entry.rows_split, entry.columns_split, entry.legend):
+                parts.extend(re.split(r'\s*×\s*|\s+\bx\b\s+', str(grouping or ''), flags=re.I))
+            parts.extend(match.group('column') for clause in str(entry.filters or '').split(';')
+                         if (match := condition.match(clause.strip())))
+            found |= named(parts)
+        by_template[template['name']] = found
+        for key in found:
+            usage[key]['templates'].add(template['name'])
+    stored = repository.get_workspace_state('ppt_designs_v2') or repository.get_workspace_state('ppt_design_sets_v1') or '{}'
+    try:
+        designs = json.loads(stored)
+    except json.JSONDecodeError:
+        designs = {}
+    for definition in (designs.values() if isinstance(designs, dict) else ()):
+        if not isinstance(definition, dict) or not str(definition.get('name') or '').strip():
+            continue
+        filters = definition.get('filters') if isinstance(definition.get('filters'), dict) else {}
+        own = [*(definition.get('custom_fields') or []), *(definition.get('hidden_filters') or []), *filters]
+        for key in named(item for item in own if isinstance(item, str)) | by_template.get(str(definition.get('template') or ''), set()):
+            usage[key]['designs'].add(str(definition['name']))
+    for row in repository.list_query_builder_queries():
+        query_sql = str(row['query_sql'] or '')
+        for key, name in names.items():
+            if rename_identifiers(query_sql, {name: '__auto_field_usage__'}) != query_sql:
+                usage[key]['queries'].add(str(row['name']))
+    for item in dimensions:
+        for key in named(auto_field_inputs(item)) - {normalize(item.name)}:
+            usage[key]['fields'].add(item.name)
+    return {key: {kind: sorted(values, key=str.casefold) for kind, values in places.items()} for key, places in usage.items()}
+
+
+def auto_field_value_shares(dimensions: tuple[Any, ...]) -> dict[str, dict[str, Any]]:
+    """The values each field (by its key) gives in the CDRs of each type it applies to, worked out on the rows the
+    editor tries (every n-th row of each CDR, see auto_field_sample_rows) and counted as rows of all the CDRs: the
+    values with most rows one by one, the rest together and the rows no rule gives a value."""
+    normalize = _normalise_catalogue_dimension_name
+    keys = {normalize(item.name) for item in dimensions}
+    datasets = tuple((int(row['id']), str(row['updated_at'] or ''), int(row['row_count'] or 0), str(row['dataset_kind'] or ''))
+                     for source in AUTO_FIELD_CDR_SOURCES for row in _auto_field_ready_cdrs(source.removeprefix('cdr-')))
+    cache_key = (str(active_workspace.id), json.dumps(calculated_dimensions_json(dimensions), sort_keys=True), datasets)
+    with AUTO_FIELD_VALUE_SHARES_LOCK:
+        if cache_key in AUTO_FIELD_VALUE_SHARES:
+            AUTO_FIELD_VALUE_SHARES.move_to_end(cache_key)
+            return AUTO_FIELD_VALUE_SHARES[cache_key]
+    shares: dict[str, dict[str, Any]] = {key: {} for key in keys}
+    for source in AUTO_FIELD_CDR_SOURCES:
+        applying = [item for item in dimensions if source in item.sources]
+        if not applying:
+            continue
+        inputs = {field for item in applying for field in auto_field_inputs(item) if normalize(field) not in keys}
+        frame, total = auto_field_sample_rows(source.removeprefix('cdr-'), inputs)
+        if not len(frame):
+            continue
+        frame = materialize_calculated_dimensions(frame, dimensions, source)
+        scale = total / len(frame)
+        for item in applying:
+            column = next((name for name in frame.columns if normalize(name) == normalize(item.name)), None)
+            if column is None:
+                continue
+            counts = frame[column].fillna('').astype(str).str.strip().value_counts()
+            given = [(str(value), int(count)) for value, count in counts.items() if value != '']
+            shares[normalize(item.name)][source] = {
+                'rows': total, 'tried': len(frame),
+                'values': [{'value': value, 'rows': round(count * scale)} for value, count in given[:AUTO_FIELD_CARD_VALUES]],
+                'other': round(sum(count for _value, count in given[AUTO_FIELD_CARD_VALUES:]) * scale),
+                'empty': round(int(counts.get('', 0)) * scale),
+            }
+    with AUTO_FIELD_VALUE_SHARES_LOCK:
+        AUTO_FIELD_VALUE_SHARES[cache_key] = shares
+        while len(AUTO_FIELD_VALUE_SHARES) > 8:
+            AUTO_FIELD_VALUE_SHARES.popitem(last=False)
+    return shares
+
+
+def auto_calculated_fields_context(request: Request) -> dict[str, Any]:
+    """The Auto-calculated Fields panel of Workspace Config: the card of each field of the active workspace."""
+    return {
+        'auto_field_cards': auto_field_cards(load_workspace_calculated_dimensions()) if active_workspace else [],
+        'auto_fields_notice': request.query_params.get('auto_fields_notice') or None,
+        'auto_fields_error': request.query_params.get('auto_fields_error') or None,
+    }
+
+
+@app.get('/api/workspace/auto-calculated-fields/cards')
+def auto_calculated_field_cards(user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """The cards of the panel: each field as it is now, with the state of its CDR tables."""
+    if not active_workspace:
+        raise HTTPException(status_code=400, detail='Open a workspace first.')
+    return JSONResponse({'fields': auto_field_cards(load_workspace_calculated_dimensions())}, headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/api/workspace/auto-calculated-fields/insights')
+async def auto_calculated_field_insights(user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """What the cards read after the page is shown: where each field is used and the values it gives in the CDRs."""
+    if not active_workspace:
+        raise HTTPException(status_code=400, detail='Open a workspace first.')
+
+    def worked_out() -> dict[str, Any]:
+        dimensions = tuple(load_workspace_calculated_dimensions())
+        try:
+            shares = auto_field_value_shares(dimensions)
+        except (ValueError, TypeError, KeyError, OSError, sqlite3.Error) as exc:
+            # The cards then say the values could not be read; the rest of the panel still works.
+            repository.try_add_log(user.username, 'auto_calculated_field_values_failed', json.dumps({
+                'workspace': active_workspace.id, 'error': str(exc)}))
+            shares = None
+        return {'usage': auto_field_usage(dimensions), 'shares': shares}
+
+    try:
+        result = await run_in_threadpool(worked_out)
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail=f'The CDRs could not be read: {exc}') from exc
+    return JSONResponse(result, headers={'Cache-Control': 'no-store'})
 
 
 @app.post('/api/workspace/auto-calculated-fields/check')
