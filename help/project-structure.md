@@ -64,7 +64,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 ## Python application layer
 
 - `src/main.py`: shared source, PyCharm and Docker launcher using `APP_HOST`, `APP_PORT` and the timestamped Uvicorn logging configuration.
-- `src/DriveTestAnalyzer.py`: FastAPI application, page/API routes, workspace activation, shared background-task orchestration, Admin portability and classic Reporting jobs.
+- `src/DriveTestAnalyzer.py`: FastAPI application, page/API routes, workspace activation, shared background-task orchestration and Admin portability.
 - `src/config.py`: environment and `storage-paths.conf` resolution.
 - `src/branding.py`: product identifiers of exports, backups and environment variables, and compatibility with those written under the former Dashboard Analytic name.
 - `src/dataset_worker.py`: isolated worker process that parses large CDR source files outside the server process.
@@ -93,7 +93,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 - `src/modules/nq_prioritization.py`: NQ Prioritization: the scoring points each Non-Qualified Call loses (from the Scoring History of its campaign), its repeated issues by place, the Prioritization Rules that prioritize it and fill its Priority (`nq_call_priority`, `nq_priority_campaigns`), its calculation in the background and the panel.
 - `src/modules/nq_rca.py`: NQ Ericsson RCA results file format and the root cause recommendation merged from the NetCheck RCA, the Ericsson RCA, the DT Analyzer RCA, the comments and previous decisions.
 - `src/modules/nq_dta_rca.py`: DT Analyzer RCA of Non-Qualified Calls: the values it reads, its default rules and their validation, and the evaluation that gives every call its root category, cause, domain and evidence (`non_qualified_calls` stores them in `nq_dta_rca_results`).
-- `src/modules/cdr_reporting.py`: Report Template parsing, filters, aggregations, chart contracts, map tiles and classic report rendering.
+- `src/modules/cdr_reporting.py`: Report Template parsing, filters, aggregations, chart contracts, map tiles and chart rendering.
 - `src/modules/ppt_designer.py`: PPT definitions, direct combined-CDR SQL selections, preview/model caches, live previews, filtered chart data and PPT Designer jobs.
 - `src/modules/canvas_chart_renderer.mjs`: Node/Chromium-compatible Canvas rendering used for consistent interactive and exported charts.
 - `src/modules/auth.py`: password and authentication helpers.
@@ -101,7 +101,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 
 ## Browser layer
 
-- `src/web_interface/templates/`: Jinja pages for Workspace, CDR Analysis, PPT Designer, PPT Reporting (old), Chart Builder, Admin, App Logs and document viewing.
+- `src/web_interface/templates/`: Jinja pages for Workspace, CDR Analysis, PPT Designer, Chart Builder, Admin, App Logs and document viewing.
 - `src/web_interface/static/js/`: shared UI behaviour, common chart drawing and the PPT Designer client.
 - `src/web_interface/static/css/`: application and module-specific styles.
 - `src/web_interface/static/markdown_renderer.js`: in-app README, Changelog and Help rendering, including cross-document heading anchors.
@@ -132,9 +132,7 @@ APP_DATA_DIR/
 │               ├── designs/
 │               ├── cdr-analysis/
 │               ├── network-insights/
-│               ├── reporting-jobs/
-│               ├── reports-old/
-│               └── reports-charts-old/
+│               └── reporting-jobs/
 ├── transfer-packages/
 ├── scheduled-backups/
 │   ├── full/
@@ -167,7 +165,6 @@ Each `<workspace>.db` owns:
 - complete database-backed Report Templates in `report_templates`;
 - saved PPT definitions in workspace state;
 - cached PPT selection metadata and bounded row identities;
-- classic Report/Chart Set jobs in `generated_jobs`;
 - PowerPoint history in `design_ppt_jobs`.
 
 Report Templates become CSV files only inside portable export, transfer and backup packages.
@@ -181,9 +178,8 @@ PPT Designer keeps its preview manifests and Canvas chart models in memory and i
 - `output/reports/ppt-designs/`: PPT Designer jobs and their persistent PNG, tooltip and Canvas-model assets.
 - `output/reports/cdr-analysis/`: CDR Analysis PowerPoint and Word exports.
 - `output/reports/network-insights/`: Summary Network Insights PowerPoint and Word exports.
-- `output/reports/reports-old/`: PPT Reporting (old) PowerPoint reports and their PNG charts.
-- `output/reports/reports-charts-old/`: PPT Reporting (old) Chart Sets.
 - `output/reports/reporting-jobs/`: Reporting Job runs, one folder per run with its artifacts.
+- `output/reports/reports-old/` and `output/reports/reports-charts-old/`: the PowerPoint reports and Chart Sets of a reports module of earlier versions, kept as they were (no module writes there any more).
 
 Workspaces, backups and transfer packages created with the former layout (module folders directly below `output/` and loose documents in `output/reports/`) are moved to these folders the first time the workspace is opened, and the job paths stored in the workspace database follow them.
 
@@ -216,7 +212,7 @@ The Help navigation order and labels are curated in `src/DriveTestAnalyzer.py`. 
 
 - `tests/test_app.py`: routes, shared UI, Admin, documentation and integration behaviour.
 - `tests/test_ppt_designer.py`: PPT definitions, filtering, caching, rendering and PPT jobs.
-- `tests/test_cdr_reporting.py`: template, filter, chart and classic Reporting contracts.
+- `tests/test_cdr_reporting.py`: template, filter and chart contracts.
 - Other test modules cover analytics, exports, Query Builder, workspaces and workspace template isolation.
 - `tests/conftest.py`: points every test process at storage of its own before the application is imported (no test reaches the local installation), and the `client` fixture. Each test process prepares a new workspace once (its databases and starter content) and every test opens the application on a copy of it, as it reopens a workspace. Dataset sources are parsed by isolated background workers, so after upload, retry, reprocess and mapping requests the fixture waits for those workers and the combined CDR rebuilds they start; `wait_for_background_dataset_work()` does the same for work queued by other requests.
 - `tools/presentations/`: the generator of the presentations of the Help, in Ericsson style (Node.js: `build.js`, `art.js`, and `package.json` with its `package-lock.json`). It keeps only the sources of the presentations: the server generates them, and none is kept in the repository. `benchmarking-providers/` keeps the deck of the adaptation to other benchmarking providers in its own design: a picture of each slide and `slides.json` with their order, section, title and speaker notes, which `build.js` turns into its PowerPoint. The folder of each main module (`workspace/`, `cdr-analysis/`… `ticket-center/`) keeps the `content.js` of its deck, and `dt-analyzer-rca/` the `slides.html` and `slides.json` of the DT Analyzer RCA deck: when the presentations are generated, `module_decks.js` draws each of them into `slides.html` (from its `content.js`), takes the pictures of its slides with a headless Chromium browser, writes its `slides.json` into the work folder of the generation and, run by hand, warns of any text past the footer, out of its box or under the logo. `build.js` also joins the slides of the others into the full presentation, whose sections name the presentation of their slides: the Help shows their pictures, so it is not rendered. The server runs `build.js` with the figures of `src/modules/presentations.py`; by hand, `npm install` and `node build.js <folder>` there write them into `<folder>` with the figures written in `build.js` (`node module_decks.js <folder> [id…]` draws only the decks named), and `python tools/presentations/render.py <folder>`, from the project root, renders with LibreOffice, as the previews of the Bundle Report Templates, the slides of the decks of native slides (Overview, one-slider and roadmap): `build.js` writes the pictures of the decks of their own design itself.

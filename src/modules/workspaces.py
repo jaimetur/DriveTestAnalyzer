@@ -395,7 +395,7 @@ class WorkspaceRegistry:
                 raise InterruptedError('Workspace duplication stopped by user.')
             # ``create`` has prepared the target root. Replace it with an
             # exact data copy, including its Slides Templates. Generated
-            # Generated Designs, reports and Chart Sets are optional
+            # Generated Designs and reports are optional
             # because they can account for most of a workspace's size.
             shutil.rmtree(target_root)
             for source_path, target_path in (
@@ -433,17 +433,6 @@ class WorkspaceRegistry:
                     'UPDATE datasets SET stored_path = REPLACE(stored_path, ?, ?)',
                     (str(source.input_dir), str(duplicate.input_dir)),
                 )
-                has_generated_jobs = duplicate_conn.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'generated_jobs'"
-                ).fetchone()
-                if has_generated_jobs:
-                    if include_generated_outputs:
-                        duplicate_conn.execute(
-                            'UPDATE generated_jobs SET output_path = REPLACE(output_path, ?, ?)',
-                            (str(source.output_dir), str(duplicate.output_dir)),
-                        )
-                    else:
-                        duplicate_conn.execute('DELETE FROM generated_jobs')
                 has_design_ppt_jobs = duplicate_conn.execute(
                     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'design_ppt_jobs'"
                 ).fetchone()

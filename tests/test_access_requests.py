@@ -15,8 +15,8 @@ def test_a_new_deployment_has_the_modules_profiles_of_each_team(client):
     available = profiles()
     assert set(available) == {'Non-Qualified Calls', 'Benchmarking', 'All Modules'}
     assert available['Non-Qualified Calls']['modules'] == ['workspace', 'non-qualified-calls', 'reporting', 'builders', 'ticket-center']
-    assert set(available['Benchmarking']['modules']) == set(core.FEATURE_KEYS) - {'non-qualified-calls', 'ppt-reporting-old'}
-    assert set(available['All Modules']['modules']) == set(core.FEATURE_KEYS) - {'ppt-reporting-old'}
+    assert set(available['Benchmarking']['modules']) == set(core.FEATURE_KEYS) - {'non-qualified-calls'}
+    assert set(available['All Modules']['modules']) == set(core.FEATURE_KEYS)
     assert [name for name, profile in available.items() if profile['is_default']] == ['All Modules']
     assert {name: profile['color'] for name, profile in available.items()} == {'Non-Qualified Calls': '#D74B75', 'Benchmarking': '#1E61A3', 'All Modules': '#096767'}
     # Created once per deployment: the later changes of an administrator are kept.

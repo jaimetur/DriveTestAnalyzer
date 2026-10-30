@@ -463,7 +463,7 @@ A change the template cannot hold (a chart without a KPI or a split, for example
 | **Text box** | Text written with the editor of the tickets (bold, lists, headings), its size, alignment and colour, with fields and parameters | A text box of its own, bold, bullets and headings kept |
 | **Image** | A PNG, JPEG or GIF picture of up to 8 MB (an SVG can be saved as PNG first), fitted in its place keeping its ratio | A picture of its own |
 
-Pictures are kept in the table **PPT Images** and travel with the PPT Designs and PPT Templates whose slides use them, in exports, transfers and backups (an import adds those the workspace does not have; the CSV of a template downloaded alone names them only). Text boxes and pictures read no CDR; PPT Reporting (old) leaves them out (a slide with only them keeps its title).
+Pictures are kept in the table **PPT Images** and travel with the PPT Designs and PPT Templates whose slides use them, in exports, transfers and backups (an import adds those the workspace does not have; the CSV of a template downloaded alone names them only). Text boxes and pictures read no CDR.
 
 ### Save, drafts and the other actions
 
@@ -596,7 +596,7 @@ PPT Templates belong to PPT Designer, not to Config: their actions use the addre
 
 The library is sorted by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order); its columns show the creation and last update times and **Last Updated by**, the user who last imported, edited, renamed, duplicated or promoted the template.
 
-Workspaces of earlier versions kept an NSA and an SA library: when they open, each pair of templates that only differed in the titles naming the mode (for example **NSA - NetCheck CDR Report** with *Non-Standalone* and **SA - NetCheck CDR Report** with *Standalone*) becomes one template named without the mode (**NetCheck CDR Report**) whose titles use the tokens, and the Designs, PPT jobs and Reporting (old) jobs that used either copy use it. A title only one copy named (such as *SA RF Quality Analysis* beside *RF Quality Analysis*) takes `{NR Mode}` in both. The other templates keep their names, an SA one named as an NSA one taking " (SA)". The App Events record it (`report_templates_nr_mode_merged`). Packages and backups of earlier versions are imported the same way.
+Workspaces of earlier versions kept an NSA and an SA library: when they open, each pair of templates that only differed in the titles naming the mode (for example **NSA - NetCheck CDR Report** with *Non-Standalone* and **SA - NetCheck CDR Report** with *Standalone*) becomes one template named without the mode (**NetCheck CDR Report**) whose titles use the tokens, and the Designs and PPT jobs that used either copy use it. A title only one copy named (such as *SA RF Quality Analysis* beside *RF Quality Analysis*) takes `{NR Mode}` in both. The other templates keep their names, an SA one named as an NSA one taking " (SA)". The App Events record it (`report_templates_nr_mode_merged`). Packages and backups of earlier versions are imported the same way.
 
 Available actions:
 
@@ -662,7 +662,7 @@ Removing the last template reference leaves the existing column available for fu
 
 ## Report Template reference
 
-This is the canonical authoring reference for templates used by both [PPT Designer](ppt-designer.md) and [PPT Reporting (old)](ppt-reporting-old.md). The common `assets/powerpoint-templates/Template_VodafoneThree.pptx` supplies the masters, named layouts and placeholders. Each distinct `Slide` value creates one slide; chart rows sharing that value fill its chart placeholders in row order.
+This is the canonical authoring reference for the templates used by [PPT Designer](ppt-designer.md). The common `assets/powerpoint-templates/Template_VodafoneThree.pptx` supplies the masters, named layouts and placeholders. Each distinct `Slide` value creates one slide; chart rows sharing that value fill its chart placeholders in row order.
 
 ### Template columns
 

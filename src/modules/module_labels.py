@@ -24,7 +24,6 @@ MAIN_MODULES: tuple[tuple[str, str], ...] = (
     ('workspace', 'Workspace'),
     ('datasets-analysis', 'CDR Analysis'),
     ('ppt-designer', 'PPT Designer'),
-    ('ppt-reporting-old', 'PPT Reporting (old)'),
     ('scoring', 'Scoring & GAP Analysis'),
     ('network-insights', 'Network Insights'),
     ('non-qualified-calls', 'Non-Qualified Calls'),
@@ -32,6 +31,8 @@ MAIN_MODULES: tuple[tuple[str, str], ...] = (
     ('builders', 'Builders'),
     ('ticket-center', 'Ticket Center'),
 )
+# Main modules the tool no longer has, by the key their App Events and tickets keep: their title, for that history only.
+RETIRED_MODULES: dict[str, str] = {'ppt-reporting-old': 'PPT Reporting (old)'}
 
 # What each main tab links to and its default title, short title, Modules menu
 # name, icon, colour (the accent of the module palette) and Help chapters. A tab
@@ -46,9 +47,6 @@ MODULE_TABS: dict[str, dict[str, Any]] = {
     'ppt-designer': {'css': 'module-tab-ppt-designer', 'href': '/ppt-designer', 'title': 'PPT Designer',
                        'short_title': 'Designer', 'nav_title': 'PPT Designer', 'tab_icon': 'ppt-designer',
                        'tab_color': '#7751B9', 'docs': ('ppt-designer.md',)},
-    'ppt-reporting-old': {'css': 'module-tab-reporting', 'href': '/ppt-reporting-old', 'title': 'PPT Reporting (old)',
-                      'short_title': 'PPT Reporting (old)', 'nav_title': 'PPT Reporting (old)', 'tab_icon': 'ppt-reporting-old',
-                      'tab_color': '#7650B5', 'docs': ('ppt-reporting-old.md',)},
     'scoring': {'css': 'module-tab-scoring', 'href': '/scoring', 'title': 'Scoring & GAP Analysis', 'short_title': 'Scoring',
                 'nav_title': 'Scoring & GAP Analysis', 'tab_icon': 'scoring', 'tab_color': '#176E77',
                 'docs': ('scoring-gap-analysis.md',)},
@@ -77,8 +75,6 @@ TAB_ICONS: dict[str, dict[str, str]] = {
                           'd': '<ellipse cx="10" cy="5.5" rx="6" ry="2.5"/><path d="M4 5.5v9c0 1.4 2.7 2.5 6 2.5M16 5.5v4M4 10c0 1.4 2.7 2.5 6 2.5"/><circle cx="17" cy="15.5" r="3"/><path d="m19.2 17.7 2.3 2.3"/>'},
     'ppt-designer': {'label': 'Designer (PPT Designer)',
                        'd': '<rect x="3" y="3" width="8" height="10" rx="1.5"/><rect x="13" y="3" width="8" height="6" rx="1.5"/><rect x="13" y="11" width="8" height="10" rx="1.5"/><rect x="3" y="15" width="8" height="6" rx="1.5"/>'},
-    'ppt-reporting-old': {'label': 'Report page (PPT Reporting (old))',
-                      'd': '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 17v-3M12 17v-6M15 17v-4"/>'},
     'scoring': {'label': 'Trophy (Scoring)',
                 'd': '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5.5a3 3 0 0 0 3 4M16 6h2.5a3 3 0 0 1-3 4M12 13v4M8.5 21h7M10 17h4v4h-4z"/>'},
     'network-insights': {'label': 'Antenna (Network Insights)',
@@ -153,7 +149,6 @@ DEFAULT_MODULE_LABELS: dict[str, dict[str, str]] = {
     'scoring': {'text': 'NEW', 'color': STAGE_COLOURS['new'], 'icon': 'star', 'icon_color': '#FFD60A'},
     'non-qualified-calls': {'text': 'ALPHA', 'color': STAGE_COLOURS['alpha'], 'icon': '', 'icon_color': '#FFFFFF'},
     'reporting': {'text': 'BETA', 'color': STAGE_COLOURS['beta'], 'icon': '', 'icon_color': '#3D2A00'},
-    'ppt-reporting-old': {'text': '', 'color': '#6B7785', 'icon': '', 'icon_color': '#FFFFFF'},
     'builders': {'text': 'BETA', 'color': STAGE_COLOURS['beta'], 'icon': '', 'icon_color': '#3D2A00'},
     'ticket-center': {'text': 'NEW', 'color': STAGE_COLOURS['new'], 'icon': '', 'icon_color': '#FFFFFF'},
 }
@@ -372,8 +367,6 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                           ('Processed Metrics', 'Processed Metrics', 'gauge')],
     'ppt-designer': [('PPT Designs', 'PPT Designs', 'presentation'),
                        ('PPT Generation Jobs', 'PPT Generation Jobs', 'jobs')],
-    'ppt-reporting-old': [('NetCheck CDR Reports', 'NetCheck CDR Reports', 'presentation'), ('Charts Panel', 'Charts Panel', 'chart'),
-                          ('Log Report', 'Log Report', 'log'), ('Reports and Charts Jobs', 'Reports and Charts Jobs', 'jobs')],
     'scoring': [('Select NR Mode, Campaign, filters, Split by & GAP reference', 'Scoring Calculation', 'sliders'),
                 ('Scoring & GAP Results', 'Scoring & GAP Results', 'chart', [
                     ('scoring-results-summary', 'Summary', 'summary'), ('scoring-results-charts', 'Scoring Charts', 'chart'),

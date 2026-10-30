@@ -828,10 +828,9 @@ def test_saved_filters_are_visible_and_interrupted_jobs_become_retryable(reposit
     job, _ = saved_filters.save_saved_filter(repository, [dataset_id], [], 'NSA')
 
     assert 'saved_filters' in repository.list_database_tables()
-    interrupted_datasets, interrupted_reports = repository.fail_interrupted_background_jobs(fail_datasets=False)
+    interrupted_datasets = repository.fail_interrupted_background_jobs(fail_datasets=False)
 
     assert interrupted_datasets == []
-    assert interrupted_reports == []
     recovered = saved_filters.get_saved_filter(repository, job['id'])
     assert recovered['status'] == 'failed'
     assert 'application restarted' in recovered['error']

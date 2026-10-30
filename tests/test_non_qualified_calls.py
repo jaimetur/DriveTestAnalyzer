@@ -97,7 +97,7 @@ def query(client, **payload):
 
 
 def test_module_is_active_by_default_and_marks_tabs_in_development(client):
-    # The default profile of a new deployment has every module but PPT Reporting (old).
+    # The default profile of a new deployment has every module.
     workspace_user('analyst', 'user-editor')
     login(client, 'analyst', 'analyst123')
     assert client.get('/api/non-qualified-calls/state').status_code == 200

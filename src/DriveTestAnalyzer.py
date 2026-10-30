@@ -10,13 +10,8 @@ import os
 import errno
 import html
 import fcntl
-import gc
 import platform
 import sys
-try:
-    import resource
-except ImportError:  # pragma: no cover - Windows does not expose resource.
-    resource = None
 import re
 import secrets
 import gzip
@@ -31,7 +26,7 @@ import tempfile
 import time as time_module
 import zipfile
 from collections import OrderedDict
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from contextlib import asynccontextmanager, closing, contextmanager, nullcontext
 from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone, tzinfo
@@ -48,7 +43,6 @@ from zoneinfo import ZoneInfo, available_timezones
 
 import httpx
 import pandas as pd
-from PIL import Image
 
 # PROJ (pyproj, loaded by geopandas for polygons) must first be loaded by the main thread: when a
 # worker thread that later exits loads it first, every later fork of the process (dataset workers,
@@ -66,7 +60,6 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import QueryParams
 from starlette.requests import ClientDisconnect
-from starlette.background import BackgroundTask
 
 DEFAULT_TRANSFER_PORT = 7278
 
@@ -89,7 +82,7 @@ from src.modules.column_names import DEFAULT_CAMPAIGN_MAP, MAIN_CDR_FIELDS, comp
 from src.modules.mapping_order import swap_operator_vendor
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.report_layouts import canonical_layout_name, selectable_layout_name
-from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, HOVER_TARGETS_VERSION, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, catalog_chart_hover_targets, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, is_empty_catalog_chart, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, prepare_multivendor_catalog_entry, preview_catalog_chart_data, render_catalog_chart_preview, render_catalog_chart_preview_with_hover, render_cdr_report, render_unavailable_source_chart, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
+from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, preview_catalog_chart_data, render_catalog_chart_preview, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
 from src.modules.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
 from src.modules.email_delivery import DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_SECURITY_MODES, email_delivery_settings, invalid_recipients, parse_recipients, save_email_delivery_settings, send_email
 from src.modules.network_inventory import INVENTORY_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, normalise_snapshot_date
@@ -147,12 +140,12 @@ from src.branding import APP_SLUG, BACKUP_FILE_PATTERNS, BACKUP_SCRATCH_PATTERNS
 from src.modules.mapping_renames import count_saved_filters, rename_saved_filters
 from src.modules.module_labels import (
     ICONS as MODULE_LABEL_ICONS, MAIN_MODULES, MAX_LABEL_LENGTH as MAX_MODULE_LABEL_LENGTH, MAX_SHORT_TITLE_LENGTH,
-    MAX_TITLE_LENGTH, MODULE_LABELS_STATE_KEY, MODULE_TABS, SECTION_ICONS, TAB_ICONS, load_module_labels, module_label_badges,
+    MAX_TITLE_LENGTH, MODULE_LABELS_STATE_KEY, MODULE_TABS, RETIRED_MODULES, SECTION_ICONS, TAB_ICONS, load_module_labels, module_label_badges,
     module_tabs, section_links,
     ADMINISTRATIVE_ICONS, help_chapter_icons, normalize_module_labels, ordered_help_documents, rename_modules_in_help, renamed_help_chapters,
 )
 from src.modules.output_layout import (
-    CDR_ANALYSIS_FOLDER, REPORTS_CHARTS_OLD_FOLDER, REPORTS_OLD_FOLDER, migrate_output_layout, module_output_dir,
+    CDR_ANALYSIS_FOLDER, migrate_output_layout, module_output_dir,
 )
 from src.version import __app_name__, __author__, __author_email__, __release_date__, __version__
 from src.utils.filesystem import ensure_directories, safe_join
@@ -192,8 +185,6 @@ QUEUED_DATASET_FUTURES: dict[tuple[str, int], Future[Any]] = {}
 ACTIVE_DATASET_WORKERS: set[subprocess.Popen[Any]] = set()
 ACTIVE_DATASET_WORKERS_LOCK = Lock()
 APP_SHUTTING_DOWN = Event()
-REPORT_CHART_JOB_LOCKS: dict[str, Lock] = {}
-REPORT_CHART_JOB_LOCKS_LOCK = Lock()
 TEMPLATE_SAVE_LOCK = Lock()
 TEMPLATE_SAVE_DISPATCH_LOCK = Lock()
 TEMPLATE_SAVE_WAIT_SECONDS = 3.0
@@ -219,8 +210,6 @@ WORKSPACE_LIFECYCLE_JOBS: dict[str, dict[str, Any]] = {}
 WORKSPACE_LIFECYCLE_JOBS_LOCK = Lock()
 WORKSPACE_DUPLICATION_STOP_REQUESTS: set[str] = set()
 WORKSPACE_DUPLICATION_STOP_REQUESTS_LOCK = Lock()
-BULK_REPORT_DELETION_JOBS: dict[str, dict[str, Any]] = {}
-BULK_REPORT_DELETION_JOBS_LOCK = Lock()
 RECURRING_BACKUP_STATE_KEY = 'recurring_database_backup'
 # Why the last scheduled backup was skipped, failed or made light instead of full, until one succeeds.
 RECURRING_BACKUP_PROBLEM_STATE_KEY = 'recurring_database_backup_problem'
@@ -350,14 +339,6 @@ def apply_runtime_configuration(values: dict[str, Any]) -> None:
     BACKGROUND_TASK_SCHEDULER.configure(min(max_background_tasks, max(1, (os.cpu_count() or 2) - 1)))
 
 
-def _reporting_memory_mb() -> float:
-    """Return the process high-water RSS in MB for render diagnostics."""
-    if resource is None:
-        return 0.0
-    rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    return round(rss / (1024 * 1024 if sys.platform == 'darwin' else 1024), 1)
-
-
 def legacy_workspace_registry_path() -> Path:
     """Return the workspace registry location."""
     return application_config_dir / 'workspace-registry.db'
@@ -480,8 +461,6 @@ def materialize_cdr_derived_columns(
         )
     return result
 HELP_HOME_DOCUMENT = 'help.md'
-# Only users with the PPT Reporting (old) feature see this chapter.
-OLD_REPORTING_HELP_DOCUMENT = 'ppt-reporting-old.md'
 HELP_NAVIGATION_DOCUMENTS = (
     HELP_HOME_DOCUMENT,
     'presentations.md',
@@ -493,7 +472,6 @@ HELP_NAVIGATION_DOCUMENTS = (
     'workspace-management.md',
     'datasets-analysis.md',
     'ppt-designer.md',
-    'ppt-reporting-old.md',
     'scoring-gap-analysis.md',
     'network-insights.md',
     'non-qualified-calls.md',
@@ -517,7 +495,6 @@ HELP_DOCUMENT_LABELS = {
     'datasets-analysis.md': 'CDR Analysis',
     'ppt-designer.md': 'PPT Designer',
     'reporting.md': 'Reporting',
-    'ppt-reporting-old.md': 'PPT Reporting (old)',
     'scoring-gap-analysis.md': 'Scoring & GAP Analysis',
     'network-insights.md': 'Network Insights',
     'non-qualified-calls.md': 'Non-Qualified Calls',
@@ -573,7 +550,6 @@ FEATURES: tuple[dict[str, Any], ...] = (
         '/dashboard/analyze', '/dashboard/export',
     )},
     {'key': 'ppt-designer', 'label': 'PPT Designer', 'paths': ('/ppt-designer', '/api/ppt-designer', '/ppt-dashboards', '/api/ppt-dashboards')},
-    {'key': 'ppt-reporting-old', 'label': 'PPT Reporting (old)', 'paths': ('/ppt-reporting-old', '/api/ppt-reporting-old', '/e2e-reporting')},
     {'key': 'scoring', 'label': 'Scoring & GAP Analysis', 'paths': ('/scoring', '/api/scoring')},
     {'key': 'network-insights', 'label': 'Network Insights', 'paths': ('/network-insights', '/api/network-insights')},
     {'key': 'non-qualified-calls', 'label': 'Non-Qualified Calls', 'paths': ('/non-qualified-calls', '/api/non-qualified-calls')},
@@ -638,7 +614,8 @@ def app_event_origin_for_request(request: Request) -> str:
 def app_event_module_titles() -> dict[str, str]:
     """The modules as App Events names them, in their order: the main ones by their titles in Interface Settings."""
     labels = load_module_labels(repository)
-    return {**{key: str(labels.get(key, {}).get('title') or name) for key, name in MAIN_MODULES}, **dict(ADMINISTRATIVE_MODULES)}
+    return {**{key: str(labels.get(key, {}).get('title') or name) for key, name in MAIN_MODULES}, **dict(ADMINISTRATIVE_MODULES),
+            **RETIRED_MODULES}
 
 
 def _module_access_snapshot() -> dict[str, Any]:
@@ -678,37 +655,6 @@ def user_modules_profile(user: SessionUser) -> dict[str, str]:
     if profile is None and user.role != 'super-admin':
         profile = snapshot['default_profile']
     return profile or {'name': 'Full Access', 'color': ''}
-
-
-def can_access_ppt_reporting_old(user: SessionUser) -> bool:
-    """Access to the PPT Reporting (old) module and its Help chapter."""
-    return user_has_feature(user, 'ppt-reporting-old')
-
-
-def filter_ppt_reporting_old_help_content(content: str, document_name: str) -> str:
-    """Remove the PPT Reporting (old) chapter from Help for users without that feature.
-
-    Every other Help chapter stays complete for every user, signed in or not:
-    only the old module's own sections and links to its chapter are removed.
-    """
-    lines, filtered, skipping_level = content.splitlines(), [], 0
-    for line in lines:
-        heading = re.match(r'^(#{1,6})\s+(.*?)\s*$', line)
-        if skipping_level:
-            if heading and len(heading.group(1)) <= skipping_level:
-                skipping_level = 0
-            else:
-                continue
-        if heading and re.fullmatch(r'PPT Reporting \(old\)', heading.group(2), re.IGNORECASE):
-            skipping_level = len(heading.group(1))
-            continue
-        # Index rows and list items that only point to the old chapter.
-        if OLD_REPORTING_HELP_DOCUMENT in line.casefold() and re.match(r'^\s*([-*|]|\d+\.)', line):
-            continue
-        filtered.append(line)
-    content = '\n'.join(filtered) + ('\n' if content.endswith('\n') else '')
-    # Keep the visible text of any remaining inline link to the old chapter.
-    return re.sub(r'\[([^\]]*)\]\([^)]*ppt-reporting-old\.md[^)]*\)', r'\1', content, flags=re.IGNORECASE)
 
 
 def catalogue_registry_key(name: str) -> str:
@@ -2538,14 +2484,6 @@ def report_catalogue_options(task_repository: Repository | None = None) -> list[
     return options
 
 
-def reporting_template_choice(value: str) -> str:
-    """The template a Reporting (old) form chose: its name (the forms of before also named its NR Mode, nsa:Name)."""
-    text = str(value or '').strip()
-    prefix, separator, rest = text.partition(':')
-    return rest if separator and prefix in {'nsa', 'sa'} and not any(
-        item['identifier'] == text for item in report_catalogue_options()) else text
-
-
 def reporting_catalog_content() -> bytes:
     active = next((option for option in report_catalogue_options() if option['active']), None)
     if not active:
@@ -3060,7 +2998,6 @@ PASSIVE_APPLICATION_REQUEST_PATHS = {
     '/api/background-tasks', '/api/workspaces/sizes', '/admin/import-export/transfers/offers', '/api/admin-notices',
     '/api/admin/backup-status', '/api/admin/backup-files',
     '/api/ppt-designer/statuses', '/api/ppt-designer/ppt-jobs',
-    '/api/ppt-reporting-old/jobs', '/api/ppt-reporting-old/chart-jobs',
 }
 
 
@@ -3187,17 +3124,12 @@ def _prepare_active_workspace(started_at: float) -> None:
             except Exception as exc:  # The backups stay where they are, and Restore still finds them.
                 print(f'Unable to move the earlier backups into the full folder: {exc}', file=sys.stderr, flush=True)
             _startup_step('Recovering the jobs the last run left unfinished…')
-            interrupted_datasets, interrupted_reports = repository.fail_interrupted_background_jobs(fail_datasets=False)
-            interrupted_chart_jobs = repository.fail_interrupted_report_chart_jobs()
-            if interrupted_datasets or interrupted_reports or interrupted_chart_jobs:
+            interrupted_datasets = repository.fail_interrupted_background_jobs(fail_datasets=False)
+            if interrupted_datasets:
                 repository.add_log(
                     'system',
                     'recover_interrupted_background_jobs',
-                    json.dumps({
-                        'datasets': interrupted_datasets,
-                        'reports': interrupted_reports,
-                        'chart_jobs': interrupted_chart_jobs,
-                    }),
+                    json.dumps({'datasets': interrupted_datasets}),
                 )
     except Exception as exc:  # The application still opens; the workspace can be opened again from Workspace.
         STARTUP_STATUS['error'] = f'The active workspace could not be opened: {exc}'
@@ -3285,7 +3217,7 @@ async def lifespan(_: FastAPI):
     report_scheduler_stop = Event()
     report_scheduler_thread = Thread(
         target=report_task_scheduler_loop, args=(report_scheduler_stop,),
-        name='ppt-reporting-old-scheduler', daemon=True,
+        name='reporting-jobs-scheduler', daemon=True,
     )
     report_scheduler_thread.start()
     try:
@@ -6056,8 +5988,6 @@ def document_tab_sections(user: Any, module_settings: dict[str, dict[str, Any]])
             ('/documents/view/changelog', 'Changelog', ADMINISTRATIVE_ICONS['changelog']['d'], ADMINISTRATIVE_ICONS['changelog']['color']),
         ]}
     for relative_path in ordered_help_documents(HELP_NAVIGATION_DOCUMENTS, module_settings):
-        if relative_path == OLD_REPORTING_HELP_DOCUMENT and not (user and can_access_ppt_reporting_old(user)):
-            continue
         if not (PROJECT_ROOT / 'help' / relative_path).is_file():
             continue
         if relative_path == HELP_HOME_DOCUMENT:
@@ -6757,7 +6687,7 @@ WORKSPACE_ELEMENT_MODULES = {
 BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
     ('workspace_database', 'Workspace Database', ''),
     ('input', 'Input (includes all raw datasets files)', ''),
-    ('output', 'Output (includes all generated reports, chart sets and PPT Designer jobs)', ''),
+    ('output', 'Output (includes all generated reports and PPT Designer jobs)', ''),
     ('designs', 'PPT Designs (one JSON file with all PPT definitions)', 'designs'),
     ('report_templates', 'PPT Templates (one CSV file per Report Template)', 'ppt-templates'),
     ('main_cities', 'Main Cities (workspace city selection)', 'main-cities'),
@@ -10701,14 +10631,6 @@ def _replace_workspace_from_staging(
                         'UPDATE datasets SET stored_path = REPLACE(stored_path, ?, ?)',
                         (str(staging.input_dir), str(existing.input_dir)),
                     )
-                has_generated_jobs = connection.execute(
-                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'generated_jobs'"
-                ).fetchone()
-                if has_generated_jobs:
-                    connection.execute(
-                        'UPDATE generated_jobs SET output_path = REPLACE(output_path, ?, ?)',
-                        (str(staging.output_dir), str(existing.output_dir)),
-                    )
 
         # The original registry row and workspace id are deliberately kept so
         # user access grants and references continue to work unchanged.
@@ -10796,8 +10718,8 @@ def import_workspace_archive(
         for source, destination in (
             (payload / 'input', workspace.input_dir),
             (payload / 'output', workspace.output_dir),
-            # Archives created before generated Chart Sets were included used
-            # this reports-only directory name.
+            # Archives of early versions kept their generated reports in this
+            # directory.
             (payload / 'exports', workspace.export_dir),
         ):
             if source.exists():
@@ -10826,14 +10748,6 @@ def import_workspace_archive(
                     'UPDATE datasets SET stored_path = REPLACE(stored_path, ?, ?)',
                     (str(source_input_dir), str(workspace.input_dir)),
                 )
-            has_generated_jobs = connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'generated_jobs'"
-            ).fetchone()
-            if source_output_dir and has_generated_jobs:
-                connection.execute(
-                    'UPDATE generated_jobs SET output_path = REPLACE(output_path, ?, ?)',
-                    (str(source_output_dir), str(workspace.output_dir)),
-                )
             has_design_ppt_jobs = connection.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'design_ppt_jobs'"
             ).fetchone()
@@ -10851,24 +10765,9 @@ def import_workspace_archive(
                     (str(source_output_dir), str(workspace.output_dir)),
                 )
             if clear_output_history:
-                for table in ('generated_jobs', 'report_task_runs', 'design_ppt_jobs'):
+                for table in ('report_task_runs', 'design_ppt_jobs'):
                     if connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone():
                         connection.execute(f'DELETE FROM {table}')
-            if has_generated_jobs:
-                # Older archives did not always retain source output metadata.
-                # Resolve copied report files inside the destination workspace
-                # so Reporting can expose their chart thumbnails immediately.
-                report_rows = connection.execute(
-                    "SELECT id, output_file FROM generated_jobs WHERE job_type = 'report'"
-                ).fetchall()
-                for report_id, output_file in report_rows:
-                    file_name = Path(str(output_file or '')).name
-                    target = workspace.export_dir / file_name
-                    if file_name and target.is_file():
-                        connection.execute(
-                            'UPDATE generated_jobs SET output_path = ? WHERE id = ?',
-                            (str(target), report_id),
-                        )
         migrate_output_layout(workspace.output_dir, workspace.database_path)
         shutil.rmtree(workspace.database_path.parent / 'slides-templates', ignore_errors=True)
     except Exception:
@@ -13545,7 +13444,6 @@ def render_admin_template(
         'dataset_profiles': 'Dataset profiles',
         'dataset_source_columns': 'Dataset source columns',
         'datasets': 'Datasets',
-        'generated_jobs': 'Generated jobs',
         'saved_filters': 'Scoring Saved Filters',
         'scoring_history': 'Scoring History',
         'scoring_history_sources': 'Scoring History Sources',
@@ -13816,10 +13714,6 @@ def describe_workspace_log_entry(log: dict[str, Any]) -> str:
             return f"Dataset {details.get('dataset_id')} renamed to {details.get('file', 'the new file name')}."
         if log['action'] == 'analyze_dataset':
             return f"Analysis requested for dataset {details.get('dataset_id')}."
-        if log['action'] == 'export_netcheck_cdr_report_failed':
-            return f"Report job {details.get('report_id')} failed: {details.get('error', 'Unknown generation error')}"
-        if log['action'] == 'chart_set_generation_failed':
-            return f"Chart Set job {details.get('job_id')} failed: {details.get('error', 'Unknown generation error')}"
         if log['action'] == 'prewarm_design_cache':
             return (
                 f"Prewarmed {details.get('universes', 0)} standard PPT Designer universes "
@@ -13830,11 +13724,6 @@ def describe_workspace_log_entry(log: dict[str, Any]) -> str:
                 f"PPT Designer cache prewarm failed for PPT Design {details.get('design_id', '')}: "
                 f"{details.get('error', 'Unknown error')}"
             )
-        if log['action'] == 'recover_interrupted_background_jobs':
-            reports = details.get('reports') or []
-            chart_jobs = details.get('chart_jobs') or []
-            if reports or chart_jobs:
-                return f"Application restart interrupted report jobs {reports} and Chart Set jobs {chart_jobs}."
         if log['action'] == 'migrate_app_event_users':
             return (f"Application events recorded under {', '.join(details.get('users') or []) or 'a process'} "
                     f"now belong to System: {details.get('events', 0)}.")
@@ -14602,8 +14491,6 @@ def documents_view(request: Request, doc_name: str, user: SessionUser | None = D
 @app.get('/documents/view/help/{doc_file:path}', response_class=HTMLResponse)
 def help_document_view(request: Request, doc_file: str, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     path = resolve_help_doc_path(doc_file)
-    if path.name.casefold() == OLD_REPORTING_HELP_DOCUMENT and not (user and can_access_ppt_reporting_old(user)):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='PPT Reporting (old) access required.')
     from src.modules.presentations import link_preview
     return render_template(
         request,
@@ -14652,8 +14539,6 @@ def get_help_documents_index(user: SessionUser | None = Depends(optional_user)) 
     renamed = renamed_help_chapters(module_settings)
     icons = help_chapter_icons(module_settings)
     for relative_path in ordered_help_documents(HELP_NAVIGATION_DOCUMENTS, module_settings):
-        if relative_path == OLD_REPORTING_HELP_DOCUMENT and not (user and can_access_ppt_reporting_old(user)):
-            continue
         file_path = (help_root / relative_path).resolve()
         if not file_path.exists() or not file_path.is_file():
             continue
@@ -14692,11 +14577,7 @@ def get_changelog_index(user: SessionUser | None = Depends(optional_user)) -> di
 @app.get('/api/documents/help/{doc_file:path}')
 def get_help_markdown_document(doc_file: str, user: SessionUser | None = Depends(optional_user)) -> dict[str, Any]:
     path = resolve_help_doc_path(doc_file)
-    if path.name.casefold() == OLD_REPORTING_HELP_DOCUMENT and not (user and can_access_ppt_reporting_old(user)):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='PPT Reporting (old) access required.')
     content = path.read_text(encoding='utf-8', errors='replace')
-    if not (user and can_access_ppt_reporting_old(user)):
-        content = filter_ppt_reporting_old_help_content(content, path.name)
     content = rename_modules_in_help(content, path.name, load_module_labels(repository))
     return {
         'name': path.name,
@@ -14709,8 +14590,6 @@ def get_help_markdown_document(doc_file: str, user: SessionUser | None = Depends
 def get_markdown_document(request: Request, doc_name: str, user: SessionUser | None = Depends(optional_user)) -> dict[str, Any]:
     path = resolve_doc_path(doc_name)
     content = path.read_text(encoding='utf-8', errors='replace')
-    if not (user and can_access_ppt_reporting_old(user)) and path.name.casefold() in {'readme.md', HELP_HOME_DOCUMENT}:
-        content = filter_ppt_reporting_old_help_content(content, path.name)
     if path.name.casefold() == HELP_HOME_DOCUMENT:
         content = rename_modules_in_help(content, path.name, load_module_labels(repository))
     return {
@@ -15132,35 +15011,6 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                             'stop_task_id': f'dataset:{row["id"]}',
                             'stop_url': f'/api/background-tasks/{workspace.id}/stop',
                         } if not ready else {}),
-                    })
-            if 'generated_jobs' in tables:
-                generated_columns = {
-                    str(row['name']) for row in connection.execute('PRAGMA table_info(generated_jobs)').fetchall()
-                }
-                generated_started_at = 'started_at' if 'started_at' in generated_columns else 'NULL AS started_at'
-                rows = connection.execute(
-                    f"""SELECT id, job_type, template_name, output_file, status, progress,
-                              created_at, {generated_started_at}, finished_at
-                       FROM generated_jobs
-                       WHERE status IN ('queued', 'processing')
-                       ORDER BY created_at, id"""
-                ).fetchall()
-                for row in rows:
-                    job_type = str(row['job_type'] or '')
-                    template_name = str(row['template_name'] or '').strip()
-                    output_file = Path(str(row['output_file'] or '')).name
-                    if job_type == 'report':
-                        label = f'Generating PowerPoint Report: {template_name or output_file or row["id"]}'
-                    else:
-                        label = f'Generating Chart Set: {template_name or row["id"]}'
-                    tasks.append({
-                        'id': f'generated:{workspace.id}:{row["id"]}',
-                        'label': label,
-                        'detail': str(row['status'] or 'queued').title(),
-                        'progress': max(0, min(100, int(row['progress'] or 0))),
-                        **_background_task_timing(dict(row)),
-                        'stop_task_id': f'generated:{row["id"]}',
-                        'stop_url': f'/api/background-tasks/{workspace.id}/stop',
                     })
             if 'design_ppt_jobs' in tables:
                 design_ppt_columns = {
@@ -15606,35 +15456,6 @@ def background_tasks_status(user: SessionUser = Depends(current_user)) -> JSONRe
             'stop_url': f'/api/background-tasks/{workspace_id}/stop',
         })
 
-    with BULK_REPORT_DELETION_JOBS_LOCK:
-        deletion_jobs = [dict(job) for job in BULK_REPORT_DELETION_JOBS.values()]
-    for job in deletion_jobs:
-        workspace_id = str(job.get('workspace_id') or '')
-        if (
-            workspace_id not in accessible_ids
-            or job.get('owner') != user.username
-            or job.get('status') not in {'queued', 'processing'}
-        ):
-            continue
-        total = max(0, int(job.get('total') or 0))
-        completed = max(0, int(job.get('completed') or 0))
-        progress = min(99, round(completed * 100 / total, 1)) if total else None
-        group = grouped.setdefault(workspace_id, {
-            'workspace_id': workspace_id,
-            'workspace_name': str(job.get('workspace_name') or workspace_names.get(workspace_id) or 'Workspace'),
-            'is_active': bool(active_workspace and active_workspace.id == workspace_id),
-            'tasks': [],
-        })
-        group['tasks'].append({
-            'id': f'bulk-delete:{job.get("id")}',
-            'label': 'Deleting all Reports' if job.get('kind') == 'reports' else 'Deleting all Chart Sets',
-            'detail': str(job.get('message') or 'Deleting generated outputs'),
-            'progress': progress,
-            **_background_task_timing(job),
-            'stop_task_id': f'bulk-delete:{job.get("id")}',
-            'stop_url': f'/api/background-tasks/{workspace_id}/stop',
-        })
-
     global_tasks = _global_background_tasks(user, accessible_ids)
     for task in global_tasks:
         workspace_id = str(task.pop('workspace_id'))
@@ -15709,22 +15530,6 @@ def stop_background_task(
             dataset_id, status='stopped', last_error='Processing stopped by user.', processed_at=now_iso(),
         )
         task_repository.try_add_log(user.username, 'stop_dataset_requested', json.dumps({'dataset_id': dataset_id}))
-    elif prefix == 'generated':
-        try:
-            job_id = int(raw_identifier)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail='Invalid generated job.') from exc
-        job = task_repository.get_report_run(job_id) or task_repository.get_report_chart_job(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail='Generated job not found.')
-        stopped = (
-            task_repository.stop_report_job(job_id)
-            if str(job['job_type'] or '') == 'report'
-            else task_repository.stop_report_chart_job(job_id)
-        )
-        if not stopped:
-            raise HTTPException(status_code=409, detail='This generated job can no longer be stopped.')
-        task_repository.try_add_log(user.username, 'stop_generated_job', json.dumps({'job_id': job_id, 'job_type': job['job_type']}))
     elif prefix == 'design-ppt':
         try:
             job_id = int(raw_identifier)
@@ -15836,15 +15641,6 @@ def stop_background_task(
             ):
                 raise HTTPException(status_code=409, detail='This workspace task can no longer be stopped.')
             job.update(cancel_requested=True, message='Stopping background job')
-    elif prefix == 'bulk-delete':
-        with BULK_REPORT_DELETION_JOBS_LOCK:
-            job = BULK_REPORT_DELETION_JOBS.get(raw_identifier)
-            if (
-                not job or str(job.get('workspace_id') or '') != workspace_id
-                or job.get('status') not in {'queued', 'processing'}
-            ):
-                raise HTTPException(status_code=409, detail='This deletion task can no longer be stopped.')
-            job.update(cancel_requested=True, message='Stopping deletion')
     elif prefix == 'workspace-duplicate':
         if raw_identifier != workspace_id or workspace.status != 'duplicating':
             raise HTTPException(status_code=409, detail='This workspace duplication can no longer be stopped.')
@@ -15852,7 +15648,7 @@ def stop_background_task(
             WORKSPACE_DUPLICATION_STOP_REQUESTS.add(workspace_id)
     else:
         raise HTTPException(status_code=400, detail='This background task cannot be stopped.')
-    if prefix in {'export', 'import', 'transfer', 'workspace-cache-clear', 'bulk-delete', 'workspace-duplicate'}:
+    if prefix in {'export', 'import', 'transfer', 'workspace-cache-clear', 'workspace-duplicate'}:
         task_repository.try_add_log(user.username, 'stop_background_task', json.dumps({'task_id': task_id}))
     return JSONResponse({'stopping': task_id})
 
@@ -15972,7 +15768,7 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
         kind_type = 'Scoring & GAP Analysis'
     elif name.startswith('report_task'):
         kind_type = 'Reporting'
-    elif name.startswith(('design_', 'report_templates', 'generated_jobs')):
+    elif name.startswith(('design_', 'report_templates')):
         kind_type = 'PPT Designer & Templates'
     elif name.startswith(('dataset', 'cdr_', 'autocalculated', 'inventory_')):
         kind_type = 'Datasets'
@@ -16106,9 +15902,8 @@ def select_workspace(
     # never send the user to Workspace merely because the active data source
     # changed.  Restrict the destination to application modules so this form
     # cannot become an open redirect.
-    target = '/ppt-reporting-old' if return_to in {'/e2e-reporting', '/ppt-reporting-old'} else return_to
-    target = '/ppt-designer' if target == '/ppt-dashboards' else target
-    target = target if target in {'/workspace', '/datasets-analysis', '/ppt-designer', '/ppt-reporting-old', '/admin'} else '/workspace'
+    target = '/ppt-designer' if return_to == '/ppt-dashboards' else return_to
+    target = target if target in {'/workspace', '/datasets-analysis', '/ppt-designer', '/admin'} else '/workspace'
     if user.role != 'super-admin' and not repository.user_has_workspace_access(user.username, workspace_id):
         return RedirectResponse(f'{target}?workspace_error=You+do+not+have+access+to+that+workspace.', status_code=status.HTTP_303_SEE_OTHER)
     try:
@@ -17762,188 +17557,6 @@ def _cached_filtered_chart_frame(
     )
 
 
-def _report_dataset_names(selected: dict[str, list[dict[str, Any]]]) -> dict[str, list[str]]:
-    return {kind: [str(dataset['file_name']) for dataset in datasets] for kind, datasets in selected.items()}
-
-
-def _report_job_output_path(row: Any) -> Path | None:
-    """Resolve current and legacy report locations for persisted report jobs."""
-    stored = str(row['output_path'] or '').strip()
-    candidates: list[Path] = []
-    if stored:
-        candidates.append(Path(stored))
-    file_name = Path(str(row['output_file'] or '')).name
-    if file_name:
-        # New reports live in output/reports/reports-old.  Keep the former
-        # locations as a compatibility fallback for old jobs.
-        reports_old = module_output_dir(settings.output_dir, REPORTS_OLD_FOLDER)
-        candidates.extend((
-            reports_old / Path(file_name).stem / file_name,
-            reports_old / file_name,
-            Path(settings.output_dir) / 'reports' / file_name,
-            Path(settings.export_dir) / file_name,
-            Path(settings.output_dir) / file_name,
-        ))
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-def _report_job_directory(file_name: str, output_dir: Path | None = None) -> Path:
-    """Return the dedicated directory for one generated PowerPoint report."""
-    reports_dir = module_output_dir(output_dir or settings.output_dir, REPORTS_OLD_FOLDER)
-    stem = Path(file_name).stem
-    return safe_join(reports_dir, stem)
-
-
-def _delete_report_job_artifacts(row: Any, output_dir: Path | None = None) -> None:
-    """Remove a report file and its sibling rendered PNG charts."""
-    file_name = Path(str(row['output_file'] or '')).name
-    if file_name:
-        # The job directory may still contain rendered charts or partial
-        # output even when the PowerPoint itself is already missing.
-        report_dir = _report_job_directory(file_name, output_dir)
-        if report_dir.is_dir():
-            shutil.rmtree(report_dir)
-    path = _report_job_output_path(row)
-    if path is None:
-        return
-    if path.parent != _report_job_directory(path.name, output_dir):
-        path.unlink(missing_ok=True)
-
-
-def _report_job_charts_directory(row: Any) -> Path | None:
-    path = _report_job_output_path(row)
-    if path is None or path.parent != _report_job_directory(path.name):
-        return None
-    directory = path.parent / 'report-charts'
-    return directory if directory.is_dir() else None
-
-
-def _report_job_charts_payload(row: Any) -> dict[str, Any] | None:
-    directory = _report_job_charts_directory(row)
-    if directory is None:
-        return None
-    try:
-        manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError):
-        return None
-    charts: list[dict[str, Any]] = []
-    for item in manifest.get('charts', []) if isinstance(manifest, dict) else []:
-        if not isinstance(item, dict):
-            continue
-        file_name = str(item.get('file') or '')
-        if not re.fullmatch(r'slide-\d+-chart-\d+\.png', file_name) or not (directory / file_name).is_file():
-            return None
-        charts.append({
-            'slide': item.get('slide'), 'title': str(item.get('title') or ''),
-            'source': str(item.get('source') or ''), 'chart_type': str(item.get('chart_type') or ''),
-            'image_url': f"/ppt-reporting-old/jobs/{int(row['id'])}/charts/{file_name}",
-        })
-    if not charts:
-        return None
-    try:
-        dataset_ids = json.loads(row['dataset_ids_json'] or '{}')
-    except (TypeError, json.JSONDecodeError):
-        dataset_ids = {}
-    return {
-        'report_job_id': int(row['id']),
-        'report_name': str(row['output_file'] or ''),
-        'template': str(row['template_name'] or ''), 'technology': str(row['technology'] or '').upper(),
-        'scope': str(row['scope'] or 'single'),
-        'generated_at': _local_report_date(row['created_at']),
-        'dataset_counts': {kind: len(dataset_ids.get(kind, [])) for kind in ('data', 'voice', 'speech')},
-        'charts': charts,
-    }
-
-
-def _temporary_chart_preview_context(
-    source: str, identifier: str, chart_index: int,
-) -> tuple[Any, dict[str, list[int]], str, bool, int, list[Any]]:
-    """Resolve one persisted chart back to its immutable template definition."""
-    if source == 'report':
-        row = repository.get_report_run(int(identifier))
-        scope = str(row['scope'] or 'single') if row else 'single'
-    elif source == 'standalone':
-        row = next((item for item in repository.list_report_chart_jobs(limit=None) if str(item['generation'] or '') == identifier), None)
-        scope = str(row['scope'] or 'single') if row else 'single'
-    else:
-        row = None
-        scope = 'single'
-    if not row:
-        raise HTTPException(status_code=404, detail='The selected Chart Set is no longer available.')
-    try:
-        dataset_ids = json.loads(row['dataset_ids_json'] or '{}')
-        selected_ids = {kind: [int(value) for value in dataset_ids.get(kind, [])] for kind in ('data', 'voice', 'speech')}
-        selected_ids['all'] = [value for kind in ('data', 'voice', 'speech') for value in selected_ids[kind]]
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=400, detail='The selected Chart Set has invalid CDR references.') from exc
-    technology = str(row['technology'] or '').strip().lower()
-    template_name = str(row['template_name'] or '')
-    template = next((item for item in report_catalogue_options() if item['name'] == template_name), None)
-    if technology not in TEMPLATE_NAMES or not template:
-        raise HTTPException(status_code=404, detail='The Report Template used by this Chart Set is no longer available.')
-    indexed_entries = list(enumerate(load_template_catalogue(template['content'], nr_mode=technology)))
-    # Standalone Chart Sets retain the CSV chart-row order. PowerPoint reports
-    # render slides numerically, then retain chart order inside each slide.
-    # The editor always presents every row sorted by slide. Keep the original
-    # row identity while applying those different views so focus_row addresses
-    # the exact chart shown in the viewer, including structural rows.
-    chart_entries = [(index, entry) for index, entry in indexed_entries if entry.source_kind]
-    if source == 'report':
-        chart_entries.sort(key=lambda item: (item[1].slide, item[0]))
-    if chart_index < 0 or chart_index >= len(chart_entries):
-        raise HTTPException(status_code=404, detail='The selected chart definition is no longer available.')
-    original_row_index, entry = chart_entries[chart_index]
-    editor_entries = sorted(indexed_entries, key=lambda item: (item[1].slide, item[0]))
-    template_row_index = next(
-        editor_index for editor_index, (source_index, _entry) in enumerate(editor_entries)
-        if source_index == original_row_index
-    )
-    return entry, selected_ids, technology, scope == 'multivendor', template_row_index, [
-        candidate for _source_index, candidate in chart_entries
-    ]
-
-
-def _shared_reporting_preview_frame(
-    preview_dataset_ids: list[int],
-    entry: CatalogEntry,
-    template_entries: list[Any],
-    technology: str,
-    multivendor: bool,
-) -> tuple[str, pd.DataFrame]:
-    """Reuse one source frame across every chart in the selected Chart Set."""
-    selected = _reporting_datasets(preview_dataset_ids, entry.source_kind)
-    source_entries = [candidate for candidate in template_entries if candidate.source_kind == entry.source_kind]
-    query_entries = [*source_entries, entry]
-    shared_columns = reporting_query_columns(entry.source_kind, query_entries, multivendor)
-    frame_key = _chart_preview_cache_key('reporting-source-frame', {
-        'dataset_ids': preview_dataset_ids,
-        'dataset_versions': [
-            (item['id'], item.get('updated_at'), item.get('processed_at'), item.get('normalization_version'))
-            for item in selected
-        ],
-        'technology': technology,
-        'multivendor': multivendor,
-        'columns': shared_columns,
-    })
-
-    def load_frame() -> pd.DataFrame:
-        combined = _combined_reporting_frame(selected, query_entries, multivendor)
-        return ensure_vendor_group(combined) if multivendor else combined
-
-    shared = _bounded_preview_frame(CHART_PREVIEW_FRAME_CACHE, frame_key, load_frame, 4)
-    chart_columns = reporting_query_columns(entry.source_kind, [entry], multivendor)
-    projected_columns = list(dict.fromkeys(
-        resolved for column in chart_columns
-        if (resolved := resolve_column_name(shared.columns, column)) is not None
-    ))
-    projected = shared.loc[:, projected_columns].copy(deep=False) if projected_columns else shared
-    projected.attrs = shared.attrs.copy()
-    return frame_key, projected
-
-
 def _temporary_chart_definition_changes(editable: dict[str, Any]) -> dict[str, Any]:
     """Normalise editable values shared by every Interactive Preview entry point."""
     allowed = {
@@ -17972,359 +17585,6 @@ def _temporary_chart_definition_changes(editable: dict[str, Any]) -> dict[str, A
     return changes
 
 
-def _temporary_preview_dataset_ids(editable: dict[str, Any], selected_ids: dict[str, list[int]], source_kind: str) -> list[int]:
-    """Resolve an optional dataset selection and constrain it to its CDR type."""
-    raw_values = editable.get('dataset_ids')
-    if raw_values is None:
-        return selected_ids.get(source_kind, [])
-    values = raw_values if isinstance(raw_values, list) else re.split(r'\s*(?:,|×|\bx\b)\s*', str(raw_values), flags=re.IGNORECASE)
-    try:
-        requested = list(dict.fromkeys(int(value) for value in values if str(value).strip()))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail='Choose valid processed CDR datasets.') from exc
-    available = {
-        int(row['id']) for row in repository.list_datasets()
-        if row['status'] == 'ready' and _reporting_kind_matches(str(row['dataset_kind'] or '').casefold(), source_kind)
-    }
-    if not requested or any(dataset_id not in available for dataset_id in requested):
-        raise HTTPException(status_code=400, detail=f'Choose one or more processed {source_kind.title()} CDR datasets.')
-    return requested
-
-
-@app.get('/api/ppt-reporting-old/chart-preview/context')
-def temporary_chart_preview_context(source: str, identifier: str, chart_index: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
-    """Return an immutable chart definition for the interactive viewer sandbox."""
-    entry, selected_ids, _technology, _multivendor, template_row_index, _template_entries = _temporary_chart_preview_context(source, identifier, chart_index)
-    dataset_rows = repository.list_datasets()
-    selected_dataset_ids = {value for values in selected_ids.values() for value in values}
-    # The controls only need the schemas backing this Chart Set. Inspecting
-    # every historic dataset made opening the panel increasingly expensive.
-    columns = catalogue_editor_columns(
-        (row for row in dataset_rows if int(row['id']) in selected_dataset_ids),
-        entry.calculated_dimensions,
-    )
-    datasets_by_source: dict[str, list[dict[str, Any]]] = {'cdr-data': [], 'cdr-voice': [], 'cdr-speech': []}
-    for row in dataset_rows:
-        kind = str(row['dataset_kind'] or '').casefold()
-        if row['status'] == 'ready' and kind in {'data', 'voice', 'speech'}:
-            datasets_by_source[f'cdr-{kind}'].append({'value': str(row['id']), 'label': str(row['file_name'])})
-    datasets_by_source['cdr-all'] = [row for kind in ('data', 'voice', 'speech') for row in datasets_by_source[f'cdr-{kind}']]
-    return JSONResponse({
-        'slide': entry.slide, 'chart_title': entry.chart_title, 'template_row_index': template_row_index,
-        'source_available': bool(selected_ids.get(entry.source_kind or '')), 'cdr_source': entry.cdr_source,
-        'dataset_ids': [str(value) for value in selected_ids.get(entry.source_kind or '', [])],
-        'dataset_ids_by_source': {f'cdr-{kind}': [str(value) for value in values] for kind, values in selected_ids.items() if kind != 'all' or entry.source_kind == 'all'},
-        'datasets_by_source': datasets_by_source,
-        'kpi': entry.kpi, 'chart_type': entry.chart_type, 'filters': entry.filters,
-        'rows_split': entry.rows_split, 'columns_split': entry.columns_split,
-        'legend': entry.legend, 'legend_position': entry.legend_position, 'legend_format': entry.legend_format,
-        'axis_x_range': entry.axis_x_range, 'axis_y_range': entry.axis_y_range,
-        'label_position': entry.label_position,
-        'label_format': entry.label_format,
-        'exclude_null_empty': entry.exclude_null_empty, 'exclude_zero': entry.exclude_zero, 'dynamic_rows_field': entry_dynamic_fields(entry)[0], 'dynamic_columns_field': entry_dynamic_fields(entry)[1],
-        'columns_by_source': columns,
-    })
-
-
-@app.post('/api/ppt-reporting-old/chart-preview')
-async def temporary_chart_preview(request: Request, user: SessionUser = Depends(current_user)) -> Response:
-    """Render a transient chart from viewer edits without altering stored output."""
-    try:
-        payload = await request.json()
-        source = str(payload.get('source') or '')
-        identifier = str(payload.get('identifier') or '')
-        chart_index = int(payload.get('chart_index'))
-        entry, selected_ids, technology, multivendor, _template_row_index, template_entries = _temporary_chart_preview_context(source, identifier, chart_index)
-        editable = payload.get('definition') if isinstance(payload.get('definition'), dict) else {}
-        if not selected_ids.get(entry.source_kind or ''):
-            return Response(content=render_unavailable_source_chart(entry), media_type='image/png', headers={'Cache-Control': 'no-store'})
-        entry = replace(entry, **_temporary_chart_definition_changes(editable))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=f'Invalid chart preview request: {exc}') from exc
-    if not entry.source_kind:
-        raise HTTPException(status_code=400, detail='Choose a valid Source Dataset.')
-    preview_dataset_ids = _temporary_preview_dataset_ids(editable, selected_ids, entry.source_kind)
-    frame_key, frame = _shared_reporting_preview_frame(
-        preview_dataset_ids, entry, template_entries, technology, multivendor,
-    )
-    filtered = _cached_filtered_chart_frame(frame_key, frame, entry, multivendor)
-    try:
-        image = render_catalog_chart_preview(filtered, entry, multivendor=multivendor, prefiltered=True)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return Response(content=image, media_type='image/png', headers={'Cache-Control': 'no-store'})
-
-
-def _temporary_chart_preview_hover_targets(payload: dict[str, Any]) -> list[dict[str, object]]:
-    """Build preview hover targets without delaying lightweight viewer setup requests."""
-    try:
-        source = str(payload.get('source') or '')
-        identifier = str(payload.get('identifier') or '')
-        chart_index = int(payload.get('chart_index'))
-        entry, selected_ids, technology, multivendor, _template_row_index, template_entries = _temporary_chart_preview_context(source, identifier, chart_index)
-        editable = payload.get('definition') if isinstance(payload.get('definition'), dict) else {}
-        if source == 'standalone' and not editable:
-            if not _chart_set_tooltips_enabled(identifier):
-                return []
-            stored_targets = _stored_chart_hover_targets(identifier, chart_index)
-            if stored_targets is not None:
-                return stored_targets
-        if source == 'report' and not editable:
-            if not _report_tooltips_enabled(identifier):
-                return []
-            stored_targets = _stored_report_hover_targets(identifier, chart_index)
-            if stored_targets is not None:
-                return stored_targets
-        entry = replace(entry, **_temporary_chart_definition_changes(editable))
-        preview_dataset_ids = _temporary_preview_dataset_ids(editable, selected_ids, entry.source_kind)
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=f'Invalid chart hover request: {exc}') from exc
-    if not entry.source_kind:
-        raise HTTPException(status_code=400, detail='Choose a valid Source Dataset.')
-    frame_key, frame = _shared_reporting_preview_frame(
-        preview_dataset_ids, entry, template_entries, technology, multivendor,
-    )
-    filtered = _cached_filtered_chart_frame(frame_key, frame, entry, multivendor)
-    targets = catalog_chart_hover_targets(filtered, entry, multivendor=multivendor, prefiltered=True)
-    if source == 'standalone' and not editable:
-        _store_chart_hover_targets(identifier, chart_index, targets)
-    if source == 'report' and not editable:
-        _store_report_hover_targets(identifier, chart_index, targets)
-    return targets
-
-
-def _chart_set_tooltips_enabled(generation: str) -> bool:
-    """Return whether a saved Chart Set permits semantic hover targets."""
-    if not _valid_report_chart_generation(generation):
-        return True
-    try:
-        manifest = json.loads((report_charts_directory() / generation / 'manifest.json').read_text(encoding='utf-8'))
-    except (OSError, ValueError, json.JSONDecodeError, TypeError):
-        return True
-    return manifest.get('generate_tooltips') is not False if isinstance(manifest, dict) else True
-
-
-def _report_tooltips_enabled(report_id: str) -> bool:
-    """Return whether a saved PowerPoint report permits semantic hover targets."""
-    try:
-        row = repository.get_report_run(int(report_id))
-        directory = _report_job_charts_directory(row) if row else None
-        manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf-8')) if directory else {}
-    except (OSError, ValueError, json.JSONDecodeError, TypeError):
-        return True
-    return manifest.get('generate_tooltips') is not False if isinstance(manifest, dict) else True
-
-
-def _stored_chart_hover_targets(generation: str, chart_index: int) -> list[dict[str, object]] | None:
-    """Read precomputed semantic targets saved beside a generated Chart Set PNG."""
-    if not _valid_report_chart_generation(generation):
-        return None
-    try:
-        manifest = json.loads((report_charts_directory() / generation / 'manifest.json').read_text(encoding='utf-8'))
-        if manifest.get('hover_targets_version') != HOVER_TARGETS_VERSION:
-            return None
-        chart = manifest.get('charts', [])[chart_index]
-        target_file = str(chart.get('hover_file') or '')
-        if not re.fullmatch(r'chart-\d+\.hover\.json', target_file):
-            return None
-        targets = json.loads((report_charts_directory() / generation / target_file).read_text(encoding='utf-8'))
-    except (IndexError, OSError, ValueError, json.JSONDecodeError, TypeError):
-        return None
-    return targets if isinstance(targets, list) else None
-
-
-def _stored_report_hover_targets(report_id: str, chart_index: int) -> list[dict[str, object]] | None:
-    """Read targets generated with a PowerPoint report chart."""
-    try:
-        row = repository.get_report_run(int(report_id))
-        directory = _report_job_charts_directory(row) if row else None
-        manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf-8')) if directory else {}
-        if manifest.get('hover_targets_version') != HOVER_TARGETS_VERSION:
-            return None
-        chart = manifest.get('charts', [])[chart_index]
-        target_file = str(chart.get('hover_file') or '')
-        if not re.fullmatch(r'slide-\d+-chart-\d+\.hover\.json', target_file):
-            return None
-        targets = json.loads((directory / target_file).read_text(encoding='utf-8'))
-    except (IndexError, OSError, ValueError, json.JSONDecodeError, TypeError):
-        return None
-    return targets if isinstance(targets, list) else None
-
-
-def _store_chart_hover_targets(generation: str, chart_index: int, targets: list[dict[str, object]]) -> None:
-    """Persist the first on-demand target calculation beside its Chart Set PNG."""
-    if not _valid_report_chart_generation(generation):
-        return
-    directory = report_charts_directory() / generation
-    try:
-        with CHART_PREVIEW_CACHE_LOCK:
-            manifest_path = directory / 'manifest.json'
-            manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-            chart = manifest.get('charts', [])[chart_index]
-            file_name = str(chart.get('file') or '')
-            if not re.fullmatch(r'chart-\d+\.png', file_name):
-                return
-            hover_file = f'{Path(file_name).stem}.hover.json'
-            temporary = directory / f'.{hover_file}.tmp'
-            temporary.write_text(json.dumps(targets, ensure_ascii=False), encoding='utf-8')
-            temporary.replace(directory / hover_file)
-            chart['hover_file'] = hover_file
-            manifest['hover_targets_version'] = HOVER_TARGETS_VERSION
-            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
-    except (IndexError, OSError, ValueError, json.JSONDecodeError, TypeError):
-        return
-
-
-def _store_report_hover_targets(report_id: str, chart_index: int, targets: list[dict[str, object]]) -> None:
-    """Replace an obsolete report sidecar with targets matching the current renderer."""
-    try:
-        row = repository.get_report_run(int(report_id))
-        directory = _report_job_charts_directory(row) if row else None
-        if directory is None:
-            return
-        with CHART_PREVIEW_CACHE_LOCK:
-            manifest_path = directory / 'manifest.json'
-            manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-            chart = manifest.get('charts', [])[chart_index]
-            file_name = str(chart.get('file') or '')
-            if not re.fullmatch(r'slide-\d+-chart-\d+\.png', file_name):
-                return
-            hover_file = f'{Path(file_name).stem}.hover.json'
-            temporary = directory / f'.{hover_file}.tmp'
-            temporary.write_text(json.dumps(targets, ensure_ascii=False), encoding='utf-8')
-            temporary.replace(directory / hover_file)
-            chart['hover_file'] = hover_file
-            manifest['hover_targets_version'] = HOVER_TARGETS_VERSION
-            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
-    except (IndexError, OSError, ValueError, json.JSONDecodeError, TypeError):
-        return
-
-
-@app.post('/api/ppt-reporting-old/chart-preview/hover')
-async def temporary_chart_preview_hover(request: Request, user: SessionUser = Depends(current_user)) -> JSONResponse:
-    """Return semantic chart hit areas for the interactive PNG preview."""
-    try:
-        payload = await request.json()
-    except ClientDisconnect:
-        # The browser deliberately aborts superseded hover requests while the
-        # user navigates. That is not an application error.
-        return Response(status_code=204)
-    targets = await run_in_threadpool(_temporary_chart_preview_hover_targets, payload)
-    return JSONResponse({'targets': targets})
-
-
-@app.post('/api/ppt-reporting-old/chart-preview/data')
-async def temporary_chart_preview_data(request: Request, user: SessionUser = Depends(current_user)) -> Response:
-    """Return the bounded filtered chart dataset for the viewer sandbox."""
-    try:
-        payload = await request.json()
-        source = str(payload.get('source') or '')
-        identifier = str(payload.get('identifier') or '')
-        chart_index = int(payload.get('chart_index'))
-        entry, selected_ids, technology, multivendor, _template_row_index, template_entries = _temporary_chart_preview_context(
-            source, identifier, chart_index,
-        )
-        editable = payload.get('definition') if isinstance(payload.get('definition'), dict) else {}
-        entry = replace(entry, **_temporary_chart_definition_changes(editable))
-        page = max(0, int(payload.get('page', 0)))
-        page_size = max(1, min(250, int(payload.get('page_size', 100))))
-        raw_column_filters = payload.get('column_filters') if isinstance(payload.get('column_filters'), dict) else {}
-        filter_column = str(payload.get('filter_column') or '').strip()
-        download = bool(payload.get('download'))
-        column_filters = {
-            str(column): tuple(str(value) for value in values if value is not None)
-            for column, values in raw_column_filters.items() if isinstance(values, list)
-        }
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=f'Invalid chart data request: {exc}') from exc
-    if not entry.source_kind:
-        raise HTTPException(status_code=400, detail='Choose a valid Source Dataset.')
-    try:
-        preview_dataset_ids = _temporary_preview_dataset_ids(editable, selected_ids, entry.source_kind)
-        preview_datasets = [
-            serialize_dataset_row(row)
-            for dataset_id in preview_dataset_ids if (row := repository.get_dataset(dataset_id))
-        ]
-        cache_material = json.dumps({
-            'scope': 'report-chart-viewer', 'workspace': str(active_workspace.database_path) if active_workspace else '',
-            'source': source, 'identifier': identifier, 'chart_index': chart_index,
-            'selected_ids': preview_dataset_ids, 'definition': editable,
-        }, sort_keys=True, default=str)
-        cache_key = hashlib.sha256(cache_material.encode('utf-8')).hexdigest()
-        cached = CHART_PREVIEW_DATA_CACHE.get(cache_key)
-        if cached is None:
-            _frame_key, frame = _shared_reporting_preview_frame(
-                preview_dataset_ids, entry, template_entries, technology, multivendor,
-            )
-            full_preview, base_summary = preview_catalog_chart_data(
-                frame, entry, limit=100_000, include_filter_values=False,
-            )
-            cached = (full_preview, base_summary)
-            CHART_PREVIEW_DATA_CACHE[cache_key] = cached
-            while len(CHART_PREVIEW_DATA_CACHE) > 12:
-                CHART_PREVIEW_DATA_CACHE.pop(next(iter(CHART_PREVIEW_DATA_CACHE)))
-        full_preview, base_summary = cached
-        filters_for_values = {
-            column: values for column, values in column_filters.items()
-            if not filter_column or column_identity(column) != column_identity(filter_column)
-        }
-        values_preview = _apply_preview_column_filters(full_preview, filters_for_values)
-        filtered_preview = _apply_preview_column_filters(full_preview, column_filters)
-        if download:
-            repository.try_add_log(user.username, 'export_chart_data_csv', json.dumps({
-                'source': source, 'identifier': identifier, 'chart_index': chart_index,
-                'rows': len(filtered_preview.index),
-            }))
-            return Response(
-                content=filtered_preview.to_csv(index=False),
-                media_type='text/csv',
-                headers={'Content-Disposition': 'attachment; filename="filtered-chart-dataset.csv"'},
-            )
-        offset = page * page_size
-        preview = filtered_preview.iloc[offset:offset + page_size].copy()
-        summary = {
-            **base_summary,
-            'shown_rows': len(preview.index), 'visible_rows': len(filtered_preview.index), 'page_offset': offset,
-            'columns': list(preview.columns),
-        }
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return JSONResponse({
-        'columns': [str(column) for column in preview.columns],
-        'rows': preview.where(pd.notna(preview), '').astype(str).to_dict(orient='records'),
-        'summary': {key: value for key, value in summary.items() if key != 'filter_values'},
-        'filter_values': (
-            _preview_filter_values(values_preview, filter_column) if filter_column
-            else summary.get('filter_values', {})
-        ),
-        'column_classes': _chart_preview_column_classes(
-            preview.columns, preview_datasets,
-        ),
-        'column_metadata': (
-            _chart_preview_column_metadata(preview.columns, preview_datasets, entry.source_kind)
-            if page == 0 and not column_filters and not filter_column else {}
-        ),
-        'page': page, 'page_size': page_size,
-        'total': len(filtered_preview.index), 'chart_total': len(full_preview.index),
-    })
-
-
-def _chart_png_zip_response(directory: Path, filename: str) -> FileResponse:
-    """Return a temporary ZIP containing every rendered PNG in *directory*."""
-    charts = sorted(path for path in directory.glob('*.png') if path.is_file())
-    if not charts:
-        raise HTTPException(status_code=404, detail='Rendered charts are not available.')
-    with tempfile.NamedTemporaryFile(prefix='drivetest-analyzer-charts-', suffix='.zip', delete=False) as handle:
-        archive_path = Path(handle.name)
-    with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
-        for chart in charts:
-            archive.write(chart, chart.name)
-    return FileResponse(
-        archive_path, filename=filename, media_type='application/zip',
-        background=BackgroundTask(archive_path.unlink, missing_ok=True),
-    )
-
-
 def _local_report_date(value: Any) -> str:
     """Format persisted UTC timestamps in the server's local timezone."""
     raw = str(value or '').strip()
@@ -18337,278 +17597,6 @@ def _local_report_date(value: Any) -> str:
         return parsed.astimezone().strftime('%Y-%m-%d %H:%M:%S')
     except ValueError:
         return raw
-
-
-def _report_job_duration(row: Any) -> tuple[float | None, str]:
-    """Return the persisted elapsed time for a completed Reporting job."""
-    if not row['finished_at'] or not row['started_at']:
-        return None, ''
-    try:
-        started_at = datetime.fromisoformat(str(row['started_at']).replace('Z', '+00:00'))
-        finished_at = datetime.fromisoformat(str(row['finished_at']).replace('Z', '+00:00'))
-        duration = round(max(0.0, (finished_at - started_at).total_seconds()), 3)
-    except (TypeError, ValueError):
-        return None, ''
-    if duration < 60:
-        label = f'{duration:.1f}s' if duration < 10 else f'{round(duration)}s'
-    else:
-        minutes, seconds = divmod(duration, 60)
-        rounded_seconds = round(seconds)
-        if rounded_seconds == 60:
-            minutes += 1
-            rounded_seconds = 0
-        label = f'{int(minutes)}m {rounded_seconds}s'
-    return duration, label
-
-
-def serialize_report_job(row: Any) -> dict[str, Any]:
-    """Expose a report job without relying on the mutable active workspace."""
-    try:
-        dataset_names = json.loads(row['dataset_names_json'] or '{}')
-    except (TypeError, json.JSONDecodeError):
-        dataset_names = {}
-    labels = [
-        f"{kind.title()}: {', '.join(str(name) for name in names)}"
-        for kind, names in dataset_names.items() if names
-    ]
-    dataset_groups = [
-        {'kind': kind.title(), 'names': [str(name) for name in names]}
-        for kind, names in dataset_names.items() if names
-    ]
-    report_id = int(row['id'])
-    status_value = str(row['status'] or 'ready')
-    output_available = status_value == 'ready' and _report_job_output_path(row) is not None
-    slide_count = int(row['slide_count'] or 0)
-    charts_payload = _report_job_charts_payload(row) if output_available else None
-    duration_seconds, duration_label = _report_job_duration(row)
-    return {
-        'id': report_id,
-        'date': _local_report_date(row['created_at']),
-        'charts_date': _local_report_date(row['finished_at'] or row['created_at']),
-        'report_name': str(row['output_file']),
-        'datasets': ' · '.join(labels) or 'Historical report',
-        'dataset_groups': dataset_groups,
-        'template': str(row['template_name'] or '—'),
-        'slides': slide_count or None,
-        'charts': len(charts_payload.get('charts', [])) if charts_payload else None,
-        'type': str(row['technology'] or '').upper() or '—',
-        'multivendor': 'Yes' if str(row['scope'] or '').casefold() == 'multivendor' else 'No',
-        'scope': 'Multivendor Comparison' if str(row['scope'] or '').casefold() == 'multivendor' else 'Operator Comparison',
-        'generated_by': str(row['created_by'] or '—'),
-        'status': status_value,
-        'progress': int(row['progress'] or 0),
-        'duration_seconds': duration_seconds,
-        'duration_label': duration_label,
-        'error': str(row['last_error'] or ''),
-        'download_url': f'/ppt-reporting-old/jobs/{report_id}/download' if output_available else None,
-        'open_url': f'/ppt-reporting-old/jobs/{report_id}/open' if output_available else None,
-        'charts_url': f'/api/ppt-reporting-old/jobs/{report_id}/charts' if charts_payload else None,
-        'charts_download_url': f'/ppt-reporting-old/jobs/{report_id}/charts/download' if charts_payload else None,
-        'delete_url': f'/ppt-reporting-old/jobs/{report_id}/delete',
-        'stop_url': f'/ppt-reporting-old/jobs/{report_id}/stop' if status_value == 'processing' else None,
-        'retry_url': f'/ppt-reporting-old/jobs/{report_id}/retry' if status_value in {'failed', 'stopped', 'ready'} else None,
-    }
-
-
-def serialize_report_chart_job(row: Any) -> dict[str, Any]:
-    """Expose an independent background Chart Set job to the Reporting UI."""
-    try:
-        dataset_names = json.loads(row['dataset_names_json'] or '{}')
-    except (TypeError, json.JSONDecodeError):
-        dataset_names = {}
-    dataset_groups = [
-        {'kind': kind.title(), 'names': [str(name) for name in names]}
-        for kind, names in dataset_names.items() if names
-    ]
-    job_id = int(row['id'])
-    status_value = str(row['status'] or 'queued')
-    generation = str(row['generation'] or '')
-    # A ready Chart Set has one canonical generation timestamp: the value in
-    # its manifest.  Reuse it in Charts Jobs rather than showing the earlier
-    # queue-creation time alongside the completed set.
-    chart_set = load_persisted_report_charts(generation) if status_value == 'ready' and generation else None
-    duration_seconds, duration_label = _report_job_duration(row)
-    return {
-        'id': job_id,
-        'date': str(chart_set['generated_at']) if chart_set else _local_report_date(row['created_at']),
-        'type': str(row['technology'] or '').upper() or '—',
-        'template': str(row['template_name'] or '—'),
-        'scope': 'Multivendor Comparison' if str(row['scope'] or '').casefold() == 'multivendor' else 'Operator Comparison',
-        'dataset_groups': dataset_groups,
-        'charts': int(row['chart_count'] or 0) or None,
-        'generated_by': str(row['created_by'] or '—'),
-        'status': status_value,
-        'progress': int(row['progress'] or 0),
-        'duration_seconds': duration_seconds,
-        'duration_label': duration_label,
-        'error': str(row['last_error'] or ''),
-        'generation': generation or None,
-        'open_url': f'/api/ppt-reporting-old/chart-sets/{generation}' if status_value == 'ready' and generation else None,
-        'charts_download_url': f'/ppt-reporting-old/chart-sets/{generation}/download' if chart_set else None,
-        'delete_url': f'/ppt-reporting-old/chart-jobs/{job_id}/delete',
-        'stop_url': f'/ppt-reporting-old/chart-jobs/{job_id}/stop' if status_value == 'processing' else None,
-        'retry_url': f'/ppt-reporting-old/chart-jobs/{job_id}/retry' if status_value in {'failed', 'stopped', 'ready'} else None,
-    }
-
-
-class ReportJobStopped(Exception):
-    """Raised in a background worker after its job was stopped or deleted."""
-
-
-def _ensure_report_job_active(task_repository: Repository, report_id: int, *, chart_job: bool = False) -> None:
-    job = task_repository.get_report_chart_job(report_id) if chart_job else task_repository.get_report_run(report_id)
-    if job is None or str(job['status'] or '').casefold() == 'stopped':
-        raise ReportJobStopped()
-
-
-def _run_netcheck_report_job(
-    report_id: int, task_repository: Repository, selected: dict[str, list[dict[str, Any]]],
-    technology: str, multivendor: bool, catalog_entries: list[Any], template: Path,
-    destination: Path, username: str, catalogue_name: str, generate_tooltips: bool = True,
-    vendor_comparison: str = "operator_vendor",
-) -> None:
-    """Serialize every report/chart render for one workspace."""
-    workspace_key = str(task_repository.db_path.resolve())
-    with REPORT_CHART_JOB_LOCKS_LOCK:
-        workspace_lock = REPORT_CHART_JOB_LOCKS.setdefault(workspace_key, Lock())
-    with workspace_lock:
-        _run_netcheck_report_job_locked(
-            report_id, task_repository, selected, technology, multivendor, catalog_entries,
-            template, destination, username, catalogue_name, generate_tooltips, vendor_comparison,
-        )
-
-
-def _run_netcheck_report_job_locked(
-    report_id: int, task_repository: Repository, selected: dict[str, list[dict[str, Any]]],
-    technology: str, multivendor: bool, catalog_entries: list[Any], template: Path,
-    destination: Path, username: str, catalogue_name: str, generate_tooltips: bool = True,
-    vendor_comparison: str = "operator_vendor",
-) -> None:
-    """Generate a report independently of the request/session that started it."""
-    try:
-        _ensure_report_job_active(task_repository, report_id)
-        task_repository.update_report_job(report_id, status='processing', progress=5, last_error='')
-        loaded_kinds: set[str] = set()
-        chart_metrics: list[dict[str, Any]] = []
-        chart_entries = [entry for entry in catalog_entries if entry.source_kind]
-        rendered_count = 0
-        def load_frame(kind: str) -> pd.DataFrame:
-            _ensure_report_job_active(task_repository, report_id)
-            if not selected[kind]:
-                frame = pd.DataFrame()
-                frame.attrs['report_source_unavailable'] = True
-                return frame
-            frame = _combined_reporting_frame(selected[kind], catalog_entries, multivendor, task_repository)
-            if multivendor:
-                frame = ensure_vendor_group(frame)
-            loaded_kinds.add(kind)
-            return frame
-        def chart_rendered(entry: Any, source_rows: int, empty: bool) -> None:
-            nonlocal rendered_count
-            rendered_count += 1
-            chart_metrics.append({
-                'slide': entry.slide, 'source': entry.cdr_source, 'source_rows': source_rows,
-                'empty_placeholder': empty, 'rss_mb': _reporting_memory_mb(),
-            })
-            task_repository.update_report_job(
-                report_id, status='processing', progress=10 + int(rendered_count * 85 / max(len(chart_entries), 1)),
-            )
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        _ensure_report_job_active(task_repository, report_id)
-        task_repository.update_report_job(report_id, status='processing', progress=10)
-        render_cdr_report(
-            destination, template, None, technology, multivendor, catalog_entries,
-            chart_output_dir=destination.parent / 'report-charts',
-            frame_loader=load_frame,
-            on_chart_rendered=chart_rendered,
-            generate_tooltips=generate_tooltips,
-            reuse_existing_charts=True, vendor_comparison=vendor_comparison,
-        )
-        gc.collect()
-        _ensure_report_job_active(task_repository, report_id)
-        task_repository.update_report_job(report_id, status='ready', progress=100, last_error='', finished=True)
-        invalidate_workspace_size_cache(task_repository.db_path.parent)
-        task_repository.add_log(username, 'export_netcheck_cdr_report', json.dumps({
-            'report_id': report_id,
-            'datasets': {kind: [dataset['id'] for dataset in datasets] for kind, datasets in selected.items()},
-            'technology': technology,
-            'scope': 'multivendor' if multivendor else 'single',
-            'slides_templates': catalogue_name,
-            'file': destination.name,
-            'generate_tooltips': generate_tooltips,
-            'chart_metrics': chart_metrics,
-        }))
-    except ReportJobStopped:
-        # Keep valid rendered charts for a later retry. The presentation itself
-        # is written only at the end and is never a reusable partial artifact.
-        destination.unlink(missing_ok=True)
-        invalidate_workspace_size_cache(task_repository.db_path.parent)
-    except Exception as exc:
-        destination.unlink(missing_ok=True)
-        invalidate_workspace_size_cache(task_repository.db_path.parent)
-        task_repository.update_report_job(report_id, status='failed', progress=100, last_error=str(exc), finished=True)
-        task_repository.add_log(username, 'export_netcheck_cdr_report_failed', json.dumps({
-            'report_id': report_id, 'error': str(exc),
-        }))
-
-
-@app.get('/ppt-reporting-old', response_class=HTMLResponse)
-def reporting(request: Request, user: SessionUser = Depends(current_user)) -> HTMLResponse:
-    if not active_workspace:
-        return RedirectResponse('/workspace?workspace_warning=Open+a+workspace+before+using+Reporting.', status_code=status.HTTP_303_SEE_OTHER)
-    ready_datasets = [serialize_dataset_row(row) for row in repository.list_datasets() if row['status'] == 'ready']
-    chart_job_rows = repository.list_report_chart_jobs(limit=None)
-    # A Chart Set is published to disk just before its job is marked ready.
-    # Keep that brief in-between state out of the selector after a reload.
-    unpublished_generations = {
-        str(row['generation']) for row in chart_job_rows
-        if str(row['generation'] or '') and str(row['status'] or '').casefold() != 'ready'
-    }
-    report_chart_sets = [
-        chart_set for chart_set in list_persisted_report_chart_sets()
-        if str(chart_set['generation']) not in unpublished_generations
-    ]
-    chart_jobs_by_generation = {
-        str(row['generation']): row for row in chart_job_rows if str(row['generation'] or '')
-    }
-    for chart_set in report_chart_sets:
-        if chart_set.get('technology'):
-            continue
-        job = chart_jobs_by_generation.get(str(chart_set['generation']))
-        if job:
-            chart_set['technology'] = str(job['technology'] or '').upper()
-    report_job_rows = repository.list_report_runs(limit=None)
-    report_jobs = [serialize_report_job(row) for row in report_job_rows]
-    report_chart_report_sets = [job for job in report_jobs if job.get('charts_url')]
-    report_rows_by_id = {int(row['id']): row for row in report_job_rows}
-    available_chart_sets = sorted(
-        [
-            *({'kind': 'report', 'value': report} for report in report_chart_report_sets),
-            *({'kind': 'standalone', 'value': chart_set} for chart_set in report_chart_sets),
-        ],
-        key=lambda item: str(item['value'].get('charts_date') or item['value'].get('generated_at') or item['value'].get('date') or ''),
-        reverse=True,
-    )
-    default_report_charts = None
-    if available_chart_sets:
-        newest = available_chart_sets[0]
-        if newest['kind'] == 'report':
-            default_report_charts = _report_job_charts_payload(report_rows_by_id[int(newest['value']['id'])])
-        else:
-            default_report_charts = load_persisted_report_charts(str(newest['value']['generation']))
-    return render_template(request, 'reporting.html', {
-        'user': user,
-        'data_datasets': [dataset for dataset in ready_datasets if dataset.get('dataset_kind') == 'data'],
-        'voice_datasets': [dataset for dataset in ready_datasets if dataset.get('dataset_kind') == 'voice'],
-        'speech_datasets': [dataset for dataset in ready_datasets if dataset.get('dataset_kind') == 'speech'],
-        'report_catalogues': report_catalogue_options(),
-        'report_jobs': report_jobs, 'report_chart_report_sets': report_chart_report_sets,
-        'report_chart_jobs': [serialize_report_chart_job(row) for row in chart_job_rows],
-        'total_reports': len(report_job_rows), 'total_chart_sets': len(chart_job_rows),
-        'report_chart_sets': report_chart_sets,
-        'report_charts': default_report_charts,
-        'calculated_dimensions': calculated_dimensions_json(load_workspace_calculated_dimensions()),
-    })
 
 
 # ---------------------------------------------------------------------------
@@ -18682,7 +17670,8 @@ def ticket_modules() -> list[dict[str, str]]:
 def serialize_ticket(row: dict[str, Any], modules: dict[str, dict[str, str]], people: dict[str, dict[str, str]]) -> dict[str, Any]:
     from src.modules.ticket_center import DEFAULT_TICKET_TYPE, OPEN_STATUSES, PRIORITIES, STATUSES, TICKET_TYPES
 
-    module = modules.get(str(row.get('module') or ''), {'title': str(row.get('module') or '') or 'General', 'color': '#5A6773'})
+    key = str(row.get('module') or '')
+    module = modules.get(key, {'title': RETIRED_MODULES.get(key) or key or 'General', 'color': '#5A6773'})
     ticket_type = str(row.get('ticket_type') or '') if str(row.get('ticket_type') or '') in TICKET_TYPES else DEFAULT_TICKET_TYPE
     return {
         **row,
@@ -19607,856 +18596,6 @@ async def chart_builder_preview(request: Request, user: SessionUser = Depends(cu
         return JSONResponse({'type': 'repeat', 'title': entry.chart_title, 'field': field, 'charts': charts}, headers={'Cache-Control': 'no-store'})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post('/ppt-reporting-old/netcheck-cdr')
-def generate_netcheck_cdr_report(
-    data_dataset_id: list[int] = Form([]),
-    voice_dataset_id: list[int] = Form([]),
-    speech_dataset_id: list[int] = Form([]),
-    technology: str = Form(...),
-    report_scope: str = Form('single'),
-    vendor_comparison: str = Form('operator_vendor'),
-    slides_templates: str = Form(''),
-    generate_tooltips: bool = Form(True),
-    user: SessionUser = Depends(current_user),
-) -> JSONResponse:
-    technology = technology.strip().lower()
-    if technology not in TEMPLATE_NAMES:
-        raise HTTPException(status_code=400, detail='Choose NSA or SA for the CDR report.')
-    if report_scope not in {'single', 'multivendor'}:
-        raise HTTPException(status_code=400, detail='Choose a valid report scope.')
-    if vendor_comparison not in {'operator_vendor', 'vendor_only'}:
-        raise HTTPException(status_code=400, detail='Choose Operator_Vendor or Vendor.')
-    multivendor = report_scope == 'multivendor'
-    selected = {
-        'data': _optional_reporting_datasets(data_dataset_id, 'data'),
-        'voice': _optional_reporting_datasets(voice_dataset_id, 'voice'),
-        'speech': _optional_reporting_datasets(speech_dataset_id, 'speech'),
-    }
-    if not any(selected.values()):
-        raise HTTPException(status_code=400, detail='Select at least one Data, Voice or Speech CDR.')
-    if multivendor and not all(
-        dataset.get('vendor_mapping_applied')
-        for datasets in selected.values()
-        for dataset in datasets
-    ):
-        raise HTTPException(status_code=400, detail='Multivendor reporting requires every selected Data, Voice and Speech CDR to have a Workspace Vendor mapping.')
-    template = settings.powerpoint_templates_dir / TEMPLATE_NAMES[technology]
-    available_catalogues = {item['identifier']: item for item in report_catalogue_options()}
-    selected_catalogue = next((item for item in available_catalogues.values() if item['active']), None)
-    if slides_templates:
-        catalogue_identifier = reporting_template_choice(slides_templates)
-        if catalogue_identifier not in available_catalogues:
-            raise HTTPException(status_code=400, detail='Choose an available Report Template.')
-        selected_catalogue = available_catalogues[catalogue_identifier]
-    if selected_catalogue is None:
-        raise HTTPException(status_code=400, detail='No Report Template is available.')
-    catalog_content = selected_catalogue['content']
-    try:
-        catalog_entries = load_template_catalogue(catalog_content, nr_mode=technology)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Unable to load the selected {technology.upper()} report template: {exc}") from exc
-    generated_at = datetime.now().strftime('%Y%m%d-%H%M%S')
-    scope_token = 'vendor-comparison' if multivendor else 'operator-comparison'
-    file_name = f"{generated_at}_NetCheck_CDR_{technology.upper()}_{scope_token}.pptx"
-    report_dir = _report_job_directory(file_name)
-    destination = safe_join(report_dir, file_name)
-    dataset_ids = {kind: [int(dataset['id']) for dataset in datasets] for kind, datasets in selected.items()}
-    report_id = repository.create_report_job(
-        report_type='netcheck_cdr', technology=technology, scope=report_scope,
-        data_dataset_id=selected['data'][0]['id'] if selected['data'] else None,
-        voice_dataset_id=selected['voice'][0]['id'] if selected['voice'] else None,
-        speech_dataset_id=selected['speech'][0]['id'] if selected['speech'] else None,
-        dataset_ids=dataset_ids, dataset_names=_report_dataset_names(selected),
-        slide_count=len({entry.slide for entry in catalog_entries}), template_name=selected_catalogue['name'],
-        output_file=file_name, output_path=destination, created_by=user.username,
-        generate_tooltips=generate_tooltips, vendor_comparison=vendor_comparison,
-    )
-    task_repository = Repository(Path(repository.db_path))
-    submit_background_task(
-        _run_netcheck_report_job, report_id, task_repository, selected, technology, multivendor,
-        catalog_entries, template, destination, user.username, selected_catalogue['name'], generate_tooltips, vendor_comparison,
-    )
-    repository.add_log(user.username, 'generate_powerpoint_report_requested', json.dumps({
-        'report_id': report_id, 'technology': technology, 'scope': report_scope,
-        'template': selected_catalogue['name'], 'datasets': dataset_ids,
-        'generate_tooltips': generate_tooltips,
-    }))
-    return JSONResponse({'job_id': report_id, 'status': 'queued'}, status_code=status.HTTP_202_ACCEPTED)
-
-
-@app.post('/ppt-reporting-old/netcheck-cdr/charts')
-def generate_netcheck_cdr_charts(
-    data_dataset_id: list[int] = Form([]),
-    voice_dataset_id: list[int] = Form([]),
-    speech_dataset_id: list[int] = Form([]),
-    technology: str = Form(...),
-    report_scope: str = Form('single'),
-    vendor_comparison: str = Form('operator_vendor'),
-    slides_templates: str = Form(''),
-    generate_tooltips: bool = Form(True),
-    user: SessionUser = Depends(current_user),
-) -> JSONResponse:
-    """Queue every automated chart in the selected Report Template."""
-    technology = technology.strip().lower()
-    if technology not in TEMPLATE_NAMES:
-        raise HTTPException(status_code=400, detail='Choose NSA or SA for the CDR report.')
-    if report_scope not in {'single', 'multivendor'}:
-        raise HTTPException(status_code=400, detail='Choose a valid report scope.')
-    if vendor_comparison not in {'operator_vendor', 'vendor_only'}:
-        raise HTTPException(status_code=400, detail='Choose Operator_Vendor or Vendor.')
-    multivendor = report_scope == 'multivendor'
-    selected = {
-        'data': _optional_reporting_datasets(data_dataset_id, 'data'),
-        'voice': _optional_reporting_datasets(voice_dataset_id, 'voice'),
-        'speech': _optional_reporting_datasets(speech_dataset_id, 'speech'),
-    }
-    if not any(selected.values()):
-        raise HTTPException(status_code=400, detail='Select at least one Data, Voice or Speech CDR.')
-    if multivendor and not all(
-        dataset.get('vendor_mapping_applied')
-        for datasets in selected.values()
-        for dataset in datasets
-    ):
-        raise HTTPException(status_code=400, detail='Multivendor reporting requires every selected Data, Voice and Speech CDR to have a Workspace Vendor mapping.')
-    available_catalogues = {item['identifier']: item for item in report_catalogue_options()}
-    selected_catalogue = next((item for item in available_catalogues.values() if item['active']), None)
-    if slides_templates:
-        catalogue_identifier = reporting_template_choice(slides_templates)
-        if catalogue_identifier not in available_catalogues:
-            raise HTTPException(status_code=400, detail='Choose an available Report Template.')
-        selected_catalogue = available_catalogues[catalogue_identifier]
-    if selected_catalogue is None:
-        raise HTTPException(status_code=400, detail='No Report Template is available.')
-    dataset_ids = {kind: [int(dataset['id']) for dataset in datasets] for kind, datasets in selected.items()}
-    job_id = repository.create_report_chart_job(
-        technology=technology, scope=report_scope, dataset_ids=dataset_ids,
-        dataset_names=_report_dataset_names(selected), template_name=selected_catalogue['name'], created_by=user.username,
-        generate_tooltips=generate_tooltips, vendor_comparison=vendor_comparison,
-    )
-    task_repository = Repository(Path(repository.db_path), repository.global_db_path)
-    output_dir = Path(settings.output_dir)
-    repository.add_log(user.username, 'chart_set_generation_requested', json.dumps({
-        'job_id': job_id, 'technology': technology, 'scope': report_scope, 'template': selected_catalogue['name'],
-        'datasets': dataset_ids,
-        'generate_tooltips': generate_tooltips,
-    }))
-    submit_background_task(
-        _run_report_chart_job, job_id, task_repository, dataset_ids, technology, report_scope,
-        selected_catalogue['name'], output_dir, user.username, generate_tooltips, vendor_comparison,
-    )
-    return JSONResponse({'job_id': job_id, 'status': 'queued'}, status_code=status.HTTP_202_ACCEPTED)
-
-
-def _run_report_chart_job(
-    job_id: int, task_repository: Repository, dataset_ids: dict[str, list[int]], technology: str,
-    report_scope: str, template_name: str, output_dir: Path, username: str, generate_tooltips: bool = True,
-    vendor_comparison: str = "operator_vendor",
-) -> None:
-    """Render one persisted Chart Set without holding the HTTP request open."""
-    workspace_key = str(task_repository.db_path.resolve())
-    with REPORT_CHART_JOB_LOCKS_LOCK:
-        workspace_lock = REPORT_CHART_JOB_LOCKS.setdefault(workspace_key, Lock())
-    with workspace_lock:
-        report_charts: dict[str, Any] | None = None
-        try:
-            _ensure_report_job_active(task_repository, job_id, chart_job=True)
-            task_repository.update_report_chart_job(job_id, status='processing', progress=5, last_error='')
-            selected = {
-                kind: _optional_reporting_datasets([int(value) for value in dataset_ids.get(kind, [])], kind, task_repository)
-                for kind in ('data', 'voice', 'speech')
-            }
-            if not any(selected.values()):
-                raise ValueError('Select at least one Data, Voice or Speech CDR.')
-            multivendor = report_scope == 'multivendor'
-            if multivendor and not all(dataset.get('vendor_mapping_applied') for datasets in selected.values() for dataset in datasets):
-                raise ValueError('Multivendor reporting requires every selected Data, Voice and Speech CDR to have a Workspace Vendor mapping.')
-            metadata = next((row for row in task_repository.list_report_templates()
-                             if row['name'] == template_name), None)
-            if not metadata or not _template_row_content(metadata):
-                raise ValueError('The Report Template used by this Chart Set is no longer available.')
-            catalog_entries = load_template_catalogue(_template_row_content(metadata), task_repository=task_repository,
-                                                      nr_mode=technology)
-            if multivendor:
-                catalog_entries = [prepare_multivendor_catalog_entry(entry, vendor_comparison) for entry in catalog_entries]
-            _ensure_report_job_active(task_repository, job_id, chart_job=True)
-            task_repository.update_report_chart_job(job_id, status='processing', progress=12)
-            selected['all'] = [row for kind in ('data', 'voice', 'speech') for row in selected[kind]]
-            chart_entries = [entry for entry in catalog_entries if entry.source_kind]
-            if not chart_entries:
-                raise ValueError('The selected Report Template does not contain automated CDR charts.')
-            current_job = task_repository.get_report_chart_job(job_id)
-            resume_generation = str(current_job['generation'] or '') if current_job else ''
-            resume_directory = report_charts_directory(output_dir) / resume_generation if _valid_report_chart_generation(resume_generation) else None
-            reusable_charts = _load_reusable_chart_set_assets(resume_directory, chart_entries, generate_tooltips)
-            def rendered_charts() -> Iterable[tuple[dict[str, Any], bytes]]:
-                rendered = 0
-                empty_charts: list[dict[str, Any]] = []
-                chart_metrics: list[dict[str, Any]] = []
-                selected_renderer = report_chart_renderer_name()
-                hover_executor = (
-                    ThreadPoolExecutor(max_workers=1, thread_name_prefix='chart-hover')
-                    if generate_tooltips and selected_renderer == 'pil' else None
-                )
-                try:
-                    for kind in ('data', 'voice', 'speech', 'all'):
-                        entries = [
-                            (order, entry) for order, entry in enumerate(chart_entries)
-                            if entry.source_kind == kind
-                        ]
-                        if not entries:
-                            continue
-                        _ensure_report_job_active(task_repository, job_id, chart_job=True)
-                        if not selected[kind]:
-                            for order, entry in entries:
-                                image = render_unavailable_source_chart(entry)
-                                rendered += 1
-                                chart_metrics.append({
-                                    'slide': entry.slide, 'source': entry.cdr_source, 'source_rows': 0,
-                                    'empty_placeholder': True, 'unavailable_source': True, 'rss_mb': _reporting_memory_mb(),
-                                })
-                                task_repository.update_report_chart_job(
-                                    job_id, status='processing', progress=12 + int(rendered * 83 / len(chart_entries)),
-                                )
-                                yield ({
-                                    'order': order, 'slide': entry.slide,
-                                    'title': entry.chart_title or entry.slide_title or f'Slide {entry.slide}',
-                                    'source': entry.cdr_source, 'chart_type': entry.chart_type,
-                                    'hover_targets': [],
-                                }, image)
-                            continue
-                        frame = _combined_reporting_frame(selected[kind], catalog_entries, multivendor, task_repository)
-                        if multivendor:
-                            frame = ensure_vendor_group(frame)
-                        prepared_frames: dict[tuple[Any, ...], pd.DataFrame] = {}
-                        task_repository.update_report_chart_job(job_id, status='processing', progress=12 + int(rendered * 83 / len(chart_entries)))
-                        for order, entry in entries:
-                            _ensure_report_job_active(task_repository, job_id, chart_job=True)
-                            reusable = reusable_charts.get(order)
-                            if reusable is not None:
-                                image, hover_targets = reusable
-                                rendered += 1
-                                task_repository.update_report_chart_job(
-                                    job_id, status='processing', progress=12 + int(rendered * 83 / len(chart_entries)),
-                                )
-                                yield ({'order': order, 'slide': entry.slide,
-                                        'title': entry.chart_title or entry.slide_title or f'Slide {entry.slide}',
-                                        'source': entry.cdr_source, 'chart_type': entry.chart_type,
-                                        **({'hover_targets': hover_targets} if hover_targets is not None else {})}, image)
-                                continue
-                            try:
-                                prepared_entry = prepare_multivendor_catalog_entry(entry) if multivendor else entry
-                                prepared_key = (
-                                    prepared_entry.cdr_source, prepared_entry.kpi, prepared_entry.filters,
-                                    prepared_entry.calculated_dimensions,
-                                )
-                                prepared_frame = prepared_frames.get(prepared_key)
-                                if prepared_frame is None:
-                                    try:
-                                        prepared_frame = prepare_catalog_chart_preview_frame(
-                                            frame, prepared_entry, multivendor=False,
-                                        )[0]
-                                    except ValueError:
-                                        prepared_frame = frame.iloc[0:0].copy()
-                                    prepared_frames[prepared_key] = prepared_frame
-                                hover_future = hover_executor.submit(
-                                    catalog_chart_hover_targets, prepared_frame, prepared_entry, prefiltered=True,
-                                ) if hover_executor else None
-                                if selected_renderer == 'canvas':
-                                    image, hover_targets = render_catalog_chart_preview_with_hover(
-                                        prepared_frame, prepared_entry, prefiltered=True, renderer=selected_renderer,
-                                    )
-                                    if not generate_tooltips:
-                                        hover_targets = None
-                                else:
-                                    image = render_catalog_chart_preview(
-                                        prepared_frame, prepared_entry, prefiltered=True, renderer=selected_renderer,
-                                    )
-                                    hover_targets = None
-                            except Exception as exc:
-                                chart_name = entry.chart_title or entry.slide_title or 'Untitled chart'
-                                raise ValueError(f"Slide {entry.slide}, chart '{chart_name}': {exc}") from exc
-                            for _attempt in range(2):
-                                if not is_empty_catalog_chart(image, entry):
-                                    break
-                                # Rebuild this CDR frame before retrying.  A retry
-                                # against the same pressured DataFrame could only
-                                # reproduce the same empty placeholder.
-                                del image
-                                del frame
-                                prepared_frames.clear()
-                                gc.collect()
-                                frame = _combined_reporting_frame(selected[kind], catalog_entries, multivendor, task_repository)
-                                if multivendor:
-                                    frame = ensure_vendor_group(frame)
-                                try:
-                                    prepared_frame, prepared_entry = prepare_catalog_chart_preview_frame(
-                                        frame, entry, multivendor=multivendor,
-                                    )
-                                except ValueError:
-                                    prepared_frame = frame.iloc[0:0].copy()
-                                    prepared_entry = prepare_multivendor_catalog_entry(entry) if multivendor else entry
-                                if selected_renderer == 'canvas':
-                                    image, hover_targets = render_catalog_chart_preview_with_hover(
-                                        prepared_frame, prepared_entry, prefiltered=True, renderer=selected_renderer,
-                                    )
-                                    if not generate_tooltips:
-                                        hover_targets = None
-                                else:
-                                    image = render_catalog_chart_preview(
-                                        prepared_frame, prepared_entry, prefiltered=True, renderer=selected_renderer,
-                                    )
-                            if is_empty_catalog_chart(image, entry):
-                                empty_charts.append({'slide': entry.slide, 'source': entry.cdr_source, 'source_rows': len(frame.index)})
-                            chart_metrics.append({
-                                'slide': entry.slide, 'source': entry.cdr_source, 'source_rows': len(frame.index),
-                                'empty_placeholder': is_empty_catalog_chart(image, entry), 'rss_mb': _reporting_memory_mb(),
-                            })
-                            task_repository.update_report_chart_job(
-                                job_id, status='processing', progress=12 + int((rendered + .5) * 83 / len(chart_entries)),
-                            )
-                            try:
-                                if hover_future:
-                                    hover_targets = hover_future.result()
-                            except Exception as exc:
-                                chart_name = entry.chart_title or entry.slide_title or 'Untitled chart'
-                                raise ValueError(f"Slide {entry.slide}, chart '{chart_name}' tooltip generation: {exc}") from exc
-                            rendered += 1
-                            task_repository.update_report_chart_job(
-                                job_id, status='processing', progress=12 + int(rendered * 83 / len(chart_entries)),
-                            )
-                            yield ({
-                                'order': order,
-                                'slide': entry.slide,
-                                'title': entry.chart_title or entry.slide_title or f'Slide {entry.slide}',
-                                'source': entry.cdr_source,
-                                'chart_type': entry.chart_type,
-                                **({'hover_targets': hover_targets} if isinstance(hover_targets, list) else {}),
-                            }, image)
-                        del frame
-                        gc.collect()
-                finally:
-                    if hover_executor:
-                        hover_executor.shutdown(wait=True)
-                if empty_charts:
-                    task_repository.add_log(username, 'chart_set_rendering_warning', json.dumps({
-                        'job_id': job_id, 'executed_by': 'system', 'charts': empty_charts,
-                    }))
-                task_repository.add_log(username, 'chart_set_rendering_completed', json.dumps({
-                    'job_id': job_id, 'executed_by': 'system', 'charts': chart_metrics,
-                }))
-            _ensure_report_job_active(task_repository, job_id, chart_job=True)
-            report_charts = persist_report_charts(
-                template_name, report_scope, rendered_charts(),
-                {kind: len(datasets) for kind, datasets in selected.items()}, output_dir,
-                before_publish=lambda generation: task_repository.update_report_chart_job(
-                    job_id, status='processing', generation=generation,
-                ),
-                generate_tooltips=generate_tooltips,
-                technology=technology,
-                resume_generation=resume_generation or None,
-            )
-            _ensure_report_job_active(task_repository, job_id, chart_job=True)
-            task_repository.update_report_chart_job(
-                job_id, status='ready', progress=100, last_error='', chart_count=len(chart_entries),
-                generation=str(report_charts['generation']), finished=True,
-            )
-            invalidate_workspace_size_cache(task_repository.db_path.parent)
-            task_repository.add_log(username, 'chart_set_published', json.dumps({
-                'job_id': job_id, 'executed_by': 'system', 'generation': report_charts['generation'], 'technology': technology,
-                'scope': report_scope, 'template': template_name, 'charts': len(chart_entries),
-            }))
-        except ReportJobStopped:
-            # The directory remains private while no manifest exists, so its
-            # verified PNG/JSON assets can be reused by a later retry.
-            invalidate_workspace_size_cache(task_repository.db_path.parent)
-        except Exception as exc:
-            task_repository.add_log(username, 'chart_set_generation_failed', json.dumps({
-                'job_id': job_id, 'executed_by': 'system', 'error': str(exc),
-            }))
-            task_repository.update_report_chart_job(job_id, status='failed', progress=100, last_error=str(exc), finished=True)
-            invalidate_workspace_size_cache(task_repository.db_path.parent)
-            invalidate_workspace_size_cache(task_repository.db_path.parent)
-
-
-def report_charts_directory(output_dir: Path | None = None) -> Path:
-    """Return the active workspace directory containing timestamped chart sets."""
-    return module_output_dir(output_dir or settings.output_dir, REPORTS_CHARTS_OLD_FOLDER)
-
-
-def _migrate_report_charts_root(output_dir: Path | None = None) -> None:
-    """Move pre-v0.2.1 Chart Sets from output/report-charts to the current Chart Sets folder."""
-    root = Path(output_dir or settings.output_dir)
-    legacy = root / 'report-charts'
-    destination = report_charts_directory(output_dir)
-    if not legacy.is_dir() or legacy == destination:
-        return
-    destination.mkdir(parents=True, exist_ok=True)
-    for child in legacy.iterdir():
-        target = destination / child.name
-        if target.exists():
-            if child.is_dir():
-                suffix = 2
-                while (destination / f'{child.name}-{suffix}').exists():
-                    suffix += 1
-                target = destination / f'{child.name}-{suffix}'
-            else:
-                child.unlink(missing_ok=True)
-                continue
-        child.replace(target)
-    legacy.rmdir()
-
-
-def _valid_report_chart_generation(value: str) -> bool:
-    return bool(re.fullmatch(r'\d{8}-\d{6}(?:-\d+)?', value))
-
-
-def _report_chart_payload(manifest: dict[str, Any], generation: str, output_dir: Path | None = None) -> dict[str, Any] | None:
-    directory = report_charts_directory(output_dir)
-    if not _valid_report_chart_generation(generation) or str(manifest.get('generation') or '') != generation:
-        return None
-    charts: list[dict[str, Any]] = []
-    for item in manifest.get('charts', []):
-        if not isinstance(item, dict):
-            continue
-        file_name = str(item.get('file') or '')
-        if not re.fullmatch(r'chart-\d+\.png', file_name) or not (directory / generation / file_name).is_file():
-            return None
-        charts.append({
-            'slide': item.get('slide'),
-            'title': str(item.get('title') or ''),
-            'source': str(item.get('source') or ''),
-            'chart_type': str(item.get('chart_type') or ''),
-            'image_url': f'/ppt-reporting-old/charts/{generation}/{file_name}?v={manifest.get("generated_at", "")}',
-        })
-    if not charts:
-        return None
-    return {
-        'generation': generation,
-        'template': str(manifest.get('template') or ''),
-        'technology': str(manifest.get('technology') or '').upper(),
-        'scope': str(manifest.get('scope') or 'single'),
-        'dataset_counts': _report_chart_dataset_counts(manifest.get('dataset_counts')),
-        'generated_at': format_local_timestamp(manifest.get('generated_at')),
-        'charts': charts,
-    }
-
-
-def _report_chart_dataset_counts(value: Any) -> dict[str, int]:
-    """Return safe per-source CDR counts from a Report Charts manifest."""
-    source = value if isinstance(value, dict) else {}
-    counts: dict[str, int] = {}
-    for kind in ('data', 'voice', 'speech'):
-        try:
-            counts[kind] = max(0, int(source.get(kind, 0)))
-        except (TypeError, ValueError):
-            counts[kind] = 0
-    return counts
-
-
-def _migrate_legacy_report_charts(output_dir: Path | None = None) -> None:
-    """Move the pre-library latest-set layout into its timestamped directory once."""
-    directory = report_charts_directory(output_dir)
-    manifest_path = directory / 'manifest.json'
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError):
-        return
-    generation = str(manifest.get('generation') or '')
-    if not isinstance(manifest, dict) or not _valid_report_chart_generation(generation):
-        return
-    target = directory / generation
-    suffix = 2
-    while target.exists():
-        target = directory / f'{generation}-{suffix}'
-        suffix += 1
-    target.mkdir(parents=True)
-    manifest['generation'] = target.name
-    for item in manifest.get('charts', []):
-        file_name = str(item.get('file') or '') if isinstance(item, dict) else ''
-        if re.fullmatch(r'chart-\d+\.png', file_name) and (directory / file_name).is_file():
-            (directory / file_name).replace(target / file_name)
-    manifest_path.unlink(missing_ok=True)
-    (target / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
-
-
-def load_persisted_report_charts(generation: str) -> dict[str, Any] | None:
-    """Load one complete timestamped chart set from the active workspace."""
-    if not _valid_report_chart_generation(generation):
-        return None
-    manifest_path = report_charts_directory() / generation / 'manifest.json'
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return _report_chart_payload(manifest, generation) if isinstance(manifest, dict) else None
-
-
-def list_persisted_report_chart_sets() -> list[dict[str, Any]]:
-    """List valid saved chart sets, newest first, after migrating the old layout."""
-    _migrate_report_charts_root()
-    _migrate_legacy_report_charts()
-    directory = report_charts_directory()
-    if not directory.is_dir():
-        return []
-    sets: list[dict[str, Any]] = []
-    for child in directory.iterdir():
-        if not child.is_dir() or not _valid_report_chart_generation(child.name):
-            continue
-        payload = load_persisted_report_charts(child.name)
-        if payload:
-            sets.append({
-                'generation': child.name,
-                'template': str(payload['template']),
-                'technology': str(payload.get('technology') or ''),
-                'scope': str(payload['scope']),
-                'dataset_counts': payload['dataset_counts'],
-                'generated_at': str(payload['generated_at']),
-            })
-    return sorted(sets, key=lambda item: (item['generated_at'], item['generation']), reverse=True)
-
-
-def _load_reusable_chart_set_assets(
-    directory: Path | None, chart_entries: list[Any], generate_tooltips: bool,
-) -> dict[int, tuple[bytes, list[dict[str, Any]] | None]]:
-    """Return only complete, deterministic partial Chart Set assets."""
-    if directory is None or not directory.is_dir() or (directory / 'manifest.json').exists():
-        return {}
-    reusable: dict[int, tuple[bytes, list[dict[str, Any]] | None]] = {}
-    for order, _entry in enumerate(chart_entries):
-        image_path = directory / f'chart-{order + 1:03d}.png'
-        try:
-            with Image.open(image_path) as image:
-                if image.format != 'PNG':
-                    continue
-                image.verify()
-            image_bytes = image_path.read_bytes()
-        except (OSError, ValueError, SyntaxError):
-            image_path.unlink(missing_ok=True)
-            continue
-        hover_targets: list[dict[str, Any]] | None = None
-        hover_path = directory / f'chart-{order + 1:03d}.hover.json'
-        if generate_tooltips:
-            try:
-                loaded = json.loads(hover_path.read_text(encoding='utf-8'))
-                if isinstance(loaded, list):
-                    hover_targets = loaded
-                else:
-                    hover_path.unlink(missing_ok=True)
-                    continue
-            except (OSError, json.JSONDecodeError):
-                hover_path.unlink(missing_ok=True)
-                continue
-        reusable[order] = (image_bytes, hover_targets)
-    return reusable
-
-
-def persist_report_charts(
-    template_name: str,
-    scope: str,
-    rendered_charts: Iterable[tuple[dict[str, Any], bytes]],
-    dataset_counts: dict[str, int],
-    output_dir: Path | None = None,
-    before_publish: Callable[[str], None] | None = None,
-    generate_tooltips: bool = True,
-    technology: str = '',
-    resume_generation: str | None = None,
-) -> dict[str, Any]:
-    """Persist a new timestamped Chart Set directly in its final directory."""
-    _migrate_report_charts_root(output_dir)
-    destination = report_charts_directory(output_dir)
-    destination.mkdir(parents=True, exist_ok=True)
-    _migrate_legacy_report_charts(output_dir)
-    # Versions before v0.2.2 could leave hidden staging directories behind
-    # after a worker stopped. Only remove old remnants, since a recent one may
-    # still belong to a worker started by another application process.
-    stale_before = datetime.now().timestamp() - 6 * 60 * 60
-    for child in destination.glob('.report-charts-*'):
-        try:
-            if child.is_dir() and child.stat().st_mtime < stale_before:
-                shutil.rmtree(child, ignore_errors=True)
-        except OSError:
-            continue
-    # Name the chart set with the same clock that renders its generated time.
-    generated_at = datetime.now(configured_display_timezone())
-    generation = generated_at.strftime('%Y%m%d-%H%M%S')
-    suffix = 2
-    target = destination / resume_generation if resume_generation and _valid_report_chart_generation(resume_generation) else destination / generation
-    while target.exists() and not resume_generation:
-        target = destination / f'{generation}-{suffix}'
-        suffix += 1
-    target.mkdir(parents=True, exist_ok=True)
-    (target / 'manifest.json').unlink(missing_ok=True)
-    if before_publish:
-        before_publish(target.name)
-    try:
-        manifest_charts: list[tuple[int, dict[str, Any]]] = []
-        used_indexes: set[int] = set()
-        for fallback_index, (chart, image) in enumerate(rendered_charts, start=1):
-            try:
-                chart_index = int(chart.get('order', fallback_index - 1)) + 1
-            except (TypeError, ValueError):
-                chart_index = fallback_index
-            if chart_index < 1 or chart_index in used_indexes:
-                chart_index = fallback_index
-                while chart_index in used_indexes:
-                    chart_index += 1
-            used_indexes.add(chart_index)
-            file_name = f'chart-{chart_index:03d}.png'
-            (target / file_name).write_bytes(image)
-            hover_targets = chart.get('hover_targets')
-            metadata = {key: value for key, value in chart.items() if key not in {'order', 'hover_targets'}} | {'file': file_name}
-            if isinstance(hover_targets, list):
-                hover_file = f'chart-{chart_index:03d}.hover.json'
-                (target / hover_file).write_text(json.dumps(hover_targets, ensure_ascii=False), encoding='utf-8')
-                metadata['hover_file'] = hover_file
-            manifest_charts.append((chart_index, metadata))
-        manifest_charts.sort(key=lambda item: item[0])
-        manifest = {
-            'template': template_name,
-            'technology': technology.strip().upper(),
-            'scope': scope,
-            'dataset_counts': _report_chart_dataset_counts(dataset_counts),
-            'generation': target.name,
-            'generated_at': generated_at.isoformat(timespec='seconds'),
-            'generate_tooltips': generate_tooltips,
-            'hover_targets_version': HOVER_TARGETS_VERSION,
-            'charts': [chart for _, chart in manifest_charts],
-        }
-        # The manifest is the completion marker consumed by selectors. Write
-        # it last so an in-progress generation is never offered as ready.
-        (target / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
-    except Exception:
-        # Keep per-chart files for a retry; manifest is intentionally absent,
-        # therefore a partial generation is never visible as a Chart Set.
-        (target / 'manifest.json').unlink(missing_ok=True)
-        raise
-    payload = _report_chart_payload(manifest, target.name, output_dir)
-    if payload is None:
-        raise ValueError('Unable to save generated report charts.')
-    return payload
-
-
-@app.get('/ppt-reporting-old/charts/{generation}/{chart_file}')
-def report_chart_image(generation: str, chart_file: str, user: SessionUser = Depends(current_user)) -> FileResponse:
-    if not _valid_report_chart_generation(generation) or not re.fullmatch(r'chart-\d+\.png', chart_file):
-        raise HTTPException(status_code=404, detail='Chart not found.')
-    chart_path = safe_join(report_charts_directory() / generation, chart_file)
-    if not chart_path.is_file():
-        raise HTTPException(status_code=404, detail='Chart not found.')
-    return FileResponse(chart_path, media_type='image/png')
-
-
-@app.get('/ppt-reporting-old/chart-sets/{generation}/download')
-def download_report_chart_set(generation: str, user: SessionUser = Depends(current_user)) -> FileResponse:
-    """Download every PNG belonging to one standalone Chart Set."""
-    if not _valid_report_chart_generation(generation) or load_persisted_report_charts(generation) is None:
-        raise HTTPException(status_code=404, detail='Chart set not found.')
-    directory = safe_join(report_charts_directory(), generation)
-    response = _chart_png_zip_response(directory, f'Chart_Set_{generation}.zip')
-    repository.try_add_log(user.username, 'download_report_chart_set', json.dumps({'generation': generation}))
-    return response
-
-
-@app.get('/api/ppt-reporting-old/chart-sets/{generation}')
-def report_chart_set(generation: str, user: SessionUser = Depends(current_user)) -> JSONResponse:
-    payload = load_persisted_report_charts(generation)
-    if payload is None:
-        raise HTTPException(status_code=404, detail='Chart set not found.')
-    return JSONResponse(payload)
-
-
-def start_bulk_report_deletion(workspace: Workspace, kind: str, username: str) -> dict[str, Any]:
-    """Delete all reports or Chart Sets in a tracked workspace background job."""
-    if kind not in {'reports', 'chart_sets'}:
-        raise ValueError('Unknown bulk deletion type.')
-    job_id = uuid4().hex
-    job = {
-        'id': job_id, 'workspace_id': workspace.id, 'workspace_name': workspace.name,
-        'kind': kind, 'owner': username, 'status': 'queued', 'completed': 0, 'total': 0,
-        'message': 'Waiting to delete generated outputs', 'created_at': datetime.now(timezone.utc).timestamp(),
-    }
-    with BULK_REPORT_DELETION_JOBS_LOCK:
-        BULK_REPORT_DELETION_JOBS[job_id] = job
-
-    def run() -> None:
-        task_repository = Repository(
-            workspace.database_path, global_db_path=repository.global_db_path,
-            workspace_registry_db_path=workspace_registry.registry_path,
-        )
-        def stop_if_cancelled() -> None:
-            with BULK_REPORT_DELETION_JOBS_LOCK:
-                if job.get('cancel_requested'):
-                    raise InterruptedError('Deletion stopped by user.')
-        try:
-            with BULK_REPORT_DELETION_JOBS_LOCK:
-                if job.get('cancel_requested'):
-                    job.update(status='cancelled', message='Deletion stopped by user.', finished_at=datetime.now(timezone.utc).timestamp())
-                    return
-                job.update(
-                    status='processing', message='Preparing generated outputs for deletion',
-                    started_at=datetime.now(timezone.utc).timestamp(),
-                )
-            if kind == 'reports':
-                rows = task_repository.list_report_runs(limit=None)
-                total = len(rows)
-                with BULK_REPORT_DELETION_JOBS_LOCK:
-                    job.update(total=total, message='Deleting PowerPoint reports')
-                for index, row in enumerate(rows, start=1):
-                    stop_if_cancelled()
-                    deleted = task_repository.delete_report_run(int(row['id']))
-                    if deleted:
-                        _delete_report_job_artifacts(deleted, workspace.output_dir)
-                    with BULK_REPORT_DELETION_JOBS_LOCK:
-                        job.update(completed=index)
-                reports_root = module_output_dir(workspace.output_dir, REPORTS_OLD_FOLDER)
-                if reports_root.is_dir():
-                    shutil.rmtree(reports_root)
-                reports_root.mkdir(parents=True, exist_ok=True)
-                task_repository.add_log(username, 'delete_all_report_jobs', json.dumps({'count': total}))
-            else:
-                charts_root = report_charts_directory(workspace.output_dir)
-                rows = task_repository.list_report_chart_jobs(limit=None)
-                chart_directories = list(charts_root.iterdir()) if charts_root.is_dir() else []
-                total = max(len(rows), len(chart_directories))
-                with BULK_REPORT_DELETION_JOBS_LOCK:
-                    job.update(total=total, message='Deleting Chart Sets')
-                stop_if_cancelled()
-                if charts_root.is_dir():
-                    shutil.rmtree(charts_root)
-                charts_root.mkdir(parents=True, exist_ok=True)
-                for index, row in enumerate(rows, start=1):
-                    stop_if_cancelled()
-                    task_repository.delete_report_chart_job(int(row['id']))
-                    with BULK_REPORT_DELETION_JOBS_LOCK:
-                        job.update(completed=index)
-                task_repository.add_log(username, 'delete_all_report_chart_sets', json.dumps({'count': len(chart_directories), 'jobs': len(rows)}))
-            invalidate_workspace_size_cache(workspace.database_path.parent)
-            with BULK_REPORT_DELETION_JOBS_LOCK:
-                job.update(status='ready', completed=max(int(job['completed']), int(job['total'])), message='Generated outputs deleted', finished_at=datetime.now(timezone.utc).timestamp())
-        except InterruptedError as exc:
-            with BULK_REPORT_DELETION_JOBS_LOCK:
-                job.update(status='cancelled', message=str(exc), finished_at=datetime.now(timezone.utc).timestamp())
-        except Exception as exc:
-            with BULK_REPORT_DELETION_JOBS_LOCK:
-                job.update(status='failed', error=str(exc), message='Bulk deletion failed', finished_at=datetime.now(timezone.utc).timestamp())
-
-    submit_background_task(run)
-    return job
-
-
-@app.post('/ppt-reporting-old/chart-sets/delete-all')
-def delete_all_report_chart_sets(user: SessionUser = Depends(admin_user)) -> JSONResponse:
-    """Remove every standalone Chart Set and every Charts Job row."""
-    if not active_workspace:
-        raise HTTPException(status_code=409, detail='Open a workspace before deleting Chart Sets.')
-    job = start_bulk_report_deletion(active_workspace, 'chart_sets', user.username)
-    return JSONResponse({'job_id': job['id'], 'status': job['status']}, status_code=status.HTTP_202_ACCEPTED)
-
-
-@app.get('/api/ppt-reporting-old/bulk-deletions/{job_id}')
-def bulk_report_deletion_status(job_id: str, user: SessionUser = Depends(current_user)) -> JSONResponse:
-    """Return the state of one bulk Reports or Chart Sets deletion job."""
-    with BULK_REPORT_DELETION_JOBS_LOCK:
-        job = dict(BULK_REPORT_DELETION_JOBS.get(job_id) or {})
-    if not job or job.get('owner') != user.username:
-        raise HTTPException(status_code=404, detail='Bulk deletion job not found.')
-    require_workspace_access(user, str(job['workspace_id']))
-    return JSONResponse({
-        key: value for key, value in job.items()
-        if key not in {'owner'}
-    })
-
-
-@app.post('/ppt-reporting-old/chart-sets/{generation}/delete')
-def delete_report_chart_set(generation: str, user: SessionUser = Depends(admin_user)) -> JSONResponse:
-    if not _valid_report_chart_generation(generation):
-        raise HTTPException(status_code=404, detail='Chart set not found.')
-    directory = safe_join(report_charts_directory(), generation)
-    if not directory.is_dir():
-        raise HTTPException(status_code=404, detail='Chart set not found.')
-    shutil.rmtree(directory)
-    removed_jobs = repository.delete_report_chart_jobs_for_generations([generation])
-    invalidate_workspace_size_cache()
-    repository.add_log(user.username, 'delete_report_chart_set', json.dumps({'generation': generation, 'jobs': removed_jobs}))
-    return JSONResponse({'chart_sets': list_persisted_report_chart_sets()})
-
-
-@app.get('/api/ppt-reporting-old/chart-jobs')
-def report_chart_jobs(user: SessionUser = Depends(current_user)) -> JSONResponse:
-    return JSONResponse({'jobs': [serialize_report_chart_job(row) for row in repository.list_report_chart_jobs(limit=None)]})
-
-
-@app.post('/ppt-reporting-old/chart-jobs/{job_id}/delete')
-def delete_report_chart_job(job_id: int, user: SessionUser = Depends(admin_user)) -> JSONResponse:
-    job = repository.get_report_chart_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail='Report Charts job not found.')
-    if str(job['status'] or '').casefold() == 'processing':
-        raise HTTPException(status_code=409, detail='A running Report Charts job cannot be deleted.')
-    generation = str(job['generation'] or '')
-    if generation and _valid_report_chart_generation(generation):
-        directory = safe_join(report_charts_directory(), generation)
-        if directory.is_dir():
-            shutil.rmtree(directory)
-    repository.delete_report_chart_job(job_id)
-    invalidate_workspace_size_cache()
-    repository.add_log(user.username, 'delete_report_chart_job', json.dumps({'job_id': job_id}))
-    return JSONResponse({'deleted': job_id, 'generation': generation or None})
-
-
-@app.post('/ppt-reporting-old/chart-jobs/{job_id}/stop')
-def stop_report_chart_job(job_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
-    if not repository.stop_report_chart_job(job_id):
-        raise HTTPException(status_code=409, detail='Only processing Chart Set jobs can be stopped.')
-    repository.add_log(user.username, 'stop_report_chart_job', json.dumps({'job_id': job_id}))
-    return JSONResponse({'stopped': job_id})
-
-
-@app.post('/ppt-reporting-old/chart-jobs/{job_id}/retry')
-def retry_report_chart_job(job_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
-    if not active_workspace:
-        raise HTTPException(status_code=409, detail='Open a workspace before retrying Report Charts.')
-    previous = repository.get_report_chart_job(job_id)
-    if not previous:
-        raise HTTPException(status_code=404, detail='Report Charts job not found.')
-    previous_status = str(previous['status'] or '').casefold()
-    if previous_status not in {'failed', 'stopped', 'ready'}:
-        raise HTTPException(status_code=400, detail='Only failed, stopped or ready Report Charts jobs can be relaunched.')
-    try:
-        dataset_ids = json.loads(previous['dataset_ids_json'] or '{}')
-        normalized_ids = {kind: [int(value) for value in dataset_ids.get(kind, [])] for kind in ('data', 'voice', 'speech')}
-        if not any(normalized_ids.values()):
-            raise HTTPException(status_code=400, detail='The Chart Set job does not contain any selected CDR.')
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=400, detail='The Chart Set job does not contain a valid dataset selection.') from exc
-    technology = str(previous['technology'] or '').strip().lower()
-    if technology not in TEMPLATE_NAMES:
-        raise HTTPException(status_code=400, detail='The Chart Set job has an unsupported technology.')
-    template_name = str(previous['template_name'] or '')
-    if not any(option['name'] == template_name for option in report_catalogue_options()):
-        raise HTTPException(status_code=400, detail='The Report Template used by this Chart Set is no longer available.')
-    generation = str(previous['generation'] or '')
-    if previous_status == 'ready' and generation and _valid_report_chart_generation(generation):
-        # A completed job owns this exact Chart Set. Remove it before reuse so
-        # a relaunch never retains PNGs or a manifest from the prior run.
-        shutil.rmtree(safe_join(report_charts_directory(), generation), ignore_errors=True)
-        invalidate_workspace_size_cache()
-    if not repository.retry_report_chart_job(job_id):
-        raise HTTPException(status_code=409, detail='This Chart Set job is no longer available for retry.')
-    task_repository = Repository(Path(repository.db_path), repository.global_db_path)
-    output_dir = Path(settings.output_dir)
-    generate_tooltips = bool(previous['generate_tooltips'])
-    submit_background_task(
-        _run_report_chart_job, job_id, task_repository, normalized_ids, technology,
-        str(previous['scope'] or 'single'), template_name, output_dir, user.username, generate_tooltips, str(previous['vendor_comparison'] or 'operator_vendor'),
-    )
-    repository.add_log(user.username, 'retry_report_chart_job', json.dumps({
-        'job_id': job_id, 'reused': True, 'relaunched': previous_status == 'ready',
-        'generate_tooltips': generate_tooltips,
-    }))
-    return JSONResponse({'job_id': job_id, 'status': 'queued'}, status_code=status.HTTP_202_ACCEPTED)
 
 
 class SavedFilterRequest(BaseModel):
@@ -21933,189 +20072,11 @@ async def scoring_report_configurations_import(
     return scoring_report_state_with_creators(task_repository, state)
 
 
-@app.get('/api/ppt-reporting-old/jobs')
-def reporting_jobs(user: SessionUser = Depends(current_user)) -> JSONResponse:
-    return JSONResponse({'jobs': [serialize_report_job(row) for row in repository.list_report_runs(limit=None)]})
-
-
-def _report_job_file(report_id: int) -> tuple[dict[str, Any], Path]:
-    report = repository.get_report_run(report_id)
-    if not report:
-        raise HTTPException(status_code=404, detail='Report job not found.')
-    payload = serialize_report_job(report)
-    if payload['status'] != 'ready':
-        raise HTTPException(status_code=409, detail='The report is still being generated.')
-    path = _report_job_output_path(report)
-    if path is None:
-        raise HTTPException(status_code=404, detail='The generated report file is no longer available.')
-    return payload, path
-
-
-@app.get('/ppt-reporting-old/jobs/{report_id}/download')
-def download_report_job(report_id: int, user: SessionUser = Depends(current_user)) -> FileResponse:
-    payload, path = _report_job_file(report_id)
-    repository.try_add_log(user.username, 'download_report_job', json.dumps({
-        'report_id': report_id, 'file': payload['report_name'],
-    }))
-    return FileResponse(path, filename=payload['report_name'], media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation')
-
-
-@app.get('/ppt-reporting-old/jobs/{report_id}/open')
-def open_report_job(report_id: int, user: SessionUser = Depends(current_user)) -> FileResponse:
-    payload, path = _report_job_file(report_id)
-    return FileResponse(path, filename=payload['report_name'], media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', content_disposition_type='inline')
-
-
-@app.get('/api/ppt-reporting-old/jobs/{report_id}/charts')
-def report_job_charts(report_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
-    report = repository.get_report_run(report_id)
-    payload = _report_job_charts_payload(report) if report else None
-    if payload is None:
-        raise HTTPException(status_code=404, detail='Rendered report charts are not available.')
-    return JSONResponse(payload)
-
-
-@app.get('/ppt-reporting-old/jobs/{report_id}/charts/download')
-def download_report_job_charts(report_id: int, user: SessionUser = Depends(current_user)) -> FileResponse:
-    """Download the PNG charts rendered while generating one PowerPoint report."""
-    report = repository.get_report_run(report_id)
-    directory = _report_job_charts_directory(report) if report else None
-    if directory is None or _report_job_charts_payload(report) is None:
-        raise HTTPException(status_code=404, detail='Rendered report charts are not available.')
-    report_name = Path(str(report['output_file'] or 'report')).stem
-    response = _chart_png_zip_response(directory, f'{report_name}_charts.zip')
-    repository.try_add_log(user.username, 'download_report_job_charts', json.dumps({'report_id': report_id}))
-    return response
-
-
-@app.get('/ppt-reporting-old/jobs/{report_id}/charts/{chart_file}')
-def report_job_chart_image(report_id: int, chart_file: str, user: SessionUser = Depends(current_user)) -> FileResponse:
-    if not re.fullmatch(r'slide-\d+-chart-\d+\.png', chart_file):
-        raise HTTPException(status_code=404, detail='Chart not found.')
-    report = repository.get_report_run(report_id)
-    directory = _report_job_charts_directory(report) if report else None
-    if directory is None:
-        raise HTTPException(status_code=404, detail='Chart not found.')
-    chart_path = safe_join(directory, chart_file)
-    if not chart_path.is_file():
-        raise HTTPException(status_code=404, detail='Chart not found.')
-    return FileResponse(chart_path, media_type='image/png')
-
-
-@app.post('/ppt-reporting-old/jobs/{report_id}/charts/delete')
-def delete_report_job_charts(report_id: int, user: SessionUser = Depends(admin_user)) -> JSONResponse:
-    """Delete only the rendered-chart folder belonging to one report."""
-    report = repository.get_report_run(report_id)
-    directory = _report_job_charts_directory(report) if report else None
-    if directory is None:
-        raise HTTPException(status_code=404, detail='Rendered report charts are not available.')
-    shutil.rmtree(directory)
-    invalidate_workspace_size_cache()
-    repository.add_log(user.username, 'delete_report_job_charts', json.dumps({'report_id': report_id}))
-    return JSONResponse({'deleted': report_id})
-
-
-@app.post('/ppt-reporting-old/jobs/{report_id}/delete')
-def delete_report_job(report_id: int, user: SessionUser = Depends(admin_user)) -> JSONResponse:
-    report = repository.delete_report_run(report_id)
-    if not report:
-        raise HTTPException(status_code=404, detail='Report job not found.')
-    _delete_report_job_artifacts(report)
-    invalidate_workspace_size_cache()
-    repository.try_add_log(user.username, 'delete_report_job', json.dumps({
-        'report_id': report_id, 'file': report['output_file'] or '',
-    }))
-    return JSONResponse({'deleted': report_id})
-
-
-@app.post('/ppt-reporting-old/jobs/{report_id}/stop')
-def stop_report_job(report_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
-    if not repository.stop_report_job(report_id):
-        raise HTTPException(status_code=409, detail='Only processing report jobs can be stopped.')
-    repository.add_log(user.username, 'stop_report_job', json.dumps({'report_id': report_id}))
-    return JSONResponse({'stopped': report_id})
-
-
-@app.post('/ppt-reporting-old/jobs/delete-all')
-def delete_all_report_jobs(user: SessionUser = Depends(admin_user)) -> JSONResponse:
-    """Delete every persisted PowerPoint report job and its generated file."""
-    if not active_workspace:
-        raise HTTPException(status_code=409, detail='Open a workspace before deleting reports.')
-    job = start_bulk_report_deletion(active_workspace, 'reports', user.username)
-    return JSONResponse({'job_id': job['id'], 'status': job['status']}, status_code=status.HTTP_202_ACCEPTED)
-
-
-@app.post('/ppt-reporting-old/jobs/{report_id}/retry')
-def retry_report_job(report_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
-    if not active_workspace:
-        raise HTTPException(status_code=409, detail='Open a workspace before retrying a report.')
-    previous = repository.get_report_run(report_id)
-    if not previous:
-        raise HTTPException(status_code=404, detail='Report job not found.')
-    if str(previous['status'] or '').casefold() not in {'failed', 'stopped', 'ready'}:
-        raise HTTPException(status_code=400, detail='Only failed, stopped or ready report jobs can be relaunched.')
-    try:
-        dataset_ids = json.loads(previous['dataset_ids_json'] or '{}')
-        selected = {
-            kind: _optional_reporting_datasets([int(value) for value in dataset_ids.get(kind, [])], kind)
-            for kind in ('data', 'voice', 'speech')
-        }
-        if not any(selected.values()):
-            raise HTTPException(status_code=400, detail='The report does not contain any selected CDR.')
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=400, detail='The report does not contain a valid dataset selection.') from exc
-    technology = str(previous['technology'] or '').strip().lower()
-    if technology not in TEMPLATE_NAMES:
-        raise HTTPException(status_code=400, detail='The report has an unsupported technology.')
-    multivendor = str(previous['scope'] or '').casefold() == 'multivendor'
-    if multivendor and not all(dataset.get('vendor_mapping_applied') for datasets in selected.values() for dataset in datasets):
-        raise HTTPException(status_code=400, detail='Retry requires every selected CDR to retain its Workspace Vendor mapping.')
-    template_option = next(
-        (option for option in report_catalogue_options() if option['name'] == str(previous['template_name'] or '')),
-        None,
-    )
-    if not template_option:
-        raise HTTPException(status_code=400, detail='The Report Template used by this report is no longer available.')
-    try:
-        catalog_entries = load_template_catalogue(template_option['content'], nr_mode=technology)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f'Unable to load the selected {technology.upper()} report template: {exc}') from exc
-    file_name = Path(str(previous['output_file'] or '')).name
-    if not file_name:
-        raise HTTPException(status_code=400, detail='The report does not have a valid output file name.')
-    destination = safe_join(_report_job_directory(file_name), file_name)
-    if str(previous['status'] or '').casefold() == 'ready':
-        # A deliberate relaunch of a completed report starts from scratch.
-        _delete_report_job_artifacts(previous)
-    else:
-        # Preserve only deterministic chart artifacts. render_cdr_report
-        # validates every reused PNG/JSON and discards stale or corrupt files.
-        destination.unlink(missing_ok=True)
-        (destination.parent / 'report-charts' / 'manifest.json').unlink(missing_ok=True)
-    invalidate_workspace_size_cache()
-    if not repository.retry_report_job(report_id):
-        raise HTTPException(status_code=409, detail='This report job is no longer available for relaunch.')
-    task_repository = Repository(Path(repository.db_path))
-    generate_tooltips = bool(previous['generate_tooltips'])
-    submit_background_task(
-        _run_netcheck_report_job, report_id, task_repository, selected, technology, multivendor,
-        catalog_entries, settings.powerpoint_templates_dir / TEMPLATE_NAMES[technology], destination,
-        user.username, template_option['name'], generate_tooltips, str(previous['vendor_comparison'] or 'operator_vendor'),
-    )
-    repository.add_log(user.username, 'retry_report_job', json.dumps({
-        'report_id': report_id, 'reused': True, 'generate_tooltips': generate_tooltips,
-    }))
-    return JSONResponse({'job_id': report_id, 'status': 'queued'}, status_code=status.HTTP_202_ACCEPTED)
-
-
-@app.api_route('/e2e-reporting', methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], include_in_schema=False)
-@app.api_route('/e2e-reporting/{legacy_path:path}', methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], include_in_schema=False)
-def legacy_reporting_redirect(request: Request, legacy_path: str = '') -> RedirectResponse:
-    """Keep E2E Reporting bookmarks from earlier versions working: that module is now PPT Reporting (old)."""
-    destination = '/ppt-reporting-old' + (f'/{legacy_path}' if legacy_path else '')
-    if request.url.query:
-        destination += f'?{request.url.query}'
-    return RedirectResponse(destination, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+@app.get('/ppt-reporting-old', include_in_schema=False)
+@app.get('/e2e-reporting', include_in_schema=False)
+def legacy_reporting_redirect() -> RedirectResponse:
+    """Keep the bookmarks of PPT Reporting (old), formerly E2E Reporting, working: PPT Designer makes its reports now."""
+    return RedirectResponse('/ppt-designer', status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @app.api_route('/ppt-dashboards', methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], include_in_schema=False)
@@ -24331,7 +22292,7 @@ def reset_application(username: str) -> None:
             QUERY_BUILDER_JOBS, ACTIVE_DATASET_PROCESSING, QUEUED_DATASET_FUTURES, ACTIVE_DATASET_WORKERS,
             INITIALIZED_WORKSPACE_DATABASES, CATALOGUE_LAYOUT_NAMES_CACHE, EXPORT_JOBS, IMPORT_UPLOADS, IMPORT_JOBS,
             AUTO_CALCULATED_FIELD_JOBS, WORKSPACE_DIMENSION_MATERIALIZATION_THREADS, TRANSFER_JOBS, TRANSFER_OFFERS,
-            WORKSPACE_LIFECYCLE_JOBS, WORKSPACE_DUPLICATION_STOP_REQUESTS, BULK_REPORT_DELETION_JOBS,
+            WORKSPACE_LIFECYCLE_JOBS, WORKSPACE_DUPLICATION_STOP_REQUESTS,
             MANUAL_BACKUP_JOBS, SCHEDULED_BACKUP_JOBS, MANUAL_RESTORE_JOBS, ACTIVE_TRANSFER_IMPORTS,
         ):
             registry.clear()
@@ -25314,7 +23275,8 @@ def list_admin_notices(user: SessionUser = Depends(super_admin_user)) -> JSONRes
         'tickets': [{
             'key': item['key'], 'id': int(item['id']), 'title': item['title'], 'priority': item['priority'],
             'type': TICKET_TYPES.get(item['ticket_type'], TICKET_TYPES[DEFAULT_TICKET_TYPE]),
-            'priority_label': PRIORITIES.get(item['priority'], ''), 'module': modules.get(item['module'], item['module'] or 'General'),
+            'priority_label': PRIORITIES.get(item['priority'], ''),
+            'module': modules.get(item['module']) or RETIRED_MODULES.get(item['module']) or item['module'] or 'General',
             'reported_by': people.get(item['created_by'], {}).get('name', item['created_by']),
             'reported_at': format_local_timestamp(item['created_at'])[:16],
         } for item in notices['tickets']],

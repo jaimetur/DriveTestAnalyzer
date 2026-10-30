@@ -1,10 +1,11 @@
 """Stored names of the modules renamed to PPT Designer and PPT Reporting (old).
 
 E2E Dashboards became PPT Dashboards, and PPT Dashboards became PPT Designer, whose Dashboards are called Designs;
-Reporting (old) became PPT Reporting (old). The Designs of each workspace, their PPT jobs, drafts and pictures, their
-App Events and the Interface Settings of the main modules are stored under the module names, so they are renamed once
-in the application database and in every workspace database (also one restored or transferred from a server that still
-used the former names).
+Reporting (old) became PPT Reporting (old), a module the tool no longer has (the settings stored under its former names
+are renamed too, and then left out like those of any module that no longer exists). The Designs of each workspace, their
+PPT jobs, drafts and pictures, their App Events and the Interface Settings of the main modules are stored under the module
+names, so they are renamed once in the application database and in every workspace database (also one restored or
+transferred from a server that still used the former names).
 """
 from __future__ import annotations
 

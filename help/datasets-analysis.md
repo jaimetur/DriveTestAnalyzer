@@ -121,7 +121,7 @@ Word exports contain the same report as PowerPoint, one landscape page per slide
 
 **Theme**, at the start of the floating section bar of the page (always in sight while reading it), colours the page (its charts, chart and metric cards, statistic tiles, table headers and alternate rows, labels and accents) and the PowerPoint and Word exports with the themes of [Scoring & GAP Analysis](scoring-gap-analysis.md) (**Ericsson** by default, **NetCheck**, **Umlaut**, **Vodafone**, **Midnight**, **Paper** and **Heatmap**): the CDF curves and the bars without an Operator or Vendor colour, the chart cards, the metric cards, the table headers and alternate rows, and the titles and subtitles of the content slides in the title style of the theme (the title slide and the closing slide keep the template look); **Midnight** gives the content slides a night-blue background with the logos in white and every table, card and chart on them dark. Each user keeps one theme per workspace for every themed module (choosing it here chooses it in Scoring & GAP Analysis, Network Insights and PPT Designer too); changing it recolours the page at once, and it is kept for the next visit and the exports (also the summaries of [Reporting](reporting.md) artifacts), and is recorded in the App Events log.
 
-Analysis filters do not overwrite stored dataset rows. Analysis filters do not overwrite stored dataset rows. For a complete template-driven report, use PPT Designer or the restricted PPT Reporting (old) workflow.
+Analysis filters do not overwrite stored dataset rows. Analysis filters do not overwrite stored dataset rows. For a complete template-driven report, use PPT Designer.
 
 ## Example investigation
 

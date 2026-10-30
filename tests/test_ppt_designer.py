@@ -120,7 +120,6 @@ def test_design_library_can_change_nr_mode_and_template_with_confirmation_contro
 def test_template_visual_controls_are_available_for_every_chart_type():
     root = Path(__file__).parents[1]
     app_script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
-    reporting_template = (root / 'src/web_interface/templates/reporting.html').read_text(encoding='utf-8')
     chart_script = (root / 'src/web_interface/static/js/canvas_charts.js').read_text(encoding='utf-8')
 
     assert 'const syncConditionalVisualCells = (row, {clear = true} = {}) =>' in app_script
@@ -136,10 +135,10 @@ def test_template_visual_controls_are_available_for_every_chart_type():
     assert "axis_y_range: true" in app_script
     assert "label_position: true" in app_script
     assert "if (control.name === 'chart_type') syncConditionalVisualControls();" in app_script
-    assert "['axis_x_range', 'Axis X Range']" in reporting_template
-    assert "['label_position', 'Label Position']" in reporting_template
-    assert "['label_format', 'Label Format']" in reporting_template
-    assert "['legend_format', 'Legend Format']" in reporting_template
+    assert "['axis_x_range', 'Axis X Range']" in app_script
+    assert "['label_position', 'Label Position']" in app_script
+    assert "['label_format', 'Label Format']" in app_script
+    assert "['legend_format', 'Legend Format']" in app_script
     assert "['exclude_null_empty', 'Exclude Null/Empty']" in app_script
     assert "['exclude_zero', 'Exclude Zero']" in app_script
     assert 'function drawConfiguredPointLabel(' in chart_script
@@ -1217,7 +1216,7 @@ def test_design_editing_controls_match_workspace_editor_roles(client):
             assert client.post('/api/ppt-designer/ppt-jobs/delete-all').status_code == 200
 
 
-def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
+def test_designs_lifecycle_and_layout(client):
     payload = setup_design(client)
     without_starter_designs()
     page = client.get('/ppt-designer')
@@ -1225,12 +1224,8 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert re.search(r'data-authenticated-session="[^"]+"', page.text)
     assert 'id="page-panel-navigator"' in page.text
     assert 'Modules &amp; Sections' in page.text and 'class="module-tree-sections"' in page.text
-    assert page.text.index('>CDR Analysis<') < page.text.index('>PPT Designer<') < page.text.index('>PPT Reporting (old)<') < page.text.index('>Network Insights<')
-    assert client.get('/ppt-reporting-old').status_code == 200
-    # Bookmarks from earlier versions keep opening the module now called PPT Reporting (old).
-    legacy_reporting = client.get('/e2e-reporting/jobs?x=1', follow_redirects=False)
-    assert legacy_reporting.status_code == 307
-    assert legacy_reporting.headers['location'] == '/ppt-reporting-old/jobs?x=1'
+    assert page.text.index('>CDR Analysis<') < page.text.index('>PPT Designer<') < page.text.index('>Network Insights<')
+    assert '>PPT Reporting (old)<' not in page.text
     assert 'id="ds-nr-mode"' in page.text
     assert 'id="ds-designs-body"' in page.text
     assert '>PPT Generation Jobs<' in page.text
@@ -1417,9 +1412,6 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert "navigator.querySelectorAll('a[href]').forEach((link) => link.addEventListener('click', () => setOpen(false)));" in app_script
     assert 'setupModuleNavigator' not in app_script
     assert 'setupPagePanelNavigator();' in app_script
-    reporting_template = (Path(__file__).parents[1] / 'src/web_interface/templates/reporting.html').read_text(encoding='utf-8')
-    assert 'id="report-charts-panel"' in reporting_template
-    assert "document.dispatchEvent(new CustomEvent('page-panel-navigation:update'));" in reporting_template
     design_template = (Path(__file__).parents[1] / 'src/web_interface/templates/ppt_designer.html').read_text(encoding='utf-8')
     assert design_template.index('id="ds-apply-filters"') < design_template.index('id="ds-generate-ppt"')
     assert 'id="ds-ppt-charts-panel" open data-panel-state-key="ppt-designer:ppt-charts" hidden' in design_template
@@ -1453,7 +1445,7 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert '.page-panel-navigator-tab{' in app_styles
     assert '.page-panel-navigator[data-theme="datasets"]' in app_styles
     assert '.page-panel-navigator[data-theme="designs"]' in app_styles
-    assert '.page-panel-navigator[data-theme="reporting"]' in app_styles
+    assert '.page-panel-navigator[data-theme="reporting"]' not in app_styles
     assert '.page-panel-navigator .page-panel-main-menu{' in app_styles
     assert '.preview-column-filter-menu { position: fixed; z-index: 10010;' in app_styles
     assert "\\s*×\\s*|\\s+\\bx\\b\\s+" in app_script
@@ -2041,7 +2033,8 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     # Charts and their images are kept in memory only.
     assert not (Path(core.repository.db_path).parent / '.design-data-cache').exists()
     entry = core.load_template_catalogue(next(row['content'] for row in core.repository.list_report_templates() if row['name'] == 'Design test'))[0]
-    assert not core.is_empty_catalog_chart(image.content, entry)
+    from src.modules.cdr_reporting import is_empty_catalog_chart
+    assert not is_empty_catalog_chart(image.content, entry)
     data = client.get(f'/api/ppt-designer/data/{token}/0').json()
     assert data['total'] == 3
     assert data['page_size'] == 100
@@ -2057,45 +2050,54 @@ def test_designs_lifecycle_and_layout(client, ppt_reporting_old):
     assert client.get('/api/ppt-designer').json() == {}
 
 
-def test_ppt_reporting_old_is_in_no_modules_profile_by_default(client):
-    client.post('/login', data={'username': 'admin', 'password': 'admin123'})
+def test_ppt_reporting_old_is_no_longer_a_module(client):
+    # Not even a super-admin, who sees every module, has it: its former addresses open PPT Designer.
+    client.post('/login', data={'username': 'super', 'password': 'super123'})
     workspace_page = client.get('/workspace')
     assert workspace_page.status_code == 200
     assert 'href="/ppt-reporting-old"' not in workspace_page.text
     assert 'PPT Reporting (old)' not in workspace_page.text
-    assert client.get('/ppt-reporting-old').status_code == 403
-    assert client.get('/api/ppt-reporting-old/jobs').status_code == 403
-
-    token = 'e2e-reporting-former-user'
-    core.SESSIONS[token] = core.SessionUser(username='EJAITUR', role='user')
-    client.cookies.set(core.SESSION_COOKIE, token)
-    assert client.get('/ppt-reporting-old').status_code == 403
-    assert 'href="/ppt-reporting-old"' not in client.get('/workspace').text
-    assert client.get('/api/ppt-reporting-old/jobs').status_code == 403
-    # Super-admins see every module, also those in no profile.
-    token = 'e2e-reporting-super-admin'
-    core.SESSIONS[token] = core.SessionUser(username='someone', role='super-admin')
-    client.cookies.set(core.SESSION_COOKIE, token)
-    assert client.get('/ppt-reporting-old').status_code == 200
-    assert 'href="/ppt-reporting-old"' in client.get('/workspace').text
+    for former in ('/ppt-reporting-old', '/e2e-reporting'):
+        response = client.get(former, follow_redirects=False)
+        assert response.status_code == 307
+        assert response.headers['location'] == '/ppt-designer'
+    assert client.get('/api/ppt-reporting-old/jobs').status_code == 404
+    assert 'ppt-reporting-old' not in core.FEATURE_KEYS
+    # A Modules Profile that still names it (saved before, or from a package of before) keeps only the other modules.
+    profile_id = core.repository.save_modules_profile(None, 'Legacy reporting', '', ['workspace', 'ppt-reporting-old'])
+    profile = next(item for item in core.repository.list_modules_profiles() if item['id'] == profile_id)
+    assert profile['modules'] == ['workspace']
+    assert 'value="ppt-reporting-old"' not in client.get('/super-admin').text
 
 
-def test_ppt_reporting_old_access_follows_the_modules_profile(client):
-    core.repository.create_user('analyst', 'analyst123', 'user-viewer')
-    analyst_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'analyst')
-    core.repository.set_user_workspace_access(analyst_id, [core.active_workspace.id])
-    client.post('/login', data={'username': 'analyst', 'password': 'analyst123'})
-    assert client.get('/ppt-reporting-old').status_code == 403
-    assert 'href="/ppt-reporting-old"' not in client.get('/workspace').text
-    client.cookies.clear()
-    client.post('/login', data={'username': 'super', 'password': 'super123'})
-    assert client.post('/admin/modules-profiles', data={
-        'name': 'Legacy reporting', 'modules': ['workspace', 'ppt-reporting-old'], 'member_ids': [analyst_id],
-    }, follow_redirects=False).status_code == 303
-    client.cookies.clear()
-    client.post('/login', data={'username': 'analyst', 'password': 'analyst123'})
-    assert client.get('/ppt-reporting-old').status_code == 200
-    assert 'href="/ppt-reporting-old"' in client.get('/workspace').text
+def test_a_workspace_of_before_drops_the_jobs_of_ppt_reporting_old_and_keeps_its_documents(tmp_path):
+    import sqlite3
+
+    from src.modules.repository import Repository
+
+    database = tmp_path / 'workspace.db'
+    document = tmp_path / 'output' / 'reports' / 'reports-old' / 'report' / 'report.pptx'
+    document.parent.mkdir(parents=True)
+    document.write_bytes(b'report')
+    with sqlite3.connect(database) as connection:
+        connection.execute('CREATE TABLE generated_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_type TEXT, output_path TEXT)')
+        connection.execute("INSERT INTO generated_jobs (job_type, output_path) VALUES ('report', ?)", (str(document),))
+        # Workspaces older still kept them in two tables.
+        connection.execute('CREATE TABLE report_chart_jobs (id INTEGER PRIMARY KEY, generation TEXT)')
+    repository = Repository(database)
+    repository.initialize()
+    tables = set(repository.list_database_tables())
+    assert not {'generated_jobs', 'report_runs', 'report_chart_jobs'} & tables
+    assert 'datasets' in tables and document.read_bytes() == b'report'
+    with sqlite3.connect(database) as connection:
+        events = connection.execute("SELECT username, details FROM audit_logs WHERE action = 'retired_report_jobs_dropped'").fetchall()
+    assert [(username, json.loads(details)['tables']) for username, details in events] == [
+        ('system', {'generated_jobs': 1, 'report_chart_jobs': 0})]
+    # Opening it again leaves it as it is.
+    repository.initialize()
+    assert 'generated_jobs' not in repository.list_database_tables()
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM audit_logs WHERE action = 'retired_report_jobs_dropped'").fetchone()[0] == 1
 
 
 def test_ready_design_exports_ppt_and_persistent_chart_files(client, monkeypatch):

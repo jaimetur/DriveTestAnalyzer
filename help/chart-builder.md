@@ -88,4 +88,4 @@ Format · Legend: Bottom
 - If no source appears, process a dataset and select its matching CDR Type.
 - If a chart is empty, inspect filtered data and verify KPI, technology and filter values.
 
-Use PPT Reporting (old) for persistent Chart Sets and PPT Templates Editor for reusable definitions.
+Use [PPT Designer](ppt-designer.md) to keep charts in a Design and generate its PowerPoint, and PPT Templates Editor for reusable definitions.

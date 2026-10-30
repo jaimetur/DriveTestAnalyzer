@@ -290,7 +290,7 @@ The following ingestion fields are part of the current analytics model. They pro
 | `Technology_Secondary` | First available `L2_Call_Mode_B`, `RAT_B`, `Recording_Technology` or `RAT_Timeline`. |
 | `Attempt_Count` | Integer `1` per row, used to count categorical attempts when no numeric KPI exists. |
 
-Analytics uses the success/failure/call-quality flags and the normalized time, quality, throughput, latency, loss, jitter and handover metrics directly. PPT Reporting (old) also uses these normalized metrics as fallbacks for heterogeneous CDR layouts. `Technology_Primary` drives filters and grouping, `Vendor` drives multivendor comparisons, and `Attempt_Count` supplies a stable row-count metric.
+Analytics uses the success/failure/call-quality flags and the normalized time, quality, throughput, latency, loss, jitter and handover metrics directly. Template charts also use these normalized metrics as fallbacks for heterogeneous CDR layouts. `Technology_Primary` drives filters and grouping, `Vendor` drives multivendor comparisons, and `Attempt_Count` supplies a stable row-count metric.
 
 `Technology_Secondary` and `Unsustainable_Call` have fewer built-in consumers but remain addressable by templates, filters and Auto-calculated Fields, so they must not be removed without checking workspace definitions and migrating the model.
 

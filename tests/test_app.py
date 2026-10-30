@@ -2250,47 +2250,6 @@ def test_renaming_calculated_dimension_rebuilds_references_in_templates_and_desi
     assert designs['design-1']['filters'] == {'Test Classification': ['Video'], 'Operator': ['EE']}
 
 
-def test_reporting_deletion_requires_admin(client, ppt_reporting_old) -> None:
-    import src.DriveTestAnalyzer as app_module
-
-    endpoints = [
-        '/ppt-reporting-old/chart-sets/delete-all',
-        '/ppt-reporting-old/chart-sets/missing/delete',
-        '/ppt-reporting-old/chart-jobs/999999/delete',
-        '/ppt-reporting-old/jobs/999999/charts/delete',
-        '/ppt-reporting-old/jobs/999999/delete',
-        '/ppt-reporting-old/jobs/delete-all',
-    ]
-    # E2E Reporting is limited to super-admins and the EJAITUR user; deletion
-    # additionally requires an administrative role.
-    for token, username, role, allowed in [
-        ('reporting-viewer', 'EJAITUR', 'user-viewer', False),
-        ('reporting-admin', 'EJAITUR', 'admin', True),
-        ('reporting-super', 'super', 'super-admin', True),
-    ]:
-        app_module.SESSIONS[token] = app_module.SessionUser(username=username, role=role)
-        client.cookies.set(app_module.SESSION_COOKIE, token)
-        page = client.get('/ppt-reporting-old')
-        assert page.status_code == 200
-        assert ('data-report-chart-set-delete>Delete Selected' in page.text) == allowed
-        assert ('class="report-jobs-bulk-actions"' in page.text) == allowed
-        # Live job renderers must not recreate delete buttons for normal users.
-        assert ('remove.dataset.reportJobDelete = job.delete_url' in page.text) == allowed
-        assert ('remove.dataset.reportChartJobDelete = job.delete_url' in page.text) == allowed
-        marker = app_module.settings.output_dir / 'reports' / 'reports-old' / 'permission-check.txt'
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text('Preserve for normal users', encoding='utf-8')
-        for endpoint in endpoints:
-            result = client.post(endpoint)
-            expected = (202 if endpoint.endswith('delete-all') else 404) if allowed else 403
-            assert result.status_code == expected
-        if allowed:
-            deadline = time.monotonic() + 5
-            while marker.exists() and time.monotonic() < deadline:
-                time.sleep(0.01)
-        assert marker.exists() == (not allowed)
-
-
 def login_super(client) -> None:
     response = client.post("/login", data={"username": "super", "password": "super123"}, follow_redirects=False)
     assert response.status_code == 303
@@ -3217,9 +3176,9 @@ def test_full_environment_selector_offers_generated_outputs_by_default(client) -
 
     assert response.status_code == 200
     assert 'data-full-environment-generated-outputs' in response.text
-    assert 'Include generated designs, reports and chart sets' in response.text
+    assert 'Include generated designs and reports' in response.text
     workspace_page = client.get('/workspace')
-    assert 'Also duplicate generated designs, reports and chart sets.' in workspace_page.text
+    assert 'Also duplicate generated designs and reports.' in workspace_page.text
     app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
     assert "String(group.workspace_id) !== '__server__' && group.dock !== 'export' && (Boolean(group.is_active) || group.dock === 'right')" in app_script
     assert 'activeDock.replaceChildren(...activeGroups.map(refreshPanel), ...exportGroups.map(refreshPanel));' in app_script
@@ -3702,11 +3661,14 @@ def test_workspace_import_without_input_or_output_keeps_identical_destination_fo
     (workspace.input_dir / 'earlier_cdr.xlsx').write_bytes(b'cdr')
     workspace.output_dir.mkdir(parents=True, exist_ok=True)
     (workspace.output_dir / 'earlier_report.pptx').write_bytes(b'report')
+    from src.modules import report_tasks
+
     with sqlite3.connect(workspace.database_path) as connection:
+        connection.executescript(report_tasks.SCHEMA)
         connection.execute(
-            "INSERT INTO generated_jobs (job_type, technology, scope, template_name, created_by, output_file, output_path) "
-            "VALUES ('report', 'nsa', 'national', 'NSA', 'super', ?, ?)",
-            ('earlier_report.pptx', str(workspace.output_dir / 'earlier_report.pptx')),
+            "INSERT INTO report_task_runs (task_id, task_name, trigger, status, requested_by, created_at, output_dir) "
+            "VALUES (1, 'Weekly', 'manual', 'completed', 'super', '2026-10-01T10:00:00', ?)",
+            (str(workspace.output_dir),),
         )
 
     def export_without_folders(name):
@@ -3715,9 +3677,9 @@ def test_workspace_import_without_input_or_output_keeps_identical_destination_fo
                                              include_generated_outputs=False, include_input_files=False)
         return package
 
-    def generated_jobs(target):
+    def run_history(target):
         with sqlite3.connect(target.database_path) as connection:
-            return connection.execute('SELECT COUNT(*) FROM generated_jobs').fetchone()[0]
+            return connection.execute('SELECT COUNT(*) FROM report_task_runs').fetchone()[0]
 
     # The destination holds identical files: it keeps both folders and the history of generated files.
     package = export_without_folders('identical.zip')
@@ -3728,7 +3690,7 @@ def test_workspace_import_without_input_or_output_keeps_identical_destination_fo
     assert notice == f'Workspace "{workspace.name}" imported successfully.'
     assert (replaced.input_dir / 'earlier_cdr.xlsx').read_bytes() == b'cdr'
     assert (replaced.output_dir / 'earlier_report.pptx').read_bytes() == b'report'
-    assert generated_jobs(replaced) == 1
+    assert run_history(replaced) == 1
     assert not list(replaced.database_path.parent.parent.glob(f'.{replaced.database_path.parent.name}-import-backup-*'))
 
     # The destination's Input files differ and its Output files are missing: both folders are empty, with a warning.
@@ -3744,7 +3706,7 @@ def test_workspace_import_without_input_or_output_keeps_identical_destination_fo
     )
     assert not list(final.input_dir.iterdir()) and not list(final.output_dir.rglob('*.pptx'))
     # Without its files, the history of generated files is not kept.
-    assert generated_jobs(final) == 0
+    assert run_history(final) == 0
 
 
 def test_transfer_offer_warns_about_unsent_files_the_destination_does_not_hold(client) -> None:
@@ -4531,16 +4493,10 @@ def test_admin_dataset_rows_can_be_reordered_in_descending_order_and_all_ids_are
         'ppt_designs_v2',
         json.dumps({'design': {'datasets': {'data': [3, 1]}}}),
     )
+    # Any column of a workspace table named like a dataset reference follows the new ids.
     with app_module.repository.connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO generated_jobs (
-                job_type, report_type, technology, scope, data_dataset_id,
-                template_name, created_by, dataset_ids_json
-            ) VALUES ('report', 'summary', 'nsa', 'single', 3, 'Template', 'admin', ?)
-            """,
-            (json.dumps({'data': [3, 1]}),),
-        )
+        connection.execute('CREATE TABLE dataset_references (id INTEGER PRIMARY KEY, data_dataset_id INTEGER)')
+        connection.execute('INSERT INTO dataset_references (data_dataset_id) VALUES (3)')
 
     first_move = client.post(
         '/admin/datasets/1/move',
@@ -4593,14 +4549,11 @@ def test_admin_dataset_rows_can_be_reordered_in_descending_order_and_all_ids_are
     design_state = json.loads(app_module.repository.get_workspace_state('ppt_designs_v2'))
     assert design_state['design']['datasets']['data'] == [2, 3]
     with app_module.repository.connection() as connection:
-        job = connection.execute(
-            'SELECT data_dataset_id, dataset_ids_json FROM generated_jobs ORDER BY id DESC LIMIT 1'
-        ).fetchone()
+        reference = connection.execute('SELECT data_dataset_id FROM dataset_references').fetchone()
         sequence = connection.execute(
             "SELECT seq FROM sqlite_sequence WHERE name = 'datasets'"
         ).fetchone()
-    assert int(job['data_dataset_id']) == 2
-    assert json.loads(job['dataset_ids_json']) == {'data': [2, 3]}
+    assert int(reference['data_dataset_id']) == 2
     assert int(sequence['seq']) == 3
     admin_page = client.get('/admin')
     dataset_table = admin_page.text.split('<table class="admin-datasets-table"', 1)[1].split('</table>', 1)[0]
@@ -5284,27 +5237,14 @@ def test_interrupted_background_jobs_become_retryable_failures(client) -> None:
     queued_source.write_text('value\n2\n', encoding='utf-8')
     queued_dataset_id, _ = app_module.repository.add_dataset(queued_source.name, str(queued_source), 'admin')
     app_module.repository.update_dataset_profile(queued_dataset_id, status='queued', progress=0)
-    report_id = app_module.repository.create_report_job(
-        report_type='netcheck_cdr', technology='nsa', scope='single',
-        data_dataset_id=dataset_id, voice_dataset_id=dataset_id, speech_dataset_id=dataset_id,
-        dataset_ids={'data': [dataset_id], 'voice': [dataset_id], 'speech': [dataset_id]},
-        dataset_names={'data': [source.name], 'voice': [source.name], 'speech': [source.name]},
-        slide_count=1, template_name='NSA Slide Template', output_file='interrupted.pptx',
-        output_path=app_module.settings.output_dir / 'reports' / 'interrupted.pptx', created_by='admin',
-    )
 
-    datasets, reports = app_module.repository.fail_interrupted_background_jobs()
+    datasets = app_module.repository.fail_interrupted_background_jobs()
 
     assert datasets == [dataset_id, queued_dataset_id]
-    assert reports == [report_id]
     assert app_module.repository.get_dataset(dataset_id)['status'] == 'failed'
     queued_dataset = app_module.repository.get_dataset(queued_dataset_id)
     assert queued_dataset['status'] == 'failed'
     assert 'application restarted' in queued_dataset['last_error']
-    report = app_module.repository.get_report_run(report_id)
-    assert report['status'] == 'failed'
-    assert 'application restarted' in report['last_error']
-    assert app_module.serialize_report_job(report)['retry_url'] == f'/ppt-reporting-old/jobs/{report_id}/retry'
 
 
 def test_interrupted_dataset_processing_is_resumed_instead_of_failed(client) -> None:
@@ -5327,9 +5267,8 @@ def test_interrupted_dataset_processing_is_resumed_instead_of_failed(client) -> 
         }),
     )
 
-    datasets, reports = app_module.repository.fail_interrupted_background_jobs(fail_datasets=False)
+    datasets = app_module.repository.fail_interrupted_background_jobs(fail_datasets=False)
     assert datasets == []
-    assert reports == []
     assert app_module.repository.get_dataset(dataset_id)['status'] == 'processing'
 
     resumed = app_module.resume_interrupted_dataset_processing(workspace)
@@ -5945,28 +5884,6 @@ def test_large_datasets_share_one_memory_slot_per_workspace(client, monkeypatch,
     assert app_module._dataset_resource_slot(repository, small) is not first
 
 
-def test_ready_chart_set_job_supports_relaunch_and_row_reuse(client) -> None:
-    import src.DriveTestAnalyzer as app_module
-
-    job_id = app_module.repository.create_report_chart_job(
-        technology='nsa', scope='single', dataset_ids={'data': [], 'voice': [], 'speech': []},
-        dataset_names={'data': [], 'voice': [], 'speech': []}, template_name='NSA Slide Template', created_by='admin',
-    )
-    app_module.repository.update_report_chart_job(
-        job_id, status='ready', progress=100, chart_count=2, generation='2026-09-03_12-00-00', finished=True,
-    )
-
-    ready_job = app_module.repository.get_report_chart_job(job_id)
-    assert ready_job is not None
-    assert app_module.serialize_report_chart_job(ready_job)['retry_url'] == f'/ppt-reporting-old/chart-jobs/{job_id}/retry'
-    assert app_module.repository.retry_report_chart_job(job_id)
-
-    relaunched_job = app_module.repository.get_report_chart_job(job_id)
-    assert relaunched_job is not None
-    assert relaunched_job['status'] == 'queued'
-    assert relaunched_job['generation'] is None
-
-
 def test_workspace_management_lists_restricted_workspaces_without_enabling_actions(client) -> None:
     import src.DriveTestAnalyzer as app_module
 
@@ -5999,18 +5916,16 @@ def test_global_background_tasks_groups_active_and_other_workspaces(client) -> N
         workspace_registry_db_path=app_module.workspace_registry.registry_path,
     )
     other_repository.initialize()
-    with app_module.repository.connection() as connection:
-        connection.execute(
-            """INSERT INTO generated_jobs
-               (job_type, technology, scope, template_name, created_by, status, progress)
-               VALUES ('report', 'nsa', 'single', 'Active Template', 'admin', 'processing', 42)"""
-        )
-    with other_repository.connection() as connection:
-        connection.execute(
-            """INSERT INTO generated_jobs
-               (job_type, technology, scope, template_name, created_by, status, progress)
-               VALUES ('chart_set', 'nsa', 'single', 'Other Template', 'admin', 'processing', 67)"""
-        )
+    from src.modules import report_tasks
+
+    for task_repository, name, progress in ((app_module.repository, 'Active Template', 42), (other_repository, 'Other Template', 67)):
+        with task_repository.connection() as connection:
+            connection.executescript(report_tasks.SCHEMA)
+            connection.execute(
+                "INSERT INTO report_task_runs (task_id, task_name, trigger, status, progress, requested_by, created_at) "
+                "VALUES (1, ?, 'manual', 'running', ?, 'admin', '2026-10-01T10:00:00')",
+                (name, progress),
+            )
 
     response = client.get('/api/background-tasks')
 
@@ -6048,15 +5963,14 @@ def test_global_background_tasks_groups_active_and_other_workspaces(client) -> N
     assert 'const preservedScrollTop = panelScrollPositions.get(panelKey) ?? list.scrollTop;' in app_script
     assert 'window.requestAnimationFrame(() => {' in app_script
 
-    with app_module.repository.connection() as connection:
-        connection.execute("UPDATE generated_jobs SET status = 'ready', progress = 100")
-    with other_repository.connection() as connection:
-        connection.execute("UPDATE generated_jobs SET status = 'ready', progress = 100")
+    for task_repository in (app_module.repository, other_repository):
+        with task_repository.connection() as connection:
+            connection.execute("UPDATE report_task_runs SET status = 'completed', progress = 100, finished_at = '2026-10-01T10:05:00'")
     completed_groups = {
         group['workspace_id']: group for group in client.get('/api/background-tasks').json()['groups']
     }
     assert not any(
-        task['id'].startswith('generated:')
+        task['id'].startswith('reporting-run:')
         for workspace_id in (active.id, other.id)
         for task in completed_groups.get(workspace_id, {}).get('tasks', [])
     )
@@ -6302,16 +6216,6 @@ def test_background_task_stop_endpoint_stops_accessible_workspace_work(client) -
         dataset_id, source_path, 'admin', task_repository=app_module.repository, workspace=workspace,
     )
     assert app_module.repository.get_dataset(dataset_id)['status'] == 'stopped'
-
-    chart_job_id = app_module.repository.create_report_chart_job(
-        technology='nsa', scope='single', dataset_ids={}, dataset_names={},
-        template_name='Stop task test', created_by='admin', generate_tooltips=True,
-    )
-    generated_response = client.post(
-        f'/api/background-tasks/{workspace.id}/stop', data={'task_id': f'generated:{chart_job_id}'},
-    )
-    assert generated_response.status_code == 200
-    assert app_module.repository.get_report_chart_job(chart_job_id)['status'] == 'stopped'
 
     with app_module.AUTO_CALCULATED_FIELD_JOBS_LOCK:
         app_module.AUTO_CALCULATED_FIELD_JOBS['stoppable-auto-fields'] = {
@@ -6791,6 +6695,7 @@ def test_workspace_import_replaces_an_open_workspace_and_removes_old_files(clien
     with sqlite3.connect(payload / 'database.sqlite') as connection:
         connection.execute('CREATE TABLE datasets (stored_path TEXT)')
         connection.execute('INSERT INTO datasets (stored_path) VALUES (?)', (f'{source_input}/new-data.csv',))
+        # A package of an earlier version still holds the jobs of PPT Reporting (old), which the tool no longer has.
         connection.execute('CREATE TABLE generated_jobs (id INTEGER PRIMARY KEY, job_type TEXT, output_file TEXT, output_path TEXT)')
         connection.execute(
             "INSERT INTO generated_jobs (job_type, output_file, output_path) VALUES ('report', 'imported.pptx', ?)",
@@ -6810,75 +6715,13 @@ def test_workspace_import_replaces_an_open_workspace_and_removes_old_files(clien
     assert (imported.input_dir / 'new-data.csv').read_text(encoding='utf-8') == 'value\n1\n'
     with sqlite3.connect(imported.database_path) as connection:
         stored_path = connection.execute('SELECT stored_path FROM datasets').fetchone()[0]
-        report_path = connection.execute('SELECT output_path FROM generated_jobs').fetchone()[0]
     assert stored_path == str(imported.input_dir / 'new-data.csv')
-    assert report_path == str(imported.output_dir / 'reports' / 'reports-old' / 'imported.pptx')
+    # The documents of that module come with the package, in its former folder.
     assert (imported.output_dir / 'reports' / 'reports-old' / 'imported.pptx').is_file()
     assert app_module.repository.user_has_workspace_access('admin', imported.id)
     assert all(' - Importing ' not in workspace.name for workspace in app_module.workspace_registry.list())
     assert not imported.slides_templates_dir.exists()
     assert not (imported.database_path.parent / 'slides-templates').exists()
-
-
-def test_workspace_import_keeps_chart_sets_visible_in_reporting(client, ppt_reporting_old, tmp_path: Path) -> None:
-    import src.DriveTestAnalyzer as app_module
-
-    login_super(client)
-    source = app_module.active_workspace
-    assert source is not None
-    payload = tmp_path / 'workspace-import-chart-set'
-    payload.mkdir()
-    shutil.copy2(source.database_path, payload / 'database.sqlite')
-    generation = '20260910-120000'
-    chart_directory = payload / 'output' / 'charts' / generation
-    chart_directory.mkdir(parents=True)
-    (chart_directory / 'chart-1.png').write_bytes(b'chart')
-    (chart_directory / 'manifest.json').write_text(json.dumps({
-        'generation': generation,
-        'template': 'Imported template',
-        'technology': 'NSA',
-        'scope': 'single',
-        'dataset_counts': {'data': 1, 'voice': 0, 'speech': 0},
-        'generated_at': '2026-09-10T12:00:00+00:00',
-        'charts': [{'file': 'chart-1.png', 'slide': 1, 'title': 'Imported chart', 'source': 'Data', 'chart_type': 'Bar'}],
-    }), encoding='utf-8')
-
-    imported = app_module.import_workspace_archive(payload, {'name': 'Imported chart workspace'})
-    app_module.activate_workspace(imported.id)
-
-    reporting = client.get('/ppt-reporting-old')
-    assert reporting.status_code == 200
-    assert 'Imported template' in reporting.text
-    assert generation in reporting.text
-
-
-def test_delete_all_reports_removes_orphaned_output_directories(client, ppt_reporting_old) -> None:
-    import src.DriveTestAnalyzer as app_module
-
-    login_super(client)
-    reports_root = Path(app_module.settings.output_dir) / 'reports' / 'reports-old'
-    design_output = Path(app_module.settings.output_dir) / 'reports' / 'ppt-designs' / 'kept.pptx'
-    design_output.parent.mkdir(parents=True, exist_ok=True)
-    design_output.write_bytes(b'design')
-    orphaned = reports_root / 'report-without-job' / 'report-charts'
-    orphaned.mkdir(parents=True, exist_ok=True)
-    (orphaned / 'chart-1.png').write_bytes(b'old chart')
-
-    response = client.post('/ppt-reporting-old/jobs/delete-all')
-
-    assert response.status_code == 202
-    job_id = response.json()['job_id']
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        status_response = client.get(f'/api/ppt-reporting-old/bulk-deletions/{job_id}')
-        assert status_response.status_code == 200
-        if status_response.json()['status'] in {'ready', 'failed'}:
-            break
-        time.sleep(0.01)
-    assert status_response.json()['status'] == 'ready'
-    assert reports_root.is_dir()
-    assert list(reports_root.iterdir()) == []
-    assert design_output.read_bytes() == b'design'
 
 
 def test_admin_panel_is_available_for_admin(client) -> None:
@@ -7454,9 +7297,9 @@ def test_admin_database_management_lists_and_updates_active_workspace_tables(cli
     assert 'value="__workspace_registry__"' in admin.text
     assert 'Workspace registry' in admin.text
     assert '<optgroup label="Workspace Tables">' in admin.text
-    assert 'value="generated_jobs"' in admin.text
+    assert 'value="generated_jobs"' not in admin.text
     assert 'Design selected rows' not in admin.text
-    assert 'Generated jobs' in admin.text
+    assert 'Generated jobs' not in admin.text
     assert 'value="report_chart_jobs"' not in admin.text
     assert 'value="report_runs"' not in admin.text
     assert 'Other tables' not in admin.text
@@ -8996,43 +8839,6 @@ def test_design_ignores_non_ready_dataset_id_in_selector_flow(client) -> None:
     assert 'option value="2"' not in selector_fragment
 
 
-def test_reporting_preselects_two_latest_ready_cdrs_of_each_type(client, ppt_reporting_old) -> None:
-    login_super(client)
-    uploads = [
-        ('old-data.csv', 'data', b'Mean_Data_Rate,RAT_A\n10,ENDC\n'),
-        ('voice.csv', 'voice', b'Call_Setup_Time,RAT_A\n1.2,ENDC\n'),
-        ('latest-data.csv', 'data', b'Mean_Data_Rate,RAT_A\n20,ENDC\n'),
-        ('speech.csv', 'speech', b'LQ,RAT_A\n3.8,ENDC\n'),
-    ]
-    for filename, kind, content in uploads:
-        response = client.post(
-            '/datasets-analysis/upload',
-            data={'dataset_kinds': kind},
-            files={'dataset_files': (filename, BytesIO(content), 'text/csv')},
-            follow_redirects=False,
-        )
-        assert response.status_code == 303
-
-    reporting = client.get('/ppt-reporting-old')
-    data_select = reporting.text.split('name="data_dataset_id"', 1)[1].split('</select>', 1)[0]
-    voice_select = reporting.text.split('name="voice_dataset_id"', 1)[1].split('</select>', 1)[0]
-    speech_select = reporting.text.split('name="speech_dataset_id"', 1)[1].split('</select>', 1)[0]
-
-    assert 'value="3" data-vendor-mapped="false" data-uploaded-at=' in data_select
-    assert 'selected>latest-data.csv' in data_select
-    assert 'value="1" data-vendor-mapped="false" data-uploaded-at=' in data_select
-    assert 'selected>old-data.csv' in data_select
-    assert data_select.count(' selected>') == 2
-    assert 'value="2" data-vendor-mapped="false" data-uploaded-at=' in voice_select
-    assert 'selected>voice.csv' in voice_select
-    assert voice_select.count(' selected>') == 1
-    assert 'value="4" data-vendor-mapped="false" data-uploaded-at=' in speech_select
-    assert 'selected>speech.csv' in speech_select
-    assert speech_select.count(' selected>') == 1
-    # One template list: its default is selected.
-    assert 'data-catalogue-active="true" selected' in reporting.text
-
-
 def test_design_explicit_dataset_id_overrides_mismatched_input_kind_filter(client) -> None:
     login(client)
 
@@ -9335,8 +9141,10 @@ def test_top_navigation_shows_document_links(client) -> None:
     assert 'module-hero-datasets-analysis' in design.text
     assert 'linear-gradient(135deg, #0c4c8c, #68b8ff)' in design.text
 
-    reporting = client.get("/ppt-reporting-old")
-    assert reporting.status_code == 403
+    # PPT Reporting (old) is no longer in the tool: its former address opens PPT Designer.
+    reporting = client.get("/ppt-reporting-old", follow_redirects=False)
+    assert reporting.status_code == 307
+    assert reporting.headers['location'] == '/ppt-designer'
 
     admin = client.get("/admin")
     assert admin.status_code == 200
@@ -9595,7 +9403,7 @@ def test_admin_import_converts_a_legacy_catalogue_when_requested(client) -> None
     assert 'Legacy quality' in stored
 
 
-def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(client, ppt_reporting_old) -> None:
+def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(client) -> None:
     from src.modules.cdr_reporting import CATALOG_HEADERS
     import src.DriveTestAnalyzer as app_module
 
@@ -9627,12 +9435,6 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     assert app_module.repository.report_template_content('Baseline Q4') == first
 
     login_super(client)
-    reporting = client.get('/ppt-reporting-old')
-    assert 'value="Updated Q4" data-catalogue-active="true" selected' in reporting.text
-    assert 'data-report-charts-edit-template' in reporting.text
-    assert 'data-report-chart-viewer-edit-template' in reporting.text
-    assert 'data-report-template-editor-frame' in reporting.text
-
     editor = client.get('/workspace-config?catalogue_technology=nsa&catalogue_id=Baseline%20Q4')
     assert editor.status_code == 200
     assert 'data-catalogue-editor-table' not in editor.text
@@ -9756,9 +9558,6 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     assert protected_delete.headers['location'] == '/ppt-designer?ppt_templates=1&catalogue_error=The+default+template+cannot+be+deleted.'
     assert app_module.repository.report_template_content('Baseline Q4')
 
-    reporting_after_activation = client.get('/ppt-reporting-old')
-    assert 'value="Baseline Q4" data-catalogue-active="true" selected' in reporting_after_activation.text
-
     exported = client.get('/ppt-designer/templates/Updated%20Q4/export')
     assert exported.status_code == 200
     assert b'Second' in exported.content
@@ -9767,44 +9566,6 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     selected_export = client.get('/ppt-designer/templates/export-selected?catalogue_selection=nsa:Updated%20Q4')
     assert selected_export.status_code == 200
     assert 'filename="Updated Q4.csv"' in selected_export.headers['content-disposition']
-
-
-def test_reporting_chart_viewer_uses_hover_canvas_dataset_and_zoom_controls(client, ppt_reporting_old) -> None:
-    import src.DriveTestAnalyzer as app_module
-
-    login_super(client)
-    reporting = client.get('/ppt-reporting-old')
-    assert reporting.status_code == 200
-    controls = reporting.text.split('data-report-chart-viewer-canvas-controls', 1)[1].split('</div>', 2)[0]
-    assert controls.index('data-report-chart-viewer-data') < controls.index('data-report-chart-zoom="in"')
-    assert controls.count('data-report-chart-zoom=') == 2
-    assert 'data-report-chart-zoom-reset' in controls
-    assert '<span>View filtered dataset</span>' not in reporting.text
-    assert "reportChartViewerDataOverlay.hidden = false;" in reporting.text
-    assert "reportChartViewerDataPanel.setAttribute('aria-busy', 'true');" in reporting.text
-    assert "showLoadingOverlay('Loading Filtered Dataset', 'Please wait while the filtered dataset is prepared.');" in reporting.text
-    assert "hideLoadingOverlay();" in reporting.text
-    navigation = reporting.text.split('class="report-chart-viewer-navigation"', 1)[1].split('</div>', 1)[0]
-    assert 'data-report-chart-zoom' not in navigation
-    assert navigation.count('class="report-chart-arrow-icon"') == 4
-    assert 'M5 5v14M18 6l-6 6 6 6M12 6l-6 6 6 6' in navigation
-    assert 'M19 5v14M6 6l6 6-6 6M12 6l6 6-6 6' in navigation
-    assert '⏮' not in navigation
-    assert '⏭' not in navigation
-    assert "addEventListener('pointerenter', showReportChartViewerControls)" in reporting.text
-    assert "addEventListener('pointerleave', hideReportChartViewerControls)" in reporting.text
-    assert '}, 3000);' in reporting.text
-    assert "querySelector('[data-preview-kpi-aggregation]')?.value" in reporting.text
-    assert "`${operation}(${input.value})`" in reporting.text
-    css = app_module.PROJECT_ROOT.joinpath(
-        'src/web_interface/static/css/app.css',
-    ).read_text(encoding='utf-8')
-    assert '.report-chart-viewer-canvas-controls { position: absolute; top: 0.6rem; right: 0.6rem;' in css
-    assert '.report-chart-viewer-image.is-controls-visible .report-chart-viewer-canvas-controls' in css
-    assert '.report-chart-viewer-canvas-data-button { width: 2.5rem;' in css
-    assert '.report-chart-viewer-canvas-data-button svg { width: 1.4rem;' in css
-    assert '.report-chart-viewer-data-loading { display: grid;' in css
-    assert '.report-chart-viewer-data-dialog { position: absolute; inset: 2%;' in css
 
 
 def test_admin_catalogue_rename_supports_background_json_save(client) -> None:
@@ -10057,9 +9818,11 @@ def test_docs_routes_expose_readme_changelog_and_help(client) -> None:
     assert '- [Chart Builder](chart-builder.md)' in help_api.json()['content']
     assert '- [Roadmap](roadmap.md)' in help_api.json()['content']
     assert client.get('/api/documents/help/12-docker-deployment.md').status_code == 404
-    assert client.get('/documents/view/help/ppt-reporting-old.md').status_code == 403
-    assert client.get('/api/documents/help/ppt-reporting-old.md').status_code == 403
+    # PPT Reporting (old) is no longer in the tool, nor its chapter.
+    assert client.get('/documents/view/help/ppt-reporting-old.md').status_code == 404
+    assert client.get('/api/documents/help/ppt-reporting-old.md').status_code == 404
     assert 'ppt-reporting-old.md' not in client.get('/api/documents/readme').json()['content']
+    assert 'Reporting (old)' not in client.get('/api/documents/readme').json()['content']
     overview = client.get('/api/documents/help/overview.md').json()['content']
     assert '## PPT Reporting (old)' not in overview
     assert '## Reporting\n' in overview
@@ -10069,6 +9832,7 @@ def test_docs_routes_expose_readme_changelog_and_help(client) -> None:
         article = client.get(f"/api/documents/help/{document['relative_path']}")
         assert article.status_code == 200
         assert 'ppt-reporting-old.md' not in article.json()['content']
+        assert 'Reporting (old)' not in article.json()['content']
     excluded_help_documents = {
         "arguments-description.md",
         "arguments-description-short.md",
@@ -10087,33 +9851,6 @@ def test_docs_routes_expose_readme_changelog_and_help(client) -> None:
     assert "const fragment = hashIndex >= 0 ? raw.slice(hashIndex) : '';" in help_article.text
     assert "document.getElementById(targetId)?.scrollIntoView" in help_article.text
 
-
-def test_ppt_reporting_old_help_follows_its_feature(client) -> None:
-    import src.DriveTestAnalyzer as app_module
-
-    # PPT Reporting (old) is in no profile of a new deployment: only super-admins see it.
-    app_module.repository.create_user('EJAITUR', 'secret123', 'user-viewer')
-    token = 'help-reporting-off'
-    app_module.SESSIONS[token] = app_module.SessionUser(username='EJAITUR', role='user-viewer')
-    client.cookies.set(app_module.SESSION_COOKIE, token)
-    assert client.get('/documents/view/help/ppt-reporting-old.md').status_code == 403
-    profile_id = app_module.repository.save_modules_profile(None, 'Legacy', '', ['workspace', 'ppt-reporting-old'])
-    app_module.repository.set_users_modules_profile(
-        [next(int(row['id']) for row in app_module.repository.list_users() if row['username'] == 'EJAITUR')], profile_id)
-    app_module.invalidate_module_access_cache()
-    for username, role in [('someone', 'super-admin'), ('EJAITUR', 'user-viewer')]:
-        token = f'help-reporting-{role}'
-        app_module.SESSIONS[token] = app_module.SessionUser(username=username, role=role)
-        client.cookies.set(app_module.SESSION_COOKIE, token)
-
-        index = [item['relative_path'] for item in client.get('/api/documents/help-index').json()['documents']]
-        assert index[9:15] == ['ppt-designer.md', 'ppt-reporting-old.md', 'scoring-gap-analysis.md', 'network-insights.md', 'non-qualified-calls.md', 'reporting.md']
-        assert client.get('/documents/view/help/ppt-reporting-old.md').status_code == 200
-        assert client.get('/api/documents/help/ppt-reporting-old.md').status_code == 200
-        home = client.get('/api/documents/help').json()['content']
-        assert '- [PPT Reporting (old)](ppt-reporting-old.md)' in home
-        assert '- [Chart Builder](chart-builder.md)' in home
-        assert 'ppt-reporting-old.md' in client.get('/api/documents/readme').json()['content']
 
 def test_help_navigation_groups_unnumbered_documents(client) -> None:
     # The Help navigation takes the group of each chapter from the server, as the Help menu of the tabs.
@@ -11224,7 +10961,7 @@ def test_module_tabs_take_order_title_icon_and_colour_from_interface_settings(cl
     login_super(client)
     admin_page = client.get('/super-admin').text
     assert 'name="title__scoring" value="Scoring &amp; GAP Analysis"' in admin_page and 'data-module-tab-icons' in admin_page
-    order = ['workspace', 'network-insights', 'datasets-analysis', 'ppt-designer', 'ppt-reporting-old', 'scoring',
+    order = ['workspace', 'network-insights', 'datasets-analysis', 'ppt-designer', 'scoring',
              'non-qualified-calls', 'reporting', 'builders', 'ticket-center']
     form = {'show_module_stage_labels': 'true', **{f'position__{module}': str(index) for index, module in enumerate(order)}}
     form.update({'title__network-insights': 'Radio Insights', 'short_title__network-insights': 'Radio',
@@ -11348,7 +11085,7 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
     # Every listed section is a panel of its page, found by its heading.
     templates = Path(__file__).resolve().parents[1] / 'src/web_interface/templates'
     pages = {'workspace': 'workspace.html', 'datasets-analysis': 'datasets_analysis.html', 'ppt-designer': 'ppt_designer.html',
-             'ppt-reporting-old': 'reporting.html', 'scoring': 'scoring.html', 'network-insights': 'network_insights.html',
+             'scoring': 'scoring.html', 'network-insights': 'network_insights.html',
              'non-qualified-calls': 'non_qualified_calls.html', 'reporting': 'report_jobs.html',
              'chart-builder': 'chart_builder.html', 'query-builder': 'query_builder.html', 'app-logs': 'app_logs.html',
              'admin': 'admin.html', 'super-admin': 'admin.html', 'ticket-center': 'ticket_center.html'}

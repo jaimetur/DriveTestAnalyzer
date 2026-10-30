@@ -27,7 +27,7 @@ DriveTest Analyzer separates application settings, storage roots and Docker depl
 | `APP_PORT` | Source launcher port and production host port in Compose. | `7278` |
 | `APP_DEV_PORT` | Development host port mapped to the container service. | `7279` |
 | `APP_SECRET_KEY` | Signs authenticated session cookies. | A long private random value |
-| `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Renderer for Reports, Chart Sets, previews and PPT exports. | `canvas`; use `pil` only for the legacy painter |
+| `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Renderer for reports, previews and PPT exports. | `canvas`; use `pil` only for the legacy painter |
 | `DRIVETEST_ANALYZER_CHROMIUM` | Optional explicit Chromium-family executable used by the server Canvas renderer. | Auto-detected supported browser |
 | `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS` | Number of recently used PPT snapshots that keep their chart data frames in memory. Lower it on servers with little RAM. | `3` |
 | `TZ` | IANA timezone used by Docker and displayed/persisted timestamps. | `Europe/Madrid` |

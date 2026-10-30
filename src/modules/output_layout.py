@@ -17,6 +17,8 @@ REPORTS_FOLDER = 'reports'
 DESIGNS_FOLDER = 'ppt-designs'
 CDR_ANALYSIS_FOLDER = 'cdr-analysis'
 NETWORK_INSIGHTS_FOLDER = 'network-insights'
+# The folders of the PowerPoint reports and Chart Sets of PPT Reporting (old), a module the tool no longer has: no module
+# writes to them any more, but the documents they keep stay there, and those of the former layouts still move into them.
 REPORTS_OLD_FOLDER = 'reports-old'
 REPORTS_CHARTS_OLD_FOLDER = 'reports-charts-old'
 REPORTING_JOBS_FOLDER = 'reporting-jobs'
@@ -42,7 +44,6 @@ LEGACY_OUTPUT_FOLDERS = (
 LEGACY_CHARTS_FOLDER, CHARTS_FOLDER = 'dashboard-charts', 'design-charts'
 STORED_PATH_COLUMNS = (
     ('design_ppt_jobs', 'output_path'),
-    ('generated_jobs', 'output_path'),
     ('report_task_runs', 'output_dir'),
 )
 NETWORK_INSIGHTS_FILE = re.compile(r'_summary_network_insights\.(?:pptx|docx)$')

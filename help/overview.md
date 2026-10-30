@@ -24,7 +24,6 @@ To present the tool to an audience, every presentation of DriveTest Analyzer is 
 | PPT Designer | [Open section](#ppt-designer) |
 | Non-Qualified Calls | [Open section](#non-qualified-calls) |
 | Reporting | [Open section](#reporting) |
-| PPT Reporting (old) | [Open section](#ppt-reporting-old) |
 | Chart Builder | [Open section](#chart-builder) |
 | Query Builder | [Open section](#query-builder) |
 | Ticket Center | [Open section](#ticket-center) |
@@ -39,8 +38,8 @@ To present the tool to an audience, every presentation of DriveTest Analyzer is 
 2. Upload Data, Voice or Speech CDRs from **Workspace**.
 3. Confirm the detected input type (and, for CDRs, the NR Mode) and wait for processing to finish.
 4. Optionally map Vodafone and Three vendor information.
-5. Create or open a saved **PPT Designer** to analyse a complete template interactively, reuse prepared selections and generate its PowerPoint. Use **CDR Analysis**, **Chart Builder** or **Query Builder** for focused exploration, or **PPT Reporting (old)** for the classic report and Chart Set workflow. Use **Reporting** to schedule jobs that email CDR Analysis, Network Insights, Design, Scoring and Non-Qualified Calls artifacts.
-6. Follow PPT preparation and generation in the floating task cards, **PPT Generation Jobs** and **Reports and Charts Jobs**.
+5. Create or open a saved **PPT Designer** to analyse a complete template interactively, reuse prepared selections and generate its PowerPoint. Use **CDR Analysis**, **Chart Builder** or **Query Builder** for focused exploration. Use **Reporting** to schedule jobs that email CDR Analysis, Network Insights, Design, Scoring and Non-Qualified Calls artifacts.
+6. Follow PPT preparation and generation in the floating task cards and **PPT Generation Jobs**.
 7. Use **Scoring & GAP Analysis** for saved NetCheck scores and GAP reference operator comparisons across selected CDRs and Split by levels; CDR processing also queues default Operator scoring when compatible companion CDRs are available. See [Scoring & GAP Analysis](scoring-gap-analysis.md).
 8. Use **Network Insights** to compare RSRP and SINR, map weak-coverage and high-interference areas and review sites, spectrum and network deployment. See [Network Insights](network-insights.md).
 9. Use **Non-Qualified Calls** to review every call and test that did not complete in the ready CDRs: summarise them, compare the NQ rate of each campaign and operator, find their root causes and follow each one up in the NQ Analysis Center (status, team, assignee, root cause and comments) until it is closed. See [Non-Qualified Calls](non-qualified-calls.md).
@@ -68,7 +67,7 @@ The header is available throughout the authenticated application.
 
 ## Background tasks and floating cards
 
-Long operations continue while the user navigates between modules or signs out. This includes ingestion and mapping, Auto-calculated Field materialization, combined-table recreation, workspace duplication/deletion/cache clearing, PPT preparation and model warming, Report and Chart Set generation, PowerPoint generation, backup, import, export and server transfer.
+Long operations continue while the user navigates between modules or signs out. This includes ingestion and mapping, Auto-calculated Field materialization, combined-table recreation, workspace duplication/deletion/cache clearing, PPT preparation and model warming, PowerPoint generation, backup, import, export and server transfer.
 
 Floating cards group live tasks by execution context and keep their label, detail, percentage, elapsed time and progress bar visible from any application page:
 
@@ -213,41 +212,6 @@ Non-Qualified Calls follows Scoring & GAP Analysis in the main tabs. It lists ev
 
 **Reporting** builds bundle reports from **Bundle Report Templates**, one PowerPoint or Word document with the chosen parts of PPT Designer, Scoring & GAP Analysis, Network Insights, Non-Qualified Calls and CDR Analysis, under common filters and with the Campaigns of each section, previewed before the download and saved as favourites, and schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, PPTs and Scoring PPTs, each with its own filters, run once or on a daily, weekly or monthly schedule and email the artifacts with a description of each one. It is available to every user whose Modules Profile includes it (Super Admin → Modules Profiles), and it can also include the Non-Qualified Calls Executive Summary and Progress Status. See [Reporting](reporting.md).
 
-## PPT Reporting (old)
-
-PPT Reporting (old) combines processed CDRs and a Report Template from the active workspace. Only the super-admins without a Modules Profile and the users whose Modules Profile includes it see it (it is in no profile of a new deployment).
-
-### Reporting module selector
-
-- **NetCheck CDR Reports** is the active CDR workflow.
-- **Smart Orchestrator Logs Reports** reserves the future log-report workflow.
-
-### NetCheck CDR Reports
-
-- Select one or more Data, Voice and Speech CDRs.
-- The two newest CDRs of each type are selected initially for Operator Comparison.
-- Vendor Comparison keeps one selected CDR per type and requires persisted vendor mapping.
-- Choose NSA or SA technology.
-- Choose a compatible Report Template.
-- Generate a PowerPoint report or a standalone Chart Set.
-
-### Charts Panel
-
-- Select report-rendered or standalone Chart Sets.
-- Open thumbnails in the shared interactive Chart Preview.
-- Temporarily change chart type, datasets, KPI, filters, aggregations and legend.
-- Open the complete filtered dataset with server-side pagination and column filters.
-- Download or delete Chart Sets.
-- Administrators can open the Report Template used by the selected set.
-
-### Reports and Charts Jobs
-
-- Shows both job types in one chronologically ordered table.
-- Uses **Tech** for NSA/SA and **Type** for Report/Charts.
-- Keeps the actions appropriate to each job: open, download, stop, retry, relaunch or delete.
-- Provides separate bulk deletion for Reports and Chart Sets.
-- Persists both job types in the workspace `generated_jobs` table.
-
 ## Chart Builder
 
 Chart Builder creates temporary, ad-hoc charts without generating a report.
@@ -342,7 +306,6 @@ The complete authoring specification, examples and supported chart catalogue are
 - Filter complete tables with Excel-style column menus.
 - Edit or delete individual rows.
 - Clean orphaned materialised dataset rows.
-- Inspect the unified **Generated jobs** table for Reports and Chart Sets.
 
 ### Datasets Management
 

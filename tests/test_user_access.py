@@ -172,21 +172,22 @@ def test_a_super_admin_sees_every_module_until_it_is_given_a_profile(client):
     login(client)
     core.repository.create_user('boss', 'secret123', 'super-admin')
     boss = core.SessionUser(username='boss', role='super-admin')
-    assert core.user_has_feature(boss, 'ppt-reporting-old')
+    assert core.user_has_feature(boss, 'non-qualified-calls')
     all_modules = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'All Modules')
+    benchmarking = next(profile['id'] for profile in core.repository.list_modules_profiles() if profile['name'] == 'Benchmarking')
     update = {'username': 'boss', 'role': 'super-admin', 'active': '1'}
-    response = client.post(f"/admin/users/{user_id('boss')}/update", data={**update, 'modules_profile_id': str(all_modules)},
+    response = client.post(f"/admin/users/{user_id('boss')}/update", data={**update, 'modules_profile_id': str(benchmarking)},
                            headers={'X-Requested-With': 'XMLHttpRequest'})
-    assert response.json()['user']['modules_profile_id'] == all_modules
+    assert response.json()['user']['modules_profile_id'] == benchmarking
     core.invalidate_module_access_cache()
-    assert not core.user_has_feature(boss, 'ppt-reporting-old') and core.user_has_feature(boss, 'scoring')
+    assert not core.user_has_feature(boss, 'non-qualified-calls') and core.user_has_feature(boss, 'scoring')
     assert 'value="all" class="user-profile-full-access" >Full Access</option><hr>' in client.get('/super-admin').text
     # Full Access returns it to every module.
     response = client.post(f"/admin/users/{user_id('boss')}/update", data={**update, 'modules_profile_id': 'all'},
                            headers={'X-Requested-With': 'XMLHttpRequest'})
     assert response.json()['user']['modules_profile_id'] is None
     core.invalidate_module_access_cache()
-    assert core.user_has_feature(boss, 'ppt-reporting-old')
+    assert core.user_has_feature(boss, 'non-qualified-calls')
     # A user who becomes super-admin sees every module until it is given a profile.
     core.repository.create_user('ana', 'secret123', 'admin')
     client.post(f"/admin/users/{user_id('ana')}/update", data={'username': 'ana', 'role': 'super-admin', 'active': '1',

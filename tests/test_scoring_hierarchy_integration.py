@@ -73,25 +73,23 @@ def test_hierarchy_is_an_application_setting_outside_the_methodologies(scoring_a
 
 def test_reporting_follows_scoring_in_module_and_help_navigation(scoring_api):
     client = scoring_api['client']
-    # PPT Reporting (old) is in no profile of a new deployment, but super-admins see every module.
     token = 'scoring-navigation-super-admin'
     app_module.SESSIONS[token] = app_module.SessionUser(username='super', role='super-admin')
     client.cookies.set(app_module.SESSION_COOKIE, token)
     page = client.get('/scoring')
     assert page.status_code == 200
     main_tabs = page.text.split('class="module-tabs-primary"', 1)[1].split('class="module-tabs-secondary"', 1)[0]
-    assert main_tabs.index('href="/ppt-designer"') < main_tabs.index('href="/ppt-reporting-old"') < main_tabs.index('href="/scoring"') < main_tabs.index('href="/reporting"')
+    assert main_tabs.index('href="/ppt-designer"') < main_tabs.index('href="/scoring"') < main_tabs.index('href="/reporting"')
     modules = page.text.split('aria-label="Main modules"', 1)[1].split('</nav>', 1)[0]
-    assert modules.index('href="/ppt-designer"') < modules.index('href="/ppt-reporting-old"') < modules.index('href="/scoring"') < modules.index('href="/reporting"')
+    assert modules.index('href="/ppt-designer"') < modules.index('href="/scoring"') < modules.index('href="/reporting"')
     documents = client.get('/api/documents/help-index').json()['documents']
     paths = [document['relative_path'] for document in documents]
     # Network Insights follows Scoring, then Non-Qualified Calls and Reporting, as in the main tabs.
     assert paths.index('network-insights.md') == paths.index('scoring-gap-analysis.md') + 1
     assert paths.index('non-qualified-calls.md') == paths.index('network-insights.md') + 1
     assert paths.index('reporting.md') == paths.index('non-qualified-calls.md') + 1
-    # PPT Reporting (old) follows PPT Designer, as in the main tabs.
-    assert paths.index('ppt-reporting-old.md') == paths.index('ppt-designer.md') + 1
-    assert paths.index('scoring-gap-analysis.md') == paths.index('ppt-reporting-old.md') + 1
+    # Scoring follows PPT Designer, as in the main tabs.
+    assert paths.index('scoring-gap-analysis.md') == paths.index('ppt-designer.md') + 1
     # The Help navigation takes the group of each chapter from the server.
     groups = {document['relative_path']: document['group'] for document in documents}
     assert groups['scoring-gap-analysis.md'] == groups['reporting.md'] == 'Main Modules'

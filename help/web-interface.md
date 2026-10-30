@@ -36,7 +36,6 @@ Primary tabs, in their default order (super-admins change their order, titles, i
 - **Workspace**
 - CDR Analysis
 - PPT Designer
-- PPT Reporting (old)
 - Scoring & GAP Analysis
 - Network Insights
 - Non-Qualified Calls (in development, hidden until activated)
@@ -72,16 +71,16 @@ Move the pointer near the edge of the window to reveal the collapsed Modules & S
 
 Open **Config** and choose **Application Config** for application-wide runtime settings or **Workspace Config** for Operator Mappings, Vendor Mappings, Spectrum Holdings, Serving Networks, Main Cities and the Scoring hierarchy/KPI/GAP settings in the active workspace. The **Modules & Sections** tab at the edge of the window jumps between the panels of Workspace Config. Hovering **Application Config** or **Workspace Config** in the menu opens the list of their sections (Application Runtime and Email Delivery; Main Cities, Mappings & Reference Data with its Operator, Vendor and Campaign Maps, Map Areas and Spectrum Holdings, and Scoring & GAP Analysis Setup): choosing one opens that page at that section, unfolding it when it was folded.
 
-Help Navigation lists unnumbered documents under General, Main Modules, Administrative Modules and Reference. Main Modules follow the order of the main tabs, by default: [Workspace Management](workspace-management.md), CDR Analysis, PPT Designer, PPT Reporting (old), Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, [Reporting](reporting.md), Chart Builder, Query Builder and Ticket Center. Docker Deployment follows Deployment Configuration in General. App Logs is the first administrative document and Super Admin the last, after Administrator Config. Readme and Changelog open Reference before Project Structure and Roadmap.
+Help Navigation lists unnumbered documents under General, Main Modules, Administrative Modules and Reference. Main Modules follow the order of the main tabs, by default: [Workspace Management](workspace-management.md), CDR Analysis, PPT Designer, Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, [Reporting](reporting.md), Chart Builder, Query Builder and Ticket Center. Docker Deployment follows Deployment Configuration in General. App Logs is the first administrative document and Super Admin the last, after Administrator Config. Readme and Changelog open Reference before Project Structure and Roadmap.
 
-The Help Home link stays above the groups. Every chapter is available to every reader except PPT Reporting (old), which only users with that feature see.
+The Help Home link stays above the groups. Every chapter is available to every reader.
 
 The Changelog adds a **Releases** list that jumps to each release; it highlights the release being read, as Help Navigation highlights the open document. Both lists grow down to the end of the document and only scroll beyond it.
 
 ## Header controls
 
 - Click the active-workspace badge to switch workspace.
-- The workspace-size badge is recalculated after dataset, report and Chart Set operations.
+- The workspace-size badge is recalculated after dataset and report operations.
 - The username badge shows the role and the Modules Profile of the account (Full Access for a super-admin without one), in the colour of the role for admins and super-admins and in that of the profile for the other users; click it to change the current password.
 - Use Logout to end the session.
 
@@ -113,7 +112,7 @@ Patterns come first in their list, tagged **pattern** or **except**, and an oper
 
 ## Filter Builder
 
-The shared Filter Builder is used by Chart Builder, PPT Reporting (old) Chart Preview and Report Template Chart Preview.
+The shared Filter Builder is used by Chart Builder and Report Template Chart Preview.
 
 - The field selector is searchable.
 - Operators adapt to list, text and numeric conditions.
@@ -150,7 +149,7 @@ Each card preserves its expanded or minimized state when moving between modules 
 
 Each card shows the task, its current stage and progress when the job reports one. The red circular **Stop Job** control is available only for interruptible work in a workspace the user can access and asks for confirmation before requesting a stop.
 
-Browser dataset uploads retain their latest measured percentage between progress events and can be interrupted while their request is active; dataset jobs already accepted by the server then appear separately and can be stopped at their safe checkpoints. Report, Chart Set, Auto-calculated Field and combined-CDR work use the same cooperative stop behaviour.
+Browser dataset uploads retain their latest measured percentage between progress events and can be interrupted while their request is active; dataset jobs already accepted by the server then appear separately and can be stopped at their safe checkpoints. Auto-calculated Field and combined-CDR work use the same cooperative stop behaviour.
 
 A stopped duplication removes its partial workspace; stopped exports remove temporary output; imports cannot be stopped after importing has begun.
 
@@ -191,8 +190,8 @@ On a phone, use portrait orientation for forms and landscape orientation when in
 
 ## PPT navigation and overlays
 
-By default the analytical tabs are ordered **CDR Analysis** → **PPT Designer** → **PPT Reporting (old)** → **Scoring & GAP Analysis** → **Network Insights** → **Non-Qualified Calls** → **Reporting** for users with each feature. CDR Analysis uses blue, Network Insights electric indigo, PPT Designer muted violet, Scoring & GAP Analysis the navy-to-green gradient of its header, Non-Qualified Calls raspberry, **Reporting** green and PPT Reporting (old) brighter purple; Network Insights and Non-Qualified Calls also use their colour for their header, buttons, tables and dialogs. Once a super-admin turns them on in **Super Admin → Interface Settings** (they are off on a new deployment), module tabs show their stage in a small label in the top-right corner, without taking space from their name: a red **ALPHA** while in development (Network Insights and Non-Qualified Calls), a yellow **BETA** while being validated (**Reporting** and **Builders**) and a blue **NEW** with a star once consolidated (Scoring & GAP Analysis); established modules (Workspace, CDR Analysis and PPT Designer) have no label. Super-admins choose in Interface Settings the order of the main tabs, the title of each one and its short title for narrow windows, its icon and its colour, and the label of each module with its colour and optional icon, or hide every label. Each module header shows a subtle decoration that represents the module (for example CDF curves in CDR Analysis or an antenna with radio waves in Network Insights) and is only as tall as its content; the controls of the module, such as the workspace or dataset selectors, follow in their own panel. The administrative tabs (Help, App Logs, Config and Admin) show an icon too, and the main tabs cover their lower part so both rows show the same tab height. Scoring offers NR Mode and CDR selection, aggregation controls, saved background jobs and tables/charts/GAP exports. Network Insights analyses RSRP/SINR, coverage and interference maps, sites, spectrum and network deployment. Each main tab shows a representative icon before its name. On narrower windows the main tabs switch to their short names (Analysis, Designs, Reporting, Scoring, Network) and then drop their icons, so the tab rows never overlap.
+By default the analytical tabs are ordered **CDR Analysis** → **PPT Designer** → **Scoring & GAP Analysis** → **Network Insights** → **Non-Qualified Calls** → **Reporting** for users with each feature. CDR Analysis uses blue, Network Insights electric indigo, PPT Designer muted violet, Scoring & GAP Analysis the navy-to-green gradient of its header, Non-Qualified Calls raspberry and **Reporting** green; Network Insights and Non-Qualified Calls also use their colour for their header, buttons, tables and dialogs. Once a super-admin turns them on in **Super Admin → Interface Settings** (they are off on a new deployment), module tabs show their stage in a small label in the top-right corner, without taking space from their name: a red **ALPHA** while in development (Network Insights and Non-Qualified Calls), a yellow **BETA** while being validated (**Reporting** and **Builders**) and a blue **NEW** with a star once consolidated (Scoring & GAP Analysis); established modules (Workspace, CDR Analysis and PPT Designer) have no label. Super-admins choose in Interface Settings the order of the main tabs, the title of each one and its short title for narrow windows, its icon and its colour, and the label of each module with its colour and optional icon, or hide every label. Each module header shows a subtle decoration that represents the module (for example CDF curves in CDR Analysis or an antenna with radio waves in Network Insights) and is only as tall as its content; the controls of the module, such as the workspace or dataset selectors, follow in their own panel. The administrative tabs (Help, App Logs, Config and Admin) show an icon too, and the main tabs cover their lower part so both rows show the same tab height. Scoring offers NR Mode and CDR selection, aggregation controls, saved background jobs and tables/charts/GAP exports. Network Insights analyses RSRP/SINR, coverage and interference maps, sites, spectrum and network deployment. Each main tab shows a representative icon before its name. On narrower windows the main tabs switch to their short names (Analysis, Designs, Reporting, Scoring, Network) and then drop their icons, so the tab rows never overlap.
 
-**Reporting** and PPT Reporting (old) are shown only to the super-admins without a Modules Profile and to the users whose Modules Profile includes them; on a new deployment **Reporting** is in every profile and PPT Reporting (old) in none. The design viewer groups charts by Slide and opens the same PPT Filters controls in a floating panel. Its dataset dialog provides pagination and CSV export.
+**Reporting** is shown only to the super-admins without a Modules Profile and to the users whose Modules Profile includes it; on a new deployment it is in every profile. The design viewer groups charts by Slide and opens the same PPT Filters controls in a floating panel. Its dataset dialog provides pagination and CSV export.
 
 App Logs is available from the utility navigation and includes App Events for the active workspace plus the live Execution Log for the running server. See [App Logs](app-logs.md).

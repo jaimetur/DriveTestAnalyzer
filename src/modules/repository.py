@@ -475,37 +475,6 @@ CREATE TABLE IF NOT EXISTS chart_mapping_groups (
     PRIMARY KEY (mapping_type, canonical_value)
 );
 
-CREATE TABLE IF NOT EXISTS generated_jobs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    job_type TEXT NOT NULL CHECK(job_type IN ('report', 'chart_set')),
-    report_type TEXT NOT NULL DEFAULT '',
-    technology TEXT NOT NULL,
-    scope TEXT NOT NULL,
-    data_dataset_id INTEGER,
-    voice_dataset_id INTEGER,
-    speech_dataset_id INTEGER,
-    mapping_dataset_id INTEGER,
-    vodafone_mapping_dataset_id INTEGER,
-    three_mapping_dataset_id INTEGER,
-    template_name TEXT NOT NULL,
-    output_file TEXT NOT NULL DEFAULT '',
-    created_by TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    started_at TEXT,
-    dataset_ids_json TEXT NOT NULL DEFAULT '{}',
-    dataset_names_json TEXT NOT NULL DEFAULT '{}',
-    slide_count INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'ready',
-    progress INTEGER NOT NULL DEFAULT 100,
-    last_error TEXT,
-    output_path TEXT,
-    chart_count INTEGER NOT NULL DEFAULT 0,
-    generation TEXT,
-    generate_tooltips INTEGER NOT NULL DEFAULT 1,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    finished_at TEXT
-);
-
 -- The Saved Filters of Scoring & GAP Analysis: every selection used, with its saved result (see
 -- saved_filters). selection_key identifies the selection, result_key what its result was calculated with.
 CREATE TABLE IF NOT EXISTS saved_filters (
@@ -669,14 +638,12 @@ DEFAULT_ACCOUNT_USERNAMES = ('super', 'admin', 'demo')
 # The colours of the Modules Profiles of a new deployment.
 PROFILE_COLOR_ALL_MODULES, PROFILE_COLOR_BENCHMARKING, PROFILE_COLOR_NON_QUALIFIED_CALLS = '#096767', '#1E61A3', '#D74B75'
 # The Modules Profiles of a new deployment: (name, description, modules, colour, default).
-# PPT Reporting (old) is in none of them, so only super-admins without a profile see it.
 DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], str, bool], ...] = (
     ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Reporting, Builders & Ticket Center.',
      ('workspace', 'non-qualified-calls', 'reporting', 'builders', 'ticket-center'), PROFILE_COLOR_NON_QUALIFIED_CALLS, False),
     ('Benchmarking', 'Every main module except Non-Qualified Calls.',
-     tuple(key for key, _name in MAIN_MODULES if key not in {'non-qualified-calls', 'ppt-reporting-old'}), PROFILE_COLOR_BENCHMARKING, False),
-    ('All Modules', 'Every main module.', tuple(key for key, _name in MAIN_MODULES if key != 'ppt-reporting-old'),
-     PROFILE_COLOR_ALL_MODULES, True),
+     tuple(key for key, _name in MAIN_MODULES if key != 'non-qualified-calls'), PROFILE_COLOR_BENCHMARKING, False),
+    ('All Modules', 'Every main module.', tuple(key for key, _name in MAIN_MODULES), PROFILE_COLOR_ALL_MODULES, True),
 )
 
 
@@ -1017,8 +984,7 @@ class Repository:
             # Normalised inventory snapshots (built from the inventory datasets; see network_inventory).
             from src.modules.network_inventory import ensure_inventory_schema
             ensure_inventory_schema(conn)
-            self._ensure_generated_job_columns(conn)
-            self._migrate_generated_jobs(conn)
+            self._drop_retired_report_jobs(conn)
             self._cleanup_duplicate_datasets(conn)
             self._migrate_legacy_vendor_mapping_profiles(conn)
             self._migrate_vendor_field_names(conn)
@@ -1385,7 +1351,7 @@ class Repository:
             for key in module_keys:
                 rule = rules.get(key)
                 if rule is None:
-                    allowed = key != 'ppt-reporting-old'
+                    allowed = True
                 else:
                     allowed = rule['default'] == 'all'
                     for kind, result in (('deny', False), ('allow', True)):
@@ -2342,47 +2308,19 @@ class Repository:
                 f"OR LOWER(TRIM(CAST({composite} AS TEXT))) = LOWER(TRIM(CAST({op} AS TEXT))))"
             )
 
-    def _migrate_generated_jobs(self, conn: sqlite3.Connection) -> None:
-        """Merge the two legacy job tables into the single generated-jobs table."""
-        tables = {str(row['name']) for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        ).fetchall()}
-        if 'report_runs' in tables:
-            self._ensure_legacy_report_run_columns(conn)
-            conn.execute(
-                """
-                INSERT INTO generated_jobs (
-                    id, job_type, report_type, technology, scope, data_dataset_id, voice_dataset_id,
-                    speech_dataset_id, mapping_dataset_id, vodafone_mapping_dataset_id,
-                    three_mapping_dataset_id, template_name, output_file, created_by, created_at,
-                    dataset_ids_json, dataset_names_json, slide_count, status, progress,
-                    last_error, output_path, updated_at, finished_at
-                )
-                SELECT id, 'report', report_type, technology, scope, data_dataset_id, voice_dataset_id,
-                    speech_dataset_id, mapping_dataset_id, vodafone_mapping_dataset_id,
-                    three_mapping_dataset_id, template_name, output_file, created_by, created_at,
-                    dataset_ids_json, dataset_names_json, slide_count, status, progress,
-                    last_error, output_path, COALESCE(updated_at, created_at), finished_at
-                FROM report_runs ORDER BY id
-                """
-            )
-            conn.execute('DROP TABLE report_runs')
-        if 'report_chart_jobs' in tables:
-            self._ensure_legacy_report_chart_job_columns(conn)
-            conn.execute(
-                """
-                INSERT INTO generated_jobs (
-                    job_type, technology, scope, dataset_ids_json, dataset_names_json,
-                    template_name, chart_count, generation, created_by, created_at,
-                    status, progress, last_error, updated_at, finished_at
-                )
-                SELECT 'chart_set', technology, scope, dataset_ids_json, dataset_names_json,
-                    template_name, chart_count, generation, created_by, created_at,
-                    status, progress, last_error, COALESCE(updated_at, created_at), finished_at
-                FROM report_chart_jobs ORDER BY id
-                """
-            )
-            conn.execute('DROP TABLE report_chart_jobs')
+    @staticmethod
+    def _drop_retired_report_jobs(conn: sqlite3.Connection) -> None:
+        """Drop the job tables of PPT Reporting (old), a module the tool no longer has: its PowerPoint reports and Chart
+        Sets jobs (generated_jobs, and report_runs and report_chart_jobs before them). The documents those jobs wrote stay
+        in the output folder of the workspace. App Events records the jobs each table held (retired_report_jobs_dropped)."""
+        tables = {str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        dropped = {table: int(conn.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0])
+                   for table in ('generated_jobs', 'report_runs', 'report_chart_jobs') if table in tables}
+        for table in dropped:
+            conn.execute(f'DROP TABLE {table}')
+        if dropped and 'audit_logs' in tables:
+            conn.execute('INSERT INTO audit_logs (username, action, details, created_at) VALUES (?, ?, ?, ?)', (
+                'system', 'retired_report_jobs_dropped', json.dumps({'tables': dropped, 'executed_by': 'system'}), local_now_iso()))
 
     @staticmethod
     def _rename_earlier_saved_filters_table(conn: sqlite3.Connection) -> None:
@@ -2420,51 +2358,12 @@ class Repository:
         from src.modules.saved_filters import convert_scoring_jobs
         convert_scoring_jobs(conn)
 
-    def _ensure_generated_job_columns(self, conn: sqlite3.Connection) -> None:
-        """Keep persisted job options available after schema upgrades."""
-        tables = {str(row['name']) for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
-        if 'generated_jobs' not in tables:
-            return
-        columns = {str(row['name']) for row in conn.execute("PRAGMA table_info(generated_jobs)").fetchall()}
-        if 'vendor_comparison' not in columns:
-            conn.execute("ALTER TABLE generated_jobs ADD COLUMN vendor_comparison TEXT NOT NULL DEFAULT 'operator_vendor'")
-        if 'generate_tooltips' not in columns:
-            conn.execute("ALTER TABLE generated_jobs ADD COLUMN generate_tooltips INTEGER NOT NULL DEFAULT 1")
-        if 'started_at' not in columns:
-            conn.execute("ALTER TABLE generated_jobs ADD COLUMN started_at TEXT")
-
-    def _ensure_legacy_report_run_columns(self, conn: sqlite3.Connection) -> None:
-        columns = {row['name'] for row in conn.execute("PRAGMA table_info(report_runs)").fetchall()}
-        migrations = {
-            'vodafone_mapping_dataset_id': 'INTEGER', 'three_mapping_dataset_id': 'INTEGER',
-            'dataset_ids_json': "TEXT NOT NULL DEFAULT '{}'", 'dataset_names_json': "TEXT NOT NULL DEFAULT '{}'",
-            'slide_count': 'INTEGER NOT NULL DEFAULT 0', 'status': "TEXT NOT NULL DEFAULT 'ready'",
-            'progress': 'INTEGER NOT NULL DEFAULT 100', 'last_error': 'TEXT', 'output_path': 'TEXT',
-            'updated_at': 'TEXT', 'finished_at': 'TEXT',
-        }
-        for column, definition in migrations.items():
-            if column not in columns:
-                conn.execute(f"ALTER TABLE report_runs ADD COLUMN {column} {definition}")
-
-    def _ensure_legacy_report_chart_job_columns(self, conn: sqlite3.Connection) -> None:
-        columns = {row['name'] for row in conn.execute("PRAGMA table_info(report_chart_jobs)").fetchall()}
-        migrations = {
-            'dataset_ids_json': "TEXT NOT NULL DEFAULT '{}'", 'dataset_names_json': "TEXT NOT NULL DEFAULT '{}'",
-            'template_name': "TEXT NOT NULL DEFAULT ''", 'chart_count': 'INTEGER NOT NULL DEFAULT 0',
-            'generation': 'TEXT', 'created_by': "TEXT NOT NULL DEFAULT ''", 'created_at': 'TEXT',
-            'status': "TEXT NOT NULL DEFAULT 'queued'", 'progress': 'INTEGER NOT NULL DEFAULT 0',
-            'last_error': 'TEXT', 'updated_at': 'TEXT', 'finished_at': 'TEXT',
-        }
-        for column, definition in migrations.items():
-            if column not in columns:
-                conn.execute(f"ALTER TABLE report_chart_jobs ADD COLUMN {column} {definition}")
-
     def _merge_report_template_nr_modes(self, conn: sqlite3.Connection) -> None:
         """Move the templates kept per NR Mode (NSA and SA libraries) into one library, once per workspace.
 
         Each NSA and SA copy of the same template becomes one template naming the mode with tokens (see
         report_template_modes); the Designs take their NR Mode as part of their selection and follow their template,
-        and so do the PPT jobs and Reporting (old) jobs that named it. The workspace keeps how the templates of before are
+        and so do the PPT jobs that named it. The workspace keeps how the templates of before are
         known now, for the packages and backups of before.
         """
         columns = {row['name'] for row in conn.execute("PRAGMA table_info(report_templates)").fetchall()}
@@ -2516,9 +2415,6 @@ class Repository:
         for (technology, old_name), new_name in merge.renames.items():
             if 'design_ppt_jobs' in tables:
                 conn.execute('UPDATE design_ppt_jobs SET template_name = ? WHERE template_name = ? AND LOWER(nr_mode) = ?',
-                             (new_name, old_name, technology))
-            if 'generated_jobs' in tables:
-                conn.execute('UPDATE generated_jobs SET template_name = ? WHERE template_name = ? AND LOWER(technology) = ?',
                              (new_name, old_name, technology))
         if 'audit_logs' in tables:
             conn.execute(
@@ -5674,7 +5570,6 @@ class Repository:
 
             json_columns = {
                 'dataset_profiles': [('processing_options_json', False)],
-                'generated_jobs': [('dataset_ids_json', True)],
                 'saved_filters': [('dataset_ids_json', True), ('source_metadata_json', False)],
                 'audit_logs': [('details', False)],
                 'workspace_state': [('value', False)],
@@ -5749,105 +5644,7 @@ class Repository:
         except sqlite3.OperationalError:
             return False
 
-    def add_report_run(self, *, report_type: str, technology: str, scope: str, data_dataset_id: int,
-                       voice_dataset_id: int, speech_dataset_id: int, vodafone_mapping_dataset_id: int | None,
-                       three_mapping_dataset_id: int | None,
-                       template_name: str, output_file: str, created_by: str) -> None:
-        with self.connection() as conn:
-            conn.execute(
-                """
-                INSERT INTO generated_jobs (
-                    job_type, report_type, technology, scope, data_dataset_id, voice_dataset_id, speech_dataset_id,
-                    mapping_dataset_id, vodafone_mapping_dataset_id, three_mapping_dataset_id, template_name, output_file, created_by
-                ) VALUES ('report', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (report_type, technology, scope, data_dataset_id, voice_dataset_id, speech_dataset_id,
-                 None, vodafone_mapping_dataset_id, three_mapping_dataset_id, template_name, output_file, created_by),
-            )
-
-    def list_report_runs(self, limit: int | None = 50) -> list[sqlite3.Row]:
-        with self.connection() as conn:
-            if limit is None:
-                return list(conn.execute("SELECT * FROM generated_jobs WHERE job_type = 'report' ORDER BY id DESC").fetchall())
-            return list(conn.execute(
-                "SELECT * FROM generated_jobs WHERE job_type = 'report' ORDER BY id DESC LIMIT ?", (limit,)
-            ).fetchall())
-
-    def create_report_job(
-        self, *, report_type: str, technology: str, scope: str,
-        data_dataset_id: int | None, voice_dataset_id: int | None, speech_dataset_id: int | None,
-        dataset_ids: dict[str, list[int]], dataset_names: dict[str, list[str]],
-        slide_count: int, template_name: str, output_file: str, output_path: Path,
-        created_by: str, generate_tooltips: bool = True, vendor_comparison: str = "operator_vendor",
-    ) -> int:
-        with self.connection() as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO generated_jobs (
-                    job_type, report_type, technology, scope, data_dataset_id, voice_dataset_id, speech_dataset_id,
-                    template_name, output_file, created_by, created_at, dataset_ids_json, dataset_names_json,
-                    slide_count, status, progress, output_path, generate_tooltips, updated_at, vendor_comparison
-                ) VALUES ('report', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?, ?)
-                """,
-                (
-                    report_type, technology, scope, data_dataset_id, voice_dataset_id, speech_dataset_id,
-                    template_name, output_file, created_by, local_now_iso(), json.dumps(dataset_ids), json.dumps(dataset_names),
-                    slide_count, str(output_path), int(generate_tooltips), local_now_iso(), vendor_comparison,
-                ),
-            )
-            return int(cursor.lastrowid)
-
-    def update_report_job(
-        self, report_id: int, *, status: str | None = None, progress: int | None = None,
-        last_error: str | None = None, finished: bool = False,
-    ) -> None:
-        assignments = ['updated_at = ?']
-        values: list[Any] = [local_now_iso()]
-        if status is not None:
-            assignments.append('status = ?')
-            values.append(status)
-            if status == 'processing':
-                assignments.append('started_at = COALESCE(started_at, ?)')
-                values.append(local_now_iso())
-        if progress is not None:
-            assignments.append('progress = ?')
-            values.append(max(0, min(100, int(progress))))
-        if last_error is not None:
-            assignments.append('last_error = ?')
-            values.append(last_error)
-        if finished:
-            assignments.append('finished_at = ?')
-            values.append(local_now_iso())
-        values.append(report_id)
-        with self.connection() as conn:
-            # A user can stop a worker between any two progress updates.  Do
-            # not let a late update from that worker revive the stopped job.
-            conn.execute(f"UPDATE generated_jobs SET {', '.join(assignments)} WHERE id = ? AND job_type = 'report' AND status <> 'stopped'", values)
-
-    def stop_report_job(self, report_id: int) -> bool:
-        """Stop a queued or running report job without deleting its audit row."""
-        now = local_now_iso()
-        with self.connection() as conn:
-            cursor = conn.execute(
-                "UPDATE generated_jobs SET status = 'stopped', last_error = '', updated_at = ?, finished_at = ? "
-                "WHERE id = ? AND job_type = 'report' AND status IN ('queued', 'processing')",
-                (now, now, report_id),
-            )
-            return cursor.rowcount == 1
-
-    def retry_report_job(self, report_id: int) -> bool:
-        """Reset a completed, failed or stopped report job for reuse."""
-        now = local_now_iso()
-        with self.connection() as conn:
-            cursor = conn.execute(
-                "UPDATE generated_jobs SET status = 'queued', progress = 0, last_error = '', finished_at = NULL, "
-                "started_at = NULL, created_at = ?, updated_at = ? "
-                "WHERE id = ? AND job_type = 'report' AND status IN ('failed', 'stopped', 'ready')",
-                (now, now, report_id),
-            )
-            return cursor.rowcount == 1
-
-    def fail_interrupted_background_jobs(self, *, fail_datasets: bool = True) -> tuple[list[int], list[int]]:
+    def fail_interrupted_background_jobs(self, *, fail_datasets: bool = True) -> list[int]:
         """Fail jobs left running when the application process stopped.
 
         In-process workers cannot survive an application restart.  Persisted
@@ -5861,27 +5658,16 @@ class Repository:
             dataset_rows = conn.execute(
                 "SELECT dataset_id FROM dataset_profiles WHERE status IN ('queued', 'processing')"
             ).fetchall() if 'dataset_profiles' in tables else []
-            report_rows = conn.execute(
-                "SELECT id FROM generated_jobs WHERE job_type = 'report' AND status IN ('queued', 'processing')"
-            ).fetchall() if 'generated_jobs' in tables else []
             scoring_rows = conn.execute(
                 "SELECT id FROM saved_filters WHERE status IN ('queued', 'processing')"
             ).fetchall() if 'saved_filters' in tables else []
             dataset_ids = [int(row['dataset_id']) for row in dataset_rows] if fail_datasets else []
-            report_ids = [int(row['id']) for row in report_rows]
             if dataset_ids:
                 placeholders = ','.join('?' for _ in dataset_ids)
                 conn.execute(
                     f"UPDATE dataset_profiles SET status = 'failed', last_error = ?, processed_at = ?, updated_at = ? "
                     f"WHERE dataset_id IN ({placeholders})",
                     (message, now, now, *dataset_ids),
-                )
-            if report_ids:
-                placeholders = ','.join('?' for _ in report_ids)
-                conn.execute(
-                    f"UPDATE generated_jobs SET status = 'failed', last_error = ?, updated_at = ?, finished_at = ? "
-                    f"WHERE id IN ({placeholders})",
-                    (message, now, now, *report_ids),
                 )
             scoring_ids = [int(row['id']) for row in scoring_rows]
             if scoring_ids:
@@ -5891,7 +5677,7 @@ class Repository:
                     f"WHERE id IN ({placeholders})",
                     (message, message, now, now, *scoring_ids),
                 )
-        return dataset_ids, report_ids
+        return dataset_ids
 
     def fail_inconsistent_ready_datasets(self) -> list[int]:
         """Make incomplete ready profiles retryable instead of displaying false success."""
@@ -5908,141 +5694,6 @@ class Repository:
                     (local_now_iso(),),
                 )
         return dataset_ids
-
-    def get_report_run(self, report_id: int) -> sqlite3.Row | None:
-        with self.connection() as conn:
-            return conn.execute("SELECT * FROM generated_jobs WHERE id = ? AND job_type = 'report'", (report_id,)).fetchone()
-
-    def delete_report_run(self, report_id: int) -> sqlite3.Row | None:
-        with self.connection() as conn:
-            report = conn.execute("SELECT * FROM generated_jobs WHERE id = ? AND job_type = 'report'", (report_id,)).fetchone()
-            if report:
-                conn.execute("DELETE FROM generated_jobs WHERE id = ? AND job_type = 'report'", (report_id,))
-            return report
-
-    def create_report_chart_job(
-        self, *, technology: str, scope: str, dataset_ids: dict[str, list[int]],
-        dataset_names: dict[str, list[str]], template_name: str, created_by: str, generate_tooltips: bool = True, vendor_comparison: str = "operator_vendor",
-    ) -> int:
-        with self.connection() as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO generated_jobs (
-                    job_type, technology, scope, dataset_ids_json, dataset_names_json, template_name,
-                    created_by, created_at, status, progress, generate_tooltips, updated_at, vendor_comparison
-                ) VALUES ('chart_set', ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)
-                """,
-                (
-                    technology, scope, json.dumps(dataset_ids), json.dumps(dataset_names), template_name,
-                    created_by, local_now_iso(), int(generate_tooltips), local_now_iso(), vendor_comparison,
-                ),
-            )
-            return int(cursor.lastrowid)
-
-    def update_report_chart_job(
-        self, job_id: int, *, status: str | None = None, progress: int | None = None,
-        last_error: str | None = None, chart_count: int | None = None,
-        generation: str | None = None, finished: bool = False,
-    ) -> None:
-        assignments = ['updated_at = ?']
-        values: list[Any] = [local_now_iso()]
-        if status is not None:
-            assignments.append('status = ?')
-            values.append(status)
-            if status == 'processing':
-                assignments.append('started_at = COALESCE(started_at, ?)')
-                values.append(local_now_iso())
-        if progress is not None:
-            assignments.append('progress = ?')
-            values.append(max(0, min(100, int(progress))))
-        if last_error is not None:
-            assignments.append('last_error = ?')
-            values.append(last_error)
-        if chart_count is not None:
-            assignments.append('chart_count = ?')
-            values.append(max(0, int(chart_count)))
-        if generation is not None:
-            assignments.append('generation = ?')
-            values.append(generation)
-        if finished:
-            assignments.append('finished_at = ?')
-            values.append(local_now_iso())
-        values.append(job_id)
-        with self.connection() as conn:
-            # See update_report_job: stopped work must remain stopped even if
-            # its in-process thread reaches a later progress checkpoint.
-            conn.execute(f"UPDATE generated_jobs SET {', '.join(assignments)} WHERE id = ? AND job_type = 'chart_set' AND status <> 'stopped'", values)
-
-    def stop_report_chart_job(self, job_id: int) -> bool:
-        """Stop a queued or running Chart Set job."""
-        now = local_now_iso()
-        with self.connection() as conn:
-            cursor = conn.execute(
-                "UPDATE generated_jobs SET status = 'stopped', last_error = '', updated_at = ?, finished_at = ? "
-                "WHERE id = ? AND job_type = 'chart_set' AND status IN ('queued', 'processing')",
-                (now, now, job_id),
-            )
-            return cursor.rowcount == 1
-
-    def retry_report_chart_job(self, job_id: int) -> bool:
-        """Reset one failed, stopped or completed Chart Set job for reuse."""
-        now = local_now_iso()
-        with self.connection() as conn:
-            cursor = conn.execute(
-                "UPDATE generated_jobs SET status = 'queued', progress = 0, last_error = '', chart_count = 0, started_at = NULL, "
-                "generation = CASE WHEN status = 'ready' THEN NULL ELSE generation END, finished_at = NULL, created_at = ?, updated_at = ? "
-                "WHERE id = ? AND job_type = 'chart_set' AND status IN ('failed', 'stopped', 'ready')",
-                (now, now, job_id),
-            )
-            return cursor.rowcount == 1
-
-    def list_report_chart_jobs(self, limit: int | None = 50) -> list[sqlite3.Row]:
-        with self.connection() as conn:
-            if limit is None:
-                return list(conn.execute("SELECT * FROM generated_jobs WHERE job_type = 'chart_set' ORDER BY id DESC").fetchall())
-            return list(conn.execute("SELECT * FROM generated_jobs WHERE job_type = 'chart_set' ORDER BY id DESC LIMIT ?", (limit,)).fetchall())
-
-    def get_report_chart_job(self, job_id: int) -> sqlite3.Row | None:
-        with self.connection() as conn:
-            return conn.execute("SELECT * FROM generated_jobs WHERE id = ? AND job_type = 'chart_set'", (job_id,)).fetchone()
-
-    def delete_report_chart_job(self, job_id: int) -> sqlite3.Row | None:
-        with self.connection() as conn:
-            job = conn.execute("SELECT * FROM generated_jobs WHERE id = ? AND job_type = 'chart_set'", (job_id,)).fetchone()
-            if job:
-                conn.execute("DELETE FROM generated_jobs WHERE id = ? AND job_type = 'chart_set'", (job_id,))
-            return job
-
-    def delete_report_chart_jobs_for_generations(self, generations: list[str]) -> int:
-        """Remove ready Chart Set jobs whose generated files were deleted."""
-        unique_generations = [value for value in dict.fromkeys(generations) if value]
-        if not unique_generations:
-            return 0
-        placeholders = ','.join('?' for _ in unique_generations)
-        with self.connection() as conn:
-            cursor = conn.execute(
-                f"DELETE FROM generated_jobs WHERE job_type = 'chart_set' AND generation IN ({placeholders})",
-                unique_generations,
-            )
-            return int(cursor.rowcount)
-
-    def fail_interrupted_report_chart_jobs(self) -> list[int]:
-        """Make in-process Report Charts work retryable after an app restart."""
-        message = 'Interrupted because the application restarted. Retry the job to run it again.'
-        now = local_now_iso()
-        with self.connection() as conn:
-            rows = conn.execute(
-                "SELECT id FROM generated_jobs WHERE job_type = 'chart_set' AND status IN ('queued', 'processing')"
-            ).fetchall()
-            job_ids = [int(row['id']) for row in rows]
-            if job_ids:
-                placeholders = ','.join('?' for _ in job_ids)
-                conn.execute(
-                    f"UPDATE generated_jobs SET status = 'failed', last_error = ?, updated_at = ?, finished_at = ? "
-                    f"WHERE id IN ({placeholders})",
-                    (message, now, now, *job_ids),
-                )
-        return job_ids
 
     def save_transfer_offer(self, offer: dict[str, Any]) -> None:
         """Persist destination transfer handshake state in the global DB."""

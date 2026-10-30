@@ -16,7 +16,7 @@ const React = require('react');
 const ReactDOMServer = require('react-dom/server');
 const tb = require('react-icons/tb');
 
-// The decks in the order of the tabs of the tool (PPT Reporting (old) has none), Workspace Config after Workspace and the
+// The decks in the order of the tabs of the tool, Workspace Config after Workspace and the
 // administration (Admin and Super Admin) after them, and those drawn from a slides.html.
 const DECKS = ['workspace', 'workspace-config', 'cdr-analysis', 'ppt-designer', 'scoring-gap-analysis', 'network-insights', 'non-qualified-calls', 'reporting',
   'builders', 'ticket-center', 'administration'];
@@ -482,7 +482,7 @@ const VISUALS = {
   },
   // Jobs and their status.
   jobs(p) {
-    const rows = [['Q3 Voice report', 'Completed', p.accent], ['Q3 Data report', 'Completed', p.accent], ['Chart Set · London', 'Running', '#e0a020'], ['Q2 Speech report', 'Queued', '#3a4d75']];
+    const rows = [['Q3 Voice report', 'Completed', p.accent], ['Q3 Data report', 'Completed', p.accent], ['PPT Design · London', 'Running', '#e0a020'], ['Q2 Speech report', 'Queued', '#3a4d75']];
     return rows.map(([name, status, colour], index) => {
       const y = 40 + index * 124;
       return `<rect x="20" y="${y}" width="780" height="100" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><g transform="translate(46 ${y + 28})">${icon('TbFileTypePpt', p.light, 44)}</g>`

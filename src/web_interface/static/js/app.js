@@ -6283,7 +6283,6 @@ function setupPagePanelNavigator() {
     'module-tab-workspace': 'workspace',
     'module-tab-datasets-analysis': 'datasets',
     'module-tab-ppt-designer': 'designs',
-    'module-tab-reporting': 'reporting',
     'module-tab-chart-builder': 'builder',
     'module-tab-utility': 'utility',
     'module-tab-app-logs': 'logs',
@@ -7999,7 +7998,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         title: `${operation} Workspace`,
         confirmLabel: operation,
         copyHtml: `<p>The workspace database and its definitions are always included. Choose the folders to include in this Workspace ${operation}:</p>`
-          + '<label class="confirm-option"><input type="checkbox" checked data-export-include-outputs><span>Output folder: generated designs, reports and chart sets</span></label>'
+          + '<label class="confirm-option"><input type="checkbox" checked data-export-include-outputs><span>Output folder: generated designs and reports</span></label>'
           + '<label class="confirm-option"><input type="checkbox" checked data-export-include-input><span>Input folder: original CDR files, needed to reprocess datasets</span></label>',
       },
     );

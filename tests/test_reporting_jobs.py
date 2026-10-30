@@ -107,18 +107,17 @@ def test_definitions_keep_every_module_option_and_need_an_artifact():
 def test_modules_profiles_control_the_modules_of_each_user(client):
     analyst_id = workspace_user('analyst', 'user-viewer')
     login(client)
-    # Super-admins see every module, PPT Reporting (old) included, although it is in no profile.
+    # Super-admins see every module.
     page = client.get('/workspace').text
-    assert 'href="/reporting"' in page and 'href="/non-qualified-calls"' in page and 'href="/ppt-reporting-old"' in page
+    assert 'href="/reporting"' in page and 'href="/non-qualified-calls"' in page
     order = [page.index(f'href="{path}"') for path in ('/datasets-analysis', '/ppt-designer', '/scoring', '/network-insights', '/non-qualified-calls', '/reporting')]
     assert order == sorted(order)
-    # A user without a profile has the default one: every module but PPT Reporting (old).
+    # A user without a profile has the default one: every module.
     session(client, 'analyst', 'user-viewer')
     page = client.get('/workspace').text
-    assert 'href="/reporting"' in page and 'href="/ppt-reporting-old"' not in page
+    assert 'href="/reporting"' in page and 'href="/scoring"' in page
     assert client.get('/reporting').status_code == 200
     assert client.get('/scoring').status_code == 200
-    assert client.get('/ppt-reporting-old').status_code == 403
     # A profile gives its modules to its users.
     login(client)
     assert client.post('/admin/modules-profiles', data={'name': 'Reporting only', 'description': 'Team', 'modules': ['workspace', 'reporting'],
@@ -147,29 +146,24 @@ def test_modules_profiles_control_the_modules_of_each_user(client):
     assert client.post(f'/admin/modules-profiles/{profile_id}/update', data={'name': 'x'}).status_code == 403
 
 
-def test_help_readme_and_changelog_are_public_except_ppt_reporting_old(client):
+def test_help_readme_and_changelog_are_public(client):
     client.cookies.clear()
     assert client.get('/documents/view/help').status_code == 200
     assert 'Sign in' in client.get('/documents/view/readme').text
     assert client.get('/api/documents/changelog').status_code == 200
     index = [item['relative_path'] for item in client.get('/api/documents/help-index').json()['documents']]
     assert 'reporting.md' in index and 'ppt-reporting-old.md' not in index
-    assert client.get('/api/documents/help/ppt-reporting-old.md').status_code == 403
+    assert client.get('/api/documents/help/ppt-reporting-old.md').status_code == 404
     assert 'ppt-reporting-old.md' not in client.get('/api/documents/help').json()['content']
     assert 'Email Delivery' in client.get('/api/documents/help/app-config.md').json()['content']
-    # Super-admins see the chapter of every module; other users only those of their Modules Profile.
+    # Every user sees the same chapters, in the order of the main tabs.
     login(client)
-    assert 'ppt-reporting-old.md' in [item['relative_path'] for item in client.get('/api/documents/help-index').json()['documents']]
+    super_index = [item['relative_path'] for item in client.get('/api/documents/help-index').json()['documents']]
     workspace_user('writer', 'user-editor')
     login(client, 'writer', 'writer123')
     index = [item['relative_path'] for item in client.get('/api/documents/help-index').json()['documents']]
-    assert 'ppt-reporting-old.md' not in index
-    default = next(profile for profile in core.repository.list_modules_profiles() if profile['is_default'])
-    core.repository.save_modules_profile(default['id'], default['name'], default['description'], [*default['modules'], 'ppt-reporting-old'])
-    core.invalidate_module_access_cache()
-    index = [item['relative_path'] for item in client.get('/api/documents/help-index').json()['documents']]
-    assert index.index('ppt-designer.md') < index.index('ppt-reporting-old.md') < index.index('scoring-gap-analysis.md') < index.index('reporting.md')
-    assert client.get('/api/documents/help/ppt-reporting-old.md').status_code == 200
+    assert index == super_index and 'ppt-reporting-old.md' not in index
+    assert index.index('ppt-designer.md') < index.index('scoring-gap-analysis.md') < index.index('reporting.md')
 
 
 def test_email_delivery_settings_keep_the_saved_password(client):

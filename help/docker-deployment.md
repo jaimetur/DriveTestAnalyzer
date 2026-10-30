@@ -80,7 +80,7 @@ Deployments created while the application was named Dashboard Analytic keep thei
 Persist both roots:
 
 - Config: users, permissions and transfer offers, and the Kiro CLI that Super Admin installs for the generated comments of PPT Designer (`tools/kiro-cli`) with the keys of the AI writers (`ai-credentials.json`).
-- Data: workspace registry, databases, Report Templates, uploads, reports, Chart Sets and transfer packages.
+- Data: workspace registry, databases, Report Templates, uploads, reports and transfer packages.
 
 Do not rely on the writable container layer. Recreating a container must not remove application state.
 
@@ -124,9 +124,9 @@ docker buildx imagetools inspect IMAGE_REPOSITORY:IMAGE_TAG
 5. Verify the image ID/digest actually running.
 6. Sign in and check users, permissions and templates.
 7. Open an existing workspace and inspect its size/datasets.
-8. Generate a small Chart Set or report.
+8. Generate a small PPT Design or report.
 
-Database migrations run automatically at startup. For example, legacy Report/Chart job tables are merged into `generated_jobs` and removed.
+Database migrations run automatically at startup. For example, the PPT Templates kept per NR Mode by earlier versions are merged into one library.
 
 ## Build cache and stale-image checks
 

@@ -238,12 +238,3 @@ def remove_starter_favourites(repository) -> None:
         bundle_report_templates.delete_favourite(repository, favourite['id'])
     for saved_filter in saved_filters.list_saved_filters(repository):
         saved_filters.delete_saved_filter(repository, saved_filter['id'])
-
-
-@pytest.fixture()
-def ppt_reporting_old(client: TestClient) -> TestClient:
-    """PPT Reporting (old) is in no Modules Profile by default; the tests of the old module add it to the default profile."""
-    default = next(profile for profile in app_module.repository.list_modules_profiles() if profile['is_default'])
-    app_module.repository.save_modules_profile(default['id'], default['name'], default['description'], [*default['modules'], 'ppt-reporting-old'])
-    app_module.invalidate_module_access_cache()
-    return client

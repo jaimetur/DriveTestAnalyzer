@@ -77,9 +77,9 @@ Above the table, the search and the filters show only the users with a name or u
 - **Default** marks the profile of users without one: users created without choosing one, and the users of a deleted profile. **Make default** moves it to another profile; the default profile cannot be deleted.
 - The **New profile** card creates a profile without modules or users; the bin deletes a profile.
 
-A module that is in no profile is seen only by the super-admins without a profile, as PPT Reporting (old) on a new deployment or a module added by a later version until it is added to the profiles that should have it. A module that is not shown to a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. Reporting Jobs can only include artifacts of the modules their author sees; see [Reporting](reporting.md).
+A module that is in no profile is seen only by the super-admins without a profile, as a module added by a later version until it is added to the profiles that should have it. A module that is not shown to a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. Reporting Jobs can only include artifacts of the modules their author sees; see [Reporting](reporting.md).
 
-A new deployment starts with three profiles: **Non-Qualified Calls** (**Workspace**, Non-Qualified Calls, **Reporting**, **Builders** and Ticket Center), **Benchmarking** (every main module except Non-Qualified Calls and PPT Reporting (old)) and **All Modules** (every main module except PPT Reporting (old)), the default one, in pink, blue and teal. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
+A new deployment starts with three profiles: **Non-Qualified Calls** (**Workspace**, Non-Qualified Calls, **Reporting**, **Builders** and Ticket Center), **Benchmarking** (every main module except Non-Qualified Calls) and **All Modules** (every main module), the default one, in pink, blue and teal. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
 
 ## Workspace Groups
 
@@ -169,7 +169,7 @@ In **Back up now**, select in **Backup content** one or more content types and t
 - **Workspace Content: NQ Calls Configuration** stores one JSON file with only the configuration of the Non-Qualified Calls Analysis Center (sections, field catalog, statuses, teams, Status Rules, DT Analyzer RCA Rules, Prioritization Rules, root cause catalog and table columns); restore merges it into the workspace like the configuration part of NQ Call Tracking.
 - **Workspace Content: App Events** stores one JSON file with every App Event of the workspace; restore adds the events the workspace does not have (the same user, action, details and time), among its own by date.
 - **Workspace Content: Input** stores raw dataset files when explicitly selected.
-- **Workspace Content: Output** stores generated Reports, Chart Sets and PPT Designer jobs when explicitly selected.
+- **Workspace Content: Output** stores generated reports and PPT Designer jobs when explicitly selected.
 
 Application database, Workspace Database, Designs, PPT Templates, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Methodologies and Auto-calculated Fields are selected by default. Main Cities precedes Mappings & Reference Data in Export and Backup/Restore component lists.
 
@@ -193,7 +193,7 @@ Backups stay in the chosen folder of this server: copy them to other storage out
 
 The default storage directory is `APP_DATA_DIR/scheduled-backups`. **Browse** opens a server-side directory picker limited to `APP_DATA_DIR`, so it reflects directories visible to the host or Docker container rather than the browser's computer. It can create a folder before selecting it.
 
-Below the settings, the panel says what **Days to keep**, **Weeks to keep** and **Months to keep** keep as the schedule is set (with **Light backups** on, the full backups are the weekly ones, and it names those among the days kept), the dates a backup made today keeps, and the most light and full backups kept at the same time over the next year, with the space they take from the size of the latest scheduled ones, to tell how much room the backup folder needs. The tiles at the top report the stored backups and their total size, each with how many and how much of them are full and light, and the most recent successful backup and the next scheduled run, each saying whether it is full or light. Scheduled backups use the same chosen content and workspace selection as the Backup panel. Select Input and/or Output when raw datasets, Reports, Chart Sets or PPT Designer jobs must be included. Scheduled backups complement infrastructure backups and portable Export packages.
+Below the settings, the panel says what **Days to keep**, **Weeks to keep** and **Months to keep** keep as the schedule is set (with **Light backups** on, the full backups are the weekly ones, and it names those among the days kept), the dates a backup made today keeps, and the most light and full backups kept at the same time over the next year, with the space they take from the size of the latest scheduled ones, to tell how much room the backup folder needs. The tiles at the top report the stored backups and their total size, each with how many and how much of them are full and light, and the most recent successful backup and the next scheduled run, each saying whether it is full or light. Scheduled backups use the same chosen content and workspace selection as the Backup panel. Select Input and/or Output when raw datasets, reports or PPT Designer jobs must be included. Scheduled backups complement infrastructure backups and portable Export packages.
 
 What interrupted work leaves behind is removed once a night, between 00:00 and 07:00, after a quarter of an hour without anyone using the application and while no import, export, transfer, backup, restore or CDR processing is running (when two days pass without a cleanup, at the next idle moment): the snapshots and partial ZIPs of backups killed mid-write, the temporary folders of imports, exports, transfers and restores, the uploads of CDRs never finished after a week, and the temporary files of the workspace caches, all untouched for six hours. Each backup also first removes what an interrupted backup left in its folder. What is removed, with the space freed, is recorded in App Events.
 
@@ -204,13 +204,13 @@ What interrupted work leaves behind is removed once a night, between 00:00 and 0
 Tables are grouped by ownership:
 
 - **Config Tables**: global application configuration.
-- **Workspace Tables**: templates, datasets, profiles, logs, workspace state, PPT selections, Design selected rows, PPT Designer jobs and unified classic generated jobs.
+- **Workspace Tables**: templates, datasets, profiles, logs, workspace state, PPT selections, Design selected rows and PPT Designer jobs.
 - **Individual dataset rows**: one materialised table per dataset.
 - **Combined CDR rows**: reporting acceleration tables by CDR type.
 
 The **Table** picker lists the tables of each group by kind (Users & Access, Application, Datasets, Designs & Templates, Scoring & GAP Analysis, Non-Qualified Calls, Reporting, Mappings & Maps, Query Builder, Workspace, and the Voice, Data or Speech CDRs of each individual dataset), each kind in its colour, and its search box finds a table by its title or its database name.
 
-The **Generated jobs** table contains Report and Chart Set rows, distinguished by `job_type`. PowerPoint history is stored separately in **PPT Designer jobs** because each row retains its PPT definition and applied filter snapshot.
+PowerPoint history is stored in **PPT Designer jobs** because each row retains its PPT definition and applied filter snapshot.
 
 The **PPT Templates** table is the active workspace's `report_templates` table. It stores each template name, technology, default flag, timestamps and CSV content. Existing CSV templates are migrated automatically when their workspace is opened; compatibility CSV copies are generated only for portable packages.
 

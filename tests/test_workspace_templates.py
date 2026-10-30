@@ -322,38 +322,37 @@ def test_workspace_archive_and_duplicate_include_templates(client, tmp_path):
     assert not list(duplicate.slides_templates_dir.rglob('*.csv'))
 
 
-def test_workspace_duplicate_optionally_copies_generated_reports_and_chart_sets(tmp_path):
+def test_workspace_duplicate_optionally_copies_generated_designs_and_reports(tmp_path):
     registry = WorkspaceRegistry(tmp_path / 'data/workspaces/registry.db', tmp_path / 'data', tmp_path / 'shared')
     registry.initialize()
     source = registry.get('default')
     assert source is not None
     source_repository = Repository(source.database_path, tmp_path / 'application.db')
     source_repository.initialize()
-    report = source.export_dir / 'reports-old' / 'generated.pptx'
-    report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_bytes(b'report')
+    design = source.output_dir / 'reports' / 'ppt-designs' / '20260910_120000 - Design' / 'design.pptx'
+    design.parent.mkdir(parents=True, exist_ok=True)
+    design.write_bytes(b'design')
+    # The documents an earlier version wrote in the folders of PPT Reporting (old) are generated outputs too.
     chart = source.output_dir / 'reports' / 'reports-charts-old' / '20260910-120000' / 'chart-1.png'
     chart.parent.mkdir(parents=True, exist_ok=True)
     chart.write_bytes(b'chart')
     with sqlite3.connect(source.database_path) as connection:
-        connection.execute(
-            """INSERT INTO generated_jobs (job_type, technology, scope, template_name, output_file, created_by, output_path)
-               VALUES ('report', 'nsa', 'single', 'Template', 'generated.pptx', 'admin', ?)""",
-            (str(report),),
-        )
+        connection.execute('CREATE TABLE IF NOT EXISTS design_ppt_jobs (id INTEGER PRIMARY KEY, output_path TEXT NOT NULL)')
+        connection.execute('INSERT INTO design_ppt_jobs (output_path) VALUES (?)', (str(design),))
 
     copied = registry.duplicate(source.id, include_generated_outputs=True)
-    assert (copied.export_dir / 'reports-old' / 'generated.pptx').read_bytes() == b'report'
+    copied_design = copied.output_dir / 'reports' / 'ppt-designs' / '20260910_120000 - Design' / 'design.pptx'
+    assert copied_design.read_bytes() == b'design'
     assert (copied.output_dir / 'reports' / 'reports-charts-old' / '20260910-120000' / 'chart-1.png').read_bytes() == b'chart'
     with sqlite3.connect(copied.database_path) as connection:
-        copied_path = connection.execute('SELECT output_path FROM generated_jobs').fetchone()[0]
-    assert copied_path == str(copied.export_dir / 'reports-old' / 'generated.pptx')
+        copied_path = connection.execute('SELECT output_path FROM design_ppt_jobs').fetchone()[0]
+    assert copied_path == str(copied_design)
 
     without_outputs = registry.duplicate(source.id)
-    assert not (without_outputs.export_dir / 'reports-old' / 'generated.pptx').exists()
+    assert not (without_outputs.output_dir / 'reports' / 'ppt-designs').exists()
     assert not (without_outputs.output_dir / 'reports' / 'reports-charts-old').exists()
     with sqlite3.connect(without_outputs.database_path) as connection:
-        assert connection.execute('SELECT COUNT(*) FROM generated_jobs').fetchone()[0] == 0
+        assert connection.execute('SELECT COUNT(*) FROM design_ppt_jobs').fetchone()[0] == 0
 
 
 def test_template_transfer_requires_and_retains_multiple_destinations(client):

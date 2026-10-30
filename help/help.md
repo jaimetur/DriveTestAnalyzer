@@ -9,7 +9,7 @@
 
 Use this Help centre for detailed workflows, examples and technical rules. For a shorter introduction and deployment quick start, open the **Readme** tab.
 
-Help Navigation groups chapters under General, Main Modules, Administrative Modules and Reference; a chapter can list reports of its own below it, such as the compatibility reports of Benchmarking Providers, each shown in its own design. Help is available without signing in; only the PPT Reporting (old) chapter requires that feature.
+Help Navigation groups chapters under General, Main Modules, Administrative Modules and Reference; a chapter can list reports of its own below it, such as the compatibility reports of Benchmarking Providers, each shown in its own design. Help is available without signing in.
 
 ## Presentations
 
@@ -78,7 +78,6 @@ full-presentation
 | Analysing one dataset | [CDR Analysis](datasets-analysis.md) |
 | Exploring a complete template as a live design or generating its PowerPoint | [PPT Designer](ppt-designer.md) |
 | Building one report from several modules, or scheduling reports and emailing them | [Reporting](reporting.md) |
-| Generating persistent Reports or Chart Sets | [PPT Reporting (old)](ppt-reporting-old.md) |
 | Calculating NetCheck scores or comparing operator gaps | [Scoring & GAP Analysis](scoring-gap-analysis.md) |
 | Building ad-hoc SQL queries with guided controls | [Query Builder](query-builder.md) |
 | Reporting a bug, suggesting an improvement or asking for a new feature, and following it | [Ticket Center](ticket-center.md) |
@@ -103,7 +102,6 @@ full-presentation
 - [Workspace Management](workspace-management.md) — workspaces, data ingestion, processing, previews and mappings.
 - [CDR Analysis](datasets-analysis.md) — interactive single-dataset analysis and exports.
 - [PPT Designer](ppt-designer.md) — saved Designs, synchronized filters and slide layouts.
-- [PPT Reporting (old)](ppt-reporting-old.md) — classic Reports, Chart Sets, interactive previews and jobs.
 - [Non-Qualified Calls](non-qualified-calls.md) — the NQ Analysis Center: summary, NQ rate by campaign and operator, lifecycle and phases, root cause analysis and sources, drill-down and shared follow-up (status set by rules or by hand, team, assignee, root category and cause recommended from the DT Analyzer RCA, NetCheck, the Ericsson RCA and previous decisions, fields by section and comments) of every call and test that did not complete, across Daily and Final CDRs.
 - [Reporting](reporting.md) — bundle reports with parts of several modules (Bundle Report Templates), and scheduled Reporting Jobs that email CDR Analysis, Network Insights, Design and Scoring artifacts.
 - [Chart Builder](chart-builder.md) — temporary ad-hoc chart construction.

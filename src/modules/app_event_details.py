@@ -330,7 +330,8 @@ _SERVER_ACTIONS = {
     'startup': {'application_started', 'recover_interrupted_background_jobs', 'recover_interrupted_saved_filters',
                 'recover_inconsistent_datasets', 'resume_interrupted_dataset', 'migrate_app_event_users', 'nq_call_keys_upgraded',
                 'assign_unknown_creators', 'assign_unknown_creators_failed', 'resume_reporting_job_run',
-                'stop_interrupted_reporting_job_run', 'fail_interrupted_reporting_job_run', 'workspace_cache_folders_moved'},
+                'stop_interrupted_reporting_job_run', 'fail_interrupted_reporting_job_run', 'workspace_cache_folders_moved',
+                'retired_report_jobs_dropped'},
     'background': {'process_dataset', 'process_dataset_failed', 'analyze_dataset_failed', 'analyze_dataset_warning',
                    'map_dataset_vendors', 'map_dataset_vendors_failed', 'map_dataset_regions', 'map_dataset_regions_failed',
                    'vendor_mapping_skipped', 'clear_dataset_vendors', 'clear_dataset_vendors_failed', 'chart_set_rendering_completed',
@@ -376,6 +377,7 @@ _MODULE_ACTIONS = (
                    'retry_dataset', 'stop_dataset', 'reorder_datasets', 'update_dataset_', 'queue_dataset_mappings', 'queue_vendor_',
                    'queue_region_', 'stop_vendor_', 'stop_region_', 'create_workspace', 'open_workspace', 'close_workspace',
                    'delete_workspace', 'rename_workspace', 'duplicate_workspace', 'set_workspace_cdr_type', 'starter_content_')),
+    # PPT Reporting (old), a module the tool no longer has: its events stay in App Events under its name (RETIRED_MODULES).
     ('ppt-reporting-old', ('generate_powerpoint_report', 'chart_set_generation_requested', 'export_netcheck_cdr_report',
                            'download_report_', 'delete_report_job', 'delete_report_chart', 'delete_all_report_', 'retry_report_',
                            'stop_report_')),

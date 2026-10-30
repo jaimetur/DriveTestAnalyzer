@@ -11,7 +11,6 @@ def _workspace(tmp_path: Path) -> tuple[Path, Path]:
     database_path = tmp_path / 'workspace.db'
     with sqlite3.connect(database_path) as connection:
         connection.execute('CREATE TABLE design_ppt_jobs (id INTEGER PRIMARY KEY, output_path TEXT)')
-        connection.execute('CREATE TABLE generated_jobs (id INTEGER PRIMARY KEY, output_path TEXT)')
         connection.execute('CREATE TABLE report_task_runs (id INTEGER PRIMARY KEY, output_dir TEXT)')
     return output_dir, database_path
 
@@ -35,7 +34,6 @@ def test_former_output_layout_moves_into_module_folders(tmp_path: Path) -> None:
     _write(output_dir / 'reports' / 'imported.pptx')
     with sqlite3.connect(database_path) as connection:
         connection.execute('INSERT INTO design_ppt_jobs (output_path) VALUES (?)', (str(design),))
-        connection.execute('INSERT INTO generated_jobs (output_path) VALUES (?)', (str(report),))
         connection.execute('INSERT INTO report_task_runs (output_dir) VALUES (?)', (str(run_dir),))
 
     assert migrate_output_layout(output_dir, database_path) is True
@@ -49,12 +47,13 @@ def test_former_output_layout_moves_into_module_folders(tmp_path: Path) -> None:
     assert sorted(path.name for path in (reports / 'cdr-analysis').iterdir()) == [
         '20261006_042512_summary_dataset_analysis.pptx', 'NetCheck_UK_CDR_Voice_report_6160225e5b.docx']
     assert (reports / 'reports-old' / 'imported.pptx').is_file()
+    # The reports of PPT Reporting (old), a module the tool no longer has, keep their former folder.
+    assert (reports / 'reports-old' / report.parent.name / 'report.pptx').is_file()
     with sqlite3.connect(database_path) as connection:
         stored = [connection.execute(f'SELECT {column} FROM {table}').fetchone()[0] for table, column in (
-            ('design_ppt_jobs', 'output_path'), ('generated_jobs', 'output_path'), ('report_task_runs', 'output_dir'))]
+            ('design_ppt_jobs', 'output_path'), ('report_task_runs', 'output_dir'))]
     assert stored == [
         str(reports / 'ppt-designs' / '20260915_120000 - Design' / 'design.pptx'),
-        str(reports / 'reports-old' / '20260929-050129_NetCheck_CDR_NSA_operator-comparison' / 'report.pptx'),
         str(reports / 'reporting-jobs' / '20261006_062102 - All Modules - run 2'),
     ]
     assert all(Path(path).exists() for path in stored)

@@ -42,7 +42,7 @@ After login, the application opens **Help Home** by default.
 - Compare RSRP/SINR, map weak-coverage and high-interference areas, and review observed sites, spectrum and network deployment in Network Insights.
 - Explore template-driven Designs with synchronized adaptive filters in PPT Designer.
 - Create temporary ad-hoc charts in Chart Builder.
-- Generate NSA/SA PowerPoint reports and standalone Chart Sets.
+- Generate NSA/SA PowerPoint reports from PPT Designs, and bundle and scheduled reports in Reporting.
 - Create workspace-owned Auto-calculated Fields and apply them asynchronously to the applicable CDR tables.
 - Edit workspace-owned Report Templates with validation, assistance and chart previews.
 - Configure application-wide runtime overrides in Application Config, or manage workspace-owned Report Templates and chart mappings in Workspace Config.
@@ -87,15 +87,6 @@ See [PPT Designer Help](help/ppt-designer.md) for the operational workflow and [
 ### Reporting
 
 Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, PPTs and Scoring PPTs, each configured with the options of its own module, run them once or daily, weekly or monthly and email the artifacts with a description of each one and its filters. SMTP delivery is configured in Application Config → Email Delivery. Reporting is available to the users whose Modules Profile includes it (Super Admin → Modules Profiles).
-
-### PPT Reporting (old)
-
-PPT Reporting (old) combines ready CDRs with a Report Template from the active workspace. It is available only to the super-admins without a Modules Profile and to the users whose Modules Profile includes it (by default, only super-admins).
-
-- **Reporting module**: choose NetCheck CDR Reports or the future Smart Orchestrator Logs workflow.
-- **NetCheck CDR Reports**: select Data, Voice and Speech campaigns, NSA/SA, template and Operator/Vendor Comparison.
-- **Charts Panel**: browse report or standalone Chart Sets, open Interactive Preview, inspect filtered data and edit the source template when authorised.
-- **Reports and Charts Jobs**: one table for both background job types, with job-specific open, download, stop, retry, relaunch and delete actions.
 
 ### Scoring & GAP Analysis
 
@@ -178,7 +169,7 @@ See [Product overview](help/overview.md) for a detailed tour of every module and
 3. Confirm their types and wait for **Processed**.
 4. Optionally map VFUK/3UK vendor data.
 5. Use CDR Analysis, PPT Designer, Chart Builder or Reporting.
-6. Review long-running work in the floating task cards and **Reports and Charts Jobs**.
+6. Review long-running work in the floating task cards and **PPT Generation Jobs**.
 7. Check App Logs if an operation fails.
 
 ## Requirements
@@ -238,7 +229,7 @@ Local storage roots can be set in [`storage-paths.conf`](storage-paths.conf). En
 | `APP_CONFIG_DIR` | Global database, users, permissions and transfer offers. |
 | `APP_DATA_DIR` | Workspace registry, workspaces, Report Templates and transfer packages. |
 | `APP_ASSETS_DIR` | Bundled assets and PowerPoint masters. |
-| `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Report, Chart Set and preview renderer. Defaults to `canvas`; set `pil` to use the legacy server-side painter. |
+| `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Report and preview renderer. Defaults to `canvas`; set `pil` to use the legacy server-side painter. |
 | `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS` | Recently used PPT snapshots that keep chart data frames in memory. Defaults to `3`; lower it on servers with little RAM. |
 | `TZ` | Container timezone, for example `Europe/Madrid`. |
 | `HOST_CONFIG_DIR` | Host path mounted as persistent configuration. |
@@ -337,9 +328,7 @@ CONTAINER_NAME=drivetest-analyzer
                     ├── designs/          # PPT Designer PowerPoint jobs
                     ├── cdr-analysis/        # CDR Analysis exports
                     ├── network-insights/    # Network Insights exports
-                    ├── reporting-jobs/      # Reporting Job runs and their artifacts
-                    ├── reports-old/         # PPT Reporting (old) reports
-                    └── reports-charts-old/  # PPT Reporting (old) Chart Sets
+                    └── reporting-jobs/      # Reporting Job runs and their artifacts
 ```
 
 In this example `<deployment-root>` is `/volume1/docker/data/drivetest-analyzer`; the Compose files and `.env` live in a separate stack folder such as `/volume1/docker/stacks/drivetest-analyzer`.
@@ -353,7 +342,7 @@ Back up both persistent roots. Backing up only the container does not preserve a
 3. Pull and restart the Compose stack.
 4. Sign in and confirm users, workspace access and templates.
 5. Open a workspace and verify its datasets.
-6. Generate a small Chart Set or report before normal production use.
+6. Generate a small PPT Design or report before normal production use.
 
 ## GitHub Actions and images
 
@@ -412,7 +401,7 @@ DriveTestAnalyzer/
 
 - General analysis caches remain process-local; PPT Designer preview manifests and report-faithful compact chart models persist beside each workspace database and survive application restarts. Design data itself is queried directly from the combined CDR tables.
 - SQLite is the current persistence model and may not suit very large concurrent deployments.
-- Smart Orchestrator Logs reporting is visible but not implemented.
+- Smart Orchestrator Logs are listed as an input type, but they are not parsed or analysed yet.
 - Scoring starts from NetCheck 2026 Q2 Drive City/Road rules. Walk is supported at zero initial points with City-derived thresholds that require validation before allocation; custom environments can be configured using supported CDR fields and formula operations.
 
 ## More documentation
@@ -431,7 +420,6 @@ DriveTestAnalyzer/
 - [PPT Designer](help/ppt-designer.md)
 - [Scoring & GAP Analysis](help/scoring-gap-analysis.md)
 - [Reporting](help/reporting.md)
-- [PPT Reporting (old)](help/ppt-reporting-old.md)
 - [Chart Builder](help/chart-builder.md)
 - [Query Builder](help/query-builder.md)
 - [Ticket Center](help/ticket-center.md)

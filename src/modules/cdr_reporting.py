@@ -5,7 +5,6 @@ from __future__ import annotations
 import atexit
 import base64
 import csv
-import gc
 import heapq
 import io
 import json
@@ -51,7 +50,6 @@ from pptx.util import Inches, Pt
 
 from src.utils.fonts import load_image_font
 from src.config import POWERPOINT_TEMPLATE, settings
-from src.modules import report_structure
 
 
 TEMPLATE_NAMES = {
@@ -91,7 +89,7 @@ CHART_TYPES = {
 # Filters of a chart row that set the chart up rather than keep rows (Threshold, Buckets, Bin Size, Whiskers…).
 CHART_SETTING_FILTERS = frozenset({"threshold", "buckets", "binsize", "classcolours", "histogramoperator", *EXTENDED_CHART_SETTINGS})
 # Elements of the slides of a Design that read no CDR (design_slides): a text box, and a picture. Rows of either have no
-# Source Dataset; PPT Reporting (old) leaves them out.
+# Source Dataset.
 # Rows of a Design slide set that read no CDR: text boxes, pictures and charts still being built (design_slides).
 ELEMENT_CHART_TYPES = {"text box", "image", "chart in progress"}
 BAR_CHART_TYPES = {
@@ -111,8 +109,6 @@ FILTER_OPERATORS = ("CONTAINS", "NOT CONTAINS", "IN", "NOT IN", ">=", "<=", "!="
 # The rendered CDF is 1,165 pixels wide. More than one hit-test vertex per
 # ten pixels does not improve pointer precision, but greatly inflates sidecars.
 MAX_CDF_HOVER_TARGETS_PER_SERIES = 120
-# Increment when renderer coordinates or semantic hit-area geometry changes.
-HOVER_TARGETS_VERSION = 3
 OSM_TILE_SIZE = 256
 # A Map PNG is 1260 pixels wide. Starting at a street-level zoom keeps labels
 # and roads crisp after the final resize while still bounding a cold cache.
@@ -8166,271 +8162,3 @@ def _layout_chart_frames(layout) -> list[tuple[int, int, int, int]]:
             matching_row.append(frame)
     visual_rows.sort(key=lambda row: min(frame[1] for frame in row))
     return [frame for row in visual_rows for frame in sorted(row, key=lambda item: item[0])]
-
-
-def render_cdr_report(destination: Path, template: Path, frames: dict[str, pd.DataFrame] | None, technology: str,
-                      multivendor: bool, catalog: list[CatalogEntry] | None = None,
-                      chart_output_dir: Path | None = None,
-                      frame_loader: Callable[[str], pd.DataFrame] | None = None,
-                      on_chart_rendered: Callable[[CatalogEntry, int, bool], None] | None = None,
-                      generate_tooltips: bool = True, reuse_existing_charts: bool = False,
-                      vendor_comparison: str = "operator_vendor") -> Path:
-    if not template.exists():
-        raise FileNotFoundError(f"Reporting template not found: {template.name}")
-    if not catalog:
-        raise ValueError("A Report Template is required to generate the report.")
-    # A report may concatenate campaigns that were exported using different
-    # operator spellings.  Apply aliases only to these in-memory report frames
-    # before filtering and grouping; Workspace datasets remain source-faithful.
-    if frames is None and frame_loader is None:
-        raise ValueError('Report rendering requires CDR frames or a frame loader.')
-    # Keep only the source currently needed when a loader is supplied.  This
-    # avoids retaining Data, Voice and Speech frames simultaneously for large
-    # reports on resource-constrained servers.
-    cached_frames = {source: normalise_operator_aliases(frame) for source, frame in (frames or {}).items()}
-    active_source: str | None = None
-    def frame_for(source: str) -> pd.DataFrame:
-        nonlocal active_source
-        # Keep at most one lazy-loaded CDR frame resident.  The catalogue
-        # order still determines slide/chart order, while switching sources
-        # releases the previous large DataFrame before loading the next one.
-        if frame_loader is not None and source != active_source:
-            cached_frames.clear()
-            prepared_frames.clear()
-            gc.collect()
-        if source not in cached_frames:
-            if frame_loader is None:
-                raise ValueError(f'No CDR frame is available for {source}.')
-            if source == 'all':
-                from src.modules.rf_catalog_source import pool_rf_frames
-                cached_frames[source] = pool_rf_frames({kind: frame_loader(kind) for kind in ('data', 'voice', 'speech')})
-            else:
-                cached_frames[source] = normalise_operator_aliases(frame_loader(source))
-        active_source = source
-        return cached_frames[source]
-    if 'all' not in cached_frames and frame_loader is None and any(entry.source_kind == 'all' for entry in catalog):
-        from src.modules.rf_catalog_source import pool_rf_frames
-        cached_frames['all'] = pool_rf_frames({kind: frame for kind, frame in cached_frames.items() if kind in ('data', 'voice', 'speech')})
-    if multivendor:
-        catalog = [prepare_multivendor_catalog_entry(entry, vendor_comparison) for entry in catalog]
-    presentation = Presentation(template)
-    _remove_all_slides(presentation)
-    rendered_charts: list[dict[str, object]] = []
-    prepared_frames: dict[tuple[object, ...], pd.DataFrame] = {}
-    selected_renderer = report_chart_renderer_name()
-
-    def prepared_chart_frame(source_frame: pd.DataFrame, entry: CatalogEntry) -> tuple[pd.DataFrame, CatalogEntry]:
-        prepared_entry = prepare_multivendor_catalog_entry(entry) if multivendor else entry
-        key = (
-            id(source_frame), prepared_entry.source_kind, prepared_entry.cdr_source,
-            prepared_entry.kpi, prepared_entry.filters, prepared_entry.calculated_dimensions,
-            entry_dynamic_fields(prepared_entry), prepared_entry.dynamic_row_value, prepared_entry.dynamic_column_value, prepared_entry.dynamic_value,
-        )
-        prepared = prepared_frames.get(key)
-        if prepared is None:
-            try:
-                prepared = prepare_catalog_chart_preview_frame(
-                    source_frame, prepared_entry, multivendor=False,
-                )[0]
-            except ValueError:
-                # Historical templates can reference a field absent from one
-                # selected CDR. Preserve the established empty-chart result.
-                prepared = source_frame.iloc[0:0].copy()
-            prepared_frames[key] = prepared
-        return prepared, prepared_entry
-
-    catalogue_slides: dict[int, list[CatalogEntry]] = defaultdict(list)
-    effective_catalog = [prepare_multivendor_catalog_entry(entry) if multivendor else entry for entry in catalog]
-    dynamic_fields = {field for entry in effective_catalog for field in entry_dynamic_fields(entry) if field}
-    if dynamic_fields:
-        values = {field: set() for field in dynamic_fields}
-        vendor_families = {}
-        for source in dict.fromkeys(entry.source_kind for entry in catalog if entry.source_kind):
-            source_frame = frame_for(source)
-            vendor_column = _catalog_column(source_frame, OPERATOR_VENDOR_FIELD, False)
-            family_column = _catalog_column(source_frame, VENDOR_FIELD, False)
-            if vendor_column and family_column:
-                vendor_families.update({str(vendor): str(family) for vendor, family in source_frame[[vendor_column, family_column]].drop_duplicates().itertuples(index=False, name=None) if pd.notna(vendor) and pd.notna(family)})
-            for field in dynamic_fields:
-                column = _catalog_column(source_frame, field, False)
-                if column:
-                    values[field].update(str(value) for value in source_frame[column].dropna().unique() if not multivendor or vendor_comparison == "vendor_only" or _normalise_catalog_name(field) not in {"operatorvendor", "vendor"} or not any(term in str(value).casefold() for term in ("mixed", "other")))
-        catalog = expand_dynamic_layouts(catalog, {field: sorted(items, key=str.casefold) for field, items in values.items()}, multivendor=multivendor, operator_mappings=source_frame.attrs.get("operator_mappings", {}), vendor_mappings=source_frame.attrs.get("vendor_mappings", {}), vendor_comparison=vendor_comparison, vendor_families=vendor_families, mapping_groups={key: source_frame.attrs.get(key, []) for key in ("operator_mapping_groups", "vendor_mapping_groups")})
-    render_catalog = [prepare_multivendor_catalog_entry(entry) if multivendor else entry for entry in catalog]
-    for entry in render_catalog:
-        catalogue_slides[entry.slide].append(entry)
-
-    expected_chart_files = set()
-    if chart_output_dir is not None:
-        for number, entries in catalogue_slides.items():
-            automated = [entry for entry in entries if entry.source_kind]
-            expected_chart_files.update(
-                f'slide-{number:03d}-chart-{index:02d}.png'
-                for index, _entry in enumerate(automated, start=1)
-            )
-        chart_output_dir.mkdir(parents=True, exist_ok=True)
-        # A cancelled worker can leave a half-written image or assets from an
-        # older template. Keep only deterministic chart names; each candidate
-        # is verified again when it is consumed below.
-        for child in chart_output_dir.iterdir():
-            if child.name == 'manifest.json' or child.name.removesuffix('.hover.json') + '.png' not in expected_chart_files and child.name not in expected_chart_files:
-                child.unlink(missing_ok=True)
-    hover_executor = (
-        ThreadPoolExecutor(max_workers=1, thread_name_prefix='report-hover')
-        if generate_tooltips and selected_renderer == 'pil' else None
-    )
-    for number in sorted(catalogue_slides):
-        slide_entries = catalogue_slides[number]
-        header = slide_entries[0]
-        structural = header.structural_type
-        if not structural and header.chart_type.strip().casefold() in PRESERVED_CHART_TYPES:
-                structural = "title slide" if number == min(catalogue_slides) else "transition slide"
-
-        if structural:
-            layout_name = header.layout or {"title slide": "Title Page", "end slide": END_SLIDE_LAYOUT}.get(structural, "Title Only")
-            layout = _named_slide_layout(presentation, layout_name)
-            if layout is None:
-                raise ValueError(f"Slide {number}: layout '{layout_name}' does not exist in the selected template.")
-            slide = presentation.slides.add_slide(layout)
-            if structural == "end slide":
-                _clear_end_slide(slide)
-                continue
-            _set_structural_slide_text(slide, header.slide_title, header.slide_subtitle)
-            if number != min(catalogue_slides):
-                # The title and transition rows after the cover open the parts of the report: 01, 02…
-                report_structure.mark(slide, 1)
-            continue
-
-        chart_entries = [entry for entry in slide_entries if entry.source_kind]
-        if not chart_entries and any(entry.chart_type.casefold() in ELEMENT_CHART_TYPES for entry in slide_entries):
-            # A slide of a Design with only text boxes and pictures: its title, as a transition slide.
-            slide = presentation.slides.add_slide(_named_slide_layout(presentation, "Title Only"))
-            _set_structural_slide_text(slide, header.slide_title, header.slide_subtitle)
-            continue
-        if not chart_entries:
-            raise ValueError(
-                f"Slide {number} does not define an automated chart, a Title Slide, a Transition Slide or an End Slide."
-            )
-        layouts = {entry.layout for entry in chart_entries}
-        if len(layouts) != 1:
-            raise ValueError(f"Slide {number} uses more than one Layout in the active template.")
-        layout_name = layouts.pop()
-        layout = _named_slide_layout(presentation, layout_name)
-        if layout is None:
-            raise ValueError(f"Slide {number}: layout '{layout_name}' does not exist in the selected template.")
-        placement_frames = _layout_chart_frames(layout)
-        if len(placement_frames) < len(chart_entries):
-            raise ValueError(
-                f"Slide {number}: layout '{layout_name}' has {len(placement_frames)} chart placeholders, "
-                f"but the template defines {len(chart_entries)} charts."
-            )
-        slide = presentation.slides.add_slide(layout)
-        _set_slide_header(slide, header.slide_title, header.slide_subtitle)
-        _clear_commentary(slide)
-        _remove_template_chart_placeholders(slide)
-        for chart_index, (entry, placement) in enumerate(zip(chart_entries, placement_frames[:len(chart_entries)], strict=True), start=1):
-            # The PowerPoint must consume the exact same renderer used by the
-            # editor and Report Charts.  Keeping this call shared prevents an
-            # unnoticed drift in normalisation, multivendor preparation or
-            # catalogue filtering between preview and export.
-            file_name = f'slide-{number:03d}-chart-{chart_index:02d}.png'
-            hover_file = f'slide-{number:03d}-chart-{chart_index:02d}.hover.json'
-            chart_path = chart_output_dir / file_name if chart_output_dir is not None else None
-            chart_bytes = None
-            if reuse_existing_charts and chart_path and chart_path.is_file():
-                try:
-                    with Image.open(chart_path) as existing:
-                        existing.verify()
-                    chart_bytes = chart_path.read_bytes()
-                except (OSError, ValueError, SyntaxError):
-                    chart_path.unlink(missing_ok=True)
-            source_frame = frame_for(entry.source_kind)
-            source_unavailable = bool(source_frame.attrs.get("report_source_unavailable"))
-            prepared_frame, prepared_entry = (
-                (source_frame, entry) if source_unavailable else prepared_chart_frame(source_frame, entry)
-            )
-            reusable_hover = None
-            if chart_bytes is not None and generate_tooltips and chart_output_dir is not None:
-                try:
-                    reusable_hover = json.loads((chart_output_dir / hover_file).read_text(encoding='utf-8'))
-                    if not isinstance(reusable_hover, list):
-                        reusable_hover = None
-                except (OSError, json.JSONDecodeError):
-                    reusable_hover = None
-            hover_future = hover_executor.submit(
-                catalog_chart_hover_targets, prepared_frame, prepared_entry, prefiltered=True,
-            ) if hover_executor and not source_unavailable and reusable_hover is None else None
-            canvas_hover = None
-            if chart_bytes is None:
-                if source_unavailable:
-                    chart_bytes = render_unavailable_source_chart(entry)
-                elif selected_renderer == 'canvas':
-                    chart_bytes, canvas_hover = render_catalog_chart_preview_with_hover(
-                        prepared_frame, prepared_entry, prefiltered=True, renderer=selected_renderer,
-                    )
-                else:
-                    chart_bytes = render_catalog_chart_preview(
-                        prepared_frame, prepared_entry, prefiltered=True, renderer=selected_renderer,
-                    )
-            # Rebuild the source frame before retrying an unexpected empty
-            # chart. Retrying the same already-loaded frame cannot recover a
-            # worker that was under memory pressure while materialising it.
-            for _attempt in range(2):
-                if source_unavailable or not is_empty_catalog_chart(chart_bytes, entry) or frame_loader is None:
-                    break
-                del chart_bytes
-                cached_frames.pop(entry.source_kind, None)
-                prepared_frames.clear()
-                gc.collect()
-                source_frame = frame_for(entry.source_kind)
-                prepared_frame, prepared_entry = prepared_chart_frame(source_frame, entry)
-                if selected_renderer == 'canvas':
-                    chart_bytes, canvas_hover = render_catalog_chart_preview_with_hover(
-                        prepared_frame, prepared_entry, prefiltered=True, renderer=selected_renderer,
-                    )
-                else:
-                    chart_bytes = render_catalog_chart_preview(
-                        prepared_frame, prepared_entry, prefiltered=True, renderer=selected_renderer,
-                    )
-            if reusable_hover is not None:
-                hover_targets = reusable_hover
-            elif generate_tooltips and canvas_hover is not None:
-                hover_targets = canvas_hover
-            elif hover_future:
-                hover_targets = hover_future.result()
-            elif generate_tooltips and chart_bytes is not None and selected_renderer == 'canvas' and not source_unavailable:
-                # A reused PNG without a matching sidecar cannot expose its in-memory Canvas hits.
-                hover_targets = catalog_chart_hover_targets(prepared_frame, prepared_entry, prefiltered=True)
-            else:
-                hover_targets = None
-            if on_chart_rendered:
-                on_chart_rendered(entry, len(source_frame.index), is_empty_catalog_chart(chart_bytes, entry))
-            if chart_output_dir is not None:
-                (chart_output_dir / file_name).write_bytes(chart_bytes)
-                rendered_charts.append({
-                    'slide': number,
-                    'title': entry.chart_title or entry.slide_title or f'Slide {number}',
-                    'source': entry.cdr_source,
-                    'chart_type': entry.chart_type,
-                    'file': file_name,
-                })
-                if isinstance(hover_targets, list):
-                    (chart_output_dir / hover_file).write_text(json.dumps(hover_targets, ensure_ascii=False), encoding='utf-8')
-                    rendered_charts[-1]['hover_file'] = hover_file
-            slide.shapes.add_picture(BytesIO(chart_bytes), *placement)
-    if hover_executor:
-        hover_executor.shutdown(wait=True)
-    cached_frames.clear()
-    gc.collect()
-    report_structure.finish(presentation)
-    presentation.save(destination)
-    if chart_output_dir is not None:
-        (chart_output_dir / 'manifest.json').write_text(
-            json.dumps({
-                'generate_tooltips': generate_tooltips,
-                'hover_targets_version': HOVER_TARGETS_VERSION,
-                'charts': rendered_charts,
-            }),
-            encoding='utf-8',
-        )
-    return destination
