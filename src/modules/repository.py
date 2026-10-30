@@ -4488,15 +4488,22 @@ class Repository:
     def _load_table_preview_page(
         self, table_name: str, existing_columns: set[str], columns: list[str],
         filters: dict[str, list[str]], page: int, page_size: int,
-        filter_column: str | None = None,
+        filter_column: str | None = None, constants: dict[str, str] | None = None,
     ) -> tuple[pd.DataFrame, int, list[str] | None]:
         selected_columns: list[tuple[str, str]] = []
+        # The values every row shows without the table keeping them (the NR Mode of a CDR), by field identity.
+        constant_columns: list[tuple[str, str]] = []
         for column in columns:
             resolved = self._resolve_dataset_row_column_name(existing_columns, column)
             if resolved:
                 selected_columns.append((column, resolved))
+            elif self._column_identity(column) in (constants or {}):
+                constant_columns.append((column, constants[self._column_identity(column)]))
         if not selected_columns:
             return pd.DataFrame(), 0, [] if filter_column else None
+        constant_filters = {key: values for key, values in filters.items()
+                            if not self._resolve_dataset_row_column_name(existing_columns, vendor_filter_column(key))
+                            and self._column_identity(key) in (constants or {})}
 
         mappings = self.list_operator_mappings() if any(vendor_filter_column(key) in {VENDOR_FIELD, OPERATOR_VENDOR_FIELD} for key in filters) else {}
         operators = mappings
@@ -4516,6 +4523,10 @@ class Repository:
             )
             params.extend(values)
 
+        for key, raw_values in constant_filters.items():
+            # A constant keeps every row when it is one of the values chosen, and none otherwise.
+            if str(constants[self._column_identity(key)]).strip().lower() not in {str(value).strip().lower() for value in raw_values}:
+                where_clauses.append('0 = 1')
         quoted_table = self._quote_identifier(table_name)
         where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ''
         emptied = self._emptied_cdr_table(table_name)
@@ -4575,7 +4586,9 @@ class Repository:
                 self._resolve_dataset_row_column_name(existing_columns, vendor_filter_column(filter_column))
                 if filter_column else None
             )
-            if resolved_filter_column:
+            if filter_column and not resolved_filter_column and self._column_identity(filter_column) in (constants or {}):
+                filter_values = [str(constants[self._column_identity(filter_column)])]
+            elif resolved_filter_column:
                 quoted_column = self._quote_identifier(resolved_filter_column)
                 facet_clauses: list[str] = []
                 facet_params: list[Any] = []
@@ -4602,6 +4615,11 @@ class Repository:
                 filter_values = [str(row['value'] or '') for row in rows]
             elif filter_column:
                 filter_values = []
+        if constant_columns:
+            frame = frame.copy()
+            for column, value in constant_columns:
+                frame[column] = value
+            frame = frame[[column for column in columns if column in frame.columns]]
         return frame, total, filter_values
 
     def load_dataset_preview_page(
@@ -4612,7 +4630,7 @@ class Repository:
             self.ensure_vendor_column(dataset_id)
         return self._load_table_preview_page(
             self.dataset_rows_table_name(dataset_id), set(self.list_dataset_row_columns(dataset_id)),
-            columns, filters, page, page_size, filter_column,
+            columns, filters, page, page_size, filter_column, self.dataset_preview_constants(dataset_id),
         )
 
     def load_reporting_preview_page(
@@ -4626,7 +4644,7 @@ class Repository:
 
     def _stream_table_preview_csv(
         self, table_name: str, existing_columns: set[str], columns: list[str],
-        filters: dict[str, list[str]],
+        filters: dict[str, list[str]], constants: dict[str, str] | None = None,
     ) -> Iterator[str]:
         """Stream all preview rows as CSV without materializing the dataset in memory."""
         selected_columns = [
@@ -4635,9 +4653,14 @@ class Repository:
         ]
         where_clauses: list[str] = []
         params: list[Any] = []
+        constants = constants or {}
         for key, raw_values in filters.items():
             resolved = self._resolve_dataset_row_column_name(existing_columns, key)
             if not resolved:
+                # A constant (the NR Mode of a CDR) keeps every row when it is one of the values chosen, none otherwise.
+                if self._column_identity(key) in constants and str(constants[self._column_identity(key)]).strip().lower() not in {
+                        str(value).strip().lower() for value in raw_values}:
+                    where_clauses.append('0 = 1')
                 continue
             values = [str(value).strip().lower() for value in raw_values]
             if not values:
@@ -4648,9 +4671,13 @@ class Repository:
                 f"LOWER(COALESCE(TRIM(CAST({self._quote_identifier(resolved)} AS TEXT)), '')) IN ({placeholders})"
             )
             params.extend(values)
+
+        def constant(requested: str) -> str:
+            value = str(constants.get(self._column_identity(requested), '')).replace("'", "''")
+            return f"'{value}' AS {self._quote_identifier(requested)}"
         select_clause = ', '.join(
             f"{self._quote_identifier(actual)} AS {self._quote_identifier(requested)}"
-            if actual else f"'' AS {self._quote_identifier(requested)}"
+            if actual else constant(requested)
             for requested, actual in selected_columns
         )
         where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ''
@@ -4676,7 +4703,15 @@ class Repository:
     ) -> Iterator[str]:
         return self._stream_table_preview_csv(
             self.dataset_rows_table_name(dataset_id), set(self.list_dataset_row_columns(dataset_id)), columns, filters,
+            self.dataset_preview_constants(dataset_id),
         )
+
+    def dataset_preview_constants(self, dataset_id: int) -> dict[str, str]:
+        """The values every row of a CDR shows without keeping them, by field identity: its NR Mode (NR_Mode)."""
+        with self.connection() as conn:
+            row = conn.execute('SELECT dataset_kind FROM dataset_profiles WHERE dataset_id = ?', (int(dataset_id),)).fetchone()
+            mode = self._reporting_nr_mode(conn, int(dataset_id), str(row['dataset_kind'] or '') if row else '')
+        return {self._column_identity(NR_MODE_FIELD): mode} if mode else {}
 
     def stream_reporting_preview_csv(
         self, dataset_kind: str, columns: list[str], filters: dict[str, list[str]],

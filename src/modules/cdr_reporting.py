@@ -35,7 +35,7 @@ from src.modules.mapping_order import operator_vendor_order_key, swap_operator_v
 from src.modules.nr_mode import campaign_nr_mode
 from src.modules.report_layouts import DYNAMIC_LAYOUTS, canonical_layout_name, grid_layout_name, dynamic_layout_axes
 from src.modules.column_names import (
-    MAIN_CDR_FIELDS, OPERATOR_VENDOR_FIELD, VENDOR_FIELD, VENDOR_FILTER_IDENTITIES, VENDOR_OPERATOR_FIELD, campaign_sort_key,
+    MAIN_CDR_FIELDS, MAIN_DISPLAY_FIELDS, OPERATOR_VENDOR_FIELD, VENDOR_FIELD, VENDOR_FILTER_IDENTITIES, VENDOR_OPERATOR_FIELD, campaign_sort_key,
     column_identity,
     compact_campaign_value,
     mapped_vendor_only_value, operator_vendor_value, resolve_column_name, vendor_filter_column, vendor_filter_value, vendor_only_value,
@@ -3580,7 +3580,7 @@ def preview_catalog_chart_data(
             continue
         full_result[source] = grouped[source]
         existing_identities.add(column_identity(source))
-    main_identities = [column_identity(column) for column in MAIN_CDR_FIELDS]
+    main_identities = [column_identity(column) for column in MAIN_DISPLAY_FIELDS]
     ordered_columns: list[str] = []
     source_sheet = resolve_column_name(full_result.columns, 'source_sheet')
     if source_sheet:

@@ -28,6 +28,9 @@ MAIN_CDR_FIELDS = (
     'Session_Type', 'Type_Of_Test', 'Test_Name', 'Test_Result', 'Call_Status', 'Status',
     'Result', 'Event_Start_Time', 'Event_End_Time', 'Hour_Bucket', 'Day_Bucket',
 )
+# The main fields as the tables of rows show them (PINNED, Main): the CDR fields and, after Campaign, NR_Mode, the NR Mode
+# of the CDR of each row (NSA or SA), which the CDRs do not keep (see nr_mode.NR_MODE_FIELD).
+MAIN_DISPLAY_FIELDS = tuple(field for main in MAIN_CDR_FIELDS for field in ((main, 'NR_Mode') if main == 'Campaign' else (main,)))
 
 PREVIEW_METADATA_FIELDS = ('Source_File', 'Source_Sheet', 'Dataset_Kind')
 

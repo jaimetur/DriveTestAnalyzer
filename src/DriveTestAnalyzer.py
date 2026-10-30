@@ -78,7 +78,7 @@ from src.modules.cdr_types import (
     CDR_TYPES, DEFAULT_CDR_TYPE, cdr_type_options, normalize_cdr_type, set_workspace_cdr_type, workspace_cdr_type,
 )
 from src.modules.cdr_field_profiles import NETCHECK_PROFILE, workspace_field_profile
-from src.modules.column_names import DEFAULT_CAMPAIGN_MAP, MAIN_CDR_FIELDS, compact_campaign_value, PREVIEW_METADATA_FIELDS, VENDOR_FIELD_IDENTITIES, clean_column_name, normalize_campaign_map, set_campaign_map_resolver, column_identity, resolve_column_name, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
+from src.modules.column_names import DEFAULT_CAMPAIGN_MAP, MAIN_CDR_FIELDS, MAIN_DISPLAY_FIELDS, compact_campaign_value, PREVIEW_METADATA_FIELDS, VENDOR_FIELD_IDENTITIES, clean_column_name, normalize_campaign_map, set_campaign_map_resolver, column_identity, resolve_column_name, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
 from src.modules.mapping_order import swap_operator_vendor
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.report_layouts import canonical_layout_name, selectable_layout_name
@@ -16586,7 +16586,7 @@ def _preview_column_categories(
     auto_identities = {column_identity(definition.get('name', '')) for definition in auto_definitions}
     auto_columns = {column for column in available_columns if column_identity(column) in auto_identities}
     main_columns: list[str] = []
-    for requested in MAIN_CDR_FIELDS:
+    for requested in MAIN_DISPLAY_FIELDS:
         matches = [column for column in available_columns if column_identity(column) == column_identity(requested)]
         if matches:
             main_columns.append(next((column for column in matches if column == requested), matches[0]))
@@ -16633,6 +16633,7 @@ DERIVED_PREVIEW_RULES = {
     'eventendtime': 'Normalizes the first available call end date and time to ISO format with microseconds.',
     'hourbucket': 'Extracts the hour number (0-23) from Event_Start_Time.',
     'daybucket': 'Extracts the day-of-month number (1-31) from Event_Start_Time.',
+    'nrmode': 'The NR Mode of the CDR (NSA or SA), chosen when it was uploaded or read from its file name; every row of the CDR takes it.',
     'direction': 'Uses the first available Direction_A, Direction or Call_Direction value.',
     'disturbed': 'True when Disturbed_Call is Yes.',
     'impaired': 'True when Impaired_Call is Yes.',
@@ -16674,7 +16675,7 @@ def _preview_display_name(column: str, source_columns: set[str], auto_columns: s
     metadata = next((field for field in PREVIEW_METADATA_FIELDS if column_identity(field) == column_identity(column)), None)
     if metadata:
         return metadata
-    canonical = next((field for field in MAIN_CDR_FIELDS if column_identity(field) == column_identity(column)), None)
+    canonical = next((field for field in MAIN_DISPLAY_FIELDS if column_identity(field) == column_identity(column)), None)
     if canonical:
         return canonical
     if column in source_columns or column in auto_columns:
@@ -16945,7 +16946,7 @@ def preview_dataset(
         available_columns = [column for column in available_columns if not str(column).casefold().startswith('unnamed')]
     available_identities = {column_identity(column) for column in available_columns}
     available_columns.extend(
-        field for field in (*PREVIEW_METADATA_FIELDS, *MAIN_CDR_FIELDS) if column_identity(field) not in available_identities
+        field for field in (*PREVIEW_METADATA_FIELDS, *MAIN_DISPLAY_FIELDS) if column_identity(field) not in available_identities
     )
     if dataset['dataset_kind'] in {'mapping_vodafone', 'mapping_three'}:
         repository.ensure_vendor_column(dataset_id)
@@ -17092,7 +17093,7 @@ async def dataset_preview_data(
     available_columns = repository.list_dataset_row_columns(dataset_id)
     available_identities = {column_identity(column) for column in available_columns}
     available_columns.extend(
-        field for field in (*PREVIEW_METADATA_FIELDS, *MAIN_CDR_FIELDS) if column_identity(field) not in available_identities
+        field for field in (*PREVIEW_METADATA_FIELDS, *MAIN_DISPLAY_FIELDS) if column_identity(field) not in available_identities
     )
     columns, _derived = _ordered_cdr_preview_columns(
         available_columns, [dataset['stored_path']], [dataset_id],
@@ -17152,7 +17153,7 @@ def preview_combined_dataset(
         raise HTTPException(status_code=404, detail='Combined dataset not found')
     available_identities = {column_identity(column) for column in available_columns}
     available_columns.extend(
-        field for field in (*PREVIEW_METADATA_FIELDS, *MAIN_CDR_FIELDS) if column_identity(field) not in available_identities
+        field for field in (*PREVIEW_METADATA_FIELDS, *MAIN_DISPLAY_FIELDS) if column_identity(field) not in available_identities
     )
     source_datasets = [
         dataset for row in repository.list_datasets()
@@ -17237,7 +17238,7 @@ async def combined_dataset_preview_data(
         raise HTTPException(status_code=404, detail='Combined dataset not found')
     available_identities = {column_identity(column) for column in available_columns}
     available_columns.extend(
-        field for field in (*PREVIEW_METADATA_FIELDS, *MAIN_CDR_FIELDS) if column_identity(field) not in available_identities
+        field for field in (*PREVIEW_METADATA_FIELDS, *MAIN_DISPLAY_FIELDS) if column_identity(field) not in available_identities
     )
     source_datasets = [
         dataset for row in repository.list_datasets()

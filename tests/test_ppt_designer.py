@@ -2028,6 +2028,8 @@ def test_designs_lifecycle_and_layout(client):
     assert data['unfiltered_total'] == 3
     assert set(data['column_metadata']) == set(data['columns'])
     assert all({'label', 'kind', 'rule', 'pinned', 'class_name'} <= set(item) for item in data['column_metadata'].values())
+    # The NR Mode of the CDR of each row is a pinned field of the rows of every chart.
+    assert data['column_metadata']['NR_Mode']['pinned'] and {row[data['columns'].index('NR_Mode')] for row in data['rows']} == {'NSA'}
     city_values = client.get(f'/api/ppt-designer/data/{token}/0', params={
         'column_filters': json.dumps({'Operator': ['A']}), 'filter_column': 'City',
     }).json()

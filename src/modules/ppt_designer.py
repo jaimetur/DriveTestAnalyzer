@@ -556,7 +556,7 @@ COMPACT_READ_CHART_TYPES = frozenset({
     '100% stacked vertical bars', 'count stacked horizontal bars',
 })
 # Fields the chart pipeline always consults and fields derived from the measure.
-COMPACT_READ_IMPLICIT_FIELDS = ('Operator', 'operator', 'Campaign', 'period', 'Period', 'Quarter')
+COMPACT_READ_IMPLICIT_FIELDS = ('Operator', 'operator', 'Campaign', 'period', 'Period', 'Quarter', 'NR_Mode')
 COMPACT_READ_DERIVED_FIELDS = frozenset({'ratebucket', 'valuebucket'})
 COMPACT_READ_VENDOR_FIELDS = frozenset({'vendor', 'vendoronly', 'vendorv3', 'operatorvendor', 'opvendor'})
 
@@ -6412,7 +6412,8 @@ def install_design_routes(core):
                 for condition in rule.conditions:
                     explicit.update(split_calculated_dimension_aliases(condition.column))
         selected = list(reported)
-        selected.extend(('dataset_id', 'source_row_id', 'Vendor'))
+        # The NR Mode of the CDR of each row is a field of the rows of every chart.
+        selected.extend(('dataset_id', 'source_row_id', 'Vendor', NR_MODE_FIELD))
         # RF companions use the same source selection. A stable projection of
         # all radio fields lets RSRP/SINR and LTE/NR share the raw-frame cache,
         # rather than rereading millions of observations for each measure.
