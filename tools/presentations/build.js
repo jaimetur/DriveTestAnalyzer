@@ -945,6 +945,7 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
       ['TbDatabaseSearch', 'DuckDB engine', 'SQL on the Parquet copies'],
       ['TbBolt', 'Fast at any size', 'Durable analytical caches'],
       ['TbPlugConnected', 'Tableau connected', 'To the Workspace database'],
+      ['TbTimeline', 'Layer 3 - DT Logs', 'Signalling on NQ maps & RCA'],
     ] },
     { label: 'NEXT', color: K.blue, pin: 'TbRocket', x: 4.5, y: 4.45, card: [2.7, 5.02, 5.9, 1.52], columns: 2, items: [
       ['TbFlag', 'Germany pilot', 'First DE test campaign'],
@@ -956,8 +957,7 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
       ['TbAntennaBars5', 'Network Insights', 'Improvements to the module'],
       ['TbMailForward', 'Automatic emails', 'Reports sent by email on their own'],
     ] },
-    { label: 'LATER', color: 'E07800', pin: 'TbClock', x: 10.7, y: 4.2, card: [8.95, 4.8, 3.5, 1.98], items: [
-      ['TbHierarchy3', 'Smart Orchestrator Logs', 'A new source and its reports'],
+    { label: 'LATER', color: 'E07800', pin: 'TbClock', x: 10.7, y: 4.2, card: [8.95, 4.8, 3.5, 1.52], items: [
       ['TbRoute', 'TEMS logs', 'Drive test logs and their reports'],
       ['TbHeartbeat', 'Health monitoring', 'Alerts & checks after each deploy'],
     ] },
@@ -987,10 +987,12 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
   slide.addNotes(`Today: eight modules in production on ${STATS.where}; PPT Designer, which builds its charts as Tableau does; `
     + 'slide comments written by GenAI (Kiro or Claude); the columnar store of the CDRs, Parquet copies read with the DuckDB '
     + 'engine, which made the analyses 79 to more than 300 times faster and the workspace database 10 times lighter; durable '
-    + 'analytical caches, fast at any size; and Tableau connected to the workspace database. Next: a first pilot campaign in '
+    + 'analytical caches, fast at any size; Tableau connected to the workspace database; and the Layer 3 - DT Logs, the parsed '
+    + 'drive test logs of each campaign, whose signalling the maps of the Non-Qualified Calls, NQ Maps and the DT Analyzer RCA '
+    + 'read. Next: a first pilot campaign in '
     + 'Germany, the adaptation of the ingestion and scoring to Umlaut and P3 CDRs, the Active Tests community, so that the tool '
     + 'builds the KPI and Scoring reports they produce today, and Non-Qualified Calls out of Beta. Soon: improvements to '
-    + 'Network Insights and automatic emails. Later: Smart Orchestrator Logs and TEMS logs with their reports, and health '
+    + 'Network Insights and automatic emails. Later: TEMS logs with their reports, and health '
     + 'monitoring: alerts on runs that take too long and automatic checks after every deployment. These are intentions, not '
     + 'dated commitments.');
 }
@@ -1088,10 +1090,10 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
   // The roadmap on its small road: each milestone with its phase above and what it brings below.
   label('ROADMAP', 8.15, 5.72);
   const milestones = [
-    { x: 8.5, y: 6.36, color: '0C9B5B', phase: 'TODAY', pin: 'TbCircleCheck', text: '8 modules, columnar, GenAI' },
+    { x: 8.5, y: 6.36, color: '0C9B5B', phase: 'TODAY', pin: 'TbCircleCheck', text: '8 modules, L3 logs, GenAI' },
     { x: 9.75, y: 6.42, color: K.blue, phase: 'NEXT', pin: 'TbRocket', text: 'Germany, Umlaut & P3' },
     { x: 11.0, y: 6.4, color: '8C60A8', phase: 'SOON', pin: 'TbTrendingUp', text: 'Network Insights, emails' },
-    { x: 12.2, y: 6.4, color: 'E07800', phase: 'LATER', pin: 'TbClock', text: 'SO & TEMS logs, health' },
+    { x: 12.2, y: 6.4, color: 'E07800', phase: 'LATER', pin: 'TbClock', text: 'TEMS logs, health' },
   ];
   for (const milestone of milestones) {
     text(slide, milestone.phase, { x: milestone.x - 0.6, y: 6.0, w: 1.2, h: 0.2, fontSize: 9.5, bold: true, color: milestone.color, align: 'center', charSpacing: 1 });
@@ -1105,9 +1107,9 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
     + `Non-Qualified Calls (${STATS.nqExact} NQ calls), Reporting, the Builders and the Ticket Center. They serve `
     + 'benchmarking, the NQ team, troubleshooting and technical and executive reporting, on an enterprise platform on AWS with '
     + `roles, isolated workspaces, automated backups, a Ticket Center, a ${STATS.chapters}-chapter Help and ${STATS.tests} `
-    + 'automated tests. Roadmap: today the columnar store on DuckDB, Tableau connected and GenAI slide comments; next the '
-    + 'Germany pilot, Umlaut and P3 CDRs and the Active Tests community; then Network Insights and automatic emails; later '
-    + 'Smart Orchestrator and TEMS logs and health monitoring.');
+    + 'automated tests. Roadmap: today the columnar store on DuckDB, Tableau connected, GenAI slide comments and the Layer 3 - '
+    + 'DT Logs on the maps and the RCA of the Non-Qualified Calls; next the Germany pilot, Umlaut and P3 CDRs and the Active '
+    + 'Tests community; then Network Insights and automatic emails; later TEMS logs and health monitoring.');
 }
 
 // The colours and fonts of the theme of a written deck (pptxgenjs writes Office's own).

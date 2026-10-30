@@ -1271,6 +1271,24 @@ const VISUALS = {
 
 // Small pictures of the tiles (360 × 150), one per idea, in the colours of the deck.
 const MINIS = {
+  // The Layer 3 - DT Logs on the map of a call: the layers of the KMZ files in the colours of their ranges, the real way of
+  // the UE from START to END, the cursor of the signalling timeline with the UE on the map, and the logs around it.
+  layers: () => ['#8b0000', '#ff8c00', '#90ee64', '#0000ff'].map((colour, index) => `<path d="M90 ${118 - index * 24} L180 ${96 - index * 24} L270 ${118 - index * 24} L180 ${140 - index * 24} Z" fill="${colour}" opacity=".9" stroke="#ffffff" stroke-width="2"/>`).join(''),
+  road: () => {
+    const way = 'M44 112 C 110 112, 120 44, 190 62 S 280 108, 318 42';
+    return `<path d="${way}" fill="none" stroke="#ffffff" stroke-width="17" stroke-linecap="round"/><path d="${way}" fill="none" stroke="#1fb5cf" stroke-width="12" stroke-linecap="round"/>`
+      + `<path d="${way}" fill="none" stroke="#ffffff" stroke-width="2" stroke-dasharray="7 7"/><rect x="14" y="122" width="60" height="22" rx="11" fill="#2e8b57"/>`
+      + `<text x="44" y="137" text-anchor="middle" font-size="12" font-weight="800" fill="#ffffff">START</text><rect x="290" y="8" width="54" height="22" rx="11" fill="#d7263d"/>`
+      + `<text x="317" y="23" text-anchor="middle" font-size="12" font-weight="800" fill="#ffffff">END</text>`;
+  },
+  cursor: () => `<line x1="30" y1="104" x2="330" y2="104" stroke="#2a3a5c" stroke-width="4"/>`
+    + [50, 95, 140, 232, 276, 316].map((x, index) => `<circle cx="${x}" cy="104" r="7" fill="${['#00b000', '#0000ff', '#e6c200', '#9400d3', '#00b000', '#d7263d'][index]}"/>`).join('')
+    + `<line x1="186" y1="24" x2="186" y2="134" stroke="#1fb5cf" stroke-width="4"/><path d="M176 24 L196 24 L186 38 Z" fill="#1fb5cf"/>`
+    + `<circle cx="186" cy="68" r="17" fill="#0b6e8a" stroke="#ffffff" stroke-width="4"/><path d="M186 57 L194 76 L186 71 L178 76 Z" fill="#ffffff"/>`,
+  around: (p) => [[60, 40], [92, 112], [130, 30], [250, 122], [292, 40], [322, 98], [200, 24], [160, 128]]
+    .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="7" fill="${p.light}" opacity=".45"/>`).join('')
+    + `<path d="M40 80 L320 70" stroke="#1fb5cf" stroke-width="9" stroke-linecap="round"/>`
+    + [84, 144, 204, 264].map((x) => `<circle cx="${x}" cy="${(80 - (x - 40) / 28).toFixed(1)}" r="8" fill="#ff8c00" stroke="#ffffff" stroke-width="2"/>`).join(''),
   table: (p) => {
     let out = `<rect x="40" y="16" width="280" height="118" rx="12" fill="#101a2e"/><rect x="40" y="16" width="280" height="28" rx="12" fill="${p.accent}"/><rect x="40" y="32" width="280" height="12" fill="${p.accent}"/>`;
     for (let row = 0; row < 3; row += 1) for (let col = 0; col < 4; col += 1) out += `<rect x="${54 + col * 66}" y="${56 + row * 26}" width="${48 - ((row + col) % 2) * 14}" height="12" rx="6" fill="${row === 1 && col === 2 ? p.light : '#3a4d75'}"/>`;

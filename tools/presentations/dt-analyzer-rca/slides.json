@@ -6,7 +6,7 @@
       "image": "slide-01.png",
       "section": "Introduction",
       "title": "DT Analyzer RCA",
-      "notes": "The DT Analyzer RCA finds the root domain, Root Category and Root Cause of every Non-Qualified Call, test and Speech sample from the data of its CDR and, with a Network Inventory, from the network around it. It works in every workspace, whatever its CDR provider, with 64 default rules that every workspace can change."
+      "notes": "The DT Analyzer RCA finds the root domain, Root Category and Root Cause of every Non-Qualified Call, test and Speech sample from the data of its CDR, with a Network Inventory from the network around it and, when its campaign has them, from its Layer 3 - DT Logs. It works in every workspace, whatever its CDR provider, with 77 default rules that every workspace can change."
     },
     {
       "id": "sources",
@@ -20,67 +20,74 @@
       "image": "slide-03.png",
       "section": "How it works",
       "title": "Everything the CDR knows about the call",
-      "notes": "Every value is read through the field profile of the CDR type of the workspace, so the same rules serve NetCheck, Umlaut and the providers to come. The failure description joins the RCA of the provider with the signalling events of the CDR; the signalling events alone let rules ignore the RCA of the provider. The Network Inventory adds the serving and nearest sites against their inter-site distance, PCI collisions and cells out of service."
+      "notes": "Every value is read through the field profile of the CDR type of the workspace, so the same rules serve NetCheck, Umlaut and the providers to come. The failure description joins the RCA of the provider with the signalling events of the CDR; the signalling events alone let rules ignore the RCA of the provider. The Network Inventory adds the serving and nearest sites against their inter-site distance, PCI collisions and cells out of service. When the campaign of the call has Layer 3 - DT Logs, the next slide shows what its session adds."
+    },
+    {
+      "id": "layer-3",
+      "image": "slide-04.png",
+      "section": "How it works",
+      "title": "What the log of the call adds",
+      "notes": "When the campaign of a call has Layer 3 - DT Logs, its session, found by its JOIN_ID (both UEs of a Voice call), gives the rules what the UE measured and signalled right before the failure: the RSRP, RSRQ and SINR of its LTE and NR PCell in the last 5 seconds, its SCG failures, RRC re-establishments, releases and rejects, its handovers and inter-RAT changes and a stronger neighbour on the serving channel with no handover to it, the worst SIP response (the normal 401, 407, 487 and 489 left out), the UE at its maximum power and the BLER, and a session that never measured the radio. Twelve rules read the log first, before the radio of the CDR, and the rules of rejects, authentication, TAU, IMS, handover, radio link and inter-RAT read it too. The evidence of the decision quotes the log, and importing or deleting a log calculates again the calls of its campaign."
     },
     {
       "id": "rules",
-      "image": "slide-04.png",
+      "image": "slide-05.png",
       "section": "How it works",
       "title": "The first rule that holds decides",
-      "notes": "The rules are tried from top to bottom and the first one of the service of the call whose conditions hold decides. They are grouped in blocks: what the provider reports outside the radio and the lack of resources, the network around the call, the radio, handovers and the radio link, the coverage and interference the provider reports, the service, and Not identified for the rest. The order matters: a broad rule high in the list hides those below it."
+      "notes": "The rules are tried from top to bottom and the first one of the service of the call whose conditions hold decides. They are grouped in blocks: what the provider reports outside the radio and the lack of resources, the network around the call, what its Layer 3 - DT Logs show, the radio, handovers and the radio link, the coverage and interference the provider reports, the service, and Not identified for the rest. The order matters: a broad rule high in the list hides those below it."
     },
     {
       "id": "resources",
-      "image": "slide-05.png",
+      "image": "slide-06.png",
       "section": "Root causes",
       "title": "Three ways to see that the network ran short",
       "notes": "Insufficient resources of the core, such as a PDU Session Establishment Reject with the 5GSM cause Insufficient resources, only the RCA of the provider tells: the CDR has no NAS cause of its own. The access the network rejects is in the signalling of the CDR itself (RRCConnectionReject, RRCReject, Immediate Assignment Reject). A Data test cut off with good radio while its carrier gave it less than a quarter of its resource blocks points at a loaded cell; a server that sends little also leaves blocks unused, so these rules come after the protocol rules."
     },
     {
       "id": "isd",
-      "image": "slide-06.png",
+      "image": "slide-07.png",
       "section": "Root causes",
       "title": "Far is relative: the inter-site distance",
       "notes": "Serving from three kilometres is overshooting in a city whose sites are one kilometre apart and normal on a rural road. So every distance is compared with the inter-site distance of the site: the mean distance to its three nearest sites in service of the same network, from the positions of the Network Inventory. Neither neighbour lists nor the Timing Advance are needed."
     },
     {
       "id": "network",
-      "image": "slide-07.png",
+      "image": "slide-08.png",
       "section": "Root causes",
       "title": "What the Network Inventory reveals",
       "notes": "A coverage hole: the nearest site of the networks serving the operator is beyond one and a half times its own ISD, with weak coverage or no radio. Overshooting: the serving site is beyond twice its ISD and one kilometre, with interference or weak coverage. A PCI collision: a cell within two kilometres shares the technology, PCI and channel of a cell of the call. Cells out of service: cells of its sites are locked, halted or disabled while its radio suffered. The Failure Map of the call uses the same criteria."
     },
     {
       "id": "radio",
-      "image": "slide-08.png",
+      "image": "slide-09.png",
       "section": "Root causes",
       "title": "From the air interface to the server",
       "notes": "The radio rules use the levels of Network Insights: coverage below −110 dBm, interference below 0 dB, no dominant cell below −15 dB of RSRQ, a BLER above 10 % and the uplink at its maximum power. Ping-pong handovers are the call going back to a cell right after leaving it. The service rules come once the radio is not the cause, down to the Voice failures with good radio, a potential end-to-end issue."
     },
     {
       "id": "evidence",
-      "image": "slide-09.png",
+      "image": "slide-10.png",
       "section": "Results",
       "title": "Every call says why",
       "notes": "Each call gets its root domain, Root Category and Root Cause on the catalog of the workspace, the rule and the evidence: the values that met the rule and, for the rules of the network around the call, the serving and nearest sites it read. They show in the Root Cause Sources and Root Cause Analysis panels, the RCA tab of the call and every export."
     },
     {
       "id": "learning",
-      "image": "slide-10.png",
+      "image": "slide-11.png",
       "section": "Results",
       "title": "It learns from the analysts",
       "notes": "Learning is optional and off by default. A call takes the Root Category and Cause the analysts gave most of the other calls of its pattern (the same rule, service and failure of the provider) when at least two of them, and more than half of those decided, agree. It also learns for the calls the rules leave Not identified, and it follows every decision and every indexing of the CDRs."
     },
     {
       "id": "configuration",
-      "image": "slide-11.png",
+      "image": "slide-12.png",
       "section": "Configuration",
       "title": "Yours to tune, safe to share",
       "notes": "Admins change the rules in DT Analyzer RCA Rules: their order, services, conditions, thresholds, Root Category and Root Cause; Default Rules brings back the defaults. The Root Cause Catalog keeps the values a rule gives, the rules travel with the NQ Calls configuration in exports, imports, transfers and backups, and App Events records every change."
     },
     {
       "id": "domains",
-      "image": "slide-12.png",
+      "image": "slide-13.png",
       "section": "Configuration",
       "title": "Nine root domains, one catalog",
       "notes": "The default rules give values of nine root domains of the Root Cause Catalog. The Help lists every rule with its conditions and result, and every root domain with the categories and causes it gives: Non-Qualified Calls, DT Analyzer RCA, Default rules."

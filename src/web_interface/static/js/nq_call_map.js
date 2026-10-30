@@ -803,9 +803,9 @@
       // The tests around, in the colour of their level.
       const operators = data.tests.operators;
       const testRadius = zoom >= 16 ? 5 : zoom >= 13 ? 4 : 3;
-      // NQ Maps, as roads (narrower far out): first, below everything, the drive of each CDR between its tests in time order
-      // (from the CDR, when its route is on), thin and faint: a gap of more than 10 minutes or 5 km between two tests, or a
-      // way a car could not have driven (above about 145 km/h, those of another car measuring nearby), cuts it.
+      // NQ Maps, as roads (narrower far out): first, below everything, the drive of each CDR (from the CDR, when its route is
+      // on) as the map of a call sketches the way of its car: winding grey roads, thin and faint, only between tests close in
+      // time and place (2 minutes and 2 km at most, at a speed a car can drive: not those of another car measuring nearby).
       const roadScale = zoom >= 15 ? 1 : zoom >= 13 ? .8 : zoom >= 11 ? .6 : .45;
       const paintPieces = (pieces, colour, kind, item, priority, {scale = roadScale, alpha = .9} = {}) => {
         for (const piece of pieces.filter((points) => points.length > 1)) {
@@ -833,12 +833,13 @@
             if (last) {
               const seconds = Math.abs(Date.parse(String(row[COLUMN.start]).replace(' ', 'T')) - Date.parse(String(last[COLUMN.start]).replace(' ', 'T'))) / 1000;
               const metres = geodesic([last[COLUMN.longitude], last[COLUMN.latitude]], [row[COLUMN.longitude], row[COLUMN.latitude]]).metres;
-              if (!(seconds <= 600) || metres > 5000 || metres > Math.max(150, seconds * 40)) pieces.push([]);
+              if (!(seconds <= 120) || metres > 2000 || metres > Math.max(150, seconds * 40)) pieces.push([]);
             }
             pieces.at(-1).push(project(row[COLUMN.latitude], row[COLUMN.longitude]));
           });
-          paintPieces(pieces, COLOURS.route, 'cdr_route', {cdr: data.tests.cdrs?.[cdr], tests: rows.length, from: rows[0][COLUMN.start], to: rows.at(-1)[COLUMN.start],
-            operator: operators[rows[0][COLUMN.operator]]}, 1.5, {scale: roadScale * .6, alpha: .55});
+          const sketched = pieces.filter((piece) => piece.length > 1).map((piece) => windingRoad(piece)).filter((road) => road.length > 2);
+          paintPieces(sketched, COLOURS.route, 'cdr_route', {cdr: data.tests.cdrs?.[cdr], tests: rows.length, from: rows[0][COLUMN.start], to: rows.at(-1)[COLUMN.start],
+            operator: operators[rows[0][COLUMN.operator]]}, 1.5, {scale: roadScale * .7, alpha: .6});
         }
       }
       // Each measure on in its shape, side by side at each test when there are several (those without a value then left out).
@@ -2811,14 +2812,15 @@
     // Besides the Layer 3 - DT Logs, as on the map of a call (without its groups): the NQ calls, the sites and the route of
     // each session (shown until switched off), the RSRP / SINR samples of the CDRs (hidden until switched on), what colours
     // the NQ calls and the operators shown.
+    // (The route from the CDR, a sketch between its tests, is off until switched on: the GPS of the logs is the real one.)
     const settings = {layers: {cdr: stored.layers?.cdr !== false, failures: stored.layers?.failures !== false, sites: stored.layers?.sites !== false,
-      path: false, paths: false, route: stored.layers?.route !== false},
+      path: false, paths: false, route: stored.v === 2 && stored.layers?.route === true},
     measures: storedMeasures(stored),
     failureColour: AREA_FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'domain',
     operators: stored.operators === 'focus' ? 'focus' : 'all', radius_km: 0, failures: 'every'};
     const save = () => {
       try {
-        localStorage.setItem(AREA_SETTINGS_KEY, JSON.stringify({layers: {cdr: settings.layers.cdr, failures: settings.layers.failures,
+        localStorage.setItem(AREA_SETTINGS_KEY, JSON.stringify({v: 2, layers: {cdr: settings.layers.cdr, failures: settings.layers.failures,
           sites: settings.layers.sites, route: settings.layers.route}, measures: settings.measures, failureColour: settings.failureColour,
         operators: settings.operators}));
       } catch (_error) { /* A private window keeps them for the page. */ }

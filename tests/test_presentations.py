@@ -260,7 +260,7 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
     assert {'templates'} <= {slide['id'] for slide in by_id['ppt-designer']['slides']}
     assert {'groups', 'map', 'map-findings'} <= {slide['id'] for slide in by_id['non-qualified-calls']['slides']}
     # The DT Analyzer RCA keeps its slides.html, and the benchmarking providers deck its pictures.
-    for name, count in (('dt-analyzer-rca', 12), ('benchmarking-providers', 24)):
+    for name, count in (('dt-analyzer-rca', 13), ('benchmarking-providers', 24)):
         slides = json.loads((GENERATOR_FOLDER / name / 'slides.json').read_text(encoding='utf-8'))['slides']
         assert len(slides) == count and all(slide['title'] and slide['notes'] for slide in slides), name
     assert (GENERATOR_FOLDER / 'dt-analyzer-rca' / 'slides.html').is_file()

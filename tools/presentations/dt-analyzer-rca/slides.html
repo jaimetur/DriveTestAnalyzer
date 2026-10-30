@@ -15,6 +15,8 @@
     --dta: #b46be8; --dta2: #7c3aed; --dta-soft: #2a1d45;
     --rf: #3a7fc1; --ran: #e08a1e; --core: #7b52c0; --epsfb: #2f6db3; --ims: #c8682b; --aaa: #2e8b57; --protocol: #138597;
     --device: #7b8790; --operational: #6f8236;
+    /* The Layer 3 - DT Logs, in the teal of their cards on the maps of NQ Calls. */
+    --l3: #1fb5cf; --l3-soft: #0f3442;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { background: var(--ink); }
@@ -87,11 +89,11 @@
   <div style="position:relative;margin-top:150px;max-width:1000px">
     <p class="kicker">Non-Qualified Calls · Root cause analysis</p>
     <h1 style="margin-top:26px">DT Analyzer<br><span style="color:var(--dta)">RCA</span></h1>
-    <p class="lead" style="font-size:36px;margin-top:34px">The root cause of every Non-Qualified Call, found from the data of its CDR and the network around it.</p>
+    <p class="lead" style="font-size:36px;margin-top:34px">The root cause of every Non-Qualified Call, found from the data of its CDR, the network around it and, when its campaign has them, its Layer 3 - DT Logs.</p>
     <div style="display:flex;gap:14px;margin-top:46px">
       <span class="tag" style="background:var(--dta-soft);color:#e7cdfb"><i style="background:var(--dta)"></i>Every workspace</span>
       <span class="tag" style="background:var(--dta-soft);color:#e7cdfb"><i style="background:var(--dta)"></i>Every CDR provider</span>
-      <span class="tag" style="background:var(--dta-soft);color:#e7cdfb"><i style="background:var(--dta)"></i>64 editable rules</span>
+      <span class="tag" style="background:var(--dta-soft);color:#e7cdfb"><i style="background:var(--dta)"></i>77 editable rules</span>
     </div>
   </div>
   <div class="foot"><span><b>DriveTest Analyzer</b> · Non-Qualified Calls</span><span>Version 0.9.0</span></div>
@@ -140,7 +142,7 @@
 <section class="slide" id="s3">
   <p class="kicker">Inputs</p>
   <h2>Everything the CDR knows about the call</h2>
-  <p class="lead" style="max-width:1700px">Read through the field profile of the workspace: the same rules for NetCheck, Umlaut and the providers to come.</p>
+  <p class="lead" style="max-width:1700px">Read through the field profile of the workspace: the same rules for NetCheck, Umlaut and the providers to come, and the Layer 3 - DT Logs of the call when its campaign has them.</p>
   <div class="inputs">
     <svg class="inputs-lines" width="1696" height="640" viewBox="0 0 1696 640" aria-hidden="true"><path d="M848 320 L560 73.2" stroke="#b46be8" stroke-width="3" stroke-dasharray="10 9" opacity=".65"/><circle cx="560" cy="68.2" r="9" fill="#7c3aed" stroke="#fff" stroke-width="3"/><path d="M848 320 L560 237.8" stroke="#b46be8" stroke-width="3" stroke-dasharray="10 9" opacity=".65"/><circle cx="560" cy="222.8" r="9" fill="#7c3aed" stroke="#fff" stroke-width="3"/><path d="M848 320 L560 402.2" stroke="#b46be8" stroke-width="3" stroke-dasharray="10 9" opacity=".65"/><circle cx="560" cy="377.2" r="9" fill="#7c3aed" stroke="#fff" stroke-width="3"/><path d="M848 320 L560 566.8" stroke="#b46be8" stroke-width="3" stroke-dasharray="10 9" opacity=".65"/><circle cx="560" cy="531.8" r="9" fill="#7c3aed" stroke="#fff" stroke-width="3"/><path d="M848 320 L1136 73.2" stroke="#b46be8" stroke-width="3" stroke-dasharray="10 9" opacity=".65"/><circle cx="1136" cy="68.2" r="9" fill="#7c3aed" stroke="#fff" stroke-width="3"/><path d="M848 320 L1136 237.8" stroke="#b46be8" stroke-width="3" stroke-dasharray="10 9" opacity=".65"/><circle cx="1136" cy="222.8" r="9" fill="#7c3aed" stroke="#fff" stroke-width="3"/><path d="M848 320 L1136 402.2" stroke="#b46be8" stroke-width="3" stroke-dasharray="10 9" opacity=".65"/><circle cx="1136" cy="377.2" r="9" fill="#7c3aed" stroke="#fff" stroke-width="3"/><path d="M848 320 L1136 566.8" stroke="#b46be8" stroke-width="3" stroke-dasharray="10 9" opacity=".65"/><circle cx="1136" cy="531.8" r="9" fill="#7c3aed" stroke="#fff" stroke-width="3"/></svg>
     <div class="card input-node" style="left:0px;top:0.0px;height:146.5px;width:560px"><div class="icon" style="background:#475569"><svg viewBox="0 0 24 24"><path d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></div><div><h3>Call</h3><p>Result, test, technology, direction, environment</p></div></div><div class="card input-node" style="left:0px;top:164.5px;height:146.5px;width:560px"><div class="icon" style="background:#b4434f"><svg viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg></div><div><h3>Failure</h3><p>Description, signalling events, phase, side, its radio</p></div></div><div class="card input-node" style="left:0px;top:329.0px;height:146.5px;width:560px"><div class="icon" style="background:var(--rf)"><svg viewBox="0 0 24 24"><path d="M4 20V14M9 20V10M14 20V6M19 20V3"/></svg></div><div><h3>LTE radio</h3><p>RSRP, RSRQ, SINR, power, BLER, resource blocks</p></div></div><div class="card input-node" style="left:0px;top:493.5px;height:146.5px;width:560px"><div class="icon" style="background:#5b8fd6"><svg viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0M5 13a10 10 0 0 1 14 0M8.5 16.5a5 5 0 0 1 7 0M12 20h.01"/></svg></div><div><h3>NR radio</h3><p>RSRP, RSRQ, SINR, power, BLER, resource blocks</p></div></div><div class="card input-node" style="left:1136px;top:0.0px;height:146.5px;width:560px"><div class="icon" style="background:#6b7fa8"><svg viewBox="0 0 24 24"><path d="M7 7h10v10H7z"/><path d="M3 12h4M17 12h4"/></svg></div><div><h3>B side</h3><p>The RSRP and SINR of the other side of a Voice call</p></div></div><div class="card input-node" style="left:1136px;top:164.5px;height:146.5px;width:560px"><div class="icon" style="background:var(--ran)"><svg viewBox="0 0 24 24"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg></div><div><h3>Mobility</h3><p>Technologies, handovers and their types, ping-pongs</p></div></div><div class="card input-node" style="left:1136px;top:329.0px;height:146.5px;width:560px;border-color:#7d4cc4"><div class="icon" style="background:var(--dta2)"><svg viewBox="0 0 24 24"><path d="M12 2v20M5 7l7-5 7 5M7 22l5-9 5 9"/></svg></div><div><h3>Network Inventory</h3><p>Serving and nearest sites against their ISD, PCI, outages</p></div></div><div class="card input-node" style="left:1136px;top:493.5px;height:146.5px;width:560px"><div class="icon" style="background:var(--protocol)"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></div><div><h3>KPIs</h3><p>Throughput, access, DNS, TCP, loss, latency, MOS</p></div></div>
@@ -149,20 +151,64 @@
   <div class="foot"><span><b>DT Analyzer RCA</b> · What it reads</span><span>03</span></div>
 </section>
 
+<!-- 3b · What the Layer 3 - DT Logs add -->
+<section class="slide" id="s3b">
+  <p class="kicker" style="color:var(--l3)">Inputs · Layer 3 - DT Logs</p>
+  <h2>What the log of the call adds</h2>
+  <p class="lead" style="max-width:1700px">When the campaign of a call has Layer 3 - DT Logs, its session (found by its JOIN_ID; both UEs of a Voice call) tells the rules what the UE measured and signalled right before the failure.</p>
+  <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:30px;gap:20px">
+    <div class="card" style="padding:24px 30px">
+      <span class="tag" style="background:var(--rf)">Radio</span>
+      <h3 style="margin-top:14px;font-size:30px">Radio at the failure</h3>
+      <p style="font-size:22px;margin-top:8px">RSRP, RSRQ and SINR of the LTE and NR PCell in its last 5 seconds.</p>
+    </div>
+    <div class="card" style="padding:24px 30px">
+      <span class="tag" style="background:var(--ran)">RRC</span>
+      <h3 style="margin-top:14px;font-size:30px">Failures of the RRC</h3>
+      <p style="font-size:22px;margin-top:8px">SCG failures, RRC re-establishments and releases, and the rejects of the network.</p>
+    </div>
+    <div class="card" style="padding:24px 30px">
+      <span class="tag" style="background:var(--ran)">Mobility</span>
+      <h3 style="margin-top:14px;font-size:30px">Handovers</h3>
+      <p style="font-size:22px;margin-top:8px">Handovers and inter-RAT changes, and a stronger neighbour on the serving channel with no handover to it.</p>
+    </div>
+    <div class="card" style="padding:24px 30px">
+      <span class="tag" style="background:var(--ims)">IMS</span>
+      <h3 style="margin-top:14px;font-size:30px">SIP</h3>
+      <p style="font-size:22px;margin-top:8px">The worst SIP response of the session (401, 407, 487 and 489, the normal ones, left out).</p>
+    </div>
+    <div class="card" style="padding:24px 30px">
+      <span class="tag" style="background:var(--rf)">Radio</span>
+      <h3 style="margin-top:14px;font-size:30px">Uplink and BLER</h3>
+      <p style="font-size:22px;margin-top:8px">The UE at its maximum power (22 dBm or more) and the BLER of LTE and NR.</p>
+    </div>
+    <div class="card" style="padding:24px 30px">
+      <span class="tag" style="background:var(--device)">Device</span>
+      <h3 style="margin-top:14px;font-size:30px">No measurements</h3>
+      <p style="font-size:22px;margin-top:8px">A session that never measured the radio: the device or the test setup.</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:20px;padding:20px 30px;border-color:var(--l3);background:linear-gradient(180deg,#123544,#0f2532)">
+    <p style="margin:0;font-size:22px;color:#d9f6fb"><b style="color:#fff">12 rules read the log first</b>, before the radio of the CDR; the rules of rejects, authentication, TAU, IMS, handover, radio link and inter-RAT read it too. Its evidence quotes the log, and a log imported or deleted calculates again the calls of its campaign.</p>
+  </div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Layer 3 - DT Logs</span><span>04</span></div>
+</section>
+
 <!-- 4 · How it decides -->
 <section class="slide" id="s4">
   <p class="kicker">Rules</p>
   <h2>The first rule that holds decides</h2>
   <p class="lead">Rules are tried from top to bottom. The first one of the service of the call whose conditions hold gives its Root Category and Root Cause, with the evidence of the values that met it.</p>
-  <div style="display:flex;gap:56px;margin-top:40px">
-    <div style="flex:1;display:flex;flex-direction:column;gap:10px">
-      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">1–12</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:27px;font-weight:700">Reported outside the radio · lack of resources</span><span class="tag" style="background:rgba(255,255,255,.08)">12</span></div></div>
-      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">13–23</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center;border-color:#7d4cc4"><span style="font-size:27px;font-weight:700">The network around the call</span><span class="tag" style="background:var(--dta-soft);color:#e7cdfb">11</span></div></div>
-      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">24–35</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:27px;font-weight:700">The radio of the call</span><span class="tag" style="background:rgba(255,255,255,.08)">12</span></div></div>
-      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">36–41</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:27px;font-weight:700">Handovers and the radio link</span><span class="tag" style="background:rgba(255,255,255,.08)">6</span></div></div>
-      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">42–49</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:27px;font-weight:700">Coverage and interference the provider reports</span><span class="tag" style="background:rgba(255,255,255,.08)">8</span></div></div>
-      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">50–63</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:27px;font-weight:700">The service, once the radio is not the cause</span><span class="tag" style="background:rgba(255,255,255,.08)">14</span></div></div>
-      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">64</span><div class="card" style="flex:1;padding:13px 26px;display:flex;justify-content:space-between;align-items:center;opacity:.8"><span style="font-size:27px;font-weight:700">Not identified</span><span class="tag" style="background:rgba(255,255,255,.08)">1</span></div></div>
+  <div style="display:flex;gap:56px;margin-top:34px">
+    <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">1–13</span><div class="card" style="flex:1;padding:12px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:26px;font-weight:700">Reported outside the radio · lack of resources</span><span class="tag" style="background:rgba(255,255,255,.08)">13</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">14–24</span><div class="card" style="flex:1;padding:12px 26px;display:flex;justify-content:space-between;align-items:center;border-color:#7d4cc4"><span style="font-size:26px;font-weight:700">The network around the call</span><span class="tag" style="background:var(--dta-soft);color:#e7cdfb">11</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">25–36</span><div class="card" style="flex:1;padding:12px 26px;display:flex;justify-content:space-between;align-items:center;border-color:var(--l3)"><span style="font-size:26px;font-weight:700">What its Layer 3 - DT Logs show</span><span class="tag" style="background:var(--l3-soft);color:#bdf1fa">12</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">37–48</span><div class="card" style="flex:1;padding:12px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:26px;font-weight:700">The radio of the call</span><span class="tag" style="background:rgba(255,255,255,.08)">12</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">49–54</span><div class="card" style="flex:1;padding:12px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:26px;font-weight:700">Handovers and the radio link</span><span class="tag" style="background:rgba(255,255,255,.08)">6</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">55–62</span><div class="card" style="flex:1;padding:12px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:26px;font-weight:700">Coverage and interference the provider reports</span><span class="tag" style="background:rgba(255,255,255,.08)">8</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">63–76</span><div class="card" style="flex:1;padding:12px 26px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:26px;font-weight:700">The service, once the radio is not the cause</span><span class="tag" style="background:rgba(255,255,255,.08)">14</span></div></div>
+      <div style="display:flex;align-items:center;gap:22px"><span class="mono" style="width:112px;flex:none;white-space:nowrap;font-size:24px;color:var(--muted)">77</span><div class="card" style="flex:1;padding:12px 26px;display:flex;justify-content:space-between;align-items:center;opacity:.8"><span style="font-size:26px;font-weight:700">Not identified</span><span class="tag" style="background:rgba(255,255,255,.08)">1</span></div></div>
     </div>
     <div class="card" style="width:620px;align-self:flex-start;border-color:#7d4cc4">
       <p class="kicker" style="font-size:20px">A rule</p>
@@ -176,7 +222,7 @@
       <p style="font-size:22px;margin-top:26px;color:var(--muted)">Services, all or any of the conditions, thresholds, category and cause: all editable.</p>
     </div>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · How it decides</span><span>04</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · How it decides</span><span>05</span></div>
 </section>
 
 <!-- 5 · Lack of resources -->
@@ -208,7 +254,7 @@
     <div style="flex:1;height:22px;border-radius:12px;background:linear-gradient(90deg,#d9534f 0,#d9534f 25%,#2a3a5c 25%,#2a3a5c 100%);position:relative"></div>
     <span style="font-size:24px;color:var(--soft)">resource blocks used: <b style="color:#ff8a80">&lt; 25 %</b> loaded cell · <b style="color:#9fe0b5">≈ 66 %</b> a completed test</span>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Lack of resources</span><span>05</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Lack of resources</span><span>06</span></div>
 </section>
 
 <!-- 6 · ISD -->
@@ -247,7 +293,7 @@
     </div>
   </div>
   <p style="font-size:24px;color:var(--muted);margin-top:26px">No neighbour lists nor Timing Advance needed: the positions of the sites are enough. A site with no other site of its network within 40 km has no ISD.</p>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Inter-site distance</span><span>06</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Inter-site distance</span><span>07</span></div>
 </section>
 
 <!-- 7 · Network around the call -->
@@ -273,7 +319,7 @@
       <div class="criterion"><h3>Cells out of service</h3><p>Cells of its sites are locked, halted or disabled, and its radio suffered: RSRP below −105 dBm or SINR below 3 dB.</p><div class="result"><span style="background:var(--operational)">Operational</span><span>Operational</span><span>Cell/Site Outage</span></div></div>
     </div>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Network Inventory</span><span>07</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Network Inventory</span><span>08</span></div>
 </section>
 
 <!-- 8 · Radio, mobility, service -->
@@ -323,7 +369,7 @@
     </div>
   </div>
   <p style="font-size:24px;color:var(--muted);margin-top:30px">Good radio means measured and taken by no radio rule: without radio values, neither the Cutoff tests nor the Voice failures get a cause.</p>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Radio, mobility and service</span><span>08</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Radio, mobility and service</span><span>09</span></div>
 </section>
 
 <!-- 9 · Evidence -->
@@ -345,7 +391,7 @@
     <div class="card" style="padding:26px 30px"><h3 style="font-size:28px">RCA tab of the call</h3><p style="font-size:22px">Its card, with the rule and evidence</p></div>
     <div class="card" style="padding:26px 30px"><h3 style="font-size:28px">Exports</h3><p style="font-size:22px">Excel, PowerPoint, Word, Reporting</p></div>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Evidence</span><span>09</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Evidence</span><span>10</span></div>
 </section>
 
 <!-- 10 · Learning -->
@@ -370,7 +416,7 @@
       <div class="card" style="padding:28px 34px"><h3 style="font-size:32px">Always up to date</h3><p>after every decision and every indexing of the CDRs</p></div>
     </div>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Learning</span><span>10</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Learning</span><span>11</span></div>
 </section>
 
 <!-- 11 · Yours to tune -->
@@ -393,7 +439,7 @@
       <div class="card" style="padding:30px 34px"><h3 style="font-size:32px">Every change recorded</h3><p>App Events tells what changed; the calls are calculated again at once.</p></div>
     </div>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Configuration</span><span>11</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Configuration</span><span>12</span></div>
 </section>
 
 <!-- 12 · Values it gives -->
@@ -412,7 +458,7 @@
     <div class="card" style="padding:28px 32px;border-top:8px solid var(--operational)"><h3 style="font-size:32px">Operational</h3><p style="font-size:22px">Cell/Site Outage · Unclear for the calls no rule explains</p></div>
   </div>
   <p style="font-size:24px;color:var(--muted);margin-top:30px">Every rule, with its conditions and result, is in the Help: Non-Qualified Calls → DT Analyzer RCA → Default rules.</p>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Root domains</span><span>12</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Root domains</span><span>13</span></div>
 </section>
 
 <script>
