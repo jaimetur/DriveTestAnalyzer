@@ -1225,6 +1225,32 @@
       // time-window issue) and of its site, then the others. The calls on one point make one mark with how many they are (the
       // most related gives its colour); with Per Group, an outline of its shape for each group of the call they are of (and
       // switched on), its cluster innermost, then its time window and its hotspot.
+      // The mark of an NQ call (and of the call itself): a diamond in its colour with a shadow, then the outlines of its
+      // ``groups`` in their colours, each over a white one.
+      const nqMark = (x, y, size, colour, groups, hollow = false) => {
+        context.save();
+        context.shadowColor = 'rgba(30, 10, 20, .45)';
+        context.shadowBlur = 5;
+        context.shadowOffsetY = 1;
+        diamond(context, x, y, size);
+        context.fillStyle = hollow ? '#fff' : colour;
+        context.fill();
+        context.restore();
+        diamond(context, x, y, size);
+        context.lineWidth = hollow ? 2.6 : 2;
+        context.strokeStyle = hollow ? colour : '#fff';
+        context.stroke();
+        groups.forEach((kind, index) => {
+          diamond(context, x, y, size + 4.6 + index * 4.6);
+          context.lineJoin = 'miter';
+          context.lineWidth = 4.6;
+          context.strokeStyle = 'rgba(255, 255, 255, .9)';
+          context.stroke();
+          context.lineWidth = 2.6;
+          context.strokeStyle = GROUP_COLOURS[kind];
+          context.stroke();
+        });
+      };
       if (layers.failures) {
         const stacks = new Map();
         for (const failure of data.failures) {
@@ -1244,30 +1270,9 @@
           const size = data.area ? 8 + (zoom >= 15 ? 1.5 : 0) : 11.5 + (zoom >= 15 ? 2 : 0);
           // On NQ Maps those without Layer 3 - DT Logs are hollow, in their colour.
           const hollow = data.area && !items.some((item) => item.l3_log);
-          context.save();
-          context.shadowColor = 'rgba(30, 10, 20, .45)';
-          context.shadowBlur = 5;
-          context.shadowOffsetY = 1;
-          diamond(context, x, y, size);
-          context.fillStyle = hollow ? '#fff' : shared.failureColour(failure);
-          context.fill();
-          context.restore();
-          diamond(context, x, y, size);
-          context.lineWidth = hollow ? 2.6 : 2;
-          context.strokeStyle = hollow ? shared.failureColour(failure) : '#fff';
-          context.stroke();
-          // Per Group: an outline of its shape for each group of the call the calls on the point are of, each over a white one.
+          // Per Group: an outline of its shape for each group of the call the calls on the point are of.
           const groups = data.area ? [] : ['cluster', 'run', 'hotspot'].filter((kind) => items.some((item) => shared.failureGroups(item).includes(kind)));
-          groups.forEach((kind, index) => {
-            diamond(context, x, y, size + 4.6 + index * 4.6);
-            context.lineJoin = 'miter';
-            context.lineWidth = 4.6;
-            context.strokeStyle = 'rgba(255, 255, 255, .9)';
-            context.stroke();
-            context.lineWidth = 2.6;
-            context.strokeStyle = GROUP_COLOURS[kind];
-            context.stroke();
-          });
+          nqMark(x, y, size, shared.failureColour(failure), groups, hollow);
           if (items.length > 1) {
             const badge = `×${items.length}`;
             context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
@@ -1336,10 +1341,21 @@
           hits.push({x, y, r: 10, kind: 'handover_point', item: point, priority: 5.5});
         }
       }
+      // The call itself: the mark of the NQ calls (its colour and, with Per Group, the outlines of its groups) under its pin,
+      // which stands on its top.
+      let pinLift = 0, pinAt = null;
       if (!data.area) {
         const [px, py] = project(failurePoint[0], failurePoint[1]);
-        pin(context, px, py, 10, COLOURS.call);
-        hits.push({x: px, y: py - 15, r: 13, kind: 'call', item: call, priority: 6});
+        pinAt = [px, py];
+        const own = data.failures.find((failure) => failure.self);
+        if (own && layers.failures) {
+          const size = 11.5 + (zoom >= 15 ? 2 : 0);
+          nqMark(px, py, size, shared.failureColour(own), shared.failureGroups(own));
+          pinLift = size;
+          hits.push({x: px, y: py, r: size + 3, kind: 'call', item: call, priority: 6});
+        }
+        pin(context, px, py - pinLift, 10, COLOURS.call);
+        hits.push({x: px, y: py - pinLift - 15, r: 13, kind: 'call', item: call, priority: 6});
       }
       // START and END where the call started and ended (where its simulated way ended, for a Data test): beside them on the
       // side away from its road, beside the head of the pin where the pin stands.
@@ -1347,7 +1363,7 @@
         context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
         const width = context.measureText(text).width + 12, height = 16;
         const reach = clearance + Math.abs(ux) * width / 2 + Math.abs(uy) * height / 2;
-        const [cx, cy] = pinned ? [x + (ux >= 0 ? 1 : -1) * (14 + width / 2), y - 15] : [x + ux * reach, y + uy * reach];
+        const [cx, cy] = pinned ? [x + (ux >= 0 ? 1 : -1) * (14 + width / 2), y - 15 - pinLift] : [x + ux * reach, y + uy * reach];
         context.beginPath();
         context.roundRect?.(cx - width / 2, cy - height / 2, width, height, 8);
         if (!context.roundRect) context.rect(cx - width / 2, cy - height / 2, width, height);
@@ -1371,7 +1387,9 @@
       } else if (realWay) {
         // Where the log of the UE starts and ends.
         tag('START', COLOURS.start, way[0], [-sx, -sy], false, 10);
-        tag('END', COLOURS.end, way.at(-1), heading(way[Math.max(0, way.length - 4)], way.at(-1)), false, 14);
+        // (Beside the head of the pin when the log ends where the call failed, so that it does not hide it.)
+        const atPin = pinAt && Math.hypot(way.at(-1)[0] - pinAt[0], way.at(-1)[1] - pinAt[1]) < 30;
+        tag('END', COLOURS.end, atPin ? pinAt : way.at(-1), heading(way[Math.max(0, way.length - 4)], way.at(-1)), atPin, atPin ? 0 : 14);
       } else {
         if (start) tag('START', COLOURS.start, project(start[0], start[1]), [-sx, -sy], !call.end, 10);
         if (call.end) tag('END', COLOURS.end, project(call.end[0], call.end[1]), way ? heading(way[Math.max(0, way.length - 4)], way.at(-1)) : [1, 0], true, 0);
@@ -1814,7 +1832,7 @@
       }
       group('This call');
       // A Data test gives only where it started: its pin marks that place, and its way where it went (and failed).
-      item('pin', data.call.end ? 'This call (where it failed)' : 'This test (where it started; it failed on its way)', COLOURS.call);
+      item('pin', `${data.call.end ? 'This call (where it failed)' : 'This test (where it started; it failed on its way)'}${layers.failures ? ', its pin over its mark of NQ call' : ''}`, COLOURS.call);
       if (data.call.end) item('dot', 'Where it started', COLOURS.start);
       if (!routeShown || window.L3Layers?.wayOf(shared.l3)) { /* Its route hidden, or the real way of its log (below). */ }
       else if (data.call.way?.by === 'ends') item('road', 'Its way, from where it started to where it ended (arrow: its direction; the bends are a sketch, not its streets)', COLOURS.path);
@@ -1916,7 +1934,9 @@
       // The measures of the samples shown (none until some are switched on, so the map shows the call, its cells and the
       // sites first).
       measures: storedMeasures(stored),
-      operators: ['all', 'focus'].includes(stored.operators) ? stored.operators : 'own',
+      // The Focus operators of the Operator Maps until another choice (the choices kept before they were the default are
+      // left for them).
+      operators: stored.v >= 2 && ['own', 'all', 'focus'].includes(stored.operators) ? stored.operators : 'focus',
       failureColour: FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'site',
       // Per Group: a circle around each NQ call of the groups of the call, in the colour of each group.
       perGroup: stored.perGroup !== false,
@@ -1924,7 +1944,7 @@
       layers: {cdr: true, failures: true, cluster: true, run: true, hotspot: true, sites: true, path: true, route: true, paths: true, ...(stored.layers || {})},
     };
     delete settings.layers.tests;
-    const save = () => storeSettings({tests: settings.tests, measures: settings.measures, operators: settings.operators,
+    const save = () => storeSettings({v: 2, tests: settings.tests, measures: settings.measures, operators: settings.operators,
       failureColour: settings.failureColour, perGroup: settings.perGroup, layers: settings.layers});
     let callKey = '', loadedKey = '', controller = null, expandedView = null, expandedTimeline = null, expandedToolbar = null;
     const toolbar = node('div', undefined, 'nq-map-toolbar');
@@ -1969,6 +1989,8 @@
     shared.showsFailure = (failure) => {
       const call = shared.data?.call;
       if (!call || failure.self) return true;
+      // Not the Ping tests.
+      if (failure.kind === 'ping') return false;
       // Those of the campaigns chosen in From CDR, as everything else from the CDRs.
       if (settings.tests === 'campaign' && (failure.campaign !== call.campaign || failure.nr_mode !== call.nr_mode)) return false;
       if (settings.tests === 'selected' && !selectedCampaign(failure)) return false;
@@ -2927,10 +2949,11 @@
     measures: storedMeasures(stored),
     // By call type until another choice (the choices kept before Site came are left for it).
     failureColour: stored.v >= 3 && AREA_FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'type',
-    operators: stored.operators === 'focus' ? 'focus' : 'all', radius_km: 0, failures: 'every'};
+    // The Focus operators of the Operator Maps until another choice, as on the map of a call.
+    operators: stored.v >= 4 && stored.operators === 'all' ? 'all' : 'focus', radius_km: 0, failures: 'every'};
     const save = () => {
       try {
-        localStorage.setItem(AREA_SETTINGS_KEY, JSON.stringify({v: 3, layers: {cdr: settings.layers.cdr, failures: settings.layers.failures,
+        localStorage.setItem(AREA_SETTINGS_KEY, JSON.stringify({v: 4, layers: {cdr: settings.layers.cdr, failures: settings.layers.failures,
           sites: settings.layers.sites, route: settings.layers.route}, measures: settings.measures, failureColour: settings.failureColour,
         operators: settings.operators}));
       } catch (_error) { /* A private window keeps them for the page. */ }
@@ -2941,7 +2964,8 @@
     let focusNames = new Set(), focusLabels = [];
     shared.operatorChoice = () => (settings.operators === 'focus' && focusNames.size ? 'focus' : 'all');
     shared.operatorShown = (name) => shared.operatorChoice() === 'all' || focusNames.has(String(name || '').trim().toLowerCase());
-    shared.showsFailure = (failure) => shared.operatorShown(failure.operator);
+    // (As on the map of a call, not the Ping tests.)
+    shared.showsFailure = (failure) => failure.kind !== 'ping' && shared.operatorShown(failure.operator);
     // The colour of an NQ call (AREA_FAILURE_COLOURS) and the lines of the legend that explain it: only what they show.
     shared.failureColour = (failure) => failureColourBy(settings.failureColour, failure);
     shared.failureLegend = () => failureLegendBy(settings.failureColour,
