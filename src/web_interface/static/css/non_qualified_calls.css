@@ -2153,3 +2153,6 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .nq-l3-timeline-tip strong { display: block; margin-bottom: .2rem; color: #0b5368; }
 .nq-l3-timeline-tip div { display: flex; justify-content: space-between; gap: .6rem; }
 .nq-l3-timeline-tip span { color: #6b8189; }
+
+/* The Diagnosis hints of the Layer 3 - DT Logs: a teal edge, beside those of the CDR. */
+.nq-map-checks li.is-l3 { box-shadow: inset 3px 0 0 #0b6e8a; }

@@ -31,7 +31,7 @@ from typing import Any
 
 from src.modules.nq_catalog import keyword_found, keywords, normalized_text
 
-ENGINE_VERSION = 3
+ENGINE_VERSION = 4
 SOURCE_LABEL = 'DT Analyzer RCA'
 RULES_STATE_KEY = 'nq_dta_rca_rules'
 FINGERPRINT_STATE_KEY = 'nq_dta_rca_fingerprint'
@@ -113,6 +113,31 @@ INPUTS: dict[str, tuple[str, str, str, str]] = {
     'mos': ('Speech quality (MOS)', 'number', '', 'KPIs'),
     'rtp_packet_loss': ('RTP packet loss', 'number', '%', 'KPIs'),
     'jitter': ('Jitter', 'number', 'ms', 'KPIs'),
+    # What the Layer 3 - DT Logs of the call tell (l3_dt_logs.call_evidence): only for the calls with a session in them, the
+    # radio of its last seconds and what happened in the seconds before it failed.
+    'l3_log': ('UEs with a Layer 3 - DT Log', 'text', '', 'Layer 3 - DT Logs'),
+    'l3_signalling': ('Signalling before the failure (log)', 'text', '', 'Layer 3 - DT Logs'),
+    'l3_ran_end': ('RAN Configuration at the failure (log)', 'text', '', 'Layer 3 - DT Logs'),
+    'l3_lte_rsrp_end': ('LTE RSRP at the failure (log)', 'number', 'dBm', 'Layer 3 - DT Logs'),
+    'l3_lte_sinr_end': ('LTE SINR at the failure (log)', 'number', 'dB', 'Layer 3 - DT Logs'),
+    'l3_nr_rsrp_end': ('NR RSRP at the failure (log)', 'number', 'dBm', 'Layer 3 - DT Logs'),
+    'l3_nr_sinr_end': ('NR SINR at the failure (log)', 'number', 'dB', 'Layer 3 - DT Logs'),
+    'l3_lte_rsrp_min': ('LTE RSRP (minimum, log)', 'number', 'dBm', 'Layer 3 - DT Logs'),
+    'l3_nr_rsrp_min': ('NR RSRP (minimum, log)', 'number', 'dBm', 'Layer 3 - DT Logs'),
+    'l3_reestablishments': ('RRC re-establishments before the failure (log)', 'number', '', 'Layer 3 - DT Logs'),
+    'l3_scg_failures': ('SCG failures before the failure (log)', 'number', '', 'Layer 3 - DT Logs'),
+    'l3_handovers': ('Handovers before the failure (log)', 'number', '', 'Layer 3 - DT Logs'),
+    'l3_irat': ('Inter-RAT moves before the failure (log)', 'number', '', 'Layer 3 - DT Logs'),
+    'l3_releases': ('RRC releases before the failure (log)', 'number', '', 'Layer 3 - DT Logs'),
+    'l3_rejects': ('Rejects in the signalling (log)', 'number', '', 'Layer 3 - DT Logs'),
+    'l3_sip_error': ('SIP error (log)', 'number', '', 'Layer 3 - DT Logs'),
+    'l3_tx_max': ('UE Tx Power before the failure (maximum, log)', 'number', 'dBm', 'Layer 3 - DT Logs'),
+    'l3_tx_high_share': ('UE Tx Power from 22 dBm before the failure (log)', 'number', '%', 'Layer 3 - DT Logs'),
+    'l3_neighbour_delta': ('Neighbour of the serving channel above the serving cell (log)', 'number', 'dB', 'Layer 3 - DT Logs'),
+    'l3_neighbour_seconds': ('Seconds a neighbour was 3 dB above the serving cell (log)', 'number', 's', 'Layer 3 - DT Logs'),
+    'l3_lte_bler': ('LTE BLER before the failure (log)', 'number', '%', 'Layer 3 - DT Logs'),
+    'l3_nr_bler': ('NR BLER before the failure (log)', 'number', '%', 'Layer 3 - DT Logs'),
+    'l3_no_measurements': ('Records without measurements (log)', 'number', '', 'Layer 3 - DT Logs'),
 }
 # The inputs that are indexed fields of the call, and the failure fields its description joins (with two CDR inputs).
 CALL_INPUTS = ('result', 'test_name', 'technology', 'direction', 'environment', 'failure_phase', 'failure_technology')
@@ -135,9 +160,13 @@ NETWORK_NOTE = 'network_note'
 RB_SOURCES = ('lte_dl_rbs', 'lte_dl_bandwidth', 'nr_dl_rbs', 'nr_dl_bandwidth', 'nr_dl_band')
 TRACE_SOURCES = ('cell_trace', 'cell_pcis', 'end_latitude', 'end_longitude')
 NUMBER_SOURCES = frozenset(('lte_dl_rbs', 'lte_dl_bandwidth', 'nr_dl_rbs', 'nr_dl_bandwidth', 'end_latitude', 'end_longitude'))
+# The inputs of the Layer 3 - DT Logs of the call, which non_qualified_calls adds from its sessions (l3_dt_logs); an
+# ``l3_note`` tells what its log shows before the failure, for the evidence.
+L3_INPUTS = tuple(key for key in INPUTS if key.startswith('l3_'))
+L3_NOTE = 'l3_note'
 # The inputs read from the CDR (the profile lists their columns).
 CDR_INPUTS = tuple(key for key in (*INPUTS, *FAILURE_TEXT_INPUTS, *RB_SOURCES)
-                   if key not in CALL_INPUTS and key not in DERIVED_INPUTS and key not in CONTEXT_INPUTS)
+                   if key not in CALL_INPUTS and key not in DERIVED_INPUTS and key not in CONTEXT_INPUTS and key not in L3_INPUTS)
 OPERATORS = {
     'lt': '<', 'le': '≤', 'gt': '>', 'ge': '≥', 'eq': '=', 'ne': '≠',
     'contains': 'contains', 'not_contains': 'does not contain', 'empty': 'is empty', 'not_empty': 'is not empty',
@@ -161,6 +190,10 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
     ('device', 'Device or test setup', (), 'any',
      (('failure_text', 'contains', 'modem, device, test setup, ue crash, at command, script error, battery'),),
      'UE / Test Setup Issue', 'Device or test setup'),
+    # A log whose UE measured nothing: the device or the logging of the test.
+    ('l3-no-measurements', 'No measurements in the drivetest log', (), 'all',
+     (('l3_no_measurements', 'ge', 1), ('l3_lte_rsrp_end', 'empty', ''), ('l3_nr_rsrp_end', 'empty', '')),
+     'UE / Test Setup Issue', 'Device or test setup'),
     ('subscriber-identity', 'Subscriber identity', (), 'any',
      (('failure_text', 'contains', 'imsi, ue identity cannot be derived'),), 'IMSI Issue', ''),
     # A lack of resources: the insufficient resources or congestion the provider reports of the core, and the access the
@@ -169,18 +202,23 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
      (('failure_text', 'contains', 'insufficient resources, service reject+congestion'),), 'Core Network', 'Insufficient resources'),
     ('access-rejected', 'Access rejected by the network', (), 'any',
      (('signalling_events', 'contains', 'rrcconnectionreject, rrcreject, immediate assignment reject'),
-      ('failure_text', 'contains', 'rrc connection reject')), 'RAN Capacity', 'Access rejected (no resources)'),
+      ('failure_text', 'contains', 'rrc connection reject'), ('l3_signalling', 'contains', 'rrcconnectionreject, rrcreject')),
+     'RAN Capacity', 'Access rejected (no resources)'),
     ('authentication', 'Authentication or registration rejected', (), 'any',
      (('failure_text', 'contains', 'authentication, authorization, registration reject, attach reject, '
-                                   'pdu session establishment reject'),), 'Authentication & Registration', 'Authentication/Authorization'),
+                                   'pdu session establishment reject'),
+      ('l3_signalling', 'contains', 'authentication reject, registration reject, attach reject, pdu session establishment reject')),
+     'Authentication & Registration', 'Authentication/Authorization'),
     ('tracking-area-update', 'Tracking area update', (), 'any',
-     (('failure_text', 'contains', 'tracking area update'),), 'Core Network', 'TAU reject'),
+     (('failure_text', 'contains', 'tracking area update'), ('l3_signalling', 'contains', 'tracking area update reject')),
+     'Core Network', 'TAU reject'),
     ('bearer-deactivation', 'Bearer deactivated by the network', (), 'any',
      (('failure_text', 'contains', 'bearer deactivation, deregistered, detach request'),), 'Core Network', 'EPS bearer deactivation'),
     ('qci1', 'No QCI1 bearer for the call', _VOICE, 'any', (('failure_text', 'contains', 'qci1, qci 1'),), 'IMS / VoLTE',
      'No QCI1 established'),
     ('ims-core', 'VoLTE or IMS core', _VOICE, 'any',
-     (('failure_text', 'contains', 'volte core, ims core, ims registration, sip, server internal error'),), 'IMS / VoLTE', 'VoLTE core'),
+     (('failure_text', 'contains', 'volte core, ims core, ims registration, sip, server internal error'),
+      ('l3_sip_error', 'ge', 400)), 'IMS / VoLTE', 'VoLTE core'),
     ('eps-fallback', 'EPS fallback', _VOICE, 'any', (('failure_text', 'contains', 'epsfb, eps fallback'),), 'EPS Fallback',
      'EPS fallback failure'),
     ('paging', 'Paging', (), 'any', (('failure_text', 'contains', 'paging'),), 'RAN Performance', 'Paging'),
@@ -215,6 +253,32 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
      'DL Interference NR', 'PCI Collision/PCI MOD 3 Collision'),
     ('pci-collision', 'PCI collision', (), 'all', (('pci_collisions', 'ge', 1), ('lte_sinr', 'lt', 3)),
      'DL Interference LTE', 'PCI Collision/PCI MOD 3 Collision'),
+    # What the Layer 3 - DT Logs of the call show at its failure, more precise than the averages of the CDR: the radio of
+    # its last seconds and what failed before it (a call without a log goes on to the rules of its CDR).
+    ('l3-scg-failure-coverage', 'SCG failure with weak NR coverage (drivetest log)', (), 'all',
+     (('l3_scg_failures', 'ge', 1), ('l3_nr_rsrp_end', 'lt', -110)), 'Poor Coverage NR', 'Coverage'),
+    ('l3-reestablishment-coverage', 'Re-establishment with weak LTE coverage (drivetest log)', (), 'all',
+     (('l3_reestablishments', 'ge', 1), ('l3_lte_rsrp_end', 'lt', -110)), 'Poor Coverage LTE', 'Coverage'),
+    ('l3-missing-handover', 'Stronger neighbour without a handover (drivetest log)', (), 'all',
+     (('l3_neighbour_delta', 'ge', 6), ('l3_neighbour_seconds', 'ge', 3), ('l3_handovers', 'eq', 0)),
+     'Mobility LTE', 'Missing or late handover'),
+    ('l3-lte-coverage', 'Weak LTE coverage at the failure (drivetest log)', (), 'all', (('l3_lte_rsrp_end', 'lt', -115),),
+     'Poor Coverage LTE', 'Coverage'),
+    ('l3-nr-coverage', 'Weak NR coverage at the failure (drivetest log)', (), 'all',
+     (('l3_nr_rsrp_end', 'lt', -115), ('l3_ran_end', 'contains', '5g sa')), 'Poor Coverage NR', 'Coverage'),
+    ('l3-uplink', 'UE at maximum power before the failure (drivetest log)', (), 'all',
+     (('l3_tx_high_share', 'ge', 50), ('l3_lte_rsrp_end', 'lt', -100)), 'Poor Coverage LTE', 'Coverage'),
+    ('l3-lte-interference', 'LTE interference at the failure (drivetest log)', (), 'all',
+     (('l3_lte_sinr_end', 'lt', -3), ('l3_lte_rsrp_end', 'ge', -105)), 'DL Interference LTE', 'DL interference'),
+    ('l3-nr-interference', 'NR interference at the failure (drivetest log)', (), 'all',
+     (('l3_nr_sinr_end', 'lt', -3), ('l3_nr_rsrp_end', 'ge', -105), ('l3_ran_end', 'contains', '5g')), 'DL Interference NR',
+     'DL interference'),
+    ('l3-scg-failure', 'SCG failure before the failure (drivetest log)', (), 'all', (('l3_scg_failures', 'ge', 1),),
+     'RAN Performance', 'RRC layer'),
+    ('l3-reestablishment', 'RRC re-establishment before the failure (drivetest log)', (), 'all', (('l3_reestablishments', 'ge', 1),),
+     'RAN Performance', 'RRC layer'),
+    ('l3-lte-bler', 'High LTE BLER before the failure (drivetest log)', (), 'all', (('l3_lte_bler', 'gt', 30),), 'BLER LTE', 'BLER'),
+    ('l3-nr-bler', 'High NR BLER before the failure (drivetest log)', (), 'all', (('l3_nr_bler', 'gt', 30),), 'BLER NR', 'BLER'),
     # The radio of the call: the anchor (LTE) before NR, the A side before the B side.
     ('lte-coverage', 'Poor LTE coverage', (), 'all', (('lte_rsrp', 'lt', -110),), 'Poor Coverage LTE', 'Coverage'),
     ('nr-coverage', 'Poor NR coverage', (), 'all', (('nr_rsrp', 'lt', -110),), 'Poor Coverage NR', 'Coverage'),
@@ -236,12 +300,14 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
     ('ping-pong', 'Ping-pong handovers', (), 'all', (('ping_pong', 'ge', 1),), 'Mobility LTE', 'Ping-pong handover'),
     ('nr-handover', 'NR handover failure', (), 'all',
      (('failure_text', 'contains', 'handover'), ('failure_technology', 'contains', '5g, nr')), 'Mobility NR', 'Handover failure'),
-    ('handover', 'Handover failure', (), 'any', (('failure_text', 'contains', 'handover'),), 'Mobility LTE', 'Handover failure'),
+    ('handover', 'Handover failure', (), 'any',
+     (('failure_text', 'contains', 'handover'), ('l3_signalling', 'contains', 'handover failure')), 'Mobility LTE', 'Handover failure'),
     ('radio-link', 'Radio link failure', (), 'any',
-     (('failure_text', 'contains', 'radio link failure, t310, reestablishment, random access, rach, scg failure, scgfailure, rrc'),),
-     'RAN Performance', 'RRC layer'),
+     (('failure_text', 'contains', 'radio link failure, t310, reestablishment, random access, rach, scg failure, scgfailure, rrc'),
+      ('l3_signalling', 'contains', 'radio link failure, rlf')), 'RAN Performance', 'RRC layer'),
     ('inter-rat', 'Inter-RAT transition', (), 'any',
-     (('failure_text', 'contains', 'inter-rat, irat, redirection, 4g -> 5g, 5g -> 4g'),), 'RAN Performance', 'Inter-RAT transition'),
+     (('failure_text', 'contains', 'inter-rat, irat, redirection, 4g -> 5g, 5g -> 4g'), ('l3_irat', 'ge', 1)),
+     'RAN Performance', 'Inter-RAT transition'),
     # What the provider reports about the radio, on the technology at the failure (LTE, the anchor, when it is not NR alone,
     # 2G or 3G alone).
     ('reported-coverage-nr', 'NR coverage reported by the provider', (), 'all', (('failure_text', 'contains', _COVERAGE), *_NR),
@@ -445,6 +511,26 @@ ADDED_RULES = {
     2: ('core-resources', 'access-rejected', 'cell-outage', 'cell-outage-interference', 'nr-coverage-hole', 'coverage-hole', 'no-service-hole', 'nr-overshooting',
         'overshooting', 'nr-overshooting-coverage', 'overshooting-coverage', 'nr-pci-collision', 'pci-collision', 'nr-ping-pong',
         'ping-pong', 'nr-cell-load', 'cell-load'),
+    # The rules of the Layer 3 - DT Logs.
+    4: ('l3-no-measurements', 'l3-scg-failure-coverage', 'l3-reestablishment-coverage', 'l3-missing-handover', 'l3-lte-coverage',
+        'l3-nr-coverage', 'l3-uplink', 'l3-lte-interference', 'l3-nr-interference', 'l3-scg-failure', 'l3-reestablishment',
+        'l3-lte-bler', 'l3-nr-bler'),
+}
+# The default rules each version of the engine changed, with their conditions before it: a workspace whose rule is still
+# as it was takes the new conditions, a rule an admin changed is kept as it is.
+CHANGED_RULES = {
+    4: {
+        'access-rejected': (('signalling_events', 'contains', 'rrcconnectionreject, rrcreject, immediate assignment reject'),
+                            ('failure_text', 'contains', 'rrc connection reject')),
+        'authentication': (('failure_text', 'contains', 'authentication, authorization, registration reject, attach reject, '
+                                                        'pdu session establishment reject'),),
+        'tracking-area-update': (('failure_text', 'contains', 'tracking area update'),),
+        'ims-core': (('failure_text', 'contains', 'volte core, ims core, ims registration, sip, server internal error'),),
+        'handover': (('failure_text', 'contains', 'handover'),),
+        'radio-link': (('failure_text', 'contains', 'radio link failure, t310, reestablishment, random access, rach, scg failure, '
+                                                    'scgfailure, rrc'),),
+        'inter-rat': (('failure_text', 'contains', 'inter-rat, irat, redirection, 4g -> 5g, 5g -> 4g'),),
+    },
 }
 
 
@@ -484,6 +570,35 @@ def add_new_default_rules(repository: Any, version: int) -> list[str]:
                  'enabled': sum(rule['enabled'] for rule in rules), 'changes': [f'Rule added: {name}' for name in added]},
                 ensure_ascii=False))
     return added
+
+
+def renew_changed_default_rules(repository: Any, version: int) -> list[str]:
+    """Give the rules of a workspace (with rules of its own) the conditions the default rules of ``version`` changed,
+    where they are still as they were; App Events says which (the workspaces with the default rules take them anyway)."""
+    try:
+        stored = json.loads(repository.get_workspace_state(RULES_STATE_KEY) or 'null')
+    except (TypeError, ValueError):
+        stored = None
+    if not isinstance(stored, list) or not stored:
+        return []
+    rules = normalize_rules(stored)
+    former = {key: [{'input': input_key, 'op': op, 'value': value} for input_key, op, value in conditions]
+              for key, conditions in CHANGED_RULES.get(version, {}).items()}
+    defaults = {rule['key']: rule for rule in default_rules()}
+    renewed = []
+    for rule in rules:
+        before = former.get(rule['key'])
+        if before is not None and normalize_rules([{**rule, 'conditions': before}])[0]['conditions'] == rule['conditions']:
+            rule['conditions'] = [dict(condition) for condition in defaults[rule['key']]['conditions']]
+            renewed.append(rule['name'])
+    if renewed:
+        repository.set_workspace_state(RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
+        if hasattr(repository, 'try_add_log'):
+            repository.try_add_log('system', 'nq_dta_rca_rules', json.dumps(
+                {'message': 'Default rules of the DT Analyzer RCA renewed in the rules of the workspace.', 'rules': len(rules),
+                 'enabled': sum(rule['enabled'] for rule in rules), 'changes': [f'Rule renewed: {name}' for name in renewed]},
+                ensure_ascii=False))
+    return renewed
 
 
 def default_settings() -> dict[str, Any]:
@@ -785,5 +900,8 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
             # The sites a rule of the network around the call read.
             if inputs.get(NETWORK_NOTE) and any(condition['input'] in CONTEXT_INPUTS[1:] for condition, _kind, _value in entry['conditions']):
                 evidence = f'{evidence}. {inputs[NETWORK_NOTE]}'
+            # What the Layer 3 - DT Logs of the call show before the failure, when the rule read them.
+            if inputs.get(L3_NOTE) and any(condition['input'] in L3_INPUTS for condition, _kind, _value in entry['conditions']):
+                evidence = f'{evidence}. {inputs[L3_NOTE]}'
             return {'rule': rule['name'], 'rule_key': rule['key'], **entry['result'], 'evidence': evidence[:MAX_EVIDENCE]}
     return None

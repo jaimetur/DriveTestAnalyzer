@@ -498,6 +498,7 @@ Below the map:
   - **Other operators**: the share of tests not completed of its operator against that of the others in the tests around (at least 5 of each), compared with a two-proportion test that weighs how many tests each did, with their median LTE RSRP. *Its network fails more here* (to check) when its share is clearly higher (z of 2 or more), at least 1.5 times and 2 points above the others — for example 9% of 426 tests against 0% of 1,447; *Fails a little more than the others* when it is higher without enough tests to be sure; *Every operator fails here* when the others do not complete 5% or more of their tests (about five times the usual share of a network), so the place may explain it.
   - **Repetition**: the NQ calls of its operator at its place (a repeated issue from the Cluster size of the [Prioritization Rules](#prioritization-rules), in one or several campaigns) and in its hotspot.
   - **Handovers**: **Ping-pong handovers** when the call went back to a cell it had left, with how many handovers in how much distance and time and the cells it went back to (to check when it went back twice or more within 500 m, as no cell dominates there), many handovers (4 or more), how many and the cell it ended on, and the NR leg of an NSA call not found.
+  - **Layer 3 - DT Logs** (with a teal edge, for a call with a log): what its log shows in its last seconds — an **SCG failure**, an **RRC re-establishment**, a **SIP error** or a **reject** of the network (to check), a **stronger neighbour without a handover** (a neighbour of the serving channel 6 dB above it for 3 seconds: to check, worth a look when there were handover attempts), a **handover** right before the failure, the **coverage** (RSRP below −115 dBm) or **interference** (SINR below −3 dB) of LTE and NR at the failure, the **UE at maximum power** and a **high BLER**, and the records without measurements; *Fine* when it shows none of them. A click on one shows its moment of the log on the map (its point, centred and selected).
 - **Decisions at its place**: the Root Category and Root Cause already chosen for the other NQ calls at its site and in its hotspot, the most frequent first, with their calls, campaigns, statuses and some of their JOIN_IDs; **Use** gives this call the same Root Category and Root Cause (editors). It also counts those still without a root cause.
 - **Its drive**: the tests of its operator 15 minutes before and after the call and within 30 km (from the CDRs of **RSRP / SINR samples from**), each with its time from the call, test, result, RSRP, SINR and distance, the call itself marked and those not completed in red, to see whether the radio got worse before it and whether the next tests recovered (a click shows one on the map). The map draws the way of the car through them.
 - **Serving site health**: the calls that started on its serving site (the site ringed in red, else in green) in each campaign and NR Mode (their latest version) and how many were Non-Qualified, against the NQ rate of its operator on every site (in orange from 1.5 times, in red from twice that rate) and that of every operator on the site, with the cells of the site.
@@ -690,6 +691,7 @@ It reads every call through the field profile of the CDR type of the workspace, 
 | LTE and NR radio | The average and minimum RSRP, the RSRQ, the average and minimum SINR, the maximum transmit power and the BLER of the test, of the A side of a call or of the playing side of a Speech sample; the RSRP and SINR of its B side; the **DL resource blocks used** by a Data test (the share of the resource blocks of its primary LTE or NR carrier it was given on average, from its bandwidth); and the **radio measured** (LTE, NR or both, when the CDR has their RSRP or SINR). |
 | Mobility | The technologies used and their timeline, the handovers and their types, and the **ping-pong handovers** (each time the call went back to a cell right after leaving it, A → B → A, in its cell trace, a cell repeated in a row counted once). |
 | Network Inventory | The **serving site distance** (from where the call ended to the site of its last cell), the **ISD** of that site and how many ISDs that distance is, the **nearest site distance** of the networks serving its operator and how many of its own ISDs it is, the **PCI collisions around** (cells within 2 km with the PCI and channel of a cell of the call) and the **cells out of service on its sites** (locked, halted or disabled); see [The network around the call](#the-network-around-the-call). |
+| Layer 3 - DT Logs | For a call with a session in the [Layer 3 - DT Logs](workspace-management.md#layer-3-dt-logs) of the workspace (found by its `JOIN_ID`, both UEs of a voice call): the RSRP and SINR of its LTE and NR PCell in the last 5 seconds of its log (**at the failure**) and their minimum, the RAN Configuration at the failure and, in its last 10 seconds, its RRC re-establishments, SCG failures, handover attempts, inter-RAT moves (IRAT, redirections) and RRC releases, its LTE and NR BLER, how many of its UE Tx Power samples reached 22 dBm, and how far a neighbour of the serving channel rose above the serving cell (and for how many seconds by 3 dB or more); the rejects of its signalling, its worst **SIP error** (from 400, leaving out the answers of a normal call or registration: 401, 407, 487 and 489), the records without measurements and its **signalling before the failure** (the events and L3 messages of its last 10 seconds). The counts of the two UEs of a call add up and its worst radio is kept. These values are worked out once, when the log is imported. |
 | KPIs | Throughput (Mbit/s), service access time (s), DNS time (ms) and success (%), TCP round-trip time (ms), packet loss (%), latency (ms), call setup time (s), duration (s), speech quality (MOS), RTP packet loss (%) and jitter (ms). |
 
 The calls are calculated when they are indexed, and again whenever its rules, the [Root Cause Catalog](#root-cause-catalog), the Network Inventory or the [Serving Networks](workspace-config.md#serving-networks) change.
@@ -729,12 +731,13 @@ The default rules, the same in every workspace, are listed one by one in [Defaul
 
 1. What the provider reports outside the radio, and the lack of resources: the device or the test setup, the subscriber identity, insufficient resources of the core and accesses rejected by the network, rejected authentication or registration, tracking area updates, bearers deactivated by the network, the QCI1 bearer of a call, the VoLTE or IMS core, EPS fallback, paging and sessions in GSM.
 2. The network around the call (Network Inventory): cells out of service on its sites, coverage holes, overshooting and PCI collisions, before the coverage and interference they bring.
-3. The radio of the call: poor LTE and NR coverage (average RSRP below −110 dBm), the LTE uplink at its maximum power (23 dBm, with an RSRP below −100 dBm), LTE and NR downlink interference (average SINR below 0 dB), no dominant LTE cell (RSRQ below −15 dB), the coverage and interference of the B side, fallbacks to 2G or 3G and a high BLER (above 10 %).
-4. Its handovers and the radio link: ping-pong handovers, handover and radio link failures and inter-RAT transitions; then the coverage and interference (downlink or uplink) the provider reports, in the category of the technology at the failure (LTE, the anchor, unless it is NR alone or 2G or 3G alone).
-5. The service, once the radio is not the cause: DNS, HTTP or server errors, TCP, no downlink packets, packet loss (above 5 %), high latency (above 150 ms), data transfer timeouts, Cutoff tests given few resource blocks (a loaded cell), the low throughput the provider reports and that of the Cutoff tests with good radio, the RTP loss of Speech samples, the Voice failures with good radio (a potential E2E issue) and the end-to-end traces the provider asks for. Good radio means that the radio was measured and no radio rule took the call: without radio values neither the Cutoff tests nor the Voice failures are given a cause.
-6. **Not identified** (Unclear) for the calls none of them explains.
+3. What the Layer 3 - DT Logs of the call show at its failure, for the calls with a log (more precise than the averages of the CDR, so before the rules of its radio): an SCG failure with a weak NR coverage and a re-establishment with a weak LTE coverage, a neighbour of the serving channel 6 dB above the serving cell for 3 seconds without a handover (a missing or late handover), the weak LTE and NR coverage (below −115 dBm) and the interference (SINR below −3 dB with a good RSRP) at the failure, the UE at its maximum power, then the SCG failures and re-establishments with a good radio and a high BLER (above 30 %). The rules of what the provider reports read the log too: the rejects of its signalling, its SIP errors, its handover and radio link failures and its inter-RAT moves.
+4. The radio of the call: poor LTE and NR coverage (average RSRP below −110 dBm), the LTE uplink at its maximum power (23 dBm, with an RSRP below −100 dBm), LTE and NR downlink interference (average SINR below 0 dB), no dominant LTE cell (RSRQ below −15 dB), the coverage and interference of the B side, fallbacks to 2G or 3G and a high BLER (above 10 %).
+5. Its handovers and the radio link: ping-pong handovers, handover and radio link failures and inter-RAT transitions; then the coverage and interference (downlink or uplink) the provider reports, in the category of the technology at the failure (LTE, the anchor, unless it is NR alone or 2G or 3G alone).
+6. The service, once the radio is not the cause: DNS, HTTP or server errors, TCP, no downlink packets, packet loss (above 5 %), high latency (above 150 ms), data transfer timeouts, Cutoff tests given few resource blocks (a loaded cell), the low throughput the provider reports and that of the Cutoff tests with good radio, the RTP loss of Speech samples, the Voice failures with good radio (a potential E2E issue) and the end-to-end traces the provider asks for. Good radio means that the radio was measured and no radio rule took the call: without radio values neither the Cutoff tests nor the Voice failures are given a cause.
+7. **Not identified** (Unclear) for the calls none of them explains.
 
-A workspace whose rules were changed before a version added default rules takes the new ones once, each after the default rule before it; App Events lists them.
+A workspace whose rules were changed before a version added default rules takes the new ones once, each after the default rule before it, and the new conditions of the default rules it kept as they were (a rule changed by hand stays as it is); App Events lists them. A log imported, processed again or deleted calculates again the calls of its campaign, and the evidence of a rule that read the log tells what the log shows before the failure (such as *Layer 3 - DT Logs: 5G EN-DC - SCG Failure NR SCG 2.1 s before the end on PCI 997*).
 
 The values the rules give stay in the [Root Cause Catalog](#root-cause-catalog), which refuses to remove them, or to rename those root categories and causes, until no rule gives them.
 
@@ -753,75 +756,89 @@ The default rules of the DT Analyzer RCA, the same in every workspace, in the or
 | --- | --- | --- | --- | --- | --- |
 | | **What the provider reports outside the radio, and the lack of resources** | | | | |
 | 1 | Device or test setup | All | Failure description contains `modem`, `device`, `test setup`, `ue crash`, `at command`, `script error`, `battery` | UE / Test Setup Issue · Device or test setup | Device |
-| 2 | Subscriber identity | All | Failure description contains `imsi`, `ue identity cannot be derived` | IMSI Issue | Core |
-| 3 | Insufficient resources of the core | All | Failure description contains `insufficient resources`, `service reject+congestion` | Core Network · Insufficient resources | Core |
-| 4 | Access rejected by the network | All | Signalling events contains `rrcconnectionreject`, `rrcreject`, `immediate assignment reject` or Failure description contains `rrc connection reject` | RAN Capacity · Access rejected (no resources) | RAN |
-| 5 | Authentication or registration rejected | All | Failure description contains `authentication`, `authorization`, `registration reject`, `attach reject`, `pdu session establishment reject` | Authentication & Registration · Authentication/Authorization | AAA |
-| 6 | Tracking area update | All | Failure description contains `tracking area update` | Core Network · TAU reject | Core |
-| 7 | Bearer deactivated by the network | All | Failure description contains `bearer deactivation`, `deregistered`, `detach request` | Core Network · EPS bearer deactivation | Core |
-| 8 | No QCI1 bearer for the call | Voice, Speech | Failure description contains `qci1`, `qci 1` | IMS / VoLTE · No QCI1 established | IMS/E2E |
-| 9 | VoLTE or IMS core | Voice, Speech | Failure description contains `volte core`, `ims core`, `ims registration`, `sip`, `server internal error` | IMS / VoLTE · VoLTE core | IMS/E2E |
-| 10 | EPS fallback | Voice, Speech | Failure description contains `epsfb`, `eps fallback` | EPS Fallback · EPS fallback failure | Core EPSFB |
-| 11 | Paging | All | Failure description contains `paging` | RAN Performance · Paging | RAN |
-| 12 | Session in GSM | All | Failure description contains `session in gsm` | Core Network · WhatsApp session in GSM | Core |
+| 2 | No measurements in the drivetest log | All | Records without measurements (log) ≥ 1 and LTE RSRP at the failure (log) is empty and NR RSRP at the failure (log) is empty | UE / Test Setup Issue · Device or test setup | Device |
+| 3 | Subscriber identity | All | Failure description contains `imsi`, `ue identity cannot be derived` | IMSI Issue | Core |
+| 4 | Insufficient resources of the core | All | Failure description contains `insufficient resources`, `service reject+congestion` | Core Network · Insufficient resources | Core |
+| 5 | Access rejected by the network | All | Signalling events contains `rrcconnectionreject`, `rrcreject`, `immediate assignment reject` or Failure description contains `rrc connection reject` or Signalling before the failure (log) contains `rrcconnectionreject`, `rrcreject` | RAN Capacity · Access rejected (no resources) | RAN |
+| 6 | Authentication or registration rejected | All | Failure description contains `authentication`, `authorization`, `registration reject`, `attach reject`, `pdu session establishment reject` or Signalling before the failure (log) contains `authentication reject`, `registration reject`, `attach reject`, `pdu session establishment reject` | Authentication & Registration · Authentication/Authorization | AAA |
+| 7 | Tracking area update | All | Failure description contains `tracking area update` or Signalling before the failure (log) contains `tracking area update reject` | Core Network · TAU reject | Core |
+| 8 | Bearer deactivated by the network | All | Failure description contains `bearer deactivation`, `deregistered`, `detach request` | Core Network · EPS bearer deactivation | Core |
+| 9 | No QCI1 bearer for the call | Voice, Speech | Failure description contains `qci1`, `qci 1` | IMS / VoLTE · No QCI1 established | IMS/E2E |
+| 10 | VoLTE or IMS core | Voice, Speech | Failure description contains `volte core`, `ims core`, `ims registration`, `sip`, `server internal error` or SIP error (log) ≥ 400 | IMS / VoLTE · VoLTE core | IMS/E2E |
+| 11 | EPS fallback | Voice, Speech | Failure description contains `epsfb`, `eps fallback` | EPS Fallback · EPS fallback failure | Core EPSFB |
+| 12 | Paging | All | Failure description contains `paging` | RAN Performance · Paging | RAN |
+| 13 | Session in GSM | All | Failure description contains `session in gsm` | Core Network · WhatsApp session in GSM | Core |
 | | **The network around the call (Network Inventory)** | | | | |
-| 13 | Cells out of service on its sites | All | Cells out of service on its sites ≥ 1 and RSRP at the failure < −105 dBm | Operational · Cell/Site Outage | Operational |
-| 14 | Cells out of service on its sites with interference | All | Cells out of service on its sites ≥ 1 and SINR at the failure < 3 dB | Operational · Cell/Site Outage | Operational |
-| 15 | NR coverage hole | All | Nearest site distance / its ISD ≥ 1.5 × and NR RSRP (average) < −110 dBm, in NR alone | Poor Coverage NR · Large distance to the nearest site | RF |
-| 16 | Coverage hole | All | Nearest site distance / its ISD ≥ 1.5 × and LTE RSRP (average) < −110 dBm | Poor Coverage LTE · Large distance to the nearest site | RF |
-| 17 | Coverage hole without service | All | Nearest site distance / its ISD ≥ 1.5 × and Radio measured is empty | Poor Coverage LTE · Large distance to the nearest site | RF |
-| 18 | NR overshooting | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and NR SINR (average) < 3 dB, in NR alone | DL Interference NR · Overshooting or excessive cell overlap | RF |
-| 19 | Overshooting | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and LTE SINR (average) < 3 dB | DL Interference LTE · Overshooting or excessive cell overlap | RF |
-| 20 | NR overshooting with weak coverage | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and NR RSRP (average) < −105 dBm, in NR alone | Poor Coverage NR · Overshooting or excessive cell overlap | RF |
-| 21 | Overshooting with weak coverage | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and LTE RSRP (average) < −105 dBm | Poor Coverage LTE · Overshooting or excessive cell overlap | RF |
-| 22 | NR PCI collision | All | PCI collisions around ≥ 1 and NR SINR (average) < 3 dB, in NR alone | DL Interference NR · PCI Collision/PCI MOD 3 Collision | RF |
-| 23 | PCI collision | All | PCI collisions around ≥ 1 and LTE SINR (average) < 3 dB | DL Interference LTE · PCI Collision/PCI MOD 3 Collision | RF |
+| 14 | Cells out of service on its sites | All | Cells out of service on its sites ≥ 1 and RSRP at the failure < −105 dBm | Operational · Cell/Site Outage | Operational |
+| 15 | Cells out of service on its sites with interference | All | Cells out of service on its sites ≥ 1 and SINR at the failure < 3 dB | Operational · Cell/Site Outage | Operational |
+| 16 | NR coverage hole | All | Nearest site distance / its ISD ≥ 1.5 × and NR RSRP (average) < −110 dBm, in NR alone | Poor Coverage NR · Large distance to the nearest site | RF |
+| 17 | Coverage hole | All | Nearest site distance / its ISD ≥ 1.5 × and LTE RSRP (average) < −110 dBm | Poor Coverage LTE · Large distance to the nearest site | RF |
+| 18 | Coverage hole without service | All | Nearest site distance / its ISD ≥ 1.5 × and Radio measured is empty | Poor Coverage LTE · Large distance to the nearest site | RF |
+| 19 | NR overshooting | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and NR SINR (average) < 3 dB, in NR alone | DL Interference NR · Overshooting or excessive cell overlap | RF |
+| 20 | Overshooting | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and LTE SINR (average) < 3 dB | DL Interference LTE · Overshooting or excessive cell overlap | RF |
+| 21 | NR overshooting with weak coverage | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and NR RSRP (average) < −105 dBm, in NR alone | Poor Coverage NR · Overshooting or excessive cell overlap | RF |
+| 22 | Overshooting with weak coverage | All | Serving site distance / its ISD ≥ 2 × and Serving site distance ≥ 1 km and LTE RSRP (average) < −105 dBm | Poor Coverage LTE · Overshooting or excessive cell overlap | RF |
+| 23 | NR PCI collision | All | PCI collisions around ≥ 1 and NR SINR (average) < 3 dB, in NR alone | DL Interference NR · PCI Collision/PCI MOD 3 Collision | RF |
+| 24 | PCI collision | All | PCI collisions around ≥ 1 and LTE SINR (average) < 3 dB | DL Interference LTE · PCI Collision/PCI MOD 3 Collision | RF |
+| | **What its Layer 3 - DT Logs show at the failure (calls with a log only)** | | | | |
+| 25 | SCG failure with weak NR coverage (drivetest log) | All | SCG failures before the failure (log) ≥ 1 and NR RSRP at the failure (log) < −110 dBm | Poor Coverage NR · Coverage | RF |
+| 26 | Re-establishment with weak LTE coverage (drivetest log) | All | RRC re-establishments before the failure (log) ≥ 1 and LTE RSRP at the failure (log) < −110 dBm | Poor Coverage LTE · Coverage | RF |
+| 27 | Stronger neighbour without a handover (drivetest log) | All | Neighbour of the serving channel above the serving cell (log) ≥ 6 dB and Seconds a neighbour was 3 dB above the serving cell (log) ≥ 3 s and Handovers before the failure (log) = 0 | Mobility LTE · Missing or late handover | RAN |
+| 28 | Weak LTE coverage at the failure (drivetest log) | All | LTE RSRP at the failure (log) < −115 dBm | Poor Coverage LTE · Coverage | RF |
+| 29 | Weak NR coverage at the failure (drivetest log) | All | NR RSRP at the failure (log) < −115 dBm and RAN Configuration at the failure (log) contains `5g sa` | Poor Coverage NR · Coverage | RF |
+| 30 | UE at maximum power before the failure (drivetest log) | All | UE Tx Power from 22 dBm before the failure (log) ≥ 50 % and LTE RSRP at the failure (log) < −100 dBm | Poor Coverage LTE · Coverage | RF |
+| 31 | LTE interference at the failure (drivetest log) | All | LTE SINR at the failure (log) < −3 dB and LTE RSRP at the failure (log) ≥ −105 dBm | DL Interference LTE · DL interference | RF |
+| 32 | NR interference at the failure (drivetest log) | All | NR SINR at the failure (log) < −3 dB and NR RSRP at the failure (log) ≥ −105 dBm and RAN Configuration at the failure (log) contains `5g` | DL Interference NR · DL interference | RF |
+| 33 | SCG failure before the failure (drivetest log) | All | SCG failures before the failure (log) ≥ 1 | RAN Performance · RRC layer | RAN |
+| 34 | RRC re-establishment before the failure (drivetest log) | All | RRC re-establishments before the failure (log) ≥ 1 | RAN Performance · RRC layer | RAN |
+| 35 | High LTE BLER before the failure (drivetest log) | All | LTE BLER before the failure (log) > 30 % | BLER LTE · BLER | RF |
+| 36 | High NR BLER before the failure (drivetest log) | All | NR BLER before the failure (log) > 30 % | BLER NR · BLER | RF |
 | | **The radio of the call** | | | | |
-| 24 | Poor LTE coverage | All | LTE RSRP (average) < −110 dBm | Poor Coverage LTE · Coverage | RF |
-| 25 | Poor NR coverage | All | NR RSRP (average) < −110 dBm | Poor Coverage NR · Coverage | RF |
-| 26 | LTE uplink at maximum power | All | LTE transmit power (maximum) ≥ 23 dBm and LTE RSRP (average) < −100 dBm | Poor Coverage LTE · Coverage | RF |
-| 27 | LTE downlink interference | All | LTE SINR (average) < 0 dB | DL Interference LTE · DL interference | RF |
-| 28 | NR downlink interference | All | NR SINR (average) < 0 dB | DL Interference NR · DL interference | RF |
-| 29 | No dominant LTE cell | All | LTE RSRQ (average) < −15 dB | DL Interference LTE · Lack of dominant cell | RF |
-| 30 | Poor LTE coverage of the B side | Voice, Speech | B side LTE RSRP (average) < −110 dBm | Poor Coverage LTE · Coverage | RF |
-| 31 | Poor NR coverage of the B side | Voice, Speech | B side NR RSRP (average) < −110 dBm | Poor Coverage NR · Coverage | RF |
-| 32 | LTE interference on the B side | Voice, Speech | B side LTE SINR (average) < 0 dB | DL Interference LTE · DL interference | RF |
-| 33 | Fallback to 2G or 3G | All | Technologies used contains `gsm`, `umts`, `wcdma`, `hspa`, `2g`, `3g` | Poor Coverage 2G/3G · Inter-RAT transition | RF |
-| 34 | High LTE BLER | All | LTE BLER > 10 % | BLER LTE · BLER | RF |
-| 35 | High NR BLER | All | NR BLER > 10 % | BLER NR · BLER | RF |
+| 37 | Poor LTE coverage | All | LTE RSRP (average) < −110 dBm | Poor Coverage LTE · Coverage | RF |
+| 38 | Poor NR coverage | All | NR RSRP (average) < −110 dBm | Poor Coverage NR · Coverage | RF |
+| 39 | LTE uplink at maximum power | All | LTE transmit power (maximum) ≥ 23 dBm and LTE RSRP (average) < −100 dBm | Poor Coverage LTE · Coverage | RF |
+| 40 | LTE downlink interference | All | LTE SINR (average) < 0 dB | DL Interference LTE · DL interference | RF |
+| 41 | NR downlink interference | All | NR SINR (average) < 0 dB | DL Interference NR · DL interference | RF |
+| 42 | No dominant LTE cell | All | LTE RSRQ (average) < −15 dB | DL Interference LTE · Lack of dominant cell | RF |
+| 43 | Poor LTE coverage of the B side | Voice, Speech | B side LTE RSRP (average) < −110 dBm | Poor Coverage LTE · Coverage | RF |
+| 44 | Poor NR coverage of the B side | Voice, Speech | B side NR RSRP (average) < −110 dBm | Poor Coverage NR · Coverage | RF |
+| 45 | LTE interference on the B side | Voice, Speech | B side LTE SINR (average) < 0 dB | DL Interference LTE · DL interference | RF |
+| 46 | Fallback to 2G or 3G | All | Technologies used contains `gsm`, `umts`, `wcdma`, `hspa`, `2g`, `3g` | Poor Coverage 2G/3G · Inter-RAT transition | RF |
+| 47 | High LTE BLER | All | LTE BLER > 10 % | BLER LTE · BLER | RF |
+| 48 | High NR BLER | All | NR BLER > 10 % | BLER NR · BLER | RF |
 | | **Its handovers and the radio link** | | | | |
-| 36 | NR ping-pong handovers | All | Ping-pong handovers ≥ 1, in NR alone | Mobility NR · Ping-pong handover | RAN |
-| 37 | Ping-pong handovers | All | Ping-pong handovers ≥ 1 | Mobility LTE · Ping-pong handover | RAN |
-| 38 | NR handover failure | All | Failure description contains `handover` and Failure Technology contains `5g`, `nr` | Mobility NR · Handover failure | RAN |
-| 39 | Handover failure | All | Failure description contains `handover` | Mobility LTE · Handover failure | RAN |
-| 40 | Radio link failure | All | Failure description contains `radio link failure`, `t310`, `reestablishment`, `random access`, `rach`, `scg failure`, `scgfailure`, `rrc` | RAN Performance · RRC layer | RAN |
-| 41 | Inter-RAT transition | All | Failure description contains `inter-rat`, `irat`, `redirection`, `4g -> 5g`, `5g -> 4g` | RAN Performance · Inter-RAT transition | RAN |
+| 49 | NR ping-pong handovers | All | Ping-pong handovers ≥ 1, in NR alone | Mobility NR · Ping-pong handover | RAN |
+| 50 | Ping-pong handovers | All | Ping-pong handovers ≥ 1 | Mobility LTE · Ping-pong handover | RAN |
+| 51 | NR handover failure | All | Failure description contains `handover` and Failure Technology contains `5g`, `nr` | Mobility NR · Handover failure | RAN |
+| 52 | Handover failure | All | Failure description contains `handover` or Signalling before the failure (log) contains `handover failure` | Mobility LTE · Handover failure | RAN |
+| 53 | Radio link failure | All | Failure description contains `radio link failure`, `t310`, `reestablishment`, `random access`, `rach`, `scg failure`, `scgfailure`, `rrc` or Signalling before the failure (log) contains `radio link failure`, `rlf` | RAN Performance · RRC layer | RAN |
+| 54 | Inter-RAT transition | All | Failure description contains `inter-rat`, `irat`, `redirection`, `4g -> 5g`, `5g -> 4g` or Inter-RAT moves before the failure (log) ≥ 1 | RAN Performance · Inter-RAT transition | RAN |
 | | **The coverage and interference the provider reports** | | | | |
-| 42 | NR coverage reported by the provider | All | Failure description contains `coverage`, `plmn lost`, `no service`, `out of service`, in NR alone | Poor Coverage NR · Coverage | RF |
-| 43 | 2G or 3G coverage reported by the provider | All | Failure description contains `coverage`, `plmn lost`, `no service`, `out of service`, in 2G or 3G alone | Poor Coverage 2G/3G · Coverage | RF |
-| 44 | Coverage reported by the provider | All | Failure description contains `coverage`, `plmn lost`, `no service`, `out of service` | Poor Coverage LTE · Coverage | RF |
-| 45 | NR uplink interference reported by the provider | All | Failure description contains `ul interference`, `uplink interference`, in NR alone | UL Interference NR · UL interference | RF |
-| 46 | Uplink interference reported by the provider | All | Failure description contains `ul interference`, `uplink interference` | UL Interference LTE · UL interference | RF |
-| 47 | NR interference reported by the provider | All | Failure description contains `interference`, in NR alone | DL Interference NR · DL interference | RF |
-| 48 | 2G or 3G interference reported by the provider | All | Failure description contains `interference`, in 2G or 3G alone | DL Interference 2G/3G · DL interference | RF |
-| 49 | Interference reported by the provider | All | Failure description contains `interference` | DL Interference LTE · DL interference | RF |
+| 55 | NR coverage reported by the provider | All | Failure description contains `coverage`, `plmn lost`, `no service`, `out of service`, in NR alone | Poor Coverage NR · Coverage | RF |
+| 56 | 2G or 3G coverage reported by the provider | All | Failure description contains `coverage`, `plmn lost`, `no service`, `out of service`, in 2G or 3G alone | Poor Coverage 2G/3G · Coverage | RF |
+| 57 | Coverage reported by the provider | All | Failure description contains `coverage`, `plmn lost`, `no service`, `out of service` | Poor Coverage LTE · Coverage | RF |
+| 58 | NR uplink interference reported by the provider | All | Failure description contains `ul interference`, `uplink interference`, in NR alone | UL Interference NR · UL interference | RF |
+| 59 | Uplink interference reported by the provider | All | Failure description contains `ul interference`, `uplink interference` | UL Interference LTE · UL interference | RF |
+| 60 | NR interference reported by the provider | All | Failure description contains `interference`, in NR alone | DL Interference NR · DL interference | RF |
+| 61 | 2G or 3G interference reported by the provider | All | Failure description contains `interference`, in 2G or 3G alone | DL Interference 2G/3G · DL interference | RF |
+| 62 | Interference reported by the provider | All | Failure description contains `interference` | DL Interference LTE · DL interference | RF |
 | | **The service, once the radio is not the cause** | | | | |
-| 50 | DNS | Data | Failure description contains `dns` or DNS success < 100 % or DNS time > 1000 ms | Protocol / Server · DNS | Protocol |
-| 51 | HTTP or server error | Data | Failure description contains `http`, `server error`, `200 ok` | Protocol / Server · HTTP | Protocol |
-| 52 | TCP connection | Data | Failure description contains `tcp`, `handshake` or TCP round-trip time > 1000 ms | Protocol / Server · TCP connection errors | Protocol |
-| 53 | No downlink packets | Data | Failure description contains `no dl packets` | Protocol / Server · No DL packets | Protocol |
-| 54 | Packet loss | Data | Failure description contains `packet loss`, `no answer to ping`, `retransmission`, `no answer to hello` or Packet loss > 5 % | Protocol / Server · Packet loss | Protocol |
-| 55 | High latency | Data | Failure description contains `latency` or Latency (round-trip time) > 150 ms | Protocol / Server · Latency | Protocol |
-| 56 | Data transfer timeout | Data | Failure description contains `timeout` | Protocol / Server · Data transfer timeout | Protocol |
-| 57 | NR cell short of resource blocks | Data | Result contains `cutoff` and Radio measured is not empty and NR DL resource blocks used < 25 % | RAN Capacity · Cell overload | RAN |
-| 58 | Cell short of resource blocks | Data | Result contains `cutoff` and Radio measured is not empty and LTE DL resource blocks used < 25 % | RAN Capacity · Cell overload | RAN |
-| 59 | Low throughput reported by the provider | Data | Failure description contains `low throughput` | RAN Performance · Low throughput | RAN |
-| 60 | Low throughput with good radio | Data | Result contains `cutoff` and Radio measured is not empty | RAN Performance · Low throughput | RAN |
-| 61 | RTP packet loss | Speech | RTP packet loss > 5 % | Protocol / Server · Packet loss | Protocol |
-| 62 | Voice failure with good radio | Voice, Speech | Radio measured is not empty | E2E · Potential E2E Issue | IMS/E2E |
-| 63 | End-to-end trace required | All | Failure description contains `e2e` | E2E · E2E trace required | IMS/E2E |
+| 63 | DNS | Data | Failure description contains `dns` or DNS success < 100 % or DNS time > 1000 ms | Protocol / Server · DNS | Protocol |
+| 64 | HTTP or server error | Data | Failure description contains `http`, `server error`, `200 ok` | Protocol / Server · HTTP | Protocol |
+| 65 | TCP connection | Data | Failure description contains `tcp`, `handshake` or TCP round-trip time > 1000 ms | Protocol / Server · TCP connection errors | Protocol |
+| 66 | No downlink packets | Data | Failure description contains `no dl packets` | Protocol / Server · No DL packets | Protocol |
+| 67 | Packet loss | Data | Failure description contains `packet loss`, `no answer to ping`, `retransmission`, `no answer to hello` or Packet loss > 5 % | Protocol / Server · Packet loss | Protocol |
+| 68 | High latency | Data | Failure description contains `latency` or Latency (round-trip time) > 150 ms | Protocol / Server · Latency | Protocol |
+| 69 | Data transfer timeout | Data | Failure description contains `timeout` | Protocol / Server · Data transfer timeout | Protocol |
+| 70 | NR cell short of resource blocks | Data | Result contains `cutoff` and Radio measured is not empty and NR DL resource blocks used < 25 % | RAN Capacity · Cell overload | RAN |
+| 71 | Cell short of resource blocks | Data | Result contains `cutoff` and Radio measured is not empty and LTE DL resource blocks used < 25 % | RAN Capacity · Cell overload | RAN |
+| 72 | Low throughput reported by the provider | Data | Failure description contains `low throughput` | RAN Performance · Low throughput | RAN |
+| 73 | Low throughput with good radio | Data | Result contains `cutoff` and Radio measured is not empty | RAN Performance · Low throughput | RAN |
+| 74 | RTP packet loss | Speech | RTP packet loss > 5 % | Protocol / Server · Packet loss | Protocol |
+| 75 | Voice failure with good radio | Voice, Speech | Radio measured is not empty | E2E · Potential E2E Issue | IMS/E2E |
+| 76 | End-to-end trace required | All | Failure description contains `e2e` | E2E · E2E trace required | IMS/E2E |
 | | **The calls none of them explains** | | | | |
-| 64 | Not identified | All | Every call that reaches it | Unclear | Operational |
+| 77 | Not identified | All | Every call that reaches it | Unclear | Operational |
 
 ### Root domains, categories and causes
 
@@ -830,7 +847,7 @@ The values the default rules give, by root domain of the [Root Cause Catalog](#r
 | Domain | Root Categories | Root Causes |
 | --- | --- | --- |
 | RF | BLER LTE, BLER NR, DL Interference 2G/3G, DL Interference LTE, DL Interference NR, Poor Coverage 2G/3G, Poor Coverage LTE, Poor Coverage NR, UL Interference LTE, UL Interference NR | BLER, Coverage, DL interference, Inter-RAT transition, Lack of dominant cell, Large distance to the nearest site, Overshooting or excessive cell overlap, PCI Collision/PCI MOD 3 Collision, UL interference |
-| RAN | Mobility LTE, Mobility NR, RAN Capacity, RAN Performance | Access rejected (no resources), Cell overload, Handover failure, Inter-RAT transition, Low throughput, Paging, Ping-pong handover, RRC layer |
+| RAN | Mobility LTE, Mobility NR, RAN Capacity, RAN Performance | Access rejected (no resources), Cell overload, Handover failure, Inter-RAT transition, Low throughput, Missing or late handover, Paging, Ping-pong handover, RRC layer  |
 | Core | Core Network, IMSI Issue | EPS bearer deactivation, Insufficient resources, TAU reject, WhatsApp session in GSM |
 | Core EPSFB | EPS Fallback | EPS fallback failure |
 | IMS/E2E | E2E, IMS / VoLTE | E2E trace required, No QCI1 established, Potential E2E Issue, VoLTE core |

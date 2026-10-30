@@ -394,6 +394,7 @@ def process_delivery(repository: Any, dataset_id: int, source: Path, *, progress
                     repository.update_dataset_profile(target_id, processing_started_at=processed_at)
                 _write_sessions(repository, target_id, sessions, raw_campaign)
                 build_points(target, points_path(repository.db_path, target_id))
+                build_evidence(repository, target_id, target)
                 profile_fields = _ready_profile(raw_campaign, profile, summary, records, len(header), processed_at)
                 if normalization_version is not None:
                     profile_fields['normalization_version'] = int(normalization_version)
@@ -443,6 +444,8 @@ def ensure_workspace_schema(connection: sqlite3.Connection) -> None:
     """The sessions table of a workspace; the datasets of the reserved Smart Orchestrator Logs type become
     Layer 3 - DT Logs."""
     ensure_schema(connection)
+    # The JoinIDs of the first sessions, written in capitals (0X…), as the CDRs write them (0x…).
+    connection.execute(f"UPDATE {SESSIONS_TABLE} SET join_id = '0x' || UPPER(SUBSTR(join_id, 3)) WHERE SUBSTR(join_id, 1, 2) = '0X'")
     # The JoinIDs of the sessions imported before their table was kept.
     if (connection.execute(f'SELECT 1 FROM {SESSIONS_TABLE} LIMIT 1').fetchone()
             and not connection.execute(f'SELECT 1 FROM {JOIN_IDS_TABLE} LIMIT 1').fetchone()):
@@ -504,14 +507,16 @@ def preview_frame(source: Any, columns: Iterable[str], limit: int) -> Any:
         ).fetchdf()
 
 
-def _session_dict(row: Any) -> dict[str, Any]:
+def _session_dict(row: Any, evidence: bool = False) -> dict[str, Any]:
     item = dict(row)
-    item.pop('evidence_json', None)
+    if not evidence:
+        item.pop('evidence_json', None)
     return item
 
 
-def sessions_of_join_ids(repository: Any, join_ids: Iterable[object]) -> dict[str, list[dict[str, Any]]]:
-    """The sessions of each JoinID (any spelling of its case), one per UE read from the newest dataset that has it."""
+def sessions_of_join_ids(repository: Any, join_ids: Iterable[object], *, evidence: bool = False) -> dict[str, list[dict[str, Any]]]:
+    """The sessions of each JoinID (any spelling of its case), one per UE read from the newest dataset that has it (with
+    their evidence when asked)."""
     keys = sorted({str(value or '').strip().casefold() for value in join_ids if str(value or '').strip()})
     found: dict[str, list[dict[str, Any]]] = {key: [] for key in keys}
     if not keys:
@@ -533,7 +538,7 @@ def sessions_of_join_ids(repository: Any, join_ids: Iterable[object]) -> dict[st
                 if key not in newest or order.get(int(row['dataset_id']), ('', 0)) > order.get(int(newest[key]['dataset_id']), ('', 0)):
                     newest[key] = row
             for (join_key, _ue), row in sorted(newest.items()):
-                found[join_key].append(_session_dict(row))
+                found[join_key].append(_session_dict(row, evidence))
     return found
 
 
@@ -798,3 +803,320 @@ def source_row(source: Any, row: int) -> dict[str, Any]:
     # The subscriber identity of the test SIM is kept in the source but never shown.
     return {str(key): value for key, value in record.items()
             if str(key).casefold() not in HIDDEN_FIELDS and value is not None and str(value).strip() not in {'', 'nan', 'None'}}
+
+
+# --------------------------------------------------------------------------------------------------------------
+# What the log tells of each session, for the DT Analyzer RCA and the Diagnosis hints of the map of a call
+
+# Raise when the evidence changes, so every dataset works it out again (and the DT Analyzer RCA reads it again).
+EVIDENCE_VERSION = 3
+# The seconds before the end of a session read as "at the failure" (the radio), and as "before the failure" (the rest).
+RADIO_WINDOW_MS = 5000
+EVENT_WINDOW_MS = 10000
+# The SIP answers of a normal call or registration: the challenge of the registration, the end of a request cancelled
+# and a subscription event the network does not support.
+NORMAL_SIP_CODES = frozenset({401, 407, 487, 489})
+ALARM_WORDS = re.compile(r'fail|reestablish|reject|drop|timeout|lost|abort|forced|release|irat|redirect|handover', re.IGNORECASE)
+_SIP_CODE = re.compile(r'\b([1-6]\d\d)\b')
+
+
+def sip_code(*texts: Any) -> int:
+    """The SIP status code of a message (``408 Request Timeout``), 0 when it has none."""
+    for text in texts:
+        match = _SIP_CODE.search(str(text or ''))
+        if match:
+            return int(match.group(1))
+    return 0
+
+
+def compute_evidence(points: Path, source: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    """The evidence of every session of a dataset, from its points (and its source for BLER and the sessions without
+    measurements)."""
+    found: dict[tuple[str, str], dict[str, Any]] = {}
+    if not points.is_file():
+        return found
+    with duckdb.connect(config={'memory_limit': '1GB', 'threads': 4}) as duck:
+        duck.execute(f"""CREATE TEMP VIEW q AS WITH p AS (SELECT * FROM read_parquet({sql_text(points)})),
+            ends AS (SELECT join_id, ue, MAX(ms) AS end_ms FROM p GROUP BY 1, 2)
+            SELECT p.*, e.end_ms, e.end_ms - p.ms AS before FROM p JOIN ends e USING (join_id, ue)""")
+        serving = "kind IN ('lte_pcell', 'lte_scell', 'lte_tx', 'nr_pcell', 'nr_scell', 'nr_tx', 'gsm', 'wcdma')"
+        radio = []
+        for tech in ('lte', 'nr'):
+            for measure in ('rsrp', 'sinr'):
+                radio.append(f"COALESCE(AVG({measure}) FILTER (WHERE kind = '{tech}_pcell' AND before <= {RADIO_WINDOW_MS}), "
+                             f"ARG_MAX({measure}, ms) FILTER (WHERE kind = '{tech}_pcell' AND {measure} IS NOT NULL)) AS {tech}_{measure}_end")
+            radio.append(f"MIN(rsrp) FILTER (WHERE kind = '{tech}_pcell') AS {tech}_rsrp_min")
+            radio.append(f"ARG_MAX(pci, ms) FILTER (WHERE kind = '{tech}_pcell') AS {tech}_pci_end")
+            radio.append(f"ARG_MAX(freq, ms) FILTER (WHERE kind = '{tech}_pcell') AS {tech}_freq_end")
+        recent = f"kind IN ('event', 'l3') AND before <= {EVENT_WINDOW_MS}"
+        rows = duck.execute(f"""
+            SELECT join_id, ue, MAX(end_ms), {', '.join(radio)},
+                   COUNT(*) FILTER (WHERE {recent} AND name ILIKE '%reestablishment%') AS reestablishments,
+                   COUNT(*) FILTER (WHERE {recent} AND kind = 'event' AND name ILIKE '%SCG Failure%') AS scg_failures,
+                   COUNT(*) FILTER (WHERE {recent} AND kind = 'event' AND name ILIKE '%SCG Forced Release%') AS scg_releases,
+                   COUNT(*) FILTER (WHERE {recent} AND kind = 'event' AND name ILIKE '%Handover Attempt%') AS handovers,
+                   COUNT(*) FILTER (WHERE {recent} AND kind = 'event' AND (name ILIKE '%IRAT%' OR name ILIKE '%Redirection%')) AS irat,
+                   COUNT(*) FILTER (WHERE {recent} AND name ILIKE '%release%') AS releases,
+                   COUNT(*) FILTER (WHERE kind = 'l3' AND name ILIKE '%reject%') AS rejects,
+                   MAX(tx) FILTER (WHERE kind IN ('lte_tx', 'nr_tx') AND before <= {EVENT_WINDOW_MS}) AS tx_max,
+                   100.0 * COUNT(*) FILTER (WHERE kind IN ('lte_tx', 'nr_tx') AND before <= {EVENT_WINDOW_MS} AND tx >= 22)
+                     / NULLIF(COUNT(*) FILTER (WHERE kind IN ('lte_tx', 'nr_tx') AND before <= {EVENT_WINDOW_MS}), 0) AS tx_high,
+                   ARG_MAX(ran, ms) FILTER (WHERE {serving}) AS ran_end,
+                   STRING_AGG(DISTINCT name, ' | ') FILTER (WHERE {recent} AND name IS NOT NULL) AS signalling,
+                   LIST([CAST(ms AS VARCHAR), COALESCE(name, ''), COALESCE(detail, '')]) FILTER (WHERE kind = 'l3' AND grp = 'SIP') AS sip,
+                   LIST([CAST(end_ms - ms AS VARCHAR), kind, COALESCE(grp, ''), COALESCE(name, ''), COALESCE(detail, ''),
+                         COALESCE(CAST(pci AS VARCHAR), ''), COALESCE(CAST(freq AS VARCHAR), ''), CAST(ms AS VARCHAR)])
+                     FILTER (WHERE kind IN ('event', 'l3') AND before <= 15000) AS recent_events
+            FROM q GROUP BY 1, 2""").fetchall()
+        names = ['end_ms', *(entry.rsplit(' AS ', 1)[1] for entry in radio), 'reestablishments', 'scg_failures', 'scg_releases',
+                 'handovers', 'irat', 'releases', 'rejects', 'tx_max', 'tx_high', 'ran_end', 'signalling', 'sip', 'recent_events']
+        for row in rows:
+            found[(row[0], row[1])] = dict(zip(names, row[2:]))
+        # The strongest LTE neighbour of the channel of the serving PCell against it, second by second, before the failure
+        # (a neighbour of another channel stronger than the serving cell is no sign of a missing handover).
+        for join_id, ue, delta, neighbour_pci, serving_pci, seconds in duck.execute(f"""
+                WITH s AS (SELECT join_id, ue, CAST(ms / 1000 AS BIGINT) AS second, AVG(rsrp) AS rsrp, ANY_VALUE(pci) AS pci,
+                                  ANY_VALUE(freq) AS freq FROM q
+                           WHERE kind = 'lte_pcell' AND rsrp IS NOT NULL AND before <= {EVENT_WINDOW_MS} GROUP BY 1, 2, 3),
+                     n AS (SELECT join_id, ue, CAST(ms / 1000 AS BIGINT) AS second, pci, freq, MAX(rsrp) AS rsrp FROM q
+                           WHERE kind = 'lte_ncell' AND rsrp IS NOT NULL AND before <= {EVENT_WINDOW_MS} GROUP BY 1, 2, 3, 4, 5)
+                SELECT n.join_id, n.ue, MAX(n.rsrp - s.rsrp), ARG_MAX(n.pci, n.rsrp - s.rsrp), ARG_MAX(s.pci, n.rsrp - s.rsrp),
+                       COUNT(DISTINCT n.second) FILTER (WHERE n.rsrp - s.rsrp >= 3)
+                FROM n JOIN s USING (join_id, ue, second) WHERE n.freq = s.freq AND n.pci <> s.pci GROUP BY 1, 2""").fetchall():
+            entry = found.setdefault((join_id, ue), {})
+            entry.update({'neighbour_delta': delta, 'neighbour_pci': neighbour_pci, 'neighbour_serving_pci': serving_pci,
+                          'neighbour_seconds': seconds})
+        # BLER (in % in the source, whatever its name says) and the sessions without measurements, from the source.
+        if Path(source).is_file():
+            columns = {row[0] for row in duck.execute(f'DESCRIBE SELECT * FROM read_parquet({sql_text(source)})').fetchall()}
+
+            def col(name: str) -> str:
+                return quote(name) if name in columns else 'NULL'
+
+            moment = f"EPOCH_MS(TRY_CAST({col('EventFullDate')} AS TIMESTAMP))"
+            for join_id, ue, lte_bler, nr_bler, empty in duck.execute(f"""
+                    WITH r AS (SELECT {join_id_expression(col('JoinID'))} AS join_id, {ue_expression(col('UE'))} AS ue, {moment} AS ms,
+                                      {col('SourceTable')} AS source_table, TRY_CAST({col('PDSCH_BLERDecimal')} AS DOUBLE) AS lte_bler,
+                                      TRY_CAST({col('NRPDSCH_BLERDecimal')} AS DOUBLE) AS nr_bler
+                               FROM read_parquet({sql_text(source)})),
+                         e AS (SELECT *, MAX(ms) OVER (PARTITION BY join_id, ue) - ms AS before FROM r)
+                    SELECT join_id, ue, AVG(lte_bler) FILTER (WHERE before <= {EVENT_WINDOW_MS}),
+                           AVG(nr_bler) FILTER (WHERE before <= {EVENT_WINDOW_MS}),
+                           COUNT(*) FILTER (WHERE source_table = 'NoMeasurements') FROM e GROUP BY 1, 2""").fetchall():
+                entry = found.setdefault((join_id, ue), {})
+                entry.update({'lte_bler': lte_bler, 'nr_bler': nr_bler, 'no_measurements': int(empty or 0)})
+    for entry in found.values():
+        sip = [(sip_code(detail, name), int(float(ms)), name, detail) for ms, name, detail in entry.pop('sip', None) or []]
+        errors = [item for item in sip if item[0] >= 400 and item[0] not in NORMAL_SIP_CODES]
+        worst = max(errors, key=lambda item: (item[0] >= 500, item[0]), default=None)
+        entry['sip_error'] = worst[0] if worst else 0
+        entry['sip_error_text'] = (worst[3] or worst[2]) if worst else ''
+        events, seen = [], set()
+        for before, kind, group, name, detail, pci, freq, ms in sorted(entry.pop('recent_events', None) or [], key=lambda item: float(item[0])):
+            code = sip_code(detail, name) if group == 'SIP' else 0
+            # An event the log gives twice at once (its event and its trigger event) counts once.
+            if (name, ms) in seen:
+                continue
+            seen.add((name, ms))
+            if ALARM_WORDS.search(name or '') or (code >= 400 and code not in NORMAL_SIP_CODES):
+                events.append({'before_s': round(float(before) / 1000, 1), 'kind': kind, 'group': group, 'name': name, 'detail': detail,
+                               'pci': pci, 'freq': freq, 'ms': int(float(ms))})
+        entry['events'] = events[:12]
+        entry['version'] = EVIDENCE_VERSION
+    return found
+
+
+def _store_evidence(repository: Any, dataset_id: int, evidence: dict[tuple[str, str], dict[str, Any]]) -> None:
+    with repository.connection() as connection:
+        connection.executemany(
+            f'UPDATE {SESSIONS_TABLE} SET evidence_json = ? WHERE dataset_id = ? AND lower(join_id) = lower(?) AND ue = ?',
+            [(json.dumps(value, ensure_ascii=False, default=str), int(dataset_id), key[0], key[1]) for key, value in evidence.items()])
+        # Sessions with nothing the log tells are kept as read.
+        connection.execute(f"UPDATE {SESSIONS_TABLE} SET evidence_json = ? WHERE dataset_id = ? AND evidence_json IS NULL",
+                           (json.dumps({'version': EVIDENCE_VERSION}), int(dataset_id)))
+
+
+def build_evidence(repository: Any, dataset_id: int, source: Any) -> int:
+    """Work out and keep the evidence of every session of a dataset; returns how many sessions have some."""
+    points = ensure_points(repository.db_path, int(dataset_id), source)
+    evidence = compute_evidence(points, Path(str(source))) if points else {}
+    _store_evidence(repository, int(dataset_id), evidence)
+    return len(evidence)
+
+
+def ensure_evidence(repository: Any) -> list[int]:
+    """The evidence of the ready datasets whose sessions have none, or of an earlier version; returns their ids."""
+    with repository.connection() as connection:
+        if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (SESSIONS_TABLE,)).fetchone():
+            return []
+        stale = [int(row[0]) for row in connection.execute(
+            f"SELECT DISTINCT dataset_id FROM {SESSIONS_TABLE} WHERE evidence_json IS NULL "
+            f"OR COALESCE(json_extract(evidence_json, '$.version'), 0) <> ?", (EVIDENCE_VERSION,))]
+    built = []
+    for dataset in ready_datasets(repository):
+        if dataset['id'] in stale:
+            build_evidence(repository, dataset['id'], dataset['stored_path'])
+            built.append(dataset['id'])
+    return built
+
+
+def rca_signature(repository: Any) -> dict[str, list[Any]]:
+    """What the DT Analyzer RCA reads of the Layer 3 - DT Logs: each ready dataset with when it was processed and the
+    Campaign of its rows (the calls of that campaign are calculated again when it changes)."""
+    signature = {}
+    for row in repository.list_datasets():
+        if is_l3_kind(row['dataset_kind']) and str(row['status'] or '') == 'ready':
+            summary = dataset_summary(row)
+            signature[str(int(row['id']))] = [str(row['processed_at'] or row['uploaded_at'] or ''), summary.get('campaign_label') or '',
+                                              EVIDENCE_VERSION]
+    return signature
+
+
+def _shown_number(value: Any, digits: int = 1) -> str:
+    try:
+        return f'{float(value):.{digits}f}'.rstrip('0').rstrip('.')
+    except (TypeError, ValueError):
+        return ''
+
+
+def call_evidence(sessions: list[dict[str, Any]]) -> dict[str, Any]:
+    """The inputs of the DT Analyzer RCA of a call from the evidence of its sessions (one per UE): counts added, the
+    worst radio of its UEs, its signalling before the failure and a note for the evidence."""
+    items = []
+    for session in sessions:
+        try:
+            evidence = json.loads(session.get('evidence_json') or '{}') or {}
+        except (TypeError, ValueError):
+            evidence = {}
+        items.append((str(session['ue']), evidence))
+    if not items:
+        return {}
+
+    def numbers(key: str) -> list[float]:
+        return [float(value) for _ue, evidence in items if (value := evidence.get(key)) is not None]
+
+    def lowest(key: str) -> float | None:
+        values = numbers(key)
+        return min(values) if values else None
+
+    def highest(key: str) -> float | None:
+        values = numbers(key)
+        return max(values) if values else None
+
+    def total(key: str) -> int:
+        return int(sum(numbers(key)))
+
+    inputs: dict[str, Any] = {
+        'l3_log': ', '.join(ue for ue, _evidence in items),
+        'l3_lte_rsrp_end': lowest('lte_rsrp_end'), 'l3_lte_sinr_end': lowest('lte_sinr_end'),
+        'l3_nr_rsrp_end': lowest('nr_rsrp_end'), 'l3_nr_sinr_end': lowest('nr_sinr_end'),
+        'l3_lte_rsrp_min': lowest('lte_rsrp_min'), 'l3_nr_rsrp_min': lowest('nr_rsrp_min'),
+        'l3_reestablishments': total('reestablishments'), 'l3_scg_failures': total('scg_failures'),
+        'l3_handovers': total('handovers'), 'l3_irat': total('irat'), 'l3_releases': total('releases'), 'l3_rejects': total('rejects'),
+        'l3_sip_error': int(highest('sip_error') or 0), 'l3_tx_max': highest('tx_max'), 'l3_tx_high_share': highest('tx_high'),
+        'l3_neighbour_delta': highest('neighbour_delta'), 'l3_neighbour_seconds': highest('neighbour_seconds'),
+        'l3_lte_bler': highest('lte_bler'), 'l3_nr_bler': highest('nr_bler'),
+        'l3_no_measurements': total('no_measurements'),
+        'l3_ran_end': next((evidence.get('ran_end') for ue, evidence in items if ue in {'A', 'Data'} and evidence.get('ran_end')),
+                           next((evidence.get('ran_end') for _ue, evidence in items if evidence.get('ran_end')), '')) or '',
+        'l3_signalling': ' · '.join(f"{'' if ue == 'Data' else f'UE {ue}: '}{evidence['signalling']}"
+                                    for ue, evidence in items if evidence.get('signalling'))[:600],
+    }
+    notes = []
+    for ue, evidence in items:
+        prefix = '' if ue == 'Data' or len(items) == 1 else f'UE {ue}: '
+        for event in (evidence.get('events') or [])[:3]:
+            where = f" on PCI {event['pci']}" if event.get('pci') else ''
+            notes.append(f"{prefix}{event['name'] or event['detail']} {_shown_number(event['before_s'])} s before the end{where}")
+        if evidence.get('neighbour_delta') is not None and float(evidence['neighbour_delta']) >= 3:
+            notes.append(f"{prefix}LTE neighbour PCI {evidence.get('neighbour_pci')} {_shown_number(evidence['neighbour_delta'])} dB above "
+                         f"the serving PCI {evidence.get('neighbour_serving_pci')}")
+    inputs[L3_NOTE] = ('Layer 3 - DT Logs: ' + '; '.join(notes)) if notes else ''
+    return {key: value for key, value in inputs.items() if value is not None}
+
+
+L3_NOTE = 'l3_note'
+
+
+def rca_inputs(repository: Any, join_ids: Iterable[object]) -> dict[str, dict[str, Any]]:
+    """The inputs of the DT Analyzer RCA of each JOIN_ID (any spelling of its case) with sessions in the logs."""
+    ensure_evidence(repository)
+    sessions = sessions_of_join_ids(repository, join_ids, evidence=True)
+    return {key: call_evidence(items) for key, items in sessions.items() if items}
+
+
+def map_checks(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The Diagnosis hints the Layer 3 - DT Logs of a call give (its map): what failed in its last seconds and its radio
+    there, each with the moment of the log it points at (``at``: the UE and the time of its point) when it has one."""
+    checks: list[dict[str, Any]] = []
+
+    def add(key: str, level: str, title: str, detail: str, ue: str = '', ms: Any = None) -> None:
+        check = {'key': key, 'level': level, 'title': title, 'detail': detail, 'source': 'l3'}
+        if ms is not None:
+            check['at'] = {'ue': ue, 'ms': int(ms)}
+        checks.append(check)
+
+    for session in sessions:
+        try:
+            evidence = json.loads(session.get('evidence_json') or '{}') or {}
+        except (TypeError, ValueError):
+            continue
+        ue = str(session['ue'])
+        who = '' if ue == 'Data' or len(sessions) == 1 else f' (UE {ue})'
+        events = evidence.get('events') or []
+
+        def first(pattern: str) -> dict[str, Any] | None:
+            return next((event for event in events if re.search(pattern, f"{event.get('name')} {event.get('detail')}", re.IGNORECASE)), None)
+
+        if evidence.get('no_measurements') and evidence.get('lte_rsrp_end') is None and evidence.get('nr_rsrp_end') is None:
+            add('l3_no_measurements', 'warn', f'No measurements in the log{who}',
+                'The drivetest log of the session has records without measurements and no radio: check the device and its logging.', ue)
+        scg = first(r'SCG Failure')
+        if scg:
+            add('l3_scg', 'bad', f'SCG failure{who}', f"{scg['name']} {_shown_number(scg['before_s'])} s before the end"
+                f"{(' on PCI ' + str(scg['pci'])) if scg.get('pci') else ''}; NR RSRP at the end "
+                f"{_shown_number(evidence.get('nr_rsrp_end')) or '—'} dBm.", ue, scg.get('ms'))
+        reestablishment = first(r'reestablish')
+        if reestablishment:
+            add('l3_reestablishment', 'bad', f'RRC re-establishment{who}', f"{reestablishment['name']} {_shown_number(reestablishment['before_s'])} s "
+                f"before the end: the radio link failed; LTE RSRP at the end {_shown_number(evidence.get('lte_rsrp_end')) or '—'} dBm.",
+                ue, reestablishment.get('ms'))
+        if int(evidence.get('sip_error') or 0) >= 400:
+            sip = first(rf"\b{int(evidence['sip_error'])}\b")
+            add('l3_sip', 'bad', f"SIP {int(evidence['sip_error'])}{who}", f"{evidence.get('sip_error_text') or ''} in the signalling of the call: "
+                'the IMS answered with an error.', ue, (sip or {}).get('ms'))
+        reject = first(r'reject')
+        if reject:
+            add('l3_reject', 'bad', f'Rejected by the network{who}', f"{reject['name']} {_shown_number(reject['before_s'])} s before the end.",
+                ue, reject.get('ms'))
+        delta, seconds = evidence.get('neighbour_delta'), evidence.get('neighbour_seconds') or 0
+        if delta is not None and float(delta) >= 6 and seconds >= 3:
+            handovers = int(evidence.get('handovers') or 0)
+            add('l3_neighbour', 'bad' if not handovers else 'warn', f"{'Stronger neighbour without a handover' if not handovers else 'Stronger neighbour'}{who}",
+                f"LTE PCI {evidence.get('neighbour_pci')} of the serving channel was up to {_shown_number(delta)} dB above the serving PCI "
+                f"{evidence.get('neighbour_serving_pci')} for {seconds} s before the end, with {handovers} handover attempt"
+                f"{'' if handovers == 1 else 's'}: a missing neighbour relation or a late handover.", ue)
+        handover = first(r'Handover Attempt|IRAT|Redirection')
+        if handover and not first(r'reestablish|SCG Failure'):
+            add('l3_handover', 'warn', f'Handover before the failure{who}', f"{handover['name']} {_shown_number(handover['before_s'])} s before "
+                'the end.', ue, handover.get('ms'))
+        for tech in ('lte', 'nr'):
+            rsrp, sinr = evidence.get(f'{tech}_rsrp_end'), evidence.get(f'{tech}_sinr_end')
+            label = tech.upper()
+            if rsrp is not None and float(rsrp) < -115:
+                add(f'l3_{tech}_coverage', 'bad', f'{label} coverage at the failure{who}', f'{label} RSRP {_shown_number(rsrp)} dBm in the last '
+                    f'{RADIO_WINDOW_MS // 1000} s of the log (PCI {evidence.get(f"{tech}_pci_end")}).', ue, evidence.get('end_ms'))
+            elif sinr is not None and float(sinr) < -3 and (rsrp is None or float(rsrp) >= -105):
+                add(f'l3_{tech}_interference', 'bad', f'{label} interference at the failure{who}', f'{label} SINR {_shown_number(sinr)} dB with RSRP '
+                    f'{_shown_number(rsrp)} dBm in the last {RADIO_WINDOW_MS // 1000} s of the log.', ue, evidence.get('end_ms'))
+        if (evidence.get('tx_high') or 0) >= 50:
+            add('l3_uplink', 'warn', f'UE at maximum power{who}', f"UE Tx Power from 22 dBm in {round(float(evidence['tx_high']))}% of its last "
+                f"samples (up to {_shown_number(evidence.get('tx_max'))} dBm): the uplink is limited.", ue)
+        for tech in ('lte', 'nr'):
+            bler = evidence.get(f'{tech}_bler')
+            if bler is not None and float(bler) > 30:
+                add(f'l3_{tech}_bler', 'warn', f'High {tech.upper()} BLER{who}', f'{tech.upper()} BLER {round(float(bler))}% in the last '
+                    f'{EVENT_WINDOW_MS // 1000} s of the log.', ue)
+    if sessions and not checks:
+        add('l3_fine', 'ok', 'Layer 3 - DT Logs', 'Its log shows no failure, weak radio or rejection in the seconds before the end.')
+    return checks

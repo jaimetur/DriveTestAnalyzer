@@ -316,3 +316,106 @@ def test_the_map_of_a_call_reads_its_layers_and_records(client, tmp_path, monkey
     assert other.status_code == 404
     events = [row['action'] for row in app_module.repository.list_logs()]
     assert 'nq_call_l3_layers' in events
+
+
+def weak_coverage_rows() -> list[dict[str, str]]:
+    """A data test of 0xBB22 whose LTE PCell ends far below −115 dBm, with an SCG failure 2 s before its end."""
+    rows = []
+    for second in range(12):
+        rows.append({**record(SourceTable='FactLTERadio', Radio_CarrierIndex='0', Radio_EARFCN='223', Radio_PhyCellId='114',
+                              Radio_RSRP=str(-100 - second * 2), Radio_SINR='2'),
+                     'JoinID': '0xBB22', 'UE': 'Data', 'Campaign': 'UK_Q3_SA_2026', 'Session_Type': 'httpBrowser',
+                     'EventFullDate': f'2026-09-03 08:08:{10 + second:02d}.000', 'Latitude': str(52.4 + second / 1000)})
+    rows.append({**record(SourceTable='FactEvent', Event_EventName='5G EN-DC - SCG Failure NR SCG', Event_EventGroup='5G EN-DC'),
+                 'JoinID': '0xBB22', 'UE': 'Data', 'Campaign': 'UK_Q3_SA_2026', 'EventFullDate': '2026-09-03 08:08:19.000',
+                 'Latitude': '52.409'})
+    return rows
+
+
+def test_the_dt_analyzer_rca_reads_the_layer_3_dt_logs_of_the_campaign_of_the_call(client, tmp_path, monkeypatch) -> None:
+    from src.modules import non_qualified_calls as nq
+
+    monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: callback(*args))
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    add_data_cdr(tmp_path, ['0xBB22'])
+    nq.sync_nq_calls(app_module.repository)
+
+    def dta():
+        nq.refresh_dta_rca(app_module.repository)
+        return client.post('/api/non-qualified-calls/calls', json={}).json()['calls'][0]['dta']
+
+    before = dta()
+    assert not str(before.get('dta_rule_key') or '').startswith('l3-')
+    rows = weak_coverage_rows()
+    header = sorted({key for row in rows for key in row})
+    client.post('/datasets-analysis/upload', files={'dataset_files': ('logs.csv', io.BytesIO(csv_bytes(rows, header)), 'text/csv')},
+                data={'dataset_kinds': 'l3_dt_logs'}, follow_redirects=False)
+    with_log = dta()
+    assert with_log['dta_rule_key'] == 'l3-lte-coverage', with_log
+    assert (with_log['dta_category'], with_log['dta_cause']) == ('Poor Coverage LTE', 'Coverage')
+    assert 'LTE RSRP at the failure (log)' in with_log['dta_evidence']
+    assert 'Layer 3 - DT Logs: 5G EN-DC - SCG Failure NR SCG 2 s before the end' in with_log['dta_evidence']
+    # Deleting the log calculates the calls of its campaign again, without it.
+    dataset = next(item for item in l3_datasets())
+    client.post(f"/datasets-analysis/delete/{dataset['id']}", follow_redirects=False)
+    assert dta()['dta_rule_key'] == before['dta_rule_key']
+
+
+def test_the_rules_of_a_workspace_take_the_rules_of_the_logs_and_keep_those_changed_by_hand() -> None:
+    import json as json_module
+
+    from src.modules import nq_dta_rca
+
+    class Repository:
+        def __init__(self, rules):
+            self.state = {nq_dta_rca.RULES_STATE_KEY: json_module.dumps(rules)}
+
+        def get_workspace_state(self, key):
+            return self.state.get(key)
+
+        def set_workspace_state(self, key, value):
+            self.state[key] = value
+
+    former = [{'input': key, 'op': op, 'value': value} for key, op, value in nq_dta_rca.CHANGED_RULES[4]['radio-link']]
+    rules = [rule for rule in nq_dta_rca.default_rules() if not rule['key'].startswith('l3-')]
+    for rule in rules:
+        if rule['key'] == 'radio-link':
+            rule['conditions'] = former
+        if rule['key'] == 'handover':
+            rule['conditions'] = [{'input': 'failure_text', 'op': 'contains', 'value': 'handover, ho'}]
+        if rule['key'] in nq_dta_rca.CHANGED_RULES[4] and rule['key'] not in {'radio-link', 'handover'}:
+            rule['conditions'] = [{'input': key, 'op': op, 'value': value} for key, op, value in nq_dta_rca.CHANGED_RULES[4][rule['key']]]
+    repository = Repository(rules)
+    added = nq_dta_rca.add_new_default_rules(repository, 4)
+    renewed = nq_dta_rca.renew_changed_default_rules(repository, 4)
+    assert len(added) == 13 and 'Radio link failure' in renewed and 'Handover failure' not in renewed
+    stored = {rule['key']: rule for rule in nq_dta_rca.load_rules(repository)}
+    assert any(condition['input'] == 'l3_signalling' for condition in stored['radio-link']['conditions'])
+    assert stored['handover']['conditions'] == [{'input': 'failure_text', 'op': 'contains', 'value': 'handover, ho'}]
+    order = [rule['key'] for rule in nq_dta_rca.load_rules(repository)]
+    assert order.index('pci-collision') < order.index('l3-scg-failure-coverage') < order.index('lte-coverage')
+
+
+def test_the_map_of_a_call_gives_the_hints_of_its_layer_3_dt_logs(client, tmp_path, monkeypatch) -> None:
+    from src.modules import non_qualified_calls as nq
+
+    monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: callback(*args))
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    add_data_cdr(tmp_path, ['0xBB22'])
+    rows = weak_coverage_rows()
+    header = sorted({key for row in rows for key in row})
+    client.post('/datasets-analysis/upload', files={'dataset_files': ('logs.csv', io.BytesIO(csv_bytes(rows, header)), 'text/csv')},
+                data={'dataset_kinds': 'l3_dt_logs'}, follow_redirects=False)
+    nq.sync_nq_calls(app_module.repository)
+    call = client.post('/api/non-qualified-calls/calls', json={}).json()['calls'][0]
+    response = client.get(f"/api/non-qualified-calls/calls/{call['call_key']}/map")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload['call']['l3_log'] == 'Data'
+    hints = {check['key']: check for check in payload['diagnosis'] if check.get('source') == 'l3'}
+    assert {'l3_scg', 'l3_lte_coverage'} <= set(hints)
+    assert hints['l3_scg']['level'] == 'bad' and '2 s before the end' in hints['l3_scg']['detail']
+    assert hints['l3_scg']['at']['ue'] == 'Data' and hints['l3_scg']['at']['ms'] > 0
+    assert 'LTE RSRP -117 dBm in the last 5 s of the log' in hints['l3_lte_coverage']['detail']
+    event = json.loads(next(row['details'] for row in app_module.repository.list_logs() if row['action'] == 'nq_call_map'))
+    assert 'l3_scg' in event['to_check']

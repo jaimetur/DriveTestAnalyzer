@@ -1885,11 +1885,31 @@
         text.append(node('strong', check.title), node('small', check.detail));
         entry.append(badge, text);
         const site = siteFor(check);
+        // A hint of the Layer 3 - DT Logs points at its moment of the log: the point of that UE nearest in time.
+        const logPoint = () => {
+          if (!check.at || !shared.l3) return null;
+          const candidates = shared.l3.points.filter((point) => (!check.at.ue || point.ue === check.at.ue) && point.lat !== null && Number.isFinite(point.ms));
+          return candidates.reduce((best, point) => (!best || Math.abs(point.ms - check.at.ms) < Math.abs(best.ms - check.at.ms) ? point : best), null);
+        };
+        if (check.source === 'l3') entry.classList.add('is-l3');
         if (site) {
           entry.classList.add('is-linked');
           entry.tabIndex = 0;
           entry.title = 'Show the site on the map';
           const choose = () => { shared.select({kind: 'site', item: site}); panelView.centreOn(site.latitude, site.longitude); };
+          entry.addEventListener('click', choose);
+          entry.addEventListener('keydown', (event) => { if (event.key === 'Enter') choose(); });
+        } else if (check.at) {
+          entry.classList.add('is-linked');
+          entry.tabIndex = 0;
+          entry.title = 'Show its moment of the Layer 3 - DT Logs on the map';
+          const choose = () => {
+            const point = logPoint();
+            if (!point) return;
+            const layer = point.kind === 'event' || point.kind === 'l3' ? point.kind : `${point.kind}:rsrp`;
+            shared.select({kind: 'l3', item: {layer: window.L3Layers?.LAYERS.some((item) => item.key === layer) ? layer : 'ran', point}});
+            views().forEach((view) => view.centreOn(point.lat, point.lon));
+          };
           entry.addEventListener('click', choose);
           entry.addEventListener('keydown', (event) => { if (event.key === 'Enter') choose(); });
         }

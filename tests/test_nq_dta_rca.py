@@ -264,7 +264,8 @@ def test_the_catalog_keeps_the_values_the_rules_give(client, tmp_path):
     # Also when the rule is disabled.
     nq_dta_rca.save_rules(core.repository, [dict(rule, enabled=rule['key'] != 'device') for rule in nq_dta_rca.load_rules(core.repository)], 'super')
     refused = put(causes=[item for item in base['causes'] if item['name'] != 'Device or test setup'])
-    assert refused.status_code == 400 and refused.json()['detail'].endswith('"Device or test setup"; change the rule first to remove it.')
+    assert refused.status_code == 400 and refused.json()['detail'].endswith(
+        '"Device or test setup", "No measurements in the drivetest log"; change those rules first to remove it.')
     # Nothing changed; a change of case keeps the name the rules read, a domain is renamed with its categories and
     # causes, and a value no rule gives is renamed.
     assert nq.list_root_causes(core.repository)['domains'] == payload['domains']

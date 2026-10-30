@@ -296,9 +296,15 @@ V37_FORMER_DESCRIPTIONS = (
 # A comment saved twice on its call (the same text by the same author, such as an analysis imported on two servers and
 # brought together by a transfer) is kept once.
 ANALYSIS_CENTER_V38_STATE_KEY = 'nq_analysis_center_v38'
+# The DT Analyzer RCA reads the Layer 3 - DT Logs (engine 4): a workspace with rules of its own takes the new default rules
+# and the conditions the default rules it kept as they were gained.
+ANALYSIS_CENTER_V39_STATE_KEY = 'nq_analysis_center_v39'
+# The Layer 3 - DT Logs the DT Analyzer RCA read last (l3_dt_logs.rca_signature): when one is imported, processed again or
+# deleted, the calls of its campaign are calculated again.
+DTA_L3_STATE_KEY = 'nq_dta_rca_l3_logs'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-29.1'
+SCHEMA_VERSION = '2026-10-30.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -674,7 +680,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY, ANALYSIS_CENTER_V31_STATE_KEY,
                 ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY, ANALYSIS_CENTER_V34_STATE_KEY,
                 ANALYSIS_CENTER_V35_STATE_KEY, ANALYSIS_CENTER_V36_STATE_KEY, ANALYSIS_CENTER_V37_STATE_KEY,
-                ANALYSIS_CENTER_V38_STATE_KEY)
+                ANALYSIS_CENTER_V38_STATE_KEY, ANALYSIS_CENTER_V39_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -889,6 +895,10 @@ def ensure_nq_tables(task_repository: Any) -> None:
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V38_STATE_KEY):
         _remove_repeated_comments(task_repository)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V38_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V39_STATE_KEY):
+        nq_dta_rca.add_new_default_rules(task_repository, 4)
+        nq_dta_rca.renew_changed_default_rules(task_repository, 4)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V39_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -3935,8 +3945,8 @@ def _latest_ready(task_repository: Any, maps: dict[str, str]) -> bool:
 # DT Analyzer RCA (see nq_dta_rca)
 # ---------------------------------------------------------------------------
 # The columns of an indexed row its rules read, besides its inputs.
-_DTA_COLUMNS = ('dataset_id', 'source_row_id', 'service', 'operator', 'latitude', 'longitude', 'cell_id', *nq_dta_rca.CALL_INPUTS,
-                *nq_dta_rca.FAILURE_TEXT_FIELDS, 'rca_inputs_json')
+_DTA_COLUMNS = ('dataset_id', 'source_row_id', 'service', 'operator', 'latitude', 'longitude', 'cell_id', 'campaign', 'join_id',
+                *nq_dta_rca.CALL_INPUTS, *nq_dta_rca.FAILURE_TEXT_FIELDS, 'rca_inputs_json')
 # The result of the row of a call, as the calls query reads it (``s`` the call row): what it learned from the analysts,
 # else what its rule gives.
 DTA_JSON_SQL = (f"COALESCE((SELECT json_object('dta_domain', l.domain, 'dta_category', l.category, 'dta_cause', l.cause, "
@@ -4046,12 +4056,19 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
     network = _dta_network_signature(task_repository)
     fingerprint = nq_dta_rca.fingerprint(rules, taxonomy, network)
     everything = force or str(task_repository.get_workspace_state(nq_dta_rca.FINGERPRINT_STATE_KEY) or '') != fingerprint
+    # The calls of the campaigns whose Layer 3 - DT Logs changed since the last calculation.
+    logs = l3_dt_logs.rca_signature(task_repository)
+    campaigns = _l3_changed_campaigns(task_repository, logs)
     missing = '' if everything else (f' WHERE NOT EXISTS (SELECT 1 FROM {NQ_DTA_RESULTS_TABLE} r '
-                                     'WHERE r.dataset_id = c.dataset_id AND r.source_row_id = c.source_row_id)')
+                                     'WHERE r.dataset_id = c.dataset_id AND r.source_row_id = c.source_row_id)'
+                                     + (f" OR lower(c.campaign) IN ({', '.join('?' for _ in campaigns)})" if campaigns else ''))
     with task_repository.connection() as connection:
-        rows = connection.execute(f"SELECT {', '.join(f'c.{column}' for column in _DTA_COLUMNS)} FROM {NQ_CALLS_TABLE} c{missing}").fetchall()
+        rows = connection.execute(f"SELECT {', '.join(f'c.{column}' for column in _DTA_COLUMNS)} FROM {NQ_CALLS_TABLE} c{missing}",
+                                  [] if everything else [campaign.casefold() for campaign in campaigns]).fetchall()
     compiled = nq_dta_rca.compile_rules(rules, taxonomy)
     context = _dta_context(task_repository, rows, bool(network))
+    # What the Layer 3 - DT Logs of each call tell, by its JOIN_ID.
+    logged = l3_dt_logs.rca_inputs(task_repository, [row['join_id'] for row in rows if row['join_id']]) if logs else {}
     results = []
     for row in rows:
         try:
@@ -4059,6 +4076,7 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
         except (TypeError, ValueError):
             inputs = {}
         inputs.update(context.get((int(row['dataset_id']), int(row['source_row_id'])), {}))
+        inputs.update(logged.get(str(row['join_id'] or '').strip().casefold(), {}))
         found = nq_dta_rca.evaluate(compiled, row, inputs) or {}
         results.append((int(row['dataset_id']), int(row['source_row_id']), found.get('rule', ''), found.get('rule_key', ''),
                         found.get('domain', ''), found.get('category', ''), found.get('cause', ''), found.get('evidence', '')))
@@ -4075,8 +4093,22 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
                                results)
         connection.execute('INSERT INTO workspace_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
                            (nq_dta_rca.FINGERPRINT_STATE_KEY, fingerprint))
+        connection.execute('INSERT INTO workspace_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+                           (DTA_L3_STATE_KEY, json.dumps(logs, sort_keys=True)))
     _refresh_dta_learning(task_repository)
     return len(results)
+
+
+def _l3_changed_campaigns(task_repository: Any, logs: dict[str, list[Any]]) -> list[str]:
+    """The Campaign values whose Layer 3 - DT Logs were imported, processed again or deleted since the DT Analyzer RCA
+    read them last."""
+    try:
+        before = json.loads(task_repository.get_workspace_state(DTA_L3_STATE_KEY) or '{}') or {}
+    except (TypeError, ValueError):
+        before = {}
+    changed = {str(value[1]) for key, value in logs.items() if before.get(key) != value}
+    changed |= {str(value[1]) for key, value in before.items() if key not in logs and isinstance(value, list) and len(value) > 1}
+    return sorted(campaign for campaign in changed if campaign)
 
 
 def _dta_learning_fingerprint(task_repository: Any) -> str:
@@ -4146,7 +4178,8 @@ def _refresh_dta_learning(task_repository: Any) -> int:
 def _dta_ready(task_repository: Any) -> None:
     """The DT Analyzer RCA calculated again before the calls are read when its rules or the Root Cause Catalog
     changed, and what it learns when the decisions of the analysts changed, unless the calls are being indexed."""
-    if str(task_repository.get_workspace_state(nq_dta_rca.FINGERPRINT_STATE_KEY) or '') != dta_rca_fingerprint(task_repository):
+    if (str(task_repository.get_workspace_state(nq_dta_rca.FINGERPRINT_STATE_KEY) or '') != dta_rca_fingerprint(task_repository)
+            or _l3_changed_campaigns(task_repository, l3_dt_logs.rca_signature(task_repository))):
         refresh_dta_rca(task_repository, wait=False)
     elif str(task_repository.get_workspace_state(nq_dta_rca.LEARNED_FINGERPRINT_STATE_KEY) or '') != _dta_learning_fingerprint(task_repository):
         lock = _sync_lock(task_repository)

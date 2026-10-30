@@ -1558,6 +1558,15 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     positions = call_positions(service, row, columns, fields_profile) if row else {'start': None, 'end': None}
     if not positions['start']:
         positions['start'] = _position(call.get('latitude'), call.get('longitude'))
+    if not positions['start'] and _text(call.get('l3_log')) and _text(call.get('join_id')):
+        # The CDR without its position: where its Layer 3 - DT Logs started and ended (that of UE A or Data first).
+        from src.modules import l3_dt_logs
+
+        sessions = l3_dt_logs.sessions_of_join_ids(repository, [call['join_id']]).get(_text(call['join_id']).casefold(), [])
+        session = next((item for item in sessions if item['ue'] in {'A', 'Data'}), sessions[0] if sessions else None)
+        if session:
+            positions = {'start': _position(session.get('first_latitude'), session.get('first_longitude')),
+                         'end': _position(session.get('last_latitude'), session.get('last_longitude'))}
     notes = []
     config = load_serving_networks(repository)
     families = tuple(serving_families(call.get('operator'), config))
@@ -1672,6 +1681,13 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     ran['isds'] = {step['site']: index.isd(step['site']) for step in trace if step.get('site')} if index else {}
     checks = diagnosis(call, call_radio(service, row, columns, fields_profile), trace, sites, failures, test_points, radius,
                        int(prioritization_settings(repository).get('min_calls') or 2), ran, point, travel)
+    # What its Layer 3 - DT Logs show in its last seconds (l3_dt_logs), each pointing at its moment of the log.
+    if _text(call.get('join_id')) and _text(call.get('l3_log')):
+        from src.modules import l3_dt_logs
+
+        l3_dt_logs.ensure_evidence(repository)
+        sessions = l3_dt_logs.sessions_of_join_ids(repository, [call['join_id']], evidence=True).get(_text(call['join_id']).casefold(), [])
+        checks += l3_dt_logs.map_checks(sessions)
     drive = drive_context(repository, test_datasets(repository, call, scope), call, point, label, positions['start'])
     # Its way: from where it started to where it ended, else (a Data test) simulated along the way of its car. Where each
     # handover took place along it, an estimate by the time on each band of its RAT timeline (that of the A side of a Voice
