@@ -3300,6 +3300,20 @@ def _distribution_bucket_colours(
     return _series_colours([(bucket,) for bucket in buckets], ["__catalog_stack"], frame)
 
 
+def catalog_value_orders(entry: CatalogEntry) -> dict[str, list[str]]:
+    """The order given by hand (dragging them on the chart, as in Tableau) to the values of the fields of the Rows and
+    Columns of a chart: its Format's ``style.order``, ``{field: [values]}``, by field identity."""
+    try:
+        data = json.loads(entry.format) if entry.format else {}
+    except ValueError:
+        return {}
+    orders = (data.get("style") or {}).get("order") if isinstance(data, dict) and isinstance(data.get("style"), dict) else None
+    if not isinstance(orders, dict):
+        return {}
+    return {_normalise_catalog_name(field): [str(value) for value in values]
+            for field, values in orders.items() if isinstance(values, list) and values}
+
+
 def _apply_catalog_grouping(frame: pd.DataFrame, entry: CatalogEntry, multivendor: bool, metric: str | None) -> tuple[pd.DataFrame, str, str]:
     frame.attrs["catalogue_calculated_dimensions"] = entry.calculated_dimensions
     frame.attrs["catalogue_cdr_source"] = entry.cdr_source
@@ -3486,6 +3500,15 @@ def _apply_catalog_grouping(frame: pd.DataFrame, entry: CatalogEntry, multivendo
             return _operator_display_sort_key(value, frame)
         return (str(value).casefold(),)
 
+    manual_orders = catalog_value_orders(entry)
+
+    def ordered_key(dimension: str, value: object) -> tuple[object, ...]:
+        """The order given by hand to the values of a field first (values it leaves out after them), then the natural one."""
+        manual = manual_orders.get(_normalise_catalog_name(dimension))
+        if not manual:
+            return dimension_sort_key(dimension, value)
+        return (manual.index(str(value)) if str(value) in manual else len(manual), *dimension_sort_key(dimension, value))
+
     # Individually sorted Vendor and Operator domains can still be interleaved
     # in the source rows (for example Ericsson/VF, Huawei/VF, Ericsson/O2).
     # A multivendor hierarchy must therefore always receive the full stable
@@ -3494,12 +3517,12 @@ def _apply_catalog_grouping(frame: pd.DataFrame, entry: CatalogEntry, multivendo
         rank_arrays: list[np.ndarray] = []
         for column, dimension in hierarchy:
             values = frame[column].drop_duplicates().tolist()
-            values = sorted(values, key=lambda value, dimension=dimension: dimension_sort_key(dimension, value))
+            values = sorted(values, key=lambda value, dimension=dimension: ordered_key(dimension, value))
             configured = configured_dimension_values.get(column)
             if configured:
                 configured_dimension_values[column] = sorted(
                     dict.fromkeys(configured),
-                    key=lambda value, dimension=dimension: dimension_sort_key(dimension, value),
+                    key=lambda value, dimension=dimension: ordered_key(dimension, value),
                 )
             else:
                 configured_dimension_values[column] = list(values)
@@ -3511,6 +3534,12 @@ def _apply_catalog_grouping(frame: pd.DataFrame, entry: CatalogEntry, multivendo
         order = np.lexsort(tuple(reversed(rank_arrays))) if rank_arrays and len(frame) else np.arange(len(frame))
         frame = frame.take(order)
         frame.attrs = preserved_attrs
+    # The values of each field of the Rows and Columns in their order, for the charts that let them be dragged.
+    frame.attrs["catalogue_order_fields"] = [
+        {"field": dimension, "axis": "row" if column.startswith("__catalog_row_") else "column",
+         "level": int(column.rsplit("_", 1)[1]), "values": [_chart_payload_value(value) for value in configured_dimension_values.get(column, [])]}
+        for column, dimension in hierarchy
+    ]
     return frame, primary, series
 
 
@@ -6965,6 +6994,7 @@ def _chart_payload_base(
         "label_format": label_format_options(entry.label_format),
         "legend_format": label_format_options(entry.legend_format),
         "axis_ranges": {"x": list(x_range), "y": list(y_range)},
+        **({"order_fields": frame.attrs["catalogue_order_fields"]} if frame.attrs.get("catalogue_order_fields") else {}),
     }
 
 

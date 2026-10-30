@@ -19054,6 +19054,9 @@ async def chart_builder_preview(request: Request, user: SessionUser = Depends(cu
     definition = payload.get('definition') if isinstance(payload.get('definition'), dict) else {}
     style = definition.get('style') if isinstance(definition.get('style'), dict) else {}
     repeat = definition.get('repeat') if isinstance(definition.get('repeat'), dict) else {}
+    # The order given by hand to the values of its Rows and Columns is worked out with the chart (catalog_value_orders).
+    if isinstance(style.get('order'), dict) and style['order']:
+        entry = replace(entry, format=json.dumps({'style': {'order': style['order']}}, ensure_ascii=False, sort_keys=True))
 
     def model(chart_entry: CatalogEntry) -> dict[str, Any]:
         # A chart drawn before (the same rows and template row) is not worked out again; its format is applied each time.

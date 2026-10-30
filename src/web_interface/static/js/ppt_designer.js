@@ -3133,7 +3133,9 @@
       chartPayloads.clear();
       renderedChartPayloads.clear();
       setPreparationProgress(100, 'PPT charts are ready');
-      renderSlide();
+      // While designing, the Designer lays the slides being edited out again on them.
+      if ($('ds-viewer').classList.contains('ds-designing')) document.dispatchEvent(new CustomEvent('ds:design-refreshed'));
+      else renderSlide();
       status('Every PPT chart was rendered again.');
       void refreshDesignStatuses();
     } finally {
@@ -4501,33 +4503,53 @@
       ]));
       Object.values(panButtons).forEach(button => card.append(button));
       bindChartPanControls(canvas, panButtons);
+      const paint = payload => {
+        renderedPayload = payload;
+        canvas.hidden = false;
+        requestAnimationFrame(() => {
+          enableLegendActions(canvas, chart);
+          const legendPayload = withLegendState(chart, payload);
+          try { globalThis.renderCanvasChart(canvas, compactTitles ? {...legendPayload, hide_title: true} : legendPayload); zoom.hidden = false; message.remove(); }
+          catch (error) { canvas.hidden = true; message.textContent = error.message || `Unable to render ${chart.title || 'chart'}.`; }
+        });
+      };
       if (chart.available) {
         const token = prepared.token;
         const chartLoad = loadChartPayload(chart);
         visibleLoads.push(chartLoad);
         chartLoad.then(payload => {
           if (!card.isConnected || prepared?.token !== token) return;
-          renderedPayload = payload;
-          canvas.hidden = false;
-          requestAnimationFrame(() => {
-            enableLegendActions(canvas, chart);
-            const legendPayload = withLegendState(chart, payload);
-            try { globalThis.renderCanvasChart(canvas, compactTitles ? {...legendPayload, hide_title: true} : legendPayload); zoom.hidden = false; message.remove(); }
-            catch (error) { canvas.hidden = true; message.textContent = error.message || `Unable to render ${chart.title || 'chart'}.`; }
-          });
+          paint(payload);
         }).catch(error => {
           if (prepared?.token === token) message.textContent = error.message || `Unable to render ${chart.title || 'chart'}.`;
         });
       } else message.textContent = chart.unavailable || (chart.source
         ? `No CDR ${chart.source[0].toUpperCase()}${chart.source.slice(1)} dataset has been selected for this chart.`
         : 'No compatible CDR dataset has been selected for this chart.');
+      // While designing, Refresh chart works the model of this chart out again from its CDRs and draws it again, without
+      // refreshing the whole Design.
+      const refresh = node('button', '', 'ds-chart-refresh'); refresh.type = 'button'; refresh.title = 'Refresh chart'; refresh.setAttribute('aria-label', 'Refresh chart');
+      refresh.disabled = !chart.available || Boolean(pptDesignViewer);
+      refresh.onclick = safe(async event => {
+        event.stopPropagation();
+        const token = prepared.token, url = chartPayloadUrl(chart);
+        refresh.disabled = true; card.classList.add('is-refreshing'); refresh.setAttribute('aria-busy', 'true');
+        status(`Rendering ${chart.title || 'chart'} again…`);
+        try {
+          const payload = await api(`/chart/${encodeURIComponent(token)}/${chart.index}/refresh`, 'POST');
+          if (!card.isConnected || prepared?.token !== token) return;
+          chartPayloads.delete(url); renderedChartPayloads.set(url, payload);
+          paint(payload);
+          status(`${chart.title || 'Chart'} was rendered again.`);
+        } finally { refresh.disabled = false; card.classList.remove('is-refreshing'); refresh.setAttribute('aria-busy', 'false'); }
+      });
       const data = node('button','', 'ds-chart-data'); data.type = 'button'; data.title = 'View dataset'; data.setAttribute('aria-label', 'View dataset'); data.disabled = !chart.available || (Boolean(pptDesignViewer) && !chart.data_url); data.onclick = safe(async () => { await openChartDataset(chart); });
       const expand = node('button', '', 'ds-chart-expand'); expand.type = 'button'; expand.title = 'Expand chart'; expand.setAttribute('aria-label', 'Expand chart'); expand.disabled = !chart.available; expand.onclick = safe(async event => { event.stopPropagation(); await openExpandedChart(chart, renderedPayload, pptDesignViewer ? 'ppt' : 'design'); });
       card.ondblclick = safe(async event => {
         if (!chart.available || event.target.closest('button, a, input, select, label')) return;
         await openExpandedChart(chart, renderedPayload, pptDesignViewer ? 'ppt' : 'design');
       });
-      const controls = node('div', undefined, 'ds-chart-controls'); controls.append(data, expand, zoom); card.append(controls);
+      const controls = node('div', undefined, 'ds-chart-controls'); controls.append(refresh, data, expand, zoom); card.append(controls);
       let hideTimer;
       let touchControlsTimer;
       const showControls = () => { clearTimeout(hideTimer); hideTimer = null; card.classList.add('ds-hover'); };

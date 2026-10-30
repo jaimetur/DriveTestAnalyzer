@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from unittest.mock import patch
 
 import numpy as np
@@ -169,6 +170,46 @@ def test_pies_share_the_values_of_a_dimension_by_row() -> None:
         assert pie['total'] == len(rows)
         assert sum(slice_['share'] for slice_ in pie['slices']) == pytest.approx(1)
         assert next(item for item in pie['slices'] if item['name'] == 'Failed')['value'] == int((rows['Test_Result'] == 'Failed').sum())
+
+
+def test_pies_of_a_dimension_make_a_grid_of_rows_by_columns() -> None:
+    frame = cdrs()
+    model = catalog_chart_payload(frame, chart('Pie', 'Test_Result', 'City', 'Operator × RAT'), prefiltered=True)
+
+    assert {tuple(key) for key in model['pie_row_keys']} == {(city,) for city in frame['City'].unique()}
+    assert {tuple(key) for key in model['pie_column_keys']} == set(frame[['Operator', 'RAT']].drop_duplicates().itertuples(index=False, name=None))
+    assert len(model['pies']) == len(model['pie_row_keys']) * len(model['pie_column_keys'])
+    for pie in model['pies']:
+        rows = frame[(frame['City'] == pie['row'][0]) & (frame['Operator'] == pie['column'][0]) & (frame['RAT'] == pie['column'][1])]
+        assert pie['key'] == [*pie['row'], *pie['column']] and pie['total'] == len(rows)
+        assert next(item for item in pie['slices'] if item['name'] == 'Failed')['value'] == int((rows['Test_Result'] == 'Failed').sum())
+    # Without Rows, a pie for each key of Columns, side by side.
+    single = catalog_chart_payload(frame, chart('Pie', 'Test_Result', '', 'Operator'), prefiltered=True)
+    assert single['pie_row_keys'] == [[]] and sorted(pie['column'][0] for pie in single['pies']) == ['EE', 'O2', 'Three', 'Vodafone']
+    # A measure keeps the keys of Columns as its slices.
+    measured = catalog_chart_payload(frame, chart('Pie', 'COUNT(Test_ID)', 'City', 'Operator'), prefiltered=True)
+    assert 'pie_column_keys' not in measured and {item['name'] for item in measured['pies'][0]['slices']} == {'EE', 'O2', 'Three', 'Vodafone'}
+
+
+def test_values_ordered_by_hand_lead_their_field_in_rows_and_columns() -> None:
+    frame = cdrs()
+    entry = replace(chart('Average Vertical Bars', 'Mean_Data_Rate', 'City', 'Operator × Campaign'),
+                    format=json.dumps({'style': {'order': {'City': ['Leeds', 'London'], 'Operator': ['Vodafone', 'Three', 'EE', 'O2']}}}))
+    model = catalog_chart_payload(frame, entry, prefiltered=True)
+
+    # The values an order leaves out go after those it orders, in their own order.
+    assert [key[0] for key in model['row_keys']] == ['Leeds', 'London', 'Cardiff', 'Glasgow City']
+    assert list(dict.fromkeys(key[0] for key in model['column_keys'])) == ['Vodafone', 'Three', 'EE', 'O2']
+    assert [key[1] for key in model['column_keys'][:3]] == ['26-Q1', '26-Q2', '26-Q3']
+    fields = {field['field']: field for field in model['order_fields']}
+    assert fields['City'] == {'field': 'City', 'axis': 'row', 'level': 0, 'values': ['Leeds', 'London', 'Cardiff', 'Glasgow City']}
+    assert (fields['Campaign']['axis'], fields['Campaign']['level']) == ('column', 1)
+    # The same order in a Table and in a grid of pies.
+    table = catalog_chart_payload(frame, replace(entry, chart_type='Table', columns_split='Operator'), prefiltered=True)
+    assert table['headers'][1:] == ['Vodafone', 'Three', 'EE', 'O2']
+    assert [row[0] for row in table['rows']] == ['Leeds', 'London', 'Cardiff', 'Glasgow City']
+    pies = catalog_chart_payload(frame, replace(entry, chart_type='Pie', kpi='Test_Result', columns_split='Operator'), prefiltered=True)
+    assert [key[0] for key in pies['pie_column_keys']] == ['Vodafone', 'Three', 'EE', 'O2']
 
 
 def test_sankey_flows_keep_every_sample_between_levels() -> None:

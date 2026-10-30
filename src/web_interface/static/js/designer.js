@@ -276,6 +276,8 @@
     state.element = '';
     state.tab = 'slide';
     $('ds-viewer').classList.add('ds-designing');
+    // The values of the Rows and Columns of a chart are dragged to another order on the chart itself (canvas_charts.js).
+    $('ds-viewer').dataset.chartOrder = 'true';
     $('ds-design-bar').hidden = false;
     $('ds-design-panel').hidden = false;
     renderDesigner();
@@ -355,6 +357,7 @@
     state.active = false;
     state.element = '';
     $('ds-viewer').classList.remove('ds-designing');
+    delete $('ds-viewer').dataset.chartOrder;
     lockViewerActions(false);
     $('ds-design-bar').hidden = true;
     $('ds-design-panel').hidden = true;
@@ -1411,7 +1414,7 @@
   // Format of a chart (phase 3): the Format of chart_format.js (Chart Builder has it too), on the elements of the slides
   // being edited.
   // ------------------------------------------------------------------
-  const {styleOf, formatSection, openSeriesFormat, openAxisRange, openAxisValues} = window.ChartFormat.editor({
+  const {styleOf, formatSection, openSeriesFormat, openAxisRange, openAxisValues, orderValues} = window.ChartFormat.editor({
     element: elementId => findElement(editableSlideSet(), elementId)?.element,
     write: (elementId, values) => setElementValues(elementId, values),
     canvas: elementId => [...($('ds-charts')?.querySelectorAll('.ds-chart') || [])].find(card => card.dataset.elementId === elementId)?.querySelector('canvas'),
@@ -2128,9 +2131,9 @@
     button.title = open ? 'Close the Designer (it asks about the changes not saved)' : 'Edit the slides and charts of this Design and of its template';
     lockViewerActions(open);
   }
-  // While designing, the actions of the viewer that would leave the Designer or bypass what it shows wait for it to close;
-  // the filters, the scope and the theme stay, as they change what the slides are laid out on.
-  const LOCKED_VIEWER_ACTIONS = ['.ds-viewer-top-auto-fields', '#ds-edit', '#ds-viewer-export-ppt', '#ds-viewer-refresh', '#ds-presentation'];
+  // While designing, Generate PPT (which would generate the Design as it is saved) and the presentation wait for the Designer
+  // to close; the filters, the scope, the theme, Refresh Design, Auto-Calculated Fields and Edit PPT Template stay.
+  const LOCKED_VIEWER_ACTIONS = ['#ds-viewer-export-ppt', '#ds-presentation'];
   function lockViewerActions(active) {
     document.querySelectorAll(LOCKED_VIEWER_ACTIONS.join(', ')).forEach(button => {
       button.classList.toggle('is-design-locked', active);
@@ -2148,6 +2151,14 @@
   document.addEventListener('click', event => {
     if ((state.active || opening()) && event.target.closest?.('.is-design-locked')) { event.preventDefault(); event.stopImmediatePropagation(); }
   }, true);
+  // A value of the Rows or Columns of a chart dragged before or after another one (canvas_charts.js): the new order of the
+  // values of its field is kept in the Format of the chart.
+  document.addEventListener('designchartorder', event => {
+    const card = event.target.closest?.('.ds-chart');
+    if (!state.active || !card?.dataset.elementId) return;
+    if (state.element !== card.dataset.elementId) selectElement(card.dataset.elementId);
+    orderValues(card.dataset.elementId, event.detail.field, event.detail.values);
+  });
   $('ds-design')?.addEventListener('click', guarded(async () => {
     if (opening() && !state.active) { editWhenReady = ''; clearDesignerOpening(); return; }
     if (state.active) { await exitDesigner(); syncDesignerButton(); return; }
@@ -2172,6 +2183,10 @@
     state.info = null;
     syncDesignerButton();
     renderParameterValues();
+  });
+  // Refresh Design while designing: the slides being edited are laid out again on the charts rendered again.
+  document.addEventListener('ds:design-refreshed', () => {
+    if (state.active) guarded(() => preview(state.designDirty ? {...previewBody(), slide_set: state.slide_set} : previewBody()))();
   });
   // Prepared again (filters applied): the slide set not saved yet is laid out on the new selection.
   document.addEventListener('ds:prepared', () => {

@@ -332,6 +332,11 @@
     body.charts.forEach((item, index) => globalThis.renderCanvasChart(canvases[index], item.model));
     message.hidden = true;
   }
+  // The values of its Rows and Columns are dragged to another order on the chart itself, as in the Designer.
+  canvasShell.dataset.chartOrder = 'true';
+  canvasShell.addEventListener('designchartorder', (event) => {
+    if (!isKpiCard() && formatEditor()) format.orderValues('chart', event.detail.field, event.detail.values);
+  });
   // Format on the chart, as in the Designer: an entry of its legend opens the format of that series, an axis its card.
   canvasShell.addEventListener('click', (event) => {
     if (event.target.tagName !== 'CANVAS' || isKpiCard() || !formatEditor()) return;

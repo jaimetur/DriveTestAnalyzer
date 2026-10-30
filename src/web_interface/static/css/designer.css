@@ -26,8 +26,14 @@
 #ds-viewer.ppt-designer .ds-viewer-top-design.is-active:hover:not(:disabled) { background: linear-gradient(135deg, #a86200, #d88a10); border-color: #8a5000; }
 
 /* While designing, the tools of the viewer over the charts (images, expand, zoom, pan) give way to the Designer: only
-   View dataset stays. */
-#ds-viewer.ds-designing :is(.ds-chart-controls > :not(.ds-chart-data), .ds-chart-pan-button, .element-image-button) { display: none !important; }
+   Refresh chart (only while designing) and View dataset stay. */
+#ds-viewer.ds-designing :is(.ds-chart-controls > :not(.ds-chart-data, .ds-chart-refresh), .ds-chart-pan-button, .element-image-button) { display: none !important; }
+.ds-chart-controls > .ds-chart-refresh { display: none; }
+#ds-viewer.ds-designing .ds-chart-controls > .ds-chart-refresh { display: grid; place-items: center; width: 2rem; min-width: 2rem; height: 2rem; min-height: 2rem;
+  padding: 0 !important; border-radius: 999px !important; font-size: 0 !important; }
+#ds-viewer.ds-designing .ds-chart-refresh::after { content: ''; width: 1rem; height: 1rem; background: center/contain no-repeat
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 11a8 8 0 1 0-2.3 5.7'/%3E%3Cpath d='M20 4v7h-7'/%3E%3C/svg%3E"); }
+#ds-viewer.ds-designing .ds-chart.is-refreshing .ds-chart-refresh::after { animation: ds-design-spin .9s linear infinite; }
 
 /* The bar of Design, under the controls of the viewer. */
 .ppt-designer .ds-design-bar {
@@ -623,6 +629,8 @@
 .ds-axis-card .ds-axis-secondary { margin-right: auto; border: 1px solid #ddd3ea; background: #fff; color: #4b2c82; }
 .ds-axis-card .ds-axis-secondary:hover:not(:disabled) { background: #f6f1fc; }
 .ds-axis-card .ds-axis-secondary:disabled { opacity: .45; cursor: default; }
+.ds-axis-card .ds-axis-secondary:has(+ .ds-axis-secondary) { margin-right: 0; }
+.ds-axis-hint { margin: 0; color: #9a8db0; font-size: .7rem; line-height: 1.35; }
 .ds-axis-card .ds-axis-primary { border: 1px solid #4b2c82; background: linear-gradient(135deg, #5b35a0, #7a4bb3); color: #fff; }
 /* Range: the bounds typed, the track with its two handles and where the values of the chart lie. */
 .ds-axis-readout { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: .45rem; }

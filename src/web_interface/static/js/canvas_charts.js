@@ -31,6 +31,8 @@
   // The render state and transform that legend hit regions are recorded in.
   let legendHitTarget = null;
   const tableDragStates = new WeakMap();
+  // The value of Rows or Columns being dragged to another place of its field (see attachValueReordering).
+  const valueDragStates = new WeakMap();
   const observed = new WeakSet();
   const mapTiles = new Map();
   const mapWaits = new WeakMap();
@@ -1459,7 +1461,8 @@
       return end ? `${text.slice(0, end)}…` : '';
     };
     const headerTop = top + (headerBands - 1) * rowHeight; context.textBaseline = 'middle';
-    state.table = dynamic ? {
+    // (Where the values are dragged to another order, the headers and rows of every table are known too.)
+    state.table = dynamic || valueOrderHost(state.canvas) ? {
       left, top, right: layout.right, bottom: layout.bottom, columnWidth, rowHeight,
       headerTop, headerBands, rowDimensionCount, headerCount: headers.length, rowCount: rows.length,
     } : null;
@@ -1829,18 +1832,23 @@
   function drawPie(context, payload, state, transform) {
     const layout = legendLayout(payload.legend), pies = payload.pies || [];
     if (!pies.length) return;
+    // The pies stay round in a frame of any proportions: their radius is measured in units as wide as they are tall.
+    const round = roundness(context);
+    if (Array.isArray(payload.pie_column_keys) && payload.pie_column_keys.length) {
+      drawPieGrid(context, payload, state, transform, layout, pies, round);
+      drawLegend(context, payload.legend);
+      return;
+    }
     const titled = pies.length > 1 || pies[0].label !== '(all)', titleHeight = titled ? 36 : 0;
     const left = layout.left, top = layout.top, width = layout.right - left, height = layout.bottom - top;
     const grid = chartGrid(pies.length, width, height - 4);
     const cellWidth = width / grid.columns, cellHeight = height / grid.rows;
-    // The pies stay round in a frame of any proportions: their radius is measured in units as wide as they are tall.
-    const round = roundness(context);
     pies.forEach((pie, index) => {
       const column = index % grid.columns, row = Math.floor(index / grid.columns);
       const cellLeft = left + column * cellWidth, cellTop = top + row * cellHeight;
       const radius = Math.max(20, Math.min(cellWidth / round.x, (cellHeight - titleHeight) / round.y) / 2 * .84);
       if (!(radius > 0)) return;
-      const x = cellLeft + cellWidth / 2, y = cellTop + titleHeight + (cellHeight - titleHeight) / 2, inner = payload.donut ? radius * .58 : 0;
+      const x = cellLeft + cellWidth / 2, y = cellTop + titleHeight + (cellHeight - titleHeight) / 2;
       if (titled) {
         // The name of the pie just above it.
         const titleTop = Math.max(cellTop + 2, y - radius * round.y - titleHeight);
@@ -1848,33 +1856,64 @@
         context.fillText(fittedText(context, pie.label, cellWidth - 12), x, titleTop);
         pushAxisHit('row', 0, pie.label, cellLeft, titleTop, cellWidth, titleHeight);
       }
-      let angle = -Math.PI / 2;
-      (pie.slices || []).forEach(slice => {
-        const sweep = Number(slice.share) * Math.PI * 2, end = angle + sweep;
-        context.beginPath();
-        if (inner) { context.ellipse(x, y, radius * round.x, radius * round.y, 0, angle, end); context.ellipse(x, y, inner * round.x, inner * round.y, 0, end, angle, true); }
-        else { context.moveTo(x, y); context.ellipse(x, y, radius * round.x, radius * round.y, 0, angle, end); }
-        context.closePath(); context.fillStyle = slice.colour; context.fill();
-        context.strokeStyle = '#FFFFFF'; context.lineWidth = 2; context.stroke();
-        const middle = angle + sweep / 2, labelRadius = inner ? (inner + radius) / 2 : radius * .64, share = percent(slice.share);
-        const size = Math.max(11, Math.min(24, radius * .13));
-        if (Number(slice.share) >= .05 && String(payload.label_position || '').toLowerCase() !== 'none') {
-          labelFont(context, size, payload.label_format, true, false); context.fillStyle = payload.label_format?.color || readableOn(slice.colour);
-          context.textAlign = 'center'; context.textBaseline = 'middle';
-          context.fillText(share, x + Math.cos(middle) * labelRadius * round.x, y + Math.sin(middle) * labelRadius * round.y);
-        }
-        pushPolygonHit(state, transform, sectorPoints(x, y, inner, radius, angle, end, round), {label: displayKey([...(pie.key || []), slice.name]),
-          series: payload.metric || '', value: `${share} · ${valueText(slice.value, 0)}`});
-        angle = end;
-      });
-      if (inner) {
-        context.fillStyle = '#1D3345'; context.textAlign = 'center'; context.textBaseline = 'middle'; font(context, Math.max(14, Math.min(40, inner * .42)), true);
-        context.fillText(valueText(pie.total, 0), x, y - inner * .08 * round.y);
-        context.fillStyle = '#62727E'; font(context, Math.max(10, Math.min(20, inner * .2)));
-        context.fillText('samples', x, y + inner * .3 * round.y);
-      }
+      drawOnePie(context, payload, state, transform, pie, x, y, radius, round);
     });
     drawLegend(context, payload.legend);
+  }
+  // A pie for each key of Rows by each key of Columns: a row of the grid per key of Rows, named at its left, and a column
+  // per key of Columns, named above it (as a Heat Map).
+  function drawPieGrid(context, payload, state, transform, layout, pies, round) {
+    const same = (left, right) => JSON.stringify(left || []) === JSON.stringify(right || []);
+    // (The keys whose pies are all hidden from the legend leave the grid.)
+    const shown = (keys, side) => (keys?.length ? keys : [[]]).filter(key => pies.some(pie => same(pie[side], key)));
+    const rowKeys = shown(payload.pie_row_keys, 'row'), columnKeys = shown(payload.pie_column_keys, 'column');
+    if (!rowKeys.length || !columnKeys.length) return;
+    const format = payload.legend_format || {}, rowLevels = rowKeys[0]?.length || 0, labelWidth = rowLabelWidth(rowKeys, layout, .22);
+    const left = layout.left + rowLevels * labelWidth + 8, right = layout.right - 8;
+    const plans = columnHeaderPlans(context, columnKeys, right - left, format), headerHeight = plans.reduce((sum, item) => sum + item.height, 0);
+    const room = layout.bottom - 4 - layout.top - headerHeight - 4;
+    const cellWidth = (right - left) / columnKeys.length, radius = Math.max(8, Math.min(cellWidth / round.x, room / rowKeys.length / round.y) / 2 * .86);
+    // The rows are as tall as their pies, and the grid with its headers is centred in the room.
+    const cellHeight = Math.min(room / rowKeys.length, radius * 2 * round.y / .86), headerTop = layout.top + (room - cellHeight * rowKeys.length) / 2;
+    drawColumnHeaders(context, columnKeys, plans, left, right - left, headerTop, format);
+    const top = headerTop + headerHeight + 4;
+    pies.forEach(pie => {
+      const row = rowKeys.findIndex(key => same(key, pie.row)), column = columnKeys.findIndex(key => same(key, pie.column));
+      if (row < 0 || column < 0) return;
+      // (Pies too small for their shares leave them to their tooltips.)
+      drawOnePie(context, payload, state, transform, pie, left + (column + .5) * cellWidth, top + (row + .5) * cellHeight, radius, round,
+                 {shares: radius >= 28, thin: radius < 40});
+    });
+    if (rowLevels) drawRowLabels(context, rowKeys, layout.left, labelWidth, top, cellHeight, right, format);
+  }
+  // The slices of a pie centred at (x, y), with their shares, and the samples in the middle of a donut.
+  function drawOnePie(context, payload, state, transform, pie, x, y, radius, round, {shares = true, thin = false} = {}) {
+    const inner = payload.donut ? radius * .58 : 0;
+    let angle = -Math.PI / 2;
+    (pie.slices || []).forEach(slice => {
+      const sweep = Number(slice.share) * Math.PI * 2, end = angle + sweep;
+      context.beginPath();
+      if (inner) { context.ellipse(x, y, radius * round.x, radius * round.y, 0, angle, end); context.ellipse(x, y, inner * round.x, inner * round.y, 0, end, angle, true); }
+      else { context.moveTo(x, y); context.ellipse(x, y, radius * round.x, radius * round.y, 0, angle, end); }
+      context.closePath(); context.fillStyle = slice.colour; context.fill();
+      context.strokeStyle = '#FFFFFF'; context.lineWidth = thin ? 1 : 2; context.stroke();
+      const middle = angle + sweep / 2, labelRadius = inner ? (inner + radius) / 2 : radius * .64, share = percent(slice.share);
+      const size = Math.max(11, Math.min(24, radius * .13));
+      if (shares && Number(slice.share) >= .05 && String(payload.label_position || '').toLowerCase() !== 'none') {
+        labelFont(context, size, payload.label_format, true, false); context.fillStyle = payload.label_format?.color || readableOn(slice.colour);
+        context.textAlign = 'center'; context.textBaseline = 'middle';
+        context.fillText(share, x + Math.cos(middle) * labelRadius * round.x, y + Math.sin(middle) * labelRadius * round.y);
+      }
+      pushPolygonHit(state, transform, sectorPoints(x, y, inner, radius, angle, end, round), {label: displayKey([...(pie.key || []), slice.name]),
+        series: payload.metric || '', value: `${share} · ${valueText(slice.value, 0)}`});
+      angle = end;
+    });
+    if (inner && shares) {
+      context.fillStyle = '#1D3345'; context.textAlign = 'center'; context.textBaseline = 'middle'; font(context, Math.max(14, Math.min(40, inner * .42)), true);
+      context.fillText(valueText(pie.total, 0), x, y - inner * .08 * round.y);
+      context.fillStyle = '#62727E'; font(context, Math.max(10, Math.min(20, inner * .2)));
+      context.fillText('samples', x, y + inner * .3 * round.y);
+    }
   }
 
   // The positions of the keys of a horizontal axis: their places along it, and how its labels are drawn (a time axis or
@@ -2651,6 +2690,7 @@
     const visible = legendHiddenPayload(payload, hiddenLegendItems.get(canvas));
     state.drawnPayload = visible;
     drawPayload(context, visible, state, {x: 0, y: 0, scale: 1}); renderStates.set(canvas, state);
+    if (valueDragStates.has(canvas)) drawValueDrag(context, valueDragStates.get(canvas));
     const view = views.get(canvas);
     const titleHeight = 40 * Math.min(view?.scaleX || 1, view?.scaleY || 1) * (view?.zoom || 1);
     canvas.dispatchEvent(new CustomEvent('designchartlayout', {detail: {titleTop: 20, titleHeight}}));
@@ -2746,7 +2786,7 @@
     let drag = null;
     const stopEvent = event => { event.preventDefault(); event.stopImmediatePropagation(); };
     canvas.addEventListener('pointerdown', event => {
-      if (event.button !== 0 || cameraFor(canvas).zoom !== 1) return;
+      if (event.button !== 0 || cameraFor(canvas).zoom !== 1 || valueOrderHost(canvas)) return;
       const payload = models.get(canvas), cell = tableCellAt(canvas, event);
       if (!payload?.dynamic || !cell) return;
       if (cell.kind === 'header' && cell.column >= cell.table.rowDimensionCount) {
@@ -2836,6 +2876,103 @@
     canvas.addEventListener('pointerup', finish);
     canvas.addEventListener('pointercancel', finish);
     canvas.addEventListener('pointerleave', () => { if (!drag) canvas.style.cursor = ''; });
+  }
+
+  // Rows and Columns ordered by hand, as in Tableau: in a host that keeps the order (an ancestor with data-chart-order="true",
+  // the Designer and Chart Builder), a value of Rows or Columns (an axis label, a header, a row of a table) dragged before or
+  // after another value of its field gives a designchartorder event with the field and every value of it in its new order
+  // (the host keeps it in the Format of the chart: style.order). A bar between the values shows where it goes.
+  const valueOrderHost = canvas => Boolean(canvas.closest?.('[data-chart-order="true"]'));
+  const orderAxis = axis => (axis === 'table-row' ? 'row' : axis === 'table-column' ? 'column' : axis);
+  // The field of the value under the pointer: one of Rows or Columns holding it (and the value it is dropped on), that of
+  // its own place first.
+  function valueOrderField(payload, item, other = null) {
+    const fields = (payload?.order_fields || []).filter(field => (field.values || []).includes(item.value) && (!other || field.values.includes(other)));
+    return fields.find(field => field.axis === orderAxis(item.axis) && Number(field.level) === Number(item.level)) || fields[0] || null;
+  }
+  // Whether the values of a level are laid out across (headers) or down (row labels), from where they are drawn.
+  function valuesAcross(canvas, item) {
+    if (item.axis === 'table-column') return true;
+    if (item.axis === 'table-row') return false;
+    const siblings = (renderStates.get(canvas)?.axisHits || []).filter(hit => hit.axis === item.axis && hit.level === item.level);
+    const spread = values => (values.length ? Math.max(...values) - Math.min(...values) : 0);
+    return spread(siblings.map(hit => hit.x + hit.width / 2)) >= spread(siblings.map(hit => hit.y + hit.height / 2));
+  }
+  function drawValueDrag(context, drag) {
+    const source = drag.source;
+    context.save();
+    context.fillStyle = 'rgba(122, 63, 194, .12)'; context.fillRect(source.x, source.y, source.width, source.height);
+    context.setLineDash([6, 4]); context.strokeStyle = '#7A3FC2'; context.lineWidth = 2; context.strokeRect(source.x, source.y, source.width, source.height);
+    context.setLineDash([]);
+    const target = drag.target;
+    if (target && target.value !== source.value) {
+      context.fillStyle = '#7A3FC2';
+      const bar = (x1, y1, x2, y2) => {
+        context.fillRect(Math.min(x1, x2) - 2, Math.min(y1, y2) - 2, Math.abs(x2 - x1) + 4, Math.abs(y2 - y1) + 4);
+        [[x1, y1], [x2, y2]].forEach(([x, y]) => { context.beginPath(); context.arc(x, y, 6, 0, Math.PI * 2); context.fill(); });
+      };
+      if (drag.across) { const x = drag.after ? target.x + target.width : target.x; bar(x, target.y, x, target.y + target.height); }
+      else { const y = drag.after ? target.y + target.height : target.y; bar(target.x, y, target.x + target.width, y); }
+    }
+    context.restore();
+  }
+  function attachValueReordering(canvas) {
+    if (canvas.dataset.valueReorderReady) return;
+    canvas.dataset.valueReorderReady = 'true';
+    let pending = null, drag = null;
+    const stopEvent = event => { event.preventDefault(); event.stopImmediatePropagation(); };
+    canvas.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || !valueOrderHost(canvas) || cameraFor(canvas).zoom !== 1) return;
+      const item = axisItemAt(canvas, event), field = item?.value ? valueOrderField(models.get(canvas), item) : null;
+      if (!field || field.values.length < 2) return;
+      // A drag starts once the pointer moves; a click still opens the card of the axis.
+      pending = {pointerId: event.pointerId, x: event.clientX, y: event.clientY, item, field};
+      event.stopImmediatePropagation();
+    });
+    canvas.addEventListener('pointermove', event => {
+      if (!pending || event.pointerId !== pending.pointerId) return;
+      if (!drag) {
+        if (Math.hypot(event.clientX - pending.x, event.clientY - pending.y) < 6) return;
+        drag = {source: pending.item, field: pending.field, across: valuesAcross(canvas, pending.item), target: null, after: false};
+        valueDragStates.set(canvas, drag);
+        canvas.setPointerCapture?.(event.pointerId);
+        canvas.style.cursor = 'grabbing';
+        const tooltip = tooltipFor(canvas); if (tooltip) tooltip.hidden = true;
+      }
+      const item = axisItemAt(canvas, event);
+      const field = item?.value ? valueOrderField(models.get(canvas), drag.source, item.value) : null;
+      if (item && field === drag.field && orderAxis(item.axis) === orderAxis(drag.source.axis) && item.level === drag.source.level) {
+        const point = tableLogicalPoint(canvas, event);
+        drag.target = item;
+        drag.after = point ? (drag.across ? point.x > item.x + item.width / 2 : point.y > item.y + item.height / 2) : false;
+      }
+      const payload = models.get(canvas); if (payload) draw(canvas, payload);
+      stopEvent(event);
+    });
+    const finish = event => {
+      if (!pending || event.pointerId !== pending.pointerId) return;
+      const completed = drag;
+      pending = null; drag = null;
+      if (!completed) return;
+      valueDragStates.delete(canvas);
+      canvas.releasePointerCapture?.(event.pointerId);
+      canvas.style.cursor = '';
+      // The click that ends the drag opens no card of the axis.
+      canvas.dataset.valueDragged = 'true';
+      window.setTimeout(() => { delete canvas.dataset.valueDragged; }, 0);
+      const target = completed.target, source = completed.source.value;
+      if (event.type === 'pointerup' && target && target.value !== source) {
+        const values = completed.field.values.filter(value => value !== source);
+        values.splice(values.indexOf(target.value) + (completed.after ? 1 : 0), 0, source);
+        if (values.join('\u0000') !== completed.field.values.join('\u0000')) {
+          canvas.dispatchEvent(new CustomEvent('designchartorder', {bubbles: true, detail: {field: completed.field.field, values, value: source}}));
+        }
+      }
+      const payload = models.get(canvas); if (payload) draw(canvas, payload);
+      stopEvent(event);
+    };
+    canvas.addEventListener('pointerup', finish);
+    canvas.addEventListener('pointercancel', finish);
   }
 
   function setChartZoom(canvas, requestedZoom) {
@@ -2958,9 +3095,13 @@
     // Table headers and row labels are aggregation values too.
     const cell = tableCellAt(canvas, event), drawn = state?.drawnPayload;
     if (!cell || !drawn) return null;
-    const rowDimensions = Math.max(1, Number(drawn.row_dimension_count) || 1);
-    if (cell.kind === 'header' && cell.column >= rowDimensions) return {axis: 'table-column', level: 0, value: String(drawn.headers?.[cell.column] ?? '')};
-    if (cell.kind === 'row' && cell.column < rowDimensions) return {axis: 'table-row', level: cell.column, value: String(drawn.rows?.[cell.row]?.[cell.column] ?? '')};
+    const rowDimensions = Math.max(1, Number(drawn.row_dimension_count) || 1), table = cell.table;
+    const box = {x: table.left + cell.column * table.columnWidth, width: table.columnWidth, height: table.rowHeight};
+    if (cell.kind === 'header' && cell.column >= rowDimensions) return {axis: 'table-column', level: 0, value: String(drawn.headers?.[cell.column] ?? ''), ...box, y: table.headerTop};
+    if (cell.kind === 'row' && cell.column < rowDimensions) {
+      return {axis: 'table-row', level: cell.column, value: String(drawn.rows?.[cell.row]?.[cell.column] ?? ''), ...box,
+        y: table.top + table.headerBands * table.rowHeight + cell.row * table.rowHeight};
+    }
     return null;
   }
 
@@ -3118,7 +3259,7 @@
         shown: new Set((payload.shown_legend_items || []).map(String)),
       });
     }
-    models.set(canvas, payload); draw(canvas, payload); attachTooltip(canvas); attachTableReordering(canvas); attachPan(canvas); attachLegendToggle(canvas);
+    models.set(canvas, payload); draw(canvas, payload); attachTooltip(canvas); attachValueReordering(canvas); attachTableReordering(canvas); attachPan(canvas); attachLegendToggle(canvas);
     if (resizeObserver && !observed.has(canvas)) { observed.add(canvas); resizeObserver.observe(canvas); }
   };
   // Another page theme (globalThis.canvasChartStyle) redraws the charts on the page at once.
@@ -3157,7 +3298,8 @@
     const numeric = (state.numericAxes || []).find(item => x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height);
     if (numeric) return {kind: 'numeric', axis: numeric.axis, domain: numeric.domain, extent: numeric.extent, percent: Boolean(numeric.percent)};
     const hit = axisItemAt(canvas, event);
-    if (!hit) return null;
+    // (A value just dragged to another place opens no card.)
+    if (!hit || canvas.dataset.valueDragged === 'true') return null;
     const model = models.get(canvas) || {};
     // The dimensions of a model list the levels of its rows first, then those of its columns.
     const rowLevels = Array.isArray(model.row_keys) ? Math.max(0, ...model.row_keys.map(key => (Array.isArray(key) ? key.length : 1)))

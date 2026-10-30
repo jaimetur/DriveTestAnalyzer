@@ -82,6 +82,12 @@
       change(style);
       return host.write(elementId, {style: cleanStyle(style)});
     }
+    // The values of a field of the Rows or Columns in the order they were dragged to on the chart (as in Tableau); without
+    // values the field takes its own order back.
+    const orderValues = (elementId, field, values) => setStyle(elementId, style => {
+      style.order = {...(style.order || {})};
+      if (values?.length) style.order[field] = [...values]; else delete style.order[field];
+    });
     const setSeries = (elementId, name, values) => setStyle(elementId, style => {
       style.series = style.series || {};
       style.series[name] = {...(style.series[name] || {}), ...values};
@@ -228,10 +234,15 @@
       const search = values.length > 7 ? h('input', {type: 'search', class: 'ds-axis-search', placeholder: 'Search values', 'aria-label': 'Search values',
         oninput: event2 => { query = event2.target.value.trim().toLocaleLowerCase(); paint(); }}) : null;
       const kind = ['row', 'table-row'].includes(axis.axis) ? 'Rows' : 'Columns';
+      // The values dragged to another order on the chart take the order of their field back.
+      const ordered = Array.isArray(styleOf(element).order?.[field]);
+      const defaultOrder = ordered ? h('button', {type: 'button', class: 'ds-axis-secondary', title: `Give the values of ${field} their own order back (they were dragged to another one on the chart)`,
+        onclick: () => { closeMenus(); guarded(() => orderValues(elementId, field, null))(); }}, 'Default order') : null;
       const card = axisCard(kind, field, `Values of ${field}`, [
         h('div', {class: 'ds-axis-toolbar'}, search, count),
         list,
-      ], [showAll, h('button', {type: 'button', class: 'ds-axis-primary', onclick: closeMenus}, 'Close')]);
+        h('p', {class: 'ds-axis-hint', text: 'Drag a value on the chart, before or after another one, to change their order.'}),
+      ], [showAll, defaultOrder, h('button', {type: 'button', class: 'ds-axis-primary', onclick: closeMenus}, 'Close')]);
       paint();
       placePopover(card, anchor, event);
     }
@@ -314,7 +325,7 @@
           onchange: event => set('axes.x.decimals', integer(event.target.value))}), 'The decimals of the values of the X axis of a CDF.')));
     }
 
-    return {styleOf, formatSection, openSeriesFormat, openAxisRange, openAxisValues};
+    return {styleOf, formatSection, openSeriesFormat, openAxisRange, openAxisValues, orderValues: guarded(orderValues)};
   }
 
   window.ChartFormat = {editor};

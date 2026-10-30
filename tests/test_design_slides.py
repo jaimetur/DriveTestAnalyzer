@@ -532,6 +532,36 @@ def test_the_format_of_a_chart_travels_in_its_row_and_reaches_its_model(client):
     assert dd.row_format(rows[1])['style'] == {'labels': {'colour': '#123456'}}
 
 
+def test_the_values_dragged_to_another_order_keep_it_in_the_design_and_its_refresh(client):
+    definition = setup(client)
+    body = client.get('/api/ppt-designer/design-a/slides?edit=1').json()
+    edited = copy.deepcopy(body['slide_set'])
+    edited['slides'][0]['elements'][0]['style'] = {'order': {'Operator': ['B', 'A']}}
+    assert client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited}).status_code == 200
+    prepared = client.post('/api/ppt-designer/prepare?design_id=design-a', json=definition).json()
+    chart = next(chart for chart in prepared['slides'][0]['charts'] if chart['element'] == 's1e1')
+    model = client.get(f"/api/ppt-designer/chart/{prepared['token']}/{chart['index']}").json()
+    assert [series['name'] for series in model['series']] == ['B', 'A']
+    assert model['order_fields'] == [{'field': 'Operator', 'axis': 'row', 'level': 0, 'values': ['B', 'A']}]
+    # Refresh chart (while designing) works the chart out again as it is, and the App Events record it.
+    refreshed = client.post(f"/api/ppt-designer/chart/{prepared['token']}/{chart['index']}/refresh")
+    assert refreshed.status_code == 200, refreshed.text
+    assert [series['name'] for series in refreshed.json()['series']] == ['B', 'A']
+    assert logged('design_chart_refreshed')[-1] == {'design': 'Design one', 'slide': 1, 'chart': 'Rate', 'chart_type': 'CDF Line'}
+
+
+def test_the_chart_builder_draws_its_rows_in_the_order_they_were_dragged_to(client):
+    setup(client)
+    core._clear_chart_preview_caches()
+    chart = {'chart_title': 'Rate', 'cdr_source': 'CDR-Data', 'kpi': 'MEDIAN(Mean_Data_Rate)', 'chart_type': 'Average Vertical Bars',
+             'rows_split': 'Operator', 'columns_split': '', 'legend': '', 'filters': '', 'legend_position': 'Top',
+             'style': {'order': {'Operator': ['B', 'A']}}}
+    model = client.post('/api/chart-builder/preview', json={'dataset_ids': [1], 'definition': chart})
+    assert model.status_code == 200, model.text
+    assert [bar['key'][0] for bar in model.json()['bars']] == ['B', 'A']
+    assert model.json()['order_fields'][0] == {'field': 'Operator', 'axis': 'row', 'level': 0, 'values': ['B', 'A']}
+
+
 # --------------------------------------------------------------------------------------------------------------------
 # Free layouts and the elements other than charts (phase 4)
 # --------------------------------------------------------------------------------------------------------------------

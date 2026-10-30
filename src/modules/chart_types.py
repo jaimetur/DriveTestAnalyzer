@@ -65,6 +65,10 @@ MAX_TREEMAP_ITEMS = 400
 MAX_BUBBLES = 150
 MAX_SANKEY_NODES = 30
 MAX_GANTT_LANES = 40
+# Pies: at most 24 side by side, or a grid of at most 12 columns and 48 pies.
+MAX_PIES = 24
+MAX_PIE_COLUMNS = 12
+MAX_PIE_GRID = 48
 
 
 def _reporting():
@@ -571,35 +575,55 @@ def decorate_table(model: dict[str, object], chart_type: str, numbers: list[list
 
 # -- pies --------------------------------------------------------------------------------------------------------
 def _pie(chart: _Chart) -> dict[str, object]:
-    """A pie (or donut) for each key of Rows: the share of each value of a dimension measured, or of each key of
-    Columns by the aggregated measure (its samples unless Sum or Count is chosen)."""
+    """A pie (or donut) of the share of each value of a dimension measured for each key of Rows by each key of Columns
+    (a grid of pies, a row of the grid per key of Rows and a column per key of Columns), or for each key of Rows of each
+    key of Columns by the aggregated measure (its samples unless Sum or Count is chosen)."""
     reporting = _reporting()
     measure = chart.measures()[0]
     rows = chart.rows
     pies: list[dict[str, object]] = []
     slices: list[tuple[str, str]] = []
     records = []
+    grid: dict[str, object] = {}
+    dimensions = rows
     if not measure.numeric:
+        columns = chart.columns
+        split = list(dict.fromkeys([*rows, *columns]))
         state_data, states, colours = reporting._status_chart_categories(
-            chart.data[[*rows, measure.column]].copy(), measure.column, quality=False, threshold=0.0)
+            chart.data[[*split, measure.column]].copy(), measure.column, quality=False, threshold=0.0)
         state_data = state_data.dropna(subset=["state"])
         if state_data.empty:
             return chart.empty()
-        for column in rows:
+        for column in split:
             state_data[column] = reporting._map_each_value(state_data[column], reporting._chart_payload_value)
-        counts = state_data.groupby([*rows, "state"], sort=False, dropna=False).size() if rows else state_data.groupby("state").size()
+        counts = state_data.groupby([*split, "state"], sort=False, dropna=False).size() if split else state_data.groupby("state").size()
         colour_of = dict(zip(states, colours))
         slices = [(state, colour_of[state]) for state in states]
-        for row in chart.keys(rows):
-            row_counts = [int(counts.get((*row, state) if rows else state, 0)) for state in states]
-            total = sum(row_counts)
-            if not total:
-                continue
-            pies.append({"key": list(row), "label": _label(row), "total": total,
-                         "slices": [{"name": state, "value": count, "share": count / total, "colour": colour_of[state]}
-                                    for state, count in zip(states, row_counts) if count]})
-            records.append({"key": list(row), "shares": [count / total for count in row_counts], "samples": total})
+        row_keys = chart.keys(rows)
+        column_keys = chart.keys(columns)[:MAX_PIE_COLUMNS]
+        if columns:
+            row_keys = row_keys[:max(1, MAX_PIE_GRID // len(column_keys))]
+        for row in row_keys:
+            for column in column_keys:
+                values = {**dict(zip(columns, column)), **dict(zip(rows, row))}
+                if any(values[field] != value for field, value in zip(columns, column)):
+                    continue
+                split_key = tuple(values[field] for field in split)
+                row_counts = [int(counts.get((*split_key, state) if split else state, 0)) for state in states]
+                total = sum(row_counts)
+                if not total:
+                    continue
+                key = (*row, *column)
+                pies.append({"key": list(key), "label": _label(key), "row": list(row), "column": list(column), "total": total,
+                             "slices": [{"name": state, "value": count, "share": count / total, "colour": colour_of[state]}
+                                        for state, count in zip(states, row_counts) if count]})
+                records.append({"key": list(key), "shares": [count / total for count in row_counts], "samples": total})
         state_names = list(states)
+        if columns:
+            # The grid of pies: its rows and columns, named by the headers of the grid.
+            grid = {"pie_row_keys": [list(key) for key in row_keys if any(pie["row"] == list(key) for pie in pies)],
+                    "pie_column_keys": [list(key) for key in column_keys if any(pie["column"] == list(key) for pie in pies)]}
+            dimensions = [*rows, *columns]
     else:
         aggregation = measure.aggregation if measure.aggregation in {"sum", "count", "countd"} else "count"
         values, _samples = chart.aggregate(measure.column, [*rows, *chart.columns], aggregation)
@@ -620,8 +644,8 @@ def _pie(chart: _Chart) -> dict[str, object]:
         return chart.empty()
     return chart.base(
         "pie", _legend(slices), donut=chart.chart_type == "donut", metric=measure.field.replace("_", " "),
-        pies=pies[:24], states=[{"name": name, "colour": colour} for name, colour in slices],
-        state_names=state_names, records=records, dimensions=chart.dimensions(rows),
+        pies=pies if grid else pies[:MAX_PIES], states=[{"name": name, "colour": colour} for name, colour in slices],
+        state_names=state_names, records=records, dimensions=chart.dimensions(dimensions), **grid,
     )
 
 

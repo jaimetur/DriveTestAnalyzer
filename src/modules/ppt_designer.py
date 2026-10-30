@@ -528,7 +528,7 @@ ADAPTATIVE_FILTER_FIELDS = (
     'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Market', 'Region', 'Cluster', 'City', 'Campaign', 'RAT',
     'Session Type', 'Call Status',
 )
-DESIGN_RENDER_CACHE_VERSION = 22
+DESIGN_RENDER_CACHE_VERSION = 23
 DESIGN_SELECTION_CACHE_VERSION = 18
 # Only the most recently used Design snapshots keep their chart frames in
 # memory; older snapshots rebuild them on demand from the combined tables.
@@ -557,7 +557,7 @@ DESIGN_READ_MMAP_BYTES = 2 * 1024 ** 3
 DESIGN_SEQUENTIAL_SCAN_SHARE = 0.2
 DESIGN_SELECTION_CACHE_LIMIT = 128
 DESIGN_PROFILE_SELECTION_THRESHOLD = 100_000
-DESIGN_CHART_MODEL_CACHE_VERSION = 23
+DESIGN_CHART_MODEL_CACHE_VERSION = 24
 DESIGN_CHART_MODELS_KEPT = 2000
 DESIGN_PREVIEW_MANIFESTS_KEPT = 256
 DESIGN_CHART_RENDER_WORKERS = max(1, min(2, (os.cpu_count() or 2) - 1))
@@ -7524,8 +7524,12 @@ def install_design_routes(core):
 
     @app.post('/api/ppt-designer/chart/{token}/{index}/refresh')
     def refresh_interactive_chart(token: str, index: int, user=Depends(design_user)):
-        """Invalidate and rebuild only the requested Canvas chart model."""
+        """Invalidate and rebuild only the requested Canvas chart model (Refresh chart of the Designer)."""
         payload = chart_model(token, index, user, force=True)
+        snapshot, entry, _frame = snapshot_chart(token, index, user, include_frame=False)
+        Repository(Path(snapshot.workspace), core.repository.global_db_path).add_log(user.username, 'design_chart_refreshed', json.dumps({
+            'design': snapshot.definition.name, 'slide': entry.slide, 'chart': entry.chart_title, 'chart_type': entry.chart_type,
+        }))
         return JSONResponse(payload, headers={'Cache-Control': 'no-store'})
 
     @app.post('/api/ppt-designer/charts/{token}/refresh')
