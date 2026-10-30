@@ -139,6 +139,63 @@ def test_files_are_attached_beside_the_screenshots_and_only_downloaded(client):
     assert client.get(f"/tickets/attachments/{attachments['report.pdf']['id']}").status_code == 404
 
 
+def test_super_admins_clean_up_the_large_attachments_of_finished_tickets(client):
+    from src.modules.ticket_center import MAX_ATTACHMENT_BYTES, get_ticket, list_tickets
+
+    assert MAX_ATTACHMENT_BYTES == 100 * 1024 * 1024
+    login(client)
+    mb = 1024 * 1024
+    big = bytes(range(256)) * (11 * mb // 256)
+    tickets = {}
+    for title, status in (('Resolved', 'resolved'), ('Closed', 'closed'), ('Open', 'in_progress'), ('Rejected', 'rejected')):
+        tickets[status] = open_ticket(client, title=title)
+        # Files of more than 10 MB are taken now, and download whole, read in chunks.
+        client.post(f'/api/tickets/{tickets[status]}/attachments', files=[('attachments', (f'{status}.zip', big[:{
+            'resolved': 11 * mb, 'closed': 3 * mb, 'in_progress': 5 * mb, 'rejected': 2 * mb}[status]], 'application/zip'))])
+        client.post(f'/api/tickets/{tickets[status]}/manage', data={'status': status})
+    client.post(f"/api/tickets/{tickets['closed']}/comments", data={'body': 'The log'}, files=[('attachments', ('log.txt', b'x' * (2 * mb), 'text/plain'))])
+    resolved_zip = next(item for item in get_ticket(core.repository, tickets['resolved'])['attachments'] if item['file_name'] == 'resolved.zip')
+    downloaded = client.get(f"/tickets/attachments/{resolved_zip['id']}")
+    assert downloaded.content == big[:11 * mb] and downloaded.headers['content-length'] == str(11 * mb)
+    assert 'up to 10 screenshots or files of 100 MB' in client.get(f"/tickets/{tickets['resolved']}").text
+
+    # The dialog lists those of the finished tickets chosen (Resolved and Closed by default) larger than the size.
+    page = client.get('/tickets').text
+    assert 'data-tickets-cleanup-open' in page and 'data-tickets-cleanup-form' in page
+    assert re.search(r'value="resolved" checked>.*value="closed" checked>.*value="rejected">', page, re.S)
+    found = client.get('/api/tickets/attachments/cleanup', params={'larger_than_mb': '1.5', 'statuses': ['resolved', 'closed']}).json()
+    assert [(item['file_name'], item['ticket_id'], item['status_label']) for item in found['attachments']] == [
+        ('resolved.zip', tickets['resolved'], 'Resolved'), ('closed.zip', tickets['closed'], 'Closed'), ('log.txt', tickets['closed'], 'Closed')]
+    assert (found['count'], found['bytes'], found['total_count']) == (3, 16 * mb, 9) and found['database_bytes'] > 16 * mb
+    assert client.get('/api/tickets/attachments/cleanup', params={'larger_than_mb': '2', 'statuses': ['rejected', 'closed']}).json()['count'] == 1
+    assert client.get('/api/tickets/attachments/cleanup', params={'larger_than_mb': 'ten'}).status_code == 400
+    assert client.get('/api/tickets/attachments/cleanup', params={'larger_than_mb': '1'}).json()['attachments'] == []
+
+    # Only those still chosen are deleted (never those of an open ticket), the tickets keep their dates, and the
+    # database gives the space back.
+    updated = {ticket['id']: ticket['updated_at'] for ticket in list_tickets(core.repository)}
+    open_zip = get_ticket(core.repository, tickets['in_progress'])['attachments'][-1]['id']
+    ids = [item['id'] for item in found['attachments'] if item['file_name'] != 'log.txt'] + [open_zip]
+    cleaned = client.post('/api/tickets/attachments/cleanup', data={'larger_than_mb': '1.5', 'statuses': ['resolved', 'closed'], 'ids': ids}).json()
+    assert (cleaned['deleted'], cleaned['bytes'], cleaned['compacted']) == (2, 14 * mb, True)
+    assert cleaned['database_after'] < cleaned['database_before'] - 10 * mb
+    assert [item['file_name'] for item in get_ticket(core.repository, tickets['resolved'])['attachments']] == ['screen.png']
+    assert [item['file_name'] for item in get_ticket(core.repository, tickets['closed'])['comments'][-1]['attachments']] == ['log.txt']
+    assert len(get_ticket(core.repository, tickets['in_progress'])['attachments']) == 2
+    assert {ticket['id']: ticket['updated_at'] for ticket in list_tickets(core.repository)} == updated
+    event = logged('ticket_attachments_cleaned_up')[0]
+    assert (event['count'], event['bytes'], event['skipped'], event['statuses']) == (2, 14 * mb, [open_zip], ['resolved', 'closed'])
+    assert [(item['ticket_id'], item['file_name']) for item in event['attachments']] == [(tickets['resolved'], 'resolved.zip'), (tickets['closed'], 'closed.zip')]
+    assert client.post('/api/tickets/attachments/cleanup', data={'larger_than_mb': '1'}).status_code == 400
+
+    # Only super-admins clean up attachments.
+    add_user('ana')
+    login(client, 'ana', 'secret123')
+    assert 'data-tickets-cleanup-open' not in client.get('/tickets').text
+    assert client.get('/api/tickets/attachments/cleanup').status_code == 403
+    assert client.post('/api/tickets/attachments/cleanup', data={'ids': [open_zip]}).status_code == 403
+
+
 def test_the_reporter_edits_and_only_super_admins_attend(client):
     add_user('ana')
     add_user('bob')

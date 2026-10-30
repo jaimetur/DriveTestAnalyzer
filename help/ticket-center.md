@@ -29,6 +29,7 @@ ticket-center
 | The page of a ticket | [Open section](#the-page-of-a-ticket) |
 | Types, priorities and statuses | [Open section](#types-priorities-and-statuses) |
 | Who can do what | [Open section](#who-can-do-what) |
+| Clean up attachments | [Open section](#clean-up-attachments) |
 | Portability | [Open section](#portability) |
 
 ## Dashboard
@@ -85,7 +86,7 @@ It shows:
 - **Module**: the main module it is about, or **General**.
 - **Priority**: from **P1 · Critical** to **P5 · Trivial** (**P3 · Medium** by default).
 - **Description**: for a bug, what you did, what happened and what you expected (the steps to reproduce it help a lot); for an improvement, how it works today and how it could work better; for a new feature, what you need and how the tool could do it. It reads as written below.
-- **Screenshots and files**: paste them with Ctrl+V (⌘V on a Mac) anywhere in the form, drop them on the zone or click it to choose them. Up to 10 of 10 MB each at once. PNG, JPEG, GIF and WebP images are screenshots and show as their image; any other file (a log, a CDR sample, an Excel, PowerPoint, Word or PDF file, a ZIP…) shows its type, name and size. Programs and scripts (`.exe`, `.bat`, `.cmd`, `.ps1`, `.sh`, `.jar`, `.js`, `.msi`…) are not taken: zip them to attach them. Each one shows a preview that can be removed before sending.
+- **Screenshots and files**: paste them with Ctrl+V (⌘V on a Mac) anywhere in the form, drop them on the zone or click it to choose them. Up to 10 of 100 MB each at once. PNG, JPEG, GIF and WebP images are screenshots and show as their image; any other file (a log, a CDR sample, an Excel, PowerPoint, Word or PDF file, a ZIP…) shows its type, name and size. Programs and scripts (`.exe`, `.bat`, `.cmd`, `.ps1`, `.sh`, `.jar`, `.js`, `.msi`…) are not taken: zip them to attach them. Each one shows a preview that can be removed before sending.
 
 **Open Ticket** saves it with the version of the tool and the date, and opens its page. The browser it was opened from is kept too, to help reproduce a bug.
 
@@ -184,12 +185,24 @@ New, In Progress and Waiting for Info are the open statuses. The date a ticket i
 | Edit or delete a comment | Its author (super-admins also delete any comment) |
 | Manage a ticket: **Attend this ticket**, its type, its status, who attends it (a super-admin), who reported it, its module, the version it was opened with the version that fixes it and the dates it was opened and resolved, whoever opened it | Super-admins |
 | Delete a ticket with its timeline and attachments | Super-admins |
+| Clean up the large attachments of finished tickets | Super-admins |
 
 **Attend this ticket** sets a new ticket **In Progress** and assigns it to the super-admin who presses it. Moving a ticket to In Progress or Waiting for Info assigns it to that super-admin when nobody attends it, and resolving it without a fixed version records the version running then.
 
 After signing in, and as soon as they arrive while signed in, each super-admin is told of the tickets still **New** that other users opened and it has not opened, with their type, in the dialog that also lists the [access requests](super-admin.md#access-requests) waiting for activation; **Open Ticket Center** lists the New tickets. Each ticket is told once to each super-admin.
 
-Every action (opening, editing, comments, attachments added and deleted, attention, type changes and deletion) is recorded in the [App Events](app-logs.md#app-events), as *Ticket created*, *Ticket managed* and so on.
+Every action (opening, editing, comments, attachments added, deleted and cleaned up, attention, type changes and deletion) is recorded in the [App Events](app-logs.md#app-events), as *Ticket created*, *Ticket managed* and so on.
+
+## Clean up attachments
+
+Screenshots and files take space in the application database and in every backup that carries it. Super-admins give it back with **Clean up attachments**, beside **New Ticket** in the header:
+
+- **Larger than** (10 MB by default) and **Of the tickets** (**Resolved** and **Closed** by default, and **Rejected**) choose the attachments: the list changes as soon as they change, and the browser remembers them.
+- The list shows the largest first: the ticket (its number opens it in another tab) with its status, the attachment (in the description or in a comment, and who added it), its size and the day it was added; above it, how many there are and how much they take, with every attachment of the tickets and the size of the application database.
+- Every attachment listed is checked: uncheck those to keep. **Delete** (with the number and size of those checked) asks for confirmation and deletes them; the tickets keep their description, timeline, dates and other attachments, and an attachment of a ticket opened again meanwhile stays.
+- The application database is then compacted to give their space back to the disk, and the message tells its size before and after (a database busy at that moment keeps its size, and new data reuses the space).
+
+App Events record each cleanup as *Ticket attachments cleaned up*, with the size and statuses chosen and every attachment deleted.
 
 ## Portability
 

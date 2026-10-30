@@ -13,11 +13,12 @@ import json
 import math
 import mimetypes
 import re
+import sqlite3
 import uuid
 from datetime import date, datetime, timedelta
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from statistics import median
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 from src.modules.repository import Repository, local_now_iso
 
@@ -44,8 +45,15 @@ DASHBOARD_STATUSES = ('new', 'in_progress', 'waiting_info', 'rejected', 'closed'
 MAX_TITLE_LENGTH = 160
 MAX_TEXT_LENGTH = 20_000
 MAX_VERSION_LENGTH = 40
-MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024
 MAX_ATTACHMENTS_PER_UPLOAD = 10
+# An attachment is read from the database in chunks of this size to be downloaded (never held whole in memory).
+ATTACHMENT_CHUNK_BYTES = 1024 * 1024
+# Clean up attachments: the finished statuses whose tickets give their attachments up, those chosen by default, and the
+# size (in MB) they must be larger than by default.
+CLEANUP_STATUSES = ('resolved', 'closed', 'rejected')
+DEFAULT_CLEANUP_STATUSES = ('resolved', 'closed')
+DEFAULT_CLEANUP_MB = 10
 # Screenshots: the formats a browser shows as an image, recognised by their first bytes (never SVG, which can carry
 # scripts); the page shows them. Any other file is attached as a file, which is downloaded and never shown in the page.
 IMAGE_EXTENSIONS = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp'}
@@ -160,7 +168,7 @@ def checked_attachment(file_name: object, content: bytes) -> dict[str, Any]:
 
 
 def attachment_files(files: Iterable[tuple[str, bytes]]) -> list[dict[str, Any]]:
-    """The attachments of an upload, checked: screenshots and other files of at most 10 MB each, at most 10 at once,
+    """The attachments of an upload, checked: screenshots and other files of at most 100 MB each, at most 10 at once,
     and no programs or scripts."""
     attachments = []
     for file_name, content in files:
@@ -1338,6 +1346,27 @@ def get_attachment(repository: Repository, attachment_id: int, *, with_content: 
     return dict(row) if row else None
 
 
+def read_attachment(repository: Repository, attachment_id: int, offset: int, length: int) -> bytes:
+    """``length`` bytes of the content of an attachment from ``offset`` (fewer at its end, none once deleted), read on
+    their own from the database without the rest of it."""
+    with repository.global_connection() as conn:
+        try:
+            with conn.blobopen('ticket_attachments', 'content', int(attachment_id), readonly=True) as blob:
+                blob.seek(min(max(int(offset), 0), len(blob)))
+                return blob.read(int(length))
+        except sqlite3.OperationalError:
+            return b''
+
+
+def attachment_chunks(repository: Repository, attachment_id: int) -> Iterator[bytes]:
+    """The content of an attachment in chunks of ATTACHMENT_CHUNK_BYTES, each read on its own, so a download never
+    holds it whole in memory nor keeps the database open while it goes."""
+    offset = 0
+    while chunk := read_attachment(repository, attachment_id, offset, ATTACHMENT_CHUNK_BYTES):
+        yield chunk
+        offset += len(chunk)
+
+
 def delete_attachment(repository: Repository, attachment_id: int) -> None:
     with repository.global_connection() as conn:
         conn.execute('DELETE FROM ticket_attachments WHERE id = ?', (int(attachment_id),))
@@ -1354,6 +1383,15 @@ def delete_ticket(repository: Repository, ticket_id: int) -> None:
 def _attachment_archive_path(attachment: dict[str, Any]) -> str:
     extension = IMAGE_EXTENSIONS.get(str(attachment['content_type'])) or file_extension(attachment['file_name'])
     return f"{ATTACHMENTS_ARCHIVE_DIR}/{attachment['uid']}{extension}"
+
+
+def attachment_archive_entries(repository: Repository) -> list[tuple[str, int, int]]:
+    """Each attachment of the Ticket Center package (those of its tickets): its archive path, its id and its size, so a
+    package writes their contents one at a time (get_attachment) instead of all of them at once."""
+    with repository.global_connection() as conn:
+        rows = conn.execute('SELECT a.id, a.uid, a.file_name, a.content_type, a.size FROM ticket_attachments a '
+                            'JOIN tickets t ON t.id = a.ticket_id ORDER BY a.id').fetchall()
+    return [(_attachment_archive_path(dict(row)), int(row['id']), int(row['size'])) for row in rows]
 
 
 def ticket_center_payload(repository: Repository, *, attachments: bool = True) -> tuple[dict[str, Any], dict[str, bytes]]:
@@ -1475,3 +1513,66 @@ def merge_ticket_center(repository: Repository, payload: object, files: dict[str
                                     [{**checked, 'uid': str(attachment['uid'])}], str(attachment.get('created_at') or values['created_at']))
                 summary['attachments'] += 1
     return summary
+
+
+def _megabytes(value: object) -> float:
+    try:
+        number = float(str(value).strip())
+    except ValueError as exc:
+        raise ValueError('Give the size in MB, such as 10.') from exc
+    if not math.isfinite(number) or number < 0 or number > 1_000_000:
+        raise ValueError('Give the size in MB, from 0.')
+    return number
+
+
+def large_attachments(repository: Repository, *, larger_than_mb: object, statuses: Iterable[str]) -> dict[str, Any]:
+    """Clean up attachments: those of the tickets in these finished statuses larger than ``larger_than_mb`` MB, the
+    largest first, with their ticket; and how many attachments the tickets have and how much they take in all."""
+    limit = int(_megabytes(larger_than_mb) * 1024 * 1024)
+    chosen = [status for status in CLEANUP_STATUSES if status in set(statuses)]
+    with repository.global_connection() as conn:
+        count, total = conn.execute('SELECT COUNT(*), COALESCE(SUM(size), 0) FROM ticket_attachments').fetchone()
+        rows = conn.execute(
+            'SELECT a.id, a.ticket_id, a.comment_id, a.file_name, a.content_type, a.size, a.uploaded_by, a.created_at, '
+            't.title AS ticket_title, t.status AS ticket_status, t.resolved_at FROM ticket_attachments a '
+            f"JOIN tickets t ON t.id = a.ticket_id WHERE a.size > ? AND t.status IN ({', '.join('?' for _ in chosen)}) "
+            'ORDER BY a.size DESC, a.id', (limit, *chosen),
+        ).fetchall() if chosen else []
+    items = [{**dict(row), 'is_screenshot': is_screenshot(row['content_type']),
+              'status_label': STATUSES.get(str(row['ticket_status']), str(row['ticket_status']))} for row in rows]
+    return {'attachments': items, 'count': len(items), 'bytes': sum(int(item['size']) for item in items),
+            'total_count': int(count), 'total_bytes': int(total), 'larger_than_bytes': limit, 'statuses': chosen}
+
+
+def delete_large_attachments(repository: Repository, attachment_ids: Iterable[int], *, larger_than_mb: object,
+                             statuses: Iterable[str]) -> list[dict[str, Any]]:
+    """Delete those of these attachments that are still larger than ``larger_than_mb`` MB in a ticket of these
+    finished statuses (an attachment of a ticket opened again, or not chosen, stays); returns those deleted. Their
+    tickets keep their dates and timeline."""
+    wanted = {int(attachment_id) for attachment_id in attachment_ids}
+    chosen = [item for item in large_attachments(repository, larger_than_mb=larger_than_mb, statuses=statuses)['attachments']
+              if int(item['id']) in wanted]
+    if chosen:
+        with repository.global_connection() as conn:
+            conn.execute(f"DELETE FROM ticket_attachments WHERE id IN ({', '.join('?' for _ in chosen)})",
+                         [int(item['id']) for item in chosen])
+    return chosen
+
+
+def database_size(repository: Repository) -> int:
+    """The size of the application database on disk, with its write-ahead log."""
+    path = Path(repository.global_db_path)
+    return sum(item.stat().st_size for item in (path, path.with_name(f'{path.name}-wal')) if item.exists())
+
+
+def compact_database(repository: Repository) -> bool:
+    """Give the space of deleted attachments back to the disk: VACUUM the application database (it rewrites only what
+    it keeps) and fold its write-ahead log back in. False when the database is busy: it keeps its size, and new data
+    reuses the space."""
+    try:
+        with repository.global_connection() as conn:
+            conn.execute('VACUUM')
+            conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+    except sqlite3.OperationalError:
+        return False
+    return True

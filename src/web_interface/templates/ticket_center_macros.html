@@ -54,7 +54,7 @@
   <li class="ticket-file">
     <a class="ticket-file-link" href="/tickets/attachments/{{ attachment.id }}" download="{{ attachment.file_name }}" title="Download {{ attachment.file_name }}">
       <span class="ticket-file-type" aria-hidden="true">{{ (attachment.extension[1:] or 'file') | upper }}</span>
-      <span class="ticket-file-name">{{ attachment.file_name }}<small>{{ attachment.size | filesizeformat }}</small></span>
+      <span class="ticket-file-name">{{ attachment.file_name }}<small>{{ attachment.size | file_size }}</small></span>
       <svg class="ticket-file-download" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
     </a>
     {% if removable and (user.role == 'super-admin' or attachment.uploaded_by | lower == user.username | lower) %}<button type="button" class="ticket-file-remove" data-ticket-attachment-delete="{{ attachment.id }}" data-attachment-kind="file" title="Delete this file" aria-label="Delete {{ attachment.file_name }}">×</button>{% endif %}

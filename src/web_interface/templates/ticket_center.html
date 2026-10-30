@@ -11,7 +11,10 @@
         <p class="eyebrow">{{ ticket_center_title }} · Version {{ app_version }}</p>
         <h2>Report bugs, suggest improvements and ask for new features</h2>
       </div>
-      {% if user %}<a class="tickets-new-link" href="#section-new-ticket" data-tickets-new>New Ticket</a>{% else %}<a class="tickets-new-link" href="/login?next=/tickets">Sign in to open a ticket</a>{% endif %}
+      <div class="tickets-head-actions">
+        {% if user and user.role == 'super-admin' %}<button type="button" class="tickets-cleanup-open" data-tickets-cleanup-open title="Delete the large attachments of finished tickets"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.4 11-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>Clean up attachments</button>{% endif %}
+        {% if user %}<a class="tickets-new-link" href="#section-new-ticket" data-tickets-new>New Ticket</a>{% else %}<a class="tickets-new-link" href="/login?next=/tickets">Sign in to open a ticket</a>{% endif %}
+      </div>
     </div>
     <p class="lede">Open a ticket of its type with what happened or what you need, its screenshots and files: it keeps the version of the tool and the date. Follow it with comments; its reporter edits it and sets its priority, and the super-admins attend it until it is resolved.</p>
     {# Each tile lists its tickets in Tickets; pressed again, the list shows the open ones (ticket_center.js). #}
@@ -384,6 +387,38 @@
     </form>
     {% if not user %}</div>{% endif %}
   </details>
+
+  {% if user and user.role == 'super-admin' %}
+  {# Clean up attachments (super-admins): the attachments of the finished tickets chosen larger than a size, listed as soon
+     as the size or the statuses change, checked to be deleted at once (ticket_center.js). #}
+  <dialog class="tickets-cleanup" data-tickets-cleanup aria-labelledby="tickets-cleanup-title">
+    <form class="tickets-cleanup-form" data-tickets-cleanup-form novalidate>
+      <header class="tickets-cleanup-head">
+        <div>
+          <p class="eyebrow">Super-admins</p>
+          <h2 id="tickets-cleanup-title">Clean up attachments</h2>
+          <p>Delete the large screenshots and files of finished tickets to give their space back. The tickets keep their description, timeline and other attachments.</p>
+        </div>
+        <button type="button" class="tickets-cleanup-close" data-tickets-cleanup-close aria-label="Close">×</button>
+      </header>
+      <div class="tickets-cleanup-choices">
+        <label class="tickets-field tickets-cleanup-size">Larger than
+          <span><input type="number" name="larger_than_mb" min="0" step="any" inputmode="decimal" value="{{ ticket_cleanup_mb }}" data-tickets-cleanup-size><span>MB</span></span>
+        </label>
+        <fieldset class="tickets-field tickets-cleanup-statuses">
+          <legend>Of the tickets</legend>
+          <div>{% for key, label, checked in ticket_cleanup_statuses %}<label class="tickets-cleanup-status"><input type="checkbox" name="statuses" value="{{ key }}"{% if checked %} checked{% endif %}>{{ status_pill(key, label) }}</label>{% endfor %}</div>
+        </fieldset>
+      </div>
+      <p class="tickets-cleanup-summary" data-tickets-cleanup-summary role="status"></p>
+      <div class="tickets-cleanup-list" data-tickets-cleanup-list></div>
+      <footer class="tickets-cleanup-actions">
+        <button type="button" class="ticket-ghost-button" data-tickets-cleanup-close>Close</button>
+        <button type="submit" class="tickets-primary-button tickets-cleanup-delete" data-tickets-cleanup-delete disabled>Delete</button>
+      </footer>
+    </form>
+  </dialog>
+  {% endif %}
 </section>
 {% endblock %}
 {% block extra_scripts %}

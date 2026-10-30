@@ -67,7 +67,7 @@ module.exports = {
         { mini: 'users', title: 'Who can do what', text: 'Everyone reports and comments; super-admins attend and resolve.' },
         { mini: 'transfer', title: 'Portable', text: 'In the application database: Application Config exports, transfers, backups and restores keep them.' },
       ],
-      notes: 'Every ticket has a type, a priority and a status. Users report and comment, super-admins attend and resolve, and the tickets travel with the Application Config in exports, transfers and backups.' },
+      notes: 'Every ticket has a type, a priority and a status. Users report and comment, super-admins attend and resolve (and clean up the large attachments of finished tickets), and the tickets travel with the Application Config in exports, transfers and backups.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Make the tool better',
       lead: 'Every bug, improvement and idea in one place, followed until it is done.',
       links: [

@@ -26,6 +26,7 @@ import tempfile
 import time as time_module
 import zipfile
 from collections import OrderedDict
+from collections.abc import Mapping
 from concurrent.futures import Future
 from contextlib import asynccontextmanager, closing, contextmanager, nullcontext
 from dataclasses import asdict, replace
@@ -7613,8 +7614,8 @@ def create_recurring_database_backup(
     database_sizes = [total_bytes] if total_bytes else []
     users_access = _users_access_archive_payload() if 'users_access' in components else b''
     total_bytes += len(users_access)
-    ticket_center_files = _ticket_center_archive_files() if 'ticket_center' in components else {}
-    total_bytes += sum(len(content) for content in ticket_center_files.values())
+    ticket_center_files = _ticket_center_archive_files() if 'ticket_center' in components else []
+    total_bytes += sum(size for _, size, _ in ticket_center_files)
     for workspace in workspaces:
         if 'workspace_database' in components:
             total_bytes += workspace.database_path.stat().st_size + _tree_size(cdr_store.store_root(workspace.database_path))
@@ -7688,7 +7689,9 @@ def create_recurring_database_backup(
                 archived_bytes(len(users_access))
             if 'ticket_center' in components:
                 report_progress('Exporting Ticket Center', 5.0)
-                for path, content in ticket_center_files.items():
+                for path, _, read in ticket_center_files:
+                    ensure_not_cancelled()
+                    content = read()
                     archive.writestr(path, content)
                     archived_bytes(len(content))
             for workspace in workspaces:
@@ -10056,7 +10059,8 @@ def _build_single_export_archive_file(
         elif target == 'ticket-center':
             manifest = archive_manifest('ticket-center', archive_path=TICKET_CENTER_ARCHIVE_PATH)
             archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
-            for path, content in _ticket_center_archive_files().items():
+            for path, _, read in _ticket_center_archive_files():
+                content = read()
                 archive.writestr(path, content)
                 if progress_callback:
                     progress_callback(len(content))
@@ -10419,7 +10423,7 @@ def estimate_export_bytes(
     elif target == 'users-access':
         total = len(_users_access_archive_payload())
     elif target == 'ticket-center':
-        total = sum(len(content) for content in _ticket_center_archive_files().values())
+        total = sum(size for _, size, _ in _ticket_center_archive_files())
     elif target == 'ppt-templates':
         source_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
         source_workspace = workspace_registry.get(source_id) if source_id else None
@@ -11457,12 +11461,38 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
     return import_notice(' '.join([headline, *lines]), headline, lines)
 
 
-def _ticket_center_archive_files() -> dict[str, bytes]:
-    """The Ticket Center files of a package (archive path → content): the tickets in one JSON document and each attachment."""
-    from src.modules.ticket_center import ticket_center_payload
+def _ticket_center_archive_files() -> list[tuple[str, int, Callable[[], bytes]]]:
+    """The Ticket Center files of a package: the tickets in one JSON document and each attachment, as (archive path,
+    size, a reader of its content), so the attachments (up to 100 MB each) are read one at a time as they are written."""
+    from src.modules.ticket_center import attachment_archive_entries, get_attachment, ticket_center_payload
 
-    payload, files = ticket_center_payload(repository)
-    return {TICKET_CENTER_ARCHIVE_PATH: json.dumps(payload, ensure_ascii=False, indent=2).encode('utf-8'), **files}
+    payload, _ = ticket_center_payload(repository, attachments=False)
+    document = json.dumps(payload, ensure_ascii=False, indent=2).encode('utf-8')
+
+    def reader(attachment_id: int) -> Callable[[], bytes]:
+        return lambda: bytes((get_attachment(repository, attachment_id) or {}).get('content') or b'')
+    return [(TICKET_CENTER_ARCHIVE_PATH, len(document), lambda: document),
+            *((path, size, reader(attachment_id)) for path, attachment_id, size in attachment_archive_entries(repository))]
+
+
+class _ArchiveFiles(Mapping):
+    """The files of a package under a folder (archive path → content), each read from the archive only when it is asked
+    for, so the attachments of a Ticket Center package are never all in memory at once."""
+
+    def __init__(self, archive: zipfile.ZipFile, folder: str) -> None:
+        self._archive = archive
+        self._names = [name for name in archive.namelist() if name.startswith(f'{folder}/') and not name.endswith('/')]
+
+    def __getitem__(self, name: str) -> bytes:
+        if name not in self._names:
+            raise KeyError(name)
+        return self._archive.read(name)
+
+    def __iter__(self):
+        return iter(self._names)
+
+    def __len__(self) -> int:
+        return len(self._names)
 
 
 def import_ticket_center(archive: zipfile.ZipFile) -> str:
@@ -11475,7 +11505,7 @@ def import_ticket_center(archive: zipfile.ZipFile) -> str:
         raise ValueError('The Ticket Center file is not valid.') from exc
     from src.modules.import_changes import breakdown, compare, counted, ticket_items
 
-    files = {name: archive.read(name) for name in archive.namelist() if name.startswith(f'{ATTACHMENTS_ARCHIVE_DIR}/') and not name.endswith('/')}
+    files = _ArchiveFiles(archive, ATTACHMENTS_ARCHIVE_DIR)
     before = ticket_items(ticket_center_payload(repository, attachments=False)[0])
     summary = merge_ticket_center(repository, payload, files)
     changes = compare(ticket_items(payload), before, ticket_items(ticket_center_payload(repository, attachments=False)[0]))
@@ -18039,9 +18069,10 @@ def ticket_center_title() -> str:
 @app.get('/tickets', response_class=HTMLResponse)
 def ticket_center_page(request: Request, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     from src.modules.ticket_center import (
-        BLOCKED_EXTENSIONS, DEFAULT_PRIORITY, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES,
-        STATUSES, TEXT_GUIDE, TEXT_GUIDES, TICKET_TYPE_HINTS, TICKET_TYPES, list_tickets, local_today, recently_resolved,
-        ticket_dashboard, ticket_board, ticket_events, ticket_statistics, ticket_time_spent,
+        BLOCKED_EXTENSIONS, CLEANUP_STATUSES, DEFAULT_CLEANUP_MB, DEFAULT_CLEANUP_STATUSES, DEFAULT_PRIORITY,
+        MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES, STATUSES, TEXT_GUIDE, TEXT_GUIDES,
+        TICKET_TYPE_HINTS, TICKET_TYPES, list_tickets, local_today, recently_resolved, ticket_dashboard, ticket_board,
+        ticket_events, ticket_statistics, ticket_time_spent,
     )
 
     modules = ticket_modules()
@@ -18074,6 +18105,9 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
         'ticket_unassigned': any(not ticket['assigned_to'] for ticket in tickets),
         'ticket_max_attachments': MAX_ATTACHMENTS_PER_UPLOAD, 'ticket_max_attachment_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
         'ticket_blocked_extensions': sorted(BLOCKED_EXTENSIONS),
+        # Clean up attachments (super-admins): the finished statuses it offers (those checked by default) and its size.
+        'ticket_cleanup_statuses': [(key, STATUSES[key], key in DEFAULT_CLEANUP_STATUSES) for key in CLEANUP_STATUSES],
+        'ticket_cleanup_mb': DEFAULT_CLEANUP_MB,
     })
 
 
@@ -18139,16 +18173,20 @@ def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Dep
 def ticket_attachment(attachment_id: int, user: SessionUser | None = Depends(optional_user)) -> Response:
     """An attachment of a ticket: a screenshot shows in the page; any other file (or an image its bytes do not prove)
     is only downloaded, never opened in the page."""
-    from src.modules.ticket_center import FILE_CONTENT_TYPE, get_attachment, image_content_type, is_screenshot
+    from src.modules.ticket_center import (
+        FILE_CONTENT_TYPE, attachment_chunks, get_attachment, image_content_type, is_screenshot, read_attachment,
+    )
 
-    attachment = get_attachment(repository, attachment_id)
+    attachment = get_attachment(repository, attachment_id, with_content=False)
     if attachment is None:
         raise HTTPException(status_code=404, detail='The attachment does not exist.')
-    content = bytes(attachment['content'])
-    shown = is_screenshot(attachment['content_type']) and image_content_type(content) == attachment['content_type']
-    return Response(content, media_type=str(attachment['content_type']) if shown else FILE_CONTENT_TYPE, headers={
+    head = read_attachment(repository, attachment_id, 0, 16)
+    shown = is_screenshot(attachment['content_type']) and image_content_type(head) == attachment['content_type']
+    # Read and sent in chunks: a file of up to 100 MB is never held whole in memory.
+    return StreamingResponse(attachment_chunks(repository, attachment_id),
+                             media_type=str(attachment['content_type']) if shown else FILE_CONTENT_TYPE, headers={
         'Content-Disposition': f"{'inline' if shown else 'attachment'}; filename*=UTF-8''{quote(str(attachment['file_name']))}",
-        'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff',
+        'Content-Length': str(attachment['size']), 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff',
     })
 
 
@@ -18370,6 +18408,55 @@ def delete_ticket_attachment(attachment_id: int, user: SessionUser = Depends(cur
         'content_type': attachment['content_type'], 'size': attachment['size'],
     }, ensure_ascii=False))
     return JSONResponse({'deleted': True})
+
+
+@app.get('/api/tickets/attachments/cleanup')
+def list_large_ticket_attachments(
+    larger_than_mb: str = Query('10'),
+    statuses: list[str] = Query(default=[]),
+    user: SessionUser = Depends(super_admin_user),
+) -> JSONResponse:
+    """Clean up attachments: the attachments of the finished tickets chosen larger than a size, for super-admins to
+    review before deleting them, with the size of the application database."""
+    from src.modules.ticket_center import database_size, large_attachments
+
+    try:
+        found = large_attachments(repository, larger_than_mb=larger_than_mb, statuses=statuses)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse({**found, 'database_bytes': database_size(repository)})
+
+
+@app.post('/api/tickets/attachments/cleanup')
+def clean_up_ticket_attachments(
+    larger_than_mb: str = Form('10'),
+    statuses: list[str] = Form(default=[]),
+    ids: list[int] = Form(default=[]),
+    user: SessionUser = Depends(super_admin_user),
+) -> JSONResponse:
+    """Delete the attachments chosen in Clean up attachments (only those still larger than the size, in a ticket of the
+    statuses chosen) and compact the application database to give their space back."""
+    from src.modules.ticket_center import compact_database, database_size, delete_large_attachments
+
+    if not ids:
+        raise HTTPException(status_code=400, detail='Choose the attachments to delete.')
+    before = database_size(repository)
+    try:
+        deleted = delete_large_attachments(repository, ids, larger_than_mb=larger_than_mb, statuses=statuses)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    compacted = compact_database(repository) if deleted else False
+    after = database_size(repository)
+    freed = sum(int(item['size']) for item in deleted)
+    repository.try_add_log(user.username, 'ticket_attachments_cleaned_up', json.dumps({
+        'larger_than_mb': larger_than_mb, 'statuses': statuses, 'count': len(deleted), 'bytes': freed,
+        'skipped': sorted(set(ids) - {int(item['id']) for item in deleted}),
+        'attachments': [{'ticket_id': item['ticket_id'], 'comment_id': item['comment_id'], 'attachment_id': item['id'],
+                         'file_name': item['file_name'], 'size': item['size']} for item in deleted],
+        'database_bytes': [before, after], 'compacted': compacted,
+    }, ensure_ascii=False))
+    return JSONResponse({'deleted': len(deleted), 'bytes': freed, 'database_before': before, 'database_after': after,
+                         'compacted': compacted})
 
 
 @app.post('/api/tickets/{ticket_id:int}/delete')
@@ -27389,6 +27476,7 @@ def format_two_decimals(value: Any) -> Any:
 
 
 templates.env.filters['two_decimals'] = format_two_decimals
+templates.env.filters['file_size'] = format_workspace_size
 # Campaigns as the active workspace's Campaign Maps show them.
 templates.env.filters['campaign_label'] = lambda value: compact_campaign_value(value) or value
 

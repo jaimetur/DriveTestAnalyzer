@@ -31,7 +31,12 @@
   const dropzones = new Map();
   const isScreenshot = (file) => /^image\/(png|jpeg|gif|webp)$/.test(file.type);
   const extensionOf = (name) => (/\.([a-z0-9]{1,10})$/i.exec(String(name).replace(/[. ]+$/, ''))?.[1] || '').toLowerCase();
-  const sizeText = (bytes) => (bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} kB`);
+  // A size as the tool writes it (KB, MB and GB of 1024).
+  const fileSize = (bytes) => {
+    const [unit, factor] = [['GB', 1024 ** 3], ['MB', 1024 ** 2], ['KB', 1024]].find(([, size]) => bytes >= size) || ['B', 1];
+    return `${(bytes / factor).toFixed(1).replace(/\.0$/, '')} ${unit}`;
+  };
+  const plural = (count, word) => `${count.toLocaleString('en')} ${word}${count === 1 ? '' : 's'}`;
   document.querySelectorAll('[data-ticket-dropzone]').forEach((zone) => {
     const input = zone.querySelector('[data-ticket-dropzone-input]');
     const previews = zone.querySelector('[data-ticket-dropzone-previews]');
@@ -46,7 +51,7 @@
       previews.replaceChildren(...files.map((file, index) => {
         const item = document.createElement('figure');
         item.className = 'ticket-dropzone-preview';
-        item.title = `${file.name} · ${sizeText(file.size)}`;
+        item.title = `${file.name} · ${fileSize(file.size)}`;
         let preview;
         if (isScreenshot(file)) {
           preview = document.createElement('img');
@@ -58,7 +63,7 @@
           preview.className = 'ticket-dropzone-file';
           preview.innerHTML = '<strong></strong><small></small>';
           preview.querySelector('strong').textContent = (extensionOf(file.name) || 'file').toUpperCase();
-          preview.querySelector('small').textContent = sizeText(file.size);
+          preview.querySelector('small').textContent = fileSize(file.size);
         }
         const caption = document.createElement('figcaption');
         caption.textContent = file.name;
@@ -489,6 +494,172 @@
       busy(createForm, false);
     }
   });
+
+  // Clean up attachments (super-admins): the attachments of the finished tickets chosen larger than a size, the largest
+  // first, listed again as soon as the size or a status changes (this browser remembers them); those checked are deleted
+  // at once after a confirmation, and the application database gives their space back.
+  const cleanup = document.querySelector('[data-tickets-cleanup]');
+  if (cleanup) {
+    const form = cleanup.querySelector('[data-tickets-cleanup-form]');
+    const list = cleanup.querySelector('[data-tickets-cleanup-list]');
+    const summary = cleanup.querySelector('[data-tickets-cleanup-summary]');
+    const removeButton = cleanup.querySelector('[data-tickets-cleanup-delete]');
+    const choicesKey = 'ticket-center:cleanup';
+    let found = {attachments: []};
+    let request = 0;
+    let timer = null;
+    const statusBoxes = () => [...form.querySelectorAll('input[name="statuses"]')];
+    const chosenBoxes = () => [...list.querySelectorAll('input[data-attachment-id]:checked')];
+    const choices = () => ({size: form.larger_than_mb.value.trim() || '0', statuses: statusBoxes().filter((box) => box.checked).map((box) => box.value)});
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(choicesKey) || 'null');
+      if (saved) {
+        form.larger_than_mb.value = saved.size;
+        statusBoxes().forEach((box) => { box.checked = saved.statuses.includes(box.value); });
+      }
+    } catch (error) { /* The choices of the page stay. */ }
+    const syncSelection = () => {
+      const chosen = chosenBoxes();
+      const bytes = chosen.reduce((sum, box) => sum + Number(box.dataset.size), 0);
+      removeButton.disabled = !chosen.length;
+      removeButton.textContent = chosen.length ? `Delete ${plural(chosen.length, 'attachment')} · ${fileSize(bytes)}` : 'Delete';
+      const all = list.querySelector('[data-cleanup-all]');
+      if (all) {
+        all.checked = chosen.length === found.attachments.length;
+        all.indeterminate = chosen.length > 0 && !all.checked;
+      }
+    };
+    const cell = (tag, className, text) => {
+      const element = document.createElement(tag);
+      if (className) element.className = className;
+      if (text !== undefined) element.textContent = text;
+      return element;
+    };
+    const render = () => {
+      const items = found.attachments;
+      const {size, statuses} = choices();
+      const tickets = new Set(items.map((item) => item.ticket_id)).size;
+      summary.replaceChildren();
+      const headline = cell('strong', '', !statuses.length ? 'Choose the tickets whose attachments to look at.'
+        : items.length ? `${plural(items.length, 'attachment')} of ${plural(tickets, 'ticket')} larger than ${size} MB · ${fileSize(found.bytes)}`
+          : `No attachment of these tickets is larger than ${size} MB.`);
+      summary.append(headline, cell('small', '', `Every attachment of the tickets: ${plural(found.total_count || 0, 'attachment')} · ${fileSize(found.total_bytes || 0)}. Application database: ${fileSize(found.database_bytes || 0)}.`));
+      if (!items.length) {
+        list.replaceChildren();
+        syncSelection();
+        return;
+      }
+      const table = cell('table', 'tickets-cleanup-table');
+      const head = table.createTHead().insertRow();
+      const all = cell('input');
+      all.type = 'checkbox';
+      all.dataset.cleanupAll = '';
+      all.setAttribute('aria-label', 'Choose every attachment');
+      head.append(cell('th', 'tickets-cleanup-check'), cell('th', '', 'Ticket'), cell('th', '', 'Attachment'), cell('th', 'tickets-cleanup-number', 'Size'), cell('th', 'tickets-cleanup-date', 'Added'));
+      head.firstChild.append(all);
+      const body = table.createTBody();
+      items.forEach((item) => {
+        const row = body.insertRow();
+        const box = cell('input');
+        box.type = 'checkbox';
+        box.checked = true;
+        box.dataset.attachmentId = item.id;
+        box.dataset.size = item.size;
+        box.setAttribute('aria-label', `Delete ${item.file_name}`);
+        const check = cell('td', 'tickets-cleanup-check');
+        check.append(box);
+        const ticket = cell('td', 'tickets-cleanup-ticket');
+        const link = cell('a', '', `#${item.ticket_id}`);
+        link.href = `/tickets/${item.ticket_id}`;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        const status = cell('span', 'ticket-status', item.status_label);
+        status.dataset.status = item.ticket_status;
+        ticket.append(link, cell('span', 'tickets-cleanup-title', item.ticket_title), status);
+        const file = cell('td');
+        const fileBox = cell('div', 'tickets-cleanup-file');
+        const extension = (/\.([a-z0-9]{1,10})$/i.exec(item.file_name)?.[1] || 'file').toUpperCase();
+        fileBox.append(cell('span', 'ticket-file-type', item.is_screenshot ? 'IMG' : extension),
+          cell('span', 'tickets-cleanup-name', item.file_name),
+          cell('small', '', `${item.comment_id ? 'In a comment' : 'In the description'} · ${item.uploaded_by}`));
+        file.append(fileBox);
+        row.append(check, ticket, file, cell('td', 'tickets-cleanup-number', fileSize(Number(item.size))), cell('td', 'tickets-cleanup-date', String(item.created_at || '').slice(0, 10)));
+      });
+      list.replaceChildren(table);
+      syncSelection();
+    };
+    const load = async () => {
+      const current = ++request;
+      const {size, statuses} = choices();
+      try { window.localStorage.setItem(choicesKey, JSON.stringify({size, statuses})); } catch (error) { /* Not remembered. */ }
+      const params = new URLSearchParams({larger_than_mb: size});
+      statuses.forEach((value) => params.append('statuses', value));
+      summary.textContent = 'Looking for attachments…';
+      removeButton.disabled = true;
+      try {
+        const response = await fetch(`/api/tickets/attachments/cleanup?${params}`, {credentials: 'same-origin', headers: {Accept: 'application/json'}});
+        const payload = await response.json().catch(() => ({}));
+        if (current !== request) return;
+        if (!response.ok) throw new Error(payload.detail || 'The attachments could not be listed.');
+        found = payload;
+        render();
+      } catch (error) {
+        if (current !== request) return;
+        found = {attachments: []};
+        list.replaceChildren();
+        summary.textContent = error.message;
+        syncSelection();
+      }
+    };
+    form.addEventListener('input', (event) => {
+      if (event.target.matches('[data-cleanup-all]')) {
+        list.querySelectorAll('input[data-attachment-id]').forEach((box) => { box.checked = event.target.checked; });
+        syncSelection();
+      } else if (event.target.matches('[data-attachment-id]')) {
+        syncSelection();
+      } else {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(load, 300);
+      }
+    });
+    document.querySelectorAll('[data-tickets-cleanup-open]').forEach((button) => button.addEventListener('click', () => {
+      cleanup.showModal();
+      load();
+    }));
+    cleanup.querySelectorAll('[data-tickets-cleanup-close]').forEach((button) => button.addEventListener('click', () => cleanup.close()));
+    cleanup.addEventListener('click', (event) => { if (event.target === cleanup) cleanup.close(); });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const chosen = chosenBoxes();
+      if (!chosen.length) return;
+      const bytes = chosen.reduce((sum, box) => sum + Number(box.dataset.size), 0);
+      // The confirmation is a dialog of the page: this one closes meanwhile, and opens again as it was if cancelled.
+      cleanup.close();
+      const accepted = await confirmAction(`Delete ${plural(chosen.length, 'attachment')} (${fileSize(bytes)}) of finished tickets? Their tickets stay, but the attachments cannot be recovered.`,
+        {title: 'Clean up attachments', confirmLabel: 'Delete attachments', tone: 'warning'});
+      if (!accepted) {
+        cleanup.showModal();
+        return;
+      }
+      const {size, statuses} = choices();
+      const body = new FormData();
+      body.append('larger_than_mb', size);
+      statuses.forEach((value) => body.append('statuses', value));
+      chosen.forEach((box) => body.append('ids', box.dataset.attachmentId));
+      try {
+        const payload = await send('/api/tickets/attachments/cleanup', body);
+        const database = payload.compacted
+          ? `The application database went from ${fileSize(payload.database_before)} to ${fileSize(payload.database_after)}.`
+          : 'The application database could not be compacted now: new data will reuse the space.';
+        if (typeof showInfoDialog === 'function') {
+          showInfoDialog(`Deleted ${plural(payload.deleted, 'attachment')} (${fileSize(payload.bytes)}). ${database}`,
+            {title: 'Clean up attachments', tone: 'info', onClose: () => window.location.reload()});
+        } else window.location.reload();
+      } catch (error) {
+        info(error.message);
+      }
+    });
+  }
 
   // The page of a ticket.
   const page = document.querySelector('[data-ticket-page]');
