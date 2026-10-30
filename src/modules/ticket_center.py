@@ -276,7 +276,8 @@ def ticket_trend(tickets: list[dict[str, Any]], today: date, period: str = DEFAU
     for index in range(last - count + 1, last + 1):
         start = _period_start(period, index)
         label, name = _period_names(period, start)
-        periods.append({'start': start, 'label': label, 'name': name, 'axis': (last - index) % step == 0, 'created': 0, 'resolved': 0})
+        periods.append({'start': start, 'label': label, 'name': name, 'axis': (last - index) % step == 0, 'created': 0, 'resolved': 0,
+                        'weekend': period == 'day' and start.weekday() >= 5})
     for ticket in tickets:
         for key, day in (('created', _day(ticket.get('created_at'))),
                          ('resolved', _day(ticket.get('resolved_at')) if ticket['status'] in DONE_STATUSES else None)):
@@ -552,6 +553,7 @@ def ticket_backlog(tickets: list[dict[str, Any]], today: date, period: str = DEF
         label, name = _period_names(period, start)
         periods.append({
             'label': label, 'name': name, 'axis': (last - index) % step == 0, 'future': start > today,
+            'weekend': period == 'day' and start.weekday() >= 5,
             'created': sum(1 for created, _ended, _done in spans if created <= end),
             'resolved': sum(1 for _created, ended, done in spans if done and ended <= end),
             'open': sum(1 for created, ended, _done in spans if created <= end and (ended is None or ended > end)),
@@ -678,16 +680,18 @@ def ticket_time_spent(tickets: list[dict[str, Any]], events: Iterable[dict[str, 
         step = max(1, math.ceil((last - first + 1) / 8))
         spans = []
         for index in range(first, last + 1):
-            label, name = _period_names(unit, _period_start(unit, index))
+            first_day_of = _period_start(unit, index)
+            label, name = _period_names(unit, first_day_of)
             items = [ticket for ticket in timed if _period_index(unit, _day(ticket['resolved_at'])) == index]
             days = sum(took[id(ticket)] for ticket in items)
             spans.append({'label': label, 'name': name, 'axis': (last - index) % step == 0, 'days': days, 'count': len(items),
-                          'total': _duration_text(days) if items else '—', 'future': _period_start(unit, index) > today})
+                          'total': _duration_text(days) if items else '—', 'future': first_day_of > today,
+                          'weekend': unit == 'day' and first_day_of.weekday() >= 5})
         peak = max([0.0, *(span['days'] for span in spans)])
         for span in spans:
             span['share'] = round(100 * span['days'] / peak, 2) if peak else 0
         scopes.append({**{name: scope[name] for name in ('key', 'choice', 'range', 'unit')}, **_time_measure(timed, took, events),
-                       'series': {'title': f'Time spent per {unit}', 'spans': spans}})
+                       'series': {'title': f'Time spent per {unit}', 'unit': unit, 'spans': spans}})
     return {'scopes': scopes, 'scope': DEFAULT_TICKET_SCOPE}
 
 

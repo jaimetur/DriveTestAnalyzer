@@ -630,6 +630,9 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     assert time_spent['scope'] == 'month' and (spent_scopes['month']['count'], spent_scopes['month']['total']) == (3, '12d 6h')
     days = spent_scopes['month']['series']
     assert (days['title'], len(days['spans']), days['spans'][10]['count'], days['spans'][19]['future']) == ('Time spent per day', 31, 1, True)
+    # The weekends of October 2026 (it starts on a Thursday), in every chart per day.
+    assert [index + 1 for index, span in enumerate(days['spans']) if span['weekend']] == [3, 4, 10, 11, 17, 18, 24, 25, 31]
+    assert [entry['weekend'] for entry in scopes['month']['backlog']['periods'][:4]] == [False, False, True, True]
     spent = spent_scopes['all']
     assert (spent['total'], spent['count'], spent['average'], spent['median'], spent['longest']) == (
         '24d 6h', 4, '6d 1h', '6d', {'id': 5, 'title': 'T5', 'took': '12d'})

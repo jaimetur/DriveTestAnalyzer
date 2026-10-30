@@ -67,7 +67,7 @@
             <div class="tickets-periods" style="--trend-periods: {{ trend.periods | length }}" role="img" aria-label="{{ trend.created }} tickets created and {{ trend.resolved }} resolved in the {{ trend.note | lower }}">
               <span class="tickets-periods-peak" aria-hidden="true">{{ trend.peak }}</span>
               {% for entry in trend.periods %}
-              <div class="tickets-period" data-tip="{{ entry.name }}: {{ entry.created }} created, {{ entry.resolved }} resolved">
+              <div class="tickets-period"{% if entry.weekend %} data-weekend="true"{% endif %} data-tip="{{ entry.name }}: {{ entry.created }} created, {{ entry.resolved }} resolved">
                 <div class="tickets-period-bars"><span class="tickets-bar" data-series="created" style="height: {{ entry.created_height }}%"></span><span class="tickets-bar" data-series="resolved" style="height: {{ entry.resolved_height }}%"></span></div>
                 <span class="tickets-period-label">{% if entry.axis %}{{ entry.label }}{% endif %}</span>
               </div>

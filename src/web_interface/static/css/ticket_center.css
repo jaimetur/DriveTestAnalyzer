@@ -302,6 +302,13 @@ a.tickets-health-tile:hover { border-color: color-mix(in srgb, var(--tone) 40%, 
 .tickets-columns.is-dense .tickets-column-value { height: auto; padding-bottom: .25rem; line-height: 1; transform: rotate(180deg); writing-mode: vertical-rl; }
 .tickets-columns.is-dense .tickets-column-label { display: flex; justify-content: center; overflow: visible; white-space: nowrap; }
 .tickets-time-bar { flex: none; width: min(100%, 2.2rem); border-radius: 4px 4px 0 0; background: linear-gradient(180deg, #ef4444, #991b1b); }
+/* Weekends: a shaded column and a slate axis in every chart per day, and their bars of time spent in slate. */
+.tickets-column[data-weekend] .tickets-column-bar, .tickets-period[data-weekend] .tickets-period-bars { border-bottom: 3px solid #64748b; background: rgba(71, 85, 105, .09); }
+.tickets-backlog-column[data-weekend] { background: linear-gradient(to bottom, rgba(71, 85, 105, .09) 0 6.5rem, #64748b 6.5rem 6.7rem, transparent 6.7rem); }
+.tickets-column[data-weekend] .tickets-time-bar { background: linear-gradient(180deg, #8193a8, #475569); }
+.tickets-weekend-legend { margin-top: -.3rem; }
+.tickets-swatch[data-series="weekday"] { background: linear-gradient(180deg, #ef4444, #991b1b); }
+.tickets-swatch[data-series="weekend"] { background: linear-gradient(180deg, #8193a8, #475569); }
 .tickets-time-groups { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; }
 .ticket-center .tickets-spent-row { grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr) 4.8rem; }
 .tickets-spent-name { display: flex; align-items: center; gap: .45rem; min-width: 0; }

@@ -73,7 +73,7 @@ It shows:
 
 - **Figures**: the time spent in all, the tickets resolved or closed, the average and the median per ticket, and the longest one, with a link to it.
 - **Where the time goes**: the time those tickets spent **New**, **In Progress** and **Waiting for Info** until resolved, by the changes of status of their timelines (a ticket starts New), with its share and its average per ticket.
-- **Time spent per day** (this week and this month), **per week** (this quarter) or **per month** (this year and all time): the time of the tickets resolved in each.
+- **Time spent per day** (this week and this month), **per week** (this quarter) or **per month** (this year and all time): the time of the tickets resolved in each. Per day, the weekends have a shaded column, a slate axis and slate bars.
 - **By module**, **By type** and **By priority**, then **By assignee**, **By reporter** and **By version that fixed them**, three in a row: the time of each in all, with its tickets and its average per ticket under its name, the most time first (types and priorities in their order, versions the latest first); a row lists its tickets.
 
 ## New Ticket
