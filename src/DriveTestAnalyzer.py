@@ -18443,6 +18443,10 @@ def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, Catal
     # The columns the chart reads (every column when they cannot be told, as a chart naming a field no CDR has), with the
     # field of One chart per.
     source_columns = list(dict.fromkeys(column for columns in dataset_columns.values() for column in columns))
+    # The NR Mode of each CDR, which its rows do not keep: each of its rows takes it (see load_frame).
+    nr_mode_key = _normalise_catalogue_dimension_name(NR_MODE_FIELD)
+    if not any(_normalise_catalogue_dimension_name(column) == nr_mode_key for column in source_columns):
+        source_columns.append(NR_MODE_FIELD)
     wanted = compact_chart_columns(entry, source_columns, False)
     repeat = definition.get('repeat') if isinstance(definition.get('repeat'), dict) else {}
     if wanted is not None and str(repeat.get('field') or '').strip():
@@ -18462,7 +18466,10 @@ def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, Catal
         for item in selected_datasets:
             own = [column for column in wanted if column in set(dataset_columns.get(int(item['id'])) or [])]
             if own:
-                frames.append(_chart_builder_dataset_frame(item, own, mapping_settings, mapping_key))
+                part = _chart_builder_dataset_frame(item, own, mapping_settings, mapping_key)
+                if NR_MODE_FIELD in wanted and NR_MODE_FIELD not in part.columns:
+                    part[NR_MODE_FIELD] = dataset_nr_mode(item.get('dataset_kind'), item.get('nr_mode'), item.get('file_name'))
+                frames.append(part)
         if not frames:
             raise HTTPException(status_code=400, detail='The selected Source Datasets are not ready.')
         result = pd.concat(frames, ignore_index=True, sort=False)
@@ -18869,6 +18876,10 @@ async def chart_builder_fields(request: Request, user: SessionUser = Depends(cur
         for column in row.get('defaults') or []:
             categories.setdefault(_normalise_catalogue_dimension_name(column), str(row['section']))
     hidden = {'datasetid', 'sourcerowid', 'datasetkind', 'sourcefile'}
+    # The NR Mode of the CDR of each row (NSA or SA), which the CDRs do not keep, beside Campaign.
+    if not any(_normalise_catalogue_dimension_name(column) == _normalise_catalogue_dimension_name(NR_MODE_FIELD) for column in columns):
+        columns.append('NR Mode')
+        categories.setdefault(_normalise_catalogue_dimension_name('NR Mode'), categories.get('campaign', 'Other fields'))
     fields = [{'name': column, 'type': types.get(_normalise_catalogue_dimension_name(column), 'text'),
                'category': categories.get(_normalise_catalogue_dimension_name(column), 'Other fields')}
               for column in sorted(columns, key=str.casefold) if _normalise_catalogue_dimension_name(column) not in hidden]

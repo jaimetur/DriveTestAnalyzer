@@ -2,8 +2,21 @@
 (() => {
   'use strict';
 
-  const LOGICAL_WIDTH = 1600;
-  const LOGICAL_HEIGHT = 900;
+  // The logical space a chart is laid out in has the shape of its canvas and the area of a 1600 x 900 one: a chart takes
+  // the proportions of the place it is drawn in (a PPT layout, a card of the viewer) instead of being stretched to it,
+  // and a 16:9 place keeps 1600 x 900. It is set for each canvas before it is drawn or its camera moves.
+  const LOGICAL_AREA = 1600 * 900;
+  let LOGICAL_WIDTH = 1600;
+  let LOGICAL_HEIGHT = 900;
+  function useLogicalSize(width, height) {
+    const aspect = width > 0 && height > 0 ? width / height : 16 / 9;
+    LOGICAL_WIDTH = Math.round(Math.sqrt(LOGICAL_AREA * aspect) * 100) / 100;
+    LOGICAL_HEIGHT = Math.round(LOGICAL_AREA / LOGICAL_WIDTH * 100) / 100;
+  }
+  function useCanvasLogicalSize(canvas) {
+    const bounds = canvas.getBoundingClientRect();
+    useLogicalSize(bounds.width || canvas.parentElement?.clientWidth || 600, bounds.height || canvas.parentElement?.clientHeight || 360);
+  }
   const FONT_FAMILY = 'Arial, sans-serif';
   const AGGREGATION_TITLE_SIZE = 26;
   const LEGEND_TEXT_SIZE = 26;
@@ -100,10 +113,13 @@
     if (Math.abs(number) >= 1000) return number.toLocaleString('en-US', {useGrouping: false, maximumFractionDigits: 0});
     return number.toFixed(2);
   };
-  const transformPoint = (transform, x, y) => ({x: transform.x + x * transform.scale, y: transform.y + y * transform.scale});
+  // Where the logical place of a chart is on its canvas: an origin and a scale, or a scale across and down for a panel
+  // stretched to its cell (Multi KPI CDF Lines).
+  const scaleX = transform => transform.scaleX ?? transform.scale, scaleY = transform => transform.scaleY ?? transform.scale;
+  const transformPoint = (transform, x, y) => ({x: transform.x + x * scaleX(transform), y: transform.y + y * scaleY(transform)});
   const pushRectangleHit = (state, transform, rectangle, details) => {
     const start = transformPoint(transform, rectangle.x, rectangle.y);
-    state.hits.push({kind: 'rectangle', x: start.x, y: start.y, width: rectangle.width * transform.scale, height: rectangle.height * transform.scale, ...details});
+    state.hits.push({kind: 'rectangle', x: start.x, y: start.y, width: rectangle.width * scaleX(transform), height: rectangle.height * scaleY(transform), ...details});
   };
   const pushPointHit = (state, transform, x, y, details) => {
     const point = transformPoint(transform, x, y);
@@ -114,8 +130,8 @@
   const pushAxisHit = (axis, level, value, x, y, width, height) => {
     const text = String(value ?? '');
     if (!legendHitTarget || !text || text === '(all)') return;
-    const start = transformPoint(legendHitTarget.transform, x, y), scale = legendHitTarget.transform.scale;
-    (legendHitTarget.state.axisHits ||= []).push({axis, level, value: text, x: start.x, y: start.y, width: width * scale, height: height * scale});
+    const start = transformPoint(legendHitTarget.transform, x, y), transform = legendHitTarget.transform;
+    (legendHitTarget.state.axisHits ||= []).push({axis, level, value: text, x: start.x, y: start.y, width: width * scaleX(transform), height: height * scaleY(transform)});
   };
   const pushLineHit = (state, transform, points, details) => {
     state.hits.push({kind: 'line', points: points.map(point => ({...point, ...transformPoint(transform, point.x, point.y)})), ...details});
@@ -155,8 +171,27 @@
     return record;
   }
 
-  function mapTileRecords(canvas, payload) {
-    const basemap = payload.basemap, range = basemap?.tile_range;
+  // The world bounds of a map widened (or heightened) around their middle to the shape of the place it fills, and the
+  // tiles that cover them: the map shows more around its places instead of being stretched or leaving the place empty.
+  function filledWorldBounds(bounds, width, height) {
+    const [left, top, right, bottom] = bounds, boundsWidth = right - left, boundsHeight = bottom - top;
+    if (!(boundsWidth > 0 && boundsHeight > 0 && width > 0 && height > 0)) return bounds;
+    const shape = width / height;
+    if (boundsWidth / boundsHeight < shape) {
+      const extra = (boundsHeight * shape - boundsWidth) / 2;
+      return [left - extra, top, right + extra, bottom];
+    }
+    const extra = (boundsWidth / shape - boundsHeight) / 2;
+    return [left, top - extra, right, bottom + extra];
+  }
+  function tileRangeOf(bounds, basemap) {
+    const size = Number(basemap.tile_size || 256), last = 2 ** Number(basemap.zoom) - 1;
+    const tile = value => Math.max(0, Math.min(last, Math.floor(value / size)));
+    return [tile(bounds[0]), tile(bounds[1]), tile(bounds[2] - 1e-6), tile(bounds[3] - 1e-6)];
+  }
+
+  function mapTileRecords(canvas, payload, range = payload.basemap?.tile_range) {
+    const basemap = payload.basemap;
     if (!basemap || !Array.isArray(range) || range.length !== 4) return [];
     const [left, top, right, bottom] = range.map(Number), records = [];
     for (let y = top; y <= bottom; y += 1) {
@@ -180,6 +215,7 @@
   }
 
   function cameraFor(canvas) {
+    useCanvasLogicalSize(canvas);
     let camera = cameraStates.get(canvas);
     if (!camera) {
       camera = {zoom: 1, panX: 0, panY: 0};
@@ -206,6 +242,7 @@
     const bounds = canvas.getBoundingClientRect();
     const cssWidth = Math.max(1, bounds.width || canvas.parentElement?.clientWidth || 600);
     const cssHeight = Math.max(1, bounds.height || canvas.parentElement?.clientHeight || 360);
+    useLogicalSize(cssWidth, cssHeight);
     const pixelRatio = Math.min(globalThis.devicePixelRatio || 1, 2);
     const backingWidth = Math.round(cssWidth * pixelRatio), backingHeight = Math.round(cssHeight * pixelRatio);
     if (canvas.width !== backingWidth || canvas.height !== backingHeight) { canvas.width = backingWidth; canvas.height = backingHeight; }
@@ -239,7 +276,7 @@
       context.restore();
     };
     context.lineJoin = 'round'; context.lineCap = 'round'; context.textBaseline = 'top';
-    views.set(canvas, {scaleX, scaleY, zoom: camera.zoom, originX, originY});
+    views.set(canvas, {scaleX, scaleY, zoom: camera.zoom, originX, originY, logicalWidth: LOGICAL_WIDTH, logicalHeight: LOGICAL_HEIGHT});
     return context;
   }
 
@@ -583,7 +620,7 @@
     const sideLegendWidth = Math.min(380, Math.max(170, estimatedItemWidth + 20));
     const maximumColumns = lineMarkers ? 6 : 5;
     const columns = ['top', 'bottom'].includes(position)
-      ? Math.max(1, Math.min(items.length || 1, maximumColumns, Math.floor(1400 / estimatedItemWidth)))
+      ? Math.max(1, Math.min(items.length || 1, maximumColumns, Math.floor((LOGICAL_WIDTH - 200) / estimatedItemWidth)))
       : maximumColumns;
     const rows = Math.max(1, Math.ceil(items.length / columns));
     const rowHeight = size + 12;
@@ -591,9 +628,9 @@
       position,
       hasLegend: position !== 'none',
       left: position === 'left' ? sideLegendWidth + 20 : 70,
-      right: position === 'right' ? LOGICAL_WIDTH - sideLegendWidth - 20 : 1540,
+      right: position === 'right' ? LOGICAL_WIDTH - sideLegendWidth - 20 : LOGICAL_WIDTH - 60,
       top: position === 'top' ? 80 + rows * rowHeight + 18 : 82,
-      bottom: position === 'bottom' ? 900 - rows * rowHeight - 22 : 860,
+      bottom: position === 'bottom' ? LOGICAL_HEIGHT - rows * rowHeight - 22 : LOGICAL_HEIGHT - 40,
       sideX: position === 'right' ? LOGICAL_WIDTH - sideLegendWidth + 4 : 26,
       size,
       columns,
@@ -635,16 +672,16 @@
       if (item.hidden) line(context, textX, y + size / 2, textX + width, y + size / 2, context.fillStyle, Math.max(1.5, size / 12));
       context.globalAlpha = alpha;
       if (!textOnly && legendHitTarget) {
-        const start = transformPoint(legendHitTarget.transform, x - 4, y - 6), scale = legendHitTarget.transform.scale;
+        const start = transformPoint(legendHitTarget.transform, x - 4, y - 6), transform = legendHitTarget.transform;
         (legendHitTarget.state.legendHits ||= []).push({
-          label: String(item.label), x: start.x, y: start.y, width: (textX - x + width + 8) * scale, height: (size + 12) * scale,
+          label: String(item.label), x: start.x, y: start.y, width: (textX - x + width + 8) * scaleX(transform), height: (size + 12) * scaleY(transform),
         });
       }
     };
     if (position === 'top' || position === 'bottom') {
-      const startY = position === 'top' ? 80 : 900 - layout.rows * rowHeight - 8;
+      const startY = position === 'top' ? 80 : LOGICAL_HEIGHT - layout.rows * rowHeight - 8;
       items.forEach((item, index) => {
-        drawItem(item, 100 + (index % columns) * (1400 / columns), startY + Math.floor(index / columns) * rowHeight, 28);
+        drawItem(item, 100 + (index % columns) * ((LOGICAL_WIDTH - 200) / columns), startY + Math.floor(index / columns) * rowHeight, 28);
       });
       return;
     }
@@ -1030,7 +1067,7 @@
     const layout = legendLayout(payload.legend), left = layout.left, width = layout.right - left;
     const axis = hierarchicalAxisPlans(context, keys, width, payload.legend_format);
     const top = layout.top + axis.headerHeight;
-    const usableBottom = layout.position === 'bottom' ? layout.bottom : 884;
+    const usableBottom = layout.position === 'bottom' ? layout.bottom : LOGICAL_HEIGHT - 16;
     const height = Math.max(180, usableBottom - top - axis.leafHeight);
     const yDomain = expandedDomain(payload.domain?.y), ySpan = yDomain[1] - yDomain[0];
     const barWidth = Math.max(24, Math.min(220, Math.floor(width / Math.max(keys.length * 1.25, 1))));
@@ -1135,21 +1172,35 @@
     const extent = values.length ? [Math.min(...values), Math.max(...values)] : [xLow, xHigh];
     const xStart = transformPoint(transform, plot.left, plot.top + plot.height), yStart = transformPoint(transform, plot.left - 80, plot.top);
     (state.numericAxes ||= []).push(
-      {axis: 'x', domain: [xLow, xHigh], extent, x: xStart.x, y: xStart.y, width: plot.width * transform.scale, height: 60 * transform.scale},
-      {axis: 'y', domain: [yLow * 100, yHigh * 100], extent: [0, 100], percent: true, x: yStart.x, y: yStart.y, width: 80 * transform.scale, height: plot.height * transform.scale},
+      {axis: 'x', domain: [xLow, xHigh], extent, x: xStart.x, y: xStart.y, width: plot.width * scaleX(transform), height: 60 * scaleY(transform)},
+      {axis: 'y', domain: [yLow * 100, yHigh * 100], extent: [0, 100], percent: true, x: yStart.x, y: yStart.y, width: 80 * scaleX(transform), height: plot.height * scaleY(transform)},
     );
     drawLegend(context, payload.legend, {fontSize: 11, sideX: legendLayout(payload.legend, 11).position === 'right' ? plot.left + plot.width + 25 : undefined});
   }
 
   function drawMultiCdf(context, payload, state, transform) {
-    const panels = payload.panels || [], columns = panels.length > 1 ? 2 : 1, rows = Math.max(1, Math.ceil(panels.length / columns));
-    const cellWidth = LOGICAL_WIDTH / columns, cellHeight = (LOGICAL_HEIGHT - 80) / rows;
+    const panels = payload.panels || [];
+    if (!panels.length) return;
+    // Each KPI is a CDF of its own over the whole of its cell, laid out in a logical space of the shape of the cell (see
+    // useLogicalSize), in as many columns as give the cells the shape nearest a 16:9 chart: side by side in a wide
+    // place, one above the other in a tall one.
+    const outerWidth = LOGICAL_WIDTH, outerHeight = LOGICAL_HEIGHT, top = payload.hide_title ? 10 : 80;
+    const grid = columns => {
+      const rows = Math.ceil(panels.length / columns), width = outerWidth / columns, height = (outerHeight - top) / rows;
+      return {columns, width, height, misfit: Math.abs(Math.log(width / height / (16 / 9)))};
+    };
+    const {columns, width: cellWidth, height: cellHeight} = Array.from({length: panels.length}, (_, index) => grid(index + 1))
+      .reduce((best, item) => (item.misfit < best.misfit ? item : best));
     panels.forEach((panel, index) => {
-      const scale = Math.min((cellWidth - 18) / LOGICAL_WIDTH, (cellHeight - 10) / LOGICAL_HEIGHT);
-      const width = LOGICAL_WIDTH * scale, height = LOGICAL_HEIGHT * scale;
-      const x = index % columns * cellWidth + (cellWidth - width) / 2, y = 80 + Math.floor(index / columns) * cellHeight + (cellHeight - height) / 2;
+      const x = index % columns * cellWidth + 9, y = top + Math.floor(index / columns) * cellHeight + 5;
+      const width = cellWidth - 18, height = cellHeight - 10;
+      useLogicalSize(width, height);
+      const scale = width / LOGICAL_WIDTH;
       context.save(); context.translate(x, y); context.scale(scale, scale); context.fillStyle = '#FFFFFF'; context.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
-      drawPayload(context, panel, state, {x: transform.x + x * transform.scale, y: transform.y + y * transform.scale, scale: transform.scale * scale}); context.restore();
+      drawPayload(context, panel, state, {x: transform.x + x * scaleX(transform), y: transform.y + y * scaleY(transform),
+        scale: Math.min(scaleX(transform), scaleY(transform)) * scale});
+      context.restore();
+      LOGICAL_WIDTH = outerWidth; LOGICAL_HEIGHT = outerHeight;
     });
   }
 
@@ -1217,7 +1268,7 @@
     const bars = payload.bars || [], keys = bars.map(bar => bar.key);
     const layout = legendLayout(payload.legend), left = Math.max(105, layout.left), width = layout.right - left;
     const axis = hierarchicalAxisPlans(context, keys, width, payload.legend_format);
-    const top = layout.top + axis.headerHeight, usableBottom = layout.position === 'bottom' ? layout.bottom : 884;
+    const top = layout.top + axis.headerHeight, usableBottom = layout.position === 'bottom' ? layout.bottom : LOGICAL_HEIGHT - 16;
     const baseline = Math.max(top + 180, usableBottom - axis.leafHeight);
     const yDomain = expandedDomain(payload.domain?.y), ySpan = yDomain[1] - yDomain[0], plotHeight = baseline - top;
     const zeroY = baseline - (clamp(0, yDomain[0], yDomain[1]) - yDomain[0]) / ySpan * plotHeight;
@@ -1271,31 +1322,34 @@
     const xDomain = [rawX[0] - xPad, rawX[1] + xPad], yDomain = [rawY[0] - yPad, rawY[1] + yPad];
     context.fillStyle = '#EDF4F0'; context.fillRect(left, top, width, height);
     for (const fraction of [.2, .4, .6, .8]) { line(context, left + width * fraction, top, left + width * fraction, top + height, '#D8E5DF'); line(context, left, top + height * fraction, left + width, top + height * fraction, '#D8E5DF'); }
-    const basemap = payload.basemap, worldBounds = basemap?.world_bounds;
+    const basemap = payload.basemap, given = basemap?.world_bounds;
+    // The map fills the plot without being stretched: it shows more around the bounds of its samples.
+    const map = {left, top, width, height};
+    const worldBounds = Array.isArray(given) && given.length === 4 ? filledWorldBounds(given.map(Number), width, height) : given;
     // The plot and its tiles, to turn a position on the canvas into a place (see getCanvasMapView).
-    state.mapGeometry = {left, top, width, height, worldBounds: Array.isArray(worldBounds) ? worldBounds.map(Number) : null, zoom: Number(basemap?.zoom)};
-    const tileRecords = mapTileRecords(state.canvas, payload);
+    state.mapGeometry = {...map, worldBounds: Array.isArray(worldBounds) ? worldBounds.map(Number) : null, zoom: Number(basemap?.zoom)};
+    const tileRecords = Array.isArray(worldBounds) && worldBounds.length === 4 ? mapTileRecords(state.canvas, payload, tileRangeOf(worldBounds, basemap)) : [];
     if (Array.isArray(worldBounds) && worldBounds.length === 4) {
       const [worldLeft, worldTop, worldRight, worldBottom] = worldBounds.map(Number);
       const sourceWidth = worldRight - worldLeft, sourceHeight = worldBottom - worldTop;
       if (sourceWidth > 0 && sourceHeight > 0) {
         const tileSize = Number(basemap.tile_size || 256);
-        context.save(); context.beginPath(); context.rect(left, top, width, height); context.clip();
+        context.save(); context.beginPath(); context.rect(map.left, map.top, map.width, map.height); context.clip();
         tileRecords.filter(record => record.status === 'ready').forEach(record => {
-          const x = left + (record.x * tileSize - worldLeft) / sourceWidth * width;
-          const y = top + (record.y * tileSize - worldTop) / sourceHeight * height;
-          context.drawImage(record.image, x, y, tileSize / sourceWidth * width + .5, tileSize / sourceHeight * height + .5);
+          const x = map.left + (record.x * tileSize - worldLeft) / sourceWidth * map.width;
+          const y = map.top + (record.y * tileSize - worldTop) / sourceHeight * map.height;
+          context.drawImage(record.image, x, y, tileSize / sourceWidth * map.width + .5, tileSize / sourceHeight * map.height + .5);
         });
         context.restore();
       }
     }
-    context.strokeStyle = '#B9CDC4'; context.lineWidth = 2; context.strokeRect(left, top, width, height);
+    context.strokeStyle = '#B9CDC4'; context.lineWidth = 2; context.strokeRect(map.left, map.top, map.width, map.height);
     const pointRadius = Math.max(1, Number(payload.point_radius) || 4);
     const project = (longitude, latitude) => {
       if (Array.isArray(worldBounds) && worldBounds.length === 4) {
         const [worldLeft, worldTop, worldRight, worldBottom] = worldBounds.map(Number);
         const projected = osmWorldCoordinates(latitude, longitude, basemap.zoom);
-        return [left + (projected[0] - worldLeft) / (worldRight - worldLeft) * width, top + (projected[1] - worldTop) / (worldBottom - worldTop) * height];
+        return [map.left + (projected[0] - worldLeft) / (worldRight - worldLeft) * map.width, map.top + (projected[1] - worldTop) / (worldBottom - worldTop) * map.height];
       }
       return [left + (longitude - xDomain[0]) / (xDomain[1] - xDomain[0]) * width, top + height - (latitude - yDomain[0]) / (yDomain[1] - yDomain[0]) * height];
     };
@@ -1326,16 +1380,7 @@
     const squares = payload.point_shape === 'square';
     (payload.series || []).forEach(series => (series.points || []).forEach(point => {
       if (Number(point[0]) < rawX[0] || Number(point[0]) > rawX[1] || Number(point[1]) < rawY[0] || Number(point[1]) > rawY[1]) return;
-      let x, y;
-      if (Array.isArray(worldBounds) && worldBounds.length === 4) {
-        const [worldLeft, worldTop, worldRight, worldBottom] = worldBounds.map(Number);
-        const projected = osmWorldCoordinates(point[1], point[0], basemap.zoom);
-        x = left + (projected[0] - worldLeft) / (worldRight - worldLeft) * width;
-        y = top + (projected[1] - worldTop) / (worldBottom - worldTop) * height;
-      } else {
-        x = left + (Number(point[0]) - xDomain[0]) / (xDomain[1] - xDomain[0]) * width;
-        y = top + height - (Number(point[1]) - yDomain[0]) / (yDomain[1] - yDomain[0]) * height;
-      }
+      const [x, y] = project(Number(point[0]), Number(point[1]));
       context.fillStyle = series.colour; context.strokeStyle = '#FFFFFF'; context.lineWidth = 1; context.beginPath();
       if (squares) context.rect(x - pointRadius, y - pointRadius, pointRadius * 2, pointRadius * 2);
       else context.arc(x, y, pointRadius, 0, Math.PI * 2);
@@ -1513,7 +1558,7 @@
   };
   const pushCircleHit = (state, transform, x, y, radius, details) => {
     const centre = transformPoint(transform, x, y);
-    state.hits.push({kind: 'circle', x: centre.x, y: centre.y, radius: radius * transform.scale, ...details});
+    state.hits.push({kind: 'circle', x: centre.x, y: centre.y, radius: radius * Math.min(scaleX(transform), scaleY(transform)), ...details});
   };
   function insidePolygon(points, x, y) {
     let inside = false;
@@ -1553,7 +1598,7 @@
     const start = transformPoint(transform, x, y);
     (state.numericAxes ||= []).push({
       axis, domain: percent ? domain.map(value => value * 100) : [...domain], extent: percent ? [0, 100] : [...domain],
-      percent: Boolean(percent), x: start.x, y: start.y, width: width * transform.scale, height: height * transform.scale,
+      percent: Boolean(percent), x: start.x, y: start.y, width: width * scaleX(transform), height: height * scaleY(transform),
     });
   };
   function drawXValueAxis(context, state, transform, domain, left, right, top, bottom, title, options = {}) {
@@ -1861,7 +1906,7 @@
   function plotFrame(layout, axis, dualAxis = false) {
     const left = layout.left + 78, right = layout.right - (dualAxis ? 96 : 24);
     const top = layout.top + (axis.time ? 14 : Math.max(14, axis.axis.headerHeight - 24));
-    const bottom = (layout.position === 'bottom' ? layout.bottom : 884) - (axis.time ? 40 : axis.axis.leafHeight) - 6;
+    const bottom = (layout.position === 'bottom' ? layout.bottom : LOGICAL_HEIGHT - 16) - (axis.time ? 40 : axis.axis.leafHeight) - 6;
     return {left, right, top, bottom};
   }
   function strokeSeries(context, points, colour, width = 4, dash = []) {
@@ -2003,23 +2048,25 @@
   // A basemap of OpenStreetMap tiles in a rectangle, keeping the shape of the area it shows; ``project`` turns a longitude
   // and latitude into a point of the canvas.
   function drawBasemap(context, payload, state, left, top, width, height) {
-    const basemap = payload.basemap, bounds = Array.isArray(basemap?.world_bounds) ? basemap.world_bounds.map(Number) : null;
-    if (!bounds || bounds.length !== 4) return null;
+    const basemap = payload.basemap, given = Array.isArray(basemap?.world_bounds) ? basemap.world_bounds.map(Number) : null;
+    if (!given || given.length !== 4) return null;
+    // The map fills its place without being stretched: it shows more around the bounds of its places.
+    const bounds = filledWorldBounds(given, width, height);
     const [worldLeft, worldTop, worldRight, worldBottom] = bounds, sourceWidth = worldRight - worldLeft, sourceHeight = worldBottom - worldTop;
-    const scale = Math.min(width / sourceWidth, height / sourceHeight), drawnWidth = sourceWidth * scale, drawnHeight = sourceHeight * scale;
-    const mapLeft = left + (width - drawnWidth) / 2, mapTop = top + (height - drawnHeight) / 2, tileSize = Number(basemap.tile_size || 256);
-    context.fillStyle = '#EDF4F0'; context.fillRect(mapLeft, mapTop, drawnWidth, drawnHeight);
-    context.save(); context.beginPath(); context.rect(mapLeft, mapTop, drawnWidth, drawnHeight); context.clip();
-    mapTileRecords(state.canvas, payload).filter(record => record.status === 'ready').forEach(record => {
-      context.drawImage(record.image, mapLeft + (record.x * tileSize - worldLeft) * scale, mapTop + (record.y * tileSize - worldTop) * scale, tileSize * scale + .5, tileSize * scale + .5);
+    const scaleAcross = width / sourceWidth, scaleDown = height / sourceHeight, tileSize = Number(basemap.tile_size || 256);
+    context.fillStyle = '#EDF4F0'; context.fillRect(left, top, width, height);
+    context.save(); context.beginPath(); context.rect(left, top, width, height); context.clip();
+    mapTileRecords(state.canvas, payload, tileRangeOf(bounds, basemap)).filter(record => record.status === 'ready').forEach(record => {
+      context.drawImage(record.image, left + (record.x * tileSize - worldLeft) * scaleAcross, top + (record.y * tileSize - worldTop) * scaleDown,
+        tileSize * scaleAcross + .5, tileSize * scaleDown + .5);
     });
     context.restore();
-    context.strokeStyle = '#B9CDC4'; context.lineWidth = 2; context.strokeRect(mapLeft, mapTop, drawnWidth, drawnHeight);
+    context.strokeStyle = '#B9CDC4'; context.lineWidth = 2; context.strokeRect(left, top, width, height);
     const project = (longitude, latitude) => {
       const [x, y] = osmWorldCoordinates(latitude, longitude, basemap.zoom);
-      return {x: mapLeft + (x - worldLeft) * scale, y: mapTop + (y - worldTop) * scale};
+      return {x: left + (x - worldLeft) * scaleAcross, y: top + (y - worldTop) * scaleDown};
     };
-    return {project, left: mapLeft, top: mapTop, width: drawnWidth, height: drawnHeight};
+    return {project, left, top, width, height};
   }
   function mapPanels(context, payload, state, draw) {
     const layout = legendLayout(payload.legend), panels = payload.panels || [];
@@ -2357,38 +2404,47 @@
       const height = (area.bottom - area.top - gap * (rows - 1)) / rows;
       return {columns, rows, width, height, size: Math.min(width / 420, height / 340)};
     };
-    // A landscape frame keeps one row of up to four cards; any other takes the columns that give the largest cards.
-    const landscape = (area.right - area.left) / Math.max(1, area.bottom - area.top) >= 1.6;
-    const {columns, width, height} = landscape
-      ? grid(cards.length <= 4 ? cards.length : cards.length <= 6 ? 3 : 4)
-      : Array.from({length: cards.length}, (_, index) => grid(index + 1)).reduce((best, item) => (item.size > best.size ? item : best));
+    // The columns that give the largest cards (four cards of a 16:9 place: two rows of two wide cards).
+    const {columns, width, height} = Array.from({length: cards.length}, (_, index) => grid(index + 1))
+      .reduce((best, item) => (item.size > best.size ? item : best));
     const logical = rect => ({x: rect.x * stretchX, y: rect.y * stretchY, width: rect.width * stretchX, height: rect.height * stretchY});
     const decimals = Number.isInteger(payload.decimals) ? payload.decimals : 2;
     const unit = payload.unit ? (payload.share ? '%' : ` ${payload.unit}`) : '';
     const number = value => (known(value) ? Number(value).toFixed(decimals) : '–');
     // A field name read as words (Mean_Data_Rate: Mean Data Rate).
     const readable = text => String(text || '').replace(/_+/g, ' ').trim();
-    cards.forEach((card, index) => {
-      const x = area.left + (index % columns) * (width + gap), slotTop = area.top + Math.floor(index / columns) * (height + gap);
-      const accent = KPI_BANDS[card.band] || '#5B35A0';
+    const measure = card => {
       const scale = Math.min(1.25, height / 340, width / 420);
       // Wide cards keep the figures at the left and the trend at the right; tall ones stack them.
       const trend = (card.trend || []).map(value => (known(value) ? Number(value) : null));
       const hasTrend = trend.filter(known).length > 1;
       const wide = hasTrend && width / height > 1.55;
-      const pad = 34 * scale;
-      const text = {left: x + pad, right: wide ? x + width * .52 : x + width - pad};
+      const pad = 34 * scale, textWidthAvailable = (wide ? width * .52 : width - pad) - pad;
       const valueText = `${number(card.value)}${known(card.value) ? unit : ''}`;
-      let size = Math.max(36, Math.min(150 * scale, height * (wide ? .36 : .3), (text.right - text.left) / Math.max(3, valueText.length * .6)));
+      let size = Math.max(36, Math.min(150 * scale, height * (wide ? .36 : .3), textWidthAvailable / Math.max(3, valueText.length * .6)));
       font(context, size, true);
-      while (size > 28 && textWidth(context, valueText) > text.right - text.left) { size -= 4; font(context, size, true); }
-      // Outside a landscape row a stacked card is as tall as its figures and its trend (at most 45% as tall as it is
-      // wide), in the middle of its place.
+      while (size > 28 && textWidth(context, valueText) > textWidthAvailable) { size -= 4; font(context, size, true); }
+      // A stacked card is as tall as its figures and its trend (at most 45% as tall as it is wide): a tall place leaves
+      // no empty card nor a stretched trend.
       const figures = 46 * scale + size + 16 * scale + (known(card.delta) ? 50 * scale : 0) + 30 * scale;
       const stackedTrend = Math.min((width - 2 * pad) * .45, height - 2 * pad - figures - 32 * scale);
-      const cardHeight = landscape || wide ? height
+      const cardHeight = wide ? height
         : Math.min(height, 2 * pad + figures + (hasTrend && stackedTrend >= 24 ? 32 * scale + stackedTrend : 0));
-      const y = slotTop + (height - cardHeight) / 2;
+      return {scale, trend, hasTrend, wide, pad, valueText, size, stackedTrend, cardHeight};
+    };
+    const measured = cards.map(measure);
+    // Each row is as tall as its tallest card and the rows stand together in the middle of the place.
+    const rows = Math.ceil(cards.length / columns);
+    const rowHeights = Array.from({length: rows}, (_, row) => Math.max(...measured.slice(row * columns, (row + 1) * columns).map(item => item.cardHeight)));
+    const gridHeight = rowHeights.reduce((sum, value) => sum + value, 0) + gap * (rows - 1);
+    const gridTop = area.top + Math.max(0, (area.bottom - area.top - gridHeight) / 2);
+    const rowTop = row => gridTop + rowHeights.slice(0, row).reduce((sum, value) => sum + value, 0) + gap * row;
+    cards.forEach((card, index) => {
+      const {scale, trend, hasTrend, wide, pad, valueText, size, stackedTrend, cardHeight} = measured[index];
+      const row = Math.floor(index / columns);
+      const x = area.left + (index % columns) * (width + gap), y = rowTop(row) + (rowHeights[row] - cardHeight) / 2;
+      const accent = KPI_BANDS[card.band] || '#5B35A0';
+      const text = {left: x + pad, right: wide ? x + width * .52 : x + width - pad};
       context.save();
       context.shadowColor = 'rgba(36, 22, 61, 0.10)'; context.shadowBlur = 18 * scale; context.shadowOffsetY = 4 * scale;
       roundedRect(context, x, y, width, cardHeight, 22 * scale);
@@ -2434,9 +2490,7 @@
       // The trend over the campaigns: an area under its line, its points and the campaigns at its ends.
       const box = wide
         ? {left: x + width * .58, right: x + width - pad, top: y + pad + 30 * scale, bottom: y + cardHeight - pad - 26 * scale}
-        : landscape
-          ? {left: x + pad, right: x + width - pad, top: Math.max(line + 10 * scale, y + cardHeight * .62), bottom: y + cardHeight - pad - 22 * scale}
-          : {left: x + pad, right: x + width - pad, top: line + 10 * scale, bottom: line + 10 * scale + stackedTrend};
+        : {left: x + pad, right: x + width - pad, top: line + 10 * scale, bottom: line + 10 * scale + stackedTrend};
       if (box.bottom - box.top < 24) return;
       // The scale of the trend spans at least a fifth of its level: a small change looks small.
       const values = trend.filter(known), middle = (Math.min(...values) + Math.max(...values)) / 2;
@@ -2464,8 +2518,10 @@
       const labels = card.trend_labels || [];
       if (labels.length > 1) {
         context.fillStyle = '#8A8098'; font(context, Math.max(13, 17 * scale)); context.textBaseline = 'top';
-        context.textAlign = 'left'; context.fillText(String(labels[0]), box.left, box.bottom + 8 * scale);
-        context.textAlign = 'right'; context.fillText(String(labels.at(-1)), box.right, box.bottom + 8 * scale);
+        // Each campaign in its half of the trend, shortened when the two would meet.
+        const half = (box.right - box.left) / 2 - 6 * scale;
+        context.textAlign = 'left'; context.fillText(fittedText(context, String(labels[0]), half), box.left, box.bottom + 8 * scale);
+        context.textAlign = 'right'; context.fillText(fittedText(context, String(labels.at(-1)), half), box.right, box.bottom + 8 * scale);
         context.textAlign = 'left';
       }
     });
@@ -3073,6 +3129,8 @@
     });
   };
   globalThis.getCanvasChartHits = canvas => structuredClone(renderStates.get(canvas)?.hits || []);
+  // Whether the tiles of a map are still loading (the PPT renderer waits for them before its picture).
+  globalThis.canvasChartTilesPending = canvas => mapWaits.has(canvas);
   globalThis.getCanvasChartLegendHits = canvas => structuredClone(renderStates.get(canvas)?.legendHits || []);
   globalThis.getCanvasChartHiddenLegendItems = hiddenLegendLabels;
   globalThis.setCanvasChartHiddenLegendItems = setHiddenLegendItems;

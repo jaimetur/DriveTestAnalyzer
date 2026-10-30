@@ -429,19 +429,31 @@
         const next = pills().find(pill => { const box = pill.getBoundingClientRect(); return event.clientY < box.top || (event.clientY <= box.bottom && event.clientX < box.left + box.width / 2); });
         return {index: next ? Number(next.dataset.index) : pills().length, replace: false};
       };
-      const unmark = () => { zone.classList.remove('is-drop'); pills().forEach(pill => pill.classList.remove('is-drop-replace', 'is-drop-before', 'is-drop-after')); };
+      // The place a drop goes is shown as a bar in the gap between the pills (over them, so nothing moves while dragging),
+      // or the pill it would take the place of.
+      const marker = h('span', {class: 'ds-cb-drop-marker', 'aria-hidden': 'true'});
+      const unmark = () => { zone.classList.remove('is-drop'); marker.remove(); pills().forEach(pill => pill.classList.remove('is-drop-replace')); };
       const dragged = event => [...event.dataTransfer.types].some(type => type.startsWith('application/x-ds-'));
+      const showMarker = place => {
+        const all = pills(), zoneBox = zone.getBoundingClientRect();
+        const target = all[place.index], previous = all[place.index - 1];
+        const box = (target || previous)?.getBoundingClientRect();
+        // Before the pill it goes in front of, after the last one, or at the start of an empty shelf.
+        const x = target ? box.left - 3 : previous ? box.right + 1 : zoneBox.left + 6;
+        Object.assign(marker.style, {
+          left: `${x - zoneBox.left}px`, top: `${(box ? box.top - zoneBox.top : 4)}px`, height: `${box ? box.height : zoneBox.height - 8}px`,
+        });
+        if (!marker.isConnected) zone.append(marker);
+      };
       zone.addEventListener('dragover', event => {
         if (!dragged(event)) return;
         event.preventDefault();
-        unmark();
         zone.classList.add('is-drop');
         if (key === 'filters' || key === 'repeat') return;
         const place = dropPlace(event, event.dataTransfer.types.includes('application/x-ds-field'));
-        const all = pills();
-        if (place.replace) all[place.index]?.classList.add('is-drop-replace');
-        else if (place.index < all.length) all[place.index].classList.add('is-drop-before');
-        else all.at(-1)?.classList.add('is-drop-after');
+        pills().forEach(pill => pill.classList.toggle('is-drop-replace', place.replace && Number(pill.dataset.index) === place.index));
+        if (place.replace) marker.remove();
+        else showMarker(place);
       });
       zone.addEventListener('dragleave', event => { if (!zone.contains(event.relatedTarget)) unmark(); });
       zone.addEventListener('drop', event => {
@@ -514,7 +526,11 @@
           if (key === 'repeat') change({repeat: null});
           else writeShelf(key, items.filter((_value, position) => position !== index));
         }}, '×'));
-      pill.addEventListener('dragstart', event => { event.dataTransfer.setData('application/x-ds-pill', JSON.stringify([key, index])); event.dataTransfer.effectAllowed = 'move'; });
+      pill.addEventListener('dragstart', event => {
+        event.dataTransfer.setData('application/x-ds-pill', JSON.stringify([key, index])); event.dataTransfer.effectAllowed = 'move';
+        pill.classList.add('is-dragging');
+      });
+      pill.addEventListener('dragend', () => pill.classList.remove('is-dragging'));
       return pill;
     };
 

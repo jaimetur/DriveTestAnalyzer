@@ -386,6 +386,8 @@ def test_the_chart_builder_reads_fields_and_values_and_adds_a_chart_to_a_design(
 
 def test_the_chart_builder_reads_only_the_columns_of_its_chart_once_and_leaves_out_of_scope_operators_out(client, monkeypatch):
     setup(client)
+    # The columns and models another test of this worker left in memory are not this test's.
+    core._clear_chart_preview_caches()
     reads = []
     original = core.repository.load_dataset_rows
 
@@ -417,6 +419,23 @@ def test_the_chart_builder_reads_only_the_columns_of_its_chart_once_and_leaves_o
     scoped = client.post('/api/chart-builder/preview', json={'dataset_ids': [1], 'definition': chart})
     assert scoped.status_code == 200, scoped.text
     assert [bar['key'] for bar in scoped.json()['bars']] == [['A', '(all)']]
+
+
+def test_the_chart_builder_offers_and_splits_by_the_nr_mode_of_each_cdr(client):
+    setup(client)
+    core._clear_chart_preview_caches()
+    fields = client.post('/api/chart-builder/fields', json={'dataset_ids': [1]})
+    assert fields.status_code == 200, fields.text
+    assert 'NR Mode' in [item['name'] for item in fields.json()['fields']]
+    # The CDRs keep no NR Mode of their own: each of their rows takes the NR Mode of its CDR.
+    values = client.post('/api/chart-builder/values', json={'dataset_ids': [1], 'field': 'NR Mode', 'cdr_source': 'CDR-Data'})
+    assert values.status_code == 200, values.text
+    assert [item['value'] for item in values.json()['values']] == ['NSA']
+    chart = {'chart_title': 'Rate', 'cdr_source': 'CDR-Data', 'kpi': 'MEDIAN(Mean_Data_Rate)', 'chart_type': 'Average Vertical Bars',
+             'rows_split': 'NR Mode', 'columns_split': '', 'legend': '', 'filters': 'NR Mode IN (NSA)', 'legend_position': 'Top'}
+    preview = client.post('/api/chart-builder/preview', json={'dataset_ids': [1], 'definition': chart})
+    assert preview.status_code == 200, preview.text
+    assert [bar['key'][0] for bar in preview.json()['bars']] == ['NSA']
 
 
 def test_a_kpi_card_of_the_chart_builder_previews_with_its_settings_and_joins_a_design_as_a_kpi_card(client):

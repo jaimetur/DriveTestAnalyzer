@@ -34,7 +34,7 @@ builders
 2. Choose **CDR Type**: Data, Voice or Speech.
 3. Select one or more processed datasets of that type.
 4. Drag a field (or click it) to **Measure**; **Chart Type** marks the types it can draw and chooses one.
-5. Drag fields to **Rows**, **Columns** and **Legend**, in the order they split the chart (`Operator` then `Campaign` gives `Operator × Campaign`). A field dropped on the middle of a pill takes its place; dropped near its left or right edge, or between pills, it goes there.
+5. Drag fields to **Rows**, **Columns** and **Legend**, in the order they split the chart (`Operator` then `Campaign` gives `Operator × Campaign`). A field dropped on the middle of a pill takes its place; dropped near its left or right edge, or between pills, it goes there: while dragging, a bar between the pills shows where it will go (or the pill it replaces is outlined), and a pill moved along its shelf is shown dimmed.
 6. Drop a field on **Filters** to choose its values (with their samples) or a numeric condition, and on **One chart per** for a chart of each of its values.
 7. Enter a Chart Title, give the chart its look in **Format** and review the regenerated preview.
 
@@ -45,7 +45,7 @@ The Source Dataset selector is filtered by CDR Type and shows only processed dat
 | Control | Behaviour |
 | --- | --- |
 | Chart Title | Text displayed above the generated chart. |
-| Fields | The fields of the chosen CDRs, grouped by the sections of the [CDR Field Dictionary](workspace-config.md) and searchable: dimensions (values, blue `Abc`) and measures (numbers, green `#`). Drag one to a shelf, or click it and choose the shelf. |
+| Fields | The fields of the chosen CDRs, grouped by the sections of the [CDR Field Dictionary](workspace-config.md) and searchable: dimensions (values, blue `Abc`) and measures (numbers, green `#`), with **NR Mode** (the NR Mode of the CDR of each row, NSA or SA) beside Campaign. Drag one to a shelf, or click it and choose the shelf. |
 | Measure | The KPI. Its menu chooses the aggregation (Average, Median, Sum, Count, Count distinct, Minimum, Maximum, or the one of the chart type) and its order; Multi KPI CDF Lines, Scatter and the tables take several. |
 | Rows, Columns | Ordered splits of the chart: drag a pill along its shelf, or to another shelf, to change them. |
 | Legend | The fields the legend explains. |

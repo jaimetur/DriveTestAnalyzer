@@ -174,7 +174,18 @@ for await (const line of lines) {
     const evaluation = await renderer.devtools.call('Runtime.evaluate', {
       expression, awaitPromise: true, returnByValue: true,
     });
-    if (['map', 'symbol_map', 'filled_map'].includes(request.payload?.type)) await delay(600);
+    if (['map', 'symbol_map', 'filled_map'].includes(request.payload?.type)) {
+      // The tiles of the map load after the first drawing, which draws again once they are there: wait for them (at most
+      // 8 s), then for that drawing.
+      for (let waited = 0; waited < 8000; waited += 150) {
+        await delay(150);
+        const pending = await renderer.devtools.call('Runtime.evaluate', {
+          expression: "globalThis.canvasChartTilesPending(document.getElementById('chart'))", returnByValue: true,
+        });
+        if (!pending.result?.value) break;
+      }
+      await delay(150);
+    }
     const screenshot = await renderer.devtools.call('Page.captureScreenshot', {
       format: 'png', fromSurface: true, captureBeyondViewport: false,
       clip: {x: 0, y: 0, width, height, scale: 1},

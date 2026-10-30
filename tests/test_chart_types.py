@@ -250,14 +250,35 @@ def test_kpi_cards_keep_their_shape_in_a_frame_of_any_proportions() -> None:
     cards = [{'label': operator, 'value': 100 + index, 'delta': 1, 'improves': True, 'n': 10, 'campaign': 'Q3',
               'trend': [90, 95, 100 + index], 'trend_labels': ['Q1', 'Q3']} for index, operator in enumerate(['EE', 'O2', 'Three', 'VF'])]
     model = {'type': 'kpi', 'title': 'KPI', 'metric': 'Rate', 'cards': cards}
-    # A landscape frame keeps one row of four cards; a tall one stacks them, as wide as the frame.
-    _png, wide = render_catalog_chart_preview_hits(model, 1600, 900)
+    # Four cards take the grid that makes them largest: two rows of two in a 16:9 frame, one row in a wide one and one
+    # column, as wide as the frame, in a tall one.
+    _png, landscape = render_catalog_chart_preview_hits(model, 1600, 900)
+    assert len({hit['y'] for hit in landscape}) == 2 and len({hit['x'] for hit in landscape}) == 2
+    _png, wide = render_catalog_chart_preview_hits(model, 2331, 900)
     assert len({hit['y'] for hit in wide}) == 1 and len({hit['x'] for hit in wide}) == 4
     _png, tall = render_catalog_chart_preview_hits(model, 1600, 3333)
     assert len({hit['x'] for hit in tall}) == 1 and len({hit['y'] for hit in tall}) == 4
-    assert all(hit['width'] > 1400 for hit in tall)
+    assert all(hit['width'] > 700 for hit in tall)
 
 
 def render_catalog_chart_preview_hits(model: dict, width: int, height: int) -> tuple[bytes, list[dict]]:
     from src.modules.cdr_reporting import _render_canvas_payload
     return _render_canvas_payload(model, width=width, height=height)
+
+
+def test_an_auto_calculated_field_named_nr_mode_does_not_hide_the_nr_mode_of_the_cdrs() -> None:
+    from dataclasses import replace
+
+    from src.modules.cdr_reporting import parse_calculated_dimensions
+    from src.modules.ppt_designer import compact_chart_columns
+
+    frame = cdrs()
+    frame['NR_Mode'] = np.where(np.arange(len(frame)) % 2, 'SA', 'NSA')
+    # A field saved before such names were refused: it would classify the tests by their RAT.
+    dimensions = parse_calculated_dimensions([{'name': 'NR_Mode', 'sources': ['cdr-data'], 'default': 'Others', 'default_from': '',
+                                               'expression': '', 'rules': [{'when': '[RAT] = NR', 'value': 'NR'}]}])
+    entry = replace(chart('Pie', 'COUNT(Test_ID)', '', 'NR Mode'), calculated_dimensions=dimensions)
+    model = catalog_chart_payload(frame, entry)
+    assert sorted(item['name'] for item in model['pies'][0]['slices']) == ['NSA', 'SA']
+    assert compact_chart_columns(entry, list(frame.columns), False) is not None
+    assert 'NR_Mode' in compact_chart_columns(entry, list(frame.columns), False)

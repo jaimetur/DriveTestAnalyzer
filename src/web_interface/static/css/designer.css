@@ -397,12 +397,15 @@
 .ppt-designer .ds-cb-shelves { display: grid; gap: .3rem; }
 .ppt-designer .ds-cb-shelf { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr); align-items: start; gap: .4rem; }
 .ppt-designer .ds-cb-shelf-label { padding-top: .35rem; font-size: .68rem; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; color: var(--ds-design-muted); }
-.ppt-designer .ds-cb-shelf-items { display: flex; flex-wrap: wrap; gap: .25rem; min-height: 1.9rem; padding: .2rem; border: 1px dashed var(--ds-border); border-radius: 8px; background: #fbfaff; }
+.ppt-designer .ds-cb-shelf-items { position: relative; display: flex; flex-wrap: wrap; gap: .25rem; min-height: 1.9rem; padding: .2rem; border: 1px dashed var(--ds-border); border-radius: 8px; background: #fbfaff; }
 .ppt-designer .ds-cb-shelf-items.is-drop { border-color: var(--ds-color); background: var(--ds-soft); }
 /* Where a field dropped on a shelf goes: in the place of a pill, or before or after it. */
 .ppt-designer .ds-cb-pill.is-drop-replace { outline: 2px dashed var(--ds-color); outline-offset: 1px; opacity: .55; }
-.ppt-designer .ds-cb-pill.is-drop-before { box-shadow: -4px 0 0 -1px var(--ds-color); }
-.ppt-designer .ds-cb-pill.is-drop-after { box-shadow: 4px 0 0 -1px var(--ds-color); }
+.ppt-designer .ds-cb-drop-marker { position: absolute; width: 3px; border-radius: 2px; background: var(--ds-color); pointer-events: none; z-index: 2; }
+.ppt-designer .ds-cb-drop-marker::before, .ppt-designer .ds-cb-drop-marker::after { content: ''; position: absolute; left: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--ds-color); }
+.ppt-designer .ds-cb-drop-marker::before { top: -4px; }
+.ppt-designer .ds-cb-drop-marker::after { bottom: -4px; }
+.ppt-designer .ds-cb-pill.is-dragging { opacity: .4; }
 .ppt-designer .ds-cb-drop-hint { align-self: center; padding: 0 .3rem; font-size: .72rem; color: #a59db2; }
 .ppt-designer .ds-cb-pill { display: inline-flex; align-items: stretch; max-width: 100%; min-height: 1.55rem; border-radius: 999px; font-size: .74rem; font-weight: 750; }
 .ppt-designer .ds-cb-pill.is-text { background: var(--ds-cb-dimension); color: #fff; }

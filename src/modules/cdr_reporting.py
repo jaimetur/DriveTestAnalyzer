@@ -2729,7 +2729,10 @@ def _catalog_column(
 ) -> str | None:
     """Resolve a template field name against a source column or supported semantic dimension."""
     normalized = _normalise_catalog_name(name)
-    calculated = _calculated_dimension_column(frame, name, frame.attrs.get("catalogue_calculated_dimensions", ()))
+    # NR Mode is the NR Mode of each CDR: an Auto-calculated Field named after it (saved before such names were
+    # refused) does not hide it.
+    calculated = None if normalized == "nrmode" else _calculated_dimension_column(
+        frame, name, frame.attrs.get("catalogue_calculated_dimensions", ()))
     if calculated:
         return calculated
     if date_bin := date_bin_parts(name):

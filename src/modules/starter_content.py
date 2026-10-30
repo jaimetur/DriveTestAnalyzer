@@ -11,8 +11,8 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   titles name it with ``{NR Mode}`` and ``{NR Mode Name}``);
 - ``assets/ppt-designs/*.json``: PPT Designs, which use those templates, each reading the CDRs of its NR Mode
   (``nr_mode``: NSA, SA or NSA+SA for both, whose SA CDRs follow ``sa_campaigns``); the templates and PPT Designs shipped
-  later (``LATER_EXAMPLES``: the NSA & SA comparison FDFS DL (NSA & SA) and DT Analyzer - All Chart Types, an example of
-  every chart type drawn on the NSA and SA CDRs of the workspace) reach every existing workspace once, and an example
+  later (``LATER_EXAMPLES``: the NSA & SA comparison FDFS DL (NSA & SA) and DT Analyzer - All Supported Chart Types, an
+  example of every chart type drawn on the NSA and SA CDRs of the workspace) reach every existing workspace once, and an example
   shipped before that a workspace keeps as it was shipped is replaced in place by the one that followed it
   (``SUPERSEDED_EXAMPLES``);
 - ``assets/autocalculated-fields/default-autocalculated-fields.json``: the Auto-calculated Fields every new
@@ -58,20 +58,32 @@ BASE_METHODOLOGY = 'netcheck-2026'
 # The Report Templates shipped after workspaces were set up, which reach each of them once with their PPT Designs (those
 # of ``assets/ppt-designs`` that use them); a workspace that deleted them is not given them again.
 LATER_EXAMPLES_STATE_KEY = 'starter_examples_offered'
-LATER_EXAMPLES = ('FDFS DL (NSA & SA)', 'DT Analyzer - All Chart Types')
-# Starter examples shipped before under another name or with another content, with the SHA-256 of their template and
-# their PPT Designs as they were shipped. A workspace that still has one as it was shipped (template and PPT Designs
-# unchanged) has it replaced in place by the example that followed it, keeping their identities so whatever names them
-# follows; one it changed stays as it is, beside the example that followed it; one it deleted is not given again.
+LATER_EXAMPLES = ('FDFS DL (NSA & SA)', 'DT Analyzer - All Supported Chart Types')
+# Starter examples shipped before under another name or with another content, each with the example that follows it
+# now, the SHA-256 of its template and its PPT Designs as they were shipped. A workspace that still has one as it was
+# shipped (template and PPT Designs unchanged) has it replaced in place by the example that follows it, keeping their
+# identities so whatever names them follows; one it changed stays as it is, beside the example that follows it; one it
+# deleted (with every later one) is not given again.
 SUPERSEDED_EXAMPLES: dict[str, dict[str, Any]] = {
     # v0.10.1: an NSA Design on the latest 3 campaigns, with slides of three columns.
     'All Chart Types': {
-        'successor': 'DT Analyzer - All Chart Types',
+        'successor': 'DT Analyzer - All Supported Chart Types',
         'template_sha256': '1b9f19150f87a13680ddd1acdac1b9afcc91c178132e8259667b56951d7eec0c',
         'designs': [{
             'name': 'NSA - All Chart Types', 'template': 'All Chart Types', 'nr_mode': 'NSA', 'scope': 'single',
             'vendor_comparison': 'operator_vendor', 'custom_fields': [], 'hidden_filters': [], 'auto_cdrs': True,
             'filters': {'Campaign': ['@latest-3-campaigns']}, 'slide_comments': {},
+        }],
+    },
+    # v0.10.1: the same example as it follows now, under a shorter name.
+    'DT Analyzer - All Chart Types': {
+        'successor': 'DT Analyzer - All Supported Chart Types',
+        'template_sha256': '8b4d001425d3af1cf7d54f4002501aba32e8585208581768ffd9883c98db3d28',
+        'designs': [{
+            'name': 'DT Analyzer - All Chart Types', 'template': 'DT Analyzer - All Chart Types', 'nr_mode': 'NSA+SA',
+            'sa_campaigns': ['@latest-2-campaigns'], 'scope': 'single', 'vendor_comparison': 'operator_vendor',
+            'custom_fields': [], 'hidden_filters': [], 'auto_cdrs': True, 'filters': {'Campaign': ['@latest-2-campaigns']},
+            'slide_comments': {},
         }],
     },
 }
@@ -193,36 +205,46 @@ def _replace_superseded_examples(repository: Any, username: str) -> list[dict[st
     """Replace in place the superseded examples (``SUPERSEDED_EXAMPLES``) a workspace keeps as they were shipped; returns
     what was replaced."""
     offered = set(json.loads(repository.get_workspace_state(LATER_EXAMPLES_STATE_KEY) or '[]'))
-    pending = {name: item for name, item in SUPERSEDED_EXAMPLES.items() if name in offered and item['successor'] not in offered}
-    if not pending:
+    successors = [name for name in dict.fromkeys(item['successor'] for item in SUPERSEDED_EXAMPLES.values()) if name not in offered]
+    earlier = {successor: [name for name, item in SUPERSEDED_EXAMPLES.items() if item['successor'] == successor and name in offered]
+               for successor in successors}
+    if not any(earlier.values()):
         return []
     templates = {str(row['name']) for row in repository.list_report_templates()}
     raw = repository.get_workspace_state(DESIGNS_STATE_KEY)
     designs = json.loads(raw) if raw else {}
     designs = designs if isinstance(designs, dict) else {}
     replaced = []
-    for name, superseded in pending.items():
-        successor = superseded['successor']
-        if name not in templates:
-            # Deleted: the example that followed it is not given either.
+    for successor, names in earlier.items():
+        kept = [name for name in names if name in templates]
+        if names and not kept:
+            # Every earlier one deleted (one replaced in place lives on under the later name): the example that follows
+            # them is not given either.
             offered.add(successor)
             continue
-        uses = {key: item for key, item in designs.items() if isinstance(item, dict) and item.get('template') == name}
-        as_shipped = [{key: value for key, value in item.items() if key not in DESIGN_KEYS_ADDED_BY_THE_APP} for item in uses.values()]
-        if (successor in templates
-                or hashlib.sha256(repository.report_template_content(name)).hexdigest() != superseded['template_sha256']
-                or any(item not in superseded['designs'] for item in as_shipped)):
-            # Changed: it stays, and the example that followed it is added beside it (_seed_later_examples).
-            continue
-        repository.rename_report_template(name, successor, updated_by=username)
-        repository.set_report_template_content(successor, (ASSETS / 'ppt-templates' / f'{successor}.csv').read_bytes(), updated_by=username)
-        followers = [definition for definition in (json.loads(path.read_text(encoding='utf-8')) for path in _json_files(ASSETS / 'ppt-designs'))
-                     if definition.get('template') == successor]
-        for (key, item), definition in zip(uses.items(), followers):
-            designs[key] = {**definition, **{field: item[field] for field in DESIGN_KEYS_ADDED_BY_THE_APP if field in item}}
-        replaced.append({'template': name, 'replaced_by': successor, 'designs': [item.get('name') for item in uses.values()],
-                         'designs_replaced_by': [item.get('name') for item in followers[:len(uses)]]})
-        offered.add(successor)
+        for name in kept:
+            superseded = SUPERSEDED_EXAMPLES[name]
+            uses = {key: item for key, item in designs.items() if isinstance(item, dict) and item.get('template') == name}
+            as_shipped = [{key: value for key, value in item.items() if key not in DESIGN_KEYS_ADDED_BY_THE_APP}
+                          for item in uses.values()]
+            if (successor in templates
+                    or hashlib.sha256(repository.report_template_content(name)).hexdigest() != superseded['template_sha256']
+                    or any(item not in superseded['designs'] for item in as_shipped)):
+                # Changed: it stays, and the example that follows it is added beside it (_seed_later_examples).
+                continue
+            repository.rename_report_template(name, successor, updated_by=username)
+            repository.set_report_template_content(successor, (ASSETS / 'ppt-templates' / f'{successor}.csv').read_bytes(),
+                                                   updated_by=username)
+            followers = [definition for definition in (json.loads(path.read_text(encoding='utf-8'))
+                                                       for path in _json_files(ASSETS / 'ppt-designs'))
+                         if definition.get('template') == successor]
+            for (key, item), definition in zip(uses.items(), followers):
+                designs[key] = {**definition, **{field: item[field] for field in DESIGN_KEYS_ADDED_BY_THE_APP if field in item}}
+            replaced.append({'template': name, 'replaced_by': successor, 'designs': [item.get('name') for item in uses.values()],
+                             'designs_replaced_by': [item.get('name') for item in followers[:len(uses)]]})
+            templates = (templates - {name}) | {successor}
+            offered.add(successor)
+            break
     if replaced:
         repository.set_workspace_state(DESIGNS_STATE_KEY, json.dumps(designs))
     repository.set_workspace_state(LATER_EXAMPLES_STATE_KEY, json.dumps(sorted(offered)))

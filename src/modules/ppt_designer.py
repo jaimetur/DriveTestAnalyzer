@@ -532,7 +532,7 @@ DESIGN_READ_MMAP_BYTES = 2 * 1024 ** 3
 DESIGN_SEQUENTIAL_SCAN_SHARE = 0.2
 DESIGN_SELECTION_CACHE_LIMIT = 128
 DESIGN_PROFILE_SELECTION_THRESHOLD = 100_000
-DESIGN_CHART_MODEL_CACHE_VERSION = 22
+DESIGN_CHART_MODEL_CACHE_VERSION = 23
 DESIGN_CHART_MODELS_KEPT = 2000
 DESIGN_PREVIEW_MANIFESTS_KEPT = 256
 DESIGN_CHART_RENDER_WORKERS = max(1, min(2, (os.cpu_count() or 2) - 1))
@@ -808,7 +808,9 @@ def compact_chart_columns(entry, source_columns, multivendor):
     by_identity = defaultdict(list)
     for column in source_columns:
         by_identity[identity(column)].append(column)
-    calculated = {identity(dimension.name): dimension for dimension in entry.calculated_dimensions}
+    # NR Mode is the NR Mode of each CDR, never an Auto-calculated Field named after it (see _catalog_column).
+    calculated = {identity(dimension.name): dimension for dimension in entry.calculated_dimensions
+                  if identity(dimension.name) != identity(NR_MODE_FIELD)}
     referenced = [
         *catalog_kpi_fields(entry.kpi),
         *(field for field in entry_dynamic_fields(entry) if field),
@@ -860,10 +862,37 @@ def compact_chart_columns(entry, source_columns, multivendor):
         for name in ('City', 'Region'):
             selected.extend(by_identity.get(identity(name), []))
     if EXTENDED_CHART_TYPES.get(entry.chart_type.casefold()) == 'filled_map':
-        # A Filled Map colours the Map Area of each test, in its country.
-        for name in ('Map_Area', 'Map_Area_Country'):
+        # A Filled Map colours the Map Area of each test, in its country: read by the row of each test from its CDR when
+        # the source does not keep it (see attach_map_areas).
+        for name in ('Map_Area', 'Map_Area_Country', 'dataset_id', 'source_row_id'):
             selected.extend(by_identity.get(identity(name), []))
     return sorted(set(selected), key=lambda column: (identity(column), column))
+
+
+def attach_map_areas(frame, task_repository):
+    """The Map Area of each test of a frame read from the combined CDR tables, which do not keep it: the CDR of each
+    test keeps it (map_area_columns), read by its row. The tests of a CDR whose areas are not placed yet keep none."""
+    from src.modules.map_area_columns import MAP_AREA_COLUMN, MAP_AREA_COUNTRY_COLUMN, current_datasets
+
+    if frame.empty or MAP_AREA_COLUMN in frame.columns or not {'dataset_id', 'source_row_id'} <= set(frame.columns):
+        return frame
+    datasets = pd.to_numeric(frame['dataset_id'], errors='coerce')
+    rows = pd.to_numeric(frame['source_row_id'], errors='coerce')
+    areas = pd.Series(pd.NA, index=frame.index, dtype='object')
+    countries = pd.Series(pd.NA, index=frame.index, dtype='object')
+    for dataset_id in sorted(current_datasets(task_repository, sorted({int(value) for value in datasets.dropna().unique()}))):
+        table = task_repository._quote_identifier(task_repository.dataset_rows_table_name(dataset_id))
+        with task_repository.connection() as connection:
+            placed = pd.read_sql_query(
+                f'SELECT rowid AS source_row_id, "{MAP_AREA_COLUMN}", "{MAP_AREA_COUNTRY_COLUMN}" FROM {table}', connection,
+            ).set_index('source_row_id')
+        mask = datasets.eq(dataset_id).to_numpy()
+        wanted = rows[mask].to_numpy()
+        areas[mask] = placed[MAP_AREA_COLUMN].reindex(wanted).to_numpy()
+        countries[mask] = placed[MAP_AREA_COUNTRY_COLUMN].reindex(wanted).to_numpy()
+    result = frame.assign(**{MAP_AREA_COLUMN: areas, MAP_AREA_COUNTRY_COLUMN: countries})
+    result.attrs = dict(frame.attrs)
+    return result
 
 
 def install_design_routes(core):
@@ -7249,8 +7278,10 @@ def install_design_routes(core):
                         # The operators the Operator Maps exclude are left out of every Design.
                         raw_frame = drop_excluded_operators(raw_frame, excluded_operators(mapping_settings))
                         raw_frame.attrs.update(mapping_settings)
-                        # Where a Filled Map reads the polygons of the Map Areas.
+                        # Where a Filled Map reads the polygons of the Map Areas, and the area of each test.
                         raw_frame.attrs['map_areas'] = task_repository.map_area_source()
+                        if EXTENDED_CHART_TYPES.get(entry.chart_type.casefold()) == 'filled_map':
+                            raw_frame = attach_map_areas(raw_frame, task_repository)
                         # NSA & SA: its campaigns that name SA are drawn as SA series (see _sa_series_keys).
                         raw_frame.attrs[BOTH_NR_MODES_ATTR] = design_nr_mode(snapshot.definition) == NSA_VS_SA
                         raw_frame = normalise_operator_aliases(raw_frame)
@@ -7638,6 +7669,8 @@ def install_design_routes(core):
         raw_frame = drop_excluded_operators(raw_frame, excluded_operators(mapping_settings))
         raw_frame.attrs.update(mapping_settings)
         raw_frame.attrs['map_areas'] = task_repository.map_area_source()
+        if EXTENDED_CHART_TYPES.get(preview_entry.chart_type.casefold()) == 'filled_map':
+            raw_frame = attach_map_areas(raw_frame, task_repository)
         raw_frame = normalise_operator_aliases(raw_frame)
         raw_frame.attrs['operator_aliases_normalized'] = True
         try:

@@ -1,6 +1,6 @@
 {
-  "name": "DT Analyzer - All Chart Types",
-  "template": "DT Analyzer - All Chart Types",
+  "name": "DT Analyzer - All Supported Chart Types",
+  "template": "DT Analyzer - All Supported Chart Types",
   "nr_mode": "NSA+SA",
   "sa_campaigns": [
     "@latest-2-campaigns"
