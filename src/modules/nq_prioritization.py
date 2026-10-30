@@ -72,8 +72,9 @@ SETTINGS_STATE_KEY = 'nq_prioritization_settings'
 FINGERPRINT_STATE_KEY = 'nq_prioritization_fingerprint'
 FAILED_STATE_KEY = 'nq_prioritization_failed'
 SUMMARY_STATE_KEY = 'nq_prioritization_summary'
-# Bumped when the calculation changes: every value is calculated again.
-IMPACT_VERSION = 21
+# Bumped when the calculation changes: every value is calculated again (22: clusters bounded to the Cluster distance,
+# hotspots of their clusters and time windows).
+IMPACT_VERSION = 22
 # The scoring of every campaign is split by campaign and operator, as the points of the scoring are national.
 LEVELS = ('Campaign', 'Operator')
 SERVICES = ('voice', 'speech', 'data')
@@ -112,17 +113,17 @@ QUEUE_ORDER = (VOICE_QUEUE, DATA_QUEUE, UNIQUE_QUEUE)
 # List 1 orders the calls of a campaign until its Final CDR is scored; list 2 orders them after.
 CAMPAIGN_LIST, FINAL_LIST = 'campaign', 'final'
 LIST_LABELS = {CAMPAIGN_LIST: 'Campaign', FINAL_LIST: 'Final'}
-# The time of the consecutive failures and the distance of the clusters by default, which the hotspots join: failures of
-# the same operator, NR Mode and campaign (Voice, WhatsApp and Data together), each at most 6 minutes OR half the
-# inter-site distance (ISD) of the sites nearest to them (or the same site) from another one of them by default. Without
-# an ISD (no Network Inventory, or no site near) the clusters take 250 m in cities and 1 km on connecting roads (see
-# ``reach``).
+# The time of the consecutive failures and the distance of the clusters by default: a cluster holds the failures of the
+# same operator and NR Mode (Voice, WhatsApp and Data together) that fit in a circle whose radius is half the inter-site
+# distance (ISD) of the sites nearest to them by default, and a hotspot what its clusters and time windows make together.
+# Without an ISD (no Network Inventory, or no site near) the clusters take 250 m in cities and 1 km on connecting roads
+# (see ``reach``).
 CLUSTER_MINUTES = 6
 CLUSTER_ISD = 0.5
 CLUSTER_METERS = 250.0
 CLUSTER_ROAD_METERS = 1000
-# How a failure joins a hotspot: close to another one in time AND in distance, or in time (in the same drive) OR in
-# distance (the default).
+# How the clusters and time windows make a hotspot: where they meet (AND: the same cluster and time window), or together
+# (OR: their envelope, the default).
 HOTSPOT_JOINS = {'and': 'AND', 'or': 'OR'}
 DEFAULT_HOTSPOT_JOIN = 'or'
 # The settings of the clusters, the hotspots and the consecutive failures, applied at once when they change (the places,
@@ -181,12 +182,12 @@ FORMER_CONDITIONS = {'biggest': 'high'}
 CAMPAIGN_CONDITIONS = FINAL_CONDITIONS = CONDITIONS
 CONDITION_TAKES = {
     EVERY_CALL: 'every one', 'consecutive': 'the time-window issues (another failure of the same drive minutes before or after, close to it)',
-    'cluster': 'the failures of a hotspot (2+ failures close in time and distance)',
+    'cluster': 'the failures of a hotspot (its clusters and time windows together)',
     'drop': 'the drops (calls dropped and data tests cut off once established)',
     'setup': 'the setup failures (calls and data tests that failed before being established)',
     'high': 'those with a High impact (by Expected Gain)',
     'medium': 'those with a Medium impact (by Expected Gain)', 'low': 'those with a Low impact (or none, by Expected Gain)',
-    'repeated': 'those of a cluster (a Repeated Issue: the operator failed close to them in several calls)',
+    'repeated': 'those of a cluster (a Repeated Issue: the operator failed close to them in several calls, within one circle)',
 }
 # What each condition is based on, as a tag beside it: the scoring (unstable during the campaign), the place, the place
 # and the time, the time, or the result of the call itself.
@@ -201,12 +202,12 @@ CONDITION_HELP = {
     'consecutive': 'Another failure of the same operator, NR Mode, campaign and drive (the car) started within the '
                    'Time window before or after it and the Time-window distance (in ISDs of the nearest sites, else by '
                    'area), whatever its call type.',
-    'cluster': 'Two or more failures of the same operator, NR Mode and campaign, whatever their call type, each linked to '
-               'another one: in a time window with it in the same drive OR within the Cluster distance of it (or at the site where '
-               'it ended), or, with the AND join, within the Time window and the Cluster distance.',
-    'repeated': 'The operator failed within the Cluster distance of it (in ISDs of the nearest sites, else by area) or at the '
-                'same site in at least Cluster size calls of its campaign and the Cluster period (campaigns) before it, '
-                'whatever the time.',
+    'cluster': 'Two or more failures of the same operator, NR Mode and campaign, whatever their call type, that its clusters '
+               'and time windows make together: with the OR join every failure of a cluster or a time window that shares a '
+               'failure with it, with AND the failures of the same cluster and the same time window.',
+    'repeated': 'It is in a cluster: at least Cluster size calls of the operator of its campaign and the Cluster period '
+                '(campaigns) before it that fit in a circle whose radius is the Cluster distance (in ISDs of the nearest sites, '
+                'else by area), the nearest joined first, whatever the time.',
     'high': 'Within the first High share of the Expected Gain of the calls in scope of its campaign, operator and service: during '
             'the campaign what its failure lost in the latest Final CDR of its NR Mode (never that of a Flex campaign), then its '
             'own points.',
@@ -361,7 +362,7 @@ def _decimal(value: Any, default: float, low: float, high: float, label: str, st
 
 
 def _hotspot_join(value: Any, strict: bool) -> str:
-    """How a failure joins a hotspot: and (close in time AND distance) or or."""
+    """How the clusters and time windows make a hotspot: and (where they meet) or or (together)."""
     key = str(value or '').strip().casefold()
     if key in HOTSPOT_JOINS:
         return key
@@ -1731,47 +1732,62 @@ def repetitions(calls: list[dict[str, Any]], previous_quarters: int, meters: Dis
     return found
 
 
-def cluster_groups(calls: list[dict[str, Any]], counts: dict[str, tuple[int, int]], min_calls: int, previous_quarters: int,
-                   meters: Distance = CLUSTER_METERS, by_mode: bool = True, prefix: str = 'group:') -> dict[str, tuple[str, int]]:
-    """For every call of a cluster: its cluster and how many calls it holds. A call whose ``counts`` (of ``repetitions``)
-    reach ``min_calls`` is linked to the calls it counts: of the same operator (and NR Mode, ``by_mode``), within ``meters``
-    of it or at the same site, in its campaign and the ``previous_quarters`` campaigns before it; a cluster holds the calls
-    linked to each other, directly or through others of it (the calls a cluster counts belong to it, also those that do not
-    reach the Cluster size themselves)."""
+def cluster_groups(calls: list[dict[str, Any]], min_calls: int, previous_quarters: int, meters: Distance = CLUSTER_METERS,
+                   by_mode: bool = True, prefix: str = 'group:') -> dict[str, tuple[str, int]]:
+    """For every call of a cluster: its cluster and how many calls it holds (``min_calls`` at least). The calls of the same
+    operator (and NR Mode, ``by_mode``) within ``meters`` of each other (of the pair, see ``reach``), in a campaign and the
+    ``previous_quarters`` campaigns before it, are joined the nearest first, then the next nearest, and so on; a join is
+    made only while the calls joined still fit in a circle of that radius (the largest of their own), so a cluster never
+    chains along a road and two clusters meet at the widest gap between their calls. Calls at the same site join only
+    within that distance too."""
     ranks = {quarter: rank for rank, quarter in enumerate(sorted({call['quarter'] for call in calls if call.get('quarter') is not None}))}
     groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    for call in calls:
+    for call in sorted(calls, key=lambda item: (str(item.get('start_time') or '~'), item['call_key'])):
         if call.get('place_key'):
             groups.setdefault((str(call.get('operator') or '').casefold(), str(call.get('nr_mode') or '').upper() if by_mode else ''),
                               []).append(call)
     found: dict[str, tuple[str, int]] = {}
     for members in groups.values():
         rank = [ranks.get(call.get('quarter')) for call in members]
-        clustered = [(counts.get(call['call_key']) or (0,))[0] >= min_calls for call in members]
-        parents = list(range(len(members)))
 
         def counted(call: int, other: int) -> bool:
-            """Whether a call of a cluster counts the other one (in its window)."""
-            return clustered[call] and (rank[call] is None or rank[other] is None or rank[call] - previous_quarters <= rank[other] <= rank[call])
-
-        pairs: set[tuple[int, int]] = set(_near_pairs(members, meters))
-        sites: dict[str, list[int]] = {}
-        for index, call in enumerate(members):
-            if site := _site_key(call):
-                sites.setdefault(site, []).append(index)
-        pairs.update((first, second) for indexes in sites.values() for position, first in enumerate(indexes) for second in indexes[position + 1:])
-        for first, second in pairs:
-            if counted(first, second) or counted(second, first):
-                parents[_root(parents, first)] = _root(parents, second)
-        clusters: dict[int, list[int]] = {}
-        for index in sorted(range(len(members)), key=lambda index: (str(members[index].get('start_time') or '~'), members[index]['call_key'])):
-            clusters.setdefault(_root(parents, index), []).append(index)
-        for indexes in clusters.values():
-            if len(indexes) < 2:
+            """Whether the window of a call (its campaign and those before it) takes the other one."""
+            return rank[call] is None or rank[other] is None or rank[call] - previous_quarters <= rank[other] <= rank[call]
+        reach_of = [_limit(meters, call, call) for call in members]
+        pairs = sorted((_meters(members[first], members[second]), first, second) for first, second in _near_pairs(members, meters)
+                       if counted(first, second) or counted(second, first))
+        parents = list(range(len(members)))
+        joined: dict[int, list[int]] = {index: [index] for index in range(len(members))}
+        refused: set[tuple[int, int]] = set()
+        for _distance, first, second in pairs:
+            one, other = _root(parents, first), _root(parents, second)
+            if one == other or (min(one, other), max(one, other)) in refused:
                 continue
+            together = joined[one] + joined[other]
+            if _fits(members, together, max(reach_of[index] for index in together)):
+                parents[other] = one
+                joined[one] = together
+                del joined[other]
+            else:
+                refused.add((min(one, other), max(one, other)))
+        for indexes in joined.values():
+            if len(indexes) < max(2, min_calls):
+                continue
+            indexes.sort()
             key = f"{prefix}{members[indexes[0]]['call_key']}"
             found.update({members[index]['call_key']: (key, len(indexes)) for index in indexes})
     return found
+
+
+def _fits(members: list[dict[str, Any]], indexes: list[int], radius: float) -> bool:
+    """Whether the calls fit in a circle of ``radius`` metres (their smallest enclosing circle, see nq_call_map)."""
+    from src.modules.nq_call_map import enclosing_circle
+
+    origin = members[indexes[0]]
+    latitude, longitude = float(origin['latitude']), float(origin['longitude'])
+    points = [((float(members[index]['longitude']) - longitude) * METERS_PER_DEGREE * math.cos(math.radians(latitude)),
+               (float(members[index]['latitude']) - latitude) * METERS_PER_DEGREE) for index in indexes]
+    return enclosing_circle(points)[2] <= radius
 
 
 # ---------------------------------------------------------------------------
@@ -1827,52 +1843,30 @@ def _follows(first: dict[str, Any], second: dict[str, Any], meters: Distance) ->
     return not math.isfinite(distance) or distance <= _limit(meters, first, second)
 
 
-def hotspots(calls: list[dict[str, Any]], minutes: float = CLUSTER_MINUTES, meters: Distance = CLUSTER_METERS,
-             join: str = DEFAULT_HOTSPOT_JOIN, run_meters: Distance = CONSECUTIVE_REACH) -> dict[str, tuple[str, int]]:
-    """For every failure (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``, ``latitude``, ``longitude``,
-    ``place_key``, ``drive``), whatever its call type: its hotspot and how many failures it has. Two failures of the same
-    operator, NR Mode and campaign are linked when they started at most ``minutes`` apart AND at most ``meters`` apart (of
-    the pair, see ``reach``) or ended at the same site (their place, as the clusters compare them; ``join`` and), or at most
-    ``minutes`` and ``run_meters`` apart in the same drive OR at most ``meters`` apart or at the same site (``join`` or); a
-    hotspot holds the failures linked to each other, directly or through others of it (a failure linked to none stays
-    alone, and so does a failure without a date with the and join)."""
+def hotspots(calls: list[dict[str, Any]], clusters: dict[str, tuple[str, int]], runs: dict[str, tuple[str, int]],
+             join: str = DEFAULT_HOTSPOT_JOIN) -> dict[str, tuple[str, int]]:
+    """For every failure (``call_key``, ``operator``, ``nr_mode``, ``campaign``, ``start_time``), whatever its call type: its
+    hotspot and how many failures it has. A hotspot is what the clusters (``clusters``) and the time windows (``runs``) of
+    a campaign make together: with the ``or`` join every failure of a cluster or a time window that shares a failure with
+    it (their envelope), with ``and`` the failures of the same cluster and the same time window (where they meet). A
+    failure in neither stays alone."""
     found: dict[str, tuple[str, int]] = {}
     for members in _campaign_groups(calls):
-        moments = [_moment(call.get('start_time')) for call in members]
-        sites = [_site_key(call) for call in members]
         parents = list(range(len(members)))
-
-        def link(first: int, second: int) -> None:
-            parents[_root(parents, first)] = _root(parents, second)
-        timed = sorted((index for index, moment in enumerate(moments) if moment is not None),
-                       key=lambda index: (moments[index], members[index]['call_key']))
-        if join == 'or':
-            # In time: the failures of each drive in their order, each with the one before (a chain covers the others).
-            previous: dict[str, int] = {}
-            for index in timed:
-                drive = str(members[index].get('drive') or '')
-                if (drive and drive in previous and (moments[index] - moments[previous[drive]]).total_seconds() <= minutes * 60
-                        and _follows(members[previous[drive]], members[index], run_meters)):
-                    link(index, previous[drive])
-                if drive:
-                    previous[drive] = index
-            # In distance: at the same site, or close.
-            first_at: dict[str, int] = {}
-            for index, site in enumerate(sites):
-                if site:
-                    link(index, first_at.setdefault(site, index))
-            for first, second in _near_pairs(members, meters):
-                link(first, second)
-        else:
-            for position, index in enumerate(timed):
-                for other in timed[position + 1:]:
-                    if (moments[other] - moments[index]).total_seconds() > minutes * 60:
-                        break
-                    if ((sites[index] and sites[index] == sites[other])
-                            or _meters(members[index], members[other]) <= _limit(meters, members[index], members[other])):
-                        link(index, other)
+        first_of: dict[Any, int] = {}
+        for index, call in enumerate(members):
+            cluster, run = clusters.get(call['call_key']), runs.get(call['call_key'])
+            cluster = cluster[0] if cluster and cluster[1] >= 2 else ''
+            run = run[0] if run and run[1] >= 2 else ''
+            keys = ([('cluster', cluster)] if cluster else []) + ([('run', run)] if run else []) if join == 'or' else (
+                [(cluster, run)] if cluster and run else [])
+            for key in keys:
+                parents[_root(parents, index)] = _root(parents, first_of.setdefault(key, index))
+        moments = [_moment(call.get('start_time')) for call in members]
         spots: dict[int, list[int]] = {}
-        for index in [*timed, *(index for index, moment in enumerate(moments) if moment is None)]:
+        for index in [*sorted((index for index, moment in enumerate(moments) if moment is not None),
+                              key=lambda index: (moments[index], members[index]['call_key'])),
+                      *(index for index, moment in enumerate(moments) if moment is None)]:
             spots.setdefault(_root(parents, index), []).append(index)
         for indexes in spots.values():
             key = f"cluster:{members[indexes[0]]['call_key']}"
@@ -1989,12 +1983,12 @@ def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any], out_of_
     period, size = settings['previous_quarters'], settings['min_calls']
     meters = reach(settings['cluster_isd'], settings['spot_meters'], settings['cluster_road_meters'])
     run_meters = reach(settings['consecutive_isd'], settings['consecutive_city_meters'], settings['consecutive_road_meters'])
-    counts = repetitions(linked, period, meters)
-    found = {'repetitions': counts, 'clusters': cluster_groups(linked, counts, size, period, meters),
-             'hotspots': hotspots(linked, settings['consecutive_minutes'], meters, settings['hotspot_join'], run_meters),
-             'runs': consecutive_runs(linked, settings['consecutive_minutes'], run_meters), 'clusters_all': {}}
+    clusters = cluster_groups(linked, size, period, meters)
+    runs = consecutive_runs(linked, settings['consecutive_minutes'], run_meters)
+    found = {'repetitions': repetitions(linked, period, meters), 'clusters': clusters,
+             'hotspots': hotspots(linked, clusters, runs, settings['hotspot_join']), 'runs': runs, 'clusters_all': {}}
     if every_mode:
-        found['clusters_all'] = cluster_groups(linked, repetitions(linked, period, meters, False), size, period, meters, False, 'group-all:')
+        found['clusters_all'] = cluster_groups(linked, size, period, meters, False, 'group-all:')
     return found
 
 
@@ -2109,7 +2103,8 @@ def group_values(linked: dict[str, dict[str, Any]], key: str, min_calls: int) ->
     run = linked['runs'].get(key)
     cluster, cluster_all = linked['clusters'].get(key, ('', None)), linked['clusters_all'].get(key, ('', None))
     return {'repetitions': count, 'repeated_campaigns': campaigns_count,
-            'repeated': 'Yes' if count is not None and count >= min_calls else 'No', 'cluster_key': hotspot[0], 'cluster_size': hotspot[1],
+            # A Repeated Issue is a call of a cluster (its repetitions, the calls near it, may be more).
+            'repeated': 'Yes' if (cluster[1] or 0) >= max(2, min_calls) else 'No', 'cluster_key': hotspot[0], 'cluster_size': hotspot[1],
             'consecutive': consecutive_of(run), 'consecutive_key': run[0] if run else '', 'consecutive_size': run[1] if run else None,
             'repeat_key': cluster[0], 'repeat_size': cluster[1], 'repeat_all_key': cluster_all[0], 'repeat_all_size': cluster_all[1]}
 

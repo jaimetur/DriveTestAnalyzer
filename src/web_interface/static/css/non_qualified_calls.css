@@ -1981,6 +1981,10 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 /* A call of the groups of the call at its site too, ringed in the colour of the site; a point of several calls, counted. */
 /* An NQ call outlined in the colour of another of its groups, or in red at the site of the call. */
 .nq-map-mark.is-diamond.is-outlined { background: #fff; outline: 2px solid var(--mark); outline-offset: 1px; }
+/* The NQ calls: a five-pointed star (hollow: a white star inside the one in its colour). */
+.nq-map-mark.is-star { position: relative; width: .95rem; height: .95rem; background: var(--mark);
+  clip-path: polygon(50% 0, 61.8% 33.8%, 97.6% 34.5%, 69% 56.2%, 79.4% 90.5%, 50% 70%, 20.6% 90.5%, 31% 56.2%, 2.4% 34.5%, 38.2% 33.8%); }
+.nq-map-mark.is-star.is-outlined::after { content: ''; position: absolute; inset: 26%; background: #fff; clip-path: inherit; }
 .nq-map-mark.is-count { width: auto; height: auto; padding: 0 .3rem; border-radius: 999px; background: var(--mark); color: #fff;
   font-size: .62rem; font-weight: 800; line-height: 1.3; }
 .nq-map-mark.is-count::before { content: '×N'; }

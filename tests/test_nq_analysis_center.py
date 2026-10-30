@@ -1163,7 +1163,7 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     assert 'Import Ericsson RCA Results</strong>' in center and 'Import Previous NQ Analyses</strong>' in center
     assert 'nq-import-toggle' not in page
     menu = page.split('data-module-sections-for="non-qualified-calls"', 1)[1].split('</nav>', 1)[0]
-    assert menu.index('<span>Non-Qualified Calls</span>') < menu.index('module-sections-separator') < menu.index('<span>NQ Analysis Configuration</span>')
+    assert menu.index('<span>NQ Calls</span>') < menu.index('module-sections-separator') < menu.index('<span>NQ Analysis Configuration</span>')
     script = (Path(__file__).parents[1] / 'src/web_interface/static/js/non_qualified_calls.js').read_text(encoding='utf-8')
     anchors = ('fields-and-sections', 'statuses-and-teams', 'status-rules', 'root-cause-catalog', 'dta-rca-rules',
                'import-ericsson-rca-results', 'import-previous-nq-analyses', 'analysts-reviewers-to-asignees')

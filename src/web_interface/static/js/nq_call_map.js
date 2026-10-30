@@ -556,7 +556,7 @@
       const note = shared.samplesNote?.();
       if (note) body.append(node('p', note, 'nq-l3-area-note'));
       body.append(node('p', 'Calls, sites and routes', 'nq-l3-block'));
-      const icons = {failures: ['diamond', COLOURS.call], sites: ['triangle', '#868e96'], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
+      const icons = {failures: ['star', COLOURS.call], sites: ['triangle', '#868e96'], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
         route: ['road', data.area ? COLOURS.route : COLOURS.path], cluster: ['ring', COLOURS.cluster], run: ['ring', COLOURS.run], hotspot: ['ring', COLOURS.hotZone]};
       const rings = visibleRings(data);
       const paths = rings.some((ring) => ring.path && ring.path.length > 1);
@@ -665,6 +665,17 @@
       context.lineTo(x + size, y);
       context.lineTo(x, y + size);
       context.lineTo(x - size, y);
+      context.closePath();
+    };
+    // The mark of an NQ call: a five-pointed star (the diamonds are the PCIs and signalling of the logs), its points
+    // ``size`` × 1.25 from its centre.
+    const star = (context, x, y, size) => {
+      context.beginPath();
+      for (let index = 0; index < 10; index += 1) {
+        const radius = size * (index % 2 ? .6 : 1.25), angle = -Math.PI / 2 + index * Math.PI / 5;
+        if (index) context.lineTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius);
+        else context.moveTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius);
+      }
       context.closePath();
     };
     const pin = (context, x, y, size, colour) => {
@@ -1226,31 +1237,34 @@
       // time-window issue) and of its site, then the others. The calls on one point make one mark with how many they are (the
       // most related gives its colour); with Per Group, an outline of its shape for each group of the call they are of (and
       // switched on), its cluster innermost, then its time window and its hotspot.
-      // The mark of an NQ call (and of the call itself): a diamond in its colour with a shadow, then the outlines of its
+      // The mark of an NQ call (and of the call itself): a star in its colour with a shadow, then the outlines of its
       // ``groups`` in their colours, each over a white one.
       const nqMark = (x, y, size, colour, groups, hollow = false) => {
         context.save();
         context.shadowColor = 'rgba(30, 10, 20, .45)';
         context.shadowBlur = 5;
         context.shadowOffsetY = 1;
-        diamond(context, x, y, size);
+        context.lineJoin = 'round';
+        star(context, x, y, size);
         context.fillStyle = hollow ? '#fff' : colour;
         context.fill();
         context.restore();
-        diamond(context, x, y, size);
+        context.save();
+        context.lineJoin = 'round';
+        star(context, x, y, size);
         context.lineWidth = hollow ? 2.6 : 2;
         context.strokeStyle = hollow ? colour : '#fff';
         context.stroke();
         groups.forEach((kind, index) => {
-          diamond(context, x, y, size + 4.6 + index * 4.6);
-          context.lineJoin = 'miter';
-          context.lineWidth = 4.6;
+          star(context, x, y, size + 3.4 + index * 3.4);
+          context.lineWidth = 3.8;
           context.strokeStyle = 'rgba(255, 255, 255, .9)';
           context.stroke();
-          context.lineWidth = 2.6;
+          context.lineWidth = 2;
           context.strokeStyle = GROUP_COLOURS[kind];
           context.stroke();
         });
+        context.restore();
       };
       if (layers.failures) {
         const stacks = new Map();
@@ -1266,9 +1280,9 @@
         for (const {x, y, items} of stacks.values()) {
           items.sort((first, second) => rank(first) - rank(second));
           const [failure] = items;
-          // Larger than the points of the layers, with a shadow, so that they stand out (larger still close in); larger on the
-          // map of a call than on NQ Maps, where they are many.
-          const size = data.area ? 8 + (zoom >= 15 ? 1.5 : 0) : 11.5 + (zoom >= 15 ? 2 : 0);
+          // Stars, which no layer of the logs uses, with a shadow (a little larger close in); larger on the map of a call than
+          // on NQ Maps, where they are many.
+          const size = data.area ? 6.5 + (zoom >= 15 ? 1 : 0) : 8 + (zoom >= 15 ? 1.5 : 0);
           // On NQ Maps those without Layer 3 - DT Logs are hollow, in their colour.
           const hollow = data.area && !items.some((item) => item.l3_log);
           // Per Group: an outline of its shape for each group of the call the calls on the point are of.
@@ -1288,14 +1302,14 @@
             context.textBaseline = 'middle';
             context.fillText(badge, x + size - 1 + badgeWidth / 2, y - size - 6);
           }
-          hits.push({x, y, r: size + 3 + groups.length * 4.6, kind: 'failure', item: failure, priority: 4, stack: items.length});
+          hits.push({x, y, r: size * 1.1 + 3 + groups.length * 3.4, kind: 'failure', item: failure, priority: 4, stack: items.length});
         }
       }
       // The order of the failures of each time window, in a blue badge at the top left of each (beyond its circles).
       context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
       context.textAlign = 'center';
       context.textBaseline = 'middle';
-      const badgeOffset = data.area ? 11 : 20;
+      const badgeOffset = data.area ? 11 : 16;
       for (const [px, py, number] of pathNumbers) {
         const [bx, by] = [px - badgeOffset, py - badgeOffset];
         context.beginPath();
@@ -1350,10 +1364,11 @@
         pinAt = [px, py];
         const own = data.failures.find((failure) => failure.self);
         if (own && layers.failures) {
-          const size = 11.5 + (zoom >= 15 ? 2 : 0);
+          const size = 8 + (zoom >= 15 ? 1.5 : 0);
           nqMark(px, py, size, shared.failureColour(own), shared.failureGroups(own));
-          pinLift = size;
-          hits.push({x: px, y: py, r: size + 3, kind: 'call', item: call, priority: 6});
+          // (On the top point of its star.)
+          pinLift = size * 1.25;
+          hits.push({x: px, y: py, r: size * 1.1 + 3, kind: 'call', item: call, priority: 6});
         }
         pin(context, px, py - pinLift, 10, COLOURS.call);
         hits.push({x: px, y: py - pinLift - 15, r: 13, kind: 'call', item: call, priority: 6});
@@ -1818,8 +1833,8 @@
         // of the area shown.
         if (layers.failures) {
           group(`NQ calls · by ${AREA_FAILURE_COLOURS[settings.failureColour].toLowerCase()}`);
-          shared.failureLegend().forEach(([text, colour, extra]) => item('diamond', text, colour, extra));
-          if (data.failures.some((failure) => !failure.l3_log)) item('diamond', 'Hollow: without Layer 3 - DT Logs', '#495057', 'is-outlined');
+          shared.failureLegend().forEach(([text, colour, extra]) => item('star', text, colour, extra));
+          if (data.failures.some((failure) => !failure.l3_log)) item('star', 'Hollow: without Layer 3 - DT Logs', '#495057', 'is-outlined');
           item('count', 'NQ calls at one point (how many)', '#2d1520');
         }
         const routes = (window.L3Layers?.routesOf(shared.l3) || []).length, sites = layers.sites !== false && data.sites.length;
@@ -1846,7 +1861,7 @@
       // The NQ calls around as on NQ Maps: a colour for each value of Colour NQ calls by, with the outlines of Per Group.
       if (layers.failures) {
         group(focusKind() ? `NQ calls · only its ${groupFocus.label} (filtering the list)` : `NQ calls · by ${FAILURE_COLOURS[settings.failureColour].toLowerCase()}`);
-        shared.failureLegend().forEach(([text, colour, extra, mark]) => item(mark || 'diamond', text, colour, extra));
+        shared.failureLegend().forEach(([text, colour, extra, mark]) => item(mark || 'star', text, colour, extra));
         item('count', 'NQ calls at one point (how many)', '#2d1520');
       }
       // The shapes of its groups switched on: its own one by one, those of the other calls of its hotspot by kind, then its zone.
@@ -2426,7 +2441,7 @@
       for (const item of shown.slice(0, 150)) {
         const entry = node('li');
         entry.style.setProperty('--mark', shared.failureColour(item));
-        const mark = node('span', undefined, 'nq-map-mark is-diamond');
+        const mark = node('span', undefined, 'nq-map-mark is-star');
         const text = node('div');
         const title = node('strong', `${kindLabel(item)} · ${item.operator} · ${campaignText(item.campaign, item.nr_mode)}`);
         const tags = [item.same_hotspot ? 'Hotspot' : '', item.same_cluster ? 'Cluster' : '', item.same_run ? 'Time Window' : '',

@@ -136,7 +136,15 @@
     else if (shape === 'triangle-down') polygon(3, Math.PI / 2, 1.25);
     else if (shape === 'pentagon') polygon(5, -Math.PI / 2, 1.1);
     else if (shape === 'hexagon') polygon(6, 0, 1.1);
-    else context.arc(x, y, size, 0, Math.PI * 2);
+    else if (shape === 'star') {
+      // The NQ calls of the maps (no layer of the logs uses it).
+      for (let index = 0; index < 10; index += 1) {
+        const radius = size * (index % 2 ? .6 : 1.25), angle = -Math.PI / 2 + index * Math.PI / 5;
+        if (index) context.lineTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius);
+        else context.moveTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius);
+      }
+      context.closePath();
+    } else context.arc(x, y, size, 0, Math.PI * 2);
   };
   const drawMarker = (context, shape, x, y, size, colour, {nr = false, outline = '#fff', heading = null} = {}) => {
     if (shape === 'road') {

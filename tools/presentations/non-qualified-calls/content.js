@@ -25,9 +25,9 @@ module.exports = {
         { art: 'run', icon: 'TbCar', color: '#15aabf', title: 'Time Window', tag: 'Time',
           text: 'Failures of the same car, one after another: each within 15 min and 2 ISD of the one before.', rules: ['Same drive', '≤ 15 min', '≤ 2 ISD'] },
         { art: 'cluster', icon: 'TbBuildingBroadcastTower', color: '#2f9e44', title: 'Cluster', tag: 'Position',
-          text: 'Calls that fail close to each other or at the same site, in the campaign and its Cluster period.', rules: ['Same site', '≤ 0.5 ISD', 'Cluster period'] },
+          text: 'Calls that fail close together: they fit in one circle of 0.5 ISD, the nearest joined first.', rules: ['One circle', '≤ 0.5 ISD', 'Cluster period'] },
         { art: 'hotspot', icon: 'TbFlame', color: '#1971c2', title: 'Hotspot', tag: 'Position & time',
-          text: 'Both together: failures linked in time OR in distance, whatever their call type.', rules: ['OR by default', 'Any call type'] },
+          text: 'What its clusters and time windows make together (OR), or where they meet (AND).', rules: ['OR by default', 'Any call type'] },
       ],
       facts: [
         { icon: 'TbUsersGroup', text: 'One operator, NR Mode, campaign' },
@@ -35,7 +35,7 @@ module.exports = {
         { icon: 'TbClick', text: 'Header click filters the list' },
         { icon: 'TbMapPin', text: 'Red on the map when filtering' },
       ],
-      notes: 'Failures rarely come alone, so NQ Prioritization groups them. A time-window issue holds the failures of the same car one after another, each within the Time window (15 minutes) and the Time-window distance (2 inter-site distances, ISD) of the one before. A cluster holds the calls that fail close to each other (half the ISD of the nearest sites) or at the same site, in the campaign and the campaigns of its Cluster period. A hotspot joins both: failures linked in time OR in distance by default, or in time AND distance at once, whatever their call type. Every group keeps to one operator, NR Mode and campaign, and leaves out the Ping tests and the calls out of scope; the thresholds are set in the Prioritization Rules. The NQ Hotspots, Time-Window & Clustered Issues panel lists them with their IDs (H- a hotspot, T- a time-window issue, C- a cluster), which every call also keeps in its Hotspot ID, Time-Window ID and Cluster ID fields to show as columns and export to Excel; each call shows its groups in its header (a click filters the list by one), and its map paints each group in its colour, the one filtering the list in red.' },
+      notes: 'Failures rarely come alone, so NQ Prioritization groups them. A time-window issue holds the failures of the same car one after another, each within the Time window (15 minutes) and the Time-window distance (2 inter-site distances, ISD) of the one before. A cluster holds the calls that fail close together: they fit in one circle whose radius is half the ISD of the nearest sites, the nearest joined first, so a long series of failures along a road makes several clusters, in the campaign and the campaigns of its Cluster period. A hotspot is what its clusters and time windows make together by default (their envelope), or where they meet with the AND join, whatever their call type. Every group keeps to one operator, NR Mode and campaign, and leaves out the Ping tests and the calls out of scope; the thresholds are set in the Prioritization Rules. The NQ Hotspots, Time-Window & Clustered Issues panel lists them with their IDs (H- a hotspot, T- a time-window issue, C- a cluster), which every call also keeps in its Hotspot ID, Time-Window ID and Cluster ID fields to show as columns and export to Excel; each call shows its groups in its header (a click filters the list by one), and its map paints each group in its colour, the one filtering the list in red.' },
     { id: 'sections', type: 'split', section: 'Follow-up', footer: 'Six sections', kicker: 'Call details', title: 'Six sections per call', visual: 'phases',
       points: [
         { icon: 'TbListDetails', title: 'General and RCA', text: 'What failed, and its root cause from every source.' },

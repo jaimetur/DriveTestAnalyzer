@@ -3548,7 +3548,7 @@
     data.issues.forEach((item) => { state.hotspotLabels[item.key] = `${item.id} · ${groupSites(item)}`; });
     const settings = data.settings;
     const joinWord = settings.hotspot_join === 'and' ? 'AND' : 'OR';
-    const hotspotNote = `Failures of the same operator, NR Mode and campaign, whatever their call type (the Ping tests and the calls out of scope apart), each within ${joinWord === 'OR' ? 'the Time window in the same drive OR' : 'the Time window AND'} the Cluster distance (or at the site where it ended) of another one of them: every hotspot with the filtered calls of each, the most calls first (${number(spots.length)} hotspot${spots.length === 1 ? '' : 's'}).`;
+    const hotspotNote = `Failures of the same operator, NR Mode and campaign, whatever their call type (the Ping tests and the calls out of scope apart), ${joinWord === 'OR' ? 'that its clusters and time windows make together (every failure of a cluster or a time window that shares one)' : 'of the same cluster and the same time window'}: every hotspot with the filtered calls of each, the most calls first (${number(spots.length)} hotspot${spots.length === 1 ? '' : 's'}).`;
     // The hotspots and the sites with a repeated issue share their columns and their look: each row with its operator, NR
     // Mode, campaign, site (a click shows its calls), time, calls, their call types, points lost, open calls and main root
     // category, the call types in a legend above them.

@@ -485,32 +485,26 @@ def failure(key, minute, latitude, site='', operator='VF', day=1, drive='system:
             'start_time': f'2026-09-0{day} 10:{minute:02d}:00', 'latitude': latitude, 'longitude': -0.12, 'drive': drive, **values}
 
 
-def test_hotspots_link_the_failures_close_in_time_or_distance_whatever_their_call_type():
-    calls = [
-        failure('a', 0, 51.5000), failure('b', 10, 51.5010), failure('c', 24, 51.5020),  # each within 15 min and 250 m of the one before
-        failure('d', 50, 51.5030),  # 26 minutes later
-        failure('e', 52, 51.6000, site='s1'), failure('f', 55, 51.7000, site='s1'),  # far, but ended at the same site
-        failure('g', 0, 51.5000, operator='EE'), failure('h', 1, 51.5000, day=2),  # another operator, another day
-        failure('k', 30, 51.9000), failure('m', 40, 51.9900),  # 10 minutes apart, 10 km apart (44 km after c)
-        failure('i', 0, 51.5000, start_time='')]  # no date
-    found = nq_prioritization.hotspots(calls, join='and', **WINDOW)
-    assert found['a'][0] == found['b'][0] == found['c'][0] and found['a'][1] == 3
-    assert found['d'][1] == 1 and found['e'][0] == found['f'][0] and found['e'][1] == 2
-    assert found['g'][1] == found['h'][1] == found['i'][1] == found['k'][1] == found['m'][1] == 1
-    # A failure linked to two others joins them, whichever was first: a chain of links is one hotspot.
-    chain = nq_prioritization.hotspots([failure('x', 0, 51.5000), failure('y', 14, 51.5040), failure('z', 7, 51.5020)], join='and', **WINDOW)
-    assert len({key for key, _size in chain.values()}) == 1 and chain['x'] == ('cluster:x', 3)
-    # OR (the default): consecutive in the same drive, or close in distance at any time of the campaign.
-    either = nq_prioritization.hotspots(calls, **WINDOW)
-    assert either['d'][0] == either['a'][0] and either['a'][1] == 6
-    assert either['i'][0] == either['h'][0] == either['a'][0] and either['g'][1] == 1
-    # The car drove 44 km and then 10 km between them: too far for consecutive failures, unless the sites are that far apart.
-    assert either['k'][1] == either['m'][1] == 1
-    wide = nq_prioritization.hotspots([failure('k', 30, 51.9000, isd_km=6.0), failure('m', 40, 51.9900)], **WINDOW)
-    assert wide['k'] == wide['m'] == ('cluster:k', 2)
-    # Another car measuring at the same time elsewhere never joins by time.
-    other_car = nq_prioritization.hotspots([failure('p', 0, 51.5000), failure('q', 5, 52.5000, drive='system:car 2')], **WINDOW)
-    assert other_car['p'][1] == other_car['q'][1] == 1
+def test_hotspots_are_what_the_clusters_and_time_windows_make_together():
+    # a, b and c, one drive minutes and 890 m apart (a time window); d and e, another car later, 110 m and 220 m from c (a
+    # cluster with c); f another day far away; g another operator.
+    calls = [failure(key, minute, latitude, place_key=f'spot:{key}', **values) for key, minute, latitude, values in (
+        ('a', 0, 51.5000, {}), ('b', 5, 51.5080, {}), ('c', 10, 51.5160, {}), ('d', 30, 51.5170, {'drive': 'system:car 2'}),
+        ('e', 50, 51.5180, {'drive': 'system:car 2'}), ('f', 0, 51.9000, {'day': 2}), ('g', 0, 51.5000, {'operator': 'EE'}))]
+    clusters = nq_prioritization.cluster_groups(calls, 2, 0, nq_prioritization.reach(0.5, 250, 1000))
+    runs = nq_prioritization.consecutive_runs(calls, WINDOW['minutes'], WINDOW['run_meters'])
+    assert clusters['c'] == clusters['d'] == clusters['e'] == ('group:c', 3) and 'a' not in clusters
+    assert runs['a'] == runs['b'] == runs['c'] == ('run:a', 3) and runs['d'][1] == 1
+    # OR (the default): the time window and the cluster share c, so they make one hotspot, their envelope.
+    either = nq_prioritization.hotspots(calls, clusters, runs)
+    assert either['a'] == either['e'] == ('cluster:a', 5) and either['f'][1] == either['g'][1] == 1
+    # AND: only the failures of the same cluster and the same time window, here c alone.
+    both = nq_prioritization.hotspots(calls, clusters, runs, join='and')
+    assert all(size == 1 for _key, size in both.values())
+    near = [failure(key, minute, 51.5000 + minute * 0.0002, place_key=f'spot:{key}') for key, minute in (('x', 0), ('y', 1), ('z', 2))]
+    together = nq_prioritization.hotspots(near, nq_prioritization.cluster_groups(near, 2, 0, 250),
+                                          nq_prioritization.consecutive_runs(near, WINDOW['minutes'], WINDOW['run_meters']), join='and')
+    assert together['x'] == together['z'] == ('cluster:x', 3)
 
 
 def test_consecutive_failures_have_another_failure_of_their_drive_minutes_apart_and_close():
@@ -543,7 +537,7 @@ def test_the_cluster_distance_takes_the_isd_of_the_nearest_sites_or_the_meters_o
     assert pairs([{**near[0], 'isd_km': 0.6}, {**near[1], 'isd_km': 0.4}]) == []
     assert pairs([near[0], {**near[1], 'environment': 'Connecting Roads'}]) == [(0, 1)]  # 1 km on connecting roads
     assert nq_prioritization.repetitions([{**call, 'isd_km': 0.8} for call in near], 0, distance)['a'] == (2, 1)
-    assert nq_prioritization.cluster_groups(near, nq_prioritization.repetitions(near, 0, distance), 2, 0, distance) == {}
+    assert nq_prioritization.cluster_groups(near, 2, 0, distance) == {}
     # Whatever the reach of each call, the grid finds every pair a comparison of all of them finds.
     rng = random.Random(7)
     calls = [{'call_key': str(index), 'latitude': 51.5 + rng.uniform(0, 0.1), 'longitude': -0.1 + rng.uniform(0, 0.15),
@@ -622,22 +616,26 @@ def test_clusters_take_the_quarter_of_the_campaign_and_leave_the_ping_tests_out(
     assert not any('b' in linked[name] for name in ('repetitions', 'hotspots', 'runs', 'clusters'))
 
 
-def test_clusters_hold_the_calls_linked_by_distance_or_site_and_those_they_count():
+def test_clusters_join_the_nearest_calls_first_while_they_fit_in_one_circle():
     def call(key, latitude, place='', quarter=8106, operator='EE'):
         return {'call_key': key, 'operator': operator, 'nr_mode': 'SA', 'place_key': place or 'spot:250:1:1', 'quarter': quarter,
                 'campaign_label': 'Q', 'latitude': latitude, 'longitude': -0.12, 'start_time': f'2026-09-01 10:{key[-1]}0'}
-    # a and b 220 m apart, b and c 220 m apart: one cluster through b; d at the site of e far away; f alone.
+    # a, b and c 220 m apart in a line fit in a circle of 250 m: one cluster; d and e at the same site but 111 km apart are
+    # not one (the same site joins only within the Cluster distance); f alone; g another operator.
     calls = [call('a1', 51.5000), call('b2', 51.5020), call('c3', 51.5040), call('d4', 52.0, 'site:|s9'), call('e5', 53.0, 'site:|s9'),
              call('f6', 54.0), call('g7', 51.5000, operator='VF')]
-    counts = nq_prioritization.repetitions(calls, 1, 250)
-    found = nq_prioritization.cluster_groups(calls, counts, 2, 1, 250)
-    assert found['a1'] == found['b2'] == found['c3'] == ('group:a1', 3) and found['d4'] == found['e5'] == ('group:d4', 2)
-    assert 'f6' not in found and 'g7' not in found
-    # A cluster of the next campaign counts a call of the one before, which belongs to it although it is alone in its own.
+    found = nq_prioritization.cluster_groups(calls, 2, 1, 250)
+    assert found['a1'] == found['b2'] == found['c3'] == ('group:a1', 3)
+    assert not {'d4', 'e5', 'f6', 'g7'} & set(found)
+    # Along a road, 200 m, 240 m and 200 m apart: the four would need a circle of 320 m, so the nearest pairs make two
+    # clusters that meet at the widest gap (no chaining).
+    road = [call('p1', 51.5000), call('q2', 51.5018), call('r3', 51.50396), call('s4', 51.50576)]
+    found = nq_prioritization.cluster_groups(road, 2, 0, 250)
+    assert found['p1'] == found['q2'] == ('group:p1', 2) and found['r3'] == found['s4'] == ('group:r3', 2)
+    # A call of the campaign before joins within the Cluster period.
     calls = [call('x1', 51.5000, quarter=8105), call('y2', 51.5010, quarter=8106)]
-    counts = nq_prioritization.repetitions(calls, 1, 250)
-    assert counts['x1'][0] == 1 and nq_prioritization.cluster_groups(calls, counts, 2, 1, 250)['x1'] == ('group:x1', 2)
-    assert nq_prioritization.cluster_groups(calls, nq_prioritization.repetitions(calls, 0, 250), 2, 0, 250) == {}
+    assert nq_prioritization.cluster_groups(calls, 2, 1, 250)['x1'] == ('group:x1', 2)
+    assert nq_prioritization.cluster_groups(calls, 2, 0, 250) == {}
 
 
 def test_queues_take_priority_then_the_newest_campaign_step_gain_and_oldest():
@@ -1249,7 +1247,8 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert panel['totals']['repeated'] == sum(bool(row['repeat_all_key']) for row in rows.values()) >= sum(bool(row['repeat_key']) for row in rows.values())
     assert sa['totals']['repeated'] == sum(bool(row['repeat_key']) for row in rows.values() if row['nr_mode'] == 'SA')
     # The other filters never choose it, whatever NR Modes they leave; a campaign of both NR Modes neither.
-    single = next(item for item in sa['issues'] if set(item['nr_modes']) == {'SA'})
+    # (A cluster of one NR Mode when the data has one: clusters never chain far calls of a site together.)
+    single = next((item for item in sa['issues'] if set(item['nr_modes']) == {'SA'}), None) or panel['issues'][0]
     by_site = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'place': [f"{single['operator']}||{single['place']}"]}}).json()
     assert by_site['cluster_mode'] == ''
     campaign = next(row['campaign'] for row in rows.values() if row['nr_mode'] == 'SA')

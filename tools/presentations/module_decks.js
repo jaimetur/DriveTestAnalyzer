@@ -1399,7 +1399,7 @@ const TERMS = {
     out += pill(360, 252, '40 km later: a new one', '#22304f', '#c9d4e6', 15);
     return out;
   },
-  // The calls that failed around a site, within half its ISD of each other or at it, linked to each other.
+  // The calls that failed close together around a site, in one circle of half its ISD.
   cluster(c) {
     let out = [[0, 70, 460, 40], [0, 210, 460, 236], [120, 0, 92, 270], [350, 0, 384, 270]].map(([x1, y1, x2, y2]) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#1a2742" stroke-width="14" stroke-linecap="round"/>`).join('');
     const [sx, sy] = [232, 140];
