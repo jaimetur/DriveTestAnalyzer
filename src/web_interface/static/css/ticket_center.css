@@ -418,6 +418,23 @@ div.tickets-spent-row { cursor: default; }
 .tickets-month-day[data-tip]:hover { outline: 2px solid #10314a; outline-offset: -1px; }
 .tickets-month-number { justify-self: end; font-size: .7rem; opacity: .85; }
 .tickets-month-day strong { align-self: end; font-size: .95rem; font-variant-numeric: tabular-nums; }
+/* This quarter and this year: a small calendar per month in a box of its own, three or six in a row. */
+.tickets-months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; }
+.tickets-months[data-wide] { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem; }
+.tickets-mini-month { display: grid; align-content: start; gap: .3rem; min-width: 0; padding: .45rem .5rem .55rem; border: 1px solid #e3e9ee; border-radius: 10px; background: #fbfcfd; }
+.tickets-mini-title { margin: 0; color: #10314a; font-size: .74rem; font-weight: 800; }
+.tickets-mini-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.tickets-mini-weekday { color: #9aa7b1; font-size: .56rem; font-weight: 800; text-align: center; }
+.tickets-mini-weekday.is-weekend { color: #475569; }
+.tickets-mini-day { display: grid; place-items: center; aspect-ratio: 1; border-radius: 3px; background: #edf1f4; color: #607585; font-size: .58rem; font-weight: 700; }
+.tickets-mini-day[data-weekend] { box-shadow: inset 0 -2px 0 #94a3b8; }
+.tickets-mini-day[data-level="1"] { background: #c9dcef; }
+.tickets-mini-day[data-level="2"] { background: #8fb5dc; color: #10314a; }
+.tickets-mini-day[data-level="3"] { background: #4f88c4; color: #fff; }
+.tickets-mini-day[data-level="4"] { background: #1e61a3; color: #fff; }
+.tickets-mini-day[data-upcoming] { background: #f6f8fa; box-shadow: inset 0 0 0 1px #e6ebef; color: #c2cbd2; }
+.tickets-mini-day[data-outside] { background: transparent; box-shadow: none; }
+.tickets-mini-day[data-tip]:hover { outline: 2px solid #10314a; outline-offset: -1px; }
 .tickets-activity-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .9rem; }
 .tickets-activity-totals { display: flex; flex-wrap: wrap; gap: .25rem .8rem; margin: 0; padding: 0; list-style: none; color: #607585; font-size: .76rem; font-weight: 600; }
 .tickets-activity-totals strong { color: #10314a; }
@@ -670,6 +687,7 @@ div.tickets-spent-row { cursor: default; }
 
 @media (max-width: 1100px) {
   .tickets-time-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tickets-months[data-wide] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 900px) {
   .ticket-layout, .tickets-form, .tickets-board, .tickets-insights-grid, .tickets-time-groups { grid-template-columns: minmax(0, 1fr); }

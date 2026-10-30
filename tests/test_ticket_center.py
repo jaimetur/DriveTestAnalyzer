@@ -598,7 +598,7 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     assert list(scopes) == list(TICKET_SCOPES) and statistics['scope'] == 'month'
     assert [(scope['choice'], scope['range']) for scope in statistics['scopes']] == [
         ('This week', 'Week of 19 Oct 2026'), ('This month', 'October 2026'), ('This quarter', 'Q4 2026'), ('This year', '2026'),
-        ('All time', 'Every ticket')]
+        ('All time', '1 Aug 2026')]
     # October: 5 tickets opened (3 of them resolved), and 3 resolved (6 h, 10 days and 2 days) against 1 in September.
     assert scopes['month']['health'] == {
         'total': 5, 'done': 3, 'rate': 60, 'resolve_time': '2d', 'resolve_count': 3, 'resolve_previous': '12d',
@@ -637,7 +637,9 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     assert (spent['total'], spent['count'], spent['average'], spent['median'], spent['longest']) == (
         '24d 6h', 4, '6d 1h', '6d', {'id': 5, 'title': 'T5', 'took': '12d'})
     assert [(part['status'], part['percent']) for part in spent['where']] == [('new', 100), ('in_progress', 0), ('waiting_info', 0)]
-    assert [(span['label'], span['count']) for span in spent['series']['spans']] == [('Sep 2026', 1), ('Oct 2026', 3)]
+    # Every ticket since the first one resolved (1 September): fewer than 8 months, by weeks.
+    assert (spent['range'], spent['series']['title'], len(spent['series']['spans'])) == ('1 Sep 2026', 'Time spent per week', 8)
+    assert [(span['label'], span['count']) for span in spent['series']['spans'] if span['count']] == [('31 Aug', 1), ('5 Oct', 1), ('12 Oct', 2)]
     groups = {group['key']: group['rows'] for group in spent['groups']}
     assert [(row['key'], row['total'], row['count'], row['share']) for row in groups['module']] == [('', '24d 6h', 4, 100.0)]
     assert [(row['key'], row['total'], row['average']) for row in groups['type']] == [
@@ -662,7 +664,8 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     assert [(entry['created'], entry['resolved'], entry['open']) for entry in month['periods'][10:13]] == [(5, 2, 2), (6, 3, 2), (6, 3, 2)]
     assert (month['created'], month['resolved'], month['open'], month['peak'], month['width']) == (7, 4, 2, 7, 310)
     assert month['lines']['created'].endswith('185,6.0') and month['areas']['resolved'].startswith('M5,100 L5,86.57')
-    assert [entry['label'] for entry in stats['backlog']['periods']] == ['Aug 2026', 'Sep 2026', 'Oct 2026']
+    # Every ticket since the first one opened (1 August): by weeks, from the week of that day.
+    assert (stats['backlog']['unit'], len(stats['backlog']['periods']), stats['backlog']['periods'][0]['label']) == ('week', 13, '27 Jul')
     # Fixed in and opened with each version, by version number (v0.9.1 and 0.9.1 are the same).
     assert [(row['label'], row['total']) for row in stats['versions']['fixed']['rows']] == [('v0.9.1', 2), ('v0.10.0', 1)]
     assert (stats['versions']['unversioned'], STATISTICS_VERSIONS) == (1, 10)

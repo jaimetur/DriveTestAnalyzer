@@ -24,7 +24,7 @@
     {% for stats in ticket_statistics.scopes %}
     {% set health = stats.health %}
     <div class="tickets-switch-view tickets-scope-view" data-switch-view="{{ stats.key }}"{% if stats.key != ticket_statistics.scope %} hidden{% endif %}>
-      <p class="tickets-scope-range">{% if stats.key == 'all' %}<strong>Every ticket</strong>{% else %}Tickets opened in <strong>{{ stats.range }}</strong> · the times to resolve and the fixed versions, of those resolved or closed in it{% endif %}</p>
+      <p class="tickets-scope-range">{% if stats.key == 'all' %}Every ticket, since <strong>{{ stats.range }}</strong>{% else %}Tickets opened in <strong>{{ stats.range }}</strong> · the times to resolve and the fixed versions, of those resolved or closed in it{% endif %}</p>
       <div class="tickets-health">
         <div class="tickets-health-tile" data-tone="rate">
           <svg class="tickets-ring" viewBox="0 0 42 42" aria-hidden="true"><circle class="tickets-ring-track" cx="21" cy="21" r="15.9155"/>{% if health.rate %}<circle class="tickets-ring-value" cx="21" cy="21" r="15.9155" stroke-dasharray="{{ health.rate }} {{ 100 - health.rate }}" stroke-dashoffset="25"/>{% endif %}</svg>
@@ -229,6 +229,20 @@
           <div class="tickets-month-calendar" role="img" aria-label="{{ activity.opened }} tickets opened, {{ activity.comments }} comments and {{ activity.changes }} changes in {{ stats.range }}">
             {% for name in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}<span class="tickets-month-weekday{% if loop.index > 5 %} is-weekend{% endif %}" aria-hidden="true">{{ name }}</span>{% endfor %}
             {% for week in activity.weeks %}{% for day in week.days %}<span class="tickets-month-day calendar-level" data-level="{{ day.level }}"{% if day.weekend %} data-weekend="true"{% endif %}{% if day.outside %} data-outside="true"{% elif day.upcoming %} data-upcoming="true"{% else %} data-tip="{{ day.tip }}"{% endif %}>{% if not day.outside %}<span class="tickets-month-number">{{ day.number }}</span>{% if day.total %}<strong>{{ day.total }}</strong>{% endif %}{% endif %}</span>{% endfor %}{% endfor %}
+          </div>
+          {% elif stats.key in ['quarter', 'year'] or activity.months | length <= 12 %}
+          {# This quarter, this year and every ticket within a year: a small calendar of each month, from Monday, so each
+             month stands apart (with the number of each day while three or fewer). #}
+          <div class="tickets-months"{% if activity.months | length > 3 %} data-wide="true"{% endif %} role="img" aria-label="{{ activity.opened }} tickets opened, {{ activity.comments }} comments and {{ activity.changes }} changes in {{ stats.range }}">
+            {% for month in activity.months %}
+            <div class="tickets-mini-month">
+              <p class="tickets-mini-title">{{ month.label }}</p>
+              <div class="tickets-mini-grid">
+                {% for name in ['M', 'T', 'W', 'T', 'F', 'S', 'S'] %}<span class="tickets-mini-weekday{% if loop.index > 5 %} is-weekend{% endif %}" aria-hidden="true">{{ name }}</span>{% endfor %}
+                {% for day in month.days %}{% if day.blank %}<span class="tickets-mini-day" data-outside="true"></span>{% else %}<span class="tickets-mini-day" data-level="{{ day.level }}"{% if day.weekend %} data-weekend="true"{% endif %}{% if day.outside %} data-outside="true"{% elif day.upcoming %} data-upcoming="true"{% else %} data-tip="{{ day.tip }}"{% endif %}>{% if activity.months | length <= 3 %}{{ day.number }}{% endif %}</span>{% endif %}{% endfor %}
+              </div>
+            </div>
+            {% endfor %}
           </div>
           {% else %}
           <div class="tickets-calendar" style="--weeks: {{ activity.week_count }}">

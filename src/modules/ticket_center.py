@@ -589,6 +589,17 @@ def ticket_scope(scope: str, today: date) -> dict[str, Any]:
             'previous': (_period_start(scope, index - 1), start - timedelta(days=1)), 'range': label}
 
 
+def _all_time(scope: dict[str, Any], first_day: date | None, today: date) -> dict[str, Any]:
+    """Every ticket (``scope`` of ``all``) from ``first_day``: named by that day, and drawn over time by months when it
+    covers 8 months or more, by weeks when 4 weeks or more, else by days; another period as it is."""
+    if scope['start'] is not None:
+        return scope
+    first_day = min(first_day or today, today)
+    months = (today.year - first_day.year) * 12 + today.month - first_day.month + 1
+    unit = 'month' if months >= 8 else 'week' if (today - first_day).days // 7 + 1 >= 4 else 'day'
+    return {**scope, 'unit': unit, 'range': f"{first_day.day} {first_day.strftime('%b %Y')}"}
+
+
 def _in_scope(day: date | None, scope: dict[str, Any]) -> bool:
     return day is not None and (scope['start'] is None or scope['start'] <= day <= scope['end'])
 
@@ -673,7 +684,7 @@ def ticket_time_spent(tickets: list[dict[str, Any]], events: Iterable[dict[str, 
     first_day = min((day for ticket in done if id(ticket) in took and (day := _day(ticket.get('resolved_at')))), default=today)
     scopes = []
     for key in TICKET_SCOPES:
-        scope = ticket_scope(key, today)
+        scope = _all_time(ticket_scope(key, today), first_day, today)
         timed = [ticket for ticket in done if id(ticket) in took and _in_scope(_day(ticket.get('resolved_at')), scope)]
         unit = scope['unit']
         first, last = _scope_indexes(scope, first_day, today)
@@ -801,23 +812,35 @@ def ticket_activity(tickets: list[dict[str, Any]], events: Iterable[dict[str, An
         parts = [f'{entry[key]} {one if entry[key] == 1 else many}' for key, one, many in nouns if entry.get(key)]
         return f"{day.strftime('%a')} {day.day} {day.strftime('%b %Y')}: {', '.join(parts) or 'no activity'}"
 
+    def cell(day: date) -> dict[str, Any]:
+        total = totals.get(day, 0)
+        outside = not start <= day <= end
+        return {'day': day.isoformat(), 'number': day.day, 'weekend': day.weekday() >= 5, 'outside': outside,
+                'upcoming': not outside and day > today, 'future': day > today or outside, 'total': total, 'tip': tip(day),
+                'level': min(4, math.ceil(4 * total / peak)) if total else 0}
+
     weeks = []
     for week in range(week_count):
         monday = first + timedelta(weeks=week)
         # A month is named over the first week that starts in it (the first week, when most of it is in its month).
         month = monday.strftime('%b') if (monday.day <= 7 and week) or (not week and monday.day <= 21) else ''
+        weeks.append({'month': month, 'days': [cell(monday + timedelta(days=offset)) for offset in range(7)]})
+    # The same days month by month: each month from its first Monday, the days of other months blank.
+    months = []
+    month_start = start.replace(day=1)
+    while month_start <= end:
+        following = _period_start('month', _period_index('month', month_start) + 1)
+        monday = month_start - timedelta(days=month_start.weekday())
         days = []
-        for offset in range(7):
-            day = monday + timedelta(days=offset)
-            total = totals.get(day, 0)
-            outside = not start <= day <= end
-            days.append({'day': day.isoformat(), 'number': day.day, 'weekend': day.weekday() >= 5, 'outside': outside,
-                         'upcoming': not outside and day > today, 'future': day > today or outside, 'total': total, 'tip': tip(day),
-                         'level': min(4, math.ceil(4 * total / peak)) if total else 0})
-        weeks.append({'month': month, 'days': days})
+        while monday < following:
+            days.extend({'blank': True} if day.month != month_start.month else cell(day)
+                        for day in (monday + timedelta(days=offset) for offset in range(7)))
+            monday += timedelta(weeks=1)
+        months.append({'label': month_start.strftime('%b %Y'), 'name': month_start.strftime('%B %Y'), 'days': days})
+        month_start = following
     busiest = max(totals, key=lambda day: (totals[day], day), default=None)
     return {
-        'weeks': weeks, 'week_count': week_count, 'total': sum(totals.values()), 'active_days': sum(1 for total in totals.values() if total),
+        'weeks': weeks, 'months': months, 'week_count': week_count, 'total': sum(totals.values()), 'active_days': sum(1 for total in totals.values() if total),
         **{key: sum(entry[key] for entry in counts.values()) for key in ('opened', 'comments', 'changes', 'resolved')},
         'busiest': {'tip': tip(busiest), 'total': totals[busiest]} if busiest and totals[busiest] else None,
     }
@@ -830,7 +853,9 @@ def ticket_statistics(tickets: list[dict[str, Any]], events: Iterable[dict[str, 
     modules and their numbers of comments and screenshots) and the entries of their timelines (``ticket_events``)."""
     today = today or local_today()
     events = list(events)
-    return {'scopes': [_scope_statistics(tickets, events, today, versions, ticket_scope(scope, today)) for scope in TICKET_SCOPES],
+    first_day = min((day for ticket in tickets if (day := _day(ticket.get('created_at')))), default=today)
+    return {'scopes': [_scope_statistics(tickets, events, today, versions, _all_time(ticket_scope(scope, today), first_day, today))
+                       for scope in TICKET_SCOPES],
             'scope': DEFAULT_TICKET_SCOPE}
 
 
