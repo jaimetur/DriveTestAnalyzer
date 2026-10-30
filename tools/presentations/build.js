@@ -927,31 +927,38 @@ async function enterprise(pres) {
 }
 
 // The road of the roadmap through its milestones (inches of the slide); art.roadmapRoad draws it.
-const ROAD = [[-0.4, 4.55], [1.95, 4.2], [3.3, 4.45], [4.55, 4.2], [6.0, 3.95], [7.5, 4.15], [9.0, 4.3], [10.65, 4.0], [11.7, 3.15],
-  [12.45, 2.2], [12.75, 1.95]];
+const ROAD = [[-0.4, 4.75], [1.5, 4.5], [3.0, 4.65], [4.5, 4.45], [6.0, 4.35], [7.6, 4.5], [9.2, 4.45], [10.7, 4.2], [11.75, 3.3],
+  [12.45, 2.35], [12.75, 2.1]];
 
 async function roadmap(pres, files, masterName = 'CONTENT') {
   const slide = pres.addSlide({ masterName, sectionTitle: 'Roadmap' });
   slide.addImage({ path: files.road, x: 0, y: 0, w: 13.333, h: 7.5, objectName: 'Roadmap road' });
   heading(slide, 'Roadmap — ', 'what comes next', 'Intentions, not commitments, shaped by the teams that use the tool');
-  // Each phase: its milestone on the road, and a card above or below it with what it brings.
+  // Each phase: its milestone on the road, and a card above or below it with what it brings, in one column or more (the
+  // items fill a column before the next one).
   const phases = [
-    { label: 'TODAY', color: '0C9B5B', pin: 'TbCircleCheck', x: 1.95, y: 4.2, card: [0.6, 1.75, 2.75, 1.85], items: [
+    { label: 'TODAY', color: '0C9B5B', pin: 'TbCircleCheck', x: 1.5, y: 4.5, card: [0.6, 1.58, 5.3, 2.44], columns: 2, items: [
       ['TbCircleCheck', '8 modules live', `${names}, ${plural(FIGURES.campaigns, 'campaign')}`],
-      ['TbFlag', 'Germany pilot', 'First DE test campaign'],
-    ] },
-    { label: 'NEXT', color: K.blue, pin: 'TbRocket', x: 4.55, y: 4.2, card: [2.85, 4.78, 3.4, 2.3], items: [
-      ['TbPlugConnected', 'Umlaut CDR adaptation', 'Ingest & score Umlaut CDRs'],
-      ['TbUsersGroup', 'Active Tests community', 'Builds their KPI & Scoring reports'],
-      ['TbPhoneCheck', 'NQ Calls out of Alpha', 'From Alpha to every team'],
-    ] },
-    { label: 'SOON', color: '8C60A8', pin: 'TbArrowsMaximize', x: 7.5, y: 4.15, card: [5.75, 1.75, 3.5, 1.85], items: [
-      ['TbArrowsMaximize', 'Scalability on AWS', 'Worker queue, scale-out processing'],
+      ['TbPresentationAnalytics', 'PPT Designer', 'Charts built as in Tableau'],
+      ['TbSparkles', 'GenAI slide comments', 'Written by Kiro or Claude'],
+      ['TbColumns3', 'Columnar store', '79–300× faster, 10× lighter'],
+      ['TbDatabaseSearch', 'DuckDB engine', 'SQL on the Parquet copies'],
       ['TbBolt', 'Fast at any size', 'Durable analytical caches'],
+      ['TbPlugConnected', 'Tableau connected', 'To the Workspace database'],
     ] },
-    { label: 'LATER', color: 'E07800', pin: 'TbClock', x: 10.65, y: 4.0, card: [8.9, 4.55, 3.5, 2.3], items: [
-      ['TbDatabase', 'PostgreSQL database', 'Hundreds of concurrent users'],
+    { label: 'NEXT', color: K.blue, pin: 'TbRocket', x: 4.5, y: 4.45, card: [2.7, 5.02, 5.9, 1.52], columns: 2, items: [
+      ['TbFlag', 'Germany pilot', 'First DE test campaign'],
+      ['TbArrowsExchange', 'Umlaut & P3 CDRs', 'Ingest & score both providers'],
+      ['TbUsersGroup', 'Active Tests community', 'Their KPI & Scoring reports'],
+      ['TbPhoneCheck', 'NQ Calls out of Beta', 'From Beta to every team'],
+    ] },
+    { label: 'SOON', color: '8C60A8', pin: 'TbTrendingUp', x: 7.6, y: 4.5, card: [6.35, 1.58, 3.6, 1.52], items: [
+      ['TbAntennaBars5', 'Network Insights', 'Improvements to the module'],
+      ['TbMailForward', 'Automatic emails', 'Reports sent by email on their own'],
+    ] },
+    { label: 'LATER', color: 'E07800', pin: 'TbClock', x: 10.7, y: 4.2, card: [8.95, 4.8, 3.5, 1.98], items: [
       ['TbHierarchy3', 'Smart Orchestrator Logs', 'A new source and its reports'],
+      ['TbRoute', 'TEMS logs', 'Drive test logs and their reports'],
       ['TbHeartbeat', 'Health monitoring', 'Alerts & checks after each deploy'],
     ] },
   ];
@@ -963,25 +970,29 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
     shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x, y, w, h, rectRadius: 0.14, fill: { color: K.white }, line: { color: K.line, width: 1 },
       shadow: { type: 'outer', color: '000000', opacity: 0.12, blur: 8, offset: 2, angle: 90 } });
     const pillW = 0.3 + phase.label.length * 0.12;
-    shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: x + 0.2, y: y + 0.18, w: pillW, h: 0.3, rectRadius: 0.15, fill: { color: phase.color }, line: { color: phase.color, width: 0 } });
-    text(slide, phase.label, { x: x + 0.2, y: y + 0.18, w: pillW, h: 0.3, fontSize: 10.5, bold: true, color: K.white, align: 'center', valign: 'middle', charSpacing: 1.5 });
-    for (const [row, [name, title, desc]] of phase.items.entries()) {
-      const rowY = y + 0.62 + row * 0.56;
-      await badge(slide, pres, name, x + 0.2, rowY + 0.04, 0.42, phase.color);
-      text(slide, title, { x: x + 0.74, y: rowY, w: w - 0.9, h: 0.27, fontSize: 13.5, bold: true });
-      text(slide, desc, { x: x + 0.74, y: rowY + 0.27, w: w - 0.9, h: 0.24, fontSize: 10.5, color: K.grey });
+    shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: x + 0.2, y: y + 0.16, w: pillW, h: 0.28, rectRadius: 0.14, fill: { color: phase.color }, line: { color: phase.color, width: 0 } });
+    text(slide, phase.label, { x: x + 0.2, y: y + 0.16, w: pillW, h: 0.28, fontSize: 10.5, bold: true, color: K.white, align: 'center', valign: 'middle', charSpacing: 1.5 });
+    const columns = phase.columns || 1; const rows = Math.ceil(phase.items.length / columns); const columnW = (w - 0.2) / columns;
+    for (const [index, [name, title, desc]] of phase.items.entries()) {
+      const rowX = x + 0.2 + Math.floor(index / rows) * columnW; const rowY = y + 0.54 + (index % rows) * 0.46;
+      await badge(slide, pres, name, rowX, rowY + 0.03, 0.38, phase.color);
+      text(slide, title, { x: rowX + 0.5, y: rowY, w: columnW - 0.55, h: 0.24, fontSize: 12.5, bold: true });
+      text(slide, desc, { x: rowX + 0.5, y: rowY + 0.24, w: columnW - 0.55, h: 0.2, fontSize: 9.5, color: K.grey });
     }
     // The milestone: the icon of the phase on the road, ringed in white.
     shape(slide, pres.shapes.OVAL, { x: phase.x - 0.34, y: phase.y - 0.34, w: 0.68, h: 0.68, fill: { color: K.white }, line: { color: K.white, width: 0 },
       shadow: { type: 'outer', color: '000000', opacity: 0.25, blur: 6, offset: 1.5, angle: 90 } });
     await badge(slide, pres, phase.pin, phase.x - 0.28, phase.y - 0.28, 0.56, phase.color);
   }
-  slide.addNotes(`Today: eight modules in production on ${STATS.where}, and a first pilot campaign in Germany. Next: adapt `
-    + 'the ingestion and scoring to Umlaut CDRs, support the Active Tests community, so that the tool builds the KPI and '
-    + 'Scoring reports they produce today, and take Non-Qualified Calls out of Alpha. Soon: scale out on AWS with an external '
-    + 'worker queue, and durable analytical caches. Later: PostgreSQL instead of SQLite, a database for hundreds of '
-    + 'concurrent users, Smart Orchestrator Logs, and health monitoring: alerts on runs that take too long and automatic '
-    + 'checks after every deployment. These are intentions, not dated commitments.');
+  slide.addNotes(`Today: eight modules in production on ${STATS.where}; PPT Designer, which builds its charts as Tableau does; `
+    + 'slide comments written by GenAI (Kiro or Claude); the columnar store of the CDRs, Parquet copies read with the DuckDB '
+    + 'engine, which made the analyses 79 to more than 300 times faster and the workspace database 10 times lighter; durable '
+    + 'analytical caches, fast at any size; and Tableau connected to the workspace database. Next: a first pilot campaign in '
+    + 'Germany, the adaptation of the ingestion and scoring to Umlaut and P3 CDRs, the Active Tests community, so that the tool '
+    + 'builds the KPI and Scoring reports they produce today, and Non-Qualified Calls out of Beta. Soon: improvements to '
+    + 'Network Insights and automatic emails. Later: Smart Orchestrator Logs and TEMS logs with their reports, and health '
+    + 'monitoring: alerts on runs that take too long and automatic checks after every deployment. These are intentions, not '
+    + 'dated commitments.');
 }
 
 // ---------------------------------------------------------------------------------------------------------- one-slider
@@ -1077,10 +1088,10 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
   // The roadmap on its small road: each milestone with its phase above and what it brings below.
   label('ROADMAP', 8.15, 5.72);
   const milestones = [
-    { x: 8.5, y: 6.36, color: '0C9B5B', phase: 'TODAY', pin: 'TbCircleCheck', text: '8 modules live' },
-    { x: 9.75, y: 6.42, color: K.blue, phase: 'NEXT', pin: 'TbRocket', text: 'Umlaut CDRs, Active Tests' },
-    { x: 11.0, y: 6.4, color: '8C60A8', phase: 'SOON', pin: 'TbArrowsMaximize', text: 'AWS scale-out, speed' },
-    { x: 12.2, y: 6.4, color: 'E07800', phase: 'LATER', pin: 'TbClock', text: 'PostgreSQL, health' },
+    { x: 8.5, y: 6.36, color: '0C9B5B', phase: 'TODAY', pin: 'TbCircleCheck', text: '8 modules, columnar, GenAI' },
+    { x: 9.75, y: 6.42, color: K.blue, phase: 'NEXT', pin: 'TbRocket', text: 'Germany, Umlaut & P3' },
+    { x: 11.0, y: 6.4, color: '8C60A8', phase: 'SOON', pin: 'TbTrendingUp', text: 'Network Insights, emails' },
+    { x: 12.2, y: 6.4, color: 'E07800', phase: 'LATER', pin: 'TbClock', text: 'SO & TEMS logs, health' },
   ];
   for (const milestone of milestones) {
     text(slide, milestone.phase, { x: milestone.x - 0.6, y: 6.0, w: 1.2, h: 0.2, fontSize: 9.5, bold: true, color: milestone.color, align: 'center', charSpacing: 1 });
@@ -1094,8 +1105,9 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
     + `Non-Qualified Calls (${STATS.nqExact} NQ calls), Reporting, the Builders and the Ticket Center. They serve `
     + 'benchmarking, the NQ team, troubleshooting and technical and executive reporting, on an enterprise platform on AWS with '
     + `roles, isolated workspaces, automated backups, a Ticket Center, a ${STATS.chapters}-chapter Help and ${STATS.tests} `
-    + 'automated tests. Roadmap: Umlaut CDRs and the Active Tests community next, then scale-out on AWS and speed, then '
-    + 'PostgreSQL for hundreds of concurrent users and health monitoring.');
+    + 'automated tests. Roadmap: today the columnar store on DuckDB, Tableau connected and GenAI slide comments; next the '
+    + 'Germany pilot, Umlaut and P3 CDRs and the Active Tests community; then Network Insights and automatic emails; later '
+    + 'Smart Orchestrator and TEMS logs and health monitoring.');
 }
 
 // The colours and fonts of the theme of a written deck (pptxgenjs writes Office's own).

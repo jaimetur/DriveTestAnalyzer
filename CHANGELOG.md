@@ -35,6 +35,7 @@
 
 #### 📚 Documentation:
 - **Help — Ticket Center presentation:** new slides show the module as it looks now, in its colours: the header with its tiles and the tabs of its five views, the New Ticket form (dimmed while signed out), the Dashboard, the periods (how each one draws its charts and its calendar of activity, and which tickets each part counts), Statistics and Time Spent; the Ticket Center slide of the Overview names the Dashboard by period, Statistics and Time Spent.
+- **Help — Roadmap:** the Roadmap slide, the roadmap of the one-slider and the Roadmap chapter show what the tool brings today (8 modules live, PPT Designer with its charts built as in Tableau, slide comments written by GenAI, the columnar store with its gain in speed and space, the DuckDB engine, durable analytical caches and Tableau connected to the workspace database), next (the Germany pilot, Umlaut and P3 CDRs, the Active Tests community and Non-Qualified Calls out of Beta), soon (Network Insights improvements and automatic emails) and later (Smart Orchestrator Logs and TEMS logs and health monitoring).
 
 ---
 
