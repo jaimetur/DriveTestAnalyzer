@@ -1,0 +1,61 @@
+{
+  "name": "DT Analyzer - Tableau Charts",
+  "template": "DT Analyzer - Tableau Charts",
+  "nr_mode": "NSA+SA",
+  "sa_campaigns": [
+    "@latest-2-campaigns"
+  ],
+  "scope": "single",
+  "vendor_comparison": "operator_vendor",
+  "custom_fields": [],
+  "hidden_filters": [],
+  "auto_cdrs": true,
+  "filters": {
+    "Campaign": [
+      "@latest-2-campaigns"
+    ]
+  },
+  "slide_comments": {},
+  "slide_overrides": {
+    "version": 1,
+    "slides": {},
+    "elements": {
+      "s13e1": {
+        "rows_split": {
+          "value": "Type_of_Test",
+          "base": ""
+        },
+        "columns_split": {
+          "value": "Operator × Campaign",
+          "base": "Type_of_Test × Operator"
+        }
+      },
+      "s24e1": {
+        "columns_split": {
+          "value": "Test_Name × Operator",
+          "base": "Test_Name × G_Level_4 × Operator"
+        }
+      },
+      "s58e1": {
+        "columns_split": {
+          "value": "NR_Mode",
+          "base": ""
+        }
+      }
+    },
+    "filters": {
+      "s19e1": {
+        "add": [],
+        "remove": [
+          "Campaign IN (UK_Q4_2025_NSA)"
+        ]
+      }
+    },
+    "hidden_slides": [],
+    "shown_optional": [],
+    "hidden_elements": [],
+    "local_slides": [],
+    "local_elements": {}
+  },
+  "parameter_values": {}
+}

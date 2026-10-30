@@ -10,6 +10,7 @@ from src.config import PROJECT_ROOT
 from src.modules import starter_content
 
 ASSETS = PROJECT_ROOT / 'assets'
+FDFS = 'DT Analyzer - FDFS DL (NSA & SA)'
 VENDOR_FILTER = re.compile(r'^\s*(Operator|Vendor|Operator_Vendor|Vendor_Operator)\s', re.IGNORECASE | re.MULTILINE)
 
 
@@ -24,8 +25,9 @@ def test_the_shipped_content_names_no_operator_or_vendor():
     templates = sorted((ASSETS / 'ppt-templates').glob('*.csv'))
     assert not list((ASSETS / 'ppt-templates').glob('*/*.csv'))
     assert {path.stem for path in templates} == {'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)',
-                                                 'Tableau Dashboards', 'Tableau Charts', 'Tableau Charts - Only Maps',
-                                                 'FDFS DL (NSA & SA)', 'DT Analyzer - All Supported Chart Types'}
+                                                 'DT Analyzer - Tableau Dashboards', 'DT Analyzer - Tableau Charts',
+                                                 'DT Analyzer - Tableau Charts - Only Maps', 'DT Analyzer - FDFS DL (NSA & SA)',
+                                                 'DT Analyzer - All Supported Chart Types'}
     for path in templates:
         rows = list(csv.DictReader(io.StringIO(path.read_text(encoding='utf-8'))))
         # No template filters an Operator, nor Vendors by their operator (3_Ericsson); the Tableau templates of the UK
@@ -35,13 +37,15 @@ def test_the_shipped_content_names_no_operator_or_vendor():
         # Nor a city of the UK workspace (each Design chooses its own Main Cities), nor the UK in its title.
         assert not re.search(r'G_Level_4\s+(NOT\s+)?IN\s*\(', path.read_text(encoding='utf-8')), path.name
         assert not any(re.search(r'\bUK\b', row.get('Slide Tittle') or '') for row in rows), path.name
-        assert path.stem.startswith('Tableau') or not any(VENDOR_FILTER.search(row.get('Filters') or '') for row in rows), path.name
+        assert path.stem.startswith('DT Analyzer - Tableau') or not any(VENDOR_FILTER.search(row.get('Filters') or '') for row in rows), path.name
     designs = [json.loads(path.read_text(encoding='utf-8')) for path in (ASSETS / 'ppt-designs').glob('*.json')]
-    # The Designs of the UK workspace, one per NR Mode, the NSA & SA comparison and the example of every chart type.
+    # The Designs of the UK workspace: one per NR Mode of the NetCheck and RF Quality templates, and one in NSA & SA
+    # named after its template of each example of the application (DT Analyzer - …).
     assert {(item['name'], item['template'], item['nr_mode']) for item in designs} == {
         (f'{nr_mode} - {template}', template, nr_mode) for nr_mode in ('NSA', 'SA') for template in (
-            'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)', 'Tableau Dashboards', 'Tableau Charts')
-    } | {('NSA & SA - FDFS DL (NSA & SA)', 'FDFS DL (NSA & SA)', 'NSA+SA'), ('DT Analyzer - All Supported Chart Types', 'DT Analyzer - All Supported Chart Types', 'NSA+SA')}
+            'NetCheck CDR Report', 'NetCheck CDR Report (Main Cities)', 'RF Quality (RSRP & SINR)')
+    } | {(f'DT Analyzer - {name}', f'DT Analyzer - {name}', 'NSA+SA') for name in (
+        'Tableau Dashboards', 'Tableau Charts', 'FDFS DL (NSA & SA)', 'All Supported Chart Types')}
     assert not any({'technology', 'template_technology'} & set(item) for item in designs)
     # The (Main Cities) Designs use the Main Cities of each workspace.
     assert all(item['filters']['City'] == ['@main-cities'] for item in designs if item['name'].endswith('(Main Cities)'))
@@ -68,7 +72,7 @@ def test_a_new_workspace_starts_with_the_shipped_content_once(client):
     assert ('NSA - NetCheck CDR Report', 'NetCheck CDR Report', 'NSA') in names
     assert ('SA - NetCheck CDR Report', 'NetCheck CDR Report', 'SA') in names
     assert ('NSA - RF Quality (RSRP & SINR)', 'RF Quality (RSRP & SINR)', 'NSA') in names
-    assert ('SA - Tableau Charts', 'Tableau Charts', 'SA') in names
+    assert ('DT Analyzer - Tableau Charts', 'DT Analyzer - Tableau Charts', 'NSA+SA') in names
     # It is added once: content deleted or renamed later is not added again.
     assert starter_content.seed_starter_content(repository) is None
     # A workspace that already has content with those names keeps it.
@@ -298,18 +302,18 @@ def test_the_nsa_and_sa_example_reaches_an_existing_workspace_once(client):
 
     repository = app_module.repository
     # A workspace set up before the example was shipped.
-    repository.delete_report_template('FDFS DL (NSA & SA)')
+    repository.delete_report_template(FDFS)
     designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
     repository.set_workspace_state(starter_content.DESIGNS_STATE_KEY, json.dumps(
-        {key: item for key, item in designs.items() if item['template'] != 'FDFS DL (NSA & SA)'}))
+        {key: item for key, item in designs.items() if item['template'] != FDFS}))
     repository.set_workspace_state(starter_content.LATER_EXAMPLES_STATE_KEY, '[]')
     assert starter_content.seed_starter_content(repository) == {'examples': 2}
     designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
-    example = next(item for item in designs.values() if item['template'] == 'FDFS DL (NSA & SA)')
+    example = next(item for item in designs.values() if item['template'] == FDFS)
     assert example['nr_mode'] == 'NSA+SA' and example['sa_campaigns'] == ['@latest-campaign']
     assert example['filters']['Campaign'] == ['@latest-3-campaigns']
     # Deleted later, it is not added again.
-    repository.delete_report_template('FDFS DL (NSA & SA)')
+    repository.delete_report_template(FDFS)
     assert starter_content.seed_starter_content(repository) is None
 
 
@@ -329,7 +333,7 @@ def test_the_all_chart_types_example_draws_every_supported_chart_type_and_reache
     designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
     repository.set_workspace_state(starter_content.DESIGNS_STATE_KEY, json.dumps(
         {key: item for key, item in designs.items() if item['template'] != name}))
-    repository.set_workspace_state(starter_content.LATER_EXAMPLES_STATE_KEY, json.dumps(['FDFS DL (NSA & SA)']))
+    repository.set_workspace_state(starter_content.LATER_EXAMPLES_STATE_KEY, json.dumps([FDFS]))
     assert starter_content.seed_starter_content(repository) == {'examples': 2}
     designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
     example = next(item for item in designs.values() if item['template'] == name)
@@ -355,7 +359,7 @@ def _offer_the_superseded_example(repository, monkeypatch, earlier='All Chart Ty
                if item['template'] not in {NAME, *starter_content.SUPERSEDED_EXAMPLES}}
     designs['old-example'] = {**superseded['designs'][0], 'template_uid': 'uid-of-before', **(design_changes or {})}
     repository.set_workspace_state(starter_content.DESIGNS_STATE_KEY, json.dumps(designs))
-    repository.set_workspace_state(starter_content.LATER_EXAMPLES_STATE_KEY, json.dumps([*offered, 'FDFS DL (NSA & SA)']))
+    repository.set_workspace_state(starter_content.LATER_EXAMPLES_STATE_KEY, json.dumps([*offered, FDFS]))
 
 
 @pytest.mark.parametrize('earlier, offered', [
@@ -397,3 +401,26 @@ def test_a_changed_example_of_every_chart_type_stays_beside_the_new_one_and_a_de
     repository.delete_report_template('DT Analyzer - All Chart Types')
     assert starter_content.seed_starter_content(repository) is None
     assert NAME not in repository.report_template_uids()
+
+
+def test_the_earlier_nsa_and_sa_example_is_replaced_in_place_when_it_is_as_it_was_shipped(client, monkeypatch):
+    import src.DriveTestAnalyzer as app_module
+
+    repository = app_module.repository
+    earlier = 'FDFS DL (NSA & SA)'
+    repository.delete_report_template(FDFS)
+    repository.add_report_template(earlier, b'Slide,Layout\n1,Title Page\n', updated_by='system')
+    superseded = starter_content.SUPERSEDED_EXAMPLES[earlier]
+    shipped = hashlib.sha256(repository.report_template_content(earlier)).hexdigest()
+    monkeypatch.setitem(starter_content.SUPERSEDED_EXAMPLES, earlier, {**superseded, 'template_sha256': shipped})
+    designs = {key: item for key, item in json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY)).items()
+               if item['template'] != FDFS}
+    designs['old-example'] = {**superseded['designs'][0], 'template_uid': 'uid-of-before'}
+    repository.set_workspace_state(starter_content.DESIGNS_STATE_KEY, json.dumps(designs))
+    repository.set_workspace_state(starter_content.LATER_EXAMPLES_STATE_KEY, json.dumps([earlier, NAME]))
+    assert starter_content.seed_starter_content(repository) == {'examples_replaced': 1}
+    designs = json.loads(repository.get_workspace_state(starter_content.DESIGNS_STATE_KEY))
+    assert {key: designs['old-example'][key] for key in ('name', 'template', 'nr_mode', 'sa_campaigns', 'template_uid')} == {
+        'name': FDFS, 'template': FDFS, 'nr_mode': 'NSA+SA', 'sa_campaigns': ['@latest-campaign'], 'template_uid': 'uid-of-before'}
+    assert earlier not in repository.report_template_uids()
+    assert starter_content.seed_starter_content(repository) is None

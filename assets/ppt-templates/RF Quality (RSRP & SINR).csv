@@ -1,309 +1,309 @@
-Slide,Slide Tittle,Slide Subtittle,Layout,Dynamic Rows Field,Dynamic Columns Field,Chart Tittle,Source Dataset,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position,Legend Format,Label Position,Label Format,Axis X Range,Axis Y Range,Exclude Null/Empty,Exclude Zero
-1,{NR Mode} RF Quality Analysis,RSRP & SINR · Coverage and interference,Title Page,,,,,,Title Slide,,,,,Top,,,,,,,
-2,Coverage (RSRP),,Title Only,,,,,,Transition Slide,,,,,Top,,,,,,,
+Slide,Slide Tittle,Slide Subtittle,Layout,Dynamic Rows Field,Dynamic Columns Field,Chart Tittle,Source Dataset,KPI,Chart type,Filters,Rows Split,Columns Split,Legend,Legend Position,Legend Format,Label Position,Label Format,Axis X Range,Axis Y Range,Exclude Null/Empty,Exclude Zero,Format
+1,{NR Mode} RF Quality Analysis,RSRP & SINR · Coverage and interference,Title Page,,,,,,Title Slide,,,,,Top,,,,,,,,"{""slide"":""s1""}"
+2,Coverage (RSRP),,Title Only,,,,,,Transition Slide,,,,,Top,,,,,,,,"{""slide"":""s2""}"
 3,RSRP distribution,Data+Voice+Speech,Title + 2 rows + 2 columns + comments right,,,LTE RSRP (dBm) – Data+Voice+Speech,CDR-All,LTE_RSRP,CDF Line,"LTE_RSRP >= -160;
-LTE_RSRP <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+LTE_RSRP <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s3e1"",""slide"":""s3""}"
 3,RSRP distribution,Data+Voice+Speech,Title + 2 rows + 2 columns + comments right,,,NR RSRP (dBm) – Data+Voice+Speech,CDR-All,NR_RSRP,CDF Line,"NR_RSRP >= -160;
-NR_RSRP <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+NR_RSRP <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s3e2"",""slide"":""s3""}"
 3,RSRP distribution,Data+Voice+Speech,Title + 2 rows + 2 columns + comments right,,,LTE RSRP histogram (5 dB bins) – Data+Voice+Speech,CDR-All,LTE_RSRP,Histogram Line,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 LTE_RSRP >= -160;
-LTE_RSRP <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+LTE_RSRP <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s3e3"",""slide"":""s3""}"
 3,RSRP distribution,Data+Voice+Speech,Title + 2 rows + 2 columns + comments right,,,NR RSRP histogram (5 dB bins) – Data+Voice+Speech,CDR-All,NR_RSRP,Histogram Line,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 NR_RSRP >= -160;
-NR_RSRP <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+NR_RSRP <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s3e4"",""slide"":""s3""}"
 4,RSRP histograms by Operator,Data+Voice+Speech,Title + 2 rows + dynamic columns + comments down,,Operator,LTE RSRP histogram (5 dB bins) – Data+Voice+Speech,CDR-All,LTE_RSRP,Histogram Bars,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 LTE_RSRP >= -160;
-LTE_RSRP <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,
+LTE_RSRP <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,,"{""id"":""s4e1"",""slide"":""s4""}"
 4,RSRP histograms by Operator,Data+Voice+Speech,Title + 2 rows + dynamic columns + comments down,,Operator,NR RSRP histogram (5 dB bins) – Data+Voice+Speech,CDR-All,NR_RSRP,Histogram Bars,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 NR_RSRP >= -160;
-NR_RSRP <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,
+NR_RSRP <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,,"{""id"":""s4e2"",""slide"":""s4""}"
 5,RSRP distribution,Data,Title + 2 rows + 2 columns + comments right,,,LTE RSRP (dBm) – Data,CDR-Data,LTE_PCell_RSRP_Avg,CDF Line,"LTE_PCell_RSRP_Avg >= -160;
-LTE_PCell_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+LTE_PCell_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s5e1"",""slide"":""s5""}"
 5,RSRP distribution,Data,Title + 2 rows + 2 columns + comments right,,,NR RSRP (dBm) – Data,CDR-Data,NR_PCell_RSRP_Avg,CDF Line,"NR_PCell_RSRP_Avg >= -160;
-NR_PCell_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+NR_PCell_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s5e2"",""slide"":""s5""}"
 5,RSRP distribution,Data,Title + 2 rows + 2 columns + comments right,,,LTE RSRP histogram (5 dB bins) – Data,CDR-Data,LTE_PCell_RSRP_Avg,Histogram Line,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 LTE_PCell_RSRP_Avg >= -160;
-LTE_PCell_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+LTE_PCell_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s5e3"",""slide"":""s5""}"
 5,RSRP distribution,Data,Title + 2 rows + 2 columns + comments right,,,NR RSRP histogram (5 dB bins) – Data,CDR-Data,NR_PCell_RSRP_Avg,Histogram Line,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 NR_PCell_RSRP_Avg >= -160;
-NR_PCell_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+NR_PCell_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s5e4"",""slide"":""s5""}"
 6,RSRP histograms by Operator,Data,Title + 2 rows + dynamic columns + comments down,,Operator,LTE RSRP histogram (5 dB bins) – Data,CDR-Data,LTE_PCell_RSRP_Avg,Histogram Bars,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 LTE_PCell_RSRP_Avg >= -160;
-LTE_PCell_RSRP_Avg <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,
+LTE_PCell_RSRP_Avg <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,,"{""id"":""s6e1"",""slide"":""s6""}"
 6,RSRP histograms by Operator,Data,Title + 2 rows + dynamic columns + comments down,,Operator,NR RSRP histogram (5 dB bins) – Data,CDR-Data,NR_PCell_RSRP_Avg,Histogram Bars,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 NR_PCell_RSRP_Avg >= -160;
-NR_PCell_RSRP_Avg <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,
+NR_PCell_RSRP_Avg <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,,"{""id"":""s6e2"",""slide"":""s6""}"
 7,RSRP distribution,Voice,Title + 2 rows + 2 columns + comments right,,,LTE RSRP (dBm) – Voice,CDR-Voice,4G_RSRP_Avg_A,CDF Line,"4G_RSRP_Avg_A >= -160;
-4G_RSRP_Avg_A <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+4G_RSRP_Avg_A <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s7e1"",""slide"":""s7""}"
 7,RSRP distribution,Voice,Title + 2 rows + 2 columns + comments right,,,NR RSRP (dBm) – Voice,CDR-Voice,NR_RSRP_Avg_A,CDF Line,"NR_RSRP_Avg_A >= -160;
-NR_RSRP_Avg_A <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+NR_RSRP_Avg_A <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s7e2"",""slide"":""s7""}"
 7,RSRP distribution,Voice,Title + 2 rows + 2 columns + comments right,,,LTE RSRP histogram (5 dB bins) – Voice,CDR-Voice,4G_RSRP_Avg_A,Histogram Line,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 4G_RSRP_Avg_A >= -160;
-4G_RSRP_Avg_A <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+4G_RSRP_Avg_A <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s7e3"",""slide"":""s7""}"
 7,RSRP distribution,Voice,Title + 2 rows + 2 columns + comments right,,,NR RSRP histogram (5 dB bins) – Voice,CDR-Voice,NR_RSRP_Avg_A,Histogram Line,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 NR_RSRP_Avg_A >= -160;
-NR_RSRP_Avg_A <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+NR_RSRP_Avg_A <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s7e4"",""slide"":""s7""}"
 8,RSRP histograms by Operator,Voice,Title + 2 rows + dynamic columns + comments down,,Operator,LTE RSRP histogram (5 dB bins) – Voice,CDR-Voice,4G_RSRP_Avg_A,Histogram Bars,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 4G_RSRP_Avg_A >= -160;
-4G_RSRP_Avg_A <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,
+4G_RSRP_Avg_A <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,,"{""id"":""s8e1"",""slide"":""s8""}"
 8,RSRP histograms by Operator,Voice,Title + 2 rows + dynamic columns + comments down,,Operator,NR RSRP histogram (5 dB bins) – Voice,CDR-Voice,NR_RSRP_Avg_A,Histogram Bars,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 NR_RSRP_Avg_A >= -160;
-NR_RSRP_Avg_A <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,
+NR_RSRP_Avg_A <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,,"{""id"":""s8e2"",""slide"":""s8""}"
 9,RSRP distribution,Speech,Title + 2 rows + 2 columns + comments right,,,LTE RSRP (dBm) – Speech,CDR-Speech,Playing_RSRP_Avg,CDF Line,"Playing_RSRP_Avg >= -160;
-Playing_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+Playing_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s9e1"",""slide"":""s9""}"
 9,RSRP distribution,Speech,Title + 2 rows + 2 columns + comments right,,,NR RSRP (dBm) – Speech,CDR-Speech,Playing_RSRP_NR_Avg,CDF Line,"Playing_RSRP_NR_Avg >= -160;
-Playing_RSRP_NR_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+Playing_RSRP_NR_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s9e2"",""slide"":""s9""}"
 9,RSRP distribution,Speech,Title + 2 rows + 2 columns + comments right,,,LTE RSRP histogram (5 dB bins) – Speech,CDR-Speech,Playing_RSRP_Avg,Histogram Line,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 Playing_RSRP_Avg >= -160;
-Playing_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+Playing_RSRP_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s9e3"",""slide"":""s9""}"
 9,RSRP distribution,Speech,Title + 2 rows + 2 columns + comments right,,,NR RSRP histogram (5 dB bins) – Speech,CDR-Speech,Playing_RSRP_NR_Avg,Histogram Line,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 Playing_RSRP_NR_Avg >= -160;
-Playing_RSRP_NR_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,
+Playing_RSRP_NR_Avg <= -20",Operator,Campaign,Operator,Right,,,,"[-130,-50]",,Yes,,"{""id"":""s9e4"",""slide"":""s9""}"
 10,RSRP histograms by Operator,Speech,Title + 2 rows + dynamic columns + comments down,,Operator,LTE RSRP histogram (5 dB bins) – Speech,CDR-Speech,Playing_RSRP_Avg,Histogram Bars,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 Playing_RSRP_Avg >= -160;
-Playing_RSRP_Avg <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,
+Playing_RSRP_Avg <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,,"{""id"":""s10e1"",""slide"":""s10""}"
 10,RSRP histograms by Operator,Speech,Title + 2 rows + dynamic columns + comments down,,Operator,NR RSRP histogram (5 dB bins) – Speech,CDR-Speech,Playing_RSRP_NR_Avg,Histogram Bars,"Bin Size = 5;
 Buckets = -110,-100,-90,-80;
 Playing_RSRP_NR_Avg >= -160;
-Playing_RSRP_NR_Avg <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,
-11,Average RSRP per Operator,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,LTE RSRP – Data+Voice+Speech,CDR-All,LTE_RSRP,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-11,Average RSRP per Operator,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,NR RSRP – Data+Voice+Speech,CDR-All,NR_RSRP,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-12,Average LTE RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP – Data,CDR-Data,LTE_PCell_RSRP_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-12,Average LTE RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP – Voice,CDR-Voice,4G_RSRP_Avg_A,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-12,Average LTE RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP – Speech,CDR-Speech,Playing_RSRP_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-13,Average NR RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP – Data,CDR-Data,NR_PCell_RSRP_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-13,Average NR RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP – Voice,CDR-Voice,NR_RSRP_Avg_A,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-13,Average NR RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP – Speech,CDR-Speech,Playing_RSRP_NR_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
+Playing_RSRP_NR_Avg <= -20",Operator,Campaign,Campaign,Top,,,,"[-130,-50]",,Yes,,"{""id"":""s10e2"",""slide"":""s10""}"
+11,Average RSRP per Operator,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,LTE RSRP – Data+Voice+Speech,CDR-All,LTE_RSRP,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s11e1"",""slide"":""s11""}"
+11,Average RSRP per Operator,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,NR RSRP – Data+Voice+Speech,CDR-All,NR_RSRP,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s11e2"",""slide"":""s11""}"
+12,Average LTE RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP – Data,CDR-Data,LTE_PCell_RSRP_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s12e1"",""slide"":""s12""}"
+12,Average LTE RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP – Voice,CDR-Voice,4G_RSRP_Avg_A,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s12e2"",""slide"":""s12""}"
+12,Average LTE RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP – Speech,CDR-Speech,Playing_RSRP_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s12e3"",""slide"":""s12""}"
+13,Average NR RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP – Data,CDR-Data,NR_PCell_RSRP_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s13e1"",""slide"":""s13""}"
+13,Average NR RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP – Voice,CDR-Voice,NR_RSRP_Avg_A,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s13e2"",""slide"":""s13""}"
+13,Average NR RSRP per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP – Speech,CDR-Speech,Playing_RSRP_NR_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s13e3"",""slide"":""s13""}"
 14,RSRP coverage classes,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,LTE RSRP ranges – Data+Voice+Speech,CDR-All,LTE_RSRP,Distribution Stacked Vertical Bars,"Buckets = -110,-100,-90,-80;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s14e1"",""slide"":""s14""}"
 14,RSRP coverage classes,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,NR RSRP ranges – Data+Voice+Speech,CDR-All,NR_RSRP,Distribution Stacked Vertical Bars,"Buckets = -110,-100,-90,-80;
 NR_RSRP >= -160;
 NR_RSRP <= -20;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s14e2"",""slide"":""s14""}"
 15,LTE RSRP coverage classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP ranges – Data,CDR-Data,LTE_PCell_RSRP_Avg,Distribution Stacked Vertical Bars,"Buckets = -110,-100,-90,-80;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s15e1"",""slide"":""s15""}"
 15,LTE RSRP coverage classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP ranges – Voice,CDR-Voice,4G_RSRP_Avg_A,Distribution Stacked Vertical Bars,"Buckets = -110,-100,-90,-80;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s15e2"",""slide"":""s15""}"
 15,LTE RSRP coverage classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP ranges – Speech,CDR-Speech,Playing_RSRP_Avg,Distribution Stacked Vertical Bars,"Buckets = -110,-100,-90,-80;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s15e3"",""slide"":""s15""}"
 16,NR RSRP coverage classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP ranges – Data,CDR-Data,NR_PCell_RSRP_Avg,Distribution Stacked Vertical Bars,"Buckets = -110,-100,-90,-80;
 NR_PCell_RSRP_Avg >= -160;
 NR_PCell_RSRP_Avg <= -20;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s16e1"",""slide"":""s16""}"
 16,NR RSRP coverage classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP ranges – Voice,CDR-Voice,NR_RSRP_Avg_A,Distribution Stacked Vertical Bars,"Buckets = -110,-100,-90,-80;
 NR_RSRP_Avg_A >= -160;
 NR_RSRP_Avg_A <= -20;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s16e2"",""slide"":""s16""}"
 16,NR RSRP coverage classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP ranges – Speech,CDR-Speech,Playing_RSRP_NR_Avg,Distribution Stacked Vertical Bars,"Buckets = -110,-100,-90,-80;
 Playing_RSRP_NR_Avg >= -160;
 Playing_RSRP_NR_Avg <= -20;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
-17,Low coverage samples (RSRP below -110 dBm),Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,LTE RSRP < -110 dBm – Data+Voice+Speech,CDR-All,LTE_RSRP,Threshold Stacked Vertical Bars,Threshold = -110,Operator,Campaign,,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s16e3"",""slide"":""s16""}"
+17,Low coverage samples (RSRP below -110 dBm),Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,LTE RSRP < -110 dBm – Data+Voice+Speech,CDR-All,LTE_RSRP,Threshold Stacked Vertical Bars,Threshold = -110,Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s17e1"",""slide"":""s17""}"
 17,Low coverage samples (RSRP below -110 dBm),Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,NR RSRP < -110 dBm – Data+Voice+Speech,CDR-All,NR_RSRP,Threshold Stacked Vertical Bars,"Threshold = -110;
 NR_RSRP >= -160;
-NR_RSRP <= -20",Operator,Campaign,,Right,,,,,,Yes,
-18,Low coverage samples (LTE RSRP below -110 dBm),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP < -110 dBm – Data,CDR-Data,LTE_PCell_RSRP_Avg,Threshold Stacked Vertical Bars,Threshold = -110,Operator,Campaign,,Right,,,,,,Yes,
-18,Low coverage samples (LTE RSRP below -110 dBm),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP < -110 dBm – Voice,CDR-Voice,4G_RSRP_Avg_A,Threshold Stacked Vertical Bars,Threshold = -110,Operator,Campaign,,Right,,,,,,Yes,
-18,Low coverage samples (LTE RSRP below -110 dBm),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP < -110 dBm – Speech,CDR-Speech,Playing_RSRP_Avg,Threshold Stacked Vertical Bars,Threshold = -110,Operator,Campaign,,Right,,,,,,Yes,
+NR_RSRP <= -20",Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s17e2"",""slide"":""s17""}"
+18,Low coverage samples (LTE RSRP below -110 dBm),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP < -110 dBm – Data,CDR-Data,LTE_PCell_RSRP_Avg,Threshold Stacked Vertical Bars,Threshold = -110,Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s18e1"",""slide"":""s18""}"
+18,Low coverage samples (LTE RSRP below -110 dBm),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP < -110 dBm – Voice,CDR-Voice,4G_RSRP_Avg_A,Threshold Stacked Vertical Bars,Threshold = -110,Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s18e2"",""slide"":""s18""}"
+18,Low coverage samples (LTE RSRP below -110 dBm),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE RSRP < -110 dBm – Speech,CDR-Speech,Playing_RSRP_Avg,Threshold Stacked Vertical Bars,Threshold = -110,Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s18e3"",""slide"":""s18""}"
 19,Low coverage samples (NR RSRP below -110 dBm),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP < -110 dBm – Data,CDR-Data,NR_PCell_RSRP_Avg,Threshold Stacked Vertical Bars,"Threshold = -110;
 NR_PCell_RSRP_Avg >= -160;
-NR_PCell_RSRP_Avg <= -20",Operator,Campaign,,Right,,,,,,Yes,
+NR_PCell_RSRP_Avg <= -20",Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s19e1"",""slide"":""s19""}"
 19,Low coverage samples (NR RSRP below -110 dBm),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP < -110 dBm – Voice,CDR-Voice,NR_RSRP_Avg_A,Threshold Stacked Vertical Bars,"Threshold = -110;
 NR_RSRP_Avg_A >= -160;
-NR_RSRP_Avg_A <= -20",Operator,Campaign,,Right,,,,,,Yes,
+NR_RSRP_Avg_A <= -20",Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s19e2"",""slide"":""s19""}"
 19,Low coverage samples (NR RSRP below -110 dBm),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR RSRP < -110 dBm – Speech,CDR-Speech,Playing_RSRP_NR_Avg,Threshold Stacked Vertical Bars,"Threshold = -110;
 Playing_RSRP_NR_Avg >= -160;
-Playing_RSRP_NR_Avg <= -20",Operator,Campaign,,Right,,,,,,Yes,
+Playing_RSRP_NR_Avg <= -20",Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s19e3"",""slide"":""s19""}"
 20,RSRP coverage maps,Data+Voice+Speech,Title + 1 rows + 2 columns + comments down,,,LTE RSRP coverage – Data+Voice+Speech,CDR-All,Latitude vs Longitude vs LTE_RSRP,Map,"Buckets = -110,-100,-90,-80;
 LTE_RSRP >= -160;
-LTE_RSRP <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+LTE_RSRP <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s20e1"",""slide"":""s20""}"
 20,RSRP coverage maps,Data+Voice+Speech,Title + 1 rows + 2 columns + comments down,,,NR RSRP coverage – Data+Voice+Speech,CDR-All,Latitude vs Longitude vs NR_RSRP,Map,"Buckets = -110,-100,-90,-80;
 NR_RSRP >= -160;
-NR_RSRP <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+NR_RSRP <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s20e2"",""slide"":""s20""}"
 21,RSRP coverage maps,Data,Title + 1 rows + 2 columns + comments down,,,LTE RSRP coverage – Data,CDR-Data,Test_Start_Latitude vs Test_Start_Longitude vs LTE_PCell_RSRP_Avg,Map,"Buckets = -110,-100,-90,-80;
 LTE_PCell_RSRP_Avg >= -160;
-LTE_PCell_RSRP_Avg <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+LTE_PCell_RSRP_Avg <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s21e1"",""slide"":""s21""}"
 21,RSRP coverage maps,Data,Title + 1 rows + 2 columns + comments down,,,NR RSRP coverage – Data,CDR-Data,Test_Start_Latitude vs Test_Start_Longitude vs NR_PCell_RSRP_Avg,Map,"Buckets = -110,-100,-90,-80;
 NR_PCell_RSRP_Avg >= -160;
-NR_PCell_RSRP_Avg <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+NR_PCell_RSRP_Avg <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s21e2"",""slide"":""s21""}"
 22,RSRP coverage maps,Voice,Title + 1 rows + 2 columns + comments down,,,LTE RSRP coverage – Voice,CDR-Voice,Call_Start_Latitude_A vs Call_Start_Longitude_A vs 4G_RSRP_Avg_A,Map,"Buckets = -110,-100,-90,-80;
 4G_RSRP_Avg_A >= -160;
-4G_RSRP_Avg_A <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+4G_RSRP_Avg_A <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s22e1"",""slide"":""s22""}"
 22,RSRP coverage maps,Voice,Title + 1 rows + 2 columns + comments down,,,NR RSRP coverage – Voice,CDR-Voice,Call_Start_Latitude_A vs Call_Start_Longitude_A vs NR_RSRP_Avg_A,Map,"Buckets = -110,-100,-90,-80;
 NR_RSRP_Avg_A >= -160;
-NR_RSRP_Avg_A <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+NR_RSRP_Avg_A <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s22e2"",""slide"":""s22""}"
 23,RSRP coverage maps,Speech,Title + 1 rows + 2 columns + comments down,,,LTE RSRP coverage – Speech,CDR-Speech,Playing_Latitude vs Playing_Longitude vs Playing_RSRP_Avg,Map,"Buckets = -110,-100,-90,-80;
 Playing_RSRP_Avg >= -160;
-Playing_RSRP_Avg <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+Playing_RSRP_Avg <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s23e1"",""slide"":""s23""}"
 23,RSRP coverage maps,Speech,Title + 1 rows + 2 columns + comments down,,,NR RSRP coverage – Speech,CDR-Speech,Playing_Latitude vs Playing_Longitude vs Playing_RSRP_NR_Avg,Map,"Buckets = -110,-100,-90,-80;
 Playing_RSRP_NR_Avg >= -160;
-Playing_RSRP_NR_Avg <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,
-24,Interference (SINR),,Title Only,,,,,,Transition Slide,,,,,Top,,,,,,,
+Playing_RSRP_NR_Avg <= -20",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s23e2"",""slide"":""s23""}"
+24,Interference (SINR),,Title Only,,,,,,Transition Slide,,,,,Top,,,,,,,,"{""slide"":""s24""}"
 25,SINR distribution,Data+Voice+Speech,Title + 2 rows + 2 columns + comments right,,,LTE SINR (dB) – Data+Voice+Speech,CDR-All,LTE_SINR,CDF Line,"LTE_SINR >= -30;
-LTE_SINR <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+LTE_SINR <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s25e1"",""slide"":""s25""}"
 25,SINR distribution,Data+Voice+Speech,Title + 2 rows + 2 columns + comments right,,,NR SINR (dB) – Data+Voice+Speech,CDR-All,NR_SINR,CDF Line,"NR_SINR >= -30;
-NR_SINR <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+NR_SINR <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s25e2"",""slide"":""s25""}"
 25,SINR distribution,Data+Voice+Speech,Title + 2 rows + 2 columns + comments right,,,LTE SINR histogram (1 dB bins) – Data+Voice+Speech,CDR-All,LTE_SINR,Histogram Line,"Bin Size = 1;
 Buckets = 0,5,13,20;
 LTE_SINR >= -30;
-LTE_SINR <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+LTE_SINR <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s25e3"",""slide"":""s25""}"
 25,SINR distribution,Data+Voice+Speech,Title + 2 rows + 2 columns + comments right,,,NR SINR histogram (1 dB bins) – Data+Voice+Speech,CDR-All,NR_SINR,Histogram Line,"Bin Size = 1;
 Buckets = 0,5,13,20;
 NR_SINR >= -30;
-NR_SINR <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+NR_SINR <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s25e4"",""slide"":""s25""}"
 26,SINR histograms by Operator,Data+Voice+Speech,Title + 2 rows + dynamic columns + comments down,,Operator,LTE SINR histogram (1 dB bins) – Data+Voice+Speech,CDR-All,LTE_SINR,Histogram Bars,"Bin Size = 1;
 Buckets = 0,5,13,20;
 LTE_SINR >= -30;
-LTE_SINR <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,
+LTE_SINR <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,,"{""id"":""s26e1"",""slide"":""s26""}"
 26,SINR histograms by Operator,Data+Voice+Speech,Title + 2 rows + dynamic columns + comments down,,Operator,NR SINR histogram (1 dB bins) – Data+Voice+Speech,CDR-All,NR_SINR,Histogram Bars,"Bin Size = 1;
 Buckets = 0,5,13,20;
 NR_SINR >= -30;
-NR_SINR <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,
+NR_SINR <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,,"{""id"":""s26e2"",""slide"":""s26""}"
 27,SINR distribution,Data,Title + 2 rows + 2 columns + comments right,,,LTE SINR (dB) – Data,CDR-Data,LTE_PCell_SINR_Avg,CDF Line,"LTE_PCell_SINR_Avg >= -30;
-LTE_PCell_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+LTE_PCell_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s27e1"",""slide"":""s27""}"
 27,SINR distribution,Data,Title + 2 rows + 2 columns + comments right,,,NR SINR (dB) – Data,CDR-Data,NR_PCell_SINR_Avg,CDF Line,"NR_PCell_SINR_Avg >= -30;
-NR_PCell_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+NR_PCell_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s27e2"",""slide"":""s27""}"
 27,SINR distribution,Data,Title + 2 rows + 2 columns + comments right,,,LTE SINR histogram (1 dB bins) – Data,CDR-Data,LTE_PCell_SINR_Avg,Histogram Line,"Bin Size = 1;
 Buckets = 0,5,13,20;
 LTE_PCell_SINR_Avg >= -30;
-LTE_PCell_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+LTE_PCell_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s27e3"",""slide"":""s27""}"
 27,SINR distribution,Data,Title + 2 rows + 2 columns + comments right,,,NR SINR histogram (1 dB bins) – Data,CDR-Data,NR_PCell_SINR_Avg,Histogram Line,"Bin Size = 1;
 Buckets = 0,5,13,20;
 NR_PCell_SINR_Avg >= -30;
-NR_PCell_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+NR_PCell_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s27e4"",""slide"":""s27""}"
 28,SINR histograms by Operator,Data,Title + 2 rows + dynamic columns + comments down,,Operator,LTE SINR histogram (1 dB bins) – Data,CDR-Data,LTE_PCell_SINR_Avg,Histogram Bars,"Bin Size = 1;
 Buckets = 0,5,13,20;
 LTE_PCell_SINR_Avg >= -30;
-LTE_PCell_SINR_Avg <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,
+LTE_PCell_SINR_Avg <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,,"{""id"":""s28e1"",""slide"":""s28""}"
 28,SINR histograms by Operator,Data,Title + 2 rows + dynamic columns + comments down,,Operator,NR SINR histogram (1 dB bins) – Data,CDR-Data,NR_PCell_SINR_Avg,Histogram Bars,"Bin Size = 1;
 Buckets = 0,5,13,20;
 NR_PCell_SINR_Avg >= -30;
-NR_PCell_SINR_Avg <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,
+NR_PCell_SINR_Avg <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,,"{""id"":""s28e2"",""slide"":""s28""}"
 29,SINR distribution,Voice,Title + 2 rows + 2 columns + comments right,,,LTE SINR (dB) – Voice,CDR-Voice,4G_SINR_Avg_A,CDF Line,"4G_SINR_Avg_A >= -30;
-4G_SINR_Avg_A <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+4G_SINR_Avg_A <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s29e1"",""slide"":""s29""}"
 29,SINR distribution,Voice,Title + 2 rows + 2 columns + comments right,,,NR SINR (dB) – Voice,CDR-Voice,NR_SINR_Avg_A,CDF Line,"NR_SINR_Avg_A >= -30;
-NR_SINR_Avg_A <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+NR_SINR_Avg_A <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s29e2"",""slide"":""s29""}"
 29,SINR distribution,Voice,Title + 2 rows + 2 columns + comments right,,,LTE SINR histogram (1 dB bins) – Voice,CDR-Voice,4G_SINR_Avg_A,Histogram Line,"Bin Size = 1;
 Buckets = 0,5,13,20;
 4G_SINR_Avg_A >= -30;
-4G_SINR_Avg_A <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+4G_SINR_Avg_A <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s29e3"",""slide"":""s29""}"
 29,SINR distribution,Voice,Title + 2 rows + 2 columns + comments right,,,NR SINR histogram (1 dB bins) – Voice,CDR-Voice,NR_SINR_Avg_A,Histogram Line,"Bin Size = 1;
 Buckets = 0,5,13,20;
 NR_SINR_Avg_A >= -30;
-NR_SINR_Avg_A <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+NR_SINR_Avg_A <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s29e4"",""slide"":""s29""}"
 30,SINR histograms by Operator,Voice,Title + 2 rows + dynamic columns + comments down,,Operator,LTE SINR histogram (1 dB bins) – Voice,CDR-Voice,4G_SINR_Avg_A,Histogram Bars,"Bin Size = 1;
 Buckets = 0,5,13,20;
 4G_SINR_Avg_A >= -30;
-4G_SINR_Avg_A <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,
+4G_SINR_Avg_A <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,,"{""id"":""s30e1"",""slide"":""s30""}"
 30,SINR histograms by Operator,Voice,Title + 2 rows + dynamic columns + comments down,,Operator,NR SINR histogram (1 dB bins) – Voice,CDR-Voice,NR_SINR_Avg_A,Histogram Bars,"Bin Size = 1;
 Buckets = 0,5,13,20;
 NR_SINR_Avg_A >= -30;
-NR_SINR_Avg_A <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,
+NR_SINR_Avg_A <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,,"{""id"":""s30e2"",""slide"":""s30""}"
 31,SINR distribution,Speech,Title + 2 rows + 2 columns + comments right,,,LTE SINR (dB) – Speech,CDR-Speech,Playing_SINR_Avg,CDF Line,"Playing_SINR_Avg >= -30;
-Playing_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+Playing_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s31e1"",""slide"":""s31""}"
 31,SINR distribution,Speech,Title + 2 rows + 2 columns + comments right,,,NR SINR (dB) – Speech,CDR-Speech,Playing_SINR_NR_Avg,CDF Line,"Playing_SINR_NR_Avg >= -30;
-Playing_SINR_NR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+Playing_SINR_NR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s31e2"",""slide"":""s31""}"
 31,SINR distribution,Speech,Title + 2 rows + 2 columns + comments right,,,LTE SINR histogram (1 dB bins) – Speech,CDR-Speech,Playing_SINR_Avg,Histogram Line,"Bin Size = 1;
 Buckets = 0,5,13,20;
 Playing_SINR_Avg >= -30;
-Playing_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+Playing_SINR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s31e3"",""slide"":""s31""}"
 31,SINR distribution,Speech,Title + 2 rows + 2 columns + comments right,,,NR SINR histogram (1 dB bins) – Speech,CDR-Speech,Playing_SINR_NR_Avg,Histogram Line,"Bin Size = 1;
 Buckets = 0,5,13,20;
 Playing_SINR_NR_Avg >= -30;
-Playing_SINR_NR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,
+Playing_SINR_NR_Avg <= 50",Operator,Campaign,Operator,Right,,,,"[-10,35]",,Yes,,"{""id"":""s31e4"",""slide"":""s31""}"
 32,SINR histograms by Operator,Speech,Title + 2 rows + dynamic columns + comments down,,Operator,LTE SINR histogram (1 dB bins) – Speech,CDR-Speech,Playing_SINR_Avg,Histogram Bars,"Bin Size = 1;
 Buckets = 0,5,13,20;
 Playing_SINR_Avg >= -30;
-Playing_SINR_Avg <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,
+Playing_SINR_Avg <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,,"{""id"":""s32e1"",""slide"":""s32""}"
 32,SINR histograms by Operator,Speech,Title + 2 rows + dynamic columns + comments down,,Operator,NR SINR histogram (1 dB bins) – Speech,CDR-Speech,Playing_SINR_NR_Avg,Histogram Bars,"Bin Size = 1;
 Buckets = 0,5,13,20;
 Playing_SINR_NR_Avg >= -30;
-Playing_SINR_NR_Avg <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,
-33,Average SINR per Operator,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,LTE SINR – Data+Voice+Speech,CDR-All,LTE_SINR,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-33,Average SINR per Operator,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,NR SINR – Data+Voice+Speech,CDR-All,NR_SINR,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-34,Average LTE SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR – Data,CDR-Data,LTE_PCell_SINR_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-34,Average LTE SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR – Voice,CDR-Voice,4G_SINR_Avg_A,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-34,Average LTE SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR – Speech,CDR-Speech,Playing_SINR_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-35,Average NR SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR – Data,CDR-Data,NR_PCell_SINR_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-35,Average NR SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR – Voice,CDR-Voice,NR_SINR_Avg_A,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
-35,Average NR SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR – Speech,CDR-Speech,Playing_SINR_NR_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,
+Playing_SINR_NR_Avg <= 50",Operator,Campaign,Campaign,Top,,,,"[-10,35]",,Yes,,"{""id"":""s32e2"",""slide"":""s32""}"
+33,Average SINR per Operator,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,LTE SINR – Data+Voice+Speech,CDR-All,LTE_SINR,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s33e1"",""slide"":""s33""}"
+33,Average SINR per Operator,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,NR SINR – Data+Voice+Speech,CDR-All,NR_SINR,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s33e2"",""slide"":""s33""}"
+34,Average LTE SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR – Data,CDR-Data,LTE_PCell_SINR_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s34e1"",""slide"":""s34""}"
+34,Average LTE SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR – Voice,CDR-Voice,4G_SINR_Avg_A,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s34e2"",""slide"":""s34""}"
+34,Average LTE SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR – Speech,CDR-Speech,Playing_SINR_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s34e3"",""slide"":""s34""}"
+35,Average NR SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR – Data,CDR-Data,NR_PCell_SINR_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s35e1"",""slide"":""s35""}"
+35,Average NR SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR – Voice,CDR-Voice,NR_SINR_Avg_A,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s35e2"",""slide"":""s35""}"
+35,Average NR SINR per Operator,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR – Speech,CDR-Speech,Playing_SINR_NR_Avg,Average Vertical Bars,,Operator,Campaign,Campaign,Top,,,,,,Yes,,"{""id"":""s35e3"",""slide"":""s35""}"
 36,SINR quality classes,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,LTE SINR ranges – Data+Voice+Speech,CDR-All,LTE_SINR,Distribution Stacked Vertical Bars,"Buckets = 0,5,13,20;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s36e1"",""slide"":""s36""}"
 36,SINR quality classes,Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,NR SINR ranges – Data+Voice+Speech,CDR-All,NR_SINR,Distribution Stacked Vertical Bars,"Buckets = 0,5,13,20;
 NR_SINR >= -30;
 NR_SINR <= 50;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s36e2"",""slide"":""s36""}"
 37,LTE SINR quality classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR ranges – Data,CDR-Data,LTE_PCell_SINR_Avg,Distribution Stacked Vertical Bars,"Buckets = 0,5,13,20;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s37e1"",""slide"":""s37""}"
 37,LTE SINR quality classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR ranges – Voice,CDR-Voice,4G_SINR_Avg_A,Distribution Stacked Vertical Bars,"Buckets = 0,5,13,20;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s37e2"",""slide"":""s37""}"
 37,LTE SINR quality classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR ranges – Speech,CDR-Speech,Playing_SINR_Avg,Distribution Stacked Vertical Bars,"Buckets = 0,5,13,20;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s37e3"",""slide"":""s37""}"
 38,NR SINR quality classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR ranges – Data,CDR-Data,NR_PCell_SINR_Avg,Distribution Stacked Vertical Bars,"Buckets = 0,5,13,20;
 NR_PCell_SINR_Avg >= -30;
 NR_PCell_SINR_Avg <= 50;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s38e1"",""slide"":""s38""}"
 38,NR SINR quality classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR ranges – Voice,CDR-Voice,NR_SINR_Avg_A,Distribution Stacked Vertical Bars,"Buckets = 0,5,13,20;
 NR_SINR_Avg_A >= -30;
 NR_SINR_Avg_A <= 50;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s38e2"",""slide"":""s38""}"
 38,NR SINR quality classes,Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR ranges – Speech,CDR-Speech,Playing_SINR_NR_Avg,Distribution Stacked Vertical Bars,"Buckets = 0,5,13,20;
 Playing_SINR_NR_Avg >= -30;
 Playing_SINR_NR_Avg <= 50;
-Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,
-39,High interference samples (SINR below 0 dB),Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,LTE SINR < 0 dB – Data+Voice+Speech,CDR-All,LTE_SINR,Threshold Stacked Vertical Bars,Threshold = 0,Operator,Campaign,,Right,,,,,,Yes,
+Class Colours = Quality",Operator,Campaign × Rate Bucket,Rate Bucket,Right,,,,,,Yes,,"{""id"":""s38e3"",""slide"":""s38""}"
+39,High interference samples (SINR below 0 dB),Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,LTE SINR < 0 dB – Data+Voice+Speech,CDR-All,LTE_SINR,Threshold Stacked Vertical Bars,Threshold = 0,Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s39e1"",""slide"":""s39""}"
 39,High interference samples (SINR below 0 dB),Data+Voice+Speech,Title + 1 rows + 2 columns + comments right,,,NR SINR < 0 dB – Data+Voice+Speech,CDR-All,NR_SINR,Threshold Stacked Vertical Bars,"Threshold = 0;
 NR_SINR >= -30;
-NR_SINR <= 50",Operator,Campaign,,Right,,,,,,Yes,
-40,High interference samples (LTE SINR below 0 dB),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR < 0 dB – Data,CDR-Data,LTE_PCell_SINR_Avg,Threshold Stacked Vertical Bars,Threshold = 0,Operator,Campaign,,Right,,,,,,Yes,
-40,High interference samples (LTE SINR below 0 dB),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR < 0 dB – Voice,CDR-Voice,4G_SINR_Avg_A,Threshold Stacked Vertical Bars,Threshold = 0,Operator,Campaign,,Right,,,,,,Yes,
-40,High interference samples (LTE SINR below 0 dB),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR < 0 dB – Speech,CDR-Speech,Playing_SINR_Avg,Threshold Stacked Vertical Bars,Threshold = 0,Operator,Campaign,,Right,,,,,,Yes,
+NR_SINR <= 50",Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s39e2"",""slide"":""s39""}"
+40,High interference samples (LTE SINR below 0 dB),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR < 0 dB – Data,CDR-Data,LTE_PCell_SINR_Avg,Threshold Stacked Vertical Bars,Threshold = 0,Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s40e1"",""slide"":""s40""}"
+40,High interference samples (LTE SINR below 0 dB),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR < 0 dB – Voice,CDR-Voice,4G_SINR_Avg_A,Threshold Stacked Vertical Bars,Threshold = 0,Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s40e2"",""slide"":""s40""}"
+40,High interference samples (LTE SINR below 0 dB),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,LTE SINR < 0 dB – Speech,CDR-Speech,Playing_SINR_Avg,Threshold Stacked Vertical Bars,Threshold = 0,Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s40e3"",""slide"":""s40""}"
 41,High interference samples (NR SINR below 0 dB),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR < 0 dB – Data,CDR-Data,NR_PCell_SINR_Avg,Threshold Stacked Vertical Bars,"Threshold = 0;
 NR_PCell_SINR_Avg >= -30;
-NR_PCell_SINR_Avg <= 50",Operator,Campaign,,Right,,,,,,Yes,
+NR_PCell_SINR_Avg <= 50",Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s41e1"",""slide"":""s41""}"
 41,High interference samples (NR SINR below 0 dB),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR < 0 dB – Voice,CDR-Voice,NR_SINR_Avg_A,Threshold Stacked Vertical Bars,"Threshold = 0;
 NR_SINR_Avg_A >= -30;
-NR_SINR_Avg_A <= 50",Operator,Campaign,,Right,,,,,,Yes,
+NR_SINR_Avg_A <= 50",Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s41e2"",""slide"":""s41""}"
 41,High interference samples (NR SINR below 0 dB),Data / Voice / Speech,Title + 1 rows + 3 columns + comments down,,,NR SINR < 0 dB – Speech,CDR-Speech,Playing_SINR_NR_Avg,Threshold Stacked Vertical Bars,"Threshold = 0;
 Playing_SINR_NR_Avg >= -30;
-Playing_SINR_NR_Avg <= 50",Operator,Campaign,,Right,,,,,,Yes,
+Playing_SINR_NR_Avg <= 50",Operator,Campaign,,Right,,,,,,Yes,,"{""id"":""s41e3"",""slide"":""s41""}"
 42,SINR quality maps,Data+Voice+Speech,Title + 1 rows + 2 columns + comments down,,,LTE SINR quality – Data+Voice+Speech,CDR-All,Latitude vs Longitude vs LTE_SINR,Map,"Buckets = 0,5,13,20;
 LTE_SINR >= -30;
-LTE_SINR <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+LTE_SINR <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s42e1"",""slide"":""s42""}"
 42,SINR quality maps,Data+Voice+Speech,Title + 1 rows + 2 columns + comments down,,,NR SINR quality – Data+Voice+Speech,CDR-All,Latitude vs Longitude vs NR_SINR,Map,"Buckets = 0,5,13,20;
 NR_SINR >= -30;
-NR_SINR <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+NR_SINR <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s42e2"",""slide"":""s42""}"
 43,SINR quality maps,Data,Title + 1 rows + 2 columns + comments down,,,LTE SINR quality – Data,CDR-Data,Test_Start_Latitude vs Test_Start_Longitude vs LTE_PCell_SINR_Avg,Map,"Buckets = 0,5,13,20;
 LTE_PCell_SINR_Avg >= -30;
-LTE_PCell_SINR_Avg <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+LTE_PCell_SINR_Avg <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s43e1"",""slide"":""s43""}"
 43,SINR quality maps,Data,Title + 1 rows + 2 columns + comments down,,,NR SINR quality – Data,CDR-Data,Test_Start_Latitude vs Test_Start_Longitude vs NR_PCell_SINR_Avg,Map,"Buckets = 0,5,13,20;
 NR_PCell_SINR_Avg >= -30;
-NR_PCell_SINR_Avg <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+NR_PCell_SINR_Avg <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s43e2"",""slide"":""s43""}"
 44,SINR quality maps,Voice,Title + 1 rows + 2 columns + comments down,,,LTE SINR quality – Voice,CDR-Voice,Call_Start_Latitude_A vs Call_Start_Longitude_A vs 4G_SINR_Avg_A,Map,"Buckets = 0,5,13,20;
 4G_SINR_Avg_A >= -30;
-4G_SINR_Avg_A <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+4G_SINR_Avg_A <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s44e1"",""slide"":""s44""}"
 44,SINR quality maps,Voice,Title + 1 rows + 2 columns + comments down,,,NR SINR quality – Voice,CDR-Voice,Call_Start_Latitude_A vs Call_Start_Longitude_A vs NR_SINR_Avg_A,Map,"Buckets = 0,5,13,20;
 NR_SINR_Avg_A >= -30;
-NR_SINR_Avg_A <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+NR_SINR_Avg_A <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s44e2"",""slide"":""s44""}"
 45,SINR quality maps,Speech,Title + 1 rows + 2 columns + comments down,,,LTE SINR quality – Speech,CDR-Speech,Playing_Latitude vs Playing_Longitude vs Playing_SINR_Avg,Map,"Buckets = 0,5,13,20;
 Playing_SINR_Avg >= -30;
-Playing_SINR_Avg <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,
+Playing_SINR_Avg <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s45e1"",""slide"":""s45""}"
 45,SINR quality maps,Speech,Title + 1 rows + 2 columns + comments down,,,NR SINR quality – Speech,CDR-Speech,Playing_Latitude vs Playing_Longitude vs Playing_SINR_NR_Avg,Map,"Buckets = 0,5,13,20;
 Playing_SINR_NR_Avg >= -30;
-Playing_SINR_NR_Avg <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,
-46,,,Black logo end slide,,,,,,End Slide,,,,,Top,,,,,,,
+Playing_SINR_NR_Avg <= 50",Value Bucket,,Value Bucket,Right,,,,,,Yes,,"{""id"":""s45e2"",""slide"":""s45""}"
+46,,,Black logo end slide,,,,,,End Slide,,,,,Top,,,,,,,,"{""slide"":""s46""}"

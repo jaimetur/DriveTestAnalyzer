@@ -1,0 +1,21 @@
+{
+  "name": "DT Analyzer - Tableau Dashboards",
+  "template": "DT Analyzer - Tableau Dashboards",
+  "nr_mode": "NSA+SA",
+  "sa_campaigns": [
+    "@latest-2-campaigns"
+  ],
+  "scope": "single",
+  "vendor_comparison": "operator_vendor",
+  "custom_fields": [],
+  "hidden_filters": [],
+  "auto_cdrs": true,
+  "filters": {
+    "Campaign": [
+      "@latest-2-campaigns"
+    ]
+  },
+  "slide_comments": {},
+  "slide_overrides": {},
+  "parameter_values": {}
+}

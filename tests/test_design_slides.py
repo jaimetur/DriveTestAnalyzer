@@ -43,7 +43,7 @@ def test_every_starter_template_reads_back_the_same_through_its_design(path):
 
 
 def test_the_format_column_is_optional_and_must_hold_a_json_object():
-    content = (TEMPLATES / 'FDFS DL (NSA & SA).csv').read_bytes()
+    content = (Path(__file__).parent / 'fixtures' / 'rf-quality-template.csv').read_bytes()
     assert not catalogue_csv(parse_catalog_csv(content)).split(b'\n')[0].endswith(b',Format')
     with_ids = catalogue_csv(dd.with_slide_ids(parse_catalog_csv(content)))
     assert with_ids.split(b'\n')[0].endswith(b',Format')

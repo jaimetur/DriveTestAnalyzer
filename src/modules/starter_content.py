@@ -11,7 +11,7 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   titles name it with ``{NR Mode}`` and ``{NR Mode Name}``);
 - ``assets/ppt-designs/*.json``: PPT Designs, which use those templates, each reading the CDRs of its NR Mode
   (``nr_mode``: NSA, SA or NSA+SA for both, whose SA CDRs follow ``sa_campaigns``); the templates and PPT Designs shipped
-  later (``LATER_EXAMPLES``: the NSA & SA comparison FDFS DL (NSA & SA) and DT Analyzer - All Supported Chart Types, an
+  later (``LATER_EXAMPLES``: the NSA & SA comparison DT Analyzer - FDFS DL (NSA & SA) and DT Analyzer - All Supported Chart Types, an
   example of every chart type drawn on the NSA and SA CDRs of the workspace) reach every existing workspace once, and an example
   shipped before that a workspace keeps as it was shipped is replaced in place by the one that followed it
   (``SUPERSEDED_EXAMPLES``);
@@ -58,7 +58,7 @@ BASE_METHODOLOGY = 'netcheck-2026'
 # The Report Templates shipped after workspaces were set up, which reach each of them once with their PPT Designs (those
 # of ``assets/ppt-designs`` that use them); a workspace that deleted them is not given them again.
 LATER_EXAMPLES_STATE_KEY = 'starter_examples_offered'
-LATER_EXAMPLES = ('FDFS DL (NSA & SA)', 'DT Analyzer - All Supported Chart Types')
+LATER_EXAMPLES = ('DT Analyzer - FDFS DL (NSA & SA)', 'DT Analyzer - All Supported Chart Types')
 # Starter examples shipped before under another name or with another content, each with the example that follows it
 # now, the SHA-256 of its template and its PPT Designs as they were shipped. A workspace that still has one as it was
 # shipped (template and PPT Designs unchanged) has it replaced in place by the example that follows it, keeping their
@@ -84,6 +84,16 @@ SUPERSEDED_EXAMPLES: dict[str, dict[str, Any]] = {
             'sa_campaigns': ['@latest-2-campaigns'], 'scope': 'single', 'vendor_comparison': 'operator_vendor',
             'custom_fields': [], 'hidden_filters': [], 'auto_cdrs': True, 'filters': {'Campaign': ['@latest-2-campaigns']},
             'slide_comments': {},
+        }],
+    },
+    # v0.10.1: the same NSA & SA comparison, before the examples of the application were named after it.
+    'FDFS DL (NSA & SA)': {
+        'successor': 'DT Analyzer - FDFS DL (NSA & SA)',
+        'template_sha256': 'b5f110ea6e277f7f2cfa5b3ad2e0adfe21fa466fc1306632c4338ee39204e5ac',
+        'designs': [{
+            'name': 'NSA & SA - FDFS DL (NSA & SA)', 'template': 'FDFS DL (NSA & SA)', 'nr_mode': 'NSA+SA', 'scope': 'single',
+            'vendor_comparison': 'operator_vendor', 'custom_fields': [], 'hidden_filters': [], 'auto_cdrs': True,
+            'filters': {'Campaign': ['@latest-3-campaigns']}, 'sa_campaigns': ['@latest-campaign'], 'slide_comments': {},
         }],
     },
 }

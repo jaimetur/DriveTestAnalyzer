@@ -1,0 +1,101 @@
+{
+  "name": "DT Analyzer - FDFS DL (NSA & SA)",
+  "template": "DT Analyzer - FDFS DL (NSA & SA)",
+  "nr_mode": "NSA+SA",
+  "sa_campaigns": [
+    "@latest-campaign"
+  ],
+  "scope": "single",
+  "vendor_comparison": "operator_vendor",
+  "custom_fields": [],
+  "hidden_filters": [],
+  "auto_cdrs": true,
+  "filters": {
+    "Campaign": [
+      "@latest-3-campaigns"
+    ]
+  },
+  "slide_comments": {},
+  "slide_overrides": {
+    "version": 1,
+    "slides": {
+      "s2": {
+        "options": {
+          "value": {
+            "geometry": [
+              [
+                0,
+                0,
+                39,
+                49
+              ],
+              [
+                41,
+                0,
+                59,
+                100
+              ],
+              [
+                0,
+                51,
+                39,
+                49
+              ]
+            ],
+            "grid": {
+              "areas": [
+                [
+                  0,
+                  0,
+                  1,
+                  1
+                ],
+                [
+                  0,
+                  1,
+                  2,
+                  1
+                ],
+                [
+                  1,
+                  0,
+                  1,
+                  1
+                ]
+              ],
+              "columns": [
+                0.4,
+                0.6
+              ],
+              "rows": [
+                0.5,
+                0.5
+              ]
+            }
+          },
+          "base": null
+        }
+      }
+    },
+    "elements": {
+      "s2e2": {
+        "place": {
+          "value": 2,
+          "base": 1
+        }
+      },
+      "s2e3": {
+        "place": {
+          "value": 1,
+          "base": 2
+        }
+      }
+    },
+    "filters": {},
+    "hidden_slides": [],
+    "shown_optional": [],
+    "hidden_elements": [],
+    "local_slides": [],
+    "local_elements": {}
+  }
+}

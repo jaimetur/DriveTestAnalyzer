@@ -385,7 +385,7 @@ def test_a_chart_of_one_nr_mode_reads_only_the_cdrs_of_that_nr_mode(client, tmp_
     nsa = add_data_cdr(tmp_path, 'nsa.csv', 'NSA', '2026-Q2')
     sa = add_data_cdr(tmp_path, 'sa.csv', 'SA', '2026-Q2-SA')
     fill_missing_facets(app_module.repository, [nsa, sa])
-    definition = {'name': 'Both', 'template': 'FDFS DL (NSA & SA)', 'nr_mode': 'NSA+SA', 'auto_cdrs': True,
+    definition = {'name': 'Both', 'template': 'DT Analyzer - FDFS DL (NSA & SA)', 'nr_mode': 'NSA+SA', 'auto_cdrs': True,
                   'filters': {'Campaign': ['@latest-campaign']}, 'sa_campaigns': ['@latest-campaign']}
     read = []
     for name in ('read_frame', 'read_grouped_frame'):
@@ -413,7 +413,7 @@ def test_a_design_of_nsa_and_sa_reads_the_cdrs_of_each_nr_mode_by_its_campaigns(
     nsa_q2 = add_data_cdr(tmp_path, 'q2.csv', 'NSA', '2026-Q2')
     sa_q2 = add_data_cdr(tmp_path, 'q2_sa.csv', 'SA', '2026-Q2-SA')
     sa_q3 = add_data_cdr(tmp_path, 'q3_sa.csv', 'SA', '2026-Q3-SA')
-    definition = {'name': 'Comparison', 'template': 'FDFS DL (NSA & SA)', 'nr_mode': 'NSA+SA', 'auto_cdrs': True,
+    definition = {'name': 'Comparison', 'template': 'DT Analyzer - FDFS DL (NSA & SA)', 'nr_mode': 'NSA+SA', 'auto_cdrs': True,
                   'filters': {'Campaign': ['@latest-campaign']}, 'sa_campaigns': ['@latest-2-campaigns']}
     from src.modules.cdr_facets import fill_missing_facets
 

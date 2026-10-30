@@ -375,15 +375,15 @@
           },
           {
             "key": "9d27a9e5-f85b-4139-8621-4cb56b6dee83",
-            "label": "NSA - Tableau Charts",
+            "label": "DT Analyzer - Tableau Charts",
             "enabled": false,
-            "nr_mode": "NSA"
+            "nr_mode": "NSA+SA"
           },
           {
             "key": "896c51dd-0dd6-42b5-8803-f18279cd459e",
-            "label": "NSA - Tableau Dashboards",
+            "label": "DT Analyzer - Tableau Dashboards",
             "enabled": false,
-            "nr_mode": "NSA"
+            "nr_mode": "NSA+SA"
           }
         ],
         "options": {
