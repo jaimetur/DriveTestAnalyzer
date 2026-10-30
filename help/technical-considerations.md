@@ -74,9 +74,9 @@ Derived preview columns are visually distinguished from source columns. They do 
 
 ### Auto-calculated Fields and combined tables
 
-Auto-calculated Fields are workspace definitions. A field has a name, selected source datasets, a fallback and either ordered case-insensitive `condition => result` rules or a nested Tableau-style `IF / THEN / ELSEIF / ELSE / END` expression. It is materialised only in the individual and combined CDR tables for its selected sources.
+Auto-calculated Fields are workspace definitions. A field has a name, selected source datasets, a fallback (a fixed value, the value of other fields, or both in that order) and either ordered case-insensitive rules (each one an AND/OR condition and its result, kept as written) or a nested Tableau-style `IF / THEN / ELSEIF / ELSE / END` expression. It is materialised only in the individual and combined CDR tables for its selected sources, and never takes the name of a column the application keeps there (such as `NR_Mode`).
 
-The same parsed decision tree drives in-memory previews and parameterized SQLite materialization so nested-branch and fallback semantics remain identical.
+The same parsed decision tree drives in-memory previews and parameterized SQLite materialization (with SQLite functions for case folding, numbers and `MATCHES`) so nested-branch and fallback semantics remain identical. Each update compares the definitions with those the tables hold (recorded in the workspace state `calculated_dimensions_materialized` after each complete update) and rewrites only the changed fields and the fields that read them; a CDR table that already holds them is not touched, so a CDR whose columnar copy is its only store is not restored for nothing.
 
 Combined reporting tables are intentionally compact. They always retain reporting-core fields, Preview filter fields, source fields required by applicable Auto-calculated Field rules and resulting calculated fields. Other template-requested source fields are added lazily when a chart/report first requires them. This avoids eagerly copying every source column for every template, which would make imports and template changes unnecessarily expensive.
 

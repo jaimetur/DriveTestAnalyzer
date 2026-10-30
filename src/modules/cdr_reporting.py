@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import base64
 import csv
+import hashlib
 import heapq
 import io
 import json
@@ -16,12 +17,13 @@ import ssl
 import subprocess
 import tempfile
 import threading
+import warnings
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 from collections import defaultdict
 from bisect import bisect_left, bisect_right
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from io import BytesIO
 from pathlib import Path
 from typing import Callable, Iterable, Mapping
@@ -119,10 +121,27 @@ OSM_TLS_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 REPORT_CHART_RENDERER_ENV = "DRIVETEST_ANALYZER_REPORT_CHART_RENDERER"
 _DESIGN_CANVAS_RENDERER = None
 _DESIGN_CANVAS_RENDERER_LOCK = threading.RLock()
-# The browser worker keeps a copy of canvas_charts.js in memory. Bump this
-# whenever rendering semantics change so a live server does not keep painting
-# previews with an older script after a hot reload.
-DESIGN_CANVAS_RENDERER_VERSION = 16
+# The browser worker keeps a copy of canvas_charts.js in memory. It starts again whenever this version or its scripts
+# change (canvas_renderer_signature), so the PPT is always drawn with the script the browser reads.
+DESIGN_CANVAS_RENDERER_VERSION = 17
+CANVAS_RENDERER_SCRIPTS = (
+    Path(__file__).resolve().parents[1] / "web_interface" / "static" / "js" / "canvas_charts.js",
+    Path(__file__).resolve().with_name("canvas_chart_renderer.mjs"),
+)
+_CANVAS_SCRIPT_DIGEST: tuple[tuple[tuple[int, int], ...], str] | None = None
+
+
+def canvas_renderer_signature() -> str:
+    """The version of the drawing of the charts: the renderer version and the content of its scripts."""
+    global _CANVAS_SCRIPT_DIGEST
+    try:
+        stamp = tuple((stat.st_mtime_ns, stat.st_size) for stat in (path.stat() for path in CANVAS_RENDERER_SCRIPTS))
+    except OSError:
+        return str(DESIGN_CANVAS_RENDERER_VERSION)
+    if _CANVAS_SCRIPT_DIGEST is None or _CANVAS_SCRIPT_DIGEST[0] != stamp:
+        digest = hashlib.sha256(b"".join(path.read_bytes() for path in CANVAS_RENDERER_SCRIPTS)).hexdigest()[:16]
+        _CANVAS_SCRIPT_DIGEST = (stamp, digest)
+    return f"{DESIGN_CANVAS_RENDERER_VERSION}:{_CANVAS_SCRIPT_DIGEST[1]}"
 
 
 def _node_executable() -> str:
@@ -163,7 +182,7 @@ class _DesignCanvasRenderer:
         else:
             raise RuntimeError(f"Unable to start the Design Canvas renderer: {error}")
         self.request_id = 0
-        self.renderer_version = DESIGN_CANVAS_RENDERER_VERSION
+        self.renderer_version = canvas_renderer_signature()
 
     def render(
         self, payload: dict[str, object], *, width: int = 1600, height: int = 900,
@@ -211,7 +230,7 @@ def _render_canvas_payload(
         if (
             _DESIGN_CANVAS_RENDERER is None
             or _DESIGN_CANVAS_RENDERER.process.poll() is not None
-            or getattr(_DESIGN_CANVAS_RENDERER, "renderer_version", None) != DESIGN_CANVAS_RENDERER_VERSION
+            or getattr(_DESIGN_CANVAS_RENDERER, "renderer_version", None) != canvas_renderer_signature()
         ):
             if _DESIGN_CANVAS_RENDERER is not None:
                 _DESIGN_CANVAS_RENDERER.close()
@@ -428,6 +447,9 @@ class CalculatedDimension:
     default_from: tuple[str, ...] = ()
     expression: CalculatedDimensionExpression | None = None
     expression_text: str = ""
+    # The rules as written (condition text, result), each one an AND/OR condition; ``rules`` holds their AND-only
+    # branches, which are evaluated. Only what is written: two definitions with the same branches are the same field.
+    written_rules: tuple[tuple[str, str], ...] = field(default=(), compare=False, repr=False)
 
 
 def split_calculated_dimension_aliases(value: object) -> tuple[str, ...]:
@@ -653,6 +675,34 @@ def parse_catalog_filters(value: str) -> tuple[FilterCondition, ...]:
     return tuple(conditions)
 
 
+# The operators of the conditions of an Auto-calculated Field: how many values each takes (one, a list in parentheses,
+# one or a list, or none) and how the editor names it. Text comparisons ignore case; MATCHES takes a regular expression.
+CALCULATED_FIELD_OPERATORS: dict[str, dict[str, str]] = {
+    '=': {'values': 'one', 'label': 'is'},
+    '!=': {'values': 'one', 'label': 'is not'},
+    'IN': {'values': 'list', 'label': 'is one of'},
+    'NOT IN': {'values': 'list', 'label': 'is none of'},
+    'CONTAINS': {'values': 'any', 'label': 'contains'},
+    'NOT CONTAINS': {'values': 'any', 'label': 'does not contain'},
+    'STARTS WITH': {'values': 'any', 'label': 'starts with'},
+    'NOT STARTS WITH': {'values': 'any', 'label': 'does not start with'},
+    'ENDS WITH': {'values': 'any', 'label': 'ends with'},
+    'NOT ENDS WITH': {'values': 'any', 'label': 'does not end with'},
+    'MATCHES': {'values': 'one', 'label': 'matches the pattern'},
+    'NOT MATCHES': {'values': 'one', 'label': 'does not match the pattern'},
+    '>': {'values': 'one', 'label': 'is greater than'},
+    '>=': {'values': 'one', 'label': 'is at least'},
+    '<': {'values': 'one', 'label': 'is less than'},
+    '<=': {'values': 'one', 'label': 'is at most'},
+    'IS EMPTY': {'values': 'none', 'label': 'is empty'},
+    'IS NOT EMPTY': {'values': 'none', 'label': 'is not empty'},
+}
+_CALCULATED_KEYWORDS = frozenset({
+    'IF', 'THEN', 'ELSEIF', 'ELSE', 'END', 'AND', 'OR', 'NOT', 'IN', 'CONTAINS', 'STARTS', 'ENDS', 'WITH', 'MATCHES',
+    'IS', 'EMPTY',
+})
+
+
 @dataclass(frozen=True)
 class _CalculatedExpressionToken:
     kind: str
@@ -690,7 +740,8 @@ def _calculated_expression_tokens(value: str) -> tuple[_CalculatedExpressionToke
                         continue
                     cursor += 1
                     break
-                if value[cursor] == "\\" and cursor + 1 < length:
+                # A backslash escapes the quote or another backslash only, so a MATCHES pattern keeps \d or \s.
+                if value[cursor] == "\\" and cursor + 1 < length and value[cursor + 1] in {quote, "\\"}:
                     content.append(value[cursor + 1])
                     cursor += 2
                     continue
@@ -709,12 +760,13 @@ def _calculated_expression_tokens(value: str) -> tuple[_CalculatedExpressionToke
             tokens.append(_CalculatedExpressionToken({"(": "LPAREN", ")": "RPAREN", ",": "COMMA"}[character], character, start))
             cursor += 1
             continue
-        number = re.match(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)", value[cursor:])
+        # A number, unless a letter follows it: 5G and 2G/3G are words.
+        number = re.match(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?![A-Za-z_])", value[cursor:])
         if number:
             tokens.append(_CalculatedExpressionToken("VALUE", number.group(0), start))
             cursor += len(number.group(0))
             continue
-        word = re.match(r"[A-Za-z_][A-Za-z0-9_.\-/]*", value[cursor:])
+        word = re.match(r"[A-Za-z0-9_][A-Za-z0-9_.\-/]*", value[cursor:])
         if word:
             tokens.append(_CalculatedExpressionToken("WORD", word.group(0), start))
             cursor += len(word.group(0))
@@ -812,7 +864,7 @@ class _CalculatedBooleanConditionParser:
             while self.cursor < len(self.tokens):
                 token = self.tokens[self.cursor]
                 if token.kind not in {'WORD', 'VALUE'} or (
-                    token.kind == 'WORD' and token.value.upper() in {'IN', 'CONTAINS', 'NOT', 'AND', 'OR'}
+                    token.kind == 'WORD' and token.value.upper() in self.OPERATOR_WORDS | {'AND', 'OR'}
                 ):
                     break
                 legacy_field_parts.append(token.value)
@@ -833,89 +885,174 @@ class _CalculatedBooleanConditionParser:
         # Preserve the concise legacy form: [A] OR [B] CONTAINS value.
         if probe < len(self.tokens) and (
             self.tokens[probe].kind == 'OP'
-            or (self.tokens[probe].kind == 'WORD' and self.tokens[probe].value.upper() in {'IN', 'CONTAINS', 'NOT'})
+            or (self.tokens[probe].kind == 'WORD' and self.tokens[probe].value.upper() in self.OPERATOR_WORDS)
         ):
             self.cursor = probe
         else:
             fields = [field_name]
-        if self.cursor >= len(self.tokens):
-            raise ValueError('Invalid condition: expected a comparison operator after the source field.')
-        if self.tokens[self.cursor].kind == 'OP':
-            operator = '!=' if self.tokens[self.cursor].value == '<>' else self.tokens[self.cursor].value
-            self.cursor += 1
-        elif self.tokens[self.cursor].kind == 'WORD':
-            operator = self.tokens[self.cursor].value.upper()
-            self.cursor += 1
-            if operator == 'NOT' and self._keyword('IN') or operator == 'NOT' and self._keyword('CONTAINS'):
-                operator = f"NOT {self.tokens[self.cursor].value.upper()}"
-                self.cursor += 1
-        else:
-            raise ValueError('Invalid condition: expected a comparison operator after the source field.')
-        if operator not in {'=', '!=', '>', '>=', '<', '<=', 'IN', 'NOT IN', 'CONTAINS', 'NOT CONTAINS'}:
-            raise ValueError(f"Invalid condition: unsupported operator '{operator}'.")
-        if operator in {'IN', 'NOT IN'}:
-            self._expect('LPAREN')
+        operator = self._operator()
+        arity = CALCULATED_FIELD_OPERATORS[operator]['values']
+        if arity == 'none':
             values: list[str] = []
-            value_tokens: list[str] = []
-            while self.cursor < len(self.tokens) and self.tokens[self.cursor].kind != 'RPAREN':
-                token = self.tokens[self.cursor]
-                if token.kind in {'VALUE', 'WORD'}:
-                    value_tokens.append(token.value)
-                elif token.kind == 'COMMA' and value_tokens:
-                    values.append(' '.join(value_tokens)); value_tokens = []
-                else:
-                    raise ValueError('Invalid condition: IN values must be separated by commas.')
-                self.cursor += 1
-            self._expect('RPAREN')
-            if value_tokens:
-                values.append(' '.join(value_tokens))
-            if not values:
-                raise ValueError('Invalid condition: IN requires at least one value.')
+        elif arity == 'list' or (arity == 'any' and self.cursor < len(self.tokens) and self.tokens[self.cursor].kind == 'LPAREN'):
+            values = self._value_list(operator)
         else:
             if self.cursor >= len(self.tokens) or self.tokens[self.cursor].kind not in {'VALUE', 'WORD'}:
-                raise ValueError('Invalid condition: comparisons require one quoted, numeric or single-word value.')
+                raise ValueError(f"Invalid condition: {operator} requires one value; quote a value with spaces, such as 'NR SA'.")
             values = [self.tokens[self.cursor].value]
             self.cursor += 1
+        if operator in {'MATCHES', 'NOT MATCHES'}:
+            try:
+                re.compile(values[0])
+            except re.error as exc:
+                raise ValueError(f"Invalid condition: the pattern '{values[0]}' of {operator} is not a valid regular expression ({exc}).") from exc
         return FilterCondition(' OR '.join(fields), operator, tuple(values))
 
-    @staticmethod
-    def _and(left: tuple[tuple[FilterCondition, ...], ...], right: tuple[tuple[FilterCondition, ...], ...]) -> tuple[tuple[FilterCondition, ...], ...]:
-        return tuple((*first, *second) for first in left for second in right)
+    OPERATOR_WORDS = frozenset({'IN', 'CONTAINS', 'NOT', 'STARTS', 'ENDS', 'MATCHES', 'IS'})
 
-    def _primary(self) -> tuple[tuple[FilterCondition, ...], ...]:
+    def _operator(self) -> str:
+        """Read the operator after the field: a symbol, or words such as NOT IN, STARTS WITH or IS NOT EMPTY."""
+        if self.cursor >= len(self.tokens):
+            raise ValueError('Invalid condition: expected an operator after the field.')
+        token = self.tokens[self.cursor]
+        if token.kind == 'OP':
+            self.cursor += 1
+            return '!=' if token.value == '<>' else token.value
+        if token.kind != 'WORD':
+            raise ValueError(f"Invalid condition: expected an operator after the field, found '{token.value}'.")
+        words: list[str] = []
+        while len(words) < 3 and self.cursor + len(words) < len(self.tokens) and self.tokens[self.cursor + len(words)].kind == 'WORD':
+            words.append(self.tokens[self.cursor + len(words)].value.upper())
+        # The longest operator the words start with (IS NOT EMPTY before IS, NOT STARTS WITH before NOT).
+        for count in range(len(words), 0, -1):
+            operator = ' '.join(words[:count])
+            if operator in CALCULATED_FIELD_OPERATORS:
+                self.cursor += count
+                return operator
+        raise ValueError(f"Invalid condition: unsupported operator '{token.value}'. Use one of: {', '.join(CALCULATED_FIELD_OPERATORS)}.")
+
+    def _value_list(self, operator: str) -> list[str]:
+        if self.cursor >= len(self.tokens) or self.tokens[self.cursor].kind != 'LPAREN':
+            raise ValueError(f"Invalid condition: the values of {operator} go in parentheses, such as {operator} (A, B).")
+        self.cursor += 1
+        values: list[str] = []
+        value_tokens: list[str] = []
+        while self.cursor < len(self.tokens) and self.tokens[self.cursor].kind != 'RPAREN':
+            token = self.tokens[self.cursor]
+            if token.kind in {'VALUE', 'WORD'}:
+                value_tokens.append(token.value)
+            elif token.kind == 'COMMA' and value_tokens:
+                values.append(' '.join(value_tokens)); value_tokens = []
+            else:
+                raise ValueError(f'Invalid condition: the values of {operator} must be separated by commas.')
+            self.cursor += 1
+        self._expect('RPAREN')
+        if value_tokens:
+            values.append(' '.join(value_tokens))
+        if not values:
+            raise ValueError(f'Invalid condition: {operator} requires at least one value.')
+        return values
+
+    # A condition is read as a tree (what the rule says, kept as written) and as its AND-only branches (what is evaluated).
+    def _primary(self) -> tuple:
         if self.cursor < len(self.tokens) and self.tokens[self.cursor].kind == 'LPAREN':
             self.cursor += 1
             nested = self._or()
             self._expect('RPAREN')
             return nested
-        return ((self._condition(),),)
+        return ('condition', self._condition())
 
-    def _and_expression(self) -> tuple[tuple[FilterCondition, ...], ...]:
-        result = self._primary()
-        while self._keyword('AND'):
+    def _joined(self, keyword: str, operand) -> tuple:
+        items = [operand()]
+        while self._keyword(keyword):
             self.cursor += 1
-            result = self._and(result, self._primary())
-        return result
+            items.append(operand())
+        kind = keyword.lower()
+        flattened = [part for item in items for part in (item[1] if item[0] == kind else (item,))]
+        return flattened[0] if len(flattened) == 1 else (kind, tuple(flattened))
 
-    def _or(self) -> tuple[tuple[FilterCondition, ...], ...]:
-        result = self._and_expression()
-        while self._keyword('OR'):
-            self.cursor += 1
-            result = (*result, *self._and_expression())
-        return result
+    def _and_expression(self) -> tuple:
+        return self._joined('AND', self._primary)
 
-    def parse(self) -> tuple[tuple[FilterCondition, ...], ...]:
+    def _or(self) -> tuple:
+        return self._joined('OR', self._and_expression)
+
+    def parse_tree(self) -> tuple:
         result = self._or()
         if self.cursor != len(self.tokens):
             found = self.tokens[self.cursor].value
             raise ValueError(f"Invalid condition: unexpected token '{found}'.")
-        if len(result) > 128:
+        if len(calculated_condition_branches(result)) > 128:
             raise ValueError('Invalid condition: too many OR alternatives (maximum 128).')
         return result
+
+    def parse(self) -> tuple[tuple[FilterCondition, ...], ...]:
+        return calculated_condition_branches(self.parse_tree())
+
+
+def calculated_condition_branches(node: tuple) -> tuple[tuple[FilterCondition, ...], ...]:
+    """The AND-only branches (any of them) a condition tree is equivalent to."""
+    if node[0] == 'condition':
+        return ((node[1],),)
+    parts = [calculated_condition_branches(item) for item in node[1]]
+    if node[0] == 'or':
+        return tuple(branch for part in parts for branch in part)
+    branches: tuple[tuple[FilterCondition, ...], ...] = ((),)
+    for part in parts:
+        branches = tuple((*first, *second) for first in branches for second in part)
+    return branches
+
+
+_CALCULATED_PLAIN_VALUE = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)|[A-Za-z_][A-Za-z0-9_.\-/]*")
+
+
+def calculated_condition_value_text(value: str) -> str:
+    """A value as a condition writes it: a number or a single word as it is, anything else quoted."""
+    text = str(value)
+    if _CALCULATED_PLAIN_VALUE.fullmatch(text) and text.upper() not in _CALCULATED_KEYWORDS:
+        return text
+    return "'" + text.replace('\\', '\\\\').replace("'", "\\'") + "'"
+
+
+def calculated_field_aliases_text(value: str) -> str:
+    """The fields of a condition or default as written: [A] OR [B], keeping distinct spellings once."""
+    aliases: list[str] = []
+    seen: set[str] = set()
+    for candidate in split_calculated_dimension_aliases(value):
+        key = _normalise_catalog_name(candidate)
+        if candidate and key not in seen:
+            aliases.append(candidate)
+            seen.add(key)
+    return " OR ".join(f"[{alias}]" for alias in aliases)
+
+
+def calculated_condition_text(condition: FilterCondition) -> str:
+    """One condition as written, read back by the condition parser as the same condition."""
+    fields = calculated_field_aliases_text(condition.column)
+    arity = CALCULATED_FIELD_OPERATORS.get(condition.operator, {}).get('values', 'one')
+    if arity == 'none':
+        return f"{fields} {condition.operator}"
+    values = [calculated_condition_value_text(value) for value in condition.values]
+    if arity == 'list' or len(values) > 1:
+        return f"{fields} {condition.operator} ({', '.join(values)})"
+    return f"{fields} {condition.operator} {values[0]}"
+
+
+def calculated_condition_tree_text(node: tuple, parent: str = '') -> str:
+    if node[0] == 'condition':
+        return calculated_condition_text(node[1])
+    keyword = ' AND ' if node[0] == 'and' else ' OR '
+    text = keyword.join(calculated_condition_tree_text(item, node[0]) for item in node[1])
+    return f"({text})" if parent else text
 
 
 def parse_calculated_boolean_conditions(value: str) -> tuple[tuple[FilterCondition, ...], ...]:
     """Parse parenthesised AND/OR rule conditions into equivalent AND-only branches."""
+    return calculated_condition_branches(parse_calculated_condition_tree(value))
+
+
+def parse_calculated_condition_tree(value: str) -> tuple:
+    """Parse the condition of a rule as written: ('condition', FilterCondition), ('and', parts) or ('or', parts)."""
     text = re.sub(r';|[\r\n]+', ' AND ', str(value or '')).strip()
     if not text:
         raise ValueError('A rule condition is required.')
@@ -930,7 +1067,7 @@ def parse_calculated_boolean_conditions(value: str) -> tuple[tuple[FilterConditi
     if legacy_alias:
         field = legacy_alias.group(1).strip()
         text = f"[{field}] {text[legacy_alias.end():]}"
-    return _CalculatedBooleanConditionParser(_calculated_expression_tokens(text)).parse()
+    return _CalculatedBooleanConditionParser(_calculated_expression_tokens(text)).parse_tree()
 
 
 def _parse_calculated_expression_conditions(
@@ -1062,11 +1199,16 @@ def parse_calculated_dimensions(payload: object) -> tuple[CalculatedDimension, .
         if not sources or any(source not in CATALOG_SOURCE_KINDS for source in sources):
             raise ValueError(f"Auto-calculated field '{name}' contains an unsupported Source Dataset.")
         expression_text = str(item.get("expression") or "").strip()
-        expression = parse_calculated_dimension_expression(expression_text) if expression_text else None
-        raw_rules = item.get("rules") or []
+        try:
+            expression = parse_calculated_dimension_expression(expression_text) if expression_text else None
+        except ValueError as exc:
+            raise ValueError(f"Formula of auto-calculated field '{name}': {exc}") from exc
+        # The rules of a formula are worked out from it (those saved with it are only its copy, never read back).
+        raw_rules = [] if expression is not None else item.get("rules") or []
         if not isinstance(raw_rules, list):
             raise ValueError(f"Auto-calculated field '{name}' rules must be a list.")
         rules: list[CalculatedDimensionRule] = []
+        written_rules: list[tuple[str, str]] = []
         for rule_index, rule in enumerate(raw_rules, start=1):
             if not isinstance(rule, Mapping):
                 raise ValueError(f"Rule {rule_index} of auto-calculated field '{name}' must be an object.")
@@ -1074,51 +1216,94 @@ def parse_calculated_dimensions(payload: object) -> tuple[CalculatedDimension, .
             value = str(rule.get("value") or "").strip()
             if not when or not value:
                 raise ValueError(f"Rule {rule_index} of auto-calculated field '{name}' requires a condition and result.")
-            rules.extend(CalculatedDimensionRule(conditions, value) for conditions in parse_calculated_boolean_conditions(when))
+            try:
+                tree = parse_calculated_condition_tree(when)
+            except ValueError as exc:
+                raise ValueError(f"Rule {rule_index} of auto-calculated field '{name}': {exc}") from exc
+            rules.extend(CalculatedDimensionRule(conditions, value) for conditions in calculated_condition_branches(tree))
+            written_rules.append((calculated_condition_tree_text(tree), value))
         if expression is not None:
             rules = list(_flatten_calculated_expression(expression))
+            written_rules = []
         default_from = split_calculated_dimension_aliases(item.get("default_from"))
         default = str(item.get("default") or "")
         if not rules and not default_from and not default:
             raise ValueError(f"Auto-calculated field '{name}' requires at least one rule, a default value or a default source field.")
         dimensions.append(CalculatedDimension(
-            name, sources, tuple(rules), default, default_from, expression, expression_text,
+            name, sources, tuple(rules), default, default_from, expression, expression_text, tuple(written_rules),
         ))
     return tuple(dimensions)
 
 
 def calculated_dimensions_json(dimensions: Iterable[CalculatedDimension]) -> list[dict[str, object]]:
     """Return the stable, editable JSON representation for template metadata."""
-    def compact_column_aliases(value: str) -> str:
-        """Keep distinct physical fallbacks while removing case-only duplicates."""
-        aliases: list[str] = []
-        seen: set[str] = set()
-        for candidate in split_calculated_dimension_aliases(value):
-            key = _normalise_catalog_name(candidate)
-            if candidate and key not in seen:
-                aliases.append(candidate)
-                seen.add(key)
-        return " OR ".join(f"[{alias}]" for alias in aliases)
-
-    def condition_text(condition: FilterCondition) -> str:
-        values = ", ".join(condition.values)
-        value = f"({values})" if condition.operator in {"IN", "NOT IN"} or len(condition.values) > 1 else values
-        return f"{compact_column_aliases(condition.column)} {condition.operator} {value}"
+    def rules_json(dimension: CalculatedDimension) -> list[dict[str, str]]:
+        if dimension.written_rules:
+            return [{"when": when, "value": value} for when, value in dimension.written_rules]
+        return [
+            {"when": " AND ".join(calculated_condition_text(condition) for condition in rule.conditions), "value": rule.value}
+            for rule in dimension.rules
+        ]
 
     return [
         {
             "name": dimension.name,
             "sources": list(dimension.sources),
             "default": dimension.default,
-            "default_from": compact_column_aliases("|".join(dimension.default_from)),
+            "default_from": calculated_field_aliases_text("|".join(dimension.default_from)),
             "expression": dimension.expression_text,
-            "rules": [
-                {"when": " AND ".join(condition_text(condition) for condition in rule.conditions), "value": rule.value}
-                for rule in dimension.rules
-            ],
+            "rules": rules_json(dimension),
         }
         for dimension in dimensions
     ]
+
+
+def calculated_dimension_editor_json(dimension: CalculatedDimension) -> dict[str, object]:
+    """A field as the Auto-calculated Fields editor shows it: its saved JSON, each rule also as the list of conditions the
+    rule builder edits (``conditions`` with ``join`` AND or OR; none for a rule mixing both), and the fields it reads.
+    A formula without nested IF blocks also comes as the rules it amounts to (``formula_rules``, its ELSE apart)."""
+    payload = calculated_dimensions_json([dimension])[0]
+
+    def condition_json(condition: FilterCondition) -> dict[str, object]:
+        return {"fields": list(dict.fromkeys(split_calculated_dimension_aliases(condition.column))),
+                "operator": condition.operator, "values": list(condition.values)}
+
+    def editor_rule(tree: tuple, value: str) -> dict[str, object]:
+        if tree[0] == "condition":
+            builder = {"join": "AND", "conditions": [condition_json(tree[1])]}
+        elif all(item[0] == "condition" for item in tree[1]):
+            builder = {"join": tree[0].upper(), "conditions": [condition_json(item[1]) for item in tree[1]]}
+        else:
+            builder = {"join": None, "conditions": None}
+        return {"when": calculated_condition_tree_text(tree), "value": value, **builder}
+
+    def branch_tree(alternatives: tuple[tuple[FilterCondition, ...], ...]) -> tuple:
+        parts = [("condition", group[0]) if len(group) == 1 else ("and", tuple(("condition", item) for item in group))
+                 for group in alternatives]
+        return parts[0] if len(parts) == 1 else ("or", tuple(parts))
+
+    expression = dimension.expression
+    rules = [] if expression is not None else [
+        editor_rule(parse_calculated_condition_tree(str(rule["when"])), str(rule["value"])) for rule in payload["rules"]
+    ]
+    flat = expression is not None and all(isinstance(branch.result, str) for branch in expression.branches) and (
+        expression.otherwise is None or isinstance(expression.otherwise, str))
+    return {
+        **payload, "rules": rules,
+        "formula_rules": [editor_rule(branch_tree(branch.conditions), branch.result) for branch in expression.branches] if flat else None,
+        "formula_else": expression.otherwise if flat else None,
+        "default_from_fields": list(dimension.default_from),
+        "reads": sorted(calculated_dimension_reads(dimension), key=str.casefold),
+    }
+
+
+def calculated_dimension_reads(dimension: CalculatedDimension) -> set[str]:
+    """The fields a definition reads: those of its conditions (each alternative spelling) and of its default."""
+    fields = {alias for value in dimension.default_from for alias in split_calculated_dimension_aliases(value)}
+    for rule in dimension.rules:
+        for condition in rule.conditions:
+            fields.update(split_calculated_dimension_aliases(condition.column))
+    return {item.strip() for item in fields if item.strip()}
 
 
 def parse_catalog_grouping(value: str) -> GroupingSpec:
@@ -2338,6 +2523,21 @@ def _calculated_condition_mask(frame: pd.DataFrame, condition: FilterCondition) 
         for target in condition.values:
             mask |= text.str.contains(target, case=False, na=False, regex=False)
         return ~mask if condition.operator == "NOT CONTAINS" else mask
+    if condition.operator in {"STARTS WITH", "NOT STARTS WITH", "ENDS WITH", "NOT ENDS WITH"}:
+        text = series.astype("string").str.casefold()
+        targets = tuple(value.casefold() for value in condition.values)
+        method = text.str.startswith if "STARTS" in condition.operator else text.str.endswith
+        mask = method(targets).fillna(False).astype(bool)
+        return ~mask if condition.operator.startswith("NOT ") else mask
+    if condition.operator in {"MATCHES", "NOT MATCHES"}:
+        with warnings.catch_warnings():
+            # A pattern with groups, such as (^|/)NR(/|$), only tells whether it matches.
+            warnings.simplefilter("ignore", UserWarning)
+            mask = series.astype("string").str.contains(condition.values[0], case=False, na=False, regex=True).astype(bool)
+        return ~mask if condition.operator == "NOT MATCHES" else mask
+    if condition.operator in {"IS EMPTY", "IS NOT EMPTY"}:
+        empty = series.isna() | series.astype("string").str.strip().eq("").fillna(True)
+        return empty if condition.operator == "IS EMPTY" else ~empty
     accepted = {value.casefold() for value in condition.values}
     mask = series.astype("string").str.casefold().isin(accepted)
     return ~mask if condition.operator == "NOT IN" else mask
@@ -2444,6 +2644,78 @@ def materialize_calculated_dimensions(
             result[definition.name] = result[calculated]
             result.drop(columns=[calculated], inplace=True)
     return result
+
+
+def calculated_dimension_preview(
+    frame: pd.DataFrame, dimensions: Iterable[CalculatedDimension], name: str, cdr_source: str,
+) -> dict[str, object]:
+    """How a field comes out on some CDR rows of one type, worked out as materialization does (the fields before it
+    first): the count of each value (empty as ''), the rows each rule takes (the first rule that applies wins), the rows no
+    rule takes, what they get and the values they have in the fields the conditions read (why no rule takes them), and the
+    fields the rows lack (the conditions reading only those are skipped)."""
+    dimension_list = tuple(dimensions)
+    key = _normalise_catalog_name(name)
+    index = next(position for position, item in enumerate(dimension_list) if _normalise_catalog_name(item.name) == key)
+    definition = dimension_list[index]
+    work = materialize_calculated_dimensions(frame, dimension_list[:index], cdr_source) if index else frame.copy()
+    result = materialize_calculated_dimensions(work, (definition,), cdr_source)
+    values = result[definition.name] if definition.name in result else pd.Series(pd.NA, index=result.index, dtype="string")
+    text = values.astype("string").fillna("").str.strip()
+    counts = text.value_counts()
+    groups = [condition.column for rule in definition.rules for condition in rule.conditions]
+    if definition.default_from:
+        groups.append("|".join(definition.default_from))
+    missing = [
+        calculated_field_aliases_text(group) for group in dict.fromkeys(groups)
+        if not _column(work, split_calculated_dimension_aliases(group))
+    ]
+    rule_hits: list[dict[str, object]] = []
+    unmatched_fields: list[dict[str, object]] = []
+    unmatched: int | None = None
+    from_field = from_default = 0
+    if definition.expression is None:
+        remaining = pd.Series(True, index=work.index)
+        written = definition.written_rules or tuple(
+            (" AND ".join(calculated_condition_text(condition) for condition in rule.conditions), rule.value)
+            for rule in definition.rules
+        )
+        for when, value in written:
+            mask = _calculated_condition_alternatives_mask(work, parse_calculated_boolean_conditions(when))
+            if mask is None:
+                rule_hits.append({"value": value, "count": 0, "skipped": True})
+                continue
+            taken = remaining & mask.fillna(False).astype(bool)
+            rule_hits.append({"value": value, "count": int(taken.sum()), "skipped": False})
+            remaining &= ~taken
+        unmatched = int(remaining.sum())
+        # Why no rule takes them: the values those rows have in each field the conditions read.
+        for group in dict.fromkeys(condition.column for rule in definition.rules for condition in rule.conditions):
+            column = _column(work, split_calculated_dimension_aliases(group))
+            if not column or not unmatched:
+                continue
+            seen = work.loc[remaining, column].astype("string").fillna("").str.strip().value_counts()
+            unmatched_fields.append({
+                "field": column, "distinct": int(len(seen)),
+                "values": [{"value": str(value), "count": int(count)} for value, count in seen.head(8).items()],
+            })
+        default_column = _column(work, definition.default_from)
+        if default_column:
+            copied = remaining & work[default_column].notna() & work[default_column].astype("string").str.strip().ne("").fillna(False)
+            from_field = int(copied.sum())
+        if definition.default != "":
+            from_default = unmatched - from_field
+    return {
+        "rows": int(len(result)),
+        "values": [{"value": str(value), "count": int(count)} for value, count in counts.head(200).items()],
+        "distinct": int(len(counts)),
+        "empty": int(counts.get("", 0)),
+        "rules": rule_hits,
+        "unmatched": unmatched,
+        "unmatched_fields": unmatched_fields,
+        "from_field": from_field,
+        "from_default": from_default,
+        "missing": missing,
+    }
 
 
 def _catalog_column(

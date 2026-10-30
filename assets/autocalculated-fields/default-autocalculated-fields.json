@@ -58,11 +58,11 @@
     "expression": "",
     "rules": [
       {
-        "when": "[Test_Result] OR [Call_Status] OR [status] IN (Completed, Visible Completed)",
+        "when": "[Test_Result] OR [Call_Status] OR [status] IN (Completed, 'Visible Completed')",
         "value": "Success"
       },
       {
-        "when": "[Test_Result] OR [Call_Status] OR [status] IN (Cutoff, Failed)",
+        "when": "[Test_Result] OR [Call_Status] OR [status] IN (Cutoff, Failed, Dropped)",
         "value": "Failure"
       }
     ]
@@ -79,16 +79,81 @@
     "expression": "",
     "rules": [
       {
-        "when": "[RAT] OR [RAT_A] IN (EN-DC/LTE, EN-DC/LTE/GSM)",
-        "value": "ENDC Mixed"
-      },
-      {
-        "when": "[RAT] OR [RAT_A] IN (NE-DC, NR SA)",
+        "when": "[RAT] OR [RAT_A] IN ('NR SA', NE-DC, '5G NR', NR)",
         "value": "NR SA"
       },
       {
-        "when": "[RAT] OR [RAT_A] IN (NE-DC/EN-DC, NE-DC/EN-DC/LTE, NE-DC/GSM, NE-DC/LTE, NE-DC/LTE/GSM, NR SA/EN-DC, NR SA/EN-DC/LTE, NR SA/LTE)",
+        "when": "[RAT] OR [RAT_A] IN (VoNR, VoNR/NR)",
+        "value": "VoNR"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] CONTAINS VoNR",
+        "value": "VoNR Mixed"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] CONTAINS EPSFB",
+        "value": "EPSFB"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] CONTAINS ('NR SA', NE-DC) OR [RAT] OR [RAT_A] MATCHES '(^|/)NR(/|$)'",
         "value": "NR SA Mixed"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] IN (EN-DC, LTE-5GNR)",
+        "value": "EN-DC"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] CONTAINS (EN-DC, LTE-5GNR)",
+        "value": "ENDC Mixed"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] IN (VoLTE, LTE/VoLTE)",
+        "value": "VoLTE"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] CONTAINS VoLTE",
+        "value": "VoLTE Mixed"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] CONTAINS CSFB",
+        "value": "CSFB"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] = LTE",
+        "value": "LTE"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] CONTAINS LTE",
+        "value": "LTE Mixed"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] CONTAINS (GSM, UMTS)",
+        "value": "2G/3G"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] CONTAINS ('No Service', No_Service)",
+        "value": "No Service"
+      }
+    ]
+  },
+  {
+    "name": "NR_Mode_from_RAT",
+    "sources": [
+      "cdr-data",
+      "cdr-voice",
+      "cdr-speech"
+    ],
+    "default": "Others",
+    "default_from": "",
+    "expression": "",
+    "rules": [
+      {
+        "when": "[RAT] OR [RAT_A] CONTAINS ('NR SA', NE-DC, VoNR, EPSFB, '5G NR') OR [RAT] OR [RAT_A] MATCHES '(^|/)NR(/|$)'",
+        "value": "SA"
+      },
+      {
+        "when": "[RAT] OR [RAT_A] CONTAINS (EN-DC, LTE-5GNR)",
+        "value": "NSA"
       }
     ]
   }

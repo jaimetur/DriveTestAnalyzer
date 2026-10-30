@@ -82,7 +82,7 @@ from src.modules.column_names import DEFAULT_CAMPAIGN_MAP, MAIN_CDR_FIELDS, comp
 from src.modules.mapping_order import swap_operator_vendor
 from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.report_layouts import canonical_layout_name, selectable_layout_name
-from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, preview_catalog_chart_data, render_catalog_chart_preview, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
+from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, calculated_dimension_editor_json, calculated_dimension_preview, calculated_dimension_reads, CALCULATED_FIELD_OPERATORS, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, preview_catalog_chart_data, render_catalog_chart_preview, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
 from src.modules.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
 from src.modules.email_delivery import DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_SECURITY_MODES, email_delivery_settings, invalid_recipients, parse_recipients, save_email_delivery_settings, send_email
 from src.modules.network_inventory import INVENTORY_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, normalise_snapshot_date
@@ -807,22 +807,26 @@ def rename_calculated_dimension_template_references(renames: dict[str, str], tas
     def renamed_value(value: str, old_name: str, new_name: str) -> str:
         return new_name if _normalise_catalogue_dimension_name(value) == _normalise_catalogue_dimension_name(old_name) else value
 
+    # A value that does not name the field is left exactly as it is, so a template without it is not saved again.
     def renamed_grouping(value: str, old_name: str, new_name: str) -> str:
         parts = [part.strip() for part in re.split(r'\s*(?:×|x)\s*', value) if part.strip()]
-        return ' × '.join(renamed_value(part, old_name, new_name) for part in parts) if parts else value
+        renamed = [renamed_value(part, old_name, new_name) for part in parts]
+        return ' × '.join(renamed) if renamed != parts else value
 
     condition_pattern = re.compile(r'^(?P<column>.+?)\s+(?P<operator>NOT\s+CONTAINS|NOT\s+IN|CONTAINS|IN|>=|<=|!=|=|>|<)\s+(?P<value>.+)$', re.I)
 
     def renamed_filters(value: str, old_name: str, new_name: str) -> str:
         clauses: list[str] = []
+        changed = False
         for clause in str(value).split(';'):
             match = condition_pattern.match(clause.strip())
             if not match:
                 clauses.append(clause.strip())
                 continue
             column = renamed_value(match.group('column').strip(), old_name, new_name)
+            changed = changed or column != match.group('column').strip()
             clauses.append(f"{column} {match.group('operator')} {match.group('value')}")
-        return '; '.join(clause for clause in clauses if clause)
+        return '; '.join(clause for clause in clauses if clause) if changed else value
 
     def renamed_entry(entry: CatalogEntry) -> CatalogEntry:
         updated = entry
@@ -1183,6 +1187,8 @@ def materialize_workspace_calculated_dimensions(
     ANALYSIS_CACHE.clear()
     PREPARED_ANALYSIS_FRAME_CACHE.clear()
     CHART_PREVIEW_DATA_CACHE.clear()
+    if not selected_sources:
+        record_materialized_calculated_dimensions(task_repository, dimensions)
     task_repository.set_workspace_state('calculated_dimensions_need_materialization', '0')
     return len(datasets)
 
@@ -1233,6 +1239,21 @@ def _auto_field_sql_expression(
             if operator == 'NOT IN':
                 expression = f'NOT COALESCE({expression}, 0)'
             return expression, [str(value).casefold() for value in condition.values]
+        if operator in {'STARTS WITH', 'NOT STARTS WITH', 'ENDS WITH', 'NOT ENDS WITH'}:
+            check = ('instr(da_casefold({column}), ?) = 1' if 'STARTS' in operator
+                     else 'substr(da_casefold({column}), -length(?)) = ?')
+            checks = [check.format(column=selected) for _value in condition.values]
+            expression = f"({' OR '.join(checks)})"
+            if operator.startswith('NOT '):
+                expression = f'NOT COALESCE({expression}, 0)'
+            values = [str(value).casefold() for value in condition.values]
+            return expression, values if 'STARTS' in operator else [item for value in values for item in (value, value)]
+        if operator in {'MATCHES', 'NOT MATCHES'}:
+            expression = f'COALESCE(da_matches({selected}, ?), 0)'
+            return (f'NOT {expression}' if operator == 'NOT MATCHES' else expression), [str(condition.values[0])]
+        if operator in {'IS EMPTY', 'IS NOT EMPTY'}:
+            empty = f"({selected} IS NULL OR TRIM(CAST({selected} AS TEXT)) = '')"
+            return (empty if operator == 'IS EMPTY' else f'NOT {empty}'), []
         return None
 
     def compile_result(result: Any) -> tuple[str, list[Any]]:
@@ -1288,6 +1309,61 @@ def _auto_field_sql_expression(
 AUTO_FIELD_UPDATE_BATCH_SIZE = 50_000
 
 
+@lru_cache(maxsize=256)
+def _auto_field_pattern(pattern: str) -> re.Pattern[str]:
+    return re.compile(pattern, re.IGNORECASE)
+
+
+def _auto_field_matches(value: Any, pattern: Any) -> int | None:
+    """MATCHES of an Auto-calculated Field in SQLite: whether the text has the regular expression, ignoring case."""
+    if value is None or pattern is None:
+        return None
+    return int(bool(_auto_field_pattern(str(pattern)).search(str(value))))
+
+
+# The columns the application keeps in the combined CDR tables (the NR Mode of each CDR, its operator and campaign, …):
+# an Auto-calculated Field never takes their names, and materialization never drops or rewrites them there.
+def reserved_auto_field_identities() -> frozenset[str]:
+    return frozenset(column_identity(name) for name in (
+        *Repository.REPORTING_CORE_COLUMNS, *PREVIEW_METADATA_FIELDS, NR_MODE_FIELD, 'NR Mode', 'GCID', 'dataset_id',
+        'source_row_id', 'CDR_Type', 'Vendor_Operator',
+    ))
+
+
+def _auto_field_table_needs_update(
+    task_repository: Repository, table_name: str, cdr_source: str,
+    previous: Iterable[Any], current: Iterable[Any], renames: dict[str, str],
+) -> bool:
+    """Whether a table of rows lacks a change of the fields: a column to add, rename, drop or work out again. Read from
+    its columns alone, so a CDR whose columnar copy is its only store is not put back in its table for nothing."""
+    normalize = _normalise_catalogue_dimension_name
+    previous_items, current_items = tuple(previous), tuple(current)
+    source = cdr_source.casefold()
+    with task_repository.connection() as connection:
+        exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,),
+        ).fetchone()
+        if not exists:
+            return False
+        columns = task_repository._table_columns(connection, table_name)
+    column_lookup = {normalize(column): column for column in columns}
+    protected = reserved_auto_field_identities() if table_name.startswith('reporting_rows_') else frozenset()
+    applicable_current = {normalize(item.name): item for item in current_items if source in item.sources}
+    applicable_previous = {normalize(item.name) for item in previous_items if source in item.sources}
+    if any(normalize(old) in column_lookup and normalize(new) in applicable_current for old, new in renames.items()):
+        return True
+    stale = (applicable_previous - set(applicable_current)) | {
+        normalize(item.name) for item in current_items if source not in item.sources
+    }
+    if any(key in column_lookup and key not in protected for key in stale):
+        return True
+    changed = calculated_dimension_changes(previous_items, current_items)
+    return any(
+        key not in protected and (key in changed or column_lookup.get(key) != definition.name)
+        for key, definition in applicable_current.items()
+    )
+
+
 def _incremental_auto_field_table_update(
     task_repository: Repository,
     table_name: str,
@@ -1299,7 +1375,12 @@ def _incremental_auto_field_table_update(
     row_progress: Callable[[int, int], None] | None = None,
 ) -> bool:
     """Apply changed fields in bounded transactions without replacing the source table (the table of a CDR held
-    meanwhile, see cdr_store.hold)."""
+    meanwhile, see cdr_store.hold). A table that already holds the fields as they are is left alone."""
+    previous, current = tuple(previous), tuple(current)
+    if not _auto_field_table_needs_update(task_repository, table_name, cdr_source, previous, current, renames):
+        if row_progress:
+            row_progress(1, 1)
+        return False
     with task_repository._holding_cdr_table(table_name):
         return _apply_auto_field_table_update(task_repository, table_name, cdr_source, previous, current, renames,
                                               checkpoint, row_progress)
@@ -1341,6 +1422,7 @@ def _apply_auto_field_table_update(
             return parsed if pd.notna(parsed) else None
 
         connection.create_function('da_try_number', 1, try_number, deterministic=True)
+        connection.create_function('da_matches', 2, _auto_field_matches, deterministic=True)
         if checkpoint:
             def stop_sql_when_requested() -> int:
                 try:
@@ -1355,6 +1437,9 @@ def _apply_auto_field_table_update(
 
     updates: list[tuple[str, list[Any], Any]] = []
     removable_keys: set[str] = set()
+    # The combined tables keep the columns of the application (the NR Mode of each CDR …) whatever a field is named.
+    protected = reserved_auto_field_identities() if str(table_name).startswith('reporting_rows_') else frozenset()
+    changed_keys = calculated_dimension_changes(previous_items, current_items)
     with task_repository.connection() as connection:
         exists = connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,),
@@ -1380,7 +1465,7 @@ def _apply_auto_field_table_update(
             old_key = _normalise_catalogue_dimension_name(old_name)
             new_key = _normalise_catalogue_dimension_name(new_name)
             physical_old = column_lookup.get(old_key)
-            if not physical_old or new_key not in applicable_current:
+            if not physical_old or new_key not in applicable_current or {old_key, new_key} & protected:
                 continue
             physical_new = column_lookup.get(new_key)
             if physical_new and physical_new != physical_old:
@@ -1404,7 +1489,7 @@ def _apply_auto_field_table_update(
         )
         for key in removable_keys:
             physical = column_lookup.get(key)
-            if not physical:
+            if not physical or key in protected:
                 continue
             connection.execute(f'ALTER TABLE {quote(table_name)} DROP COLUMN {quote(physical)}')
             columns.remove(physical)
@@ -1413,8 +1498,10 @@ def _apply_auto_field_table_update(
         for key, definition in applicable_current.items():
             old_definition = previous_by_key.get(key) or rename_sources.get(key)
             physical = column_lookup.get(key)
-            changed = old_definition != definition or physical is None or physical != definition.name
-            if not changed:
+            # Worked out again when it changed, or when a field it reads did (see calculated_dimension_changes).
+            changed = (key in changed_keys or old_definition != definition or physical is None
+                       or physical != definition.name)
+            if not changed or key in protected:
                 continue
             if physical is None:
                 connection.execute(f'ALTER TABLE {quote(table_name)} ADD COLUMN {quote(definition.name)} TEXT')
@@ -1776,7 +1863,14 @@ def materialize_workspace_auto_fields_incrementally(
     ANALYSIS_CACHE.clear()
     PREPARED_ANALYSIS_FRAME_CACHE.clear()
     CHART_PREVIEW_DATA_CACHE.clear()
-    task_repository.set_workspace_state('calculated_dimensions_need_materialization', '0')
+    if selected_sources >= {'data', 'voice', 'speech'} or not affected_calculated_dimension_sources(
+        materialized_calculated_dimensions(task_repository, previous), current,
+    ) - {f'cdr-{source}' for source in selected_sources}:
+        # Every CDR type with a change was updated: the tables now hold these fields.
+        record_materialized_calculated_dimensions(task_repository, current)
+    # Fields saved while the tables were being updated stay pending, so the next pass updates them too.
+    changed_meanwhile = calculated_dimensions_json(parse_calculated_dimensions(task_repository.list_calculated_dimensions())) != calculated_dimensions_json(current)
+    task_repository.set_workspace_state('calculated_dimensions_need_materialization', '1' if changed_meanwhile else '0')
     return {
         'datasets': len(datasets),
         'combined_tables': len(reporting_kinds),
@@ -1784,15 +1878,52 @@ def materialize_workspace_auto_fields_incrementally(
     }
 
 
+def calculated_dimension_changes(previous: Iterable[Any], current: Iterable[Any]) -> set[str]:
+    """The keys of the current fields whose values change: their definition changed, or that of a field they read
+    (a field reads only the fields before it, so one pass in their order finds every dependent)."""
+    normalize = _normalise_catalogue_dimension_name
+    previous_by_key = {normalize(item.name): item for item in previous}
+    changed: set[str] = set()
+    for definition in current:
+        key = normalize(definition.name)
+        reads = {normalize(field) for field in calculated_dimension_reads(definition)} - {key}
+        if previous_by_key.get(key) != definition or reads & changed:
+            changed.add(key)
+    return changed
+
+
+MATERIALIZED_DIMENSIONS_STATE = 'calculated_dimensions_materialized'
+
+
+def materialized_calculated_dimensions(task_repository: Repository, fallback: Iterable[Any] = ()) -> tuple[Any, ...]:
+    """The fields the CDR tables hold, as the last complete materialization left them; ``fallback`` when unknown
+    (a workspace that has not materialized its fields since this was recorded)."""
+    raw = task_repository.get_workspace_state(MATERIALIZED_DIMENSIONS_STATE)
+    if raw:
+        try:
+            return parse_calculated_dimensions(json.loads(raw))
+        except (TypeError, ValueError):
+            pass
+    return tuple(fallback)
+
+
+def record_materialized_calculated_dimensions(task_repository: Repository, dimensions: Iterable[Any]) -> None:
+    task_repository.set_workspace_state(
+        MATERIALIZED_DIMENSIONS_STATE, json.dumps(calculated_dimensions_json(dimensions), ensure_ascii=False),
+    )
+
+
 def affected_calculated_dimension_sources(previous: Iterable[Any], current: Iterable[Any]) -> set[str]:
     """Return only the CDR types touched by an auto-calculated field change."""
+    previous, current = tuple(previous), tuple(current)
     previous_by_name = {_normalise_catalogue_dimension_name(item.name): item for item in previous}
     current_by_name = {_normalise_catalogue_dimension_name(item.name): item for item in current}
+    changed = calculated_dimension_changes(previous, current)
     affected: set[str] = set()
     for key in previous_by_name.keys() | current_by_name.keys():
         old = previous_by_name.get(key)
         new = current_by_name.get(key)
-        if old == new:
+        if old == new and key not in changed:
             continue
         for definition in (old, new):
             if definition:
@@ -1927,6 +2058,7 @@ def _run_auto_calculated_field_job(job_id: str, workspace: Workspace) -> None:
         previous = parse_calculated_dimensions(job['previous_definitions'])
         affected_sources = tuple(job['affected_sources'])
         renames = dict(job['renames'])
+        rebuild_all = bool(job.get('rebuild_all'))
     task_repository = Repository(
         workspace.database_path,
         global_db_path=repository.global_db_path,
@@ -1961,6 +2093,10 @@ def _run_auto_calculated_field_job(job_id: str, workspace: Workspace) -> None:
                 ensure_auto_calculated_field_job_not_stopped(job_id)
                 task_repository.set_workspace_state('calculated_dimensions_need_materialization', 'processing')
                 current = parse_calculated_dimensions(task_repository.list_calculated_dimensions())
+                if not rebuild_all:
+                    # The change is worked out against what the CDR tables hold, not against the definitions saved
+                    # before it: a save that was never materialized, or a job stopped half-way, is caught up too.
+                    previous = materialized_calculated_dimensions(task_repository, previous)
                 current_sources = affected_calculated_dimension_sources(previous, current)
                 stats = materialize_workspace_auto_fields_incrementally(
                     previous, current, renames, task_repository,
@@ -2014,12 +2150,20 @@ def start_auto_calculated_field_job(
     workspace: Workspace, previous: Iterable[Any], current: Iterable[Any],
     renames: dict[str, str], username: str, *, background: bool = True,
     before_submit: Callable[[dict[str, Any]], None] | None = None,
-    parent_task_id: str = '',
+    parent_task_id: str = '', rebuild_all: bool = False,
 ) -> dict[str, Any]:
-    """Queue materialization so the web request and UI remain responsive."""
+    """Queue materialization so the web request and UI remain responsive. Unless ``rebuild_all`` (every field worked
+    out again), only the fields that differ from what the CDR tables hold are updated."""
     job_id = uuid4().hex
     previous_items = tuple(previous)
     current_items = tuple(current)
+    workspace_repository = Repository(
+        workspace.database_path,
+        global_db_path=repository.global_db_path,
+        workspace_registry_db_path=workspace_registry.registry_path,
+    )
+    if not rebuild_all:
+        previous_items = materialized_calculated_dimensions(workspace_repository, previous_items)
     affected_sources = affected_calculated_dimension_sources(previous_items, current_items)
     job = {
         'id': job_id, 'workspace_id': workspace.id, 'workspace_name': workspace.name,
@@ -2027,7 +2171,7 @@ def start_auto_calculated_field_job(
         'message': 'Waiting to update CDR tables',
         'previous_definitions': calculated_dimensions_json(previous_items),
         'affected_sources': sorted(set(affected_sources)), 'username': username,
-        'renames': dict(renames),
+        'renames': dict(renames), 'rebuild_all': rebuild_all,
         'created_at': datetime.now(timezone.utc).timestamp(),
         **({'parent_task_id': parent_task_id} if parent_task_id else {}),
     }
@@ -2054,6 +2198,16 @@ def start_auto_calculated_field_job(
             finished_at=datetime.now(timezone.utc).timestamp(),
         )
         persist_auto_field_progress(job)
+        with AUTO_CALCULATED_FIELD_JOBS_LOCK:
+            others_running = any(
+                other.get('workspace_id') == workspace.id and other.get('status') in {'queued', 'processing'}
+                for other in AUTO_CALCULATED_FIELD_JOBS.values()
+            )
+        if not others_running and workspace_repository.get_workspace_state('calculated_dimensions_need_materialization') == '1':
+            # Nothing to update (a new order, a renamed rule …): the tables already hold the fields, so no automatic pass
+            # works every field out again afterwards.
+            record_materialized_calculated_dimensions(workspace_repository, current_items)
+            workspace_repository.set_workspace_state('calculated_dimensions_need_materialization', '0')
         return job
     # replace_calculated_dimensions() stores the recoverable pending marker in
     # the same transaction as the definitions.  Do not write it again here:
@@ -2286,7 +2440,7 @@ def queue_workspace_dimension_materialization(workspace: Workspace) -> None:
             dimensions = parse_calculated_dimensions(task_repository.list_calculated_dimensions())
             if dimensions_pending:
                 materialize_workspace_auto_fields_incrementally(
-                    (), dimensions, {}, task_repository,
+                    materialized_calculated_dimensions(task_repository), dimensions, {}, task_repository,
                     {'cdr-data', 'cdr-voice', 'cdr-speech'},
                     progress_callback=update_progress,
                     stop_callback=lambda: ensure_auto_calculated_field_job_not_stopped(job_id),
@@ -26041,6 +26195,60 @@ def report_catalogue_copy_options(user: SessionUser = Depends(ppt_template_edito
     return JSONResponse({'templates': templates})
 
 
+def _commit_workspace_dimensions(
+    workspace: Workspace, user: SessionUser, previous: Iterable[Any], definitions: object, renames: dict[str, str], *,
+    materialize: bool = True, action: str = 'save_workspace_calculated_dimensions',
+    details: dict[str, Any] | None = None,
+) -> tuple[tuple[Any, ...], dict[str, int], dict[str, Any] | None]:
+    """Save the fields of the workspace (renames carried to the PPT Templates, Designs and queries) and, unless told
+    otherwise, queue the update of its CDR tables in the background; the App Event names ``action``."""
+    previous = tuple(previous)
+    previously_saved_without_materialization = (
+        repository.get_workspace_state('calculated_dimensions_need_materialization') == 'saved'
+    )
+    dimensions = write_workspace_calculated_dimensions(definitions, materialize=materialize)
+    affected_sources = affected_calculated_dimension_sources(previous, dimensions)
+    keep_calculated_dimension_identities(repository, previous, dimensions, renames, user.username)
+    renamed = {
+        'renamed_templates': rename_calculated_dimension_template_references(renames),
+        'renamed_designs': rename_calculated_dimension_design_references(renames),
+        'renamed_queries': rename_calculated_dimension_query_references(renames),
+    }
+    log_details = {
+        'workspace': workspace.id, 'count': len(dimensions), **renamed,
+        'renames': [{'from': old, 'to': new} for old, new in renames.items()],
+        'affected_sources': sorted(affected_sources), **(details or {}),
+    }
+    if not materialize:
+        repository.add_log(user.username, action, json.dumps({**log_details, 'materialization_job': None}))
+        return dimensions, renamed, None
+    job = start_auto_calculated_field_job(
+        workspace, () if previously_saved_without_materialization else previous,
+        dimensions, renames, user.username,
+        before_submit=lambda pending_job: repository.add_log(
+            user.username, action, json.dumps({**log_details, 'materialization_job': pending_job['id']}),
+        ),
+    )
+    return dimensions, renamed, job
+
+
+def _auto_field_save_payload(dimensions: Iterable[Any], renamed: dict[str, int], job: dict[str, Any] | None) -> dict[str, Any]:
+    payload = {
+        'dimensions': calculated_dimensions_json(dimensions), **renamed,
+        'notice': (
+            'The fields were saved. Materialization was not started.' if not job else
+            'Saved. The CDR tables are being updated in the background.' if job.get('status') != 'ready'
+            else 'Saved. The CDR tables already hold this definition; nothing needed updating.'
+        ),
+    }
+    if job:
+        payload.update({
+            'materialization_job': job['id'],
+            'materialization_status_url': f'/api/workspace/auto-calculated-fields/materialization/{job["id"]}',
+        })
+    return payload
+
+
 async def _save_workspace_dimensions(request: Request, user: SessionUser) -> JSONResponse:
     if not active_workspace:
         raise HTTPException(status_code=400, detail='Open a workspace before managing auto-calculated fields.')
@@ -26052,70 +26260,27 @@ async def _save_workspace_dimensions(request: Request, user: SessionUser) -> JSO
         if not isinstance(materialize, bool):
             raise ValueError('The materialize option must be a boolean.')
 
-        def save_and_queue() -> tuple[Any, set[str], int, int, dict[str, Any] | None]:
+        def save_and_queue() -> tuple[tuple[Any, ...], dict[str, int], dict[str, Any] | None]:
             previous = load_workspace_calculated_dimensions()
-            previously_saved_without_materialization = (
-                repository.get_workspace_state('calculated_dimensions_need_materialization') == 'saved'
-            )
-            dimensions = write_workspace_calculated_dimensions(
-                payload.get('dimensions'), materialize=materialize,
-            )
-            affected_sources = affected_calculated_dimension_sources(previous, dimensions)
+            dimensions = parse_calculated_dimensions(payload.get('dimensions'))
             renames = calculated_dimension_rename_map(payload, previous, dimensions)
-            keep_calculated_dimension_identities(repository, previous, dimensions, renames, user.username)
-            renamed_templates = rename_calculated_dimension_template_references(renames)
-            renamed_designs = rename_calculated_dimension_design_references(renames)
-            renamed_queries = rename_calculated_dimension_query_references(renames)
-
-            if not materialize:
-                repository.add_log(user.username, 'save_workspace_calculated_dimensions', json.dumps({
-                    'workspace': workspace.id, 'count': len(dimensions),
-                    'materialization_job': None, 'renamed_templates': renamed_templates,
-                    'renamed_designs': renamed_designs, 'renamed_queries': renamed_queries,
-                    'affected_sources': sorted(affected_sources),
-                }))
-                return dimensions, affected_sources, renamed_templates, renamed_designs, renamed_queries, None
-
-            def record_save(job: dict[str, Any]) -> None:
-                repository.add_log(user.username, 'save_workspace_calculated_dimensions', json.dumps({
-                    'workspace': workspace.id, 'count': len(dimensions),
-                    'materialization_job': job['id'], 'renamed_templates': renamed_templates,
-                    'renamed_designs': renamed_designs, 'renamed_queries': renamed_queries,
-                    'affected_sources': sorted(affected_sources),
-                }))
-
-            job = start_auto_calculated_field_job(
-                workspace, () if previously_saved_without_materialization else previous,
-                dimensions, renames, user.username,
-                before_submit=record_save,
+            return _commit_workspace_dimensions(
+                workspace, user, previous, calculated_dimensions_json(dimensions), renames, materialize=materialize,
             )
-            return dimensions, affected_sources, renamed_templates, renamed_designs, renamed_queries, job
 
         # Workspace writes may briefly wait for a large CDR transaction. Keep
         # that wait away from the ASGI event loop so the rest of the PPT Design
         # API remains responsive instead of surfacing unrelated 504 errors.
-        dimensions, affected_sources, renamed_templates, renamed_designs, renamed_queries, job = await run_in_threadpool(save_and_queue)
+        dimensions, renamed, job = await run_in_threadpool(save_and_queue)
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except (OSError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail=f'Unable to save auto-calculated fields: {exc}') from exc
-    response_payload = {
-        'dimensions': calculated_dimensions_json(dimensions),
-        'renamed_templates': renamed_templates,
-        'renamed_designs': renamed_designs,
-        'renamed_queries': renamed_queries,
-        'notice': (
-            'The fields were saved. Updating applicable CDR tables can take a while and is running in the background.'
-            if job and affected_sources else
-            'The fields were saved. Materialization was not started.'
-            if not job else 'The fields were already up to date; no CDR tables required changes.'
-        ),
-    }
-    if job:
-        response_payload.update({
-            'materialization_job': job['id'],
-            'materialization_status_url': f'/api/workspace/auto-calculated-fields/materialization/{job["id"]}',
-        })
+    response_payload = _auto_field_save_payload(dimensions, renamed, job)
+    if job and not job['affected_sources']:
+        response_payload['notice'] = 'The fields were already up to date; no CDR tables required changes.'
+    elif job:
+        response_payload['notice'] = 'The fields were saved. Updating applicable CDR tables can take a while and is running in the background.'
     return JSONResponse(response_payload)
 
 
@@ -26271,7 +26436,7 @@ def rematerialize_workspace_auto_calculated_fields(
         raise HTTPException(status_code=400, detail='Open a workspace before rematerializing auto-calculated fields.')
     current = list(load_workspace_calculated_dimensions())
     job = start_auto_calculated_field_job(
-        active_workspace, (), current, {}, user.username,
+        active_workspace, (), current, {}, user.username, rebuild_all=True,
         before_submit=lambda pending_job: repository.add_log(
             user.username, 'rematerialize_workspace_auto_calculated_fields', json.dumps({
                 'workspace': active_workspace.id, 'count': len(current),
@@ -26341,6 +26506,408 @@ async def import_workspace_calculated_dimensions(
     )
     query = urlencode({'workspace_notice': notice, 'auto_fields_job_id': job['id']})
     return RedirectResponse(f'/workspace?{query}#calculated-dimensions', status_code=303)
+
+
+# ---- Auto-calculated Fields editor: one field checked, tried on the CDRs and saved at a time
+
+AUTO_FIELD_CDR_SOURCES = ('cdr-data', 'cdr-voice', 'cdr-speech')
+AUTO_FIELD_NAME_MAX_LENGTH = 64
+# Characters a field name cannot have: the conditions, filters and splits of the templates would read them as syntax.
+AUTO_FIELD_NAME_FORBIDDEN = re.compile(r"[\[\](),;'\"|=<>!\r\n\t]")
+AUTO_FIELD_HIDDEN_COLUMNS = frozenset({'datasetid', 'sourcerowid', 'datasetkind', 'sourcefile'})
+# Up to this many rows of each CDR type are tried (every n-th row of each CDR), kept a few minutes for the next try.
+AUTO_FIELD_PREVIEW_ROWS = 150_000
+AUTO_FIELD_SAMPLE_SECONDS = 300
+AUTO_FIELD_SAMPLES: OrderedDict[tuple[Any, ...], tuple[float, pd.DataFrame, int]] = OrderedDict()
+AUTO_FIELD_SAMPLES_LOCK = Lock()
+
+
+def _auto_field_ready_cdrs(kind: str) -> list[Any]:
+    return sorted(
+        (row for row in repository.list_datasets()
+         if row['status'] == 'ready' and str(row['dataset_kind'] or '').casefold() == kind),
+        key=lambda row: int(row['id']),
+    )
+
+
+def auto_field_source_columns(dimensions: Iterable[Any]) -> dict[str, list[str]]:
+    """The fields of the CDRs of each type (their own columns, without the Auto-calculated Fields), each spelling once."""
+    calculated = {_normalise_catalogue_dimension_name(item.name) for item in dimensions}
+    result: dict[str, list[str]] = {}
+    for source in AUTO_FIELD_CDR_SOURCES:
+        unique: dict[str, str] = {}
+        names = {
+            str(column) for dataset in _auto_field_ready_cdrs(source.removeprefix('cdr-'))
+            for column in repository.list_dataset_row_columns(int(dataset['id']))
+        }
+        for name in sorted(names, key=lambda item: ('_' in item, item.casefold())):
+            key = _normalise_catalogue_dimension_name(name)
+            if key and key not in calculated and key not in AUTO_FIELD_HIDDEN_COLUMNS and not name.startswith('__'):
+                unique.setdefault(key, name)
+        result[source] = sorted(unique.values(), key=str.casefold)
+    return result
+
+
+def auto_field_sample_rows(kind: str, columns: Iterable[str]) -> tuple[pd.DataFrame, int]:
+    """Rows of the ready CDRs of one type with these columns (those they have): every n-th row of each CDR, so each CDR
+    counts as much as its rows, up to AUTO_FIELD_PREVIEW_ROWS in all; and how many rows the CDRs have."""
+    datasets = _auto_field_ready_cdrs(kind)
+    wanted = sorted(dict.fromkeys(str(column) for column in columns if str(column).strip()), key=str.casefold)
+    key = (
+        str(active_workspace.id if active_workspace else ''), kind, tuple(wanted),
+        tuple((int(row['id']), str(row['updated_at'] or ''), int(row['row_count'] or 0)) for row in datasets),
+    )
+    now = time_module.monotonic()
+    with AUTO_FIELD_SAMPLES_LOCK:
+        cached = AUTO_FIELD_SAMPLES.get(key)
+        if cached and now - cached[0] < AUTO_FIELD_SAMPLE_SECONDS:
+            AUTO_FIELD_SAMPLES.move_to_end(key)
+            return cached[1].copy(), cached[2]
+    total = sum(int(row['row_count'] or 0) for row in datasets)
+    step = max(1, math.ceil(total / AUTO_FIELD_PREVIEW_ROWS)) if total else 1
+    frames: list[pd.DataFrame] = []
+    for dataset in datasets:
+        frame = repository.load_dataset_rows(int(dataset['id']), wanted, {}) if wanted else pd.DataFrame()
+        if frame.empty and not len(frame.columns):
+            # A CDR without any of the fields still counts: its rows take what no rule gives.
+            frame = pd.DataFrame(index=range(int(dataset['row_count'] or 0)))
+        frames.append(frame.iloc[::step].reset_index(drop=True))
+    sample = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    with AUTO_FIELD_SAMPLES_LOCK:
+        AUTO_FIELD_SAMPLES[key] = (now, sample, total)
+        while len(AUTO_FIELD_SAMPLES) > 12:
+            AUTO_FIELD_SAMPLES.popitem(last=False)
+    return sample.copy(), total
+
+
+def _auto_field_request_list(payload: dict[str, Any], previous: Iterable[Any]) -> tuple[list[dict[str, Any]], int, str | None]:
+    """The fields of the workspace with the one being edited in its place (``original_name``) or added (at
+    ``position``, at the end without it): the list, its index and the name it had."""
+    field_payload = payload.get('field')
+    if not isinstance(field_payload, dict):
+        raise ValueError('The field to save is missing.')
+    field_payload = {**field_payload, 'name': str(field_payload.get('name') or '').strip()}
+    definitions = calculated_dimensions_json(previous)
+    keys = [_normalise_catalogue_dimension_name(item['name']) for item in definitions]
+    original_name = str(payload.get('original_name') or '').strip() or None
+    if original_name:
+        original_key = _normalise_catalogue_dimension_name(original_name)
+        if original_key not in keys:
+            raise ValueError(f"The field '{original_name}' is no longer in this workspace (another user may have deleted or renamed it). Close the editor and open it again.")
+        index = keys.index(original_key)
+        original_name = definitions[index]['name']
+        definitions[index] = field_payload
+    else:
+        position = payload.get('position')
+        index = position if isinstance(position, int) and not isinstance(position, bool) and 0 <= position <= len(definitions) else len(definitions)
+        definitions.insert(index, field_payload)
+    return definitions, index, original_name
+
+
+def rename_auto_field_references(definition: dict[str, Any], old_name: str, new_name: str) -> dict[str, Any]:
+    """A field definition reading ``[old_name]`` reading ``[new_name]`` instead (its rules, formula and default)."""
+    old_key = _normalise_catalogue_dimension_name(old_name)
+
+    def renamed(value: object) -> str:
+        return re.sub(r'\[([^\]]+)\]', lambda match: f'[{new_name}]' if _normalise_catalogue_dimension_name(match.group(1)) == old_key else match.group(0), str(value or ''))
+
+    return {
+        **definition,
+        'default_from': renamed(definition.get('default_from')),
+        'expression': renamed(definition.get('expression')),
+        'rules': [{**rule, 'when': renamed(rule.get('when'))} for rule in definition.get('rules') or [] if isinstance(rule, dict)],
+    }
+
+
+def auto_field_problems(
+    dimensions: tuple[Any, ...], index: int, original_name: str | None, columns: dict[str, list[str]],
+) -> tuple[list[str], list[str]]:
+    """What keeps the field at ``index`` from being saved (errors) and what is worth knowing first (warnings)."""
+    definition = dimensions[index]
+    normalize = _normalise_catalogue_dimension_name
+    key = normalize(definition.name)
+    errors: list[str] = []
+    warnings: list[str] = []
+    if AUTO_FIELD_NAME_FORBIDDEN.search(definition.name):
+        errors.append("The name cannot have brackets, parentheses, commas, semicolons, quotes, | or comparison signs.")
+    if len(definition.name) > AUTO_FIELD_NAME_MAX_LENGTH:
+        errors.append(f'The name can have up to {AUTO_FIELD_NAME_MAX_LENGTH} characters.')
+    if key in reserved_auto_field_identities():
+        nr_mode = key == normalize(NR_MODE_FIELD)
+        detail = ' (the NR Mode of the CDR of each row, read by the NSA & SA Designs and the NR Mode filter)' if nr_mode else ''
+        suggestion = 'NR_Mode_from_RAT' if nr_mode else f"{definition.name.replace(' ', '_')}_Group"
+        errors.append(f"'{definition.name}' is a field the application keeps in the CDR tables{detail}. Choose another name, such as {suggestion}.")
+    renamed = original_name is None or normalize(original_name) != key
+    if renamed:
+        clashes = [source.upper() for source in definition.sources
+                   if key in {normalize(column) for column in columns.get(source, [])}]
+        if clashes:
+            errors.append(f"The {' and '.join(clashes)} CDRs already have a field named '{definition.name}': saving would overwrite it. Choose another name.")
+    position = {normalize(item.name): number for number, item in enumerate(dimensions)}
+    for field in sorted(calculated_dimension_reads(definition), key=str.casefold):
+        field_key = normalize(field)
+        if field_key == key:
+            errors.append(f"The field cannot read itself ([{field}]).")
+        elif field_key in position and position[field_key] > index:
+            errors.append(f"It reads [{field}], which is worked out after it. Move {dimensions[position[field_key]].name} above this field first.")
+    for source in definition.sources:
+        available = {normalize(column) for column in columns.get(source, [])} | {
+            normalize(item.name) for item in dimensions[:index] if source in item.sources
+        }
+        if not columns.get(source):
+            warnings.append(f'There are no ready {source.upper()} CDRs yet: it will be worked out when they are processed.')
+            continue
+        groups = [condition.column for rule in definition.rules for condition in rule.conditions]
+        if definition.default_from:
+            groups.append('|'.join(definition.default_from))
+        lacking = [group for group in dict.fromkeys(groups)
+                   if not any(normalize(alias) in available for alias in split_calculated_dimension_aliases(group))]
+        if lacking:
+            names = ', '.join(' or '.join(f'[{alias}]' for alias in dict.fromkeys(split_calculated_dimension_aliases(group))) for group in lacking)
+            warnings.append(f'The {source.upper()} CDRs have no {names}: the conditions reading it are skipped there.')
+    return errors, warnings
+
+
+def _auto_field_checked(payload: dict[str, Any]) -> dict[str, Any]:
+    """The field of the request as it would be saved, with its errors and warnings (a broken formula is an error)."""
+    previous = load_workspace_calculated_dimensions()
+    definitions, index, original_name = _auto_field_request_list(payload, previous)
+    columns = auto_field_source_columns(previous)
+    name = definitions[index]['name']
+    taken = any(position != index and _normalise_catalogue_dimension_name(item.get('name', '')) == _normalise_catalogue_dimension_name(name)
+                for position, item in enumerate(definitions))
+    try:
+        if not name:
+            raise ValueError('Give the field a name.')
+        if taken:
+            raise ValueError(f"There is already a field named '{name}'.")
+        dimensions = parse_calculated_dimensions(definitions)
+    except ValueError as exc:
+        return {'ok': False, 'errors': [str(exc)], 'warnings': [], 'field': None, 'index': index,
+                'original_name': original_name, 'dimensions': None, 'definitions': definitions, 'previous': previous}
+    errors, warnings = auto_field_problems(dimensions, index, original_name, columns)
+    return {'ok': not errors, 'errors': errors, 'warnings': warnings,
+            'field': calculated_dimension_editor_json(dimensions[index]), 'index': index,
+            'original_name': original_name, 'dimensions': dimensions, 'definitions': definitions, 'previous': previous}
+
+
+def _auto_field_public(checked: dict[str, Any]) -> dict[str, Any]:
+    return {key: checked[key] for key in ('ok', 'errors', 'warnings', 'field')}
+
+
+@app.get('/api/workspace/auto-calculated-fields')
+def auto_calculated_fields_editor(user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """The fields of the workspace for the editor: each one as it edits it, the fields of the CDRs of each type, the
+    operators and whether the user can change them."""
+    if not active_workspace:
+        raise HTTPException(status_code=400, detail='Open a workspace first.')
+    dimensions = load_workspace_calculated_dimensions()
+    return JSONResponse({
+        'fields': [calculated_dimension_editor_json(item) for item in dimensions],
+        'columns': auto_field_source_columns(dimensions),
+        'operators': [{'key': key, **details} for key, details in CALCULATED_FIELD_OPERATORS.items()],
+        'can_edit': user.role in WORKSPACE_EDITOR_ROLES,
+        'workspace': active_workspace.name,
+    }, headers={'Cache-Control': 'no-store'})
+
+
+@app.post('/api/workspace/auto-calculated-fields/check')
+async def check_auto_calculated_field(request: Request, user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """Check a field as it is being edited, without saving it: as it would be saved, with its errors and warnings."""
+    if not active_workspace:
+        raise HTTPException(status_code=400, detail='Open a workspace first.')
+    try:
+        payload = await request.json()
+        checked = await run_in_threadpool(_auto_field_checked, payload)
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        return JSONResponse({'ok': False, 'errors': [str(exc)], 'warnings': [], 'field': None})
+    return JSONResponse(_auto_field_public(checked))
+
+
+@app.post('/api/workspace/auto-calculated-fields/preview')
+async def preview_auto_calculated_field(request: Request, user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """Try a field on the CDRs of each type it applies to, without saving it (see calculated_dimension_preview)."""
+    if not active_workspace:
+        raise HTTPException(status_code=400, detail='Open a workspace first.')
+    try:
+        payload = await request.json()
+
+        def tried() -> dict[str, Any]:
+            checked = _auto_field_checked(payload)
+            if checked['dimensions'] is None:
+                return {**_auto_field_public(checked), 'sources': {}}
+            dimensions = checked['dimensions']
+            index = checked['index']
+            definition = dimensions[index]
+            # The fields before it that it reads (and those they read) are worked out on the same rows.
+            needed: set[str] = set()
+            pending = [definition]
+            by_key = {_normalise_catalogue_dimension_name(item.name): item for item in dimensions[:index]}
+            while pending:
+                item = pending.pop()
+                for field in calculated_dimension_reads(item):
+                    needed.add(field)
+                    earlier = by_key.pop(_normalise_catalogue_dimension_name(field), None)
+                    if earlier is not None:
+                        pending.append(earlier)
+            sources: dict[str, Any] = {}
+            for source in definition.sources:
+                frame, total = auto_field_sample_rows(source.removeprefix('cdr-'), needed)
+                sources[source] = {**calculated_dimension_preview(frame, dimensions[:index + 1], definition.name, source),
+                                   'total_rows': total}
+            return {**_auto_field_public(checked), 'sources': sources}
+
+        result = await run_in_threadpool(tried)
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        return JSONResponse({'ok': False, 'errors': [str(exc)], 'warnings': [], 'field': None, 'sources': {}})
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail=f'The CDRs could not be read to try the field: {exc}') from exc
+    return JSONResponse(result)
+
+
+@app.post('/api/workspace/auto-calculated-fields/values')
+async def auto_calculated_field_values(request: Request, user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """The values a field of the CDRs takes (most rows first), for the value suggestions of the rule builder."""
+    if not active_workspace:
+        raise HTTPException(status_code=400, detail='Open a workspace first.')
+    payload = await request.json()
+    fields = [str(item).strip() for item in payload.get('fields') or [] if str(item).strip()]
+    sources = [str(item).casefold() for item in payload.get('sources') or [] if str(item).casefold() in AUTO_FIELD_CDR_SOURCES]
+    if not fields or not sources:
+        return JSONResponse({'values': []})
+
+    def values() -> list[dict[str, Any]]:
+        dimensions = load_workspace_calculated_dimensions()
+        counts: dict[str, int] = {}
+        for source in sources:
+            frame, _total = auto_field_sample_rows(source.removeprefix('cdr-'), fields)
+            if any(_normalise_catalogue_dimension_name(item.name) in {_normalise_catalogue_dimension_name(field) for field in fields}
+                   for item in dimensions):
+                frame = materialize_calculated_dimensions(frame, dimensions, source)
+            column = next((name for field in fields for name in frame.columns
+                           if _normalise_catalogue_dimension_name(name) == _normalise_catalogue_dimension_name(field)), None)
+            if column is None:
+                continue
+            text = frame[column].dropna().astype(str).str.strip()
+            for value, count in text[text.ne('')].value_counts().items():
+                counts[value] = counts.get(value, 0) + int(count)
+        return [{'value': value, 'count': count} for value, count in sorted(counts.items(), key=lambda item: (-item[1], item[0].casefold()))[:300]]
+
+    try:
+        result = await run_in_threadpool(values)
+    except (ValueError, TypeError, OSError, sqlite3.Error):
+        result = []
+    return JSONResponse({'values': result})
+
+
+def _auto_field_save_response(task: Callable[[], tuple[tuple[Any, ...], dict[str, int], dict[str, Any] | None, dict[str, Any]]]):
+    async def run() -> JSONResponse:
+        try:
+            dimensions, renamed, job, extra = await run_in_threadpool(task)
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except (OSError, sqlite3.Error) as exc:
+            raise HTTPException(status_code=503, detail=f'Unable to save the auto-calculated fields: {exc}') from exc
+        payload = _auto_field_save_payload(dimensions, renamed, job)
+        payload['fields'] = [calculated_dimension_editor_json(item) for item in dimensions]
+        payload.update(extra)
+        return JSONResponse(payload)
+    return run()
+
+
+@app.post('/api/workspace/auto-calculated-fields/save')
+async def save_auto_calculated_field(request: Request, user: SessionUser = Depends(workspace_editor_user)) -> JSONResponse:
+    """Save one field (new, or in place of ``original_name``) and update the CDR tables it applies to in the
+    background: only its column, and those of the fields that read it."""
+    if not active_workspace:
+        raise HTTPException(status_code=400, detail='Open a workspace before managing auto-calculated fields.')
+    workspace = active_workspace
+    payload = await request.json()
+
+    def save() -> tuple[tuple[Any, ...], dict[str, int], dict[str, Any] | None, dict[str, Any]]:
+        checked = _auto_field_checked(payload)
+        if not checked['ok']:
+            raise ValueError(' '.join(checked['errors']))
+        definitions, index, original_name = checked['definitions'], checked['index'], checked['original_name']
+        name = checked['dimensions'][index].name
+        renames: dict[str, str] = {}
+        if original_name and original_name != name:
+            renames[original_name] = name
+            definitions = [item if position == index else rename_auto_field_references(item, original_name, name)
+                           for position, item in enumerate(definitions)]
+        definition = checked['dimensions'][index]
+        dimensions, renamed, job = _commit_workspace_dimensions(
+            workspace, user, checked['previous'], definitions, renames, action='save_auto_calculated_field',
+            details={
+                'field': name, 'original_name': original_name, 'operation': 'renamed' if renames else 'updated' if original_name else 'created',
+                'sources': list(definition.sources), 'mode': 'formula' if definition.expression is not None else 'rules',
+                'rules': len(definition.written_rules or definition.rules), 'default': definition.default,
+                'default_from': list(definition.default_from), 'position': index,
+            },
+        )
+        return dimensions, renamed, job, {'field': calculated_dimension_editor_json(dimensions[index])}
+
+    return await _auto_field_save_response(save)
+
+
+@app.post('/api/workspace/auto-calculated-fields/delete')
+async def delete_auto_calculated_field(request: Request, user: SessionUser = Depends(workspace_editor_user)) -> JSONResponse:
+    """Delete one field: its column leaves the CDR tables in the background. A field another one reads stays."""
+    if not active_workspace:
+        raise HTTPException(status_code=400, detail='Open a workspace before managing auto-calculated fields.')
+    workspace = active_workspace
+    payload = await request.json()
+    name = str(payload.get('name') or '').strip()
+
+    def delete() -> tuple[tuple[Any, ...], dict[str, int], dict[str, Any] | None, dict[str, Any]]:
+        previous = load_workspace_calculated_dimensions()
+        key = _normalise_catalogue_dimension_name(name)
+        target = next((item for item in previous if _normalise_catalogue_dimension_name(item.name) == key), None)
+        if target is None:
+            raise ValueError(f"The field '{name}' is no longer in this workspace.")
+        readers = [item.name for item in previous if item is not target
+                   and key in {_normalise_catalogue_dimension_name(field) for field in calculated_dimension_reads(item)}]
+        if readers:
+            raise ValueError(f"{', '.join(readers)} read{'s' if len(readers) == 1 else ''} {target.name}: change {'it' if len(readers) == 1 else 'them'} first.")
+        remaining = [item for item in previous if item is not target]
+        dimensions, renamed, job = _commit_workspace_dimensions(
+            workspace, user, previous, calculated_dimensions_json(remaining), {}, action='delete_auto_calculated_field',
+            details={'field': target.name, 'sources': list(target.sources)},
+        )
+        return dimensions, renamed, job, {}
+
+    return await _auto_field_save_response(delete)
+
+
+@app.post('/api/workspace/auto-calculated-fields/reorder')
+async def reorder_auto_calculated_fields(request: Request, user: SessionUser = Depends(workspace_editor_user)) -> JSONResponse:
+    """Put the fields in a new order (the order they are worked out in: a field reads only those above it)."""
+    if not active_workspace:
+        raise HTTPException(status_code=400, detail='Open a workspace before managing auto-calculated fields.')
+    workspace = active_workspace
+    payload = await request.json()
+    names = [str(item or '').strip() for item in payload.get('names') or []]
+
+    def reorder() -> tuple[tuple[Any, ...], dict[str, int], dict[str, Any] | None, dict[str, Any]]:
+        previous = load_workspace_calculated_dimensions()
+        by_key = {_normalise_catalogue_dimension_name(item.name): item for item in previous}
+        keys = [_normalise_catalogue_dimension_name(name) for name in names]
+        if sorted(keys) != sorted(by_key):
+            raise ValueError('The fields changed meanwhile (another user may have edited them). Close the editor and open it again.')
+        ordered = tuple(by_key[key] for key in keys)
+        for index, item in enumerate(ordered):
+            later = {_normalise_catalogue_dimension_name(other.name): other.name for other in ordered[index + 1:]}
+            reads = [later[_normalise_catalogue_dimension_name(field)] for field in calculated_dimension_reads(item)
+                     if _normalise_catalogue_dimension_name(field) in later]
+            if reads:
+                raise ValueError(f"{item.name} reads {', '.join(reads)}, so it must stay below {'it' if len(reads) == 1 else 'them'}.")
+        dimensions, renamed, job = _commit_workspace_dimensions(
+            workspace, user, previous, calculated_dimensions_json(ordered), {}, action='reorder_auto_calculated_fields',
+            details={'order': [item.name for item in ordered]},
+        )
+        return dimensions, renamed, job, {}
+
+    return await _auto_field_save_response(reorder)
 
 
 @app.post('/ppt-designer/templates/{catalogue_id}/copy-items')

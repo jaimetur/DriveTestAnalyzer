@@ -381,6 +381,7 @@
   <script id="vendor-filter-operators" type="application/json">{{ vendor_filter_identities | default({}) | tojson }}</script>
   <script id="operator-out-of-scope" type="application/json">{{ operator_out_of_scope | default([]) | tojson }}</script>
   <script src="{{ static_path('js/app.js') }}?v={{ asset_version('js/app.js') }}"></script>
+  <script src="{{ static_path('js/auto_calculated_fields.js') }}?v={{ asset_version('js/auto_calculated_fields.js') }}"></script>
   {% if user is defined and user and not embedded_preview %}
   {# Dataset uploads go on in the background on every page (see background_uploads.js). #}
   <script id="background-uploads-config" type="application/json">{{ {'username': user.username, 'workspace_id': active_workspace.id if active_workspace else ''} | tojson }}</script>

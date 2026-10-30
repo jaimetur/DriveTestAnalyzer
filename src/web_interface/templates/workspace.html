@@ -748,13 +748,13 @@
         <h2>Auto-calculated Fields</h2>
       </div>
       <div class="summary-inline-actions">
-        <span class="pill live-pill">{{ calculated_dimensions | length }} fields</span>
+        <span class="pill live-pill" data-calculated-dimensions-count>{{ calculated_dimensions | length }} field{{ '' if calculated_dimensions | length == 1 else 's' }}</span>
         <span class="collapse-chip">Collapse</span>
       </div>
     </summary>
     <div class="workspace-calculated-dimensions-content">
       <div class="workspace-calculated-dimensions-intro">
-        <p class="lede">Auto-calculated fields belong to this workspace and are materialized in every applicable individual and combined CDR table.</p>
+        <p class="lede">Auto-calculated fields belong to this workspace and give each CDR row a value from rules on its other fields. Saving a field updates every individual and combined CDR table of the types it applies to in the background.</p>
         <p class="form-note workspace-calculated-dimensions-status" data-auto-calculated-field-panel-status hidden><span data-auto-calculated-field-panel-status-text></span> <a href="#cdr-tables-updates">See CDR Tables Updates</a></p>
       </div>
       <div class="workspace-calculated-dimensions-layout">
@@ -781,8 +781,9 @@
             </div>
             <div class="workspace-calculated-dimensions-list-actions">
               <button type="button" class="catalogue-calculated-dimensions-button" data-workspace-manage-calculated-dimensions>Edit</button>
+              {% if can_edit_workspace_config %}<button type="button" class="catalogue-calculated-dimensions-button" data-workspace-new-calculated-dimension>New Field</button>{% endif %}
               <a class="ghost-link workspace-calculated-dimensions-export-link" href="/workspace/calculated-dimensions/export">Export</a>
-              <button type="button" class="auto-calculated-field-rematerialize-button" data-auto-calculated-field-rematerialize title="Materialize every auto-calculated field again in every applicable CDR table" aria-label="Re-materialize All Fields">
+              <button type="button" class="auto-calculated-field-rematerialize-button" data-auto-calculated-field-rematerialize title="Work every auto-calculated field out again in every applicable CDR table. Saving a field already updates the tables; use this only to repair them, for example after an interrupted update." aria-label="Re-materialize All Fields">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0 1.2 5.2M20 4v7h-7"/></svg>
                 <span>Re-materialize All Fields</span>
               </button>
@@ -794,7 +795,7 @@
               <span>Applied to</span>
             </div>
             {% for dimension in calculated_dimensions %}
-            <div class="workspace-calculated-dimension-row">
+            <div class="workspace-calculated-dimension-row" data-calculated-dimension-name="{{ dimension.name }}" role="button" tabindex="0" title="Edit {{ dimension.name }}">
               <strong>{{ dimension.name }}</strong>
               <span>{{ dimension.sources | map('upper') | join(' / ') }}</span>
             </div>
