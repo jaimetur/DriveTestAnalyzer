@@ -2694,6 +2694,7 @@ def report_catalogue_options(task_repository: Repository | None = None) -> list[
             'updated_at': row['updated_at'],
             'updated_by': str(row['updated_by'] or '') if 'updated_by' in row.keys() else '',
             'created_by': str(row['created_by'] or '') if 'created_by' in row.keys() else '',
+            'position': row['position'] if 'position' in row.keys() else None,
         })
     return options
 
@@ -3235,6 +3236,15 @@ def is_interactive_request(method: str, path: str, accept: str, background_refre
 
 
 IDLE_TASK_CALLBACKS: list[tuple[float, Callable[[], None]]] = []
+# The tasks run every half minute whether or not the application is in use (see register_periodic_task).
+PERIODIC_TASK_CALLBACKS: list[Callable[[], None]] = []
+
+
+def register_periodic_task(callback: Callable[[], None]) -> None:
+    """Run ``callback`` every half minute, while the application is used too; it decides itself whether there is
+    anything to do, and must be cheap when there is not."""
+    with APPLICATION_ACTIVITY_LOCK:
+        PERIODIC_TASK_CALLBACKS.append(callback)
 
 
 def register_idle_task(callback: Callable[[], None], idle_seconds: float) -> None:
@@ -3256,6 +3266,13 @@ def idle_task_loop(stop_event: Event) -> None:
         with APPLICATION_ACTIVITY_LOCK:
             activity_at = LAST_INTERACTIVE_APPLICATION_ACTIVITY
             idle_tasks = list(IDLE_TASK_CALLBACKS)
+            periodic_tasks = list(PERIODIC_TASK_CALLBACKS)
+        for periodic_task in periodic_tasks:
+            try:
+                periodic_task()
+            except Exception:
+                # A periodic check must never stop the monitor; it runs again half a minute later.
+                pass
         schedulers_idle = BACKGROUND_TASK_SCHEDULER.is_idle and EXPORT_TASK_SCHEDULER.is_idle
         for idle_seconds, idle_task in idle_tasks:
             if schedulers_idle and monotonic() - activity_at >= idle_seconds:
@@ -3264,6 +3281,34 @@ def idle_task_loop(stop_event: Event) -> None:
                 except Exception:
                     # Idle work is optional and must never stop the monitor.
                     pass
+
+
+# After a failed update of the CDR tables, the next try waits this long (a failing update is not repeated every half minute).
+AUTO_FIELD_RETRY_AFTER_FAILURE_SECONDS = 600
+
+
+def reconcile_pending_auto_fields() -> None:
+    """Start the update of the CDR tables the active workspace has pending (fields saved, imported, restored or changed
+    while an update ran, or an update a restart cut), as opening Workspace starts it, without waiting for anyone to open
+    it. Nothing while one runs or is queued, nor for a while after one failed; a stopped one waits for the user."""
+    workspace = active_workspace
+    if not workspace or not STARTUP_READY.is_set():
+        return
+    if repository.get_workspace_state('calculated_dimensions_need_materialization') not in {'1', 'processing'}:
+        return
+    with AUTO_CALCULATED_FIELD_JOBS_LOCK:
+        jobs = [dict(job) for job in AUTO_CALCULATED_FIELD_JOBS.values() if job.get('workspace_id') == workspace.id]
+    if any(job.get('status') in {'queued', 'processing'} for job in jobs):
+        return
+    if read_persisted_auto_field_progress(workspace.id).get('status') in {'queued', 'processing'}:
+        return
+    failed = [float(job.get('finished_at') or 0) for job in jobs if job.get('status') == 'failed']
+    if failed and datetime.now(timezone.utc).timestamp() - max(failed) < AUTO_FIELD_RETRY_AFTER_FAILURE_SECONDS:
+        return
+    queue_workspace_dimension_materialization(workspace)
+
+
+register_periodic_task(reconcile_pending_auto_fields)
 
 
 STARTUP_READY = Event()
@@ -4019,6 +4064,13 @@ def nr_mode_free_sort_name(name: object) -> str:
     """Return a case-insensitive sort key without a leading or trailing NSA/SA marker."""
     text = str(name or '').strip()
     return (NR_MODE_NAME_AFFIX.sub('', text).strip() or text).casefold()
+
+
+def report_template_library_key(item: dict[str, Any]) -> tuple[Any, ...]:
+    """The order of the PPT Templates library: the one its editors gave it by dragging, then by name (an NR Mode written
+    in the name itself, ``Report - NSA``, ignored so the order matches the PPT Designs table)."""
+    position = item.get('position')
+    return position is None, position or 0, nr_mode_free_sort_name(item['name']), str(item['name']).casefold()
 
 
 def format_local_timestamp(value: Any) -> str:
@@ -13604,8 +13656,6 @@ def render_admin_template(
             and not request.query_params.get('catalogue_id'):
         selected_catalogue = selected_catalogue.split(':', 1)[1]
     report_catalogues = report_catalogue_options() if active_workspace else []
-    # Templates are listed by name. An NR Mode written in the name itself (``Report - NSA``) is ignored for the name
-    # key so the order matches the PPT Designs table.
     workspace_catalogues = sorted((
         {
             **catalogue,
@@ -13613,7 +13663,7 @@ def render_admin_template(
             'updated_at': format_local_timestamp(catalogue.get('updated_at')),
         }
         for catalogue in report_catalogues
-    ), key=lambda item: (nr_mode_free_sort_name(item['name']), str(item['name']).casefold()))
+    ), key=report_template_library_key)
     admin_datasets = sorted(
         [serialize_dataset_row(dataset) for dataset in repository.list_datasets()],
         key=lambda dataset: int(dataset['id']),
@@ -25187,6 +25237,23 @@ def activate_report_catalogue(
         'template': available[catalogue_id]['name'],
     }))
     return ppt_templates_redirect()
+
+
+class ReportTemplateOrder(BaseModel):
+    names: list[str]
+
+
+@app.post('/api/ppt-designer/templates/order')
+def report_templates_order(payload: ReportTemplateOrder, user: SessionUser = Depends(ppt_template_editor_user)) -> dict[str, Any]:
+    """Keep the PPT Templates of the workspace in the order they were dragged to in PPT Templates; the lists of templates
+    (the Template of a new PPT Design included) follow it."""
+    previous = [str(option['name']) for option in sorted(report_catalogue_options(), key=report_template_library_key)]
+    order = repository.reorder_report_templates(payload.names)
+    if order != previous:
+        repository.add_log(user.username, 'reorder_report_templates', json.dumps({
+            'previous_order': previous, 'order': order,
+        }, ensure_ascii=False))
+    return {'order': order}
 
 
 def _named_catalogue(catalogue_id: str) -> dict[str, Any] | None:

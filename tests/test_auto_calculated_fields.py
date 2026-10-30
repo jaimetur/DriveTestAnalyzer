@@ -326,3 +326,34 @@ def test_fields_of_a_cdr_whose_copy_is_its_only_store_are_worked_out_on_the_copy
     monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
     assert cdr_store.restore_table(core.repository, voice)
     assert core.repository.load_dataset_rows(voice, ['NR_Mode_from_RAT'], {})['NR_Mode_from_RAT'].tolist() == EXPECTED
+
+
+def test_pending_fields_are_reconciled_without_opening_workspace(client, monkeypatch) -> None:
+    from datetime import datetime, timezone
+
+    login(client)
+    queued = []
+    monkeypatch.setattr(core, 'queue_workspace_dimension_materialization', lambda workspace: queued.append(workspace.id))
+    monkeypatch.setattr(core.STARTUP_READY, 'is_set', lambda: True)
+    assert core.reconcile_pending_auto_fields in core.PERIODIC_TASK_CALLBACKS
+
+    core.repository.set_workspace_state('calculated_dimensions_need_materialization', '0')
+    core.reconcile_pending_auto_fields()
+    assert queued == []
+    # Pending (saved, imported, restored…): the periodic check starts it.
+    core.repository.set_workspace_state('calculated_dimensions_need_materialization', '1')
+    core.reconcile_pending_auto_fields()
+    assert queued == [core.active_workspace.id]
+    # Not while an update runs, nor right after one failed; a stopped one waits for the user.
+    with core.AUTO_CALCULATED_FIELD_JOBS_LOCK:
+        core.AUTO_CALCULATED_FIELD_JOBS['running'] = {'workspace_id': core.active_workspace.id, 'status': 'processing'}
+    core.reconcile_pending_auto_fields()
+    with core.AUTO_CALCULATED_FIELD_JOBS_LOCK:
+        core.AUTO_CALCULATED_FIELD_JOBS['running'] = {'workspace_id': core.active_workspace.id, 'status': 'failed',
+                                                      'finished_at': datetime.now(timezone.utc).timestamp()}
+    core.reconcile_pending_auto_fields()
+    core.repository.set_workspace_state('calculated_dimensions_need_materialization', 'stopped')
+    core.reconcile_pending_auto_fields()
+    with core.AUTO_CALCULATED_FIELD_JOBS_LOCK:
+        core.AUTO_CALCULATED_FIELD_JOBS.pop('running', None)
+    assert queued == [core.active_workspace.id]
