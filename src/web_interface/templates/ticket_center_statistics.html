@@ -224,14 +224,22 @@
         {% set activity = stats.activity %}
         <section class="tickets-card tickets-activity-card" aria-labelledby="tickets-activity-title-{{ stats.key }}">
           <header class="tickets-card-head"><h3 id="tickets-activity-title-{{ stats.key }}">Activity</h3><span class="tickets-card-note">Tickets opened, comments and changes each day</span></header>
+          {% if stats.key in ['week', 'month'] %}
+          {# This week and this month: a calendar, a row per week from Monday, each day with its number and what happened in it. #}
+          <div class="tickets-month-calendar" role="img" aria-label="{{ activity.opened }} tickets opened, {{ activity.comments }} comments and {{ activity.changes }} changes in {{ stats.range }}">
+            {% for name in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}<span class="tickets-month-weekday{% if loop.index > 5 %} is-weekend{% endif %}" aria-hidden="true">{{ name }}</span>{% endfor %}
+            {% for week in activity.weeks %}{% for day in week.days %}<span class="tickets-month-day calendar-level" data-level="{{ day.level }}"{% if day.weekend %} data-weekend="true"{% endif %}{% if day.outside %} data-outside="true"{% elif day.upcoming %} data-upcoming="true"{% else %} data-tip="{{ day.tip }}"{% endif %}>{% if not day.outside %}<span class="tickets-month-number">{{ day.number }}</span>{% if day.total %}<strong>{{ day.total }}</strong>{% endif %}{% endif %}</span>{% endfor %}{% endfor %}
+          </div>
+          {% else %}
           <div class="tickets-calendar" style="--weeks: {{ activity.week_count }}">
             <span class="tickets-calendar-corner" aria-hidden="true"></span>
             <div class="tickets-calendar-months" aria-hidden="true">{% for week in activity.weeks %}<span>{{ week.month }}</span>{% endfor %}</div>
             <div class="tickets-calendar-weekdays" aria-hidden="true"><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span></span></div>
             <div class="tickets-calendar-grid" role="img" aria-label="{{ activity.opened }} tickets opened, {{ activity.comments }} comments and {{ activity.changes }} changes in {{ stats.range }}">
-              {% for week in activity.weeks %}{% for day in week.days %}<span class="tickets-calendar-day" data-level="{{ day.level }}"{% if day.future %} data-future="true"{% else %} data-tip="{{ day.tip }}"{% endif %}></span>{% endfor %}{% endfor %}
+              {% for week in activity.weeks %}{% for day in week.days %}<span class="tickets-calendar-day" data-level="{{ day.level }}"{% if day.outside %} data-outside="true"{% elif day.upcoming %} data-upcoming="true"{% else %} data-tip="{{ day.tip }}"{% endif %}></span>{% endfor %}{% endfor %}
             </div>
           </div>
+          {% endif %}
           <div class="tickets-activity-foot">
             <ul class="tickets-activity-totals">
               <li><strong>{{ activity.opened }}</strong> opened</li>

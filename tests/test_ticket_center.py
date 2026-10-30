@@ -685,6 +685,10 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     assert (activity['week_count'], activity['weeks'][0]['days'][0]['day'], activity['weeks'][-1]['days'][0]['day']) == (5, '2026-09-28', '2026-10-26')
     assert activity['weeks'][0]['days'][0]['future'] and not activity['weeks'][0]['days'][3]['future']
     assert activity['weeks'][3]['days'][1]['future'] and not activity['weeks'][3]['days'][0]['future']
+    # (Outside the period, blank; still to come, faint; each day with its number and whether it is a weekend.)
+    first, coming = activity['weeks'][0]['days'][0], activity['weeks'][3]['days'][1]
+    assert (first['outside'], first['upcoming'], coming['outside'], coming['upcoming'], coming['number']) == (True, False, False, True, 20)
+    assert [day['weekend'] for day in activity['weeks'][1]['days']] == [False] * 5 + [True, True]
     assert (activity['opened'], activity['comments'], activity['changes'], activity['resolved']) == (5, 1, 1, 3)
     monday = activity['weeks'][2]['days'][0]
     assert (monday['day'], monday['total'], monday['level']) == ('2026-10-12', 3, 4)

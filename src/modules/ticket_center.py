@@ -810,7 +810,9 @@ def ticket_activity(tickets: list[dict[str, Any]], events: Iterable[dict[str, An
         for offset in range(7):
             day = monday + timedelta(days=offset)
             total = totals.get(day, 0)
-            days.append({'day': day.isoformat(), 'future': day > today or not start <= day <= end, 'total': total, 'tip': tip(day),
+            outside = not start <= day <= end
+            days.append({'day': day.isoformat(), 'number': day.day, 'weekend': day.weekday() >= 5, 'outside': outside,
+                         'upcoming': not outside and day > today, 'future': day > today or outside, 'total': total, 'tip': tip(day),
                          'level': min(4, math.ceil(4 * total / peak)) if total else 0})
         weeks.append({'month': month, 'days': days})
     busiest = max(totals, key=lambda day: (totals[day], day), default=None)

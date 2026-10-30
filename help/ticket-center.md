@@ -57,7 +57,7 @@ The **Statistics** tab shows how the tickets of a period are going, with every b
 - **Tickets fixed in each version**: the tickets resolved or closed in each of the latest 10 versions of the tool, as the Changelog lists them (also those without tickets), by their **Fixed in version**; **Opened with** shows those opened with each version.
 - **Tickets per module**: the tickets of each module, the module with most first; a row lists its tickets.
 - **Tickets per reporter**: the tickets each user opened; **Assignees** shows those of each assignee, open, resolved or closed, and rejected, and how many open tickets nobody attends. A row lists the tickets of that reporter or assignee.
-- **Activity**: a calendar of the days of the period (all time: from the first activity, the last 53 weeks at most), a column per week from Monday, darker the more tickets were opened, commented and changed that day, with the totals and the busiest day.
+- **Activity**: this week and this month, a calendar of their days, a row per week from Monday, each day with its number and how many tickets were opened, commented and changed, darker the busier and its weekends underlined; this quarter, this year and all time (from the first activity, the last 53 weeks at most), a heat map with a column per week from Monday and the days still to come faint, each day darker the more tickets were opened, commented and changed in it; below, the totals and the busiest day.
 
 Each browser remembers the view chosen in each card.
 
