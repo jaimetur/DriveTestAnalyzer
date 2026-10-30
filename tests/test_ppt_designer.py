@@ -1478,10 +1478,12 @@ def test_designs_lifecycle_and_layout(client):
     task_panel_start = app_script.index("const root = document.getElementById('background-task-panels');")
     task_listener = app_script.index("window.addEventListener('drivetest-analyzer:background-task'")
     assert task_listener > task_panel_start
-    assert "This Auto-calculated Field has unsaved changes. Close without saving them?" in app_script
+    auto_fields_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/auto_calculated_fields.js').read_text(encoding='utf-8')
+    # Closing the Auto-calculated Fields editor asks only while a field has unsaved changes.
+    assert "return confirmDialog(`Discard the unsaved changes of ${name}?`, {" in auto_fields_script
     assert "const confirmTertiary = document.getElementById('confirm-tertiary');" in app_script
     assert "const handleTertiary = () => close('tertiary');" in app_script
-    assert "overlay.addEventListener('click', (event) => { if (event.target === overlay) void requestFinish(); });" in app_script
+    assert "overlay.addEventListener('pointerdown', (event) => { if (event.target === overlay) void requestClose(); });" in auto_fields_script
     assert "window.parent.postMessage({type: 'drivetest-analyzer:template-saved'}, window.location.origin);" in app_script
     assert "openTemplateEditor(expandedChart?.focus_row, sourceDefinition)" in design_script
     assert 'const hasAppliedUnsavedFilterChanges = () => Boolean(' in design_script
@@ -1581,9 +1583,9 @@ def test_designs_lifecycle_and_layout(client):
     assert 'function legendLayout(legend, fontSize = LEGEND_TEXT_SIZE)' in chart_script
     assert "position = items.length ? String(legend?.position || 'none').toLowerCase() : 'none';" in chart_script
     assert "left: position === 'left' ? sideLegendWidth + 20 : 70" in chart_script
-    assert "right: position === 'right' ? LOGICAL_WIDTH - sideLegendWidth - 20 : 1540" in chart_script
+    assert "right: position === 'right' ? LOGICAL_WIDTH - sideLegendWidth - 20 : LOGICAL_WIDTH - 60" in chart_script
     assert "top: position === 'top' ? 80 + rows * rowHeight + 18 : 82" in chart_script
-    assert "bottom: position === 'bottom' ? 900 - rows * rowHeight - 22 : 860" in chart_script
+    assert "bottom: position === 'bottom' ? LOGICAL_HEIGHT - rows * rowHeight - 22 : LOGICAL_HEIGHT - 40" in chart_script
     # Axis labels wrap, shrink or turn vertical with reserved room; never truncated.
     assert "function axisLevelPlan(context, entries, maximumHeight, format = {}, level = 0)" in chart_script
     assert "function hierarchicalAxisPlans(context, keys, width, format = {})" in chart_script
@@ -1597,7 +1599,7 @@ def test_designs_lifecycle_and_layout(client):
     assert "const rowLabelGap = rowLevels > 1 ? 20 : 0;" in chart_script
     assert "const rowLabelArea = rowLevels ? Math.min(440, Math.max(230" in chart_script
     assert "drawFullHierarchyLabel(context, value, labelLeft + 3" in chart_script
-    assert "const usableBottom = layout.position === 'bottom' ? layout.bottom : 884;" in chart_script
+    assert "const usableBottom = layout.position === 'bottom' ? layout.bottom : LOGICAL_HEIGHT - 16;" in chart_script
     assert 'Math.min(250, columnWidth * .72)' in chart_script
     assert "const colour = payload.cell_colours?.[rowIndex]?.[columnIndex] || '#4E79A7';" in chart_script
     assert "drawAxisLabel(context, plan, value, (left + right) / 2, bandTop + Math.max(0, (height - 4 - plan.height) / 2), right - left, '#405765', payload.legend_format);" in chart_script

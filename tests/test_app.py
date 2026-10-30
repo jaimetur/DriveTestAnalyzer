@@ -9471,17 +9471,18 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     assert 'catalogue-editor-catalogue-picker" aria-label="Workspace templates" hidden' in embedded_editor.text
 
     app_script = (app_module.PROJECT_ROOT / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
-    assert "fetch(editor.dataset.calculatedDimensionsUrl, {credentials: 'same-origin', cache: 'no-store'})" in app_script
+    auto_fields_script = (app_module.PROJECT_ROOT / 'src/web_interface/static/js/auto_calculated_fields.js').read_text(encoding='utf-8')
+    # The template editor opens the Auto-calculated Fields editor (in the page holding it when embedded) and follows its saves.
+    assert "manager?.open({onChange: (fields) => { calculatedDimensions = fields; refreshCalculatedDimensionSuggestions(); }});" in app_script
     assert "options.addEventListener('change', applyAssistanceValues);" in app_script
     assert "kpiAggregation?.addEventListener('change', applyAssistanceValues);" in app_script
     assert "apply.addEventListener('click', syncFilterCell);" in app_script
     # The KPI operation list opens outside Cell Assistance without closing it.
     assert "const assistanceFocused = inAssistance(focused);" in app_script
     assert 'window.top.location.origin === window.location.origin' in app_script
-    assert 'managerDocument.body.append(overlay)' in app_script
-    assert "expressionLabel.textContent = 'IF expression'" in app_script
-    assert app_script.count('await returnToList(false);') == 2
-    assert app_script.count('else void returnToList();') >= 2
+    assert 'window.top.AutoCalculatedFields' in app_script
+    assert "const rulesTab = button('Rules', 'acf-tab'); const formulaTab = button('Formula', 'acf-tab');" in auto_fields_script
+    assert "const requestClose = async () => { if (await confirmLeave()) finish(); };" in auto_fields_script
     assert 'data-materialization-job-key' in app_script
     assert 'progressJobList.replaceChildren();' not in app_script
     assert 'Math.max(previousPercent, computedPercent)' in app_script
