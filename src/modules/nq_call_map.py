@@ -1690,6 +1690,8 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     return {
         'call': {
             'call_key': call['call_key'], 'parent_key': _text(call.get('parent_key')), 'join_id': _text(call.get('join_id')),
+            # The UEs of the call with a session in the Layer 3 - DT Logs, whose layers the map reads apart (l3_dt_logs).
+            'l3_log': _text(call.get('l3_log')),
             'service': service, 'service_label': call.get('service_label'), 'operator': _text(call.get('operator')),
             'kind': call_kind(service, call.get('test_name'), call.get('session_type')),
             'campaign': _text(call.get('campaign')), 'nr_mode': _text(call.get('nr_mode')), 'result': _text(call.get('result')),

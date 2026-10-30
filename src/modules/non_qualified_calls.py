@@ -9627,6 +9627,51 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'seconds': round(time.monotonic() - started, 2)})
         return JSONResponse(payload)
 
+    def _call_join_id(repository: Any, call_key: str) -> str | None:
+        """The JOIN_ID of a call or a Speech sample, '' when it has none, None when the call is not indexed."""
+        with repository.connection() as connection:
+            row = connection.execute(f'SELECT join_id FROM {NQ_CALLS_TABLE} WHERE call_key = ? OR sample_key = ? LIMIT 1',
+                                     (call_key, call_key)).fetchone()
+        return None if row is None else str(row['join_id'] or '')
+
+    @core.app.get('/api/non-qualified-calls/calls/{call_key}/l3')
+    def nq_call_l3_route(call_key: str, user=Depends(core.current_user)) -> JSONResponse:
+        """The Layer 3 - DT Logs of a call for its map: its sessions (one per UE), their points by layer and the way of each
+        UE (see l3_dt_logs.call_layers). App Events records each one read."""
+        repository = workspace_repository(user)
+        started = time.monotonic()
+        join_id = _call_join_id(repository, call_key)
+        if join_id is None:
+            raise HTTPException(404, 'The call is no longer available. Refresh the list.')
+        details = {'call_key': call_key, 'join_id': join_id}
+        try:
+            payload = l3_dt_logs.call_layers(repository, join_id) if join_id else {'join_id': '', 'ues': {}}
+        except Exception as error:  # noqa: BLE001 - App Events keeps what failed for its troubleshooting.
+            log_action(repository, user, 'nq_call_l3_layers_failed', {**details, 'error': f'{type(error).__name__}: {error}'[:500]})
+            raise HTTPException(500, 'The Layer 3 - DT Logs of the call could not be read. App Events keeps the error.') from error
+        log_action(repository, user, 'nq_call_l3_layers', {
+            **details, 'ues': sorted(payload.get('ues') or {}),
+            'points': {ue: len(item['points']) for ue, item in (payload.get('ues') or {}).items()},
+            'datasets': sorted({item['session']['dataset_id'] for item in (payload.get('ues') or {}).values()}),
+            'seconds': round(time.monotonic() - started, 2)})
+        return JSONResponse(payload)
+
+    @core.app.get('/api/non-qualified-calls/calls/{call_key}/l3/record')
+    def nq_call_l3_record_route(call_key: str, dataset_id: int, row: int, user=Depends(core.current_user)) -> JSONResponse:
+        """Every value of one record of the Layer 3 - DT Logs of a call (a point of its map), read from its source."""
+        repository = workspace_repository(user)
+        join_id = _call_join_id(repository, call_key)
+        if not join_id:
+            raise HTTPException(404, 'The call has no Layer 3 - DT Logs.')
+        sessions = l3_dt_logs.sessions_of_join_ids(repository, [join_id]).get(join_id.casefold(), [])
+        session = next((item for item in sessions if int(item['dataset_id']) == int(dataset_id)), None)
+        if session is None:
+            raise HTTPException(404, 'This record is not of a session of the call.')
+        record = l3_dt_logs.source_row(session.get('source'), row)
+        if l3_dt_logs.normalise_join_id(record.get('JoinID')) != l3_dt_logs.normalise_join_id(join_id):
+            raise HTTPException(404, 'This record is not of a session of the call.')
+        return JSONResponse({'record': record})
+
     @core.app.patch('/api/non-qualified-calls/calls/{call_key}')
     def nq_update_call(call_key: str, payload: TrackingPayload, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)

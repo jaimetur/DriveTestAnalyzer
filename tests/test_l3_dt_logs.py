@@ -215,3 +215,104 @@ def test_nq_calls_list_filter_and_show_the_ues_of_their_layer_3_sessions(client,
     sessions_of = l3_dt_logs.sessions_of_join_ids(app_module.repository, ['0xbb22', '0xAA11'])
     assert [session['ue'] for session in sessions_of['0xbb22']] == ['Data']
     assert [session['ue'] for session in sessions_of['0xaa11']] == ['A', 'B']
+
+
+def record(**values) -> dict[str, str]:
+    """A row of a delivery with the common fields of a voice session of UE A."""
+    row = {'Log_Day': '2026-09-03', 'Campaign': 'UK_Q3_NSA_2026', 'Operator': '3', 'Session_Type': 'CALL', 'Call_Status': 'Failed',
+           'JoinID': '0xaa11', 'UE': 'A', 'EventFullDate': '2026-09-03 08:08:16.000', 'Latitude': '51.5', 'Longitude': '-0.12',
+           'RANConfiguration': 'LTE', 'IMSI': '234000000000001'}
+    row.update({key: str(value) for key, value in values.items()})
+    return row
+
+
+def layer_rows() -> list[dict[str, str]]:
+    """One record of every kind the layers of the KMZ files read, and some they leave out."""
+    return [
+        record(SourceTable='FactLTERadio', Radio_CarrierIndex='0', Radio_EARFCN='223', Radio_PhyCellId='114', Radio_RSRP='-85.1',
+               Radio_RSRQ='-10', Radio_SINR='4.5', LTE_ECI='13226752'),
+        record(SourceTable='FactLTERadio', Radio_CarrierIndex='1', Radio_EARFCN='6300', Radio_PhyCellId='167', Radio_RSRP='-99'),
+        record(SourceTable='FactLTENeighbors', Neigh_DL_EARFCN='223', Neigh_PCI='35', Neigh_RSRP='-101', Neigh_RSRQ='-14'),
+        record(SourceTable='FactLTEPUSCHStatisticsCarrier', PUSCH_PuschTxPower='23'),
+        # An NR radio sample without RSRP still is a point of its NRARFCN and PCI layers.
+        record(SourceTable='FactNR5GRadio', NRRadio_CarrierIndex='0', NRRadio_NRARFCN='628032', NRRadio_PCI='997',
+               RANConfiguration='5G EN-DC'),
+        record(SourceTable='FactNR5GLTENeighborList', MsgType='6605.0', NRLTENL_Technology='5G NR', NRLTENL_ARFCN='628032',
+               NRLTENL_PCI='998', NRLTENL_RSRP='-95', RANConfiguration='5G EN-DC'),
+        record(SourceTable='FactNR5GLTENeighborList', MsgType='6207.0', NRLTENL_Technology='LTE', NRLTENL_ARFCN='223',
+               NRLTENL_PCI='35', NRLTENL_RSRP='-101', RANConfiguration='5G EN-DC'),
+        # On LTE alone the neighbour list of NR repeats the LTE neighbours: no point.
+        record(SourceTable='FactNR5GLTENeighborList', MsgType='6207.0', NRLTENL_Technology='LTE', NRLTENL_ARFCN='223',
+               NRLTENL_PCI='35', NRLTENL_RSRP='-101'),
+        record(SourceTable='FactEvent', Event_EventName='4G - Handover Attempt LTE PCell', Event_EventGroup='4G'),
+        record(SourceTable='FactAdvancedTriggerEvent', ATE_EventFullName='5G EN-DC - SCG Failure NR SCG', ATE_EventTopGroup='_5G_EN_DC'),
+        record(SourceTable='FactL3Messages', L3_Layer='5G-NAS', L3_SimpleMsgName='Registration request', L3_Direction='U'),
+        record(SourceTable='FactL3Messages', L3_Layer='SIP', L3_SimpleMsgName='INVITE', L3_CombinedMsgNameSIPResponse='408 Request Timeout'),
+        # A GSM sample without ARFCN nor RxLevel is no point.
+        record(SourceTable='FactGSMRadio', RANConfiguration='GSM', GSMRadio_ARFCN='7', GSMRadio_BSIC='48'),
+        record(SourceTable='FactGSMRadio', RANConfiguration='GSM'),
+        # The same session exported under a second log day is drawn once.
+        record(SourceTable='FactLTERadio', Log_Day='2026-09-04', Radio_CarrierIndex='0', Radio_EARFCN='223', Radio_PhyCellId='114',
+               Radio_RSRP='-85.1'),
+    ]
+
+
+def test_the_points_of_the_layers_follow_the_kmz_files(tmp_path) -> None:
+    import duckdb
+
+    rows = layer_rows()
+    header = sorted({key for row in rows for key in row})
+    source = tmp_path / 'source.csv'
+    source.write_bytes(csv_bytes(rows, header))
+    parquet = tmp_path / 'source.parquet'
+    with duckdb.connect() as duck:
+        duck.execute(f"COPY (SELECT * FROM read_csv('{source}', all_varchar = true)) TO '{parquet}' (FORMAT parquet)")
+    target = tmp_path / 'points.parquet'
+    assert l3_dt_logs.build_points(parquet, target) == 12
+    with duckdb.connect() as duck:
+        points = duck.execute(f"SELECT kind, freq, pci, rsrp, grp, name, detail, ran FROM '{target}' ORDER BY kind, row").fetchall()
+    by_kind = {}
+    for point in points:
+        by_kind.setdefault(point[0], []).append(point)
+    assert {kind: len(items) for kind, items in by_kind.items()} == {
+        'event': 2, 'gsm': 1, 'l3': 2, 'lte_ncell': 1, 'lte_pcell': 1, 'lte_scell': 1, 'lte_tx': 1, 'nr_lncell': 1, 'nr_ncell': 1,
+        'nr_pcell': 1}
+    assert by_kind['lte_pcell'][0][1:4] == (223, 114, -85.1)
+    assert by_kind['nr_pcell'][0][1:4] == (628032, 997, None)
+    assert sorted(point[4] for point in by_kind['event']) == ['4G', '5G EN-DC']
+    assert sorted((point[4], point[5]) for point in by_kind['l3']) == [('NR-NAS', 'Registration request'), ('SIP', 'INVITE')]
+    assert l3_dt_logs.frequency_label(223, 'LTE') == 'EARFCN 223 (B1, 2132.3 MHz)'
+    assert l3_dt_logs.frequency_label(628032, 'NR') == 'NRARFCN 628032 (n78, 3420.48 MHz)'
+    assert l3_dt_logs.frequency_label(152690, 'NR') == 'NRARFCN 152690 (n28, 763.45 MHz)'
+
+
+def test_the_map_of_a_call_reads_its_layers_and_records(client, tmp_path, monkeypatch) -> None:
+    from src.modules import non_qualified_calls as nq
+
+    monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: callback(*args))
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    add_data_cdr(tmp_path, ['0xBB22'])
+    rows = [*log_rows(), *[{**row, 'JoinID': '0xbb22', 'UE': 'Data', 'Campaign': 'UK_Q3_SA_2026'} for row in layer_rows()]]
+    header = sorted({key for row in rows for key in row})
+    client.post('/datasets-analysis/upload', files={'dataset_files': ('logs.csv', io.BytesIO(csv_bytes(rows, header)), 'text/csv')},
+                data={'dataset_kinds': 'l3_dt_logs'}, follow_redirects=False)
+    nq.sync_nq_calls(app_module.repository)
+    call = client.post('/api/non-qualified-calls/calls', json={}).json()['calls'][0]
+    assert call['l3_log'] == 'Data'
+    layers = client.get(f"/api/non-qualified-calls/calls/{call['call_key']}/l3")
+    assert layers.status_code == 200, layers.text
+    payload = layers.json()
+    data = payload['ues']['Data']
+    kinds = [point[payload['columns'].index('kind')] for point in data['points']]
+    assert kinds.count('lte_pcell') == 4 and 'event' in kinds and 'l3' in kinds
+    assert data['track'][0][1:] == [52.4, -0.12] and len(data['track']) >= 3
+    assert payload['channels']['LTE:223'] == 'EARFCN 223 (B1, 2132.3 MHz)'
+    point = data['points'][kinds.index('l3')]
+    found = client.get(f"/api/non-qualified-calls/calls/{call['call_key']}/l3/record",
+                       params={'dataset_id': data['session']['dataset_id'], 'row': point[payload['columns'].index('row')]})
+    assert found.status_code == 200
+    assert found.json()['record']['SourceTable'] == 'FactL3Messages' and 'IMSI' not in found.json()['record']
+    other = client.get(f"/api/non-qualified-calls/calls/{call['call_key']}/l3/record", params={'dataset_id': 999, 'row': 0})
+    assert other.status_code == 404
+    events = [row['action'] for row in app_module.repository.list_logs()]
+    assert 'nq_call_l3_layers' in events

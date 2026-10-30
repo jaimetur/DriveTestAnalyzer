@@ -2047,3 +2047,75 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
   .nq-map-expand-content { padding: .5rem; }
   .nq-map-selected-float { top: .5rem; left: .5rem; width: calc(100% - 1rem); max-height: 40%; }
 }
+
+/* Layer 3 - DT Logs on the maps (l3_layers.js): a glass panel over the top left of the map with the layers of the KMZ files
+   by section (Route, Signalling, LTE, NR), each with its switch, its marker, its count and, unfolded, its channels and PCIs. */
+.nq-l3-panel { position: absolute; z-index: 4; top: 3.1rem; left: 8px; display: flex; flex-direction: column; width: min(19.5rem, calc(100% - 1.2rem));
+  max-height: calc(100% - 4.4rem); border: 1px solid rgba(15, 52, 66, .14); border-radius: 14px; background: rgba(255, 255, 255, .93);
+  box-shadow: 0 10px 30px rgba(15, 35, 45, .18); backdrop-filter: blur(8px); color: #17323c; font-size: .78rem; overflow: hidden; }
+.nq-l3-panel[hidden] { display: none; }
+.nq-l3-panel.is-collapsed { width: auto; }
+.nq-l3-head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .5rem .55rem .5rem .75rem;
+  background: linear-gradient(135deg, #0b6e8a, #0d8aa8); color: #fff; }
+.nq-l3-title { display: inline-flex; align-items: center; gap: .4rem; padding: 0; border: 0; background: none; color: inherit; font: inherit;
+  font-weight: 800; letter-spacing: .02em; cursor: pointer; }
+.nq-l3-chevron { font-size: .8rem; opacity: .85; }
+.nq-l3-body { display: flex; flex-direction: column; gap: .45rem; padding: .55rem; overflow-y: auto; overscroll-behavior: contain; }
+.nq-l3-body.is-off { opacity: .45; }
+.nq-l3-ues { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border-radius: 9px; background: #e6eef1; }
+.nq-l3-ue { padding: .28rem .4rem; border: 0; border-radius: 7px; background: none; color: #365560; font: inherit; font-weight: 700; cursor: pointer; }
+.nq-l3-ue.is-on { background: #fff; color: #0b6e8a; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
+.nq-l3-section { border: 1px solid #e3ebee; border-radius: 10px; background: #fff; }
+.nq-l3-section-head { display: grid; grid-template-columns: auto 1fr auto auto; align-items: baseline; gap: .45rem; width: 100%; padding: .45rem .6rem;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.nq-l3-section-name { font-weight: 800; font-size: .82rem; }
+.nq-l3-section-note { overflow: hidden; color: #6b8189; font-size: .7rem; white-space: nowrap; text-overflow: ellipsis; }
+.nq-l3-section-on { padding: 0 .4rem; border-radius: 999px; background: #e0f4f8; color: #0b6e8a; font-size: .68rem; font-weight: 800; }
+.nq-l3-section-on:empty { display: none; }
+.nq-l3-section.is-lte .nq-l3-section-name { color: #1c5dbf; }
+.nq-l3-section.is-nr .nq-l3-section-name { color: #6b3fb5; }
+.nq-l3-section-body { display: flex; flex-direction: column; gap: .15rem; padding: 0 .45rem .45rem; }
+.nq-l3-block { margin: .3rem .15rem .05rem; color: #6b8189; font-size: .66rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.nq-l3-line { display: flex; align-items: center; gap: .45rem; min-height: 1.6rem; }
+.nq-l3-layer { padding: .1rem .2rem; border-radius: 7px; }
+.nq-l3-layer:hover { background: #f3f8f9; }
+.nq-l3-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nq-l3-count { padding: .05rem .42rem; border-radius: 999px; background: #eef3f5; color: #4f6b75; font-size: .68rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.nq-l3-more { width: 1.3rem; height: 1.3rem; padding: 0; border: 1px solid #d6e2e6; border-radius: 6px; background: #fff; color: #0b6e8a;
+  font: inherit; font-weight: 800; line-height: 1; cursor: pointer; }
+.nq-l3-icon { flex: none; }
+.nq-l3-groups { display: flex; flex-direction: column; gap: .2rem; margin: .1rem 0 .25rem 1.2rem; padding-left: .5rem; border-left: 2px solid #e3ebee; }
+.nq-l3-swatch { flex: none; width: .55rem; height: .55rem; border-radius: 2px; }
+.nq-l3-chips { display: flex; flex-wrap: wrap; gap: .2rem; padding: .1rem 0 .2rem 2.2rem; }
+.nq-l3-chip { display: inline-flex; align-items: center; gap: .22rem; padding: .08rem .38rem; border: 1px solid #d6e2e6; border-radius: 999px;
+  background: #f6f8f9; color: #8aa0a8; font: inherit; font-size: .68rem; font-weight: 700; cursor: pointer; }
+.nq-l3-chip.is-on { background: #fff; color: #17323c; border-color: #b9ccd2; }
+.nq-l3-chip small { color: #8aa0a8; font-size: .62rem; }
+.nq-l3-chip-dot { width: .45rem; height: .45rem; border-radius: 50%; }
+.nq-l3-chip:not(.is-on) .nq-l3-chip-dot { opacity: .3; }
+.nq-l3-footer { display: flex; justify-content: flex-end; gap: .6rem; padding: 0 .2rem; }
+.nq-l3-link { padding: 0; border: 0; background: none; color: #0b6e8a; font: inherit; font-size: .72rem; font-weight: 700; cursor: pointer; }
+.nq-l3-link:hover { text-decoration: underline; }
+/* The switches: small pills that slide on. */
+.nq-l3-switch { position: relative; flex: none; display: inline-flex; width: 1.85rem; height: 1.05rem; cursor: pointer; }
+.nq-l3-switch.is-small { width: 1.5rem; height: .85rem; }
+.nq-l3-switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.nq-l3-switch-track { width: 100%; height: 100%; border-radius: 999px; background: #c5d3d8; transition: background .15s ease; }
+.nq-l3-switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: calc(1.05rem - 4px); height: calc(1.05rem - 4px);
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transition: transform .15s ease; }
+.nq-l3-switch.is-small .nq-l3-switch-track::after { width: calc(.85rem - 4px); height: calc(.85rem - 4px); }
+.nq-l3-switch input:checked + .nq-l3-switch-track { background: #0d8aa8; }
+.nq-l3-head .nq-l3-switch input:checked + .nq-l3-switch-track { background: #6fe0f5; }
+.nq-l3-switch input:checked + .nq-l3-switch-track::after { transform: translateX(.8rem); }
+.nq-l3-switch.is-small input:checked + .nq-l3-switch-track::after { transform: translateX(.65rem); }
+.nq-l3-switch input:focus-visible + .nq-l3-switch-track { outline: 2px solid #0b6e8a; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .nq-l3-switch-track, .nq-l3-switch-track::after { transition: none; } }
+/* The legend of the layers on, below the map. */
+.nq-l3-legend { display: flex; flex-direction: column; gap: .3rem; flex: 1 0 100%; padding: .45rem .6rem; border: 1px solid #d7e8ed; border-radius: 10px; background: #f6fbfc; }
+.nq-l3-legend-title { margin: 0; color: #0b6e8a; font-size: .72rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.nq-l3-legend-row { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .7rem; font-size: .72rem; }
+.nq-l3-legend-name { min-width: 7.5rem; font-weight: 800; }
+.nq-l3-legend-item { display: inline-flex; align-items: center; gap: .25rem; }
+.nq-l3-legend-note { margin: 0; color: #6b8189; font-size: .68rem; }
+.nq-l3-record { max-height: 18rem; overflow-y: auto; }
+@media (max-width: 640px) { .nq-l3-panel { width: calc(100% - 1.2rem); max-height: 55%; } }

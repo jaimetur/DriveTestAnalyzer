@@ -64,6 +64,8 @@ FIELDS: dict[str, str] = {
 }
 REQUIRED_FIELDS = ('campaign', 'join_id', 'ue', 'time', 'latitude', 'longitude', 'source_table')
 DATA_UE = 'Data'
+# The fields of a record never shown on the maps.
+HIDDEN_FIELDS = frozenset({'imsi'})
 
 SESSION_COLUMNS = (
     ('dataset_id', 'INTEGER NOT NULL'), ('join_id', 'TEXT NOT NULL'), ('ue', 'TEXT NOT NULL'),
@@ -391,6 +393,7 @@ def process_delivery(repository: Any, dataset_id: int, source: Path, *, progress
                     target_id = int(target_id)
                     repository.update_dataset_profile(target_id, processing_started_at=processed_at)
                 _write_sessions(repository, target_id, sessions, raw_campaign)
+                build_points(target, points_path(repository.db_path, target_id))
                 profile_fields = _ready_profile(raw_campaign, profile, summary, records, len(header), processed_at)
                 if normalization_version is not None:
                     profile_fields['normalization_version'] = int(normalization_version)
@@ -440,6 +443,10 @@ def ensure_workspace_schema(connection: sqlite3.Connection) -> None:
     """The sessions table of a workspace; the datasets of the reserved Smart Orchestrator Logs type become
     Layer 3 - DT Logs."""
     ensure_schema(connection)
+    # The JoinIDs of the sessions imported before their table was kept.
+    if (connection.execute(f'SELECT 1 FROM {SESSIONS_TABLE} LIMIT 1').fetchone()
+            and not connection.execute(f'SELECT 1 FROM {JOIN_IDS_TABLE} LIMIT 1').fetchone()):
+        refresh_join_ids(connection)
     placeholders = ', '.join('?' for _ in LEGACY_KINDS)
     connection.execute(
         f"UPDATE dataset_profiles SET dataset_kind = ? WHERE LOWER(COALESCE(dataset_kind, '')) IN ({placeholders})",
@@ -541,3 +548,253 @@ def nq_calls_by_dataset(repository: Any) -> dict[int, int]:
             f"JOIN {SESSIONS_TABLE} s ON lower(s.join_id) = lower(n.join_id) WHERE n.join_id <> '' GROUP BY s.dataset_id"
         ).fetchall()
     return {int(row[0]): int(row[1]) for row in rows}
+
+
+# --------------------------------------------------------------------------------------------------------------
+# The layers of the maps: the points of every session, as the KMZ files of the NQ team draw them
+
+# Raise when the points change, so every dataset builds them again from its source.
+POINTS_VERSION = 4
+POINTS_FILE = 'points.parquet'
+# The kinds of point and the layers of the KMZ files they give (the metrics of each kind are its layers).
+POINT_KINDS: dict[str, dict[str, Any]] = {
+    'lte_pcell': {'label': 'LTE PCell', 'tech': 'LTE', 'metrics': ('earfcn', 'pci', 'rsrp', 'rsrq', 'sinr')},
+    'lte_scell': {'label': 'LTE SCell', 'tech': 'LTE', 'metrics': ('earfcn', 'pci', 'rsrp', 'rsrq', 'sinr')},
+    'lte_ncell': {'label': 'LTE NCell', 'tech': 'LTE', 'metrics': ('earfcn', 'pci', 'rsrp', 'rsrq')},
+    'lte_tx': {'label': 'LTE PCell UE Tx Power', 'tech': 'LTE', 'metrics': ('tx',)},
+    'nr_pcell': {'label': 'NR PCell', 'tech': 'NR', 'metrics': ('nrarfcn', 'pci', 'rsrp', 'rsrq', 'sinr')},
+    'nr_scell': {'label': 'NR SCell', 'tech': 'NR', 'metrics': ('nrarfcn', 'pci', 'rsrp', 'rsrq', 'sinr')},
+    'nr_ncell': {'label': 'NR NCell', 'tech': 'NR', 'metrics': ('nrarfcn', 'pci', 'rsrp', 'rsrq')},
+    'nr_lncell': {'label': 'NR LTE NCell', 'tech': 'LTE', 'metrics': ('earfcn', 'pci', 'rsrp', 'rsrq')},
+    'nr_tx': {'label': 'NR PCell UE Tx Power', 'tech': 'NR', 'metrics': ('tx',)},
+    # The 2G and 3G serving cells, which only the RAN Configuration layer draws.
+    'gsm': {'label': 'GSM serving cell', 'tech': 'GSM', 'metrics': ()},
+    'wcdma': {'label': 'WCDMA serving cell', 'tech': 'WCDMA', 'metrics': ()},
+    'event': {'label': 'Event', 'tech': '', 'metrics': ()},
+    'l3': {'label': 'L3 Signaling', 'tech': '', 'metrics': ()},
+}
+# The serving points, which the RAN Configuration layer draws.
+SERVING_KINDS = ('lte_pcell', 'lte_scell', 'lte_tx', 'nr_pcell', 'nr_scell', 'nr_tx', 'gsm', 'wcdma')
+EVENT_GROUPS = ('4G', '5G EN-DC', '5G NR', 'Other')
+L3_GROUPS = ('LTE-NAS', 'LTE-RRC', 'NR-NAS', 'NR-RRC', 'SIP', 'Other')
+RAN_CONFIGURATIONS = ('LTE', '5G EN-DC', '5G SA', 'GSM', 'UNKNOWN')
+POINT_COLUMNS = ('join_id', 'ue', 'kind', 'ts', 'ms', 'lat', 'lon', 'ran', 'freq', 'pci', 'rsrp', 'rsrq', 'sinr', 'tx',
+                 'cell', 'grp', 'name', 'detail', 'direction', 'row')
+
+# NR bands by downlink frequency (MHz), in the order they are chosen where they overlap.
+NR_BANDS_MHZ = (
+    ('n1', 2110, 2170), ('n3', 1805, 1880), ('n7', 2620, 2690), ('n8', 925, 960), ('n20', 791, 821),
+    ('n28', 758, 803), ('n32', 1452, 1496), ('n38', 2570, 2620), ('n40', 2300, 2400), ('n41', 2496, 2690),
+    ('n78', 3300, 3800), ('n77', 3300, 4200), ('n79', 4400, 5000), ('n258', 24250, 27500), ('n257', 26500, 29500),
+)
+
+
+def frequency_label(channel: Any, technology: str) -> str:
+    """The folder of a channel in the KMZ files: ``EARFCN 223 (B1, 2132.3 MHz)``, ``NRARFCN 628032 (n78, 3420.48 MHz)``."""
+    from src.modules.inventory_insights import channel_frequency
+    from src.modules.network_insights import lte_band_for_earfcn
+
+    try:
+        value = int(float(channel))
+    except (TypeError, ValueError):
+        return ''
+    frequency = channel_frequency(value, technology)
+    if str(technology).upper() == 'NR':
+        band = next((name for name, low, high in NR_BANDS_MHZ if frequency is not None and low <= frequency <= high), '')
+        detail = ', '.join(filter(None, (band, f'{round(frequency, 2):g} MHz' if frequency is not None else '')))
+        return f'NRARFCN {value}' + (f' ({detail})' if detail else '')
+    band = lte_band_for_earfcn(value)
+    detail = ', '.join(filter(None, (band, f'{frequency:.1f} MHz' if frequency is not None else '')))
+    return f'EARFCN {value}' + (f' ({detail})' if detail else '')
+
+
+def _points_sql(source: Path, columns: set[str]) -> str:
+    """The points of every session of a source, one row per point of each kind (see POINT_KINDS)."""
+    def col(name: str) -> str:
+        return quote(name) if name in columns else 'NULL'
+
+    def number(name: str) -> str:
+        return f'TRY_CAST({col(name)} AS DOUBLE)'
+
+    def integer(name: str) -> str:
+        return f'TRY_CAST(TRY_CAST({col(name)} AS DOUBLE) AS BIGINT)'
+
+    def text(*names: str) -> str:
+        values = [f"NULLIF(TRIM({col(name)}), '')" for name in names if name in columns]
+        return f'COALESCE({", ".join(values)})' if len(values) > 1 else (values[0] if values else 'NULL')
+
+    def select(kind: str, where: str, *, freq: str = 'NULL', pci: str = 'NULL', rsrp: str = 'NULL', rsrq: str = 'NULL',
+               sinr: str = 'NULL', tx: str = 'NULL', cell: str = 'NULL', grp: str = 'NULL', name: str = 'NULL',
+               detail: str = 'NULL', direction: str = 'NULL') -> str:
+        return (f"SELECT join_id, ue, '{kind}' AS kind, ts, ms, lat, lon, ran, {freq} AS freq, {pci} AS pci, "
+                f"{rsrp} AS rsrp, {rsrq} AS rsrq, {sinr} AS sinr, {tx} AS tx, {cell} AS cell, {grp} AS grp, "
+                f"{name} AS name, {detail} AS detail, {direction} AS direction, row FROM rows WHERE {where}")
+
+    source_table = col('SourceTable')
+    lte_carrier = number('Radio_CarrierIndex')
+    nr_carrier = number('NRRadio_CarrierIndex')
+    msg_type = number('MsgType')
+    neighbour_tech = f"LOWER(COALESCE({col('NRLTENL_Technology')}, ''))"
+    event_group = (f"CASE WHEN {text('Event_EventGroup')} IN ('4G', '5G EN-DC', '5G NR') THEN {text('Event_EventGroup')} "
+                   f"WHEN {text('ATE_EventTopGroup')} = '_4G' THEN '4G' WHEN {text('ATE_EventTopGroup')} = '_5G_EN_DC' THEN '5G EN-DC' "
+                   f"WHEN {text('ATE_EventTopGroup')} = '_5G_NR' THEN '5G NR' ELSE 'Other' END")
+    l3_layer = text('L3_Layer')
+    l3_group = (f"CASE WHEN {l3_layer} IN ('LTE-NAS', 'LTE-RRC', 'SIP') THEN {l3_layer} WHEN {l3_layer} IN ('5GNR-NAS', '5G-NAS') THEN 'NR-NAS' "
+                f"WHEN {l3_layer} = '5GNR-RRC' THEN 'NR-RRC' WHEN {l3_layer} IN ('NR-NAS', 'NR-RRC') THEN {l3_layer} ELSE 'Other' END")
+    rows = (f"SELECT {join_id_expression(col('JoinID'))} AS join_id, {ue_expression(col('UE'))} AS ue, "
+            f"SUBSTR(TRIM({col('EventFullDate')}), 1, 23) AS ts, "
+            f"EPOCH_MS(TRY_CAST({col('EventFullDate')} AS TIMESTAMP)) AS ms, "
+            f"{number('Latitude')} AS lat, {number('Longitude')} AS lon, {text('RANConfiguration')} AS ran, "
+            f"file_row_number AS row, * EXCLUDE (file_row_number) "
+            f"FROM read_parquet({sql_text(source)}, file_row_number = true) "
+            # A session the parser exported under two log days (the same records twice) is drawn once, from its first.
+            f"QUALIFY {col('Log_Day')} IS NOT DISTINCT FROM MIN({col('Log_Day')}) OVER (PARTITION BY "
+            f"{join_id_expression(col('JoinID'))}, {ue_expression(col('UE'))})")
+    parts = [
+        select("lte_pcell", f"{source_table} = 'FactLTERadio' AND {integer('Radio_EARFCN')} IS NOT NULL AND COALESCE({lte_carrier}, 0) = 0",
+               freq=integer('Radio_EARFCN'), pci=integer('Radio_PhyCellId'), rsrp=number('Radio_RSRP'), rsrq=number('Radio_RSRQ'),
+               sinr=number('Radio_SINR'), cell=text('LTE_ECI_Combined', 'LTE_ECI')),
+        select("lte_scell", f"{source_table} = 'FactLTERadio' AND {integer('Radio_EARFCN')} IS NOT NULL AND COALESCE({lte_carrier}, 0) <> 0",
+               freq=integer('Radio_EARFCN'), pci=integer('Radio_PhyCellId'), rsrp=number('Radio_RSRP'), rsrq=number('Radio_RSRQ'),
+               sinr=number('Radio_SINR'), cell=text('LTE_ECI_Combined', 'LTE_ECI')),
+        select("lte_tx", f"{number('PUSCH_PuschTxPower')} IS NOT NULL", tx=number('PUSCH_PuschTxPower'),
+               cell=text('LTE_ECI_Combined', 'LTE_ECI')),
+        select("lte_ncell", f"{source_table} = 'FactLTENeighbors' AND {number('Neigh_RSRP')} IS NOT NULL",
+               freq=integer('Neigh_DL_EARFCN'), pci=integer('Neigh_PCI'), rsrp=number('Neigh_RSRP'), rsrq=number('Neigh_RSRQ')),
+        select("nr_pcell", f"{source_table} = 'FactNR5GRadio' AND {integer('NRRadio_NRARFCN')} IS NOT NULL AND COALESCE({nr_carrier}, 0) = 0",
+               freq=integer('NRRadio_NRARFCN'), pci=integer('NRRadio_PCI'), rsrp=number('NRRadio_RSRP'), rsrq=number('NRRadio_RSRQ'),
+               sinr=number('NRRadio_SINR'), cell=text('NR_NCI')),
+        select("nr_scell", f"{source_table} = 'FactNR5GRadio' AND {integer('NRRadio_NRARFCN')} IS NOT NULL AND COALESCE({nr_carrier}, 0) <> 0",
+               freq=integer('NRRadio_NRARFCN'), pci=integer('NRRadio_PCI'), rsrp=number('NRRadio_RSRP'), rsrq=number('NRRadio_RSRQ'),
+               sinr=number('NRRadio_SINR'), cell=text('NR_NCI')),
+        select("nr_tx", f"{number('NRPUSCH_PUSCHTxPower')} IS NOT NULL", tx=number('NRPUSCH_PUSCHTxPower'), cell=text('NR_NCI')),
+        select("gsm", f"{source_table} = 'FactGSMRadio' AND COALESCE({integer('GSMRadio_ARFCN')}, {number('GSMRadio_RxLevel')}) IS NOT NULL", freq=integer('GSMRadio_ARFCN'), pci=integer('GSMRadio_BSIC'),
+               rsrp=number('GSMRadio_RxLevel'), cell=text('GSMRadio_CI', 'GSMRadio_CID')),
+        select("wcdma", f"{source_table} = 'FactWCDMARadio' AND {integer('WCDMARadio_UARFCN')} IS NOT NULL", freq=integer('WCDMARadio_UARFCN'), pci=integer('WCDMARadio_PSC'),
+               rsrp=number('WCDMARadio_RSCP'), rsrq=number('WCDMARadio_EcNo'), cell=text('WCDMARadio_CID')),
+        # The neighbour list of NR: its NR cells, and its LTE cells while the UE is on NR (5G EN-DC or SA; on LTE alone the
+        # list repeats the LTE neighbours of FactLTENeighbors).
+        select("nr_ncell", f"{source_table} = 'FactNR5GLTENeighborList' AND {neighbour_tech} LIKE '%nr%' "
+                           f"AND {integer('NRLTENL_ARFCN')} IS NOT NULL",
+               freq=integer('NRLTENL_ARFCN'), pci=integer('NRLTENL_PCI'), rsrp=number('NRLTENL_RSRP'), rsrq=number('NRLTENL_RSRQ')),
+        select("nr_lncell", f"{source_table} = 'FactNR5GLTENeighborList' AND {neighbour_tech} LIKE '%lte%' "
+                            f"AND COALESCE(ran, '') IN ('5G EN-DC', '5G SA') AND {number('NRLTENL_RSRP')} IS NOT NULL",
+               freq=integer('NRLTENL_ARFCN'), pci=integer('NRLTENL_PCI'), rsrp=number('NRLTENL_RSRP'), rsrq=number('NRLTENL_RSRQ')),
+        select("event", f"{source_table} IN ('FactEvent', 'FactAdvancedTriggerEvent')", grp=event_group,
+               name=text('Event_EventName', 'ATE_EventFullName'), detail=text('Event_EventSummary', 'ATE_EventSummary')),
+        select("l3", f"{source_table} = 'FactL3Messages'", grp=l3_group, name=text('L3_SimpleMsgName', 'L3_MsgName'),
+               detail=text('L3_CombinedMsgNameSIPResponse', 'L3_SIPResponse'), direction=text('L3_Direction'),
+               freq=integer('L3_ARFCN'), pci=integer('L3_PCI')),
+    ]
+    return f"WITH rows AS ({rows}) " + ' UNION ALL '.join(parts)
+
+
+def points_path(database_path: Any, dataset_id: int) -> Path:
+    return dataset_folder(database_path, dataset_id) / POINTS_FILE
+
+
+def build_points(source: Path, target: Path) -> int:
+    """Write the points of a source to ``target``, by session and time; returns how many there are."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f'.{target.name}.{os.getpid()}.tmp')
+    with duckdb.connect(config={'memory_limit': '1GB', 'threads': 4}) as duck:
+        columns = {row[0] for row in duck.execute(f'DESCRIBE SELECT * FROM read_parquet({sql_text(source)})').fetchall()}
+        duck.execute(f'COPY (SELECT * FROM ({_points_sql(source, columns)}) ORDER BY join_id, ue, ms, kind, row) '
+                     f'TO {sql_text(temporary)} (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 50000)')
+        count = int(duck.execute(f'SELECT COUNT(*) FROM read_parquet({sql_text(temporary)})').fetchone()[0])
+    os.replace(temporary, target)
+    (target.parent / 'points.json').write_text(json.dumps({'version': POINTS_VERSION, 'points': count,
+                                                           'source': str(source)}), encoding='utf-8')
+    return count
+
+
+def ensure_points(database_path: Any, dataset_id: int, source: Any) -> Path | None:
+    """The points of a dataset, built again when they are missing or of an earlier version."""
+    target = points_path(database_path, dataset_id)
+    source = Path(str(source or ''))
+    try:
+        manifest = json.loads((target.parent / 'points.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        manifest = {}
+    if target.is_file() and manifest.get('version') == POINTS_VERSION and manifest.get('source') == str(source):
+        return target
+    if not source.is_file():
+        return None
+    build_points(source, target)
+    return target
+
+
+# The columns of the points a map receives, in this order (see call_layers).
+CLIENT_COLUMNS = ('kind', 'ms', 'ts', 'lat', 'lon', 'ran', 'freq', 'pci', 'rsrp', 'rsrq', 'sinr', 'tx', 'cell', 'grp', 'name',
+                  'detail', 'direction', 'row')
+MAX_CALL_POINTS = 60000
+
+
+def _track(rows: list[tuple], ms_index: int, lat_index: int, lon_index: int) -> list[list[Any]]:
+    """The way of the UE: its positions in time order, each once while it stays there."""
+    track: list[list[Any]] = []
+    for row in rows:
+        lat, lon = row[lat_index], row[lon_index]
+        if lat is None or lon is None or (lat == 0 and lon == 0):
+            continue
+        if track and track[-1][1] == lat and track[-1][2] == lon:
+            continue
+        track.append([row[ms_index], lat, lon])
+    return track
+
+
+def session_points(database_path: Any, session: dict[str, Any], limit: int = MAX_CALL_POINTS) -> list[tuple]:
+    """The points of one session (in time order), read from the points of its dataset."""
+    points = ensure_points(database_path, int(session['dataset_id']), session.get('source'))
+    if points is None:
+        return []
+    names = ', '.join(CLIENT_COLUMNS)
+    with duckdb.connect() as duck:
+        return duck.execute(
+            f'SELECT {names} FROM read_parquet({sql_text(points)}) WHERE join_id = ? AND ue = ? ORDER BY ms, row LIMIT ?',
+            [normalise_join_id(session['join_id']), str(session['ue']), int(limit)]).fetchall()
+
+
+def call_layers(repository: Any, join_id: str) -> dict[str, Any]:
+    """The Layer 3 - DT Logs of a call for its map: its sessions (one per UE), their points by kind of layer, the way of
+    each UE and the folder name of every channel (as the KMZ files name them)."""
+    sessions = sessions_of_join_ids(repository, [join_id]).get(str(join_id or '').strip().casefold(), [])
+    index = {name: position for position, name in enumerate(CLIENT_COLUMNS)}
+    ues: dict[str, Any] = {}
+    channels: dict[str, str] = {}
+    for session in sessions:
+        rows = session_points(repository.db_path, session)
+        for row in rows:
+            kind, freq = row[index['kind']], row[index['freq']]
+            if freq is not None and kind in POINT_KINDS and POINT_KINDS[kind]['tech'] in {'LTE', 'NR'}:
+                tech = POINT_KINDS[kind]['tech']
+                channels.setdefault(f'{tech}:{freq}', frequency_label(freq, tech))
+        ues[str(session['ue'])] = {
+            'session': {key: session.get(key) for key in (
+                'dataset_id', 'dataset_name', 'join_id', 'ue', 'campaign', 'operator', 'service', 'session_name', 'call_status',
+                'start_time', 'end_time', 'duration_s', 'records', 'positions', 'ran_configurations', 'log_day', 'log_file')},
+            'points': [list(row) for row in rows],
+            'track': _track(rows, index['ms'], index['lat'], index['lon']),
+            'truncated': len(rows) >= MAX_CALL_POINTS,
+        }
+    return {
+        'join_id': join_id, 'columns': list(CLIENT_COLUMNS), 'ues': ues, 'channels': channels,
+        'kinds': {key: {'label': value['label'], 'tech': value['tech'], 'metrics': list(value['metrics'])}
+                  for key, value in POINT_KINDS.items()},
+    }
+
+
+def source_row(source: Any, row: int) -> dict[str, Any]:
+    """Every value of one record of a source (its row number in the file), for the details of a point."""
+    path = Path(str(source or ''))
+    if not path.is_file():
+        return {}
+    with duckdb.connect() as duck:
+        found = duck.execute(f'SELECT * EXCLUDE (file_row_number) FROM read_parquet({sql_text(path)}, file_row_number = true) '
+                             f'WHERE file_row_number = ?', [int(row)]).fetchdf()
+    if found.empty:
+        return {}
+    record = found.iloc[0].to_dict()
+    # The subscriber identity of the test SIM is kept in the source but never shown.
+    return {str(key): value for key, value in record.items()
+            if str(key).casefold() not in HIDDEN_FIELDS and value is not None and str(value).strip() not in {'', 'nan', 'None'}}

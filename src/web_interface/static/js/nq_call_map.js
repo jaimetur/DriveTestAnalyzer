@@ -325,6 +325,12 @@
         const [x, y] = toWorld(failure.latitude, failure.longitude);
         [west, east, north, south] = [Math.min(west, x), Math.max(east, x), Math.min(north, y), Math.max(south, y)];
       }
+      // The whole way of the UE of its Layer 3 - DT Logs.
+      const l3Bounds = window.L3Layers?.bounds(shared.l3);
+      if (l3Bounds) {
+        const [x1, y1] = toWorld(l3Bounds.north, l3Bounds.west), [x2, y2] = toWorld(l3Bounds.south, l3Bounds.east);
+        [west, east, north, south] = [Math.min(west, x1), Math.max(east, x2), Math.min(north, y1), Math.max(south, y2)];
+      }
       const width = canvas.clientWidth || 600, height = canvas.clientHeight || 400;
       const resolution = Math.max((east - west) / Math.max(80, width), (south - north) / Math.max(80, height)) * 1.1;
       view = {x: (west + east) / 2, y: (north + south) / 2, resolution: clamp(resolution, MIN_RESOLUTION, MAX_RESOLUTION)};
@@ -336,6 +342,8 @@
     card.replaceChildren(canvas, ruler, selectionBox, samples, controls, attribution, wheelHint, tooltip);
     // The legend goes below the map (in its images too), so it hides none of it.
     (legendHost || card).replaceChildren(legend);
+    // The layers of the Layer 3 - DT Logs of the call (l3_layers.js), over the map so that its images show them.
+    const l3Tree = window.L3Layers ? window.L3Layers.createTree(card, () => shared.l3, () => { renderLegend(); redraw(); }) : null;
 
     const project = (latitude, longitude) => {
       const [x, y] = toWorld(latitude, longitude);
@@ -883,9 +891,16 @@
       // (a Voice call), else, for a Data test (the CDR gives only where it started and how far it went), its way simulated
       // along the way of its car with an arrow where it ended. A Data test without the way of its car shows the zone it can
       // have been in instead.
-      const base = (call.way?.points || []).length > 1 ? call.way.points.map(([latitude, longitude]) => project(latitude, longitude)) : null;
-      const way = base ? windingRoad(base) : null;
-      if (way) {
+      // With Layer 3 - DT Logs, the real way of the UE (from its GPS) replaces the sketch.
+      const realWay = window.L3Layers?.wayOf(shared.l3) || null;
+      const base = realWay ? realWay.map(([latitude, longitude]) => project(latitude, longitude))
+        : (call.way?.points || []).length > 1 ? call.way.points.map(([latitude, longitude]) => project(latitude, longitude)) : null;
+      const way = base ? (realWay ? base : windingRoad(base)) : null;
+      if (way && realWay) {
+        paintRoad(context, way, {arrow: 'end'});
+        const [mx, my] = way[Math.floor(way.length / 2)];
+        hits.push({x: mx, y: my, r: 9, kind: 'l3_way', item: {points: realWay.length}, priority: 4.7});
+      } else if (way) {
         // Between where it started and ended, the arrow goes where no handover place hides it.
         const shares = (call.handovers || []).map((point) => point.fraction ?? -1);
         const [clear] = [.7, .55, .4, .85, .25].reduce((best, share) => {
@@ -911,8 +926,10 @@
           context.setLineDash([]);
         }
       }
+      // The points of the layers of its Layer 3 - DT Logs that are on.
+      window.L3Layers?.draw(context, shared.l3, {project, hits, zoom, width, height});
       // Where the call started (when the CDR gives where it ended too).
-      if (start && call.end) {
+      if (start && call.end && !realWay) {
         const [x1, y1] = project(start[0], start[1]);
         context.beginPath();
         context.arc(x1, y1, 6, 0, Math.PI * 2);
@@ -925,7 +942,7 @@
       }
       // Where each handover took place on its way, an estimate (by the time on each band of the call, else evenly in their
       // order): a ring numbered as its arrow, dashed, on the road of its way (at the share of its way behind it).
-      if (layers.path) {
+      if (layers.path && !realWay) {
         for (const point of call.handovers || []) {
           const [x, y] = way && way !== base && point.fraction !== undefined ? way[Math.round(point.fraction * (way.length - 1))] : project(point.latitude, point.longitude);
           context.beginPath();
@@ -973,9 +990,15 @@
         return length ? [(to[0] - from[0]) / length, (to[1] - from[1]) / length] : [1, 0];
       };
       const [sx, sy] = way ? heading(way[0], way[Math.min(3, way.length - 1)]) : [-1, 0];
-      if (start) tag('START', COLOURS.start, project(start[0], start[1]), [-sx, -sy], !call.end, 10);
-      if (call.end) tag('END', COLOURS.end, project(call.end[0], call.end[1]), way ? heading(way[Math.max(0, way.length - 4)], way.at(-1)) : [1, 0], true, 0);
-      else if (way) tag('END', COLOURS.end, way.at(-1), heading(way[Math.max(0, way.length - 4)], way.at(-1)), false, 14);
+      if (realWay) {
+        // Where the log of the UE starts and ends.
+        tag('START', COLOURS.start, way[0], [-sx, -sy], false, 10);
+        tag('END', COLOURS.end, way.at(-1), heading(way[Math.max(0, way.length - 4)], way.at(-1)), false, 14);
+      } else {
+        if (start) tag('START', COLOURS.start, project(start[0], start[1]), [-sx, -sy], !call.end, 10);
+        if (call.end) tag('END', COLOURS.end, project(call.end[0], call.end[1]), way ? heading(way[Math.max(0, way.length - 4)], way.at(-1)) : [1, 0], true, 0);
+        else if (way) tag('END', COLOURS.end, way.at(-1), heading(way[Math.max(0, way.length - 4)], way.at(-1)), false, 14);
+      }
       // The selected element, ringed.
       const chosen = shared.selection;
       const marked = chosen && hits.find((hit) => hit.item === chosen.item && hit.kind === chosen.kind);
@@ -1306,6 +1329,13 @@
       if (settings.layers.sites && data.sites.some((site) => site.cells.some((cell) => cell.same_pci))) {
         item('line', 'Same PCI and channel as a cell of the call', COLOURS.samePci, 'is-dashed');
       }
+      if (window.L3Layers?.wayOf(shared.l3)) {
+        group('Layer 3 - DT Logs');
+        item('line', 'Real way of the UE (GPS of its log), from START to END', COLOURS.path);
+      }
+      l3Tree?.render();
+      const l3Legend = window.L3Layers?.legend(shared.l3);
+      if (l3Legend) legend.append(l3Legend);
     };
 
     return {
@@ -1318,7 +1348,7 @@
         view = {...view, resolution: Math.min(view.resolution, 2 ** (REFERENCE_ZOOM - 16))};
         redraw();
       },
-      destroy: () => { resizer.disconnect(); document.removeEventListener('keydown', onKey); },
+      destroy: () => { resizer.disconnect(); document.removeEventListener('keydown', onKey); l3Tree?.destroy(); },
     };
   }
 
@@ -1363,7 +1393,8 @@
     mapWrap.append(card, waiting, mapLegend, selected);
     panel.replaceChildren(toolbar, status, mapWrap, node('p', PANEL_HINT, 'form-note nq-map-hint'), cards);
 
-    const shared = {data: null, settings, selection: null};
+    // ``l3``: the Layer 3 - DT Logs of the call shown, ready to draw (l3_layers.js), or null.
+    const shared = {data: null, settings, selection: null, l3: null};
     // The Non-Qualified Calls around that the map and its list show: those of the CDR, the campaign (and NR Mode) or every
     // campaign chosen, of its operator or of every operator (its repetitions and its hotspot whatever the operators chosen).
     shared.showsFailure = (failure) => {
@@ -1462,6 +1493,14 @@
     const siteName = (site) => `Site ${site.site_id} · ${site.network}${site.host_network && site.host_network !== site.network ? ` on ${site.host_network}` : ''}`;
     shared.describe = (kind, item) => {
       const data = shared.data;
+      // A point of the Layer 3 - DT Logs of the call (l3_layers.js), and the real way of its UE.
+      if (kind === 'l3') return window.L3Layers.describe(item, shared.l3);
+      if (kind === 'l3_way') {
+        const sessions = Object.values(shared.l3?.sessions || {});
+        return {title: 'Real way of the UE', rows: [['From', 'The GPS positions of the Layer 3 - DT Logs of the call'],
+          ['Positions', item.points], ['UEs', sessions.map((session) => session.ue).join(', ')],
+          ['Dataset', sessions.map((session) => session.dataset_name).filter(Boolean)[0] || '']]};
+      }
       if (kind === 'call' || kind === 'start') {
         return {title: kind === 'start' ? 'Where the call started' : 'This call', rows: [
           ['Call type', KIND_LABELS[item.kind] || item.service_label], ['JOIN_ID', item.join_id], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
@@ -1617,6 +1656,25 @@
       close.addEventListener('click', () => shared.select(null));
       head.append(close);
       content.append(head, definitionList(rows));
+      if (choice.kind === 'l3' && choice.item.point.row !== undefined && choice.item.point.dataset) {
+        // Every value of the record of the log behind the point, read when asked for.
+        const more = node('button', 'All the fields of this record', 'nq-secondary-action');
+        more.type = 'button';
+        more.addEventListener('click', async () => {
+          more.disabled = true;
+          try {
+            const query = new URLSearchParams({dataset_id: String(choice.item.point.dataset), row: String(choice.item.point.row)});
+            const {record} = await api(`/api/non-qualified-calls/calls/${encodeURIComponent(callKey)}/l3/record?${query}`);
+            const fields = definitionList(Object.entries(record || {}).filter(([name]) => name !== 'IMSI'));
+            fields.classList.add('nq-l3-record');
+            more.replaceWith(fields);
+          } catch (error) {
+            more.disabled = false;
+            toast(error.message, 'error');
+          }
+        });
+        content.append(more);
+      }
       if (choice.kind === 'site') content.append(siteCellsTable(choice.item));
       if (choice.kind === 'failure' && !choice.item.self) {
         const open = node('button', 'Open this call', 'nq-secondary-action');
@@ -2008,7 +2066,28 @@
     };
 
     // -- loading the map of a call -------------------------------------------------------------------------------
-    let request = null;
+    let request = null, l3Request = null, l3Key = '';
+    // The Layer 3 - DT Logs of the call, when the workspace has a session of it (after its map, without delaying it).
+    const loadL3 = async (key) => {
+      if (!window.L3Layers || l3Key === key) return;
+      l3Request?.abort();
+      shared.l3 = null;
+      l3Key = '';
+      if (!shared.data?.call?.l3_log) { redrawAll(); return; }
+      const controllerAbort = new AbortController();
+      l3Request = controllerAbort;
+      try {
+        const payload = await api(`/api/non-qualified-calls/calls/${encodeURIComponent(key)}/l3`, {signal: controllerAbort.signal});
+        if (l3Request !== controllerAbort || key !== callKey) return;
+        shared.l3 = window.L3Layers.prepare(payload);
+        l3Key = key;
+        panelView.fit();
+        expandedView?.fit();
+        redrawAll();
+      } catch (error) {
+        if (error.name !== 'AbortError') toast(error.message, 'error');
+      }
+    };
     const setWaiting = (text) => {
       waiting.hidden = !text;
       waiting.replaceChildren(...(text ? [node('p', text)] : []));
@@ -2048,11 +2127,13 @@
         setWaiting('');
         status.textContent = data.notes.join(' ');
         status.hidden = !data.notes.length;
+        if (!sameCall) { shared.l3 = null; l3Key = ''; }
         renderToolbar();
         renderCards();
         panelView.setView(null);
         if (expandedView) expandedView.setView(null);
         redrawAll();
+        loadL3(key);
         return true;
       } catch (error) {
         if (error.name === 'AbortError') return false;
