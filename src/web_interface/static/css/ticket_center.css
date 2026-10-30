@@ -548,7 +548,7 @@ div.tickets-spent-row { cursor: default; }
 .tickets-locked-note .tickets-primary-button { flex: 0 0 auto; text-decoration: none; }
 .tickets-form-lock { cursor: not-allowed; }
 .tickets-form-lock .tickets-form { opacity: .55; filter: grayscale(.35); }
-/* Screenshots: the zone to choose, drop or paste them, and their previews. */
+/* Attachments: the zone to choose, drop or paste screenshots and files, and their previews (a file shows its type and size). */
 .ticket-dropzone { display: grid; gap: .6rem; }
 .ticket-dropzone-target { position: relative; display: flex; align-items: center; gap: .8rem; padding: .85rem 1rem; border: 2px dashed rgba(220, 38, 38, .3); border-radius: 14px; background: #fffafa; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
 .ticket-dropzone-target:hover, .ticket-dropzone.is-dragging .ticket-dropzone-target { border-color: var(--ticket-accent); background: #fff1f1; }
@@ -563,6 +563,9 @@ div.tickets-spent-row { cursor: default; }
 .ticket-dropzone-previews:empty { display: none; }
 .ticket-dropzone-preview { position: relative; display: grid; gap: .25rem; width: 8.5rem; margin: 0; }
 .ticket-dropzone-preview img { width: 100%; height: 5.6rem; border: 1px solid rgba(16, 49, 74, .14); border-radius: 10px; object-fit: cover; background: #f3f6f8; }
+.ticket-dropzone-file { display: grid; place-content: center; gap: .15rem; height: 5.6rem; border: 1px solid rgba(16, 49, 74, .14); border-radius: 10px; background: #f3f6f8; text-align: center; }
+.ticket-dropzone-file strong { color: #10314a; font-size: .95rem; letter-spacing: .04em; }
+.ticket-dropzone-file small { color: #607585; font-size: .7rem; font-weight: 600; }
 .ticket-dropzone-preview figcaption { overflow: hidden; color: #607585; font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
 .ticket-center .ticket-dropzone-preview button, .ticket-center .ticket-shot-remove { position: absolute; top: .3rem; right: .3rem; display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: rgba(16, 33, 49, .75); box-shadow: none; color: #fff; font-size: 1rem; line-height: 1; }
 .ticket-center .ticket-dropzone-preview button:hover, .ticket-center .ticket-shot-remove:hover { background: #b42318; }
@@ -677,6 +680,19 @@ div.tickets-spent-row { cursor: default; }
 .ticket-shot-open img { display: block; width: 100%; height: 6.6rem; object-fit: cover; transition: transform .15s ease; }
 .ticket-shot-open:hover img { transform: scale(1.04); }
 .ticket-shot figcaption { overflow: hidden; color: #607585; font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+/* The files of a ticket or a comment: their type, name and size, downloaded when clicked. */
+.ticket-files { display: flex; flex-wrap: wrap; gap: .5rem; min-width: 0; margin: 0; padding: 0; list-style: none; }
+.ticket-file { position: relative; display: flex; min-width: 0; max-width: 100%; }
+.ticket-file-link { display: flex; align-items: center; gap: .6rem; min-width: 0; max-width: 22rem; padding: .45rem 2.2rem .45rem .5rem; border: 1px solid rgba(16, 49, 74, .14); border-radius: 10px; background: #f8fafb; color: #10314a; text-decoration: none; transition: border-color .15s ease, background .15s ease; }
+.ticket-file-link:hover, .ticket-file-link:focus-visible { border-color: var(--ticket-accent); background: #fff6f6; }
+.ticket-file-type { display: inline-grid; flex: 0 0 2.6rem; place-items: center; height: 2.2rem; overflow: hidden; border-radius: 7px; background: var(--ticket-gradient); color: #fff; font-size: .62rem; font-weight: 800; letter-spacing: .03em; }
+.ticket-file-name { display: grid; min-width: 0; overflow: hidden; font-size: .8rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.ticket-file-name small { color: #607585; font-size: .7rem; font-weight: 600; }
+.ticket-file-download { position: absolute; top: 50%; right: .65rem; width: 1rem; height: 1rem; fill: none; stroke: #607585; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transform: translateY(-50%); pointer-events: none; }
+.ticket-file:has(.ticket-file-remove) .ticket-file-link { padding-right: 4rem; }
+.ticket-file:has(.ticket-file-remove) .ticket-file-download { right: 2.4rem; }
+.ticket-center .ticket-file-remove { position: absolute; top: 50%; right: .45rem; display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: rgba(16, 33, 49, .75); box-shadow: none; color: #fff; font-size: 1rem; line-height: 1; transform: translateY(-50%); }
+.ticket-center .ticket-file-remove:hover { background: #b42318; }
 .ticket-add-shots { display: grid; gap: .6rem; }
 .ticket-timeline { display: grid; gap: .2rem; margin: 0; padding: 0; list-style: none; }
 .ticket-event { position: relative; display: flex; gap: .7rem; padding: .45rem 0 .45rem 0; }

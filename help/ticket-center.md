@@ -1,12 +1,12 @@
 # Ticket Center
 
-Use **Ticket Center** to report the bugs you find in the tool, suggest improvements and ask for new features, with their screenshots, and to follow each ticket until it is resolved. Every ticket has a type, **Bug**, **Improvement** or **New Feature**, and keeps the version of the tool it was opened with and its date.
+Use **Ticket Center** to report the bugs you find in the tool, suggest improvements and ask for new features, with their screenshots and files, and to follow each ticket until it is resolved. Every ticket has a type, **Bug**, **Improvement** or **New Feature**, and keeps the version of the tool it was opened with and its date.
 
 > [!NOTE]
 > **Module access.** Ticket Center is in every Modules Profile, and it is the only main module that opens without a workspace: tickets belong to the tool, not to a workspace. Super-admins choose who sees it in **Super Admin → Modules Profiles** and can rename it in **Super Admin → Interface Settings**. Every role, `user-viewer` included, can open tickets and comment on them.
 
 > [!TIP]
-> **Share a ticket by its link.** The list (`/tickets`) and each ticket (`/tickets/<number>`), with its screenshots, open without signing in, read-only, so a link can be sent to anyone who reaches the server. Opening, commenting and editing ask to sign in, and signing in from there returns to the ticket. The addresses of Bugs Report, as the module was called before (`/bugs-report`, `/bugs-report/<number>`), lead to the same pages.
+> **Share a ticket by its link.** The list (`/tickets`) and each ticket (`/tickets/<number>`), with its screenshots and files, open without signing in, read-only, so a link can be sent to anyone who reaches the server. Opening, commenting and editing ask to sign in, and signing in from there returns to the ticket. The addresses of Bugs Report, as the module was called before (`/bugs-report`, `/bugs-report/<number>`), lead to the same pages.
 
 ## Presentation
 
@@ -50,7 +50,7 @@ The **Dashboard** panel shows the tickets of a period: **Period**, at its top, c
 
 The **Statistics** tab shows how the tickets of a period are going, with every bar coloured by type (Bug, Improvement, New Feature) and what each part is when the mouse is over it. **Period**, at its top, chooses **All time** (by default), **This week** (from Monday), **This month**, **This quarter** or **This year**; Time Spent follows the same choice, and the browser remembers it. Each view counts the tickets opened in the period, and those resolved or closed in it for the times to resolve and the versions that fixed them; the comparisons are with the period before (last week, last month…), and All time has none: it covers every ticket since the first one, drawn over time by months when it spans 8 months or more, else by weeks (by days under 4 weeks). A part that lists its tickets lists all those of its value, of any period.
 
-- **Resolution rate**: the share of the tickets opened in the period already resolved or closed, as a ring. **Time to resolve**: the median time from opened to resolved of the tickets resolved in the period, and how much faster or slower it is than in the period before. **Tickets opened**: those opened in the period and how many more or fewer than in the period before. **Comments per ticket**, with the screenshots per ticket.
+- **Resolution rate**: the share of the tickets opened in the period already resolved or closed, as a ring. **Time to resolve**: the median time from opened to resolved of the tickets resolved in the period, and how much faster or slower it is than in the period before. **Tickets opened**: those opened in the period and how many more or fewer than in the period before. **Comments per ticket**, with the attachments (screenshots and files) per ticket.
 - **Every ticket**: three donuts of the tickets opened in the period by type, status and priority, with the count and share of each; a part, or its line in the legend, lists its tickets.
 - **Time to resolve**: the tickets resolved or closed by the time they took (under a day, 1–3 days, 3–7 days, 1–2 weeks, 2–4 weeks, 1–3 months, more), with their median, average and the time 9 in 10 of them took, and the median of each type and priority. **Open** shows instead the age of the open tickets by the same groups.
 - **Backlog**: the tickets created, resolved (or closed) and open by the end of each day (this week and this month), week (this quarter) or month (this year) of the period, up to today. A ticket is open from the day it was opened to the day it was resolved, closed or rejected.
@@ -85,7 +85,7 @@ It shows:
 - **Module**: the main module it is about, or **General**.
 - **Priority**: from **P1 · Critical** to **P5 · Trivial** (**P3 · Medium** by default).
 - **Description**: for a bug, what you did, what happened and what you expected (the steps to reproduce it help a lot); for an improvement, how it works today and how it could work better; for a new feature, what you need and how the tool could do it. It reads as written below.
-- **Screenshots**: paste them with Ctrl+V (⌘V on a Mac) anywhere in the form, drop them on the zone or click it to choose them. Up to 10 PNG, JPEG, GIF or WebP images of 10 MB each; each one shows a preview that can be removed before sending.
+- **Screenshots and files**: paste them with Ctrl+V (⌘V on a Mac) anywhere in the form, drop them on the zone or click it to choose them. Up to 10 of 10 MB each at once. PNG, JPEG, GIF and WebP images are screenshots and show as their image; any other file (a log, a CDR sample, an Excel, PowerPoint, Word or PDF file, a ZIP…) shows its type, name and size. Programs and scripts (`.exe`, `.bat`, `.cmd`, `.ps1`, `.sh`, `.jar`, `.js`, `.msi`…) are not taken: zip them to attach them. Each one shows a preview that can be removed before sending.
 
 **Open Ticket** saves it with the version of the tool and the date, and opens its page. The browser it was opened from is kept too, to help reproduce a bug.
 
@@ -125,11 +125,11 @@ Expected:
 
 ## All Tickets
 
-The **All Tickets** tab shows the table of every ticket, the latest activity first: its number, type, title, module, reporter, date and version, priority, status (with the version that fixed it), who attends it, its last update and how many comments and screenshots it has. Click a row to open its page.
+The **All Tickets** tab shows the table of every ticket, the latest activity first: its number, type, title, module, reporter, date and version, priority, status (with the version that fixed it), who attends it, its last update and how many comments and attachments (screenshots and files) it has. Click a row to open its page.
 
 Below the search, the chips filter the list by **Type**, **Status**, **Priority**, **Module** and **Assignee** (**Unassigned** or a super-admin); press several chips of a group to list any of them, and none to list every value of it: **All**, the first chip of each group, is pressed then, and a click on it unpresses the others. The list starts with the open statuses (New, In Progress and Waiting for Info); **All** of Status lists every ticket. Search by title, reporter or number (`#12`), choose a reporter (by name, the default users first) or **Only mine**, the days the tickets were **Created** and last **Updated** (several days at once, the newest first, after **Last Day**: the newest day of creation or of update of the tickets, whatever day it is; while it is chosen, the days are unticked and disabled), and order by latest activity, priority, newest or oldest.
 
-Every column of the table also filters the tickets as in Excel: the **▾** of its header lists its values (the title of **Ticket**, the priority, the status with the version that fixed it, the comments and screenshots of **Activity**…) with a search, **Select all** and **Clear**, and **Apply** shows only the tickets with a value checked (while searching, only the values found); **Updated** lists its days by year and month. Filtered columns are highlighted, and every filter adds up with the others. **Reset filters** lists the open tickets again, clearing every other filter and the column filters. Each browser remembers the filters and the order.
+Every column of the table also filters the tickets as in Excel: the **▾** of its header lists its values (the title of **Ticket**, the priority, the status with the version that fixed it, the comments and attachments of **Activity**…) with a search, **Select all** and **Clear**, and **Apply** shows only the tickets with a value checked (while searching, only the values found); **Updated** lists its days by year and month. Filtered columns are highlighted, and every filter adds up with the others. **Reset filters** lists the open tickets again, clearing every other filter and the column filters. Each browser remembers the filters and the order.
 
 ## The page of a ticket
 
@@ -137,9 +137,9 @@ The page shows the title with its type, status, priority and module, who opened 
 
 The buttons at the end of that row open the **First**, **Previous**, **Next** and **Last** ticket, around the position of the ticket (*3 of 12*). They follow the Tickets list as the browser showed it last, with its filters and its order (*Tickets list*); a ticket that is not in that list, for example one opened from a link or left out by the filters, goes through every ticket by number (*By number*), and so do the tickets it leads to. Where the ticket cannot move (before the first one, after the last one) the buttons are disabled, and pointing at a button shows the number and title of the ticket it opens.
 
-- **Description** shows the text and the screenshots of the ticket; click a screenshot to see it full size (**Open original** opens the image itself). The reporter and the super-admins add more screenshots below it.
+- **Description** shows the text and the attachments of the ticket: its screenshots, which open full size when clicked (**Open original** opens the image itself), and below them its files, with their type, name and size, which download when clicked (they never open in the page). The reporter and the super-admins add more screenshots and files below it.
 - **Timeline** lists, oldest first, the comments and every change: who changed the type, status, priority, module, assignment, fixed version, title or description, from what to what and when.
-- **Add a comment** writes a comment with optional screenshots, pasted, dropped or chosen as in the New Ticket form. The author of a comment edits it (it shows *edited*) and deletes it; super-admins delete any comment.
+- **Add a comment** writes a comment with optional screenshots and files, pasted, dropped or chosen as in the New Ticket form. The author of a comment edits it (it shows *edited*) and deletes it; super-admins delete any comment.
 - **Details** sums up the type, status, priority, module, reporter, who attends it, the versions it was opened and fixed with, and its dates.
 - **Edit** (reporter and super-admins) changes the title and the description (and the module, for the reporter), and the **Priority** of **Details** changes as soon as another one is chosen.
 - **Manage** (super-admins) changes the type, status, who attends the ticket, who reported it, its module, the version it was opened with and the version that fixed it, whoever opened it; **Save** records each change in the timeline.
@@ -178,19 +178,19 @@ New, In Progress and Waiting for Info are the open statuses. The date a ticket i
 
 | Action | Who |
 | --- | --- |
-| Read the tickets, their timeline and screenshots | Anyone with the link, without signing in |
+| Read the tickets, their timeline, screenshots and files | Anyone with the link, without signing in |
 | Open tickets and comment on them | Every signed-in user with the module |
-| Edit a ticket (title, module, description), change its priority and add screenshots to it | Its reporter and the super-admins |
+| Edit a ticket (title, module, description), change its priority and add screenshots and files to it | Its reporter and the super-admins |
 | Edit or delete a comment | Its author (super-admins also delete any comment) |
 | Manage a ticket: **Attend this ticket**, its type, its status, who attends it (a super-admin), who reported it, its module, the version it was opened with the version that fixes it and the dates it was opened and resolved, whoever opened it | Super-admins |
-| Delete a ticket with its timeline and screenshots | Super-admins |
+| Delete a ticket with its timeline and attachments | Super-admins |
 
 **Attend this ticket** sets a new ticket **In Progress** and assigns it to the super-admin who presses it. Moving a ticket to In Progress or Waiting for Info assigns it to that super-admin when nobody attends it, and resolving it without a fixed version records the version running then.
 
 After signing in, and as soon as they arrive while signed in, each super-admin is told of the tickets still **New** that other users opened and it has not opened, with their type, in the dialog that also lists the [access requests](super-admin.md#access-requests) waiting for activation; **Open Ticket Center** lists the New tickets. Each ticket is told once to each super-admin.
 
-Every action (opening, editing, comments, screenshots, attention, type changes and deletion) is recorded in the [App Events](app-logs.md#app-events), as *Ticket created*, *Ticket managed* and so on.
+Every action (opening, editing, comments, attachments added and deleted, attention, type changes and deletion) is recorded in the [App Events](app-logs.md#app-events), as *Ticket created*, *Ticket managed* and so on.
 
 ## Portability
 
-The tickets live in the application database, so **Application Config** exports, transfers, backups and restores include them with every workspace. **Ticket Center** in [Import / Export / Transfer](administrator-config.md#import-export-transfer) and in [Backup Protection](super-admin.md#backup-protection) also moves them on their own (super-admins only): one JSON document with every ticket, its type and its timeline, and each screenshot as a file. Importing or restoring it merges the tickets into the server: the tickets, comments and screenshots it does not have are added, a ticket or comment changed later in the package takes its newer content, and nothing is deleted. The tables are **Tickets**, **Ticket Comments** and **Ticket Attachments** in the Database Viewer, where the screenshots show as their size and cannot be edited.
+The tickets live in the application database, so **Application Config** exports, transfers, backups and restores include them with every workspace. **Ticket Center** in [Import / Export / Transfer](administrator-config.md#import-export-transfer) and in [Backup Protection](super-admin.md#backup-protection) also moves them on their own (super-admins only): one JSON document with every ticket, its type and its timeline, and each attachment (screenshot or file) as a file. Importing or restoring it merges the tickets into the server: the tickets, comments and attachments it does not have are added, a ticket or comment changed later in the package takes its newer content, and nothing is deleted. The tables are **Tickets**, **Ticket Comments** and **Ticket Attachments** in the Database Viewer, where the attachments show as their size and cannot be edited.

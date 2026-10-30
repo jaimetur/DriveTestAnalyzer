@@ -789,7 +789,7 @@ async function builders(pres) {
 
 async function ticketCenter(pres) {
   const slide = pres.addSlide({ masterName: 'CONTENT', sectionTitle: 'Modules' });
-  heading(slide, 'Ticket Center — ', 'every bug and idea, tracked to closure', 'Report bugs, improvements and new features with their screenshots, and follow each one until it is resolved');
+  heading(slide, 'Ticket Center — ', 'every bug and idea, tracked to closure', 'Report bugs, improvements and new features with their screenshots and files, and follow each one until it is resolved');
   const statuses = [['New', K.blue], ['In Progress', K.deep], ['Waiting for Info', 'E07800'], ['Resolved', '0C9B5B']];
   for (const [index, [label, color]] of statuses.entries()) {
     const x = 0.6 + index * 2.6;
@@ -823,14 +823,14 @@ async function ticketCenter(pres) {
     text(slide, label, { x: 7.15, y, w: 2.2, h: 0.3, fontSize: 11, bold: true, color: color === 'FAD22D' ? K.ink : K.white, valign: 'middle' });
   }
   const chips = [['TbLayoutDashboard', 'Dashboard of the period chosen'], ['TbChartDonut', 'Statistics: times, backlog & activity'], ['TbClock', 'Time spent by module, type & person'],
-    ['TbHistory', 'Timeline of comments & changes'], ['TbPhoto', 'Screenshots in every ticket'], ['TbTag', 'Version it was opened with']];
+    ['TbHistory', 'Timeline of comments & changes'], ['TbPaperclip', 'Screenshots and files in every ticket'], ['TbTag', 'Version it was opened with']];
   for (const [index, [name, label]] of chips.entries()) {
     const x = 0.6 + (index % 3) * 4.09; const y = 5.6 + Math.floor(index / 3) * 0.6;
     shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x, y, w: 3.95, h: 0.48, rectRadius: 0.12, fill: { color: K.white }, line: { color: K.line, width: 1 } });
     slide.addImage({ data: await icon(name, 'B38F00'), x: x + 0.14, y: y + 0.1, w: 0.28, h: 0.28, objectName: named('icon') });
     text(slide, label, { x: x + 0.52, y, w: 3.35, h: 0.48, fontSize: 11.5, bold: true, valign: 'middle' });
   }
-  slide.addNotes('The Ticket Center collects the bugs, improvements and new features of the users, with their screenshots and '
+  slide.addNotes('The Ticket Center collects the bugs, improvements and new features of the users, with their screenshots, files and '
     + 'the version they were opened with, from New to Resolved, Closed or Rejected, each with its priority from P1 to P5 and a '
     + 'timeline of comments and changes. Its Dashboard, Statistics and Time Spent show the period chosen, all time, this week, month, quarter or year: '
     + 'the tickets created and resolved, those that need attention and the latest activity; the resolution rate, the time to resolve, the backlog, '

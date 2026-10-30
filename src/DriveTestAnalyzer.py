@@ -6877,8 +6877,8 @@ ARCHIVE_COMPONENTS = frozenset({
 })
 # Users & Access: every account with its Modules Profile and workspaces, plus the Modules Profiles and Workspace Groups.
 USERS_ACCESS_ARCHIVE_PATH = 'users-access/users-access.json'
-# Ticket Center: every ticket with its type and timeline in one JSON document, and each screenshot in
-# ticket-center/attachments.
+# Ticket Center: every ticket with its type and timeline in one JSON document, and each attachment (screenshot or
+# file) in ticket-center/attachments.
 TICKET_CENTER_ARCHIVE_PATH = 'ticket-center/ticket-center.json'
 # The application content of a backup, besides the workspaces.
 APPLICATION_BACKUP_COMPONENTS = ('app_database', 'users_access', 'ticket_center')
@@ -11458,7 +11458,7 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
 
 
 def _ticket_center_archive_files() -> dict[str, bytes]:
-    """The Ticket Center files of a package (archive path → content): the tickets in one JSON document and each screenshot."""
+    """The Ticket Center files of a package (archive path → content): the tickets in one JSON document and each attachment."""
     from src.modules.ticket_center import ticket_center_payload
 
     payload, files = ticket_center_payload(repository)
@@ -11476,11 +11476,11 @@ def import_ticket_center(archive: zipfile.ZipFile) -> str:
     from src.modules.import_changes import breakdown, compare, counted, ticket_items
 
     files = {name: archive.read(name) for name in archive.namelist() if name.startswith(f'{ATTACHMENTS_ARCHIVE_DIR}/') and not name.endswith('/')}
-    before = ticket_items(ticket_center_payload(repository, screenshots=False)[0])
+    before = ticket_items(ticket_center_payload(repository, attachments=False)[0])
     summary = merge_ticket_center(repository, payload, files)
-    changes = compare(ticket_items(payload), before, ticket_items(ticket_center_payload(repository, screenshots=False)[0]))
+    changes = compare(ticket_items(payload), before, ticket_items(ticket_center_payload(repository, attachments=False)[0]))
     headline = (f"Imported Ticket Center: {counted(changes.count, 'ticket')}" + (f' ({breakdown(changes)})' if changes.count else '')
-                + f", {counted(summary['comments'], 'new comment')} and {counted(summary['screenshots'], 'new screenshot')}.")
+                + f", {counted(summary['comments'], 'new comment')} and {counted(summary['attachments'], 'new attachment')}.")
     lines = [changes_section('Updated tickets', changes.updated)] if changes.updated else []
     return import_notice(' '.join([headline, *lines]), headline, lines)
 
@@ -12008,7 +12008,7 @@ def _application_settings_items(target: Repository) -> dict[str, list[Any]]:
                         uid='stage-labels', key='stage-labels')
     hierarchy = Item(name='Scoring Aggregation Hierarchy', values={'levels': load_aggregation_hierarchy(target)},
                      uid='scoring-aggregation-hierarchy', key='scoring-aggregation-hierarchy')
-    return {'tickets': ticket_items(ticket_center_payload(target, screenshots=False)[0]), 'interface_settings': [*modules, stage_labels],
+    return {'tickets': ticket_items(ticket_center_payload(target, attachments=False)[0]), 'interface_settings': [*modules, stage_labels],
             'scoring_aggregation_hierarchy': [hierarchy]}
 
 
@@ -12130,7 +12130,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
         if TICKET_CENTER_ARCHIVE_PATH not in archive.namelist():
             return 'The package does not contain Ticket Center.', [], True
         package = ticket_items(_json_document(archive.read(TICKET_CENTER_ARCHIVE_PATH)))
-        changes = compare(package, ticket_items(ticket_center_payload(repository, screenshots=False)[0]), package)
+        changes = compare(package, ticket_items(ticket_center_payload(repository, attachments=False)[0]), package)
         detail = breakdown(changes)
         lines = [_new_items_section('Adds tickets', changes.new)] if changes.new else []
         lines += [changes_section('Updates tickets', changes.updated)] if changes.updated else []
@@ -17904,7 +17904,7 @@ def _local_report_date(value: Any) -> str:
 # ---------------------------------------------------------------------------
 # Ticket Center (formerly Bugs Report): the tickets of the bugs, improvements and new features of the tool
 # (src/modules/ticket_center.py), under /tickets (the /bugs-report addresses of before redirect there). Anyone with a link
-# reads the list, a ticket and its screenshots without signing in; every signed-in user with the module opens tickets
+# reads the list, a ticket and its attachments without signing in; every signed-in user with the module opens tickets
 # and comments on them; the reporter edits the ticket and its priority, and only super-admins attend it (status, type,
 # assignment, fixed version) or delete it.
 # ---------------------------------------------------------------------------
@@ -18004,9 +18004,9 @@ def require_ticket(ticket_id: int) -> dict[str, Any]:
     return ticket
 
 
-async def read_ticket_screenshots(files: list[UploadFile]) -> list[dict[str, Any]]:
-    """The screenshots of a form, read at most 10 MB each and checked to be images."""
-    from src.modules.ticket_center import MAX_ATTACHMENT_BYTES, screenshot_files
+async def read_ticket_attachments(files: list[UploadFile]) -> list[dict[str, Any]]:
+    """The screenshots and files of a form, read at most 10 MB each and checked (attachment_files)."""
+    from src.modules.ticket_center import MAX_ATTACHMENT_BYTES, attachment_files
 
     uploads = []
     for upload in files or []:
@@ -18014,9 +18014,9 @@ async def read_ticket_screenshots(files: list[UploadFile]) -> list[dict[str, Any
             continue
         content = await upload.read(MAX_ATTACHMENT_BYTES + 1)
         await upload.close()
-        uploads.append((upload.filename or 'screenshot', content))
+        uploads.append((upload.filename or '', content))
     try:
-        return screenshot_files(uploads)
+        return attachment_files(uploads)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -18039,9 +18039,9 @@ def ticket_center_title() -> str:
 @app.get('/tickets', response_class=HTMLResponse)
 def ticket_center_page(request: Request, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     from src.modules.ticket_center import (
-        DEFAULT_PRIORITY, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES, STATUSES, TEXT_GUIDE,
-        TEXT_GUIDES, TICKET_TYPE_HINTS, TICKET_TYPES, list_tickets, local_today, recently_resolved, ticket_dashboard,
-        ticket_board, ticket_events, ticket_statistics, ticket_time_spent,
+        BLOCKED_EXTENSIONS, DEFAULT_PRIORITY, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES,
+        STATUSES, TEXT_GUIDE, TEXT_GUIDES, TICKET_TYPE_HINTS, TICKET_TYPES, list_tickets, local_today, recently_resolved,
+        ticket_dashboard, ticket_board, ticket_events, ticket_statistics, ticket_time_spent,
     )
 
     modules = ticket_modules()
@@ -18072,15 +18072,16 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
         'ticket_assignees': user_choices(ticket['assigned_to'] for ticket in tickets if ticket['assigned_to']),
         'ticket_module_chips': [module for module in modules if module['key'] in used_modules],
         'ticket_unassigned': any(not ticket['assigned_to'] for ticket in tickets),
-        'ticket_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'ticket_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
+        'ticket_max_attachments': MAX_ATTACHMENTS_PER_UPLOAD, 'ticket_max_attachment_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
+        'ticket_blocked_extensions': sorted(BLOCKED_EXTENSIONS),
     })
 
 
 @app.get('/tickets/{ticket_id:int}', response_class=HTMLResponse)
 def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     from src.modules.ticket_center import (
-        FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES, STATUSES, TEXT_GUIDES,
-        TICKET_TYPES, ticket_neighbours, ticket_references, ticket_titles,
+        BLOCKED_EXTENSIONS, FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES,
+        STATUSES, TEXT_GUIDES, TICKET_TYPES, ticket_neighbours, ticket_references, ticket_titles,
     )
 
     modules = ticket_modules()
@@ -18124,7 +18125,8 @@ def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Dep
         # its reporter (every account, and its current reporter even without an account here).
         'ticket_super_admins': user_choices(username for username, person in people.items() if person['role'] == 'super-admin'),
         'ticket_reporters': user_choices([*people, *([] if ticket['created_by'] in people else [ticket['created_by']])]),
-        'ticket_max_screenshots': MAX_ATTACHMENTS_PER_UPLOAD, 'ticket_max_screenshot_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
+        'ticket_max_attachments': MAX_ATTACHMENTS_PER_UPLOAD, 'ticket_max_attachment_mb': MAX_ATTACHMENT_BYTES // (1024 * 1024),
+        'ticket_blocked_extensions': sorted(BLOCKED_EXTENSIONS),
         # The tickets its description and comments mention as #<number>, which rich_text.js links.
         'ticket_references': ticket_references(repository, [ticket['description'], *(comment['body'] for comment in ticket['comments'])]),
         # Its navigation to the first, previous, next and last tickets by number; ticket_center.js follows the order of
@@ -18135,13 +18137,17 @@ def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Dep
 
 @app.get('/tickets/attachments/{attachment_id:int}')
 def ticket_attachment(attachment_id: int, user: SessionUser | None = Depends(optional_user)) -> Response:
-    from src.modules.ticket_center import get_attachment
+    """An attachment of a ticket: a screenshot shows in the page; any other file (or an image its bytes do not prove)
+    is only downloaded, never opened in the page."""
+    from src.modules.ticket_center import FILE_CONTENT_TYPE, get_attachment, image_content_type, is_screenshot
 
     attachment = get_attachment(repository, attachment_id)
     if attachment is None:
-        raise HTTPException(status_code=404, detail='The screenshot does not exist.')
-    return Response(bytes(attachment['content']), media_type=str(attachment['content_type']), headers={
-        'Content-Disposition': f"inline; filename*=UTF-8''{quote(str(attachment['file_name']))}",
+        raise HTTPException(status_code=404, detail='The attachment does not exist.')
+    content = bytes(attachment['content'])
+    shown = is_screenshot(attachment['content_type']) and image_content_type(content) == attachment['content_type']
+    return Response(content, media_type=str(attachment['content_type']) if shown else FILE_CONTENT_TYPE, headers={
+        'Content-Disposition': f"{'inline' if shown else 'attachment'}; filename*=UTF-8''{quote(str(attachment['file_name']))}",
         'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff',
     })
 
@@ -18154,23 +18160,23 @@ async def open_ticket(
     module: str = Form(''),
     priority: str = Form('P3'),
     ticket_type: str = Form(''),
-    screenshots: list[UploadFile] = File(default=[]),
+    attachments: list[UploadFile] = File(default=[]),
     user: SessionUser = Depends(current_user),
 ) -> JSONResponse:
     from src.modules.ticket_center import create_ticket
 
     if module and module not in {item['key'] for item in ticket_modules()}:
         raise HTTPException(status_code=400, detail='Choose a module of the tool.')
-    files = await read_ticket_screenshots(screenshots)
+    files = await read_ticket_attachments(attachments)
     try:
         ticket_id = create_ticket(repository, title=title, description=description, module=module, priority=priority,
                             ticket_type=ticket_type, username=user.username, app_version=__version__,
-                            browser=request.headers.get('user-agent', ''), screenshots=files)
+                            browser=request.headers.get('user-agent', ''), attachments=files)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     repository.try_add_log(user.username, 'ticket_created', json.dumps({
         'ticket_id': ticket_id, 'type': ticket_type, 'title': title.strip()[:160], 'module': module, 'priority': priority,
-        'app_version': __version__, 'screenshots': [file['file_name'] for file in files],
+        'app_version': __version__, 'attachments': [file['file_name'] for file in files],
     }, ensure_ascii=False))
     return JSONResponse({'id': ticket_id, 'url': f'/tickets/{ticket_id}', 'message': f'Ticket #{ticket_id} opened.'})
 
@@ -18278,40 +18284,40 @@ def manage_ticket(
 async def comment_on_ticket(
     ticket_id: int,
     body: str = Form(''),
-    screenshots: list[UploadFile] = File(default=[]),
+    attachments: list[UploadFile] = File(default=[]),
     user: SessionUser = Depends(current_user),
 ) -> JSONResponse:
     from src.modules.ticket_center import add_comment
 
     require_ticket(ticket_id)
-    files = await read_ticket_screenshots(screenshots)
+    files = await read_ticket_attachments(attachments)
     try:
         comment_id = add_comment(repository, ticket_id, user.username, body, files)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     repository.try_add_log(user.username, 'ticket_commented', json.dumps({
-        'ticket_id': ticket_id, 'comment_id': comment_id, 'length': len(body.strip()), 'screenshots': [file['file_name'] for file in files],
+        'ticket_id': ticket_id, 'comment_id': comment_id, 'length': len(body.strip()), 'attachments': [file['file_name'] for file in files],
     }, ensure_ascii=False))
     return JSONResponse({'id': comment_id})
 
 
-@app.post('/api/tickets/{ticket_id:int}/screenshots')
-async def add_ticket_screenshots(
+@app.post('/api/tickets/{ticket_id:int}/attachments')
+async def add_ticket_attachments(
     ticket_id: int,
-    screenshots: list[UploadFile] = File(default=[]),
+    attachments: list[UploadFile] = File(default=[]),
     user: SessionUser = Depends(current_user),
 ) -> JSONResponse:
     from src.modules.ticket_center import add_attachments
 
     ticket = require_ticket(ticket_id)
     if not can_edit_ticket(user, ticket):
-        raise HTTPException(status_code=403, detail='Only the reporter of this ticket and the super-admins can add screenshots to it.')
-    files = await read_ticket_screenshots(screenshots)
+        raise HTTPException(status_code=403, detail='Only the reporter of this ticket and the super-admins can add attachments to it.')
+    files = await read_ticket_attachments(attachments)
     if not files:
-        raise HTTPException(status_code=400, detail='Choose or paste a screenshot.')
+        raise HTTPException(status_code=400, detail='Choose or paste a screenshot or a file.')
     added = add_attachments(repository, ticket_id, user.username, files)
-    repository.try_add_log(user.username, 'ticket_screenshots_added', json.dumps({
-        'ticket_id': ticket_id, 'screenshots': [file['file_name'] for file in files],
+    repository.try_add_log(user.username, 'ticket_attachments_added', json.dumps({
+        'ticket_id': ticket_id, 'attachments': [file['file_name'] for file in files],
     }, ensure_ascii=False))
     return JSONResponse({'added': added})
 
@@ -18349,18 +18355,19 @@ def delete_ticket_comment(comment_id: int, user: SessionUser = Depends(current_u
     return JSONResponse({'deleted': True})
 
 
-@app.post('/api/tickets/screenshots/{attachment_id:int}/delete')
-def delete_ticket_screenshot(attachment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
+@app.post('/api/tickets/attachments/{attachment_id:int}/delete')
+def delete_ticket_attachment(attachment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
     from src.modules.ticket_center import delete_attachment, get_attachment
 
     attachment = get_attachment(repository, attachment_id, with_content=False)
     if attachment is None:
-        raise HTTPException(status_code=404, detail='The screenshot does not exist.')
+        raise HTTPException(status_code=404, detail='The attachment does not exist.')
     if user.role != 'super-admin' and str(attachment['uploaded_by']).casefold() != user.username.casefold():
-        raise HTTPException(status_code=403, detail='Only who added a screenshot and the super-admins can delete it.')
+        raise HTTPException(status_code=403, detail='Only who added an attachment and the super-admins can delete it.')
     delete_attachment(repository, attachment_id)
-    repository.try_add_log(user.username, 'ticket_screenshot_deleted', json.dumps({
-        'ticket_id': attachment['ticket_id'], 'screenshot': attachment['file_name'],
+    repository.try_add_log(user.username, 'ticket_attachment_deleted', json.dumps({
+        'ticket_id': attachment['ticket_id'], 'comment_id': attachment['comment_id'], 'attachment': attachment['file_name'],
+        'content_type': attachment['content_type'], 'size': attachment['size'],
     }, ensure_ascii=False))
     return JSONResponse({'deleted': True})
 

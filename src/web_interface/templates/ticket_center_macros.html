@@ -20,28 +20,46 @@
 <span class="ticket-module" style="--module-color: {{ color }}">{{ title }}</span>
 {%- endmacro %}
 
-{# Screenshots chosen, dropped or pasted (Ctrl+V / Cmd+V anywhere in the form), shown before they are sent (ticket_center.js). #}
-{% macro screenshots_zone(max_files, max_mb, label='Screenshots') -%}
-<div class="ticket-dropzone" data-ticket-dropzone data-max-files="{{ max_files }}" data-max-mb="{{ max_mb }}">
+{# Screenshots and files chosen, dropped or pasted (Ctrl+V / Cmd+V anywhere in the form), shown before they are sent (ticket_center.js). #}
+{% macro attachments_zone(max_files, max_mb, blocked, label='Screenshots and files') -%}
+<div class="ticket-dropzone" data-ticket-dropzone data-max-files="{{ max_files }}" data-max-mb="{{ max_mb }}" data-blocked="{{ blocked | join(' ') }}">
   <label class="ticket-dropzone-target">
-    <input type="file" name="screenshots" accept="image/png,image/jpeg,image/gif,image/webp" multiple aria-label="{{ label }}" data-ticket-dropzone-input>
-    <span class="ticket-dropzone-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="m21 15-5-5-9 9"/></svg></span>
-    <span class="ticket-dropzone-text"><strong>{{ label }}</strong><small>Paste with Ctrl+V / ⌘V, drop or click to choose · up to {{ max_files }} images of {{ max_mb }} MB</small></span>
+    <input type="file" name="attachments" multiple aria-label="{{ label }}" data-ticket-dropzone-input>
+    <span class="ticket-dropzone-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m21.4 11-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></span>
+    <span class="ticket-dropzone-text"><strong>{{ label }}</strong><small>Paste with Ctrl+V / ⌘V, drop or click to choose · up to {{ max_files }} screenshots or files of {{ max_mb }} MB</small></span>
   </label>
   <div class="ticket-dropzone-previews" data-ticket-dropzone-previews></div>
 </div>
 {%- endmacro %}
 
-{% macro screenshot_gallery(attachments, user, removable=false) -%}
-{% if attachments %}
+{# The attachments of a ticket or a comment: its screenshots as thumbnails that open full size, then its other files,
+   which download. #}
+{% macro attachment_gallery(attachments, user, removable=false) -%}
+{% set screenshots = attachments | selectattr('is_screenshot') | list %}
+{% set files = attachments | rejectattr('is_screenshot') | list %}
+{% if screenshots %}
 <div class="ticket-gallery">
-  {% for attachment in attachments %}
+  {% for attachment in screenshots %}
   <figure class="ticket-shot">
     <button type="button" class="ticket-shot-open" data-ticket-shot="/tickets/attachments/{{ attachment.id }}" data-ticket-shot-name="{{ attachment.file_name }}" title="{{ attachment.file_name }}"><img src="/tickets/attachments/{{ attachment.id }}" alt="{{ attachment.file_name }}" loading="lazy"></button>
     <figcaption>{{ attachment.file_name }}</figcaption>
-    {% if removable and (user.role == 'super-admin' or attachment.uploaded_by | lower == user.username | lower) %}<button type="button" class="ticket-shot-remove" data-ticket-shot-delete="{{ attachment.id }}" title="Delete this screenshot" aria-label="Delete {{ attachment.file_name }}">×</button>{% endif %}
+    {% if removable and (user.role == 'super-admin' or attachment.uploaded_by | lower == user.username | lower) %}<button type="button" class="ticket-shot-remove" data-ticket-attachment-delete="{{ attachment.id }}" data-attachment-kind="screenshot" title="Delete this screenshot" aria-label="Delete {{ attachment.file_name }}">×</button>{% endif %}
   </figure>
   {% endfor %}
 </div>
+{% endif %}
+{% if files %}
+<ul class="ticket-files">
+  {% for attachment in files %}
+  <li class="ticket-file">
+    <a class="ticket-file-link" href="/tickets/attachments/{{ attachment.id }}" download="{{ attachment.file_name }}" title="Download {{ attachment.file_name }}">
+      <span class="ticket-file-type" aria-hidden="true">{{ (attachment.extension[1:] or 'file') | upper }}</span>
+      <span class="ticket-file-name">{{ attachment.file_name }}<small>{{ attachment.size | filesizeformat }}</small></span>
+      <svg class="ticket-file-download" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+    </a>
+    {% if removable and (user.role == 'super-admin' or attachment.uploaded_by | lower == user.username | lower) %}<button type="button" class="ticket-file-remove" data-ticket-attachment-delete="{{ attachment.id }}" data-attachment-kind="file" title="Delete this file" aria-label="Delete {{ attachment.file_name }}">×</button>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
 {% endif %}
 {%- endmacro %}

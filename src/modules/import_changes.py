@@ -334,7 +334,7 @@ def users_access_items(document: Any) -> dict[str, list[Item]]:
 
 
 def ticket_items(document: Any) -> list[Item]:
-    """The tickets of a Ticket Center document, with their comments and screenshots (not the changes of their fields,
+    """The tickets of a Ticket Center document, with their comments and attachments (not the changes of their fields,
     which their values tell)."""
     items = []
     for ticket in _documents(document, 'tickets'):
@@ -343,7 +343,7 @@ def ticket_items(document: Any) -> list[Item]:
         values = {key: value for key, value in ticket.items() if key not in {'comments', 'attachments'}}
         values['comments'] = [comment for comment in ticket.get('comments') or []
                               if isinstance(comment, dict) and comment.get('kind') != 'change']
-        values['screenshots'] = [{key: value for key, value in attachment.items() if key != 'path'}
+        values['attachments'] = [{key: value for key, value in attachment.items() if key != 'path'}
                                  for attachment in ticket.get('attachments') or [] if isinstance(attachment, dict)]
         items.append(Item(name=str(ticket.get('title') or ''), values=values, uid=str(ticket['uid'])))
     return items

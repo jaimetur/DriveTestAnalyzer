@@ -1,15 +1,17 @@
 """Ticket Center: the tickets of the bugs, improvements and new features users ask for in the tool.
 
 Every ticket has a type (Bug, Improvement or New Feature) and keeps the version of the tool it was opened with, its
-date, a priority from P1 (most urgent) to P5 and a status, with its screenshots and a timeline of comments and changes.
+date, a priority from P1 (most urgent) to P5 and a status, with its attachments (screenshots and other files) and a
+timeline of comments and changes.
 The tables live in the application database (``tickets``, ``ticket_comments`` and ``ticket_attachments``), so the
-tickets are shared by every workspace. Each ticket, comment and screenshot has a ``uid`` that identifies it on any
+tickets are shared by every workspace. Each ticket, comment and attachment has a ``uid`` that identifies it on any
 server, so a Ticket Center package merges into another server without duplicating anything.
 """
 from __future__ import annotations
 
 import json
 import math
+import mimetypes
 import re
 import uuid
 from datetime import date, datetime, timedelta
@@ -44,9 +46,15 @@ MAX_TEXT_LENGTH = 20_000
 MAX_VERSION_LENGTH = 40
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 MAX_ATTACHMENTS_PER_UPLOAD = 10
-# Screenshots only: the formats a browser shows as an image, recognised by their first bytes (never SVG, which can
-# carry scripts).
+# Screenshots: the formats a browser shows as an image, recognised by their first bytes (never SVG, which can carry
+# scripts); the page shows them. Any other file is attached as a file, which is downloaded and never shown in the page.
 IMAGE_EXTENSIONS = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp'}
+FILE_CONTENT_TYPE = 'application/octet-stream'
+# The files a ticket does not take: programs and scripts that run when they are opened (zipped, they can be attached).
+BLOCKED_EXTENSIONS = frozenset({
+    '.app', '.bat', '.cmd', '.com', '.command', '.cpl', '.dll', '.exe', '.hta', '.jar', '.js', '.jse', '.lnk', '.msi',
+    '.pif', '.pkg', '.ps1', '.reg', '.scr', '.sh', '.vbe', '.vbs', '.wsf', '.wsh',
+})
 # What the timeline names each field of a ticket after.
 FIELD_LABELS = {
     'title': 'Title', 'description': 'Description', 'ticket_type': 'Type', 'module': 'Module', 'priority': 'Priority',
@@ -124,24 +132,47 @@ def image_content_type(content: bytes) -> str | None:
     return None
 
 
-def screenshot_files(files: Iterable[tuple[str, bytes]]) -> list[dict[str, Any]]:
-    """The screenshots of an upload, checked: images of at most 10 MB, and at most 10 at once."""
-    screenshots = []
+def is_screenshot(content_type: object) -> bool:
+    """Whether an attachment of this type is a screenshot, which the page shows; any other is a file."""
+    return str(content_type) in IMAGE_EXTENSIONS
+
+
+def file_extension(file_name: object) -> str:
+    """The extension of a file name (``.pdf``), lower-case, or '' when it has none of letters and digits."""
+    suffix = PurePosixPath(str(file_name or '').rstrip('. ')).suffix.lower()
+    return suffix if re.fullmatch(r'\.[a-z0-9]{1,10}', suffix) else ''
+
+
+def checked_attachment(file_name: object, content: bytes) -> dict[str, Any]:
+    """An attachment as a ticket keeps it: its name without folders and its type, that of a screenshot from its first
+    bytes, or else that of a file by its extension (never an image type the bytes do not prove). Programs and scripts
+    are refused."""
+    name = PurePosixPath(str(file_name or '').replace('\\', '/')).name.strip()[:200]
+    if file_extension(name) in BLOCKED_EXTENSIONS:
+        raise ValueError(f'"{name}" is a program or a script, which tickets do not take: zip it to attach it.')
+    content_type = image_content_type(content)
+    if content_type is not None:
+        name = name or 'screenshot'
+        return {'file_name': name if '.' in name else name + IMAGE_EXTENSIONS[content_type], 'content_type': content_type, 'content': content}
+    guessed = mimetypes.guess_type(name)[0] if name else None
+    return {'file_name': name or 'file', 'content_type': guessed if guessed and not guessed.startswith('image/') else FILE_CONTENT_TYPE,
+            'content': content}
+
+
+def attachment_files(files: Iterable[tuple[str, bytes]]) -> list[dict[str, Any]]:
+    """The attachments of an upload, checked: screenshots and other files of at most 10 MB each, at most 10 at once,
+    and no programs or scripts."""
+    attachments = []
     for file_name, content in files:
         if not content:
             continue
-        name = PurePosixPath(str(file_name or '').replace('\\', '/')).name.strip()[:200] or 'screenshot'
         if len(content) > MAX_ATTACHMENT_BYTES:
+            name = PurePosixPath(str(file_name or '').replace('\\', '/')).name.strip()[:200] or 'file'
             raise ValueError(f'"{name}" is larger than {MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB.')
-        content_type = image_content_type(content)
-        if content_type is None:
-            raise ValueError(f'"{name}" is not a PNG, JPEG, GIF or WebP image.')
-        if '.' not in name:
-            name += IMAGE_EXTENSIONS[content_type]
-        screenshots.append({'file_name': name, 'content_type': content_type, 'content': content})
-    if len(screenshots) > MAX_ATTACHMENTS_PER_UPLOAD:
-        raise ValueError(f'Attach at most {MAX_ATTACHMENTS_PER_UPLOAD} screenshots at once.')
-    return screenshots
+        attachments.append(checked_attachment(file_name, content))
+    if len(attachments) > MAX_ATTACHMENTS_PER_UPLOAD:
+        raise ValueError(f'Attach at most {MAX_ATTACHMENTS_PER_UPLOAD} files at once.')
+    return attachments
 
 
 def _text(value: object, maximum: int) -> str:
@@ -153,21 +184,21 @@ def _new_uid() -> str:
 
 
 def _insert_attachments(conn: Any, ticket_id: int, comment_id: int | None, username: str,
-                        screenshots: Iterable[dict[str, Any]], created_at: str) -> int:
+                        attachments: Iterable[dict[str, Any]], created_at: str) -> int:
     count = 0
-    for screenshot in screenshots:
+    for attachment in attachments:
         conn.execute(
             'INSERT INTO ticket_attachments (uid, ticket_id, comment_id, file_name, content_type, size, content, uploaded_by, created_at) '
             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (screenshot.get('uid') or _new_uid(), ticket_id, comment_id, screenshot['file_name'], screenshot['content_type'],
-             len(screenshot['content']), screenshot['content'], username, created_at),
+            (attachment.get('uid') or _new_uid(), ticket_id, comment_id, attachment['file_name'], attachment['content_type'],
+             len(attachment['content']), attachment['content'], username, created_at),
         )
         count += 1
     return count
 
 
 def create_ticket(repository: Repository, *, title: str, description: str, module: str, priority: str, username: str,
-               app_version: str, ticket_type: str, browser: str = '', screenshots: Iterable[dict[str, Any]] = ()) -> int:
+               app_version: str, ticket_type: str, browser: str = '', attachments: Iterable[dict[str, Any]] = ()) -> int:
     """Open a ticket of a type with the version of the tool and the date; returns its id."""
     title = _text(title, MAX_TITLE_LENGTH)
     if not title:
@@ -185,7 +216,7 @@ def create_ticket(repository: Repository, *, title: str, description: str, modul
              _text(app_version, MAX_VERSION_LENGTH), _text(browser, 400), username, now, now),
         )
         ticket_id = int(cursor.lastrowid)
-        _insert_attachments(conn, ticket_id, None, username, screenshots, now)
+        _insert_attachments(conn, ticket_id, None, username, attachments, now)
     return ticket_id
 
 
@@ -197,7 +228,7 @@ def ticket_events(repository: Repository) -> list[dict[str, Any]]:
 
 
 def list_tickets(repository: Repository) -> list[dict[str, Any]]:
-    """Every ticket, the latest activity first, with how many comments and screenshots it has."""
+    """Every ticket, the latest activity first, with how many comments and attachments it has."""
     with repository.global_connection() as conn:
         rows = conn.execute(
             "SELECT t.*, "
@@ -884,7 +915,7 @@ def ticket_statistics(tickets: list[dict[str, Any]], events: Iterable[dict[str, 
                       today: date | None = None, versions: Iterable[str] = ()) -> dict[str, Any]:
     """What the Statistics panel of Ticket Center shows for each period of ``TICKET_SCOPES`` (All time first shown),
     from the tickets of the list (with the names of their reporters and assignees, the titles and colours of their
-    modules and their numbers of comments and screenshots) and the entries of their timelines (``ticket_events``)."""
+    modules and their numbers of comments and attachments) and the entries of their timelines (``ticket_events``)."""
     today = today or local_today()
     events = list(events)
     first_day = min((day for ticket in tickets if (day := _day(ticket.get('created_at')))), default=today)
@@ -896,7 +927,7 @@ def ticket_statistics(tickets: list[dict[str, Any]], events: Iterable[dict[str, 
 def _scope_statistics(tickets: list[dict[str, Any]], events: list[dict[str, Any]], today: date, versions: Iterable[str],
                       scope: dict[str, Any]) -> dict[str, Any]:
     """The Statistics of one period (``scope``, from ``ticket_scope``). Of the tickets opened in it: the share resolved
-    or closed, how many against the period before, the comments and screenshots per ticket, their type, status and
+    or closed, how many against the period before, the comments and attachments per ticket, their type, status and
     priority, the age of those still open, the versions they were opened with and their modules, reporters and
     assignees. Of those resolved or closed in it: how long they took (against the period before) and the versions that
     fixed them (the latest of the tool, ``versions``, also without tickets). And over the period: the tickets created,
@@ -933,7 +964,7 @@ def _scope_statistics(tickets: list[dict[str, Any]], events: list[dict[str, Any]
         'resolve_previous': _duration_text(previous_median) if before else '', 'resolve_change': speed,
         'created': len(scoped), 'created_change': len(scoped) - len(opened_in(before)) if before else None,
         'comments': round(sum(int(ticket.get('comment_count') or 0) for ticket in scoped) / len(scoped), 1) if scoped else 0,
-        'screenshots': round(sum(int(ticket.get('attachment_count') or 0) for ticket in scoped) / len(scoped), 1) if scoped else 0,
+        'attachments': round(sum(int(ticket.get('attachment_count') or 0) for ticket in scoped) / len(scoped), 1) if scoped else 0,
     }
     mix = [
         {'key': 'type', 'title': 'By type', **_donut(
@@ -1013,7 +1044,8 @@ def _scope_statistics(tickets: list[dict[str, Any]], events: list[dict[str, Any]
 
 
 def get_ticket(repository: Repository, ticket_id: int) -> dict[str, Any] | None:
-    """A ticket with its timeline (comments and changes, oldest first) and the screenshots of each entry."""
+    """A ticket with its timeline (comments and changes, oldest first) and the attachments of each entry: whether each
+    is a screenshot (shown) or a file (downloaded), and the extension of its name."""
     with repository.global_connection() as conn:
         row = conn.execute('SELECT * FROM tickets WHERE id = ?', (int(ticket_id),)).fetchone()
         if row is None:
@@ -1028,6 +1060,8 @@ def get_ticket(repository: Repository, ticket_id: int) -> dict[str, Any] | None:
         ).fetchall()]
     by_comment: dict[int | None, list[dict[str, Any]]] = {}
     for attachment in attachments:
+        attachment['is_screenshot'] = is_screenshot(attachment['content_type'])
+        attachment['extension'] = file_extension(attachment['file_name'])
         by_comment.setdefault(attachment['comment_id'], []).append(attachment)
     for comment in comments:
         try:
@@ -1222,7 +1256,7 @@ def set_ticket_dates(repository: Repository, ticket_id: int, opened: object = No
             changes['resolved_at'] = [str(row['resolved_at'] or ''), assignments['resolved_at']]
         for entry_id, moment in moved.items():
             conn.execute('UPDATE ticket_comments SET created_at = ? WHERE id = ?', (stamp(moment), entry_id))
-        # The screenshots of a comment keep its date; those of the ticket itself, its opening.
+        # The attachments of a comment keep its date; those of the ticket itself, its opening.
         for attachment in conn.execute('SELECT id, comment_id, created_at FROM ticket_attachments WHERE ticket_id = ?',
                                        (int(ticket_id),)).fetchall():
             moment = _moment(attachment['created_at'])
@@ -1243,12 +1277,12 @@ def set_ticket_dates(repository: Repository, ticket_id: int, opened: object = No
 
 
 def add_comment(repository: Repository, ticket_id: int, username: str, body: str,
-                screenshots: Iterable[dict[str, Any]] = ()) -> int:
-    """Add a comment, with its screenshots, to the timeline of a ticket; returns its id."""
+                attachments: Iterable[dict[str, Any]] = ()) -> int:
+    """Add a comment, with its attachments, to the timeline of a ticket; returns its id."""
     body = _text(body, MAX_TEXT_LENGTH)
-    screenshots = list(screenshots)
-    if not body and not screenshots:
-        raise ValueError('Write a comment or attach a screenshot.')
+    attachments = list(attachments)
+    if not body and not attachments:
+        raise ValueError('Write a comment or attach a screenshot or a file.')
     now = local_now_iso()
     with repository.global_connection() as conn:
         if conn.execute('SELECT 1 FROM tickets WHERE id = ?', (int(ticket_id),)).fetchone() is None:
@@ -1258,7 +1292,7 @@ def add_comment(repository: Repository, ticket_id: int, username: str, body: str
             (_new_uid(), int(ticket_id), username, body, now),
         )
         comment_id = int(cursor.lastrowid)
-        _insert_attachments(conn, int(ticket_id), comment_id, username, screenshots, now)
+        _insert_attachments(conn, int(ticket_id), comment_id, username, attachments, now)
         conn.execute('UPDATE tickets SET updated_at = ? WHERE id = ?', (now, int(ticket_id)))
     return comment_id
 
@@ -1279,19 +1313,19 @@ def edit_comment(repository: Repository, comment_id: int, body: str) -> None:
 
 
 def delete_comment(repository: Repository, comment_id: int) -> None:
-    """Delete a comment and its screenshots."""
+    """Delete a comment and its attachments."""
     with repository.global_connection() as conn:
         conn.execute('DELETE FROM ticket_attachments WHERE comment_id = ?', (int(comment_id),))
         conn.execute("DELETE FROM ticket_comments WHERE id = ? AND kind = 'comment'", (int(comment_id),))
 
 
-def add_attachments(repository: Repository, ticket_id: int, username: str, screenshots: Iterable[dict[str, Any]]) -> int:
-    """Add screenshots to a ticket itself; returns how many."""
+def add_attachments(repository: Repository, ticket_id: int, username: str, attachments: Iterable[dict[str, Any]]) -> int:
+    """Add screenshots and files to a ticket itself; returns how many."""
     now = local_now_iso()
     with repository.global_connection() as conn:
         if conn.execute('SELECT 1 FROM tickets WHERE id = ?', (int(ticket_id),)).fetchone() is None:
             raise LookupError('The ticket does not exist.')
-        count = _insert_attachments(conn, int(ticket_id), None, username, screenshots, now)
+        count = _insert_attachments(conn, int(ticket_id), None, username, attachments, now)
         if count:
             conn.execute('UPDATE tickets SET updated_at = ? WHERE id = ?', (now, int(ticket_id)))
     return count
@@ -1310,7 +1344,7 @@ def delete_attachment(repository: Repository, attachment_id: int) -> None:
 
 
 def delete_ticket(repository: Repository, ticket_id: int) -> None:
-    """Delete a ticket with its timeline and screenshots."""
+    """Delete a ticket with its timeline and attachments."""
     with repository.global_connection() as conn:
         conn.execute('DELETE FROM ticket_attachments WHERE ticket_id = ?', (int(ticket_id),))
         conn.execute('DELETE FROM ticket_comments WHERE ticket_id = ?', (int(ticket_id),))
@@ -1318,18 +1352,20 @@ def delete_ticket(repository: Repository, ticket_id: int) -> None:
 
 
 def _attachment_archive_path(attachment: dict[str, Any]) -> str:
-    return f"{ATTACHMENTS_ARCHIVE_DIR}/{attachment['uid']}{IMAGE_EXTENSIONS.get(str(attachment['content_type']), '')}"
+    extension = IMAGE_EXTENSIONS.get(str(attachment['content_type'])) or file_extension(attachment['file_name'])
+    return f"{ATTACHMENTS_ARCHIVE_DIR}/{attachment['uid']}{extension}"
 
 
-def ticket_center_payload(repository: Repository, *, screenshots: bool = True) -> tuple[dict[str, Any], dict[str, bytes]]:
-    """The Ticket Center package: every ticket with its type and timeline in one JSON document, and each screenshot as
-    a file (its archive path → its content; none without ``screenshots``, which only the document needs)."""
+def ticket_center_payload(repository: Repository, *, attachments: bool = True) -> tuple[dict[str, Any], dict[str, bytes]]:
+    """The Ticket Center package: every ticket with its type and timeline in one JSON document, and each attachment
+    (screenshot or file) as a file (its archive path → its content; none without ``attachments``, which only the
+    document needs)."""
     files: dict[str, bytes] = {}
-    columns = '*' if screenshots else 'id, uid, ticket_id, comment_id, file_name, content_type, size, uploaded_by, created_at'
+    columns = '*' if attachments else 'id, uid, ticket_id, comment_id, file_name, content_type, size, uploaded_by, created_at'
     with repository.global_connection() as conn:
         rows = [dict(row) for row in conn.execute('SELECT * FROM tickets ORDER BY id').fetchall()]
         comments = [dict(row) for row in conn.execute('SELECT * FROM ticket_comments ORDER BY id').fetchall()]
-        attachments = [dict(row) for row in conn.execute(f'SELECT {columns} FROM ticket_attachments ORDER BY id').fetchall()]
+        stored = [dict(row) for row in conn.execute(f'SELECT {columns} FROM ticket_attachments ORDER BY id').fetchall()]
     comment_uids = {comment['id']: comment['uid'] for comment in comments}
     tickets = {}
     for row in rows:
@@ -1345,12 +1381,12 @@ def ticket_center_payload(repository: Repository, *, screenshots: bool = True) -
             changes = {}
         ticket['comments'].append({key: comment[key] for key in ('uid', 'username', 'kind', 'body', 'created_at', 'edited_at')}
                                   | {'changes': changes if isinstance(changes, dict) else {}})
-    for attachment in attachments:
+    for attachment in stored:
         ticket = tickets.get(attachment['ticket_id'])
         if ticket is None:
             continue
         path = _attachment_archive_path(attachment)
-        if screenshots:
+        if attachments:
             files[path] = bytes(attachment['content'])
         ticket['attachments'].append({
             'uid': attachment['uid'], 'comment_uid': comment_uids.get(attachment['comment_id']) if attachment['comment_id'] else None,
@@ -1361,12 +1397,12 @@ def ticket_center_payload(repository: Repository, *, screenshots: bool = True) -
 
 
 def merge_ticket_center(repository: Repository, payload: object, files: dict[str, bytes]) -> dict[str, int]:
-    """Merge a Ticket Center package: the tickets, comments and screenshots this server does not have are added, and a
+    """Merge a Ticket Center package: the tickets, comments and attachments this server does not have are added, and a
     ticket or comment changed later on the other server takes its newer content. Nothing here is deleted; a ticket
     without a valid type is a bug."""
     if not isinstance(payload, dict) or payload.get('format') != EXPORT_FORMAT or not isinstance(payload.get('tickets'), list):
         raise ValueError('The Ticket Center file is not valid.')
-    summary = {'created': 0, 'updated': 0, 'comments': 0, 'screenshots': 0}
+    summary = {'created': 0, 'updated': 0, 'comments': 0, 'attachments': 0}
     fields = ('ticket_type', 'title', 'description', 'module', 'priority', 'status', 'app_version', 'fixed_version', 'browser',
               'created_by', 'assigned_to', 'created_at', 'updated_at', 'resolved_at')
     with repository.global_connection() as conn:
@@ -1425,16 +1461,17 @@ def merge_ticket_center(repository: Repository, payload: object, files: dict[str
                 if conn.execute('SELECT 1 FROM ticket_attachments WHERE uid = ?', (str(attachment['uid']),)).fetchone():
                     continue
                 content = files.get(str(attachment.get('path') or ''))
-                content_type = image_content_type(content) if content else None
-                if content_type is None:
+                if not content:
+                    continue
+                try:
+                    checked = checked_attachment(attachment.get('file_name'), content)
+                except ValueError:
                     continue
                 comment_uid = str(attachment.get('comment_uid') or '')
                 comment_id = comment_ids.get(comment_uid) if comment_uid else None
                 if comment_uid and comment_id is None:
                     continue
-                _insert_attachments(conn, ticket_id, comment_id, str(attachment.get('uploaded_by') or 'import'), [{
-                    'uid': str(attachment['uid']), 'file_name': str(attachment.get('file_name') or 'screenshot')[:200],
-                    'content_type': content_type, 'content': content,
-                }], str(attachment.get('created_at') or values['created_at']))
-                summary['screenshots'] += 1
+                _insert_attachments(conn, ticket_id, comment_id, str(attachment.get('uploaded_by') or 'import'),
+                                    [{**checked, 'uid': str(attachment['uid'])}], str(attachment.get('created_at') or values['created_at']))
+                summary['attachments'] += 1
     return summary

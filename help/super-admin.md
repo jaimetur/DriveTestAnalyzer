@@ -156,7 +156,7 @@ In **Back up now**, select in **Backup content** one or more content types and t
 
 - **Configuration Content: Application database** stores the shared application configuration, including the Scoring aggregation hierarchy, the users, Modules Profiles, Workspace Groups and tickets.
 - **Configuration Content: Users & Access** stores one JSON file with the users, Modules Profiles and Workspace Groups; restore merges it like an import of [Users & Access](administrator-config.md#export-targets), so the other users and settings are kept.
-- **Configuration Content: Ticket Center** stores one JSON file with every ticket, its type and its timeline, and each screenshot as a file; restore merges them into the server like an import of Ticket Center, without deleting any.
+- **Configuration Content: Ticket Center** stores one JSON file with every ticket, its type and its timeline, and each attachment (screenshot or file) as a file; restore merges them into the server like an import of Ticket Center, without deleting any.
 - **Workspace Content: Workspace Database** stores the selected workspace SQLite databases.
 - **Workspace Content: Designs** stores one JSON file with every PPT definition and its comments for each selected workspace; restore replaces the Designs the workspace has and adds the others, like an import (see [Matching and creators](administrator-config.md#matching-and-creators)).
 - **Workspace Content: PPT Templates** stores one CSV file for each PPT Template; restore replaces the templates the workspace has and adds the others, like an import.

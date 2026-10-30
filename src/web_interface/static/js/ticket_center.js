@@ -1,5 +1,5 @@
 // Ticket Center: its dashboard, the list of tickets with its filters, the New Ticket form, and the page of each ticket
-// (its edition, comments, screenshots and the super-admin attention).
+// (its edition, comments, attachments and the super-admin attention).
 (() => {
   // The sections of Bugs Report, as Ticket Center was called, and Tickets, as All Tickets was called, in the links of before.
   const formerSections = {'#section-bug-reports': '#section-all-tickets', '#section-new-bug-report': '#section-new-ticket', '#section-tickets': '#section-all-tickets'};
@@ -25,13 +25,19 @@
   // The numbers of the tickets the list showed last in this browser, in its order: the page of a ticket goes through them.
   const listOrderKey = 'ticket-center:list-order';
 
-  // Screenshots: chosen, dropped or pasted anywhere in their form, previewed before they are sent.
+  // Attachments: screenshots and files chosen, dropped or pasted anywhere in their form, previewed before they are sent
+  // (a screenshot as its image, a file as its type, name and size). Programs and scripts are left out, as the server
+  // refuses them.
   const dropzones = new Map();
+  const isScreenshot = (file) => /^image\/(png|jpeg|gif|webp)$/.test(file.type);
+  const extensionOf = (name) => (/\.([a-z0-9]{1,10})$/i.exec(String(name).replace(/[. ]+$/, ''))?.[1] || '').toLowerCase();
+  const sizeText = (bytes) => (bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} kB`);
   document.querySelectorAll('[data-ticket-dropzone]').forEach((zone) => {
     const input = zone.querySelector('[data-ticket-dropzone-input]');
     const previews = zone.querySelector('[data-ticket-dropzone-previews]');
     const maxFiles = Number(zone.dataset.maxFiles) || 10;
     const maxBytes = (Number(zone.dataset.maxMb) || 10) * 1024 * 1024;
+    const blocked = new Set((zone.dataset.blocked || '').split(' ').filter(Boolean));
     let files = [];
     const sync = () => {
       const transfer = new DataTransfer();
@@ -40,10 +46,20 @@
       previews.replaceChildren(...files.map((file, index) => {
         const item = document.createElement('figure');
         item.className = 'ticket-dropzone-preview';
-        const image = document.createElement('img');
-        image.src = URL.createObjectURL(file);
-        image.alt = file.name;
-        image.addEventListener('load', () => URL.revokeObjectURL(image.src), {once: true});
+        item.title = `${file.name} · ${sizeText(file.size)}`;
+        let preview;
+        if (isScreenshot(file)) {
+          preview = document.createElement('img');
+          preview.src = URL.createObjectURL(file);
+          preview.alt = file.name;
+          preview.addEventListener('load', () => URL.revokeObjectURL(preview.src), {once: true});
+        } else {
+          preview = document.createElement('span');
+          preview.className = 'ticket-dropzone-file';
+          preview.innerHTML = '<strong></strong><small></small>';
+          preview.querySelector('strong').textContent = (extensionOf(file.name) || 'file').toUpperCase();
+          preview.querySelector('small').textContent = sizeText(file.size);
+        }
         const caption = document.createElement('figcaption');
         caption.textContent = file.name;
         const remove = document.createElement('button');
@@ -51,20 +67,20 @@
         remove.textContent = '×';
         remove.title = `Remove ${file.name}`;
         remove.addEventListener('click', () => { files.splice(index, 1); sync(); });
-        item.append(image, caption, remove);
+        item.append(preview, caption, remove);
         return item;
       }));
       zone.classList.toggle('has-files', files.length > 0);
-      zone.dispatchEvent(new CustomEvent('ticket-screenshots-change', {bubbles: true, detail: {count: files.length}}));
+      zone.dispatchEvent(new CustomEvent('ticket-attachments-change', {bubbles: true, detail: {count: files.length}}));
     };
     const add = (incoming) => {
-      const images = [...incoming].filter((file) => /^image\/(png|jpeg|gif|webp)$/.test(file.type));
-      if (incoming.length && !images.length) return info('Only PNG, JPEG, GIF or WebP images can be attached.');
-      for (const file of images) {
+      for (const file of [...incoming]) {
+        if (blocked.has(`.${extensionOf(file.name)}`)) { info(`"${file.name}" is a program or a script, which tickets do not take: zip it to attach it.`); continue; }
         if (file.size > maxBytes) { info(`"${file.name}" is larger than ${zone.dataset.maxMb} MB.`); continue; }
-        if (files.length >= maxFiles) { info(`Attach at most ${maxFiles} screenshots at once.`); break; }
+        if (!file.size) continue;
+        if (files.length >= maxFiles) { info(`Attach at most ${maxFiles} files at once.`); break; }
         // A pasted screenshot has no name of its own: it takes the time it was pasted.
-        const named = file.name && file.name !== 'image.png' ? file
+        const named = !isScreenshot(file) || (file.name && file.name !== 'image.png') ? file
           : new File([file], `screenshot-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}-${files.length + 1}.${file.type.split('/')[1].replace('jpeg', 'jpg')}`, {type: file.type});
         files.push(named);
       }
@@ -548,19 +564,19 @@
     } catch (error) { info(error.message); }
   });
 
-  const shotsForm = page.querySelector('[data-ticket-shots-form]');
-  shotsForm?.addEventListener('ticket-screenshots-change', (event) => {
-    shotsForm.querySelector('[data-ticket-shots-actions]').hidden = !event.detail.count;
+  const attachmentsForm = page.querySelector('[data-ticket-attachments-form]');
+  attachmentsForm?.addEventListener('ticket-attachments-change', (event) => {
+    attachmentsForm.querySelector('[data-ticket-attachments-actions]').hidden = !event.detail.count;
   });
-  shotsForm?.addEventListener('submit', async (event) => {
+  attachmentsForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    busy(shotsForm, true);
+    busy(attachmentsForm, true);
     try {
-      await send(`/api/tickets/${ticketId}/screenshots`, new FormData(shotsForm));
+      await send(`/api/tickets/${ticketId}/attachments`, new FormData(attachmentsForm));
       reload();
     } catch (error) {
       info(error.message);
-      busy(shotsForm, false);
+      busy(attachmentsForm, false);
     }
   });
 
@@ -570,7 +586,7 @@
     const zone = commentForm.querySelector('[data-ticket-dropzone]');
     if (!commentForm.body.value.trim() && !dropzones.get(zone)?.count()) {
       commentForm.body.focus();
-      return info('Write a comment or attach a screenshot.');
+      return info('Write a comment or attach a screenshot or a file.');
     }
     busy(commentForm, true);
     try {
@@ -611,7 +627,7 @@
       editor.body.focus();
     });
     comment.querySelector('[data-ticket-comment-delete]')?.addEventListener('click', async () => {
-      const accepted = await confirmAction('Delete this comment and its screenshots?', {title: 'Delete comment', confirmLabel: 'Delete comment', tone: 'warning'});
+      const accepted = await confirmAction('Delete this comment and its attachments?', {title: 'Delete comment', confirmLabel: 'Delete comment', tone: 'warning'});
       if (!accepted) return;
       try {
         await send(`/api/tickets/comments/${commentId}/delete`, new FormData());
@@ -620,11 +636,12 @@
     });
   });
 
-  page.querySelectorAll('[data-ticket-shot-delete]').forEach((button) => button.addEventListener('click', async () => {
-    const accepted = await confirmAction('Delete this screenshot?', {title: 'Delete screenshot', confirmLabel: 'Delete screenshot', tone: 'warning'});
+  page.querySelectorAll('[data-ticket-attachment-delete]').forEach((button) => button.addEventListener('click', async () => {
+    const kind = button.dataset.attachmentKind === 'file' ? 'file' : 'screenshot';
+    const accepted = await confirmAction(`Delete this ${kind}?`, {title: `Delete ${kind}`, confirmLabel: `Delete ${kind}`, tone: 'warning'});
     if (!accepted) return;
     try {
-      await send(`/api/tickets/screenshots/${button.dataset.ticketShotDelete}/delete`, new FormData());
+      await send(`/api/tickets/attachments/${button.dataset.ticketAttachmentDelete}/delete`, new FormData());
       reload();
     } catch (error) { info(error.message); }
   }));
@@ -658,7 +675,7 @@
     } catch (error) { info(error.message); }
   });
   page.querySelector('[data-ticket-delete]')?.addEventListener('click', async () => {
-    const accepted = await confirmAction('Delete this ticket with its timeline and screenshots? This cannot be undone.', {title: 'Delete ticket', confirmLabel: 'Delete ticket', tone: 'warning'});
+    const accepted = await confirmAction('Delete this ticket with its timeline and attachments? This cannot be undone.', {title: 'Delete ticket', confirmLabel: 'Delete ticket', tone: 'warning'});
     if (!accepted) return;
     try {
       const payload = await send(`/api/tickets/${ticketId}/delete`, new FormData());

@@ -106,7 +106,7 @@ full-presentation
 - [Reporting](reporting.md) — bundle reports with parts of several modules (Bundle Report Templates), and scheduled Reporting Jobs that email CDR Analysis, Network Insights, Design and Scoring artifacts.
 - [Chart Builder](chart-builder.md) — temporary ad-hoc chart construction.
 - [Query Builder](query-builder.md) — guided query design, SQL editing, execution and saved queries.
-- [Ticket Center](ticket-center.md) — tickets of bugs, improvements and new features with screenshots, the version and date they were opened with, priorities, statuses, a timeline of comments and changes, and a design.
+- [Ticket Center](ticket-center.md) — tickets of bugs, improvements and new features with screenshots and files, the version and date they were opened with, priorities, statuses, a timeline of comments and changes, and a design.
 - [App Logs](app-logs.md) — workspace events and live server output.
 - [Application Config](app-config.md) — application-wide runtime settings and their effect.
 - [Workspace Config](workspace-config.md) — workspace-owned templates, Main Cities, chart mappings and scoring methodologies.

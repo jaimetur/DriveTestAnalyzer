@@ -28,7 +28,7 @@ administration
 
 - Application Config (the whole application database, its users, Modules Profiles, Workspace Groups, tickets, Interface Settings and Scoring Aggregation Hierarchy included; importing it replaces those of the destination, so what only the destination has is lost, while its Scheduled Backups and Application Runtime settings, its transfers and its workspaces are kept; the access of each workspace of the source server goes to the destination workspace with its identity, or else its name, and the access to workspaces only the destination has is kept)
 - Users & Access (only the users, Modules Profiles and Workspace Groups)
-- Ticket Center (only the tickets, with their type, timeline and screenshots; importing it merges them, see [Ticket Center](ticket-center.md#portability))
+- Ticket Center (only the tickets, with their type, timeline, screenshots and files; importing it merges them, see [Ticket Center](ticket-center.md#portability))
 - Designs from the active workspace (importing them replaces the Designs the destination has and adds the others, see [Matching and creators](#matching-and-creators))
 - PPT Templates from the active workspace (importing them replaces the templates the destination has and adds the others, see below)
 - Main Cities from the active workspace

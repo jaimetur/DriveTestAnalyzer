@@ -902,7 +902,7 @@ const VISUALS = {
       + `<path d="M64 42 H230 M64 68 H256 M64 94 H190" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/></g>`;
     out += tcText(40, 48, 'TICKET CENTER', 14, '#ffe9e9', 700, 'start', ' letter-spacing="3"')
       + tcText(40, 100, 'Report bugs, suggest improvements and ask for new features', 38, '#ffffff', 800)
-      + tcText(40, 136, 'Open a ticket of its type with what happened or what you need and its screenshots, and follow it until it is resolved.', 18, '#ffe9e9', 500);
+      + tcText(40, 136, 'Open a ticket of its type with what happened or what you need, its screenshots and files, and follow it until it is resolved.', 18, '#ffe9e9', 500);
     out += `<rect x="1430" y="26" width="190" height="46" rx="23" fill="#ffffff"/>${tcIcon('TbTicket', 1454, 38, TC.wine, 22)}` + tcText(1486, 56, 'New Ticket', 17, TC.wine, 800);
     [['Open', '22', TC.status.open], ['New', '8', TC.status.new], ['In Progress', '13', TC.status.progress], ['Waiting for Info', '1', TC.status.waiting],
       ['Resolved · 30 days', '21', TC.status.resolved]].forEach(([label, value, colour], index) => {
@@ -965,9 +965,9 @@ const VISUALS = {
     });
     out += tcText(32, 396, 'Problem:', 14, TC.status.new, 800) + tcText(44, 418, '• Exporting the map of a 2 GB CDR stops at 80%', 13, TC.ink, 500)
       + tcText(32, 442, 'Expected:', 14, TC.status.new, 800) + tcText(44, 462, '• The whole map is exported, as with smaller CDRs', 13, TC.ink, 500);
-    out += label(16, 494, 'Screenshots');
+    out += label(16, 494, 'Screenshots and files');
     out += `<rect x="16" y="502" width="788" height="46" rx="10" fill="${TC.card}" stroke="#c9c2b8" stroke-width="1.5" stroke-dasharray="6 5"/>`
-      + tcIcon('TbPhoto', 32, 514, TC.muted, 22) + tcText(64, 530, 'Paste them with Ctrl+V, drop them here or click to choose them', 13, TC.muted, 500);
+      + tcIcon('TbPaperclip', 32, 514, TC.muted, 22) + tcText(64, 530, 'Paste them with Ctrl+V, drop them here or click to choose them', 13, TC.muted, 500);
     [690, 744].forEach((x, index) => {
       out += `<rect x="${x}" y="509" width="46" height="32" rx="5" fill="#e9eef4" stroke="${TC.line}"/>`
         + [0.5, 0.8, 0.35, 0.65].map((share, bar) => `<rect x="${x + 7 + bar * 9}" y="${535 - share * 20}" width="6" height="${share * 20}" rx="1" fill="${index ? TC.type.improvement : TC.status.new}"/>`).join('');
@@ -1135,7 +1135,7 @@ const VISUALS = {
     [{ label: 'Resolution rate', value: '55%', line: '33 of the 60 tickets opened resolved or closed', colour: TC.status.resolved, ring: 55 },
       { label: 'Time to resolve', value: '6d 6h', line: 'Median of 33 tickets resolved or closed', colour: TC.status.progress, iconName: 'TbClockHour4' },
       { label: 'Tickets opened', value: '60', line: 'Since the first ticket', colour: TC.status.new, iconName: 'TbTicket' },
-      { label: 'Comments per ticket', value: '1.9', line: '0.4 screenshots per ticket', colour: TC.status.waiting, iconName: 'TbMessages' }].forEach((tile, index) => {
+      { label: 'Comments per ticket', value: '1.9', line: '0.4 attachments per ticket', colour: TC.status.waiting, iconName: 'TbMessages' }].forEach((tile, index) => {
       out += tcTile(18 + index * 409, 56, 393, 74, tile);
     });
     // Every ticket: a donut by type, status and priority.

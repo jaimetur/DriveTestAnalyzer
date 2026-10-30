@@ -1,5 +1,5 @@
-"""Ticket Center (formerly Bugs Report): tickets of a type with screenshots, the reporter's edits, the super-admins'
-attention, the design, access, the former addresses and portability."""
+"""Ticket Center (formerly Bugs Report): tickets of a type with screenshots and files, the reporter's edits, the
+super-admins' attention, the design, access, the former addresses and portability."""
 import html
 import io
 import json
@@ -34,7 +34,7 @@ def add_user(username, role='user-editor', profile='All Modules'):
 def open_ticket(client, title='Export fails', priority='P2', screenshots=(('screen.png', PNG),), ticket_type='bug', module='scoring'):
     response = client.post('/api/tickets', data={'title': title, 'description': 'It fails.', 'module': module, 'priority': priority,
                                                  'ticket_type': ticket_type},
-                           files=[('screenshots', (name, content, 'image/png')) for name, content in screenshots])
+                           files=[('attachments', (name, content, 'image/png')) for name, content in screenshots])
     assert response.status_code == 200, response.text
     return response.json()['id']
 
@@ -90,13 +90,53 @@ def test_a_user_reports_a_bug_with_screenshots_and_its_version(client):
     assert [item['file_name'] for item in ticket['attachments']] == ['screen.png']
     image = client.get(f"/tickets/attachments/{ticket['attachments'][0]['id']}")
     assert image.status_code == 200 and image.headers['content-type'] == 'image/png' and image.content == PNG
-    assert logged('ticket_created')[0]['screenshots'] == ['screen.png']
+    assert logged('ticket_created')[0]['attachments'] == ['screen.png']
     page = client.get(f'/tickets/{ticket_id}')
     assert page.status_code == 200 and 'Export fails' in page.text and f'v{__version__}' in page.text
-    # Only images are attached, and a bug needs a title.
-    refused = client.post('/api/tickets', data={'title': 'Text', 'ticket_type': 'bug'}, files=[('screenshots', ('notes.txt', b'hello', 'text/plain'))])
-    assert refused.status_code == 400 and 'not a PNG, JPEG, GIF or WebP image' in refused.json()['detail']
+    # A bug needs a title.
     assert client.post('/api/tickets', data={'title': '  ', 'ticket_type': 'bug'}).status_code == 400
+
+
+def test_files_are_attached_beside_the_screenshots_and_only_downloaded(client):
+    login(client)
+    ticket_id = open_ticket(client, screenshots=())
+    pdf = b'%PDF-1.7\n' + b'0' * 32
+    added = client.post(f'/api/tickets/{ticket_id}/attachments', files=[
+        ('attachments', ('report.pdf', pdf, 'application/pdf')), ('attachments', ('shot.png', PNG, 'image/png')),
+        # A page named as an image is not one: it is a file, downloaded and never shown in the page.
+        ('attachments', ('page.png', b'<html><script>alert(1)</script></html>', 'image/png'))])
+    assert added.status_code == 200 and added.json()['added'] == 3
+    assert logged('ticket_attachments_added')[0]['attachments'] == ['report.pdf', 'shot.png', 'page.png']
+    from src.modules.ticket_center import get_ticket
+    attachments = {item['file_name']: item for item in get_ticket(core.repository, ticket_id)['attachments']}
+    assert [(name, item['content_type'], item['is_screenshot'], item['extension']) for name, item in attachments.items()] == [
+        ('report.pdf', 'application/pdf', False, '.pdf'), ('shot.png', 'image/png', True, '.png'),
+        ('page.png', 'application/octet-stream', False, '.png')]
+    shown = client.get(f"/tickets/attachments/{attachments['shot.png']['id']}")
+    assert shown.headers['content-type'] == 'image/png' and shown.headers['content-disposition'].startswith('inline;')
+    for name in ('report.pdf', 'page.png'):
+        downloaded = client.get(f"/tickets/attachments/{attachments[name]['id']}")
+        assert downloaded.headers['content-type'] == 'application/octet-stream'
+        assert downloaded.headers['content-disposition'] == f"attachment; filename*=UTF-8''{name}"
+        assert downloaded.headers['x-content-type-options'] == 'nosniff'
+    assert downloaded.content.startswith(b'<html>')
+    # The page shows the screenshot as a thumbnail and each file as its type, name and size, with a download link.
+    page = client.get(f'/tickets/{ticket_id}').text
+    assert f'<img src="/tickets/attachments/{attachments["shot.png"]["id"]}"' in page
+    assert f'href="/tickets/attachments/{attachments["report.pdf"]["id"]}" download="report.pdf"' in page
+    assert '<span class="ticket-file-type" aria-hidden="true">PDF</span>' in page and 'data-attachment-kind="file"' in page
+    assert 'data-blocked=".app .bat' in page and 'name="attachments" multiple' in page
+    # Programs and scripts are refused, and so is a comment without text or attachments.
+    for name in ('setup.exe', 'run.SH', 'tool.bat.'):
+        refused = client.post(f'/api/tickets/{ticket_id}/comments', data={'body': 'Try this'},
+                              files=[('attachments', (name, b'MZ', 'application/octet-stream'))])
+        assert refused.status_code == 400 and 'is a program or a script' in refused.json()['detail']
+    assert client.post(f'/api/tickets/{ticket_id}/comments', data={'body': ' '}).json()['detail'] == 'Write a comment or attach a screenshot or a file.'
+    # Who added a file (or a super-admin) deletes it.
+    assert client.post(f"/api/tickets/attachments/{attachments['report.pdf']['id']}/delete").json()['deleted']
+    assert logged('ticket_attachment_deleted') == [
+        {'ticket_id': ticket_id, 'comment_id': None, 'attachment': 'report.pdf', 'content_type': 'application/pdf', 'size': len(pdf)}]
+    assert client.get(f"/tickets/attachments/{attachments['report.pdf']['id']}").status_code == 404
 
 
 def test_the_reporter_edits_and_only_super_admins_attend(client):
@@ -149,14 +189,16 @@ def test_accounts_without_the_module_cannot_open_it(client):
 def test_ticket_center_exports_imports_and_backs_up_on_its_own(client):
     login(client)
     ticket_id = open_ticket(client)
-    client.post(f'/api/tickets/{ticket_id}/comments', data={'body': 'See this'}, files=[('screenshots', ('detail.png', PNG, 'image/png'))])
+    client.post(f'/api/tickets/{ticket_id}/comments', data={'body': 'See this'}, files=[
+        ('attachments', ('detail.png', PNG, 'image/png')), ('attachments', ('run.log', b'line 1\nline 2', 'text/plain'))])
     package, filename = core.build_export_archive('ticket-center')
     assert filename.startswith('drivetest-analyzer-ticket-center_')
     with zipfile.ZipFile(io.BytesIO(package)) as archive:
         names = archive.namelist()
         manifest = json.loads(archive.read('manifest.json'))
     assert manifest['kind'] == 'ticket-center' and manifest['components'] == ['ticket_center']
-    assert 'ticket-center/ticket-center.json' in names and len([name for name in names if name.startswith('ticket-center/attachments/')]) == 2
+    assert 'ticket-center/ticket-center.json' in names and len([name for name in names if name.startswith('ticket-center/attachments/')]) == 3
+    assert sorted(name.rsplit('.', 1)[-1] for name in names if name.startswith('ticket-center/attachments/')) == ['log', 'png', 'png']
 
     from src.modules.ticket_center import delete_ticket, list_tickets
     delete_ticket(core.repository, ticket_id)
@@ -164,11 +206,15 @@ def test_ticket_center_exports_imports_and_backs_up_on_its_own(client):
     assert inspected.status_code == 200 and inspected.json()['kind'] == 'ticket-center'
     with zipfile.ZipFile(io.BytesIO(package)) as archive:
         notice = core.import_ticket_center(archive)
-        assert notice == 'Imported Ticket Center: 1 ticket (1 new), 1 new comment and 2 new screenshots.'
+        assert notice == 'Imported Ticket Center: 1 ticket (1 new), 1 new comment and 3 new attachments.'
         # Imported again, nothing is duplicated nor counted as updated.
-        assert core.import_ticket_center(archive) == 'Imported Ticket Center: 1 ticket (1 unchanged), 0 new comments and 0 new screenshots.'
+        assert core.import_ticket_center(archive) == 'Imported Ticket Center: 1 ticket (1 unchanged), 0 new comments and 0 new attachments.'
     tickets = list_tickets(core.repository)
-    assert [(ticket['title'], ticket['comment_count'], ticket['attachment_count']) for ticket in tickets] == [('Export fails', 1, 2)]
+    assert [(ticket['title'], ticket['comment_count'], ticket['attachment_count']) for ticket in tickets] == [('Export fails', 1, 3)]
+    from src.modules.ticket_center import get_ticket
+    log = get_ticket(core.repository, int(tickets[0]['id']))['comments'][0]['attachments'][1]
+    assert (log['file_name'], log['content_type'], log['is_screenshot']) == ('run.log', 'text/plain', False)
+    assert client.get(f"/tickets/attachments/{log['id']}").content == b'line 1\nline 2'
 
     archive_path = core.create_recurring_database_backup({
         'components': ['ticket_center'], 'backup_path': str(core.application_data_dir / 'scheduled-backups'), 'max_backups': 30, 'workspace_ids': [],
@@ -283,7 +329,7 @@ def test_anyone_reads_tickets_without_signing_in_but_only_signed_in_users_change
     assert page.status_code == 200 and 'Export fails' in page.text and 'Seen in DE too' in page.text
     assert f'href="/login?next=/tickets/{ticket_id}">Sign in</a> to comment' in page.text
     assert f'class="topnav-link topnav-link-signin" href="/login?next=/tickets/{ticket_id}"' in page.text
-    assert not any(marker in page.text for marker in ('data-ticket-comment-form', 'data-ticket-edit-toggle', 'data-ticket-manage-form', 'data-ticket-shot-delete'))
+    assert not any(marker in page.text for marker in ('data-ticket-comment-form', 'data-ticket-edit-toggle', 'data-ticket-manage-form', 'data-ticket-attachment-delete'))
     assert client.get(f'/tickets/attachments/{screenshot}').content == PNG
     # Opening, commenting and editing need a session.
     assert client.post('/api/tickets', data={'title': 'Anonymous'}).status_code == 401
@@ -373,7 +419,7 @@ def test_corrected_dates_keep_the_timeline_written_between_and_after_them(monkey
     repository = core.repository
     repository.initialize()
     ticket_id = create_ticket(repository, title='Slow export', description='', module='', priority='P3', ticket_type='bug',
-                              username='super', app_version=__version__, browser='', screenshots=[])
+                              username='super', app_version=__version__, browser='', attachments=[])
     update_ticket(repository, ticket_id, 'super', {'assigned_to': 'super'})
     add_comment(repository, ticket_id, 'super', 'Found the cause.')
     update_ticket(repository, ticket_id, 'super', {'status': 'resolved'})
@@ -627,12 +673,12 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     # October: 5 tickets opened (3 of them resolved), and 3 resolved (6 h, 10 days and 2 days) against 1 in September.
     assert scopes['month']['health'] == {
         'total': 5, 'done': 3, 'rate': 60, 'resolve_time': '2d', 'resolve_count': 3, 'resolve_previous': '12d',
-        'resolve_change': -83, 'created': 5, 'created_change': 5, 'comments': 2.0, 'screenshots': 0.4,
+        'resolve_change': -83, 'created': 5, 'created_change': 5, 'comments': 2.0, 'attachments': 0.4,
     }
     stats = scopes['all']
     assert stats['health'] == {
         'total': 7, 'done': 4, 'rate': 57, 'resolve_time': '6d', 'resolve_count': 4, 'resolve_previous': '',
-        'resolve_change': None, 'created': 7, 'created_change': None, 'comments': 2.0, 'screenshots': 0.6,
+        'resolve_change': None, 'created': 7, 'created_change': None, 'comments': 2.0, 'attachments': 0.6,
     }
     assert [part['key'] for part in scopes['week']['mix'][0]['segments']] == [] and scopes['month']['mix'][0]['total'] == 5
     # Donuts of every ticket, each part listing its tickets as the chips name them.

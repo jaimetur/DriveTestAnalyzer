@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'ticket_center_macros.html' import priority_pill, status_pill, module_chip, screenshots_zone, screenshot_gallery, type_badge %}
+{% from 'ticket_center_macros.html' import priority_pill, status_pill, module_chip, attachments_zone, attachment_gallery, type_badge %}
 {% block content %}
 <link rel="stylesheet" href="{{ static_path('css/ticket_center.css') }}?v={{ asset_version('css/ticket_center.css') }}">
 <link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
@@ -39,11 +39,11 @@
       <article class="panel ticket-card ticket-description">
         <h3>Description</h3>
         {% if ticket.description %}<div class="ticket-text" data-rich-text data-raw="{{ ticket.description }}">{{ ticket.description }}</div>{% else %}<p class="ticket-muted">No description.</p>{% endif %}
-        {{ screenshot_gallery(ticket.attachments, user, removable=ticket_can_edit) }}
+        {{ attachment_gallery(ticket.attachments, user, removable=ticket_can_edit) }}
         {% if ticket_can_edit %}
-        <form class="ticket-add-shots" data-ticket-shots-form novalidate>
-          {{ screenshots_zone(ticket_max_screenshots, ticket_max_screenshot_mb, 'Add screenshots') }}
-          <div class="tickets-form-actions" data-ticket-shots-actions hidden><button type="submit" class="tickets-primary-button">Add screenshots</button></div>
+        <form class="ticket-add-shots" data-ticket-attachments-form novalidate>
+          {{ attachments_zone(ticket_max_attachments, ticket_max_attachment_mb, ticket_blocked_extensions, 'Add screenshots or files') }}
+          <div class="tickets-form-actions" data-ticket-attachments-actions hidden><button type="submit" class="tickets-primary-button">Add attachments</button></div>
         </form>
         {% endif %}
       </article>
@@ -65,7 +65,7 @@
                 {% if user and (entry.username | lower == user.username | lower or ticket_can_manage) %}<span class="ticket-comment-actions">{% if entry.username | lower == user.username | lower %}<button type="button" data-ticket-comment-edit>Edit</button>{% endif %}<button type="button" data-ticket-comment-delete>Delete</button></span>{% endif %}
               </header>
               {% if entry.body %}<div class="ticket-text" data-ticket-comment-text data-rich-text data-raw="{{ entry.body }}">{{ entry.body }}</div>{% endif %}
-              {{ screenshot_gallery(entry.attachments, user, removable=user is not none) }}
+              {{ attachment_gallery(entry.attachments, user, removable=user is not none) }}
             </div>
           </li>
           {% endif %}
@@ -74,7 +74,7 @@
         {% if user %}
         <form class="ticket-comment-form" data-ticket-comment-form novalidate>
           <label class="tickets-field">Add a comment<textarea name="body" rows="5" maxlength="20000" placeholder="{{ ticket_text_guide }}" data-rich-editor data-rich-class="ticket-text" data-rich-files="form"></textarea></label>
-          {{ screenshots_zone(ticket_max_screenshots, ticket_max_screenshot_mb) }}
+          {{ attachments_zone(ticket_max_attachments, ticket_max_attachment_mb, ticket_blocked_extensions) }}
           <div class="tickets-form-actions"><button type="submit" class="tickets-primary-button">Comment</button></div>
         </form>
         {% else %}

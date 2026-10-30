@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'ticket_center_macros.html' import priority_pill, status_pill, module_chip, screenshots_zone, type_badge, type_icon %}
+{% from 'ticket_center_macros.html' import priority_pill, status_pill, module_chip, attachments_zone, type_badge, type_icon %}
 {% block content %}
 <link rel="stylesheet" href="{{ static_path('css/ticket_center.css') }}?v={{ asset_version('css/ticket_center.css') }}">
 <link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
@@ -13,7 +13,7 @@
       </div>
       {% if user %}<a class="tickets-new-link" href="#section-new-ticket" data-tickets-new>New Ticket</a>{% else %}<a class="tickets-new-link" href="/login?next=/tickets">Sign in to open a ticket</a>{% endif %}
     </div>
-    <p class="lede">Open a ticket of its type with what happened or what you need and its screenshots: it keeps the version of the tool and the date. Follow it with comments; its reporter edits it and sets its priority, and the super-admins attend it until it is resolved.</p>
+    <p class="lede">Open a ticket of its type with what happened or what you need, its screenshots and files: it keeps the version of the tool and the date. Follow it with comments; its reporter edits it and sets its priority, and the super-admins attend it until it is resolved.</p>
     {# Each tile lists its tickets in Tickets; pressed again, the list shows the open ones (ticket_center.js). #}
     <div class="tickets-stats" role="group" aria-label="List the tickets of a count">
       <button type="button" class="tickets-stat" data-status="open" data-tickets-stat="open" aria-pressed="false" title="List the open tickets"><span class="tickets-stat-label">Open</span><strong>{{ overview.kpis.open }}</strong></button>
@@ -324,7 +324,7 @@
               <td data-filter-value="{{ ticket.status_label }}{% if ticket.fixed_version %} · Fixed in v{{ ticket.fixed_version }}{% endif %}">{{ status_pill(ticket.status, ticket.status_label) }}{% if ticket.fixed_version %}<small class="tickets-fixed">Fixed in v{{ ticket.fixed_version }}</small>{% endif %}</td>
               <td data-filter-value="{{ ticket.assigned_to_name or 'Unassigned' }}">{{ ticket.assigned_to_name or '—' }}</td>
               <td class="tickets-date" data-filter-date="{{ (ticket.updated_at | string)[:10] }}">{{ ticket.updated_date }}</td>
-              <td class="tickets-activity" data-filter-value="{{ ticket.comment_count }} comment{{ '' if ticket.comment_count == 1 else 's' }} · {{ ticket.attachment_count }} screenshot{{ '' if ticket.attachment_count == 1 else 's' }}"><span class="tickets-activity-items"><span title="Comments">💬 {{ ticket.comment_count }}</span><span title="Screenshots">🖼 {{ ticket.attachment_count }}</span></span></td>
+              <td class="tickets-activity" data-filter-value="{{ ticket.comment_count }} comment{{ '' if ticket.comment_count == 1 else 's' }} · {{ ticket.attachment_count }} attachment{{ '' if ticket.attachment_count == 1 else 's' }}"><span class="tickets-activity-items"><span title="Comments">💬 {{ ticket.comment_count }}</span><span title="Attachments: screenshots and files">📎 {{ ticket.attachment_count }}</span></span></td>
             </tr>
             {% endfor %}
           </tbody>
@@ -340,7 +340,7 @@
       <div>
         <p class="eyebrow">Open a ticket</p>
         <h2>New Ticket</h2>
-        <p class="summary-description">A bug, an improvement or a new feature: what it is about, where, how urgent it is and its screenshots. The ticket keeps the version {{ app_version }} and today's date.</p>
+        <p class="summary-description">A bug, an improvement or a new feature: what it is about, where, how urgent it is, its screenshots and files. The ticket keeps the version {{ app_version }} and today's date.</p>
       </div>
       <span class="collapse-chip">Collapse</span>
     </summary>
@@ -376,7 +376,7 @@
       <label class="tickets-field tickets-field-wide">Description
         <textarea name="description" rows="8" maxlength="20000" placeholder="{{ ticket_text_guide }}" data-ticket-description data-rich-editor data-rich-class="ticket-text" data-rich-files="form"></textarea>
       </label>
-      <div class="tickets-field tickets-field-wide">{{ screenshots_zone(ticket_max_screenshots, ticket_max_screenshot_mb) }}</div>
+      <div class="tickets-field tickets-field-wide">{{ attachments_zone(ticket_max_attachments, ticket_max_attachment_mb, ticket_blocked_extensions) }}</div>
       <div class="tickets-form-actions tickets-field-wide">
         <p class="form-note">Reported by {{ user.username if user else 'you, once signed in,' }} with version {{ app_version }}.</p>
         <button type="submit" class="tickets-primary-button">Open Ticket</button>
