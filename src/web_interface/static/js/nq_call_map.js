@@ -96,9 +96,9 @@
   // What the card From CDR switches (``cdr`` the whole of it): the layers of the map from the CDRs and the Non-Qualified
   // Calls, and the measures of the samples; while it is off none of them is drawn.
   // On the map of a call, each group of the call has its switch too: the shapes of its clusters, time windows and hotspot
-  // zone, and their outlines on the NQ calls (Per Group).
+  // zone, and their outlines on the NQ calls (And Group).
   const CDR_LAYER_LABELS = {failures: 'NQ calls', cluster: 'Clusters', run: 'Time windows', paths: 'Time-window paths', hotspot: 'Hotspot zone',
-    sites: 'Sites', path: 'Cell path', route: 'Route'};
+    sites: 'Sites', ends: 'Start and end cells', path: 'Cell path', route: 'Route'};
   const shownLayers = (settings) => (settings.layers.cdr === false
     ? {...settings.layers, ...Object.fromEntries(Object.keys(CDR_LAYER_LABELS).map((key) => [key, false]))} : settings.layers);
   const shownMeasures = (settings) => (settings.layers.cdr === false ? [] : Object.keys(METRICS).filter((key) => settings.measures.includes(key)));
@@ -113,7 +113,7 @@
   const SERVICE_LABELS = {voice: 'Voice', speech: 'Speech', data: 'Data'};
   // What the colour of the NQ calls tells, the same on both maps: the site of their CDR, their call type, the domain of their
   // root cause (decided, else that of the DT Analyzer RCA), their campaign or their operator. The map of a call opens by
-  // site, NQ Maps by call type; on the map of a call, Per Group rings the NQ calls of its groups besides.
+  // site, NQ Maps by call type; on the map of a call, And Group rings the NQ calls of its groups besides.
   const FAILURE_COLOURS = {site: 'Site', type: 'Call type', domain: 'Root cause domain', campaign: 'Campaign', operator: 'Operator'};
   const AREA_FAILURE_COLOURS = {type: 'Call type', domain: 'Root cause domain', campaign: 'Campaign', operator: 'Operator', site: 'Site'};
   const KIND_COLOURS = {voice: '#b0234f', speech: '#7048e8', whatsapp: '#2b8a3e', data: '#1c7ed6', ping: '#f08c00'};
@@ -172,12 +172,12 @@
   // key: OpenStreetMap in grey by default (its streets under a white veil, so that the samples, events and calls stand out),
   // Plain and Dark without symbols or labels (up to zoom 16, enlarged beyond). ``short``: its name on a narrow map (a phone).
   const BASEMAPS = {
-    streets: {label: 'OpenStreetMap (original)', short: 'OpenStreetMap', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, attribution: '© OpenStreetMap contributors'},
-    light: {label: 'OpenStreetMap in grey (light)', short: 'OSM in grey', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, grey: true, veil: .5,
+    streets: {label: 'OpenStreetMap (original)', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, attribution: '© OpenStreetMap contributors'},
+    light: {label: 'OpenStreetMap in grey (light)', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, grey: true, veil: .5,
       attribution: '© OpenStreetMap contributors'},
-    plain: {label: 'Plain (no labels)', short: 'Plain', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    plain: {label: 'Plain (no labels)', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
       max: 16, attribution: 'Tiles © Esri — Esri, HERE, Garmin, OpenStreetMap contributors'},
-    terrain: {label: 'Terrain (elevation)', short: 'Terrain', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: 'abc', max: 17,
+    terrain: {label: 'Terrain (elevation)', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: 'abc', max: 17,
       attribution: '© OpenStreetMap contributors, SRTM · © OpenTopoMap (CC-BY-SA)'},
     topographic: {label: 'Topographic', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', max: 19,
       attribution: 'Tiles © Esri — Esri, HERE, Garmin, USGS, NGA, OpenStreetMap contributors'},
@@ -194,7 +194,24 @@
     if (!BASEMAPS[key]) return;
     basemap.key = key;
     try { localStorage.setItem(BASEMAP_KEY, key); } catch (_error) { /* A private window keeps it for the page. */ }
+    document.querySelectorAll('select[data-nq-basemap]').forEach((select) => { select.value = key; });
     basemapViews.forEach((view) => view());
+  };
+  // The map under the layers (BASEMAPS), a control above every map beside its other choices, the same on every map of the page.
+  const basemapControl = () => {
+    const wrapper = node('label', undefined, 'nq-map-control');
+    wrapper.title = 'The map under the layers, the same on every map of the page: Light and Plain show little of their own so that the samples and events stand out';
+    const element = node('select');
+    element.dataset.nqBasemap = '';
+    for (const [key, map] of Object.entries(BASEMAPS)) {
+      const option = node('option', map.label);
+      option.value = key;
+      element.append(option);
+    }
+    element.value = basemap.key;
+    element.addEventListener('change', () => setBasemap(element.value));
+    wrapper.append(node('span', 'Map'), element);
+    return wrapper;
   };
   const tileUrl = (zoom, x, y) => {
     const map = BASEMAPS[basemap.key];
@@ -211,6 +228,55 @@
     return element;
   };
   const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+  // The element chosen, floating over the larger map: on its right, off the cards of the left, and moved anywhere over the
+  // map by dragging its title; it stays where it was put for the next element chosen while the map is open.
+  const floatingPanel = () => {
+    const panel = node('aside', undefined, 'nq-map-info nq-map-selected nq-map-selected-float');
+    panel.hidden = true;
+    panel.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || !event.target.closest('.nq-map-selected-content > header') || event.target.closest('button')) return;
+      const area = panel.offsetParent;
+      if (!area) return;
+      event.preventDefault();
+      const start = {x: event.clientX, y: event.clientY, left: panel.offsetLeft, top: panel.offsetTop};
+      const move = (moved) => {
+        panel.style.left = `${clamp(start.left + moved.clientX - start.x, 0, area.clientWidth - panel.offsetWidth)}px`;
+        panel.style.top = `${clamp(start.top + moved.clientY - start.y, 0, area.clientHeight - panel.offsetHeight)}px`;
+        panel.style.right = 'auto';
+      };
+      const stop = () => {
+        panel.classList.remove('is-dragged');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', stop);
+        window.removeEventListener('pointercancel', stop);
+      };
+      panel.classList.add('is-dragged');
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', stop);
+      window.addEventListener('pointercancel', stop);
+    });
+    return panel;
+  };
+  // The sections of the card From CDR, folded as those of the card From Logs (l3_layers.js): the measures of its samples, then
+  // its layers by kind. Every one is unfolded at first; those the user folds stay so in the browser, on every map.
+  const CDR_SECTIONS = [
+    {key: 'samples', label: 'RSRP / SINR', note: () => 'The samples of the CDRs'},
+    {key: 'calls', label: 'NQ calls', note: (area) => (area ? 'The NQ calls of the filters' : 'Around the call, and its groups'),
+      layers: ['failures', 'hotspot', 'cluster', 'run', 'paths']},
+    {key: 'cells', label: 'Sites', note: (area) => (area ? 'The sites of the inventory' : 'Its sites and cells'), layers: ['sites', 'ends', 'path']},
+    {key: 'route', label: 'Route', note: (area) => (area ? 'The drive of each CDR' : 'Its way and that of its car'), layers: ['route']},
+  ];
+  const CDR_FOLDED_KEY = 'nq-map-cdr-folded';
+  const cdrFolded = (() => {
+    try {
+      const value = JSON.parse(localStorage.getItem(CDR_FOLDED_KEY) || '[]');
+      return new Set(Array.isArray(value) ? value : []);
+    } catch (_error) { return new Set(); }
+  })();
+  const foldCdrSection = (key) => {
+    if (cdrFolded.has(key)) cdrFolded.delete(key); else cdrFolded.add(key);
+    try { localStorage.setItem(CDR_FOLDED_KEY, JSON.stringify([...cdrFolded])); } catch (_error) { /* A private window keeps them for the page. */ }
+  };
   // A switch as those of the layers of the Layer 3 - DT Logs (l3_layers.js).
   const switchControl = (checked, label, onChange) => {
     const wrap = node('label', undefined, 'nq-l3-switch');
@@ -451,30 +517,8 @@
     ['wheel', 'pointerdown', 'dblclick'].forEach((type) => profileBox.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
     const legend = node('div', undefined, 'nq-map-legend');
     const attribution = node('div', BASEMAPS[basemap.key].attribution, 'nq-map-attribution');
-    // The map under the layers (BASEMAPS), the same on every map of the page.
-    const basemapChoice = node('label', undefined, 'nq-map-basemap');
-    basemapChoice.title = 'The map under the layers: Light and Plain show little of their own so that the samples and events stand out';
-    const basemapSelect = node('select');
-    basemapSelect.setAttribute('aria-label', 'Map type');
-    for (const [key, map] of Object.entries(BASEMAPS)) {
-      const option = node('option', map.label);
-      option.value = key;
-      basemapSelect.append(option);
-    }
-    basemapSelect.value = basemap.key;
-    basemapSelect.addEventListener('change', () => setBasemap(basemapSelect.value));
-    // On a narrow map (a phone) the map types take their short names, so that the choice fits beside the zoom buttons.
-    let shortNames = false;
-    const nameBasemaps = () => {
-      const short = card.clientWidth > 0 && card.clientWidth <= 600;
-      if (short === shortNames) return;
-      shortNames = short;
-      for (const option of basemapSelect.options) option.textContent = (short && BASEMAPS[option.value].short) || BASEMAPS[option.value].label;
-    };
-    basemapChoice.append(node('span', 'Map'), basemapSelect);
-    ['wheel', 'pointerdown', 'dblclick'].forEach((type) => basemapChoice.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
+    // The map under the layers, chosen above the map (basemapControl).
     const basemapChanged = () => {
-      basemapSelect.value = basemap.key;
       attribution.textContent = BASEMAPS[basemap.key].attribution;
       redraw();
     };
@@ -518,7 +562,7 @@
       samples.replaceChildren(head);
       if (!samplesOpen) return;
       const body = node('div', undefined, `nq-l3-body${on ? '' : ' is-off'}`);
-      const row = (checked, label, icon, text, count, onChange) => {
+      const row = (list, checked, label, icon, text, count, onChange) => {
         const layer = node('div', undefined, 'nq-l3-layer');
         const line = node('div', undefined, 'nq-l3-line');
         line.append(switchControl(checked, label, onChange));
@@ -526,7 +570,25 @@
         line.append(node('span', text, 'nq-l3-name'));
         if (count !== null) line.append(node('span', count.toLocaleString('en-GB'), 'nq-l3-count'));
         layer.append(line);
-        body.append(layer);
+        list.append(layer);
+      };
+      // A section with its header (its name, what it holds, how many of its switches are on), unfolded unless folded.
+      const section = ({key, label, note}, active, fill) => {
+        const card = node('section', undefined, `nq-l3-section is-cdr-${key}`);
+        const opened = !cdrFolded.has(key);
+        const sectionHead = node('button', undefined, 'nq-l3-section-head');
+        sectionHead.type = 'button';
+        sectionHead.setAttribute('aria-expanded', String(opened));
+        sectionHead.append(node('span', label, 'nq-l3-section-name'), node('span', note(data.area), 'nq-l3-section-note'),
+          node('span', active ? `${active} on` : '', 'nq-l3-section-on'), node('span', opened ? '▾' : '▸', 'nq-l3-chevron'));
+        sectionHead.addEventListener('click', (event) => { event.stopPropagation(); foldCdrSection(key); renderSamples(); });
+        card.append(sectionHead);
+        if (opened) {
+          const list = node('div', undefined, 'nq-l3-section-body');
+          fill(list);
+          card.append(list);
+        }
+        body.append(card);
       };
       // On the map of a call, the campaigns of the CDRs of everything the card shows (its samples, NQ calls, route…).
       if (shared.samplesScope) {
@@ -546,28 +608,39 @@
         }
         body.append(scopes);
       }
-      body.append(node('p', 'RSRP / SINR (from CDR samples)', 'nq-l3-block'));
       const rows = data.tests?.rows || [];
-      for (const [key, metric] of Object.entries(METRICS)) {
-        const count = key === 'result' ? rows.length : rows.filter((item) => item[COLUMN[key]] !== null && item[COLUMN[key]] !== undefined).length;
-        row(settings.measures.includes(key), `Show the ${metric.label} of the samples`, [SAMPLE_SHAPES[key], SAMPLE_ICON_COLOURS[key], {nr: key.startsWith('nr_')}],
-          metric.label, count, (checked) => shared.setMeasure(key, checked));
-      }
-      const note = shared.samplesNote?.();
-      if (note) body.append(node('p', note, 'nq-l3-area-note'));
-      body.append(node('p', 'Calls, sites and routes', 'nq-l3-block'));
-      const icons = {failures: ['star', COLOURS.call], sites: ['triangle', '#868e96'], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
+      section(CDR_SECTIONS[0], Object.keys(METRICS).filter((key) => settings.measures.includes(key)).length, (list) => {
+        for (const [key, metric] of Object.entries(METRICS)) {
+          const count = key === 'result' ? rows.length : rows.filter((item) => item[COLUMN[key]] !== null && item[COLUMN[key]] !== undefined).length;
+          row(list, settings.measures.includes(key), `Show the ${metric.label} of the samples`, [SAMPLE_SHAPES[key], SAMPLE_ICON_COLOURS[key], {nr: key.startsWith('nr_')}],
+            metric.label, count, (checked) => shared.setMeasure(key, checked));
+        }
+        const note = shared.samplesNote?.();
+        if (note) list.append(node('p', note, 'nq-l3-area-note'));
+      });
+      const icons = {failures: ['star', COLOURS.call], sites: ['triangle', '#868e96'], ends: ['dashed-line', COLOURS.end], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
         route: ['road', data.area ? COLOURS.route : COLOURS.path], cluster: ['ring', COLOURS.cluster], run: ['ring', COLOURS.run], hotspot: ['ring', COLOURS.hotZone]};
       const rings = visibleRings(data);
       const paths = rings.some((ring) => ring.path && ring.path.length > 1);
-      for (const key of shared.cdrLayers || []) {
-        // A group only when the call has one of it.
-        if ((key === 'paths' && !paths) || ((key === 'cluster' || key === 'run') && !rings.some((ring) => ring.kind === key))
-          || (key === 'hotspot' && !hotspotShown(data))) continue;
-        const count = key === 'failures' ? data.failures.filter((failure) => !failure.self && failure.latitude !== null && shared.showsFailure(failure)).length
-          : key === 'sites' ? data.sites.length : key === 'cluster' || key === 'run' ? rings.filter((ring) => ring.kind === key).length : null;
-        const text = key === 'route' ? (data.area ? 'Route (the drive of each CDR between its tests)' : 'Route (its way and that of its car)') : CDR_LAYER_LABELS[key];
-        row(settings.layers[key] !== false, `Show the ${CDR_LAYER_LABELS[key]}`, icons[key], text, count, (checked) => shared.setLayer(key, checked));
+      // A group only when the call has one of it; the sites, the lines to the cells of its start and end and its cell path
+      // only when a Network Inventory places them.
+      const located = (data.trace || []).filter((step) => step.site);
+      const shown = (key) => (shared.cdrLayers || []).includes(key) && !((key === 'paths' && !paths)
+        || ((key === 'cluster' || key === 'run') && !rings.some((ring) => ring.kind === key))
+        || (key === 'hotspot' && !hotspotShown(data)) || (key === 'sites' && !data.sites.length)
+        || (key === 'ends' && !located.some((step) => step.role !== 'handover'))
+        || (key === 'path' && !located.length && !(data.call?.handovers || []).length));
+      for (const kind of CDR_SECTIONS.slice(1)) {
+        const keys = kind.layers.filter(shown);
+        if (!keys.length) continue;
+        section(kind, keys.filter((key) => settings.layers[key] !== false).length, (list) => {
+          for (const key of keys) {
+            const count = key === 'failures' ? data.failures.filter((failure) => !failure.self && failure.latitude !== null && shared.showsFailure(failure)).length
+              : key === 'sites' ? data.sites.length : key === 'cluster' || key === 'run' ? rings.filter((ring) => ring.kind === key).length : null;
+            const text = key === 'route' ? (data.area ? 'Route (the drive of each CDR between its tests)' : 'Route (its way and that of its car)') : CDR_LAYER_LABELS[key];
+            row(list, settings.layers[key] !== false, `Show the ${CDR_LAYER_LABELS[key]}`, icons[key], text, count, (checked) => shared.setLayer(key, checked));
+          }
+        });
       }
       samples.append(body);
       body.scrollTop = scrolled;
@@ -632,7 +705,7 @@
     // The panels over the bottom of the map: the elevation profile, and over the larger map the signalling timeline.
     const bottomStack = node('div', undefined, 'nq-map-bottom');
     bottomStack.append(profileBox);
-    card.replaceChildren(canvas, ruler, selectionBox, panels, controls, basemapChoice, bottomStack, attribution, wheelHint, tooltip);
+    card.replaceChildren(canvas, ruler, selectionBox, panels, controls, bottomStack, attribution, wheelHint, tooltip);
     // The legend goes below the map (in its images too), so it hides none of it.
     (legendHost || card).replaceChildren(legend);
     // The layers of the Layer 3 - DT Logs of the call (l3_layers.js), over the map so that its images show them.
@@ -712,7 +785,6 @@
       if (!card.isConnected || !data) return;
       const width = canvas.clientWidth, height = canvas.clientHeight;
       if (!width || !height) return;
-      nameBasemaps();
       if (!view) fit();
       // A map that changes size (the legend below it growing with the samples, a resized window) keeps its top left corner
       // where it was: what it shows does not move.
@@ -836,9 +908,9 @@
         hotZone = {fill: () => paint(zone, .22), edge: () => paint(edge, .95)};
       }
       // The shapes of its groups, as the Groups slide draws them: a circle around each cluster in purple and an ellipse along
-      // each time window in blue of its hotspot (what they make together), those of the call itself bolder, the larger
-      // below; the hotspot when one of its calls is in neither. Their tint first, then the hotspot zone, then their lines and
-      // the edge of the zone.
+      // each time window in blue of its hotspot (what they make together), those of the call itself bolder (the other
+      // clusters dashed), the larger below; the hotspot when one of its calls is in neither. Their tint first, then the
+      // hotspot zone, then their lines and the edge of the zone.
       const shapes = visible.filter((ring) => layers[ring.kind] !== false).sort((a, b) => b.metres - a.metres);
       for (const ring of shapes) {
         shape(context, ring);
@@ -853,7 +925,9 @@
         context.strokeStyle = GROUP_COLOURS[ring.kind];
         context.globalAlpha = ring.own ? 1 : .85;
         context.lineWidth = ring.own ? 3 : 2;
+        context.setLineDash(ring.own || ring.kind !== 'cluster' ? [] : [7, 5]);
         context.stroke();
+        context.setLineDash([]);
         context.globalAlpha = 1;
       }
       hotZone?.edge();
@@ -990,12 +1064,13 @@
         for (const [text, lx, ly, colour] of named) label(context, text, lx, ly, colour, 'center');
       }
       // The cells the call went through: the cell of its start joined to where it started, the cell of its end (or of the whole
-      // call) to where it failed and the NR cell of an NSA call to where it failed, each by a dashed line to the cell; each
-      // handover an arrow from the cell before it to the cell after it, numbered with the order of that cell (as the Cells of
-      // the call list and the badges of the sites): the CDR does not record where each handover took place.
+      // call) to where it failed and the NR cell of an NSA call to where it failed, each by a dashed line to the cell (Start and
+      // end cells); each handover an arrow from the cell before it to the cell after it, numbered with the order of that cell
+      // (as the Cells of the call list and the badges of the sites): the CDR does not record where each handover took place
+      // (Cell path).
       const start = call.start, end = call.end || call.start;
       const handoverBadges = [];
-      if (layers.path) {
+      if (layers.path || layers.ends) {
         // Where a cell of the call is: the middle of its sector when the map shows the sectors (Sites on, from zoom 14), else
         // the side of its site where it points (its site for an omnidirectional cell).
         const sectorsShown = layers.sites && zoom >= WEDGES_FROM_ZOOM;
@@ -1024,7 +1099,7 @@
         };
         const lines = [];
         const path = data.trace.filter((step) => step.role !== 'nr_leg');
-        for (const step of data.trace) {
+        for (const step of layers.ends ? data.trace : []) {
           if (step.latitude === undefined || step.latitude === null) continue;
           const first = step === path[0], last = step === path[path.length - 1];
           if (step.role !== 'nr_leg' && !first && !last) continue;
@@ -1048,7 +1123,7 @@
         }
         // The handovers, from cell to cell; those between the same two cells (back and forth) each in a lane of its own.
         const moves = [];
-        for (let index = 1; index < path.length; index += 1) {
+        for (let index = 1; index < (layers.path ? path.length : 0); index += 1) {
           const before = path[index - 1], after = path[index];
           if (!before.site || !after.site) continue;
           const [x1, y1] = cellPoint(before), [x2, y2] = cellPoint(after);
@@ -1235,7 +1310,7 @@
       window.L3Layers?.drawCursor(context, shared.l3Focus || shared.l3, project);
       // The other Non-Qualified Calls, over the routes and the layers of the logs: those of its groups (hotspot, cluster,
       // time-window issue) and of its site, then the others. The calls on one point make one mark with how many they are (the
-      // most related gives its colour); with Per Group, an outline of its shape for each group of the call they are of (and
+      // most related gives its colour); with And Group, an outline of its shape for each group of the call they are of (and
       // switched on), its cluster innermost, then its time window and its hotspot.
       // The mark of an NQ call (and of the call itself): a star in its colour with a shadow, then the outlines of its
       // ``groups`` in their colours, each over a white one.
@@ -1285,7 +1360,7 @@
           const size = data.area ? 6.5 + (zoom >= 15 ? 1 : 0) : 8 + (zoom >= 15 ? 1.5 : 0);
           // On NQ Maps those without Layer 3 - DT Logs are hollow, in their colour.
           const hollow = data.area && !items.some((item) => item.l3_log);
-          // Per Group: an outline of its shape for each group of the call the calls on the point are of.
+          // And Group: an outline of its shape for each group of the call the calls on the point are of.
           const groups = data.area ? [] : ['cluster', 'run', 'hotspot'].filter((kind) => items.some((item) => shared.failureGroups(item).includes(kind)));
           nqMark(x, y, size, shared.failureColour(failure), groups, hollow);
           if (items.length > 1) {
@@ -1356,7 +1431,7 @@
           hits.push({x, y, r: 10, kind: 'handover_point', item: point, priority: 5.5});
         }
       }
-      // The call itself: the mark of the NQ calls (its colour and, with Per Group, the outlines of its groups) under its pin,
+      // The call itself: the mark of the NQ calls (its colour and, with And Group, the outlines of its groups) under its pin,
       // which stands on its top.
       let pinLift = 0, pinAt = null;
       if (!data.area) {
@@ -1774,8 +1849,31 @@
     };
     canvas.addEventListener('pointerup', stopDrag);
     canvas.addEventListener('pointercancel', stopDrag);
-    const resizer = new ResizeObserver(() => { nameBasemaps(); redraw(); });
+    const resizer = new ResizeObserver(() => redraw());
     resizer.observe(card);
+    // A click outside an unfolded card (on the map or anywhere else; not on the list of one of its selects) folds it: at once,
+    // or on another card once its click is done (folded before, the card clicked would move from under the pointer).
+    const foldOutside = (event) => {
+      if (!card.isConnected || event.target.closest?.('.native-select-menu')) return;
+      const others = [...panels.querySelectorAll(':scope > .nq-l3-panel:not(.is-collapsed)')].filter((unfolded) => !unfolded.contains(event.target));
+      if (!others.length) return;
+      const fold = () => others.forEach((unfolded) => {
+        if (unfolded !== samples) l3Tree?.collapse();
+        else if (samplesOpen) {
+          samplesOpen = false;
+          renderSamples();
+        }
+      });
+      if (panels.contains(event.target)) window.addEventListener('click', () => setTimeout(fold), {once: true, capture: true});
+      else fold();
+    };
+    document.addEventListener('pointerdown', foldOutside, true);
+    // The cards end above the panels over the bottom of the map (the elevation profile, the signalling timeline), so that
+    // those never cut them: unfolded, they scroll above them.
+    const bottomSpace = new ResizeObserver(() => {
+      card.style.setProperty('--nq-map-bottom-space', bottomStack.offsetHeight ? `${bottomStack.offsetHeight + 28}px` : '0px');
+    });
+    bottomSpace.observe(bottomStack);
 
     // The legend: the levels of the measure chosen and the marks of the map.
     const renderLegend = () => {
@@ -1858,7 +1956,7 @@
         item('road', `The way of its car: its tests ${data.drive.minutes} minutes before and after, joined to where the call started and ended (arrows: where it was heading; the bends are a sketch)`, COLOURS.route);
       }
       item('line', `Radius ${distanceText(data.radius_km)}`, COLOURS.radius, 'is-dashed');
-      // The NQ calls around as on NQ Maps: a colour for each value of Colour NQ calls by, with the outlines of Per Group.
+      // The NQ calls around as on NQ Maps: a colour for each value of Colour NQ calls by, with the outlines of And Group.
       if (layers.failures) {
         group(focusKind() ? `NQ calls · only its ${groupFocus.label} (filtering the list)` : `NQ calls · by ${FAILURE_COLOURS[settings.failureColour].toLowerCase()}`);
         shared.failureLegend().forEach(([text, colour, extra, mark]) => item(mark || 'star', text, colour, extra));
@@ -1872,7 +1970,7 @@
         rings.filter((ring) => ring.own).forEach((ring) => item('ring', ring.label, GROUP_COLOURS[ring.kind]));
         [['cluster', 'Other clusters of its hotspot'], ['run', 'Other time windows of its hotspot']].forEach(([kind, text]) => {
           const count = rings.filter((ring) => !ring.own && ring.kind === kind).length;
-          if (count) item('ring', `${text} (${count})`, GROUP_COLOURS[kind]);
+          if (count) item('ring', `${text} (${count})`, GROUP_COLOURS[kind], kind === 'cluster' ? 'is-dashed' : '');
         });
         if (pathsShown && paths) item('line', 'Time window: its failures in their order (numbered)', COLOURS.run, 'is-dashed');
         if (zone) {
@@ -1881,7 +1979,7 @@
         }
       }
       const located = data.trace.some((step) => step.site);
-      if ((layers.sites && data.sites.length) || (layers.path && located) || data.sites.some((site) => site.ends?.length)) {
+      if ((layers.sites && data.sites.length) || ((layers.path || layers.ends) && located) || data.sites.some((site) => site.ends?.length)) {
         group('Sites and cells');
         item('triangle', 'Site (colour of its vendor)', '#868e96');
         const ends = data.sites.flatMap((site) => site.ends || []);
@@ -1896,14 +1994,14 @@
         }
       }
       // Only the roles the cells of the call have on the map (a call served by one cell has neither start nor handovers).
-      if (layers.path && located) {
+      if ((layers.path || layers.ends) && located) {
         const roles = new Set(data.trace.filter((step) => step.site).map((step) => step.role));
-        if (roles.has('both')) item('line', 'Cell that served the whole call', COLOURS.both);
-        if (roles.has('start')) item('line', 'Cell that served the start', COLOURS.start);
-        if (roles.has('handover')) item('line', 'Handover: an arrow from cell to cell, numbered as the cells of the call', COLOURS.handover);
-        if ((data.call.handovers || []).length) item('ring', 'Where each handover took place on its way (an estimate, numbered as its arrow)', COLOURS.handover, 'is-dashed');
-        if (roles.has('end')) item('line', 'Cell that served the end', COLOURS.end);
-        if (roles.has('nr_leg')) item('line', 'NR leg (by PCI)', COLOURS.nr_leg, 'is-dotted');
+        if (layers.ends && roles.has('both')) item('line', 'Cell that served the whole call', COLOURS.both);
+        if (layers.ends && roles.has('start')) item('line', 'Cell that served the start', COLOURS.start);
+        if (layers.path && roles.has('handover')) item('line', 'Handover: an arrow from cell to cell, numbered as the cells of the call', COLOURS.handover);
+        if (layers.path && (data.call.handovers || []).length) item('ring', 'Where each handover took place on its way (an estimate, numbered as its arrow)', COLOURS.handover, 'is-dashed');
+        if (layers.ends && roles.has('end')) item('line', 'Cell that served the end', COLOURS.end);
+        if (layers.ends && roles.has('nr_leg')) item('line', 'NR leg (by PCI)', COLOURS.nr_leg, 'is-dotted');
       }
       if (layers.sites && data.sites.some((site) => site.cells.some((cell) => cell.same_pci))) {
         item('line', 'Same PCI and channel as a cell of the call', COLOURS.samePci, 'is-dashed');
@@ -1935,7 +2033,8 @@
         [view.x, view.y] = toWorld(latitude, longitude);
         redraw();
       },
-      destroy: () => { resizer.disconnect(); document.removeEventListener('keydown', onKey); basemapViews.delete(basemapChanged); l3Tree?.destroy(); },
+      destroy: () => { resizer.disconnect(); bottomSpace.disconnect(); document.removeEventListener('pointerdown', foldOutside, true);
+        document.removeEventListener('keydown', onKey); basemapViews.delete(basemapChanged); l3Tree?.destroy(); },
     };
   }
 
@@ -1954,10 +2053,10 @@
       // left for them).
       operators: stored.v >= 2 && ['own', 'all', 'focus'].includes(stored.operators) ? stored.operators : 'focus',
       failureColour: FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'site',
-      // Per Group: a circle around each NQ call of the groups of the call, in the colour of each group.
+      // And Group: a circle around each NQ call of the groups of the call, in the colour of each group.
       perGroup: stored.perGroup !== false,
       // The layers of From CDR (``cdr`` the whole card).
-      layers: {cdr: true, failures: true, cluster: true, run: true, hotspot: true, sites: true, path: true, route: true, paths: true, ...(stored.layers || {})},
+      layers: {cdr: true, failures: true, cluster: true, run: true, hotspot: true, sites: true, ends: true, path: true, route: true, paths: true, ...(stored.layers || {})},
     };
     delete settings.layers.tests;
     const save = () => storeSettings({v: 2, tests: settings.tests, measures: settings.measures, operators: settings.operators,
@@ -2026,7 +2125,7 @@
     const views = () => [panelView, expandedView].filter(Boolean);
     const redrawAll = () => views().forEach((view) => { view.renderLegend(); view.redraw(); });
     // A layer of From CDR (or the whole card) and a measure of its samples switched on or off.
-    shared.cdrLayers = ['failures', 'cluster', 'run', 'paths', 'hotspot', 'sites', 'path', 'route'];
+    shared.cdrLayers = ['failures', 'hotspot', 'cluster', 'run', 'paths', 'sites', 'ends', 'path', 'route'];
     shared.setLayer = (key, on) => { settings.layers[key] = on; save(); redrawAll(); renderFailures(); };
     shared.setMeasure = (key, on) => {
       settings.measures = Object.keys(METRICS).filter((name) => (name === key ? on : settings.measures.includes(name)));
@@ -2056,7 +2155,7 @@
     const kindLabel = (failure) => KIND_LABELS[failure.kind] || SERVICE_LABELS[failure.service] || failure.service;
     const failureText = (item) => [item.failure_classification, item.failure_category, item.failure_subcategory].filter(Boolean).join(' · ');
     // The colour of an NQ call by the choice of Colour NQ calls by, and the lines of the legend that explain it: one for each
-    // value shown, then, with Per Group, the outline of each group of the call.
+    // value shown, then, with And Group, the outline of each group of the call.
     // The site of the call (that of its CDR), found once for each call: its NQ calls burgundy when coloured by site.
     let ownSiteData = null, ownSiteKey = '';
     const ownSite = () => {
@@ -2067,7 +2166,7 @@
       return ownSiteKey;
     };
     shared.failureColour = (failure) => failureColourBy(settings.failureColour, failure, ownSite());
-    // The groups of the call an NQ call is of, as Per Group outlines it (those switched on in From CDR): its cluster
+    // The groups of the call an NQ call is of, as And Group outlines it (those switched on in From CDR): its cluster
     // innermost, then its time window and its hotspot.
     shared.failureGroups = (failure) => (settings.perGroup ? ['cluster', 'run', 'hotspot']
       .filter((kind) => shownLayers(settings)[kind] !== false && groupsOf(failure).includes(kind)) : []);
@@ -2080,7 +2179,7 @@
         .forEach((kind) => lines.push([names[kind], GROUP_COLOURS[kind], 'is-outlined']));
       return lines;
     };
-    // Whether the call is of a group (a hotspot, cluster or time window with other NQ calls): Per Group shows then.
+    // Whether the call is of a group (a hotspot, cluster or time window with other NQ calls): And Group shows then.
     const hasGroups = () => Boolean(shared.data?.failures.some((failure) => !failure.self && memberships(failure).length));
     // The cells of a call: its start and end cells (its serving cell when one served all of it), its handover cells on a
     // line of their own and the NR cell of an NSA call.
@@ -2660,7 +2759,7 @@
     const toolbarControls = () => {
       const data = shared.data;
       const radii = data?.radii_km || [0.5, 1, 2, 5, 10];
-      // Per Group, a switch beside the colour: an outline of the shape of each NQ call for each group of the call it is of
+      // And Group, a switch beside the colour: an outline of the shape of each NQ call for each group of the call it is of
       // (only when the call is of one).
       const perGroup = node('label', undefined, 'nq-map-control nq-map-check');
       perGroup.title = 'An outline around each NQ call for each group of the call it is of, in the colour of the group: its cluster innermost, then its time window and its hotspot (over the colour chosen; each group has its switch in From CDR)';
@@ -2671,7 +2770,8 @@
       perGroupBox.checked = settings.perGroup;
       perGroupBox.addEventListener('change', () => { settings.perGroup = perGroupBox.checked; save(); redrawAll(); renderToolbar(); });
       perGroupSwitch.append(perGroupBox, node('span', undefined, 'nq-l3-switch-track'));
-      perGroup.append(perGroupSwitch, node('span', 'Per Group'));
+      // (Its title above it, as those of the other controls.)
+      perGroup.append(node('span', 'And Group'), perGroupSwitch);
       perGroup.hidden = !hasGroups();
       // The layers of the map are switched in its cards (From CDR, From Logs).
       return [
@@ -2687,7 +2787,8 @@
           ...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
           settings.operators = value; save(); redrawAll(); renderFailures();
         }, 'The samples and Non-Qualified Calls of the operator of the call, of the Focus operators of the Operator Maps'
-          + `${data?.focus_labels?.length ? ` (${data.focus_labels.join(', ')})` : ''} or of every operator (its repetitions and hotspot always show)`)];
+          + `${data?.focus_labels?.length ? ` (${data.focus_labels.join(', ')})` : ''} or of every operator (its repetitions and hotspot always show)`),
+        basemapControl()];
     };
 
     // -- loading the map of a call -------------------------------------------------------------------------------
@@ -2829,8 +2930,7 @@
       const wrap = node('div', undefined, 'nq-map-expand-wrap');
       const large = node('div', undefined, 'nq-map-expand-card');
       const legendHost = node('div', undefined, 'nq-map-legend-host');
-      const floating = node('aside', undefined, 'nq-map-info nq-map-selected nq-map-selected-float');
-      floating.hidden = true;
+      const floating = floatingPanel();
       // The element chosen floats over the map, inside what its images show.
       const timeline = node('div', undefined, 'nq-l3-timeline-host');
       // The controls of the map above it too.
@@ -3188,7 +3288,8 @@
         }, 'What the colour of the NQ calls tells, as on the map of a call: their call type, the domain of their root cause (the one decided, else that of the DT Analyzer RCA), their campaign, their operator or the site of their CDR'),
         select('Operators', [...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
           settings.operators = value; save(); redrawAll();
-        }, `The NQ calls and RSRP / SINR samples of every operator, or of the Focus operators of the Operator Maps${focusLabels.length ? ` (${focusLabels.join(', ')})` : ''}`)];
+        }, `The NQ calls and RSRP / SINR samples of every operator, or of the Focus operators of the Operator Maps${focusLabels.length ? ` (${focusLabels.join(', ')})` : ''}`),
+        basemapControl()];
 
     // -- reading the area shown -------------------------------------------------------------------------------------
     let request = null, loadedKey = '', pending = 0, lastView = null, fitted = false;
@@ -3287,8 +3388,7 @@
       expandedView?.destroy();
       const large = node('div', undefined, 'nq-map-expand-card');
       const largeLegend = node('div', undefined, 'nq-map-legend-host');
-      floating = node('aside', undefined, 'nq-map-info nq-map-selected nq-map-selected-float');
-      floating.hidden = true;
+      floating = floatingPanel();
       const largeTimeline = node('div', undefined, 'nq-l3-timeline-host');
       const largeWrap = node('div', undefined, 'nq-map-expand-wrap');
       expandedToolbar = node('div', undefined, 'nq-map-toolbar nq-map-expand-toolbar');

@@ -68,8 +68,8 @@
   // The layers of a new map: the route of the UE, the PCell RSRP of LTE and NR, as the KMZ files open, and the events.
   const DEFAULT_ON = ['way', 'lte_pcell:rsrp', 'nr_pcell:rsrp', 'event'];
   // The version of the layers kept in the browser: the layers kept before version 2 get the events once, those kept before
-  // version 3 the route.
-  const STATE_VERSION = 3;
+  // version 3 the route, and those kept before version 4 every section unfolded.
+  const STATE_VERSION = 4;
 
   const node = (tag, text, className) => {
     const element = document.createElement(tag);
@@ -163,6 +163,22 @@
       context.restore();
       return;
     }
+    // A dashed line with a white edge (the icon of the lines from a call to the cells of its start and end).
+    if (shape === 'dashed-line') {
+      context.save();
+      context.lineCap = 'round';
+      [[size * .8, '#fff', []], [Math.max(1.6, size * .4), colour, [size * .6, size * .4]]].forEach(([width, stroke, dash]) => {
+        context.beginPath();
+        context.moveTo(x - size * 1.1, y + size * .7);
+        context.lineTo(x + size * 1.1, y - size * .7);
+        context.setLineDash(dash);
+        context.lineWidth = width;
+        context.strokeStyle = stroke;
+        context.stroke();
+      });
+      context.restore();
+      return;
+    }
     // A ring (the icon of the shape of a group of a call).
     if (shape === 'ring') {
       context.beginPath();
@@ -228,7 +244,9 @@
       ...((stored.v || 1) < 3 ? ['way'] : [])] : DEFAULT_ON),
     // Channels (layer|channel) and PCIs (layer|channel|pci) switched off inside a layer that is on.
     off: new Set(Array.isArray(stored.off) ? stored.off : []),
-    open: new Set(Array.isArray(stored.open) ? stored.open : ['lte', 'nr']),
+    // The sections unfolded (each one at first) and the layers whose channels and PCIs show.
+    open: new Set([...(Array.isArray(stored.open) ? stored.open : []),
+      ...(!Array.isArray(stored.open) || (stored.v || 1) < 4 ? SECTIONS.map((section) => section.key) : [])]),
     ue: stored.ue || 'all',
     // NQ Maps: the metric layer its grid averages.
     grid: LAYER[stored.grid] ? stored.grid : 'lte_pcell:rsrp',
@@ -376,8 +394,8 @@
         hits.push({x, y, r: pointSize + 3, kind: 'l3', item: {layer: layerKey, point, data}, priority: layerKey === 'event' || layerKey === 'l3' ? 4.2 : 4.1});
       }
     }
-    // The direction of travel over the points, beside the way (to the right of where the UE went) so that neither hides
-    // the other.
+    // The direction of travel over the points, inside the road of the way: halfway between two points of its GPS, so that
+    // it stands between their markers.
     if (layersOn.includes('direction')) {
       for (const ue of data.ues) {
         if (!ueShown(data, ue)) continue;
@@ -389,8 +407,8 @@
           if (length < .5) continue;
           if (last && Math.hypot(x1 - last[0], y1 - last[1]) < 34) continue;
           const heading = Math.atan2(x2 - x1, -(y2 - y1)) * 180 / Math.PI;
-          const side = size * 2.3, ax = x1 - (y2 - y1) / length * side, ay = y1 + (x2 - x1) / length * side;
-          drawMarker(context, 'arrow', ax, ay, size * 1.25, ue === 'B' ? '#495057' : '#212529', {heading});
+          const ax = (x1 + x2) / 2, ay = (y1 + y2) / 2;
+          drawMarker(context, 'arrow', ax, ay, size * 1.1, ue === 'B' ? '#495057' : '#212529', {heading});
           hits.push({x: ax, y: ay, r: size + 4, kind: 'l3', item: {layer: 'direction', point: {...track[index], ue, heading: (heading + 360) % 360}}, priority: 4.3});
           last = [x1, y1];
         }
@@ -892,6 +910,15 @@
     let shown = true;
     // Places the cursor of the timeline drawn (see render).
     let placeCursor = () => {};
+    // Its cross hides it, as the switch Signalling timeline of the card From Logs does (which shows it again).
+    const closeButton = () => {
+      const close = node('button', '×', 'nq-map-info-close');
+      close.type = 'button';
+      close.title = 'Hide the signalling timeline (the switch Signalling timeline of the card From Logs shows it again)';
+      close.setAttribute('aria-label', 'Hide the signalling timeline');
+      close.addEventListener('click', (event) => { event.stopPropagation(); state.timeline = false; changed(); });
+      return close;
+    };
     const render = () => {
       placeCursor = () => {};
       const data = state.timeline ? getData() : null;
@@ -901,7 +928,7 @@
         box.replaceChildren();
         if (note) {
           const head = node('header', undefined, 'nq-l3-timeline-head');
-          head.append(node('span', 'Signalling timeline', 'nq-l3-timeline-name'));
+          head.append(node('span', 'Signalling timeline', 'nq-l3-timeline-name'), closeButton());
           box.append(head, node('p', note, 'nq-l3-timeline-empty'));
         }
         return;
@@ -929,7 +956,7 @@
         key.append(mark, node('span', text));
         keys.append(key);
       }
-      head.append(title, keys);
+      head.append(title, keys, closeButton());
       box.replaceChildren(head);
       if (!shown) return;
       const width = Math.max(320, Math.round(box.clientWidth || host.clientWidth || 800) - 2);

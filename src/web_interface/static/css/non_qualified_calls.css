@@ -1874,11 +1874,21 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-drawer .nq-map-open { gap: .4rem; min-height: 2.2rem; padding: .35rem .95rem .35rem .75rem; }
 .nq-map-open svg { width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nq-map-panel[hidden] { display: none; }
-.nq-map-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem .75rem; }
+/* The controls above a map on one line: a select narrower than its longest choice cuts it with an ellipsis (on a phone they
+   take two per line, see below). */
+.nq-map-toolbar { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: .5rem .75rem; min-width: 0; }
+.nq-map-toolbar > .nq-map-control { flex: 0 1 auto; min-width: 0; }
+.nq-map-toolbar > .nq-map-control.nq-map-check { flex: none; }
+.nq-map-toolbar .nq-map-control select { width: 100%; min-width: 4.5rem; text-overflow: ellipsis; }
 .nq-map-control { display: grid; gap: .2rem; color: var(--nq-muted); font-size: .7rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .nq-map-control select { min-height: 2.1rem; padding: .3rem 1.9rem .3rem .65rem; border: 1px solid var(--nq-border); border-radius: 10px; background-color: #fff; color: var(--nq-text); font: inherit; font-size: .82rem; font-weight: 700; letter-spacing: 0; text-transform: none; }
-/* Per Group, a switch beside Colour NQ calls by; the controls above the larger map too. */
-.nq-map-control.nq-map-check { display: inline-flex; align-items: center; gap: .45rem; min-height: 2.1rem; color: var(--nq-text); cursor: pointer; }
+/* And Group, a switch beside Colour NQ calls by; the controls above the larger map too. */
+.nq-map-control.nq-map-check { justify-items: start; cursor: pointer; }
+/* (Its switch as wide as its title, in the middle of the height of the selects beside it.) */
+.nq-map-control.nq-map-check { justify-items: stretch; }
+.nq-map-check > .nq-l3-switch { width: 100%; height: 1.35rem; margin-block: .375rem; }
+.nq-map-check .nq-l3-switch-track::after { width: calc(1.35rem - 4px); height: calc(1.35rem - 4px); transition: left .15s ease; }
+.nq-map-check .nq-l3-switch input:checked + .nq-l3-switch-track::after { left: calc(100% - 1.35rem + 2px); transform: none; }
 .nq-map-control.nq-map-check[hidden] { display: none; }
 .nq-map-check .nq-l3-switch input:checked + .nq-l3-switch-track { background: var(--nq-color); }
 .nq-map-expand-toolbar { flex: none; margin-bottom: .6rem; }
@@ -1901,9 +1911,10 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-drawer .nq-map-zoom-reset, .nq-l3-maps-panel .nq-map-zoom-reset { font-size: .62rem; }
 .nq-map-zoom-level { min-width: 2.8rem; color: var(--nq-dark); font-size: .68rem; font-weight: 800; text-align: center; }
 /* The cards over the top left of a map, side by side (an unfolded one below the other on a narrow map): From CDR (in the colour of NQ
-   Calls) and From Logs (l3_layers.js), as glass panels with a switch in their header. */
+   Calls) and From Logs (l3_layers.js), as glass panels with a switch in their header, ending above the panels over the bottom of
+   the map (--nq-map-bottom-space, see createView). */
 .nq-map-panels { position: absolute; z-index: 5; top: 8px; left: 8px; display: flex; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; gap: .4rem;
-  width: max-content; max-width: calc(100% - 1.2rem); height: calc(100% - 1.4rem); pointer-events: none; }
+  width: max-content; max-width: calc(100% - 1.2rem); height: calc(100% - max(1.4rem, 8px + var(--nq-map-bottom-space, 0px))); pointer-events: none; }
 .nq-map-panels > .nq-l3-panel { position: relative; top: auto; left: auto; flex: 0 1 auto; width: 19.5rem; max-width: 100%; min-height: 0; max-height: 100%; pointer-events: auto; }
 .nq-map-panels > .nq-l3-panel.is-collapsed { width: auto; }
 /* Unfolded, the layers of the Layer 3 - DT Logs take two columns (Route beside Signalling, LTE beside NR), one on a narrow map. */
@@ -1914,17 +1925,13 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-samples-panel .nq-l3-head { background: linear-gradient(135deg, #7d1238, #b0234f); }
 .nq-map-samples-panel .nq-l3-head .nq-l3-switch input:checked + .nq-l3-switch-track { background: #ffc2d6; }
 .nq-map-samples-panel .nq-l3-grid { justify-content: space-between; }
-/* The map under the layers, below the zoom buttons (shown with them). */
-.nq-map-basemap { position: absolute; top: calc(8px + 2.55rem); right: 8px; z-index: 5; display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .25rem .2rem .65rem; border: 1px solid var(--nq-border); border-radius: 999px; background: rgba(255, 255, 255, .95); box-shadow: 0 5px 16px rgba(60, 4, 24, .16); color: var(--nq-dark); font-size: .72rem; font-weight: 800; opacity: 0; visibility: hidden; transition: opacity .18s ease, visibility 0s linear .18s; }
-.nq-map-card:hover .nq-map-basemap, .nq-map-card:focus-within .nq-map-basemap, .nq-map-expand .nq-map-basemap { opacity: 1; visibility: visible; transition-delay: 0s; }
-.nq-map-basemap select { width: auto; min-height: 1.7rem; padding: .1rem 1.6rem .1rem .55rem; border: 1px solid var(--nq-border); border-radius: 999px; background-color: #fff; color: var(--nq-dark); font: inherit; }
-/* A narrow map (a phone): the map type at the top left, beside the zoom buttons and without its label, the cards below them
-   and an unfolded card the whole width of the map, so that nothing covers another control. */
+/* Its sections in the colour of the NQ calls. */
+.nq-map-samples-panel .nq-l3-section-name { color: #7d1238; }
+.nq-map-samples-panel .nq-l3-section-on { background: #fbe4ec; color: #7d1238; }
+/* A narrow map (a phone): the cards below the zoom buttons and an unfolded card the whole width of the map, so that nothing
+   covers another control. */
 @container (max-width: 600px) {
-  .nq-map-basemap { top: 8px; right: auto; left: 8px; max-width: calc(100% - 10.6rem); padding: .2rem; }
-  .nq-map-basemap > span { display: none; }
-  .nq-map-basemap select { width: 100%; text-overflow: ellipsis; }
-  .nq-map-card .nq-map-panels { top: calc(8px + 2.65rem); max-width: calc(100% - 16px); height: calc(100% - 4.4rem); }
+  .nq-map-card .nq-map-panels { top: calc(8px + 2.65rem); max-width: calc(100% - 16px); height: calc(100% - max(4.4rem, 8px + 2.65rem + var(--nq-map-bottom-space, 0px))); }
   .nq-map-card .nq-map-panels > .nq-l3-panel:not(.is-collapsed) { flex: 1 0 100%; width: 100%; max-height: calc(100% - 2.9rem); }
   .nq-map-card .nq-map-panels .nq-l3-head { gap: .35rem; padding: .35rem .45rem .35rem .6rem; font-size: .8rem; }
   .nq-map-card .nq-map-panels .nq-l3-title { min-height: 0; white-space: nowrap; }
@@ -2103,15 +2110,18 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-expand-wrap { position: relative; display: flex; flex-direction: column; flex: 1 0 auto; background: #fff; }
 .nq-map-expand .nq-map-card { flex: 1 0 auto; height: auto; min-height: 60vh; }
 .nq-map-expand .nq-map-canvas { position: absolute; inset: 0; }
-.nq-map-selected-float { position: absolute; top: .7rem; left: .7rem; z-index: 8; width: min(25rem, 42%); max-height: calc(100% - 9rem); overflow: auto; box-shadow: 0 10px 28px rgba(60, 4, 24, .22); }
+.nq-map-selected-float { position: absolute; top: 6.2rem; right: .7rem; z-index: 8; width: min(25rem, 42%); max-height: calc(100% - 9rem); overflow: auto; box-shadow: 0 10px 28px rgba(60, 4, 24, .22); }
+/* Its title moves it over the map (see floatingPanel). */
+.nq-map-selected-float .nq-map-selected-content > header { cursor: grab; user-select: none; touch-action: none; }
+.nq-map-selected-float.is-dragged, .nq-map-selected-float.is-dragged .nq-map-selected-content > header { cursor: grabbing; }
 body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
-@media (hover: none), (pointer: coarse) { .nq-map-zoom, .nq-map-basemap { opacity: 1; visibility: visible; } }
-/* NQ Maps larger: the whole width of the window but 2 % on each side; the element chosen floats on the right. */
+@media (hover: none), (pointer: coarse) { .nq-map-zoom { opacity: 1; visibility: visible; } }
+/* NQ Maps larger: the whole width of the window but 2 % on each side. */
 .nq-map-expand.is-wide { width: 96vw; max-width: 96vw; height: 96vh; max-height: 96vh; height: 96dvh; max-height: 96dvh; }
-.nq-map-expand.is-wide .nq-map-selected-float { top: 6.2rem; right: .7rem; left: auto; }
 @media (max-width: 640px) {
   .nq-drawer .nq-drawer-map { padding: .3rem .6rem; }
-  .nq-map-control { flex: 1 1 calc(50% - .5rem); }
+  .nq-map-toolbar { flex-wrap: wrap; }
+  .nq-map-control, .nq-map-toolbar > .nq-map-control { flex: 1 1 calc(50% - .5rem); }
   .nq-map-control select { width: 100%; }
   .nq-map-card { height: 56vh; }
   .nq-map-facts { grid-template-columns: minmax(0, 1fr); gap: 0; }
@@ -2123,7 +2133,7 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
   .nq-map-expand-header .form-note { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; font-size: .74rem; }
   .nq-map-bottom .nq-l3-timeline { max-height: 26vh; }
   /* The element chosen floats below the image buttons (at the top right of the map), so its × stays free. */
-  .nq-map-selected-float { top: 3.6rem; left: .5rem; width: calc(100% - 1rem); max-height: 50dvh; }
+  .nq-map-selected-float { top: 3.6rem; right: .5rem; width: calc(100% - 1rem); max-height: 50dvh; }
   .nq-map-expand-toolbar { gap: .35rem .6rem; }
 }
 
@@ -2209,7 +2219,9 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
   font: inherit; cursor: pointer; }
 .nq-l3-timeline-name { color: #0b6e8a; font-size: .78rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
 .nq-l3-timeline-span { color: #4f6b75; font-size: .74rem; font-variant-numeric: tabular-nums; }
-.nq-l3-timeline-keys { display: flex; flex-wrap: wrap; gap: .2rem .7rem; font-size: .7rem; color: #4f6b75; }
+.nq-l3-timeline-keys { display: flex; flex-wrap: wrap; gap: .2rem .7rem; margin-left: auto; font-size: .7rem; color: #4f6b75; }
+.nq-l3-timeline-head .nq-map-info-close { display: grid; place-items: center; width: 1.6rem; min-width: 1.6rem; height: 1.6rem; min-height: 0; padding: 0;
+  border: 1px solid var(--nq-border); border-radius: 50%; background: #fff; color: var(--nq-dark); font-size: 1rem; line-height: 1; box-shadow: none; }
 .nq-l3-timeline-key { display: inline-flex; align-items: center; gap: .25rem; }
 .nq-l3-timeline-mark { display: inline-block; width: .6rem; height: .6rem; background: var(--mark); }
 .nq-l3-timeline-mark.is-line { width: .9rem; height: 2px; }
