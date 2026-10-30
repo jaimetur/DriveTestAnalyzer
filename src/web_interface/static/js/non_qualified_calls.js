@@ -3,6 +3,13 @@
   'use strict';
 
   const root = document.getElementById('non-qualified-calls');
+  // On a phone the introduction of the hero shows its first lines: More shows it whole (with or without a workspace).
+  root?.querySelector('[data-nq-hero-more]')?.addEventListener('click', (event) => {
+    const more = event.currentTarget;
+    const open = more.closest('.nq-hero').classList.toggle('is-open');
+    more.setAttribute('aria-expanded', String(open));
+    more.textContent = open ? 'Less' : 'More';
+  });
   if (!root || !document.getElementById('nq-table')) return;
 
   const $ = (id) => document.getElementById(id);

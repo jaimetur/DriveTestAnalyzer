@@ -28,6 +28,7 @@
       <p class="eyebrow">Non-Qualified Calls · Analysis Center</p>
       <h2>Follow up every call and test that did not complete</h2>
       <p class="lede">Every Voice and Speech call and every Data test {{ provider.definition | default('whose result is not Completed (Failed, Dropped, Cutoff…)', true) }} in the ready CDRs of this workspace. Review the overall health, drill down from the summary into the calls, and follow each one through the sections of the Analysis Center: its root cause decided from the DT Analyzer RCA, {{ provider.rca | default('NetCheck RCA', true) }}, the Ericsson RCA and the analysts, its failure event, and its analysis, implementation and planning phases, with a status set by rules, a responsible team, an assignee and a shared comment thread.</p>
+      <button type="button" class="nq-hero-more" data-nq-hero-more aria-expanded="false" title="Show the whole introduction">More</button>
     </div>
   </article>
 

@@ -469,7 +469,7 @@
       title.type = 'button';
       title.setAttribute('aria-expanded', String(open));
       title.title = open ? 'Fold the layers' : 'Show the layers of the Layer 3 - DT Logs';
-      title.append(node('span', 'From Layer 3 Logs', 'nq-l3-title-text'), node('span', open ? '▾' : '▸', 'nq-l3-chevron'));
+      title.append(node('span', 'From Logs', 'nq-l3-title-text'), node('span', open ? '▾' : '▸', 'nq-l3-chevron'));
       // A click anywhere on its header but its switch folds or unfolds it (its title is the button for the keyboard).
       head.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -644,7 +644,7 @@
     const layersOn = [...state.on].filter((key) => data.layers[key] && key !== 'way');
     if (!layersOn.length && !data.area && !route) return null;
     const box = node('div', undefined, 'nq-l3-legend');
-    box.append(node('p', 'From Layer 3 Logs', 'nq-l3-legend-title'));
+    box.append(node('p', 'From Logs', 'nq-l3-legend-title'));
     if (route) {
       const row = node('div', undefined, 'nq-l3-legend-row');
       const item = node('span', undefined, 'nq-l3-legend-item');

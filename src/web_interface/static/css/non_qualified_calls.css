@@ -8,6 +8,8 @@
 .non-qualified-calls .nq-hero .eyebrow { margin: 0 0 .35rem; }
 .non-qualified-calls .nq-hero h2 { margin: 1.25rem 0; color: #fff; }
 .non-qualified-calls .nq-hero .lede { max-width: 72rem; margin: 1rem 0; }
+/* More / Less of the introduction, only on a phone (see below). */
+.non-qualified-calls .nq-hero-more { display: none; }
 /* The indexing status and Refresh open the Filters panel. */
 .nq-sync-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .65rem; margin-bottom: 1rem; }
 .nq-sync-exports, .nq-sync-status { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; }
@@ -1221,8 +1223,11 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
    scroll sideways and each call of the table is a card with the name of every value (its header stays above the
    cards as a row of chips that sort and filter). */
 @media (max-width: 640px) {
-  .non-qualified-calls .nq-hero h2 { margin: .5rem 0; font-size: 1.35rem; }
+  .non-qualified-calls .nq-hero h2 { margin: .35rem 0; font-size: 1.15rem; line-height: 1.25; }
   .non-qualified-calls .nq-hero .lede { margin: .4rem 0 0; font-size: .8rem; line-height: 1.4; }
+  /* The hero takes little of the screen: the first two lines of its introduction, and More for the rest. */
+  .non-qualified-calls .nq-hero:not(.is-open) .lede { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+  .non-qualified-calls .nq-hero-more { display: inline-block; margin-top: .35rem; padding: .2rem .7rem; border: 1px solid rgba(255, 255, 255, .55); border-radius: 999px; background: rgba(255, 255, 255, .16); color: #fff; font-size: .74rem; font-weight: 800; box-shadow: none; }
   .nq-sync-bar { gap: .45rem; margin-bottom: .7rem; }
   .nq-sync-status, .nq-sync-exports { width: 100%; margin-left: 0; }
   .nq-sync-exports > * { flex: 1 1 0; justify-content: center; }
@@ -1878,7 +1883,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-status { margin: 0; color: var(--nq-muted); font-size: .8rem; }
 .nq-map-status[hidden], .nq-map-status:empty { display: none; }
 .nq-map-wrap { position: relative; }
-.nq-map-card { position: relative; height: clamp(340px, calc(100vh - 21rem), 820px); overflow: hidden; border: 1px solid var(--nq-border); border-radius: 14px; background: #e8edef; }
+.nq-map-card { position: relative; container-type: inline-size; height: clamp(340px, calc(100vh - 21rem), 820px); overflow: hidden; border: 1px solid var(--nq-border); border-radius: 14px; background: #e8edef; }
 .nq-map-canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; outline: none; }
 .nq-map-canvas:focus-visible { box-shadow: inset 0 0 0 3px rgba(176, 35, 79, .45); }
 .nq-map-canvas.is-pointing { cursor: pointer; }
@@ -1890,8 +1895,8 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-drawer .nq-map-zoom-button, .nq-l3-maps-panel .nq-map-zoom-button { display: grid; place-items: center; width: 1.65rem; min-width: 1.65rem; height: 1.65rem; min-height: 1.65rem; padding: 0; border: 0; border-radius: 999px; background: var(--nq-color); color: #fff; font: 800 1rem/1 inherit; cursor: pointer; box-shadow: none; }
 .nq-drawer .nq-map-zoom-reset, .nq-l3-maps-panel .nq-map-zoom-reset { font-size: .62rem; }
 .nq-map-zoom-level { min-width: 2.8rem; color: var(--nq-dark); font-size: .68rem; font-weight: 800; text-align: center; }
-/* The cards over the top left of a map, side by side (one below the other on a narrow map): From CDR (in the colour of NQ
-   Calls) and From Layer 3 Logs (l3_layers.js), as glass panels with a switch in their header. */
+/* The cards over the top left of a map, side by side (an unfolded one below the other on a narrow map): From CDR (in the colour of NQ
+   Calls) and From Logs (l3_layers.js), as glass panels with a switch in their header. */
 .nq-map-panels { position: absolute; z-index: 5; top: 8px; left: 8px; display: flex; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; gap: .4rem;
   width: max-content; max-width: calc(100% - 1.2rem); height: calc(100% - 1.4rem); pointer-events: none; }
 .nq-map-panels > .nq-l3-panel { position: relative; top: auto; left: auto; flex: 0 1 auto; width: 19.5rem; max-width: 100%; min-height: 0; max-height: 100%; pointer-events: auto; }
@@ -1908,6 +1913,17 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-basemap { position: absolute; top: calc(8px + 2.55rem); right: 8px; z-index: 5; display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .25rem .2rem .65rem; border: 1px solid var(--nq-border); border-radius: 999px; background: rgba(255, 255, 255, .95); box-shadow: 0 5px 16px rgba(60, 4, 24, .16); color: var(--nq-dark); font-size: .72rem; font-weight: 800; opacity: 0; visibility: hidden; transition: opacity .18s ease, visibility 0s linear .18s; }
 .nq-map-card:hover .nq-map-basemap, .nq-map-card:focus-within .nq-map-basemap, .nq-map-expand .nq-map-basemap { opacity: 1; visibility: visible; transition-delay: 0s; }
 .nq-map-basemap select { width: auto; min-height: 1.7rem; padding: .1rem 1.6rem .1rem .55rem; border: 1px solid var(--nq-border); border-radius: 999px; background-color: #fff; color: var(--nq-dark); font: inherit; }
+/* A narrow map (a phone): the map type at the top left, beside the zoom buttons and without its label, the cards below them
+   and an unfolded card the whole width of the map, so that nothing covers another control. */
+@container (max-width: 600px) {
+  .nq-map-basemap { top: 8px; right: auto; left: 8px; max-width: calc(100% - 10.6rem); padding: .2rem; }
+  .nq-map-basemap > span { display: none; }
+  .nq-map-basemap select { width: 100%; text-overflow: ellipsis; }
+  .nq-map-card .nq-map-panels { top: calc(8px + 2.65rem); max-width: calc(100% - 16px); height: calc(100% - 4.4rem); }
+  .nq-map-card .nq-map-panels > .nq-l3-panel:not(.is-collapsed) { flex: 1 0 100%; width: 100%; max-height: calc(100% - 2.9rem); }
+  .nq-map-card .nq-map-panels .nq-l3-head { gap: .35rem; padding: .35rem .45rem .35rem .6rem; font-size: .8rem; }
+  .nq-map-card .nq-map-panels .nq-l3-title { min-height: 0; white-space: nowrap; }
+}
 .nq-map-wheel-hint { position: absolute; top: 50%; left: 50%; z-index: 6; padding: .55rem .9rem; border-radius: 10px; background: rgba(45, 21, 32, .82); color: #fff; font-size: .85rem; font-weight: 800; transform: translate(-50%, -50%); pointer-events: none; }
 .nq-map-wheel-hint[hidden] { display: none; }
 .nq-map-selection { position: absolute; z-index: 4; box-sizing: border-box; border: 2px solid var(--nq-dark); background: rgba(176, 35, 79, .14); box-shadow: 0 0 0 1px rgba(255, 255, 255, .8) inset; pointer-events: none; }
@@ -1948,7 +1964,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-legend li { display: inline-flex; align-items: center; gap: .35rem; line-height: 1.25; }
 .nq-map-legend .nq-map-legend-title { color: var(--nq-dark); font-weight: 850; }
 .nq-map-legend ul.is-off { opacity: .45; }
-/* The legend in two boxes, as the cards on the map: From CDR (in the colour of NQ Calls) and From Layer 3 Logs (.nq-l3-legend). */
+/* The legend in two boxes, as the cards on the map: From CDR (in the colour of NQ Calls) and From Logs (.nq-l3-legend). */
 .nq-map-legend-box { display: flex; flex-direction: column; gap: .3rem; flex: 1 0 100%; padding: .45rem .6rem; border: 1px solid #ecd3dc; border-radius: 10px; background: #fdf6f8; }
 .nq-map-legend-box-title { margin: 0; color: #7d1238; font-size: .72rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
 .nq-map-mark { flex: 0 0 auto; display: inline-block; box-sizing: border-box; width: .8rem; height: .8rem; }
@@ -2077,7 +2093,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 @media (hover: none), (pointer: coarse) { .nq-map-zoom, .nq-map-basemap { opacity: 1; visibility: visible; } }
 /* NQ Maps larger: the whole width of the window but 2 % on each side; the element chosen floats on the right. */
-.nq-map-expand.is-wide { width: 96vw; max-width: 96vw; height: 96vh; max-height: 96vh; }
+.nq-map-expand.is-wide { width: 96vw; max-width: 96vw; height: 96vh; max-height: 96vh; height: 96dvh; max-height: 96dvh; }
 .nq-map-expand.is-wide .nq-map-selected-float { top: 6.2rem; right: .7rem; left: auto; }
 @media (max-width: 640px) {
   .nq-drawer .nq-drawer-map { padding: .3rem .6rem; }
@@ -2086,8 +2102,12 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
   .nq-map-card { height: 56vh; }
   .nq-map-facts { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .nq-map-facts dd { margin-bottom: .3rem; }
-  .nq-map-expand { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
+  .nq-map-expand { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; }
   .nq-map-expand-content { padding: .5rem; }
+  /* The header of the larger map takes little of the phone: its note in two lines. */
+  .nq-map-expand-header { padding: .6rem .8rem .5rem; }
+  .nq-map-expand-header .form-note { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; font-size: .74rem; }
+  .nq-map-bottom .nq-l3-timeline { max-height: 26vh; }
   .nq-map-selected-float { top: .5rem; left: .5rem; width: calc(100% - 1rem); max-height: 40%; }
 }
 

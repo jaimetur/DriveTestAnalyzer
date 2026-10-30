@@ -122,14 +122,14 @@
   const SETTINGS_KEY = 'nq-call-map-settings';
   // The maps under the layers, chosen on each map (the same one on every map of the page), from tile servers that need no
   // key: OpenStreetMap in grey by default (its streets under a white veil, so that the samples, events and calls stand out),
-  // Plain and Dark without symbols or labels (up to zoom 16, enlarged beyond).
+  // Plain and Dark without symbols or labels (up to zoom 16, enlarged beyond). ``short``: its name on a narrow map (a phone).
   const BASEMAPS = {
-    streets: {label: 'OpenStreetMap (original)', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, attribution: '© OpenStreetMap contributors'},
-    light: {label: 'OpenStreetMap in grey (light)', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, grey: true, veil: .5,
+    streets: {label: 'OpenStreetMap (original)', short: 'OpenStreetMap', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, attribution: '© OpenStreetMap contributors'},
+    light: {label: 'OpenStreetMap in grey (light)', short: 'OSM in grey', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, grey: true, veil: .5,
       attribution: '© OpenStreetMap contributors'},
-    plain: {label: 'Plain (no labels)', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    plain: {label: 'Plain (no labels)', short: 'Plain', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
       max: 16, attribution: 'Tiles © Esri — Esri, HERE, Garmin, OpenStreetMap contributors'},
-    terrain: {label: 'Terrain (elevation)', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: 'abc', max: 17,
+    terrain: {label: 'Terrain (elevation)', short: 'Terrain', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: 'abc', max: 17,
       attribution: '© OpenStreetMap contributors, SRTM · © OpenTopoMap (CC-BY-SA)'},
     topographic: {label: 'Topographic', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', max: 19,
       attribution: 'Tiles © Esri — Esri, HERE, Garmin, USGS, NGA, OpenStreetMap contributors'},
@@ -415,6 +415,14 @@
     }
     basemapSelect.value = basemap.key;
     basemapSelect.addEventListener('change', () => setBasemap(basemapSelect.value));
+    // On a narrow map (a phone) the map types take their short names, so that the choice fits beside the zoom buttons.
+    let shortNames = false;
+    const nameBasemaps = () => {
+      const short = card.clientWidth > 0 && card.clientWidth <= 600;
+      if (short === shortNames) return;
+      shortNames = short;
+      for (const option of basemapSelect.options) option.textContent = (short && BASEMAPS[option.value].short) || BASEMAPS[option.value].label;
+    };
     basemapChoice.append(node('span', 'Map'), basemapSelect);
     ['wheel', 'pointerdown', 'dblclick'].forEach((type) => basemapChoice.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
     const basemapChanged = () => {
@@ -431,7 +439,7 @@
     samples.hidden = true;
     ['wheel', 'pointerdown', 'dblclick'].forEach((type) => samples.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
     panels.append(samples);
-    // From CDR: what the map shows from the CDRs and their Non-Qualified Calls, as the card From Layer 3 Logs shows what comes
+    // From CDR: what the map shows from the CDRs and their Non-Qualified Calls, as the card From Logs shows what comes
     // from the logs (l3_layers.js): the measures of the RSRP / SINR samples, each a layer with its switch, its marker and how
     // many samples have it (several at once: side by side at each test), with the CDRs they come from on the map of a call;
     // then the NQ calls, the sites, the cell path and time-window paths of a call and the route (``shared.cdrLayers``). Its
@@ -637,6 +645,7 @@
       if (!card.isConnected || !data) return;
       const width = canvas.clientWidth, height = canvas.clientHeight;
       if (!width || !height) return;
+      nameBasemaps();
       if (!view) fit();
       // A map that changes size (the legend below it growing with the samples, a resized window) keeps its top left corner
       // where it was: what it shows does not move.
@@ -1521,12 +1530,19 @@
       wheelHint.hidden = true;
       zoomBy(Math.exp(event.deltaY * (event.deltaMode === 1 ? .05 : .0018)), ...pointerOffset(event));
     }, {passive: false});
-    // In the panel a double-click opens the larger map; in the larger map it zooms in.
+    // In the panel a double-click opens the larger map; in the larger map it zooms in. A touch screen sends no double-click
+    // for a double tap (its pointerdown is taken to move the map): two taps close in time and place do the same (see stopDrag).
+    let lastTap = null, doubleTapped = 0;
+    const doubleClick = (event) => {
+      if (expanded || !onExpand) zoomBy(.5, ...pointerOffset(event));
+      else onExpand();
+    };
     canvas.addEventListener('dblclick', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (expanded || !onExpand) zoomBy(.5, ...pointerOffset(event));
-      else onExpand();
+      // The double-click a browser may still send after a double tap.
+      if (performance.now() - doubleTapped < 700) return;
+      doubleClick(event);
     });
     // On a touch screen two fingers zoom the map (a pinch) towards their middle, which also moves it; one finger moves it.
     const touches = new Map();
@@ -1630,6 +1646,16 @@
         return;
       }
       if (finished.pan && !moved && event.type === 'pointerup') {
+        if (event.pointerType !== 'mouse') {
+          const now = performance.now();
+          if (lastTap && now - lastTap.time < 400 && Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < 30) {
+            lastTap = null;
+            doubleTapped = now;
+            doubleClick(event);
+            return;
+          }
+          lastTap = {time: now, x: event.clientX, y: event.clientY};
+        }
         // A click chooses the element under the pointer and clears the measured distance; a click beside every element
         // keeps the chosen one (as the first click of the double-click that opens the larger map).
         clearMeasure();
@@ -1648,7 +1674,7 @@
     };
     canvas.addEventListener('pointerup', stopDrag);
     canvas.addEventListener('pointercancel', stopDrag);
-    const resizer = new ResizeObserver(() => redraw());
+    const resizer = new ResizeObserver(() => { nameBasemaps(); redraw(); });
     resizer.observe(card);
 
     // The legend: the levels of the measure chosen and the marks of the map.
@@ -1663,7 +1689,7 @@
       const layers = shownLayers(settings);
       const pathsShown = layers.paths !== false;
       const routeShown = layers.route !== false;
-      // Two boxes, as the cards on the map: From CDR (its groups below) and From Layer 3 Logs (l3_layers.js legend).
+      // Two boxes, as the cards on the map: From CDR (its groups below) and From Logs (l3_layers.js legend).
       const cdrBox = node('div', undefined, 'nq-map-legend-box');
       cdrBox.append(node('p', 'From CDR', 'nq-map-legend-box-title'));
       const finish = (l3Route = '') => {
@@ -2537,7 +2563,7 @@
       const cdrType = SERVICE_LABELS[data?.call.service] || '';
       const scopes = (entries) => Object.entries(entries).map(([value, text]) => [value, value === 'cdr' && cdrType ? `${text} (${cdrType})` : text]);
       const radii = data?.radii_km || [0.5, 1, 2, 5, 10];
-      // The layers of the map are switched in its cards (From CDR, From Layer 3 Logs).
+      // The layers of the map are switched in its cards (From CDR, From Logs).
       toolbar.replaceChildren(
         select('Radius', 'radius', radii.map((value) => [String(value), `${distanceText(value)}${value === data?.group_radius_km ? ' (groups)' : ''}`]),
           String(settings.radius_km), (value) => {
@@ -3041,7 +3067,7 @@
       wrapper.append(element);
       return wrapper;
     };
-    // The layers of the map are switched in its cards (From CDR, From Layer 3 Logs), as on the map of a call.
+    // The layers of the map are switched in its cards (From CDR, From Logs), as on the map of a call.
     const renderToolbar = () => {
       toolbar.replaceChildren(
         select('Colour NQ calls by', Object.entries(AREA_FAILURE_COLOURS), settings.failureColour, (value) => {
