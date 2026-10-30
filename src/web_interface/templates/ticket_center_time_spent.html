@@ -71,7 +71,7 @@
       <div class="tickets-time-groups">
         {% for group in spent.groups %}
         <section class="tickets-card tickets-time-card" aria-label="Time spent {{ group.title | lower }}">
-          <header class="tickets-card-head"><h3>{{ group.title }}</h3><span class="tickets-card-note">Time in all · tickets · average per ticket</span></header>
+          <header class="tickets-card-head"><h3>{{ group.title }}</h3><span class="tickets-card-note">Total time</span></header>
           {% if group.rows %}
           <ul class="tickets-ranking">
             {% for row in group.rows %}

@@ -282,7 +282,7 @@
 .tickets-where small { grid-column: 2 / -1; color: #7b8994; font-size: .7rem; font-weight: 600; }
 .tickets-time-columns .tickets-column-value { font-size: .64rem; white-space: nowrap; }
 .tickets-time-bar { flex: none; width: min(100%, 2.2rem); border-radius: 4px 4px 0 0; background: linear-gradient(180deg, #ef4444, #991b1b); }
-.tickets-time-groups { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: .8rem; }
+.tickets-time-groups { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; }
 .ticket-center .tickets-spent-row { grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr) 4.8rem; }
 .tickets-spent-name { display: flex; align-items: center; gap: .45rem; min-width: 0; }
 .tickets-spent-name > :is(.tickets-rank-dot, .tickets-avatar) { flex: 0 0 auto; margin-right: 0; }
@@ -622,8 +622,11 @@ div.tickets-spent-row { cursor: default; }
 .ticket-center .ticket-lightbox-head button { min-height: 0; padding: 0 .5rem; border: 0; background: transparent; box-shadow: none; color: #fff; font-size: 1.4rem; }
 .ticket-lightbox img { display: block; max-width: min(92vw, 1400px); max-height: calc(92vh - 3rem); object-fit: contain; }
 
+@media (max-width: 1100px) {
+  .tickets-time-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 900px) {
-  .ticket-layout, .tickets-form, .tickets-board, .tickets-insights-grid { grid-template-columns: minmax(0, 1fr); }
+  .ticket-layout, .tickets-form, .tickets-board, .tickets-insights-grid, .tickets-time-groups { grid-template-columns: minmax(0, 1fr); }
   .tickets-field-title { grid-column: 1 / -1; }
   .ticket-side { position: static; }
 }

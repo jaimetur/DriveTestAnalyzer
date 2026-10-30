@@ -700,13 +700,14 @@ def ticket_time_spent(tickets: list[dict[str, Any]], events: Iterable[dict[str, 
         'median': _duration_text(median(took.values()) if timed else None),
         'longest': {'id': longest['id'], 'title': longest['title'], 'took': _duration_text(took[id(longest)])} if longest else None,
         'where': where, 'periods': [over_time('week'), over_time('month')],
+        # In rows of three: the longer lists first, the shorter ones below them.
         'groups': [
             {'key': 'module', 'title': 'By module', 'rows': group(modules, True, STATISTICS_MODULES)},
+            {'key': 'reporter', 'title': 'By reporter', 'rows': group(reporters, True, STATISTICS_PEOPLE)},
+            {'key': 'version', 'title': 'By fixed version', 'rows': group(versions, False, STATISTICS_VERSIONS)},
             {'key': 'type', 'title': 'By type', 'rows': group(types, False)},
             {'key': 'priority', 'title': 'By priority', 'rows': group(priorities, False)},
             {'key': 'assignee', 'title': 'By assignee', 'rows': group(assignees, True, STATISTICS_PEOPLE)},
-            {'key': 'reporter', 'title': 'By reporter', 'rows': group(reporters, True, STATISTICS_PEOPLE)},
-            {'key': 'version', 'title': 'By version that fixed them', 'rows': group(versions, False, STATISTICS_VERSIONS)},
         ],
     }
 
