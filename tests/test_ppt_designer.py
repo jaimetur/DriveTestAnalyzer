@@ -1409,7 +1409,8 @@ def test_designs_lifecycle_and_layout(client):
     assert '>Use Latest Datasets</button>' not in page.text
     assert 'ds-viewer-refresh-action' in page.text
     design_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer.js').read_text(encoding='utf-8')
-    assert "controls.append(data, expand, zoom)" in design_script
+    # Refresh chart (shown only while designing) goes beside View dataset.
+    assert "controls.append(refresh, data, expand, zoom)" in design_script
     assert "savedDefinition = definitionFingerprint(savedRuntimeDesignDefinition(designs[id])); dirty = false;" in design_script
     assert "await warmDesignModels();" not in design_script
     assert "Rendering PPT Charts" in design_script

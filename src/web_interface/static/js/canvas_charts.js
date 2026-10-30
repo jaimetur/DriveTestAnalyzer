@@ -2932,6 +2932,8 @@
     canvas.addEventListener('pointermove', event => {
       if (!pending || event.pointerId !== pending.pointerId) return;
       if (!drag) {
+        // (A press released outside the chart before the drag started leaves nothing to drag.)
+        if (!(event.buttons & 1)) { pending = null; return; }
         if (Math.hypot(event.clientX - pending.x, event.clientY - pending.y) < 6) return;
         drag = {source: pending.item, field: pending.field, across: valuesAcross(canvas, pending.item), target: null, after: false};
         valueDragStates.set(canvas, drag);
