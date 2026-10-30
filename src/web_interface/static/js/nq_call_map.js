@@ -53,6 +53,8 @@
   const GROUP_COLOURS = {hotspot: COLOURS.hotspot, cluster: COLOURS.cluster, run: COLOURS.run};
   // Whether an NQ call is of a group of the call shown.
   const inGroup = (failure) => groupsOf(failure).length > 0;
+  // Whether the map draws the hotspot zone of the call: a hotspot of 2 calls or more, unless one of its groups filters the list.
+  const hotspotShown = (data) => (data?.groups?.hotspot || 0) >= 2 && !focusKind();
   // The shapes the map draws: every one, or with a cluster or a time window filtering the list, its own (one around its
   // calls when the call has none of it, such as its cluster of every NR Mode).
   const visibleRings = (data) => {
@@ -92,7 +94,10 @@
   };
   // What the card From CDR switches (``cdr`` the whole of it): the layers of the map from the CDRs and the Non-Qualified
   // Calls, and the measures of the samples; while it is off none of them is drawn.
-  const CDR_LAYER_LABELS = {failures: 'NQ calls', sites: 'Sites', path: 'Cell path', paths: 'Time-window paths', route: 'Route'};
+  // On the map of a call, each group of the call has its switch too: the shapes of its clusters, time windows and hotspot
+  // zone, and their outlines on the NQ calls (Per Group).
+  const CDR_LAYER_LABELS = {failures: 'NQ calls', cluster: 'Clusters', run: 'Time windows', paths: 'Time-window paths', hotspot: 'Hotspot zone',
+    sites: 'Sites', path: 'Cell path', route: 'Route'};
   const shownLayers = (settings) => (settings.layers.cdr === false
     ? {...settings.layers, ...Object.fromEntries(Object.keys(CDR_LAYER_LABELS).map((key) => [key, false]))} : settings.layers);
   const shownMeasures = (settings) => (settings.layers.cdr === false ? [] : Object.keys(METRICS).filter((key) => settings.measures.includes(key)));
@@ -545,12 +550,15 @@
       if (note) body.append(node('p', note, 'nq-l3-area-note'));
       body.append(node('p', 'Calls, sites and routes', 'nq-l3-block'));
       const icons = {failures: ['diamond', COLOURS.call], sites: ['triangle', '#868e96'], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
-        route: ['road', data.area ? COLOURS.route : COLOURS.path]};
-      const paths = visibleRings(data).some((ring) => ring.path && ring.path.length > 1);
+        route: ['road', data.area ? COLOURS.route : COLOURS.path], cluster: ['ring', COLOURS.cluster], run: ['ring', COLOURS.run], hotspot: ['ring', COLOURS.hotZone]};
+      const rings = visibleRings(data);
+      const paths = rings.some((ring) => ring.path && ring.path.length > 1);
       for (const key of shared.cdrLayers || []) {
-        if (key === 'paths' && !paths) continue;
+        // A group only when the call has one of it.
+        if ((key === 'paths' && !paths) || ((key === 'cluster' || key === 'run') && !rings.some((ring) => ring.kind === key))
+          || (key === 'hotspot' && !hotspotShown(data))) continue;
         const count = key === 'failures' ? data.failures.filter((failure) => !failure.self && failure.latitude !== null && shared.showsFailure(failure)).length
-          : key === 'sites' ? data.sites.length : null;
+          : key === 'sites' ? data.sites.length : key === 'cluster' || key === 'run' ? rings.filter((ring) => ring.kind === key).length : null;
         const text = key === 'route' ? (data.area ? 'Route (the drive of each CDR between its tests)' : 'Route (its way and that of its car)') : CDR_LAYER_LABELS[key];
         row(settings.layers[key] !== false, `Show the ${CDR_LAYER_LABELS[key]}`, icons[key], text, count, (checked) => shared.setLayer(key, checked));
       }
@@ -755,8 +763,9 @@
       // The hotspot zone: where its clusters OR its time windows are (their envelope), or with the AND join where they meet
       // (their intersection), in an orange of its own: tinted over the shapes of its groups and outlined outside them.
       let hotZone = null;
+      // (The zone takes every shape of its groups, those switched off too.)
       const visible = visibleRings(data);
-      if ((data.groups?.hotspot || 0) >= 2 && !focusKind()) {
+      if (hotspotShown(data) && layers.hotspot !== false) {
         const spatial = visible.filter((ring) => ring.kind !== 'run');
         const timed = visible.filter((ring) => ring.kind === 'run');
         const meet = data.hotspot_join === 'and' && spatial.length && timed.length;
@@ -811,7 +820,7 @@
       // each time window in blue of its hotspot (what they make together), those of the call itself bolder, the larger
       // below; the hotspot when one of its calls is in neither. Their tint first, then the hotspot zone, then their lines and
       // the edge of the zone.
-      const shapes = [...visible].sort((a, b) => b.metres - a.metres);
+      const shapes = visible.filter((ring) => layers[ring.kind] !== false).sort((a, b) => b.metres - a.metres);
       for (const ring of shapes) {
         shape(context, ring);
         context.fillStyle = GROUP_COLOURS[ring.kind];
@@ -1207,8 +1216,8 @@
       window.L3Layers?.drawCursor(context, shared.l3Focus || shared.l3, project);
       // The other Non-Qualified Calls, over the routes and the layers of the logs: those of its groups (hotspot, cluster,
       // time-window issue) and of its site, then the others. The calls on one point make one mark with how many they are (the
-      // most related gives its colour); with Per Group, a circle around it for each group of the call they are of, its cluster
-      // innermost, then its time window and its hotspot.
+      // most related gives its colour); with Per Group, an outline of its shape for each group of the call they are of (and
+      // switched on), its cluster innermost, then its time window and its hotspot.
       if (layers.failures) {
         const stacks = new Map();
         for (const failure of data.failures) {
@@ -1240,11 +1249,11 @@
           context.lineWidth = hollow ? 2.6 : 2;
           context.strokeStyle = hollow ? shared.failureColour(failure) : '#fff';
           context.stroke();
-          // Per Group: the circles of the groups of the call the calls on the point are of, each over a white one.
+          // Per Group: an outline of its shape for each group of the call the calls on the point are of, each over a white one.
           const groups = data.area ? [] : ['cluster', 'run', 'hotspot'].filter((kind) => items.some((item) => shared.failureGroups(item).includes(kind)));
           groups.forEach((kind, index) => {
-            context.beginPath();
-            context.arc(x, y, size + 3.5 + index * 3.8, 0, Math.PI * 2);
+            diamond(context, x, y, size + 4.6 + index * 4.6);
+            context.lineJoin = 'miter';
             context.lineWidth = 4.6;
             context.strokeStyle = 'rgba(255, 255, 255, .9)';
             context.stroke();
@@ -1266,7 +1275,7 @@
             context.textBaseline = 'middle';
             context.fillText(badge, x + size - 1 + badgeWidth / 2, y - size - 6);
           }
-          hits.push({x, y, r: size + 3 + groups.length * 3.8, kind: 'failure', item: failure, priority: 4, stack: items.length});
+          hits.push({x, y, r: size + 3 + groups.length * 4.6, kind: 'failure', item: failure, priority: 4, stack: items.length});
         }
       }
       // The order of the failures of each time window, in a blue badge at the top left of each (beyond its circles).
@@ -1415,30 +1424,37 @@
         ruler.append(mark);
       }
     };
-    // The elevation profile of the distance measured: read once it is drawn (a new one replaces it), folded with the ×.
-    let profileToken = 0;
+    // The elevation profile of the distance measured: read once it is drawn (a new one replaces it), cleared with the ×; a
+    // click anywhere on its header folds it to its figures or unfolds it.
+    let profileToken = 0, profileOpen = true, lastProfile = null;
     const renderProfile = (profile) => {
+      lastProfile = profile;
       profileBox.replaceChildren();
       profileBox.hidden = !measure;
       if (!measure) return;
       const head = node('header', undefined, 'nq-map-profile-head');
+      head.addEventListener('click', () => { profileOpen = !profileOpen; renderProfile(lastProfile); });
+      const fold = node('button', undefined, 'nq-map-profile-title');
+      fold.type = 'button';
+      fold.setAttribute('aria-expanded', String(profileOpen));
+      fold.append(node('strong', 'Elevation profile'), node('span', profileOpen ? '▾' : '▸', 'nq-l3-chevron'));
       const close = node('button', '×', 'nq-map-info-close');
       close.type = 'button';
       close.title = 'Clear the distance and its elevation profile';
       close.setAttribute('aria-label', 'Clear the distance and its elevation profile');
       close.addEventListener('click', (event) => { event.stopPropagation(); clearMeasure(); });
       const {metres, bearing} = geodesic(measure.from, measure.to);
-      head.append(node('strong', 'Elevation profile'), node('span', `${metresText(metres)} · ${Math.round(bearing)}°`, 'nq-map-profile-span'));
+      head.append(fold, node('span', `${metresText(metres)} · ${Math.round(bearing)}°`, 'nq-map-profile-span'));
       profileBox.append(head);
       if (!profile) {
         head.append(close);
-        profileBox.append(node('p', 'Reading the elevation of the ground…', 'nq-map-profile-note'));
+        if (profileOpen) profileBox.append(node('p', 'Reading the elevation of the ground…', 'nq-map-profile-note'));
         return;
       }
       const known = profile.points.filter((point) => point.elevation !== null && Number.isFinite(point.elevation));
       if (known.length < 2) {
         head.append(close);
-        profileBox.append(node('p', 'The elevation of the ground could not be read here.', 'nq-map-profile-note'));
+        if (profileOpen) profileBox.append(node('p', 'The elevation of the ground could not be read here.', 'nq-map-profile-note'));
         return;
       }
       const values = known.map((point) => point.elevation);
@@ -1456,6 +1472,7 @@
       }
       stats.append(node('span', `↑ ${Math.round(gain)} m`), node('span', `↓ ${Math.round(loss)} m`), node('span', `Max slope ${(slope * 100).toFixed(1)} %`));
       head.append(stats, close);
+      if (!profileOpen) return;
       // The ground as an area over the distance, with its scale; under the pointer, its point (also on the map).
       const width = Math.max(320, Math.round(profileBox.clientWidth || card.clientWidth || 600) - 24), height = 118;
       const left = 44, right = 10, top = 8, bottom = 20;
@@ -1800,15 +1817,16 @@
         item('road', `The way of its car: its tests ${data.drive.minutes} minutes before and after, joined to where the call started and ended (arrows: where it was heading; the bends are a sketch)`, COLOURS.route);
       }
       item('line', `Radius ${distanceText(data.radius_km)}`, COLOURS.radius, 'is-dashed');
-      // The NQ calls around as on NQ Maps: a colour for each value of Colour NQ calls by, with the circles of Per Group.
+      // The NQ calls around as on NQ Maps: a colour for each value of Colour NQ calls by, with the outlines of Per Group.
       if (layers.failures) {
         group(focusKind() ? `NQ calls · only its ${groupFocus.label} (filtering the list)` : `NQ calls · by ${FAILURE_COLOURS[settings.failureColour].toLowerCase()}`);
         shared.failureLegend().forEach(([text, colour, extra, mark]) => item(mark || 'diamond', text, colour, extra));
         item('count', 'NQ calls at one point (how many)', '#2d1520');
       }
-      // The shapes of its groups: its own one by one, those of the other calls of its hotspot by kind, then its zone.
-      const rings = visibleRings(data);
-      if (rings.length) {
+      // The shapes of its groups switched on: its own one by one, those of the other calls of its hotspot by kind, then its zone.
+      const all = visibleRings(data), rings = all.filter((ring) => layers[ring.kind] !== false);
+      const zone = hotspotShown(data) && layers.hotspot !== false;
+      if (rings.length || zone || (pathsShown && paths)) {
         group('Groups of the call');
         rings.filter((ring) => ring.own).forEach((ring) => item('ring', ring.label, GROUP_COLOURS[ring.kind]));
         [['cluster', 'Other clusters of its hotspot'], ['run', 'Other time windows of its hotspot']].forEach(([kind, text]) => {
@@ -1816,8 +1834,8 @@
           if (count) item('ring', `${text} (${count})`, GROUP_COLOURS[kind]);
         });
         if (pathsShown && paths) item('line', 'Time window: its failures in their order (numbered)', COLOURS.run, 'is-dashed');
-        if ((data.groups?.hotspot || 0) >= 2 && !focusKind()) {
-          item('zone', data.hotspot_join === 'and' && rings.some((ring) => ring.kind === 'run') && rings.some((ring) => ring.kind !== 'run')
+        if (zone) {
+          item('zone', data.hotspot_join === 'and' && all.some((ring) => ring.kind === 'run') && all.some((ring) => ring.kind !== 'run')
             ? 'Hotspot (AND): where its clusters and time windows meet' : 'Hotspot (OR): its clusters and time windows together', COLOURS.hotZone);
         }
       }
@@ -1898,12 +1916,12 @@
       // Per Group: a circle around each NQ call of the groups of the call, in the colour of each group.
       perGroup: stored.perGroup !== false,
       // The layers of From CDR (``cdr`` the whole card).
-      layers: {cdr: true, failures: true, sites: true, path: true, route: true, paths: true, ...(stored.layers || {})},
+      layers: {cdr: true, failures: true, cluster: true, run: true, hotspot: true, sites: true, path: true, route: true, paths: true, ...(stored.layers || {})},
     };
     delete settings.layers.tests;
     const save = () => storeSettings({tests: settings.tests, measures: settings.measures, operators: settings.operators, failures: settings.failures,
       failureColour: settings.failureColour, perGroup: settings.perGroup, layers: settings.layers});
-    let callKey = '', loadedKey = '', controller = null, expandedView = null, expandedTimeline = null;
+    let callKey = '', loadedKey = '', controller = null, expandedView = null, expandedTimeline = null, expandedToolbar = null;
     const toolbar = node('div', undefined, 'nq-map-toolbar');
     const status = node('p', '', 'nq-map-status');
     status.setAttribute('role', 'status');
@@ -1964,7 +1982,7 @@
     const views = () => [panelView, expandedView].filter(Boolean);
     const redrawAll = () => views().forEach((view) => { view.renderLegend(); view.redraw(); });
     // A layer of From CDR (or the whole card) and a measure of its samples switched on or off.
-    shared.cdrLayers = ['failures', 'sites', 'path', 'paths', 'route'];
+    shared.cdrLayers = ['failures', 'cluster', 'run', 'paths', 'hotspot', 'sites', 'path', 'route'];
     shared.setLayer = (key, on) => { settings.layers[key] = on; save(); redrawAll(); renderFailures(); };
     shared.setMeasure = (key, on) => {
       settings.measures = Object.keys(METRICS).filter((name) => (name === key ? on : settings.measures.includes(name)));
@@ -1998,17 +2016,19 @@
     const kindLabel = (failure) => KIND_LABELS[failure.kind] || SERVICE_LABELS[failure.service] || failure.service;
     const failureText = (item) => [item.failure_classification, item.failure_category, item.failure_subcategory].filter(Boolean).join(' · ');
     // The colour of an NQ call by the choice of Colour NQ calls by, and the lines of the legend that explain it: one for each
-    // value shown, then, with Per Group, the circle of each group of the call.
+    // value shown, then, with Per Group, the outline of each group of the call.
     shared.failureColour = (failure) => failureColourBy(settings.failureColour, failure);
-    // The groups of the call an NQ call is of, as Per Group rings it: its cluster innermost, then its time window and its hotspot.
-    shared.failureGroups = (failure) => (settings.perGroup ? ['cluster', 'run', 'hotspot'].filter((kind) => groupsOf(failure).includes(kind)) : []);
+    // The groups of the call an NQ call is of, as Per Group outlines it (those switched on in From CDR): its cluster
+    // innermost, then its time window and its hotspot.
+    shared.failureGroups = (failure) => (settings.perGroup ? ['cluster', 'run', 'hotspot']
+      .filter((kind) => shownLayers(settings)[kind] !== false && groupsOf(failure).includes(kind)) : []);
     shared.failureLegend = () => {
       const data = shared.data;
       const shown = data.failures.filter((failure) => !failure.self && failure.latitude !== null && shared.showsFailure(failure));
       const lines = failureLegendBy(settings.failureColour, shown, {campaignText, ownSite: siteOf(data.failures.find((failure) => failure.self))?.key || ''});
-      const names = {cluster: 'Circle: of a cluster of the call', run: 'Circle: of a time window of the call', hotspot: 'Circle: of its hotspot'};
+      const names = {cluster: 'Outlined: of a cluster of the call', run: 'Outlined: of a time window of the call', hotspot: 'Outlined: of its hotspot'};
       ['cluster', 'run', 'hotspot'].filter((kind) => shown.some((failure) => shared.failureGroups(failure).includes(kind)))
-        .forEach((kind) => lines.push([names[kind], GROUP_COLOURS[kind], '', 'ring']));
+        .forEach((kind) => lines.push([names[kind], GROUP_COLOURS[kind], 'is-outlined']));
       return lines;
     };
     // Whether the call is of a group (a hotspot, cluster or time window with other NQ calls): Per Group shows then.
@@ -2579,24 +2599,33 @@
       }
       element.value = value;
       if (title) wrapper.title = title;
-      element.addEventListener('change', () => onChange(element.value));
+      // (The other toolbar, above the larger map or below it, follows.)
+      element.addEventListener('change', () => { onChange(element.value); renderToolbar(); });
       wrapper.append(element);
       return wrapper;
     };
+    // The controls above the map, also above the larger map (``expandedToolbar``) while it is open.
     const renderToolbar = () => {
+      for (const host of [toolbar, expandedToolbar].filter(Boolean)) host.replaceChildren(...toolbarControls());
+    };
+    const toolbarControls = () => {
       const data = shared.data;
       const radii = data?.radii_km || [0.5, 1, 2, 5, 10];
-      // Per Group, beside the colour: a circle around each NQ call of a group of the call (only when the call is of one).
+      // Per Group, a switch beside the colour: an outline of the shape of each NQ call for each group of the call it is of
+      // (only when the call is of one).
       const perGroup = node('label', undefined, 'nq-map-control nq-map-check');
-      perGroup.title = 'A circle around each NQ call of a group of the call, in the colour of the group: its cluster innermost, then its time window and its hotspot (over the colour chosen)';
+      perGroup.title = 'An outline around each NQ call for each group of the call it is of, in the colour of the group: its cluster innermost, then its time window and its hotspot (over the colour chosen; each group has its switch in From CDR)';
+      const perGroupSwitch = node('span', undefined, 'nq-l3-switch');
       const perGroupBox = node('input');
       perGroupBox.type = 'checkbox';
+      perGroupBox.setAttribute('role', 'switch');
       perGroupBox.checked = settings.perGroup;
-      perGroupBox.addEventListener('change', () => { settings.perGroup = perGroupBox.checked; save(); redrawAll(); });
-      perGroup.append(perGroupBox, node('span', 'Per Group'));
+      perGroupBox.addEventListener('change', () => { settings.perGroup = perGroupBox.checked; save(); redrawAll(); renderToolbar(); });
+      perGroupSwitch.append(perGroupBox, node('span', undefined, 'nq-l3-switch-track'));
+      perGroup.append(perGroupSwitch, node('span', 'Per Group'));
       perGroup.hidden = !hasGroups();
       // The layers of the map are switched in its cards (From CDR, From Logs).
-      toolbar.replaceChildren(
+      return [
         select('Radius', 'radius', radii.map((value) => [String(value), `${distanceText(value)}${value === data?.group_radius_km ? ' (groups)' : ''}`]),
           String(settings.radius_km), (value) => {
             settings.radius_km = Number(value); load();
@@ -2612,7 +2641,7 @@
           ...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
           settings.operators = value; save(); redrawAll(); renderFailures();
         }, 'The samples and Non-Qualified Calls of the operator of the call, of the Focus operators of the Operator Maps'
-          + `${data?.focus_labels?.length ? ` (${data.focus_labels.join(', ')})` : ''} or of every operator (its repetitions and hotspot always show)`));
+          + `${data?.focus_labels?.length ? ` (${data.focus_labels.join(', ')})` : ''} or of every operator (its repetitions and hotspot always show)`)];
     };
 
     // -- loading the map of a call -------------------------------------------------------------------------------
@@ -2756,8 +2785,11 @@
       floating.hidden = true;
       // The element chosen floats over the map, inside what its images show.
       const timeline = node('div', undefined, 'nq-l3-timeline-host');
-      wrap.append(large, legendHost, floating);
+      // The controls of the map above it too.
+      expandedToolbar = node('div', undefined, 'nq-map-toolbar nq-map-expand-toolbar');
+      wrap.append(expandedToolbar, large, legendHost, floating);
       expandContent.replaceChildren(wrap);
+      renderToolbar();
       if (!expandDialog.open) expandDialog.showModal();
       expandedView = createView(large, shared, {expanded: true, legendHost});
       // Its signalling timeline over the bottom of the map, as the elevation profile.
@@ -2776,6 +2808,7 @@
       expandedView = null;
       expandedTimeline?.destroy();
       expandedTimeline = null;
+      expandedToolbar = null;
       expandContent.replaceChildren();
       panelView.redraw();
     });
@@ -3087,20 +3120,24 @@
       }
       element.value = value;
       wrapper.title = title;
-      element.addEventListener('change', () => onChange(element.value));
+      // (The other toolbar, above the larger map or below it, follows.)
+      element.addEventListener('change', () => { onChange(element.value); renderToolbar(); });
       wrapper.append(element);
       return wrapper;
     };
-    // The layers of the map are switched in its cards (From CDR, From Logs), as on the map of a call.
+    // The layers of the map are switched in its cards (From CDR, From Logs), as on the map of a call; its controls show
+    // above the larger map too (``expandedToolbar``) while it is open.
+    let expandedToolbar = null;
     const renderToolbar = () => {
-      toolbar.replaceChildren(
+      for (const host of [toolbar, expandedToolbar].filter(Boolean)) host.replaceChildren(...toolbarControls());
+    };
+    const toolbarControls = () => [
         select('Colour NQ calls by', Object.entries(AREA_FAILURE_COLOURS), settings.failureColour, (value) => {
           settings.failureColour = value; save(); redrawAll();
         }, 'What the colour of the NQ calls tells, as on the map of a call: their call type, the domain of their root cause (the one decided, else that of the DT Analyzer RCA), their campaign, their operator or the site of their CDR'),
         select('Operators', [...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
           settings.operators = value; save(); redrawAll();
-        }, `The NQ calls and RSRP / SINR samples of every operator, or of the Focus operators of the Operator Maps${focusLabels.length ? ` (${focusLabels.join(', ')})` : ''}`));
-    };
+        }, `The NQ calls and RSRP / SINR samples of every operator, or of the Focus operators of the Operator Maps${focusLabels.length ? ` (${focusLabels.join(', ')})` : ''}`)];
 
     // -- reading the area shown -------------------------------------------------------------------------------------
     let request = null, loadedKey = '', pending = 0, lastView = null, fitted = false;
@@ -3203,8 +3240,10 @@
       floating.hidden = true;
       const largeTimeline = node('div', undefined, 'nq-l3-timeline-host');
       const largeWrap = node('div', undefined, 'nq-map-expand-wrap');
-      largeWrap.append(large, largeLegend, floating);
+      expandedToolbar = node('div', undefined, 'nq-map-toolbar nq-map-expand-toolbar');
+      largeWrap.append(expandedToolbar, large, largeLegend, floating);
       expandContent.replaceChildren(largeWrap);
+      renderToolbar();
       if (!expandDialog.open) expandDialog.showModal();
       expandedView = createView(large, shared, {expanded: true, legendHost: largeLegend, onViewChange: viewChanged});
       expandedView.overlay(largeTimeline);
@@ -3225,6 +3264,7 @@
         expandedView = null;
         expandedTimeline?.destroy();
         expandedTimeline = null;
+        expandedToolbar = null;
         floating = null;
         expandContent.replaceChildren();
         if (where) view.setView(where); else view.redraw();

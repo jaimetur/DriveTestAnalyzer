@@ -155,6 +155,15 @@
       context.restore();
       return;
     }
+    // A ring (the icon of the shape of a group of a call).
+    if (shape === 'ring') {
+      context.beginPath();
+      context.arc(x, y, size * 1.3, 0, Math.PI * 2);
+      context.lineWidth = Math.max(1.6, size * .55);
+      context.strokeStyle = colour;
+      context.stroke();
+      return;
+    }
     if (shape === 'arrow') {
       context.save();
       context.translate(x, y);
@@ -898,7 +907,8 @@
       title.append(node('span', ['Signalling timeline', caption()].filter(Boolean).join(' · '), 'nq-l3-timeline-name'),
         node('span', `${ues.map((ue) => (ue === 'Data' ? 'Data' : `UE ${ue}`)).join(' & ')} · ${clock(start)} – ${clock(end)} · ${(span / 1000).toFixed(1)} s`, 'nq-l3-timeline-span'),
         node('span', shown ? '▾' : '▸', 'nq-l3-chevron'));
-      title.addEventListener('click', () => { shown = !shown; render(); });
+      // A click anywhere on its header folds or unfolds it (its title is the button for the keyboard).
+      head.addEventListener('click', () => { shown = !shown; render(); });
       const keys = node('div', undefined, 'nq-l3-timeline-keys');
       for (const [text, colour, shape] of [['LTE PCell RSRP', '#1c5dbf', 'line'], ['NR PCell RSRP', '#6b3fb5', 'line'], ['Event', EVENT_COLOURS['4G'], 'hexagon'],
         ['RRC', L3_COLOURS['LTE-RRC'], 'diamond'], ['NAS', L3_COLOURS['LTE-NAS'], 'diamond'], ['SIP', L3_COLOURS.SIP, 'diamond'], ['Failure or SIP error', '#d7263d', 'ring']]) {

@@ -1877,10 +1877,11 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem .75rem; }
 .nq-map-control { display: grid; gap: .2rem; color: var(--nq-muted); font-size: .7rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .nq-map-control select { min-height: 2.1rem; padding: .3rem 1.9rem .3rem .65rem; border: 1px solid var(--nq-border); border-radius: 10px; background-color: #fff; color: var(--nq-text); font: inherit; font-size: .82rem; font-weight: 700; letter-spacing: 0; text-transform: none; }
-/* Per Group, a check beside Colour NQ calls by. */
-.nq-map-control.nq-map-check { display: inline-flex; align-items: center; gap: .4rem; min-height: 2.1rem; color: var(--nq-text); cursor: pointer; }
+/* Per Group, a switch beside Colour NQ calls by; the controls above the larger map too. */
+.nq-map-control.nq-map-check { display: inline-flex; align-items: center; gap: .45rem; min-height: 2.1rem; color: var(--nq-text); cursor: pointer; }
 .nq-map-control.nq-map-check[hidden] { display: none; }
-.nq-map-check input { width: 1.05rem; height: 1.05rem; margin: 0; accent-color: var(--nq-color); }
+.nq-map-check .nq-l3-switch input:checked + .nq-l3-switch-track { background: var(--nq-color); }
+.nq-map-expand-toolbar { margin-bottom: .6rem; }
 .nq-map-layers { display: flex; flex-wrap: wrap; gap: .35rem; }
 .nq-map-layer { display: inline-flex; align-items: center; gap: .3rem; min-height: 2.1rem; padding: 0 .65rem; border: 1px solid var(--nq-border); border-radius: 999px; background: var(--nq-softer); color: var(--nq-dark); font-size: .78rem; font-weight: 800; cursor: pointer; }
 .nq-map-layer input { margin: 0; accent-color: var(--nq-color); }
@@ -1945,7 +1946,9 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-profile { position: relative; flex: none; display: flex; flex-direction: column; gap: .2rem; padding: .45rem .6rem .35rem; border: 1px solid rgba(15, 52, 66, .14); border-radius: 12px; background: rgba(255, 255, 255, .95); box-shadow: 0 10px 30px rgba(15, 35, 45, .18); backdrop-filter: blur(6px); color: #17323c; font-size: .74rem; }
 .nq-map-profile[hidden] { display: none; }
 .nq-map-profile-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .7rem; }
+.nq-map-profile-head { cursor: pointer; }
 .nq-map-profile-head strong { color: #3d1824; font-size: .74rem; letter-spacing: .05em; text-transform: uppercase; }
+.nq-drawer .nq-map-profile-title, .nq-l3-maps-panel .nq-map-profile-title, .nq-map-profile-title { display: inline-flex; align-items: center; gap: .35rem; min-height: 0; padding: 0; border: 0; background: none; color: inherit; box-shadow: none; cursor: pointer; }
 .nq-map-profile-span { color: #4f6b75; font-weight: 700; font-variant-numeric: tabular-nums; }
 .nq-map-profile-stats { display: flex; flex-wrap: wrap; gap: .2rem .4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .nq-map-profile-stats span { padding: 0 .45rem; border-radius: 999px; background: #f1f5f6; }
@@ -2191,7 +2194,7 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .nq-l3-timeline-host:empty { display: none; }
 .nq-l3-timeline { position: relative; margin-top: .6rem; border: 1px solid #d7e8ed; border-radius: 12px; background: #fff; }
 .nq-l3-timeline[hidden] { display: none; }
-.nq-l3-timeline-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .8rem; padding: .45rem .7rem;
+.nq-l3-timeline-head { cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .8rem; padding: .45rem .7rem;
   border-bottom: 1px solid #e8f0f2; }
 .nq-l3-timeline-title { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; padding: 0; border: 0; background: none; color: #17323c;
   font: inherit; cursor: pointer; }
