@@ -363,6 +363,11 @@ def test_the_chart_builder_reads_fields_and_values_and_adds_a_chart_to_a_design(
     values = client.get(f'/api/ppt-designer/slides/values?token={token}&source=CDR-Data&field=Operator')
     assert values.status_code == 200, values.text
     assert values.json()['values'] == [{'value': 'A', 'count': 2}, {'value': 'B', 'count': 1}]
+    # NR Mode, the NR Mode of the CDR of each row, is a field although the CDRs do not keep it.
+    nr_mode = next(item for item in fields if item['name'] == 'NR_Mode')
+    assert nr_mode['type'] == 'text' and nr_mode['category'] == next(item['category'] for item in fields if item['name'] == 'Operator')
+    nr_values = client.get(f'/api/ppt-designer/slides/values?token={token}&source=CDR-Data&field=NR_Mode')
+    assert nr_values.json()['values'] == [{'value': 'NSA', 'count': 3}]
     targets = client.get('/api/ppt-designer/targets').json()['designs']
     target = next(item for item in targets if item['id'] == 'design-a')
     assert [slide['title'] for slide in target['slides']] == ['Comparison', 'Next'] and target['slides'][0]['free'] == 0

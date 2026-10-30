@@ -3886,6 +3886,8 @@ def install_design_routes(core):
         categories = field_categories(task_repository)
         # The Auto-calculated Fields of the workspace are listed together, also those the CDRs already hold as columns.
         categories.update({identity(dimension.name): 'Auto-calculated Fields' for dimension in dimensions})
+        # NR Mode, the NR Mode of the CDR of each row, goes with Campaign (never an Auto-calculated Field named after it).
+        categories[identity(NR_MODE_FIELD)] = categories.get(identity('Campaign'), 'Other fields')
         internal = {identity(name) for name in ('dataset_kind', 'source_file', '__rowid', '__dataset_id')}
         fields: dict[str, list[dict[str, str]]] = {}
         all_types: dict[str, str] = {}
@@ -7603,6 +7605,10 @@ def install_design_routes(core):
                 columns_by_source[f'cdr-{kind}'].extend(
                     str(column) for column in task_repository.list_dataset_row_columns(int(row['id']))
                 )
+        # The NR Mode of the CDR of each row, which the CDRs do not keep but their combined rows do (as in Chart Builder).
+        for kind in KINDS:
+            if datasets_by_source[f'cdr-{kind}'] and identity(NR_MODE_FIELD) not in {identity(column) for column in columns_by_source[f'cdr-{kind}']}:
+                columns_by_source[f'cdr-{kind}'].append(NR_MODE_FIELD)
         for source, source_columns_list in columns_by_source.items():
             columns_by_source[source] = sorted({
                 column for column in source_columns_list if identity(column) not in hidden
