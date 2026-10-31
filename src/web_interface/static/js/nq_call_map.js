@@ -2941,9 +2941,11 @@
     const openExpanded = () => {
       if (!shared.data) return;
       const call = shared.data.call;
-      // Its call type first (Voice, WhatsApp, Data…), then its operator, campaign and JOIN_ID.
-      expandDialog.querySelector('[data-nq-map-expand-title]').textContent = ['Call Area Map', KIND_LABELS[call.kind] || call.kind, call.operator,
+      expandDialog.querySelector('[data-nq-map-expand-title]').textContent = ['Call Area Map', call.operator,
         campaignText(call.campaign, call.nr_mode), call.join_id].filter(Boolean).join(' · ');
+      // Its call type (Voice, WhatsApp, Data or Ping) as a pill above its title, as in the details of the call.
+      const eyebrow = expandDialog.querySelector('.nq-map-expand-header .eyebrow');
+      if (eyebrow) eyebrow.replaceChildren('Map ', node('span', KIND_LABELS[call.kind] || call.service_label || call.kind, `nq-service nq-service-${call.kind}`));
       // What the map could not show (a call without position, operators without inventory), then how it navigates.
       expandDialog.querySelector('[data-nq-map-expand-meta]').textContent = [...shared.data.notes, HINT].join(' · ');
       expandedView?.destroy();

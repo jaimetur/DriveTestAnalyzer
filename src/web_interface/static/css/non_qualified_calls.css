@@ -214,6 +214,9 @@
 .nq-service-voice { background: #e7e4fb; color: #43379e; }
 .nq-service-speech { background: #dff1f3; color: #0b5763; }
 .nq-service-data { background: #e2edf9; color: #1f4f86; }
+/* The call types of the maps of the calls (WhatsApp calls are Voice CDRs, Ping tests Data ones). */
+.nq-service-whatsapp { background: #e3f4e6; color: #22662f; }
+.nq-service-ping { background: #fdf0db; color: #8a4b00; }
 .nq-result.is-failed { background: #fde3e7; color: #a3263a; }
 .nq-result.is-dropped { background: #fdebd9; color: #9a4a10; }
 .nq-result.is-cutoff { background: #fdf3cf; color: #7a5a06; }
@@ -2100,6 +2103,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-expand::backdrop { background: rgba(40, 6, 20, .55); backdrop-filter: blur(3px); }
 .nq-map-expand-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: .9rem 1.2rem .7rem; border-bottom: 1px solid var(--nq-border); }
 .nq-map-expand-header .eyebrow { margin: 0; color: var(--nq-color); font-size: .72rem; letter-spacing: .08em; }
+.nq-map-expand-header .eyebrow .nq-service { margin-left: .3rem; letter-spacing: .04em; vertical-align: 1px; }
 .nq-map-expand-header h3 { margin: .15rem 0 0; color: var(--nq-dark); font-size: 1.15rem; }
 .nq-map-expand-header .form-note { margin: .2rem 0 0; }
 .nq-drawer .nq-map-expand-close, .nq-l3-maps-panel .nq-map-expand-close { display: grid; place-items: center; width: 2.3rem; min-width: 2.3rem; height: 2.3rem; min-height: 2.3rem; padding: 0; border: 1px solid var(--nq-border); border-radius: 999px; background: #fff; color: var(--nq-dark); font-size: 1.4rem; line-height: 1; box-shadow: none; }
