@@ -623,21 +623,22 @@
       };
       // A technology (LTE, NR) as a matrix: a row for each measure, a column for each kind of cell, each cell with its switch,
       // how many points it has and the + of its channels and PCIs; a measure a kind of cell does not have, a dash. The columns
-      // are the kinds of cell with points in any technology, in the same order and width, so that those of LTE and NR line up
-      // (LTE NCell, of NR alone, last). The channels and PCIs shown go below the matrix.
+      // are the kinds of cell with points in any technology, the same in every matrix and sharing its width, so that those of
+      // LTE and NR line up (LTE NCell, of NR alone, last: an empty column in LTE). The channels and PCIs shown go below it.
       const MATRIX_ROWS = [['channel', ''], ['pci', 'PCI'], ['rsrp', 'RSRP'], ['rsrq', 'RSRQ'], ['sinr', 'SINR'], ['tx', 'UE Tx Power']];
       const MATRIX_COLUMNS = ['PCell', 'SCell', 'NCell', 'LTE NCell'];
       const rowOf = (layer) => (layer.metric === 'earfcn' || layer.metric === 'nrarfcn' ? 'channel' : layer.metric);
       const withPoints = new Set(SECTIONS.filter((section) => section.blocks)
         .flatMap((section) => section.blocks.filter((block) => block.layers.some((layer) => infoOf(layer))).map((block) => block.label)));
       const matrixOf = (section) => {
-        const blocks = MATRIX_COLUMNS.filter((label) => withPoints.has(label))
-          .map((label) => section.blocks.find((block) => block.label === label)).filter(Boolean)
-          .map((block) => ({...block, layers: block.layers.filter((layer) => infoOf(layer))}));
+        const blocks = MATRIX_COLUMNS.filter((label) => withPoints.has(label)).map((label) => {
+          const block = section.blocks.find((item) => item.label === label);
+          return block ? {...block, layers: block.layers.filter((layer) => infoOf(layer))} : {label, layers: [], missing: true};
+        });
         const rows = MATRIX_ROWS.filter(([key]) => blocks.some((block) => block.layers.some((layer) => rowOf(layer) === key)));
         const grid = node('div', undefined, 'nq-l3-matrix');
         grid.style.setProperty('--nq-l3-columns', String(blocks.length));
-        grid.append(node('span'), ...blocks.map((block) => node('span', block.label, 'nq-l3-matrix-head')));
+        grid.append(node('span'), ...blocks.map((block) => node('span', block.missing ? '' : block.label, 'nq-l3-matrix-head')));
         const opened = [];
         for (const [key, label] of rows) {
           const sample = blocks.flatMap((block) => block.layers).find((layer) => rowOf(layer) === key);
@@ -649,6 +650,7 @@
             const layer = block.layers.find((item) => rowOf(item) === key);
             const cell = node('span', undefined, 'nq-l3-matrix-cell');
             grid.append(cell);
+            if (block.missing) continue;
             if (!layer) {
               cell.append(node('span', '—', 'nq-l3-matrix-none'));
               continue;

@@ -849,6 +849,8 @@
     const renderSamples = () => {
       drawSamples();
       samplesFloat.decorate(samplesOpen && !samples.hidden);
+      // Its width folded: the place it keeps among the folded cards while it is unfolded below them.
+      if (!samplesOpen && samples.offsetWidth) panels.style.setProperty('--nq-map-cdr-pill', `${samples.offsetWidth}px`);
     };
     // In the call panel the wheel alone scrolls the panel: a moment's note says how to zoom.
     const wheelHint = node('div', 'Ctrl/Cmd + wheel to zoom the map', 'nq-map-wheel-hint');
