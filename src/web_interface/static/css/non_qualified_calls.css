@@ -1950,7 +1950,10 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-panels:has(> .nq-map-samples-panel:not(.is-collapsed))::before { content: ''; order: 0; width: var(--nq-map-cdr-pill, 8.5rem); height: 1px; }
 .nq-map-panels > .nq-l3-panel:not(.is-collapsed) { order: 2; width: 46rem; }
 .nq-map-panels > .nq-map-samples-panel:not(.is-collapsed) > .nq-l3-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr)); align-items: start; }
-.nq-map-panels > .nq-map-samples-panel:not(.is-collapsed) > .nq-l3-body > :not(.nq-l3-section) { grid-column: 1 / -1; }
+.nq-map-panels > .nq-map-samples-panel:not(.is-collapsed) > .nq-l3-body > :not(.nq-l3-section, .nq-l3-cdr-column) { grid-column: 1 / -1; }
+/* Its columns of sections (the NQ calls with the route below them). */
+.nq-l3-cdr-column { display: flex; flex-direction: column; gap: .45rem; min-width: 0; }
+.nq-l3-cdr-column:empty { display: none; }
 .nq-map-panels > .nq-map-samples-panel { flex: none; }
 .nq-map-samples-panel .nq-l3-head { background: linear-gradient(135deg, #7d1238, #b0234f); }
 .nq-map-samples-panel .nq-l3-head .nq-l3-switch input:checked + .nq-l3-switch-track { background: #ffc2d6; }

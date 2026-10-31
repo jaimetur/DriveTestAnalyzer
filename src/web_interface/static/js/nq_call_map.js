@@ -774,6 +774,10 @@
         list.append(layer);
       };
       // A section with its header (its name, what it holds, how many of its switches are on), unfolded unless folded.
+      // Its sections in three columns (one below the other on a narrow card): the samples, then the NQ calls with the route
+      // below them, then the sites.
+      const COLUMN_OF = {samples: 0, calls: 1, route: 1, cells: 2};
+      const columns = [0, 1, 2].map(() => node('div', undefined, 'nq-l3-cdr-column'));
       const section = ({key, label, note}, active, fill) => {
         const card = node('section', undefined, `nq-l3-section is-cdr-${key}`);
         const opened = !cdrFolded.has(key);
@@ -789,7 +793,7 @@
           fill(list);
           card.append(list);
         }
-        body.append(card);
+        columns[COLUMN_OF[key] ?? 0].append(card);
       };
       // On the map of a call, the campaigns of the CDRs of everything the card shows (its samples, NQ calls, route…).
       if (shared.samplesScope) {
@@ -810,6 +814,7 @@
         body.append(scopes);
       }
       const rows = data.tests?.rows || [];
+      body.append(...columns);
       section(CDR_SECTIONS[0], Object.keys(METRICS).filter((key) => settings.measures.includes(key)).length, (list) => {
         for (const [key, metric] of Object.entries(METRICS)) {
           const count = key === 'result' ? rows.length : rows.filter((item) => item[COLUMN[key]] !== null && item[COLUMN[key]] !== undefined).length;
