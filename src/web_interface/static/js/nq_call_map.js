@@ -51,8 +51,10 @@
   // The NQ calls of the other groups, hidden while a cluster or a time window filters the list.
   const hiddenByFocus = (failure) => Boolean(focusKind()) && !inFocus(failure) && memberships(failure).length > 0;
   const GROUP_COLOURS = {hotspot: COLOURS.hotspot, cluster: COLOURS.cluster, run: COLOURS.run};
-  // How far apart the outlines of the groups of an NQ call are (And Group), so that a clear white line shows between two.
+  // How far apart the outlines of the groups of an NQ call are (And Group), so that a clear white line shows between two,
+  // and their colours: that of a time window a deep blue, never lost against the blue of the stars of the Data calls.
   const OUTLINE_STEP = 4.4;
+  const OUTLINE_COLOURS = {...GROUP_COLOURS, run: '#0b3d91'};
   // The way of each time window through its failures: that of the call in the blue of the time windows, each other one in a
   // colour of its own (none of those of the other marks of the map, no green of the clusters), so that ways that cross can
   // be told apart.
@@ -1398,7 +1400,7 @@
           context.strokeStyle = 'rgba(255, 255, 255, .9)';
           context.stroke();
           context.lineWidth = 2;
-          context.strokeStyle = GROUP_COLOURS[kind];
+          context.strokeStyle = OUTLINE_COLOURS[kind];
           context.stroke();
         });
         context.restore();
@@ -2249,7 +2251,7 @@
       const lines = failureLegendBy(settings.failureColour, shown, {campaignText, ownSite: ownSite()});
       const names = {cluster: 'Outlined: of a cluster of the call', run: 'Outlined: of a time window of the call'};
       ['run', 'cluster'].filter((kind) => shown.some((failure) => shared.failureGroups(failure).includes(kind)))
-        .forEach((kind) => lines.push([names[kind], GROUP_COLOURS[kind], 'is-outlined']));
+        .forEach((kind) => lines.push([names[kind], OUTLINE_COLOURS[kind], 'is-outlined']));
       return lines;
     };
     // Whether the call is of a group (a hotspot, cluster or time window with other NQ calls): And Group shows then.
