@@ -1779,7 +1779,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
         # The colour of each Operator label of the Operator Maps, for its NQ calls coloured by Operator.
         'operator_colours': operator_colours(mapper),
         'families': list(families), 'snapshots': snapshots, 'trace': trace, 'sites': sites, 'failures': failures,
-        'tests': test_points, 'classes': sample_classes(), 'notes': notes,
+        'tests': test_points, 'classes': sample_classes(repository), 'notes': notes,
         'failures_left_out': failures_left_out, 'failures_max': MAX_FAILURES, 'groups': groups, 'rings': group_rings(repository, call, point),
         'hotspot_join': str(prioritization_settings(repository).get('hotspot_join') or 'or'),
         'diagnosis': checks, 'decisions': site_decisions(failures), 'drive': drive, 'site_health': health,
@@ -1787,34 +1787,12 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     }
 
 
-# Below the Very poor RSRP of Network Insights, the level the Layer3 Logs draw too (their legend starts at −120 dBm).
-RSRP_FLOOR_CLASS = ('Extremely poor', -120.0, '#8B0A1A')
-# The levels of the RSRQ of the Layer3 Logs: the ranges of the legend of their KMZ files, named and coloured as those of
-# the RSRP (its six levels: Good joins the two ranges from −14 to −10 dB of the KMZ files).
-RSRQ_CLASSES = (
-    ('Excellent', -10.0, '#2E8B57'),
-    ('Good', -14.0, '#8BC34A'),
-    ('Fair', -16.0, '#F2C230'),
-    ('Poor', -20.0, '#F08A24'),
-    ('Very poor', -24.0, '#D7263D'),
-    ('Extremely poor', float('-inf'), '#8B0A1A'),
-)
+def sample_classes(repository: Any) -> dict[str, list[dict[str, Any]]]:
+    """The levels the maps colour the RSRP and SINR of the samples of the CDRs and the RSRP, RSRQ, SINR and UE Tx Power of
+    the Layer3 Logs by: the Map Levels of the workspace (nq_map_levels), the same on both maps."""
+    from src.modules import nq_map_levels
 
-
-def sample_classes() -> dict[str, list[dict[str, Any]]]:
-    """The levels of the RSRP and SINR of the samples, as Network Insights colours them, with Extremely poor below
-    −120 dBm: the same on both maps for the samples of the CDRs and the points of the Layer3 Logs. And those of the RSRQ
-    of the Layer3 Logs (``RSRQ_CLASSES``)."""
-    from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
-
-    floor_label, floor, floor_colour = RSRP_FLOOR_CLASS
-    rsrp = [(label, floor if math.isinf(lower) else lower, colour) for label, lower, colour in RSRP_CLASSES]
-    rsrp.append((floor_label, float('-inf'), floor_colour))
-    return {
-        'rsrp': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in rsrp],
-        'sinr': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in SINR_CLASSES],
-        'rsrq': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in RSRQ_CLASSES],
-    }
+    return nq_map_levels.load_levels(repository)
 
 
 # ---------------------------------------------------------------------------

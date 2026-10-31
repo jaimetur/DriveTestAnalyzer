@@ -64,7 +64,7 @@ from src.modules.nq_catalog import (
     ATTENDED_FIELD, FIELD_TYPES, MAX_LONG_TEXT, YES_NO, evaluate_status, keyword_found, keywords as _keywords,
     normalized_text as _normalized_text,
 )
-from src.modules import nq_analyses, nq_analyses_rules, nq_call_map, nq_dta_rca, nq_prioritization, nq_rca
+from src.modules import nq_analyses, nq_analyses_rules, nq_call_map, nq_dta_rca, nq_map_levels, nq_prioritization, nq_rca
 from src.modules.non_qualified_calls_visuals import series_colours
 
 NQ_CALLS_TABLE = 'nq_calls'
@@ -8233,6 +8233,7 @@ def _configuration(task_repository: Any) -> dict[str, Any]:
         'prioritization': {key: value for key, value in nq_prioritization.load_settings(task_repository).items() if key != 'excluded_modes'},
         'dta_rca_rules': nq_dta_rca.load_rules(task_repository),
         'dta_rca_settings': nq_dta_rca.load_settings(task_repository),
+        'map_levels': nq_map_levels.load_levels(task_repository),
     }
 
 
@@ -8339,7 +8340,7 @@ def predicted_configuration(current: dict[str, Any], incoming: dict[str, Any]) -
     if incoming_fields and isinstance(predicted.get('fields'), list):
         predicted['fields'] = _merged_fields(predicted['fields'], incoming_fields)
     for key, kind in (('sections', list), ('status_rules', list), ('table_columns', dict), ('column_order', list), ('prioritization', dict),
-                      ('dta_rca_rules', list), ('dta_rca_settings', dict)):
+                      ('dta_rca_rules', list), ('dta_rca_settings', dict), ('map_levels', dict)):
         if isinstance(incoming.get(key), kind):
             predicted[key] = incoming[key]
     layouts = {str(item.get('username') or '').casefold(): item for item in predicted.get('user_layouts') or [] if isinstance(item, dict)}
@@ -8495,6 +8496,10 @@ def configuration_changes(before: Any, after: Any) -> list[str]:
             new['dta_rca_settings']):
         lines.append('DT Analyzer RCA · Learn from the decisions of the analysts: '
                      + ('Yes' if nq_dta_rca.normalize_settings(new['dta_rca_settings'])['learn'] else 'No'))
+    if isinstance(new.get('map_levels'), dict):
+        # A package exported before the Map Levels has none: the workspace keeps its levels.
+        was = nq_map_levels.normalize_levels_safe(old.get('map_levels'))
+        lines += [f'Map Levels · {line}' for line in nq_map_levels.changes(was, nq_map_levels.merged_levels(was, new['map_levels']))]
     return lines
 
 
@@ -8577,6 +8582,10 @@ def _merge_configuration(task_repository: Any, document: dict[str, Any]) -> None
                                                                                ensure_ascii=False))
     if isinstance(document.get('dta_rca_settings'), dict):
         task_repository.set_workspace_state(nq_dta_rca.SETTINGS_STATE_KEY, json.dumps(nq_dta_rca.normalize_settings(document['dta_rca_settings'])))
+    if isinstance(document.get('map_levels'), dict):
+        # The Map Levels of the package replace those of the workspace, measure by measure (one that is not valid is left).
+        nq_map_levels.store_levels(task_repository, nq_map_levels.merged_levels(nq_map_levels.load_levels(task_repository),
+                                                                                document['map_levels']))
     if isinstance(document.get('status_rules'), list):
         try:
             rules = nq_catalog.normalize_status_rules(document['status_rules'], [item['name'] for item in list_options(task_repository)['statuses']],
@@ -8939,6 +8948,10 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     class RootCauseRulePayload(BaseModel):
         rule: dict[str, Any] | None = None
+
+    class MapLevelsPayload(BaseModel):
+        # The levels of each measure (nq_map_levels.MEASURES); a measure left out keeps its levels.
+        levels: dict[str, Any] = Field(default_factory=dict)
 
     class DtaRulesPayload(BaseModel):
         rules: list[dict[str, Any]] = Field(default_factory=list)
@@ -9764,7 +9777,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         area['calls'] = calls if payload.with_calls else None
         area['calls_count'] = len(calls)
         area['calls_with_log'] = sum(1 for call in calls if call.get('l3_log'))
-        area['classes'] = nq_call_map.sample_classes()
+        area['classes'] = nq_call_map.sample_classes(repository)
         # The Focus operators of the Operator Maps, for the choice of Operators (as on the map of a call).
         area['focus_labels'] = labels_with_role(repository, FOCUS)
         area['focus_operators'] = focus_operators(repository)
@@ -9904,6 +9917,19 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         """The suggestion rule of the workspace (admins and super-admins); no rule restores the default one."""
         repository = workspace_repository(user)
         return JSONResponse({'rule': translate(lambda: save_root_cause_rule(repository, payload.rule, user.username))})
+
+    @core.app.get('/api/non-qualified-calls/map-levels')
+    def nq_map_levels_read(user=Depends(core.current_user)) -> JSONResponse:
+        """The Map Levels of the workspace (the levels the maps colour each measure by), their defaults and the measures."""
+        return JSONResponse(nq_map_levels.payload(workspace_repository(user)))
+
+    @core.app.put('/api/non-qualified-calls/map-levels')
+    def nq_map_levels_save(payload: MapLevelsPayload, user=Depends(config_user)) -> JSONResponse:
+        """Save the Map Levels of the workspace (admins and super-admins); the maps take them when they are read again."""
+        repository = workspace_repository(user)
+        _levels, changes = translate(lambda: nq_map_levels.save_levels(repository, payload.levels))
+        log_action(repository, user, 'nq_map_levels_saved', {'changes': changes or ['No change']})
+        return JSONResponse(nq_map_levels.payload(repository))
 
     @core.app.get('/api/non-qualified-calls/dta-rca/rules')
     def nq_dta_rca_rules(user=Depends(core.current_user)) -> JSONResponse:

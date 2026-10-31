@@ -82,19 +82,19 @@
   const categoryColour = (value) => CATEGORY_COLOURS[hash(value) % CATEGORY_COLOURS.length];
 
   // -- the colour and the shape of a point of a layer ------------------------------------------------------------------
-  // RSRP and SINR take the levels of the RSRP / SINR samples of the CDRs (names, colours and ranges, with Extremely poor
-  // below −120 dBm), which the maps give with their data (setClasses): one legend for both sources. RSRQ takes the ranges
-  // of the KMZ files in six levels named and coloured as those of the RSRP (also given by the maps). UE Tx Power keeps the ranges of the
-  // KMZ files.
+  // RSRP, RSRQ, SINR and UE Tx Power take the Map Levels of the workspace (names, colours and ranges; RSRP and SINR those
+  // of the RSRP / SINR samples of the CDRs, one legend for both sources), which the maps give with their data (setClasses).
+  // Until then, the ranges of the legend of the KMZ files.
   let sampleClasses = null;
   const setClasses = (classes) => { if (classes?.rsrp?.length && classes?.sinr?.length) sampleClasses = classes; };
-  const classesOf = (metric) => (['rsrp', 'rsrq', 'sinr'].includes(metric) && sampleClasses?.[metric]?.length ? sampleClasses[metric] : null);
+  const classesOf = (metric) => (['rsrp', 'rsrq', 'sinr', 'tx'].includes(metric) && sampleClasses?.[metric]?.length ? sampleClasses[metric] : null);
   const classOf = (levels, value) => levels.find((level) => level.lower === null || value >= level.lower);
-  // ``Excellent (≥ -80)``, as the legend of the samples of the CDRs writes a level (its unit in the title of the legend).
+  // ``Excellent (≥ -80)``, as the legend of the samples of the CDRs writes a level (its unit in the title of the legend),
+  // its range alone without a name.
   const classText = (levels, index) => {
     const level = levels[index], upper = index ? levels[index - 1].lower : null;
     const range = level.lower === null ? `< ${upper}` : upper === null ? `≥ ${level.lower}` : `${level.lower} to ${upper}`;
-    return `${level.label} (${range})`;
+    return level.label ? `${level.label} (${range})` : range;
   };
   const rangeIndex = (metric, value) => {
     if (value === null || value === undefined) return -1;
@@ -509,10 +509,11 @@
 
   // The tree of the layers of a map, in ``host``; ``redraw`` paints the map again after a change. It opens folded on every
   // map (``collapse`` folds it again when the map shows another call).
-  const createTree = (host, getData, redraw) => {
+  // ``open``: unfolded at first; ``decorate(open)``: called after each drawing of the card (its map makes it float).
+  const createTree = (host, getData, redraw, {open: unfolded = false, decorate = null} = {}) => {
     const panel = node('section', undefined, 'nq-l3-panel');
-    let open = false;
-    const render = () => {
+    let open = unfolded;
+    const draw = () => {
       const data = getData();
       panel.hidden = !data;
       if (!data) { panel.replaceChildren(); return; }
@@ -522,7 +523,7 @@
       title.type = 'button';
       title.setAttribute('aria-expanded', String(open));
       title.title = open ? 'Fold the layers' : 'Show the layers of the Layer3 Logs';
-      title.append(node('span', 'From Logs', 'nq-l3-title-text'), node('span', open ? '▾' : '▸', 'nq-l3-chevron'));
+      title.append(node('span', 'LOGS Info', 'nq-l3-title-text'), node('span', open ? '▾' : '▸', 'nq-l3-chevron'));
       // A click anywhere on its header but its switch folds or unfolds it (its title is the button for the keyboard).
       head.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -684,13 +685,17 @@
       panel.append(body);
       body.scrollTop = scrolled;
     };
+    const render = () => {
+      draw();
+      decorate?.(open && !panel.hidden);
+    };
     // The wheel and the clicks of the tree stay in it (they never move the map).
     ['wheel', 'pointerdown', 'dblclick'].forEach((type) => panel.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
     host.append(panel);
     const listener = () => { render(); redraw(); };
     listeners.add(listener);
     render();
-    return {render, collapse: () => { open = false; render(); }, destroy: () => { listeners.delete(listener); panel.remove(); }};
+    return {panel, render, collapse: () => { open = false; render(); }, destroy: () => { listeners.delete(listener); panel.remove(); }};
   };
 
   // -- the legend of the layers on (below the map, in its images too) ------------------------------------------------
@@ -700,7 +705,7 @@
     const layersOn = [...state.on].filter((key) => data.layers[key] && key !== 'way');
     if (!layersOn.length && !data.area && !route) return null;
     const box = node('div', undefined, 'nq-l3-legend');
-    box.append(node('p', 'From Logs', 'nq-l3-legend-title'));
+    box.append(node('p', 'LOGS Info', 'nq-l3-legend-title'));
     if (route) {
       const row = node('div', undefined, 'nq-l3-legend-row');
       const item = node('span', undefined, 'nq-l3-legend-item');
@@ -910,11 +915,11 @@
     let shown = true;
     // Places the cursor of the timeline drawn (see render).
     let placeCursor = () => {};
-    // Its cross hides it, as the switch Signalling timeline of the card From Logs does (which shows it again).
+    // Its cross hides it, as the switch Signalling timeline of the card LOGS Info does (which shows it again).
     const closeButton = () => {
       const close = node('button', '×', 'nq-map-info-close');
       close.type = 'button';
-      close.title = 'Hide the signalling timeline (the switch Signalling timeline of the card From Logs shows it again)';
+      close.title = 'Hide the signalling timeline (the switch Signalling timeline of the card LOGS Info shows it again)';
       close.setAttribute('aria-label', 'Hide the signalling timeline');
       close.addEventListener('click', (event) => { event.stopPropagation(); state.timeline = false; changed(); });
       return close;
@@ -978,8 +983,10 @@
           : [[-130, -120], [-120, -107], [-107, -100], [-100, -90], [-90, -80], [-80, -70], [-70, -50]].map(([low, high], band) => [low, high, RANGE_COLOURS[band]]);
         bands.forEach(([low, high, fill]) => chart.append(svg('rect', {x: left, y: y(high), width: width - left - right,
           height: Math.max(0, y(low) - y(high)), fill, opacity: .07})));
-        chart.append(withText(svg('text', {x: left - 6, y: y(levels ? -80 : -70) + 3, class: 'nq-l3-timeline-axis', 'text-anchor': 'end'}), levels ? '−80' : '−70'));
-        chart.append(withText(svg('text', {x: left - 6, y: y(-120) + 3, class: 'nq-l3-timeline-axis', 'text-anchor': 'end'}), '−120'));
+        // The axis tells where the best level starts and where the worst one starts.
+        for (const value of levels ? [levels[0].lower, levels.at(-2).lower] : [-70, -120]) {
+          chart.append(withText(svg('text', {x: left - 6, y: y(value) + 3, class: 'nq-l3-timeline-axis', 'text-anchor': 'end'}), String(value).replace('-', '−')));
+        }
         for (const [kind, colour] of [['lte_pcell', '#1c5dbf'], ['nr_pcell', '#6b3fb5']]) {
           const series = own.filter((point) => point.kind === kind && point.rsrp !== null && point.rsrp !== undefined);
           if (series.length > 1) {

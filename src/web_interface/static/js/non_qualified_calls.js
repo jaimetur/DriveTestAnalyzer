@@ -7053,6 +7053,133 @@
     });
   }
 
+  // -- Map Levels dialog (admins and super-admins change them) ---------------------------------------------
+  // A card for each measure with its levels, the best one first (the highest power for UE Tx Power): a row for each level,
+  // its colour, name and lowest value (the last one takes every value below), and the range it takes as the legends of the
+  // maps write it.
+  const mapLevelsDialog = $('nq-map-levels-dialog');
+  let mapLevels = null;
+  const MAX_MAP_LEVELS = 10;
+  const levelRange = (levels, index, unit) => {
+    const lower = levels[index].lower, upper = index ? levels[index - 1].lower : null;
+    const valid = (value) => value !== null && value !== undefined && Number.isFinite(value);
+    if (index === levels.length - 1) return valid(upper) ? `< ${upper} ${unit}` : '';
+    if (!valid(lower)) return '';
+    return index === 0 ? `≥ ${lower} ${unit}` : valid(upper) ? `${lower} to ${upper} ${unit}` : '';
+  };
+  const mapLevelsCard = (measure, levels) => {
+    const card = node('section', undefined, 'nq-map-levels-card');
+    card.dataset.measure = measure.key;
+    const list = node('ol', undefined, 'nq-map-levels-list');
+    const header = node('div', undefined, 'nq-map-level-row nq-map-level-header');
+    header.append(node('span', 'Colour'), node('span', 'Name'), node('span', 'From'), node('span', 'Takes'), node('span'));
+    const add = node('button', 'Add Level', 'nq-secondary-action');
+    add.type = 'button';
+    add.title = 'A level above the last one';
+    const reset = node('button', 'Default Levels', 'nq-secondary-action');
+    reset.type = 'button';
+    reset.title = 'The levels every workspace starts with; Save applies them';
+    const actions = node('div', undefined, 'nq-root-actions nq-map-levels-actions');
+    actions.append(add, reset);
+    card.append(node('h3', `${measure.label} (${measure.unit})`), header, list, actions);
+    const collect = () => [...list.children].map((row, index, rows) => {
+      const lower = row.querySelector('.nq-map-level-lower').value.trim();
+      return {label: row.querySelector('.nq-map-level-name').value.trim(), colour: row.querySelector('.nq-map-level-colour').value,
+        lower: index === rows.length - 1 || lower === '' ? null : Number(lower)};
+    });
+    const showRanges = () => {
+      const items = collect();
+      [...list.children].forEach((row, index) => { row.querySelector('.nq-map-level-range').textContent = levelRange(items, index, measure.unit); });
+    };
+    const render = (items) => {
+      list.replaceChildren(...items.map((level, index) => {
+        const row = node('li', undefined, 'nq-map-level-row');
+        const colour = node('input', undefined, 'nq-map-level-colour');
+        colour.type = 'color';
+        colour.value = String(level.colour || '#868e96').toLowerCase();
+        colour.setAttribute('aria-label', `Colour of level ${index + 1} of ${measure.label}`);
+        const name = node('input', undefined, 'nq-map-level-name');
+        name.type = 'text';
+        name.maxLength = 40;
+        name.value = level.label || '';
+        name.placeholder = 'Its range alone';
+        name.setAttribute('aria-label', `Name of level ${index + 1} of ${measure.label}`);
+        const lower = node('input', undefined, 'nq-map-level-lower');
+        lower.type = 'number';
+        lower.step = 'any';
+        lower.setAttribute('aria-label', `Lowest value of level ${index + 1} of ${measure.label}`);
+        if (index === items.length - 1) {
+          lower.disabled = true;
+          lower.placeholder = 'Below';
+          lower.title = 'The last level takes every value below the level above it';
+        } else {
+          lower.value = level.lower === null || level.lower === undefined ? '' : String(level.lower);
+        }
+        const remove = node('button', '×', 'nq-icon-action');
+        remove.type = 'button';
+        remove.title = 'Remove this level';
+        remove.setAttribute('aria-label', `Remove level ${index + 1} of ${measure.label}`);
+        remove.disabled = items.length <= 2;
+        remove.addEventListener('click', () => {
+          const kept = collect();
+          kept.splice(index, 1);
+          render(kept);
+        });
+        row.append(colour, name, lower, node('span', '', 'nq-map-level-range'), remove);
+        return row;
+      }));
+      add.disabled = items.length >= MAX_MAP_LEVELS;
+      showRanges();
+    };
+    list.addEventListener('input', showRanges);
+    add.addEventListener('click', () => {
+      // The new level goes above the last one, 5 below the lowest value of the level above it.
+      const items = collect();
+      const above = items.length > 1 ? items.at(-2).lower : null;
+      items.splice(items.length - 1, 0, {label: '', lower: Number.isFinite(above) ? above - 5 : 0, colour: items.at(-1)?.colour || '#868e96'});
+      render(items);
+      list.children[items.length - 2]?.querySelector('.nq-map-level-name').focus();
+    });
+    reset.addEventListener('click', () => {
+      render(mapLevels.defaults[measure.key] || []);
+      $('nq-map-levels-error').style.color = 'var(--nq-muted)';
+      $('nq-map-levels-error').textContent = `The default levels of ${measure.label} are shown: review them and Save.`;
+    });
+    render(levels);
+    card.collect = collect;
+    return card;
+  };
+  if (mapLevelsDialog) {
+    document.querySelectorAll('[data-nq-map-levels-open]').forEach((button) => button.addEventListener('click', async () => {
+      $('nq-map-levels-error').textContent = '';
+      try {
+        mapLevels = await api('/api/non-qualified-calls/map-levels');
+      } catch (error) {
+        toast(error.message, 'error');
+        return;
+      }
+      $('nq-map-levels').replaceChildren(...mapLevels.measures.map((measure) => mapLevelsCard(measure, mapLevels.levels[measure.key] || [])));
+      mapLevelsDialog.showModal();
+    }));
+    $('nq-map-levels-cancel').addEventListener('click', () => mapLevelsDialog.close());
+    $('nq-map-levels-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const save = $('nq-map-levels-save');
+      save.disabled = true;
+      try {
+        const levels = Object.fromEntries([...$('nq-map-levels').children].map((card) => [card.dataset.measure, card.collect()]));
+        await api('/api/non-qualified-calls/map-levels', {method: 'PUT', body: JSON.stringify({levels})});
+        mapLevelsDialog.close();
+        toast('Map Levels saved: the maps take them when they are opened again.');
+      } catch (error) {
+        $('nq-map-levels-error').style.color = '';
+        $('nq-map-levels-error').textContent = error.message;
+      } finally {
+        save.disabled = false;
+      }
+    });
+  }
+
   // -- Prioritization Rules dialog (admins and super-admins change them) ---------------------------------
   const priorityDialog = $('nq-priority-dialog');
   const PRIORITY_INPUTS = {high_share: 'nq-priority-high', medium_share: 'nq-priority-medium', min_calls: 'nq-priority-min-calls',
@@ -8687,7 +8814,7 @@
   const CENTER_HASHES = {
     'section-nq-analysis-configuration': 'nq-config-toggle', 'fields-and-sections': 'nq-fields-open', 'statuses-and-teams': 'nq-options-open',
     'status-rules': 'nq-status-rules-open', 'prioritization-rules': 'nq-prioritization-open', 'root-cause-catalog': 'nq-root-open',
-    'dta-rca-rules': 'nq-dta-rules-open',
+    'dta-rca-rules': 'nq-dta-rules-open', 'map-levels': 'nq-map-levels-open',
     'import-ericsson-rca-results': 'nq-rca-open', 'import-previous-nq-analyses': 'nq-analyses-open',
     'analysts-reviewers-to-asignees': 'nq-assign-analysts-open',
   };
@@ -8726,7 +8853,8 @@
     root: $('non-qualified-calls'), fallbackName: 'Non-Qualified Calls', module: 'non-qualified-calls',
     // NQ Maps as the map of a call: in the page and larger, without its buttons.
     targets: `details.panel.collapsible-panel, ${imageTables}, ${imageCharts}, .nq-kpis, .nq-rate-overview, .nq-phase-cards, .nq-failure-section, ${l3MapImages}`,
-    tables: imageTables, charts: `${imageCharts}, ${l3MapImages}`, obstacles: 'summary .summary-inline-actions, .nq-map-zoom, .nq-map-info-close',
+    tables: imageTables, charts: `${imageCharts}, ${l3MapImages}`,
+    obstacles: 'summary .summary-inline-actions, .nq-map-zoom, .nq-map-info-close, .nq-l3-panel.is-floating:not(.is-collapsed) > .nq-l3-head',
     exclude: '.nq-chart-tooltip, .nq-map-zoom, .nq-map-expand-toolbar, .nq-map-wheel-hint, .nq-map-tooltip, .nq-map-info-close, .nq-map-selected-content > button',
     // The title of its panel, then its own: that of its section (with the operator of a failure card) or its heading.
     title: target => {
@@ -8748,8 +8876,8 @@
       root: drawer, targets: '.nq-map-wrap, .nq-map-expand-wrap', charts: '.nq-map-wrap, .nq-map-expand-wrap',
       // The open panels (the element chosen) show in the images; the buttons of the map and of the panels do not.
       exclude: '.nq-map-zoom, .nq-map-expand-toolbar, .nq-map-wheel-hint, .nq-map-tooltip, .nq-map-waiting, .nq-map-info-close, .nq-map-selected-content > button',
-      // (Clear of the zoom buttons and of the × of the element chosen.)
-      obstacles: '.nq-map-zoom, .nq-map-info-close', cardOnEdge: false,
+      // (Clear of the zoom buttons, of the × of the element chosen and of the header of an unfolded card moved under them.)
+      obstacles: '.nq-map-zoom, .nq-map-info-close, .nq-l3-panel.is-floating:not(.is-collapsed) > .nq-l3-head', cardOnEdge: false,
       // Below the header and the tabs of the call panel, which its body scrolls under.
       topInset: () => drawer.querySelector('.nq-drawer-body').getBoundingClientRect().top,
       module: 'non-qualified-calls', fallbackName: 'Call Area Map', title: () => callMap.title(), details: () => callMap.details(),

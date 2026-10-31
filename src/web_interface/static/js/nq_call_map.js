@@ -106,7 +106,7 @@
     context.fillStyle = colour;
     context.fill();
   };
-  // What the card From CDR switches (``cdr`` the whole of it): the layers of the map from the CDRs and the Non-Qualified
+  // What the card CDR Info switches (``cdr`` the whole of it): the layers of the map from the CDRs and the Non-Qualified
   // Calls, and the measures of the samples; while it is off none of them is drawn.
   // On the map of a call, each group of the call has its switch too: the shapes of its clusters, time windows and hotspot
   // zone, and their outlines on the NQ calls (And Group).
@@ -115,7 +115,7 @@
   const shownLayers = (settings) => (settings.layers.cdr === false
     ? {...settings.layers, ...Object.fromEntries(Object.keys(CDR_LAYER_LABELS).map((key) => [key, false]))} : settings.layers);
   const shownMeasures = (settings) => (settings.layers.cdr === false ? [] : Object.keys(METRICS).filter((key) => settings.measures.includes(key)));
-  // The measures of the samples kept in the browser: those of the colour of the samples before the card From CDR (none while
+  // The measures of the samples kept in the browser: those of the colour of the samples before the card CDR Info (none while
   // they were hidden).
   const storedMeasures = (stored, fallback = []) => {
     const old = stored.layers && 'tests' in stored.layers;
@@ -206,6 +206,13 @@
   const basemapViews = new Set();
   const basemap = {key: 'light'};
   try { if (BASEMAPS[localStorage.getItem(BASEMAP_KEY)]) basemap.key = localStorage.getItem(BASEMAP_KEY); } catch (_error) { /* Light. */ }
+  // The cards of a map pinned with their pin (floatingCard): unfolded on every map and kept so by clicks outside them, in the
+  // browser.
+  const CARD_PIN_KEYS = {legend: 'nq-map-legend-pinned', cdr: 'nq-map-cdr-pinned', logs: 'nq-map-logs-pinned'};
+  const cardPins = {};
+  for (const key of Object.values(CARD_PIN_KEYS)) {
+    try { cardPins[key] = localStorage.getItem(key) === '1'; } catch (_error) { cardPins[key] = false; }
+  }
   const setBasemap = (key) => {
     if (!BASEMAPS[key]) return;
     basemap.key = key;
@@ -215,7 +222,7 @@
   };
   // The map under the layers (BASEMAPS), a control above every map beside its other choices, the same on every map of the page.
   const basemapControl = () => {
-    const wrapper = node('label', undefined, 'nq-map-control');
+    const wrapper = node('label', undefined, 'nq-map-control nq-map-basemap-control');
     wrapper.title = 'The map under the layers, the same on every map of the page: Light and Plain show little of their own so that the samples and events stand out';
     const element = node('select');
     element.dataset.nqBasemap = '';
@@ -273,7 +280,140 @@
     });
     return panel;
   };
-  // The sections of the card From CDR, folded as those of the card From Logs (l3_layers.js): the measures of its samples, then
+  // Follows the pointer of ``event`` on ``element``, which keeps it until it is released: ``move`` with each position, then
+  // ``done``.
+  const followPointer = (element, event, move, done) => {
+    const stop = () => {
+      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((type) => element.removeEventListener(type, stop));
+      element.removeEventListener('pointermove', move);
+      done();
+    };
+    element.setPointerCapture(event.pointerId);
+    element.addEventListener('pointermove', move);
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((type) => element.addEventListener(type, stop));
+  };
+  const PIN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 14v7"/></svg>';
+  const RESTORE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v5h5"/></svg>';
+  // A card over a map (``area``) that floats once unfolded — the legend, CDR Info and LOGS Info: dragging its header moves it
+  // over the map (a click on it still folds it), dragging a corner makes it smaller or larger (``corner``: the top left one
+  // for the legend, which unfolds upwards from the bottom right, else the bottom right one), and its pin keeps it unfolded,
+  // also on the next maps (``pinKey``, in the browser), against clicks outside it. Folded, it goes back to its place;
+  // unfolded again, it takes the size it was given while the map is open, until its restore button, shown once it was moved
+  // or resized, puts it back in its place with its own size. The card calls ``decorate(open)`` after each drawing of it: its
+  // buttons go into its header, before its switch.
+  const floatingCard = (panel, area, {pinKey, name, corner = 'bottom-right'}) => {
+    panel.classList.add('is-floating');
+    const pin = node('button', undefined, 'nq-map-card-pin');
+    pin.type = 'button';
+    pin.innerHTML = PIN_ICON;
+    const restore = node('button', undefined, 'nq-map-card-pin nq-map-card-restore');
+    restore.type = 'button';
+    restore.innerHTML = RESTORE_ICON;
+    restore.title = `Put the ${name} back in its place, with its own size`;
+    restore.setAttribute('aria-label', restore.title);
+    const handle = node('span', undefined, `nq-map-card-resize is-${corner}`);
+    handle.title = `Drag to make the ${name} smaller or larger`;
+    handle.setAttribute('aria-hidden', 'true');
+    let open = false, size = null, dragged = false;
+    // Where the card is in the map, and where the parent its position counts from is.
+    const placeOf = () => {
+      const box = area.getBoundingClientRect(), own = panel.getBoundingClientRect();
+      const parent = panel.offsetParent || area, from = parent.getBoundingClientRect();
+      const [x, y] = [box.left + area.clientLeft, box.top + area.clientTop];
+      return {left: own.left - x, top: own.top - y, width: own.width, height: own.height,
+        dx: from.left + parent.clientLeft - x, dy: from.top + parent.clientTop - y};
+    };
+    // ``size``: its width once moved or resized (out of its place it keeps it), its height once resized.
+    const fit = () => {
+      ['width', 'maxWidth', 'height', 'maxHeight'].forEach((key) => { panel.style[key] = ''; });
+      panel.classList.toggle('is-sized', Boolean(open && size?.height));
+      if (!open || !size) return;
+      Object.assign(panel.style, {width: `${Math.min(size.width, area.clientWidth - 16)}px`, maxWidth: 'none'});
+      if (size.height) Object.assign(panel.style, {height: `${Math.min(size.height, area.clientHeight - 16)}px`, maxHeight: 'none'});
+    };
+    const place = (left, top, at) => {
+      size = size || {width: at.width, height: null};
+      fit();
+      Object.assign(panel.style, {position: 'absolute', left: `${left - at.dx}px`, top: `${top - at.dy}px`, right: 'auto', bottom: 'auto'});
+    };
+    const decorate = (isOpen) => {
+      open = isOpen;
+      if (!open) ['position', 'left', 'top', 'right', 'bottom'].forEach((key) => { panel.style[key] = ''; });
+      fit();
+      const pinned = cardPins[pinKey];
+      pin.hidden = !open;
+      pin.classList.toggle('is-pinned', pinned);
+      pin.setAttribute('aria-pressed', String(pinned));
+      pin.title = pinned ? `Unpin the ${name}: a click outside it folds it again`
+        : `Pin the ${name}: it stays unfolded, also on the next maps, until its header folds it`;
+      pin.setAttribute('aria-label', pin.title);
+      restore.hidden = !open || !(size || panel.style.position);
+      const head = panel.querySelector(':scope > .nq-l3-head');
+      if (open && head && pin.parentElement !== head) head.insertBefore(pin, head.querySelector(':scope > .nq-l3-switch'));
+      if (open && head && restore.parentElement !== head) head.insertBefore(restore, pin);
+      if (open && handle.parentElement !== panel) panel.append(handle);
+      if (!open) handle.remove();
+    };
+    restore.addEventListener('click', (event) => {
+      event.stopPropagation();
+      size = null;
+      ['position', 'left', 'top', 'right', 'bottom'].forEach((key) => { panel.style[key] = ''; });
+      decorate(open);
+    });
+    pin.addEventListener('click', (event) => {
+      event.stopPropagation();
+      cardPins[pinKey] = !cardPins[pinKey];
+      try { localStorage.setItem(pinKey, cardPins[pinKey] ? '1' : '0'); } catch (_error) { /* A private window keeps it for the page. */ }
+      decorate(open);
+    });
+    panel.addEventListener('pointerdown', (event) => {
+      const head = event.target.closest?.('.nq-l3-head');
+      if (!open || event.button !== 0 || !head || head.parentElement !== panel || event.target.closest('.nq-l3-switch, .nq-map-card-pin')) return;
+      const start = {x: event.clientX, y: event.clientY, ...placeOf()};
+      dragged = false;
+      followPointer(head, event, (pointer) => {
+        const dx = pointer.clientX - start.x, dy = pointer.clientY - start.y;
+        if (!dragged && Math.hypot(dx, dy) < 4) return;
+        dragged = true;
+        panel.classList.add('is-dragged');
+        place(clamp(start.left + dx, 0, area.clientWidth - start.width), clamp(start.top + dy, 0, area.clientHeight - start.height), start);
+      }, () => {
+        panel.classList.remove('is-dragged');
+        restore.hidden = !(size || panel.style.position);
+      });
+    });
+    // The click that ends a drag does not fold it.
+    panel.addEventListener('click', (event) => {
+      if (dragged && event.target.closest('.nq-l3-head')) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+      dragged = false;
+    }, true);
+    handle.addEventListener('pointerdown', (event) => {
+      if (!open || event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const start = {x: event.clientX, y: event.clientY, ...placeOf()};
+      const right = start.left + start.width, bottom = start.top + start.height;
+      panel.classList.add('is-dragged');
+      followPointer(handle, event, (pointer) => {
+        const dx = pointer.clientX - start.x, dy = pointer.clientY - start.y;
+        if (corner === 'top-left') {
+          size = {width: clamp(start.width - dx, 220, right - 8), height: clamp(start.height - dy, 120, bottom - 8)};
+          place(right - size.width, bottom - size.height, start);
+        } else {
+          size = {width: clamp(start.width + dx, 220, area.clientWidth - start.left - 8), height: clamp(start.height + dy, 120, area.clientHeight - start.top - 8)};
+          fit();
+        }
+      }, () => {
+        panel.classList.remove('is-dragged');
+        restore.hidden = !(size || panel.style.position);
+      });
+    });
+    return {decorate, pinned: () => cardPins[pinKey]};
+  };
+  // The sections of the card CDR Info, folded as those of the card LOGS Info (l3_layers.js): the measures of its samples, then
   // its layers by kind. Every one is unfolded at first; those the user folds stay so in the browser, on every map.
   const CDR_SECTIONS = [
     {key: 'samples', label: 'RSRP / SINR', note: () => 'The samples of the CDRs'},
@@ -529,7 +669,7 @@
   };
 
   // One map view of a call (the one in the panel, or the larger one): its canvas, controls, legend and tooltip.
-  function createView(card, shared, {expanded = false, onExpand = null, legendHost = null, onViewChange = null} = {}) {
+  function createView(card, shared, {expanded = false, onExpand = null, onViewChange = null} = {}) {
     card.classList.add('nq-map-card');
     const canvas = node('canvas', undefined, 'nq-map-canvas');
     canvas.setAttribute('role', 'img');
@@ -547,6 +687,34 @@
     profileBox.hidden = true;
     ['wheel', 'pointerdown', 'dblclick'].forEach((type) => profileBox.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
     const legend = node('div', undefined, 'nq-map-legend');
+    // The legend, folded in a card over the bottom right of the map: its header unfolds it upwards over the map (in its
+    // images too), and a click outside folds it, as the cards over the top left (foldOutside); unfolded, it floats
+    // (floatingCard: moved, resized from its top left corner, pinned).
+    const legendPanel = node('section', undefined, 'nq-l3-panel nq-map-legend-panel');
+    const legendHead = node('header', undefined, 'nq-l3-head');
+    const legendTitle = node('button', undefined, 'nq-l3-title');
+    legendTitle.type = 'button';
+    const legendBody = node('div', undefined, 'nq-l3-body');
+    legendBody.append(legend);
+    legendHead.append(legendTitle);
+    legendPanel.append(legendHead, legendBody);
+    const legendFloat = floatingCard(legendPanel, card, {pinKey: CARD_PIN_KEYS.legend, name: 'legend', corner: 'top-left'});
+    let legendOpen = legendFloat.pinned();
+    const showLegend = () => {
+      legendPanel.classList.toggle('is-collapsed', !legendOpen);
+      legendBody.hidden = !legendOpen;
+      legendTitle.setAttribute('aria-expanded', String(legendOpen));
+      legendTitle.title = legendOpen ? 'Fold the legend' : 'Show the legend of the map';
+      legendTitle.replaceChildren(node('span', 'Legend', 'nq-l3-title-text'), node('span', legendOpen ? '▾' : '▸', 'nq-l3-chevron'));
+      legendFloat.decorate(legendOpen);
+    };
+    legendHead.addEventListener('click', (event) => {
+      event.stopPropagation();
+      legendOpen = !legendOpen;
+      showLegend();
+    });
+    ['wheel', 'pointerdown', 'dblclick'].forEach((type) => legendPanel.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
+    showLegend();
     const attribution = node('div', BASEMAPS[basemap.key].attribution, 'nq-map-attribution');
     // The map under the layers, chosen above the map (basemapControl).
     const basemapChanged = () => {
@@ -562,13 +730,15 @@
     samples.hidden = true;
     ['wheel', 'pointerdown', 'dblclick'].forEach((type) => samples.addEventListener(type, (event) => event.stopPropagation(), {passive: true}));
     panels.append(samples);
-    // From CDR: what the map shows from the CDRs and their Non-Qualified Calls, as the card From Logs shows what comes
+    // CDR Info: what the map shows from the CDRs and their Non-Qualified Calls, as the card LOGS Info shows what comes
     // from the logs (l3_layers.js): the measures of the RSRP / SINR samples, each a layer with its switch, its marker and how
     // many samples have it (several at once: side by side at each test), with the CDRs they come from on the map of a call;
     // then the NQ calls, the sites, the cell path and time-window paths of a call and the route (``shared.cdrLayers``). Its
-    // switch shows or hides all of it. It opens folded on every map (collapseCards folds it again for another call).
-    let samplesOpen = false;
-    const renderSamples = () => {
+    // switch shows or hides all of it. It opens folded on every map, unless pinned (collapseCards folds it again for another
+    // call); unfolded, it floats (floatingCard).
+    const samplesFloat = floatingCard(samples, card, {pinKey: CARD_PIN_KEYS.cdr, name: 'card CDR Info'});
+    let samplesOpen = samplesFloat.pinned();
+    const drawSamples = () => {
       const data = shared.data, settings = shared.settings;
       samples.hidden = !data;
       if (!data) return;
@@ -579,7 +749,7 @@
       title.type = 'button';
       title.setAttribute('aria-expanded', String(samplesOpen));
       title.title = samplesOpen ? 'Fold the layers from the CDR' : 'Show the layers from the CDR';
-      title.append(node('span', 'From CDR', 'nq-l3-title-text'), node('span', samplesOpen ? '▾' : '▸', 'nq-l3-chevron'));
+      title.append(node('span', 'CDR Info', 'nq-l3-title-text'), node('span', samplesOpen ? '▾' : '▸', 'nq-l3-chevron'));
       // A click anywhere on its header but its switch folds or unfolds it (its title is the button for the keyboard).
       head.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -676,6 +846,10 @@
       samples.append(body);
       body.scrollTop = scrolled;
     };
+    const renderSamples = () => {
+      drawSamples();
+      samplesFloat.decorate(samplesOpen && !samples.hidden);
+    };
     // In the call panel the wheel alone scrolls the panel: a moment's note says how to zoom.
     const wheelHint = node('div', 'Ctrl/Cmd + wheel to zoom the map', 'nq-map-wheel-hint');
     wheelHint.hidden = true;
@@ -755,11 +929,16 @@
           return line;
         }));
     };
-    card.replaceChildren(canvas, ruler, selectionBox, panels, controls, counts, bottomStack, attribution, wheelHint, tooltip);
-    // The legend goes below the map (in its images too), so it hides none of it.
-    (legendHost || card).replaceChildren(legend);
+    card.replaceChildren(canvas, ruler, selectionBox, panels, legendPanel, controls, counts, bottomStack, attribution, wheelHint, tooltip);
     // The layers of the Layer3 Logs of the call (l3_layers.js), over the map so that its images show them.
-    const l3Tree = window.L3Layers ? window.L3Layers.createTree(panels, () => shared.l3, () => { renderLegend(); redraw(); }) : null;
+    // (Unfolded, LOGS Info floats too: floatingCard.)
+    let l3Float = null;
+    const l3Tree = window.L3Layers ? window.L3Layers.createTree(panels, () => shared.l3, () => { renderLegend(); redraw(); },
+      {open: cardPins[CARD_PIN_KEYS.logs], decorate: (open) => l3Float?.decorate(open)}) : null;
+    if (l3Tree) {
+      l3Float = floatingCard(l3Tree.panel, card, {pinKey: CARD_PIN_KEYS.logs, name: 'card LOGS Info'});
+      l3Tree.render();
+    }
 
     const project = (latitude, longitude) => {
       const [x, y] = toWorld(latitude, longitude);
@@ -1922,7 +2101,12 @@
     // or on another card once its click is done (folded before, the card clicked would move from under the pointer).
     const foldOutside = (event) => {
       if (!card.isConnected || event.target.closest?.('.native-select-menu')) return;
-      const others = [...panels.querySelectorAll(':scope > .nq-l3-panel:not(.is-collapsed)')].filter((unfolded) => !unfolded.contains(event.target));
+      if (legendOpen && !legendFloat.pinned() && !legendPanel.contains(event.target)) {
+        legendOpen = false;
+        showLegend();
+      }
+      const others = [...panels.querySelectorAll(':scope > .nq-l3-panel:not(.is-collapsed)')].filter((unfolded) => !unfolded.contains(event.target)
+        && !(unfolded === samples ? samplesFloat.pinned() : l3Float?.pinned()));
       if (!others.length) return;
       const fold = () => others.forEach((unfolded) => {
         if (unfolded !== samples) l3Tree?.collapse();
@@ -1954,9 +2138,9 @@
       const layers = shownLayers(settings);
       const pathsShown = layers.paths !== false;
       const routeShown = layers.route !== false;
-      // Two boxes, as the cards on the map: From CDR (its groups below) and From Logs (l3_layers.js legend).
+      // Two boxes, as the cards on the map: CDR Info (its groups below) and LOGS Info (l3_layers.js legend).
       const cdrBox = node('div', undefined, 'nq-map-legend-box');
-      cdrBox.append(node('p', 'From CDR', 'nq-map-legend-box-title'));
+      cdrBox.append(node('p', 'CDR Info', 'nq-map-legend-box-title'));
       const finish = (l3Route = '') => {
         if (cdrBox.children.length > 1) legend.append(cdrBox);
         const l3Legend = window.L3Layers?.legend(shared.l3, {route: l3Route});
@@ -1988,7 +2172,7 @@
           levels.forEach((levelItem, index) => {
             const upper = index ? levels[index - 1].lower : null;
             const range = levelItem.lower === null ? `< ${upper}` : upper === null ? `≥ ${levelItem.lower}` : `${levelItem.lower} to ${upper}`;
-            item(mark, `${levelItem.label} (${range})`, levelItem.colour, extra);
+            item(mark, levelItem.label ? `${levelItem.label} (${range})` : range, levelItem.colour, extra);
           });
           item(mark, 'No value', COLOURS.noValue, extra);
         }
@@ -2094,8 +2278,12 @@
         view = {...view, resolution: Math.min(view.resolution, 2 ** (REFERENCE_ZOOM - 16))};
         redraw();
       },
-      // Its cards folded again (the map shows another call).
-      collapseCards: () => { samplesOpen = false; renderSamples(); l3Tree?.collapse(); },
+      // Its cards folded again (the map shows another call), but those pinned.
+      collapseCards: () => {
+        samplesOpen = samplesFloat.pinned();
+        renderSamples();
+        if (!l3Float?.pinned()) l3Tree?.collapse();
+      },
       // A panel over the bottom of the map, below the elevation profile (the signalling timeline of the larger map).
       overlay: (element) => bottomStack.append(element),
       // Moved (not zoomed) so that a place stays on the map: centred on it once it leaves the middle 80 % of the map.
@@ -2129,7 +2317,7 @@
       failureColour: FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'site',
       // And Group: a circle around each NQ call of the groups of the call, in the colour of each group.
       perGroup: stored.perGroup !== false,
-      // The layers of From CDR (``cdr`` the whole card).
+      // The layers of CDR Info (``cdr`` the whole card).
       layers: {cdr: true, failures: true, cluster: true, run: true, hotspot: true, sites: true, ends: true, path: true, route: true, paths: true, ...(stored.layers || {})},
     };
     delete settings.layers.tests;
@@ -2154,9 +2342,8 @@
     const siteCard = node('section', undefined, 'nq-map-info nq-map-site-health');
     cards.append(callCard, failuresCard, diagnosisCard, decisionsCard, driveCard, siteCard, areaCard);
     const mapWrap = node('div', undefined, 'nq-map-wrap');
-    const mapLegend = node('div', undefined, 'nq-map-legend-host');
-    // The element chosen goes right below the map and its legend, so its images (download and screenshot) show it too.
-    mapWrap.append(card, waiting, mapLegend, selected);
+    // The element chosen goes right below the map, so its images (download and screenshot) show it too.
+    mapWrap.append(card, waiting, selected);
     const timelineHost = node('div', undefined, 'nq-l3-timeline-host');
     mapWrap.insertBefore(timelineHost, selected);
     panel.replaceChildren(toolbar, status, mapWrap, node('p', PANEL_HINT, 'form-note nq-map-hint'), cards);
@@ -2180,7 +2367,7 @@
       if (!call || failure.self) return true;
       // Not the Ping tests, nor those of another NR Mode (NSA and SA fail along different paths).
       if (failure.kind === 'ping' || failure.nr_mode !== call.nr_mode) return false;
-      // Those of the campaigns chosen in From CDR, as everything else from the CDRs.
+      // Those of the campaigns chosen in CDR Info, as everything else from the CDRs.
       if (settings.tests === 'campaign' && (failure.campaign !== call.campaign || failure.nr_mode !== call.nr_mode)) return false;
       if (settings.tests === 'selected' && !selectedCampaign(failure)) return false;
       if (hiddenByFocus(failure)) return false;
@@ -2198,7 +2385,7 @@
     };
     const views = () => [panelView, expandedView].filter(Boolean);
     const redrawAll = () => views().forEach((view) => { view.renderLegend(); view.redraw(); });
-    // A layer of From CDR (or the whole card) and a measure of its samples switched on or off.
+    // A layer of CDR Info (or the whole card) and a measure of its samples switched on or off.
     shared.cdrLayers = ['failures', 'hotspot', 'cluster', 'run', 'paths', 'sites', 'ends', 'path', 'route'];
     shared.setLayer = (key, on) => { settings.layers[key] = on; save(); redrawAll(); renderFailures(); };
     shared.setMeasure = (key, on) => {
@@ -2207,7 +2394,7 @@
       redrawAll();
     };
     // The campaigns of the CDRs of everything the map draws from them (its NQ calls, samples, Radio around the call, Diagnosis
-    // hints and drive), chosen at the top of the card From CDR: those chosen in the filters, or that of the call.
+    // hints and drive), chosen at the top of the card CDR Info: those chosen in the filters, or that of the call.
     shared.samplesScope = {
       options: () => Object.entries(shared.data?.tests_scopes || {selected: 'Selected campaigns', campaign: 'Call campaign'}),
       value: () => settings.tests,
@@ -2240,7 +2427,7 @@
       return ownSiteKey;
     };
     shared.failureColour = (failure) => failureColourBy(settings.failureColour, failure, ownSite());
-    // The groups of the call an NQ call is of, as And Group outlines it (those switched on in From CDR): its cluster
+    // The groups of the call an NQ call is of, as And Group outlines it (those switched on in CDR Info): its cluster
     // innermost, then its time window outside it (not its hotspot, which every NQ call of its groups is of). Each is that of
     // the call alone (the calls the card of the map counts in it), not the other clusters and time windows of its hotspot,
     // unless one of them filters the list.
@@ -2832,7 +3019,7 @@
       // And Group, a switch beside the colour: an outline of the shape of each NQ call for each group of the call it is of
       // (only when the call is of one).
       const perGroup = node('label', undefined, 'nq-map-control nq-map-check');
-      perGroup.title = 'An outline around each NQ call for each group of the call it is of, in the colour of the group: its cluster innermost, then its time window outside it, each the one of the call (over the colour chosen; each group has its switch in From CDR)';
+      perGroup.title = 'An outline around each NQ call for each group of the call it is of, in the colour of the group: its cluster innermost, then its time window outside it, each the one of the call (over the colour chosen; each group has its switch in CDR Info)';
       const perGroupSwitch = node('span', undefined, 'nq-l3-switch');
       const perGroupBox = node('input');
       perGroupBox.type = 'checkbox';
@@ -2843,7 +3030,7 @@
       // (Its title above it, as those of the other controls.)
       perGroup.append(node('span', 'And Group'), perGroupSwitch);
       perGroup.hidden = !hasGroups();
-      // The layers of the map are switched in its cards (From CDR, From Logs).
+      // The layers of the map are switched in its cards (CDR Info, LOGS Info).
       return [
         select('Radius', 'radius', radii.map((value) => [String(value), `${distanceText(value)}${value === data?.group_radius_km ? ' (groups)' : ''}`]),
           String(settings.radius_km), (value) => {
@@ -3003,18 +3190,17 @@
       expandedView?.destroy();
       const wrap = node('div', undefined, 'nq-map-expand-wrap');
       const large = node('div', undefined, 'nq-map-expand-card');
-      const legendHost = node('div', undefined, 'nq-map-legend-host');
       const floating = floatingPanel();
       // The element chosen floats over the map, inside what its images show.
       const timeline = node('div', undefined, 'nq-l3-timeline-host');
       // The controls of the map above it too.
       expandedToolbar = node('div', undefined, 'nq-map-toolbar nq-map-expand-toolbar');
-      wrap.append(large, legendHost, floating);
+      wrap.append(large, floating);
       // (Outside what its images take, so that their buttons stand over the map.)
       expandContent.replaceChildren(expandedToolbar, wrap);
       renderToolbar();
       if (!expandDialog.open) expandDialog.showModal();
-      expandedView = createView(large, shared, {expanded: true, legendHost});
+      expandedView = createView(large, shared, {expanded: true});
       // Its signalling timeline over the bottom of the map, as the elevation profile.
       expandedView.overlay(timeline);
       expandedTimeline?.destroy();
@@ -3036,7 +3222,7 @@
       panelView.redraw();
     });
 
-    const panelView = createView(card, shared, {onExpand: openExpanded, legendHost: mapLegend});
+    const panelView = createView(card, shared, {onExpand: openExpanded});
     // The signalling timeline of the Layer3 Logs of the call: hovering a message rings its point on the maps, a click
     // centres them on it and shows its values.
     const timelineEvents = {
@@ -3160,13 +3346,12 @@
     status.setAttribute('role', 'status');
     const toolbar = node('div', undefined, 'nq-map-toolbar nq-l3-maps-toolbar');
     const card = node('div', undefined, 'nq-l3-maps-card');
-    const legendHost = node('div', undefined, 'nq-map-legend-host');
     const selected = node('section', undefined, 'nq-map-info nq-map-selected');
     selected.hidden = true;
     // The signalling timeline of the NQ call chosen on the map (its Layer3 Logs), as on the map of a call.
     const timelineHost = node('div', undefined, 'nq-l3-timeline-host');
     const wrap = node('div', undefined, 'nq-map-wrap');
-    wrap.append(card, legendHost, timelineHost, selected);
+    wrap.append(card, timelineHost, selected);
     panel.replaceChildren(toolbar, status, wrap, node('p', expandDialog ? PANEL_HINT : HINT, 'form-note nq-map-hint'));
     const zooms = () => shared.l3?.zooms || {};
     let expandedView = null, expandedTimeline = null, floating = null;
@@ -3304,7 +3489,7 @@
     window.L3Layers?.createTimeline(timelineHost, () => shared.l3Focus || null, timelineEvents);
 
     // -- the RSRP / SINR samples of the CDRs and the layers above the map -----------------------------------------------
-    // A layer of From CDR (or the whole card) and a measure of its samples switched on or off: the area is read again when
+    // A layer of CDR Info (or the whole card) and a measure of its samples switched on or off: the area is read again when
     // it needs its sites or tests.
     shared.cdrLayers = ['failures', 'sites', 'route'];
     const needs = () => JSON.stringify([shownLayers(settings).sites !== false, shownMeasures(settings).length > 0 || shownLayers(settings).route !== false]);
@@ -3345,7 +3530,7 @@
       wrapper.append(element);
       return wrapper;
     };
-    // The layers of the map are switched in its cards (From CDR, From Logs), as on the map of a call; its controls show
+    // The layers of the map are switched in its cards (CDR Info, LOGS Info), as on the map of a call; its controls show
     // above the larger map too (``expandedToolbar``) while it is open.
     let expandedToolbar = null;
     const renderToolbar = () => {
@@ -3457,17 +3642,16 @@
       expandDialog.querySelector('[data-nq-map-expand-meta]').textContent = [status.textContent, HINT].filter(Boolean).join(' · ');
       expandedView?.destroy();
       const large = node('div', undefined, 'nq-map-expand-card');
-      const largeLegend = node('div', undefined, 'nq-map-legend-host');
       floating = floatingPanel();
       const largeTimeline = node('div', undefined, 'nq-l3-timeline-host');
       const largeWrap = node('div', undefined, 'nq-map-expand-wrap');
       expandedToolbar = node('div', undefined, 'nq-map-toolbar nq-map-expand-toolbar');
-      largeWrap.append(large, largeLegend, floating);
+      largeWrap.append(large, floating);
       // (Outside what its images take, so that their buttons stand over the map.)
       expandContent.replaceChildren(expandedToolbar, largeWrap);
       renderToolbar();
       if (!expandDialog.open) expandDialog.showModal();
-      expandedView = createView(large, shared, {expanded: true, legendHost: largeLegend, onViewChange: viewChanged});
+      expandedView = createView(large, shared, {expanded: true, onViewChange: viewChanged});
       expandedView.overlay(largeTimeline);
       expandedTimeline?.destroy();
       expandedTimeline = window.L3Layers?.createTimeline(largeTimeline, () => shared.l3Focus || null, timelineEvents) || null;
@@ -3493,7 +3677,7 @@
         renderSelected();
       });
     }
-    const view = createView(card, shared, {legendHost, onExpand: expandDialog ? openExpanded : null,
+    const view = createView(card, shared, {onExpand: expandDialog ? openExpanded : null,
       onViewChange: (info) => { if (!expandedView) viewChanged(info); }});
     window.L3Layers?.onChange(() => { if (shared.data && lastView) load(lastView); });
     renderToolbar();

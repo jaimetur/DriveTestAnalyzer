@@ -404,7 +404,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                                 ('statuses-and-teams', 'Statuses & Teams', 'users'),
                                 ('status-rules', 'Status Rules', 'function'),
                                 ('root-cause-catalog', 'Root Cause Catalog', 'book'),
-                                ('dta-rca-rules', 'DT Analyzer RCA Rules', 'function'), None,
+                                ('dta-rca-rules', 'DT Analyzer RCA Rules', 'function'), ('map-levels', 'Map Levels', 'map'), None,
                                 ('import-ericsson-rca-results', 'Import Ericsson RCA Results', 'upload'),
                                 ('import-previous-nq-analyses', 'Import Previous NQ Analyses', 'upload'),
                                 ('analysts-reviewers-to-asignees', 'Analysts / Reviewers → Asignees', 'user-plus')])],

@@ -62,6 +62,7 @@
       <button type="button" role="menuitem" id="nq-status-rules-open" data-nq-status-rules-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['function'] | safe }}</svg><strong>Status Rules</strong><span>How the status follows the Analysis, Implementation and Planning fields</span></button>
       <button type="button" role="menuitem" id="nq-root-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['book'] | safe }}</svg><strong>Root Cause Catalog</strong><span>Domains, Root Categories and Root Causes, with their keywords</span></button>
       <button type="button" role="menuitem" id="nq-dta-rules-open" data-nq-dta-rules-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['function'] | safe }}</svg><strong>DT Analyzer RCA Rules</strong><span>How the DT Analyzer RCA finds the root cause of every call from the data of its CDR</span></button>
+      <button type="button" role="menuitem" id="nq-map-levels-open" data-nq-map-levels-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['map'] | safe }}</svg><strong>Map Levels</strong><span>The levels of RSRP, RSRQ, SINR and UE Tx Power the maps of the calls and NQ Maps colour the samples and the logs by</span></button>
       {# The imports of root causes: the Ericsson RCA results, and the analyses of the previous tool (shown to every
          editor; only admins and super-admins can use it). #}
       <div class="nq-menu-separator" role="separator"></div>
@@ -541,6 +542,15 @@
       <button type="button" class="nq-secondary-action" id="nq-dta-rules-default" title="The rules every workspace starts with; Save applies them">Default Rules</button></span></div></fieldset>
     <p class="nq-options-error" id="nq-dta-rules-error" role="alert"></p>
     <footer><button type="button" class="nq-secondary-action" id="nq-dta-rules-cancel">{{ 'Cancel' if nq_can_configure else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-dta-rules-save"{% if not nq_can_configure %} hidden{% endif %}>Save</button></footer>
+  </form>
+</dialog>
+<dialog class="nq-options-dialog nq-map-levels-dialog" id="nq-map-levels-dialog" aria-labelledby="nq-map-levels-title">
+  <form method="dialog" class="nq-options-form" id="nq-map-levels-form">
+    <header><h2 id="nq-map-levels-title">Map Levels</h2><p class="form-note">The levels the map of a call and NQ Maps colour each measure by: the RSRP and SINR of the samples of the CDRs and of the Layer3 Logs, the RSRQ and the UE Tx Power of the logs (LTE and NR alike), in their points, grid, legend and signalling timeline. Each level takes the values from its lowest value up to the level above it, and the last one every value below; a level without a name shows its range alone. Saving changes the maps of every user of the workspace when they are opened again.</p></header>
+    {% if not nq_can_configure %}{{ role_warning('the Map Levels') }}{% endif %}
+    <fieldset class="nq-config-fieldset"{{ config_lock }}><div class="nq-map-levels" id="nq-map-levels"></div></fieldset>
+    <p class="nq-options-error" id="nq-map-levels-error" role="alert"></p>
+    <footer><button type="button" class="nq-secondary-action" id="nq-map-levels-cancel">{{ 'Cancel' if nq_can_configure else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-map-levels-save"{% if not nq_can_configure %} hidden{% endif %}>Save</button></footer>
   </form>
 </dialog>
 <dialog class="nq-options-dialog nq-priority-dialog" id="nq-priority-dialog" aria-labelledby="nq-priority-title">
