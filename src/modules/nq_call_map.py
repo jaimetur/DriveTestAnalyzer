@@ -1789,11 +1789,23 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
 
 # Below the Very poor RSRP of Network Insights, the level the Layer3 Logs draw too (their legend starts at −120 dBm).
 RSRP_FLOOR_CLASS = ('Extremely poor', -120.0, '#8B0A1A')
+# The levels of the RSRQ of the Layer3 Logs: the ranges of the legend of their KMZ files, named and coloured as those of
+# the RSRP (one more, Very good, as the KMZ files have seven ranges).
+RSRQ_CLASSES = (
+    ('Excellent', -10.0, '#2E8B57'),
+    ('Very good', -12.0, '#5DA94F'),
+    ('Good', -14.0, '#8BC34A'),
+    ('Fair', -16.0, '#F2C230'),
+    ('Poor', -20.0, '#F08A24'),
+    ('Very poor', -24.0, '#D7263D'),
+    ('Extremely poor', float('-inf'), '#8B0A1A'),
+)
 
 
 def sample_classes() -> dict[str, list[dict[str, Any]]]:
     """The levels of the RSRP and SINR of the samples, as Network Insights colours them, with Extremely poor below
-    −120 dBm: the same on both maps for the samples of the CDRs and the points of the Layer3 Logs."""
+    −120 dBm: the same on both maps for the samples of the CDRs and the points of the Layer3 Logs. And those of the RSRQ
+    of the Layer3 Logs (``RSRQ_CLASSES``)."""
     from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
 
     floor_label, floor, floor_colour = RSRP_FLOOR_CLASS
@@ -1802,6 +1814,7 @@ def sample_classes() -> dict[str, list[dict[str, Any]]]:
     return {
         'rsrp': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in rsrp],
         'sinr': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in SINR_CLASSES],
+        'rsrq': [{'label': label, 'lower': None if math.isinf(lower) else lower, 'colour': colour} for label, lower, colour in RSRQ_CLASSES],
     }
 
 

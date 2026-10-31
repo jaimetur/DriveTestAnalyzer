@@ -83,17 +83,18 @@
 
   // -- the colour and the shape of a point of a layer ------------------------------------------------------------------
   // RSRP and SINR take the levels of the RSRP / SINR samples of the CDRs (names, colours and ranges, with Extremely poor
-  // below −120 dBm), which the maps give with their data (setClasses): one legend for both sources. RSRQ and UE Tx Power
-  // keep the ranges of the KMZ files.
+  // below −120 dBm), which the maps give with their data (setClasses): one legend for both sources. RSRQ takes the ranges
+  // of the KMZ files, named and coloured as the RSRP levels (also given by the maps). UE Tx Power keeps the ranges of the
+  // KMZ files.
   let sampleClasses = null;
   const setClasses = (classes) => { if (classes?.rsrp?.length && classes?.sinr?.length) sampleClasses = classes; };
-  const classesOf = (metric) => ((metric === 'rsrp' || metric === 'sinr') && sampleClasses ? sampleClasses[metric] : null);
+  const classesOf = (metric) => (['rsrp', 'rsrq', 'sinr'].includes(metric) && sampleClasses?.[metric]?.length ? sampleClasses[metric] : null);
   const classOf = (levels, value) => levels.find((level) => level.lower === null || value >= level.lower);
-  // ``Excellent (≥ -80 dBm)``, as the legend of the samples of the CDRs writes a level.
-  const classText = (levels, index, unit) => {
+  // ``Excellent (≥ -80)``, as the legend of the samples of the CDRs writes a level (its unit in the title of the legend).
+  const classText = (levels, index) => {
     const level = levels[index], upper = index ? levels[index - 1].lower : null;
     const range = level.lower === null ? `< ${upper}` : upper === null ? `≥ ${level.lower}` : `${level.lower} to ${upper}`;
-    return `${level.label} (${range} ${unit})`;
+    return `${level.label} (${range})`;
   };
   const rangeIndex = (metric, value) => {
     if (value === null || value === undefined) return -1;
@@ -112,7 +113,7 @@
   };
   const rangeLabels = (metric) => {
     const levels = classesOf(metric);
-    if (levels) return levels.map((level, index) => [classText(levels, index, SCALES[metric].unit), level.colour]);
+    if (levels) return levels.map((level, index) => [classText(levels, index), level.colour]);
     if (metric === 'tx') return TX_RANGES.map(([, text], index) => [text, RANGE_COLOURS[RANGE_COLOURS.length - 1 - index]]);
     const bounds = SCALES[metric].bounds;
     return RANGE_COLOURS.map((colour, index) => [index === 0 ? `< ${bounds[0]}` : index === bounds.length ? `≥ ${bounds.at(-1)}`
@@ -720,8 +721,7 @@
     }
     for (const [metric, entry] of metricsShown) {
       const row = node('div', undefined, 'nq-l3-legend-row');
-      // (The levels of RSRP and SINR name their unit, as those of the samples of the CDRs.)
-      row.append(node('span', `${entry.grid ? 'Grid: ' : ''}${METRIC_LABELS[metric]}${classesOf(metric) ? '' : ` (${metric === 'tx' ? 'dBm' : SCALES[metric].unit})`}`, 'nq-l3-legend-name'));
+      row.append(node('span', `${entry.grid ? 'Grid: ' : ''}${METRIC_LABELS[metric]} (${metric === 'tx' ? 'dBm' : SCALES[metric].unit})`, 'nq-l3-legend-name'));
       for (const [text, colour] of rangeLabels(metric)) {
         const item = node('span', undefined, 'nq-l3-legend-item');
         item.append(markerIcon(SHAPE_OF[metric], colour), node('span', text));

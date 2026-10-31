@@ -1979,7 +1979,7 @@
       for (const key of shownMeasures(settings)) {
         const metric = METRICS[key];
         const mark = SAMPLE_MARKS[SAMPLE_SHAPES[key]], extra = key.startsWith('nr_') ? 'is-nr' : '';
-        group(`RSRP / SINR (from CDR samples) · ${metric.label}`);
+        group(metric.unit ? `${metric.label} (${metric.unit})` : metric.label);
         if (key === 'result') {
           item(mark, 'Completed', COLOURS.completed);
           item(mark, 'Not completed', COLOURS.failed);
@@ -1988,7 +1988,7 @@
           levels.forEach((levelItem, index) => {
             const upper = index ? levels[index - 1].lower : null;
             const range = levelItem.lower === null ? `< ${upper}` : upper === null ? `≥ ${levelItem.lower}` : `${levelItem.lower} to ${upper}`;
-            item(mark, `${levelItem.label} (${range} ${metric.unit})`, levelItem.colour, extra);
+            item(mark, `${levelItem.label} (${range})`, levelItem.colour, extra);
           });
           item(mark, 'No value', COLOURS.noValue, extra);
         }
