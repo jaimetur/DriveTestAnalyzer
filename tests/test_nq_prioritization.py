@@ -553,12 +553,11 @@ def test_the_groups_of_a_call_take_the_ids_of_the_panel():
             'repeat_size': 15, 'repeat_all_key': 'group-all:0c1bce5fda02e35fbd85092f', 'repeat_all_size': 39,
             'consecutive_key': 'run:68ab51b9d4d0d6ef07b2cbfb', 'consecutive_size': 1}
     found = nq_prioritization.call_groups(call)
-    assert [(group['kind'], group['id'], group['calls']) for group in found] == [('hotspot', 'H-0C1BCE', 17), ('cluster', 'C-0C1BCE', 15),
-                                                                              ('cluster_all', 'C-0C1BCE', 39)]
+    # Every group of its NR Mode alone: the cluster of every NR Mode together of before is never one of them.
+    assert [(group['kind'], group['id'], group['calls']) for group in found] == [('hotspot', 'H-0C1BCE', 17), ('cluster', 'C-0C1BCE', 15)]
     # The filter of the list of calls by each group, and its key.
-    assert [(group['filter'], group['key']) for group in found] == [('hotspot', call['cluster_key']), ('clustered_issue', call['repeat_key']),
-                                                                    ('clustered_issue', call['repeat_all_key'])]
-    # A group of one call is none, and the cluster of every NR Mode is left out when it holds the same calls.
+    assert [(group['filter'], group['key']) for group in found] == [('hotspot', call['cluster_key']), ('clustered_issue', call['repeat_key'])]
+    # A group of one call is none.
     assert [(group['kind'], group['id'], group['calls'], group['filter']) for group in nq_prioritization.call_groups(
         {**call, 'cluster_size': 1, 'repeat_all_size': 15, 'consecutive_size': 3})] == [
         ('cluster', 'C-0C1BCE', 15, 'clustered_issue'), ('run', 'T-68AB51', 3, 'consecutive_issue')]
@@ -609,7 +608,8 @@ def test_clusters_take_the_quarter_of_the_campaign_and_leave_the_ping_tests_out(
     assert linked['repetitions']['a'] == (1, 1) and not any('p' in linked[name] for name in ('repetitions', 'hotspots', 'runs', 'clusters'))
     linked = nq_prioritization.linked_values([call('a'), call('b')], settings)
     assert linked['repetitions']['a'] == (2, 1) and linked['clusters']['a'] == linked['clusters']['b'] == ('group:a', 2)
-    assert linked['clusters_all']['a'] == ('group-all:a', 2)
+    # No cluster of every NR Mode together: a group never mixes two NR Modes.
+    assert 'clusters_all' not in linked
     # A call out of scope is in no group and makes none.
     linked = nq_prioritization.linked_values([call('a'), call('b')], settings, out_of_scope=lambda row: row['call_key'] == 'b')
     assert linked['repetitions']['a'] == (1, 1) and linked['hotspots']['a'][1] == linked['runs']['a'][1] == 1 and 'a' not in linked['clusters']
@@ -1209,9 +1209,9 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
         'filters': {}, 'sort': f"field:{fields['impact_points']['key']}", 'direction': 'desc', 'page_size': 10}).json()
     points = [call['values'][fields['impact_points']['key']] for call in ordered['calls']]
     assert points == sorted(points, reverse=True)
-    # Every cluster (of every NR Mode together, as no NR Mode is filtered): its key filters its calls.
+    # Every cluster (of one NR Mode, whatever the filters): its key filters its calls.
     issue = panel['issues'][0]
-    assert issue['key'].startswith('group-all:') and issue['calls'] >= 2
+    assert issue['key'].startswith('group:') and issue['calls'] >= 2 and len(issue['nr_modes']) == 1
     cluster = client.post('/api/non-qualified-calls/calls', json={'filters': {'clustered_issue': [issue['key']]}, 'page_size': 100}).json()
     assert cluster['total'] == issue['calls'] == issue['size']
     # Every hotspot, the most calls first, with its calls of each call type; its key filters its calls.
@@ -1239,20 +1239,12 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'issues').startswith('Clustered Issues')
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'hotspots').startswith(
         'Hotspots (Time-Window OR Clustered Issues)')
-    # The clusters of the panel follow the NR Mode of the filters: one NR Mode filtered counts its calls alone.
-    assert panel['cluster_mode'] == ''
+    # The clusters of the panel are those of the rules, each of one NR Mode, whatever NR Modes the filters leave.
+    assert 'cluster_mode' not in panel
     sa = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'nr_mode': ['SA']}}).json()
-    assert (sa['cluster_mode'], sa['cluster_mode_source']) == ('SA', 'NR Mode filter')
-    # One NR Mode counts the clusters as the rules do (its own calls); several count every NR Mode together.
-    assert panel['totals']['repeated'] == sum(bool(row['repeat_all_key']) for row in rows.values()) >= sum(bool(row['repeat_key']) for row in rows.values())
+    assert panel['totals']['repeated'] == sum(bool(row['repeat_key']) for row in rows.values())
     assert sa['totals']['repeated'] == sum(bool(row['repeat_key']) for row in rows.values() if row['nr_mode'] == 'SA')
-    # The other filters never choose it, whatever NR Modes they leave; a campaign of both NR Modes neither.
-    # (A cluster of one NR Mode when the data has one: clusters never chain far calls of a site together.)
-    single = next((item for item in sa['issues'] if set(item['nr_modes']) == {'SA'}), None) or panel['issues'][0]
-    by_site = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'place': [f"{single['operator']}||{single['place']}"]}}).json()
-    assert by_site['cluster_mode'] == ''
-    campaign = next(row['campaign'] for row in rows.values() if row['nr_mode'] == 'SA')
-    assert client.post('/api/non-qualified-calls/prioritization', json={'filters': {'campaign': [campaign]}}).json()['cluster_mode'] == ''
+    assert all(len(item['nr_modes']) == 1 for item in [*panel['issues'], *sa['issues']])
     # With the AND join, the consecutive and the clustered issues (the more general tables) go first.
     joined = non_qualified_calls_export.prioritization_tables({**panel, 'settings': {**panel['settings'], 'hotspot_join': 'and'}})
     order_and = [component for component, *_rest in joined]
@@ -1275,13 +1267,6 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert subtitles == ['Dual Queue (Scoring Based) · List 1 · Weekly & Final CDRs', 'Dual Queue (Scoring Based) · Outside the lists']
     columns = next(columns for component, _subtitle, columns, *_rest in tables if component == 'rules')
     assert columns == ['Priority', 'Step', 'NR Mode', 'Operators', 'Call Type', 'Area', 'Condition', 'Calls', 'Open', 'Waiting', 'Points lost', 'Queue']
-    # Campaigns of one NR Mode choose it.
-    with core.repository.connection() as connection:
-        connection.execute(f"UPDATE {nq.NQ_CALL_LATEST_TABLE} SET campaign = campaign || '-SA' WHERE nr_mode = 'SA'")
-    by_campaign = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'campaign': [f'{campaign}-SA']}}).json()
-    assert (by_campaign['cluster_mode'], by_campaign['cluster_mode_source']) == ('SA', 'campaign filter')
-    with core.repository.connection() as connection:
-        connection.execute(f"UPDATE {nq.NQ_CALL_LATEST_TABLE} SET campaign = substr(campaign, 1, length(campaign) - 3) WHERE nr_mode = 'SA'")
     deck = client.post('/api/non-qualified-calls/export/powerpoint', json={'filters': {}})
     titles = [slide.shapes.title.text_frame.text for slide in Presentation(io.BytesIO(deck.content)).slides if slide.shapes.title is not None]
     assert any(title.startswith('NQ Prioritization & Queues') for title in titles)

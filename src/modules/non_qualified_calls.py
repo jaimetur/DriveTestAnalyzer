@@ -4225,8 +4225,7 @@ PRIORITY_COLUMNS_SQL = (
     "COALESCE(p.queue_list, '') AS queue_list, p.expected_points AS expected_points, "
     "COALESCE(p.expected_campaign, '') AS expected_campaign, COALESCE(p.cluster_key, '') AS cluster_key, "
     "p.cluster_size AS cluster_size, COALESCE(p.consecutive_key, '') AS consecutive_key, p.consecutive_size AS consecutive_size, "
-    "COALESCE(p.repeat_key, '') AS repeat_key, p.repeat_size AS repeat_size, COALESCE(p.repeat_all_key, '') AS repeat_all_key, "
-    "p.repeat_all_size AS repeat_all_size, " + nq_prioritization.group_ids_sql('p')
+    "COALESCE(p.repeat_key, '') AS repeat_key, p.repeat_size AS repeat_size, " + nq_prioritization.group_ids_sql('p')
 )
 
 
@@ -4679,12 +4678,11 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
     if runs:
         clauses.append(f"consecutive_key IN ({', '.join('?' for _ in runs)})")
         params.extend(runs)
-    # A cluster of one NR Mode, or of every NR Mode together.
+    # A cluster (of one NR Mode, as every group).
     clusters = _strings(filters.get('clustered_issue'))
     if clusters:
-        marks = ', '.join('?' for _ in clusters)
-        clauses.append(f"(repeat_key IN ({marks}) OR repeat_all_key IN ({marks}))")
-        params.extend([*clusters, *clusters])
+        clauses.append(f"repeat_key IN ({', '.join('?' for _ in clusters)})")
+        params.extend(clusters)
     if '_call_keys' in filters:
         clauses.append('call_key IN (SELECT value FROM json_each(?))')
         params.append(json.dumps(list(filters['_call_keys'])))

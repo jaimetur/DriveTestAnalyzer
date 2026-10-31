@@ -1970,14 +1970,13 @@ def call_isds(repository: Any, calls: list[dict[str, Any]]) -> dict[str, float]:
     return found
 
 
-def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any], out_of_scope: Callable[[Any], bool] | None = None,
-                  every_mode: bool = True) -> dict[str, dict[str, Any]]:
+def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any], out_of_scope: Callable[[Any], bool] | None = None
+                  ) -> dict[str, dict[str, Any]]:
     """The groups of the calls with the settings given: ``repetitions`` (``repetitions``, of the NR Mode of each call as the
     rules take them) and ``clusters`` (``cluster_groups``), ``hotspots`` (``hotspots``, of the Time window and the
-    Cluster distance) and ``runs`` of consecutive failures (``consecutive_runs``), all within one NR Mode, and with
-    ``every_mode`` the clusters of every NR Mode together (``clusters_all``, as the panel shows them without one NR Mode
-    filtered). The Ping tests and the calls out of scope (``out_of_scope``, see ``scope_test``) are left out of all of them:
-    they are in no group and make none."""
+    Cluster distance) and ``runs`` of consecutive failures (``consecutive_runs``), all within one NR Mode: a group never
+    mixes the calls of two NR Modes, whose causes differ and which are analysed apart. The Ping tests and the calls out of
+    scope (``out_of_scope``, see ``scope_test``) are left out of all of them: they are in no group and make none."""
     linked = [call for call in calls if call_kind(call['service'], call.get('test_name'), call.get('session_type')) != PING
               and not (out_of_scope and out_of_scope(call))]
     period, size = settings['previous_quarters'], settings['min_calls']
@@ -1985,32 +1984,27 @@ def linked_values(calls: list[dict[str, Any]], settings: dict[str, Any], out_of_
     run_meters = reach(settings['consecutive_isd'], settings['consecutive_city_meters'], settings['consecutive_road_meters'])
     clusters = cluster_groups(linked, size, period, meters)
     runs = consecutive_runs(linked, settings['consecutive_minutes'], run_meters)
-    found = {'repetitions': repetitions(linked, period, meters), 'clusters': clusters,
-             'hotspots': hotspots(linked, clusters, runs, settings['hotspot_join']), 'runs': runs, 'clusters_all': {}}
-    if every_mode:
-        found['clusters_all'] = cluster_groups(linked, size, period, meters, False, 'group-all:')
-    return found
+    return {'repetitions': repetitions(linked, period, meters), 'clusters': clusters,
+            'hotspots': hotspots(linked, clusters, runs, settings['hotspot_join']), 'runs': runs}
 
 
-_places_cache: dict[tuple[str, bool], tuple[Any, dict[str, dict[str, Any]]]] = {}
+_places_cache: dict[str, tuple[Any, dict[str, dict[str, Any]]]] = {}
 
 
-def place_values(repository: Any, settings: dict[str, Any], every_mode: bool = True) -> dict[str, dict[str, Any]]:
+def place_values(repository: Any, settings: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """The place, repetitions, cluster, hotspot and consecutive failure of every calculated call (its clusters count the
-    calls of its NR Mode, as the rules take them, and with ``every_mode`` also those of every NR Mode together) with the
-    settings of the clusters,
+    calls of its NR Mode, as the rules take them) with the settings of the clusters,
     the hotspots and the consecutive failures given, from the stored values: the stored place of a call with a site or an
     eNB / gNB, else its spot of the Cluster distance (``spot_meters``); the calls of its operator within the Cluster
     distance or at its site in its campaign and the ``previous_quarters`` campaigns before it (a cluster, Repeated
     Issue, from ``min_calls``); its hotspot of ``hotspot_join``; whether another failure is within ``consecutive_minutes`` (see
-    ``linked_values``). The latest result is kept for each workspace and NR Mode until the settings or the calculation
-    change."""
+    ``linked_values``). The latest result is kept for each workspace until the settings or the calculation change."""
     from src.modules import non_qualified_calls as nq
 
     ensure_tables(repository)
     key = (tuple(settings[name] for name in PLACE_SETTINGS), json.dumps([settings['excluded_regions'], map_excluded_modes(repository)]),
            repository.get_workspace_state(SUMMARY_STATE_KEY), repository.get_workspace_state(nq.LATEST_STATE_KEY))
-    workspace = (_workspace_key(repository.db_path), every_mode)
+    workspace = _workspace_key(repository.db_path)
     cached = _places_cache.get(workspace)
     if cached and cached[0] == key:
         return cached[1]
@@ -2025,7 +2019,7 @@ def place_values(repository: Any, settings: dict[str, Any], every_mode: bool = T
             call['place_key'], call['place_label'] = spot_of(call['latitude'], call['longitude'], settings['spot_meters']) or ('', '')
         call['quarter'] = quarter_of(call['start_time'], call['campaign'])
         call['campaign_label'] = f"{call['campaign']}|{call['nr_mode']}"
-    linked = linked_values(calls, settings, scope_test(repository, settings), every_mode)
+    linked = linked_values(calls, settings, scope_test(repository, settings))
     values = {call['call_key']: {'place_key': call['place_key'], 'place_label': call['place_label'],
                                  **group_values(linked, call['call_key'], settings['min_calls'])} for call in calls}
     _places_cache[workspace] = (key, values)
@@ -2056,27 +2050,27 @@ def group_ids_sql(alias: str) -> str:
 # The groups a call can be in: their ID prefix, the columns of their key and size (one of each at most) and the filter of
 # the list of calls that shows the calls of each.
 CALL_GROUPS = (('hotspot', 'H', 'cluster_key', 'cluster_size', 'hotspot'), ('cluster', 'C', 'repeat_key', 'repeat_size', 'clustered_issue'),
-               ('cluster_all', 'C', 'repeat_all_key', 'repeat_all_size', 'clustered_issue'),
                ('run', 'T', 'consecutive_key', 'consecutive_size', 'consecutive_issue'))
 
 
 def call_groups(call: dict[str, Any], connection: Any = None) -> list[dict[str, Any]]:
     """The groups of a call of 2 calls or more, from its stored keys and sizes (``GROUP_FIELDS``), by the IDs of the
-    NQ Hotspots, Time-Window & Clustered Issues panel: its hotspot, its cluster (of its NR Mode), its cluster of every NR Mode
-    together when that holds more calls (as the panel shows the clusters without one NR Mode filtered) and its run of
-    consecutive failures; a call is in one of each at most. Each with its key and the filter of the list of calls by it,
-    and with a ``connection`` what it holds too: its sites (the places of its calls, the most calls first, with how many) and
-    when its first and last call started."""
+    NQ Hotspots, Time-Window & Clustered Issues panel: its hotspot, its cluster and its run of consecutive failures, all of
+    its NR Mode; a call is in one of each at most. Each with its key and the filter of the list of calls by it,
+    and with a ``connection`` what it holds too: its sites (the places of its calls, the most calls first, with how many),
+    when its first and last call started and, for a hotspot and a cluster, how far its calls reach (``metres``, as the map
+    of a call draws the circle around them)."""
     from src.modules import non_qualified_calls as nq
+    from src.modules.nq_call_map import group_reach
 
     found = []
     for kind, letter, key, size, filter_name in CALL_GROUPS:
         value, calls = str(call.get(key) or ''), int(call.get(size) or 0)
-        if value and calls >= 2 and not (kind == 'cluster_all' and calls == int(call.get('repeat_size') or 0)):
+        if value and calls >= 2:
             found.append({'kind': kind, 'id': group_id(letter, value), 'calls': calls, 'key': value, 'filter': filter_name, 'column': key})
     if connection is not None and found:
         rows = connection.execute(
-            f"SELECT {', '.join(f'p.{item[2]}' for item in CALL_GROUPS)}, p.place_label, l.start_time FROM {PRIORITY_TABLE} p "
+            f"SELECT {', '.join(f'p.{item[2]}' for item in CALL_GROUPS)}, p.place_label, l.start_time, l.latitude, l.longitude FROM {PRIORITY_TABLE} p "
             f"JOIN {nq.NQ_CALL_LATEST_TABLE} l ON l.call_key = p.call_key WHERE "
             + ' OR '.join(f'p.{item["column"]} = ?' for item in found), [item['key'] for item in found]).fetchall()
         for item in found:
@@ -2085,6 +2079,8 @@ def call_groups(call: dict[str, Any], connection: Any = None) -> list[dict[str, 
             times = sorted(str(row['start_time']) for row in members if row['start_time'])
             item['sites'] = [{'label': label, 'calls': count} for label, count in sorted(places.items(), key=lambda pair: (-pair[1], pair[0]))]
             item['first'], item['last'] = (times[0], times[-1]) if times else ('', '')
+            if item['kind'] != 'run':
+                item['metres'] = group_reach([(row['latitude'], row['longitude']) for row in members])
     for item in found:
         del item['column']
     return found
@@ -2097,16 +2093,17 @@ GROUP_FIELDS = ('repetitions', 'repeated_campaigns', 'repeated', 'cluster_key', 
 
 def group_values(linked: dict[str, dict[str, Any]], key: str, min_calls: int) -> dict[str, Any]:
     """The values of a call (``GROUP_FIELDS``) by its groups (``linked_values``): its repetitions and whether it is a
-    Repeated Issue, its cluster (of its NR Mode and of every NR Mode together), hotspot and run of consecutive failures."""
+    Repeated Issue, its cluster, hotspot and run of consecutive failures, all of its NR Mode (the columns of the cluster of
+    every NR Mode together of before stay empty)."""
     count, campaigns_count = linked['repetitions'].get(key, (None, None))
     hotspot = linked['hotspots'].get(key, ('', None))
     run = linked['runs'].get(key)
-    cluster, cluster_all = linked['clusters'].get(key, ('', None)), linked['clusters_all'].get(key, ('', None))
+    cluster = linked['clusters'].get(key, ('', None))
     return {'repetitions': count, 'repeated_campaigns': campaigns_count,
             # A Repeated Issue is a call of a cluster (its repetitions, the calls near it, may be more).
             'repeated': 'Yes' if (cluster[1] or 0) >= max(2, min_calls) else 'No', 'cluster_key': hotspot[0], 'cluster_size': hotspot[1],
             'consecutive': consecutive_of(run), 'consecutive_key': run[0] if run else '', 'consecutive_size': run[1] if run else None,
-            'repeat_key': cluster[0], 'repeat_size': cluster[1], 'repeat_all_key': cluster_all[0], 'repeat_all_size': cluster_all[1]}
+            'repeat_key': cluster[0], 'repeat_size': cluster[1], 'repeat_all_key': '', 'repeat_all_size': None}
 
 
 def refresh_places(repository: Any, settings: dict[str, Any]) -> int:
@@ -2965,7 +2962,7 @@ def step_counts(repository: Any, settings: dict[str, Any]) -> dict[str, Any]:
     lists = [CAMPAIGN_LIST] + ([FINAL_LIST] if settings['final_lists'].get(strategy, True) else [])
     # The clusters, hotspots and consecutive failures of the settings being edited, at once (the impact levels follow
     # them in each list).
-    places = place_values(repository, settings, every_mode=False)
+    places = place_values(repository, settings)
     for row in rows:
         place = places.get(row['call_key'])
         if place:
@@ -3129,24 +3126,13 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
             'updated_at, comment_count, root_category, field_values_json, impact_points, impact_level, impact_state, '
             'impact_json, place_label, repetitions, repeated_campaigns, repeated, prioritization, priority_rule, '
             'suggested_priority, queue, queue_step, queue_list, expected_points, expected_campaign, test_name, session_type, '
-            'cluster_key, cluster_size, consecutive_key, consecutive_size, repeat_key, repeat_size, repeat_all_key, repeat_all_size '
+            'cluster_key, cluster_size, consecutive_key, consecutive_size, repeat_key, repeat_size '
             f'FROM calls{where}',
             [*base_params, *params])]
-        # The clusters follow the NR Mode of the filters: one NR Mode chosen, or campaigns of one NR Mode (and no NR Mode
-        # chosen), count the calls of that NR Mode only, as the rules do; else every NR Mode together. The other filters (a
-        # site, an operator...) never decide it. The hotspots and the consecutive failures keep to one NR Mode always.
-        chosen = {str(value).upper() for value in nq._strings(filters.get('nr_mode')) if value not in {nq.UNASSIGNED, 'Unknown'}}
-        cluster_mode, cluster_source = (next(iter(chosen)), 'NR Mode filter') if len(chosen) == 1 else ('', '')
-        if not chosen and nq._strings(filters.get('campaign')):
-            campaign_where, campaign_params = nq._filter_sql({'campaign': filters['campaign']}, username, closed, definitions)
-            modes = {str(row[0] or '').upper() for row in connection.execute(
-                f'WITH calls AS ({base}) SELECT DISTINCT nr_mode FROM calls{campaign_where}', [*base_params, *campaign_params])}
-            if len(modes) == 1 and '' not in modes:
-                cluster_mode, cluster_source = next(iter(modes)), 'campaign filter'
-    # The cluster of each call: of its NR Mode with one NR Mode filtered, else of every NR Mode together.
+    # The cluster of each call, of its NR Mode (as the rules count it, and as its hotspot and consecutive failures keep to
+    # it), whatever NR Modes the filters choose: a cluster never mixes the calls of two NR Modes.
     for row in rows:
-        row['group_key'], row['group_size'] = ((row['repeat_key'], row['repeat_size']) if cluster_mode
-                                               else (row['repeat_all_key'], row['repeat_all_size']))
+        row['group_key'], row['group_size'] = row['repeat_key'], row['repeat_size']
         row['repeated'] = 'Yes' if row['group_key'] else 'No'
     is_open = [str(row['status'] or '').casefold() not in closed_names for row in rows]
     attended = [bool(row['updated_at']) or int(row['comment_count'] or 0) > 0 for row in rows]
@@ -3309,8 +3295,6 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'settings': {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'cluster_isd',
                                                     'spot_meters', 'cluster_road_meters', 'consecutive_minutes', 'consecutive_isd',
                                                     'consecutive_city_meters', 'consecutive_road_meters', 'hotspot_join', 'capacity')},
-        # The NR Mode whose calls alone the clusters count, and the filter that chose it ('' for every NR Mode together).
-        'cluster_mode': cluster_mode, 'cluster_mode_source': cluster_source,
         'totals': {
             'calls': len(rows), 'prioritized': sum(row['prioritization'] == PRIORITIZED for row in rows),
             'tracked': sum(row['prioritization'] == TRACK_ONLY for row in rows),

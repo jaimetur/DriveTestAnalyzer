@@ -468,6 +468,13 @@ def test_the_sites_take_the_operator_of_their_network_as_the_operator_maps_name_
     assert [site['operator'] for site in sites] == ['VF', 'Three', 'O2', 'EE']
 
 
+def test_how_far_a_group_reaches_is_the_circle_the_map_draws_around_it():
+    # Two calls 1 km apart (north to south): the circle around them, with the margin of the map, and at least 50 m.
+    assert nq_call_map.group_reach([(51.5, -0.1), (51.5 + 1 / 111.195, -0.1)]) == round(nq_call_map.ring_metres(500))
+    assert nq_call_map.group_reach([(51.5, -0.1), (51.5, -0.1)]) == 50
+    assert nq_call_map.group_reach([(None, None)]) is None
+
+
 def test_a_cell_repeated_in_a_row_is_one_cell_of_the_call():
     # Ticket #35: a moment on an NR cell without identity between two of the same LTE cell (its TAC left out the second
     # time) is no handover; the PCI column gives one PCI for each element of the trace.

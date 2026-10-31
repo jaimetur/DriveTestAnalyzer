@@ -65,7 +65,7 @@
   // The filters of the groups of the NQ Prioritization: one at a time, the group chosen replaces the one filtered before.
   const GROUP_FILTERS = ['hotspot', 'consecutive_issue', 'clustered_issue'];
   // What each group of a call is, as the map of the call names the one that filters the list.
-  const GROUP_LABELS = {hotspot: 'hotspot', cluster: 'cluster', cluster_all: 'cluster of every NR Mode', run: 'time window'};
+  const GROUP_LABELS = {hotspot: 'hotspot', cluster: 'cluster', run: 'time window'};
   // The map of the open call paints the group that filters the list (set once the map is mounted).
   let refreshCallMap = () => {};
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
@@ -172,6 +172,18 @@
     if (!first) return '';
     if (!last || last === first) return first;
     return String(item.first).slice(0, 10) === String(item.last).slice(0, 10) ? `${first}–${last.slice(-5)}` : `${first}–${last}`;
+  };
+  // How long a group lasted, from when its first call started to when its last one did (``1 min`` at least, ``14 min``,
+  // ``2 h 47 min``, ``3 d 4 h``).
+  const groupDuration = (item) => {
+    const [first, last] = [item.first, item.last].map((value) => Date.parse(String(value || '').replace(' ', 'T')));
+    if (!Number.isFinite(first) || !Number.isFinite(last)) return '';
+    const minutes = Math.round(Math.max(0, last - first) / 60000);
+    if (minutes < 1) return '1 min';
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} h${minutes % 60 ? ` ${minutes % 60} min` : ''}`;
+    return `${Math.floor(hours / 24)} d${hours % 24 ? ` ${hours % 24} h` : ''}`;
   };
   // Readable text on any option colour.
   const contrastText = (hex) => {
@@ -3613,7 +3625,7 @@
     const runBlock = groupBlock('Time-Window Issues', runNote,
       runs.length ? groupTable(runs, 'consecutive_issue', 'run', 'Time-Window ID', (item) => [groupPeriod(item)])
         : node('p', 'No time-window issues among the filtered calls.', 'nq-muted'), runs);
-    const issueNote = `Clusters of failures of the same operator and ${data.cluster_mode ? `of ${data.cluster_mode} only, the NR Mode of the ${data.cluster_mode_source}` : 'of every NR Mode together'}, whatever their call type (the Ping tests and the calls out of scope apart): calls with at least the Cluster size of Non-Qualified Calls within the Cluster distance of them or at their site, in their campaign and the Cluster period before it, each within the Cluster distance (or at the same site) of another one of the cluster: every cluster with the filtered calls of each, the most calls first (${number(data.issue_count || 0)} cluster${data.issue_count === 1 ? '' : 's'}).`;
+    const issueNote = `Clusters of failures of the same operator and NR Mode (never of two NR Modes together, whose causes differ), whatever their call type (the Ping tests and the calls out of scope apart): calls with at least the Cluster size of Non-Qualified Calls within the Cluster distance of them or at their site, in their campaign and the Cluster period before it, each within the Cluster distance (or at the same site) of another one of the cluster: every cluster with the filtered calls of each, the most calls first (${number(data.issue_count || 0)} cluster${data.issue_count === 1 ? '' : 's'}).`;
     const issueBlock = groupBlock('Clustered Issues', issueNote,
       data.issues.length ? groupTable(data.issues, 'clustered_issue', 'cluster', 'Cluster ID', (item) => [groupSites(item)])
         : node('p', 'No clustered issue among the filtered calls.', 'nq-muted'), data.issues);
@@ -3623,16 +3635,13 @@
     // consecutive and the clustered issues holds the other: the one with more calls goes first, with the same calls the one
     // that groups them in fewer rows.
     const criteria = node('div', undefined, 'nq-priority-criteria');
-    // The clusters count the calls of one NR Mode alone when the NR Mode filter, or the campaigns filtered, choose one; else
-    // every NR Mode together.
     const metres = (value) => (value >= 1000 ? `${number(value / 1000)} km` : `${number(value)} m`);
     const byIsd = (isd, city, roads) => `${number(isd)} ISD · without it ${metres(city)} cities, ${metres(roads)} roads`;
     [['Time window', `${number(settings.consecutive_minutes)} min`],
       ['Time-window distance', byIsd(settings.consecutive_isd, settings.consecutive_city_meters, settings.consecutive_road_meters)],
       ['Cluster distance', `${byIsd(settings.cluster_isd, settings.spot_meters, settings.cluster_road_meters)} · or same site`],
       ['Hotspot join', joinWord], ['Cluster size', `${number(settings.min_calls)} calls`],
-      ['Cluster period', `${number(settings.previous_quarters)} campaign${settings.previous_quarters === 1 ? '' : 's'} before`],
-      ['Cluster NR Mode', data.cluster_mode ? `${data.cluster_mode} only (${data.cluster_mode_source})` : 'every NR Mode together']].forEach(([name, value]) => {
+      ['Cluster period', `${number(settings.previous_quarters)} campaign${settings.previous_quarters === 1 ? '' : 's'} before`]].forEach(([name, value]) => {
       const chip = node('span', undefined, 'nq-priority-criterion');
       chip.append(node('span', name), node('strong', value));
       criteria.append(chip);
@@ -4713,45 +4722,35 @@
     $('nq-drawer-l3').hidden = !call.l3_log;
     // Its groups of 2 calls or more, each with what it is, its NR Mode, its ID in the NQ Hotspots, Time-Window & Clustered Issues
     // panel and its calls, and what it holds: its sites (spatial groups: clusters), its period (temporal groups: runs) or both
-    // (hotspots). Its hotspot and its time-window issue keep to its NR Mode and campaign, its cluster to its NR Mode
-    // (with the calls of its cluster of every NR Mode together when that holds more, as the panel shows the clusters without
-    // one NR Mode filtered).
-    // The hotspot, its clusters, then its time window (on one row when they fit, up to four columns; else on as many as they
+    // (hotspots). Its hotspot and its time-window issue keep to its NR Mode and campaign, its cluster to its NR Mode: no group
+    // mixes two NR Modes.
+    // The hotspot, its cluster, then its time window (on one row when they fit, up to three columns; else on as many as they
     // need, in that order).
-    const GROUP_ORDER = ['hotspot', 'cluster', 'cluster_all', 'run'];
+    const GROUP_ORDER = ['hotspot', 'cluster', 'run'];
     const groups = [...(call.groups || [])].sort((a, b) => GROUP_ORDER.indexOf(a.kind) - GROUP_ORDER.indexOf(b.kind));
-    const cluster = groups.find((group) => group.kind === 'cluster');
     const mode = call.nr_mode || '';
-    const NAMES = {hotspot: 'Hotspot', cluster: 'Cluster', cluster_all: 'Cluster', run: 'Time Window'};
+    const NAMES = {hotspot: 'Hotspot', cluster: 'Cluster', run: 'Time Window'};
     const TITLES = {
       hotspot: 'Failures of its operator, NR Mode and campaign linked to each other in time or distance',
       cluster: 'Calls of its operator and NR Mode failed close to each other or at the same site, in its campaign and those of the Cluster period',
-      cluster_all: 'Its cluster with the calls of every NR Mode together, as the NQ Hotspots, Time-Window & Clustered Issues panel shows the clusters without one NR Mode filtered',
       run: 'Failures of its operator, NR Mode, campaign and drive one after another',
     };
     const chips = [];
     for (const group of groups) {
       const calls = `${number(group.calls)} call${group.calls === 1 ? '' : 's'}`;
-      if (group.kind === 'cluster_all' && cluster?.id === group.id) {
-        // The same first call: one chip with both counts.
-        const chip = chips.find((item) => item.dataset.kind === 'cluster');
-        chip.querySelector('.nq-drawer-group-head').append(` · ${number(group.calls)} with every NR Mode`);
-        chip.title += `. ${TITLES.cluster_all}: ${calls}`;
-        continue;
-      }
-      const chip = node('button', undefined, `nq-drawer-group is-${group.kind === 'cluster_all' ? 'cluster' : group.kind}`);
+      const chip = node('button', undefined, `nq-drawer-group is-${group.kind}`);
       chip.type = 'button';
       chip.dataset.kind = group.kind;
       chip.dataset.filter = group.filter;
       chip.dataset.key = group.key;
       const head = node('span', undefined, 'nq-drawer-group-head');
-      head.append(node('b', `${NAMES[group.kind]} ${group.kind === 'cluster_all' ? 'every NR Mode' : mode}`.trim()), node('code', group.id));
-      // (Its calls in a pill of their own over its bottom right corner.)
-      chip.append(head, node('span', calls, 'nq-drawer-group-calls'));
+      // (Its calls in a pill over its top right corner.)
+      head.append(node('b', `${NAMES[group.kind]} ${mode}`.trim()), node('code', group.id), node('span', calls, 'nq-drawer-group-calls'));
+      chip.append(head);
       chip.title = `${TITLES[group.kind]}: ${calls}`;
       // Its sites with how many of its calls failed at each, the most first (the first 3, every one on hover), and its period.
       const sites = group.sites || [];
-      if (group.kind !== 'run' && sites.length) {
+      if (sites.length) {
         if (sites.length === 1) chip.append(node('span', `At ${sites[0].label}`, 'nq-drawer-group-line'));
         else {
           // How many sites, then each of them below, indented (the first 3, and how many more).
@@ -4762,11 +4761,21 @@
         chip.title += `\n${sites.map((site) => `${site.label}: ${number(site.calls)} call${site.calls === 1 ? '' : 's'}`).join('\n')}`;
       }
       const period = ['hotspot', 'run'].includes(group.kind) ? groupPeriod(group) : '';
-      if (period) chip.append(node('span', period, 'nq-drawer-group-line'));
+      // At its bottom, as pills: its period (a hotspot, a time window), how far it reaches (a cluster: spatial), how long it
+      // lasted (a time window: temporal) or both (a hotspot); the period goes on the line above, aligned with them, when they
+      // do not all fit on one.
+      const foot = node('span', undefined, 'nq-drawer-group-foot');
+      if (period) foot.append(node('span', period, 'nq-drawer-group-fact'));
+      const facts = node('span', undefined, 'nq-drawer-group-facts');
+      if (group.kind !== 'run' && group.metres) facts.append(node('span', `within ${group.metres >= 1000 ? `${(group.metres / 1000).toFixed(1)} km` : `${number(group.metres)} m`}`, 'nq-drawer-group-fact'));
+      const lasted = group.kind !== 'cluster' ? groupDuration(group) : '';
+      if (lasted) facts.append(node('span', `within ${lasted}`, 'nq-drawer-group-fact'));
+      if (facts.childElementCount) foot.append(facts);
+      if (foot.childElementCount) chip.append(foot);
       // A click filters the list of calls by the group (after confirming), as its ID does in the panel.
       const main = sites.length ? `${sites[0].label}${sites.length > 1 ? ` +${number(sites.length - 1)}` : ''}` : '';
-      const label = [group.id, group.kind === 'run' ? '' : main, period].filter(Boolean).join(' · ');
-      const name = `${NAMES[group.kind]} ${group.kind === 'cluster_all' ? 'of every NR Mode' : mode} ${group.id}`.replace(/\s+/g, ' ');
+      const label = [group.id, main, period].filter(Boolean).join(' · ');
+      const name = `${NAMES[group.kind]} ${mode} ${group.id}`.replace(/\s+/g, ' ');
       chip.title += '\nClick to filter the list of calls by this group';
       chip.addEventListener('click', () => filterByGroup(group, name, label));
       chips.push(chip);

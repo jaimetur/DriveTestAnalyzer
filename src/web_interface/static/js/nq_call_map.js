@@ -31,7 +31,7 @@
   let groupFocus = null;
   const inFocus = (failure) => Boolean(groupFocus && (groupFocus.filter === 'hotspot' ? failure.cluster_key === groupFocus.key
     : groupFocus.filter === 'consecutive_issue' ? failure.consecutive_key === groupFocus.key
-      : failure.repeat_key === groupFocus.key || failure.repeat_all_key === groupFocus.key));
+      : failure.repeat_key === groupFocus.key));
   const focusKind = () => (groupFocus?.filter === 'clustered_issue' ? 'cluster' : groupFocus?.filter === 'consecutive_issue' ? 'run' : '');
   // The keys of the clusters and time windows the map draws a shape around (its own and those of its hotspot).
   let ringKeys = {cluster: new Set(), run: new Set()};
@@ -64,7 +64,7 @@
   // Whether the map draws the hotspot zone of the call: a hotspot of 2 calls or more, unless one of its groups filters the list.
   const hotspotShown = (data) => (data?.groups?.hotspot || 0) >= 2 && !focusKind();
   // The shapes the map draws: every one, or with a cluster or a time window filtering the list, its own (one around its
-  // calls of the NR Mode of the call when the call has none of it, such as its cluster of every NR Mode).
+  // calls of the NR Mode of the call when the map has none of it).
   const visibleRings = (data) => {
     const kind = focusKind();
     if (!data || !kind) return data?.rings || [];

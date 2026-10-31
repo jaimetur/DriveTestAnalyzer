@@ -713,7 +713,7 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
     base, params = nq._base_sql(nq.untracked_status(repository, options), repository)
     south, north, west, east = bounding_box(centre, radius_km)
     with repository.connection() as connection:
-        own = connection.execute(f'SELECT place_key, cluster_key, cluster_size, repeat_key, repeat_size, repeat_all_key, consecutive_key, '
+        own = connection.execute(f'SELECT place_key, cluster_key, cluster_size, repeat_key, repeat_size, consecutive_key, '
                                  f'consecutive_size FROM {PRIORITY_TABLE} WHERE call_key = ?', (call.get('parent_key') or call['call_key'],)).fetchone()
         place, hotspot, cluster, run = ((_text(own['place_key']), _text(own['cluster_key']), _text(own['repeat_key']), _text(own['consecutive_key']))
                                         if own else ('', '', '', ''))
@@ -724,7 +724,7 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
                    c.start_time, c.latitude, c.longitude, c.site_id, c.host_network, c.cell_id, c.city, c.status,
                    c.root_domain, c.root_category, c.root_cause, COALESCE(q.place_key, '') AS place_key, COALESCE(q.place_label, '') AS place_label,
                    COALESCE(q.cluster_key, '') AS cluster_key, COALESCE(q.repeat_key, '') AS repeat_key,
-                   COALESCE(q.repeat_all_key, '') AS repeat_all_key, COALESCE(q.consecutive_key, '') AS consecutive_key,
+                   COALESCE(q.consecutive_key, '') AS consecutive_key,
                    q.repetitions AS repetitions
             FROM calls c LEFT JOIN {PRIORITY_TABLE} q ON q.call_key = c.call_key
             WHERE (c.latitude BETWEEN ? AND ? AND c.longitude BETWEEN ? AND ?)
@@ -762,8 +762,7 @@ def nearby_failures(repository: Any, call: dict[str, Any], centre: tuple[float, 
             'self': is_self, 'same_operator': same_operator, 'same_place': same_place and not is_self,
             'same_hotspot': same_hotspot and not is_self, 'same_cluster': same_cluster and not is_self, 'same_run': same_run and not is_self,
             # The keys of its groups, so that the page can tell those of the group that filters the list of calls.
-            'cluster_key': _text(row['cluster_key']), 'repeat_key': _text(row['repeat_key']), 'repeat_all_key': _text(row['repeat_all_key']),
-            'consecutive_key': _text(row['consecutive_key']),
+            'cluster_key': _text(row['cluster_key']), 'repeat_key': _text(row['repeat_key']), 'consecutive_key': _text(row['consecutive_key']),
         })
     def order(item: dict[str, Any]) -> tuple[Any, ...]:
         return (not item['self'], not (item['same_hotspot'] or item['same_cluster'] or item['same_run'] or item['same_place']),
@@ -1398,6 +1397,24 @@ def site_health(repository: Any, call: dict[str, Any], site_id: str, host: str, 
 # ---------------------------------------------------------------------------
 # The whole map
 # ---------------------------------------------------------------------------
+def ring_metres(radius: float) -> float:
+    """The radius of the circle the map of a call draws around the calls of a group: that of the smallest circle around them
+    with a margin, so that their marks are inside, at least 50 m."""
+    return max(radius * 1.04 + 10, 50)
+
+
+def group_reach(positions: list[tuple[Any, Any]]) -> int | None:
+    """How far the calls of a group (their ``(latitude, longitude)``) reach, in metres, as the map of a call draws the
+    circle around them (``ring_metres``); None without a position."""
+    known = [point for latitude, longitude in positions if (point := _position(latitude, longitude)) is not None]
+    if not known:
+        return None
+    origin, scale = known[0], 6371008.8 * math.pi / 180
+    _x, _y, radius = enclosing_circle([((longitude - origin[1]) * scale * math.cos(math.radians(origin[0])), (latitude - origin[0]) * scale)
+                                       for latitude, longitude in known])
+    return round(ring_metres(radius))
+
+
 def enclosing_circle(points: list[tuple[float, float]]) -> tuple[float, float, float]:
     """The smallest circle (x, y, radius) that holds the points (x, y) of a plane (Welzl, iteratively)."""
     def circle_of(*given: tuple[float, float]) -> tuple[float, float, float]:
@@ -1517,7 +1534,7 @@ def group_rings(repository: Any, call: dict[str, Any], failed_at: tuple[float, f
             x, y, radius, minor, angle = enclosing_ellipse(points, 40)
         else:
             x, y, radius = enclosing_circle(points)
-            radius = max(radius * 1.04 + 10, 50)
+            radius = ring_metres(radius)
             minor, angle = radius, 0.0
         found = {'kind': kind, 'own': is_own, 'key': key, 'calls': len(rows), 'metres': round(radius), 'xy': (x, y),
                  'centre': [origin[0] + y / scale, origin[1] + x / (scale * math.cos(math.radians(origin[0])))],
