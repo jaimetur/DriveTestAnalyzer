@@ -269,7 +269,7 @@
 /* Its groups, white cards in the colour of their group on the map of the call. */
 /* Its groups on a row of their own across the header: up to four columns of the same width, the text of each card wrapping. */
 .nq-drawer-groups { flex: 1 0 100%; grid-template-columns: minmax(0, 1fr); margin: 0; }
-.nq-drawer-group-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(13rem, calc((100% - 3 * .4rem) / 4)), 1fr)); gap: .75rem .4rem;
+.nq-drawer-group-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(14.5rem, calc((100% - 3 * .4rem) / 4)), 1fr)); gap: .75rem .4rem;
   padding-top: .45rem; }
 /* Each group a white card: what it is, its ID and calls on top, then its sites and its period. */
 .nq-drawer .nq-drawer-group { position: relative; display: grid; align-content: start; gap: .08rem; min-width: 0; min-height: 0; margin: 0; padding: .25rem .6rem;
@@ -283,8 +283,14 @@
   background: color-mix(in srgb, var(--nq-group) 14%, #fff); box-shadow: 0 0 0 2px var(--nq-group), 0 0 0 5px #fff; }
 .nq-drawer-group.is-active::before { content: 'Filtering the list'; position: absolute; top: 0; right: .6rem; padding: .05rem .5rem; border: 2px solid #fff;
   border-radius: 999px; background: var(--nq-group); color: #fff; font-size: .64rem; font-weight: 800; line-height: 1.2; transform: translateY(-55%); }
-.nq-drawer-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+/* (On one line: its name gives way first, cut with an ellipsis, so that its ID and calls always show.) */
+.nq-drawer-group-head { display: flex; flex-wrap: nowrap; align-items: center; gap: .3rem; min-width: 0; white-space: nowrap; }
+.nq-drawer-group-head b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nq-drawer-group-head code { flex: none; }
 .nq-drawer-group b { font-weight: 850; }
+/* How many calls the group has: a pill in the dark text over a tint of the colour of the group, kept on the line of its name. */
+.nq-drawer-group-calls { flex: none; padding: 0 .45rem; border-radius: 999px; background: color-mix(in srgb, var(--nq-group) 14%, #fff);
+  color: var(--nq-dark, #2d1520); font-weight: 850; white-space: nowrap; }
 .nq-drawer-group-line { color: var(--nq-text, #2b2b2b); font-weight: 650; overflow-wrap: anywhere; }
 /* The clusters start a row of their own, below the hotspot and the run. */
 .nq-drawer-group-break { grid-column: 1 / -1; height: 0; margin-top: -.75rem; }

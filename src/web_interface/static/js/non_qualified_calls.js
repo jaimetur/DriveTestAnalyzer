@@ -4766,7 +4766,9 @@
       chip.dataset.filter = group.filter;
       chip.dataset.key = group.key;
       const head = node('span', undefined, 'nq-drawer-group-head');
-      head.append(node('b', `${NAMES[group.kind]} ${group.kind === 'cluster_all' ? 'every NR Mode' : mode}`.trim()), node('code', group.id), `· ${calls}`);
+      // (Its calls in a pill of their own, never on a line of their own.)
+      head.append(node('b', `${NAMES[group.kind]} ${group.kind === 'cluster_all' ? 'every NR Mode' : mode}`.trim()), node('code', group.id),
+        node('span', calls, 'nq-drawer-group-calls'));
       chip.append(head);
       chip.title = `${TITLES[group.kind]}: ${calls}`;
       // Its sites with how many of its calls failed at each, the most first (the first 3, every one on hover), and its period.
