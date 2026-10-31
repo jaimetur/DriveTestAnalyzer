@@ -2941,7 +2941,8 @@
     const openExpanded = () => {
       if (!shared.data) return;
       const call = shared.data.call;
-      expandDialog.querySelector('[data-nq-map-expand-title]').textContent = ['Call Area Map', call.operator,
+      // Its call type first (Voice, WhatsApp, Data…), then its operator, campaign and JOIN_ID.
+      expandDialog.querySelector('[data-nq-map-expand-title]').textContent = ['Call Area Map', KIND_LABELS[call.kind] || call.kind, call.operator,
         campaignText(call.campaign, call.nr_mode), call.join_id].filter(Boolean).join(' · ');
       // What the map could not show (a call without position, operators without inventory), then how it navigates.
       expandDialog.querySelector('[data-nq-map-expand-meta]').textContent = [...shared.data.notes, HINT].join(' · ');
@@ -3049,7 +3050,7 @@
       },
       title: () => {
         const call = shared.data?.call;
-        return call ? ['Call Area Map', call.operator, call.join_id].filter(Boolean).join(' · ') : 'Call Area Map';
+        return call ? ['Call Area Map', KIND_LABELS[call.kind] || call.kind, call.operator, call.join_id].filter(Boolean).join(' · ') : 'Call Area Map';
       },
       details: () => ({section: 'Call Area Map', context: {call_key: shared.data?.call.call_key || '', join_id: shared.data?.call.join_id || '',
         radius_km: String(shared.data?.radius_km ?? ''), campaigns: settings.tests, failure_colour: settings.failureColour,
