@@ -51,8 +51,10 @@
   // The NQ calls of the other groups, hidden while a cluster or a time window filters the list.
   const hiddenByFocus = (failure) => Boolean(focusKind()) && !inFocus(failure) && memberships(failure).length > 0;
   const GROUP_COLOURS = {hotspot: COLOURS.hotspot, cluster: COLOURS.cluster, run: COLOURS.run};
-  // How far apart the outlines of the groups of an NQ call are (And Group), so that a clear white line shows between two.
-  const OUTLINE_STEP = 4.4;
+  // How far apart the outlines of the groups of an NQ call are (And Group), so that a clear white line shows between two,
+  // and how wide each is.
+  const OUTLINE_STEP = 5;
+  const OUTLINE_WIDTH = 2.6;
   // The way of each time window through its failures: that of the call in the blue of the time windows, each other one in a
   // colour of its own (none of those of the other marks of the map, no green of the clusters), so that ways that cross can
   // be told apart.
@@ -1394,10 +1396,10 @@
         context.stroke();
         groups.forEach((kind, index) => {
           star(context, x, y, size + OUTLINE_STEP * (index + 1));
-          context.lineWidth = 3.8;
+          context.lineWidth = OUTLINE_WIDTH + 2;
           context.strokeStyle = 'rgba(255, 255, 255, .9)';
           context.stroke();
-          context.lineWidth = 2;
+          context.lineWidth = OUTLINE_WIDTH;
           context.strokeStyle = GROUP_COLOURS[kind];
           context.stroke();
         });
