@@ -2242,14 +2242,17 @@
     shared.failureColour = (failure) => failureColourBy(settings.failureColour, failure, ownSite());
     // The groups of the call an NQ call is of, as And Group outlines it (those switched on in From CDR): its time window
     // innermost, then its cluster outside it, as a time window often leaves its cluster (not its hotspot, which every NQ call
-    // of its groups is of).
+    // of its groups is of). The time window is that of the call alone (the calls the card of the map counts in it), not the
+    // other time windows of its hotspot, unless one of them filters the list.
+    const inOwnRun = (failure) => Boolean(failure.same_run || (failure.self && (shared.data?.groups?.run || 0) >= 2));
     shared.failureGroups = (failure) => (settings.perGroup ? ['run', 'cluster']
-      .filter((kind) => shownLayers(settings)[kind] !== false && groupsOf(failure).includes(kind)) : []);
+      .filter((kind) => shownLayers(settings)[kind] !== false && groupsOf(failure).includes(kind)
+        && (kind !== 'run' || focusKind() === 'run' || inOwnRun(failure))) : []);
     shared.failureLegend = () => {
       const data = shared.data;
       const shown = data.failures.filter((failure) => !failure.self && failure.latitude !== null && shared.showsFailure(failure));
       const lines = failureLegendBy(settings.failureColour, shown, {campaignText, ownSite: ownSite()});
-      const names = {cluster: 'Outlined: of a cluster of the call', run: 'Outlined: of a time window of the call'};
+      const names = {cluster: 'Outlined: of a cluster of the call', run: focusKind() === 'run' ? 'Outlined: of the time window filtering the list' : 'Outlined: of its time window'};
       ['run', 'cluster'].filter((kind) => shown.some((failure) => shared.failureGroups(failure).includes(kind)))
         .forEach((kind) => lines.push([names[kind], OUTLINE_COLOURS[kind], 'is-outlined']));
       return lines;
