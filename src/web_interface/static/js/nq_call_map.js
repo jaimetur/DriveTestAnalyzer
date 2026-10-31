@@ -20,9 +20,9 @@
     // (The handovers cyan: never the orange of the hotspot nor the green of the start.)
     call: '#b0234f', path: '#3d1824', start: '#2e8b57', handover: '#0c8fb0', end: '#d7263d', both: '#d7263d', nr_leg: '#6d46a8',
     route: '#5c636a',
-    // The groups of the call: its hotspot (and its zone) orange, a cluster purple (never the green of the site where the call
-    // started), a time window blue.
-    hotspot: '#e8590c', cluster: '#ae3ec9', run: '#1971c2',
+    // The groups of the call: its hotspot (and its zone) orange, a cluster green (lighter than the green of the site where
+    // the call started), a time window blue.
+    hotspot: '#e8590c', cluster: '#37b24d', run: '#1971c2',
     samePci: '#d6336c', noValue: '#adb5bd',
     completed: '#2e8b57', failed: '#d7263d', radius: '#7d1238', hotZone: '#e8590c',
   };
@@ -52,8 +52,9 @@
   const hiddenByFocus = (failure) => Boolean(focusKind()) && !inFocus(failure) && memberships(failure).length > 0;
   const GROUP_COLOURS = {hotspot: COLOURS.hotspot, cluster: COLOURS.cluster, run: COLOURS.run};
   // The way of each time window through its failures: that of the call in the blue of the time windows, each other one in a
-  // colour of its own (none of those of the other marks of the map), so that ways that cross can be told apart.
-  const PATH_COLOURS = ['#0b7285', '#5c940d', '#8d5524', '#4263eb', '#343a40', '#a61e4d'];
+  // colour of its own (none of those of the other marks of the map, no green of the clusters), so that ways that cross can
+  // be told apart.
+  const PATH_COLOURS = ['#7048e8', '#8d5524', '#ae3ec9', '#343a40', '#4263eb', '#a61e4d'];
   const pathColours = (rings) => {
     let other = 0;
     return new Map(rings.filter((ring) => ring.path && ring.path.length > 1)
@@ -957,7 +958,7 @@
         };
         hotZone = {fill: () => paint(zone, .22), edge: () => { paint(halo, .95); paint(edge, 1); }};
       }
-      // The shapes of its groups, as the Groups slide draws them: a circle around each cluster in purple and an ellipse along
+      // The shapes of its groups, as the Groups slide draws them: a circle around each cluster in green and an ellipse along
       // each time window in blue of its hotspot (what they make together), those of the call itself bolder and solid (the
       // other clusters and time windows dashed), the larger below; the hotspot when one of its calls is in neither. Their tint
       // first, then the hotspot zone (under the sectors of the sites), then their lines and the edge of the zone (over them).
@@ -1367,7 +1368,7 @@
       // The other Non-Qualified Calls, over the routes and the layers of the logs: those of its groups (hotspot, cluster,
       // time-window issue) and of its site, then the others. The calls on one point make one mark with how many they are (the
       // most related gives its colour); with And Group, an outline of its shape for each group of the call they are of (and
-      // switched on), its cluster innermost, then its time window and its hotspot.
+      // switched on), its cluster innermost, then its time window.
       // The mark of an NQ call (and of the call itself): a star in its colour with a shadow, then the outlines of its
       // ``groups`` in their colours, each over a white one.
       const nqMark = (x, y, size, colour, groups, hollow = false) => {
@@ -2232,15 +2233,15 @@
     };
     shared.failureColour = (failure) => failureColourBy(settings.failureColour, failure, ownSite());
     // The groups of the call an NQ call is of, as And Group outlines it (those switched on in From CDR): its cluster
-    // innermost, then its time window and its hotspot.
-    shared.failureGroups = (failure) => (settings.perGroup ? ['cluster', 'run', 'hotspot']
+    // innermost, then its time window (not its hotspot, which every NQ call of its groups is of).
+    shared.failureGroups = (failure) => (settings.perGroup ? ['cluster', 'run']
       .filter((kind) => shownLayers(settings)[kind] !== false && groupsOf(failure).includes(kind)) : []);
     shared.failureLegend = () => {
       const data = shared.data;
       const shown = data.failures.filter((failure) => !failure.self && failure.latitude !== null && shared.showsFailure(failure));
       const lines = failureLegendBy(settings.failureColour, shown, {campaignText, ownSite: ownSite()});
-      const names = {cluster: 'Outlined: of a cluster of the call', run: 'Outlined: of a time window of the call', hotspot: 'Outlined: of its hotspot'};
-      ['cluster', 'run', 'hotspot'].filter((kind) => shown.some((failure) => shared.failureGroups(failure).includes(kind)))
+      const names = {cluster: 'Outlined: of a cluster of the call', run: 'Outlined: of a time window of the call'};
+      ['cluster', 'run'].filter((kind) => shown.some((failure) => shared.failureGroups(failure).includes(kind)))
         .forEach((kind) => lines.push([names[kind], GROUP_COLOURS[kind], 'is-outlined']));
       return lines;
     };
@@ -2817,7 +2818,7 @@
       // And Group, a switch beside the colour: an outline of the shape of each NQ call for each group of the call it is of
       // (only when the call is of one).
       const perGroup = node('label', undefined, 'nq-map-control nq-map-check');
-      perGroup.title = 'An outline around each NQ call for each group of the call it is of, in the colour of the group: its cluster innermost, then its time window and its hotspot (over the colour chosen; each group has its switch in From CDR)';
+      perGroup.title = 'An outline around each NQ call for each group of the call it is of, in the colour of the group: its cluster innermost, then its time window (over the colour chosen; each group has its switch in From CDR)';
       const perGroupSwitch = node('span', undefined, 'nq-l3-switch');
       const perGroupBox = node('input');
       perGroupBox.type = 'checkbox';

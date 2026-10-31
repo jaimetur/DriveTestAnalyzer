@@ -301,7 +301,7 @@
 /* In the colours of the groups on the map of the call (darker, for the text): hotspot orange, cluster green, time window
    blue. */
 .nq-drawer-group.is-hotspot { --nq-group: #c2410c; }
-.nq-drawer-group.is-cluster { --nq-group: #9c36b5; }
+.nq-drawer-group.is-cluster { --nq-group: #2b8a3e; }
 .nq-drawer-group.is-run { --nq-group: #1864ab; }
 /* The fields of the analysts of General beside the follow-up: the titles and the height, border and text of its lists (the
    Assignee). */
