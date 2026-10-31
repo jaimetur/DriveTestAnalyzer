@@ -4761,16 +4761,14 @@
         chip.title += `\n${sites.map((site) => `${site.label}: ${number(site.calls)} call${site.calls === 1 ? '' : 's'}`).join('\n')}`;
       }
       const period = ['hotspot', 'run'].includes(group.kind) ? groupPeriod(group) : '';
-      // At its bottom, as pills: its period (a hotspot, a time window), how far it reaches (a cluster: spatial), how long it
-      // lasted (a time window: temporal) or both (a hotspot); the period goes on the line above, aligned with them, when they
-      // do not all fit on one.
+      // At its bottom, as pills: how far it reaches (a cluster: spatial), how long it lasted (a time window: temporal) or both
+      // (a hotspot), then its period (a hotspot, a time window), last; a pill that does not fit goes on the line above, aligned
+      // with them.
       const foot = node('span', undefined, 'nq-drawer-group-foot');
-      if (period) foot.append(node('span', period, 'nq-drawer-group-fact'));
-      const facts = node('span', undefined, 'nq-drawer-group-facts');
-      if (group.kind !== 'run' && group.metres) facts.append(node('span', `within ${group.metres >= 1000 ? `${(group.metres / 1000).toFixed(1)} km` : `${number(group.metres)} m`}`, 'nq-drawer-group-fact'));
+      if (group.kind !== 'run' && group.metres) foot.append(node('span', `within ${group.metres >= 1000 ? `${(group.metres / 1000).toFixed(1)} km` : `${number(group.metres)} m`}`, 'nq-drawer-group-fact'));
       const lasted = group.kind !== 'cluster' ? groupDuration(group) : '';
-      if (lasted) facts.append(node('span', `within ${lasted}`, 'nq-drawer-group-fact'));
-      if (facts.childElementCount) foot.append(facts);
+      if (lasted) foot.append(node('span', `within ${lasted}`, 'nq-drawer-group-fact'));
+      if (period) foot.append(node('span', period, 'nq-drawer-group-fact'));
       if (foot.childElementCount) chip.append(foot);
       // A click filters the list of calls by the group (after confirming), as its ID does in the panel.
       const main = sites.length ? `${sites[0].label}${sites.length > 1 ? ` +${number(sites.length - 1)}` : ''}` : '';

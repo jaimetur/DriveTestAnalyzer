@@ -286,11 +286,10 @@
   border-radius: 999px; background: var(--nq-group); color: #fff; font-size: .64rem; font-weight: 800; line-height: 1.2; transform: translateY(-55%); }
 .nq-drawer-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
 .nq-drawer-group b { font-weight: 850; }
-/* Its pills at its bottom: its period, how far it reaches and how long it lasted, in its colour on white (the period on the
-   line above, aligned with them, when they do not all fit on one); its calls over its top right corner, in the dark text over
-   a tint of its colour. */
-.nq-drawer-group-foot { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .2rem .25rem; margin-top: auto; padding-top: .2rem; }
-.nq-drawer-group-facts { display: flex; flex: 1 1 auto; align-items: center; gap: .25rem; }
+/* Its pills at its bottom: how far it reaches, how long it lasted and its period, last, in its colour on white (the lines wrap
+   upwards: a pill that does not fit goes on the line above, aligned with them); its calls over its top right corner, in the
+   dark text over a tint of its colour. */
+.nq-drawer-group-foot { display: flex; flex-wrap: wrap-reverse; align-items: center; gap: .2rem .25rem; margin-top: auto; padding-top: .2rem; }
 .nq-drawer-group-fact { padding: 0 .45rem; border: 1px solid color-mix(in srgb, var(--nq-group) 35%, #fff); border-radius: 999px;
   background: #fff; color: var(--nq-group); font-weight: 800; white-space: nowrap; }
 .nq-drawer-group-calls { margin-left: auto; padding: 0 .45rem; border-radius: 999px; background: color-mix(in srgb, var(--nq-group) 14%, #fff);
