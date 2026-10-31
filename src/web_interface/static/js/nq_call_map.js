@@ -419,7 +419,7 @@
     {key: 'samples', label: 'RSRP / SINR', note: () => 'The samples of the CDRs'},
     {key: 'calls', label: 'NQ calls', note: (area) => (area ? 'The NQ calls of the filters' : 'Around the call, and its groups'),
       layers: ['failures', 'hotspot', 'cluster', 'run', 'paths']},
-    {key: 'cells', label: 'Sites', note: (area) => (area ? 'The sites of the inventory' : 'Its sites and cells'), layers: ['sites', 'ends', 'path']},
+    {key: 'cells', label: 'Sites & Cells', note: (area) => (area ? 'The sites of the inventory' : 'Its sites and cells'), layers: ['sites', 'ends', 'path']},
     // The routes the CDR lets estimate (the GPS of the Layer3 Logs is the real one): on the map of a call its way and the
     // drive of its car, each with its switch; on NQ Maps the drive of each CDR.
     {key: 'route', label: 'Route', note: (area) => (area ? 'Estimated from the tests of each CDR' : 'Estimated from the CDR, not from a GPS'),
