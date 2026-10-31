@@ -40,7 +40,7 @@
     name: `${prefix}_${metric === 'tx' ? 'UE_Tx_Power' : METRIC_LABELS[metric]}`, label: METRIC_LABELS[metric]}));
   const SECTIONS = [
     {key: 'route', label: 'Route', note: 'The way of the UE', layers: [
-      {key: 'way', name: 'Route', label: 'Route (GPS of the log)'},
+      {key: 'way', name: 'Route', label: 'Route (GPS)'},
       {key: 'direction', name: 'Direction', label: 'Direction of travel'}]},
     {key: 'signalling', label: 'Signalling', note: 'Events and L3 messages', layers: [
       {key: 'event', name: 'Event', label: 'Events', groups: EVENT_GROUPS},
@@ -56,7 +56,7 @@
       {label: 'SCell', layers: cellLayers('NR_SCell', 'nr_scell', ['nrarfcn', 'pci', 'rsrp', 'rsrq', 'sinr'])},
       {label: 'NCell', layers: cellLayers('NR_NCell', 'nr_ncell', ['nrarfcn', 'pci', 'rsrp', 'rsrq'])},
       {label: 'LTE NCell', layers: cellLayers('NR_LNCell', 'nr_lncell', ['earfcn', 'pci', 'rsrp', 'rsrq'])}]},
-    // Last, so that LTE and NR stay side by side in the card unfolded.
+    // (Drawn with Route and Signalling, above the matrices of LTE and NR.)
     {key: 'ran', label: 'RAN', note: 'The RAN Configuration of each serving point', layers: [
       {key: 'ran', name: 'RAN_Configuration', label: 'RAN Configuration', groups: RAN_GROUPS}]},
   ];
@@ -558,63 +558,125 @@
         }
         body.append(ues);
       }
+      const infoOf = (layer) => data.layers[layer.key] || (data.area ? {count: null, groups: new Map()} : null);
+      const expandableOf = (info) => info.groups.size > 1 || [...info.groups.values()].some((entry) => entry.subs.size > 1);
+      const switchOf = (layer, label, options) => toggle(state.on.has(layer.key), `Show ${label}`,
+        (checked) => { if (checked) state.on.add(layer.key); else state.on.delete(layer.key); changed(); }, options);
+      // The + that shows or folds the channels and PCIs (the groups) of a layer.
+      const moreOf = (layer) => {
+        const openKey = `layer:${layer.key}`;
+        const more = node('button', state.open.has(openKey) ? '−' : '+', 'nq-l3-more');
+        more.type = 'button';
+        more.title = state.open.has(openKey) ? 'Fold its channels and PCIs' : 'Show its channels and PCIs';
+        more.addEventListener('click', (event) => { event.stopPropagation(); if (state.open.has(openKey)) state.open.delete(openKey); else state.open.add(openKey); changed(); });
+        return more;
+      };
+      // The groups of a layer (its channels or PCIs, or its kinds of event, message or RAN Configuration), each with its own.
+      const groupsOf = (layer, info) => {
+        const groups = node('div', undefined, 'nq-l3-groups');
+        for (const [group, entry] of [...info.groups.entries()].sort((a, b) => b[1].count - a[1].count)) {
+          const groupKey = `${layer.key}|${group}`;
+          const groupRow = node('div', undefined, 'nq-l3-group');
+          const groupLine = node('div', undefined, 'nq-l3-line');
+          groupLine.append(toggle(!state.off.has(groupKey), `Show ${group}`, (checked) => {
+            if (checked) state.off.delete(groupKey); else state.off.add(groupKey); changed();
+          }, {small: true}));
+          const swatch = node('span', undefined, 'nq-l3-swatch');
+          swatch.style.background = groupColour(layer, group);
+          groupLine.append(swatch, node('span', group || '—', 'nq-l3-name'), count(entry.count));
+          groupRow.append(groupLine);
+          if (entry.subs.size) {
+            const chips = node('div', undefined, 'nq-l3-chips');
+            for (const [sub, subCount] of [...entry.subs.entries()].sort((a, b) => b[1] - a[1])) {
+              const subKey = `${groupKey}|${sub}`;
+              const chip = node('button', undefined, `nq-l3-chip${state.off.has(subKey) ? '' : ' is-on'}`);
+              chip.type = 'button';
+              chip.setAttribute('aria-pressed', String(!state.off.has(subKey)));
+              chip.title = `${state.off.has(subKey) ? 'Show' : 'Hide'} ${sub} of ${group}`;
+              const dot = node('span', undefined, 'nq-l3-chip-dot');
+              dot.style.background = categoryColour(sub);
+              chip.append(dot, node('span', sub.replace('PCI ', '')), node('small', String(subCount)));
+              chip.addEventListener('click', (event) => { event.stopPropagation(); if (state.off.has(subKey)) state.off.delete(subKey); else state.off.add(subKey); changed(); });
+              chips.append(chip);
+            }
+            groupRow.append(chips);
+          }
+          groups.append(groupRow);
+        }
+        return groups;
+      };
       const layerRow = (layer) => {
-        const info = data.layers[layer.key] || (data.area ? {count: null, groups: new Map()} : null);
+        const info = infoOf(layer);
         if (!info) return null;
         const row = node('div', undefined, 'nq-l3-layer');
         const line = node('div', undefined, 'nq-l3-line');
-        const on = state.on.has(layer.key);
-        const expandable = info.groups.size > 1 || [...info.groups.values()].some((entry) => entry.subs.size > 1);
-        const openKey = `layer:${layer.key}`;
         const nr = layer.kind && NR_KINDS.has(layer.kind);
-        line.append(toggle(on, `Show ${layer.label}`, (checked) => { if (checked) state.on.add(layer.key); else state.on.delete(layer.key); changed(); }),
-          markerIcon(layer.metric ? SHAPE_OF[layer.metric] : SHAPE_OF[layer.key], layerColour(layer), {nr}));
+        line.append(switchOf(layer, layer.label), markerIcon(layer.metric ? SHAPE_OF[layer.metric] : SHAPE_OF[layer.key], layerColour(layer), {nr}));
         const name = node('span', layer.label, 'nq-l3-name');
         name.title = layer.name;
         line.append(name, ...(info.count === null ? [] : [count(info.count)]));
-        if (expandable) {
-          const more = node('button', state.open.has(openKey) ? '−' : '+', 'nq-l3-more');
-          more.type = 'button';
-          more.title = state.open.has(openKey) ? 'Fold its channels and PCIs' : 'Show its channels and PCIs';
-          more.addEventListener('click', (event) => { event.stopPropagation(); if (state.open.has(openKey)) state.open.delete(openKey); else state.open.add(openKey); changed(); });
-          line.append(more);
-        }
+        const expandable = expandableOf(info);
+        if (expandable) line.append(moreOf(layer));
         row.append(line);
-        if (expandable && state.open.has(openKey)) {
-          const groups = node('div', undefined, 'nq-l3-groups');
-          for (const [group, entry] of [...info.groups.entries()].sort((a, b) => b[1].count - a[1].count)) {
-            const groupKey = `${layer.key}|${group}`;
-            const groupRow = node('div', undefined, 'nq-l3-group');
-            const groupLine = node('div', undefined, 'nq-l3-line');
-            groupLine.append(toggle(!state.off.has(groupKey), `Show ${group}`, (checked) => {
-              if (checked) state.off.delete(groupKey); else state.off.add(groupKey); changed();
-            }, {small: true}));
-            const swatch = node('span', undefined, 'nq-l3-swatch');
-            swatch.style.background = groupColour(layer, group);
-            groupLine.append(swatch, node('span', group || '—', 'nq-l3-name'), count(entry.count));
-            groupRow.append(groupLine);
-            if (entry.subs.size) {
-              const chips = node('div', undefined, 'nq-l3-chips');
-              for (const [sub, subCount] of [...entry.subs.entries()].sort((a, b) => b[1] - a[1])) {
-                const subKey = `${groupKey}|${sub}`;
-                const chip = node('button', undefined, `nq-l3-chip${state.off.has(subKey) ? '' : ' is-on'}`);
-                chip.type = 'button';
-                chip.setAttribute('aria-pressed', String(!state.off.has(subKey)));
-                chip.title = `${state.off.has(subKey) ? 'Show' : 'Hide'} ${sub} of ${group}`;
-                const dot = node('span', undefined, 'nq-l3-chip-dot');
-                dot.style.background = categoryColour(sub);
-                chip.append(dot, node('span', sub.replace('PCI ', '')), node('small', String(subCount)));
-                chip.addEventListener('click', (event) => { event.stopPropagation(); if (state.off.has(subKey)) state.off.delete(subKey); else state.off.add(subKey); changed(); });
-                chips.append(chip);
-              }
-              groupRow.append(chips);
-            }
-            groups.append(groupRow);
-          }
-          row.append(groups);
-        }
+        if (expandable && state.open.has(`layer:${layer.key}`)) row.append(groupsOf(layer, info));
         return row;
       };
+      // A technology (LTE, NR) as a matrix: a row for each measure, a column for each kind of cell, each cell with its switch,
+      // how many points it has and the + of its channels and PCIs; a measure a kind of cell does not have, a dash. The columns
+      // are the kinds of cell with points in any technology, in the same order and width, so that those of LTE and NR line up
+      // (LTE NCell, of NR alone, last). The channels and PCIs shown go below the matrix.
+      const MATRIX_ROWS = [['channel', ''], ['pci', 'PCI'], ['rsrp', 'RSRP'], ['rsrq', 'RSRQ'], ['sinr', 'SINR'], ['tx', 'UE Tx Power']];
+      const MATRIX_COLUMNS = ['PCell', 'SCell', 'NCell', 'LTE NCell'];
+      const rowOf = (layer) => (layer.metric === 'earfcn' || layer.metric === 'nrarfcn' ? 'channel' : layer.metric);
+      const withPoints = new Set(SECTIONS.filter((section) => section.blocks)
+        .flatMap((section) => section.blocks.filter((block) => block.layers.some((layer) => infoOf(layer))).map((block) => block.label)));
+      const matrixOf = (section) => {
+        const blocks = MATRIX_COLUMNS.filter((label) => withPoints.has(label))
+          .map((label) => section.blocks.find((block) => block.label === label)).filter(Boolean)
+          .map((block) => ({...block, layers: block.layers.filter((layer) => infoOf(layer))}));
+        const rows = MATRIX_ROWS.filter(([key]) => blocks.some((block) => block.layers.some((layer) => rowOf(layer) === key)));
+        const grid = node('div', undefined, 'nq-l3-matrix');
+        grid.style.setProperty('--nq-l3-columns', String(blocks.length));
+        grid.append(node('span'), ...blocks.map((block) => node('span', block.label, 'nq-l3-matrix-head')));
+        const opened = [];
+        for (const [key, label] of rows) {
+          const sample = blocks.flatMap((block) => block.layers).find((layer) => rowOf(layer) === key);
+          const head = node('span', undefined, 'nq-l3-matrix-row');
+          head.append(markerIcon(SHAPE_OF[sample.metric], layerColour(sample), {nr: section.key === 'nr'}),
+            node('span', label || (section.key === 'nr' ? 'NRARFCN' : 'EARFCN'), 'nq-l3-name'));
+          grid.append(head);
+          for (const block of blocks) {
+            const layer = block.layers.find((item) => rowOf(item) === key);
+            const cell = node('span', undefined, 'nq-l3-matrix-cell');
+            grid.append(cell);
+            if (!layer) {
+              cell.append(node('span', '—', 'nq-l3-matrix-none'));
+              continue;
+            }
+            const info = infoOf(layer);
+            const text = `${section.label} ${block.label} ${layer.label}`;
+            cell.title = `${text} (${layer.name})`;
+            cell.classList.toggle('is-on', state.on.has(layer.key));
+            cell.append(switchOf(layer, text, {small: true}), ...(info.count === null ? [] : [count(info.count)]));
+            if (expandableOf(info)) {
+              cell.append(moreOf(layer));
+              if (state.open.has(`layer:${layer.key}`)) opened.push([text, layer, info]);
+            }
+          }
+        }
+        const list = node('div', undefined, 'nq-l3-section-body');
+        list.append(grid);
+        for (const [text, layer, info] of opened) {
+          const groups = node('div', undefined, 'nq-l3-matrix-groups');
+          groups.append(node('p', text, 'nq-l3-block'), groupsOf(layer, info));
+          list.append(groups);
+        }
+        return list;
+      };
+      // The small sections side by side (Route, Signalling, RAN), then a matrix for each technology (LTE, NR), side by side
+      // when the card is wide enough (only those the logs have).
+      const strip = node('div', undefined, 'nq-l3-strip');
+      const techs = node('div', undefined, 'nq-l3-techs');
       for (const section of SECTIONS) {
         const layers = section.layers ? section.layers : section.blocks.flatMap((block) => block.layers);
         const shown = layers.filter((layer) => data.layers[layer.key] || data.area);
@@ -630,20 +692,18 @@
         sectionHead.addEventListener('click', (event) => { event.stopPropagation(); if (opened) state.open.delete(section.key); else state.open.add(section.key); changed(); });
         card.append(sectionHead);
         if (opened) {
-          const list = node('div', undefined, 'nq-l3-section-body');
-          if (section.layers) shown.forEach((layer) => list.append(layerRow(layer)));
-          else {
-            for (const block of section.blocks) {
-              const rows = block.layers.filter((layer) => data.layers[layer.key] || data.area);
-              if (!rows.length) continue;
-              list.append(node('p', block.label, 'nq-l3-block'));
-              rows.forEach((layer) => list.append(layerRow(layer)));
-            }
+          if (section.layers) {
+            const list = node('div', undefined, 'nq-l3-section-body');
+            shown.forEach((layer) => list.append(layerRow(layer)));
+            card.append(list);
+          } else {
+            card.append(matrixOf(section));
           }
-          card.append(list);
         }
-        body.append(card);
+        (section.layers ? strip : techs).append(card);
       }
+      if (strip.children.length) body.append(strip);
+      if (techs.children.length) body.append(techs);
       if (data.area) {
         // NQ Maps: what the grid averages below its zoom, and its NQ calls.
         const area = node('div', undefined, 'nq-l3-area');

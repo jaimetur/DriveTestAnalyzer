@@ -1942,10 +1942,8 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
   width: max-content; max-width: calc(100% - 1.2rem); height: calc(100% - max(1.4rem, 8px + var(--nq-map-bottom-space, 0px))); pointer-events: none; }
 .nq-map-panels > .nq-l3-panel { position: relative; top: auto; left: auto; flex: 0 1 auto; width: 19.5rem; max-width: 100%; min-height: 0; max-height: 100%; pointer-events: auto; }
 .nq-map-panels > .nq-l3-panel.is-collapsed { width: auto; }
-/* Unfolded, the layers of the Layer3 Logs take two columns (Route beside Signalling, LTE beside NR), one on a narrow map. */
-.nq-map-panels > .nq-l3-panel:not(.nq-map-samples-panel):not(.is-collapsed) { width: 40rem; }
-.nq-map-panels > .nq-l3-panel:not(.nq-map-samples-panel) .nq-l3-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); align-items: start; }
-.nq-map-panels > .nq-l3-panel:not(.nq-map-samples-panel) .nq-l3-body > :not(.nq-l3-section) { grid-column: 1 / -1; }
+/* Unfolded, LOGS Info is wider: its small sections side by side, then the matrices of LTE and NR (l3_layers.js). */
+.nq-map-panels > .nq-l3-panel:not(.nq-map-samples-panel):not(.is-collapsed) { width: 46rem; }
 .nq-map-panels > .nq-map-samples-panel { flex: none; }
 .nq-map-samples-panel .nq-l3-head { background: linear-gradient(135deg, #7d1238, #b0234f); }
 .nq-map-samples-panel .nq-l3-head .nq-l3-switch input:checked + .nq-l3-switch-track { background: #ffc2d6; }
@@ -2221,6 +2219,25 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .nq-l3-ue { padding: .28rem .4rem; border: 0; border-radius: 7px; background: none; color: #365560; font: inherit; font-weight: 700; cursor: pointer; }
 .nq-l3-ue.is-on { background: #fff; color: #0b6e8a; box-shadow: 0 1px 3px rgba(0, 0, 0, .14); }
 .nq-l3-section { border: 1px solid #e3ebee; border-radius: 10px; background: #fff; }
+/* LOGS Info: Route, Signalling and RAN side by side, then a matrix for each technology, side by side when the card is wide enough. */
+.nq-l3-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr)); align-items: start; gap: .45rem; }
+/* In the narrow columns of the strip nothing is cut: the note of a section goes below its name and a long name takes two lines. */
+.nq-l3-strip .nq-l3-section-note { grid-column: 1 / -1; grid-row: 2; white-space: normal; }
+.nq-l3-strip .nq-l3-section-on { grid-column: 3; }
+.nq-l3-strip .nq-l3-section-head > .nq-l3-chevron { grid-column: 4; }
+.nq-l3-strip .nq-l3-name { line-height: 1.2; white-space: normal; overflow-wrap: anywhere; }
+.nq-l3-techs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 32rem), 1fr)); align-items: start; gap: .45rem; }
+/* A matrix: a row for each measure, a column for each kind of cell, each cell its switch, its count and its +; the columns of
+   the same width in every matrix, so that those of LTE and NR line up. */
+.nq-l3-matrix { display: grid; grid-template-columns: 6.8rem repeat(var(--nq-l3-columns, 3), 6rem); justify-content: start; align-items: center; gap: .1rem .25rem; }
+.nq-l3-matrix-head { color: #6b8189; font-size: .66rem; font-weight: 800; letter-spacing: .06em; text-align: center; text-transform: uppercase; white-space: nowrap; }
+.nq-l3-matrix-row { display: flex; align-items: center; gap: .4rem; min-width: 0; min-height: 1.7rem; padding-left: .2rem; }
+.nq-l3-matrix-cell { display: flex; align-items: center; justify-content: center; gap: .25rem; min-width: 0; min-height: 1.7rem; padding: 0 .15rem; border-radius: 7px; }
+.nq-l3-matrix-cell:hover { background: #f3f8f9; }
+.nq-l3-matrix-cell .nq-l3-count { padding: 0 .3rem; font-size: .62rem; }
+.nq-l3-matrix-cell .nq-l3-more { flex: none; width: 1.15rem; height: 1.15rem; font-size: .75rem; }
+.nq-l3-matrix-none { color: #b6c4c9; }
+.nq-l3-matrix-groups { margin-top: .35rem; }
 .nq-l3-section-head { display: grid; grid-template-columns: auto 1fr auto auto; align-items: baseline; gap: .45rem; width: 100%; padding: .45rem .6rem;
   border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .nq-l3-section-name { font-weight: 800; font-size: .82rem; }
