@@ -368,13 +368,20 @@ def cell_label(step: dict[str, Any], name: str = '') -> str:
     return ' · '.join(part for part in (kind, identity) if part) or 'Unknown cell'
 
 
-def labelled_cells(steps: list[dict[str, Any]], names: dict[str, str] | None = None) -> list[dict[str, str]]:
+def labelled_cells(steps: list[dict[str, Any]], names: dict[str, str] | None = None,
+                   far: dict[str, float] | None = None) -> list[dict[str, str]]:
     """The cells of a call in order, each with its role (``both`` alone, else ``start``, ``handover`` and ``end``), its
-    technology and its label, by its inventory name when ``names`` (cell identity → name) has it."""
+    technology and its label, by its inventory name when ``names`` (cell identity → name) has it, and how far it is when
+    ``far`` (cell identity → km) places it beyond the distance a cell is looked for (see resolve_trace)."""
     count = len(steps)
-    return [{'role': 'both' if count == 1 else 'start' if index == 0 else 'end' if index == count - 1 else 'handover',
-             'technology': step.get('technology') or '', 'label': cell_label(step, (names or {}).get(step.get('cell') or '', ''))}
-            for index, step in enumerate(steps)]
+    labelled = []
+    for index, step in enumerate(steps):
+        label = cell_label(step, (names or {}).get(step.get('cell') or '', ''))
+        if step.get('cell') in (far or {}):
+            label = f"{label} · {_km(far[step['cell']])} away"
+        labelled.append({'role': 'both' if count == 1 else 'start' if index == 0 else 'end' if index == count - 1 else 'handover',
+                         'technology': step.get('technology') or '', 'label': label})
+    return labelled
 
 
 # The frequency of each LTE band, as the RAT timeline of a CDR names it (LTE_800).
@@ -520,7 +527,9 @@ def _site_id(family: str, site: str) -> str:
 def resolve_trace(trace: list[dict[str, str]], cells: pd.DataFrame, families: tuple[str, ...], positions: dict[str, Any],
                   max_distance_km: float, colours: dict[str, str]) -> list[dict[str, Any]]:
     """Each cell of the trace with the inventory cell it was (a network serving the operator, its own first; the nearest to
-    where it served the call within ``max_distance_km``) and its site, or without them when no inventory has it."""
+    where it served the call within ``max_distance_km``, else, farther, the nearest with the PCI and channel the CDR gives
+    it, ``far``: a cell on a high mast serves a call on high ground from much farther, while an identity alone farther may
+    be another cell with that number) and its site, or without them when no inventory has it."""
     resolved = []
     reference = positions.get('end') or positions.get('start')
     count = len(trace)
@@ -544,11 +553,22 @@ def resolve_trace(trace: list[dict[str, str]], cells: pd.DataFrame, families: tu
                         best = (key, cell, distance)
                 if best is not None:
                     break
+            far = False
+            if best is None and step.get('pci') and step.get('channel'):
+                for cell in found.itertuples(index=False):
+                    if (_text(cell.pci).removesuffix('.0') != str(step['pci'])
+                            or _text(cell.channel).removesuffix('.0') != str(step['channel'])):
+                        continue
+                    position = _position(cell.latitude, cell.longitude)
+                    distance = distance_km(where, position) if where and position else None
+                    if distance is not None and (best is None or distance < best[0]):
+                        best = (distance, cell, distance)
+                far = best is not None
             if best is not None:
                 _key, cell, distance = best
                 entry.update({'site': _site_id(cell.network_family, _text(cell.site_id)), 'site_id': _text(cell.site_id),
                               'network': _text(cell.network), 'host_network': _text(cell.host_network),
-                              'latitude': _number(cell.latitude), 'longitude': _number(cell.longitude),
+                              'latitude': _number(cell.latitude), 'longitude': _number(cell.longitude), 'far': far,
                               'distance_km': None if distance is None else round(distance, 3), 'inventory': _cell_payload(cell, colours)})
                 entry['pci'] = entry['pci'] or entry['inventory']['pci']
                 entry['band'] = entry['band'] or entry['inventory']['band']
@@ -1045,7 +1065,7 @@ def diagnosis(call: dict[str, Any], radio: dict[str, float | None], trace: list[
     end = next((step for step in reversed(trace) if step.get('site') and step['role'] in ('end', 'both')), None)
     nearest = closest or (sites[0] if sites else None)
     if end is None or end.get('distance_km') is None:
-        checks.append(_check('distance', 'info', 'Serving distance', 'The cell where the call ended is not in the Network Inventory.'))
+        checks.append(_check('distance', 'info', 'Serving distance', 'The cell where the call ended is not in the Network Inventory near the call.'))
     else:
         distance, name = end['distance_km'], f"Site {end['site_id']} ({end['network']})"
         isd = (ran or {}).get('serving_isd')
@@ -1596,7 +1616,8 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     # name when it has one.
     _column, trace_text = _first_value(row, columns, fields_profile.rf_field_aliases['cell_trace'].get(service, ()))
     call_cells = labelled_cells(cell_steps(trace_text) or cell_steps(call.get('cell_id')),
-                                {step['cell']: step['inventory']['name'] for step in trace if step.get('inventory') and step['inventory'].get('name')})
+                                {step['cell']: step['inventory']['name'] for step in trace if step.get('inventory') and step['inventory'].get('name')},
+                                {step['cell']: step['distance_km'] for step in trace if step.get('far') and step.get('distance_km') is not None})
     if leg:
         trace.append(leg)
         if leg.get('inventory'):
@@ -1653,11 +1674,11 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
                      'the map shows no sites. Upload one in Workspace to see them.')
     elif call_cells and not any(step.get('site') for step in trace):
         notes.append(f"The cells of this call ({', '.join(cell['label'] for cell in call_cells)}) are not in the Network Inventory "
-                     'of the networks that serve its operator: its serving site and cell cannot be placed'
+                     f'of the networks that serve its operator within {_km(reach)} of it: its serving site and cell cannot be placed'
                      + ('; the dashed rings mark the nearest sites to where it started and failed.' if any(end['estimated'] for end in ends.values()) else '.'))
     elif serving_role == 'start' and end_cell:
         notes.append(f"The cell that served the end of this call ({end_cell['label']}) is not in the Network Inventory of the "
-                     'networks that serve its operator: the site ringed is the one that served its start.')
+                     f'networks that serve its operator within {_km(reach)} of it: the site ringed is the one that served its start.')
     failures, failures_left_out, groups = nearby_failures(repository, call, point, radius)
     name_failure_cells(failures, cells, families, float(config.get('max_distance_km') or 30.0))
     # The operators of the tests with the labels of the Operator Maps, as the calls show them.
@@ -1732,7 +1753,8 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
                      for role, end in ends.items()},
             'radio': radio_values(row, columns),
         },
-        'centre': [point[0], point[1]], 'radius_km': radius, 'radii_km': sorted({*RADII_KM, radius}), 'group_radius_km': group,
+        # How far from the call a cell of its trace is looked for by its identity alone (farther, also by its PCI and channel).
+        'cell_reach_km': reach, 'centre': [point[0], point[1]], 'radius_km': radius, 'radii_km': sorted({*RADII_KM, radius}), 'group_radius_km': group,
         'tests_scope': scope, 'tests_scopes': TEST_SCOPES,
         # The Focus operators of the Operator Maps: their labels, and with every name of the CDRs they stand for.
         'focus_labels': labels_with_role(repository, FOCUS), 'focus_operators': focus_operators(repository),

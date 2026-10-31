@@ -163,11 +163,11 @@
       context.restore();
       return;
     }
-    // A dashed line with a white edge (the icon of the lines from a call to the cells of its start and end).
-    if (shape === 'dashed-line') {
+    // A line with a white edge (the icon of the lines from a call to the cells of its start and end).
+    if (shape === 'line') {
       context.save();
       context.lineCap = 'round';
-      [[size * .8, '#fff', []], [Math.max(1.6, size * .4), colour, [size * .6, size * .4]]].forEach(([width, stroke, dash]) => {
+      [[size * .8, '#fff', []], [Math.max(1.6, size * .4), colour, []]].forEach(([width, stroke, dash]) => {
         context.beginPath();
         context.moveTo(x - size * 1.1, y + size * .7);
         context.lineTo(x + size * 1.1, y - size * .7);

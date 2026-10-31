@@ -436,6 +436,25 @@ def test_the_cells_of_a_call_in_words():
     assert nq_call_map.trace_cells('', '', '[GSM 900, 876, 37171, 2]')[0]['technology'] == 'GSM'
 
 
+def test_a_cell_of_the_trace_far_from_the_call_is_placed_only_with_its_pci_and_channel():
+    def cell(identity, latitude, pci, channel, site):
+        return {'cell_identity': identity, 'network_family': 'three', 'technology': 'LTE', 'latitude': latitude, 'longitude': -1.78,
+                'pci': pci, 'channel': channel, 'site_id': site, 'network': 'H3G', 'host_network': 'H3G', 'cell_name': f'N{site}',
+                'band_3gpp': 'B20', 'band': '', 'azimuth': 90.0, 'beamwidth': 65.0, 'height': 30.0, 'vendor': 'Ericsson',
+                'state': '', 'in_service': True, 'status': ''}
+    # A cell of the trace 40 km north of the call with its PCI and channel, and another one 40 km away without them.
+    cells = pd.DataFrame([cell('1340936', 53.86, '168.0', '6175', '32391'), cell('1645320', 53.86, '999', '6175', '45939')])
+    trace = nq_call_map.trace_cells('[LTE E-UTRA 20, 2541, 1340936, 6175]->[LTE E-UTRA 20, 3376, 1645320, 6175]', '[168]->[365]', '')
+    resolved = nq_call_map.resolve_trace(trace, cells, ('three',), {'start': (53.5, -1.78), 'end': None}, 30.0, {})
+    # Farther than the distance a cell is looked for, the identity alone may be another cell of that number: only the one
+    # with the PCI and channel of the CDR is its cell, far from the call.
+    assert [(step['cell'], step.get('site_id'), step.get('far'), round(step.get('distance_km') or 0)) for step in resolved] == [
+        ('1340936', '32391', True, 40), ('1645320', None, None, 0)]
+    # Its label says how far it is.
+    assert [item['label'] for item in nq_call_map.labelled_cells(nq_call_map.cell_steps('[1340936]->[1645320]'), {'1340936': 'N32391'},
+                                                                 {'1340936': 40.0})] == ['N32391 · 40.0 km away', 'Cell 1645320']
+
+
 def test_a_cell_repeated_in_a_row_is_one_cell_of_the_call():
     # Ticket #35: a moment on an NR cell without identity between two of the same LTE cell (its TAC left out the second
     # time) is no handover; the PCI column gives one PCI for each element of the trace.

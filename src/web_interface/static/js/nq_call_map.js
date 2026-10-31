@@ -51,6 +51,14 @@
   // The NQ calls of the other groups, hidden while a cluster or a time window filters the list.
   const hiddenByFocus = (failure) => Boolean(focusKind()) && !inFocus(failure) && memberships(failure).length > 0;
   const GROUP_COLOURS = {hotspot: COLOURS.hotspot, cluster: COLOURS.cluster, run: COLOURS.run};
+  // The way of each time window through its failures: that of the call in the blue of the time windows, each other one in a
+  // colour of its own (none of those of the other marks of the map), so that ways that cross can be told apart.
+  const PATH_COLOURS = ['#0b7285', '#5c940d', '#8d5524', '#4263eb', '#343a40', '#a61e4d'];
+  const pathColours = (rings) => {
+    let other = 0;
+    return new Map(rings.filter((ring) => ring.path && ring.path.length > 1)
+      .map((ring) => [ring, ring.own ? COLOURS.run : PATH_COLOURS[(other++) % PATH_COLOURS.length]]));
+  };
   // Whether an NQ call is of a group of the call shown.
   const inGroup = (failure) => groupsOf(failure).length > 0;
   // Whether the map draws the hotspot zone of the call: a hotspot of 2 calls or more, unless one of its groups filters the list.
@@ -618,7 +626,7 @@
         const note = shared.samplesNote?.();
         if (note) list.append(node('p', note, 'nq-l3-area-note'));
       });
-      const icons = {failures: ['star', COLOURS.call], sites: ['triangle', '#868e96'], ends: ['dashed-line', COLOURS.end], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
+      const icons = {failures: ['star', COLOURS.call], sites: ['triangle', '#868e96'], ends: ['line', COLOURS.end], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
         route: ['road', data.area ? COLOURS.route : COLOURS.path], cluster: ['ring', COLOURS.cluster], run: ['ring', COLOURS.run], hotspot: ['ring', COLOURS.hotZone]};
       const rings = visibleRings(data);
       const paths = rings.some((ring) => ring.path && ring.path.length > 1);
@@ -934,19 +942,19 @@
       // Each time window as its failures follow one another (each within the Time window of the one before).
       // Their order is numbered beside each failure, above the NQ calls (see below).
       const pathNumbers = [];
-      for (const ring of layers.paths === false ? [] : visible.filter((item) => item.path && item.path.length > 1)) {
+      for (const [ring, colour] of layers.paths === false ? [] : pathColours(visible)) {
         context.beginPath();
         ring.path.forEach(([latitude, longitude], index) => {
           const [px, py] = project(latitude, longitude);
           if (index) context.lineTo(px, py); else context.moveTo(px, py);
-          pathNumbers.push([px, py, index + 1]);
+          pathNumbers.push([px, py, index + 1, colour]);
         });
         context.lineJoin = 'round';
         context.lineWidth = ring.own ? 5 : 4;
         context.strokeStyle = '#fff';
         context.stroke();
         context.lineWidth = ring.own ? 2.6 : 2;
-        context.strokeStyle = COLOURS.run;
+        context.strokeStyle = colour;
         context.setLineDash([8, 5]);
         context.stroke();
         context.setLineDash([]);
@@ -1064,8 +1072,8 @@
         for (const [text, lx, ly, colour] of named) label(context, text, lx, ly, colour, 'center');
       }
       // The cells the call went through: the cell of its start joined to where it started, the cell of its end (or of the whole
-      // call) to where it failed and the NR cell of an NSA call to where it failed, each by a dashed line to the cell (Start and
-      // end cells); each handover an arrow from the cell before it to the cell after it, numbered with the order of that cell
+      // call) to where it failed, each by a line to the cell, and the NR cell of an NSA call to where it failed by a dotted one
+      // (Start and end cells: solid, never taken for the dashed ways of the time windows); each handover an arrow from the cell before it to the cell after it, numbered with the order of that cell
       // (as the Cells of the call list and the badges of the sites): the CDR does not record where each handover took place
       // (Cell path).
       const start = call.start, end = call.end || call.start;
@@ -1118,7 +1126,7 @@
             const length = Math.hypot(x2 - x1, y2 - y1) || 1;
             const shift = (index - (bundle.length - 1) / 2) * 4;
             const [dx, dy] = [-(y2 - y1) / length * shift, (x2 - x1) / length * shift];
-            edged(x1 + dx, y1 + dy, x2 + dx, y2 + dy, COLOURS[step.role] || COLOURS.path, step.role === 'nr_leg' ? [3, 4] : [8, 5]);
+            edged(x1 + dx, y1 + dy, x2 + dx, y2 + dy, COLOURS[step.role] || COLOURS.path, step.role === 'nr_leg' ? [3, 4] : []);
           });
         }
         // The handovers, from cell to cell; those between the same two cells (back and forth) each in a lane of its own.
@@ -1174,7 +1182,7 @@
         const ends = site.ends || [];
         const size = site.serving || onPath || ends.length ? 8 : zoom >= 12 ? 6 : 4.5;
         // Where the call ended (red, where it failed) and where it started (green, outside when both are this site); dashed
-        // when the site is only the nearest to it (its cell is not in the Network Inventory).
+        // when the site is only the nearest to it (its cell is not in the Network Inventory near the call).
         for (const end of [...ends].sort((a, b) => (a.role === 'end' ? -1 : 1) - (b.role === 'end' ? -1 : 1))) {
           context.beginPath();
           context.arc(x, y, size + (end.role === 'start' && ends.length > 1 ? 10 : 6), 0, Math.PI * 2);
@@ -1385,11 +1393,11 @@
       context.textAlign = 'center';
       context.textBaseline = 'middle';
       const badgeOffset = data.area ? 11 : 16;
-      for (const [px, py, number] of pathNumbers) {
+      for (const [px, py, number, colour] of pathNumbers) {
         const [bx, by] = [px - badgeOffset, py - badgeOffset];
         context.beginPath();
         context.arc(bx, by, 7.5, 0, Math.PI * 2);
-        context.fillStyle = COLOURS.run;
+        context.fillStyle = colour;
         context.fill();
         context.lineWidth = 1.5;
         context.strokeStyle = '#fff';
@@ -1432,21 +1440,23 @@
         }
       }
       // The call itself: the mark of the NQ calls (its colour and, with And Group, the outlines of its groups) under its pin,
-      // which stands on its top.
-      let pinLift = 0, pinAt = null;
+      // which stands on its top and stands taller than the mark with all its outlines, so that it is seen first.
+      let pinLift = 0, pinAt = null, pinSize = 12;
       if (!data.area) {
         const [px, py] = project(failurePoint[0], failurePoint[1]);
         pinAt = [px, py];
         const own = data.failures.find((failure) => failure.self);
         if (own && layers.failures) {
           const size = 8 + (zoom >= 15 ? 1.5 : 0);
-          nqMark(px, py, size, shared.failureColour(own), shared.failureGroups(own));
-          // (On the top point of its star.)
-          pinLift = size * 1.25;
+          const groups = shared.failureGroups(own);
+          nqMark(px, py, size, shared.failureColour(own), groups);
+          // (On the top point of its outermost outline; the pin is 2.45 times its size tall.)
+          pinLift = (size + groups.length * 3.4) * 1.25;
+          pinSize = Math.max(pinSize, pinLift * 2.2 / 2.45);
           hits.push({x: px, y: py, r: size * 1.1 + 3, kind: 'call', item: call, priority: 6});
         }
-        pin(context, px, py - pinLift, 10, COLOURS.call);
-        hits.push({x: px, y: py - pinLift - 15, r: 13, kind: 'call', item: call, priority: 6});
+        pin(context, px, py - pinLift, pinSize, COLOURS.call);
+        hits.push({x: px, y: py - pinLift - pinSize * 1.55, r: pinSize * .9 + 3, kind: 'call', item: call, priority: 6});
       }
       // START and END where the call started and ended (where its simulated way ended, for a Data test): beside them on the
       // side away from its road, beside the head of the pin where the pin stands.
@@ -1454,7 +1464,7 @@
         context.font = '800 10px "IBM Plex Sans", system-ui, sans-serif';
         const width = context.measureText(text).width + 12, height = 16;
         const reach = clearance + Math.abs(ux) * width / 2 + Math.abs(uy) * height / 2;
-        const [cx, cy] = pinned ? [x + (ux >= 0 ? 1 : -1) * (14 + width / 2), y - 15 - pinLift] : [x + ux * reach, y + uy * reach];
+        const [cx, cy] = pinned ? [x + (ux >= 0 ? 1 : -1) * (pinSize * .9 + 5 + width / 2), y - pinSize * 1.55 - pinLift] : [x + ux * reach, y + uy * reach];
         context.beginPath();
         context.roundRect?.(cx - width / 2, cy - height / 2, width, height, 8);
         if (!context.roundRect) context.rect(cx - width / 2, cy - height / 2, width, height);
@@ -1972,7 +1982,14 @@
           const count = rings.filter((ring) => !ring.own && ring.kind === kind).length;
           if (count) item('ring', `${text} (${count})`, GROUP_COLOURS[kind], kind === 'cluster' ? 'is-dashed' : '');
         });
-        if (pathsShown && paths) item('line', 'Time window: its failures in their order (numbered)', COLOURS.run, 'is-dashed');
+        if (pathsShown && paths) {
+          // The way of each time window in its colour: that of the call first, then the others of its hotspot.
+          let other = 0;
+          for (const [ring, colour] of pathColours(all)) {
+            item('line', ring.own ? 'Its time window: its failures in their order (numbered)'
+              : `Time window ${++other} of its hotspot (${ring.calls} NQ calls): its failures in their order`, colour, 'is-dashed');
+          }
+        }
         if (zone) {
           item('zone', data.hotspot_join === 'and' && all.some((ring) => ring.kind === 'run') && all.some((ring) => ring.kind !== 'run')
             ? 'Hotspot (AND): where its clusters and time windows meet' : 'Hotspot (OR): its clusters and time windows together', COLOURS.hotZone);
@@ -1989,7 +2006,7 @@
           const technology = data.call.ends?.[role]?.estimated ? data.call.ends[role].technology : '';
           if (ends.some((end) => end.role === role && end.estimated)) {
             item('ring', `Nearest site to ${text}: an estimate, as the call ${role === 'start' ? 'started' : 'ended'} on a ${technology ? `${technology} ` : ''}`
-              + 'cell that is not in the Network Inventory', colour, 'is-dashed');
+              + `cell that is not in the Network Inventory${data.cell_reach_km ? ` within ${distanceText(data.cell_reach_km)}` : ''}`, colour, 'is-dashed');
           }
         }
       }
@@ -2195,7 +2212,9 @@
     };
     // The site where a call started or ended, and whether it is only the nearest one to it.
     const endText = (end) => (end ? `${end.site_id} (${end.host_network || end.network})${end.estimated
-      ? ` · nearest, ${distanceText(end.distance_km)} away (an estimate: its ${end.technology ? `${end.technology} ` : ''}cell is not in the Network Inventory)` : ''}` : '');
+      ? ` · nearest, ${distanceText(end.distance_km)} away (an estimate: its ${end.technology ? `${end.technology} ` : ''}cell is not in the Network Inventory${reachText()})` : ''}` : '');
+    // How far from the call its cells are looked for by their identity alone (see nq_call_map.resolve_trace).
+    const reachText = () => (shared.data?.cell_reach_km ? ` within ${distanceText(shared.data.cell_reach_km)} of the call` : '');
     const siteName = (site) => `Site ${site.site_id} · ${site.network}${site.host_network && site.host_network !== site.network ? ` on ${site.host_network}` : ''}`;
     shared.describe = (kind, item) => {
       const data = shared.data;
