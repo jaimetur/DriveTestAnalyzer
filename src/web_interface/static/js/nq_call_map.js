@@ -777,9 +777,9 @@
         list.append(layer);
       };
       // A section with its header (its name, what it holds, how many of its switches are on), unfolded unless folded.
-      // Its sections in three columns (one below the other on a narrow card): the samples, then the NQ calls with the route
-      // below them, then the sites.
-      const COLUMN_OF = {samples: 0, calls: 1, route: 1, cells: 2};
+      // Its sections in three columns (one below the other on a narrow card): the samples, then the sites with the route below
+      // them, then the NQ calls.
+      const COLUMN_OF = {samples: 0, cells: 1, route: 1, calls: 2};
       const columns = [0, 1, 2].map(() => node('div', undefined, 'nq-l3-cdr-column'));
       const section = ({key, label, note}, active, fill) => {
         const card = node('section', undefined, `nq-l3-section is-cdr-${key}`);
