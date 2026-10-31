@@ -989,7 +989,7 @@ class Repository:
             # Normalised inventory snapshots (built from the inventory datasets; see network_inventory).
             from src.modules.network_inventory import ensure_inventory_schema
             ensure_inventory_schema(conn)
-            # The sessions of the Layer 3 - DT Logs datasets (see l3_dt_logs).
+            # The sessions of the Layer3 Logs datasets (see l3_dt_logs).
             from src.modules.l3_dt_logs import ensure_workspace_schema as ensure_l3_dt_logs_schema
             ensure_l3_dt_logs_schema(conn)
             self._drop_retired_report_jobs(conn)

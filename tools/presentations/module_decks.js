@@ -1271,7 +1271,7 @@ const VISUALS = {
 
 // Small pictures of the tiles (360 × 150), one per idea, in the colours of the deck.
 const MINIS = {
-  // The Layer 3 - DT Logs on the map of a call: the layers of the KMZ files in the colours of their ranges, the real way of
+  // The Layer3 Logs on the map of a call: the layers of the KMZ files in the colours of their ranges, the real way of
   // the UE from START to END, the cursor of the signalling timeline with the UE on the map, and the logs around it.
   layers: () => ['#8b0000', '#ff8c00', '#90ee64', '#0000ff'].map((colour, index) => `<path d="M90 ${118 - index * 24} L180 ${96 - index * 24} L270 ${118 - index * 24} L180 ${140 - index * 24} Z" fill="${colour}" opacity=".9" stroke="#ffffff" stroke-width="2"/>`).join(''),
   road: () => {

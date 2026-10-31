@@ -42,7 +42,7 @@
     <a href="#section-filters" title="The filters of the calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/></svg>Filters</a>
     <a href="#section-nq-prioritization-queues" title="NQ Prioritization &amp; Queues: the calls to analyse next in the Voice and Data queues, the steps of the strategy, the scoring impact and the repeated issues"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h4v4H3zM9 5h4v4H9zM3 15h4v4H3zM9 15h4v4H9z"/><path d="M15 7h6m-2-2 2 2-2 2M15 17h6m-2-2 2 2-2 2"/></svg>NQ Queues</a>
     <a href="#section-nq-hotspots-time-window-clustered-issues" title="NQ Hotspots, Time-Window &amp; Clustered Issues: the failures that repeat close in time, in distance or both"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2"/><circle cx="15.5" cy="8" r="2"/><circle cx="12" cy="15" r="2"/><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" stroke-dasharray="3 2.5"/></svg>NQ Hotspots</a>
-    <a href="#section-nq-maps" title="NQ Maps: the filtered NQ calls, their CDRs and their Layer 3 - DT Logs on one map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>NQ Maps</a>
+    <a href="#section-nq-maps" title="NQ Maps: the filtered NQ calls, their CDRs and their Layer3 Logs on one map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>NQ Maps</a>
     <a href="#section-nq-calls" title="NQ Calls: the calls that match the filters"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></a>
     <a href="#section-summary" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</a>
     <a href="#section-nq-rate-by-campaign-and-operator" title="NQ Rate by Campaign and Operator"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>NQ Rate</a>
@@ -172,13 +172,13 @@
     </div>
   </details>
 
-  {# NQ Maps: every NQ call of the filters with its CDR and its Layer 3 - DT Logs on one map, from the whole country down to a
+  {# NQ Maps: every NQ call of the filters with its CDR and its Layer3 Logs on one map, from the whole country down to a
      single site or call (nq_call_map.js mountArea, l3_layers.js). #}
   <details class="panel collapsible-panel nq-l3-maps-panel" data-nq-view-panel="l3maps" data-nq-loader="l3maps" open data-panel-state-key="non-qualified-calls:l3-maps">
     <summary class="collapsible-summary"><div><p class="eyebrow">Drivetest</p><h2>NQ Maps</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
-      <p class="form-note">Every NQ call of the filters and every layer of their Layer 3 - DT Logs: zoomed out, a grid of the average of the metric chosen, the NQ calls by their call type (or root cause domain, campaign, operator or site) and the route of each session; zooming in, the events, the sites and then the points of the layers on and the RSRP / SINR samples of the CDRs, as on the map of a call. A click on an NQ call opens it; a double-click opens the map larger.</p>
+      <p class="form-note">Every NQ call of the filters and every layer of their Layer3 Logs: zoomed out, a grid of the average of the metric chosen, the NQ calls by their call type (or root cause domain, campaign, operator or site) and the route of each session; zooming in, the events, the sites and then the points of the layers on and the RSRP / SINR samples of the CDRs, as on the map of a call. A click on an NQ call opens it; a double-click opens the map larger.</p>
       <div class="nq-l3-maps" id="nq-l3-maps"></div>
       {# NQ Maps larger (a double-click on it): the whole width of the window but 2 % on each side. #}
       <dialog class="nq-map-expand is-wide" id="nq-l3-maps-expand" aria-labelledby="nq-l3-maps-expand-title">
@@ -383,8 +383,8 @@
         <p class="nq-drawer-join" id="nq-drawer-join" hidden><span>JOIN_ID</span><code id="nq-drawer-join-id"></code><button type="button" class="nq-copy-button" id="nq-drawer-join-copy" title="Copy the JOIN_ID" aria-label="Copy the JOIN_ID"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button></p>
         {# The identifier of the analysis in the workbooks of the previous tool (Previous NQ Analyses), when the call has one. #}
         <p class="nq-drawer-join nq-drawer-unique" id="nq-drawer-unique" title="The identifier of the analysis in the workbooks of the previous tool" hidden><span id="nq-drawer-unique-label">Unique ID</span><code id="nq-drawer-unique-id"></code></p>
-        {# The UEs of the call with a session in the Layer 3 - DT Logs of the workspace (A and B of a voice call, Data). #}
-        <p class="nq-drawer-join nq-drawer-l3" id="nq-drawer-l3" title="Sessions of this call in the Layer 3 - DT Logs (the parsed drivetest logs) of the workspace" hidden><span>Layer 3 - DT Logs</span><code id="nq-drawer-l3-ues"></code></p>
+        {# The UEs of the call with a session in the Layer3 Logs of the workspace (A and B of a voice call, Data). #}
+        <p class="nq-drawer-join nq-drawer-l3" id="nq-drawer-l3" title="Sessions of this call in the Layer3 Logs (the parsed drivetest logs) of the workspace" hidden><span>Layer3 Logs</span><code id="nq-drawer-l3-ues"></code></p>
       </div>
     </div>
     {# The calls of the list one after another, and any call found by its JOIN_ID. #}

@@ -1,4 +1,4 @@
-/* Layer 3 - DT Logs on the maps of Non-Qualified Calls: the layers of the KMZ files of the NQ team, drawn from the parsed
+/* Layer3 Logs on the maps of Non-Qualified Calls: the layers of the KMZ files of the NQ team, drawn from the parsed
    drivetest logs of the workspace (l3_dt_logs.call_layers).
 
    Every layer of the KMZ files is here: Direction, RAN Configuration, Events, L3 Signaling and the LTE and NR PCell, SCell
@@ -29,7 +29,7 @@
     '#1098ad', '#d9480f', '#364fc7', '#087f5b', '#862e9c', '#e67700'];
   const SHAPE_OF = {earfcn: 'square', nrarfcn: 'square', pci: 'diamond', rsrp: 'circle', rsrq: 'triangle', sinr: 'triangle-down',
     tx: 'pentagon', ran: 'square', event: 'hexagon', l3: 'diamond', direction: 'arrow', way: 'road'};
-  // The colour of the routes of the Layer 3 - DT Logs drawn as roads (that of a call keeps the colour of the call).
+  // The colour of the routes of the Layer3 Logs drawn as roads (that of a call keeps the colour of the call).
   const ROUTE_COLOUR = '#0b6e8a';
   const METRIC_LABELS = {earfcn: 'EARFCN', nrarfcn: 'NRARFCN', pci: 'PCI', rsrp: 'RSRP', rsrq: 'RSRQ', sinr: 'SINR', tx: 'UE Tx Power'};
   const EVENT_GROUPS = ['4G', '5G EN-DC', '5G NR', 'Other'];
@@ -416,8 +416,8 @@
     }
     context.globalAlpha = 1;
   };
-  // The way of the UE shown (A, else the first UE) for the road of the call, its start and its end; none while the Layer 3 -
-  // DT Logs are switched off.
+  // The way of the UE shown (A, else the first UE) for the road of the call, its start and its end; none while the Layer3
+  // Logs are switched off.
   const wayOf = (data) => {
     // An area (NQ Maps) has no call of its own: no way, start or end.
     if (!data || data.area || !state.master || !state.on.has('way')) return null;
@@ -520,7 +520,7 @@
       const title = node('button', undefined, 'nq-l3-title');
       title.type = 'button';
       title.setAttribute('aria-expanded', String(open));
-      title.title = open ? 'Fold the layers' : 'Show the layers of the Layer 3 - DT Logs';
+      title.title = open ? 'Fold the layers' : 'Show the layers of the Layer3 Logs';
       title.append(node('span', 'From Logs', 'nq-l3-title-text'), node('span', open ? '▾' : '▸', 'nq-l3-chevron'));
       // A click anywhere on its header but its switch folds or unfolds it (its title is the button for the keyboard).
       head.addEventListener('click', (event) => {
@@ -529,7 +529,7 @@
         open = !open;
         render();
       });
-      head.append(title, toggle(state.master, 'Show the Layer 3 - DT Logs', (checked) => { state.master = checked; changed(); }));
+      head.append(title, toggle(state.master, 'Show the Layer3 Logs', (checked) => { state.master = checked; changed(); }));
       // (Drawn again after each switch: its body keeps where it was scrolled.)
       const scrolled = panel.querySelector('.nq-l3-body')?.scrollTop || 0;
       panel.replaceChildren(head);
@@ -837,7 +837,7 @@
     cursorListeners.forEach((listener) => listener());
   };
   const cursorOf = (data) => (data && cursor.data === data && Number.isFinite(cursor.ms) ? cursorAt(data, cursor.ms) : null);
-  // The routes of the sessions of an area (NQ Maps), while the Layer 3 - DT Logs are switched on.
+  // The routes of the sessions of an area (NQ Maps), while the Layer3 Logs are switched on.
   const routesOf = (data) => (state.master && state.on.has('way') ? data?.routes || [] : []);
   // The moment of the cursor on a map: its signalling of the last seconds ringed where it happened (the latest named),
   // and each UE where it was then, heading where it went.

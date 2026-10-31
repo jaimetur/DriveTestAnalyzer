@@ -8,7 +8,7 @@
         <h2>Isolated Workspaces for your Data</h2>
       </div>
     </div>
-    <p class="lede">Each workspace keeps its own datasets apart (CDRs, Layer 3 - DT Logs, Vendor mappings, Region and Cluster polygons and the rest of its sources) together with their processing history, configuration, designs and reports, with access granted by role, group or user. Open the workspace to work in, or create and manage workspaces below.</p>
+    <p class="lede">Each workspace keeps its own datasets apart (CDRs, Layer3 Logs, Vendor mappings, Region and Cluster polygons and the rest of its sources) together with their processing history, configuration, designs and reports, with access granted by role, group or user. Open the workspace to work in, or create and manage workspaces below.</p>
   </article>
   <article class="panel workspace-switcher-panel" data-page-panel-label="Workspaces Management">
     <div class="section-head tight-head">
@@ -178,7 +178,7 @@
       </div>
     </summary>
     <div class="upload-panel-content">
-      <p class="lede">Bring the source files that feed every product workflow into one managed workspace: {{ (upload_cdr_profile | default({})).label | default('NetCheck CDR', true) }} workbooks (Data, Voice and Speech), Layer 3 - DT Logs (the parsed drivetest logs of each campaign), and Vodafone UK (VFUK) or Three UK (3UK) Multivendor Mappings. Workspace proposes a type from each filename, lets you confirm it per file and, for CDRs, can apply an existing mapping or one uploaded in the same batch. Batch mappings are processed before their selected CDRs.</p>
+      <p class="lede">Bring the source files that feed every product workflow into one managed workspace: {{ (upload_cdr_profile | default({})).label | default('NetCheck CDR', true) }} workbooks (Data, Voice and Speech), Layer3 Logs (the parsed drivetest logs of each campaign), and Vodafone UK (VFUK) or Three UK (3UK) Multivendor Mappings. Workspace proposes a type from each filename, lets you confirm it per file and, for CDRs, can apply an existing mapping or one uploaded in the same batch. Batch mappings are processed before their selected CDRs.</p>
       {% if user.role not in ['user-editor', 'admin', 'super-admin'] %}<p class="form-note workspace-read-only-note">The user-viewer role can explore the workspace datasets and generate jobs, but cannot delete, reprocess or map datasets.</p>{% endif %}
       {% if user.role in ['admin', 'super-admin'] %}
       <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}' data-cdr-profile='{{ upload_cdr_profile | default({}) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list %} data-other-datasets{% endif %}>
@@ -248,7 +248,7 @@
             ('regions', 'Regions — Geospatial'),
             ('clusters', 'Clusters — Geospatial'),
             ('vendors', 'Vendors — Geospatial'),
-            ('l3_dt_logs', 'Layer 3 - DT Logs')
+            ('l3_dt_logs', 'Layer3 Logs')
           ] %}
           {% for kind, label in queue_type_options %}
           <option value="{{ kind }}" {% if kind not in input_kind_options %}disabled{% endif %}>{{ label }}</option>
@@ -647,8 +647,8 @@
       {% set l3_campaigns = l3_datasets | map(attribute='campaign_key') | select | unique | list | length %}
       <section class="dataset-card dataset-card-l3-dt-logs" data-dataset-card="l3-dt-logs">
         <header class="dataset-card-head">
-          <div><p class="eyebrow">Drivetest logs</p><h3><span class="dataset-card-icon dataset-card-icon-l3-dt-logs" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18c3-1 3-6 6-6s3 4 6 3 2-7 4-9"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="6" r="1.6"/><path d="M8 21h8"/></svg></span>{% set l3_sessions = l3_datasets | map(attribute='l3') | map(attribute='sessions') | select | sum %}<span class="dataset-card-badges"><span class="dataset-card-campaigns" title="Campaigns (and NR Modes) of these drivetest logs">{{ l3_campaigns }} campaign{{ '' if l3_campaigns == 1 else 's' }}</span><span class="dataset-card-campaigns" title="Sessions (JoinID and UE) of these drivetest logs">{{ '{:,}'.format(l3_sessions) }} session{{ '' if l3_sessions == 1 else 's' }}</span>{% set card_mb = (l3_datasets | sum(attribute='size_bytes')) / (1024 * 1024) %}<span class="dataset-card-campaigns" title="Size of their Parquet sources">{% if card_mb >= 1024 %}{{ '{:,.2f}'.format(card_mb / 1024) }} GB{% else %}{{ '{:,.0f}'.format(card_mb) }} MB{% endif %}</span></span>Layer 3 - DT Logs <span class="dataset-card-count">{{ l3_datasets | length }}</span></h3></div>
-          <p class="form-note">The parsed drivetest logs (Layer 3) of the tests of each campaign: radio of the serving, secondary and neighbour cells, events and RRC, NAS and SIP messages of every session, keyed by its JoinID and UE. A delivery of several campaigns gives one dataset per campaign; the maps and the DT Analyzer RCA of Non-Qualified Calls read them.</p>
+          <div><p class="eyebrow">Drivetest logs</p><h3><span class="dataset-card-icon dataset-card-icon-l3-dt-logs" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 18c3-1 3-6 6-6s3 4 6 3 2-7 4-9"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="6" r="1.6"/><path d="M8 21h8"/></svg></span>{% set l3_sessions = l3_datasets | map(attribute='l3') | map(attribute='sessions') | select | sum %}<span class="dataset-card-badges"><span class="dataset-card-campaigns" title="Campaigns (and NR Modes) of these drivetest logs">{{ l3_campaigns }} campaign{{ '' if l3_campaigns == 1 else 's' }}</span><span class="dataset-card-campaigns" title="Sessions (JoinID and UE) of these drivetest logs">{{ '{:,}'.format(l3_sessions) }} session{{ '' if l3_sessions == 1 else 's' }}</span>{% set card_mb = (l3_datasets | sum(attribute='size_bytes')) / (1024 * 1024) %}<span class="dataset-card-campaigns" title="Size of their Parquet sources">{% if card_mb >= 1024 %}{{ '{:,.2f}'.format(card_mb / 1024) }} GB{% else %}{{ '{:,.0f}'.format(card_mb) }} MB{% endif %}</span></span>Layer3 Logs <span class="dataset-card-count">{{ l3_datasets | length }}</span></h3></div>
+          <p class="form-note">The parsed drivetest logs (Layer3) of the tests of each campaign: radio of the serving, secondary and neighbour cells, events and RRC, NAS and SIP messages of every session, keyed by its JoinID and UE. A delivery of several campaigns gives one dataset per campaign; the maps and the DT Analyzer RCA of Non-Qualified Calls read them.</p>
         </header>
         <div class="table-wrap queue-table-wrap">
           <table class="queue-table queue-table-compact queue-table-l3" data-queue-sortable-table>
@@ -669,7 +669,7 @@
             </thead>
             <tbody data-dataset-card-body="l3-dt-logs">
               {% for dataset in l3_datasets | sort(attribute='campaign_key', reverse=True) %}{{ l3_dataset_row(dataset) }}{% else %}
-              <tr data-dataset-card-empty><td colspan="11"><article class="empty-state-inline">No Layer 3 - DT Logs yet. Upload the parsed drivetest logs of a campaign (their CSV files or ZIP) and choose Layer 3 - DT Logs as their type.</article></td></tr>
+              <tr data-dataset-card-empty><td colspan="11"><article class="empty-state-inline">No Layer3 Logs yet. Upload the parsed drivetest logs of a campaign (their CSV files or ZIP) and choose Layer3 Logs as their type.</article></td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -1129,7 +1129,7 @@
     ['data', `${cdrLabel} — Data`],
     ['voice', `${cdrLabel} — Voice`],
     ['speech', `${cdrLabel} — Speech`],
-    ['l3_dt_logs', 'Layer 3 - DT Logs'],
+    ['l3_dt_logs', 'Layer3 Logs'],
     ['mapping_vodafone', 'Multivendor Mapping — Vodafone UK (VFUK)'],
     ['mapping_three', 'Multivendor Mapping — Three UK (3UK)'],
     ['network_inventory', 'Network Inventory'],
@@ -1207,7 +1207,7 @@
     if (isSummaryFile(fileName)) return '';
     const service = (cdrProfile.kind_words || []).find(([word]) => nameWords(fileName).includes(` ${word} `));
     if (service) return service[1];
-    // The parsed drivetest logs (Consolidated_Dataset_N.csv, or their ZIP) are Layer 3 - DT Logs.
+    // The parsed drivetest logs (Consolidated_Dataset_N.csv, or their ZIP) are Layer3 Logs.
     if (/(consolidated dataset|dt logs?|drive ?test logs?|layer ?3|\bl3\b|smart orchestrator|orchestrator logs?)/.test(normalized) && /\.(csv|zip)$/.test(normalized)) return 'l3_dt_logs';
     // Cell Configuration KMZ/KML files, alone or in a ZIP package, are Network Inventories.
     if (/\.(kmz|kml)$/.test(normalized) || (/\.zip$/.test(normalized) && /(kmz|kml|cell config)/.test(normalized))) return 'network_inventory';

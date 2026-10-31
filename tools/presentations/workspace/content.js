@@ -2,11 +2,11 @@
 module.exports = {
   name: 'Workspace',
   accent: '#08736D',
-  description: 'Isolated workspaces with their CDRs, Layer 3 - DT Logs, network inventories and maps: what each one keeps, what it ingests and how it gets every dataset ready for the other modules.',
+  description: 'Isolated workspaces with their CDRs, Layer3 Logs, network inventories and maps: what each one keeps, what it ingests and how it gets every dataset ready for the other modules.',
   slides: [
     { id: 'cover', type: 'cover', section: 'Introduction', footer: 'Main module', kicker: 'Main module · Workspace Management', title: 'Workspace',
       icon: 'TbDatabase', icons: ['TbCloudUpload', 'TbBuildingBroadcastTower', 'TbMap2', 'TbSettingsAutomation'],
-      lead: 'Isolated workspaces with their CDRs, Layer 3 - DT Logs, network inventories and maps: the data every module analyses, processed in the background.',
+      lead: 'Isolated workspaces with their CDRs, Layer3 Logs, network inventories and maps: the data every module analyses, processed in the background.',
       tags: ['One workspace per team or country', 'NetCheck CDRs · Umlaut and P3 coming soon', 'Processed in the background'],
       notes: 'Workspace is the first operational module. It keeps isolated workspaces, each with its own database, files and output, ingests every dataset the other modules read and processes it in the background.' },
     { id: 'lifecycle', type: 'hub', section: 'Introduction', footer: 'Workspace lifecycle', kicker: 'Workspace lifecycle', title: 'One workspace, one isolated world',
@@ -26,7 +26,7 @@ module.exports = {
         { icon: 'TbMap2', title: 'Geographical areas', text: 'Regions, Clusters and Vendors as GeoJSON or zipped shapefiles.' },
         { icon: 'TbArrowsShuffle', title: 'Vendor mapping', text: 'Multivendor Mappings give the vendor of every cell for the Vendor Comparison.' },
       ],
-      notes: 'Workspace accepts CSV, XLS, XLSX and XLSM for tabular datasets, KMZ and KML files for Cell Configuration inventories, GeoJSON, JSON or zipped shapefiles for Regions, Clusters and Vendors, and the CSV files of the drive test log parser (or their ZIP) as Layer 3 - DT Logs. Only admins and super-admins upload datasets.' },
+      notes: 'Workspace accepts CSV, XLS, XLSX and XLSM for tabular datasets, KMZ and KML files for Cell Configuration inventories, GeoJSON, JSON or zipped shapefiles for Regions, Clusters and Vendors, and the CSV files of the drive test log parser (or their ZIP) as Layer3 Logs. Only admins and super-admins upload datasets.' },
     { id: 'upload', type: 'steps', section: 'Data ingestion', footer: 'Upload workflow', kicker: 'Upload workflow', title: 'From upload to ready',
       steps: [
         { icon: 'TbCloudUpload', title: 'Upload', text: 'Admins and super-admins drop their files; the type of each one is detected.' },
@@ -45,16 +45,16 @@ module.exports = {
         { icon: 'TbProgress', title: 'CDR Tables Updates', text: 'The background jobs that rewrite the CDR tables show their own progress.' },
       ],
       notes: 'Every dataset keeps one CDR type. The processor materialises every fixed field and adds the derived analysis fields, and the combined CDR tables join the CDRs of each type. Weekly and Daily CDRs follow a campaign while it runs.' },
-    { id: 'layer-3-logs', type: 'steps', section: 'Datasets', footer: 'Layer 3 - DT Logs', kicker: 'Layer 3 - DT Logs', title: 'The drive test logs of each campaign',
+    { id: 'layer-3-logs', type: 'steps', section: 'Datasets', footer: 'Layer3 Logs', kicker: 'Layer3 Logs', title: 'The drive test logs of each campaign',
       steps: [
-        { icon: 'TbFileZip', title: 'Upload', text: 'The CSV files of the log parser, or their ZIP, detected as Layer 3 - DT Logs.' },
+        { icon: 'TbFileZip', title: 'Upload', text: 'The CSV files of the log parser, or their ZIP, detected as Layer3 Logs.' },
         { icon: 'TbStack2', title: 'One dataset per campaign', text: 'Split by Campaign and NR Mode into Parquet, without the workspace database: 1.86 M rows in about a minute.' },
         { icon: 'TbListDetails', title: 'Sessions by JoinID', text: 'Every session (JoinID and UE) summarised and linked with its NQ call by the JOIN_ID.' },
         { icon: 'TbMap2', title: 'Maps and RCA', text: 'Every KMZ layer and the signalling on the NQ maps, read by the DT Analyzer RCA.' },
       ],
       highlight: 3,
       note: 'The logs bring the sessions of the Non-Qualified Calls: their own card in Datasets lists the campaigns, sessions and NQ calls with a log, and the Parquet sources travel with full backups and transfers.',
-      notes: 'Layer 3 - DT Logs are the parsed drive test logs of each campaign, the source of the KMZ files the NQ team opened in Google Earth. A delivery is split into one dataset per campaign and NR Mode, written to Parquet without the workspace database, and every session, a JoinID and UE, is summarised and linked with its Non-Qualified Call by the JOIN_ID. The maps of the Non-Qualified Calls and NQ Maps draw every layer of the KMZ files and the signalling of each call from them, and the DT Analyzer RCA reads what the log shows at the failure.' },
+      notes: 'Layer3 Logs are the parsed drive test logs of each campaign, the source of the KMZ files the NQ team opened in Google Earth. A delivery is split into one dataset per campaign and NR Mode, written to Parquet without the workspace database, and every session, a JoinID and UE, is summarised and linked with its Non-Qualified Call by the JOIN_ID. The maps of the Non-Qualified Calls and NQ Maps draw every layer of the KMZ files and the signalling of each call from them, and the DT Analyzer RCA reads what the log shows at the failure.' },
     { id: 'columnar', type: 'split', section: 'Datasets', footer: 'Columnar store', kicker: 'Columnar store of the CDRs', title: 'Every CDR, a Parquet copy',
       lead: 'The rows of every CDR live in columnar copies that DuckDB reads at speed: the same rows, in the same order, for every module.', visual: 'columnar',
       points: [

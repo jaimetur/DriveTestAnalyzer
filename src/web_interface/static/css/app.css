@@ -4534,7 +4534,7 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .dataset-card-geospatial .dataset-card-count { background: #2e8b57; }
 .dataset-card-other .dataset-card-count { background: #7b8790; }
 .dataset-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr)); gap: 1.1rem; }
-/* Layer 3 - DT Logs: one dataset per campaign and NR Mode, with its operators and sessions. */
+/* Layer3 Logs: one dataset per campaign and NR Mode, with its operators and sessions. */
 .dataset-card-icon-l3-dt-logs { --dataset-card-colour: #0b6e8a; }
 .dataset-card-l3-dt-logs { border-top: 5px solid #0b6e8a; }
 .dataset-card-l3-dt-logs .dataset-card-head { padding-right: 22rem; }

@@ -1,4 +1,4 @@
-"""Layer 3 - DT Logs: the parsed drivetest logs of each campaign, imported as one dataset per campaign."""
+"""Layer3 Logs: the parsed drivetest logs of each campaign, imported as one dataset per campaign."""
 
 from __future__ import annotations
 
@@ -106,7 +106,7 @@ def test_a_delivery_of_two_campaigns_is_one_dataset_per_campaign_read_from_parqu
 
     page = client.get('/workspace').text
     card = page.split('data-dataset-card="l3-dt-logs"', 1)[1].split('</section>', 1)[0]
-    assert 'Layer 3 - DT Logs' in card and 'UK_Q3_SA_2026' in card and '2 campaigns' in card and '3 sessions' in card
+    assert 'Layer3 Logs' in card and 'UK_Q3_SA_2026' in card and '2 campaigns' in card and '3 sessions' in card
     preview = client.get(f"/workspace/preview/{nsa['id']}")
     assert preview.status_code == 200 and '0xaa11' in preview.text and 'Radio_RSRP' in preview.text
 
@@ -140,7 +140,7 @@ def test_a_file_without_the_columns_of_a_delivery_fails_with_the_missing_columns
     upload(client, 'logs.csv', csv_bytes(log_rows(), header), 'text/csv')
     dataset = next(app_module.serialize_dataset_row(row) for row in app_module.repository.list_datasets())
     assert dataset['status'] == 'failed'
-    assert 'not a Layer 3 - DT Logs delivery' in dataset['last_error'] and 'JoinID, UE' in dataset['last_error']
+    assert 'not a Layer3 Logs delivery' in dataset['last_error'] and 'JoinID, UE' in dataset['last_error']
 
 
 def test_the_reserved_smart_orchestrator_logs_type_becomes_layer_3_dt_logs(tmp_path) -> None:
@@ -354,7 +354,7 @@ def test_the_dt_analyzer_rca_reads_the_layer_3_dt_logs_of_the_campaign_of_the_ca
     assert with_log['dta_rule_key'] == 'l3-lte-coverage', with_log
     assert (with_log['dta_category'], with_log['dta_cause']) == ('Poor Coverage LTE', 'Coverage')
     assert 'LTE RSRP at the failure (log)' in with_log['dta_evidence']
-    assert 'Layer 3 - DT Logs: 5G EN-DC - SCG Failure NR SCG 2 s before the end' in with_log['dta_evidence']
+    assert 'Layer3 Logs: 5G EN-DC - SCG Failure NR SCG 2 s before the end' in with_log['dta_evidence']
     # Deleting the log calculates the calls of its campaign again, without it.
     dataset = next(item for item in l3_datasets())
     client.post(f"/datasets-analysis/delete/{dataset['id']}", follow_redirects=False)
@@ -439,7 +439,7 @@ def test_layer_3_maps_gives_a_grid_zoomed_out_and_the_points_of_the_area_zoomed_
         return response.json()
 
     country = maps(filters={}, zoom=6, layers=['lte_pcell:rsrp', 'event'], grid='lte_pcell:rsrp')
-    # Every NQ call of the filters (those without Layer 3 - DT Logs too), with what colours them on the map.
+    # Every NQ call of the filters (those without Layer3 Logs too), with what colours them on the map.
     assert country['mode'] == 'grid' and sorted(call['join_id'] for call in country['calls']) == ['0xBB22', '0xCC33']
     assert country['calls_count'] == 2 and country['calls_with_log'] == 1 and all(call['kind'] for call in country['calls'])
     assert country['sessions'] == 1 and country['grid']['metric'] == 'rsrp' and country['grid']['cells']

@@ -1,4 +1,4 @@
-"""Layer 3 - DT Logs: the parsed drivetest logs (Layer 3) of the tests of each campaign.
+"""Layer3 Logs: the parsed drivetest logs (Layer3) of the tests of each campaign.
 
 A delivery is one or more CSV files, or their ZIP, of a parser of the drivetest logs: one row per record of the
 log of each test (radio samples of the LTE and NR serving, secondary and neighbour cells, events, L3 messages of
@@ -28,13 +28,13 @@ from typing import Any, Callable, Iterable
 import duckdb
 
 KIND = 'l3_dt_logs'
-LABEL = 'Layer 3 - DT Logs'
-# The reserved input type it replaced: its datasets are read as Layer 3 - DT Logs.
+LABEL = 'Layer3 Logs'
+# The reserved input type it replaced: its datasets are read as Layer3 Logs.
 LEGACY_KINDS = ('smart_orchestrator_logs',)
 SESSIONS_TABLE = 'l3_dt_log_sessions'
 # The UEs with a session of every JoinID (any spelling of its case), for the NQ calls that have a log.
 JOIN_IDS_TABLE = 'l3_dt_log_join_ids'
-TABLE_TITLES = {SESSIONS_TABLE: 'Layer 3 DT Log Sessions', JOIN_IDS_TABLE: 'Layer 3 DT Log JoinIDs'}
+TABLE_TITLES = {SESSIONS_TABLE: 'Layer3 Log Sessions', JOIN_IDS_TABLE: 'Layer3 Log JoinIDs'}
 # The UEs of the sessions of an NQ call (A, B or Data), as SQL over the NQ calls (their join_id column).
 CALL_LOG_SQL = f"COALESCE((SELECT ues FROM {JOIN_IDS_TABLE} WHERE join_key = lower(join_id)), '')"
 STORE_FOLDER = '.l3-store'
@@ -94,7 +94,7 @@ def is_l3_kind(kind: object) -> bool:
 
 
 def store_root(database_path: Any) -> Path:
-    """The folder of the derived files of the Layer 3 - DT Logs of a workspace, beside its database."""
+    """The folder of the derived files of the Layer3 Logs of a workspace, beside its database."""
     return Path(str(database_path)).resolve().parent / STORE_FOLDER
 
 
@@ -172,7 +172,7 @@ def _delivery_members(source: Path, work: Path) -> list[Path]:
     if suffix in {'.csv', '.txt', SOURCE_SUFFIX}:
         return [source]
     if suffix != '.zip':
-        raise ValueError('A Layer 3 - DT Logs delivery is one or more CSV files or their ZIP.')
+        raise ValueError('A Layer3 Logs delivery is one or more CSV files or their ZIP.')
     members: list[Path] = []
     with zipfile.ZipFile(source) as archive:
         names = [info for info in archive.infolist() if not info.is_dir()
@@ -180,7 +180,7 @@ def _delivery_members(source: Path, work: Path) -> list[Path]:
                  and not Path(info.filename).name.startswith(('.', '__MACOSX'))
                  and '__MACOSX' not in Path(info.filename).parts]
         if not names:
-            raise ValueError('The ZIP has no CSV file of a Layer 3 - DT Logs delivery.')
+            raise ValueError('The ZIP has no CSV file of a Layer3 Logs delivery.')
         needed = sum(int(info.file_size) for info in names)
         free = shutil.disk_usage(work.parent if work.parent.exists() else source.parent).free
         if needed + 512 * 1024 ** 2 > free:
@@ -357,7 +357,7 @@ def process_delivery(repository: Any, dataset_id: int, source: Path, *, progress
             columns = _resolved_columns(header)
             missing = [FIELDS[role] for role in REQUIRED_FIELDS if role not in columns]
             if missing:
-                raise ValueError('This file is not a Layer 3 - DT Logs delivery: it has no '
+                raise ValueError('This file is not a Layer3 Logs delivery: it has no '
                                  + ', '.join(missing) + (' column.' if len(missing) == 1 else ' columns.'))
             campaign_column = quote(columns['campaign'])
             campaigns = [(row[0], int(row[1])) for row in duck.execute(
@@ -442,7 +442,7 @@ def forget_datasets(repository: Any, dataset_ids: Iterable[int] | None = None) -
 
 def ensure_workspace_schema(connection: sqlite3.Connection) -> None:
     """The sessions table of a workspace; the datasets of the reserved Smart Orchestrator Logs type become
-    Layer 3 - DT Logs."""
+    Layer3 Logs."""
     ensure_schema(connection)
     # The JoinIDs of the first sessions, written in capitals (0X…), as the CDRs write them (0x…).
     connection.execute(f"UPDATE {SESSIONS_TABLE} SET join_id = '0x' || UPPER(SUBSTR(join_id, 3)) WHERE SUBSTR(join_id, 1, 2) = '0X'")
@@ -460,7 +460,7 @@ def ensure_workspace_schema(connection: sqlite3.Connection) -> None:
 # Reading the datasets
 
 def ready_datasets(repository: Any) -> list[dict[str, Any]]:
-    """The ready Layer 3 - DT Logs datasets of a workspace, newest first, with their campaign and summary."""
+    """The ready Layer3 Logs datasets of a workspace, newest first, with their campaign and summary."""
     datasets = []
     for row in repository.list_datasets():
         if not is_l3_kind(row['dataset_kind']) or str(row['status'] or '') != 'ready':
@@ -476,7 +476,7 @@ def ready_datasets(repository: Any) -> list[dict[str, Any]]:
 
 
 def dataset_summary(row: Any) -> dict[str, Any]:
-    """What the Datasets card shows of a Layer 3 - DT Logs dataset: its campaign, NR Mode, operators and sessions."""
+    """What the Datasets card shows of a Layer3 Logs dataset: its campaign, NR Mode, operators and sessions."""
     try:
         summary = json.loads((row.get('summary_json') if isinstance(row, dict) else row['summary_json']) or '{}')
     except (TypeError, ValueError):
@@ -485,7 +485,7 @@ def dataset_summary(row: Any) -> dict[str, Any]:
 
 
 def source_columns(source: Any) -> list[str]:
-    """The columns of the source of a Layer 3 - DT Logs dataset, as the parser named them."""
+    """The columns of the source of a Layer3 Logs dataset, as the parser named them."""
     path = Path(str(source or ''))
     if path.suffix.casefold() != SOURCE_SUFFIX or not path.is_file():
         return []
@@ -494,7 +494,7 @@ def source_columns(source: Any) -> list[str]:
 
 
 def preview_frame(source: Any, columns: Iterable[str], limit: int) -> Any:
-    """The first rows of a Layer 3 - DT Logs dataset, read from its source (the dataset has no rows in SQLite)."""
+    """The first rows of a Layer3 Logs dataset, read from its source (the dataset has no rows in SQLite)."""
     import pandas as pd
 
     path = Path(str(source or ''))
@@ -543,7 +543,7 @@ def sessions_of_join_ids(repository: Any, join_ids: Iterable[object], *, evidenc
 
 
 def nq_calls_by_dataset(repository: Any) -> dict[int, int]:
-    """How many NQ calls of the workspace have a session in each Layer 3 - DT Logs dataset."""
+    """How many NQ calls of the workspace have a session in each Layer3 Logs dataset."""
     with repository.connection() as connection:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         if SESSIONS_TABLE not in tables or 'nq_calls' not in tables:
@@ -761,7 +761,7 @@ def session_points(database_path: Any, session: dict[str, Any], limit: int = MAX
 
 
 def call_layers(repository: Any, join_id: str) -> dict[str, Any]:
-    """The Layer 3 - DT Logs of a call for its map: its sessions (one per UE), their points by kind of layer, the way of
+    """The Layer3 Logs of a call for its map: its sessions (one per UE), their points by kind of layer, the way of
     each UE and the folder name of every channel (as the KMZ files name them)."""
     sessions = sessions_of_join_ids(repository, [join_id]).get(str(join_id or '').strip().casefold(), [])
     index = {name: position for position, name in enumerate(CLIENT_COLUMNS)}
@@ -961,7 +961,7 @@ def ensure_evidence(repository: Any) -> list[int]:
 
 
 def rca_signature(repository: Any) -> dict[str, list[Any]]:
-    """What the DT Analyzer RCA reads of the Layer 3 - DT Logs: each ready dataset with when it was processed and the
+    """What the DT Analyzer RCA reads of the Layer3 Logs: each ready dataset with when it was processed and the
     Campaign of its rows (the calls of that campaign are calculated again when it changes)."""
     signature = {}
     for row in repository.list_datasets():
@@ -1031,7 +1031,7 @@ def call_evidence(sessions: list[dict[str, Any]]) -> dict[str, Any]:
         if evidence.get('neighbour_delta') is not None and float(evidence['neighbour_delta']) >= 3:
             notes.append(f"{prefix}LTE neighbour PCI {evidence.get('neighbour_pci')} {_shown_number(evidence['neighbour_delta'])} dB above "
                          f"the serving PCI {evidence.get('neighbour_serving_pci')}")
-    inputs[L3_NOTE] = ('Layer 3 - DT Logs: ' + '; '.join(notes)) if notes else ''
+    inputs[L3_NOTE] = ('Layer3 Logs: ' + '; '.join(notes)) if notes else ''
     return {key: value for key, value in inputs.items() if value is not None}
 
 
@@ -1046,7 +1046,7 @@ def rca_inputs(repository: Any, join_ids: Iterable[object]) -> dict[str, dict[st
 
 
 def map_checks(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The Diagnosis hints the Layer 3 - DT Logs of a call give (its map): what failed in its last seconds and its radio
+    """The Diagnosis hints the Layer3 Logs of a call give (its map): what failed in its last seconds and its radio
     there, each with the moment of the log it points at (``at``: the UE and the time of its point) when it has one."""
     checks: list[dict[str, Any]] = []
 
@@ -1118,7 +1118,7 @@ def map_checks(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 add(f'l3_{tech}_bler', 'warn', f'High {tech.upper()} BLER{who}', f'{tech.upper()} BLER {round(float(bler))}% in the last '
                     f'{EVENT_WINDOW_MS // 1000} s of the log.', ue)
     if sessions and not checks:
-        add('l3_fine', 'ok', 'Layer 3 - DT Logs', 'Its log shows no failure, weak radio or rejection in the seconds before the end.')
+        add('l3_fine', 'ok', 'Layer3 Logs', 'Its log shows no failure, weak radio or rejection in the seconds before the end.')
     return checks
 
 
@@ -1165,7 +1165,7 @@ def _box_sql(box: list[float] | None, margin: float = 0.0) -> tuple[str, list[fl
 
 def area_layers(repository: Any, join_ids: Iterable[object], *, bbox: Iterable[float] | None = None, zoom: float = 6,
                 layers: Iterable[str] = (), grid: str = '', route: bool = False) -> dict[str, Any]:
-    """The Layer 3 - DT Logs of many calls for a map of an area: from GRID_ZOOM the points of the layers on within ``bbox``
+    """The Layer3 Logs of many calls for a map of an area: from GRID_ZOOM the points of the layers on within ``bbox``
     (south, west, north, east) by session, in the form of call_layers; below it, the grid of the layer ``grid`` (a metric
     layer such as ``lte_pcell:rsrp``: the average of each cell of the map); from EVENT_ZOOM the events of the area when
     the layer Event is on, apart from the other points; with ``route`` the way of each session (``routes``, simplified to

@@ -51,7 +51,7 @@ module.exports = {
         { icon: 'TbSparkles', title: 'Recommendation', text: 'The sources that agree recommend the root cause of every call.' },
         { icon: 'TbListTree', title: 'Root Cause Catalog', text: 'One catalog of domains, categories and causes per workspace.' },
       ],
-      notes: 'The root cause of each call is decided from four sources, compared in Root Cause Sources and analysed in Root Cause Analysis. The recommendation combines them on the Root Cause Catalog of the workspace; the DT Analyzer RCA, which also reads the Layer 3 - DT Logs of the call when its campaign has them, has its own presentation.' },
+      notes: 'The root cause of each call is decided from four sources, compared in Root Cause Sources and analysed in Root Cause Analysis. The recommendation combines them on the Root Cause Catalog of the workspace; the DT Analyzer RCA, which also reads the Layer3 Logs of the call when its campaign has them, has its own presentation.' },
     { id: 'map', type: 'split', section: 'Failure Map', footer: 'Map of the call', kicker: 'Failure Map', title: 'The map of the call', visual: 'callmap',
       points: [
         { icon: 'TbMap2', title: 'Always at hand', text: 'The Failure Map step, Map in the header, or larger from Failure Details and Call Details; it follows the call shown.' },
@@ -60,7 +60,7 @@ module.exports = {
         { icon: 'TbZoomIn', title: 'Yours to explore', text: 'Cards From CDR and From Logs, map types, distances with their elevation profile, a panel for every element.' },
       ],
       notes: 'The map of the call opens from its Failure Map step, from Map in its header, or larger from Failure Details and Call Details, and follows the call shown. It draws where the call failed and its way, each cell of its trace at its inventory site by role, the sites around in the colour of their vendor, the Non-Qualified Calls around coloured by site (or call type, root cause domain, campaign or operator) and outlined by the groups of the call, and the RSRP / SINR of the tests around. Two cards over it switch what it shows by source, From CDR and From Logs, the map under them can be streets, grey streets, plain, terrain, topographic, satellite or dark, a distance measured shows the elevation profile of the ground, and a click on any element opens its panel.' },
-    { id: 'map-layer-3', type: 'tiles', section: 'Failure Map', footer: 'Layer 3 - DT Logs on the map', kicker: 'From Logs', title: 'The log of the call on its map', columns: 3,
+    { id: 'map-layer-3', type: 'tiles', section: 'Failure Map', footer: 'Layer3 Logs on the map', kicker: 'From Logs', title: 'The log of the call on its map', columns: 3,
       tiles: [
         { mini: 'layers', title: 'Every KMZ layer', text: 'RAN, events, L3 messages and the LTE and NR cells by channel and PCI, as the KMZ files.' },
         { mini: 'road', title: 'Its real way', text: 'The GPS of the log as a road from START to END, in place of the sketch of the CDR.' },
@@ -69,7 +69,7 @@ module.exports = {
         { mini: 'hints', title: 'Hints from the log', text: 'SCG failures, re-establishments, SIP errors, a stronger neighbour: each at its point.' },
         { mini: 'around', title: 'The logs around', text: 'The logs of the NQ calls of its groups and its area, faded below its own.' },
       ],
-      notes: 'A call with a session in the Layer 3 - DT Logs shows on its map every layer of the KMZ files of the NQ team, read from the imported logs: the RAN Configuration, the events, the L3 messages and the LTE and NR PCell, SCell and neighbour cells by channel and PCI, in the markers and colours of their legend. Its real way replaces the sketch of the CDR, the signalling timeline below the map shows its radio and messages and, dragged along, moves the UE on the map with the signalling of each moment, the Diagnosis hints add what the log shows, and the logs of the NQ calls around can be added, faded.' },
+      notes: 'A call with a session in the Layer3 Logs shows on its map every layer of the KMZ files of the NQ team, read from the imported logs: the RAN Configuration, the events, the L3 messages and the LTE and NR PCell, SCell and neighbour cells by channel and PCI, in the markers and colours of their legend. Its real way replaces the sketch of the CDR, the signalling timeline below the map shows its radio and messages and, dragged along, moves the UE on the map with the signalling of each moment, the Diagnosis hints add what the log shows, and the logs of the NQ calls around can be added, faded.' },
     { id: 'nq-maps', type: 'split', section: 'Failure Map', footer: 'NQ Maps', kicker: 'NQ Maps', title: 'Every NQ call on one map', visual: 'callmap',
       points: [
         { icon: 'TbWorld', title: 'From the country to a street', text: 'A grid of the logs far out, then their events, the sites and, close in, every point and sample.' },
@@ -77,7 +77,7 @@ module.exports = {
         { icon: 'TbRoute', title: 'Routes of the drives', text: 'The GPS of each session and the drive of each CDR, as roads.' },
         { icon: 'TbTimeline', title: 'The map of a call, for all', text: 'The same cards, legend and tools; the signalling timeline of the call chosen.' },
       ],
-      notes: 'NQ Maps draws every Non-Qualified Call of the filters with their CDRs and Layer 3 - DT Logs on one map, with the information and tools of the map of a call but without its groups. Far out it shows a grid of the average of a metric of the logs; zooming in, the events, the sites, and then every point of the layers and the RSRP / SINR samples of the CDRs. The NQ calls are coloured by call type, root cause domain, campaign, operator or site, the routes of the sessions and of the CDRs are drawn as roads, and a click on a call shows its signalling timeline. A double-click opens it over the whole width of the window.' },
+      notes: 'NQ Maps draws every Non-Qualified Call of the filters with their CDRs and Layer3 Logs on one map, with the information and tools of the map of a call but without its groups. Far out it shows a grid of the average of a metric of the logs; zooming in, the events, the sites, and then every point of the layers and the RSRP / SINR samples of the CDRs. The NQ calls are coloured by call type, root cause domain, campaign, operator or site, the routes of the sessions and of the CDRs are drawn as roads, and a click on a call shows its signalling timeline. A double-click opens it over the whole width of the window.' },
     { id: 'map-findings', type: 'tiles', section: 'Failure Map', footer: 'Below the map', kicker: 'Below the map', title: 'Everything the map tells you', columns: 3,
       tiles: [
         { mini: 'hints', title: 'Diagnosis hints', text: 'Coverage holes, interference, overshooting by ISD, PCI collisions, cells out of service, ping-pong.' },

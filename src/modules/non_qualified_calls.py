@@ -296,10 +296,10 @@ V37_FORMER_DESCRIPTIONS = (
 # A comment saved twice on its call (the same text by the same author, such as an analysis imported on two servers and
 # brought together by a transfer) is kept once.
 ANALYSIS_CENTER_V38_STATE_KEY = 'nq_analysis_center_v38'
-# The DT Analyzer RCA reads the Layer 3 - DT Logs (engine 4): a workspace with rules of its own takes the new default rules
+# The DT Analyzer RCA reads the Layer3 Logs (engine 4): a workspace with rules of its own takes the new default rules
 # and the conditions the default rules it kept as they were gained.
 ANALYSIS_CENTER_V39_STATE_KEY = 'nq_analysis_center_v39'
-# The Layer 3 - DT Logs the DT Analyzer RCA read last (l3_dt_logs.rca_signature): when one is imported, processed again or
+# The Layer3 Logs the DT Analyzer RCA read last (l3_dt_logs.rca_signature): when one is imported, processed again or
 # deleted, the calls of its campaign are calculated again.
 DTA_L3_STATE_KEY = 'nq_dta_rca_l3_logs'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
@@ -412,7 +412,7 @@ VERSION_LABELS = {
     'not_in_final': 'Not in the Final CDR', 'qualified': 'Completed in a newer CDR',
 }
 
-# The UEs (A, B or Data) of the Layer 3 - DT Logs sessions of a call, by its JOIN_ID (see l3_dt_logs).
+# The UEs (A, B or Data) of the Layer3 Logs sessions of a call, by its JOIN_ID (see l3_dt_logs).
 L3_LOG_SQL = (f"COALESCE((SELECT j.ues FROM {l3_dt_logs.JOIN_IDS_TABLE} j "
               "WHERE {alias}.join_id <> '' AND j.join_key = lower({alias}.join_id)), '')")
 
@@ -1784,7 +1784,7 @@ TABLE_COLUMNS_STATE_KEY = 'nq_calls_table_columns'
 OPTIONAL_COLUMNS = {
     'join_id': 'JOIN_ID', 'nr_mode': 'NR Mode', 'cell_id': 'Cell ID',
     'direction': 'Direction', 'session_type': 'Session Type (CDR)', 'end_time': 'End Time', 'cdr': 'CDR',
-    'l3_log': 'Layer 3 - DT Logs',
+    'l3_log': 'Layer3 Logs',
 }
 MAX_CDR_COLUMNS = 12
 # CDR columns exported to Excel besides those of the table.
@@ -4056,7 +4056,7 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
     network = _dta_network_signature(task_repository)
     fingerprint = nq_dta_rca.fingerprint(rules, taxonomy, network)
     everything = force or str(task_repository.get_workspace_state(nq_dta_rca.FINGERPRINT_STATE_KEY) or '') != fingerprint
-    # The calls of the campaigns whose Layer 3 - DT Logs changed since the last calculation.
+    # The calls of the campaigns whose Layer3 Logs changed since the last calculation.
     logs = l3_dt_logs.rca_signature(task_repository)
     campaigns = _l3_changed_campaigns(task_repository, logs)
     missing = '' if everything else (f' WHERE NOT EXISTS (SELECT 1 FROM {NQ_DTA_RESULTS_TABLE} r '
@@ -4067,7 +4067,7 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
                                   [] if everything else [campaign.casefold() for campaign in campaigns]).fetchall()
     compiled = nq_dta_rca.compile_rules(rules, taxonomy)
     context = _dta_context(task_repository, rows, bool(network))
-    # What the Layer 3 - DT Logs of each call tell, by its JOIN_ID.
+    # What the Layer3 Logs of each call tell, by its JOIN_ID.
     logged = l3_dt_logs.rca_inputs(task_repository, [row['join_id'] for row in rows if row['join_id']]) if logs else {}
     results = []
     for row in rows:
@@ -4100,7 +4100,7 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
 
 
 def _l3_changed_campaigns(task_repository: Any, logs: dict[str, list[Any]]) -> list[str]:
-    """The Campaign values whose Layer 3 - DT Logs were imported, processed again or deleted since the DT Analyzer RCA
+    """The Campaign values whose Layer3 Logs were imported, processed again or deleted since the DT Analyzer RCA
     read them last."""
     try:
         before = json.loads(task_repository.get_workspace_state(DTA_L3_STATE_KEY) or '{}') or {}
@@ -4713,7 +4713,7 @@ def _call_payload(row: Any) -> dict[str, Any]:
 def l3_map_calls(task_repository: Any, filters: dict[str, Any], username: str, limit: int = 20000) -> list[dict[str, Any]]:
     """The NQ calls of the filters for NQ Maps: where they failed, their operator, campaign, service, result, root
     cause (the one decided, else that of the DT Analyzer RCA), the site of their CDR and the UEs of their session in the
-    Layer 3 - DT Logs."""
+    Layer3 Logs."""
     options = list_options(task_repository)
     definitions = list_fields(task_repository)
     filters = _resolve_key_filters(task_repository, filters if isinstance(filters, dict) else {})
@@ -9699,7 +9699,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.get('/api/non-qualified-calls/calls/{call_key}/l3')
     def nq_call_l3_route(call_key: str, user=Depends(core.current_user)) -> JSONResponse:
-        """The Layer 3 - DT Logs of a call for its map: its sessions (one per UE), their points by layer and the way of each
+        """The Layer3 Logs of a call for its map: its sessions (one per UE), their points by layer and the way of each
         UE (see l3_dt_logs.call_layers). App Events records each one read."""
         repository = workspace_repository(user)
         started = time.monotonic()
@@ -9711,7 +9711,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             payload = l3_dt_logs.call_layers(repository, join_id) if join_id else {'join_id': '', 'ues': {}}
         except Exception as error:  # noqa: BLE001 - App Events keeps what failed for its troubleshooting.
             log_action(repository, user, 'nq_call_l3_layers_failed', {**details, 'error': f'{type(error).__name__}: {error}'[:500]})
-            raise HTTPException(500, 'The Layer 3 - DT Logs of the call could not be read. App Events keeps the error.') from error
+            raise HTTPException(500, 'The Layer3 Logs of the call could not be read. App Events keeps the error.') from error
         log_action(repository, user, 'nq_call_l3_layers', {
             **details, 'ues': sorted(payload.get('ues') or {}),
             'points': {ue: len(item['points']) for ue, item in (payload.get('ues') or {}).items()},
@@ -9736,7 +9736,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.post('/api/non-qualified-calls/l3-maps')
     def nq_l3_maps_route(payload: L3MapsPayload, user=Depends(core.current_user)) -> JSONResponse:
-        """NQ Maps: the Layer 3 - DT Logs of the NQ calls of the filters (or of the calls ``join_ids``, those around a
+        """NQ Maps: the Layer3 Logs of the NQ calls of the filters (or of the calls ``join_ids``, those around a
         call) in the area of the map: a grid of the averages of a layer below l3_dt_logs.GRID_ZOOM, the points of its layers
         on above it, the events from l3_dt_logs.EVENT_ZOOM and the route of each session (see l3_dt_logs.area_layers); for
         the filters, also every NQ call of them, and in the area the inventory sites from nq_call_map.AREA_SITES_ZOOM and the
@@ -9782,11 +9782,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.get('/api/non-qualified-calls/calls/{call_key}/l3/record')
     def nq_call_l3_record_route(call_key: str, dataset_id: int, row: int, user=Depends(core.current_user)) -> JSONResponse:
-        """Every value of one record of the Layer 3 - DT Logs of a call (a point of its map), read from its source."""
+        """Every value of one record of the Layer3 Logs of a call (a point of its map), read from its source."""
         repository = workspace_repository(user)
         join_id = _call_join_id(repository, call_key)
         if not join_id:
-            raise HTTPException(404, 'The call has no Layer 3 - DT Logs.')
+            raise HTTPException(404, 'The call has no Layer3 Logs.')
         sessions = l3_dt_logs.sessions_of_join_ids(repository, [join_id]).get(join_id.casefold(), [])
         session = next((item for item in sessions if int(item['dataset_id']) == int(dataset_id)), None)
         if session is None:

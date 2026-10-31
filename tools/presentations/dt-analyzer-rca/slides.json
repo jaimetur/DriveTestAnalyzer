@@ -6,7 +6,7 @@
       "image": "slide-01.png",
       "section": "Introduction",
       "title": "DT Analyzer RCA",
-      "notes": "The DT Analyzer RCA finds the root domain, Root Category and Root Cause of every Non-Qualified Call, test and Speech sample from the data of its CDR, with a Network Inventory from the network around it and, when its campaign has them, from its Layer 3 - DT Logs. It works in every workspace, whatever its CDR provider, with 77 default rules that every workspace can change."
+      "notes": "The DT Analyzer RCA finds the root domain, Root Category and Root Cause of every Non-Qualified Call, test and Speech sample from the data of its CDR, with a Network Inventory from the network around it and, when its campaign has them, from its Layer3 Logs. It works in every workspace, whatever its CDR provider, with 77 default rules that every workspace can change."
     },
     {
       "id": "sources",
@@ -20,21 +20,21 @@
       "image": "slide-03.png",
       "section": "How it works",
       "title": "Everything the CDR knows about the call",
-      "notes": "Every value is read through the field profile of the CDR type of the workspace, so the same rules serve NetCheck, Umlaut and the providers to come. The failure description joins the RCA of the provider with the signalling events of the CDR; the signalling events alone let rules ignore the RCA of the provider. The Network Inventory adds the serving and nearest sites against their inter-site distance, PCI collisions and cells out of service. When the campaign of the call has Layer 3 - DT Logs, the next slide shows what its session adds."
+      "notes": "Every value is read through the field profile of the CDR type of the workspace, so the same rules serve NetCheck, Umlaut and the providers to come. The failure description joins the RCA of the provider with the signalling events of the CDR; the signalling events alone let rules ignore the RCA of the provider. The Network Inventory adds the serving and nearest sites against their inter-site distance, PCI collisions and cells out of service. When the campaign of the call has Layer3 Logs, the next slide shows what its session adds."
     },
     {
       "id": "layer-3",
       "image": "slide-04.png",
       "section": "How it works",
       "title": "What the log of the call adds",
-      "notes": "When the campaign of a call has Layer 3 - DT Logs, its session, found by its JOIN_ID (both UEs of a Voice call), gives the rules what the UE measured and signalled right before the failure: the RSRP, RSRQ and SINR of its LTE and NR PCell in the last 5 seconds, its SCG failures, RRC re-establishments, releases and rejects, its handovers and inter-RAT changes and a stronger neighbour on the serving channel with no handover to it, the worst SIP response (the normal 401, 407, 487 and 489 left out), the UE at its maximum power and the BLER, and a session that never measured the radio. Twelve rules read the log first, before the radio of the CDR, and the rules of rejects, authentication, TAU, IMS, handover, radio link and inter-RAT read it too. The evidence of the decision quotes the log, and importing or deleting a log calculates again the calls of its campaign."
+      "notes": "When the campaign of a call has Layer3 Logs, its session, found by its JOIN_ID (both UEs of a Voice call), gives the rules what the UE measured and signalled right before the failure: the RSRP, RSRQ and SINR of its LTE and NR PCell in the last 5 seconds, its SCG failures, RRC re-establishments, releases and rejects, its handovers and inter-RAT changes and a stronger neighbour on the serving channel with no handover to it, the worst SIP response (the normal 401, 407, 487 and 489 left out), the UE at its maximum power and the BLER, and a session that never measured the radio. Twelve rules read the log first, before the radio of the CDR, and the rules of rejects, authentication, TAU, IMS, handover, radio link and inter-RAT read it too. The evidence of the decision quotes the log, and importing or deleting a log calculates again the calls of its campaign."
     },
     {
       "id": "rules",
       "image": "slide-05.png",
       "section": "How it works",
       "title": "The first rule that holds decides",
-      "notes": "The rules are tried from top to bottom and the first one of the service of the call whose conditions hold decides. They are grouped in blocks: what the provider reports outside the radio and the lack of resources, the network around the call, what its Layer 3 - DT Logs show, the radio, handovers and the radio link, the coverage and interference the provider reports, the service, and Not identified for the rest. The order matters: a broad rule high in the list hides those below it."
+      "notes": "The rules are tried from top to bottom and the first one of the service of the call whose conditions hold decides. They are grouped in blocks: what the provider reports outside the radio and the lack of resources, the network around the call, what its Layer3 Logs show, the radio, handovers and the radio link, the coverage and interference the provider reports, the service, and Not identified for the rest. The order matters: a broad rule high in the list hides those below it."
     },
     {
       "id": "resources",

@@ -263,7 +263,7 @@
 .nq-drawer-ids { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 1.4rem; }
 /* Its title level with that of the JOIN_ID and its value in a row as tall as the copy button, level with the JOIN_ID. */
 .nq-drawer-unique { grid-template-columns: minmax(0, max-content); grid-template-rows: auto 1.85rem; }
-/* The UEs of the call with a session in the Layer 3 - DT Logs, level with the JOIN_ID. */
+/* The UEs of the call with a session in the Layer3 Logs, level with the JOIN_ID. */
 .nq-drawer-l3 { grid-template-columns: minmax(0, max-content); grid-template-rows: auto 1.85rem; }
 .nq-drawer-join.nq-drawer-l3 code { min-height: 1.85rem; display: inline-flex; align-items: center; background: #e0f4f8; color: #0b5368; }
 /* Its groups, white cards in the colour of their group on the map of the call. */
@@ -1928,7 +1928,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
   width: max-content; max-width: calc(100% - 1.2rem); height: calc(100% - max(1.4rem, 8px + var(--nq-map-bottom-space, 0px))); pointer-events: none; }
 .nq-map-panels > .nq-l3-panel { position: relative; top: auto; left: auto; flex: 0 1 auto; width: 19.5rem; max-width: 100%; min-height: 0; max-height: 100%; pointer-events: auto; }
 .nq-map-panels > .nq-l3-panel.is-collapsed { width: auto; }
-/* Unfolded, the layers of the Layer 3 - DT Logs take two columns (Route beside Signalling, LTE beside NR), one on a narrow map. */
+/* Unfolded, the layers of the Layer3 Logs take two columns (Route beside Signalling, LTE beside NR), one on a narrow map. */
 .nq-map-panels > .nq-l3-panel:not(.nq-map-samples-panel):not(.is-collapsed) { width: 40rem; }
 .nq-map-panels > .nq-l3-panel:not(.nq-map-samples-panel) .nq-l3-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); align-items: start; }
 .nq-map-panels > .nq-l3-panel:not(.nq-map-samples-panel) .nq-l3-body > :not(.nq-l3-section) { grid-column: 1 / -1; }
@@ -2158,7 +2158,7 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
   .nq-map-expand-toolbar { gap: .35rem .6rem; }
 }
 
-/* Layer 3 - DT Logs on the maps (l3_layers.js): a glass panel over the top left of the map with the layers of the KMZ files
+/* Layer3 Logs on the maps (l3_layers.js): a glass panel over the top left of the map with the layers of the KMZ files
    by section (Route, Signalling, LTE, NR), each with its switch, its marker, its count and, unfolded, its channels and PCIs. */
 .nq-l3-panel { position: absolute; z-index: 4; top: 3.1rem; left: 8px; display: flex; flex-direction: column; width: min(19.5rem, calc(100% - 1.2rem));
   max-height: calc(100% - 4.4rem); border: 1px solid rgba(15, 52, 66, .14); border-radius: 14px; background: rgba(255, 255, 255, .93);
@@ -2230,7 +2230,7 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .nq-l3-record { max-height: 18rem; overflow-y: auto; }
 @media (max-width: 640px) { .nq-l3-panel { width: calc(100% - 1.2rem); max-height: 55%; } .nq-map-panels { max-height: 60%; } }
 
-/* The signalling timeline of the Layer 3 - DT Logs, below the map and its legend (in its images too). */
+/* The signalling timeline of the Layer3 Logs, below the map and its legend (in its images too). */
 .nq-l3-timeline-host:empty { display: none; }
 .nq-l3-timeline { position: relative; margin-top: .6rem; border: 1px solid #d7e8ed; border-radius: 12px; background: #fff; }
 .nq-l3-timeline[hidden] { display: none; }
@@ -2281,10 +2281,10 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 .nq-l3-timeline-tip div { display: flex; justify-content: space-between; gap: .6rem; }
 .nq-l3-timeline-tip span { color: #6b8189; }
 
-/* The Diagnosis hints of the Layer 3 - DT Logs: a teal edge, beside those of the CDR. */
+/* The Diagnosis hints of the Layer3 Logs: a teal edge, beside those of the CDR. */
 .nq-map-checks li.is-l3 { box-shadow: inset 3px 0 0 #0b6e8a; }
 
-/* NQ Maps: the map of the Layer 3 - DT Logs of the filtered calls, as tall as the screen allows. */
+/* NQ Maps: the map of the Layer3 Logs of the filtered calls, as tall as the screen allows. */
 .nq-l3-maps-panel .nq-map-card { height: clamp(420px, calc(100vh - 16rem), 900px); }
 .nq-l3-maps-status { margin: 0 0 .5rem; color: #4f6b75; font-size: .8rem; font-weight: 700; }
 .nq-l3-area { display: flex; flex-direction: column; gap: .35rem; padding: .45rem .55rem; border: 1px solid #d7e8ed; border-radius: 10px; background: #f6fbfc; }

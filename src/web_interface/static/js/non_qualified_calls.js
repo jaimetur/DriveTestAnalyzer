@@ -3140,7 +3140,7 @@
   // The NQ rate depends only on these filters and on the indexed CDRs: other filter changes keep it.
   const RATE_FILTER_KEYS = ['datasets', 'service', 'campaign', 'operator', 'nr_mode'];
   let rateKey = '';
-  // NQ Maps: the Layer 3 - DT Logs of the filtered calls (nq_call_map.js mountArea), mounted when first shown and read
+  // NQ Maps: the Layer3 Logs of the filtered calls (nq_call_map.js mountArea), mounted when first shown and read
   // again when the filters or the calls change.
   let l3Maps = null, l3MapsKey = '';
   async function loadL3Maps() {

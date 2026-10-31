@@ -285,7 +285,7 @@
     if (cdrFolded.has(key)) cdrFolded.delete(key); else cdrFolded.add(key);
     try { localStorage.setItem(CDR_FOLDED_KEY, JSON.stringify([...cdrFolded])); } catch (_error) { /* A private window keeps them for the page. */ }
   };
-  // A switch as those of the layers of the Layer 3 - DT Logs (l3_layers.js).
+  // A switch as those of the layers of the Layer3 Logs (l3_layers.js).
   const switchControl = (checked, label, onChange) => {
     const wrap = node('label', undefined, 'nq-l3-switch');
     const box = node('input');
@@ -547,7 +547,7 @@
     };
     basemapViews.add(basemapChanged);
     // The cards over the top left of the map: the RSRP / SINR samples of the CDRs (shown or hidden with its switch, the
-    // measure that colours them and, on the map of a call, the CDRs they come from), above the layers of the Layer 3 - DT
+    // measure that colours them and, on the map of a call, the CDRs they come from), above the layers of the Layer3
     // Logs (l3_layers.js).
     const panels = node('div', undefined, 'nq-map-panels');
     const samples = node('section', undefined, 'nq-l3-panel nq-map-samples-panel');
@@ -710,7 +710,7 @@
         const [x, y] = toWorld(failure.latitude, failure.longitude);
         [west, east, north, south] = [Math.min(west, x), Math.max(east, x), Math.min(north, y), Math.max(south, y)];
       }
-      // The whole way of the UE of its Layer 3 - DT Logs.
+      // The whole way of the UE of its Layer3 Logs.
       const l3Bounds = window.L3Layers?.bounds(shared.l3);
       if (l3Bounds) {
         const [x1, y1] = toWorld(l3Bounds.north, l3Bounds.west), [x2, y2] = toWorld(l3Bounds.south, l3Bounds.east);
@@ -750,7 +750,7 @@
     card.replaceChildren(canvas, ruler, selectionBox, panels, controls, counts, bottomStack, attribution, wheelHint, tooltip);
     // The legend goes below the map (in its images too), so it hides none of it.
     (legendHost || card).replaceChildren(legend);
-    // The layers of the Layer 3 - DT Logs of the call (l3_layers.js), over the map so that its images show them.
+    // The layers of the Layer3 Logs of the call (l3_layers.js), over the map so that its images show them.
     const l3Tree = window.L3Layers ? window.L3Layers.createTree(panels, () => shared.l3, () => { renderLegend(); redraw(); }) : null;
 
     const project = (latitude, longitude) => {
@@ -1309,7 +1309,7 @@
       // (a Voice call), else, for a Data test (the CDR gives only where it started and how far it went), its way simulated
       // along the way of its car with an arrow where it ended. A Data test without the way of its car shows the zone it can
       // have been in instead.
-      // With Layer 3 - DT Logs, the real way of the UE (from its GPS) replaces the sketch.
+      // With Layer3 Logs, the real way of the UE (from its GPS) replaces the sketch.
       const realWay = window.L3Layers?.wayOf(shared.l3) || null;
       const base = realWay ? realWay.map(([latitude, longitude]) => project(latitude, longitude))
         : (call.way?.points || []).length > 1 ? call.way.points.map(([latitude, longitude]) => project(latitude, longitude)) : null;
@@ -1346,7 +1346,7 @@
           context.setLineDash([]);
         }
       }
-      // NQ Maps: the route of each session of the Layer 3 - DT Logs in time order (its switch in their card), a gap of more
+      // NQ Maps: the route of each session of the Layer3 Logs in time order (its switch in their card), a gap of more
       // than 20 s cutting it.
       if (data.area) {
         for (const route of window.L3Layers?.routesOf(shared.l3) || []) {
@@ -1358,7 +1358,7 @@
           paintPieces(pieces, window.L3Layers.ROUTE_COLOUR, 'l3_route', route, 2);
         }
       }
-      // The points of the layers of its Layer 3 - DT Logs that are on.
+      // The points of the layers of its Layer3 Logs that are on.
       if (window.L3Layers?.state.around) window.L3Layers.draw(context, shared.l3Around, {project, hits, zoom, width, height, faded: true});
       window.L3Layers?.draw(context, shared.l3, {project, hits, zoom, width, height});
       window.L3Layers?.drawHighlight(context, shared.l3Hover, project);
@@ -1414,7 +1414,7 @@
           // Stars, which no layer of the logs uses, with a shadow (a little larger close in); larger on the map of a call than
           // on NQ Maps, where they are many.
           const size = data.area ? 6.5 + (zoom >= 15 ? 1 : 0) : 8 + (zoom >= 15 ? 1.5 : 0);
-          // On NQ Maps those without Layer 3 - DT Logs are hollow, in their colour.
+          // On NQ Maps those without Layer3 Logs are hollow, in their colour.
           const hollow = data.area && !items.some((item) => item.l3_log);
           // And Group: an outline of its shape for each group of the call the calls on the point are of.
           const groups = data.area ? [] : ['cluster', 'run', 'hotspot'].filter((kind) => items.some((item) => shared.failureGroups(item).includes(kind)));
@@ -1939,7 +1939,7 @@
       legend.replaceChildren();
       renderSamples();
       if (!data) return;
-      fitButton.title = data.area ? 'Show every NQ call of the filters with Layer 3 - DT Logs' : FIT_TITLE;
+      fitButton.title = data.area ? 'Show every NQ call of the filters with Layer3 Logs' : FIT_TITLE;
       fitButton.setAttribute('aria-label', fitButton.title);
       const paths = visibleRings(data).some((ring) => ring.path && ring.path.length > 1);
       const layers = shownLayers(settings);
@@ -1990,7 +1990,7 @@
         if (layers.failures) {
           group(`NQ calls · by ${AREA_FAILURE_COLOURS[settings.failureColour].toLowerCase()}`);
           shared.failureLegend().forEach(([text, colour, extra]) => item('star', text, colour, extra));
-          if (data.failures.some((failure) => !failure.l3_log)) item('star', 'Hollow: without Layer 3 - DT Logs', '#495057', 'is-outlined');
+          if (data.failures.some((failure) => !failure.l3_log)) item('star', 'Hollow: without Layer3 Logs', '#495057', 'is-outlined');
           item('count', 'NQ calls at one point (how many)', '#2d1520');
         }
         const routes = (window.L3Layers?.routesOf(shared.l3) || []).length, sites = layers.sites !== false && data.sites.length;
@@ -2152,7 +2152,7 @@
     mapWrap.insertBefore(timelineHost, selected);
     panel.replaceChildren(toolbar, status, mapWrap, node('p', PANEL_HINT, 'form-note nq-map-hint'), cards);
 
-    // ``l3``: the Layer 3 - DT Logs of the call shown, ready to draw (l3_layers.js), or null.
+    // ``l3``: the Layer3 Logs of the call shown, ready to draw (l3_layers.js), or null.
     const shared = {data: null, settings, selection: null, l3: null};
     // The Non-Qualified Calls around that the map and its list show: those of the CDR, the campaign (and NR Mode) or every
     // campaign chosen, of its operator or of every operator (its repetitions and its hotspot whatever the operators chosen).
@@ -2266,11 +2266,11 @@
     const siteName = (site) => `Site ${site.site_id} · ${site.network}${site.host_network && site.host_network !== site.network ? ` on ${site.host_network}` : ''}`;
     shared.describe = (kind, item) => {
       const data = shared.data;
-      // A point of the Layer 3 - DT Logs of the call (l3_layers.js), and the real way of its UE.
+      // A point of the Layer3 Logs of the call (l3_layers.js), and the real way of its UE.
       if (kind === 'l3') return window.L3Layers.describe(item, shared.l3);
       if (kind === 'l3_way') {
         const sessions = Object.values(shared.l3?.sessions || {});
-        return {title: 'Real way of the UE', rows: [['From', 'The GPS positions of the Layer 3 - DT Logs of the call'],
+        return {title: 'Real way of the UE', rows: [['From', 'The GPS positions of the Layer3 Logs of the call'],
           ['Positions', item.points], ['UEs', sessions.map((session) => session.ue).join(', ')],
           ['Dataset', sessions.map((session) => session.dataset_name).filter(Boolean)[0] || '']]};
       }
@@ -2644,7 +2644,7 @@
         text.append(node('strong', check.title), node('small', check.detail));
         entry.append(badge, text);
         const site = siteFor(check);
-        // A hint of the Layer 3 - DT Logs points at its moment of the log: the point of that UE nearest in time.
+        // A hint of the Layer3 Logs points at its moment of the log: the point of that UE nearest in time.
         const logPoint = () => {
           if (!check.at || !shared.l3) return null;
           const candidates = shared.l3.points.filter((point) => (!check.at.ue || point.ue === check.at.ue) && point.lat !== null && Number.isFinite(point.ms));
@@ -2661,7 +2661,7 @@
         } else if (check.at) {
           entry.classList.add('is-linked');
           entry.tabIndex = 0;
-          entry.title = 'Show its moment of the Layer 3 - DT Logs on the map';
+          entry.title = 'Show its moment of the Layer3 Logs on the map';
           const choose = () => {
             const point = logPoint();
             if (!point) return;
@@ -2876,7 +2876,7 @@
       aroundKey = '';
       if (callKey && shared.l3) loadAround(callKey);
     });
-    // The Layer 3 - DT Logs of the call, when the workspace has a session of it (after its map, without delaying it).
+    // The Layer3 Logs of the call, when the workspace has a session of it (after its map, without delaying it).
     const loadL3 = async (key) => {
       if (!window.L3Layers || l3Key === key) return;
       l3Request?.abort();
@@ -2927,7 +2927,7 @@
         if (request !== controllerAbort || key !== callKey) return false;
         const sameCall = loadedKey === key;
         shared.data = data;
-        // The Layer 3 - DT Logs colour their RSRP and SINR by the levels of the samples of the CDRs.
+        // The Layer3 Logs colour their RSRP and SINR by the levels of the samples of the CDRs.
         window.L3Layers?.setClasses(data.classes);
         setRings(data.rings);
         groupFocus = groupFilter();
@@ -3021,7 +3021,7 @@
     });
 
     const panelView = createView(card, shared, {onExpand: openExpanded, legendHost: mapLegend});
-    // The signalling timeline of the Layer 3 - DT Logs of the call: hovering a message rings its point on the maps, a click
+    // The signalling timeline of the Layer3 Logs of the call: hovering a message rings its point on the maps, a click
     // centres them on it and shows its values.
     const timelineEvents = {
       onHover: (point) => { shared.l3Hover = point; views().forEach((view) => view.redraw()); },
@@ -3097,7 +3097,7 @@
     return controller;
   }
 
-  // -- NQ Maps: the Layer 3 - DT Logs of every NQ call of the filters, on the same map as that of a call ----------------
+  // -- NQ Maps: the Layer3 Logs of every NQ call of the filters, on the same map as that of a call ----------------
   // From the whole country (a grid of the average of the metric chosen, the NQ calls by their call type and
   // the route of each session) down to a single site or call: the events from the zoom of EVENT_ZOOM, the sites from that of
   // the sites, and the points of the layers on and the RSRP / SINR samples of the CDRs in the area shown from that of the
@@ -3110,7 +3110,7 @@
     cdrTime = (value) => String(value || '').replace('T', ' ').slice(0, 19), number = (value) => Number(value).toLocaleString('en-GB')}) {
     let stored = {};
     try { stored = JSON.parse(localStorage.getItem(AREA_SETTINGS_KEY) || '{}') || {}; } catch (_error) { stored = {}; }
-    // Besides the Layer 3 - DT Logs, as on the map of a call (without its groups): the NQ calls, the sites and the route of
+    // Besides the Layer3 Logs, as on the map of a call (without its groups): the NQ calls, the sites and the route of
     // each session (shown until switched off), the RSRP / SINR samples of the CDRs (hidden until switched on), what colours
     // the NQ calls and the operators shown.
     // (The route from the CDR, a sketch between its tests, is off until switched on: the GPS of the logs is the real one.)
@@ -3147,7 +3147,7 @@
     const legendHost = node('div', undefined, 'nq-map-legend-host');
     const selected = node('section', undefined, 'nq-map-info nq-map-selected');
     selected.hidden = true;
-    // The signalling timeline of the NQ call chosen on the map (its Layer 3 - DT Logs), as on the map of a call.
+    // The signalling timeline of the NQ call chosen on the map (its Layer3 Logs), as on the map of a call.
     const timelineHost = node('div', undefined, 'nq-l3-timeline-host');
     const wrap = node('div', undefined, 'nq-map-wrap');
     wrap.append(card, legendHost, timelineHost, selected);
@@ -3172,7 +3172,7 @@
           ['Test', item.test_name], ['Started', cdrTime(item.start_time)], ['Status', item.status],
           ['Root cause', [item.root_domain, item.root_category, item.root_cause].filter(Boolean).join(' · ')],
           ['DT Analyzer RCA', [item.dta_domain, item.dta_category, item.dta_cause].filter(Boolean).join(' · ')],
-          ['Layer 3 - DT Logs', item.l3_log || 'None']]};
+          ['Layer3 Logs', item.l3_log || 'None']]};
       }
       if (['l3', 'l3_cell'].includes(kind)) return window.L3Layers.describe(item, shared.l3);
       if (kind === 'l3_focus') return window.L3Layers.describe(item, shared.l3Focus);
@@ -3230,7 +3230,7 @@
       target.replaceChildren(content);
       target.hidden = false;
     };
-    // The NQ call of the element chosen (an NQ call, a point or the route of its log): its Layer 3 - DT Logs read for its
+    // The NQ call of the element chosen (an NQ call, a point or the route of its log): its Layer3 Logs read for its
     // signalling timeline below the map.
     let focusKey = '', focusRequest = null, focusCall = null;
     const callOf = (choice) => {
@@ -3282,8 +3282,8 @@
       caption: () => (focusCall ? [KIND_LABELS[focusCall.kind] || focusCall.service_label, focusCall.operator, focusCall.join_id].filter(Boolean).join(' · ') : ''),
       // Until a call with a log is chosen: how to choose one.
       empty: () => (callOf(shared.selection) && !callOf(shared.selection).l3_log
-        ? 'The NQ call chosen has no Layer 3 - DT Logs (a hollow diamond): choose one with a log to see its signalling timeline here.'
-        : 'Choose an NQ call with Layer 3 - DT Logs (a click on it, on a point of its log or on its route) to see its signalling timeline here.'),
+        ? 'The NQ call chosen has no Layer3 Logs (a hollow diamond): choose one with a log to see its signalling timeline here.'
+        : 'Choose an NQ call with Layer3 Logs (a click on it, on a point of its log or on its route) to see its signalling timeline here.'),
     };
     window.L3Layers?.createTimeline(timelineHost, () => shared.l3Focus || null, timelineEvents);
 
@@ -3355,8 +3355,8 @@
     };
     const statusText = (payload) => {
       if (!payload.calls_count) return 'No NQ call matches the filters.';
-      const text = `${number(payload.calls_count)} NQ calls of the filters · ${number(payload.calls_with_log)} with Layer 3 - DT Logs (${number(payload.sessions)} sessions)`;
-      if (!payload.calls_with_log) return `${text} · Import them in Workspace (Layer 3 - DT Logs).`;
+      const text = `${number(payload.calls_count)} NQ calls of the filters · ${number(payload.calls_with_log)} with Layer3 Logs (${number(payload.sessions)} sessions)`;
+      if (!payload.calls_with_log) return `${text} · Import them in Workspace (Layer3 Logs).`;
       const sites = payload.sites ? ` · ${number(payload.sites.sites.length)} sites${payload.sites.truncated ? ' (the nearest to the centre)' : ''}` : '';
       return text + sites + (payload.mode === 'grid' ? ` · zoom in: events from zoom ${payload.zooms.events}, sites from ${payload.zooms.sites}, `
         + `points and RSRP / SINR samples from ${payload.zooms.grid}` : '');
@@ -3368,7 +3368,7 @@
       request?.abort();
       const controllerAbort = new AbortController();
       request = controllerAbort;
-      status.textContent = 'Reading the Layer 3 - DT Logs of the NQ calls…';
+      status.textContent = 'Reading the Layer3 Logs of the NQ calls…';
       try {
         const body = {filters: filters(), zoom: info ? info.zoom : 6, layers: [...window.L3Layers.state.on], grid: window.L3Layers.state.grid,
           // The routes of the logs (their layer Route), the sites and the tests (for the samples and the route from the CDR).

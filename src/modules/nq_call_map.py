@@ -1601,7 +1601,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     if not positions['start']:
         positions['start'] = _position(call.get('latitude'), call.get('longitude'))
     if not positions['start'] and _text(call.get('l3_log')) and _text(call.get('join_id')):
-        # The CDR without its position: where its Layer 3 - DT Logs started and ended (that of UE A or Data first).
+        # The CDR without its position: where its Layer3 Logs started and ended (that of UE A or Data first).
         from src.modules import l3_dt_logs
 
         sessions = l3_dt_logs.sessions_of_join_ids(repository, [call['join_id']]).get(_text(call['join_id']).casefold(), [])
@@ -1726,7 +1726,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     ran['isds'] = {step['site']: index.isd(step['site']) for step in trace if step.get('site')} if index else {}
     checks = diagnosis(call, call_radio(service, row, columns, fields_profile), trace, sites, failures, test_points, radius,
                        int(prioritization_settings(repository).get('min_calls') or 2), ran, point, travel)
-    # What its Layer 3 - DT Logs show in its last seconds (l3_dt_logs), each pointing at its moment of the log.
+    # What its Layer3 Logs show in its last seconds (l3_dt_logs), each pointing at its moment of the log.
     if _text(call.get('join_id')) and _text(call.get('l3_log')):
         from src.modules import l3_dt_logs
 
@@ -1747,7 +1747,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     return {
         'call': {
             'call_key': call['call_key'], 'parent_key': _text(call.get('parent_key')), 'join_id': _text(call.get('join_id')),
-            # The UEs of the call with a session in the Layer 3 - DT Logs, whose layers the map reads apart (l3_dt_logs).
+            # The UEs of the call with a session in the Layer3 Logs, whose layers the map reads apart (l3_dt_logs).
             'l3_log': _text(call.get('l3_log')),
             'service': service, 'service_label': call.get('service_label'), 'operator': _text(call.get('operator')),
             'kind': call_kind(service, call.get('test_name'), call.get('session_type')),
@@ -1785,13 +1785,13 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     }
 
 
-# Below the Very poor RSRP of Network Insights, the level the Layer 3 - DT Logs draw too (their legend starts at −120 dBm).
+# Below the Very poor RSRP of Network Insights, the level the Layer3 Logs draw too (their legend starts at −120 dBm).
 RSRP_FLOOR_CLASS = ('Extremely poor', -120.0, '#8B0A1A')
 
 
 def sample_classes() -> dict[str, list[dict[str, Any]]]:
     """The levels of the RSRP and SINR of the samples, as Network Insights colours them, with Extremely poor below
-    −120 dBm: the same on both maps for the samples of the CDRs and the points of the Layer 3 - DT Logs."""
+    −120 dBm: the same on both maps for the samples of the CDRs and the points of the Layer3 Logs."""
     from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
 
     floor_label, floor, floor_colour = RSRP_FLOOR_CLASS

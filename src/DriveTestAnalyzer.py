@@ -411,7 +411,7 @@ INPUT_KIND_LABELS = {
     'regions': 'Regions — Geospatial',
     'clusters': 'Clusters — Geospatial',
     'vendors': 'Vendors — Geospatial',
-    'l3_dt_logs': 'Layer 3 - DT Logs',
+    'l3_dt_logs': 'Layer3 Logs',
     'generic': 'Other',
 }
 UPLOAD_DATASET_KINDS = frozenset({'data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'generic'})
@@ -4006,7 +4006,7 @@ def add_combined_inclusion(datasets: list[dict[str, Any]], task_repository: Repo
 
 
 def add_l3_nq_calls(datasets: list[dict[str, Any]], task_repository: Repository | None = None) -> None:
-    """How many NQ calls of the workspace have a session in each Layer 3 - DT Logs dataset, for its Datasets card."""
+    """How many NQ calls of the workspace have a session in each Layer3 Logs dataset, for its Datasets card."""
     if not any(dataset.get('dataset_kind') == L3_DT_LOGS_KIND for dataset in datasets):
         return
     from src.modules.l3_dt_logs import nq_calls_by_dataset
@@ -5089,7 +5089,7 @@ def rebuild_dataset_artifacts(
 ) -> dict[str, Any]:
     task_repository = task_repository or repository
     if forced_dataset_kind == L3_DT_LOGS_KIND:
-        # A Layer 3 - DT Logs delivery never goes through SQLite: its rows are written as one Parquet source per
+        # A Layer3 Logs delivery never goes through SQLite: its rows are written as one Parquet source per
         # campaign, each the source of a dataset (see l3_dt_logs).
         from src.modules import l3_dt_logs
 
@@ -17180,7 +17180,7 @@ def preview_dataset(
         })
     dataset = refresh_selected_dataset_if_stale(dataset) or dataset
     dataset = ensure_mapping_gcid(dataset)
-    # A Layer 3 - DT Logs dataset is read, read-only, from its Parquet source: its rows are never in SQLite.
+    # A Layer3 Logs dataset is read, read-only, from its Parquet source: its rows are never in SQLite.
     l3_preview = dataset['dataset_kind'] == L3_DT_LOGS_KIND
     available_columns = l3_source_columns(dataset['stored_path']) if l3_preview else repository.list_dataset_row_columns(dataset_id)
     if dataset['dataset_kind'] in {'mapping_vodafone', 'mapping_three'}:
@@ -22405,7 +22405,7 @@ def delete_workspace_datasets(
 
     repository.remove_orphaned_dataset_row_tables()
     repository.remove_orphaned_reporting_rows()
-    # The sessions and derived files of deleted Layer 3 - DT Logs datasets.
+    # The sessions and derived files of deleted Layer3 Logs datasets.
     l3_forget_datasets(repository)
     queue_combined_cdr_inclusion_sync(user.username)
     invalidate_workspace_size_cache()
@@ -22445,7 +22445,7 @@ def delete_dataset(dataset_id: int, return_to: str = Form(''), user: SessionUser
     # imposing a full-table cleanup on every Admin page load.
     repository.remove_orphaned_dataset_row_tables()
     repository.remove_orphaned_reporting_rows()
-    # The sessions and derived files of deleted Layer 3 - DT Logs datasets.
+    # The sessions and derived files of deleted Layer3 Logs datasets.
     l3_forget_datasets(repository)
     if str(dataset_payload.get('dataset_kind') or '').casefold() in CDR_DATASET_KINDS:
         # Deleting a Final CDR brings back the Daily CDRs it replaced.

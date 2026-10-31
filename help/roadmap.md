@@ -45,7 +45,7 @@ roadmap
 - The columnar store of the CDRs: Parquet copies read with the DuckDB engine by every module, with durable analytical caches (Network Insights 79 times faster, the Points Lost Map more than 300 times, a workspace database 10 times lighter).
 - Tableau connected to the data of the workspace, through PostgreSQL with pg_duckdb.
 - PPT Designer, whose charts are built as in Tableau, and slide comments written by rules or by GenAI (Kiro or Claude).
-- The Layer 3 - DT Logs: the parsed drive test logs of each campaign, whose layers and signalling the maps of the Non-Qualified Calls and NQ Maps draw and the DT Analyzer RCA reads.
+- The Layer3 Logs: the parsed drive test logs of each campaign, whose layers and signalling the maps of the Non-Qualified Calls and NQ Maps draw and the DT Analyzer RCA reads.
 
 ## Planned product work
 

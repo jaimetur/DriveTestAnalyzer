@@ -113,31 +113,31 @@ INPUTS: dict[str, tuple[str, str, str, str]] = {
     'mos': ('Speech quality (MOS)', 'number', '', 'KPIs'),
     'rtp_packet_loss': ('RTP packet loss', 'number', '%', 'KPIs'),
     'jitter': ('Jitter', 'number', 'ms', 'KPIs'),
-    # What the Layer 3 - DT Logs of the call tell (l3_dt_logs.call_evidence): only for the calls with a session in them, the
+    # What the Layer3 Logs of the call tell (l3_dt_logs.call_evidence): only for the calls with a session in them, the
     # radio of its last seconds and what happened in the seconds before it failed.
-    'l3_log': ('UEs with a Layer 3 - DT Log', 'text', '', 'Layer 3 - DT Logs'),
-    'l3_signalling': ('Signalling before the failure (log)', 'text', '', 'Layer 3 - DT Logs'),
-    'l3_ran_end': ('RAN Configuration at the failure (log)', 'text', '', 'Layer 3 - DT Logs'),
-    'l3_lte_rsrp_end': ('LTE RSRP at the failure (log)', 'number', 'dBm', 'Layer 3 - DT Logs'),
-    'l3_lte_sinr_end': ('LTE SINR at the failure (log)', 'number', 'dB', 'Layer 3 - DT Logs'),
-    'l3_nr_rsrp_end': ('NR RSRP at the failure (log)', 'number', 'dBm', 'Layer 3 - DT Logs'),
-    'l3_nr_sinr_end': ('NR SINR at the failure (log)', 'number', 'dB', 'Layer 3 - DT Logs'),
-    'l3_lte_rsrp_min': ('LTE RSRP (minimum, log)', 'number', 'dBm', 'Layer 3 - DT Logs'),
-    'l3_nr_rsrp_min': ('NR RSRP (minimum, log)', 'number', 'dBm', 'Layer 3 - DT Logs'),
-    'l3_reestablishments': ('RRC re-establishments before the failure (log)', 'number', '', 'Layer 3 - DT Logs'),
-    'l3_scg_failures': ('SCG failures before the failure (log)', 'number', '', 'Layer 3 - DT Logs'),
-    'l3_handovers': ('Handovers before the failure (log)', 'number', '', 'Layer 3 - DT Logs'),
-    'l3_irat': ('Inter-RAT moves before the failure (log)', 'number', '', 'Layer 3 - DT Logs'),
-    'l3_releases': ('RRC releases before the failure (log)', 'number', '', 'Layer 3 - DT Logs'),
-    'l3_rejects': ('Rejects in the signalling (log)', 'number', '', 'Layer 3 - DT Logs'),
-    'l3_sip_error': ('SIP error (log)', 'number', '', 'Layer 3 - DT Logs'),
-    'l3_tx_max': ('UE Tx Power before the failure (maximum, log)', 'number', 'dBm', 'Layer 3 - DT Logs'),
-    'l3_tx_high_share': ('UE Tx Power from 22 dBm before the failure (log)', 'number', '%', 'Layer 3 - DT Logs'),
-    'l3_neighbour_delta': ('Neighbour of the serving channel above the serving cell (log)', 'number', 'dB', 'Layer 3 - DT Logs'),
-    'l3_neighbour_seconds': ('Seconds a neighbour was 3 dB above the serving cell (log)', 'number', 's', 'Layer 3 - DT Logs'),
-    'l3_lte_bler': ('LTE BLER before the failure (log)', 'number', '%', 'Layer 3 - DT Logs'),
-    'l3_nr_bler': ('NR BLER before the failure (log)', 'number', '%', 'Layer 3 - DT Logs'),
-    'l3_no_measurements': ('Records without measurements (log)', 'number', '', 'Layer 3 - DT Logs'),
+    'l3_log': ('UEs with a Layer3 Log', 'text', '', 'Layer3 Logs'),
+    'l3_signalling': ('Signalling before the failure (log)', 'text', '', 'Layer3 Logs'),
+    'l3_ran_end': ('RAN Configuration at the failure (log)', 'text', '', 'Layer3 Logs'),
+    'l3_lte_rsrp_end': ('LTE RSRP at the failure (log)', 'number', 'dBm', 'Layer3 Logs'),
+    'l3_lte_sinr_end': ('LTE SINR at the failure (log)', 'number', 'dB', 'Layer3 Logs'),
+    'l3_nr_rsrp_end': ('NR RSRP at the failure (log)', 'number', 'dBm', 'Layer3 Logs'),
+    'l3_nr_sinr_end': ('NR SINR at the failure (log)', 'number', 'dB', 'Layer3 Logs'),
+    'l3_lte_rsrp_min': ('LTE RSRP (minimum, log)', 'number', 'dBm', 'Layer3 Logs'),
+    'l3_nr_rsrp_min': ('NR RSRP (minimum, log)', 'number', 'dBm', 'Layer3 Logs'),
+    'l3_reestablishments': ('RRC re-establishments before the failure (log)', 'number', '', 'Layer3 Logs'),
+    'l3_scg_failures': ('SCG failures before the failure (log)', 'number', '', 'Layer3 Logs'),
+    'l3_handovers': ('Handovers before the failure (log)', 'number', '', 'Layer3 Logs'),
+    'l3_irat': ('Inter-RAT moves before the failure (log)', 'number', '', 'Layer3 Logs'),
+    'l3_releases': ('RRC releases before the failure (log)', 'number', '', 'Layer3 Logs'),
+    'l3_rejects': ('Rejects in the signalling (log)', 'number', '', 'Layer3 Logs'),
+    'l3_sip_error': ('SIP error (log)', 'number', '', 'Layer3 Logs'),
+    'l3_tx_max': ('UE Tx Power before the failure (maximum, log)', 'number', 'dBm', 'Layer3 Logs'),
+    'l3_tx_high_share': ('UE Tx Power from 22 dBm before the failure (log)', 'number', '%', 'Layer3 Logs'),
+    'l3_neighbour_delta': ('Neighbour of the serving channel above the serving cell (log)', 'number', 'dB', 'Layer3 Logs'),
+    'l3_neighbour_seconds': ('Seconds a neighbour was 3 dB above the serving cell (log)', 'number', 's', 'Layer3 Logs'),
+    'l3_lte_bler': ('LTE BLER before the failure (log)', 'number', '%', 'Layer3 Logs'),
+    'l3_nr_bler': ('NR BLER before the failure (log)', 'number', '%', 'Layer3 Logs'),
+    'l3_no_measurements': ('Records without measurements (log)', 'number', '', 'Layer3 Logs'),
 }
 # The inputs that are indexed fields of the call, and the failure fields its description joins (with two CDR inputs).
 CALL_INPUTS = ('result', 'test_name', 'technology', 'direction', 'environment', 'failure_phase', 'failure_technology')
@@ -160,7 +160,7 @@ NETWORK_NOTE = 'network_note'
 RB_SOURCES = ('lte_dl_rbs', 'lte_dl_bandwidth', 'nr_dl_rbs', 'nr_dl_bandwidth', 'nr_dl_band')
 TRACE_SOURCES = ('cell_trace', 'cell_pcis', 'end_latitude', 'end_longitude')
 NUMBER_SOURCES = frozenset(('lte_dl_rbs', 'lte_dl_bandwidth', 'nr_dl_rbs', 'nr_dl_bandwidth', 'end_latitude', 'end_longitude'))
-# The inputs of the Layer 3 - DT Logs of the call, which non_qualified_calls adds from its sessions (l3_dt_logs); an
+# The inputs of the Layer3 Logs of the call, which non_qualified_calls adds from its sessions (l3_dt_logs); an
 # ``l3_note`` tells what its log shows before the failure, for the evidence.
 L3_INPUTS = tuple(key for key in INPUTS if key.startswith('l3_'))
 L3_NOTE = 'l3_note'
@@ -253,7 +253,7 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
      'DL Interference NR', 'PCI Collision/PCI MOD 3 Collision'),
     ('pci-collision', 'PCI collision', (), 'all', (('pci_collisions', 'ge', 1), ('lte_sinr', 'lt', 3)),
      'DL Interference LTE', 'PCI Collision/PCI MOD 3 Collision'),
-    # What the Layer 3 - DT Logs of the call show at its failure, more precise than the averages of the CDR: the radio of
+    # What the Layer3 Logs of the call show at its failure, more precise than the averages of the CDR: the radio of
     # its last seconds and what failed before it (a call without a log goes on to the rules of its CDR).
     ('l3-scg-failure-coverage', 'SCG failure with weak NR coverage (drivetest log)', (), 'all',
      (('l3_scg_failures', 'ge', 1), ('l3_nr_rsrp_end', 'lt', -110)), 'Poor Coverage NR', 'Coverage'),
@@ -511,7 +511,7 @@ ADDED_RULES = {
     2: ('core-resources', 'access-rejected', 'cell-outage', 'cell-outage-interference', 'nr-coverage-hole', 'coverage-hole', 'no-service-hole', 'nr-overshooting',
         'overshooting', 'nr-overshooting-coverage', 'overshooting-coverage', 'nr-pci-collision', 'pci-collision', 'nr-ping-pong',
         'ping-pong', 'nr-cell-load', 'cell-load'),
-    # The rules of the Layer 3 - DT Logs.
+    # The rules of the Layer3 Logs.
     4: ('l3-no-measurements', 'l3-scg-failure-coverage', 'l3-reestablishment-coverage', 'l3-missing-handover', 'l3-lte-coverage',
         'l3-nr-coverage', 'l3-uplink', 'l3-lte-interference', 'l3-nr-interference', 'l3-scg-failure', 'l3-reestablishment',
         'l3-lte-bler', 'l3-nr-bler'),
@@ -900,7 +900,7 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
             # The sites a rule of the network around the call read.
             if inputs.get(NETWORK_NOTE) and any(condition['input'] in CONTEXT_INPUTS[1:] for condition, _kind, _value in entry['conditions']):
                 evidence = f'{evidence}. {inputs[NETWORK_NOTE]}'
-            # What the Layer 3 - DT Logs of the call show before the failure, when the rule read them.
+            # What the Layer3 Logs of the call show before the failure, when the rule read them.
             if inputs.get(L3_NOTE) and any(condition['input'] in L3_INPUTS for condition, _kind, _value in entry['conditions']):
                 evidence = f'{evidence}. {inputs[L3_NOTE]}'
             return {'rule': rule['name'], 'rule_key': rule['key'], **entry['result'], 'evidence': evidence[:MAX_EVIDENCE]}

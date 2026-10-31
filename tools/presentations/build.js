@@ -945,7 +945,7 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
       ['TbDatabaseSearch', 'DuckDB engine', 'SQL on the Parquet copies'],
       ['TbBolt', 'Fast at any size', 'Durable analytical caches'],
       ['TbPlugConnected', 'Tableau connected', 'To the Workspace database'],
-      ['TbTimeline', 'Layer 3 - DT Logs', 'Signalling on NQ maps & RCA'],
+      ['TbTimeline', 'Layer3 Logs', 'Signalling on NQ maps & RCA'],
     ] },
     { label: 'NEXT', color: K.blue, pin: 'TbRocket', x: 4.5, y: 4.45, card: [2.7, 5.02, 5.9, 1.52], columns: 2, items: [
       ['TbFlag', 'Germany pilot', 'First DE test campaign'],
@@ -987,7 +987,7 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
   slide.addNotes(`Today: eight modules in production on ${STATS.where}; PPT Designer, which builds its charts as Tableau does; `
     + 'slide comments written by GenAI (Kiro or Claude); the columnar store of the CDRs, Parquet copies read with the DuckDB '
     + 'engine, which made the analyses 79 to more than 300 times faster and the workspace database 10 times lighter; durable '
-    + 'analytical caches, fast at any size; Tableau connected to the workspace database; and the Layer 3 - DT Logs, the parsed '
+    + 'analytical caches, fast at any size; Tableau connected to the workspace database; and the Layer3 Logs, the parsed '
     + 'drive test logs of each campaign, whose signalling the maps of the Non-Qualified Calls, NQ Maps and the DT Analyzer RCA '
     + 'read. Next: a first pilot campaign in '
     + 'Germany, the adaptation of the ingestion and scoring to Umlaut and P3 CDRs, the Active Tests community, so that the tool '
@@ -1107,8 +1107,8 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
     + `Non-Qualified Calls (${STATS.nqExact} NQ calls), Reporting, the Builders and the Ticket Center. They serve `
     + 'benchmarking, the NQ team, troubleshooting and technical and executive reporting, on an enterprise platform on AWS with '
     + `roles, isolated workspaces, automated backups, a Ticket Center, a ${STATS.chapters}-chapter Help and ${STATS.tests} `
-    + 'automated tests. Roadmap: today the columnar store on DuckDB, Tableau connected, GenAI slide comments and the Layer 3 - '
-    + 'DT Logs on the maps and the RCA of the Non-Qualified Calls; next the Germany pilot, Umlaut and P3 CDRs and the Active '
+    + 'automated tests. Roadmap: today the columnar store on DuckDB, Tableau connected, GenAI slide comments and the Layer3 '
+    + 'Logs on the maps and the RCA of the Non-Qualified Calls; next the Germany pilot, Umlaut and P3 CDRs and the Active '
     + 'Tests community; then Network Insights and automatic emails; later TEMS logs and health monitoring.');
 }
 
