@@ -1692,6 +1692,7 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
     from src.modules.nq_prioritization import load_settings as prioritization_settings
 
     label = lambda value: mapper.map(field_kind('operator'), value)  # noqa: E731 - the label of an Operator in the Operator Maps.
+    label_site_operators(sites, mapper)
     # The inter-site distance of the serving site and the nearest site of the networks serving the operator (ran_context).
     serving_step = next((step for step in reversed(trace) if step.get('site') and step['role'] in ('end', 'both')), None)
     nearest = index.nearest(point, families) if index else None
@@ -1805,11 +1806,36 @@ def area_centre(bbox: Any) -> tuple[tuple[float, float], float]:
     return centre, max(.05, distance_km(centre, (north, east)))
 
 
+def label_site_operators(sites: list[dict[str, Any]], mapper: Any) -> None:
+    """Give each site the Operator whose network it is (``family``) as the Operator Maps name it: the label they give the
+    name of its network (``Vodafone`` → *VF*, ``3`` → *Three*), else the first label they do not exclude whose names of the
+    CDRs are of that network, else the name of the network."""
+    from src.modules.network_inventory import NETWORK_FAMILY_LABELS, network_family
+    from src.modules.operator_roles import EXCLUDE, normalize_mapping_role
+    from src.modules.value_maps import field_kind
+
+    labels: dict[str, list[str]] = {}
+    for group in mapper.operator_groups:
+        canonical = str(group.get('canonical') or '').strip()
+        if not canonical or normalize_mapping_role(group.get('role')) == EXCLUDE:
+            continue
+        aliases = group.get('aliases') if isinstance(group.get('aliases'), (list, tuple)) else []
+        for family in {network_family(name) for name in [canonical, *aliases] if str(name or '').strip()}:
+            if canonical not in labels.setdefault(family, []):
+                labels[family].append(canonical)
+    for site in sites:
+        family = site.get('family') or network_family(site.get('network'))
+        operator = NETWORK_FAMILY_LABELS.get(family, '') or site.get('network') or ''
+        mapped = str(mapper.map(field_kind('operator'), operator) or '') if operator else ''
+        site['operator'] = mapped if mapped and mapped.casefold() != operator.casefold() else (labels.get(family) or [operator])[0]
+
+
 def area_sites(repository: Any, operators: Any, bbox: Any) -> dict[str, Any]:
     """The inventory sites (with their cells) of the networks that serve ``operators`` in the area, nearest to its centre
     first (MAX_SITES at most), as the map of a call draws them."""
     from src.modules.inventory_insights import configured_vendor_colours
     from src.modules.serving_cells import load_serving_networks, serving_families
+    from src.modules.value_maps import ValueMapper
 
     config = load_serving_networks(repository)
     families = tuple(dict.fromkeys(family for operator in sorted({_text(value) for value in operators} - {''})
@@ -1817,6 +1843,7 @@ def area_sites(repository: Any, operators: Any, bbox: Any) -> dict[str, Any]:
     cells, snapshots = inventory_cells(repository, families)
     centre, radius = area_centre(bbox)
     sites = nearby_sites(cells, centre, radius, set(), configured_vendor_colours(repository.list_vendor_mapping_groups()))
+    label_site_operators(sites, ValueMapper.from_settings(repository.chart_mapping_settings()))
     for site in sites:
         site.update(roles=[], ends=[], serving=False)
     return {'sites': sites, 'families': list(families), 'snapshots': snapshots, 'truncated': len(sites) >= MAX_SITES}

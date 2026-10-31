@@ -455,6 +455,19 @@ def test_a_cell_of_the_trace_far_from_the_call_is_placed_only_with_its_pci_and_c
                                                                  {'1340936': 40.0})] == ['N32391 · 40.0 km away', 'Cell 1645320']
 
 
+def test_the_sites_take_the_operator_of_their_network_as_the_operator_maps_name_it():
+    mapper = ValueMapper({'vodafone': 'VF', '3': 'Three'}, None, [
+        {'canonical': 'VF', 'role': 'focus', 'aliases': ['Vodafone', 'Vodafone SM']},
+        {'canonical': 'VF SA', 'role': 'exclude', 'aliases': ['VF SA UK']}, {'canonical': 'Three', 'aliases': ['3']},
+        {'canonical': 'O2', 'aliases': ['O2 UK']}])
+    sites = [{'family': 'vodafone', 'network': 'Vodafone'}, {'family': 'three', 'network': 'H3G'},
+             {'family': 'o2', 'network': 'Telefonica'}, {'family': 'ee', 'network': 'EE'}]
+    nq_call_map.label_site_operators(sites, mapper)
+    # The label the Operator Maps give the name of its network, else the label of that network they do not exclude, else
+    # the name of its network.
+    assert [site['operator'] for site in sites] == ['VF', 'Three', 'O2', 'EE']
+
+
 def test_a_cell_repeated_in_a_row_is_one_cell_of_the_call():
     # Ticket #35: a moment on an NR cell without identity between two of the same LTE cell (its TAC left out the second
     # time) is no handover; the PCI column gives one PCI for each element of the trace.

@@ -309,6 +309,21 @@
     return {metres: 6371008.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)), bearing: (bearing / radians + 360) % 360};
   };
   const distanceText = (km) => (km === null || km === undefined ? '' : km < 1 ? `${Math.round(km * 1000)} m` : `${Number(km).toFixed(km < 10 ? 2 : 1)} km`);
+  // The rows of the tooltip of a cell and of a site, in the same order on both maps: its operator and vendor first, then
+  // its part in the call (on the map of a call) and what it is; empty rows are left out.
+  const cellFacts = (cell, site, siteLabel, role = '') => [
+    ['Operator', site?.operator], ['Vendor', cell.vendor], ['Role', role], ['Site', siteLabel], ['Identity', cell.identity],
+    ['Technology', [cell.technology, cell.band].filter(Boolean).join(' ')], ['Channel', cell.channel], ['PCI', cell.pci],
+    ['Azimuth', cell.azimuth === null || cell.azimuth === undefined ? 'Omni' : `${cell.azimuth}°`],
+    ['Beamwidth', cell.beamwidth ? `${cell.beamwidth}°` : ''], ['Height', cell.height ? `${cell.height} m` : ''],
+    ['State', cell.state], ['Same PCI and channel', cell.same_pci]];
+  // (``around``: the map of a call, which tells how far each site is from where the call failed.)
+  const siteFacts = (site, role = '', around = false) => [
+    ['Operator', site.operator], ['Vendor', site.vendors.join(', ')], ['Role', role],
+    ['Cells', `${site.cells.length} · ${[...new Set(site.cells.map((cell) => `${cell.technology} ${cell.band}`.trim()))].join(', ')}`],
+    ['Type', site.site_type], ['eMOCN', site.emocn], ['City', site.city],
+    ['Same PCI', site.cells.filter((cell) => cell.same_pci).map((cell) => `${cell.name || cell.identity} (${cell.same_pci})`).join(', ')],
+    ['Distance', around ? distanceText(site.distance_km) : ''], ['Rank by distance', around ? site.rank : '']];
   const metresText = (metres) => distanceText(metres / 1000);
   const dbText = (value, unit) => (value === null || value === undefined || value === '' ? '—' : `${Number(value).toFixed(1)} ${unit}`);
   const median = (values) => {
@@ -713,7 +728,26 @@
     // The panels over the bottom of the map: the elevation profile, and over the larger map the signalling timeline.
     const bottomStack = node('div', undefined, 'nq-map-bottom');
     bottomStack.append(profileBox);
-    card.replaceChildren(canvas, ruler, selectionBox, panels, controls, bottomStack, attribution, wheelHint, tooltip);
+    // The map of a call: how many NQ calls it shows (the call itself too) and how many of them are of its hotspot, its cluster
+    // and its time window, in a small card over its bottom left (in its images too), above the panels over its bottom.
+    const counts = node('div', undefined, 'nq-map-tallies');
+    counts.hidden = true;
+    const renderCounts = (data, layers) => {
+      counts.hidden = Boolean(data.area) || !layers.failures;
+      if (counts.hidden) return;
+      const groups = data.groups || {};
+      const shown = data.failures.filter((failure) => failure.self || (failure.latitude !== null && shared.showsFailure(failure)));
+      const count = (test, size) => (size >= 2 ? shown.filter(test).length : 0);
+      counts.replaceChildren(...[['NQ calls on the map', shown.length], ['In its hotspot', count((item) => item.self || item.same_hotspot, groups.hotspot)],
+        ['In its cluster', count((item) => item.self || item.same_cluster, groups.cluster)],
+        ['In its time window', count((item) => item.self || item.same_run, groups.run)]]
+        .map(([text, value]) => {
+          const line = node('div', undefined, 'nq-map-tally');
+          line.append(node('span', text), node('strong', value.toLocaleString('en-GB')));
+          return line;
+        }));
+    };
+    card.replaceChildren(canvas, ruler, selectionBox, panels, controls, counts, bottomStack, attribution, wheelHint, tooltip);
     // The legend goes below the map (in its images too), so it hides none of it.
     (legendHost || card).replaceChildren(legend);
     // The layers of the Layer 3 - DT Logs of the call (l3_layers.js), over the map so that its images show them.
@@ -835,6 +869,7 @@
       hits = [];
       const settings = shared.settings;
       const layers = shownLayers(settings);
+      renderCounts(data, layers);
       // The route from the CDR: the way of the call and of its car (on NQ Maps the drive of each CDR), with its START and END.
       const routeShown = layers.route !== false;
       const call = data.call;
@@ -924,8 +959,8 @@
       }
       // The shapes of its groups, as the Groups slide draws them: a circle around each cluster in purple and an ellipse along
       // each time window in blue of its hotspot (what they make together), those of the call itself bolder and solid (the
-      // other clusters and time windows dashed), the larger below; the hotspot when one of its calls is in neither. Their tint first, then the
-      // hotspot zone, then their lines and the edge of the zone.
+      // other clusters and time windows dashed), the larger below; the hotspot when one of its calls is in neither. Their tint
+      // first, then the hotspot zone (under the sectors of the sites), then their lines and the edge of the zone (over them).
       const shapes = visible.filter((ring) => layers[ring.kind] !== false).sort((a, b) => b.metres - a.metres);
       for (const ring of shapes) {
         shape(context, ring);
@@ -935,37 +970,41 @@
         context.globalAlpha = 1;
       }
       hotZone?.fill();
-      for (const ring of shapes) {
-        shape(context, ring);
-        context.strokeStyle = GROUP_COLOURS[ring.kind];
-        context.globalAlpha = ring.own ? 1 : .85;
-        context.lineWidth = ring.own ? 3 : 2;
-        context.setLineDash(!ring.own && (ring.kind === 'cluster' || ring.kind === 'run') ? [7, 5] : []);
-        context.stroke();
-        context.setLineDash([]);
-        context.globalAlpha = 1;
-      }
-      hotZone?.edge();
-      // Each time window as its failures follow one another (each within the Time window of the one before).
-      // Their order is numbered beside each failure, above the NQ calls (see below).
+      // Their lines, the edge of the zone and the way of each time window go over the sectors of the sites (drawn after
+      // them, below), so that no sector hides them.
       const pathNumbers = [];
-      for (const [ring, colour] of layers.paths === false ? [] : pathColours(visible)) {
-        context.beginPath();
-        ring.path.forEach(([latitude, longitude], index) => {
-          const [px, py] = project(latitude, longitude);
-          if (index) context.lineTo(px, py); else context.moveTo(px, py);
-          pathNumbers.push([px, py, index + 1, colour]);
-        });
-        context.lineJoin = 'round';
-        context.lineWidth = ring.own ? 5 : 4;
-        context.strokeStyle = '#fff';
-        context.stroke();
-        context.lineWidth = ring.own ? 2.6 : 2;
-        context.strokeStyle = colour;
-        context.setLineDash([8, 5]);
-        context.stroke();
-        context.setLineDash([]);
-      }
+      const groupLines = () => {
+        for (const ring of shapes) {
+          shape(context, ring);
+          context.strokeStyle = GROUP_COLOURS[ring.kind];
+          context.globalAlpha = ring.own ? 1 : .85;
+          context.lineWidth = ring.own ? 3 : 2;
+          context.setLineDash(!ring.own && (ring.kind === 'cluster' || ring.kind === 'run') ? [7, 5] : []);
+          context.stroke();
+          context.setLineDash([]);
+          context.globalAlpha = 1;
+        }
+        hotZone?.edge();
+        // Each time window as its failures follow one another (each within the Time window of the one before).
+        // Their order is numbered beside each failure, above the NQ calls (see below).
+        for (const [ring, colour] of layers.paths === false ? [] : pathColours(visible)) {
+          context.beginPath();
+          ring.path.forEach(([latitude, longitude], index) => {
+            const [px, py] = project(latitude, longitude);
+            if (index) context.lineTo(px, py); else context.moveTo(px, py);
+            pathNumbers.push([px, py, index + 1, colour]);
+          });
+          context.lineJoin = 'round';
+          context.lineWidth = ring.own ? 5 : 4;
+          context.strokeStyle = '#fff';
+          context.stroke();
+          context.lineWidth = ring.own ? 2.6 : 2;
+          context.strokeStyle = colour;
+          context.setLineDash([8, 5]);
+          context.stroke();
+          context.setLineDash([]);
+        }
+      };
       // The tests around, in the colour of their level.
       const operators = data.tests.operators;
       const testRadius = zoom >= 16 ? 5 : zoom >= 13 ? 4 : 3;
@@ -1076,6 +1115,8 @@
             context.globalAlpha = 1;
           }
         }
+        // (The lines of the groups over the sectors, under the names of the cells.)
+        groupLines();
         for (const [text, lx, ly, colour] of named) label(context, text, lx, ly, colour, 'center');
       }
       // The cells the call went through: the cell of its start joined to where it started, the cell of its end (or of the whole
@@ -2235,7 +2276,7 @@
       }
       if (kind === 'call' || kind === 'start') {
         return {title: kind === 'start' ? 'Where the call started' : 'This call', rows: [
-          ['Call type', KIND_LABELS[item.kind] || item.service_label], ['JOIN_ID', item.join_id], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
+          ['Call type', KIND_LABELS[item.kind] || item.service_label], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)], ['JOIN_ID', item.join_id],
           ['Result', item.result], ['Failure', failureText(item)], ['Phase', item.failure_phase],
           ['Technology', item.technology], ['Started', cdrTime(item.start_time)], ['Ended', item.end_time ? cdrTime(item.end_time) : ''],
           // Where it started and ended, then the cells that served it (start, end, handovers).
@@ -2253,7 +2294,7 @@
           item.same_place ? 'Same site' : ''].filter(Boolean).join(' · ');
         return {title: `NQ call · ${item.operator}`, rows: [
           ['Call type', kindLabel(item)], ['Operator', item.operator], ['Campaign', campaignText(item.campaign, item.nr_mode)],
-          ['Relation', flags], ['JOIN_ID', item.join_id],
+          ['JOIN_ID', item.join_id], ['Relation', flags],
           ['Result', item.result], ['Failure', failureText(item)], ['Test', item.test_name], ['Started', cdrTime(item.start_time)],
           ['Status', item.status], ['Root cause', [item.root_category, item.root_cause].filter(Boolean).join(' · ')],
           // How far it is, where it started and ended (the place of its repetitions when its last cell is not placed), then its
@@ -2311,24 +2352,12 @@
       if (kind === 'cell') {
         const site = data.sites.find((entry) => entry.cells.includes(item));
         const step = site && data.trace.find((entry) => entry.site === site.key && entry.cell === item.identity);
-        return {title: `Cell ${item.name || item.identity}`, rows: [
-          ['Role', step ? step.role_label : ''], ['Site', site ? siteName(site) : ''], ['Identity', item.identity],
-          ['Technology', [item.technology, item.band].filter(Boolean).join(' ')], ['Channel', item.channel], ['PCI', item.pci],
-          ['Azimuth', item.azimuth === null || item.azimuth === undefined ? 'Omni' : `${item.azimuth}°`],
-          ['Beamwidth', item.beamwidth ? `${item.beamwidth}°` : ''], ['Height', item.height ? `${item.height} m` : ''],
-          ['State', item.state], ['Vendor', item.vendor], ['Same PCI and channel', item.same_pci],
-        ]};
+        return {title: `Cell ${item.name || item.identity}`, rows: cellFacts(item, site, site ? siteName(site) : '', step ? step.role_label : '')};
       }
       if (kind === 'site') {
-        const technologies = [...new Set(item.cells.map((cell) => `${cell.technology} ${cell.band}`.trim()))].join(', ');
-        return {title: siteName(item), rows: [
-          ['Role', [...item.roles, ...(item.ends || []).filter((end) => end.estimated)
-            .map((end) => `Nearest site to where it ${end.role === 'start' ? 'started' : 'failed'} (estimate)`)].join(', ')
-            || (item.serving ? 'Serving site' : '')], ['Vendor', item.vendors.join(', ')],
-          ['Cells', `${item.cells.length} · ${technologies}`], ['Type', item.site_type], ['eMOCN', item.emocn],
-          ['Same PCI', item.cells.filter((cell) => cell.same_pci).map((cell) => `${cell.name || cell.identity} (${cell.same_pci})`).join(', ')],
-          ['Distance', distanceText(item.distance_km)], ['Rank by distance', item.rank],
-        ]};
+        return {title: siteName(item), rows: siteFacts(item, [...item.roles, ...(item.ends || []).filter((end) => end.estimated)
+          .map((end) => `Nearest site to where it ${end.role === 'start' ? 'started' : 'failed'} (estimate)`)].join(', ')
+          || (item.serving ? 'Serving site' : ''), true)};
       }
       const operator = data.tests.operators[item[COLUMN.operator]] || '';
       const cdr = data.tests.cdrs?.[item[COLUMN.cdr]];
@@ -3150,15 +3179,10 @@
       if (kind === 'l3_route') return window.L3Layers.describe({route: item}, shared.l3);
       if (kind === 'cell') {
         const site = data.sites.find((entry) => entry.cells.includes(item));
-        return {title: `Cell ${item.name || item.identity}`, rows: [['Site', site ? siteName(site) : ''], ['Identity', item.identity],
-          ['Technology', [item.technology, item.band].filter(Boolean).join(' ')], ['Channel', item.channel], ['PCI', item.pci],
-          ['Azimuth', item.azimuth === null || item.azimuth === undefined ? 'Omni' : `${item.azimuth}°`],
-          ['Beamwidth', item.beamwidth ? `${item.beamwidth}°` : ''], ['Height', item.height ? `${item.height} m` : ''], ['State', item.state], ['Vendor', item.vendor]]};
+        return {title: `Cell ${item.name || item.identity}`, rows: cellFacts(item, site, site ? siteName(site) : '')};
       }
       if (kind === 'site') {
-        const technologies = [...new Set(item.cells.map((cell) => `${cell.technology} ${cell.band}`.trim()))].join(', ');
-        return {title: siteName(item), rows: [['Vendor', item.vendors.join(', ')], ['Cells', `${item.cells.length} · ${technologies}`],
-          ['Type', item.site_type], ['eMOCN', item.emocn], ['City', item.city]]};
+        return {title: siteName(item), rows: siteFacts(item)};
       }
       if (kind === 'test') {
         const operator = data.tests.operators[item[COLUMN.operator]] || '';

@@ -1949,6 +1949,15 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-measure-hover { fill: #fff; stroke: #7d1238; stroke-width: 3; }
 /* The elevation profile of the distance measured: a glass panel at the bottom of the map (in its images too). */
 /* The panels over the bottom of a map, one above the other: the elevation profile, then over the larger map the timeline. */
+/* How many NQ calls the map of a call shows and of its groups: a small card over its bottom left, above the panels over its
+   bottom (--nq-map-bottom-space) and under the cards of the layers. */
+.nq-map-tallies { position: absolute; left: 8px; bottom: max(8px, var(--nq-map-bottom-space, 0px)); z-index: 4; display: grid; gap: .1rem;
+  min-width: 10.5rem; padding: .4rem .6rem; border: 1px solid var(--nq-border); border-radius: 10px; background: rgba(255, 255, 255, .94);
+  box-shadow: 0 5px 16px rgba(60, 4, 24, .16); color: var(--nq-text); font-size: .72rem; pointer-events: none; }
+.nq-map-tallies[hidden] { display: none; }
+.nq-map-tally { display: flex; justify-content: space-between; gap: .8rem; }
+.nq-map-tally strong { color: var(--nq-dark); font-variant-numeric: tabular-nums; }
+.nq-map-tally:first-child { padding-bottom: .15rem; margin-bottom: .1rem; border-bottom: 1px solid var(--nq-border); font-weight: 700; }
 .nq-map-bottom { position: absolute; left: 8px; right: 8px; bottom: 22px; z-index: 6; display: flex; flex-direction: column; gap: .4rem; max-height: calc(100% - 5rem); pointer-events: none; }
 .nq-map-bottom > * { pointer-events: auto; }
 .nq-map-bottom .nq-l3-timeline { max-height: 36vh; margin-top: 0; overflow: auto; border-color: rgba(15, 52, 66, .14); background: rgba(255, 255, 255, .95); box-shadow: 0 10px 30px rgba(15, 35, 45, .18); backdrop-filter: blur(6px); }
