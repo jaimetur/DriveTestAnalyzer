@@ -395,8 +395,8 @@
         hits.push({x, y, r: pointSize + 3, kind: 'l3', item: {layer: layerKey, point, data}, priority: layerKey === 'event' || layerKey === 'l3' ? 4.2 : 4.1});
       }
     }
-    // The direction of travel over the points, inside the road of the way: halfway between two points of its GPS, so that
-    // it stands between their markers.
+    // The direction of travel over the points, beside the way (to the right of where the UE went) so that neither hides
+    // the other.
     if (layersOn.includes('direction')) {
       for (const ue of data.ues) {
         if (!ueShown(data, ue)) continue;
@@ -408,8 +408,8 @@
           if (length < .5) continue;
           if (last && Math.hypot(x1 - last[0], y1 - last[1]) < 34) continue;
           const heading = Math.atan2(x2 - x1, -(y2 - y1)) * 180 / Math.PI;
-          const ax = (x1 + x2) / 2, ay = (y1 + y2) / 2;
-          drawMarker(context, 'arrow', ax, ay, size * 1.1, ue === 'B' ? '#495057' : '#212529', {heading});
+          const side = size * 2.3, ax = x1 - (y2 - y1) / length * side, ay = y1 + (x2 - x1) / length * side;
+          drawMarker(context, 'arrow', ax, ay, size * 1.25, ue === 'B' ? '#495057' : '#212529', {heading});
           hits.push({x: ax, y: ay, r: size + 4, kind: 'l3', item: {layer: 'direction', point: {...track[index], ue, heading: (heading + 360) % 360}}, priority: 4.3});
           last = [x1, y1];
         }

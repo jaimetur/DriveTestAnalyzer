@@ -2131,6 +2131,8 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-path strong { color: var(--nq-dark); font-size: .8rem; }
 .nq-map-path span { font-size: .78rem; overflow-wrap: anywhere; }
 .nq-map-path small { color: var(--nq-muted); font-size: .72rem; }
+/* Why a cell far from the call is the real one (its identity, PCI and channel, and its logs). */
+.nq-map-path small.nq-map-path-evidence { color: #8a5300; }
 .nq-map-path-order { display: inline-grid; place-items: center; min-width: 1.5rem; height: 1.5rem; padding: 0 .25rem; box-sizing: border-box; border-radius: 999px; background: var(--role); color: #fff !important; font-size: .7rem !important; font-weight: 850; }
 .nq-map-more { margin-top: .6rem; }
 .nq-map-more summary { color: var(--nq-color); font-size: .78rem; font-weight: 800; cursor: pointer; }

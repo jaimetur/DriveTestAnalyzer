@@ -111,7 +111,7 @@
   // On the map of a call, each group of the call has its switch too: the shapes of its clusters, time windows and hotspot
   // zone, and their outlines on the NQ calls (And Group).
   const CDR_LAYER_LABELS = {failures: 'NQ calls', cluster: 'Clusters', run: 'Time windows', paths: 'Time-window paths', hotspot: 'Hotspot zone',
-    sites: 'Sites', ends: 'Start and end cells', path: 'Cell path', route: 'Route', drive: 'Drive of its car'};
+    sites: 'Sites', ends: 'Start and end cells', path: 'Cell path', route: 'Route', handovers: 'Handovers on its way', drive: 'Drive of its car'};
   const shownLayers = (settings) => (settings.layers.cdr === false
     ? {...settings.layers, ...Object.fromEntries(Object.keys(CDR_LAYER_LABELS).map((key) => [key, false]))} : settings.layers);
   const shownMeasures = (settings) => (settings.layers.cdr === false ? [] : Object.keys(METRICS).filter((key) => settings.measures.includes(key)));
@@ -420,10 +420,10 @@
     {key: 'calls', label: 'NQ calls', note: (area) => (area ? 'The NQ calls of the filters' : 'Around the call, and its groups'),
       layers: ['failures', 'hotspot', 'cluster', 'run', 'paths']},
     {key: 'cells', label: 'Sites & Cells', note: (area) => (area ? 'The sites of the inventory' : 'Its sites and cells'), layers: ['sites', 'ends', 'path']},
-    // The routes the CDR lets estimate (the GPS of the Layer3 Logs is the real one): on the map of a call its way and the
-    // drive of its car, each with its switch; on NQ Maps the drive of each CDR.
+    // The routes the CDR lets estimate (the GPS of the Layer3 Logs is the real one): on the map of a call its way, where
+    // its handovers took place on it and the drive of its car, each with its switch; on NQ Maps the drive of each CDR.
     {key: 'route', label: 'Route', note: (area) => (area ? 'Estimated from the tests of each CDR' : 'Estimated from the CDR, not from a GPS'),
-      layers: ['route', 'drive']},
+      layers: ['route', 'handovers', 'drive']},
   ];
   const CDR_FOLDED_KEY = 'nq-map-cdr-folded';
   const cdrFolded = (() => {
@@ -828,7 +828,8 @@
         if (note) list.append(node('p', note, 'nq-l3-area-note'));
       });
       const icons = {failures: ['star', COLOURS.call], sites: ['triangle', '#868e96'], ends: ['line', COLOURS.end], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
-        route: ['road', data.area ? COLOURS.route : COLOURS.path], drive: ['road', COLOURS.route], cluster: ['ring', COLOURS.cluster], run: ['ring', COLOURS.run], hotspot: ['ring', COLOURS.hotZone]};
+        route: ['road', data.area ? COLOURS.route : COLOURS.path], handovers: ['ring', COLOURS.handover], drive: ['road', COLOURS.route],
+        cluster: ['ring', COLOURS.cluster], run: ['ring', COLOURS.run], hotspot: ['ring', COLOURS.hotZone]};
       const rings = visibleRings(data);
       const paths = rings.some((ring) => ring.path && ring.path.length > 1);
       // A group only when the call has one of it; the sites, the lines to the cells of its start and end and its cell path
@@ -839,6 +840,7 @@
         || (key === 'hotspot' && !hotspotShown(data)) || (key === 'sites' && !data.sites.length)
         || (key === 'ends' && !located.some((step) => step.role !== 'handover'))
         || (key === 'path' && !located.length && !(data.call?.handovers || []).length)
+        || (key === 'handovers' && !(data.call?.handovers || []).length)
         || (key === 'drive' && carStretches(data).route.length < 2));
       for (const kind of CDR_SECTIONS.slice(1)) {
         const keys = kind.layers.filter(shown);
@@ -848,7 +850,8 @@
             const count = key === 'failures' ? data.failures.filter((failure) => !failure.self && failure.latitude !== null && shared.showsFailure(failure)).length
               : key === 'sites' ? data.sites.length : key === 'cluster' || key === 'run' ? rings.filter((ring) => ring.kind === key).length : null;
             const text = key === 'route' ? (data.area ? 'Drive of each CDR (estimated, between its tests)' : 'Way of the call (estimated)')
-              : key === 'drive' ? `Drive of its car (estimated, ${data.drive.minutes} min before and after)` : CDR_LAYER_LABELS[key];
+              : key === 'handovers' ? 'Handovers on its way (estimated)'
+                : key === 'drive' ? `Drive of its car (estimated, ${data.drive.minutes} min before and after)` : CDR_LAYER_LABELS[key];
             row(list, settings.layers[key] !== false, `Show the ${CDR_LAYER_LABELS[key]}`, icons[key], text, count, (checked) => shared.setLayer(key, checked));
           }
         });
@@ -1654,8 +1657,8 @@
         context.fillStyle = '#fff';
         context.fillText(String(number), bx, by + .5);
       }
-      // Where the call started (when the CDR gives where it ended too).
-      if (start && call.end && !realWay) {
+      // Where the call started (when the CDR gives where it ended too), also over the way of its log.
+      if (start && call.end) {
         const [x1, y1] = project(start[0], start[1]);
         context.beginPath();
         context.arc(x1, y1, 6, 0, Math.PI * 2);
@@ -1667,10 +1670,19 @@
         hits.push({x: x1, y: y1, r: 9, kind: 'start', item: call, priority: 5});
       }
       // Where each handover took place on its way, an estimate (by the time on each band of the call, else evenly in their
-      // order): a ring numbered as its arrow, dashed, on the road of its way (at the share of its way behind it).
-      if (layers.path && !realWay) {
+      // order): a ring numbered as its arrow, dashed, beside the road of its way (at the share of its way behind it, on its
+      // left, away from the direction arrows of the logs), that of its log when it has one. Its own switch (in the section
+      // Route of CDR Info).
+      if (layers.handovers !== false) {
         for (const point of call.handovers || []) {
-          const [x, y] = way && way !== base && point.fraction !== undefined ? way[Math.round(point.fraction * (way.length - 1))] : project(point.latitude, point.longitude);
+          let [x, y] = project(point.latitude, point.longitude);
+          if (way && point.fraction !== undefined) {
+            const index = Math.round(point.fraction * (way.length - 1));
+            [x, y] = way[index];
+            const [ax, ay] = way[Math.max(0, index - 1)], [bx, by] = way[Math.min(way.length - 1, index + 1)];
+            const length = Math.hypot(bx - ax, by - ay);
+            if (length) [x, y] = [x + (by - ay) / length * 15, y - (bx - ax) / length * 15];
+          }
           context.beginPath();
           context.arc(x, y, 8, 0, Math.PI * 2);
           context.fillStyle = '#fff';
@@ -2216,6 +2228,9 @@
       else if (data.call.way?.by === 'ends') item('road', 'Its way, estimated: from where it started to where it ended, as the CDR gives them (arrow: its direction; the bends are a sketch, not its streets)', COLOURS.path);
       else if (data.call.way) item('road', `Its way, estimated: its ${distanceText(data.call.travelled_m / 1000)} from where it started, towards where its car was heading (arrow: where it ended; the bends are a sketch)`, COLOURS.path);
       else if (!data.call.end && data.call.travelled_m) item('ring', `Where the test went: within ${distanceText(data.call.travelled_m / 1000)} of where it started (the distance it travelled)`, COLOURS.path, 'is-dashed');
+      if (layers.handovers !== false && (data.call.handovers || []).length) {
+        item('ring', `Where each handover took place on its way${window.L3Layers?.wayOf(shared.l3) ? ' of its log' : ''} (an estimate by its time, numbered as its arrow)`, COLOURS.handover, 'is-dashed');
+      }
       if (layers.drive !== false && carStretches(data).route.length > 1) {
         item('road', `The drive of its car, estimated: its tests ${data.drive.minutes} minutes before and after, joined to where the call started and ended (arrows: where it was heading; the bends are a sketch)`, COLOURS.route);
       }
@@ -2270,7 +2285,6 @@
         if (layers.ends && roles.has('both')) item('line', 'Cell that served the whole call', COLOURS.both);
         if (layers.ends && roles.has('start')) item('line', 'Cell that served the start', COLOURS.start);
         if (layers.path && roles.has('handover')) item('line', 'Handover: an arrow from cell to cell, numbered as the cells of the call', COLOURS.handover);
-        if (layers.path && (data.call.handovers || []).length) item('ring', 'Where each handover took place on its way (an estimate, numbered as its arrow)', COLOURS.handover, 'is-dashed');
         if (layers.ends && roles.has('end')) item('line', 'Cell that served the end', COLOURS.end);
         if (layers.ends && roles.has('nr_leg')) item('line', 'NR leg (by PCI)', COLOURS.nr_leg, 'is-dotted');
       }
@@ -2332,8 +2346,9 @@
       perGroup: stored.perGroup !== false,
       // The layers of CDR Info (``cdr`` the whole card).
       // (The drive of its car, once a part of Route, shown as Route was until switched apart.)
+      // (The handovers on its way, once shown with the Cell path, as the Cell path was until switched apart.)
       layers: {cdr: true, failures: true, cluster: true, run: true, hotspot: true, sites: true, ends: true, path: true, route: true, paths: true,
-        drive: stored.layers?.route !== false, ...(stored.layers || {})},
+        drive: stored.layers?.route !== false, handovers: stored.layers?.path !== false, ...(stored.layers || {})},
     };
     delete settings.layers.tests;
     const save = () => storeSettings({v: 2, tests: settings.tests, measures: settings.measures, operators: settings.operators,
@@ -2401,7 +2416,7 @@
     const views = () => [panelView, expandedView].filter(Boolean);
     const redrawAll = () => views().forEach((view) => { view.renderLegend(); view.redraw(); });
     // A layer of CDR Info (or the whole card) and a measure of its samples switched on or off.
-    shared.cdrLayers = ['failures', 'hotspot', 'cluster', 'run', 'paths', 'sites', 'ends', 'path', 'route', 'drive'];
+    shared.cdrLayers = ['failures', 'hotspot', 'cluster', 'run', 'paths', 'sites', 'ends', 'path', 'route', 'handovers', 'drive'];
     shared.setLayer = (key, on) => { settings.layers[key] = on; save(); redrawAll(); renderFailures(); };
     shared.setMeasure = (key, on) => {
       settings.measures = Object.keys(METRICS).filter((name) => (name === key ? on : settings.measures.includes(name)));
@@ -2463,6 +2478,19 @@
     };
     // Whether the call is of a group (a hotspot, cluster or time window with other NQ calls): And Group shows then.
     const hasGroups = () => Boolean(shared.data?.failures.some((failure) => !failure.self && memberships(failure).length));
+    // Why a cell of the call placed beyond the reach its cells are looked for in (``far``, see nq_call_map.resolve_trace) is
+    // the real one: its identity, PCI and channel are those of the CDR, as the Network Inventory has them, and the Layer3
+    // Logs of the call measured that PCI and channel too.
+    const farEvidence = (step) => {
+      if (!step?.far) return '';
+      const nr = step.technology === 'NR';
+      const kinds = nr ? ['nr_pcell', 'nr_scell'] : ['lte_pcell', 'lte_scell'];
+      const logged = (shared.l3?.points || []).some((point) => kinds.includes(point.kind) && String(point.pci) === String(step.pci)
+        && String(point.freq) === String(step.channel));
+      return `Identified beyond ${Number((shared.data?.cell_reach_km || 30).toFixed(1))} km by its ${nr ? 'NCI' : 'ECI'} ${step.cell}, PCI ${step.pci} and `
+        + `${nr ? 'NR-ARFCN' : 'EARFCN'} ${step.channel}: the three are those of the CDR and of this cell in the Network Inventory`
+        + `${logged ? ', and the Layer3 Logs of the call measured that PCI and channel too' : ''}.`;
+    };
     // The cells of a call: its start and end cells (its serving cell when one served all of it), its handover cells on a
     // line of their own and the NR cell of an NSA call.
     const cellRows = (cells = []) => {
@@ -2549,6 +2577,7 @@
         const step = data.trace.find((entry) => entry.order === item.order && entry.role !== 'nr_leg');
         return {title: `Handover ${item.order}: where it took place`, rows: [
           ['To cell', step ? [step.inventory?.name || step.cell, [step.technology, step.band].filter(Boolean).join(' ')].filter(Boolean).join(' · ') : ''],
+          ['Why this far cell', farEvidence(step)],
           ['To site', step?.site_id ? `${step.site_id}${step.host_network || step.network ? ` (${step.host_network || step.network})` : ''}` : ''],
           ['Estimate', `${item.by === 'time' ? 'By the time the call spent on each band (its RAT timeline), at an even speed'
             : 'Spread evenly along its way, in their order (the CDR gives no time per band that matches its cells)'}${
@@ -2561,7 +2590,8 @@
           .filter(Boolean).join(' · ');
         const siteText = (step) => (step.site_id ? `${step.site_id}${step.host_network || step.network ? ` (${step.host_network || step.network})` : ''}` : '');
         return {title: `Handover ${item.after.order}`, rows: [
-          ['From cell', cellText(item.before)], ['From site', siteText(item.before)], ['To cell', cellText(item.after)], ['To site', siteText(item.after)],
+          ['From cell', cellText(item.before)], ['From site', siteText(item.before)], ['Why that far cell', farEvidence(item.before)],
+          ['To cell', cellText(item.after)], ['To site', siteText(item.after)], ['Why this far cell', farEvidence(item.after)],
           ['Sites apart', item.before.site === item.after.site ? 'Same site' : (item.before.latitude !== undefined && item.after.latitude !== undefined
             ? distanceText(geodesic([item.before.longitude, item.before.latitude], [item.after.longitude, item.after.latitude]).metres / 1000) : '')],
         ]};
@@ -2569,12 +2599,14 @@
       if (kind === 'cell') {
         const site = data.sites.find((entry) => entry.cells.includes(item));
         const step = site && data.trace.find((entry) => entry.site === site.key && entry.cell === item.identity);
-        return {title: `Cell ${item.name || item.identity}`, rows: cellFacts(item, site, site ? siteName(site) : '', step ? step.role_label : '')};
+        return {title: `Cell ${item.name || item.identity}`, rows: [...cellFacts(item, site, site ? siteName(site) : '', step ? step.role_label : ''),
+          ['Why this far cell', farEvidence(step)]]};
       }
       if (kind === 'site') {
-        return {title: siteName(item), rows: siteFacts(item, [...item.roles, ...(item.ends || []).filter((end) => end.estimated)
+        return {title: siteName(item), rows: [...siteFacts(item, [...item.roles, ...(item.ends || []).filter((end) => end.estimated)
           .map((end) => `Nearest site to where it ${end.role === 'start' ? 'started' : 'failed'} (estimate)`)].join(', ')
-          || (item.serving ? 'Serving site' : ''), true)};
+          || (item.serving ? 'Serving site' : ''), true),
+          ...data.trace.filter((step) => step.site === item.key && step.far).map((step) => [`Why cell ${step.inventory?.name || step.cell}`, farEvidence(step)])]};
       }
       const operator = data.tests.operators[item[COLUMN.operator]] || '';
       const cdr = data.tests.cdrs?.[item[COLUMN.cdr]];
@@ -2698,6 +2730,7 @@
         text.append(node('span', cellText));
         text.append(node('small', step.site ? `Site ${step.site_id} · ${step.network}${step.host_network && step.host_network !== step.network ? ` on ${step.host_network}` : ''} · ${distanceText(step.distance_km)} from the call${step.inventory?.name ? ` · ${step.inventory.name}` : ''}`
           : 'Not in the Network Inventory of the networks that serve the operator'));
+        if (step.far) text.append(node('small', farEvidence(step), 'nq-map-path-evidence'));
         entry.append(role, text);
         if (step.site) {
           entry.tabIndex = 0;
@@ -3117,6 +3150,8 @@
         expandedView?.fit();
         window.L3Layers.refresh();
         redrawAll();
+        // (Its cells far away say whether the logs measured them too.)
+        if (shared.data?.trace.some((step) => step.far)) renderCall();
         loadAround(key);
       } catch (error) {
         if (error.name !== 'AbortError') toast(error.message, 'error');
