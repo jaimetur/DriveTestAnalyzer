@@ -4752,9 +4752,13 @@
       // Its sites with how many of its calls failed at each, the most first (the first 3, every one on hover), and its period.
       const sites = group.sites || [];
       if (group.kind !== 'run' && sites.length) {
-        const shown = sites.slice(0, 3).map((site) => `${number(site.calls)} at ${site.label}`).join(' · ');
-        chip.append(node('span', sites.length === 1 ? `At ${sites[0].label}`
-          : `${number(sites.length)} sites: ${shown}${sites.length > 3 ? ` · +${number(sites.length - 3)} more` : ''}`, 'nq-drawer-group-line'));
+        if (sites.length === 1) chip.append(node('span', `At ${sites[0].label}`, 'nq-drawer-group-line'));
+        else {
+          // How many sites, then each of them below, indented (the first 3, and how many more).
+          chip.append(node('span', `${number(sites.length)} sites:`, 'nq-drawer-group-line'));
+          sites.slice(0, 3).forEach((site) => chip.append(node('span', `${number(site.calls)} at ${site.label}`, 'nq-drawer-group-line nq-drawer-group-site')));
+          if (sites.length > 3) chip.append(node('span', `+${number(sites.length - 3)} more`, 'nq-drawer-group-line nq-drawer-group-site'));
+        }
         chip.title += `\n${sites.map((site) => `${site.label}: ${number(site.calls)} call${site.calls === 1 ? '' : 's'}`).join('\n')}`;
       }
       const period = ['hotspot', 'run'].includes(group.kind) ? groupPeriod(group) : '';

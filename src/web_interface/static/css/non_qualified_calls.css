@@ -291,6 +291,8 @@
 .nq-drawer-group-calls { position: absolute; right: .45rem; bottom: .3rem; padding: 0 .45rem; border-radius: 999px;
   background: color-mix(in srgb, var(--nq-group) 14%, #fff); color: var(--nq-dark, #2d1520); font-weight: 850; white-space: nowrap; }
 .nq-drawer-group-line { color: var(--nq-text, #2b2b2b); font-weight: 650; overflow-wrap: anywhere; }
+/* Each of its sites on a line of its own below how many they are, indented. */
+.nq-drawer-group-site { padding-left: .8rem; }
 .nq-drawer-join .nq-drawer-group code { padding: 0; background: none; color: inherit; font-size: .74rem; }
 /* In the colours of the groups on the map of the call (darker, for the text): hotspot orange, cluster green, time window
    blue. */
