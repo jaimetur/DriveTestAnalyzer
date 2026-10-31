@@ -4664,27 +4664,6 @@
       return item;
     }));
   };
-  // The groups of the open call on one row when they fit (up to four columns); else the clusters start a row of their own,
-  // below the hotspot and the run (laid out again whenever the width of the header changes).
-  const layoutGroupChips = () => {
-    const list = $('nq-drawer-groups-list');
-    if (!list) return;
-    list.querySelector('.nq-drawer-group-break')?.remove();
-    const chips = [...list.querySelectorAll('.nq-drawer-group')];
-    if (chips.length < 2 || chips.every((chip) => chip.offsetTop === chips[0].offsetTop)) return;
-    const firstCluster = chips.findIndex((chip) => chip.dataset.kind.startsWith('cluster'));
-    if (firstCluster > 0) list.insertBefore(node('span', undefined, 'nq-drawer-group-break'), chips[firstCluster]);
-  };
-  let groupsWidth = 0;
-  if (window.ResizeObserver && $('nq-drawer-groups')) {
-    new ResizeObserver(([entry]) => {
-      const width = Math.round(entry.contentRect.width);
-      if (width === groupsWidth) return;
-      groupsWidth = width;
-      layoutGroupChips();
-    }).observe($('nq-drawer-groups'));
-  }
-
   // Filter the list of calls by a group of the open call after confirming it, in place of the group filtered before (if any),
   // or remove its filter when the list already shows it.
   const filterByGroup = async (group, name, label) => {
@@ -4737,9 +4716,9 @@
     // (hotspots). Its hotspot and its time-window issue keep to its NR Mode and campaign, its cluster to its NR Mode
     // (with the calls of its cluster of every NR Mode together when that holds more, as the panel shows the clusters without
     // one NR Mode filtered).
-    // The hotspot and the run first, then the clusters (on a row of their own when they do not all fit on one, see
-    // layoutGroupChips).
-    const GROUP_ORDER = ['hotspot', 'run', 'cluster', 'cluster_all'];
+    // The hotspot, its clusters, then its time window (on one row when they fit, up to four columns; else on as many as they
+    // need, in that order).
+    const GROUP_ORDER = ['hotspot', 'cluster', 'cluster_all', 'run'];
     const groups = [...(call.groups || [])].sort((a, b) => GROUP_ORDER.indexOf(a.kind) - GROUP_ORDER.indexOf(b.kind));
     const cluster = groups.find((group) => group.kind === 'cluster');
     const mode = call.nr_mode || '';
@@ -4766,10 +4745,9 @@
       chip.dataset.filter = group.filter;
       chip.dataset.key = group.key;
       const head = node('span', undefined, 'nq-drawer-group-head');
-      // (Its calls in a pill of their own, never on a line of their own.)
-      head.append(node('b', `${NAMES[group.kind]} ${group.kind === 'cluster_all' ? 'every NR Mode' : mode}`.trim()), node('code', group.id),
-        node('span', calls, 'nq-drawer-group-calls'));
-      chip.append(head);
+      head.append(node('b', `${NAMES[group.kind]} ${group.kind === 'cluster_all' ? 'every NR Mode' : mode}`.trim()), node('code', group.id));
+      // (Its calls in a pill of their own over its bottom right corner.)
+      chip.append(head, node('span', calls, 'nq-drawer-group-calls'));
       chip.title = `${TITLES[group.kind]}: ${calls}`;
       // Its sites with how many of its calls failed at each, the most first (the first 3, every one on hover), and its period.
       const sites = group.sites || [];
@@ -4792,7 +4770,6 @@
     $('nq-drawer-groups-list').replaceChildren(...chips);
     $('nq-drawer-groups').hidden = !chips.length;
     markGroupChips();
-    window.requestAnimationFrame(layoutGroupChips);
     renderDetailNav();
     renderTracking(call);
     renderSections(detail);
