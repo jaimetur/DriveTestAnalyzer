@@ -84,7 +84,7 @@
   // -- the colour and the shape of a point of a layer ------------------------------------------------------------------
   // RSRP and SINR take the levels of the RSRP / SINR samples of the CDRs (names, colours and ranges, with Extremely poor
   // below −120 dBm), which the maps give with their data (setClasses): one legend for both sources. RSRQ takes the ranges
-  // of the KMZ files, named and coloured as the RSRP levels (also given by the maps). UE Tx Power keeps the ranges of the
+  // of the KMZ files in six levels named and coloured as those of the RSRP (also given by the maps). UE Tx Power keeps the ranges of the
   // KMZ files.
   let sampleClasses = null;
   const setClasses = (classes) => { if (classes?.rsrp?.length && classes?.sinr?.length) sampleClasses = classes; };

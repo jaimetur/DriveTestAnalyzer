@@ -1790,10 +1790,9 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
 # Below the Very poor RSRP of Network Insights, the level the Layer3 Logs draw too (their legend starts at −120 dBm).
 RSRP_FLOOR_CLASS = ('Extremely poor', -120.0, '#8B0A1A')
 # The levels of the RSRQ of the Layer3 Logs: the ranges of the legend of their KMZ files, named and coloured as those of
-# the RSRP (one more, Very good, as the KMZ files have seven ranges).
+# the RSRP (its six levels: Good joins the two ranges from −14 to −10 dB of the KMZ files).
 RSRQ_CLASSES = (
     ('Excellent', -10.0, '#2E8B57'),
-    ('Very good', -12.0, '#5DA94F'),
     ('Good', -14.0, '#8BC34A'),
     ('Fair', -16.0, '#F2C230'),
     ('Poor', -20.0, '#F08A24'),

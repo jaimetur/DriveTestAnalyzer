@@ -447,7 +447,7 @@ def test_layer_3_maps_gives_a_grid_zoomed_out_and_the_points_of_the_area_zoomed_
     # Below the zoom of the events, the grid alone; no sites or samples without an area.
     assert country['ues'] == {} and country['routes'] == [] and country['sites'] is None and country['tests'] is None
     assert country['zooms'] == {'grid': 13, 'events': 10, 'sites': 11, 'tests': 13} and country['classes']['rsrp']
-    assert [(level['label'], level['lower']) for level in country['classes']['rsrq']][:2] == [('Excellent', -10.0), ('Very good', -12.0)]
+    assert [(level['label'], level['lower']) for level in country['classes']['rsrq']][:2] == [('Excellent', -10.0), ('Good', -14.0)]
     assert 'focus_operators' in country and 'focus_labels' in country
     # From the zoom of the events, those of the area over the grid; the NQ calls only when asked for.
     town = maps(filters={}, zoom=11, bbox=[52.3, -0.4, 52.5, 0.2], layers=['lte_pcell:rsrp', 'event'], with_calls=False)
