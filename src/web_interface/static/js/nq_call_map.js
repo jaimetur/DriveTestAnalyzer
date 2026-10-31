@@ -420,10 +420,10 @@
     {key: 'calls', label: 'NQ calls', note: (area) => (area ? 'The NQ calls of the filters' : 'Around the call, and its groups'),
       layers: ['failures', 'hotspot', 'cluster', 'run', 'paths']},
     {key: 'cells', label: 'Sites & Cells', note: (area) => (area ? 'The sites of the inventory' : 'Its sites and cells'), layers: ['sites', 'ends', 'path']},
-    // The routes the CDR lets estimate (the GPS of the Layer3 Logs is the real one): on the map of a call its way, where
-    // its handovers took place on it and the drive of its car, each with its switch; on NQ Maps the drive of each CDR.
+    // The routes the CDR lets estimate (the GPS of the Layer3 Logs is the real one): on the map of a call its way, the drive
+    // of its car and where its handovers took place on its way, each with its switch; on NQ Maps the drive of each CDR.
     {key: 'route', label: 'Route', note: (area) => (area ? 'Estimated from the tests of each CDR' : 'Estimated from the CDR, not from a GPS'),
-      layers: ['route', 'handovers', 'drive']},
+      layers: ['route', 'drive', 'handovers']},
   ];
   const CDR_FOLDED_KEY = 'nq-map-cdr-folded';
   const cdrFolded = (() => {
@@ -828,7 +828,7 @@
         if (note) list.append(node('p', note, 'nq-l3-area-note'));
       });
       const icons = {failures: ['star', COLOURS.call], sites: ['triangle', '#868e96'], ends: ['line', COLOURS.end], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
-        route: ['road', data.area ? COLOURS.route : COLOURS.path], handovers: ['ring', COLOURS.handover], drive: ['road', COLOURS.route],
+        route: ['road', data.area ? COLOURS.route : COLOURS.path], handovers: ['dashed-ring', COLOURS.handover], drive: ['road', COLOURS.route],
         cluster: ['ring', COLOURS.cluster], run: ['ring', COLOURS.run], hotspot: ['ring', COLOURS.hotZone]};
       const rings = visibleRings(data);
       const paths = rings.some((ring) => ring.path && ring.path.length > 1);

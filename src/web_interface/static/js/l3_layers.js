@@ -180,6 +180,19 @@
       context.restore();
       return;
     }
+    // A dashed ring on white (where a handover took place on the way of a call, as its map draws it).
+    if (shape === 'dashed-ring') {
+      context.beginPath();
+      context.arc(x, y, size * 1.3, 0, Math.PI * 2);
+      context.fillStyle = '#fff';
+      context.fill();
+      context.setLineDash([size * .42, size * .3]);
+      context.lineWidth = Math.max(1.6, size * .45);
+      context.strokeStyle = colour;
+      context.stroke();
+      context.setLineDash([]);
+      return;
+    }
     // A ring (the icon of the shape of a group of a call).
     if (shape === 'ring') {
       context.beginPath();
