@@ -1776,6 +1776,8 @@ def call_map(repository: Any, call_key: str, *, radius_km: Any = None, tests: st
         'tests_scope': scope, 'tests_scopes': TEST_SCOPES,
         # The Focus operators of the Operator Maps: their labels, and with every name of the CDRs they stand for.
         'focus_labels': labels_with_role(repository, FOCUS), 'focus_operators': focus_operators(repository),
+        # The colour of each Operator label of the Operator Maps, for its NQ calls coloured by Operator.
+        'operator_colours': operator_colours(mapper),
         'families': list(families), 'snapshots': snapshots, 'trace': trace, 'sites': sites, 'failures': failures,
         'tests': test_points, 'classes': sample_classes(), 'notes': notes,
         'failures_left_out': failures_left_out, 'failures_max': MAX_FAILURES, 'groups': groups, 'rings': group_rings(repository, call, point),
@@ -1821,6 +1823,12 @@ def area_centre(bbox: Any) -> tuple[tuple[float, float], float]:
     south, west, north, east = (float(value) for value in bbox)
     centre = ((south + north) / 2, (west + east) / 2)
     return centre, max(.05, distance_km(centre, (north, east)))
+
+
+def operator_colours(mapper: Any) -> dict[str, str]:
+    """The colour the Operator Maps give each Operator label, which colours its NQ calls on the maps (by Operator)."""
+    return {str(group['canonical']): str(group['color']) for group in mapper.operator_groups
+            if str(group.get('canonical') or '').strip() and re.fullmatch(r'#[0-9a-fA-F]{6}', str(group.get('color') or ''))}
 
 
 def label_site_operators(sites: list[dict[str, Any]], mapper: Any) -> None:

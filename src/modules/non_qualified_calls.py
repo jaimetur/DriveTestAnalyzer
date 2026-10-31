@@ -9768,6 +9768,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         # The Focus operators of the Operator Maps, for the choice of Operators (as on the map of a call).
         area['focus_labels'] = labels_with_role(repository, FOCUS)
         area['focus_operators'] = focus_operators(repository)
+        # The colour of each Operator label of the Operator Maps, for the NQ calls coloured by Operator.
+        area['operator_colours'] = nq_call_map.operator_colours(ValueMapper.from_settings(repository.chart_mapping_settings()))
         area['zooms'] = {'grid': l3_dt_logs.GRID_ZOOM, 'events': l3_dt_logs.EVENT_ZOOM, 'sites': nq_call_map.AREA_SITES_ZOOM,
                          'tests': nq_call_map.AREA_TESTS_ZOOM}
         area['basemap'] = {'url_template': nq_call_map.OSM_TILES, 'attribution': nq_call_map.OSM_ATTRIBUTION}

@@ -51,6 +51,8 @@
   // The NQ calls of the other groups, hidden while a cluster or a time window filters the list.
   const hiddenByFocus = (failure) => Boolean(focusKind()) && !inFocus(failure) && memberships(failure).length > 0;
   const GROUP_COLOURS = {hotspot: COLOURS.hotspot, cluster: COLOURS.cluster, run: COLOURS.run};
+  // How far apart the outlines of the groups of an NQ call are (And Group), so that a clear white line shows between two.
+  const OUTLINE_STEP = 4.4;
   // The way of each time window through its failures: that of the call in the blue of the time windows, each other one in a
   // colour of its own (none of those of the other marks of the map, no green of the clusters), so that ways that cross can
   // be told apart.
@@ -141,10 +143,13 @@
   const MAX_SITE_LINES = 12;
   const OWN_SITE_COLOUR = '#800020';
   // The colour of an NQ call by ``choice`` (FAILURE_COLOURS).
+  // The colour the Operator Maps give each Operator label (``operator_colours`` of the maps): an operator takes it, one
+  // without a colour there one of its own.
+  let operatorColours = {};
   const failureColourBy = (choice, failure, ownSite = '') => {
     if (choice === 'type') return KIND_COLOURS[failure.kind] || '#495057';
     if (choice === 'campaign') return categoryColour(`campaign:${failure.campaign}|${failure.nr_mode}`);
-    if (choice === 'operator') return categoryColour(`operator:${failure.operator}`);
+    if (choice === 'operator') return operatorColours[failure.operator] || categoryColour(`operator:${failure.operator}`);
     if (choice === 'site') {
       const site = siteOf(failure);
       return !site ? '#adb5bd' : ownSite && site.key === ownSite ? OWN_SITE_COLOUR : categoryColour(`site:${site.key}`);
@@ -1388,7 +1393,7 @@
         context.strokeStyle = hollow ? colour : '#fff';
         context.stroke();
         groups.forEach((kind, index) => {
-          star(context, x, y, size + 3.4 + index * 3.4);
+          star(context, x, y, size + OUTLINE_STEP * (index + 1));
           context.lineWidth = 3.8;
           context.strokeStyle = 'rgba(255, 255, 255, .9)';
           context.stroke();
@@ -1435,7 +1440,7 @@
             context.textBaseline = 'middle';
             context.fillText(badge, x + size - 1 + badgeWidth / 2, y - size - 6);
           }
-          hits.push({x, y, r: size * 1.1 + 3 + groups.length * 3.4, kind: 'failure', item: failure, priority: 4, stack: items.length});
+          hits.push({x, y, r: size * 1.1 + 3 + groups.length * OUTLINE_STEP, kind: 'failure', item: failure, priority: 4, stack: items.length});
         }
       }
       // The order of the failures of each time window, in a blue badge at the top left of each (beyond its circles).
@@ -1501,7 +1506,7 @@
           const groups = shared.failureGroups(own);
           nqMark(px, py, size, shared.failureColour(own), groups);
           // (On the top point of its outermost outline; the pin is 2.45 times its size tall.)
-          pinLift = (size + groups.length * 3.4) * 1.25;
+          pinLift = (size + groups.length * OUTLINE_STEP) * 1.25;
           pinSize = Math.max(pinSize, pinLift * 2.2 / 2.45);
           hits.push({x: px, y: py, r: size * 1.1 + 3, kind: 'call', item: call, priority: 6});
         }
@@ -2930,6 +2935,7 @@
         if (request !== controllerAbort || key !== callKey) return false;
         const sameCall = loadedKey === key;
         shared.data = data;
+        operatorColours = data.operator_colours || operatorColours;
         // The Layer3 Logs colour their RSRP and SINR by the levels of the samples of the CDRs.
         window.L3Layers?.setClasses(data.classes);
         setRings(data.rings);
@@ -3382,6 +3388,7 @@
         if (request !== controllerAbort) return;
         if (payload.calls) shared.calls = payload.calls;
         payload.calls = shared.calls || [];
+        operatorColours = payload.operator_colours || operatorColours;
         if (!shared.data) {
           shared.data = {area: true, centre: [54.5, -2.5], radius_km: 0, basemap: payload.basemap, call: {}, groups: {},
             tests: {operators: [], rows: [], total: 0}, trace: [], sites: [], failures: [], rings: [], drive: {route: []}, classes: {}, notes: [],
