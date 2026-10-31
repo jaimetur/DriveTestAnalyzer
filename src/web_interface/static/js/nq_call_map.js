@@ -916,8 +916,8 @@
         hotZone = {fill: () => paint(zone, .22), edge: () => paint(edge, .95)};
       }
       // The shapes of its groups, as the Groups slide draws them: a circle around each cluster in purple and an ellipse along
-      // each time window in blue of its hotspot (what they make together), those of the call itself bolder (the other
-      // clusters dashed), the larger below; the hotspot when one of its calls is in neither. Their tint first, then the
+      // each time window in blue of its hotspot (what they make together), those of the call itself bolder and solid (the
+      // other clusters and time windows dashed), the larger below; the hotspot when one of its calls is in neither. Their tint first, then the
       // hotspot zone, then their lines and the edge of the zone.
       const shapes = visible.filter((ring) => layers[ring.kind] !== false).sort((a, b) => b.metres - a.metres);
       for (const ring of shapes) {
@@ -933,7 +933,7 @@
         context.strokeStyle = GROUP_COLOURS[ring.kind];
         context.globalAlpha = ring.own ? 1 : .85;
         context.lineWidth = ring.own ? 3 : 2;
-        context.setLineDash(ring.own || ring.kind !== 'cluster' ? [] : [7, 5]);
+        context.setLineDash(!ring.own && (ring.kind === 'cluster' || ring.kind === 'run') ? [7, 5] : []);
         context.stroke();
         context.setLineDash([]);
         context.globalAlpha = 1;
@@ -1980,7 +1980,7 @@
         rings.filter((ring) => ring.own).forEach((ring) => item('ring', ring.label, GROUP_COLOURS[ring.kind]));
         [['cluster', 'Other clusters of its hotspot'], ['run', 'Other time windows of its hotspot']].forEach(([kind, text]) => {
           const count = rings.filter((ring) => !ring.own && ring.kind === kind).length;
-          if (count) item('ring', `${text} (${count})`, GROUP_COLOURS[kind], kind === 'cluster' ? 'is-dashed' : '');
+          if (count) item('ring', `${text} (${count})`, GROUP_COLOURS[kind], 'is-dashed');
         });
         if (pathsShown && paths) {
           // The way of each time window in its colour: that of the call first, then the others of its hotspot.
