@@ -897,15 +897,22 @@
           target.drawImage(zone, 0, 0);
           return found;
         };
-        const edge = grown(Math.round(7 * ratio));
-        const line = edge.getContext('2d');
-        line.globalCompositeOperation = 'destination-out';
-        line.drawImage(grown(Math.round(3 * ratio)), 0, 0);
-        for (const target of [area, line]) {
+        // A band of the zone grown from ``inner`` to ``outer`` pixels, in one colour.
+        const band = (outer, inner, colour) => {
+          const found = grown(Math.round(outer * ratio));
+          const target = found.getContext('2d');
+          target.globalCompositeOperation = 'destination-out';
+          target.drawImage(grown(Math.round(inner * ratio)), 0, 0);
           target.globalCompositeOperation = 'source-in';
-          target.fillStyle = COLOURS.hotZone;
+          target.fillStyle = colour;
           target.fillRect(0, 0, canvas.width, canvas.height);
-        }
+          return found;
+        };
+        area.globalCompositeOperation = 'source-in';
+        area.fillStyle = COLOURS.hotZone;
+        area.fillRect(0, 0, canvas.width, canvas.height);
+        // The final area stands out: a wide orange edge between two white ones, over the shapes and the map.
+        const halo = band(13, 2, '#fff'), edge = band(11, 4, COLOURS.hotZone);
         const paint = (layerCanvas, alpha) => {
           context.save();
           context.setTransform(1, 0, 0, 1, 0, 0);
@@ -913,7 +920,7 @@
           context.drawImage(layerCanvas, 0, 0);
           context.restore();
         };
-        hotZone = {fill: () => paint(zone, .22), edge: () => paint(edge, .95)};
+        hotZone = {fill: () => paint(zone, .22), edge: () => { paint(halo, .95); paint(edge, 1); }};
       }
       // The shapes of its groups, as the Groups slide draws them: a circle around each cluster in purple and an ellipse along
       // each time window in blue of its hotspot (what they make together), those of the call itself bolder and solid (the
