@@ -1417,8 +1417,9 @@
           const size = data.area ? 6.5 + (zoom >= 15 ? 1 : 0) : 8 + (zoom >= 15 ? 1.5 : 0);
           // On NQ Maps those without Layer3 Logs are hollow, in their colour.
           const hollow = data.area && !items.some((item) => item.l3_log);
-          // And Group: an outline of its shape for each group of the call the calls on the point are of.
-          const groups = data.area ? [] : ['cluster', 'run', 'hotspot'].filter((kind) => items.some((item) => shared.failureGroups(item).includes(kind)));
+          // And Group: an outline of its shape for each group of the call the calls on the point are of, in the order of
+          // shared.failureGroups (its time window inside, its cluster outside).
+          const groups = data.area ? [] : ['run', 'cluster'].filter((kind) => items.some((item) => shared.failureGroups(item).includes(kind)));
           nqMark(x, y, size, shared.failureColour(failure), groups, hollow);
           if (items.length > 1) {
             const badge = `×${items.length}`;
