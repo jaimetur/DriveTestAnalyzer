@@ -111,7 +111,7 @@
   // On the map of a call, each group of the call has its switch too: the shapes of its clusters, time windows and hotspot
   // zone, and their outlines on the NQ calls (And Group).
   const CDR_LAYER_LABELS = {failures: 'NQ calls', cluster: 'Clusters', run: 'Time windows', paths: 'Time-window paths', hotspot: 'Hotspot zone',
-    sites: 'Sites', ends: 'Start and end cells', path: 'Cell path', route: 'Route'};
+    sites: 'Sites', ends: 'Start and end cells', path: 'Cell path', route: 'Route', drive: 'Drive of its car'};
   const shownLayers = (settings) => (settings.layers.cdr === false
     ? {...settings.layers, ...Object.fromEntries(Object.keys(CDR_LAYER_LABELS).map((key) => [key, false]))} : settings.layers);
   const shownMeasures = (settings) => (settings.layers.cdr === false ? [] : Object.keys(METRICS).filter((key) => settings.measures.includes(key)));
@@ -420,7 +420,10 @@
     {key: 'calls', label: 'NQ calls', note: (area) => (area ? 'The NQ calls of the filters' : 'Around the call, and its groups'),
       layers: ['failures', 'hotspot', 'cluster', 'run', 'paths']},
     {key: 'cells', label: 'Sites', note: (area) => (area ? 'The sites of the inventory' : 'Its sites and cells'), layers: ['sites', 'ends', 'path']},
-    {key: 'route', label: 'Route', note: (area) => (area ? 'The drive of each CDR' : 'Its way and that of its car'), layers: ['route']},
+    // The routes the CDR lets estimate (the GPS of the Layer3 Logs is the real one): on the map of a call its way and the
+    // drive of its car, each with its switch; on NQ Maps the drive of each CDR.
+    {key: 'route', label: 'Route', note: (area) => (area ? 'Estimated from the tests of each CDR' : 'Estimated from the CDR, not from a GPS'),
+      layers: ['route', 'drive']},
   ];
   const CDR_FOLDED_KEY = 'nq-map-cdr-folded';
   const cdrFolded = (() => {
@@ -825,7 +828,7 @@
         if (note) list.append(node('p', note, 'nq-l3-area-note'));
       });
       const icons = {failures: ['star', COLOURS.call], sites: ['triangle', '#868e96'], ends: ['line', COLOURS.end], path: ['arrow', COLOURS.handover], paths: ['road', COLOURS.run],
-        route: ['road', data.area ? COLOURS.route : COLOURS.path], cluster: ['ring', COLOURS.cluster], run: ['ring', COLOURS.run], hotspot: ['ring', COLOURS.hotZone]};
+        route: ['road', data.area ? COLOURS.route : COLOURS.path], drive: ['road', COLOURS.route], cluster: ['ring', COLOURS.cluster], run: ['ring', COLOURS.run], hotspot: ['ring', COLOURS.hotZone]};
       const rings = visibleRings(data);
       const paths = rings.some((ring) => ring.path && ring.path.length > 1);
       // A group only when the call has one of it; the sites, the lines to the cells of its start and end and its cell path
@@ -835,7 +838,8 @@
         || ((key === 'cluster' || key === 'run') && !rings.some((ring) => ring.kind === key))
         || (key === 'hotspot' && !hotspotShown(data)) || (key === 'sites' && !data.sites.length)
         || (key === 'ends' && !located.some((step) => step.role !== 'handover'))
-        || (key === 'path' && !located.length && !(data.call?.handovers || []).length));
+        || (key === 'path' && !located.length && !(data.call?.handovers || []).length)
+        || (key === 'drive' && carStretches(data).route.length < 2));
       for (const kind of CDR_SECTIONS.slice(1)) {
         const keys = kind.layers.filter(shown);
         if (!keys.length) continue;
@@ -843,7 +847,8 @@
           for (const key of keys) {
             const count = key === 'failures' ? data.failures.filter((failure) => !failure.self && failure.latitude !== null && shared.showsFailure(failure)).length
               : key === 'sites' ? data.sites.length : key === 'cluster' || key === 'run' ? rings.filter((ring) => ring.kind === key).length : null;
-            const text = key === 'route' ? (data.area ? 'Route (the drive of each CDR between its tests)' : 'Route (its way and that of its car)') : CDR_LAYER_LABELS[key];
+            const text = key === 'route' ? (data.area ? 'Drive of each CDR (estimated, between its tests)' : 'Way of the call (estimated)')
+              : key === 'drive' ? `Drive of its car (estimated, ${data.drive.minutes} min before and after)` : CDR_LAYER_LABELS[key];
             row(list, settings.layers[key] !== false, `Show the ${CDR_LAYER_LABELS[key]}`, icons[key], text, count, (checked) => shared.setLayer(key, checked));
           }
         });
@@ -1064,8 +1069,9 @@
       const settings = shared.settings;
       const layers = shownLayers(settings);
       renderCounts(data, layers);
-      // The route from the CDR: the way of the call and of its car (on NQ Maps the drive of each CDR), with its START and END.
-      const routeShown = layers.route !== false;
+      // The routes estimated from the CDR: the way of the call, with its START and END (on NQ Maps the drive of each CDR),
+      // and the drive of its car.
+      const routeShown = layers.route !== false, driveShown = layers.drive !== false;
       const call = data.call;
       const failurePoint = data.centre;
       const metresPerPixel = metresPerWorldPixel(failurePoint[0]) * view.resolution;
@@ -1494,7 +1500,7 @@
       };
       route.forEach((point, index) => {
         const last = route[index - 1];
-        if (!routeShown || !index || (index > anchor && index < next)) return;
+        if (!driveShown || !index || (index > anchor && index < next)) return;
         if (anchor >= 0 && index === anchor) carRoad(last, start || point, {from: last[2], to: 'start'});
         else if (anchor >= 0 && index === next) carRoad(call.way ? call.way.points.at(-1) : route[anchor], point, {from: call.way ? 'end' : 'start', to: point[2]});
         else carRoad(last, point, {from: last[2], to: point[2]});
@@ -2196,7 +2202,7 @@
         const routes = (window.L3Layers?.routesOf(shared.l3) || []).length, sites = layers.sites !== false && data.sites.length;
         const drives = routeShown && data.tests.rows.length;
         if (sites || drives) group('Routes and sites');
-        if (drives) item('road', 'Route: the drive of each CDR between its tests (in time order)', COLOURS.route);
+        if (drives) item('road', 'Drive of each CDR, estimated: between its tests in time order (not a GPS)', COLOURS.route);
         if (sites) item('triangle', 'Site (colour of its vendor), with its cells once close enough', '#868e96');
         l3Tree?.render();
         finish(routes ? 'The GPS of each session' : '');
@@ -2207,11 +2213,11 @@
       item('pin', `${data.call.end ? 'This call (where it failed)' : 'This test (where it started; it failed on its way)'}${layers.failures ? ', its pin over its mark of NQ call' : ''}`, COLOURS.call);
       if (data.call.end) item('dot', 'Where it started', COLOURS.start);
       if (!routeShown || window.L3Layers?.wayOf(shared.l3)) { /* Its route hidden, or the real way of its log (below). */ }
-      else if (data.call.way?.by === 'ends') item('road', 'Its way, from where it started to where it ended (arrow: its direction; the bends are a sketch, not its streets)', COLOURS.path);
-      else if (data.call.way) item('road', `Its way, simulated: its ${distanceText(data.call.travelled_m / 1000)} from where it started, towards where its car was heading (arrow: where it ended; the bends are a sketch)`, COLOURS.path);
+      else if (data.call.way?.by === 'ends') item('road', 'Its way, estimated: from where it started to where it ended, as the CDR gives them (arrow: its direction; the bends are a sketch, not its streets)', COLOURS.path);
+      else if (data.call.way) item('road', `Its way, estimated: its ${distanceText(data.call.travelled_m / 1000)} from where it started, towards where its car was heading (arrow: where it ended; the bends are a sketch)`, COLOURS.path);
       else if (!data.call.end && data.call.travelled_m) item('ring', `Where the test went: within ${distanceText(data.call.travelled_m / 1000)} of where it started (the distance it travelled)`, COLOURS.path, 'is-dashed');
-      if (routeShown && carStretches(data).route.length > 1) {
-        item('road', `The way of its car: its tests ${data.drive.minutes} minutes before and after, joined to where the call started and ended (arrows: where it was heading; the bends are a sketch)`, COLOURS.route);
+      if (layers.drive !== false && carStretches(data).route.length > 1) {
+        item('road', `The drive of its car, estimated: its tests ${data.drive.minutes} minutes before and after, joined to where the call started and ended (arrows: where it was heading; the bends are a sketch)`, COLOURS.route);
       }
       item('line', `Radius ${distanceText(data.radius_km)}`, COLOURS.radius, 'is-dashed');
       // The NQ calls around as on NQ Maps: a colour for each value of Colour NQ calls by, with the outlines of And Group.
@@ -2325,7 +2331,9 @@
       // And Group: a circle around each NQ call of the groups of the call, in the colour of each group.
       perGroup: stored.perGroup !== false,
       // The layers of CDR Info (``cdr`` the whole card).
-      layers: {cdr: true, failures: true, cluster: true, run: true, hotspot: true, sites: true, ends: true, path: true, route: true, paths: true, ...(stored.layers || {})},
+      // (The drive of its car, once a part of Route, shown as Route was until switched apart.)
+      layers: {cdr: true, failures: true, cluster: true, run: true, hotspot: true, sites: true, ends: true, path: true, route: true, paths: true,
+        drive: stored.layers?.route !== false, ...(stored.layers || {})},
     };
     delete settings.layers.tests;
     const save = () => storeSettings({v: 2, tests: settings.tests, measures: settings.measures, operators: settings.operators,
@@ -2393,7 +2401,7 @@
     const views = () => [panelView, expandedView].filter(Boolean);
     const redrawAll = () => views().forEach((view) => { view.renderLegend(); view.redraw(); });
     // A layer of CDR Info (or the whole card) and a measure of its samples switched on or off.
-    shared.cdrLayers = ['failures', 'hotspot', 'cluster', 'run', 'paths', 'sites', 'ends', 'path', 'route'];
+    shared.cdrLayers = ['failures', 'hotspot', 'cluster', 'run', 'paths', 'sites', 'ends', 'path', 'route', 'drive'];
     shared.setLayer = (key, on) => { settings.layers[key] = on; save(); redrawAll(); renderFailures(); };
     shared.setMeasure = (key, on) => {
       settings.measures = Object.keys(METRICS).filter((name) => (name === key ? on : settings.measures.includes(name)));
@@ -2514,7 +2522,7 @@
       }
       if (kind === 'way') {
         const [first, last] = [item.points[0], item.points.at(-1)];
-        return {title: item.by === 'ends' ? 'Its way' : 'Its way (simulated)', rows: [
+        return {title: item.by === 'ends' ? 'Its way (estimated)' : 'Its way (estimated, simulated)', rows: [
           ['Travelled', item.by === 'ends' ? `${distanceText(geodesic([first[1], first[0]], [last[1], last[0]]).metres / 1000)} apart` : distanceText(data.call.travelled_m / 1000)],
           ['Lasted', data.call.travelled_s ? `${Math.round(data.call.travelled_s)} s` : ''],
           ['Direction', item.by === 'ends' ? 'From where it started to where it ended' : item.by === 'after'
@@ -2532,7 +2540,7 @@
           const seconds = Math.abs(value), when = seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`;
           return `Its test ${when} ${value > 0 ? 'after' : 'before'} it`;
         };
-        return {title: typeof item.to === 'number' && item.to > 0 ? 'Its car after the call' : 'Its car before the call', rows: [
+        return {title: typeof item.to === 'number' && item.to > 0 ? 'Drive of its car after the call (estimated)' : 'Drive of its car before the call (estimated)', rows: [
           ['From', place(item.from)], ['To', place(item.to)], ['Distance', distanceText(item.metres / 1000)],
           ['Shape', 'Its bends are a sketch, not the streets it took'],
         ]};
