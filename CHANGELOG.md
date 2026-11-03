@@ -4,7 +4,7 @@
 ---
 
 ## Release: v0.11.0
-### Release Date: 2026-11-02
+### Release Date: 2026-11-03
 #### ⚠️ Breaking Changes:
 - **NQ Prioritization — Clusters within one circle:** a cluster holds the NQ calls of an operator and NR Mode that fit in a circle whose radius is the Cluster distance (half the ISD by default), the nearest joined first, so it no longer chains along a road: a long series of failures makes several clusters that meet at the widest gaps, and calls at the same site join only within the Cluster distance. A Repeated Issue (the Cluster condition of the strategies) is a call of a cluster, and a hotspot is what its clusters and time windows make together (OR: their envelope; AND: where they meet). Every workspace calculates its groups again once.
 - **NQ Prioritization — No group mixes NR Modes:** the clusters, hotspots and time-window issues of a call are always of its NR Mode, whose failures have other causes and are analysed apart: the cluster of every NR Mode together is no longer calculated, so the NQ Hotspots, Time-Window & Clustered Issues panel shows the clusters of each NR Mode whatever the filters (no **Cluster NR Mode** criterion), the header of a call shows at most three groups (hotspot, wider, cluster and time window, each with its sites and, as pills, its calls, how far it reaches, how long it lasted and its period) and filtering the list by a cluster shows the calls of its NR Mode only.
