@@ -372,7 +372,8 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                     ('scoring-results-summary', 'Summary', 'summary'), ('scoring-results-charts', 'Scoring Charts', 'chart'),
                     ('scoring-results-tables', 'Scoring Tables', 'table'), ('scoring-results-geographical-areas', 'Geographical Areas', 'pin'),
                     ('scoring-results-trends', 'Scoring Trends', 'activity'), ('scoring-results-gap', 'GAP Analysis', 'gap'),
-                    ('scoring-results-points-lost', 'Points Lost', 'map')]),
+                    ('scoring-results-points-lost', 'Points Lost', 'map'),
+                    ('scoring-results-methodology-impact', 'Methodology Impact', 'sliders')]),
                 ('Excluded Calls', 'Excluded Calls', 'ban'),
                 ('Favourites Filters', 'Favourites Filters', 'filter')],
     # In the order of the page (templates/network_insights.html): its category panels, each with its panels as parts.

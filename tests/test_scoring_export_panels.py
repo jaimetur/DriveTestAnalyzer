@@ -43,10 +43,10 @@ def test_the_panels_of_each_tab_and_the_operators_they_export_by_default():
                                                      'unknown': {'panel': {'exportable': False}}}})
     assert normalized['summary']['act'] == {'exportable': False, 'operators': 'focus'} and 'unknown' not in normalized
     assert export_panel_changes(panels, normalized) == ['Summary > Where to act: not exportable']
-    # The tabs and panels of the Scoring section of the Bundle Report Templates.
+    # The tabs and panels of the Scoring section of the Bundle Report Templates (the Methodology Impact has documents of its own).
     from src.modules.bundle_report_templates import SCORING_SUBMODULES
-    assert [(group['key'], group['title'], [panel['key'] for panel in group['panels']]) for group in export_panel_catalogue()] == [
-        (key, title, [name for name, _label in components]) for key, title, components in SCORING_SUBMODULES]
+    assert [(group['key'], group['title'], [panel['key'] for panel in group['panels']]) for group in export_panel_catalogue()
+            if group['key'] != 'impact'] == [(key, title, [name for name, _label in components]) for key, title, components in SCORING_SUBMODULES]
 
 
 def test_the_options_of_a_document_leave_out_the_panels_that_are_not_exportable():

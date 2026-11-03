@@ -20073,6 +20073,115 @@ def _scoring_result_payload(saved_filter: dict[str, Any], result: dict[str, Any]
             'views': views, 'scorings': scorings}
 
 
+def _scoring_impact_saved_filter(user: SessionUser, filter_id: int) -> tuple[Repository, dict[str, Any]]:
+    task_repository = scoring_repository(user)
+    saved_filter = get_saved_filter(task_repository, filter_id, include_internal_snapshot=True)
+    if not saved_filter:
+        raise HTTPException(status_code=404, detail='Saved Filter not found.')
+    return task_repository, saved_filter
+
+
+def _scoring_impact_selection(mode: str, nr_mode: str, campaign_a: str, campaign_b: str, methodology_a: str,
+                              methodology_b: str, campaign: str) -> dict[str, str]:
+    return {'mode': mode, 'nr_mode': nr_mode, 'campaign_a': campaign_a, 'campaign_b': campaign_b,
+            'methodology_a': methodology_a, 'methodology_b': methodology_b, 'campaign': campaign}
+
+
+@app.get('/api/scoring/saved-filters/{filter_id}/impact/options')
+def scoring_impact_options(filter_id: int, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """The campaigns and methodologies the Methodology Impact of a Saved Filter can compare."""
+    from src.modules.scoring_impact import impact_options
+    task_repository, saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    try:
+        return impact_options(task_repository, saved_filter)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get('/api/scoring/saved-filters/{filter_id}/impact')
+def scoring_impact(filter_id: int, request: Request, mode: str = '', nr_mode: str = '', campaign_a: str = '', campaign_b: str = '',
+                   methodology_a: str = '', methodology_b: str = '', campaign: str = '', retry: bool = False,
+                   user: SessionUser = Depends(current_user)) -> Response:
+    """A comparison of the Methodology Impact with its panels; one not calculated yet (or calculated before its CDRs,
+    methodologies or Operator Maps changed) is calculated in the background, and this says how it goes."""
+    from src.modules.scoring_impact import impact_state, prepare_impact, queue_impact
+    task_repository, saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    selection = _scoring_impact_selection(mode, nr_mode, campaign_a, campaign_b, methodology_a, methodology_b, campaign)
+    try:
+        prepared = prepare_impact(task_repository, saved_filter, selection)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    state = impact_state(task_repository, prepared)
+    if state is None or (retry and state['status'] == 'failed'):
+        def submit(callback: Callable[..., Any], *args: Any) -> None:
+            _submit_workspace_job(task_repository, callback, *args, phase=4)
+        if queue_impact(task_repository, prepared, submit, user.username):
+            task_repository.try_add_log(user.username, 'scoring_methodology_impact_requested', json.dumps({
+                'saved_filter_id': filter_id, 'starred': bool(saved_filter.get('pinned')), 'name': saved_filter.get('name') or '',
+                **prepared['selection'], 'before': prepared['runs']['before']['profile_name'],
+                'after': prepared['runs']['after']['profile_name'], 'campaign': prepared['runs']['before']['campaign'],
+            }))
+        state = impact_state(task_repository, prepared)
+    packed = json.dumps(jsonable_encoder({**(state or {'status': 'queued', 'progress': 0, 'message': '', 'error': ''}),
+                                          'selection': prepared['selection']}), ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    if 'gzip' in request.headers.get('accept-encoding', '').lower():
+        return Response(gzip.compress(packed, 5), media_type='application/json', headers={'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding'})
+    return Response(packed, media_type='application/json')
+
+
+@app.get('/scoring/saved-filters/{filter_id}/impact/export/{export_kind}')
+def scoring_impact_export(filter_id: int, export_kind: str, mode: str = '', nr_mode: str = '', campaign_a: str = '', campaign_b: str = '',
+                          methodology_a: str = '', methodology_b: str = '', campaign: str = '', environment: str = 'Combined',
+                          scoring: str = 'best_network', theme: str | None = None, operators: str | None = None,
+                          user: SessionUser = Depends(current_user)) -> Response:
+    """The CSV, PowerPoint or Word of a comparison of the Methodology Impact already calculated."""
+    if export_kind not in {'csv', 'ppt', 'word'}:
+        raise HTTPException(status_code=404, detail='Unknown Methodology Impact export format.')
+    if scoring not in {'best_network', 'most_reliable'}:
+        raise HTTPException(status_code=400, detail='Scoring must be best_network or most_reliable.')
+    from src.modules.scoring_impact import impact_state, prepare_impact
+    from src.modules.scoring_impact_exports import export_impact_csv, export_impact_powerpoint, impact_filename
+    task_repository, saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    selection = _scoring_impact_selection(mode, nr_mode, campaign_a, campaign_b, methodology_a, methodology_b, campaign)
+    try:
+        prepared = prepare_impact(task_repository, saved_filter, selection)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    state = impact_state(task_repository, prepared)
+    if not state or state['status'] != 'completed':
+        raise HTTPException(status_code=409, detail='The Methodology Impact must finish calculating before export.')
+    impact = state['impact']
+    chosen = None
+    if operators:
+        try:
+            decoded = json.loads(operators)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail='The operators of the export are not valid JSON.') from exc
+        chosen = [str(name) for name in decoded if str(name).strip()] if isinstance(decoded, list) else None
+    export_theme = normalize_theme(theme) if theme else load_user_theme(task_repository, user.username)
+    stamp = datetime.now()
+    if export_kind == 'csv':
+        content, media_type, filename = (export_impact_csv(impact, scoring).encode('utf-8-sig'), 'text/csv', impact_filename(impact, stamp, 'csv'))
+    else:
+        from src.modules.bundle_report_templates import module_document
+        try:
+            deck = export_impact_powerpoint(impact, settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa'], task_repository.list_operator_mapping_groups(),
+                                            scoring=scoring, environment=environment, operators=chosen, panels=load_export_panels(task_repository),
+                                            theme=export_theme)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        content = module_document('scoring', deck, 'word' if export_kind == 'word' else 'powerpoint', 'Scoring & GAP Analysis: Methodology Impact', theme=export_theme)
+        media_type = ('application/vnd.openxmlformats-officedocument.wordprocessingml.document' if export_kind == 'word'
+                      else 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
+        filename = impact_filename(impact, stamp, 'docx' if export_kind == 'word' else 'pptx')
+    task_repository.try_add_log(user.username, f'export_scoring_impact_{export_kind}', json.dumps({
+        'saved_filter_id': filter_id, 'name': saved_filter.get('name') or '', **prepared['selection'], 'environment': environment,
+        'scoring': scoring, 'before': impact['before']['profile_name'], 'after': impact['after']['profile_name'],
+        **({'theme': export_theme} if export_kind != 'csv' else {}), **({'operators': chosen} if chosen else {}),
+    }))
+    return Response(content, media_type=media_type, headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}"})
+
+
 @app.get('/api/scoring/saved-filters/{filter_id}/boundaries/{field}')
 def saved_filters_boundaries(filter_id: int, field: str, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """Polygons of a points-lost map layer: the map areas (with the outlines of their countries) or the job's

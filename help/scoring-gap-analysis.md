@@ -26,6 +26,7 @@ scoring-gap-analysis
 | Read scores, GAPs and coverage warnings | [Results and workspace settings](#results-and-workspace-settings) |
 | Change the colours of the charts, tables and exports | [Choose a theme](#choose-a-theme) |
 | Leave calls out of every scoring | [Excluded Calls](#excluded-calls) |
+| See what a change of methodology does to the results | [Methodology Impact](#methodology-impact) |
 | Show or configure the Most Reliable scoring | [Most Reliable Network scoring](#most-reliable-network-scoring) |
 | Change environments, KPIs or weights | [Methodology](#methodology) |
 | Edit formulas and scoring rules | [KPI definitions](#editing-replacing-adding-and-removing-kpis) |
@@ -258,6 +259,7 @@ A list of more than three values keeps the first two and counts the others; hove
 | [**Scoring Trends**](#scoring-trends) | The Scoring Trend and the National & Geographical Areas Trends, with the campaigns of the Scoring Trends |
 | [**GAP Analysis**](#gap-analysis) | The GAP tables, the GAP by part of the scoring and the KPI GAP Profile |
 | [**Points Lost**](#points-lost) | Where the points go, the points lost per KPI, the Points Lost Map and the points lost per Vendor, per kind of site, per site and along the Connecting Roads |
+| [**Methodology Impact**](#methodology-impact) | What changes between two methodologies, and what that change does to the scoring, categories, KPIs, geographical areas, GAPs and points lost of each operator |
 
 Opening the page starts on **Summary**, at its top; reloading it (or going Back and Forward) keeps the tab shown and returns to where the page was being read, showing what was in view, dimmed with a loading notice, until the results are drawn there. The menu of the Scoring & GAP Analysis tab lists the seven tabs beside Scoring & GAP Results, and the sections bar of the page does too. While the results are scrolled, the bar of the tabs stays at the top of the window, below the sections bar, until the end of the results; choosing another tab there opens it at its start.
 
@@ -459,6 +461,37 @@ The charts of this tab use the campaigns and time split of the **Scoring Trends*
 | **Best Network / Most Reliable Network Trends — National & Geographical Areas** | The National scoring, then each area of the breakdown (Regions or Clusters), then the cities, each group with its names in its own colour (as the titles of its charts) and a thick rule between groups, with each operator's score in the latest campaign or period, its change from the previous one and its GAP to the reference, and a trend chart per area on the same scale, as tall as the table beside them (labels tilted when they do not fit), titled in one colour for National, another for the breakdown and another for the cities; a double click on a chart or on the table enlarges it alone (a single separate city next to National, several after the breakdown). An area not measured in the latest campaign or period is listed without a score, and its chart shows the earlier ones |
 
 Without two campaigns or periods, the tab says how to get them.
+
+### Methodology Impact
+
+**Methodology Impact** shows what a change of methodology does to the results: the same tests are scored with both methodologies, so every difference comes from the methodology and none from the network. It keeps the scope of the open Saved Filter (its NR Mode, filters and GAP reference) and follows the **Scoring**, **Environment** and **Operators** chosen in the page; its Split by does not matter, and it starts with every operator enabled.
+
+Choose what to compare at the top of the tab:
+
+| Compare | What is scored |
+| --- | --- |
+| **Two campaigns** | The tests of the later campaign (**To campaign**) with the methodology of each campaign. The selectors name the methodology of each campaign. It starts with the latest campaign of the Saved Filter and the nearest earlier one with another methodology. |
+| **Two methodologies** | The tests of **Tests of the campaign** with **First methodology** and **Second methodology**, any two methodologies of the workspace. |
+
+A Saved Filter of NSA vs SA adds **NR Mode**: the comparison is of one NR Mode at a time, and when its GAP reference is Same operator in NSA, the reference is EE. Every difference is the second methodology minus the first one.
+
+The comparison is calculated in the background the first time, with its progress in the tab (from the Scoring History when it holds the CDRs and KPIs, else from the rows of the CDRs), and kept in the cache of the workspace, so it opens at once afterwards. It is calculated again when its CDRs, methodologies, filters or Operator Maps change. When it fails, the tab says why and **Calculate again** tries it again. Each request, calculation, failure and export is registered in App Events.
+
+| Panel | What it shows |
+| --- | --- |
+| **Methodology Impact** | The two methodologies, the tests scored, the GAP reference and what stands out: how much the operators move, the positions and sides that change, the category and KPI that move most, and the areas where the leader changes |
+| **What changed** | How many KPIs are new, removed, with other points, thresholds, formula or filters, score mapping or definition, and how many stay the same; the points of each category and environment as bars; the general settings that differ; and each KPI that changes, with each change before and after and the environments it applies to. A KPI keeps its identity by its code and name, so a renamed KPI is shown as changed, not as removed and added |
+| **Impact on the scoring** | Each operator in All Environments (its difference, points before and after, and its position when it changes) and in each environment |
+| **From one campaign to the other** | Only when comparing two campaigns: each operator from the earlier campaign as it was scored to the later one, with what **the network changed** (the later tests with the earlier methodology, minus the earlier campaign) and what **the methodology changed** (the later tests with the later methodology, minus the same tests with the earlier one) |
+| **Impact per category** | The points of each category with both methodologies and its maximum, for each operator, with the total |
+| **KPIs affected** | The KPIs that change or move, those that move most first, with what changes in each. Hover a cell for the value and the score of the KPI with both methodologies. **Show all** opens the list |
+| **Impact per geographical area** | In **Area**, each Region, Cluster or City the CDRs have, on the whole country as the Geographical Areas, with who leads it before and after, the areas that move most first. In All Environments the environments measured in an area are scaled to the full maximum |
+| **Impact on the GAP Analysis** | The GAP of each operator against the reference before and after, in total, per category and in the KPIs that move most. **Changes side** marks an operator that goes from ahead of the reference to behind it, or the other way round |
+| **Impact on the Points Lost** | The points each operator loses before and after, by [kind of loss](#kinds-of-points-lost), per category and in the KPIs that move most. More points lost are shown in the colour of a loss |
+
+In each cell, the figure and the bar either side of zero are the difference, against the largest of its table, and the figures below it the value before and after. A KPI or category that one methodology does not have counts as **none** there, so the differences of the KPIs add up to that of their category and of the scoring. When both campaigns have the same methodology, the tab says so and all the difference between them comes from the network.
+
+**Export to CSV**, **Export to PowerPoint** and **Export to Word** at the top of the tab export the comparison shown, in the theme of the page. The CSV holds every value of every panel in every environment; the documents show the panels that [Scoring Export Panels](workspace-config.md#scoring-export-panels) exports, for the Environment and Operators chosen in the page. These panels are part of the documents of this tab only, not of the other Scoring documents, Reporting Jobs or Bundle Report Templates.
 
 ### Incomplete coverage and achievable scoring
 
@@ -847,6 +880,7 @@ The **Scoring History** keeps, in the workspace database, the components of ever
 | --- | --- |
 | **Export to CSV** above the Scoring table | The scoring table shown: expanded results, category subtotals and totals of the selected scoring and environment |
 | **Export to CSV** above the GAP table | The GAP table shown: expanded GAP results and their existing numeric fields of the selected scoring and environment |
+| **Export to CSV**, **PowerPoint** and **Word** in [Methodology Impact](#methodology-impact) | The comparison shown: every value of its panels (CSV), or the panels that Scoring Export Panels exports (documents) |
 | Floating download and screenshot buttons of each card and of its charts and tables | The card under the pointer, whole, or its chart or table under the pointer, as a PNG image, as it is shown, saved as a file or copied to the clipboard (see [Results tabs](#results-tabs)) |
 | **Generate Scoring Report (PPT/Word)** (Calculation panel) | A report whose content is chosen in the report editor, with the CDRs, filters, Split by, Geographical Areas & Scoring Trends, GAP reference, methodology and theme of the page |
 | **Export Selected Scoring Report (PPT/Word)** (Results panel) | The selected Saved Filter as it was calculated (its CDRs, Split by levels and filters), with editable tables and charts, covers and environment transitions. Its dialog asks for the scorings (**Best Network**, **Most Reliable**, when the Saved Filter has it) and the environments (**All Environments**, all of them combined, and each environment) with checkboxes, Best Network and All Environments ticked, **Export All Operators in Focus panels** (off: every operator in the panels of the Focus operators) and PowerPoint or Word. Only the exportable panels of [Scoring Export Panels](workspace-config.md#scoring-export-panels) are included |

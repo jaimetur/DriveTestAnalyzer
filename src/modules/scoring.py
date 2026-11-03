@@ -334,9 +334,10 @@ def _is_baseline(value: str, baseline_operator: str, baseline_aliases: Iterable[
 
 
 def _prepared_frames(frames: dict[str, pd.DataFrame], dimensions: list[str], config: dict, operator_mappings: dict[str, str],
-                     map_areas, time_split: str | None, campaign_selected: bool, warnings: list[str], postal_areas=None):
-    """Each source with the grouping fields, the map location and the environment of its tests, and which of its
-    rows can be scored."""
+                     map_areas, time_split: str | None, campaign_selected: bool, warnings: list[str], postal_areas=None,
+                     locate: bool = True):
+    """Each source with the grouping fields, the map location (with ``locate``) and the environment of its tests, and
+    which of its rows can be scored."""
     for kind, source in frames.items():
         if kind not in _FIELDS or source.empty:
             continue
@@ -389,7 +390,8 @@ def _prepared_frames(frames: dict[str, pd.DataFrame], dimensions: list[str], con
         if missing_group:
             warnings.append(f'{kind.title()}: missing grouping columns: {", ".join(missing_group)}; no scores calculated.')
             continue
-        points_loss.attach_location(frame, source, kind, resolve_column_name, map_areas, postal_areas)
+        if locate:
+            points_loss.attach_location(frame, source, kind, resolve_column_name, map_areas, postal_areas)
         frame['environment'] = None
         environment_masks = {}
         for environment, context in config['scope']['environments'].items():
@@ -429,12 +431,14 @@ def calculate_scoring(
     operator_mappings: dict[str, str] | None = None,
     map_areas=None,
     time_split: str | None = None,
+    with_points_loss: bool = True,
 ) -> dict:
     """Calculate KPI scores at the selected dimensions without reallocating missing weights.
 
     ``map_areas`` (a ``map_areas.AreaIndex``) places the tests in the map areas of their country.
     ``time_split`` (Daily, Weekly, Monthly, Quarterly or Yearly) splits the Campaign level by the
     period of each test's start time instead of by campaign.
+    Without ``with_points_loss`` only the scores are calculated (the same ones), not where the points are lost on the map.
     """
     config = _required_configuration(configuration)
     metrics = config['metrics']
@@ -465,7 +469,7 @@ def calculate_scoring(
     serving_tests: list[dict] = []
     test_counts: list[dict] = []
     geometry = points_loss.AreaGeometry()
-    if map_areas is None:
+    if map_areas is None and with_points_loss:
         from src.modules.map_areas import area_index
         map_areas = area_index(None)
     normalized_operator_mappings = {
@@ -486,7 +490,7 @@ def calculate_scoring(
         warnings.append(f'{missing_kind.title()} source is missing; full benchmark coverage is unavailable.')
     time_split = normalize_time_split(time_split) if campaign_selected else None
     for kind, frame, valid in _prepared_frames(frames, dimensions, config, normalized_operator_mappings, map_areas,
-                                               time_split, campaign_selected, warnings):
+                                               time_split, campaign_selected, warnings, locate=with_points_loss):
         for values, group in frame[valid].groupby(group_fields, dropna=False, sort=False):
             metadata = dict(zip(keys, values))
             metadata = {key: (None if pd.isna(value) else value) for key, value in metadata.items()}
@@ -503,12 +507,13 @@ def calculate_scoring(
                              'dataset_type': kind.title(), 'kpi_type': metric.get('kpi_type'),
                              'unit': metric.get('unit'), 'value': value, 'sample_count': count, 'score': None,
                              'weighted_points': None, 'max_points': context['max_points']})
-        # Where each KPI loses its points, for every group at once.
-        shares, served = _points_loss_entries(kind, frame, valid, group_fields, keys,
-                                              [m for m in metrics if m['source_kind'] == kind])
-        loss_shares.extend(shares)
-        serving_tests.extend(served)
-        geometry.add(frame if bool(valid.all()) else frame[valid])
+        if with_points_loss:
+            # Where each KPI loses its points, for every group at once.
+            shares, served = _points_loss_entries(kind, frame, valid, group_fields, keys,
+                                                  [m for m in metrics if m['source_kind'] == kind])
+            loss_shares.extend(shares)
+            serving_tests.extend(served)
+            geometry.add(frame if bool(valid.all()) else frame[valid])
         global_valid = frame['__matched_environments'].map(bool) & frame['Operator'].notna()
         if campaign_selected:
             global_valid &= frame['Campaign'].notna()
@@ -545,8 +550,8 @@ def calculate_scoring(
     result = finish_scoring(
         rows, global_kpis, keys=keys, dimensions=dimensions, config=config, baseline_operator=baseline_operator,
         baseline_aliases=baseline_aliases, warnings=warnings, campaigns=campaign_values.values(),
-        points_loss_document={'version': 3, **geometry.document(), 'map_areas': geometry.map_areas(map_areas),
-                              'shares': loss_shares, 'serving_tests': serving_tests},
+        points_loss_document=({'version': 3, **geometry.document(), 'map_areas': geometry.map_areas(map_areas),
+                               'shares': loss_shares, 'serving_tests': serving_tests} if with_points_loss else None),
     )
     window = test_window(frames)
     if window:

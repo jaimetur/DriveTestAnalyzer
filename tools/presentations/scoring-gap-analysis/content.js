@@ -39,10 +39,10 @@ module.exports = {
       points: [
         { icon: 'TbJson', title: 'Named methodologies', text: 'NetCheck 2026 and 2026-Q3 shipped, editable, exchanged as portable JSON.' },
         { icon: 'TbAdjustments', title: 'Environments', text: 'Which CDR rows they include and how many points their KPIs can give.' },
-        { icon: 'TbScale', title: 'KPIs and weights', text: 'Edit, replace, add and remove KPIs, their formulas and scoring rules.' },
+        { icon: 'TbScale', title: 'KPIs and weights', text: 'Edit KPIs, formulas and rules; Methodology Impact shows what a change does.' },
         { icon: 'TbBan', title: 'Excluded Calls', text: 'Lists of calls left out of every scoring of the workspace.' },
       ],
-      notes: 'A methodology holds its environments, KPIs, weights, thresholds and priorities. It is edited in Workspace Config, exchanged as portable JSON, and Excluded Calls leave chosen calls out of every scoring.' },
+      notes: 'A methodology holds its environments, KPIs, weights, thresholds and priorities. It is edited in Workspace Config, exchanged as portable JSON, and Excluded Calls leave chosen calls out of every scoring. The Methodology Impact tab scores the same tests with two methodologies to show what the change does to every result.' },
     { id: 'share', type: 'split', section: 'Exports', footer: 'Exports', kicker: 'Persistence and exports', title: 'Readable wherever it goes', visual: 'themes',
       points: [
         { icon: 'TbPalette', title: 'Themes', text: 'Ericsson, NetCheck, Midnight and more, for the page and its exports.' },

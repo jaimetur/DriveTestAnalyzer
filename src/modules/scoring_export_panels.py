@@ -59,6 +59,16 @@ EXPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str, str], ...]], ...] = (
         ('site_types', 'Points lost per kind of site', FOCUS_OPERATORS),
         ('sites', 'Sites to review', FOCUS_OPERATORS),
         ('stretches', 'Route stretches', FOCUS_OPERATORS))),
+    # The documents of the Methodology Impact tab (see scoring_impact_exports).
+    ('impact', 'Methodology Impact', (
+        ('changes', 'What changed in the methodology', ALL_OPERATORS),
+        ('scoring', 'Impact on the scoring of each operator, in All Environments and each environment', ALL_OPERATORS),
+        ('bridge', 'What the network and the methodology changed between two campaigns', ALL_OPERATORS),
+        ('categories', 'Impact per category', ALL_OPERATORS),
+        ('kpis', 'KPIs affected', ALL_OPERATORS),
+        ('areas', 'Impact per Region, Cluster and City', ALL_OPERATORS),
+        ('gap', 'Impact on the GAP Analysis', ALL_OPERATORS),
+        ('points', 'Impact on the Points Lost', ALL_OPERATORS))),
 )
 
 

@@ -164,7 +164,7 @@
     encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous'),
     encodeURIComponent(root.dataset.scoringWorkspaceId || 'unknown'),
   ].join(':');
-  const resultTabNames = new Set(['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points']);
+  const resultTabNames = new Set(['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points', 'impact']);
   function readScoringViewState() {
     try {
       const stored = JSON.parse(window.sessionStorage.getItem(scoringViewStorageKey) || 'null');
@@ -7506,14 +7506,14 @@
   // Choosing the operators of a section: its Focus operators are chosen by default (every operator without them), the
   // Focus operators and the others in subpanels of their own; clicking one enables or disables it there and in every other section (see
   // operatorChoices), and one always stays enabled.
-  function insightOperatorChips(key, items) {
+  function insightOperatorChips(key, items, {all = false} = {}) {
     const operators = [...new Map(items.map(item => [item.operator, item])).values()];
     const names = operators.map(item => item.operator);
     let stored = null;
     try { stored = JSON.parse(insightSelections.get(key) || 'null'); } catch (_error) { stored = null; }
     let chosen = Array.isArray(stored) ? stored.filter(name => names.includes(name)) : [];
-    // The Focus operators by default (every operator without them), as the PowerPoint and Word.
-    if (!chosen.length) chosen = focusChosen(operators);
+    // The Focus operators by default (every operator without them), as the PowerPoint and Word; with ``all``, every operator.
+    if (!chosen.length) chosen = all ? names : focusChosen(operators);
     chosen = withOperatorChoices(key, names, chosen);
     const group = document.createElement('div');
     group.className = 'scoring-environment-filter scoring-loss-operators';
@@ -10188,7 +10188,8 @@
     // NSA & SA in the same chart: the Scoring Charts of the whole result (each operator with its NSA and SA bars) and the
     // Scoring Trends with the NSA and SA lines on one axis of quarters.
     const together = selectedNrCharts === 'same';
-    const whole = panesToRender.filter(name => (sameOperator && name === 'gap') || (together && name === 'charts'));
+    // (The Methodology Impact compares one NR Mode at a time, chosen in its tab.)
+    const whole = panesToRender.filter(name => (sameOperator && name === 'gap') || (together && name === 'charts') || name === 'impact');
     const merged = together ? panesToRender.filter(name => name === 'trends') : [];
     const split = panesToRender.filter(name => !whole.includes(name) && !merged.includes(name));
     const bodies = new Map(parts.map(part => [part.nr_mode, new Map()]));
@@ -10501,6 +10502,13 @@
     if (shouldRenderPane('points')) {
       renderPointsLost(paneOf('points'), payload, effectiveEnvironment,
         savedFilterIdOf(savedFilter || payload.saved_filter || {}));
+    }
+    if (shouldRenderPane('impact')) {
+      window.ScoringImpact?.render(paneOf('impact'), {
+        savedFilterId: savedFilterIdOf(savedFilter || savedPayload.saved_filter || {}), environment: effectiveEnvironment,
+        scoring: effectiveScoring(savedPayload), theme: activeTheme, requestJson, safeHexColor, insightSection, insightControls,
+        insightOperatorChips, download: downloadScoringDocument,
+      });
     }
     if (shouldRenderPane('gap')) {
       const gapTotals = normalizeRows(payload.gap_totals ?? []);
@@ -11809,13 +11817,13 @@
   });
   expandedChartClose?.addEventListener('click', closeExpandedChart);
   // The Scoring Results entries of the Scoring tab menu (#scoring-results-summary, -charts, -tables, -geographical-areas,
-  // -trends, -gap or -points-lost; -locations from earlier links) open that
+  // -trends, -gap, -points-lost or -methodology-impact; -locations from earlier links) open that
   // results tab and show the results tabs at the top of the page.
   const openResultTabFromHash = () => {
     const name = {'scoring-results-summary': 'summary', 'scoring-results-charts': 'charts', 'scoring-results-tables': 'scoring',
       'scoring-results-geographical-areas': 'geographical-areas', 'scoring-results-locations': 'geographical-areas',
       'scoring-results-trends': 'trends', 'scoring-results-gap': 'gap',
-      'scoring-results-points-lost': 'points'}[
+      'scoring-results-points-lost': 'points', 'scoring-results-methodology-impact': 'impact'}[
       decodeURIComponent(window.location.hash.slice(1))];
     if (!name) return;
     root.querySelector(`[data-result-tab="${name}"]`)?.click();

@@ -88,7 +88,8 @@ LATER_SECTIONS = frozenset({'dataset_analysis'})
 # see scoring_reports, and the panels of scoring_export_panels); the KPI and GAP values of the tables are options of
 # the section.
 SCORING_SUBMODULES: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = tuple(
-    (group, title, tuple((key, label) for key, label, _operators in panels)) for group, title, panels in EXPORT_PANELS)
+    (group, title, tuple((key, label) for key, label, _operators in panels)) for group, title, panels in EXPORT_PANELS
+    if group != 'impact')  # (The Methodology Impact has documents of its own, from the comparison chosen in its tab.)
 # The section each Scoring slide is named after (see scoring_exports) and its results tab.
 SCORING_TAGS = {'summary': 'summary', 'charts': 'charts', 'tables': 'tables', 'comparison': 'tables',
                 'geographical_areas': 'geographical_areas', 'locations': 'geographical_areas',
