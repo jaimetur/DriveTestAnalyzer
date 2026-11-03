@@ -7,7 +7,8 @@ import pytest
 from openpyxl import Workbook
 
 import src.DriveTestAnalyzer as core
-from src.modules import cdr_field_dictionary, cdr_types, ingestion, umlaut_cdr
+from src.modules import cdr_field_dictionary, cdr_store, cdr_types, ingestion, map_area_columns, map_areas, umlaut_cdr
+from src.modules import network_insights as ni
 from src.modules import non_qualified_calls as nq
 from src.modules.cdr_field_profiles import NETCHECK_PROFILE, UMLAUT_PROFILE, field_profile, workspace_field_profile
 
@@ -26,20 +27,116 @@ def umlaut_voice_workbook(path: Path) -> Path:
     sheet = workbook.create_sheet('client11_WindTre')
     sheet.append(['Operator', 'Side1 System ID', 'Sequence', 'Filename', 'Side1 Call Type', 'Route Name',
                   'Side1 Call Setup latest available eNodeB/RNC', 'Side1 Call Setup latest available Sector/Cell ID',
-                  'Side1 Call Setup latest available RSRP (dBm)', 'Side1 Call End eNodeB/RNC', 'Side1 Call End Sector/Cell ID',
+                  'Side1 Call Setup latest available RSRP (dBm)', 'Side1 Call Setup LAT', 'Side1 Call Setup LON',
+                  'Side1 Call End eNodeB/RNC', 'Side1 Call End Sector/Cell ID',
                   'Side2 System ID', 'Sequence', 'Filename', 'Side2 Call Type', 'Route Name',
                   'Session TA Start', 'Session TA End', 'Call Setup Duration (Alerting) [s]', 'Sequence Status Overall',
                   'Sequence Detailed Status Overall', 'Qualifier'])
-    sheet.append(['WindTre', 1, 616114000, 'IT__System1__0616114000', 'VOICE M2M MOC', 'Milano', 226015, '13', -91.0, 226015, '14',
+    sheet.append(['WindTre', 1, 616114000, 'IT__System1__0616114000', 'VOICE M2M MOC', 'Milano', 226015, '13', -91.0, 45.46, 9.19, 226015, '14',
                   2, 616114000, 'IT__System2__0616114000', 'VOICE M2M MTC', 'Milano',
                   '2025-06-16 11:40:02.556', '2025-06-16 11:41:20.657', 1.6, 'SUCCESS', 'Successful', 'QUALIFIED'])
-    sheet.append(['WindTre', 1, 616114143, 'IT__System1__0616114143', 'VOICE M2M MTC', 'Torino', 3001, '300', -118.0, None, None,
+    sheet.append(['WindTre', 1, 616114143, 'IT__System1__0616114143', 'VOICE M2M MTC', 'Torino', 3001, '300', -118.0, 45.07, 7.68, None, None,
                   2, 616114143, 'IT__System2__0616114143', 'VOICE M2M MOC', 'Torino',
                   '2025-06-16 11:41:43.000', '2025-06-16 11:42:10.000', None, 'DROPPED', 'Disconnect before end of call duration',
                   'NOT QUALIFIED'])
     target = path / 'WindTre_Vendor_Benchmark_2025_Round1_Voice_M2M_Calls_2025-07-30_16-05-07.xlsx'
     workbook.save(target)
     return target
+
+
+def umlaut_samples_workbook(path: Path) -> Path:
+    """The Voice_M2M_SQ_Samples export of the calls of umlaut_voice_workbook."""
+    workbook = Workbook()
+    workbook.active.title = 'client11_WindTre'
+    workbook.active.append(['Operator', 'Sequence', 'Filename', 'POLQA Sample TA Start', 'POLQA Value Overall', 'Qualifier',
+                            'Side1 Sample Start RSRP (dBm)', 'Side1 Sample Start SINR (dB)', 'Side1 Sample Start LAT', 'Side1 Sample Start LON'])
+    workbook.active.append(['WindTre', 616114000, 'IT__System1__0616114000', '2025-06-16 11:40:10.000', 4.1, 'QUALIFIED', -92.0, 11.0, 45.46, 9.19])
+    workbook.active.append(['WindTre', 616114143, 'IT__System1__0616114143', '2025-06-16 11:41:50.000', 2.1, 'QUALIFIED', -100.0, 2.0, 45.07, 7.68])
+    workbook.active.append(['WindTre', 616114143, 'IT__System1__0616114143', '2025-06-16 11:42:00.000', 1.2, 'NOT QUALIFIED', -110.0, 4.0, 45.07, 7.68])
+    target = path / 'WindTre_Vendor_Benchmark_2025_Round1_Voice_M2M_SQ_Samples_2025-07-30_16-05-07.xlsx'
+    workbook.save(target)
+    return target
+
+
+def umlaut_data_workbook(path: Path) -> Path:
+    """An HTTP_File_DL export: one test in Milano and one outside the areas of ITALY."""
+    workbook = Workbook()
+    workbook.active.title = 'client11_WindTre'
+    workbook.active.append(['Operator', 'Filename', 'Task Name', 'Service', 'Network Access TA Start', 'Overall Session Status',
+                            'Transfer Throughput [kbit/s]', 'File Transfer Qualifier', 'LTE RSRP Avg', 'Network Access LAT', 'Network Access LON'])
+    workbook.active.append(['WindTre', 'F1', 'HTTPS 10MB Download', 'HTTP', '2025-06-16 11:43:34', 'SUCCESS', 179372.0, 'QUALIFIED', -88.0, 45.46, 9.19])
+    workbook.active.append(['WindTre', 'F2', 'HTTPS 10MB Download', 'HTTP', '2025-06-16 11:45:00', 'FAILED', 900.0, 'NOT QUALIFIED', -119.0, 41.9, 12.5])
+    target = path / 'WindTre_Vendor_Benchmark_2025_Round1_HTTP_File_DL_2025-07-30_16-05-07.xlsx'
+    workbook.save(target)
+    return target
+
+
+# A square area around Milano, as a downloaded layer would hold it.
+ITALY = {'Milano': [[[9.0, 45.3], [9.4, 45.3], [9.4, 45.6], [9.0, 45.6], [9.0, 45.3]]]}
+# Columns with the names of Umlaut (spaces, brackets, slashes) of each type of CDR.
+UMLAUT_NAMED_COLUMNS = {'voice': 'Side1 Call Setup latest available RSRP (dBm)', 'speech': 'Side1 Sample Start RSRP (dBm)',
+                        'data': 'Transfer Throughput [kbit/s]'}
+
+
+def process_umlaut_cdrs(client, tmp_path: Path, monkeypatch) -> dict[str, int]:
+    """An Umlaut workspace with its exports processed and in their combined tables: the CDR of each type."""
+    login(client)
+    monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
+    core.repository.set_workspace_state(cdr_types.CDR_TYPE_STATE_KEY, 'umlaut')
+    cdrs = {}
+    for workbook in (umlaut_voice_workbook, umlaut_samples_workbook, umlaut_data_workbook):
+        source = workbook(tmp_path)
+        dataset_id, _created = core.repository.add_dataset(source.name, str(source), 'super')
+        core.process_dataset(dataset_id, source, 'super', task_repository=core.repository, workspace=None)
+        dataset = core.repository.get_dataset(dataset_id)
+        assert dataset['status'] == 'ready'
+        cdrs[str(dataset['dataset_kind'])] = dataset_id
+    assert set(cdrs) == set(UMLAUT_NAMED_COLUMNS)
+    for kind in cdrs:
+        core.start_combined_cdr_recreation_job(core.active_workspace, kind, 'super', background=False)
+    return cdrs
+
+
+def rows_in_table(table: str) -> int:
+    with core.repository.connection() as connection:
+        return connection.execute(f'SELECT COUNT(*) FROM main.{table}').fetchone()[0]
+
+
+def move_to_copies(cdrs: dict[str, int]) -> None:
+    """The copies become the only store of the CDRs: their tables and the combined ones stay empty."""
+    repository = core.Repository(core.active_workspace.database_path, global_db_path=core.repository.global_db_path)
+    cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))
+    cdr_store.move_rows_to_copies(core.repository)
+    assert cdr_store.shadow_ids(core.repository.db_path) == set(cdrs.values())
+    for kind, dataset_id in cdrs.items():
+        assert rows_in_table(f'dataset_rows_{dataset_id}') == rows_in_table(f'reporting_rows_{kind}') == 0
+
+
+def umlaut_reads(client, cdrs: dict[str, int], samples: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    """What the modules read from the CDRs of an Umlaut workspace."""
+    repository = core.repository
+    reads = {}
+    for kind, dataset_id in cdrs.items():
+        named = cdr_store.quote(UMLAUT_NAMED_COLUMNS[kind])
+        # Every column of the CDR (CDR Analysis), and SQL with its names on the CDR and on its combined table (Query Builder).
+        reads[f'{kind} rows'] = repository.load_dataset_rows(dataset_id, repository.list_dataset_row_columns(dataset_id), {})
+        with repository.connection() as connection:
+            reads[f'{kind} SQL'] = pd.read_sql_query(
+                f'SELECT rowid, {named}, "Campaign", "Operator" FROM dataset_rows_{dataset_id} WHERE {named} IS NOT NULL ORDER BY rowid', connection)
+            reads[f'{kind} combined SQL'] = pd.read_sql_query(
+                f'SELECT "Operator", "Campaign", COUNT(*) AS n, AVG(CAST({named} AS REAL)) AS mean FROM reporting_rows_{kind} GROUP BY 1, 2', connection)
+        # The samples of Network Insights, those of the radio fields of the profile.
+        assert client.post('/api/network-insights/analysis', json={'datasets': {kind: [dataset_id]}, 'technology': 'lte_nr'}).status_code == 200
+        reads[f'{kind} samples'] = samples.pop(kind)
+    # Non-Qualified Calls, with the radio of the samples of their calls, and the DT Analyzer RCA.
+    nq.sync_nq_calls(repository, force=True)
+    nq.refresh_dta_rca(repository, force=True, wait=True)
+    with repository.connection() as connection:
+        for table in (nq.NQ_CALLS_TABLE, nq.NQ_CALL_POPULATION_TABLE, nq.NQ_DTA_RESULTS_TABLE):
+            frame = pd.read_sql_query(f'SELECT * FROM {table}', connection)
+            frame = frame.drop(columns=[column for column in frame.columns if column == 'id' or column.endswith('_at')])
+            reads[table] = frame.sort_values(list(frame.columns)).reset_index(drop=True)
+    return reads
 
 
 def test_a_repeated_header_takes_the_side_of_its_block():
@@ -220,3 +317,71 @@ def test_non_qualified_calls_name_the_provider_of_the_cdrs(client):
     from src.modules.non_qualified_calls_visuals import root_cause_title
     assert str(root_cause_title({'source': 'netcheck', 'provider': umlaut})) == 'Root Cause Analysis · Umlaut RCA'
     assert str(root_cause_title({'source': 'netcheck'})) == 'Root Cause Analysis · NetCheck RCA'
+
+
+def test_the_modules_read_an_umlaut_cdr_the_same_from_its_columnar_copy(client, tmp_path, monkeypatch):
+    cdrs = process_umlaut_cdrs(client, tmp_path, monkeypatch)
+    # While the rows are in their tables a module first copies the columns it reads to the combined table (the copies give them all).
+    for kind, dataset_id in cdrs.items():
+        core.repository.copy_dataset_rows_to_reporting(dataset_id, kind, [UMLAUT_NAMED_COLUMNS[kind]])
+    samples: dict[str, pd.DataFrame] = {}
+    normalise = ni.normalise_samples
+    monkeypatch.setattr(ni, 'normalise_samples', lambda frame, kind, columns: samples.update({kind: frame.copy()}) or normalise(frame, kind, columns))
+    before = umlaut_reads(client, cdrs, samples)
+    # An Operator Map for no operator of the CDRs makes Network Insights read the samples again.
+    assert client.post('/workspace-config/operator-mappings/save', data={'canonical_value': 'Nobody', 'aliases': 'NB'},
+                       follow_redirects=False).status_code == 303
+
+    move_to_copies(cdrs)
+    after = umlaut_reads(client, cdrs, samples)
+
+    assert list(after) == list(before)
+    for what, frame in before.items():
+        assert not frame.empty, what
+        pd.testing.assert_frame_equal(frame, after[what], check_dtype=False, obj=what)
+    # The names of Umlaut and the columns derived from them are in the rows of the copy.
+    voice = after['voice rows']
+    assert voice['Side2 Route Name'].tolist() == ['Milano', 'Torino'] and voice['Qualifier'].tolist() == ['QUALIFIED', 'NOT QUALIFIED']
+    assert voice['Campaign'].tolist() == ['WindTre_Vendor_Benchmark_2025_Round1'] * 2
+    assert voice['ECI'].tolist()[0] == f'{226015 * 256 + 13}->{226015 * 256 + 14}'
+    assert after['data rows']['Test_Key'].tolist()[0] == 'F1|HTTPS 10MB Download|2025-06-16 11:43:34'
+    # The non-qualified call takes the radio of its samples, read through the emptied table of the speech CDR.
+    calls = after[nq.NQ_CALLS_TABLE]
+    voice_calls = calls[calls['dataset_id'] == cdrs['voice']]
+    call = voice_calls.iloc[0]
+    assert len(voice_calls) == 1
+    assert json.loads(call['rca_inputs_json'])['lte_rsrp'] == -105.0
+    assert call['failure_comment'] == 'Disconnect before end of call duration'
+    # Every call and test once: the samples of a call count with it.
+    assert len(calls[calls['dataset_id'] == cdrs['data']]) == 1 and len(after[nq.NQ_CALL_POPULATION_TABLE]) == 6
+    assert len(after[nq.NQ_DTA_RESULTS_TABLE]) == len(calls)
+
+
+def test_an_umlaut_cdr_changes_in_its_columnar_copy(client, tmp_path, monkeypatch):
+    cdrs = process_umlaut_cdrs(client, tmp_path, monkeypatch)
+    move_to_copies(cdrs)
+    repository = core.repository
+    voice, data = cdrs['voice'], cdrs['data']
+    columns = repository.list_dataset_row_columns(voice)
+    rows = repository.load_dataset_rows(voice, columns, {})
+
+    # Processed again, with the same rows: they stay in the copy, with the same columns and values.
+    core.process_dataset(voice, Path(repository.get_dataset(voice)['stored_path']), 'super', task_repository=repository, workspace=None)
+    assert repository.get_dataset(voice)['status'] == 'ready'
+    assert rows_in_table(f'dataset_rows_{voice}') == 0 and voice in cdr_store.fresh_copies(repository.db_path, [voice])
+    assert repository.list_dataset_row_columns(voice) == columns
+    pd.testing.assert_frame_equal(rows, repository.load_dataset_rows(voice, columns, {}), check_dtype=False)
+
+    # A corrected NR Mode.
+    assert client.post(f'/workspace/datasets/{voice}/nr-mode', json={'nr_mode': 'SA'}).status_code == 200
+    assert rows_in_table(f'dataset_rows_{voice}') == 0
+    assert cdr_store.read_cdr(repository.db_path, 'voice', voice, [cdr_store.NR_MODE])[cdr_store.NR_MODE].tolist() == ['SA', 'SA']
+
+    # The tests placed in the Map Areas, by the coordinates the Umlaut profile names.
+    map_areas.save_layer(repository, country_code='ITA', level='ADM3', level_label='municipality', origin='geoBoundaries',
+                         source='ISTAT', license_text='CC BY 4.0', attribution='ISTAT via geoBoundaries', boundaries=ITALY,
+                         username='super')
+    assert map_area_columns.fill_dataset(repository, data, 'data') == 2
+    assert rows_in_table(f'dataset_rows_{data}') == 0
+    assert repository.load_dataset_rows(data, ['Map_Area'], {})['Map_Area'].tolist() == ['Milano', '']
+    assert map_area_columns.current_datasets(repository, [data]) == {data}
