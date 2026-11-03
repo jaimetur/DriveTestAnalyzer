@@ -2784,6 +2784,15 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                    boundaries=views.get('_points_loss_boundaries'),
                                    outlines=views.get('_points_loss_outlines'),
                                    environment_labels=environment_labels, scope=scope)
+        if _option(options, 'points', 'postal_map'):
+            wanted = chosen('gap-insight-operators', panel_operators('points', 'postal_map'))
+            maps = [item for item in items.get('points_loss_maps', []) if wanted(item['operator'], item.get('label'))]
+            add_points_loss_slides(presentation, latest_campaign_items(maps), insights.get('points_loss_background') or [],
+                                   scoring_label=label, subtitle=subtitle, new_slide=_slide,
+                                   boundaries=views.get('_points_loss_boundaries'),
+                                   outlines=views.get('_points_loss_outlines'),
+                                   environment_labels=environment_labels, scope=scope, postal_only=True,
+                                   postal_note=insights.get('postal_attribution') or '')
         if _option(options, 'points', 'vendors'):
             vendors_base = panel_operators('points', 'vendors')
             add_serving_loss_slides(presentation, compared_items('vendor_losses-operators', items.get('vendor_losses', []),

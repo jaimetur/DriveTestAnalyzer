@@ -56,7 +56,8 @@ _OPTION_DEFAULTS = {
     # The Scoring Trends: the scoring trend and the National & Geographical Areas Trends.
     'trends': {'trend': True, 'areas': True},
     'gap': {'all_operators': True, 'individual': True, 'parts': True, 'profile': True},
-    'points': {'stake': True, 'kpis': True, 'map': True, 'vendors': True, 'site_types': True, 'sites': True, 'stretches': True},
+    'points': {'stake': True, 'kpis': True, 'map': True, 'postal_map': True, 'vendors': True, 'site_types': True, 'sites': True,
+               'stretches': True},
 }
 # Options of configurations saved before that are now in another group: the location cards and the scoring trend were
 # Scoring Charts and the Points Lost Map was GAP Analysis.
@@ -120,6 +121,8 @@ def _normalize_area_summary(raw: Any) -> dict[str, Any]:
         'breakdown': next((name for name in AREA_SUMMARY_BREAKDOWNS if name.casefold() == breakdown), 'None'),
         'cities': _strings(raw.get('cities')),
         'main_cities': bool(raw.get('main_cities')),
+        # (Only when asked: every other selection keeps the form it had.)
+        **({'postal_codes': True} if raw.get('postal_codes') else {}),
         # (Saved before the Scoring Trends had campaigns: the default.)
         'campaigns': normalize_trend_campaigns(raw['campaigns']) if 'campaigns' in raw else [ALL_CAMPAIGNS],
     }

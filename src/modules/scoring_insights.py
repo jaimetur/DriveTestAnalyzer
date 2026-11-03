@@ -61,7 +61,10 @@ def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: di
     combined_weight = _combined_weight_of(_combined_weights(scopes))
     maps, insights['points_loss_background'] = _points_loss_maps(result, score_tables, combined_weight)
     # The maps of the areas; the Vendors, kinds of site, sites and stretches have their own views.
-    insights['points_loss_maps'] = [item for item in maps if item['field'] in {'City', 'Area', 'Region', 'Cluster'}]
+    insights['points_loss_maps'] = [item for item in maps if item['field'] in {'City', 'Area', 'Region', 'Cluster', 'Postal Code'}]
+    # The countries of the tests whose postal codes could not be downloaded.
+    insights['postal_missing'] = ((result or {}).get('points_loss') or {}).get('postal_missing') or []
+    insights['postal_attribution'] = ((result or {}).get('points_loss') or {}).get('postal_attribution') or ''
     insights.update(_serving_views(maps, result))
     # Where to act: the plan, each performance owner, the places ranked and the route that loses most.
     from src.modules.scoring_where_to_act import build_where_to_act
@@ -90,6 +93,8 @@ def operator_styles(score_tables: list[dict[str, Any]]) -> dict[str, Any]:
 # how much it was measured; the places with fewer tests are left out of that ranking.
 RATE_TESTS = 1000
 MIN_RATE_TESTS = 500
+# A postal code holds far fewer tests than a City, so it asks for fewer to rank it.
+MIN_POSTAL_RATE_TESTS = 100
 
 
 def _series_tests(document: dict[str, Any], keys: list[str]) -> dict[tuple, dict[str, dict[str, int]]]:
@@ -110,7 +115,7 @@ def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str
                       combined_weight: Callable[[Any, Any, Any], float] | None = None) -> tuple[list, list]:
     """Points lost per area of each operator series, with the area locations to draw them and, per City, Region and
     Cluster, the tests of each place and the points it loses per 1,000 of them (when the result counted them)."""
-    from src.modules.scoring_points_loss import ENTRY_FIELDS, points_loss_maps
+    from src.modules.scoring_points_loss import ENTRY_FIELDS, POSTAL, points_loss_maps
     document = (result or {}).get('points_loss')
     if not isinstance(document, dict) or not document.get('shares'):
         return [], []
@@ -133,10 +138,20 @@ def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str
         style = styles.get(operator) or {}
         located = geometry.get(item['field']) or {}
         identity = tuple(context.get(key) for key in keys)
+        postal = item['field'] == POSTAL
         counted = ((tests.get((identity, item.get('environment'))) or {}).get(item['field'])
-                   if item['field'] in LOCATION_LEVELS else None)
+                   if item['field'] in LOCATION_LEVELS or postal else None)
+        minimum = MIN_POSTAL_RATE_TESTS if postal else MIN_RATE_TESTS
         areas = []
         for name, points in sorted(item['areas'].items(), key=lambda entry: -entry[1]):
+            if postal:
+                # Only what the table and the map read: a map holds thousands of postal codes.
+                measured = (counted or {}).get(name)
+                areas.append({'name': name, 'points': points, 'share': points / item['total'] if item['total'] else 0,
+                              **({'tests': measured or 0, 'rate': points / measured * RATE_TESTS
+                                  if measured and measured >= minimum else None} if counted else {}),
+                              'environments': (item.get('environments') or {}).get(name, [])})
+                continue
             place = located.get(name) or {}
             measured = (counted or {}).get(name)
             areas.append({'name': name, 'points': points, 'share': points / item['total'] if item['total'] else 0,
@@ -159,7 +174,7 @@ def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str
             'context': {field: value for field, value in context.items()
                         if field != 'operator' and value not in (None, '')},
             'areas': areas, 'total': item['total'],
-            **({'rate_tests': RATE_TESTS, 'rate_minimum': MIN_RATE_TESTS} if counted else {}),
+            **({'rate_tests': RATE_TESTS, 'rate_minimum': minimum} if counted else {}),
             **({'area_label': area_label, 'unmapped_countries': unmapped} if item['field'] == 'Area' else {}),
             **{key: item[key] for key in ('failures', 'city_losses') if item.get(key)},
         })

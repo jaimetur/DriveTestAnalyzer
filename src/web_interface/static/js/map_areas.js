@@ -70,6 +70,55 @@
     return layers;
   }
 
+  // Saved postal code layers: one per country.
+  async function renderPostalLayers() {
+    const {layers} = await api('/api/workspace-config/map-areas/postal');
+    const target = $('[data-postal-area-layers]');
+    if (!layers.length) {
+      target.replaceChildren(node('p', 'No Postal Codes saved yet: each country uses the ones included with the application, or the ones a calculation downloads when it needs them.', 'form-note'));
+      return;
+    }
+    target.replaceChildren(table(['Country', 'Areas', 'Source', 'Licence', 'Updated', 'Actions'], layers.map((layer) => {
+      const remove = node('button', 'Delete', 'danger-button');
+      remove.type = 'button';
+      remove.addEventListener('click', async () => {
+        const confirmed = typeof window.showConfirmDialog === 'function'
+          ? await window.showConfirmDialog(`Delete the Postal Codes of ${layer.country_name}? A calculation that asks for them downloads them again.`,
+            {title: 'Delete Postal Codes?', confirmLabel: 'Delete'})
+          : window.confirm(`Delete the Postal Codes of ${layer.country_name}?`);
+        if (!confirmed) return;
+        try {
+          await api(`/api/workspace-config/map-areas/postal/${layer.id}`, {method: 'DELETE'});
+          message(`Postal Codes of ${layer.country_name} deleted.`, 'success');
+          await refresh();
+        } catch (error) { message(error.message, 'error'); }
+      });
+      return [`${layer.country_name} (${layer.country_code})`, `${layer.level} · ${number(layer.unit_count)}`,
+        layer.origin, layer.license, String(layer.updated_at || '').slice(0, 16).replace('T', ' '), remove];
+    })));
+  }
+
+  // The postal codes of a country, downloaded from GeoNames.
+  function postalDownload(country) {
+    const button = node('button', country.postal_layer ? 'Download Postal Codes again' : 'Download Postal Codes', 'secondary-button');
+    button.type = 'button';
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      message(`Downloading the postal codes of ${country.name}…`);
+      try {
+        const {layer} = await api('/api/workspace-config/map-areas/postal/download', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({country_code: country.code}),
+        });
+        message(`${layer.country_name}: ${number(layer.unit_count)} postal code areas saved. Calculate the scoring again to use them.`, 'success');
+        await refresh();
+      } catch (error) {
+        message(error.message, 'error');
+        button.disabled = false;
+      }
+    });
+    return button;
+  }
+
   // The levels of a country, chosen and downloaded from geoBoundaries.
   function levelChooser(country) {
     const box = node('div', undefined, 'map-area-chooser');
@@ -130,12 +179,19 @@
       target.replaceChildren(node('p', 'No ready CDR has test coordinates yet.', 'form-note'));
       return;
     }
-    target.replaceChildren(table(['Country', 'Tests', 'Map Areas', 'Actions'], countries.map((country) => [
+    target.replaceChildren(table(['Country', 'Tests', 'Map Areas', 'Postal Codes', 'Actions'], countries.map((country) => [
       `${country.name} (${country.code})`,
       `${(country.share * 100).toFixed(country.share < .01 ? 2 : 1)}%`,
       country.layer ? layerText(country.layer)
         : country.bundled ? `${country.bundled.level_label} · ${number(country.bundled.unit_count)} areas · included with the application`
           : node('strong', 'None: the whole country is one area', 'map-area-missing'),
+      (() => {
+        const postal = node('div', undefined, 'map-area-chooser');
+        postal.append(node('span', country.postal_layer ? `${number(country.postal_layer.unit_count)} areas · ${country.postal_layer.origin}`
+          : country.postal_bundled ? `${number(country.postal_bundled.unit_count)} areas · included with the application`
+            : 'Downloaded when a calculation needs them'), postalDownload(country));
+        return postal;
+      })(),
       // Any country can replace the areas included with the application with its own.
       levelChooser(country),
     ])));
@@ -143,6 +199,7 @@
 
   async function refresh() {
     await renderLayers();
+    await renderPostalLayers();
     await renderCountries();
   }
 

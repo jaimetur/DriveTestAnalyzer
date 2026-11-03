@@ -406,6 +406,8 @@
   const areaSummaryTimeSplit = root.querySelector('[data-scoring-area-time-split]');
   const areaSummaryBreakdown = root.querySelector('[data-scoring-area-breakdown]');
   const areaSummaryCities = root.querySelector('[data-scoring-area-cities]');
+  // Postal Codes in the Points Lost Map: only for the Saved Filters that ask for them.
+  const areaSummaryPostalCodes = root.querySelector('[data-scoring-area-postal-codes]');
   // The campaigns of the Scoring Trends tab, whatever the Campaign filter of the rest of the scoring.
   const trendCampaigns = root.querySelector('[data-scoring-trend-campaigns]');
   const message = root.querySelector('[data-scoring-message]');
@@ -839,6 +841,7 @@
       breakdown: String(areaSummaryBreakdown?.value || 'Region'),
       cities: chosenAreaCities().filter(value => value !== MAIN_CITIES_TOKEN),
       main_cities: chosenAreaCities().includes(MAIN_CITIES_TOKEN),
+      postal_codes: Boolean(areaSummaryPostalCodes?.checked),
       campaigns: selectedTrendCampaigns(),
     };
   }
@@ -1065,9 +1068,10 @@
       baseline_operator: String(selection?.baseline_operator || ''),
       scoring_profile_id: String(selection?.scoring_profile_id || ''),
       context_filters: normalizedFilters,
-      area_summary: (({enabled, time_split: timeSplit, breakdown, cities, campaigns} = {}) => ({
+      area_summary: (({enabled, time_split: timeSplit, breakdown, cities, campaigns, postal_codes: postalCodes} = {}) => ({
         enabled: Boolean(enabled), time_split: String(timeSplit || 'Campaign'), breakdown: String(breakdown || 'Region'),
         cities: (Array.isArray(cities) ? cities : []).map(String), campaigns: (Array.isArray(campaigns) ? campaigns : []).map(String),
+        postal_codes: Boolean(postalCodes),
       }))(selection?.area_summary || {}),
     });
   }
@@ -1187,6 +1191,7 @@
       if (areaSummaryBreakdown && [...areaSummaryBreakdown.options].some(option => option.value === summary.breakdown)) {
         areaSummaryBreakdown.value = summary.breakdown;
       }
+      if (areaSummaryPostalCodes) areaSummaryPostalCodes.checked = Boolean(summary.postal_codes);
       if (areaSummaryCities && Array.isArray(summary.cities)) {
         const cities = [...(summary.main_cities ? [MAIN_CITIES_TOKEN] : []), ...summary.cities.map(String)];
         const known = new Set([...areaSummaryCities.options].map(option => option.value.toLocaleLowerCase()));
@@ -1244,7 +1249,7 @@
         ? {...savedFilter.area_summary, breakdown: savedFilter.area_summary.breakdown || 'None', campaigns: savedFilter.area_summary.campaigns || [],
           enabled: true}
         : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedFilter.area_summary?.time_split || 'Campaign',
-          campaigns: savedFilter.area_summary?.campaigns || []},
+          campaigns: savedFilter.area_summary?.campaigns || [], postal_codes: Boolean(savedFilter.area_summary?.postal_codes)},
     });
     scheduleSelectionSave();
     scheduleAutoCdrRefresh({delay: 0});
@@ -1499,7 +1504,8 @@
   function areaSummaryPayload() {
     const summary = selectedAreaSummary();
     return {time_split: summary.time_split, breakdown: summary.breakdown, cities: summary.cities,
-      ...(summary.main_cities ? {main_cities: true} : {}), ...(summary.campaigns.length ? {campaigns: summary.campaigns} : {})};
+      ...(summary.main_cities ? {main_cities: true} : {}), ...(summary.postal_codes ? {postal_codes: true} : {}),
+      ...(summary.campaigns.length ? {campaigns: summary.campaigns} : {})};
   }
 
   // Calculate Scoring, or Open Scoring (a folder open) when the selection is a Saved Filter with its result up to date.
@@ -1937,7 +1943,8 @@
     let cities = [...(summary.main_cities ? ['Main Cities'] : []), ...(Array.isArray(summary.cities) ? summary.cities : []).filter(Boolean)];
     let breakdown = summary.breakdown && summary.breakdown !== 'None' ? summary.breakdown : null;
     if (!breakdown && !cities.length) [breakdown, cities] = ['Region', ['London']];
-    return [['breakdown', 'Breakdown', breakdown || 'None'], ['cities', 'Separate cities', cities.length ? cities.join(', ') : 'None']];
+    return [['breakdown', 'Breakdown', breakdown || 'None'], ['cities', 'Separate cities', cities.length ? cities.join(', ') : 'None'],
+      ...(summary.postal_codes ? [['postal', 'Postal Codes', 'Included']] : [])];
   }
 
   // The time split of the National & Geographical Areas Trends of a Saved Filter.
@@ -8926,7 +8933,7 @@
     const entries = [];
     for (const item of maps) {
       if (item.field === 'City') entries.push({ranking: item, layer: layers.get(seriesKey(item)) || null, title: 'City'});
-      else if (['Cluster', 'Region'].includes(item.field)) entries.push({ranking: item, layer: item, title: item.field});
+      else if (['Cluster', 'Region', 'Postal Code'].includes(item.field)) entries.push({ranking: item, layer: item, title: item.field});
     }
     if (!entries.length) return;
     const section = document.createElement('section');
@@ -8947,7 +8954,7 @@
     } else {
       controls.prepend(selectors);
     }
-    const allViews = ['City', 'Region', 'Cluster'];
+    const allViews = ['City', 'Region', 'Cluster', 'Postal Code'];
     const views = allViews.filter(view => inScope.some(item => item.entry.title === view));
     const {wrapper: viewControl, value: storedView} = insightSelect('points-loss-view', allViews.map(item => [item, item]), 'Maps per');
     const view = views.includes(storedView) ? storedView : views[0];
@@ -8955,7 +8962,9 @@
     viewSelect.value = view;
     for (const option of viewSelect.options) {
       option.disabled = !views.includes(option.value);
-      if (option.disabled) option.title = `These results have no ${option.value} data`;
+      if (option.disabled) option.title = option.value === 'Postal Code'
+        ? 'Choose Postal Codes in the Points Lost Map in the Geographical Areas of the calculation and calculate it'
+        : `These results have no ${option.value} data`;
     }
     selectors.append(viewControl);
     const candidates = inScope.filter(item => item.entry.title === view).map(item => item.entry);
@@ -9024,8 +9033,41 @@
         + `${unmapped.length > 1 ? 'these countries' : 'this country'} in Workspace Config and calculate the scoring again to see ${unmapped.length > 1 ? 'their' : 'its'} areas.`;
       section.append(warning);
     }
+    // A Saved Filter that asks for Postal Codes in a country whose postal codes could not be downloaded.
+    const postalMissing = payload?.views?.insights?.postal_missing || [];
+    if (postalMissing.length) {
+      const warning = document.createElement('p');
+      warning.className = 'scoring-insight-note scoring-loss-unmapped';
+      warning.textContent = `The postal codes of ${postalMissing.map(item => item.name).join(', ')} could not be downloaded, so Maps per Postal Code leaves out `
+        + 'the tests there: download or import them in Workspace Config → Map Areas and calculate the scoring again.';
+      section.append(warning);
+    }
     section.append(grid);
     pane.append(section);
+  }
+
+  // Every postal code of a map as a CSV file: the table lists the first ones. The browser writes it; App Events records it.
+  function downloadLossCsv(ranking, savedFilterId) {
+    const cell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const rows = ranking.areas.filter(area => area.name !== 'Not specified').map(area => [
+      area.name, (area.environments || []).join(', '), Number(area.points).toFixed(4),
+      area.rate === null || area.rate === undefined ? '' : Number(area.rate).toFixed(4), area.tests ?? '',
+      (Number(area.share) * 100).toFixed(4)]);
+    const header = ['Postal Code', 'Environments', 'National points lost', 'Per 1,000 tests', 'Tests', 'Share (%)'];
+    const text = [header, ...rows].map(row => row.map(cell).join(',')).join('\r\n');
+    const context = Object.values(ranking.context || {}).map(String).join(' ');
+    const fileName = `Points Lost per Postal Code - ${ranking.label}${context ? ` - ${context}` : ''}.csv`.replace(/[\\/:*?"<>|]+/g, ' ');
+    const address = URL.createObjectURL(new Blob(['\ufeff', text], {type: 'text/csv;charset=utf-8'}));
+    const link = document.createElement('a');
+    link.href = address;
+    link.download = fileName;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(address), 1000);
+    window.recordImageExport?.('/api/scoring/image-export', {saved_filter_id: Number(savedFilterId) || null, tab: 'Points Lost',
+      kind: 'table', title: `Points Lost per Postal Code — ${ranking.label}`, environment: String(ranking.environment || ''),
+      file_name: fileName, format: 'csv'});
   }
 
   // One operator's map with the note and the ranking of the areas where it loses most points.
@@ -9100,14 +9142,14 @@
     const peak = Math.max(0, ...bars.map(area => area.points));
     // All environments: beside each city or route, the environments where it loses points (most first).
     // Regions and Clusters hold tests of every environment, so they leave the column out.
-    const withEnvironments = entry.title === 'City' && bars.some(area => area.environments?.length);
+    const withEnvironments = ['City', 'Postal Code'].includes(entry.title) && bars.some(area => area.environments?.length);
     // Both figures of each place: the bar on the one it is ranked by.
     const rated = Boolean(ranking.rate_tests);
     const rateCell = area => ({text: area.rate === null || area.rate === undefined ? '—' : insightNumber(area.rate, 2),
       className: 'scoring-insight-number', title: `${insightNumber(area.tests || 0, 0)} tests`});
     const nationalOf = area => area.national ?? area.points;
     const tested = bars.reduce((sum, area) => sum + (Number(area.tests) || 0), 0);
-    const table = insightTable(['Area', ...(withEnvironments ? ['Type'] : []), 'National points lost',
+    const table = insightTable([entry.title === 'Postal Code' ? 'Postal Code' : 'Area', ...(withEnvironments ? ['Type'] : []), 'National points lost',
       ...(rated ? ['Per 1,000 tests'] : []), 'Share'], bars.map(area => [area.name,
       ...(withEnvironments ? [{text: (area.environments || []).map(name => shortEnvironmentLabel(name)).join(', '),
         title: (area.environments || []).map(name => environmentLabel(name)).join(', '),
@@ -9127,6 +9169,18 @@
     hint.textContent = 'Click a row or an area to show it alone; Ctrl/⌘-click adds more, Shift+click chooses the rows in between and Shift+drag selects several areas. Click it again or Esc to show all.';
     content.append(mapBox, tableBox);
     card.append(title, note, content, hint);
+    if (entry.title === 'Postal Code') {
+      const postalNote = document.createElement('p');
+      postalNote.className = 'scoring-loss-map-hint';
+      postalNote.textContent = `Approximate areas, not official borders: tests near a border can fall in the neighbouring code, and codes that share their only point (city centres) are one area. ${payload?.views?.insights?.postal_attribution || ''}`;
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.className = 'secondary-button scoring-loss-map-download';
+      const total = ranking.areas.filter(area => area.name !== 'Not specified').length;
+      download.textContent = `Download all ${insightNumber(total, 0)} postal codes (CSV)`;
+      download.addEventListener('click', () => downloadLossCsv(ranking, savedFilterId));
+      card.append(postalNote, download);
+    }
     const values = Object.fromEntries((sameLayer ? areas : layer.areas).filter(area => area.name !== 'Not specified')
       .map(area => [area.name, area.points]));
     const rows = [...table.querySelectorAll('tbody tr')];

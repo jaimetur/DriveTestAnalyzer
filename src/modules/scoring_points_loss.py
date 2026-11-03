@@ -36,7 +36,9 @@ COORDINATE_SOURCES = NETCHECK_PROFILE.coordinate_sources
 AREA = 'Area'
 CITY_AREA = 'City|Area'
 CITY_AREA_SEPARATOR = '\x1f'
-MAP_FIELDS = (*AREA_FIELDS, AREA)
+# The postal code of each test (see postal_areas), only placed for the Saved Filters that ask for it.
+POSTAL = 'Postal Code'
+MAP_FIELDS = (*AREA_FIELDS, AREA, POSTAL)
 NOT_SPECIFIED = 'Not specified'
 AREA_COLUMN = '__area_{}'
 # The area of each test as a category (empty areas as Not specified), to sum the weights of each area at once.
@@ -297,10 +299,11 @@ def _setting_columns(frame: pd.DataFrame, source: pd.DataFrame, resolve) -> None
         mode_of_test).replace('', pd.NA).astype('string'))
 
 
-def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolve, areas=None) -> None:
+def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolve, areas=None, postal=None) -> None:
     """Copy the area and coordinate columns of the source rows into the scoring frame.
 
-    ``areas`` (a ``map_areas.AreaIndex``) names the map area of each test; without it, the ones shipped.
+    ``areas`` (a ``map_areas.AreaIndex``) names the map area of each test; without it, the ones shipped. ``postal`` (the
+    index of ``postal_areas``), when given, names its postal code.
     """
     for field, aliases in AREA_FIELDS.items():
         column = next((resolved for alias in aliases if (resolved := resolve(source.columns, alias)) is not None), None)
@@ -336,6 +339,8 @@ def attach_location(frame: pd.DataFrame, source: pd.DataFrame, kind: str, resolv
             frame[AREA_COLUMN.format(AREA)] = (
                 names.cat.remove_categories([''] if '' in names.cat.categories else [])
                 if isinstance(names.dtype, pd.CategoricalDtype) else names.replace('', pd.NA))
+            if postal is not None:
+                frame[AREA_COLUMN.format(POSTAL)] = postal.names_of(frame[LATITUDE], frame[LONGITUDE])
             break
     level_2 = resolve(source.columns, 'G_Level_2')
     # Drive City tests are places; other tests (Connecting Roads) follow a route.
@@ -409,8 +414,25 @@ def map_boundaries(result: dict[str, Any] | None, field: str) -> dict[str, list[
 def map_background(result: dict[str, Any] | None, field: str) -> list[list[list[float]]]:
     """The outlines of the countries whose areas are saved with the job, drawn in grey under them."""
     document = result.get('points_loss') if isinstance(result, dict) else None
+    if field == POSTAL:
+        return list((document or {}).get('postal_background') or []) if isinstance(document, dict) else []
     areas = (document or {}).get('map_areas') if isinstance(document, dict) and field == AREA else None
     return list(areas.get('background') or []) if isinstance(areas, dict) else []
+
+
+def add_postal_map(document: dict[str, Any], index) -> None:
+    """Keep the polygons of the postal codes of a map with it, those with losses or tests, and the outlines of their
+    countries (``index``: the postal code areas it was placed in, see ``postal_areas``)."""
+    from src.modules.postal_areas import postal_map
+
+    used = {name for entry in document.get('shares') or [] for name in (entry.get('areas') or {}).get(POSTAL, {})}
+    used.update(name for entry in document.get('serving_tests') or [] for name in (entry.get('counts') or {}).get(POSTAL, {}))
+    used.discard(NOT_SPECIFIED)
+    found = postal_map(index, used)
+    if found['boundaries']:
+        document.setdefault('boundaries', {})[POSTAL] = found['boundaries']
+        document['postal_background'] = found['background']
+        document['postal_attribution'] = found['attribution']
 
 
 def _numeric(frame: pd.DataFrame, field: str) -> pd.Series:
@@ -509,9 +531,9 @@ def _category_shares(frame: pd.DataFrame, weights: pd.Series, total: float) -> d
 def serving_counts(frame: pd.DataFrame, *, areas: bool = True) -> dict[str, dict[str, int]]:
     """The tests of a scoring group per Vendor and per Site Type of their serving cell, to compare each one's share of
     the tests with its share of the points lost, and, with ``areas`` (the calls and tests, not the samples of Speech),
-    per City, Region and Cluster, for the points each place loses per 1,000 of its tests."""
+    per City, Region, Cluster and Postal Code, for the points each place loses per 1,000 of its tests."""
     counts: dict[str, dict[str, int]] = {}
-    for field in (VENDOR, SITE_TYPE, *(AREA_FIELDS if areas else ())):
+    for field in (VENDOR, SITE_TYPE, *((*AREA_FIELDS, POSTAL) if areas else ())):
         column = SHARE_COLUMN.format(field)
         if column in frame:
             values = frame[column].value_counts()

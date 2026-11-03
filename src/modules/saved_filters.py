@@ -20,6 +20,7 @@ from typing import Any, Callable, Iterable
 
 import pandas as pd
 
+from src.modules import postal_areas
 from src.modules.column_names import campaign_sort_key, column_identity, resolve_column_name
 from src.modules.scoring_area_summary import (
     WARNING_PREFIXES, area_summary_levels, calculate_area_summary, calculate_area_summary_from_history,
@@ -2031,7 +2032,7 @@ def _attach_mapping_boundaries(repository: Repository, dataset_ids: list[int], r
         if polygons:
             boundaries[field] = polygons
     if boundaries:
-        document['boundaries'] = boundaries
+        document.setdefault('boundaries', {}).update(boundaries)
 
 
 def calculate_saved_filter(repository: Repository, filter_id: int,
@@ -2124,6 +2125,10 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
             result['excluded_calls'] = excluded_calls
             if warning := summary_warning(excluded_calls):
                 result['warnings'] = [*(result.get('warnings') or []), warning]
+        if postal_areas.wanted(saved_filter) and not map_pending:
+            # Postal Codes are only placed while the map is drawn apart (the scores never need them).
+            result['points_loss'] = {'version': 2, 'pending': True}
+            map_pending = True
         _save_scoring_result(repository, saved_filter, filter_id, dataset_ids, configuration, result,
                              points_loss_pending=map_pending)
         if map_pending and _complete_points_loss(
@@ -2554,10 +2559,20 @@ def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], source
         return cached
     if cached_only:
         return None
+    postal_missing = []
+    if postal_areas.wanted(saved_filter):
+        # The postal codes of the countries that lack them, before the map reads them (its key follows them).
+        postal_missing = postal_areas.ensure_postal_layers(
+            repository, _campaign_sources(sources, _normalize_context_filters(context_filters)),
+            progress=lambda step: progress(0, step))
+        if engine is scoring_engine:
+            key = scoring_cache.key_of(_points_loss_inputs(repository, saved_filter, sources, configuration, context_filters))
     if engine is scoring_engine and POINTS_LOSS_APART:
         points_loss = _draw_points_loss_apart(repository, saved_filter, sources, configuration, context_filters, progress)
     else:
         points_loss = draw_points_loss(repository, saved_filter, sources, configuration, context_filters, engine, progress)
+    if postal_missing and isinstance(points_loss, dict):
+        points_loss['postal_missing'] = postal_missing
     if key is not None:
         points_loss = _serialize_result_value(points_loss)
         scoring_cache.write(repository, 'points-loss', key, points_loss)
@@ -2743,7 +2758,8 @@ def _draw_points_loss_apart(repository: Repository, saved_filter: dict[str, Any]
     if missing:
         raise RuntimeError(missing)
     parts.sort(key=lambda part: first_rows[part['kind']])
-    return scoring_engine.points_loss_document(parts, options.get('map_areas'), apart=True)
+    return scoring_engine.points_loss_document(parts, options.get('map_areas'), apart=True,
+                                               postal_areas=_postal_index(repository, saved_filter))
 
 
 def draw_points_loss_parts(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
@@ -2774,7 +2790,8 @@ def draw_points_loss_parts(repository: Repository, saved_filter: dict[str, Any],
     options = _engine_kwargs(repository, saved_filter, configuration, scoring_engine.calculate_scoring)
     parts = scoring_engine.points_loss_parts(
         frames, saved_filter['levels'], configuration=configuration, operator_mappings=options.get('operator_mappings'),
-        map_areas=options.get('map_areas'), progress_callback=lambda share, step: progress(45 + share * 55, step))
+        map_areas=options.get('map_areas'), progress_callback=lambda share, step: progress(45 + share * 55, step),
+        postal_areas=_postal_index(repository, saved_filter))
     for part in parts:
         compact_contribution(part['places'])
     return {'parts': parts, 'first_rows': first_rows}
@@ -2806,6 +2823,8 @@ def draw_points_loss(repository: Repository, saved_filter: dict[str, Any], sourc
         # Only the map: the scores are already saved.
         extra = ({'progress_callback': lambda share, step: progress(45 + share * 55, step)}
                  if 'progress_callback' in inspect.signature(engine.calculate_points_loss).parameters else {})
+        if 'postal_areas' in inspect.signature(engine.calculate_points_loss).parameters:
+            extra['postal_areas'] = _postal_index(repository, saved_filter)
         points_loss = engine.calculate_points_loss(
             frames, saved_filter['levels'], configuration=configuration,
             operator_mappings=options.get('operator_mappings'), map_areas=options.get('map_areas'), **extra)
@@ -2814,10 +2833,16 @@ def draw_points_loss(repository: Repository, saved_filter: dict[str, Any], sourc
     return points_loss
 
 
+def _postal_index(repository: Repository, saved_filter: dict[str, Any]) -> Any:
+    """The postal code areas that place the tests of a Saved Filter that asks for Postal Codes."""
+    return postal_areas.postal_index(repository) if postal_areas.wanted(saved_filter) else None
+
+
 def _points_loss_inputs(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
                         configuration: dict[str, Any], context_filters: dict[str, list[str]]) -> dict[str, Any]:
     """What the Points Lost Map of one methodology depends on: the revision of the CDRs it reads (and whether their tests
-    are placed in the Map Areas), the split, the methodology, the filters, the Operator Maps and the Map Areas."""
+    are placed in the Map Areas), the split, the methodology, the filters, the Operator Maps, the Map Areas and, for a
+    Saved Filter that asks for them, the postal code areas."""
     from src.modules import scoring as scoring_engine
     from src.modules.map_area_columns import areas_version, current_datasets
     read = _campaign_sources(sources, _normalize_context_filters(context_filters))
@@ -2830,6 +2855,7 @@ def _points_loss_inputs(repository: Repository, saved_filter: dict[str, Any], so
         'filters': _filters_key(context_filters), 'operator_mappings': saved_filter.get('operator_mappings', {}),
         'map_areas': areas_version(repository),
         **({'nr_mode_campaigns': True} if _compares_nr_modes(saved_filter) else {}),
+        **({'postal_codes': postal_areas.postal_version(repository)} if postal_areas.wanted(saved_filter) else {}),
     }
 
 

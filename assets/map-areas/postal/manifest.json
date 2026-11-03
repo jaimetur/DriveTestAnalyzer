@@ -1,0 +1,13 @@
+{
+  "GBR": {
+    "attribution": "GeoNames, www.geonames.org; areas worked out from its postal code points",
+    "country_code": "GBR",
+    "file": "GBR.json.gz",
+    "level": "Postal code",
+    "level_label": "postal code",
+    "license": "Creative Commons Attribution 4.0",
+    "source": "https://download.geonames.org/export/zip/GB.zip",
+    "unit_count": 2812,
+    "year": "2026"
+  }
+}

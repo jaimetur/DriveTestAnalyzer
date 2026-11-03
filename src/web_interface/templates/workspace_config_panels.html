@@ -293,9 +293,15 @@
           <div class="table-wrap" data-map-area-layers></div>
         </section>
         <section>
+          <h3>Saved Postal Codes</h3>
+          <p class="form-note">The areas of <strong>Maps per Postal Code</strong> in the Points Lost Map, for the Saved Filters that ask for Postal Codes. Without a file of your own they are worked out from the postal code points of <a href="https://www.geonames.org" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0, about 120 countries), downloaded when a calculation needs them: they are approximate, not official borders.</p>
+          <div class="table-wrap" data-postal-area-layers></div>
+        </section>
+        <section>
           <h3>Import areas from a file</h3>
-          <p class="form-note">A GeoJSON, or a ZIP holding one Shapefile, with one polygon per area. Importing the areas of a country replaces the saved ones.</p>
+          <p class="form-note">A GeoJSON, or a ZIP holding one Shapefile, with one polygon per area. Importing the areas of a country replaces the saved ones. Use only maps whose licence allows it.</p>
           <form class="map-area-import" data-map-area-import>
+            <label>Areas<select name="layer"><option value="map-areas">Map Areas</option><option value="postal-codes">Postal Codes</option></select></label>
             <label>File<input type="file" name="file" accept=".geojson,.json,.zip" required></label>
             <label>Country (ISO code)<input type="text" name="country_code" maxlength="3" placeholder="ESP" required></label>
             <label>Area name<input type="text" name="level_label" maxlength="40" placeholder="municipality" value="area"></label>
@@ -305,7 +311,7 @@
         </section>
         <p class="campaign-map-message" data-map-area-message role="status" aria-live="polite"></p>
       </div>
-      <p class="form-note">Country borders: Natural Earth (public domain). The Map Areas travel with the Mappings &amp; Reference Data in Import / Export, transfers and backups.</p>
+      <p class="form-note">Country borders: Natural Earth (public domain). The Map Areas and Postal Codes travel with the Mappings &amp; Reference Data in Import / Export, transfers and backups.</p>
       <script defer src="{{ static_path('js/map_areas.js') }}?v={{ asset_version('js/map_areas.js') }}"></script>
       {% else %}<p class="form-note">Open a workspace before managing Map Areas.</p>{% endif %}
     </div>

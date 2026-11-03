@@ -192,6 +192,8 @@
   .scoring-trends-columns > .scoring-area-summary { margin: 0; border-color: #c9e0d4; background: rgba(255,255,255,.55); }
   /* Each field takes half of its subpanel: no room left beside them. */
   .scoring-trends-columns .scoring-area-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scoring-area-grid > label.scoring-area-option { grid-column: 1 / -1; display: flex; align-items: center; gap: .4rem; }
+  .scoring-area-option input { flex: none; width: auto; margin: 0; }
   @media (max-width: 900px) { .scoring-trends-columns { grid-template-columns: minmax(0, 1fr); } }
   .scoring-trends-grid { margin-bottom: .1rem; }
   /* Included, the summary locks the area filters of the Context filters, and says why. */
@@ -389,6 +391,7 @@
   .saved-filter-meta.saved-filter-meta-nested { padding-left: .95rem; }
   .saved-filter-meta .saved-filter-area-summary-campaigns { border-color: #e7b0c2; background: #fdeff4; color: #b4234d; }
   .saved-filter-meta .saved-filter-area-summary-cities { border-color: #e5c98c; background: #fdf4df; color: #7d5100; }
+  .saved-filter-meta .saved-filter-area-summary-postal { border-color: #e5c98c; background: #fdf4df; color: #7d5100; }
   .scoring-status { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .48rem; border-radius: 999px; background: #e9eff1; color: #47606b; font-size: .68rem; font-weight: 800; text-transform: capitalize; white-space: nowrap; }
   .scoring-status[data-status="completed"] { background: #e2f4e9; color: #247048; }
   .scoring-status[data-status="failed"] { background: #fde9e5; color: #a43d2f; }
@@ -707,6 +710,7 @@
   .scoring-loss-map-outline { fill: #f1f3f5; stroke: #e1e4e8; stroke-width: .6; }
   .scoring-loss-unmapped { color: #8a5300; }
   .scoring-loss-map-hint { margin: .4rem 0 0; color: #6b7a85; font-size: .74rem; }
+  .scoring-loss-map-download { margin-top: .5rem; }
   .scoring-loss-map-card:focus { outline: none; }
   .scoring-loss-map-svg [data-area] { transition: fill .15s, opacity .15s; }
   .scoring-loss-map-svg [data-area].is-dimmed { opacity: .35; }
@@ -1701,6 +1705,9 @@
               <select multiple size="1" data-scoring-area-cities data-multiselect-auto-close="1000" data-multiselect-empty-label="None" aria-label="Separate cities of the Geographical Areas and the National &amp; Geographical Areas Trends">
                 <option value="London" selected>London</option>
               </select>
+            </label>
+            <label class="scoring-area-option" title="Adds Postal Code to Maps per of the Points Lost Map: the table and the map per postal code. Off by default: use it when you need it, for example once per quarter. The postal code areas are approximate, worked out from GeoNames postal code points.">
+              <input type="checkbox" data-scoring-area-postal-codes> Postal Codes in the Points Lost Map
             </label>
           </div>
         </div>

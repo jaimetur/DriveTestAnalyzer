@@ -1212,7 +1212,7 @@ def _loss_bars(slide, bars: list[dict[str, Any]], *, left: float, top: float, wi
         point.format.fill.fore_color.rgb = RGBColor(*_loss_color((area['points'] - low) / ((peak - low) or 1)))
 
 
-LOSS_FIELD_TITLES = {'Area': 'Map Area', 'City': 'City', 'Cluster': 'Cluster', 'Region': 'Region'}
+LOSS_FIELD_TITLES = {'Area': 'Map Area', 'City': 'City', 'Cluster': 'Cluster', 'Region': 'Region', 'Postal Code': 'Postal Code'}
 
 
 def _short_environment(label: str) -> str:
@@ -1225,14 +1225,16 @@ def add_points_loss_slides(presentation, maps: list[dict[str, Any]], background:
                            scoring_label: str, subtitle: str, new_slide: Callable,
                            boundaries: Callable[[str], dict] | None = None,
                            environment_labels: dict[str, str] | None = None,
-                           outlines: Callable[[str], list] | None = None, scope: ScopeLabels | None = None) -> None:
+                           outlines: Callable[[str], list] | None = None, scope: ScopeLabels | None = None,
+                           postal_only: bool = False, postal_note: str = '') -> None:
     """Points lost per area, like the NetCheck points-loss slides: a map and the areas that lose most.
 
     The main slide colours the map areas (the ITL3 areas in the UK, the workspace's Map Areas
     elsewhere) by the points of the city or Connecting Roads route that loses most among those
     measured in each one, as the web map does by default, and ranks the cities and routes; without
     map areas the cities are bubbles on the test locations. Clusters and Regions with polygons get
-    their own slide.
+    their own slide. ``postal_only``: the slides of the Postal Codes instead (of the Saved Filters that ask for them), with
+    ``postal_note`` crediting their source.
     """
     boundaries = boundaries or (lambda _field: {})
     outlines = outlines or (lambda _field: [])
@@ -1242,6 +1244,10 @@ def add_points_loss_slides(presentation, maps: list[dict[str, Any]], background:
         by_series.setdefault(series, {})[item['field']] = item
     slides = []
     for fields in by_series.values():
+        if postal_only:
+            if fields.get('Postal Code') is not None and boundaries('Postal Code'):
+                slides.append((fields['Postal Code'], 'Postal Code', fields['Postal Code']))
+            continue
         city = fields.get('City')
         if city is not None:
             layer = fields.get('Area')
@@ -1256,13 +1262,13 @@ def add_points_loss_slides(presentation, maps: list[dict[str, Any]], background:
         for per_tests in ((False, True) if rated else (False,)):
             _points_loss_slide(presentation, ranking, field, layer, per_tests, background,
                                scoring_label=scoring_label, subtitle=subtitle, new_slide=new_slide, boundaries=boundaries,
-                               environment_labels=environment_labels, outlines=outlines, scope=scope)
+                               environment_labels=environment_labels, outlines=outlines, scope=scope, postal_note=postal_note)
 
 
 def _points_loss_slide(presentation, ranking: dict[str, Any], field: str, layer: dict[str, Any] | None, per_tests: bool,
                        background: list[list[float]], *, scoring_label: str, subtitle: str, new_slide: Callable,
                        boundaries: Callable[[str], dict], environment_labels: dict[str, str] | None,
-                       outlines: Callable[[str], list], scope: ScopeLabels | None) -> None:
+                       outlines: Callable[[str], list], scope: ScopeLabels | None, postal_note: str = '') -> None:
     """One slide of :func:`add_points_loss_slides`; ``per_tests`` ranks the places by the points they lose per 1,000
     of their tests instead of their National points lost."""
     from io import BytesIO
@@ -1283,7 +1289,7 @@ def _points_loss_slide(presentation, ranking: dict[str, Any], field: str, layer:
     bars = [{**area, 'name': f"{area['name']} ({', '.join(_short_environment(labels.get(name, name)) for name in area['environments'])})"}
             if area.get('environments') and field == 'City' else area for area in bars]
     share = sum(area.get('national', area['points']) for area in bars) / ranking['total'] if ranking['total'] else 0
-    plural = {'City': 'cities and routes', 'Cluster': 'clusters', 'Region': 'regions'}.get(field, 'areas')
+    plural = {'City': 'cities and routes', 'Cluster': 'clusters', 'Region': 'regions', 'Postal Code': 'postal codes'}.get(field, 'areas')
     by_rows = layer is not None and layer['field'] == 'Area' and field == 'City'
     area_label = (layer or {}).get('area_label') or LOSS_FIELD_TITLES.get((layer or {}).get('field'), 'area')
     map_text = f"The map colours each {area_label} by the National points " if layer is not None else 'The map shows where '
@@ -1327,6 +1333,7 @@ def _points_loss_slide(presentation, ranking: dict[str, Any], field: str, layer:
         ('National points', True, None),
         (f": the part of {ranking['label']}'s National loss in the tests of each place (they add up to it), not the "
          "place's own score, which the National & Geographical Areas Trends show.", False, None),
+        *([(f' Approximate areas, not official borders. {postal_note}', False, None)] if field == 'Postal Code' else []),
     ], size=8.5, color='#4A5B65')
     map_top, map_height, map_width = 2.35, 4.5, 6.0
     if layer is not None:

@@ -334,7 +334,7 @@ def _is_baseline(value: str, baseline_operator: str, baseline_aliases: Iterable[
 
 
 def _prepared_frames(frames: dict[str, pd.DataFrame], dimensions: list[str], config: dict, operator_mappings: dict[str, str],
-                     map_areas, time_split: str | None, campaign_selected: bool, warnings: list[str]):
+                     map_areas, time_split: str | None, campaign_selected: bool, warnings: list[str], postal_areas=None):
     """Each source with the grouping fields, the map location and the environment of its tests, and which of its
     rows can be scored."""
     for kind, source in frames.items():
@@ -389,7 +389,7 @@ def _prepared_frames(frames: dict[str, pd.DataFrame], dimensions: list[str], con
         if missing_group:
             warnings.append(f'{kind.title()}: missing grouping columns: {", ".join(missing_group)}; no scores calculated.')
             continue
-        points_loss.attach_location(frame, source, kind, resolve_column_name, map_areas)
+        points_loss.attach_location(frame, source, kind, resolve_column_name, map_areas, postal_areas)
         frame['environment'] = None
         environment_masks = {}
         for environment, context in config['scope']['environments'].items():
@@ -842,7 +842,7 @@ def _points_loss_entries(kind: str, frame: pd.DataFrame, valid: pd.Series, group
     loss_shares = [entry for group in range(groups) for entries in found if (entry := entries.get(group)) is not None]
     # The tests of each group per Vendor, Site Type and area, ordered as value_counts orders them.
     served = [{} for _group in range(groups)]
-    for field in (points_loss.VENDOR, points_loss.SITE_TYPE, *(points_loss.AREA_FIELDS if kind != 'speech' else ())):
+    for field in (points_loss.VENDOR, points_loss.SITE_TYPE, *((*points_loss.AREA_FIELDS, points_loss.POSTAL) if kind != 'speech' else ())):
         if field not in categories:
             continue
         category_codes, names = categories[field]
@@ -868,7 +868,7 @@ def _points_loss_entries(kind: str, frame: pd.DataFrame, valid: pd.Series, group
 def points_loss_parts(
     frames: dict[str, pd.DataFrame], levels: Iterable[str] = ('Operator',), configuration: dict | None = None,
     operator_mappings: dict[str, str] | None = None, map_areas=None, time_split: str | None = None,
-    progress_callback=None,
+    progress_callback=None, postal_areas=None,
 ) -> list[dict]:
     """The Points Lost Map of each CDR type of ``frames``, in their order, before points_loss_document puts them
     together: its loss shares, its serving tests and what its tests give the map (scoring_points_loss.contributions).
@@ -900,7 +900,7 @@ def points_loss_parts(
     # The countries whose Map Areas each CDR type read first (the map draws their areas, see points_loss_document).
     read = len(map_areas.loaded()) if hasattr(map_areas, 'loaded') else 0
     for kind_index, (kind, frame, valid) in enumerate(_prepared_frames(frames, dimensions, config, mappings, map_areas,
-                                                                        time_split, campaign_selected, [])):
+                                                                        time_split, campaign_selected, [], postal_areas)):
         step = ((lambda share, detail, kind_index=kind_index: progress_callback((kind_index + share) / kinds, detail))
                 if progress_callback else None)
         shares, served = _points_loss_entries(kind, frame, valid, group_fields, keys,
@@ -912,11 +912,11 @@ def points_loss_parts(
     return parts
 
 
-def points_loss_document(parts: Iterable[dict], map_areas=None, *, apart: bool = False) -> dict:
+def points_loss_document(parts: Iterable[dict], map_areas=None, *, apart: bool = False, postal_areas=None) -> dict:
     """The Points Lost Map of the CDR types of ``parts`` (points_loss_parts), put together in their order: the same map
     as working them out one after the other, whichever process worked each out. ``apart``: the parts were worked out
     by processes of their own, and the map draws the countries they read, in their order (with the countries of
-    ``map_areas`` otherwise)."""
+    ``map_areas`` otherwise). ``postal_areas``: the postal code areas the tests were placed in."""
     if map_areas is None:
         from src.modules.map_areas import area_index
         map_areas = area_index(None)
@@ -931,14 +931,17 @@ def points_loss_document(parts: Iterable[dict], map_areas=None, *, apart: bool =
         for code, names in part.get('countries', []):
             countries.setdefault(code, names)
     areas = map_areas.document_of(countries.items(), geometry.used_areas) if apart else geometry.map_areas(map_areas)
-    return {'version': 3, **geometry.document(), 'map_areas': areas, 'shares': loss_shares,
-            'serving_tests': serving_tests}
+    document = {'version': 3, **geometry.document(), 'map_areas': areas, 'shares': loss_shares,
+                'serving_tests': serving_tests}
+    if postal_areas is not None:
+        points_loss.add_postal_map(document, postal_areas)
+    return document
 
 
 def calculate_points_loss(
     frames: dict[str, pd.DataFrame], levels: Iterable[str] = ('Operator',), configuration: dict | None = None,
     operator_mappings: dict[str, str] | None = None, map_areas=None, time_split: str | None = None,
-    progress_callback=None,
+    progress_callback=None, postal_areas=None,
 ) -> dict:
     """The Points Lost Map of a scoring, as ``calculate_scoring`` places it, without calculating the scores.
 
@@ -950,7 +953,7 @@ def calculate_points_loss(
         from src.modules.map_areas import area_index
         map_areas = area_index(None)
     return points_loss_document(points_loss_parts(frames, levels, configuration, operator_mappings, map_areas, time_split,
-                                                  progress_callback), map_areas)
+                                                  progress_callback, postal_areas), map_areas, postal_areas=postal_areas)
 
 
 def finish_scoring(

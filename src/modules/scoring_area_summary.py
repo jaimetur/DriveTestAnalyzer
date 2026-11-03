@@ -86,6 +86,9 @@ def normalize_area_summary_request(area_summary: Any, context_filters: dict[str,
     normalized = {'breakdown': breakdown, 'cities': cities, 'time_split': time_split}
     if main_cities:
         normalized['main_cities'] = True
+    # (Only when asked: every other request keeps the form, and the identity, it had.)
+    if area_summary.get('postal_codes'):
+        normalized['postal_codes'] = True
     campaigns = normalize_trend_campaigns(area_summary.get('campaigns'))
     # (Without campaigns of its own, the request keeps the form of the summaries saved before they had any.)
     if campaigns:

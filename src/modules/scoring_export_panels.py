@@ -54,6 +54,7 @@ EXPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str, str], ...]], ...] = (
         ('stake', 'Where the points go', ALL_OPERATORS),
         ('kpis', 'Points lost per KPI', FOCUS_OPERATORS),
         ('map', 'Points lost per City / Region map, by points and per 1,000 tests', FOCUS_OPERATORS),
+        ('postal_map', 'Points lost per Postal Code map (Saved Filters with Postal Codes)', FOCUS_OPERATORS),
         ('vendors', 'Points lost per Vendor', FOCUS_OPERATORS),
         ('site_types', 'Points lost per kind of site', FOCUS_OPERATORS),
         ('sites', 'Sites to review', FOCUS_OPERATORS),

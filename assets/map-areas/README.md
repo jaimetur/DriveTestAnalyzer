@@ -26,6 +26,16 @@ Each `<ISO3>.json.gz` holds the simplified polygons of one country (coordinates 
 - **United Kingdom:** Office for National Statistics, *International Territorial Level 3 (January 2025) Boundaries UK BUC (V2)*, ONS Open Geography Portal (the UK NUTS3 level). Contains OS data © Crown copyright and database right 2025.
 - **Other countries:** geoBoundaries (William & Mary geoLab), www.geoboundaries.org, gbOpen release, from the national sources above. Use them under the licence of each country.
 
+## Postal Codes
+
+`postal/<ISO3>.json.gz` holds the areas of **Maps per Postal Code** of the Points Lost Map for the Saved Filters that ask for them, listed in `postal/manifest.json`; `tools/build_postal_layer.py` builds them. They are approximate, not official borders: each code takes the land closest to its points, cut to the Map Areas of its country, and the codes that only have a point shared with others are one area. Other countries are downloaded and worked out the same way when a calculation needs them, or imported by the workspace.
+
+| Country | Level | Areas | Source | Licence |
+| --- | --- | --- | --- | --- |
+| United Kingdom (GBR) | postcode district | 2812 | GeoNames, `GB.zip`, 2026 | Creative Commons Attribution 4.0 |
+
+Source: GeoNames, www.geonames.org, postal code files (https://download.geonames.org/export/zip/), licensed under Creative Commons Attribution 4.0. Provided by GeoNames "as is", without warranty of accuracy, timeliness or completeness. Do not add here a map under a licence that does not allow redistributing it: this folder is published with the application.
+
 ## World countries
 
 `world-countries-50m.geojson.gz` holds the country polygons that find the country of each test (Map Areas of Workspace Config), draw the outline of the countries under their areas and colour a country without Map Areas as a whole. Only the ISO 3166 alpha-3 `code` and the English `name` are kept, geometries are simplified and coordinates rounded to three decimals.

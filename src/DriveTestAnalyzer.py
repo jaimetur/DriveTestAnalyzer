@@ -8884,6 +8884,7 @@ def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
     from src.modules.campaign_maps import load_campaign_map
     from src.modules.map_areas import layers_document
     from src.modules.mapping_assignments import load_name_comments
+    from src.modules.postal_areas import TABLE as POSTAL_TABLE
     from src.modules.network_insights import load_spectrum_holdings
     from src.modules.serving_cells import load_serving_networks
 
@@ -8891,6 +8892,7 @@ def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
         workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
     )
     map_areas = layers_document(task_repository)
+    postal_areas = layers_document(task_repository, table=POSTAL_TABLE)
     document = {
         'format': 'drivetest-analyzer-mappings-reference-data',
         'version': 1,
@@ -8902,9 +8904,10 @@ def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
         'cdr_field_dictionary': cdr_field_dictionary.document(task_repository),
         'campaign_map': load_campaign_map(task_repository),
         'map_areas': map_areas,
+        'postal_areas': postal_areas,
     }
-    # Map Areas hold many coordinates: the document is then written without indentation.
-    if map_areas['layers']:
+    # Map Areas and Postal Codes hold many coordinates: the document is then written without indentation.
+    if map_areas['layers'] or postal_areas['layers']:
         return json.dumps(document, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
     return json.dumps(document, ensure_ascii=False, indent=2).encode('utf-8')
 
@@ -8988,6 +8991,14 @@ def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: by
             import_layers_document(task_repository, document['map_areas'], 'system', replace=True)
         except ValueError as exc:
             raise ValueError(f'Map Areas for "{workspace.name}" are invalid: {exc}') from exc
+    # (Files saved before Postal Codes keep the ones of the workspace.)
+    if isinstance(document.get('postal_areas'), dict):
+        from src.modules.map_areas import import_layers_document
+        from src.modules.postal_areas import TABLE as POSTAL_TABLE
+        try:
+            import_layers_document(task_repository, document['postal_areas'], 'system', replace=True, table=POSTAL_TABLE)
+        except ValueError as exc:
+            raise ValueError(f'Postal Codes for "{workspace.name}" are invalid: {exc}') from exc
     if active_workspace and workspace.id == active_workspace.id:
         ANALYSIS_CACHE.clear()
         PREPARED_ANALYSIS_FRAME_CACHE.clear()
@@ -13861,6 +13872,7 @@ def render_admin_template(
         'network_insights_favourites': 'Network Insights Favourites',
         'map_area_layers': 'Map Area Layers',
         'map_area_fills': 'Map Area Fills',
+        'map_area_postal_layers': 'Map Area Postal Layers',
         'report_task_runs': 'Report Task Runs',
         **NQ_TABLE_TITLES,
         **SCORING_EXCLUSION_TABLE_TITLES,
@@ -25040,10 +25052,52 @@ def get_workspace_map_areas(user: SessionUser = Depends(current_user)) -> dict[s
 
 @app.get('/api/workspace-config/map-areas/countries')
 def get_workspace_map_area_countries(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    """The countries of the tests of the workspace CDRs, with the Map Areas each one has."""
+    """The countries of the tests of the workspace CDRs, with the Map Areas and the Postal Codes each one has."""
     from src.modules.map_areas import detect_countries
+    from src.modules.postal_areas import bundled_layers, list_postal_layers
     _map_areas_workspace()
-    return {'countries': detect_countries(repository)}
+    postal_layers = {layer['country_code']: layer for layer in list_postal_layers(repository)}
+    return {'countries': [{**country, 'postal_layer': postal_layers.get(country['code']),
+                           'postal_bundled': bundled_layers().get(country['code'])}
+                          for country in detect_countries(repository)]}
+
+
+@app.get('/api/workspace-config/map-areas/postal')
+def get_workspace_postal_areas(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """The Postal Codes saved in the active workspace: one layer of postal code areas per country."""
+    from src.modules.postal_areas import list_postal_layers
+    _map_areas_workspace()
+    return {'layers': list_postal_layers(repository)}
+
+
+class PostalAreaDownloadPayload(BaseModel):
+    country_code: str
+
+
+@app.post('/api/workspace-config/map-areas/postal/download')
+def download_workspace_postal_areas(payload: PostalAreaDownloadPayload, user: SessionUser = Depends(config_editor_user)) -> dict[str, Any]:
+    """Download the postal code points of a country from GeoNames and save the areas worked out from them."""
+    from src.modules.postal_areas import download_postal_layer
+    _map_areas_workspace()
+    try:
+        layer = download_postal_layer(repository, payload.country_code, user.username)
+    except ValueError as exc:
+        repository.try_add_log(user.username, 'postal_areas_download_failed', json.dumps(
+            {'country': payload.country_code, 'error': str(exc)}, ensure_ascii=False))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    repository.add_log(user.username, 'postal_areas_download', json.dumps(
+        {'country': layer['country_code'], 'level': layer['level'], 'areas': layer['unit_count']}))
+    return {'layer': layer}
+
+
+@app.delete('/api/workspace-config/map-areas/postal/{layer_id}')
+def delete_workspace_postal_areas(layer_id: int, user: SessionUser = Depends(config_editor_user)) -> dict[str, Any]:
+    from src.modules.postal_areas import delete_postal_layer
+    _map_areas_workspace()
+    if not delete_postal_layer(repository, layer_id):
+        raise HTTPException(status_code=404, detail='Postal Codes not found.')
+    repository.add_log(user.username, 'postal_areas_delete', json.dumps({'layer_id': layer_id}))
+    return {'deleted': layer_id}
 
 
 @app.get('/api/workspace-config/map-areas/levels/{country_code}')
@@ -25079,20 +25133,25 @@ def download_workspace_map_areas(payload: MapAreaDownloadPayload, user: SessionU
 @app.post('/api/workspace-config/map-areas/import')
 async def import_workspace_map_areas(
     file: UploadFile = File(...), country_code: str = Form(...), level_label: str = Form('area'),
-    name_field: str = Form(''), user: SessionUser = Depends(config_editor_user),
+    name_field: str = Form(''), layer: str = Form('map-areas'), user: SessionUser = Depends(config_editor_user),
 ) -> dict[str, Any]:
-    """Import the administrative areas of a country from a GeoJSON or a ZIP holding a Shapefile."""
+    """Import the administrative areas of a country, or its postal code areas (``layer``), from a GeoJSON or a ZIP holding
+    a Shapefile."""
     from src.modules.map_areas import import_layer
+    from src.modules.postal_areas import import_postal_layer
     _map_areas_workspace()
     content = await file.read()
+    postal = layer == 'postal-codes'
     try:
-        layer = await asyncio.to_thread(import_layer, repository, file.filename or '', content, country_code=country_code,
-                                        level_label=level_label, name_field=name_field, username=user.username)
+        saved = await (asyncio.to_thread(import_postal_layer, repository, file.filename or '', content, country_code=country_code,
+                                         name_field=name_field, username=user.username) if postal else
+                       asyncio.to_thread(import_layer, repository, file.filename or '', content, country_code=country_code,
+                                         level_label=level_label, name_field=name_field, username=user.username))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    repository.add_log(user.username, 'map_areas_import', json.dumps(
-        {'country': layer['country_code'], 'file': file.filename, 'areas': layer['unit_count']}))
-    return {'layer': layer}
+    repository.add_log(user.username, 'postal_areas_import' if postal else 'map_areas_import', json.dumps(
+        {'country': saved['country_code'], 'file': file.filename, 'areas': saved['unit_count']}))
+    return {'layer': saved}
 
 
 @app.delete('/api/workspace-config/map-areas/{layer_id}')
