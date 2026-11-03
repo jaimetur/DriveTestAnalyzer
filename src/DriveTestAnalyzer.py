@@ -12169,7 +12169,8 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
     ``includes_designs``: the PPT Designs come too, so the PPT Templates they use are replaced)."""
     from src.modules.import_changes import (
         DETAILED_ELEMENTS, ELEMENT_LABELS, ELEMENT_NAMES, SETTINGS_ELEMENTS, breakdown, compare, compare_settings, counted,
-        element_items, joined, kept_postal_codes, predict, settings_values, ticket_items, users_access_items,
+        element_items, favourites_order_changes, joined, kept_postal_codes, predict, settings_values, ticket_items,
+        users_access_items,
     )
     from src.modules.transfer_identities import imported_creator
 
@@ -12216,7 +12217,10 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
         plural = ELEMENT_NAMES[kind][1] if kind in ELEMENT_NAMES else ''
         added = [_new_items_section(f'Adds {plural} to "{workspace.name}"', changes[workspace.id].new)
                  for workspace in destinations if plural and changes[workspace.id].new]
-        return _preview_wording(message), [*added, *lines], any(item.new or item.updated for item in changes.values())
+        reordered = [workspace for workspace in destinations
+                     if kind == 'scoring-favourites-filters' and favourites_order_changes(package, before[workspace.id])]
+        order = [f'Favourites Filters of "{workspace.name}" take the order of the package.' for workspace in reordered]
+        return _preview_wording(message), [*added, *lines, *order], bool(reordered) or any(item.new or item.updated for item in changes.values())
     if kind == 'users-access':
         if USERS_ACCESS_ARCHIVE_PATH not in archive.namelist():
             return 'The package does not contain Users & Access.', [], True
@@ -12747,7 +12751,12 @@ def _apply_import_archive(
                 for position, workspace in enumerate(destinations))
             message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)),
                                              imported_count)
-            return told(message, [*renamed, *lines])
+            from src.modules.import_changes import favourites_order_changes
+
+            order = [f'Favourites Filters of "{workspace.name}" took the order of the package.' for workspace in destinations
+                     if kind == 'scoring-favourites-filters' and before is not None
+                     and favourites_order_changes(_json_document(payload), before[workspace.id])]
+            return told(message, [*renamed, *lines, *order])
         if kind == 'reporting-jobs':
             member = str(manifest.get('archive_path') or '')
             if (

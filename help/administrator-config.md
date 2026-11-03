@@ -65,6 +65,8 @@ Importing or transferring PPT Templates replaces the templates the destination h
 
 The Designs of an imported or transferred package likewise keep the order they had in the PPT Designs library of their workspace, ahead of those only the destination has; a package of a library still sorted by NR Mode and name, or made by an earlier version, adds its new Designs at the end.
 
+Importing, transferring or restoring the Scoring & GAP Favourites Filters gives them the order they had in their workspace, ahead of those only the destination has, also when the destination already has them; when only that order differs, the preview tells it and the package stays checked.
+
 A backup restore of PPT Templates, Designs or Auto-calculated Fields works the same way: it replaces those the workspace has and adds the others, keeping those the backup does not have.
 
 #### Matching and creators

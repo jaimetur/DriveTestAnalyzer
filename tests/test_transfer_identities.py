@@ -9,6 +9,7 @@ from pathlib import Path
 import src.DriveTestAnalyzer as core
 from src.modules import bundle_report_templates as brt
 from src.modules import network_insights_favourites as ni_favourites
+from src.modules import saved_filters
 from src.modules.deletion_rights import (
     AUTO_CALCULATED_FIELDS, PPT_DESIGNER, SCORING_METHODOLOGIES, SCORING_REPORT_CONFIGURATIONS, creators, set_creator,
 )
@@ -17,6 +18,8 @@ from src.modules.scoring_reports import default_report_configuration, load_repor
 from src.modules.transfer_identities import (
     SCORING_REPORT_CONFIGURATIONS as REPORT_IDENTITIES, ItemMatcher, identities, imported_creator, move_identity,
 )
+from tests.scoring_fixtures import load_initial_scoring_configuration
+from tests.test_saved_filters_reuse import _favourite, _starred_names, _three_cdrs
 
 
 def _workspace(name: str):
@@ -161,6 +164,31 @@ def test_favourites_follow_their_renames_and_creators(client, tmp_path):
     _transfer('bundle-report-template-favourites', source, destination, tmp_path, importing_user='admin')
     [stored] = brt.list_favourites(destination_repo)
     assert stored['name'] == 'Monthly pack v2' and stored['created_by'] == 'admin'
+
+
+def test_favourites_filters_take_the_order_of_the_package_when_only_it_changes(client, tmp_path):
+    source, source_repo = _workspace('Filters source')
+    destination, destination_repo = _workspace('Filters destination')
+    ids = {}
+    for repository, folder in ((source_repo, tmp_path / 'source'), (destination_repo, tmp_path / 'destination')):
+        folder.mkdir()
+        repository.replace_scoring_configuration(load_initial_scoring_configuration())
+        ids[repository] = _three_cdrs(repository, folder)
+    regions = {region: _favourite(source_repo, ids[source_repo], region) for region in ('North', 'South', 'East')}
+    saved_filters.reorder_saved_filters(source_repo, [regions[region] for region in ('North', 'South', 'East')])
+    _transfer('scoring-favourites-filters', source, destination, tmp_path)
+    assert _starred_names(destination_repo) == ['North', 'South', 'East']
+
+    saved_filters.reorder_saved_filters(source_repo, [regions[region] for region in ('East', 'North', 'South')])
+    package = tmp_path / 'order.zip'
+    core.build_export_archive_file('scoring-favourites-filters', package, [source.id])
+    [preview] = core.preview_import_archive(package, core.read_import_manifest(package), [destination.id], 'super')['packages']
+    # Only the order differs: the preview tells it, and leaves the package checked.
+    assert preview['changed'] and 'take the order of the package' in json.dumps(preview['sections'])
+    assert 'took the order of the package' in _transfer('scoring-favourites-filters', source, destination, tmp_path)
+    assert _starred_names(destination_repo) == ['East', 'North', 'South']
+    [preview] = core.preview_import_archive(package, core.read_import_manifest(package), [destination.id], 'super')['packages']
+    assert (preview['changed'], preview['sections']) == (False, [])
 
 
 def test_scoring_report_templates_follow_their_renames_and_creators(client, tmp_path):

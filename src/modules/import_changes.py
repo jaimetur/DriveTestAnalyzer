@@ -430,6 +430,21 @@ def kept_postal_codes(values: dict[str, Any], previous: dict[str, Any]) -> dict[
     return values
 
 
+def favourites_order_changes(package: Any, before: Any) -> bool:
+    """Whether importing a Saved Filters document moves the Favourites Filters of a workspace (``before``, its document):
+    those of the package go in its order, ahead of those only the workspace has (see saved_filters.import_saved_filters)."""
+    def starred(document: Any) -> list[Item]:
+        items = [item for item in favourites_filter_items(document) if item.values.get('pinned')]
+        return sorted(items, key=lambda item: (item.values.get('position') is None, item.values.get('position') or 0))
+
+    incoming, current = starred(package), starred(before)
+    if not any(isinstance(item.values.get('position'), int) for item in incoming):
+        return False
+    pairs = _pairs(incoming, current, ('uid',))
+    moved = [pairs[position] for position in range(len(incoming)) if position in pairs]
+    return [*moved, *(position for position in range(len(current)) if position not in moved)] != list(range(len(current)))
+
+
 def favourites_filter_items(document: Any) -> list[Item]:
     """The Favourites Filters of a Saved Filters document, found by what they select, then by their name. Those with a
     Campaign choice are compared without their CDRs, as the import takes those the choice stands for here."""

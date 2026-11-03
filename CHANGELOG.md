@@ -22,6 +22,7 @@
 #### 🐛 Bug fixes:
 - **Import / Export / Transfer — PPT Designs:** a PPT Design whose PPT Template was added apart on each server (with an identity of its own on each) no longer shows as updated (`Template Uid: … → …`) in the import preview and the completion message of every transfer back and forth: exports, imports and the preview refer to the template by the identity it has in each workspace, as the PPT Designer does.
 - **Non-Qualified Calls — Cells of the call on its map:** a cell of the trace of a call farther than the distance of the Serving Networks (30 km by default) is placed at its site when its PCI and channel are those the CDR gives it (a cell on a high mast serving a call on high ground), with how far it is in its label and judged by the Diagnosis, instead of being taken for a cell the Network Inventory does not hold; the cells left unplaced say they are not in the Network Inventory within that distance. Cells of the call and its tooltips say why such a far cell is the real one: its ECI, PCI and EARFCN are those of the CDR and of the inventory cell, and the Layer3 Logs of the call measured that PCI and channel too when it has them.
+- **Import / Export / Transfer — Order of the Favourites Filters:** the Scoring & GAP Favourites Filters of a package, transfer or backup take the order they had in their workspace, ahead of those only the destination has, also when the destination already has them; when only that order differs, the preview tells it and the package stays checked.
 
 #### 📚 Documentation:
 

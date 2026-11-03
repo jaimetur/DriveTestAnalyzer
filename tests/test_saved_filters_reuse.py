@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 import src.DriveTestAnalyzer as app_module
 from src.modules import saved_filters
+from src.modules.import_changes import favourites_order_changes
 from src.modules.repository import Repository, local_now_iso
 from tests.scoring_fixtures import load_initial_scoring_configuration
 from tests.test_scoring_history import _rows
@@ -374,6 +376,70 @@ def test_starred_saved_filters_keep_their_place_and_are_moved_by_dragging(tmp_pa
     assert saved_filters.import_saved_filters(target, document) == 3
     imported = [item for item in saved_filters.list_saved_filters(target) if item['pinned']]
     assert [item['levels'] for item in imported] == [['Operator'], ['Operator', 'Region']]
+
+
+def _favourite(repository: Repository, dataset_ids: list[int], region: str) -> int:
+    saved, _ = saved_filters.save_saved_filter(repository, dataset_ids, ['Operator'], 'NSA', context_filters={'Region': [region]})
+    saved_filters.update_saved_filter(repository, saved['id'], name=region, pinned=True)
+    return saved['id']
+
+
+def _starred_names(repository: Repository) -> list[str]:
+    return [item['name'] for item in saved_filters.list_saved_filters(repository) if item['pinned']]
+
+
+def _favourites_in_two_orders(tmp_path: Path) -> tuple[dict[str, Any], Repository]:
+    """The document of the Favourites Filters West, North, East and South, and a workspace with three of them, in
+    another order, ahead of one only it has."""
+    source = _workspace(tmp_path, 'source')
+    source_ids = _three_cdrs(source, tmp_path / 'source')
+    regions = {region: _favourite(source, source_ids, region) for region in ('North', 'South', 'East', 'West')}
+    saved_filters.reorder_saved_filters(source, [regions[region] for region in ('West', 'North', 'East', 'South')])
+    target = _workspace(tmp_path, 'target')
+    target_ids = _three_cdrs(target, tmp_path / 'target', prefix='Renamed ')
+    regions = {region: _favourite(target, target_ids, region) for region in ('North', 'South', 'East', 'Only here')}
+    saved_filters.reorder_saved_filters(target, [regions[region] for region in ('Only here', 'South', 'North', 'East')])
+    return json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True))), target
+
+
+def test_a_transfer_gives_the_favourites_filters_the_order_of_the_package(tmp_path):
+    document, target = _favourites_in_two_orders(tmp_path)
+    ids = {item['name']: item['id'] for item in saved_filters.list_saved_filters(target)}
+    # What the preview tells, before the import does it.
+    before = saved_filters.saved_filters_document(target, favourites_only=True)
+    assert favourites_order_changes(document, before)
+    saved_filters.import_saved_filters(target, document)
+    # Those it has move, without being added again, and the one only it has follows them.
+    assert _starred_names(target) == ['West', 'North', 'East', 'South', 'Only here']
+    joined = {item['name']: item['id'] for item in saved_filters.list_saved_filters(target)}
+    assert {name: joined[name] for name in ids} == ids
+    # In that order, nothing moves.
+    assert not favourites_order_changes(document, saved_filters.saved_filters_document(target, favourites_only=True))
+    saved_filters.import_saved_filters(target, document)
+    assert _starred_names(target) == ['West', 'North', 'East', 'South', 'Only here']
+
+
+def test_the_favourites_filters_exported_after_a_transfer_keep_its_order(tmp_path):
+    document, target = _favourites_in_two_orders(tmp_path)
+    saved_filters.import_saved_filters(target, document)
+    # Places before the first one (not above 0) travel as any other.
+    positions = saved_filters.saved_filters_document(target, favourites_only=True)
+    fresh = _workspace(tmp_path, 'fresh')
+    _three_cdrs(fresh, tmp_path / 'fresh')
+    saved_filters.import_saved_filters(fresh, json.loads(json.dumps(positions)))
+    assert _starred_names(fresh) == ['West', 'North', 'East', 'South', 'Only here']
+
+
+@pytest.mark.parametrize('takes_order', [True, False])
+def test_favourites_filters_without_an_order_leave_those_of_the_workspace_where_they_are(tmp_path, takes_order):
+    document, target = _favourites_in_two_orders(tmp_path)
+    if takes_order:
+        # A document of an earlier version; else, the starter Favourites Filters, which follow those of the workspace.
+        document = {**document, 'saved_filters': [{key: value for key, value in entry.items() if key != 'position'}
+                                                  for entry in document['saved_filters']]}
+        assert not favourites_order_changes(document, saved_filters.saved_filters_document(target, favourites_only=True))
+    saved_filters.import_saved_filters(target, document, takes_order=takes_order)
+    assert _starred_names(target) == ['Only here', 'South', 'North', 'East', 'West']
 
 
 def test_the_starred_saved_filters_keep_the_order_they_had_before_their_place_was_stored(tmp_path):

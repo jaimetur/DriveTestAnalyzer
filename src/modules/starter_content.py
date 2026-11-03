@@ -390,8 +390,9 @@ def _seed_favourites_filters(repository: Any) -> int:
     entries = _shipped_entries('scoring-favourites-filters', {item['name'].casefold() for item in list_saved_filters(repository)})
     if not entries:
         return 0
+    # (After the Favourites Filters the workspace has, whatever their place among the starter ones.)
     return import_saved_filters(repository, {'format': SAVED_FILTERS_FORMAT, 'version': SAVED_FILTERS_VERSION,
-                                             'saved_filters': entries})
+                                             'saved_filters': entries}, takes_order=False)
 
 
 def seed_starter_content(repository: Any, username: str = 'system') -> dict[str, int] | None:

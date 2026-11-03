@@ -1600,29 +1600,33 @@ def saved_filters_document(repository: Repository, *, favourites_only: bool = Fa
 
 def import_saved_filters(repository: Repository, document: Any,
                          creator: Callable[[Any, str], str] | None = None,
-                         progress: Callable[[str, float], None] | None = None) -> int:
+                         progress: Callable[[str, float], None] | None = None, takes_order: bool = True) -> int:
     """Add the Saved Filters of a document to the workspace. Their CDRs are found by file, except for those with a
     Campaign choice (Latest campaign…), which take the CDRs it stands for here and need none in the document; until
     they are processed here, they wait for them. One the workspace already has (the same selection) takes the name and
     the creator of the document, and its star if the document has it, without losing its own star (see
     _resolve_imported_filters). ``creator(creator in the document, '')`` decides who each one belongs to (without it,
     the application), and ``progress(phase, share done)`` follows the Saved Filters of the document, the only ones it
-    prepares. Returns how many were added."""
+    prepares. The starred ones go in the order of the document, ahead of those only the workspace has; without an order
+    in the document (or ``takes_order``, the starter ones), those the workspace lacks follow its own and the others stay
+    where they are. Returns how many were added."""
     if (not isinstance(document, dict) or document.get('format') != SAVED_FILTERS_FORMAT
             or document.get('version') != SAVED_FILTERS_VERSION or not isinstance(document.get('saved_filters'), list)):
         raise ValueError('The Saved Filters are invalid.')
     added = 0
     package_keys: list[str] = []
     now = local_now_iso()
-    # The starred ones follow those of the workspace, in the order of the document.
-    with repository.connection() as connection:
-        last = connection.execute(f'SELECT MAX(position) FROM {SAVED_FILTERS_TABLE} WHERE pinned = 1').fetchone()[0]
-    next_position = int(last or 0) + 1
     entries = sorted(enumerate(document['saved_filters']), key=lambda item: (
         not (isinstance(item[1], dict) and item[1].get('pinned')),
         item[1].get('position') is None if isinstance(item[1], dict) else True,
         (item[1].get('position') or 0) if isinstance(item[1], dict) and isinstance(item[1].get('position'), int) else 0,
         item[0]))
+    starred = [entry for _index, entry in entries if isinstance(entry, dict) and entry.get('pinned')]
+    ordered = takes_order and any(isinstance(entry.get('position'), int) for entry in starred)
+    with repository.connection() as connection:
+        first, last = connection.execute(
+            f'SELECT MIN(position), MAX(position) FROM {SAVED_FILTERS_TABLE} WHERE pinned = 1').fetchone()
+    next_position = int(first) - len(starred) if ordered and first is not None else int(last or 0) + 1
     for _index, entry in entries:
         if not isinstance(entry, dict):
             raise ValueError('The Saved Filters are invalid.')
@@ -1655,9 +1659,17 @@ def import_saved_filters(repository: Repository, document: Any,
         # Whether the document says who it belongs to (documents of earlier versions do not): only then does a Saved
         # Filter the workspace has take that creator.
         snapshot['creator_from_document'] = str(entry.get('created_by') or '').strip().casefold() not in {'', 'system'}
+        # Whether the place it is given here is the one the document says: the Saved Filter it joins takes it too.
+        snapshot['position_from_document'] = ordered and bool(entry.get('pinned'))
         created_by = creator(entry.get('created_by'), '') if creator else 'system'
+        position = next_position if entry.get('pinned') else None
+        if entry.get('pinned'):
+            next_position += 1
         with repository.connection() as connection:
             if connection.execute(f'SELECT 1 FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?', (pending_key,)).fetchone():
+                if snapshot['position_from_document']:
+                    connection.execute(f'UPDATE {SAVED_FILTERS_TABLE} SET position = ? WHERE selection_key = ?',
+                                       (position, pending_key))
                 continue
             connection.execute(
                 f"""INSERT INTO {SAVED_FILTERS_TABLE} (
@@ -1665,15 +1677,12 @@ def import_saved_filters(repository: Repository, document: Any,
                     source_metadata_json, nr_mode, levels_json, baseline_operator, status, message, created_by, created_at,
                     updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, 'saved', 'Imported; calculated when it is opened', ?, ?, ?)""",
-                (pending_key, ' '.join(str(entry.get('name') or '').split())[:120], 1 if entry.get('pinned') else 0,
-                 next_position if entry.get('pinned') else None,
+                (pending_key, ' '.join(str(entry.get('name') or '').split())[:120], 1 if entry.get('pinned') else 0, position,
                  max(1, int(entry.get('use_count') or 1)), str(entry.get('last_used_at') or now),
                  json.dumps(refs, ensure_ascii=False), json.dumps(snapshot, ensure_ascii=False, separators=(',', ':')),
                  nr_mode, json.dumps(levels, ensure_ascii=False), selection['baseline_operator'], created_by or 'system', now, now),
             )
         added += 1
-        if entry.get('pinned'):
-            next_position += 1
     _resolve_imported_filters(repository, package_keys, progress)
     return added
 
@@ -1774,14 +1783,16 @@ def _resolve_imported_filters(repository: Repository, selection_keys: Iterable[s
                 metadata = _decode_json(row['source_metadata_json'], {})
                 from_document = isinstance(metadata, dict) and bool(metadata.get('creator_from_document'))
                 take_creator = bool(incoming_creator) and (bool(row['pinned']) or (from_document and not existing['pinned']))
+                take_position = isinstance(metadata, dict) and bool(metadata.get('position_from_document'))
                 connection.execute(
                     f"UPDATE {SAVED_FILTERS_TABLE} SET name = CASE WHEN ? <> '' THEN ? ELSE name END, "
                     'created_by = CASE WHEN ? = 1 THEN ? ELSE created_by END, '
                     'pinned = MAX(pinned, ?), use_count = MAX(use_count, ?), '
-                    # A Saved Filter of the workspace starred by the import takes the place the import gave it.
-                    'position = CASE WHEN pinned = 1 AND position IS NOT NULL THEN position ELSE ? END WHERE id = ?',
+                    # A Saved Filter of the workspace takes the place the import gave it when the document says one or
+                    # stars it here; else, a starred one stays where it is.
+                    'position = CASE WHEN ? = 1 OR pinned = 0 OR position IS NULL THEN ? ELSE position END WHERE id = ?',
                     (row['name'] or '', row['name'] or '', int(take_creator), incoming_creator, row['pinned'],
-                     row['use_count'], row['position'] if row['pinned'] else None, existing['id']),
+                     row['use_count'], int(take_position), row['position'] if row['pinned'] else None, existing['id']),
                 )
                 connection.execute(f'DELETE FROM {SAVED_FILTERS_TABLE} WHERE id = ?', (row['id'],))
                 continue
