@@ -117,8 +117,14 @@ Polygons with the same name in the same region are the parts of one area, and a 
 
 The **Postal Codes** of a country are the areas of **Maps per Postal Code** in the [Points Lost Map](scoring-gap-analysis.md#points-lost-map), used only by the Saved Filters that ask for them, so the other calculations and the rows of the CDRs do not change. No free set of postal polygons covers the world, so they are worked out from the postal code points that [GeoNames](https://www.geonames.org) publishes for about 120 countries (Creative Commons Attribution 4.0): each code takes the land closest to its points, cut to its country. They are approximate, not official borders.
 
-- **United Kingdom:** included with the application, at the level of the postcode districts (such as `RG14`), with Northern Ireland, worked out from the points of its full postcodes (about 1.8 million), so its areas follow the districts closely, also in the centre of the cities.
-- **Other countries:** a calculation that asks for Postal Codes downloads those of the countries holding at least 1% of its tests; **Download Postal Codes** in **Countries of the tests** does it at any moment. The server must be able to reach download.geonames.org; otherwise import them from a file. Each download is registered in App Events, also when it fails.
+The **Postal Codes** column of **Countries of the tests** chooses the map of each country for the whole workspace. The choice applies at once and is registered in App Events; a Saved Filter keeps the map it was calculated with until it is calculated again.
+
+- **Full postcodes** (the default): the map included with the application, so far for the United Kingdom, with Northern Ireland, at the level of its postcode districts (such as `RG14`). It is worked out from the points of the full postcodes (about 1.8 million), so its areas follow the districts closely, also in the centre of the cities.
+- **One point per place:** worked out from the GeoNames file of the country, downloaded from download.geonames.org when you choose it (**Download again** or **Download now** repeat it). It is lighter and less precise. Every other country uses it: a calculation that asks for Postal Codes downloads it for the countries holding at least 1% of its tests. Each download is registered in App Events, also when it fails. A server that cannot reach that address can import a file.
+- **Own file:** a map of your own, such as one your project has a licence for. Choosing it takes you to **Import areas from a file**, with **Postal Codes** and the country filled in. Choosing another map afterwards removes your file from the workspace, after asking.
+
+About the areas worked out from GeoNames:
+
 - **Level:** the codes GeoNames publishes for each country. A country with more than 12,000 codes groups them by their first characters (the first 4 digits in the United States).
 - **Codes without a point of their own**, such as those of the centre of a city in the countries downloaded, are one area, named after them (`28070, 28071 +6 · Madrid`).
 - **Quality** varies by country: GeoNames estimates the coordinates of many of them; Chile, China, Ireland, Malta, Argentina and Brazil only have part of their codes; and Germany lists codes of large companies among the others, which are then named after those companies.

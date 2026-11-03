@@ -234,6 +234,51 @@ def test_layers_round_trip_in_their_document(fake_repository, tmp_path):
     assert map_areas.list_layers(other) == []
 
 
+def test_the_map_of_the_postal_codes_of_a_country_is_chosen_in_workspace_config(client, monkeypatch):
+    import src.DriveTestAnalyzer as app_module
+    from tests.test_app import login
+
+    login(client)
+    repository = app_module.repository
+    # Full postcodes by default: the map included with the application, nothing saved in the workspace.
+    assert client.get('/api/workspace-config/map-areas/postal').json()['layers'] == []
+    assert postal_areas.postal_index(repository).sources['GBR'][2] is True
+    # One point per place: downloaded, and first over the one included.
+    rows = [('M1', 'Manchester', 53.48, -2.24), ('LS1', 'Leeds', 53.80, -1.55)]
+    monkeypatch.setattr(postal_areas, '_fetch', lambda url, timeout: _geonames_zip('GB', rows))
+    response = client.post('/api/workspace-config/map-areas/postal/download', json={'country_code': 'GBR'})
+    assert response.status_code == 200, response.text
+    layer = response.json()['layer']
+    assert layer['origin'] == 'GeoNames' and layer['unit_count'] == 2
+    index = postal_areas.postal_index(repository)
+    assert index.sources['GBR'][2] is False and index.attributions['GBR'] == postal_areas.GEONAMES_ATTRIBUTION
+    assert index.names_of(pd.Series([53.80]), pd.Series([-1.55])).tolist() == ['LS1 · Leeds']
+    # Back to Full postcodes: the one saved goes.
+    assert client.delete(f"/api/workspace-config/map-areas/postal/{layer['id']}").status_code == 200
+    assert postal_areas.postal_index(repository).sources['GBR'][2] is True
+    assert client.delete(f"/api/workspace-config/map-areas/postal/{layer['id']}").status_code == 404
+    # Own file: imported as Postal Codes, not as Map Areas.
+    document = {'type': 'FeatureCollection', 'features': [{'type': 'Feature', 'properties': {'code': 'SW1'}, 'geometry': {
+        'type': 'Polygon', 'coordinates': [[[-.2, 51.4], [-.1, 51.4], [-.1, 51.5], [-.2, 51.5], [-.2, 51.4]]]}}]}
+    response = client.post('/api/workspace-config/map-areas/import',
+                           data={'country_code': 'GBR', 'layer': 'postal-codes', 'name_field': 'code'},
+                           files={'file': ('coverage.geojson', json.dumps(document), 'application/geo+json')})
+    assert response.status_code == 200, response.text
+    assert response.json()['layer']['origin'] == 'Imported' and response.json()['layer']['source'] == 'coverage.geojson'
+    assert map_areas.list_layers(repository) == []
+    index = postal_areas.postal_index(repository)
+    assert index.names_of(pd.Series([51.45]), pd.Series([-.15])).tolist() == ['SW1']
+    # App Events records each change with enough details.
+    events = sorted(((row['id'], row['action'], json.loads(row['details'])) for row in repository.list_logs()
+                     if row['action'].startswith('postal_areas_')), key=lambda event: event[0])
+    events = [event[1:] for event in events]
+    assert [action for action, _details in events] == ['postal_areas_download', 'postal_areas_delete', 'postal_areas_import']
+    assert events[1][1]['country'] == 'GBR' and events[1][1]['origin'] == 'GeoNames'
+    # The panel knows what each country uses.
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/map_areas.js').read_text(encoding='utf-8')
+    assert 'Full postcodes' in script and 'One point per place' in script and 'Own file' in script
+
+
 # -- the map --------------------------------------------------------------------------------------
 def _frames():
     random.seed(7)

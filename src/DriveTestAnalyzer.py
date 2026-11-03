@@ -25092,11 +25092,14 @@ def download_workspace_postal_areas(payload: PostalAreaDownloadPayload, user: Se
 
 @app.delete('/api/workspace-config/map-areas/postal/{layer_id}')
 def delete_workspace_postal_areas(layer_id: int, user: SessionUser = Depends(config_editor_user)) -> dict[str, Any]:
-    from src.modules.postal_areas import delete_postal_layer
+    from src.modules.postal_areas import delete_postal_layer, list_postal_layers
     _map_areas_workspace()
-    if not delete_postal_layer(repository, layer_id):
+    layer = next((item for item in list_postal_layers(repository) if item['id'] == layer_id), None)
+    if layer is None or not delete_postal_layer(repository, layer_id):
         raise HTTPException(status_code=404, detail='Postal Codes not found.')
-    repository.add_log(user.username, 'postal_areas_delete', json.dumps({'layer_id': layer_id}))
+    repository.add_log(user.username, 'postal_areas_delete', json.dumps(
+        {'layer_id': layer_id, 'country': layer['country_code'], 'origin': layer['origin'], 'source': layer['source'],
+         'areas': layer['unit_count']}, ensure_ascii=False))
     return {'deleted': layer_id}
 
 
