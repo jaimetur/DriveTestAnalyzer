@@ -27,17 +27,21 @@
      of the module with, on its left, a Help-style blue tip card on where to start that ends where the selector begins
      (less the gap), both as tall as the taller one. On narrow screens they go one below the other. The panel goes above the panels
      after it while the list of its selector is open. */
-  .section-head.scoring-controls-head { display: grid; grid-template-columns: minmax(18rem, 1fr) minmax(0, 52rem); grid-template-areas: "title meta" "tip selector"; column-gap: 1rem; row-gap: .6rem; align-items: end; }
-  .scoring-controls-head .scoring-controls-title { grid-area: title; align-self: start; min-width: 0; }
-  .scoring-controls-head .scoring-controls-meta { grid-area: meta; align-self: start; }
+  .section-head.scoring-controls-head { display: grid; grid-template-columns: minmax(18rem, 1fr) minmax(0, 52rem); grid-template-areas: "tip selector"; column-gap: 1rem; row-gap: .6rem; align-items: end; }
+  .scoring-controls-title { min-width: 0; }
   .scoring-controls-head .scoring-start-tip { grid-area: tip; align-self: stretch; }
   .scoring-controls-head .saved-filter-selector { grid-area: selector; align-self: stretch; justify-self: stretch; width: 100%; }
   .scoring-controls-head .saved-filter-selector > summary { box-sizing: border-box; height: 100%; }
   @media (max-width: 760px) {
-    .section-head.scoring-controls-head { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "meta" "tip" "selector"; }
+    .section-head.scoring-controls-head { grid-template-columns: minmax(0, 1fr); grid-template-areas: "tip" "selector"; }
     .scoring-controls-head .saved-filter-selector:has(.saved-filter-tabs) { margin-top: .75rem; }
   }
+  /* (The list of its selector goes beyond the panel, which a clipped panel would cut.) */
+  .panel.scoring-controls { overflow: visible; }
   .panel.scoring-controls:has(.saved-filter-selector[open]) { position: relative; z-index: 25; }
+  /* Editing a Saved Filter needs the panel: it stays open. */
+  .scoring-controls.is-editing-saved-filter > summary { cursor: default; }
+  .scoring-controls.is-editing-saved-filter > summary .collapse-chip { display: none; }
   .scoring-start-tip { box-sizing: border-box; min-width: 0; padding: .7rem .95rem; border: 1px solid #bad2ee; border-left: 5px solid #245a96; border-radius: 12px; background: #edf5ff; color: #1d3f63; font-size: .86rem; line-height: 1.45; }
   .scoring-start-tip-title { display: flex; align-items: center; gap: .45rem; color: #245a96; font-size: .8rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
   .scoring-start-tip-title::before { content: '✓'; display: inline-flex; align-items: center; justify-content: center; width: 1.2rem; height: 1.2rem; border: 2px solid currentColor; border-radius: 50%; font-size: .7rem; }
@@ -46,7 +50,7 @@
   .scoring-controls.is-editing-saved-filter .scoring-controls-head .saved-filter-selector,
   .scoring-controls.is-editing-saved-filter .scoring-start-tip { display: none; }
   .scoring-hero-badge { display: inline-flex; align-items: center; gap: .45rem; padding: .5rem .85rem; border: 0; border-radius: 999px; background: linear-gradient(128deg, #143653, #176e77); color: #fff; font-size: .78rem; font-weight: 800; white-space: nowrap; box-shadow: 0 6px 14px rgba(20, 54, 83, .22); }
-  .scoring-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .scoring-controls-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .scoring-filter-grid { display: grid; grid-template-columns: minmax(12rem,15rem) minmax(0,1fr); gap: 1rem; align-items: start; }
   .scoring-context-filter-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: .65rem; }
   @media(max-width:1500px) { .scoring-context-filter-grid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
@@ -1650,10 +1654,13 @@
     <p class="lede">Calculate and review NetCheck scoring across one or more CDR datasets. Choose how to split the results of this run (Split by), then inspect the saved scoring tables, charts and GAP analysis.</p>
   </article>
 
-  <article class="panel scoring-controls" aria-labelledby="scoring-run-title">
+  <details class="panel collapsible-panel scoring-controls" open data-panel-state-key="scoring:calculation" aria-labelledby="scoring-run-title">
+    <summary class="collapsible-summary">
+      <div class="scoring-controls-title"><p class="eyebrow">Scoring Calculation</p><h2 id="scoring-run-title">Select NR Mode, Campaign, filters, Split by &amp; GAP reference</h2></div>
+      <div class="summary-inline-actions scoring-controls-meta"><span class="scoring-hero-badge"><span aria-hidden="true">◉</span> CDR benchmark workspace</span><span class="pill" data-selected-count>0 CDRs used</span><span class="collapse-chip">Collapse</span></div>
+    </summary>
+    <div class="collapsible-panel-body scoring-controls-body">
     <div class="section-head tight-head scoring-controls-head">
-      <div class="scoring-controls-title"><p class="eyebrow">Scoring Calculation</p><h3 id="scoring-run-title">Select NR Mode, Campaign, filters, Split by &amp; GAP reference</h3></div>
-      <div class="scoring-controls-meta"><span class="scoring-hero-badge"><span aria-hidden="true">◉</span> CDR benchmark workspace</span><span class="pill" data-selected-count>0 CDRs used</span></div>
       {# Where to start, beside the Saved Filter selector. #}
       <div class="scoring-start-tip" role="note">
         <strong class="scoring-start-tip-title">Tip</strong>
@@ -1848,7 +1855,8 @@
       </div>
       <p class="scoring-note scoring-calculation-message" data-scoring-message role="status" aria-live="polite">Choose at least one CDR to calculate scoring.</p>
     </div>
-  </article>
+    </div>
+  </details>
 
   <section class="saved-filters-layout" aria-label="Saved Filters and results">
     <article class="panel scoring-results-panel" aria-labelledby="scoring-results-title">

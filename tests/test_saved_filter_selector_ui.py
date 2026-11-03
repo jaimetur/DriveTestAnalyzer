@@ -15,9 +15,9 @@ def test_job_dropdown_is_inside_results_header_and_constrained_to_button_column(
     )[0]
     assert template.count('data-saved-filter-list') == 3
     # The same selector is on top of the Calculation panel, beside its title, and its list scrolls on its own.
-    calculation_head = template.split('<article class="panel scoring-controls"', 1)[1].split('data-saved-filter-editing', 1)[0]
+    calculation_head = template.split('<details class="panel collapsible-panel scoring-controls" open data-panel-state-key="scoring:calculation"', 1)[1].split('data-saved-filter-editing', 1)[0]
     assert 'class="scoring-start-tip"' in calculation_head and 'data-saved-filter-selector' in calculation_head
-    assert 'grid-template-areas: "title meta" "tip selector";' in template
+    assert 'grid-template-areas: "tip selector";' in template
     assert 'data-selected-saved-filter-card' in calculation_head and 'data-saved-filter-list' in calculation_head
     assert '.saved-filter-picker .saved-filter-list { max-height: min(28rem,55vh); overscroll-behavior: contain; }' in template
     assert template.index('class="panel scoring-results-panel"') < template.index('class="panel collapsible-panel saved-filters-panel"')

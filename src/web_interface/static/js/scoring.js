@@ -11062,6 +11062,12 @@
     if (editCancelButton) editCancelButton.hidden = !editing;
   }
 
+  let calculationPanelWasClosed = false;
+  // Editing a Saved Filter needs the panel: it stays open.
+  calculationPanel?.querySelector(':scope > summary')?.addEventListener('click', (event) => {
+    if (editingSavedFilter) event.preventDefault();
+  });
+
   // ``duplicateName`` edits a copy of the Saved Filter instead, saved as a new one with that name.
   function startSavedFilterEdit(savedFilter, {duplicateName: copyName = null} = {}) {
     if (!editingSavedFilter) selectionBeforeEdit = {selection: calculationSelectionFromControls(), pinned: pinnedCdrs};
@@ -11072,11 +11078,13 @@
     restoreCalculationSelectionFromSavedFilter(savedFilter, {automaticCdrs: true});
     syncSavedFilterEditing();
     if (editDialog && calculationPanel && !editDialog.open) {
-      // The page keeps the height of the panel while it is in the dialog.
+      // The page keeps the height of the panel while it is in the dialog, where it is open, and it goes back as it was.
       editPanelPlaceholder = document.createElement('div');
       editPanelPlaceholder.style.height = `${calculationPanel.offsetHeight}px`;
       calculationPanel.before(editPanelPlaceholder);
       editDialog.append(calculationPanel);
+      calculationPanelWasClosed = !calculationPanel.open;
+      calculationPanel.open = true;
       editDialog.showModal();
       editDialog.scrollTop = 0;
     }
@@ -11091,6 +11099,7 @@
     if (editPanelPlaceholder && calculationPanel) {
       editPanelPlaceholder.replaceWith(calculationPanel);
       editPanelPlaceholder = null;
+      if (calculationPanelWasClosed) calculationPanel.open = false;
     }
     if (editDialog?.open) editDialog.close();
     syncSavedFilterEditing();
