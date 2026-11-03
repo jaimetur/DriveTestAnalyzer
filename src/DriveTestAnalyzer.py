@@ -20158,6 +20158,53 @@ def scoring_impact(filter_id: int, request: Request, mode: str = '', nr_mode: st
     return Response(packed, media_type='application/json')
 
 
+def _scoring_impact_json(request: Request, payload: Any) -> Response:
+    packed = json.dumps(jsonable_encoder(payload), ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    if 'gzip' in request.headers.get('accept-encoding', '').lower():
+        return Response(gzip.compress(packed, 5), media_type='application/json', headers={'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding'})
+    return Response(packed, media_type='application/json')
+
+
+def _scoring_impact_key(key: str) -> str:
+    if not re.fullmatch(r'[0-9a-f]{64}', key or ''):
+        raise HTTPException(status_code=400, detail='Unknown comparison of the Methodology Impact.')
+    return key
+
+
+@app.get('/api/scoring/saved-filters/{filter_id}/impact/status')
+def scoring_impact_status(filter_id: int, request: Request, key: str, user: SessionUser = Depends(current_user)) -> Response:
+    """How the calculation of a comparison goes, by its key: asked again and again while it is calculated."""
+    from src.modules.scoring_impact import state_of
+    task_repository, _saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    state = state_of(task_repository, _scoring_impact_key(key)) or {'key': key, 'status': 'queued', 'progress': 0, 'message': '', 'error': ''}
+    return _scoring_impact_json(request, state)
+
+
+@app.get('/api/scoring/saved-filters/{filter_id}/impact/map')
+def scoring_impact_map(filter_id: int, request: Request, key: str, field: str = '', environment: str = 'Combined', measure: str = 'national',
+                       relative: bool = False, scoring: str = 'best_network', user: SessionUser = Depends(current_user)) -> Response:
+    """The values of a map of a comparison calculated before (one methodology against the other), with how they spread."""
+    from src.modules.scoring_impact import read_impact, read_maps
+    from src.modules.scoring_impact_maps import MEASURES, impact_map
+    if measure not in MEASURES:
+        raise HTTPException(status_code=400, detail='Unknown measure of the Methodology Impact.')
+    task_repository, _saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    impact = read_impact(task_repository, _scoring_impact_key(key))
+    if not impact or not impact.get('scorings'):
+        raise HTTPException(status_code=409, detail='The Methodology Impact must finish calculating before its maps.')
+    scoring = scoring if scoring in impact['scorings'] else 'best_network'
+    return _scoring_impact_json(request, impact_map(read_maps(task_repository, key), impact['scorings'][scoring], scoring, field, environment, measure, relative))
+
+
+@app.get('/api/scoring/saved-filters/{filter_id}/impact/boundaries/{field}')
+def scoring_impact_boundaries(filter_id: int, field: str, request: Request, key: str, user: SessionUser = Depends(current_user)) -> Response:
+    """The polygons of a map of a comparison calculated before."""
+    from src.modules.scoring_impact import read_maps
+    from src.modules.scoring_impact_maps import map_geometry
+    task_repository, _saved_filter = _scoring_impact_saved_filter(user, filter_id)
+    return _scoring_impact_json(request, map_geometry(read_maps(task_repository, _scoring_impact_key(key)), field))
+
+
 @app.get('/scoring/saved-filters/{filter_id}/impact/export/{export_kind}')
 def scoring_impact_export(filter_id: int, export_kind: str, mode: str = '', nr_mode: str = '', campaign_a: str = '', campaign_b: str = '',
                           methodology_a: str = '', methodology_b: str = '', campaign: str = '', environment: str = 'Combined',
@@ -20168,7 +20215,7 @@ def scoring_impact_export(filter_id: int, export_kind: str, mode: str = '', nr_m
         raise HTTPException(status_code=404, detail='Unknown Methodology Impact export format.')
     if scoring not in {'best_network', 'most_reliable'}:
         raise HTTPException(status_code=400, detail='Scoring must be best_network or most_reliable.')
-    from src.modules.scoring_impact import impact_state, prepare_impact
+    from src.modules.scoring_impact import impact_state, prepare_impact, read_maps
     from src.modules.scoring_impact_exports import export_impact_csv, export_impact_powerpoint, impact_filename
     task_repository, saved_filter = _scoring_impact_saved_filter(user, filter_id)
     selection = _scoring_impact_selection(mode, nr_mode, campaign_a, campaign_b, methodology_a, methodology_b, campaign)
@@ -20180,6 +20227,9 @@ def scoring_impact_export(filter_id: int, export_kind: str, mode: str = '', nr_m
     if not state or state['status'] != 'completed':
         raise HTTPException(status_code=409, detail='The Methodology Impact must finish calculating before export.')
     impact = state['impact']
+    if not impact.get('scorings'):
+        raise HTTPException(status_code=409, detail='Both campaigns are scored with the same methodology: there is no impact to export.')
+    maps = read_maps(task_repository, prepared['key'])
     chosen = None
     if operators:
         try:
@@ -20190,13 +20240,13 @@ def scoring_impact_export(filter_id: int, export_kind: str, mode: str = '', nr_m
     export_theme = normalize_theme(theme) if theme else load_user_theme(task_repository, user.username)
     stamp = datetime.now()
     if export_kind == 'csv':
-        content, media_type, filename = (export_impact_csv(impact, scoring).encode('utf-8-sig'), 'text/csv', impact_filename(impact, stamp, 'csv'))
+        content, media_type, filename = (export_impact_csv(impact, scoring, maps).encode('utf-8-sig'), 'text/csv', impact_filename(impact, stamp, 'csv'))
     else:
         from src.modules.bundle_report_templates import module_document
         try:
             deck = export_impact_powerpoint(impact, settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa'], task_repository.list_operator_mapping_groups(),
                                             scoring=scoring, environment=environment, operators=chosen, panels=load_export_panels(task_repository),
-                                            theme=export_theme)
+                                            theme=export_theme, maps=maps)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         content = module_document('scoring', deck, 'word' if export_kind == 'word' else 'powerpoint', 'Scoring & GAP Analysis: Methodology Impact', theme=export_theme)

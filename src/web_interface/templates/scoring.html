@@ -638,6 +638,45 @@
   .scoring-impact-progress-bar { display: block; height: .55rem; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--st-soft-header) 80%, transparent); }
   .scoring-impact-progress-bar span { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--st-title), #a21caf); transition: width .4s ease; }
   .scoring-impact-error { display: grid; gap: .4rem; justify-items: center; }
+  .scoring-impact-side small { color: #6b7a85; font-size: .68rem; }
+  .scoring-impact-chart { display: block; width: 100%; height: auto; color: inherit; font-family: inherit; }
+  .scoring-impact-conclusions { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15.5rem), 1fr)); gap: .6rem; margin: .2rem 0 .7rem; }
+  .scoring-impact-conclusion { display: grid; align-content: start; gap: .18rem; padding: .6rem .8rem .65rem; border: 1px solid var(--st-border); border-left: 4px solid var(--st-title); border-radius: 10px; background: color-mix(in srgb, var(--st-soft-header) 35%, transparent); }
+  .scoring-impact-conclusion[data-tone="gain"] { border-left-color: var(--st-gain); }
+  .scoring-impact-conclusion[data-tone="loss"] { border-left-color: var(--st-loss); }
+  .scoring-impact-conclusion[data-tone="flat"] { border-left-color: #9aa3ad; }
+  .scoring-impact-conclusion-title { color: #6b7a85; font-size: .68rem; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; }
+  .scoring-impact-conclusion > strong { font-size: 1rem; line-height: 1.2; overflow-wrap: anywhere; }
+  .scoring-impact-conclusion > p { margin: 0; font-size: .76rem; line-height: 1.4; }
+  .scoring-impact-small-multiples { display: grid; gap: .75rem; margin: .3rem 0; }
+  .scoring-impact-maps-card .scoring-loss-controls, .scoring-impact-cube-card .scoring-loss-controls, .scoring-impact-area-card .scoring-loss-controls { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+  :is(.scoring-impact-maps-card, .scoring-impact-cube-card, .scoring-impact-area-card) .scoring-loss-controls :is(label, select) { min-width: 0; max-width: 100%; }
+  .scoring-impact-maps-body { min-width: 0; }
+  .scoring-impact-maps-body > .scoring-loss-map-grid { min-width: 0; }
+  .scoring-impact-map-card { overflow: hidden; }
+  .scoring-impact-figure { min-width: 0; margin: 0; padding: .55rem .7rem .6rem; border: 1px solid var(--st-border); border-radius: 10px; }
+  .scoring-impact-figure figcaption { margin-bottom: .25rem; font-size: .8rem; font-weight: 800; }
+  .scoring-impact-figure figcaption small { font-weight: 700; opacity: .75; }
+  .scoring-impact-heat { table-layout: auto; }
+  td.scoring-impact-heat-cell { min-width: 3.6rem; padding: .36rem .4rem; border: 1px solid var(--st-surface, transparent); font-size: .74rem; font-weight: 750; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
+  td.scoring-impact-heat-cell.is-empty { background: transparent; color: #9aa3ad; font-weight: 500; }
+  .scoring-impact-more-details { margin-top: .7rem; }
+  .scoring-impact-more-details > summary { width: fit-content; padding: .3rem .75rem; border: 1px solid var(--st-border); border-radius: 999px; color: var(--st-title); cursor: pointer; font-size: .76rem; font-weight: 750; }
+  .scoring-impact-more-details[open] > summary { margin-bottom: .5rem; }
+  .scoring-impact-scale-row { display: flex; align-items: center; gap: .45rem; margin: .3rem 0 .6rem; font-size: .72rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .scoring-impact-scale-row small { color: #6b7a85; font-weight: 600; }
+  .scoring-impact-scale { display: block; flex: 0 1 16rem; height: .6rem; border-radius: 99px; }
+  .scoring-impact-map { display: block; width: 100%; max-height: 34rem; }
+  .scoring-impact-map-card { min-width: 0; }
+  .scoring-impact-ranked-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: .6rem; margin-top: .4rem; font-size: .74rem; }
+  .scoring-impact-ranked-pair strong.is-gain { color: var(--st-gain-text); }
+  .scoring-impact-ranked-pair strong.is-loss { color: var(--st-loss-text); }
+  .scoring-impact-ranked { margin: .15rem 0 0; padding: 0; list-style: none; }
+  .scoring-impact-ranked li { display: flex; justify-content: space-between; gap: .5rem; padding: .08rem 0; border-bottom: 1px solid color-mix(in srgb, var(--st-border) 60%, transparent); }
+  .scoring-impact-ranked li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scoring-impact-ranked b { font-variant-numeric: tabular-nums; }
+  .scoring-impact-ranked.is-gain b { color: var(--st-gain-text); }
+  .scoring-impact-ranked.is-loss b { color: var(--st-loss-text); }
   @media (max-width: 640px) {
     .scoring-impact-lost-row { grid-template-columns: minmax(0, 1fr) auto; }
     .scoring-impact-lost-bars { grid-column: 1 / -1; grid-row: 2; }

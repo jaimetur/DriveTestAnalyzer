@@ -10507,7 +10507,7 @@
       window.ScoringImpact?.render(paneOf('impact'), {
         savedFilterId: savedFilterIdOf(savedFilter || savedPayload.saved_filter || {}), environment: effectiveEnvironment,
         scoring: effectiveScoring(savedPayload), theme: activeTheme, requestJson, safeHexColor, insightSection, insightControls,
-        insightOperatorChips, download: downloadScoringDocument,
+        insightOperatorChips, download: downloadScoringDocument, enableMapZoom,
       });
     }
     if (shouldRenderPane('gap')) {

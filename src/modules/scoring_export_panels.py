@@ -63,12 +63,19 @@ EXPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str, str], ...]], ...] = (
     ('impact', 'Methodology Impact', (
         ('changes', 'What changed in the methodology', ALL_OPERATORS),
         ('scoring', 'Impact on the scoring of each operator, in All Environments and each environment', ALL_OPERATORS),
-        ('bridge', 'What the network and the methodology changed between two campaigns', ALL_OPERATORS),
+        ('competition', 'Who it favours and who it hurts, against the other operators', ALL_OPERATORS),
+        ('drivers', 'Why each operator moves', ALL_OPERATORS),
+        ('exposure', 'With or against the strengths of each operator', ALL_OPERATORS),
         ('categories', 'Impact per category', ALL_OPERATORS),
         ('kpis', 'KPIs affected', ALL_OPERATORS),
-        ('areas', 'Impact per Region, Cluster and City', ALL_OPERATORS),
+        ('maps', 'Maps per City, Region, Cluster, Map Area and Postal Code', ALL_OPERATORS),
+        ('spread', 'How the impact spreads among the areas', ALL_OPERATORS),
+        ('area_categories', 'Which categories move in which areas', ALL_OPERATORS),
+        ('areas', 'Who leads each area, before and after', ALL_OPERATORS),
+        ('serving', 'Who serves the tests that move (Vendor and kind of site)', ALL_OPERATORS),
         ('gap', 'Impact on the GAP Analysis', ALL_OPERATORS),
-        ('points', 'Impact on the Points Lost', ALL_OPERATORS))),
+        ('points', 'Impact on the Points Lost', ALL_OPERATORS),
+        ('stability', 'The same change on the tests of other campaigns', ALL_OPERATORS)))
 )
 
 

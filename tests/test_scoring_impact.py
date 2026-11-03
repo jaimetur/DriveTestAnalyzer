@@ -17,7 +17,9 @@ from src.modules.repository import Repository, local_now_iso
 from src.modules.scoring import calculate_scoring
 from src.modules.scoring_config import validate_scoring_configuration
 from src.modules.scoring_export_panels import default_export_panels, normalize_export_panels
-from src.modules.scoring_impact_exports import export_impact_csv, export_impact_powerpoint
+from src.modules.scoring_impact_analysis import linear_fit, pearson, stability_part
+from src.modules.scoring_impact_exports import export_impact_csv, export_impact_powerpoint, render_impact_map
+from src.modules.scoring_impact_maps import area_analysis, build_maps, impact_map, map_geometry
 from tests.scoring_cdr_synthetic import SOUTH, netcheck_2026_configuration, synthetic_cdr_frames
 from tests.test_scoring_exports import TEMPLATE
 
@@ -55,9 +57,11 @@ def _passes(frames, configuration) -> dict:
             'City': calculate_scoring(frames, ['Operator', 'City'], **options)}
 
 
-def _part(before, after, earlier=None) -> dict:
-    results = {'before': before, 'after': after, **({'earlier': earlier} if earlier else {})}
-    return scoring_impact._impact_part(results, 'EE', ['EE'], [], [])
+def _part(before, after, others=(), maps=None) -> dict:
+    results = {'before': before, 'after': after, 'others': list(others), 'tests': {'value': '2026-Q3', 'label': '26-Q3'}}
+    part, _sides = scoring_impact._impact_part(results, 'EE', ['EE'], [], [])
+    scoring_impact._finish_part(part, maps, 'best_network')
+    return part
 
 
 def test_scores_are_the_same_without_the_points_lost_map(frames):
@@ -90,7 +94,7 @@ def test_a_methodology_compared_with_itself_changes_nothing(frames):
     assert scoring_impact.methodology_changes(configuration, copy.deepcopy(configuration))['same']
     results = _passes(frames, configuration)
     part = _part(results, results)
-    assert part['changes']['same'] and part['takeaways'][0] == 'The scoring of every operator stays the same in All Environments.'
+    assert part['changes']['same'] and part['conclusions'][0]['headline'] == 'No change'
     for entry in part['scoring'].values():
         assert all(cell['delta'] == 0 and cell['rank_before'] == cell['rank_after'] for cell in entry['operators'].values())
 
@@ -140,7 +144,119 @@ def test_the_panels_add_up_on_the_same_tests(frames):
     # The KPIs that move most come first.
     peaks = [row['peak'] for row in part['kpis']['Combined']]
     assert peaks == sorted(peaks, reverse=True) and peaks[0] > 0
-    assert part['bridge'] is None
+    assert 'bridge' not in part
+
+
+def test_who_it_favours_why_and_with_or_against_its_strengths(frames):
+    configuration = netcheck_2026_configuration()
+    part = _part(_passes(frames, configuration), _passes(frames, _reweighted(configuration)))
+    for item in part['environments']:
+        environment = item['name']
+        scoring = part['scoring'][environment]['operators']
+        competition = part['competition'][environment]
+        # Against the mean of the operators they add up to nothing, and each pair is what each one moves against the other.
+        assert sum(competition['relative'].values()) == pytest.approx(0, abs=.01)
+        for first, others in competition['matrix'].items():
+            for second, step in others.items():
+                assert step['delta'] == pytest.approx(scoring[first]['delta'] - scoring[second]['delta'], abs=.01)
+                assert competition['matrix'][second][first]['delta'] == pytest.approx(-step['delta'], abs=.01)
+        assert {step['operator'] for step in competition['margins']} <= set(scoring)
+        # The causes of each operator and its categories add up to its difference.
+        for name, entry in part['drivers'][environment].items():
+            assert entry['total'] == pytest.approx(scoring[name]['delta'], abs=.02)
+            assert sum(entry['causes'].values()) == pytest.approx(entry['total'], abs=.02)
+            assert sum(value['delta'] for value in entry['categories'].values()) == pytest.approx(entry['total'], abs=.02)
+    drivers = part['drivers']['Combined']
+    # Moving points between KPIs and tightening thresholds: no KPI is new or removed.
+    assert all(entry['causes']['new'] == 0 and entry['causes']['removed'] == 0 for entry in drivers.values())
+    assert any(abs(entry['causes']['weights']) > 0 for entry in drivers.values()) and any(abs(entry['causes']['rules']) > 0 for entry in drivers.values())
+    # Only the KPIs with other points tell whether they go with or against the strengths of an operator.
+    exposure = part['exposure']['Combined']
+    assert exposure['kpis'] == 2 and all(len(entry['points']) == 2 for entry in exposure['operators'].values())
+    titles = {item['kind'] for item in part['conclusions']}
+    assert {'size', 'relative', 'head', 'positions', 'cause', 'kpi'} <= titles
+    assert part['conclusions'][0]['text'].startswith('The methodology moves the scoring between')
+
+
+def test_a_new_kpi_and_a_removed_kpi_are_causes_of_their_own(frames):
+    configuration = netcheck_2026_configuration()
+    removed = copy.deepcopy(configuration)
+    removed['metrics'] = [metric for metric in removed['metrics'] if metric['code'] != 'K1']
+    part = _part(_passes(frames, removed), _passes(frames, configuration))
+    assert all(entry['causes']['new'] > 0 and entry['causes']['removed'] == 0 for entry in part['drivers']['Combined'].values())
+    reverse = _part(_passes(frames, configuration), _passes(frames, removed))
+    assert all(entry['causes']['removed'] < 0 and entry['causes']['new'] == 0 for entry in reverse['drivers']['Combined'].values())
+
+
+def test_correlations_and_the_same_change_on_other_campaigns():
+    assert pearson([1, 2, 3], [2, 4, 6]) == pytest.approx(1)
+    assert pearson([1, 2, 3], [6, 4, 2]) == pytest.approx(-1)
+    assert pearson([1, 1, 1], [1, 2, 3]) is None and pearson([1], [1]) is None
+    assert linear_fit([0, 1, 2], [1, 3, 5]) == {'slope': 2.0, 'intercept': 1.0}
+    # Only the campaigns with the KPIs of both methodologies measured count.
+    summary = stability_part([
+        {'label': 'A', 'comparable': True, 'operators': {'EE': 1.0, 'O2': -1.0}},
+        {'label': 'B', 'comparable': True, 'operators': {'EE': 2.0, 'O2': 1.0}},
+        {'label': 'C', 'comparable': False, 'missing': ['TIK TOK'], 'operators': {'EE': -9.0, 'O2': -9.0}},
+    ], ['EE', 'O2'])['summary']
+    assert summary['EE'] == {'campaigns': 2, 'up': 2, 'down': 0, 'mean': 1.5, 'low': 1.0, 'high': 2.0}
+    assert summary['O2']['up'] == summary['O2']['down'] == 1
+
+
+def _maps_of(frames, first, second) -> tuple[dict, dict]:
+    options = {'baseline_operator': 'EE'}
+    before = calculate_scoring(frames, ['Operator'], configuration=first, **options)
+    after = calculate_scoring(frames, ['Operator'], configuration=second, **options)
+    tables = {name: scoring_impact._views(result, 'EE', ['EE'], [], []) for name, result in (('before', before), ('after', after))}
+    sides = {'best_network': {'before_rows': before['scoring'], 'after_rows': after['scoring'], 'before_tables': tables['before'], 'after_tables': tables['after']}}
+    return build_maps(before['points_loss'], after['points_loss'], sides), sides
+
+
+def test_the_maps_add_up_to_what_the_methodology_moves(frames):
+    configuration = netcheck_2026_configuration()
+    changed = _reweighted(configuration)
+    maps, _sides = _maps_of(frames, configuration, changed)
+    part = _part(_passes(frames, configuration), _passes(frames, changed), maps=maps)
+    moved = {name: cell['delta'] for name, cell in part['scoring']['Combined']['operators'].items()}
+    national = impact_map(maps, part, 'best_network', 'City', 'Combined', 'national')
+    assert national['field'] == 'City' and national['shape'] == 'places' and 'City' in national['available']
+    assert set(national['measures']) == {'national', 'rate', 'own'}
+    for name, summary in national['analysis']['operators'].items():
+        # What each area gains or loses adds up to the difference of the operator, on any geography.
+        assert summary['total'] == pytest.approx(moved[name], abs=.1)
+        assert summary['low'] <= summary['q1'] <= summary['median'] <= summary['q3'] <= summary['high']
+        assert 0 <= summary['concentration'] <= 1 and summary['curve'][-1][1] == pytest.approx(1)
+    # Against the other operators, each area adds up to nothing.
+    relative = impact_map(maps, part, 'best_network', 'City', 'Combined', 'national', True)
+    assert relative['relative'] is True
+    for row in relative['rows']:
+        assert sum(cell['value'] for cell in row['cells'].values()) == pytest.approx(0, abs=.02)
+    # The scoring of the area, and only the areas with enough tests per 1,000 tests.
+    own = impact_map(maps, part, 'best_network', 'City', 'Combined', 'own')
+    assert own['measure'] == 'own' and own['rows'][0]['cells']
+    rate = impact_map(maps, part, 'best_network', 'City', 'Combined', 'rate')
+    assert all(cell['tests'] >= 500 for row in rate['rows'] for cell in row['cells'].values())
+    # An unknown field takes the first one; the places are drawn where their tests are.
+    assert impact_map(maps, part, 'best_network', 'Unknown', 'Combined')['field'] == 'City'
+    assert map_geometry(maps, 'City')['boundaries'] == {} and 'place' in national['rows'][0]
+    picture = render_impact_map(national, map_geometry(maps, 'City'), next(iter(moved)), 1.0)
+    assert picture.startswith(b'\x89PNG')
+    # Who serves the tests that move, and the conclusions with them.
+    assert part['serving']['Vendor']['Combined'] and {'Vendor', 'Site Type'} <= set(part['serving'])
+    assert any(item['kind'] == 'where' for item in part['conclusions'])
+
+
+def test_how_the_impact_spreads_among_the_areas():
+    rows = [{'name': name, 'tests': 100, 'cells': {
+        'EE': {'before': before, 'after': before, 'value': first, 'tests': 100}, 'O2': {'before': before, 'after': before, 'value': second, 'tests': 100}}}
+        for name, before, first, second in (('A', 1.0, 3.0, 3.0), ('B', 2.0, 2.0, 2.0), ('C', 3.0, 1.0, 1.0), ('D', 4.0, 0.0, 0.0), ('E', 5.0, -1.0, -1.0))]
+    analysis = area_analysis(rows, ['EE', 'O2'], field='City')
+    summary = analysis['operators']['EE']
+    assert summary['count'] == 5 and summary['total'] == 5 and summary['up'] == 3 and summary['down'] == 1
+    assert summary['median'] == 1 and summary['best'] == {'name': 'A', 'value': 3.0} and summary['worst'] == {'name': 'E', 'value': -1.0}
+    # The more an area lost, the less it gains here; and both operators move in the same areas.
+    assert summary['r_before'] == pytest.approx(-1) and analysis['together']['EE']['O2'] == pytest.approx(1)
+    assert [item['name'] for item in summary['top']] == ['A', 'B', 'C'] and [item['name'] for item in summary['bottom']] == ['E']
 
 
 def test_the_areas_scale_all_environments_as_the_geographical_areas(frames):
@@ -155,21 +271,6 @@ def test_the_areas_scale_all_environments_as_the_geographical_areas(frames):
     assert drive['London']['operators']['EE']['before'] <= 650
     assert cities['London']['operators']['EE']['before'] == pytest.approx(drive['London']['operators']['EE']['before'] / .65, abs=.01)
     assert all(row['leader_before'] in row['operators'] and row['leader_after'] in row['operators'] for row in cities.values())
-
-
-def test_the_bridge_separates_the_network_from_the_methodology():
-    configuration = netcheck_2026_configuration()
-    data = synthetic_cdr_frames(campaigns=CAMPAIGNS, repeats=1)
-    earlier = {kind: frame[frame['Campaign'] == '2026-Q2'] for kind, frame in data.items()}
-    later = {kind: frame[frame['Campaign'] == '2026-Q3'] for kind, frame in data.items()}
-    options = {'baseline_operator': 'EE', 'with_points_loss': False}
-    part = _part({'Operator': calculate_scoring(later, ['Operator'], configuration=configuration, **options)},
-                 {'Operator': calculate_scoring(later, ['Operator'], configuration=_reweighted(configuration), **options)},
-                 {'Operator': calculate_scoring(earlier, ['Operator'], configuration=configuration, **options)})
-    for row in part['bridge']['Combined'].values():
-        assert row['network'] + row['methodology'] == pytest.approx(row['total'], abs=.01)
-        assert row['earlier'] + row['total'] == pytest.approx(row['latest'], abs=.01)
-        assert abs(row['network']) > 0
 
 
 # ---- The comparison of a Saved Filter, from its CDRs ---------------------------------------------------------------------
@@ -234,10 +335,23 @@ def test_the_comparison_of_a_saved_filter_is_calculated_once_and_exported(worksp
     assert state['status'] == 'completed' and len(jobs) == 1
     impact = state['impact']
     assert impact['before']['profile_name'] == 'NetCheck 2026' and impact['after']['profile_name'] == 'NetCheck 2026-Q3'
-    assert impact['before']['campaign'] == impact['after']['campaign'] == '2026-Q3' and impact['earlier']['campaign'] == '2026-Q2'
+    assert impact['before']['campaign'] == impact['after']['campaign'] == '2026-Q3' and 'earlier' not in impact
+    assert impact['methodology_of'] == {'before': '26-Q2', 'after': '26-Q3'} or set(impact['methodology_of']) == {'before', 'after'}
     assert set(impact['scorings']) >= {'best_network'}
     part = impact['scorings']['best_network']
-    assert part['changes']['counts']['added'] == 3 and part['bridge'] and part['areas']['City']
+    assert part['changes']['counts']['added'] == 3 and 'bridge' not in part and part['areas']['City'] and not impact['maps_error']
+    assert part['conclusions'] and part['serving'] and part['stability']['campaigns'][0]['current']
+    # While it is calculated, only how it goes, by its key.
+    status = client.get(f'/api/scoring/saved-filters/{filter_id}/impact/status', params={'key': impact['key']}).json()
+    assert status['status'] == 'completed' and status['impact']['key'] == impact['key']
+    assert client.get(f'/api/scoring/saved-filters/{filter_id}/impact/status', params={'key': 'nope'}).status_code == 400
+    # The maps, per field and measure, with their shapes.
+    map_url = f'/api/scoring/saved-filters/{filter_id}/impact/map'
+    city = client.get(map_url, params={'key': impact['key'], 'field': 'City', 'environment': 'Combined'}).json()
+    assert city['field'] == 'City' and city['rows'] and city['analysis']['operators'] and city['shape'] == 'places'
+    assert client.get(map_url, params={'key': impact['key'], 'measure': 'unknown'}).status_code == 400
+    assert client.get(map_url, params={'key': '0' * 64}).status_code == 409
+    assert 'boundaries' in client.get(f'/api/scoring/saved-filters/{filter_id}/impact/boundaries/Region', params={'key': impact['key']}).json()
     # Asked again, it is read from the cache.
     assert client.get(f'/api/scoring/saved-filters/{filter_id}/impact').json()['impact']['key'] == impact['key'] and len(jobs) == 1
     with repository.connection() as connection:
@@ -246,13 +360,13 @@ def test_the_comparison_of_a_saved_filter_is_calculated_once_and_exported(worksp
     # Two methodologies on the tests of one campaign have no bridge.
     other = client.get(f'/api/scoring/saved-filters/{filter_id}/impact', params={
         'mode': 'methodologies', 'methodology_a': 'netcheck-2026-q3', 'methodology_b': 'netcheck-2026', 'campaign': '2026-Q2'}).json()
-    assert other['impact']['earlier'] is None and other['impact']['before']['profile_name'] == 'NetCheck 2026-Q3'
-    assert other['impact']['scorings']['best_network']['bridge'] is None and len(jobs) == 2
+    assert other['impact']['methodology_of'] == {} and other['impact']['before']['profile_name'] == 'NetCheck 2026-Q3' and len(jobs) == 2
     # The exports.
     query = {'mode': 'campaigns'}
     csv_response = client.get(f'/scoring/saved-filters/{filter_id}/impact/export/csv', params=query)
     rows = list(csv.DictReader(StringIO(csv_response.content.decode('utf-8-sig'))))
-    assert {row['Panel'] for row in rows} >= {'What changed', 'Scoring', 'Category', 'KPI', 'Geographical area', 'GAP', 'Points Lost', 'Network and methodology'}
+    assert {row['Panel'] for row in rows} >= {'What changed', 'Scoring', 'Against the mean of the operators', 'Head to head', 'Causes', 'Exposure', 'Category', 'KPI',
+                                              'Scoring of the area', 'Serving cells (National points lost)', 'GAP', 'Points Lost', 'On the tests of each campaign', 'Map (National points lost)'}
     deck = client.get(f'/scoring/saved-filters/{filter_id}/impact/export/ppt', params=query)
     assert deck.status_code == 200, deck.text
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in Presentation(BytesIO(deck.content)).slides if slide.shapes.title is not None]
@@ -281,12 +395,15 @@ def test_a_campaign_keeps_the_scope_of_the_saved_filter_and_refuses_what_cannot_
     # The earlier campaign comes first whichever was chosen first, and the filters stay.
     prepared = scoring_impact.prepare_impact(repository, saved_filter, {'mode': 'campaigns', 'campaign_a': '2026-Q3', 'campaign_b': '2026-Q2'})
     assert prepared['selection']['campaign_a'] == '2026-Q2' and prepared['selection']['campaign_b'] == '2026-Q3'
-    assert prepared['runs']['before']['campaign'] == '2026-Q3' and prepared['runs']['earlier']['campaign'] == '2026-Q2'
+    assert prepared['runs']['before']['campaign'] == prepared['runs']['after']['campaign'] == '2026-Q3' and set(prepared['runs']) == {'before', 'after'}
+    assert prepared['methodology_of'] == {'before': '26-Q2', 'after': '26-Q3'} or set(prepared['methodology_of']) == {'before', 'after'}
+    # The same change is tried on the tests of the other campaign, within the same scope.
+    assert [item['value'] for item in prepared['others']] == ['2026-Q2'] and 'EE' in prepared['others'][0]['before']['filters']['Operator']
     assert set(prepared['runs']['before']['dataset_ids']) & set(workspace['ids'][3:]) and not set(prepared['runs']['before']['dataset_ids']) & set(workspace['ids'][:3])
     assert 'EE' in prepared['runs']['before']['filters']['Operator']
     impact = scoring_impact.calculate_impact(repository, prepared)
     assert {item['operator'] for item in impact['scorings']['best_network']['operators']} == {'EE', 'Three'}
-    # Without a change of methodology, the same tests are scored once and all the difference is the network.
+    # Without a change of methodology there is nothing to calculate.
     same = copy.deepcopy(repository.get_scoring_profiles())
     same['profiles'][1]['campaigns'] = {}
     same['profiles'][0]['campaigns'] = {'from': '2026-Q1', 'to': ''}
@@ -294,7 +411,9 @@ def test_a_campaign_keeps_the_scope_of_the_saved_filter_and_refuses_what_cannot_
     alike = scoring_impact.prepare_impact(repository, saved_filter, {'mode': 'campaigns'})
     assert alike['runs']['before'] is alike['runs']['after']
     result = scoring_impact.calculate_impact(repository, alike)
-    assert result['same_methodology'] and all(row['methodology'] == 0 for row in result['scorings']['best_network']['bridge']['Combined'].values())
+    assert result['same_methodology'] and result['scorings'] == {}
+    with pytest.raises(ValueError, match='same methodology'):
+        export_impact_powerpoint(result, TEMPLATE, [])
 
 
 def test_a_failed_calculation_says_why_and_can_be_tried_again(workspace, monkeypatch):
@@ -323,15 +442,17 @@ def test_the_document_follows_the_scoring_export_panels(frames):
         deck = Presentation(BytesIO(export_impact_powerpoint(impact, TEMPLATE, [], **options)))
         return [slide.shapes.title.text_frame.paragraphs[0].text for slide in deck.slides if slide.shapes.title is not None]
     every = titles()
-    for expected in ('What changed', 'Scoring per operator', 'Per category', 'KPIs affected', 'Per Region', 'Per City', 'GAP against', 'Points Lost', 'Points lost per category'):
+    for expected in ('What stands out', 'What changed', 'Scoring per operator', 'Who it favours', 'Why each operator moves', 'Per category', 'KPIs affected', 'Scoring per Region',
+                     'Scoring per City', 'Categories per City', 'How the impact spreads', 'GAP against', 'Points Lost', 'Points lost per category'):
         assert any(expected in title for title in every), expected
     # A panel that is not exportable is left out.
     panels = default_export_panels()
-    assert set(panels['impact']) == {'changes', 'scoring', 'bridge', 'categories', 'kpis', 'areas', 'gap', 'points'}
+    assert set(panels['impact']) == {'changes', 'scoring', 'competition', 'drivers', 'exposure', 'categories', 'kpis', 'maps', 'spread', 'area_categories',
+                                     'areas', 'serving', 'gap', 'points', 'stability'}
     panels['impact']['areas']['exportable'] = False
     panels['impact']['points']['exportable'] = False
     fewer = titles(panels=panels)
-    assert not any('Per City' in title or 'Points Lost' in title for title in fewer) and any('Per category' in title for title in fewer)
+    assert not any('Scoring per City' in title or 'Points Lost' in title for title in fewer) and any('Per category' in title for title in fewer)
     # Settings saved before keep the default of the panels they do not know.
     assert normalize_export_panels({'panels': {'summary': {'act': {'exportable': False}}}})['impact']['kpis']['exportable'] is True
     # The operators chosen in the page, and the Focus operators in the panels that export them.
@@ -344,6 +465,21 @@ def test_the_document_follows_the_scoring_export_panels(frames):
     assert [cell.text for cell in table.rows[0].cells] == ['Category', 'Three UK']
     csv_text = export_impact_csv(impact)
     assert csv_text.startswith('Panel,Environment,Operator,Level,Item,First methodology,Second methodology,Before,After,Difference')
+
+
+def test_the_maps_reach_the_document(frames):
+    configuration = netcheck_2026_configuration()
+    changed = _reweighted(configuration)
+    maps, _sides = _maps_of(frames, configuration, changed)
+    part = _part(_passes(frames, configuration), _passes(frames, changed), maps=maps)
+    impact = {'before': {'profile_name': 'First', 'campaign_label': '26-Q3'}, 'after': {'profile_name': 'Second', 'campaign_label': '26-Q3'},
+              'same_methodology': False, 'nr_mode': 'NSA', 'notes': [], 'scorings': {'best_network': part}}
+    deck = Presentation(BytesIO(export_impact_powerpoint(impact, TEMPLATE, [], maps=maps)))
+    titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in deck.slides if slide.shapes.title is not None]
+    assert any('City map' in title for title in titles) and any('City map against the other operators' in title for title in titles)
+    slide = next(item for item in deck.slides if item.shapes.title is not None and 'City map' in item.shapes.title.text_frame.text)
+    assert sum(shape.name == 'Scoring Impact Map' for shape in slide.shapes) == 4
+    assert 'Map (National points lost)' in export_impact_csv(impact, 'best_network', maps)
 
 
 def test_the_key_of_a_comparison_changes_with_what_it_depends_on(workspace):
