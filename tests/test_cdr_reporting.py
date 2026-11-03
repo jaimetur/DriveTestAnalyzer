@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, call, patch
 from pptx import Presentation
 
 from src.modules.cdr_reporting import CATALOG_HEADERS, TRAILING_DYNAMIC_CATALOG_HEADERS, CatalogEntry, _apply_catalog_filters, _apply_catalog_grouping, _cdf_campaign_line_widths, _cdf_plot_geometry, _cdf_terminal_x_maximum, _cdf_visible_points, _draw_adjacent_stacked_bar_label, _draw_chart_legend, _draw_configured_bar_label, _draw_inside_bar_label, _draw_top_column_group_separators, _hierarchical_complete_keys, _hierarchical_unique_keys, _hierarchy_caption_spans, _hierarchy_group_colours, _hierarchy_spans, _horizontal_legend_columns, _layout_chart_frames, _legend_dimensions, _legend_labels, _named_slide_layout, _render_cdf_line, _render_failure_count, _render_failure_count_hierarchy, _render_map, _render_mean_column, _render_stacked_distribution, _render_status_100, _render_table, _resolved_legend_items, _series_colours, _series_line_dashes, _status_chart_categories, assign_cdr_vendors, catalog_chart_hover_targets, catalog_chart_payload, catalogue_csv, convert_catalog_csv, ensure_vendor_group, enrich_multivendor, load_catalog_csv, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_kpi_expression, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, prepare_multivendor_catalog_entry, render_catalog_chart_preview, vendor_from_cells
+from src.modules.cdr_reporting import catalog_kpi_fields
 from src.modules.cdr_reporting import _draw_fitted_aggregation_header
 
 
@@ -539,6 +540,40 @@ def test_combined_reporting_frame_keeps_every_data_attempt_before_template_filte
     assert summary['matched_rows'] == 3
     assert preview['Filter · Test_Result'].tolist() == ['Cutoff', 'Cutoff', 'Cutoff']
     assert preview['Resolved Columns Split'].tolist() == ['EE · 26-Q2'] * 3
+
+
+def test_stacked_bars_with_countd_share_out_the_distinct_values_of_the_field() -> None:
+    frame = pd.DataFrame({
+        'Operator': ['VF'] * 7,
+        'Campaign': ['2026-Q2'] * 7,
+        'Vendor': ['Ericsson', 'Ericsson', 'Ericsson', 'Huawei', 'Unknown', 'Ericsson', 'Huawei'],
+        'Cell_ID': ['[1]', '[1]', '[2]', '[3]', '[4]', '[1]->[3]', ''],
+    })
+    entry = CatalogEntry(
+        slide=2, slide_title='Cells per Vendor', slide_subtitle='', layout='', chart_title='VF',
+        cdr_source='CDR-Data', kpi='Vendor | COUNTD(Cell_ID)', chart_type='100% Stacked Vertical Bars',
+        legend='Vendor', filters='Operator IN (VF); Cell_ID NOT CONTAINS ->', rows_split='',
+        columns_split='Campaign', legend_position='Right',
+    )
+    assert catalog_kpi_fields(entry.kpi) == ('Vendor', 'Cell_ID')
+
+    payload = catalog_chart_payload(frame, entry)
+
+    names = [state['name'] for state in payload['states']]
+    assert names == ['Ericsson', 'Huawei', 'Unknown']
+    # Cells 1 and 2 are Ericsson, 3 Huawei and 4 Unknown: the rows of cell 1 and the test of two cells count nothing more,
+    # and a test without a cell neither.
+    assert payload['records'][0]['samples'] == 4
+    assert payload['records'][0]['shares'] == pytest.approx([.5, .25, .25])
+
+    # The rows a read has already grouped (with their weight) give the same bars.
+    grouped = frame.groupby(['Operator', 'Campaign', 'Vendor', 'Cell_ID'], as_index=False).size()
+    grouped = grouped.rename(columns={'size': '__catalog_weight'})
+    assert catalog_chart_payload(grouped, entry)['records'] == payload['records']
+
+    # Without COUNTD the bars keep sharing out the rows.
+    rows = replace(entry, kpi='Vendor', filters='Operator IN (VF)')
+    assert catalog_chart_payload(frame, rows)['records'][0]['samples'] == 7
 
 
 def test_workspace_vendor_assignment_writes_the_normalized_vendor_field() -> None:

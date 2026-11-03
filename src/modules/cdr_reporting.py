@@ -6728,9 +6728,28 @@ def _catalog_spec(entry: CatalogEntry) -> dict:
         spec["kind"] = "quality_100" if chart_type == "threshold stacked vertical bars" or any(token in entry.kpi.casefold() for token in ("lq", "polqa")) else "status_100"
         if spec["kind"] == "quality_100":
             spec["threshold"] = _catalog_threshold(entry)
+        else:
+            # ``Vendor | COUNTD(Cell_ID)``: the bars share out the distinct values of a field instead of the rows.
+            counted = [field for field, how in map(parse_kpi_expression, raw_metric_parts[1:]) if how == "countd"]
+            if counted:
+                spec["distinct"] = tuple(counted[:1])
     else:
         spec["kind"] = "cdf_mean"
     return spec
+
+
+def _count_distinct_once(data: pd.DataFrame, spec: dict, metric: str | None, *dimensions: str | None) -> pd.DataFrame:
+    """The rows of a 100% stacked chart that counts a distinct field (see ``_catalog_spec``): each value of that field
+    once per bar and segment, whatever rows or weights it had."""
+    counted = _column(data, spec.get("distinct", ()))
+    if not counted:
+        return data
+    hierarchy = [column for column in data.columns if column.startswith(("__catalog_row_", "__catalog_column_"))]
+    keys = list(dict.fromkeys(column for column in (*dimensions, *hierarchy, metric, counted) if column))
+    populated = data[counted].notna() & data[counted].astype(str).str.strip().ne("")
+    unique = data.loc[populated].drop_duplicates(keys).drop(columns="__catalog_weight", errors="ignore")
+    unique.attrs = data.attrs.copy()
+    return unique
 
 
 def _kpi_settings(entry: CatalogEntry) -> dict:
@@ -7380,6 +7399,7 @@ def catalog_chart_payload(
         return model or empty("No valid samples for this KPI and technology filter")
 
     if spec["kind"] in {"status_100", "quality_100"} and metric:
+        data = _count_distinct_once(data, spec, metric, group, period)
         weight_column = "__catalog_weight" if "__catalog_weight" in data else None
         state_data = data[[
             group, period, metric, *hierarchy_columns,
@@ -8095,6 +8115,7 @@ def _chart_for_catalog_entry(
     def finish(chart: BytesIO) -> BytesIO:
         return chart if legend_labels else _apply_resolved_legend(chart, entry, frame, metric, legend_position)
     if spec["kind"] == "status_100":
+        frame = _count_distinct_once(frame, spec, metric, group, period)
         return finish(_render_status_100(chart_title, frame, group, period, metric=metric, legend_labels=legend_labels, legend_position=renderer_legend_position, label_position=entry.label_position, legend_format=entry.legend_format))
     if spec["kind"] == "quality_100":
         return finish(_render_status_100(chart_title, frame, group, period, True, spec.get("threshold", 1.6), metric, legend_labels, renderer_legend_position, entry.label_position, entry.legend_format))

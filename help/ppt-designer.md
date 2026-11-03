@@ -818,6 +818,18 @@ Columns Split: Operator × Campaign
 Legend Position: Right
 ```
 
+A second measure `COUNTD(field)` makes the bars share out the distinct values of that field instead of the rows, each value once per bar and segment. The share of the cells of each Vendor per campaign, for example, counts the tests served by one cell, where `Cell_ID` is that cell and `Vendor` its vendor (`Cell_ID_A` in Voice CDRs and `Cell_IDs_A` in Speech CDRs):
+
+```text
+Source Dataset: CDR-Data
+KPI: Vendor | COUNTD(Cell_ID)
+Chart type: 100% Stacked Vertical Bars
+Filters: Operator IN (VF); Cell_ID NOT CONTAINS ->
+Columns Split: Campaign
+Legend: Vendor
+Legend Position: Right
+```
+
 #### Count Stacked Horizontal Bars
 
 Use for event or failure counts. Rows form horizontal categories and the KPI normally supplies statuses or causes.

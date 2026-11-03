@@ -92,7 +92,7 @@
     {type: 'Multi KPI CDF Lines', need: s => s.numeric >= 2 && s.numeric === s.measures || 'Two numeric measures or more', fits: s => !s.text},
     {type: 'Average Vertical Bars', need: s => s.numeric >= 1 && s.splits >= 1 || 'A numeric measure and a Rows or Columns split', fits: s => !s.text},
     {type: 'Median Vertical Bars', need: s => s.numeric >= 1 && s.splits >= 1 || 'A numeric measure and a Rows or Columns split', fits: s => !s.text},
-    {type: '100% Stacked Vertical Bars', need: s => s.text === 1 && s.measures === 1 || 'One dimension as the measure (such as Call_Status)', fits: s => !s.numeric && s.text <= 1},
+    {type: '100% Stacked Vertical Bars', need: s => s.text === 1 && s.measures === 1 || s.distinct === 1 && s.measures === 2 && s.dimensions === 1 || 'One dimension as the measure (such as Call_Status), and COUNTD of a field to share out its distinct values instead of the rows', fits: s => !s.numeric && s.text <= 1},
     {type: 'Count Stacked Horizontal Bars', need: s => s.measures === 1 || 'One measure', fits: s => s.measures <= 1},
     {type: 'Threshold Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Threshold', placeholder: '1.6 or {Threshold}'}], fits: s => !s.text && s.numeric <= 1},
     {type: 'Distribution Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Buckets', placeholder: '1, 5, 10, 20'}], fits: s => !s.text && s.numeric <= 1},
@@ -201,6 +201,9 @@
     const numeric = measures.filter(part => typeOf(kpiField(part)) === 'number').length;
     const shelfState = {
       measures: measures.length, numeric, text: measures.length - numeric,
+      // COUNTD measures, and the measures that are dimensions apart from them.
+      distinct: measures.filter(part => kpiAggregation(part) === 'COUNTD').length,
+      dimensions: measures.filter(part => kpiAggregation(part) !== 'COUNTD' && typeOf(kpiField(part)) !== 'number').length,
       splits: splitParts(values.rows_split, '×').length + splitParts(values.columns_split, '×').length,
       rows: splitParts(values.rows_split, '×').length, columns: splitParts(values.columns_split, '×').length,
       times: measures.filter(part => isTimeField(kpiField(part))).length,
