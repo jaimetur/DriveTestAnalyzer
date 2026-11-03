@@ -128,6 +128,48 @@ def test_the_postal_codes_shipped_cover_the_uk():
     # Newbury, Leeds and Belfast (Northern Ireland is in the GeoNames file).
     placed = index.names_of(pd.Series([51.40, 53.80, 54.60]), pd.Series([-1.32, -1.55, -5.93]))
     assert placed[0].startswith('RG14') and placed[1].startswith('LS') and placed[2].startswith('BT')
+    # Worked out from the full postcodes: the districts of the centre of a city are areas of their own.
+    assert {'M1 · Manchester', 'M4 · Manchester', 'EC2R · London', 'WC2N · London'} <= set(rings)
+    assert 'Royal Mail' in layer['attribution']
+
+
+def _builder():
+    import importlib.util
+    path = Path(__file__).resolve().parents[1] / 'tools' / 'build_postal_layer.py'
+    specification = importlib.util.spec_from_file_location('build_postal_layer', path)
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module
+
+
+def test_a_file_of_full_codes_is_read_and_each_code_counts_for_its_district():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as archive:
+        archive.writestr('GB_full.txt', 'GB\tM1 1AA\tManchester\t\t\t\t\t\t\t53.4801\t-2.2301\t6\n')
+    assert postal_areas.read_geonames(buffer.getvalue(), 'GB') == [('M1 1AA', 'Manchester', 53.4801, -2.2301)]
+    # In one cell of the grid, the district with most codes keeps it, at the middle of its codes.
+    points = [('M1 1AA', 'Manchester', 53.48012, -2.23012), ('M1 1AB', 'Manchester', 53.48018, -2.23018),
+              ('M4 1AA', 'Ancoats', 53.48015, -2.23015)]
+    assert _builder().district_points(points) == [('M1', 'Manchester', 53.48015, -2.23015)]
+
+
+def test_a_stray_code_draws_no_island_but_a_district_keeps_its_last_cell():
+    step = .001
+    grid = [('A%d 1AA' % 1, 'Town', 50 + row * step + .0002, 1 + column * step + .0002) for row in range(3) for column in range(3)]
+    # One code of B in the middle of A, with another cell of B far away: the middle joins A.
+    stray = [point for point in grid if not (abs(point[2] - 50.0012) < 1e-9 and abs(point[3] - 1.0012) < 1e-9)]
+    points = [*stray, ('B1 1AA', 'Village', 50.0012, 1.0012), ('B1 1AB', 'Village', 52.0, 3.0)]
+    found = _builder().district_points(points)
+    assert sum(item[0] == 'A1' for item in found) == 9 and [item[0] for item in found if item[0] == 'B1'] == ['B1']
+    # Without the other cell, it is the last one of B: it stays.
+    found = _builder().district_points([*stray, ('B1 1AA', 'Village', 50.0012, 1.0012)])
+    assert sum(item[0] == 'B1' for item in found) == 1
+
+
+def test_the_place_of_an_area_is_the_one_with_most_of_its_points():
+    points = [('RG14', 'Newbury', 51.40, -1.32), ('RG14', 'Newbury', 51.41, -1.33), ('RG14', 'Speen', 51.405, -1.325),
+              ('S1', 'Sheffield', 53.38, -1.47)]
+    assert set(postal_areas.postal_boundaries(points, _land())) == {'RG14 · Newbury', 'S1 · Sheffield'}
 
 
 # -- the layers of a workspace --------------------------------------------------------------------

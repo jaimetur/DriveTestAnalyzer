@@ -1,13 +1,13 @@
 {
   "GBR": {
-    "attribution": "GeoNames, www.geonames.org; areas worked out from its postal code points",
+    "attribution": "GeoNames, www.geonames.org; areas worked out from its postal code points; contains Royal Mail data © Royal Mail copyright and database right 2022",
     "country_code": "GBR",
     "file": "GBR.json.gz",
-    "level": "Postal code",
+    "level": "Postal district",
     "level_label": "postal code",
     "license": "Creative Commons Attribution 4.0",
-    "source": "https://download.geonames.org/export/zip/GB.zip",
-    "unit_count": 2812,
+    "source": "https://download.geonames.org/export/zip/GB_full.csv.zip",
+    "unit_count": 2919,
     "year": "2026"
   }
 }

@@ -9172,7 +9172,7 @@
     if (entry.title === 'Postal Code') {
       const postalNote = document.createElement('p');
       postalNote.className = 'scoring-loss-map-hint';
-      postalNote.textContent = `Approximate areas, not official borders: tests near a border can fall in the neighbouring code, and codes that share their only point (city centres) are one area. ${payload?.views?.insights?.postal_attribution || ''}`;
+      postalNote.textContent = `Approximate areas, not official borders: tests near a border can fall in the neighbouring code. ${payload?.views?.insights?.postal_attribution || ''}`;
       const download = document.createElement('button');
       download.type = 'button';
       download.className = 'secondary-button scoring-loss-map-download';

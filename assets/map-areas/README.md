@@ -32,9 +32,9 @@ Each `<ISO3>.json.gz` holds the simplified polygons of one country (coordinates 
 
 | Country | Level | Areas | Source | Licence |
 | --- | --- | --- | --- | --- |
-| United Kingdom (GBR) | postcode district | 2812 | GeoNames, `GB.zip`, 2026 | Creative Commons Attribution 4.0 |
+| United Kingdom (GBR) | postcode district | 2919 | GeoNames, `GB_full.csv.zip` (1.8 million full postcodes), 2026 | Creative Commons Attribution 4.0 |
 
-Source: GeoNames, www.geonames.org, postal code files (https://download.geonames.org/export/zip/), licensed under Creative Commons Attribution 4.0. Provided by GeoNames "as is", without warranty of accuracy, timeliness or completeness. Do not add here a map under a licence that does not allow redistributing it: this folder is published with the application.
+Source: GeoNames, www.geonames.org, postal code files (https://download.geonames.org/export/zip/), licensed under Creative Commons Attribution 4.0. United Kingdom: contains Royal Mail data © Royal Mail copyright and database right 2022. Provided by GeoNames "as is", without warranty of accuracy, timeliness or completeness. Do not add here a map under a licence that does not allow redistributing it: this folder is published with the application.
 
 ## World countries
 

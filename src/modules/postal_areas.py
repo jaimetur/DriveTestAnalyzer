@@ -19,6 +19,7 @@ import math
 import re
 import urllib.error
 import zipfile
+from collections import Counter
 from functools import lru_cache
 from typing import Any, Callable, Iterable
 
@@ -137,11 +138,12 @@ def postal_map(index: AreaIndex, used: Iterable[str]) -> dict[str, Any]:
 # -- working the areas out from the points ----------------------------------------------------------
 def read_geonames(content: bytes, alpha2: str) -> list[tuple[str, str, float, float]]:
     """The postal code, place, latitude and longitude of each row of a GeoNames postal code file."""
-    name = f'{alpha2}.txt'
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as archive:
-            if name not in archive.namelist():
-                raise ValueError(f'The GeoNames file has no {name}.')
+            # (The file of the full codes of a country names its rows <code>_full.txt.)
+            name = next((item for item in (f'{alpha2}.txt', f'{alpha2}_full.txt') if item in archive.namelist()), None)
+            if name is None:
+                raise ValueError(f'The GeoNames file has no {alpha2}.txt.')
             if archive.getinfo(name).file_size > MAX_FILE_BYTES:
                 raise ValueError(f'The GeoNames file {name} is too large.')
             text = archive.read(name).decode('utf-8', 'replace')
@@ -227,9 +229,13 @@ def _areas_of(points: list[tuple[str, str, float, float]]) -> list[tuple[list[st
             continue
         latitude = sum(spot[0] for spot in spots) / len(spots)
         longitude = sum(spot[1] for spot in spots) / len(spots)
-        # The place of the area: the one closest to its middle.
-        nearest = min(spots, key=lambda spot: (spot[0] - latitude) ** 2 + (spot[1] - longitude) ** 2)
-        place = next((owners[nearest][code] for code in sorted(codes, key=_code_order) if owners[nearest].get(code)), '')
+        # The place of the area: the one with most of its points; among several, the closest to its middle.
+        places = Counter(owners[spot][code] for spot in spots for code in codes if owners[spot].get(code))
+        top = max(places.values(), default=0)
+        nearest = min((spot for spot in spots if any(places[owners[spot].get(code, '')] == top for code in codes)),
+                      key=lambda spot: (spot[0] - latitude) ** 2 + (spot[1] - longitude) ** 2)
+        place = next((owners[nearest][code] for code in sorted(codes, key=_code_order)
+                      if owners[nearest].get(code) and places[owners[nearest][code]] == top), '')
         areas.append((sorted(codes, key=_code_order), spots, place))
     return areas
 
@@ -269,6 +275,10 @@ def postal_boundaries(points: list[tuple[str, str, float, float]], land: Any) ->
                  if part.geom_type == 'Polygon' and not part.is_empty]
         if parts:
             features.append((_area_name(codes, place), MultiPolygon(parts)))
+    # Neighbours keep one border: simplified apart, tests could fall in the gaps left between them.
+    if hasattr(shapely, 'coverage_simplify') and features:
+        simplified = shapely.coverage_simplify(np.array([geometry for _name, geometry in features]), tolerance)
+        features, tolerance = [(name, geometry) for (name, _geometry), geometry in zip(features, simplified)], 0
     return _features_boundaries(features, tolerance)
 
 
