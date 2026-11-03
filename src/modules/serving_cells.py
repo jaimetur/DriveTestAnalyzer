@@ -7,6 +7,9 @@ to the CDR's measurements wins (the newest on a tie), so a CDR measured before a
 measured. A cell farther than the maximum serving distance from the sample is ignored: global cell identities are
 only unique within an Operator, and a distant cell with the same number is not the one that served the sample.
 
+The sources are the Multivendor Mappings chosen for the CDR, each only for the Operators chosen for it, and the Network
+Inventories chosen with them, which then only complete the cells the Multivendor Mappings do not have.
+
 Besides ``Operator_Vendor`` and ``Vendor`` (same rule as before: the same Vendor at both ends, Ericsson
 (Mixed) or Mixed (non-Ericsson)), each sample receives the owner network, host network, site, eMOCN scenario and
 distance of the cell that served its start, and the date of the snapshot it came from.
@@ -29,8 +32,9 @@ from src.modules.cdr_reporting import (
     VENDOR_UNKNOWN, _first_existing, _normalise_operator, _split_global_cells, _vendor_from_ends, _vendor_prefix, _with_vendor_columns,
 )
 from src.modules.network_inventory import (
-    INVENTORY_CELLS_TABLE, NETWORK_FAMILY_LABELS, dataset_revision, effective_snapshot_date, ensure_inventory_cells,
-    infer_snapshot_date, inventory_datasets, network_family,
+    INVENTORY_CELLS_TABLE, MAPPING_CELLS_TABLE, MULTIVENDOR_MAPPING_KIND, NETWORK_FAMILY_LABELS, dataset_revision,
+    effective_snapshot_date, ensure_inventory_cells, ensure_mapping_cells, infer_snapshot_date, inventory_datasets,
+    mapping_datasets, network_family,
 )
 
 SERVING_NETWORKS_STATE_KEY = 'network_serving_networks'
@@ -186,14 +190,17 @@ def cdr_reference_date(frame: pd.DataFrame, file_name: str = '', profile: CdrFie
 
 
 def rank_snapshots(snapshots: list[dict[str, Any]], reference: date | None) -> dict[int, int]:
-    """Snapshot dataset ID → preference rank: closest date to ``reference`` first, the newest on a tie."""
-    def key(snapshot: dict[str, Any]) -> tuple[float, float]:
+    """Snapshot dataset ID → preference rank: closest date to ``reference`` first, the newest on a tie. Beside a Multivendor
+    Mapping, a Network Inventory comes last: it only completes the cells the mappings do not have."""
+    complements = any(snapshot.get('kind') == MULTIVENDOR_MAPPING_KIND for snapshot in snapshots)
+
+    def key(snapshot: dict[str, Any]) -> tuple[bool, float, float]:
         try:
             moment = date.fromisoformat(str(snapshot['snapshot_date'])[:10])
         except ValueError:
             moment = date.min
         distance = abs((moment - reference).days) if reference else 0
-        return distance, -moment.toordinal()
+        return complements and snapshot.get('kind') == 'network_inventory', distance, -moment.toordinal()
     ordered = sorted(snapshots, key=key)
     return {int(snapshot['dataset_id']): rank for rank, snapshot in enumerate(ordered)}
 
@@ -217,7 +224,7 @@ def _haversine_km(lon1: np.ndarray, lat1: np.ndarray, lon2: np.ndarray, lat2: np
 
 
 def _candidate_cells(repository: Any, dataset_ids: list[int], families: list[str], identities: list[str]) -> pd.DataFrame:
-    """The inventory cells of the given snapshots and owner families whose identity is in ``identities``."""
+    """The cells of the given snapshots and owner families whose identity is in ``identities``."""
     if not dataset_ids or not families or not identities:
         return pd.DataFrame()
     with repository.connection() as connection:
@@ -225,12 +232,14 @@ def _candidate_cells(repository: Any, dataset_ids: list[int], families: list[str
         connection.execute('DELETE FROM serving_identities')
         connection.executemany('INSERT OR IGNORE INTO serving_identities VALUES (?)', ((value,) for value in identities))
         frame = pd.read_sql_query(
-            f"SELECT c.dataset_id, c.cell_identity, c.technology, c.network, c.network_family, c.host_network, c.vendor, "
-            f"c.site_id, c.emocn, c.latitude, c.longitude FROM {INVENTORY_CELLS_TABLE} c "
-            "JOIN serving_identities w ON w.identity = c.cell_identity "
-            f"WHERE c.dataset_id IN ({', '.join('?' for _ in dataset_ids)}) "
-            f"AND c.network_family IN ({', '.join('?' for _ in families)})",
-            connection, params=[*dataset_ids, *families],
+            ' UNION ALL '.join(
+                f"SELECT c.dataset_id, c.cell_identity, c.technology, c.network, c.network_family, c.host_network, c.vendor, "
+                f"c.site_id, c.emocn, c.latitude, c.longitude FROM {table} c "
+                "JOIN serving_identities w ON w.identity = c.cell_identity "
+                f"WHERE c.dataset_id IN ({', '.join('?' for _ in dataset_ids)}) "
+                f"AND c.network_family IN ({', '.join('?' for _ in families)})"
+                for table in (INVENTORY_CELLS_TABLE, MAPPING_CELLS_TABLE)),
+            connection, params=[*dataset_ids, *families] * 2,
         )
         connection.execute('DROP TABLE IF EXISTS serving_identities')
     return frame
@@ -259,9 +268,11 @@ def serving_endpoints(frame: pd.DataFrame, dataset_kind: str, profile: CdrFieldP
 def match_serving_cells(
     endpoints: pd.DataFrame, operators: pd.Series, candidates: pd.DataFrame, snapshot_ranks: dict[int, int],
     snapshot_dates: dict[int, str], config: dict[str, Any] | None, max_distance_km: float,
+    excluded: Iterable[tuple[str, int]] = (),
 ) -> pd.DataFrame:
     """The inventory cell chosen for every sample end: an allowed network (own first), the preferred snapshot,
-    then the nearest cell; cells beyond ``max_distance_km`` of a located sample are never chosen."""
+    then the nearest cell; cells beyond ``max_distance_km`` of a located sample are never chosen, nor those of a
+    snapshot that does not apply to the Operator (``excluded``: its Operator and dataset ID pairs)."""
     columns = ['row', 'end', 'vendor', 'network', 'host_network', 'site_id', 'emocn', 'distance_km', 'snapshot_date']
     if endpoints.empty or candidates.empty:
         return pd.DataFrame(columns=columns)
@@ -275,6 +286,9 @@ def match_serving_cells(
                .merge(allowed, on='operator')
                .merge(candidates.rename(columns={'cell_identity': 'cell', 'latitude': 'cell_latitude', 'longitude': 'cell_longitude'}),
                       on=['cell', 'network_family']))
+    excluded = set(excluded)
+    if excluded:
+        matched = matched.loc[[pair not in excluded for pair in zip(matched['operator'], matched['dataset_id'])]]
     if matched.empty:
         return pd.DataFrame(columns=columns)
     matched['distance_km'] = _haversine_km(matched['longitude'].to_numpy(dtype=float), matched['latitude'].to_numpy(dtype=float),
@@ -298,22 +312,30 @@ def assign_serving_vendors(
     config = config if config is not None else load_serving_networks(repository)
     profile = workspace_field_profile(repository)
     selected = {int(value) for value in inventory_dataset_ids}
-    snapshots = [item for item in ensure_inventory_cells(repository) if item['dataset_id'] in selected]
+    snapshots = [item for item in [*ensure_inventory_cells(repository), *ensure_mapping_cells(repository)] if item['dataset_id'] in selected]
     ranks = rank_snapshots(snapshots, cdr_reference_date(frame, file_name, profile))
     dates = {item['dataset_id']: item['snapshot_date'] for item in snapshots}
-    available = {family for item in snapshots for family in item['families']}
     result = frame.reset_index(drop=True).copy()
     operators = result[operator_column].fillna('').astype(str).str.strip()
     families = {operator: serving_families(operator, config) for operator in pd.unique(operators)}
+    # The snapshots of each Operator: a Multivendor Mapping applies only to the Operators chosen for it.
+    labels = operator_labels(repository)
+    label = {operator: labels.get(operator.casefold(), operator).casefold() for operator in families}
+    usable = {operator: [item for item in snapshots if 'operators' not in item
+                         or label[operator] in {labels.get(name.casefold(), name).casefold() for name in item['operators']}]
+              for operator in families}
+    available = {operator: {family for item in usable[operator] for family in item['families']} for operator in families}
+    excluded = [(operator, item['dataset_id']) for operator in families for item in snapshots if item not in usable[operator]]
     endpoints = serving_endpoints(result, dataset_kind, profile)
-    wanted = sorted({family for values in families.values() for family in values} & available)
+    wanted = sorted({family for operator, values in families.items() for family in set(values) & available[operator]})
     candidates = _candidate_cells(repository, list(ranks), wanted, sorted(set(endpoints['cell'])))
-    matches = match_serving_cells(endpoints, operators, candidates, ranks, dates, config, float(config.get('max_distance_km') or DEFAULT_MAX_DISTANCE_KM))
+    matches = match_serving_cells(endpoints, operators, candidates, ranks, dates, config,
+                                  float(config.get('max_distance_km') or DEFAULT_MAX_DISTANCE_KM), excluded)
     first = matches.loc[matches['end'] == 'first'].set_index('row')
     last = matches.loc[matches['end'] == 'last'].set_index('row')
     first_vendor = first['vendor'].reindex(range(len(result)))
     last_vendor = last['vendor'].reindex(range(len(result)))
-    mapped_operators = {operator for operator, values in families.items() if set(values) & available}
+    mapped_operators = {operator for operator, values in families.items() if set(values) & available[operator]}
     # Like the Vendor polygons, a sample none of whose cells is in the snapshots is Unknown: an Operator whose
     # inventory covers only part of its network (O2's cells hosted by Vodafone) would otherwise look Mixed.
     assigned = [
@@ -341,12 +363,38 @@ def _text(value: object) -> str | None:
     return text or None
 
 
-def vendor_mapping_signature(repository: Any, config: dict[str, Any] | None = None) -> str:
-    """What a Vendor mapping depends on: the rule version, the Serving Networks and every inventory snapshot.
+def operator_labels(repository: Any) -> dict[str, str]:
+    """Every spelling of each Operator of the Operator Maps (in lower case), to its name there."""
+    labels: dict[str, str] = {}
+    for group in repository.list_operator_mapping_groups():
+        canonical = str(group.get('canonical') or '').strip()
+        for value in [canonical, *(group.get('aliases') or [])]:
+            if canonical and str(value or '').strip():
+                labels[str(value).strip().casefold()] = canonical
+    return labels
+
+
+def suggest_mapping_operators(repository: Any, families: Iterable[str], config: dict[str, Any] | None = None) -> list[str]:
+    """The Operators of the Operator Maps that the networks of a Multivendor Mapping serve (see Serving Networks)."""
+    config = config if config is not None else load_serving_networks(repository)
+    families = {family for family in families if family}
+    names = sorted(set(operator_labels(repository).values()), key=str.casefold)
+    return [name for name in names if families & set(serving_families(name, config))]
+
+
+def vendor_mapping_signature(repository: Any, config: dict[str, Any] | None = None, inventory_ids: Iterable[int] = ()) -> str:
+    """What a Vendor mapping depends on: the rule version, the Serving Networks and every snapshot it can read. With
+    Multivendor Mappings in the workspace, a Network Inventory counts only if the CDR was mapped with it (``inventory_ids``).
 
     A CDR mapped under another signature shows that its Vendor may be outdated.
     """
     config = config if config is not None else load_serving_networks(repository)
     parts = [str(SERVING_ENGINE_VERSION), json.dumps(config, sort_keys=True)]
-    parts.extend(sorted(f"{row['id']}:{dataset_revision(row)}:{effective_snapshot_date(row)}" for row in inventory_datasets(repository)))
+    mappings = mapping_datasets(repository)
+    chosen = {int(value) for value in inventory_ids}
+    sources = [*mappings, *(row for row in inventory_datasets(repository)
+                            if not mappings or str(row['dataset_kind'] or '') != 'network_inventory' or int(row['id']) in chosen)]
+    parts.extend(sorted(f"{row['id']}:{dataset_revision(row)}:{effective_snapshot_date(row)}" for row in sources))
+    if mappings:
+        parts.extend(sorted(f"{row['id']}:{row['mapping_operators']}" for row in mappings))
     return hashlib.sha256('\n'.join(parts).encode('utf-8')).hexdigest()[:16]

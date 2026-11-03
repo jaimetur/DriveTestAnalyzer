@@ -2,13 +2,17 @@
 
 import io
 import json
+from datetime import date
 
 import pandas as pd
 
 import src.DriveTestAnalyzer as core
 from conftest import wait_for_background_dataset_work
 from src.modules.cdr_reporting import assign_cdr_vendors, build_inventory_vendor_lookup, inventory_vendor_columns, operator_key
+from src.modules.inventory_insights import snapshot_choice
+from src.modules.network_inventory import infer_snapshot_date, list_inventory_snapshots
 from src.modules.repository import local_now_iso
+from src.modules.serving_cells import vendor_mapping_signature
 
 
 def login(client):
@@ -107,3 +111,149 @@ def test_network_inventory_upload_with_its_operator_and_map_cdrs(client, tmp_pat
     assert result['Operator_Vendor'].tolist() == ['O2_Ericsson', 'O2_Ericsson (Mixed)', 'EE - All']
     options = json.loads(core.repository.get_dataset(cdr_id)['processing_options_json'])
     assert options['network_inventory_dataset_ids'] == [uploaded['id']]
+
+
+MAPPING_CSV = (
+    'Network,Host Network,OP/ Vendor,Site ID,eNodeB ID,Cell ID,Longitude,Latitude\n'
+    'Vodafone,Vodafone,Ericsson,S1,10,1,-1.5,53.8\n'
+    'H3G,H3G,Samsung,S2,20,2,-1.5,53.8\n'
+)
+INVENTORY_CSV = (
+    'Network,Host Network,OP/ Vendor,Site ID,eNodeB ID,Cell ID,Longitude,Latitude\n'
+    'Vodafone,Vodafone,Huawei,S1,10,1,-1.5,53.8\n'
+    'Vodafone,Vodafone,NSN,S3,30,3,-1.5,53.8\n'
+)
+
+
+def _upload(client, name, content, kind, **fields):
+    response = client.post('/datasets-analysis/upload', data={'dataset_kinds': kind, **fields},
+                           files={'dataset_files': (name, content.encode(), 'text/csv')}, follow_redirects=False)
+    assert response.status_code in {200, 303}
+    wait_for_background_dataset_work()
+    return core.serialize_dataset_row(next(row for row in core.repository.list_datasets() if row['file_name'] == name))
+
+
+def _cdr(tmp_path, rows):
+    source = tmp_path / 'UK_Voice.csv'
+    source.write_text('x\n1\n', encoding='utf-8')
+    cdr_id, _created = core.repository.add_dataset(source.name, str(source), 'super')
+    frame = pd.DataFrame(rows)
+    core.repository.replace_dataset_rows(cdr_id, frame)
+    core.repository.update_dataset_profile(
+        cdr_id, status='ready', progress=100, dataset_kind='voice', nr_mode='NSA', cdr_stage='final', row_count=len(frame),
+        column_count=len(frame.columns), processed_at=local_now_iso(),
+        normalization_version=core.DATASET_NORMALIZATION_VERSION, vendor_mapping_applied=1,
+    )
+    return cdr_id
+
+
+def test_week_in_a_file_name_gives_its_snapshot_date():
+    assert infer_snapshot_date('VF3_All_Vendor_2026_Week41_v3.xlsx') == '2026-10-05'
+    assert infer_snapshot_date('x_2026_W05.csv') == '2026-01-26'
+    assert infer_snapshot_date('260917_Week41.xlsx') == '2026-09-17'
+    assert infer_snapshot_date('Multivendor_Mapping_VFUK.xlsx') is None
+    assert infer_snapshot_date('Hw12_W60.csv') is None
+    today = date.today()
+    this_week = today.isocalendar().week
+    assert infer_snapshot_date(f'Mapping_Week{this_week}.csv') == date.fromisocalendar(today.isocalendar().year, this_week, 1).isoformat()
+
+
+def test_multivendor_mapping_gives_the_vendor_and_leaves_the_network_to_the_inventories(client, tmp_path):
+    login(client)
+    inventory = _upload(client, '260917_Cell_Config.csv', INVENTORY_CSV, 'network_inventory')
+    mapping = _upload(client, 'VF3_All_Vendor_2026_Week41.csv', MAPPING_CSV, 'multivendor_mapping')
+    assert mapping['status'] == 'ready' and mapping['input_kind_label'] == 'Multivendor Mapping'
+    assert mapping['snapshot_date_effective'] == '2026-10-05'
+
+    # Its Operators are read from its cells: those the networks of its cells serve.
+    assert {'Three', 'VF'} <= set(mapping['mapping_operator_names'])
+    assert 'EE' not in mapping['mapping_operator_names']
+
+    # Whatever reads the network does not see it, although it is the newest file.
+    snapshots = list_inventory_snapshots(core.repository)
+    assert [item['dataset_id'] for item in snapshots] == [inventory['id']]
+    assert snapshot_choice(snapshots) == {'vodafone': inventory['id']}
+    with core.repository.connection() as connection:
+        assert connection.execute('SELECT COUNT(*) FROM inventory_cells WHERE dataset_id = ?', (mapping['id'],)).fetchone()[0] == 0
+        assert connection.execute('SELECT COUNT(*) FROM multivendor_mapping_cells WHERE dataset_id = ?', (mapping['id'],)).fetchone()[0] == 2
+
+    # The Map dialog offers it, checked, and the Network Inventory only to complete it.
+    workspace = client.get('/workspace').text
+    assert f'name="multivendor_mapping_dataset_ids" value="{mapping["id"]}" checked' in workspace
+    assert f'name="network_inventory_dataset_ids" value="{inventory["id"]}" checked' not in workspace
+    assert f'name="network_inventory_dataset_ids" value="{inventory["id"]}"' in workspace
+    card = workspace.split('data-dataset-card="multivendor-mappings"', 1)[1].split('</section>', 1)[0]
+    assert 'VF3_All_Vendor_2026_Week41.csv' in card and 'data-dataset-mapping-operators' in card
+
+    # Mapped with both, the mapping wins where it has the cell and the inventory completes the others.
+    rows = {'Operator': ['Vodafone UK', 'Vodafone UK', '3'], 'Cell_ID_A': [str(10 * 256 + 1), str(30 * 256 + 3), str(20 * 256 + 2)], 'Session_ID_A': [1, 2, 3]}
+    cdr_id = _cdr(tmp_path, rows)
+    assert client.post('/workspace/map-mappings', data={
+        'cdr_dataset_ids': str(cdr_id), 'vendor_source': 'inventory', 'multivendor_mapping_dataset_ids': str(mapping['id']),
+        'network_inventory_dataset_ids': str(inventory['id']),
+    }, follow_redirects=False).status_code == 303
+    wait_for_background_dataset_work()
+    assert core.repository.load_dataset_rows(cdr_id, ['Vendor'], {})['Vendor'].tolist() == ['Ericsson', 'NSN', 'Samsung']
+    options = json.loads(core.repository.get_dataset(cdr_id)['processing_options_json'])
+    assert options['network_inventory_dataset_ids'] == [mapping['id'], inventory['id']]
+
+    # Only the Multivendor Mapping: the cell it does not have stays Unknown.
+    assert client.post('/workspace/map-mappings', data={
+        'cdr_dataset_ids': str(cdr_id), 'vendor_source': 'inventory', 'multivendor_mapping_dataset_ids': str(mapping['id']),
+    }, follow_redirects=False).status_code == 303
+    wait_for_background_dataset_work()
+    assert core.repository.load_dataset_rows(cdr_id, ['Vendor'], {})['Vendor'].tolist() == ['Ericsson', 'Unknown', 'Samsung']
+
+
+def test_multivendor_mapping_applies_only_to_its_operators(client, tmp_path):
+    login(client)
+    mapping = _upload(client, 'VF3_All_Vendor_2026_Week41.csv', MAPPING_CSV, 'multivendor_mapping')
+    url = f"/workspace/datasets/{mapping['id']}/mapping-operators"
+    assert client.post(url, json={'operators': ['Nobody']}).status_code == 422
+    assert client.post(url, json={'operators': ['Three']}).json()['operators'] == ['Three']
+    row = core.repository.get_dataset(mapping['id'])
+    assert json.loads(row['mapping_operators']) == ['Three']
+    with core.repository.connection() as connection:
+        event = connection.execute(
+            "SELECT details FROM audit_logs WHERE action = 'update_dataset_mapping_operators' ORDER BY rowid DESC LIMIT 1").fetchone()
+    assert json.loads(event['details'])['operators'] == ['Three']
+
+    cdr_id = _cdr(tmp_path, {'Operator': ['Vodafone UK', '3'], 'Cell_ID_A': [str(10 * 256 + 1), str(20 * 256 + 2)], 'Session_ID_A': [1, 2]})
+    assert client.post('/workspace/map-mappings', data={
+        'cdr_dataset_ids': str(cdr_id), 'vendor_source': 'inventory', 'multivendor_mapping_dataset_ids': str(mapping['id']),
+    }, follow_redirects=False).status_code == 303
+    wait_for_background_dataset_work()
+    mapped = core.repository.load_dataset_rows(cdr_id, ['Operator_Vendor', 'Vendor'], {})
+    assert mapped['Vendor'].tolist()[1] == 'Samsung'
+    # Vodafone has no source now: it is left without a Vendor of a cell, as an Operator no snapshot serves.
+    assert mapped['Operator_Vendor'].tolist()[0].endswith(' - All')
+
+
+def test_multivendor_mapping_without_a_network_column_belongs_to_its_operator(client, tmp_path):
+    login(client)
+    content = 'OP/ Vendor,Site ID,eNodeB ID,Cell ID,Longitude,Latitude\nHuawei,S1,40,4,-1.5,53.8\n'
+    mapping = _upload(client, 'Mapping_2026_W05.csv', content, 'multivendor_mapping', mapping_operators=json.dumps(['Three']))
+    assert mapping['mapping_operator_names'] == ['Three'] and mapping['snapshot_date_effective'] == '2026-01-26'
+    with core.repository.connection() as connection:
+        assert connection.execute('SELECT network_family FROM multivendor_mapping_cells WHERE dataset_id = ?', (mapping['id'],)).fetchone()[0] == 'three'
+    response = client.post(f"/workspace/datasets/{mapping['id']}/mapping-operators", json={'operators': ['Three', 'VF']})
+    assert response.status_code == 422 and 'no Network column' in response.json()['detail']
+
+
+def test_vendor_mapping_outdated_follows_the_sources_of_the_cdr(client, tmp_path):
+    login(client)
+    inventory = _upload(client, '260917_Cell_Config.csv', INVENTORY_CSV, 'network_inventory')
+    before = vendor_mapping_signature(core.repository)
+    mapping = _upload(client, 'VF3_All_Vendor_2026_Week41.csv', MAPPING_CSV, 'multivendor_mapping')
+    with_mapping = vendor_mapping_signature(core.repository)
+    assert with_mapping != before
+
+    # With a Multivendor Mapping, another Network Inventory only matters to the CDRs mapped with Network Inventories.
+    completed = vendor_mapping_signature(core.repository, inventory_ids=[inventory['id']])
+    assert completed != with_mapping
+    _upload(client, '260918_Cell_Config.csv', INVENTORY_CSV, 'network_inventory')
+    assert vendor_mapping_signature(core.repository) == with_mapping
+    assert vendor_mapping_signature(core.repository, inventory_ids=[inventory['id']]) == completed
+
+    assert client.post(f"/workspace/datasets/{mapping['id']}/mapping-operators", json={'operators': ['Three']}).status_code == 200
+    assert vendor_mapping_signature(core.repository) != with_mapping

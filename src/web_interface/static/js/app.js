@@ -12679,6 +12679,29 @@ document.addEventListener('change', async (event) => {
   }
 });
 
+// The Operators a Multivendor Mapping applies to; the CDRs take them when they are mapped again.
+document.addEventListener('change', async (event) => {
+  const box = event.target instanceof HTMLInputElement ? event.target : null;
+  const group = box?.closest('[data-dataset-mapping-operators]');
+  if (!(group instanceof HTMLElement) || !group.dataset.updateUrl) return;
+  const boxes = [...group.querySelectorAll('input[type="checkbox"]')];
+  boxes.forEach((item) => { item.disabled = true; });
+  try {
+    const response = await fetch(group.dataset.updateUrl, {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+      body: JSON.stringify({operators: boxes.filter((item) => item.checked).map((item) => item.value)}),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || 'The Operators could not be updated.');
+  } catch (error) {
+    box.checked = !box.checked;
+    showInfoDialog(error instanceof Error ? error.message : 'The Operators could not be updated.', {title: 'Operators update failed', tone: 'error'});
+  } finally {
+    boxes.forEach((item) => { item.disabled = false; });
+  }
+});
+
 // The arrow drawn at the right of a Campaign opens its suggestions, the campaigns of the other CDRs.
 document.addEventListener('mousedown', (event) => {
   const input = event.target instanceof HTMLInputElement ? event.target.closest('[data-dataset-campaign-input]') : null;

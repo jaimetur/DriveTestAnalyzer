@@ -1675,6 +1675,7 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .upload-type-item[data-kind="speech"] { --kind: #8a4fd3; --kind-soft: rgba(138, 79, 211, 0.13); }
 .upload-type-item[data-kind="mapping_vodafone"] { --kind: #e60000; --kind-soft: rgba(230, 0, 0, 0.1); }
 .upload-type-item[data-kind="mapping_three"] { --kind: #1f2229; --kind-soft: rgba(31, 34, 41, 0.1); }
+.upload-type-item[data-kind="multivendor_mapping"] { --kind: #c2571a; --kind-soft: rgba(194, 87, 26, 0.12); }
 .upload-type-item[data-kind="network_inventory"] { --kind: #7650b5; --kind-soft: rgba(118, 80, 181, 0.13); }
 .upload-type-item:is([data-kind="regions"], [data-kind="clusters"], [data-kind="vendors"]) { --kind: #2e8b57; --kind-soft: rgba(46, 139, 87, 0.13); }
 .upload-type-item[data-kind="generic"] { --kind: #b85b20; --kind-soft: rgba(184, 91, 32, 0.12); }
@@ -1993,6 +1994,14 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .queue-geo-type-vendors { background: #efe6fb; color: #5a3591; }
 .queue-operator-pill { display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 0; height: 1.65rem; margin-top: 0.35rem; padding: 0 1rem 0 0.45rem; border: 1px solid #c9b4ea; border-radius: 999px; background: #f8f3ff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%235a3591' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 0.45rem center / 0.55rem; color: #5a3591; font-size: 0.72rem; font-weight: 800; appearance: none; -webkit-appearance: none; }
 .queue-operator-pill-inline { width: auto; max-width: 100%; }
+.queue-mapping-operators { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.35rem; }
+.queue-mapping-operator { display: inline-flex; margin: 0; cursor: pointer; }
+.queue-mapping-operator input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
+.queue-mapping-operator span { padding: 0.08rem 0.45rem; border: 1px solid #d8c4b4; border-radius: 999px; background: #ffffff; color: #6d5a4c; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
+.queue-mapping-operator input:checked + span { border-color: #c2571a; background: #c2571a; color: #ffffff; }
+.queue-mapping-operator input:focus-visible + span { outline: 2px solid #1d5b85; outline-offset: 1px; }
+.queue-mapping-operator input:disabled + span { opacity: 0.6; }
+.queue-dataset-also { margin-top: 0.3rem; color: #6941a4; font-size: 0.72rem; font-weight: 700; }
 .queue-snapshot-date > span { white-space: nowrap; }
 .queue-snapshot-date { display: inline-flex; flex-wrap: nowrap; white-space: nowrap; max-width: 100%; align-items: center; gap: 0.35rem; margin: 0.35rem 0 0 0.35rem; padding: 0 0.15rem 0 0.55rem; border: 1px solid #b7d4e8; border-radius: 999px; background: #f1f8fd; color: #1d5b85; font-size: 0.72rem; font-weight: 800; vertical-align: middle; }
 .queue-snapshot-date input { height: 1.5rem; min-height: 0; padding: 0 0.35rem; border: 0; border-radius: 999px; background: #ffffff; color: #1d5b85; font-size: 0.72rem; font-weight: 700; }
@@ -4083,6 +4092,7 @@ body[data-authenticated-role="user-viewer"] :is(.queue-nr-mode-select, .queue-cd
 .mapping-chips { display: flex; flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; gap: .3rem; }
 .mapping-chip { padding: .1rem .5rem; border-radius: 999px; background: #e8eef3; color: #34505f; font-size: .72rem; font-weight: 700; white-space: nowrap; }
 .mapping-chip-date { background: #e6f1fa; color: #1d5b85; }
+.mapping-chip-warning { background: #fdeceb; color: #b3261e; }
 .mapping-choice.is-disabled { cursor: not-allowed; opacity: .55; }
 .mapping-segmented { display: inline-flex; justify-self: start; gap: .2rem; margin: 0; padding: .2rem; border: 1px solid rgba(16, 49, 74, .14); border-radius: 999px; background: #f1f5f8; }
 .mapping-segmented label { position: relative; cursor: pointer; }
@@ -4491,6 +4501,7 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .dataset-card-icon-final { --dataset-card-colour: #1d4f8f; }
 .dataset-card-icon-weekly { --dataset-card-colour: #7b5cc4; }
 .dataset-card-icon-daily { --dataset-card-colour: #d08a1c; }
+.dataset-card-icon-multivendor-mappings { --dataset-card-colour: #c2571a; }
 .dataset-card-icon-network-inventory { --dataset-card-colour: #6941a4; }
 .dataset-card-icon-geospatial { --dataset-card-colour: #2e8b57; }
 .dataset-card-icon-other { --dataset-card-colour: #7b8790; }
@@ -4524,12 +4535,14 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .dataset-flex-notice { display: flex; align-items: flex-start; gap: 0.5rem; max-width: 72rem; margin: 0.55rem 0 0; padding: 0.5rem 0.7rem; border-left: 4px solid #c47a12; border-radius: 6px; background: #fdecc8; color: #6b3f05; font-size: 0.82rem; line-height: 1.4; }
 .dataset-flex-notice svg { flex: none; width: 1.15rem; height: 1.15rem; margin-top: 0.05rem; fill: none; stroke: #b45309; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .dataset-card-combined { padding-top: 0.6rem; border-top: 5px solid #8fa5b1; }
+.dataset-card-multivendor-mappings { border-top: 5px solid #c2571a; }
 .dataset-card-network-inventory { border-top: 5px solid #6941a4; }
 .dataset-card-geospatial { border-top: 5px solid #2e8b57; }
 .dataset-card-other { border-top: 5px solid #7b8790; }
 .dataset-card-final .dataset-card-count { background: #1d4f8f; }
 .dataset-card-weekly .dataset-card-count { background: #7b5cc4; }
 .dataset-card-daily .dataset-card-count { background: #d08a1c; }
+.dataset-card-multivendor-mappings .dataset-card-count { background: #c2571a; }
 .dataset-card-network-inventory .dataset-card-count { background: #6941a4; }
 .dataset-card-geospatial .dataset-card-count { background: #2e8b57; }
 .dataset-card-other .dataset-card-count { background: #7b8790; }

@@ -169,10 +169,11 @@ The `Cell ID` is the identity the cell broadcasts and the CDRs report. Huawei an
 
 ### Resolution rules
 
-Every selected inventory (VFUK and 3UK Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) is normalised into the **Inventory Cells** table: each cell with its technology, owner `Network` (the inventory's Operator when it has no Network column: Vodafone for VFUK, 3 for 3UK), `Host Network`, vendor, site, identity and position. The first and last cells of each sample are looked up there:
+Every selected source (Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) is normalised into the **Inventory Cells** table, or the **Multivendor Mapping Cells** table for a Multivendor Mapping: each cell with its technology, owner `Network` (the inventory's Operator when it has no Network column: Vodafone for VFUK, 3 for 3UK), `Host Network`, vendor, site, identity and position. The first and last cells of each sample are looked up there:
 
 - only among the cells of the networks that can serve the sample's Operator, its own network first (Workspace Config → Serving Networks; by default Vodafone and Three serve each other through eMOCN, Lebara is served by both and every other Operator by its own network);
-- in the snapshot whose date is closest to the CDR's measurements (the median start time of its samples, else the date in its file name), the newest on a tie;
+- only among the Multivendor Mappings that apply to the sample's Operator (the Operators of each one) and the other selected sources;
+- in the snapshot whose date is closest to the CDR's measurements (the median start time of its samples, else the date in its file name), the newest on a tie; beside a Multivendor Mapping, a Network Inventory comes last, so it only completes the cells the mappings do not have;
 - ignoring cells farther from the sample's position than the maximum serving distance (30 km by default), since a global cell identity only identifies a cell within its Operator.
 
 Vodafone UK (`Vodafone_`), Three UK (`3_`) and every other Operator (its own name as prefix, for example `Vodafone VoNR_`, `VF_SA_` or `O2 (UK)_`) resolve the first and last cell with the same rule, stored in `Operator_Vendor`:
@@ -186,7 +187,7 @@ Operators that no selected snapshot serves (EE without its own inventory) store 
 
 ### Remapping
 
-Map CDRs again to apply a newer mapping; the new result replaces the previous one without a prior Clear. Mapping and clearing are background operations and can be applied to several CDRs. Each mapped CDR keeps a signature of what its Vendor was calculated from (the mapping rule version, the Serving Networks and every inventory snapshot with its revision and date); the Map dialog marks the CDRs with another signature as **Vendor mapping outdated** and selects them.
+Map CDRs again to apply a newer mapping; the new result replaces the previous one without a prior Clear. Mapping and clearing are background operations and can be applied to several CDRs. Each mapped CDR keeps a signature of what its Vendor was calculated from (the mapping rule version, the Serving Networks and every snapshot it can read with its revision and date; with Multivendor Mappings in the workspace, their Operators too, and of the Network Inventories only those the CDR was mapped with); the Map dialog marks the CDRs with another signature as **Vendor mapping outdated** and selects them.
 
 For Vendor Comparison, the renderer also appends this effective filter without altering the stored template:
 

@@ -6,6 +6,10 @@ cells are normalised once into ``inventory_cells`` (technology, owner Network, H
 global cell identity, band, channel, PCI, position, azimuth, configuration and status), so Network Insights
 and the Vendor mapping switch between snapshots, or combine them, without reading the source rows again.
 
+A Multivendor Mapping only gives the Vendor of the cells of the CDRs. Its cells, normalised in the same way, are kept in
+tables of their own (``multivendor_mapping_cells`` and ``multivendor_mapping_snapshots``): whatever reads the network
+keeps reading the inventories, however recent a Multivendor Mapping is or whichever cells it leaves out.
+
 The owner ``network`` of a cell (whose cell it is) and its ``host_network`` (whose RAN equipment carries it,
 hence its vendor) are kept apart: an Operator's samples can be served by cells of other networks.
 """
@@ -24,8 +28,13 @@ from src.modules.cell_identity import lte_eci_series, nr_nci_series
 from src.modules.column_names import column_identity
 
 INVENTORY_DATASET_KINDS = ('mapping_vodafone', 'mapping_three', 'network_inventory')
+MULTIVENDOR_MAPPING_KIND = 'multivendor_mapping'
+# The kinds that describe the network on a date.
+SNAPSHOT_DATASET_KINDS = (*INVENTORY_DATASET_KINDS, MULTIVENDOR_MAPPING_KIND)
 INVENTORY_CELLS_TABLE = 'inventory_cells'
 INVENTORY_SNAPSHOTS_TABLE = 'inventory_snapshots'
+MAPPING_CELLS_TABLE = 'multivendor_mapping_cells'
+MAPPING_SNAPSHOTS_TABLE = 'multivendor_mapping_snapshots'
 # Raise when the normalisation changes, so every snapshot is built again from its rows.
 INVENTORY_CELLS_VERSION = 3
 # The owner network of the cells of an inventory without a Network column.
@@ -103,6 +112,8 @@ SNAPSHOT_DATE_PATTERNS = (
     re.compile(r'(?<!\d)(20\d{2})[-_.]?(0[1-9]|1[0-2])[-_.]?(0[1-9]|[12]\d|3[01])(?!\d)'),
     re.compile(r'(?<!\d)(\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?!\d)'),
 )
+# A week in a file name (Week41, W41, 2026_W41).
+SNAPSHOT_WEEK_PATTERN = re.compile(r'(?<![a-z0-9])(?:(20\d{2})[-_. ]?)?(?:week|wk|w)[-_. ]?(0?[1-9]|[1-4]\d|5[0-3])(?!\d)', re.I)
 
 
 def network_family(value: object) -> str:
@@ -122,7 +133,8 @@ def network_family(value: object) -> str:
 
 
 def infer_snapshot_date(file_name: str) -> str | None:
-    """The date in an inventory file name (``260917_…`` or ``…_2026-09-17…``), as ``YYYY-MM-DD``."""
+    """The date in an inventory file name (``260917_…`` or ``…_2026-09-17…``), as ``YYYY-MM-DD``; else the Monday of the
+    week in it (``…_Week41…``), in the year it names or the last time that week came."""
     stem = re.sub(r'\.[^.]+$', '', str(file_name or ''))
     for index, pattern in enumerate(SNAPSHOT_DATE_PATTERNS):
         match = pattern.search(stem)
@@ -134,6 +146,16 @@ def infer_snapshot_date(file_name: str) -> str | None:
             return date(year, int(month), int(day)).isoformat()
         except ValueError:
             continue
+    week = SNAPSHOT_WEEK_PATTERN.search(stem)
+    if week:
+        today = date.today()
+        for year in ((int(week[1]),) if week[1] else (today.year, today.year - 1)):
+            try:
+                monday = date.fromisocalendar(year, int(week[2]), 1)
+            except ValueError:
+                continue
+            if week[1] or monday <= today:
+                return monday.isoformat()
     return None
 
 
@@ -319,15 +341,16 @@ def normalise_inventory(frame: pd.DataFrame, kind: str, dataset_operator: str | 
 # ---------------------------------------------------------------------------
 def ensure_inventory_schema(connection: Any) -> None:
     columns = ', '.join(f'{name} {kind}' for name, kind in CELL_COLUMNS)
-    connection.execute(f'CREATE TABLE IF NOT EXISTS {INVENTORY_CELLS_TABLE} ({columns})')
-    connection.execute(f'CREATE INDEX IF NOT EXISTS idx_inventory_cells_snapshot ON {INVENTORY_CELLS_TABLE} (dataset_id, network_family, technology)')
-    connection.execute(f'CREATE INDEX IF NOT EXISTS idx_inventory_cells_identity ON {INVENTORY_CELLS_TABLE} (cell_identity)')
-    connection.execute(f'CREATE INDEX IF NOT EXISTS idx_inventory_cells_site ON {INVENTORY_CELLS_TABLE} (dataset_id, site_id)')
-    connection.execute(
-        f'CREATE TABLE IF NOT EXISTS {INVENTORY_SNAPSHOTS_TABLE} ('
-        'dataset_id INTEGER PRIMARY KEY, version INTEGER NOT NULL, revision TEXT NOT NULL, cells INTEGER NOT NULL, '
-        "sites INTEGER NOT NULL, summary_json TEXT NOT NULL DEFAULT '{}', built_at TEXT NOT NULL)"
-    )
+    for cells, snapshots in ((INVENTORY_CELLS_TABLE, INVENTORY_SNAPSHOTS_TABLE), (MAPPING_CELLS_TABLE, MAPPING_SNAPSHOTS_TABLE)):
+        connection.execute(f'CREATE TABLE IF NOT EXISTS {cells} ({columns})')
+        connection.execute(f'CREATE INDEX IF NOT EXISTS idx_{cells}_snapshot ON {cells} (dataset_id, network_family, technology)')
+        connection.execute(f'CREATE INDEX IF NOT EXISTS idx_{cells}_identity ON {cells} (cell_identity)')
+        connection.execute(f'CREATE INDEX IF NOT EXISTS idx_{cells}_site ON {cells} (dataset_id, site_id)')
+        connection.execute(
+            f'CREATE TABLE IF NOT EXISTS {snapshots} ('
+            'dataset_id INTEGER PRIMARY KEY, version INTEGER NOT NULL, revision TEXT NOT NULL, cells INTEGER NOT NULL, '
+            "sites INTEGER NOT NULL, summary_json TEXT NOT NULL DEFAULT '{}', built_at TEXT NOT NULL)"
+        )
 
 
 def dataset_revision(dataset: Any) -> str:
@@ -367,9 +390,12 @@ def _summary(cells: pd.DataFrame) -> dict[str, Any]:
 
 
 def build_inventory_cells(repository: Any, dataset: Any) -> dict[str, Any]:
-    """Normalise one inventory dataset into ``inventory_cells`` (replacing its previous cells)."""
+    """Normalise one inventory or Multivendor Mapping into its cells table (replacing its previous cells)."""
     dataset_id = int(dataset['id'])
     kind = str(dataset['dataset_kind'] or '')
+    cells_table, snapshots_table = (
+        (MAPPING_CELLS_TABLE, MAPPING_SNAPSHOTS_TABLE) if kind == MULTIVENDOR_MAPPING_KIND
+        else (INVENTORY_CELLS_TABLE, INVENTORY_SNAPSHOTS_TABLE))
     try:
         operator = str(dataset['dataset_operator'] or '').strip()
     except (KeyError, IndexError):
@@ -384,13 +410,13 @@ def build_inventory_cells(repository: Any, dataset: Any) -> dict[str, Any]:
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
         ensure_inventory_schema(connection)
-        connection.execute(f'DELETE FROM {INVENTORY_CELLS_TABLE} WHERE dataset_id = ?', (dataset_id,))
+        connection.execute(f'DELETE FROM {cells_table} WHERE dataset_id = ?', (dataset_id,))
         connection.executemany(
-            f"INSERT INTO {INVENTORY_CELLS_TABLE} ({', '.join(CELL_COLUMN_NAMES)}) VALUES ({placeholders})",
+            f"INSERT INTO {cells_table} ({', '.join(CELL_COLUMN_NAMES)}) VALUES ({placeholders})",
             records[list(CELL_COLUMN_NAMES)].itertuples(index=False, name=None),
         )
         connection.execute(
-            f'INSERT OR REPLACE INTO {INVENTORY_SNAPSHOTS_TABLE} (dataset_id, version, revision, cells, sites, summary_json, built_at) '
+            f'INSERT OR REPLACE INTO {snapshots_table} (dataset_id, version, revision, cells, sites, summary_json, built_at) '
             "VALUES (?, ?, ?, ?, ?, ?, datetime('now'))",
             (dataset_id, INVENTORY_CELLS_VERSION, dataset_revision(dataset), int(len(cells)), sites, json.dumps(summary)),
         )
@@ -399,16 +425,18 @@ def build_inventory_cells(repository: Any, dataset: Any) -> dict[str, Any]:
 
 def delete_inventory_cells(repository: Any, dataset_ids: Iterable[int] | None = None) -> int:
     """Remove the cells of the given datasets, or of every dataset that no longer exists."""
+    tables = ((INVENTORY_CELLS_TABLE, INVENTORY_SNAPSHOTS_TABLE), (MAPPING_CELLS_TABLE, MAPPING_SNAPSHOTS_TABLE))
     with repository.connection() as connection:
         ensure_inventory_schema(connection)
         if dataset_ids is None:
-            stale = [int(row[0]) for row in connection.execute(
-                f'SELECT dataset_id FROM {INVENTORY_SNAPSHOTS_TABLE} WHERE dataset_id NOT IN (SELECT id FROM datasets)')]
+            stale = [int(row[0]) for _cells, snapshots in tables for row in connection.execute(
+                f'SELECT dataset_id FROM {snapshots} WHERE dataset_id NOT IN (SELECT id FROM datasets)')]
         else:
             stale = [int(value) for value in dataset_ids]
         for dataset_id in stale:
-            connection.execute(f'DELETE FROM {INVENTORY_CELLS_TABLE} WHERE dataset_id = ?', (dataset_id,))
-            connection.execute(f'DELETE FROM {INVENTORY_SNAPSHOTS_TABLE} WHERE dataset_id = ?', (dataset_id,))
+            for cells, snapshots in tables:
+                connection.execute(f'DELETE FROM {cells} WHERE dataset_id = ?', (dataset_id,))
+                connection.execute(f'DELETE FROM {snapshots} WHERE dataset_id = ?', (dataset_id,))
     return len(stale)
 
 
@@ -418,13 +446,27 @@ def inventory_datasets(repository: Any) -> list[Any]:
             if row['status'] == 'ready' and str(row['dataset_kind'] or '') in INVENTORY_DATASET_KINDS]
 
 
-def ensure_inventory_cells(repository: Any, progress: Any = None) -> list[dict[str, Any]]:
-    """Build the cells of every ready inventory whose snapshot is missing or outdated; return the snapshots."""
-    datasets = inventory_datasets(repository)
+def mapping_datasets(repository: Any) -> list[Any]:
+    """The ready Multivendor Mappings of the workspace, newest first."""
+    return [row for row in repository.list_datasets()
+            if row['status'] == 'ready' and str(row['dataset_kind'] or '') == MULTIVENDOR_MAPPING_KIND]
+
+
+def mapping_operators(dataset: Any) -> list[str] | None:
+    """The Operators a Multivendor Mapping applies to; ``None`` until they are chosen or read from its cells."""
+    try:
+        values = json.loads(str(dataset['mapping_operators'] or ''))
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+    return [str(value) for value in values] if isinstance(values, list) else None
+
+
+def _ensure_cells(repository: Any, datasets: list[Any], snapshots_table: str, progress: Any = None) -> None:
+    """Build the cells of the given datasets whose snapshot is missing or outdated."""
     with repository.connection() as connection:
         ensure_inventory_schema(connection)
         built = {int(row['dataset_id']): (int(row['version']), str(row['revision']))
-                 for row in connection.execute(f'SELECT dataset_id, version, revision FROM {INVENTORY_SNAPSHOTS_TABLE}')}
+                 for row in connection.execute(f'SELECT dataset_id, version, revision FROM {snapshots_table}')}
     stale_ids = set(built) - {int(row['id']) for row in datasets}
     if stale_ids:
         delete_inventory_cells(repository, stale_ids)
@@ -433,15 +475,40 @@ def ensure_inventory_cells(repository: Any, progress: Any = None) -> list[dict[s
             if progress:
                 progress(dataset)
             build_inventory_cells(repository, dataset)
+
+
+def ensure_inventory_cells(repository: Any, progress: Any = None) -> list[dict[str, Any]]:
+    """Build the cells of every ready inventory whose snapshot is missing or outdated; return the snapshots."""
+    datasets = inventory_datasets(repository)
+    _ensure_cells(repository, datasets, INVENTORY_SNAPSHOTS_TABLE, progress)
     return list_inventory_snapshots(repository, datasets)
+
+
+def ensure_mapping_cells(repository: Any, progress: Any = None) -> list[dict[str, Any]]:
+    """Build the cells of every ready Multivendor Mapping whose snapshot is missing or outdated; return the snapshots."""
+    datasets = mapping_datasets(repository)
+    _ensure_cells(repository, datasets, MAPPING_SNAPSHOTS_TABLE, progress)
+    return list_mapping_snapshots(repository, datasets)
+
+
+def list_mapping_snapshots(repository: Any, datasets: list[Any] | None = None) -> list[dict[str, Any]]:
+    """As ``list_inventory_snapshots``, for the Multivendor Mappings, each with the Operators it applies to."""
+    datasets = mapping_datasets(repository) if datasets is None else datasets
+    operators = {int(row['id']): mapping_operators(row) or [] for row in datasets}
+    return [{**snapshot, 'operators': operators[snapshot['dataset_id']]}
+            for snapshot in _list_snapshots(repository, datasets, MAPPING_SNAPSHOTS_TABLE)]
 
 
 def list_inventory_snapshots(repository: Any, datasets: list[Any] | None = None) -> list[dict[str, Any]]:
     """Every built snapshot with its date, cells, sites and owner networks, newest snapshot date first."""
     datasets = inventory_datasets(repository) if datasets is None else datasets
+    return _list_snapshots(repository, datasets, INVENTORY_SNAPSHOTS_TABLE)
+
+
+def _list_snapshots(repository: Any, datasets: list[Any], snapshots_table: str) -> list[dict[str, Any]]:
     with repository.connection() as connection:
         ensure_inventory_schema(connection)
-        rows = {int(row['dataset_id']): row for row in connection.execute(f'SELECT * FROM {INVENTORY_SNAPSHOTS_TABLE}')}
+        rows = {int(row['dataset_id']): row for row in connection.execute(f'SELECT * FROM {snapshots_table}')}
     snapshots = []
     for dataset in datasets:
         row = rows.get(int(dataset['id']))

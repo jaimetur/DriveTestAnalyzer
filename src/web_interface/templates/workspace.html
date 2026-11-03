@@ -181,7 +181,7 @@
       <p class="lede">Bring the source files that feed every product workflow into one managed workspace: {{ (upload_cdr_profile | default({})).label | default('NetCheck CDR', true) }} workbooks (Data, Voice and Speech), Layer3 Logs (the parsed drivetest logs of each campaign), and Vodafone UK (VFUK) or Three UK (3UK) Multivendor Mappings. Workspace proposes a type from each filename, lets you confirm it per file and, for CDRs, can apply an existing mapping or one uploaded in the same batch. Batch mappings are processed before their selected CDRs.</p>
       {% if user.role not in ['user-editor', 'admin', 'super-admin'] %}<p class="form-note workspace-read-only-note">The user-viewer role can explore the workspace datasets and generate jobs, but cannot delete, reprocess or map datasets.</p>{% endif %}
       {% if user.role in ['admin', 'super-admin'] %}
-      <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}' data-cdr-profile='{{ upload_cdr_profile | default({}) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list %} data-other-datasets{% endif %}>
+      <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-multivendor-mapping-count="{{ multivendor_mapping_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}' data-cdr-profile='{{ upload_cdr_profile | default({}) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list %} data-other-datasets{% endif %}>
       <label class="dropzone-field" data-upload-dropzone>
         <span class="dropzone-title">Drop workbooks or browse</span>
         <span class="dropzone-copy">Accepted: CSV, XLS, XLSX, XLSM, GeoJSON, JSON, ZIP (shapefile or KMZ package), KMZ, KML</span>
@@ -221,12 +221,14 @@
       {# The campaigns of every Final, Weekly and Daily CDR, the CDRs, the reference datasets and the size of every dataset. #}
       {% set summary_cdrs = datasets | selectattr('dataset_kind', 'in', ['data', 'voice', 'speech']) | list %}
       {% set summary_campaigns = summary_cdrs | map(attribute='campaign') | select | unique | list | length %}
-      {% set summary_inventories = datasets | selectattr('dataset_kind', 'in', ['mapping_vodafone', 'mapping_three', 'network_inventory']) | list | length %}
+      {% set summary_mappings = datasets | selectattr('dataset_kind', 'in', ['multivendor_mapping', 'mapping_vodafone', 'mapping_three']) | list | length %}
+      {% set summary_inventories = datasets | selectattr('dataset_kind', 'equalto', 'network_inventory') | list | length %}
       {% set summary_geographic = datasets | selectattr('dataset_kind', 'in', ['regions', 'clusters', 'vendors']) | list | length %}
       <div class="summary-inline-actions datasets-summary-badges">
         <span class="pill live-pill" data-datasets-campaign-count title="Campaigns of the Final, Weekly and Daily CDRs">{{ summary_campaigns }} campaign{{ '' if summary_campaigns == 1 else 's' }}</span>
         <span class="pill live-pill" data-datasets-cdr-count title="Final, Weekly and Daily CDRs">{{ summary_cdrs | length }} CDR{{ '' if summary_cdrs | length == 1 else 's' }}</span>
-        <span class="pill live-pill" title="Network Inventories and Multivendor Mappings">{{ summary_inventories }} Network Inventor{{ 'y' if summary_inventories == 1 else 'ies' }}</span>
+        <span class="pill live-pill" title="Multivendor Mappings: the Vendor of the cells of the CDRs">{{ summary_mappings }} Multivendor Mapping{{ '' if summary_mappings == 1 else 's' }}</span>
+        <span class="pill live-pill" title="Network Inventories: the network that Network Insights and Non-Qualified Calls read">{{ summary_inventories }} Network Inventor{{ 'y' if summary_inventories == 1 else 'ies' }}</span>
         <span class="pill live-pill" title="Region, Cluster and Vendor polygons">{{ summary_geographic }} Geographic Dataset{{ '' if summary_geographic == 1 else 's' }}</span>
         {% set summary_mb = (datasets | sum(attribute='size_bytes')) / (1024 * 1024) %}
         <span class="pill live-pill" data-datasets-size title="Size of the source files of every dataset">{% if summary_mb >= 1024 %}{{ '{:,.2f}'.format(summary_mb / 1024) }} GB{% else %}{{ '{:,.0f}'.format(summary_mb) }} MB{% endif %}</span>
@@ -237,11 +239,12 @@
       <label class="queue-type-filter-control">Dataset Type
         <select data-queue-type-filter>
           <option value="">All Types</option>
-          {% set has_other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list | length > 0 %}
+          {% set has_other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list | length > 0 %}
           {% set queue_type_options = [
             ('data', 'CDR-Data'),
             ('speech', 'CDR-Speech'),
             ('voice', 'CDR-Voice'),
+            ('multivendor_mapping', 'Multivendor Mapping'),
             ('mapping_three', 'Multivendor Mapping — Three UK (3UK)'),
             ('mapping_vodafone', 'Multivendor Mapping — Vodafone UK (VFUK)'),
             ('network_inventory', 'Network Inventory'),
@@ -506,8 +509,15 @@
                 {% for operator in operator_options %}<option value="{{ operator }}"{% if dataset.dataset_operator == operator %} selected{% endif %}>{{ operator }}</option>{% endfor %}
               </select>
               {% endif %}
-              {% if dataset.dataset_kind in ['mapping_vodafone', 'mapping_three', 'network_inventory'] %}
-              <label class="queue-snapshot-date" title="The date of the network this inventory describes (empty: the date in its file name or its upload date). Network Insights and the Vendor mapping compare inventories by this date.">
+              {% if dataset.dataset_kind == 'multivendor_mapping' %}
+              <div class="queue-mapping-operators" data-dataset-mapping-operators data-update-url="/workspace/datasets/{{ dataset.id }}/mapping-operators" role="group" aria-label="Operators of {{ dataset.file_name }}" title="The Operators this mapping gives a Vendor to, chosen from its cells once it is read. Map the CDRs again to apply a change.">
+                {% for operator in operator_options %}<label class="queue-mapping-operator"><input type="checkbox" value="{{ operator }}"{% if operator in (dataset.mapping_operator_names or []) %} checked{% endif %}><span>{{ operator }}</span></label>{% endfor %}
+              </div>
+              {% elif dataset.dataset_kind in ['mapping_vodafone', 'mapping_three'] %}
+              <div class="queue-dataset-also" title="Network Insights and Non-Qualified Calls read its cells too, besides the Network Inventories.">Also a Network Inventory</div>
+              {% endif %}
+              {% if dataset.dataset_kind in ['multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory'] %}
+              <label class="queue-snapshot-date" title="The date of the network this file describes (empty: the date in its file name or its upload date). Network Insights and the Vendor mapping compare them by this date.">
                 <span>Snapshot</span>
                 <input type="date" value="{{ dataset.snapshot_date_effective or '' }}" data-dataset-snapshot-date data-update-url="/workspace/datasets/{{ dataset.id }}/snapshot-date" aria-label="Snapshot date of {{ dataset.file_name }}">
               </label>
@@ -538,10 +548,11 @@
     {% set final_cdrs, final_flex = final_all | rejectattr('flex_campaign') | list, final_all | selectattr('flex_campaign') | list %}
     {% set weekly_cdrs, weekly_flex = weekly_all | rejectattr('flex_campaign') | list, weekly_all | selectattr('flex_campaign') | list %}
     {% set daily_cdrs, daily_flex = daily_all | rejectattr('flex_campaign') | list, daily_all | selectattr('flex_campaign') | list %}
-    {% set vendor_datasets = datasets | selectattr('dataset_kind', 'in', ['mapping_vodafone', 'mapping_three', 'network_inventory']) | list %}
+    {% set mapping_datasets = datasets | selectattr('dataset_kind', 'in', ['multivendor_mapping', 'mapping_vodafone', 'mapping_three']) | list %}
+    {% set vendor_datasets = datasets | selectattr('dataset_kind', 'equalto', 'network_inventory') | list %}
     {% set geo_datasets = datasets | selectattr('dataset_kind', 'in', ['regions', 'clusters', 'vendors']) | list %}
     {% set l3_datasets = datasets | selectattr('dataset_kind', 'equalto', 'l3_dt_logs') | list %}
-    {% set other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list %}
+    {% set other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list %}
     <div class="dataset-cards">
       {# The campaigns of the CDRs, offered while a Campaign is written. #}
       <datalist id="cdr-campaign-options">{% for campaign in datasets | selectattr('dataset_kind', 'in', cdr_kinds) | map(attribute='campaign') | select | unique | sort %}<option value="{{ campaign }}"></option>{% endfor %}</datalist>
@@ -677,14 +688,15 @@
       </section>
       <div class="dataset-card-grid">
         {% for card_key, card_title, card_note, card_datasets in [
-          ('network-inventory', 'Network Inventory & Vendor Mappings', 'The network inventories of the operators: every cell with its vendor, site and configuration. They give CDR samples the Vendor of their serving cells.', vendor_datasets),
+          ('multivendor-mappings', 'Multivendor Mappings', 'They give CDR samples the Vendor of their serving cells, for the Operators of each one. A Multivendor Mapping does not change the network that the other modules read.', mapping_datasets),
+          ('network-inventory', 'Network Inventories', 'The network inventories of the operators: every cell with its vendor, site and configuration, for Network Insights and Non-Qualified Calls.', vendor_datasets),
           ('geospatial', 'Geographic Datasets', 'Region, Cluster and Vendor polygons that map CDR samples and inventory sites to their area, and CDR samples to the Vendor of each Operator.', geo_datasets),
           ('other', 'Other Datasets', 'Other supported datasets.', other_datasets),
         ] %}
         {% if card_key != 'other' or card_datasets %}
         <section class="dataset-card dataset-card-compact dataset-card-{{ card_key }}" data-dataset-card="{{ card_key }}">
           <header class="dataset-card-head">
-            <div><p class="eyebrow">Reference data</p><h3><span class="dataset-card-icon dataset-card-icon-{{ card_key }}" aria-hidden="true"><svg viewBox="0 0 24 24">{% if card_key == 'network-inventory' %}<path d="M12 8.6 7.6 21.5M12 8.6l4.4 12.9"/><path d="M9.9 14.8h4.2M8.8 18.2h6.4M10.8 11.6h2.4"/><circle cx="12" cy="6.6" r="1.4"/><path d="M8.7 3.6a4.4 4.4 0 0 0 0 6M15.3 3.6a4.4 4.4 0 0 1 0 6M6.2 1.9a7.6 7.6 0 0 0 0 9.4M17.8 1.9a7.6 7.6 0 0 1 0 9.4"/>{% elif card_key == 'geospatial' %}<path d="M3 11.5 7 9.5l3 1 .5 4.5-7 1.5z" fill="currentColor" fill-opacity=".36" stroke-width="1.2"/><path d="m10 10.5 3.5-1.5 4 1-2 5.5-5 -.5z" fill="currentColor" fill-opacity=".14" stroke-width="1.2"/><path d="m17.5 10 3.5 2-1 4.5-4.5-1z" fill="currentColor" fill-opacity=".46" stroke-width="1.2"/><path d="m20 16.5 1 3-4 2-5-1 3.5-5z" fill="currentColor" fill-opacity=".22" stroke-width="1.2"/><path d="m3.5 16.5 7-1.5 5 .5-3.5 5-4 1.5-4-1.5z" fill="currentColor" fill-opacity=".3" stroke-width="1.2"/><path d="M3 11.5 7 9.5l3 1 3.5-1.5 4 1 3.5 2-1 4.5 1 3-4 2-5-1-4 1.5-4-1.5-.5-4z" fill="none"/><path d="M12 12.4s-4.4-3.8-4.4-7a4.4 4.4 0 0 1 8.8 0c0 3.2-4.4 7-4.4 7z" fill="#e5f1ea"/><circle cx="12" cy="5.3" r="1.6"/>{% else %}<path d="M3.5 7a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>{% endif %}</svg></span>{{ card_title }} <span class="dataset-card-count">{{ card_datasets | length }}</span></h3></div>
+            <div><p class="eyebrow">Reference data</p><h3><span class="dataset-card-icon dataset-card-icon-{{ card_key }}" aria-hidden="true"><svg viewBox="0 0 24 24">{% if card_key == 'multivendor-mappings' %}<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>{% elif card_key == 'network-inventory' %}<path d="M12 8.6 7.6 21.5M12 8.6l4.4 12.9"/><path d="M9.9 14.8h4.2M8.8 18.2h6.4M10.8 11.6h2.4"/><circle cx="12" cy="6.6" r="1.4"/><path d="M8.7 3.6a4.4 4.4 0 0 0 0 6M15.3 3.6a4.4 4.4 0 0 1 0 6M6.2 1.9a7.6 7.6 0 0 0 0 9.4M17.8 1.9a7.6 7.6 0 0 1 0 9.4"/>{% elif card_key == 'geospatial' %}<path d="M3 11.5 7 9.5l3 1 .5 4.5-7 1.5z" fill="currentColor" fill-opacity=".36" stroke-width="1.2"/><path d="m10 10.5 3.5-1.5 4 1-2 5.5-5 -.5z" fill="currentColor" fill-opacity=".14" stroke-width="1.2"/><path d="m17.5 10 3.5 2-1 4.5-4.5-1z" fill="currentColor" fill-opacity=".46" stroke-width="1.2"/><path d="m20 16.5 1 3-4 2-5-1 3.5-5z" fill="currentColor" fill-opacity=".22" stroke-width="1.2"/><path d="m3.5 16.5 7-1.5 5 .5-3.5 5-4 1.5-4-1.5z" fill="currentColor" fill-opacity=".3" stroke-width="1.2"/><path d="M3 11.5 7 9.5l3 1 3.5-1.5 4 1 3.5 2-1 4.5 1 3-4 2-5-1-4 1.5-4-1.5-.5-4z" fill="none"/><path d="M12 12.4s-4.4-3.8-4.4-7a4.4 4.4 0 0 1 8.8 0c0 3.2-4.4 7-4.4 7z" fill="#e5f1ea"/><circle cx="12" cy="5.3" r="1.6"/>{% else %}<path d="M3.5 7a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>{% endif %}</svg></span>{{ card_title }} <span class="dataset-card-count">{{ card_datasets | length }}</span></h3></div>
             <p class="form-note">{{ card_note }}</p>
           </header>
           <div class="table-wrap queue-table-wrap">
@@ -867,7 +879,7 @@
         {% endfor %}
       </fieldset>
       {% set usable_inventories = network_inventory_datasets | default([]) | selectattr('can_map_vendors_from') | list %}
-      {% set has_inventory = vodafone_mapping_datasets or three_mapping_datasets or usable_inventories %}
+      {% set has_inventory = multivendor_mapping_datasets or vodafone_mapping_datasets or three_mapping_datasets or usable_inventories %}
       {# The Vendor polygons come first when they cover every Operator of the Network Inventory source. #}
       {% set source_operators = vendor_source_operators | default({}, true) %}
       {% set polygons_cover_inventory = source_operators.get('inventory') and not (source_operators.get('inventory', []) | reject('in', source_operators.get('polygons', [])) | list) %}
@@ -899,7 +911,15 @@
             {% endif %}
             <div class="mapping-inventory" data-vendor-source-fields="inventory"{% if default_vendor_source != 'inventory' %} hidden{% endif %}>
               {% if not has_inventory %}
-              <p class="form-note">Upload a VFUK or 3UK Multivendor Mapping, or a Network Inventory such as a Cell Configuration KMZ package, to the workspace to map Vendors from the serving cells.</p>
+              <p class="form-note">Upload a Multivendor Mapping, or a Network Inventory such as a Cell Configuration KMZ package, to the workspace to map Vendors from the serving cells.</p>
+              {% endif %}
+              {% if multivendor_mapping_datasets %}
+              <fieldset class="mapping-choice-list">
+                <legend>Multivendor Mappings <small>Each one for its Operators. Where several have a cell, the one with the Snapshot date closest to the CDR gives its Vendor.</small></legend>
+                {% for mapping in multivendor_mapping_datasets %}
+                <label class="mapping-choice"><input type="checkbox" name="multivendor_mapping_dataset_ids" value="{{ mapping.id }}" checked><span class="mapping-choice-name" title="{{ mapping.file_name }}">{{ mapping.file_name }}</span><span class="mapping-chips"><span class="mapping-chip" title="{{ (mapping.mapping_operator_names or []) | join(', ') }}">{{ (mapping.mapping_operator_names or []) | length }} Operator{{ '' if (mapping.mapping_operator_names or []) | length == 1 else 's' }}</span>{% if mapping.snapshot_date_effective %}<span class="mapping-chip mapping-chip-date">{{ mapping.snapshot_date_effective }}</span>{% endif %}<span class="mapping-chip">LTE {{ '{:,}'.format(mapping.mapping_technologies.get('LTE', 0)) }}</span><span class="mapping-chip{% if not mapping.mapping_technologies.get('NR') %} mapping-chip-warning{% endif %}"{% if not mapping.mapping_technologies.get('NR') %} title="This file has no NR cells: their samples need another Multivendor Mapping or a Network Inventory"{% endif %}>NR {{ '{:,}'.format(mapping.mapping_technologies.get('NR', 0)) }}</span></span></label>
+                {% endfor %}
+              </fieldset>
               {% endif %}
               {% if vodafone_mapping_datasets %}
               <label class="mapping-row">
@@ -925,9 +945,9 @@
               {% endif %}
               {% if network_inventory_datasets %}
               <fieldset class="mapping-choice-list">
-                <legend>Cell Configuration and other Network Inventories <small>Cell inventories uploaded to the Network Inventory card, such as Cell Configuration KMZ packages: each one is a snapshot of the networks it lists.</small></legend>
+                <legend>Cell Configuration and other Network Inventories <small>{% if multivendor_mapping_datasets %}Tick one to complete the cells the Multivendor Mappings do not have.{% else %}Cell inventories uploaded to the Network Inventories card, such as Cell Configuration KMZ packages: each one is a snapshot of the networks it lists.{% endif %}</small></legend>
                 {% for inventory in network_inventory_datasets %}
-                {% set inventory_usable = inventory.can_map_vendors_from and (inventory.dataset_operator or inventory.multi_network) %}<label class="mapping-choice{% if not inventory_usable %} is-disabled{% endif %}"{% if not inventory_usable %} title="{{ 'Choose its Operator in the Network Inventory card' if inventory.can_map_vendors_from else 'It has no Vendor column and cell identifier to map Vendors' }}"{% endif %}><input type="checkbox" name="network_inventory_dataset_ids" value="{{ inventory.id }}"{% if inventory_usable %} checked{% else %} disabled{% endif %}><span class="mapping-choice-name" title="{{ inventory.file_name }}">{{ inventory.file_name }}</span><span class="mapping-chips"><span class="mapping-chip">{{ inventory.dataset_operator or ('Multi-operator (Network column)' if inventory.multi_network else 'No Operator') }}</span>{% if inventory.snapshot_date_effective %}<span class="mapping-chip mapping-chip-date">Snapshot {{ inventory.snapshot_date_effective }}</span>{% endif %}</span></label>
+                {% set inventory_usable = inventory.can_map_vendors_from and (inventory.dataset_operator or inventory.multi_network) %}<label class="mapping-choice{% if not inventory_usable %} is-disabled{% endif %}"{% if not inventory_usable %} title="{{ 'Choose its Operator in the Network Inventories card' if inventory.can_map_vendors_from else 'It has no Vendor column and cell identifier to map Vendors' }}"{% endif %}><input type="checkbox" name="network_inventory_dataset_ids" value="{{ inventory.id }}"{% if inventory_usable %}{% if not multivendor_mapping_datasets %} checked{% endif %}{% else %} disabled{% endif %}><span class="mapping-choice-name" title="{{ inventory.file_name }}">{{ inventory.file_name }}</span><span class="mapping-chips"><span class="mapping-chip">{{ inventory.dataset_operator or ('Multi-operator (Network column)' if inventory.multi_network else 'No Operator') }}</span>{% if inventory.snapshot_date_effective %}<span class="mapping-chip mapping-chip-date">Snapshot {{ inventory.snapshot_date_effective }}</span>{% endif %}</span></label>
                 {% endfor %}
               </fieldset>
               {% endif %}
@@ -969,7 +989,7 @@
       <details class="vendor-mapping-rule" open data-vendor-source-rule="inventory"{% if default_vendor_source != 'inventory' %} hidden{% endif %}>
         <summary>Vendor mapping rule</summary>
         <ol>
-          <li>The <strong>Cell inventories</strong> (the selected VFUK and 3UK Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) are snapshots of the networks on their Snapshot date. Each cell has the vendor of its <code>Host Network</code>.</li>
+          <li>The <strong>Cell inventories</strong> (the selected Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) are snapshots of the networks on their Snapshot date. Each cell has the vendor of its <code>Host Network</code>.</li>
           <li>Each sample takes the first and last cells of <code>Cell_ID_A</code> (ECI <code>eNodeB ID × 256 + Cell ID</code> or NCI <code>gNodeB ID × 16384 + Cell ID</code>) and finds them among the networks that serve its Operator (<a href="/workspace-config#serving-networks">Serving Networks</a>), in the snapshot closest to the CDR date and within 30 km of the sample.</li>
         </ol>
         <p>Result, with <code>&lt;Operator&gt;</code> as <code>Vodafone</code>, <code>3</code> or the Operator's own name:</p>
@@ -1130,8 +1150,7 @@
     ['voice', `${cdrLabel} — Voice`],
     ['speech', `${cdrLabel} — Speech`],
     ['l3_dt_logs', 'Layer3 Logs'],
-    ['mapping_vodafone', 'Multivendor Mapping — Vodafone UK (VFUK)'],
-    ['mapping_three', 'Multivendor Mapping — Three UK (3UK)'],
+    ['multivendor_mapping', 'Multivendor Mapping'],
     ['network_inventory', 'Network Inventory'],
     ['regions', 'Regions — Geospatial'],
     ['clusters', 'Clusters — Geospatial'],
@@ -1152,6 +1171,7 @@
     generic: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
   };
   typeIcons.mapping_three = typeIcons.mapping_vodafone;
+  typeIcons.multivendor_mapping = typeIcons.mapping_vodafone;
   typeIcons.clusters = typeIcons.regions;
   typeIcons.vendors = typeIcons.regions;
   const fileSize = (bytes) => {
@@ -1183,6 +1203,7 @@
   const clusterMappings = parseMappingOptions('clusterMappingOptions');
   const vendorPolygons = parseMappingOptions('vendorPolygonOptions');
   const networkInventoryCount = Number(form.dataset.networkInventoryCount || 0);
+  const multivendorMappingCount = Number(form.dataset.multivendorMappingCount || 0);
   // The Operators each Vendor source of the workspace covers (Operator identities).
   const sourceOperators = (() => {
     try { return JSON.parse(form.dataset.vendorSourceOperators || '{}') || {}; } catch (_error) { return {}; }
@@ -1213,9 +1234,8 @@
     if (/\.(kmz|kml)$/.test(normalized) || (/\.zip$/.test(normalized) && /(kmz|kml|cell config)/.test(normalized))) return 'network_inventory';
     if (normalized.includes('cluster') && /\.(geojson|json|zip)$/.test(normalized)) return 'clusters';
     if (normalized.includes('vendor') && /\.(geojson|json|zip)$/.test(normalized)) return 'vendors';
-    if (normalized.includes('vfuk') || normalized.includes('vodafone uk') || normalized.includes('vodafone')) return 'mapping_vodafone';
-    if (normalized.includes('3uk') || normalized.includes('three uk') || normalized.includes('three')) return 'mapping_three';
     if (normalized.includes('inventory') && /\.(csv|xlsx|xlsm|xls)$/.test(normalized)) return 'network_inventory';
+    if (/(multi ?vendor|vendor mapping|all vendor|vfuk|vodafone|3uk|three)/.test(normalized) && /\.(csv|xlsx|xlsm|xls)$/.test(normalized)) return 'multivendor_mapping';
     if (normalized.includes('region') || normalized.endsWith('.geojson') || normalized.endsWith('.json')) return 'regions';
     if (normalized.includes('speech')) return 'speech';
     if (normalized.includes('voice')) return 'voice';
@@ -1266,6 +1286,17 @@
       if (value.getUTCMonth() !== month - 1 || value.getUTCDate() !== day) continue;
       return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
+    // A week (Week41, W41, 2026_W41): its Monday, in the year it names or the last time that week came.
+    const week = stem.match(/(?<![a-z0-9])(?:(20\d{2})[-_. ]?)?(?:week|wk|w)[-_. ]?(0?[1-9]|[1-4]\d|5[0-3])(?!\d)/i);
+    if (week) {
+      const today = new Date();
+      for (const year of week[1] ? [Number(week[1])] : [today.getFullYear(), today.getFullYear() - 1]) {
+        const fourth = new Date(Date.UTC(year, 0, 4));
+        const monday = new Date(fourth.getTime() + ((Number(week[2]) - 1) * 7 - (fourth.getUTCDay() + 6) % 7) * 86400000);
+        const inYear = new Date(monday.getTime() + 3 * 86400000).getUTCFullYear() === year;
+        if (inYear && (week[1] || monday <= today)) return monday.toISOString().slice(0, 10);
+      }
+    }
     return '';
   }
 
@@ -1305,6 +1336,11 @@
         if (kind === 'mapping_three' && sourceOperators.mapping_three) inventory.add(sourceOperators.mapping_three);
         // An inventory without its Operator yet cannot be covered.
         if (kind === 'network_inventory') inventory.add(operator ? identities[operator] || operator : '?');
+        // The Operators of a Multivendor Mapping are known once they are chosen or it is processed.
+        if (kind === 'multivendor_mapping') {
+          const chosen = JSON.parse(candidate.mappingOperatorsInput.value || '[]');
+          (chosen.length ? chosen : ['?']).forEach((name) => inventory.add(identities[name] || name));
+        }
         // The Operators of multi-operator polygons are known once they are processed.
         if (kind === 'vendors' && operator) polygons.add(identities[operator] || operator);
       }
@@ -1317,15 +1353,16 @@
         entry.nrModeField.hidden = !isCdr;
         entry.stageField.hidden = !isCdr;
         entry.operatorField.hidden = !['vendors', 'network_inventory'].includes(entry.select.value);
-        entry.snapshotField.hidden = !['mapping_vodafone', 'mapping_three', 'network_inventory'].includes(entry.select.value);
+        entry.mappingOperatorsField.hidden = entry.select.value !== 'multivendor_mapping';
+        entry.snapshotField.hidden = !['multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory'].includes(entry.select.value);
         const multiOperator = entry.operatorSelect.options[0];
         multiOperator.textContent = entry.select.value === 'network_inventory' ? 'Multi-operator (Network column)' : 'Multi-operator';
         // A CDR takes its Vendor from the Network Inventory (Multivendor Mappings and Network Inventories)
         // or from every Vendor polygons dataset: the choice is offered only when both exist, otherwise the
         // source there is is used.
         const polygonsAvailable = vendorPolygons.length > 0 || entries.some((candidate) => candidate.select.value === 'vendors');
-        const inventoryAvailable = vodafoneMappings.length > 0 || threeMappings.length > 0 || networkInventoryCount > 0
-          || entries.some((candidate) => ['mapping_vodafone', 'mapping_three', 'network_inventory'].includes(candidate.select.value));
+        const inventoryAvailable = vodafoneMappings.length > 0 || threeMappings.length > 0 || networkInventoryCount > 0 || multivendorMappingCount > 0
+          || entries.some((candidate) => ['multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory'].includes(candidate.select.value));
         const bothSources = polygonsAvailable && inventoryAvailable;
         entry.vendorSourceField.hidden = !isCdr || !bothSources;
         // With both, the Vendor polygons come first when they cover every Operator of the Network Inventory
@@ -1414,6 +1451,38 @@
       operatorSelect.value = inferOperator(file.name);
       operatorField.append(operatorSelect);
       // The date of the network an inventory describes: the one in its file name, which can be changed.
+      // The Operators a Multivendor Mapping applies to: none chosen, those its cells serve once it is read.
+      const mappingOperatorsField = document.createElement('div');
+      mappingOperatorsField.className = 'upload-nr-mode-field upload-mapping-operators-field';
+      mappingOperatorsField.title = 'The Operators this Multivendor Mapping gives a Vendor to, which can be changed in its row once it is processed';
+      const mappingOperatorsInput = document.createElement('input');
+      mappingOperatorsInput.type = 'hidden';
+      mappingOperatorsInput.name = 'mapping_operators';
+      const mappingOperatorsChoices = document.createElement('div');
+      mappingOperatorsChoices.className = 'queue-mapping-operators';
+      mappingOperatorsChoices.setAttribute('role', 'group');
+      mappingOperatorsChoices.setAttribute('aria-label', `Operators for ${file.name}`);
+      const mappingOperatorsNote = document.createElement('small');
+      mappingOperatorsNote.className = 'upload-field-note';
+      mappingOperatorsNote.textContent = 'None chosen: read from its cells';
+      operatorNames.forEach((name) => {
+        const choice = document.createElement('label');
+        choice.className = 'queue-mapping-operator';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.value = name;
+        box.addEventListener('change', () => {
+          const chosen = [...mappingOperatorsChoices.querySelectorAll('input:checked')].map((item) => item.value);
+          mappingOperatorsInput.value = chosen.length ? JSON.stringify(chosen) : '';
+          mappingOperatorsNote.textContent = chosen.length ? 'Chosen' : 'None chosen: read from its cells';
+          refreshMappingChoices();
+        });
+        const text = document.createElement('span');
+        text.textContent = name;
+        choice.append(box, text);
+        mappingOperatorsChoices.append(choice);
+      });
+      mappingOperatorsField.append('Operators', mappingOperatorsInput, mappingOperatorsChoices, mappingOperatorsNote);
       const snapshotField = document.createElement('label');
       snapshotField.className = 'upload-nr-mode-field upload-snapshot-date-field';
       snapshotField.textContent = 'Snapshot date';
@@ -1440,9 +1509,9 @@
       vendorSourceSelect.setAttribute('aria-label', `Vendor source for ${file.name}`);
       vendorSourceSelect.add(new Option('Cell inventories', ''));
       vendorSourceSelect.add(new Option('Vendor polygons', 'all'));
-      vendorSourceSelect.value = vodafoneMappings.length || threeMappings.length ? '' : 'all';
+      vendorSourceSelect.value = vodafoneMappings.length || threeMappings.length || multivendorMappingCount ? '' : 'all';
       vendorSourceField.append(vendorSourceSelect);
-      const entry = {index, file, item, badge, select, nrModeField, stageField, stageSelect, operatorField, operatorSelect, snapshotField, vendorSourceField, vendorSourceSelect, mappings, mappingSelectors: []};
+      const entry = {index, file, item, badge, select, nrModeField, stageField, stageSelect, operatorField, operatorSelect, mappingOperatorsField, mappingOperatorsInput, snapshotField, vendorSourceField, vendorSourceSelect, mappings, mappingSelectors: []};
       const addMappingSelector = (kind, labelText, fieldName) => {
         const field = document.createElement('label');
         field.textContent = labelText;
@@ -1487,7 +1556,7 @@
       }
       const fields = document.createElement('div');
       fields.className = 'upload-type-fields';
-      fields.append(typeField, nrModeField, stageField, operatorField, snapshotField);
+      fields.append(typeField, nrModeField, stageField, operatorField, mappingOperatorsField, snapshotField);
       const dailyFlag = document.createElement('span');
       dailyFlag.className = 'upload-daily-flag';
       dailyFlag.title = 'Received while the campaign runs; the Final CDR of its campaign replaces it in the combined tables';

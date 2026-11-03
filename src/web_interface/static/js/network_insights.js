@@ -1500,7 +1500,7 @@
   const technologyChip = value => `<span class="ni-tech ni-tech-${String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${escapeHtml(value || '—')}</span>`;
   const shareBar = (value, tone = '') => value === null || value === undefined ? '—'
     : `<span class="ni-share ${tone}"><span style="width:${Math.max(0, Math.min(100, value))}%"></span></span> ${number(value)}%`;
-  const pendingSnapshot = '<p class="ni-pending-box"><strong>Pending input.</strong> Upload a Multivendor Mapping or a Network Inventory (Cell Configuration KMZ packages included) in Workspace: its cells describe the serving cells of the samples.</p>';
+  const pendingSnapshot = '<p class="ni-pending-box"><strong>Pending input.</strong> Upload a Network Inventory (Cell Configuration KMZ packages included) in Workspace: its cells describe the serving cells of the samples.</p>';
   const breakdownTable = (title, rows, label) => `<section class="ni-mini-table"><h4>${escapeHtml(title)}</h4>
     <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>${escapeHtml(label)}</th><th>Samples</th><th>Median km</th><th>Overshooting</th></tr></thead>
     <tbody>${rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.value)}</td><td class="num">${integer(row.samples)}</td><td class="num">${number(row.median_km, 2)}</td><td class="num">${row.overshoot_share === null || row.overshoot_share === undefined ? '—' : `${number(row.overshoot_share)}%`}</td></tr>`).join('') || '<tr><td colspan="5" class="form-note">No sample was matched with an inventory cell.</td></tr>'}</tbody></table></div></section>`;

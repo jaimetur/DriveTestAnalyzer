@@ -9,7 +9,7 @@ Every panel, and every chart, map, ladder and table in it, downloads as a PNG im
 After **Launch Analysis**, the panels are grouped in three categories, each a panel that collapses with its panels: **Summary** (Overview and Key Findings), **Radio Performance** (Coverage & Interference Maps, RF Quality, Latency & Interactivity, Serving Cells and 5G Availability) and **Network & Spectrum** (Network Snapshot, Network Deployment, Cluster Sites Density and Spectrum). In the floating section bar and in the sections menu of the tab, each category goes to its panel and its arrow opens the list of its panels.
 
 > [!NOTE]
-> **Radio views need no extra input.** RSRP, SINR, maps, observed eNodeBs and observed bands come from the processed CDRs. The inventories (Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) and the licensed spectrum are optional inputs that complete the Serving Cells, 5G Availability, Network Snapshot, Network Deployment, Cluster Sites Density and Spectrum panels.
+> **Radio views need no extra input.** RSRP, SINR, maps, observed eNodeBs and observed bands come from the processed CDRs. The Network Inventories (Cell Configuration KMZ packages included) and the licensed spectrum are optional inputs that complete the Serving Cells, 5G Availability, Network Snapshot, Network Deployment, Cluster Sites Density and Spectrum panels.
 
 ## Presentation
 
@@ -165,7 +165,7 @@ For the samples that measured NR with an NR PCI (CDR Data), the first table also
 
 ## Network Snapshot
 
-Every Multivendor Mapping and Network Inventory is a snapshot of the network on its **Snapshot** date (see [Network Inventories](workspace-management.md#network-inventories)), with its cells normalised once into the **Inventory Cells** table. The panel loads without an analysis and shows:
+Every Network Inventory, and each VFUK or 3UK Multivendor Mapping of earlier versions, is a snapshot of the network on its **Snapshot** date (see [Network Inventories](workspace-management.md#network-inventories)), with its cells normalised once into the **Inventory Cells** table. The panel loads without an analysis and shows:
 
 - the **Snapshot in use**: the choice of Launch Analysis and the file and date each network takes (also shown as **Current snapshot** beside **Compare with**);
 - one card per network in its Operator Maps colour, with the snapshot used (its date and file), its sites, its LTE and NR cells (LTE in red and NR in green, as in every Technology column) and the networks it covers;
@@ -272,7 +272,7 @@ Speech falls back to the `Recording_*` fields when the `Playing_*` fields are ab
 
 | Input | Used by | How to provide it |
 | --- | --- | --- |
-| Inventory of every network | Serving Cells, 5G Availability, Network Snapshot, Network Deployment, Cluster Sites Density, Spectrum | Upload Multivendor Mappings or Network Inventories (CSV, Excel or Cell Configuration KMZ/KML/ZIP) in Workspace and date their snapshots |
+| Inventory of every network | Serving Cells, 5G Availability, Network Snapshot, Network Deployment, Cluster Sites Density, Spectrum | Upload Network Inventories (CSV, Excel or Cell Configuration KMZ/KML/ZIP) in Workspace and date their snapshots. A [Multivendor Mapping](workspace-management.md#multivendor-mappings) only gives the Vendor of the CDRs: these panels do not read it |
 | Cluster or region polygons | Cluster Sites Density (sites per km²), Network Deployment (Region and Cluster) | Upload GeoJSON, JSON or a zipped shapefile as Clusters — Geospatial or Regions — Geospatial in Workspace |
 | Serving Networks | Serving Cells, 5G Availability and the Vendor mapping | [Workspace Config → Serving Networks](workspace-config.md#serving-networks); the defaults cover Vodafone, 3 and Lebara |
 | Licensed spectrum per Operator | Spectrum | [Workspace Config → Spectrum Holdings](workspace-config.md#spectrum-holdings) |

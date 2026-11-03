@@ -41,7 +41,7 @@ GENERATION_TIMEOUT_SECONDS = 600
 CDR_KINDS = ('data', 'voice', 'speech')
 # The CDRs whose rows the presentations count as calls (a Speech CDR measures calls of the Voice one).
 CALL_KINDS = ('data', 'voice')
-MAPPING_KINDS = ('mapping_vodafone', 'mapping_three', 'vendors')
+MAPPING_KINDS = ('multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'vendors')
 GEOGRAPHICAL_KINDS = ('regions', 'clusters')
 # Where Node usually is when the application does not run from a shell (a launcher of macOS, for example).
 NODE_CANDIDATES = ('/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node', '/usr/bin/nodejs')

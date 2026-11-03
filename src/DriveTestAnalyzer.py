@@ -86,10 +86,10 @@ from src.modules.report_layouts import canonical_layout_name, selectable_layout_
 from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, calculated_dimension_editor_json, calculated_dimension_preview, calculated_dimension_reads, CALCULATED_FIELD_OPERATORS, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, preview_catalog_chart_data, render_catalog_chart_preview, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
 from src.modules.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
 from src.modules.email_delivery import DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_SECURITY_MODES, email_delivery_settings, invalid_recipients, parse_recipients, save_email_delivery_settings, send_email
-from src.modules.network_inventory import INVENTORY_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, normalise_snapshot_date
+from src.modules.network_inventory import INVENTORY_DATASET_KINDS, MULTIVENDOR_MAPPING_KIND, SNAPSHOT_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, list_mapping_snapshots, mapping_operators, normalise_snapshot_date
 from src.modules.l3_dt_logs import KIND as L3_DT_LOGS_KIND, dataset_summary as l3_dataset_summary, forget_datasets as l3_forget_datasets
 from src.modules.l3_dt_logs import preview_frame as l3_preview_frame, source_columns as l3_source_columns
-from src.modules.serving_cells import vendor_mapping_signature
+from src.modules.serving_cells import suggest_mapping_operators, vendor_mapping_signature
 from src.modules.ingestion import CDR_IGNORED_SHEET_KEYS, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, ensure_fixed_cdr_fields, get_dataset_source_columns, get_excel_sheet_columns, infer_dataset_kind, load_dataset, summarise_dataset
 from src.modules.geospatial import assign_clusters, assign_regions, polygon_vendor_endpoints, validate_cluster_mapping, validate_region_mapping, validate_vendor_polygons, vendor_polygon_operators
 from src.modules.nr_mode import DEFAULT_NR_MODE, NR_MODE_FIELD, NR_MODES, dataset_nr_mode, infer_nr_mode, normalize_nr_mode, nr_mode_label
@@ -407,6 +407,7 @@ INPUT_KIND_LABELS = {
     'data': 'CDR-Data',
     'mapping_vodafone': 'Multivendor Mapping — Vodafone UK (VFUK)',
     'mapping_three': 'Multivendor Mapping — Three UK (3UK)',
+    MULTIVENDOR_MAPPING_KIND: 'Multivendor Mapping',
     'network_inventory': 'Network Inventory',
     'regions': 'Regions — Geospatial',
     'clusters': 'Clusters — Geospatial',
@@ -414,7 +415,11 @@ INPUT_KIND_LABELS = {
     'l3_dt_logs': 'Layer3 Logs',
     'generic': 'Other',
 }
-UPLOAD_DATASET_KINDS = frozenset({'data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'generic'})
+UPLOAD_DATASET_KINDS = frozenset({'data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', MULTIVENDOR_MAPPING_KIND, 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'generic'})
+# The Multivendor Mappings: the two of Vodafone and Three are Network Inventories too, the others give only the Vendor.
+MAPPING_DATASET_KINDS = frozenset({'mapping_vodafone', 'mapping_three', MULTIVENDOR_MAPPING_KIND})
+# The datasets that other datasets use: they are processed first.
+REFERENCE_DATASET_KINDS = frozenset({*MAPPING_DATASET_KINDS, 'network_inventory', 'regions', 'clusters', 'vendors'})
 CDR_DATASET_KINDS = frozenset({'data', 'voice', 'speech'})
 CDR_PREVIEW_FILTER_DEFINITIONS = (
     ('cdr_operator', 'Operator', ('operator', 'Operator')),
@@ -3926,10 +3931,12 @@ def serialize_dataset_row(row) -> dict[str, Any]:
         item['campaign_key'] = ' '.join(filter(None, (item['campaign'], item['l3'].get('nr_mode'))))
         # The NQ calls of the workspace that have a session in it (see add_l3_nq_calls).
         item['l3_nq_calls'] = None
-    if item.get('dataset_kind') in INVENTORY_DATASET_KINDS:
+    if item.get('dataset_kind') in SNAPSHOT_DATASET_KINDS:
         # The date of the network the inventory describes: chosen, else in its file name, else its upload date.
         item['snapshot_date'] = str(item.get('snapshot_date') or '')[:10]
         item['snapshot_date_effective'] = effective_snapshot_date(item)
+    if item.get('dataset_kind') == MULTIVENDOR_MAPPING_KIND:
+        item['mapping_operator_names'] = mapping_operators(item) or []
     item['progress'] = int(item.get('progress') or 0)
     started_at = parse_dataset_timestamp(item.get('processing_started_at'))
     finished_at = parse_dataset_timestamp(item.get('processed_at'))
@@ -3958,7 +3965,7 @@ def serialize_dataset_row(row) -> dict[str, Any]:
 def add_workspace_vendor_capabilities(datasets: list[dict[str, Any]]) -> None:
     """Materialise the Workspace-only Vendor actions for pages and live polling."""
     has_vendor_mappings = any(
-        dataset.get('is_ready') and (dataset.get('dataset_kind') in {'mapping_vodafone', 'mapping_three', 'vendors'} or (
+        dataset.get('is_ready') and (dataset.get('dataset_kind') in {*MAPPING_DATASET_KINDS, 'vendors'} or (
             dataset.get('dataset_kind') == 'network_inventory' and inventory_can_map_vendors(int(dataset['id']))))
         for dataset in datasets
     )
@@ -4751,7 +4758,7 @@ def enqueue_dataset_processing(
             queued_kind = str((queued_dataset['dataset_kind'] if queued_dataset else '') or '')
             future = _submit_workspace_job(
                 task_repository, wait_for_dataset_worker,
-                phase=0 if queued_kind in {'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors'} else 1,
+                phase=0 if queued_kind in REFERENCE_DATASET_KINDS else 1,
                 dataset_id=dataset_id,
                 dataset_kind=queued_kind,
                 batch_priority=batch_priority,
@@ -4790,7 +4797,7 @@ def enqueue_dataset_processing(
         queued_kind = str((queued_dataset['dataset_kind'] if queued_dataset else '') or '')
         future = _submit_workspace_job(
             task_repository, process_after_dependencies,
-            phase=0 if queued_kind in {'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors'} else 1,
+            phase=0 if queued_kind in REFERENCE_DATASET_KINDS else 1,
             dataset_id=dataset_id,
             dataset_kind=queued_kind,
             batch_priority=batch_priority,
@@ -4825,7 +4832,7 @@ def resume_interrupted_dataset_processing(workspace: Workspace) -> list[int]:
         except (json.JSONDecodeError, TypeError):
             options = {}
         dataset_kind = str(row['dataset_kind'] or '')
-        phase = 0 if dataset_kind in {'mapping_vodafone', 'mapping_three', 'regions'} else 1
+        phase = 0 if dataset_kind in {*MAPPING_DATASET_KINDS, 'regions'} else 1
         mapping_rank = 0 if dataset_kind == 'regions' else 1
         batch_priority = bool(options.get('batch_priority'))
         row_keys = set(row.keys())
@@ -4878,7 +4885,7 @@ def resume_interrupted_dataset_processing(workspace: Workspace) -> list[int]:
             dataset_id, dataset_path, username,
             vodafone_mapping_id, three_mapping_id,
             task_repository, workspace, region_mapping_id,
-            phase=0 if str(row['dataset_kind'] or '') in {'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors'} else 1,
+            phase=0 if str(row['dataset_kind'] or '') in REFERENCE_DATASET_KINDS else 1,
             dataset_id=dataset_id, dataset_kind=str(row['dataset_kind'] or ''),
             batch_priority=batch_priority,
         )
@@ -4952,12 +4959,12 @@ def _vendor_polygon_file_operators(path: str, modified: float) -> tuple[str, ...
 def vendor_source_operators(
     vodafone_mappings: list[dict[str, Any]], three_mappings: list[dict[str, Any]],
     network_inventories: list[dict[str, Any]], vendor_polygons: list[dict[str, Any]],
-    task_repository: Repository | None = None,
+    task_repository: Repository | None = None, multivendor_mappings: Iterable[dict[str, Any]] = (),
 ) -> dict[str, Any]:
     """The Operators each Vendor source of the workspace covers, as Operator identities.
 
     Uploading CDRs prefers the Vendor polygons when they cover every Operator of the Network Inventory
-    source (the VFUK and 3UK Multivendor Mappings and the Network Inventories).
+    source (the Multivendor Mappings and the Network Inventories).
     """
     from src.modules.cdr_reporting import operator_key
 
@@ -4973,6 +4980,7 @@ def vendor_source_operators(
         inventory.add(identity('3'))
     inventory |= {identity(item['dataset_operator']) for item in network_inventories
                   if item.get('can_map_vendors_from') and str(item.get('dataset_operator') or '').strip()}
+    inventory |= {identity(name) for item in multivendor_mappings for name in item.get('mapping_operator_names') or []}
     polygons = set()
     for item in vendor_polygons:
         operator = str(item.get('dataset_operator') or '').strip()
@@ -5139,7 +5147,7 @@ def rebuild_dataset_artifacts(
         df = add_vfuk_gcid_column(df)
     elif forced_dataset_kind == 'mapping_three':
         df = add_three_gcid_column(df)
-    if forced_dataset_kind in {'mapping_vodafone', 'mapping_three'}:
+    if forced_dataset_kind in MAPPING_DATASET_KINDS:
         from src.modules.column_names import vendor_filter_value
         # An inventory's vendor comes from OP/ Vendor, OP_Vendor or Vendor; Vendor keeps the vendor alone.
         vendor_columns = [column for column in (
@@ -5191,7 +5199,7 @@ def rebuild_dataset_artifacts(
                 inventory_ids, task_repository, file_name=dataset_path.name,
             )
             auto_vendor_mapping_applied = True
-            inventory_vendor_signature = vendor_mapping_signature(task_repository)
+            inventory_vendor_signature = vendor_mapping_signature(task_repository, inventory_ids=inventory_ids)
         except Exception as exc:
             # Mapping is optional during import. A mapping issue must not make
             # an otherwise valid CDR unusable in Workspace or CDR Analysis.
@@ -5276,15 +5284,24 @@ def rebuild_dataset_artifacts(
     # Mapped Vendors are always complete; otherwise whether the source CDR has a Vendor on every row.
     vendor_values_complete = bool(auto_vendor_mapping_applied or df.attrs.get('vendor_values_complete'))
     processed_at = now_iso()
-    if dataset_kind in INVENTORY_DATASET_KINDS:
+    if dataset_kind in SNAPSHOT_DATASET_KINDS:
         # One normalised snapshot of the network per inventory, so Network Insights and the Vendor
         # mapping never read its source rows again.
         task_repository.update_dataset_profile(dataset_id, progress=96, processing_step='Indexing inventory cells')
         snapshot_row = task_repository.get_dataset(dataset_id)
-        build_inventory_cells(task_repository, {
+        built_cells = build_inventory_cells(task_repository, {
             **(dict(snapshot_row) if snapshot_row else {'id': dataset_id}), 'dataset_kind': dataset_kind,
             'processed_at': processed_at, 'row_count': summary.rows,
         })
+        if dataset_kind == MULTIVENDOR_MAPPING_KIND and (not snapshot_row or mapping_operators(snapshot_row) is None):
+            # Until they are chosen, it applies to the Operators that the networks of its cells serve.
+            suggested_operators = suggest_mapping_operators(task_repository, built_cells['summary']['families'])
+            if suggested_operators:
+                task_repository.update_dataset_profile(dataset_id, mapping_operators=json.dumps(suggested_operators))
+                task_repository.add_log(
+                    str(snapshot_row['uploaded_by'] or '') if snapshot_row else '', 'multivendor_mapping_operators_read',
+                    json.dumps({'dataset_id': dataset_id, 'source': dataset_path.name, 'networks': sorted(built_cells['summary']['families']), 'operators': suggested_operators}, ensure_ascii=False),
+                )
     task_repository.update_dataset_profile(
         dataset_id,
         status='ready',
@@ -5670,7 +5687,7 @@ def process_vendor_mapping(
                 ensure_not_stopped(dataset_id, task_repository)
                 persist_mapped_cdr_frame(dataset, mapped_frame, task_repository)
                 _record_vendor_mapping_signature(
-                    task_repository, dataset_id, None if vendor_polygon_ids else vendor_mapping_signature(task_repository))
+                    task_repository, dataset_id, None if vendor_polygon_ids else vendor_mapping_signature(task_repository, inventory_ids=inventory_ids))
                 clear_dataset_analysis_cache(dataset_path)
                 task_repository.update_dataset_profile(
                     dataset_id, status='ready', progress=100, processing_step='Completed', last_error=None, processed_at=now_iso(),
@@ -13862,6 +13879,8 @@ def render_admin_template(
         'vendor_mappings': 'Vendor Mappings',
         'inventory_cells': 'Inventory Cells',
         'inventory_snapshots': 'Inventory Snapshots',
+        'multivendor_mapping_cells': 'Multivendor Mapping Cells',
+        'multivendor_mapping_snapshots': 'Multivendor Mapping Snapshots',
         'report_templates': 'PPT Templates',
         'saved_query_builder_queries': 'Query Builder Queries',
         'workspace_state': 'Workspace State',
@@ -15099,18 +15118,26 @@ def workspace(
          'multi_network': repository.resolve_dataset_row_column_name(int(dataset['id']), 'Network') is not None}
         for dataset in ready_datasets if dataset.get('dataset_kind') == 'network_inventory'
     ]
+    mapping_snapshots = {item['dataset_id']: item for item in list_mapping_snapshots(repository)} if active_workspace else {}
+    multivendor_mapping_datasets = [
+        {**dataset, 'mapping_technologies': mapping_snapshots.get(int(dataset['id']), {}).get('technologies', {})}
+        for dataset in ready_datasets if dataset.get('dataset_kind') == MULTIVENDOR_MAPPING_KIND
+    ]
     add_workspace_mapping_capabilities(datasets)
     add_combined_inclusion(datasets)
     add_l3_nq_calls(datasets)
     mappable_cdr_datasets = [dataset for dataset in datasets if dataset.get('can_map_mappings')]
-    current_vendor_signature = vendor_mapping_signature(repository) if mappable_cdr_datasets else ''
+    vendor_signatures: dict[tuple[int, ...], str] = {}
     for dataset in mappable_cdr_datasets:
         # Mapped from the inventories under another rule, Serving Networks or set of snapshots: map it again.
         options = parse_json_field(dataset.get('processing_options_json'), {})
         options = options if isinstance(options, dict) else {}
+        sources = tuple(sorted(int(item) for item in options.get('network_inventory_dataset_ids') or []))
+        if sources not in vendor_signatures:
+            vendor_signatures[sources] = vendor_mapping_signature(repository, inventory_ids=sources)
         dataset['vendor_mapping_outdated'] = bool(
             dataset.get('vendor_mapping_applied') and not options.get('vendor_polygon_dataset_ids')
-            and options.get('vendor_mapping_signature') != current_vendor_signature
+            and options.get('vendor_mapping_signature') != vendor_signatures[sources]
         )
     clearable_cdr_datasets = [dataset for dataset in datasets if dataset.get('can_clear_mappings')]
     mappable_region_cdr_datasets = []
@@ -15137,8 +15164,10 @@ def workspace(
             'cluster_mapping_datasets': cluster_mapping_datasets,
             'vendor_polygon_datasets': vendor_polygon_datasets,
             'network_inventory_datasets': network_inventory_datasets,
+            'multivendor_mapping_datasets': multivendor_mapping_datasets,
             'vendor_source_operators': vendor_source_operators(
-                vodafone_mapping_datasets, three_mapping_datasets, network_inventory_datasets, vendor_polygon_datasets),
+                vodafone_mapping_datasets, three_mapping_datasets, network_inventory_datasets, vendor_polygon_datasets,
+                multivendor_mappings=multivendor_mapping_datasets),
             'operator_options': operator_options(),
             'upload_cdr_profile': upload_cdr_profile(repository),
             'mappable_cdr_datasets': mappable_cdr_datasets,
@@ -15361,7 +15390,7 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                               AND datetime(p.processed_at) >= datetime(?))
                        ORDER BY CASE
                                     WHEN p.dataset_kind = 'regions' THEN 0
-                                    WHEN p.dataset_kind IN ('mapping_vodafone', 'mapping_three') THEN 1
+                                    WHEN p.dataset_kind IN ('mapping_vodafone', 'mapping_three', 'multivendor_mapping') THEN 1
                                     ELSE 2
                                 END,
                                 d.id DESC"""
@@ -15370,7 +15399,7 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                 active_mapping_ids = [
                     int(row['id']) for row in rows
                     if str(row['status'] or '').casefold() in {'queued', 'processing'}
-                    and str(row['dataset_kind'] or '') in {'mapping_vodafone', 'mapping_three', 'regions'}
+                    and str(row['dataset_kind'] or '') in {*MAPPING_DATASET_KINDS, 'regions'}
                 ]
                 active_dataset_ids = [
                     int(row['id']) for row in rows
@@ -15390,7 +15419,7 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                     duration_seconds = None
                     queue_blocker = ''
                     if raw_status == 'queued':
-                        is_mapping = str(row['dataset_kind'] or '') in {'mapping_vodafone', 'mapping_three', 'regions'}
+                        is_mapping = str(row['dataset_kind'] or '') in {*MAPPING_DATASET_KINDS, 'regions'}
                         pending_mappings = [mapping_id for mapping_id in active_mapping_ids if mapping_id != int(row['id'])]
                         if pending_mappings and not is_mapping:
                             count = len(pending_mappings)
@@ -15405,7 +15434,7 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                     tasks.append({
                         'id': f'dataset:{workspace.id}:{row["id"]}',
                         'dataset_id': int(row['id']),
-                        'queue_phase': 0 if str(row['dataset_kind'] or '') in {'mapping_vodafone', 'mapping_three', 'regions'} else 1,
+                        'queue_phase': 0 if str(row['dataset_kind'] or '') in {*MAPPING_DATASET_KINDS, 'regions'} else 1,
                         'queue_mapping_rank': 0 if str(row['dataset_kind'] or '') == 'regions' else 1,
                         'queue_batch_priority': '"batch_priority": true' in str(row['processing_options_json'] or '').casefold(),
                         'label': f'Processing dataset: {row["file_name"]}',
@@ -16973,7 +17002,7 @@ def _preview_column_metadata(
             kinds[column] = 'Derived' if column in main or identity in {
                 column_identity(field) for field in PREVIEW_METADATA_FIELDS
             } or (
-                dataset_kind in {'mapping_vodafone', 'mapping_three'}
+                dataset_kind in MAPPING_DATASET_KINDS
                 and identity in MAPPING_PREVIEW_REQUIRED_IDENTITIES
             ) else 'Analysis-derived'
             rules[column] = DERIVED_PREVIEW_RULES.get(identity, 'Derived during CDR ingestion from the available source fields.')
@@ -17203,21 +17232,21 @@ def preview_dataset(
     # A Layer3 Logs dataset is read, read-only, from its Parquet source: its rows are never in SQLite.
     l3_preview = dataset['dataset_kind'] == L3_DT_LOGS_KIND
     available_columns = l3_source_columns(dataset['stored_path']) if l3_preview else repository.list_dataset_row_columns(dataset_id)
-    if dataset['dataset_kind'] in {'mapping_vodafone', 'mapping_three'}:
+    if dataset['dataset_kind'] in MAPPING_DATASET_KINDS:
         available_columns = [column for column in available_columns if not str(column).casefold().startswith('unnamed')]
     available_identities = {column_identity(column) for column in available_columns}
     if not l3_preview:
         available_columns.extend(
             field for field in (*PREVIEW_METADATA_FIELDS, *MAIN_DISPLAY_FIELDS) if column_identity(field) not in available_identities
         )
-    if dataset['dataset_kind'] in {'mapping_vodafone', 'mapping_three'}:
+    if dataset['dataset_kind'] in MAPPING_DATASET_KINDS:
         repository.ensure_vendor_column(dataset_id)
         available_columns = list(dict.fromkeys([*available_columns, *repository.list_dataset_row_columns(dataset_id)]))
     # Inventories processed before the Vendor rename keep their vendor alone in Vendor_Only.
     vendor_preview_column = next(
         (column for column in ('Vendor_Only', 'Vendor') if column in available_columns),
         None,
-    ) if dataset['dataset_kind'] in {'mapping_vodafone', 'mapping_three'} else None
+    ) if dataset['dataset_kind'] in MAPPING_DATASET_KINDS else None
     vendor_preview_columns = {vendor_preview_column} if vendor_preview_column else set()
     vendor_filter_options = repository.list_distinct_dataset_row_values(dataset_id, vendor_preview_column) if vendor_preview_column else []
     preview_sheet_options: list[str] = []
@@ -17272,7 +17301,7 @@ def preview_dataset(
         preview_frame = (
             l3_preview_frame(dataset['stored_path'], preview_columns, row_limit) if l3_preview
             else repository.load_dataset_rows(dataset_id, preview_columns, preview_filters))
-        if dataset['dataset_kind'] in {'mapping_vodafone', 'mapping_three'}:
+        if dataset['dataset_kind'] in MAPPING_DATASET_KINDS:
             _initial_labels, initial_kinds, _initial_rules = _preview_column_metadata(
                 preview_columns, [dataset['stored_path']], derived_preview_columns,
                 main_preview_columns, auto_preview_columns, dataset['dataset_kind'], [dataset_id],
@@ -20853,6 +20882,14 @@ def validated_upload_selections(
         raise HTTPException(status_code=422, detail='Invalid Vendor polygons selection.')
     # The Operator of each Vendor polygons file without an Operator attribute (blank: from the file name).
     selected_dataset_operators = [str(value or '').strip() or None for value in parse_mapping_selection(form.get('dataset_operators'), 'Operator')]
+    # The Operators chosen for each Multivendor Mapping, a JSON list (blank: those its cells serve, once it is processed).
+    selected_mapping_operators: list[list[str] | None] = []
+    for value in parse_mapping_selection(form.get('mapping_operators'), 'Operators'):
+        try:
+            names = json.loads(value) if value else None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail='Invalid Operators selection.') from exc
+        selected_mapping_operators.append([str(name) for name in names] if isinstance(names, list) and names else None)
     # The snapshot date of each inventory (blank: the date in its file name, else its upload date).
     snapshot_dates = form.get('snapshot_dates')
     if snapshot_dates and len(snapshot_dates) != len(file_names):
@@ -20898,7 +20935,7 @@ def validated_upload_selections(
         'vodafone_mappings': selected_vodafone_mappings, 'three_mappings': selected_three_mappings,
         'region_mappings': selected_region_mappings, 'cluster_mappings': selected_cluster_mappings,
         'vendor_polygons': selected_vendor_polygons, 'operators': selected_dataset_operators,
-        'snapshot_dates': selected_snapshot_dates,
+        'snapshot_dates': selected_snapshot_dates, 'mapping_operators': selected_mapping_operators,
     }
 
 
@@ -20939,9 +20976,16 @@ def register_uploaded_datasets(
             )
             # The snapshot date chosen for an inventory; without one it keeps the date in its file name.
             chosen_dates = selections.get('snapshot_dates') or []
-            chosen_date = chosen_dates[index] if selected_kind in INVENTORY_DATASET_KINDS and index < len(chosen_dates) else None
+            chosen_date = chosen_dates[index] if selected_kind in SNAPSHOT_DATASET_KINDS and index < len(chosen_dates) else None
             if chosen_date:
                 task_repository.update_dataset_profile(dataset_id, snapshot_date=chosen_date)
+            chosen_operators = (selections.get('mapping_operators') or [None] * (index + 1))[index]
+            if selected_kind == MULTIVENDOR_MAPPING_KIND and chosen_operators:
+                # A file without a Network column belongs to the Operator chosen for it.
+                task_repository.update_dataset_profile(
+                    dataset_id, mapping_operators=json.dumps(chosen_operators),
+                    dataset_operator=chosen_operators[0] if len(chosen_operators) == 1 else None,
+                )
         uploaded_datasets.append({
             'index': index,
             'dataset_id': dataset_id,
@@ -20985,7 +21029,7 @@ def register_uploaded_datasets(
     for uploaded in sorted(
         uploaded_datasets,
         key=lambda item: (
-            0 if item['dataset_kind'] in {'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors'} else 1,
+            0 if item['dataset_kind'] in REFERENCE_DATASET_KINDS else 1,
             int(item['dataset_id']),
         ),
     ):
@@ -21017,8 +21061,13 @@ def register_uploaded_datasets(
             vodafone_mapping_dataset_id = three_mapping_dataset_id = None
         network_inventory_ids: list[int] = []
         if dataset_kind in CDR_DATASET_KINDS and not vendor_polygon_dataset_ids:
-            # Every ready Network Inventory that can map Vendors (those of other Operators than Vodafone and Three).
+            # Every Multivendor Mapping of the workspace, those of this upload included; without any, every ready Network
+            # Inventory that can map Vendors (those of other Operators than Vodafone and Three).
             network_inventory_ids = [
+                int(row['id']) for row in task_repository.list_datasets()
+                if row['dataset_kind'] == MULTIVENDOR_MAPPING_KIND and (row['status'] == 'ready' or any(
+                    int(item['dataset_id']) == int(row['id']) for item in registered.values()))
+            ] or [
                 int(row['id']) for row in task_repository.list_datasets()
                 if row['dataset_kind'] == 'network_inventory' and row['status'] == 'ready' and inventory_can_map_vendors(int(row['id']), task_repository)
             ]
@@ -21032,8 +21081,10 @@ def register_uploaded_datasets(
             'cluster_mapping_dataset_id': cluster_mapping_dataset_id,
             'vendor_polygon_dataset_ids': vendor_polygon_dataset_ids,
             'network_inventory_dataset_ids': network_inventory_ids,
+            **({'mapping_operators': mapping_operators(task_repository.get_dataset(uploaded['dataset_id']))}
+               if dataset_kind == MULTIVENDOR_MAPPING_KIND else {}),
             **({'snapshot_date': effective_snapshot_date(task_repository.get_dataset(uploaded['dataset_id']))}
-               if dataset_kind in INVENTORY_DATASET_KINDS else {}),
+               if dataset_kind in SNAPSHOT_DATASET_KINDS else {}),
         }))
         dependencies = list(batch_mapping_futures) if dataset_kind in CDR_DATASET_KINDS else []
         future = enqueue_dataset_processing(
@@ -21052,7 +21103,7 @@ def register_uploaded_datasets(
             task_repository=task_repository,
         )
         if future is not None:
-            if dataset_kind in {'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors'}:
+            if dataset_kind in REFERENCE_DATASET_KINDS:
                 batch_mapping_futures.append(future)
 
     return queued_dataset_ids
@@ -21074,6 +21125,7 @@ async def upload_dataset(
     vendor_polygon_selections: Annotated[list[str] | None, Form()] = None,
     dataset_operators: Annotated[list[str] | None, Form()] = None,
     snapshot_dates: Annotated[list[str] | None, Form()] = None,
+    mapping_operators: Annotated[list[str] | None, Form()] = None,
     user: SessionUser = Depends(dataset_upload_user),
 ) -> Response:
     if not dataset_files:
@@ -21122,7 +21174,7 @@ async def upload_dataset(
         'three_mapping_dataset_ids': three_mapping_dataset_ids, 'region_mapping_dataset_ids': region_mapping_dataset_ids,
         'cluster_mapping_dataset_ids': cluster_mapping_dataset_ids, 'nr_modes': nr_modes, 'cdr_stages': cdr_stages,
         'vendor_polygon_selections': vendor_polygon_selections, 'dataset_operators': dataset_operators,
-        'snapshot_dates': snapshot_dates,
+        'snapshot_dates': snapshot_dates, 'mapping_operators': mapping_operators,
     })
     saved_files: list[tuple[str, Path]] = []
     for dataset_file in dataset_files:
@@ -21828,6 +21880,41 @@ async def workspace_cdr_field_dictionary_save(request: Request, user: SessionUse
                     f"changed, {len(saved)} not default). Reprocess the CDRs to apply the Processing and CDR-Main fields.")
 
 
+class DatasetMappingOperatorsUpdate(BaseModel):
+    operators: list[str] = []
+
+
+@app.post('/workspace/datasets/{dataset_id}/mapping-operators')
+def update_dataset_mapping_operators(
+    dataset_id: int, payload: DatasetMappingOperatorsUpdate, user: SessionUser = Depends(workspace_editor_user),
+) -> JSONResponse:
+    """Choose the Operators a Multivendor Mapping applies to; the CDRs take them when they are mapped again."""
+    if active_workspace:
+        require_workspace_access(user, active_workspace.id)
+    dataset = repository.get_dataset(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail='Dataset not found')
+    if str(dataset['dataset_kind'] or '') != MULTIVENDOR_MAPPING_KIND:
+        raise HTTPException(status_code=400, detail='Only Multivendor Mappings have Operators to choose.')
+    operators = list(dict.fromkeys(str(name).strip() for name in payload.operators if str(name).strip()))
+    unknown = sorted(set(operators) - set(operator_options()))
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown Operators: {', '.join(unknown)}.")
+    has_network = repository.resolve_dataset_row_column_name(dataset_id, 'Network') is not None
+    if len(operators) > 1 and not has_network:
+        raise HTTPException(status_code=422, detail='This file has no Network column: choose the one Operator its cells belong to.')
+    previous = mapping_operators(dataset) or []
+    if previous != operators:
+        repository.update_dataset_profile(
+            dataset_id, mapping_operators=json.dumps(operators),
+            **({} if has_network else {'dataset_operator': operators[0] if operators else None}),
+        )
+        repository.add_log(user.username, 'update_dataset_mapping_operators', json.dumps({
+            'dataset_id': dataset_id, 'file': dataset['file_name'], 'previous_operators': previous, 'operators': operators,
+        }))
+    return JSONResponse({'dataset_id': dataset_id, 'operators': operators})
+
+
 class DatasetSnapshotDateUpdate(BaseModel):
     snapshot_date: str = ''
 
@@ -21842,7 +21929,7 @@ def update_dataset_snapshot_date(
     dataset = repository.get_dataset(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail='Dataset not found')
-    if str(dataset['dataset_kind'] or '') not in INVENTORY_DATASET_KINDS:
+    if str(dataset['dataset_kind'] or '') not in SNAPSHOT_DATASET_KINDS:
         raise HTTPException(status_code=400, detail='Only Multivendor Mappings and Network Inventories have a snapshot date.')
     try:
         chosen = normalise_snapshot_date(payload.snapshot_date)
@@ -21975,7 +22062,7 @@ def reprocess_workspace_datasets(
     for dataset in sorted(
         selected_datasets,
         key=lambda item: (
-            0 if item.get('dataset_kind') in {'regions', 'clusters', 'vendors'} else 1 if item.get('dataset_kind') in {'mapping_vodafone', 'mapping_three'} else 2,
+            0 if item.get('dataset_kind') in {'regions', 'clusters', 'vendors'} else 1 if item.get('dataset_kind') in MAPPING_DATASET_KINDS else 2,
             -int(item['id']),
         ),
     ):
@@ -22004,7 +22091,7 @@ def reprocess_workspace_datasets(
         if future is None:
             continue
         dataset_id = int(dataset['id'])
-        if dataset.get('dataset_kind') in {'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors'}:
+        if dataset.get('dataset_kind') in REFERENCE_DATASET_KINDS:
             mapping_futures.append(future)
         queued_ids.append(dataset_id)
         repository.add_log(user.username, 'reprocess_dataset', json.dumps({
@@ -22040,8 +22127,11 @@ def map_dataset_vendors(
     selected_ids = list(dict.fromkeys(cdr_dataset_ids or ([] if cdr_dataset_id is None else [cdr_dataset_id])))
     if not selected_ids:
         raise HTTPException(status_code=400, detail='Select at least one processed NetCheck CDR to map Vendors.')
-    if not vodafone_mapping_dataset_id and not three_mapping_dataset_id:
-        raise HTTPException(status_code=400, detail='Select at least one processed VFUK or 3UK Multivendor Mapping.')
+    # The Multivendor Mappings of the workspace apply as well, each one to its Operators.
+    multivendor_mapping_ids = [int(row['id']) for row in repository.list_datasets()
+                               if row['dataset_kind'] == MULTIVENDOR_MAPPING_KIND and row['status'] == 'ready']
+    if not vodafone_mapping_dataset_id and not three_mapping_dataset_id and not multivendor_mapping_ids:
+        raise HTTPException(status_code=400, detail='Select at least one processed Multivendor Mapping.')
 
     try:
         vodafone_mapping = (
@@ -22077,11 +22167,13 @@ def map_dataset_vendors(
                 vodafone_mapping['id'] if vodafone_mapping else None,
                 three_mapping['id'] if three_mapping else None,
                 batch_priority=True,
+                network_inventory_dataset_ids=multivendor_mapping_ids,
             )
     repository.add_log(user.username, 'queue_vendor_mapping', json.dumps({
         'dataset_ids': selected_ids,
         'vodafone_mapping_dataset_id': vodafone_mapping_dataset_id,
         'three_mapping_dataset_id': three_mapping_dataset_id,
+        'multivendor_mapping_dataset_ids': multivendor_mapping_ids,
     }))
     destination = '/admin' if return_to == 'admin' else f'/workspace?dataset_id={selected_ids[0]}'
     return RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
@@ -22170,22 +22262,28 @@ def map_dataset_mappings(
     vendor_source: str = Form(default='inventory'),
     vendor_polygon_dataset_ids: Annotated[list[int] | None, Form()] = None,
     network_inventory_dataset_ids: Annotated[list[int] | None, Form()] = None,
+    multivendor_mapping_dataset_ids: Annotated[list[int] | None, Form()] = None,
     user: SessionUser = Depends(workspace_editor_user),
 ) -> Response:
     selected_ids = list(dict.fromkeys(cdr_dataset_ids or []))
-    # Vendor comes from the Network Inventory (VFUK and 3UK Multivendor Mappings) or from Vendor polygons, not both.
+    # Vendor comes from the cells (Multivendor Mappings and Network Inventories) or from Vendor polygons, not both.
     if vendor_source not in {'inventory', 'polygons'}:
         raise HTTPException(status_code=422, detail='Choose the Network Inventory or Vendor polygons as the Vendor source.')
     polygon_ids = list(dict.fromkeys(vendor_polygon_dataset_ids or [])) if vendor_source == 'polygons' else []
     inventory_ids = list(dict.fromkeys(network_inventory_dataset_ids or [])) if vendor_source == 'inventory' else []
+    mapping_ids = list(dict.fromkeys(multivendor_mapping_dataset_ids or [])) if vendor_source == 'inventory' else []
     if vendor_source == 'polygons':
         vodafone_mapping_dataset_id = three_mapping_dataset_id = None
-    if not selected_ids or not any((vodafone_mapping_dataset_id, three_mapping_dataset_id, region_mapping_dataset_id, cluster_mapping_dataset_id, polygon_ids, inventory_ids)):
+    if not selected_ids or not any((vodafone_mapping_dataset_id, three_mapping_dataset_id, region_mapping_dataset_id, cluster_mapping_dataset_id, polygon_ids, inventory_ids, mapping_ids)):
         raise HTTPException(status_code=400, detail='Select CDRs and at least one Vendor, Region or Cluster Mapping.')
     for polygon_id in polygon_ids:
         _reporting_dataset(polygon_id, 'vendors')
     for inventory_id in inventory_ids:
         _reporting_dataset(inventory_id, 'network_inventory')
+    for mapping_id in mapping_ids:
+        _reporting_dataset(mapping_id, MULTIVENDOR_MAPPING_KIND)
+    # A CDR keeps the cell sources of its Vendor together, the Multivendor Mappings first.
+    inventory_ids = [*mapping_ids, *inventory_ids]
     if cluster_mapping_dataset_id:
         _reporting_dataset(cluster_mapping_dataset_id, 'clusters')
     if vodafone_mapping_dataset_id:

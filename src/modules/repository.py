@@ -357,6 +357,7 @@ CREATE TABLE IF NOT EXISTS dataset_profiles (
     cdr_stage TEXT,
     in_combined TEXT NOT NULL DEFAULT 'auto',
     dataset_operator TEXT,
+    mapping_operators TEXT,
     snapshot_date TEXT,
     campaign TEXT,
     row_count INTEGER,
@@ -1808,6 +1809,9 @@ class Repository:
         elif 'dataset_operator' not in existing_columns:
             # The Operator of a reference dataset: Vendor polygons and Network Inventories.
             conn.execute("ALTER TABLE dataset_profiles ADD COLUMN dataset_operator TEXT")
+        if 'mapping_operators' not in existing_columns:
+            # The Operators a Multivendor Mapping applies to, as a JSON list (NULL: read from its cells once processed).
+            conn.execute("ALTER TABLE dataset_profiles ADD COLUMN mapping_operators TEXT")
         if 'snapshot_date' not in existing_columns:
             # The date of the network an inventory describes (empty: the date in its name or its upload date).
             conn.execute("ALTER TABLE dataset_profiles ADD COLUMN snapshot_date TEXT")
@@ -2673,7 +2677,7 @@ class Repository:
             for table_name in orphaned:
                 conn.execute(f'DROP TABLE {self._quote_identifier(table_name)}')
             # The normalised inventory cells of deleted inventories (see network_inventory).
-            for table_name in ('inventory_cells', 'inventory_snapshots'):
+            for table_name in ('inventory_cells', 'inventory_snapshots', 'multivendor_mapping_cells', 'multivendor_mapping_snapshots'):
                 if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone():
                     conn.execute(f'DELETE FROM {table_name} WHERE dataset_id NOT IN (SELECT id FROM datasets)')
         return orphaned
@@ -5525,7 +5529,7 @@ class Repository:
             return conn.execute(
                 """
                 SELECT d.id, d.file_name, d.stored_path, d.uploaded_by, d.uploaded_at,
-                       p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.snapshot_date, p.campaign, p.row_count, p.column_count,
+                       p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.mapping_operators, p.snapshot_date, p.campaign, p.row_count, p.column_count,
                        p.default_metric, p.default_aggregation, p.available_metrics_json,
                        p.available_aggregations_json, p.filter_options_json, p.summary_json,
                        p.kpis_json, p.last_error, p.processing_started_at, p.processed_at,
@@ -5543,7 +5547,7 @@ class Repository:
                 conn.execute(
                     """
                     SELECT d.id, d.file_name, d.stored_path, d.uploaded_by, d.uploaded_at,
-                           p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.snapshot_date, p.campaign, p.row_count, p.column_count,
+                           p.status, p.progress, p.processing_step, p.normalization_version, p.vendor_mapping_applied, p.vendor_values_complete, p.region_mapping_applied, p.region_mapping_dataset_id, p.cluster_mapping_applied, p.cluster_mapping_dataset_id, p.dataset_kind, p.nr_mode, p.cdr_stage, p.in_combined, p.dataset_operator, p.mapping_operators, p.snapshot_date, p.campaign, p.row_count, p.column_count,
                            p.default_metric, p.default_aggregation, p.available_metrics_json,
                            p.available_aggregations_json, p.filter_options_json, p.summary_json,
                            p.kpis_json, p.last_error, p.processing_started_at, p.processed_at,

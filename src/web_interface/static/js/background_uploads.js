@@ -94,7 +94,7 @@
     return {response, payload};
   };
   // The files that other files of the batch use come first.
-  const REFERENCE_KINDS = new Set(['mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors']);
+  const REFERENCE_KINDS = new Set(['multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors']);
   const uploadOrder = (record) => record.files.map((_file, index) => index)
     .sort((left, right) => Number(!REFERENCE_KINDS.has(record.kinds?.[left])) - Number(!REFERENCE_KINDS.has(record.kinds?.[right])) || left - right);
   const sessionUrl = (record) => `/api/uploads/${encodeURIComponent(record.workspace_id)}/${encodeURIComponent(record.upload_id)}`;
