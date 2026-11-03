@@ -24,6 +24,7 @@
 - **Workspace Config — Map Areas:** **Countries of the tests** opens at once: it reads a sample of the CDRs of the latest campaign of each NR Mode, directly from their columnar copy, instead of every CDR of the workspace.
 - **Network Insights — Inventories of every format:** **Full Sites/Cells Inventory** and the **Inventory Sites/Cells** source of Cluster Sites Density read the newest Network Inventory of every network, Cell Configuration KMZ packages included, or the **Inventory snapshot** of Launch Analysis for the networks it covers, like the rest of the module, with one table per network of a file with a `Network` column (O2 too). With only the VFUK and 3UK files of earlier versions they show the same as before.
 - **Workspace — Reference data cards:** Multivendor Mappings, Network Inventories and Geographic Datasets fit in one row of a wide window: without the ID column, with the rows under the dataset and the last update under the status.
+- **Scoring & GAP Analysis — Favourites Filters:** the panel collapses and expands from its title, and stays as it was left.
 
 #### 🐛 Bug fixes:
 - **Import / Export / Transfer — PPT Designs:** a PPT Design whose PPT Template was added apart on each server (with an identity of its own on each) no longer shows as updated (`Template Uid: … → …`) in the import preview and the completion message of every transfer back and forth: exports, imports and the preview refer to the template by the identity it has in each workspace, as the PPT Designer does.

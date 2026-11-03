@@ -20,7 +20,7 @@ def test_job_dropdown_is_inside_results_header_and_constrained_to_button_column(
     assert 'grid-template-areas: "title meta" "tip selector";' in template
     assert 'data-selected-saved-filter-card' in calculation_head and 'data-saved-filter-list' in calculation_head
     assert '.saved-filter-picker .saved-filter-list { max-height: min(28rem,55vh); overscroll-behavior: contain; }' in template
-    assert template.index('class="panel scoring-results-panel"') < template.index('class="panel saved-filters-panel"')
+    assert template.index('class="panel scoring-results-panel"') < template.index('class="panel collapsible-panel saved-filters-panel"')
     assert header.index('class="scoring-results-tools"') < header.index('data-saved-filter-selector')
     assert '<summary class="saved-filter-item"' in header
     assert 'data-selected-saved-filter-card' in header and 'data-saved-filter-list' in header
@@ -460,7 +460,7 @@ def test_filter_navigator_opens_from_the_favourites_panel_and_both_selectors():
     for selector in template.split('<details class="saved-filter-selector" data-saved-filter-selector>')[1:]:
         summary = selector.split('</summary>', 1)[0]
         assert 'data-selected-saved-filter-card' in summary and 'data-saved-filter-navigator-open' in summary
-    panel = template.split('<article class="panel saved-filters-panel">', 1)[1].split('data-saved-filters-bulk', 1)[0]
+    panel = template.split('<details class="panel collapsible-panel saved-filters-panel" open data-panel-state-key="scoring:favourites-filters">', 1)[1].split('data-saved-filters-bulk', 1)[0]
     assert 'data-saved-filter-navigator-open' in panel and 'Filter Navigator' in panel
     assert template.count('data-saved-filter-navigator-open') == 3
     dialog = template.split('<dialog class="saved-filter-navigator"', 1)[1].split('</dialog>', 1)[0]
