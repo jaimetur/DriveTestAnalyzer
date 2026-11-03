@@ -1249,7 +1249,7 @@
         ? {...savedFilter.area_summary, breakdown: savedFilter.area_summary.breakdown || 'None', campaigns: savedFilter.area_summary.campaigns || [],
           enabled: true}
         : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedFilter.area_summary?.time_split || 'Campaign',
-          campaigns: savedFilter.area_summary?.campaigns || [], postal_codes: Boolean(savedFilter.area_summary?.postal_codes)},
+          campaigns: savedFilter.area_summary?.campaigns || [], ...(savedFilter.area_summary?.postal_codes ? {postal_codes: true} : {})},
     });
     scheduleSelectionSave();
     scheduleAutoCdrRefresh({delay: 0});

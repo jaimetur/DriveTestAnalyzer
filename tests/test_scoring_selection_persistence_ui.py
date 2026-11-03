@@ -297,7 +297,7 @@ def test_job_selection_restoration_clears_filters_on_actual_controls():
 let restoringSelection = false, message = '', pinnedCdrs = false;
 const keepRestoredContextValues = () => {};
 const scheduleAutoCdrRefresh = () => {};
-const areaSummaryTimeSplit = null, areaSummaryBreakdown = null, areaSummaryCities = null, comparedOperatorsSelect = null;
+const areaSummaryTimeSplit = null, areaSummaryBreakdown = null, areaSummaryCities = null, areaSummaryPostalCodes = null, comparedOperatorsSelect = null;
 const syncAreaSummary = () => {}, refreshAreaSummaryCities = () => {}, applyTrendCampaigns = () => {};
 const selectionFieldOrder = ['Region', 'City'];
 const nrFilter = {value: 'NSA', options: [{value: 'NSA'}, {value: 'NR'}]};
