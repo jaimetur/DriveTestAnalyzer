@@ -9168,8 +9168,9 @@
     hint.className = 'scoring-loss-map-hint';
     hint.textContent = 'Click a row or an area to show it alone; Ctrl/⌘-click adds more, Shift+click chooses the rows in between and Shift+drag selects several areas. Click it again or Esc to show all.';
     content.append(mapBox, tableBox);
-    card.append(title, note, content, hint);
-    if (entry.title === 'Postal Code') {
+    if (entry.title !== 'Postal Code') {
+      card.append(title, note, content, hint);
+    } else {
       const postalNote = document.createElement('p');
       postalNote.className = 'scoring-loss-map-hint';
       postalNote.textContent = `Approximate areas, not official borders: tests near a border can fall in the neighbouring code. ${payload?.views?.insights?.postal_attribution || ''}`;
@@ -9179,7 +9180,10 @@
       const total = ranking.areas.filter(area => area.name !== 'Not specified').length;
       download.textContent = `Download all ${insightNumber(total, 0)} postal codes (CSV)`;
       download.addEventListener('click', () => downloadLossCsv(ranking, savedFilterId));
-      card.append(postalNote, download);
+      // One block below the table: with several operators side by side, the cards line up their four parts.
+      const footer = document.createElement('div');
+      footer.append(hint, postalNote, download);
+      card.append(title, note, content, footer);
     }
     const values = Object.fromEntries((sameLayer ? areas : layer.areas).filter(area => area.name !== 'Not specified')
       .map(area => [area.name, area.points]));
