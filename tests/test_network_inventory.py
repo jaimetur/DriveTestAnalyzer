@@ -229,9 +229,11 @@ def test_multivendor_mapping_applies_only_to_its_operators(client, tmp_path):
     assert mapped['Operator_Vendor'].tolist()[0].endswith(' - All')
 
 
-def test_multivendor_mapping_applies_to_its_operators_without_operator_maps(client, tmp_path, monkeypatch):
+def test_multivendor_mapping_applies_to_its_operators_without_operator_maps(client, tmp_path):
     login(client)
-    monkeypatch.setattr(core.Repository, 'list_operator_mapping_groups', lambda self: [])
+    with core.repository.connection() as connection:
+        connection.execute("DELETE FROM chart_mapping_groups WHERE mapping_type = 'operator'")
+    assert not core.repository.list_operator_mapping_groups()
     mapping = _upload(client, 'VF3_All_Vendor_2026_Week41.csv', MAPPING_CSV, 'multivendor_mapping')
     assert {'3', 'Vodafone'} <= set(mapping['mapping_operator_names']) and 'EE' not in mapping['mapping_operator_names']
     cdr_id = _cdr(tmp_path, {'Operator': ['Vodafone UK', '3', 'EE'], 'Cell_ID_A': [str(10 * 256 + 1), str(20 * 256 + 2), str(10 * 256 + 1)], 'Session_ID_A': [1, 2, 3]})
