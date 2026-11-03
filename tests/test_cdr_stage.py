@@ -186,7 +186,7 @@ def test_workspace_shows_the_cdrs_in_cards_with_their_type_and_combined_state(cl
     assert 'Replaced by the Final CDR UK_Voice_Q3_Final.xlsx' in daily_card
     assert 'Active?' in final_card and '>Yes</span>' in final_card and 'Final CDRs are always included' in final_card
     assert '>No</span>' in daily_card
-    assert 'Geographic Datasets' in page and 'Network Inventory &amp; Vendor Mappings' in page
+    assert 'Geographic Datasets' in page and 'Multivendor Mappings' in page and 'Network Inventories' in page
     status = client.get('/api/datasets/status').json()['datasets']
     entry = next(item for item in status if item['id'] == daily)
     assert entry['cdr_stage'] == 'daily' and entry['combined_included'] is False
