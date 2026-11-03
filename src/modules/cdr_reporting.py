@@ -35,7 +35,7 @@ from src.modules.mapping_order import operator_vendor_order_key, swap_operator_v
 from src.modules.nr_mode import campaign_nr_mode
 from src.modules.report_layouts import DYNAMIC_LAYOUTS, canonical_layout_name, grid_layout_name, dynamic_layout_axes
 from src.modules.column_names import (
-    MAIN_CDR_FIELDS, MAIN_DISPLAY_FIELDS, OPERATOR_VENDOR_FIELD, VENDOR_FIELD, VENDOR_FILTER_IDENTITIES, VENDOR_OPERATOR_FIELD, campaign_sort_key,
+    MAIN_CDR_FIELDS, MAIN_DISPLAY_FIELDS, OPERATOR_VENDOR_FIELD, VENDOR_FIELD, VENDOR_FIELD_IDENTITIES, VENDOR_FILTER_IDENTITIES, VENDOR_OPERATOR_FIELD, campaign_sort_key,
     column_identity,
     compact_campaign_value,
     mapped_vendor_only_value, operator_vendor_value, resolve_column_name, vendor_filter_column, vendor_filter_value, vendor_only_value,
@@ -5397,6 +5397,8 @@ def _status_chart_categories(
     offsets = {"success": 0, "failure": 0}
     neutral_index = 0
     colours_list: list[str] = []
+    # The values of a KPI of vendors keep the colours of the Vendor Maps.
+    vendors = column_identity(state_column) in VENDOR_FIELD_IDENTITIES
     for state in states:
         kind = _outcome_kind(state)
         if kind:
@@ -5408,7 +5410,7 @@ def _status_chart_categories(
                 colours_list.append(variants[offsets[kind] % len(variants)])
                 offsets[kind] += 1
         else:
-            colours_list.append(_colour(state, neutral_index))
+            colours_list.append((_vendor_colour(state, result) if vendors else None) or _colour(state, neutral_index))
             neutral_index += 1
     colours = tuple(colours_list)
     return result, states, colours

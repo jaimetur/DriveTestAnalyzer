@@ -576,6 +576,27 @@ def test_stacked_bars_with_countd_share_out_the_distinct_values_of_the_field() -
     assert catalog_chart_payload(frame, rows)['records'][0]['samples'] == 7
 
 
+def test_stacked_bars_of_vendors_keep_the_colours_of_the_vendor_maps() -> None:
+    vendors = ['Ericsson', 'Ericsson (Mixed)', 'Huawei', 'Mixed (non-Ericsson)', 'NSN', 'Samsung', 'Unknown']
+    frame = pd.DataFrame({'Operator': ['VF'] * 7, 'Campaign': ['2026-Q2'] * 7, 'Vendor': vendors, 'Call_Status': vendors})
+    colours = ['#0255AD', '#002F61', '#FBBD00', '#5E4F2E', '#8C00FF', '#008521', '#7A8791']
+    frame.attrs['vendor_mapping_groups'] = [
+        {'canonical': vendor, 'aliases': [], 'color': colour} for vendor, colour in zip(vendors, colours, strict=True)
+    ]
+    entry = CatalogEntry(
+        slide=2, slide_title='Vendors', slide_subtitle='', layout='', chart_title='VF', cdr_source='CDR-Data',
+        kpi='Vendor', chart_type='100% Stacked Vertical Bars', legend='Vendor', filters='', rows_split='',
+        columns_split='Campaign', legend_position='Right',
+    )
+
+    payload = catalog_chart_payload(frame, entry)
+
+    assert {state['name']: state['colour'] for state in payload['states']} == dict(zip(vendors, colours, strict=True))
+    # A KPI that is not of vendors keeps the neutral colours, as seven values of another field do.
+    other = catalog_chart_payload(frame, replace(entry, kpi='Call_Status', legend='Call_Status'))
+    assert other['states'][0]['colour'] == other['states'][6]['colour'] == '#6F42C1'
+
+
 def test_workspace_vendor_assignment_writes_the_normalized_vendor_field() -> None:
     cdr = pd.DataFrame({
         'Operator': ['Vodafone UK', '3', 'O2 (UK)'],

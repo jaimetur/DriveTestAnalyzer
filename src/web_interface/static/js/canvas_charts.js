@@ -2650,7 +2650,12 @@
       const original = item?.colour || named(name)[0]?.colour;
       let colour = series.colour || original;
       if (colour && Number.isFinite(Number(series.opacity)) && Number(series.opacity) < 1) colour = withAlpha(colour, Number(series.opacity));
-      if (original && colour && String(colour).toUpperCase() !== String(original).toUpperCase()) colours[String(original).toUpperCase()] = colour;
+      // A segment of stacked bars changes by its name: two of them share a colour once a palette starts again.
+      const state = (copy.states || []).find(entry => String(entry.name) === name);
+      if (state && colour) {
+        state.colour = colour;
+        if (item) item.colour = colour;
+      } else if (original && colour && String(colour).toUpperCase() !== String(original).toUpperCase()) colours[String(original).toUpperCase()] = colour;
       for (const entry of [...named(name), ...(item ? [item] : [])]) {
         if (Number(series.width) > 0) entry.width = Number(series.width);
         if (series.dash && DASHES[series.dash]) entry.dash = DASHES[series.dash];

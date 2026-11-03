@@ -806,7 +806,7 @@ The examples show chart-specific cells. Add the shared `Slide`, titles and `Layo
 
 #### 100% Stacked Vertical Bars
 
-Use for proportions, success ratios and categorical quality splits. KPI categories become stack segments.
+Use for proportions, success ratios and categorical quality splits. KPI categories become stack segments. A KPI of vendors (`Vendor`) takes the colours of the [Vendor Maps](workspace-config.md); the Format of the chart can change the colour of any segment.
 
 ```text
 Source Dataset: CDR-Voice
