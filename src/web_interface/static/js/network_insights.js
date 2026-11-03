@@ -1977,7 +1977,7 @@
       return;
     }
     if (!(config.inventories || []).length && group === 'inventory') {
-      host.innerHTML = '<p class="ni-pending-box"><strong>Pending input.</strong> Upload the Vodafone or Three cell inventories as Vendor mapping datasets in Workspace to list their complete rows.</p>';
+      host.innerHTML = '<p class="ni-pending-box"><strong>Pending input.</strong> Upload a Network Inventory in Workspace to list its complete rows.</p>';
       return;
     }
     note.textContent = 'Loading the cell inventories…';
@@ -2000,7 +2000,7 @@
         host.innerHTML = payload.tables.map(renderInventory).join('') || '<p class="form-note">No table matches the selected operators.</p>';
         note.textContent = group === 'observed'
           ? 'Sites and LTE cells observed in the selected CDRs, filtered by the Analysis Selection (CDRs, Operator, Operator_Vendor, Vendor, Region, Cluster, City and Campaign). Use ▾ on a column to filter it; CSV exports every matching row.'
-          : 'Complete uploaded inventories, filtered by Operator, Operator_Vendor, Vendor, Region, Cluster, City and Technology. CDR selection, NR Mode and Campaigns do not restrict inventory rows. Use ▾ on a column to filter it; CSV exports every matching row and column.';
+          : 'Complete rows of the inventory of every network (the newest one, or the Inventory snapshot chosen for the networks it covers), filtered by Operator, Operator_Vendor, Vendor, Region, Cluster, City and Technology. CDR selection, NR Mode and Campaigns do not restrict inventory rows. Use ▾ on a column to filter it; CSV exports every matching row and column.';
         return;
       }
       $('ni-deployment-export-all').disabled = !payload.inventories.length;
@@ -2027,7 +2027,7 @@
 
   const loadClusterInventories = async () => {
     try {
-      const response = await fetch('/api/network-insights/cluster-inventories');
+      const response = await fetch(`/api/network-insights/cluster-inventories?snapshot=${encodeURIComponent($('ni-snapshot').value)}`);
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || 'Unable to load site inventories.');
       clusterInventories = payload;
@@ -2088,6 +2088,7 @@
   $('ni-deployment-technology').onchange = () => { void loadDeployment(); };
   $('ni-deployment-in-service').onchange = () => { void loadDeployment(); };
   $('ni-snapshot').addEventListener('change', () => {
+    void loadClusterInventories();
     void loadDeployment();
     if (analysis) status('The inventory snapshot changed: press Analyse Network to apply it to the serving cells of the samples.');
   });

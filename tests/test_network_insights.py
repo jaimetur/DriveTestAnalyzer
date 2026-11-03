@@ -1228,6 +1228,63 @@ def test_cluster_inventory_counts_deduplicate_uploads_and_do_not_require_cdrs(cl
     assert html.index('id="ni-sites-pending"') < html.index('<strong>Cluster polygons.</strong>')
 
 
+def test_inventory_views_read_the_newest_inventory_of_every_network(client, tmp_path):
+    _login(client)
+    repository = app_module.repository
+    vfuk = _add_ready_dataset(tmp_path, 'vfuk.xlsx', 'mapping_vodafone', pd.DataFrame({
+        'Site_ID': ['V1', 'V2'], 'eNodeB ID': ['1', '2'], 'Cell ID': ['1', '1'], 'OP/ Vendor': ['VF_Ericsson'] * 2, 'Technology': ['LTE'] * 2,
+    }), None)
+    three = _add_ready_dataset(tmp_path, '3uk.csv', 'mapping_three', pd.DataFrame({
+        'MBNL_ID': ['T1'], 'Cid__ECI': ['2561'], 'Vendor': ['3_Nokia'], 'Technology': ['LTE'],
+    }), None)
+    newer = _add_ready_dataset(tmp_path, 'cells.csv', 'network_inventory', pd.DataFrame({
+        'Technology': ['LTE', 'LTE', 'NR', 'LTE', 'LTE'], 'Network': ['Vodafone', 'Vodafone', 'Vodafone', 'H3G', 'Telefonica'],
+        'Site_ID': ['V1', 'V3', 'V3', 'T9', 'O1'], 'eNodeB ID': ['1', '3', '', '9', '7'], 'gNodeB ID': ['', '', '3', '', ''],
+        'Cell ID': ['1', '2', '3', '4', '5'], 'Vendor': ['Ericsson', 'Nokia', 'Nokia', 'Samsung', 'Nokia'],
+        'Operator': ['Ignored'] * 5,
+    }), None)
+    for dataset_id, date in ((vfuk, '2026-08-20'), (three, '2026-08-20'), (newer, '2026-09-17')):
+        repository.update_dataset_profile(dataset_id, snapshot_date=date)
+    assert len(ni.ensure_inventory_cells(repository)) == 3
+
+    def tables(snapshot=''):
+        found = client.post('/api/network-insights/inventory/tables', json={'technology': 'lte_nr', 'snapshot': snapshot}).json()['inventories']
+        return {table['operator_label']: (table['total_rows'], sorted({row[table['columns'].index('Source_Dataset_Name')] for row in table['rows']}))
+                for table in found}
+
+    def counts(snapshot=''):
+        rows = client.get(f'/api/network-insights/cluster-inventories?snapshot={snapshot}').json()['rows']
+        return {row['operator']: (row['sites'], row['cells']) for row in rows}
+
+    # The newest inventory of every network, one table per network of its Network column.
+    assert tables() == {'Vodafone': (3, ['cells.csv']), 'Three': (1, ['cells.csv']), 'O2': (1, ['cells.csv'])}
+    assert counts() == {'Vodafone': (2, 3), 'Three': (1, 1), 'O2': (1, 1)}
+    # A chosen snapshot gives the network it covers; the newest one gives the others.
+    assert tables(str(vfuk)) == {'Vodafone': (2, ['vfuk.xlsx']), 'Three': (1, ['cells.csv']), 'O2': (1, ['cells.csv'])}
+    assert counts(str(three)) == {'Vodafone': (2, 3), 'Three': (1, 1), 'O2': (1, 1)}
+    assert tables(str(three))['Three'] == (1, ['3uk.csv'])
+    # The complete file of an inventory that is not in use stays available.
+    assert client.get(f'/api/network-insights/inventory/{vfuk}').json()['total_rows'] == 2
+    assert client.get(f'/api/network-insights/inventory/{newer}').json()['total_rows'] == 5
+    # An older Network Inventory gives way to VFUK and 3UK.
+    repository.update_dataset_profile(newer, snapshot_date='2026-01-01')
+    assert tables() == {'Vodafone': (2, ['vfuk.xlsx']), 'Three': (1, ['3uk.csv']), 'O2': (1, ['cells.csv'])}
+
+
+def test_vfuk_and_3uk_are_listed_among_the_network_inventories(client, tmp_path):
+    _login(client)
+    _add_ready_dataset(tmp_path, 'vfuk.xlsx', 'mapping_vodafone', pd.DataFrame({'Site_ID': ['V1']}), None)
+    _add_ready_dataset(tmp_path, '3uk.csv', 'mapping_three', pd.DataFrame({'Site_ID': ['T1']}), None)
+    _add_ready_dataset(tmp_path, 'week41.xlsx', 'multivendor_mapping', pd.DataFrame({'Site_ID': ['W1']}), None)
+    page = client.get('/workspace').text
+    mappings = page.split('data-dataset-card="multivendor-mappings"', 1)[1].split('</section>', 1)[0]
+    inventories = page.split('data-dataset-card="network-inventory"', 1)[1].split('</section>', 1)[0]
+    assert 'week41.xlsx' in mappings and 'vfuk.xlsx' not in mappings and '3uk.csv' not in mappings
+    assert 'vfuk.xlsx' in inventories and '3uk.csv' in inventories and 'week41.xlsx' not in inventories
+    assert 'Network Inventory — Vodafone UK (VFUK)' in inventories and 'Network Inventory — Three UK (3UK)' in inventories
+    assert '>1 Multivendor Mapping<' in page and '>2 Network Inventories<' in page
+
+
 def test_combined_inventory_export_prepares_all_rows_before_delivery(client, tmp_path):
     _login(client)
     selection = _combined_inventory_sources(tmp_path)

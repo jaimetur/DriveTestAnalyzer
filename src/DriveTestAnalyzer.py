@@ -405,10 +405,10 @@ INPUT_KIND_LABELS = {
     'voice': 'CDR-Voice',
     'speech': 'CDR-Speech',
     'data': 'CDR-Data',
-    'mapping_vodafone': 'Multivendor Mapping — Vodafone UK (VFUK)',
-    'mapping_three': 'Multivendor Mapping — Three UK (3UK)',
     MULTIVENDOR_MAPPING_KIND: 'Multivendor Mapping',
     'network_inventory': 'Network Inventory',
+    'mapping_vodafone': 'Network Inventory — Vodafone UK (VFUK)',
+    'mapping_three': 'Network Inventory — Three UK (3UK)',
     'regions': 'Regions — Geospatial',
     'clusters': 'Clusters — Geospatial',
     'vendors': 'Vendors — Geospatial',
@@ -416,7 +416,7 @@ INPUT_KIND_LABELS = {
     'generic': 'Other',
 }
 UPLOAD_DATASET_KINDS = frozenset({'data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', MULTIVENDOR_MAPPING_KIND, 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'generic'})
-# The Multivendor Mappings: the two of Vodafone and Three are Network Inventories too, the others give only the Vendor.
+# The datasets chosen as a mapping of the Vendor: a Multivendor Mapping gives only that, VFUK and 3UK are Network Inventories too.
 MAPPING_DATASET_KINDS = frozenset({'mapping_vodafone', 'mapping_three', MULTIVENDOR_MAPPING_KIND})
 # The datasets that other datasets use: they are processed first.
 REFERENCE_DATASET_KINDS = frozenset({*MAPPING_DATASET_KINDS, 'network_inventory', 'regions', 'clusters', 'vendors'})

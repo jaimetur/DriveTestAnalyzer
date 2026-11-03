@@ -20,6 +20,7 @@ import json
 import math
 import re
 from datetime import date
+from functools import lru_cache
 from typing import Any, Iterable
 
 import pandas as pd
@@ -130,6 +131,12 @@ def network_family(value: object) -> str:
     if key in {'ee', 'eeuk', 'everythingeverywhere', 'btee'}:
         return 'ee'
     return key
+
+
+@lru_cache(maxsize=1024)
+def row_network_family(network: object, default: object = '') -> str:
+    """The network family of a source row: its Network, else the Operator of its dataset."""
+    return network_family(_clean_text(network) or default)
 
 
 def infer_snapshot_date(file_name: str) -> str | None:

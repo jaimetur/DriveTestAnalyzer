@@ -128,5 +128,5 @@ For super-admins, complete unimported packages appear in **Recovered transfer pa
 - Rename a dataset inline; queued and processing rows remain locked until their current work finishes.
 - Preview any Ready dataset in a separate tab.
 - Open Ready Data, Voice or Speech CDRs in CDR Analysis.
-- Apply available VFUK/3UK mappings to an eligible CDR or clear its persisted Vendor mapping.
+- Apply the available VFUK and 3UK Network Inventories to an eligible CDR or clear its persisted Vendor mapping.
 - Delete a dataset after confirmation whenever it is not processing; stop active processing from Workspace first.

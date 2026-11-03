@@ -2,9 +2,8 @@
 
 The analysis reads the per-sample radio fields already present in the CDRs
 (RSRP, SINR, serving cells, frequencies and coordinates) together with the
-workspace's Operator mappings, the cell inventories uploaded as Vendor
-mapping datasets and the licensed spectrum holdings configured in Workspace
-Config. Every function below is free of web-framework dependencies so it can
+workspace's Operator mappings, the Network Inventories and the licensed
+spectrum holdings configured in Workspace Config. Every function below is free of web-framework dependencies so it can
 be tested directly.
 """
 # Postponed annotations are deliberately not enabled: FastAPI must resolve the
@@ -46,7 +45,8 @@ from src.modules import inventory_insights as ii
 from src.modules import network_insights_favourites as ni_favourites
 from src.modules.network_insights_findings import findings_payload, mode_of_test
 from src.modules.scoring_themes import THEMES, canvas_chart_style, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
-from src.modules.network_inventory import dataset_revision, effective_snapshot_date, ensure_inventory_cells, network_family
+from src.modules.network_inventory import (dataset_revision, effective_snapshot_date, ensure_inventory_cells,
+                                           list_inventory_snapshots, network_family, resolve_fields, row_network_family)
 from src.modules.network_inventory import inventory_datasets as snapshot_datasets
 from src.modules.serving_cells import load_serving_networks, serving_families
 
@@ -1025,7 +1025,7 @@ def licensed_spectrum_summary(holdings: list[dict[str, Any]]) -> list[dict[str, 
     ]
 
 
-# Cell inventories arrive as Vendor mapping datasets; their columns differ by
+# The columns of the Network Inventories differ by
 # operator and sheet, so each logical field lists the accepted headers.
 INVENTORY_FIELDS = {
     'site': ('Site_ID', 'Site ID', 'eNBId', 'eNodeB ID', 'MBNL_ID'),
@@ -1052,9 +1052,12 @@ NR_DUPLEX_SPLITS = {'': 'Owner network', 'region': 'Region', 'cluster': 'Cluster
 
 
 # ---------------------------------------------------------------------------
-# Inventory (Vendor mapping datasets)
+# Inventory (the rows of the Network Inventories)
 # ---------------------------------------------------------------------------
-INVENTORY_DATASET_KINDS = {'mapping_vodafone': 'Vodafone', 'mapping_three': 'Three'}
+# VFUK and 3UK are read whole, as the inventories of Vodafone and Three.
+WHOLE_INVENTORY_KINDS = {'mapping_vodafone': 'Vodafone', 'mapping_three': 'Three'}
+# The table of each network of any other Network Inventory.
+INVENTORY_NETWORK_LABELS = {'vodafone': 'Vodafone', 'three': 'Three', 'o2': 'O2', 'ee': 'EE'}
 
 
 INVENTORY_KEY_COLUMNS = ('Operator', 'Operator_Vendor', 'Vendor', 'Region', 'Cluster', 'City', 'Technology')
@@ -1148,6 +1151,17 @@ def register_inventory_polygon_mapping(repository, connection) -> None:
         return names[min(matches)] if len(matches) else ''
 
     connection.create_function('inventory_polygon_name', 6, mapped_name, deterministic=True)
+
+
+def inventory_network_filter(dataset: dict[str, Any], columns: Iterable[str], quote) -> str:
+    """SQL condition on the rows of the network of an inventory ('' when it is read whole)."""
+    if not dataset.get('network'):
+        return ''
+    parts = [f"NULLIF(TRIM(CAST({quote(column)} AS TEXT)), '')" for column in resolve_fields(columns).get('network', [])]
+    value = f"COALESCE({', '.join(parts)}, '')" if parts else "''"
+    default = str(dataset.get('default_network') or '').replace("'", "''")
+    network = str(dataset['network']).replace("'", "''")
+    return f"inventory_network_family({value}, '{default}') = '{network}'"
 
 
 def inventory_coordinate_expressions(columns, quote) -> list[str]:
@@ -1280,6 +1294,7 @@ def prepare_inventory_query(repository, connection, datasets: list[dict[str, Any
     connection.create_function('inventory_vendor_only', 2, vendor_only_value, deterministic=True)
     connection.create_function('inventory_technology', 1, technology_value, deterministic=True)
     connection.create_function('inventory_filter', 2, filter_value, deterministic=True)
+    connection.create_function('inventory_network_family', 2, row_network_family, deterministic=True)
     register_inventory_polygon_mapping(repository, connection)
     schemas = {row['id']: repository.list_dataset_row_columns(row['id']) for row in datasets}
     source_columns = list(dict.fromkeys(column for row in datasets for column in schemas[row['id']]))
@@ -1307,7 +1322,9 @@ def prepare_inventory_query(repository, connection, datasets: list[dict[str, Any
             return f"COALESCE({', '.join(parts)}, '')"
 
         fallback = str(dataset['operator']).replace("'", "''")
-        operator = f"inventory_operator({expression(INVENTORY_DETAIL_ALIASES['Operator'])}, '{fallback}')"
+        # The rows of a network take its name, whatever else the file calls them.
+        named = "''" if dataset.get('network') else expression(INVENTORY_DETAIL_ALIASES['Operator'])
+        operator = f"inventory_operator({named}, '{fallback}')"
         raw_vendor = expression(INVENTORY_DETAIL_ALIASES['Source_Vendor'])
         only = expression(INVENTORY_DETAIL_ALIASES['Vendor_Only'])
         normalized = {
@@ -1337,7 +1354,9 @@ def prepare_inventory_query(repository, connection, datasets: list[dict[str, Any
         filename = str(dataset['file_name']).replace("'", "''")
         values.extend([f"{int(dataset['id'])} AS Source_Dataset_ID", f"'{filename}' AS Source_Dataset_Name"])
         values.extend(f"{quote(source) if source in available else 'NULL'} AS {quote(source_names[source])}" for source in source_columns)
-        selects.append(f"SELECT {', '.join(values)} FROM {quote(repository.dataset_rows_table_name(dataset['id']))}")
+        network = inventory_network_filter(dataset, available, quote)
+        selects.append(f"SELECT {', '.join(values)} FROM {quote(repository.dataset_rows_table_name(dataset['id']))}"
+                       + (f' WHERE {network}' if network else ''))
     if not selects:
         return '', [], columns
     if not apply_filters:
@@ -1387,10 +1406,13 @@ def inventory_projection(task_repository: Any, dataset: dict[str, Any]) -> pd.Da
     selected = ', '.join(f'{expression} AS {quote(field)}'
                          for field, expression in expressions.items() if expression)
     table = quote(task_repository.dataset_rows_table_name(dataset_id))
+    network = inventory_network_filter(dataset, columns, quote)
     with task_repository.connection() as connection:
+        connection.create_function('inventory_network_family', 2, row_network_family, deterministic=True)
         register_inventory_polygon_mapping(task_repository, connection)
         return pd.read_sql_query(
-            f"SELECT DISTINCT {selected} FROM {table} WHERE {expressions['site']} IS NOT NULL", connection)
+            f"SELECT DISTINCT {selected} FROM {table} WHERE {expressions['site']} IS NOT NULL"
+            + (f' AND {network}' if network else ''), connection)
 
 
 def inventory_summary(task_repository: Any, dataset: dict[str, Any], group: str | None,
@@ -1504,13 +1526,50 @@ def install_network_insights_routes(core: Any) -> None:
             })
         return sorted(rows, key=lambda row: row['id'], reverse=True)
 
-    def inventory_datasets(task_repository) -> list[dict[str, Any]]:
+    def inventory_datasets(task_repository, choice: Any = '') -> list[dict[str, Any]]:
+        """The inventory each network is read from: the chosen snapshot for the networks it covers, else the newest one.
+
+        VFUK and 3UK are read whole, as the inventories of Vodafone and Three (overlapping uploads of one of them are
+        read together); any other Network Inventory gives one entry per network of its rows (``network``).
+        """
+        try:
+            chosen = int(choice) if str(choice or '').strip() else None
+        except (TypeError, ValueError):
+            chosen = None
+        datasets = snapshot_datasets(task_repository)
+        covered = {item['dataset_id']: item['families'] for item in list_inventory_snapshots(task_repository, datasets)}
+        owned: dict[int, dict[str, str]] = {}
+        for row in datasets:
+            kind = str(row['dataset_kind'])
+            owned[int(row['id'])] = ({network_family(WHOLE_INVENTORY_KINDS[kind]): WHOLE_INVENTORY_KINDS[kind]} if kind in WHOLE_INVENTORY_KINDS else {
+                family: INVENTORY_NETWORK_LABELS.get(family) or str((details.get('networks') or [family])[0])
+                for family, details in covered.get(int(row['id']), {}).items() if family and details.get('cells')})
+        candidates: dict[str, list[Any]] = {}
+        for row in sorted(datasets, key=lambda row: (effective_snapshot_date(row), int(row['id'])), reverse=True):
+            for family in owned[int(row['id'])]:
+                candidates.setdefault(family, []).append(row)
+        used = set()
+        for family, rows in candidates.items():
+            first = next((row for row in rows if int(row['id']) == chosen), rows[0])
+            together = first['dataset_kind'] in WHOLE_INVENTORY_KINDS and int(first['id']) != chosen
+            used |= {(int(row['id']), family) for row in rows
+                     if int(row['id']) == int(first['id']) or (together and row['dataset_kind'] == first['dataset_kind'])}
         return [
-            {'id': int(row['id']), 'kind': row['dataset_kind'], 'operator': INVENTORY_DATASET_KINDS[row['dataset_kind']],
+            {'id': int(row['id']), 'kind': row['dataset_kind'], 'operator': label,
+             'network': '' if row['dataset_kind'] in WHOLE_INVENTORY_KINDS else family,
+             'default_network': str(dict(row).get('dataset_operator') or ''),
              'file_name': str(row['file_name']), 'updated_at': str(row['updated_at'] or '')}
-            for row in task_repository.list_datasets()
-            if row['status'] == 'ready' and row['dataset_kind'] in INVENTORY_DATASET_KINDS
+            for row in datasets for family, label in owned[int(row['id'])].items() if (int(row['id']), family) in used
         ]
+
+    def ready_inventory(task_repository, dataset_id: int) -> dict[str, Any]:
+        """A ready inventory, in use or not, as a whole file: its complete rows stay available."""
+        for row in snapshot_datasets(task_repository):
+            if int(row['id']) == dataset_id:
+                return {'id': dataset_id, 'kind': row['dataset_kind'], 'file_name': str(row['file_name']),
+                        'operator': WHOLE_INVENTORY_KINDS.get(row['dataset_kind']) or str(dict(row).get('dataset_operator') or 'Inventory'),
+                        'updated_at': str(row['updated_at'] or '')}
+        raise HTTPException(404, 'Ready Network Inventory not found in the active workspace.')
 
     def cluster_datasets_ready(task_repository) -> bool:
         return any(row['status'] == 'ready' and row['dataset_kind'] == 'clusters'
@@ -2663,21 +2722,21 @@ def install_network_insights_routes(core: Any) -> None:
                 site_tables_cache.popitem(last=False)
         return value
 
-    def operator_labels(task_repository) -> dict[str, str]:
-        """Mapped operator -> inventory label (Vodafone, Three) of the uploaded inventories."""
+    def operator_labels(task_repository, choice: Any = '') -> dict[str, str]:
+        """Mapped operator -> inventory label (Vodafone, Three, O2) of the inventories in use."""
         mappings = {str(key).casefold(): str(value) for key, value in task_repository.list_operator_mappings().items()}
         return {mappings.get(row['operator'].casefold(), row['operator']): row['operator']
-                for row in inventory_datasets(task_repository)}
+                for row in inventory_datasets(task_repository, choice)}
 
-    def inventory_index(task_repository) -> dict[str, Any]:
+    def inventory_index(task_repository, choice: Any = '') -> dict[str, Any]:
         """Normalised key fields of every inventory row, built once per inventory revision.
 
         Pages, filters and value lists read this index; only the visible rows
         are read back from the stored inventories.
         """
-        datasets = inventory_datasets(task_repository)
+        datasets = inventory_datasets(task_repository, choice)
         signature = json.dumps([INVENTORY_CACHE_VERSION, str(Path(task_repository.db_path).resolve()),
-                                [(row['id'], inventory_revision(task_repository, row)) for row in datasets],
+                                [(row['id'], row['network'], inventory_revision(task_repository, row)) for row in datasets],
                                 task_repository.chart_mapping_settings(), inventory_polygon_sources(task_repository)],
                                sort_keys=True, default=str)
         digest = hashlib.sha256(signature.encode()).hexdigest()
@@ -2728,7 +2787,7 @@ def install_network_insights_routes(core: Any) -> None:
 
     def selected_inventory(task_repository, request: SitesRequest) -> tuple[dict[str, Any], pd.DataFrame]:
         """Inventory index rows matching the Analysis Selection (Operator, Vendor, Region, City, Technology)."""
-        index = inventory_index(task_repository)
+        index = inventory_index(task_repository, request.snapshot)
         frame = index['frame']
         normalise = inventory_filter_normalizer(task_repository)
         mask = pd.Series(True, index=frame.index)
@@ -2867,8 +2926,8 @@ def install_network_insights_routes(core: Any) -> None:
         return result
 
     def table_operators(task_repository, request: SitesRequest, frame: pd.DataFrame) -> dict[str, str]:
-        """Operators with a table: those of the uploaded inventories, otherwise the CDR operators."""
-        labels = operator_labels(task_repository)
+        """Operators with a table: those of the inventories in use, otherwise the CDR operators."""
+        labels = operator_labels(task_repository, request.snapshot)
         if not labels and request.source == 'observed':
             labels = {value: value for value in pd.unique(frame['Operator']) if str(value).strip()}
         mappings = {str(key).casefold(): str(value) for key, value in task_repository.list_operator_mappings().items()}
@@ -2876,8 +2935,9 @@ def install_network_insights_routes(core: Any) -> None:
         wanted = ValueSet(value if is_pattern(value) else mappings.get(value.casefold(), value)
                           for value in request.operators if str(value).strip())
         groups = task_repository.list_operator_mapping_groups()
+        left_out = {str(name).casefold() for name in excluded_operators(task_repository)}
         return {operator: label for operator, label in sorted(labels.items(), key=lambda item: operator_order_key(item[1], groups))
-                if not wanted or wanted.accepts([operator, label])}
+                if str(operator).casefold() not in left_out and (not wanted or wanted.accepts([operator, label]))}
 
     def text_values(series: pd.Series) -> pd.Series:
         """Values as filters compare them: text, with blanks as ''."""
@@ -3000,7 +3060,7 @@ def install_network_insights_routes(core: Any) -> None:
     @app.post('/api/network-insights/sites/page')
     def network_insights_site_page(request: SitesRequest, user=Depends(insights_user)):
         task_repository = bound_repository()
-        labels = operator_labels(task_repository)
+        labels = operator_labels(task_repository, request.snapshot)
         return table_page(task_repository, request, labels.get(request.operator, request.operator))
 
     @app.post('/api/network-insights/sites/values')
@@ -3044,7 +3104,7 @@ def install_network_insights_routes(core: Any) -> None:
 
         task_repository = bound_repository()
         index, frame, columns = table_frame(task_repository, request)
-        labels = operator_labels(task_repository) or {value: value for value in pd.unique(frame['Operator'])}
+        labels = operator_labels(task_repository, request.snapshot) or {value: value for value in pd.unique(frame['Operator'])}
         included = [request.operator] if request.operator else list(dict.fromkeys(str(value) for value in frame['Operator']))
         suffix = table_suffix([labels.get(operator, operator) for operator in included] or list(labels.values()))
         name = ('cdr-observed-sites-cells' if request.source == 'observed' else 'site-cell-inventory') + f'{suffix}.csv'
@@ -3098,9 +3158,7 @@ def install_network_insights_routes(core: Any) -> None:
     def network_insights_inventory(dataset_id: int, page: int = Query(0, ge=0),
                                    download: bool = False, user=Depends(insights_user)):
         task_repository = bound_repository()
-        dataset = next((row for row in inventory_datasets(task_repository) if row['id'] == dataset_id), None)
-        if dataset is None:
-            raise HTTPException(404, 'Ready Vodafone or Three inventory not found in the active workspace.')
+        dataset = ready_inventory(task_repository, dataset_id)
         if download:
             columns = task_repository.list_dataset_row_columns(dataset_id)
             task_repository.try_add_log(user.username, 'export_network_insights_inventory', json.dumps({
@@ -3119,9 +3177,7 @@ def install_network_insights_routes(core: Any) -> None:
             raise HTTPException(400, 'Choose a supported network deployment grouping.')
         task_repository = bound_repository()
         require_cluster_dataset(group, task_repository)
-        dataset = next((row for row in inventory_datasets(task_repository) if row['id'] == dataset_id), None)
-        if dataset is None:
-            raise HTTPException(404, 'Ready Vodafone or Three inventory not found in the active workspace.')
+        dataset = ready_inventory(task_repository, dataset_id)
         summary = inventory_summary(task_repository, dataset, group)
         output = io.StringIO(newline='')
         writer = csv.writer(output)
@@ -3171,7 +3227,7 @@ def install_network_insights_routes(core: Any) -> None:
 
     def cached_inventory_projection(task_repository, dataset: dict[str, Any]) -> dict[str, Any]:
         """An inventory's identifiers and grouping fields, kept in memory and on disk."""
-        key = (str(Path(task_repository.db_path).resolve()), dataset['id'],
+        key = (str(Path(task_repository.db_path).resolve()), dataset['id'], dataset.get('network'),
                dataset['file_name'], inventory_revision(task_repository, dataset), inventory_polygon_sources(task_repository))
         with inventory_cache_lock:
             cached = inventory_cache.get(key)
@@ -3204,9 +3260,13 @@ def install_network_insights_routes(core: Any) -> None:
         task_repository = bound_repository()
         require_cluster_dataset(group, task_repository)
         results = []
+        listed = set()
         for dataset in inventory_datasets(task_repository):
             if group == 'inventory':
-                results.append(inventory_records(task_repository, dataset))
+                # The rows of a file as they are: one table per file, whatever networks it holds.
+                if dataset['id'] not in listed:
+                    results.append(inventory_records(task_repository, dataset))
+                listed.add(dataset['id'])
                 continue
             cached = cached_inventory_projection(task_repository, dataset)
             with inventory_cache_lock:
@@ -3218,11 +3278,11 @@ def install_network_insights_routes(core: Any) -> None:
             results.append({**dataset, **summary})
         return {'group': group, 'group_label': DEPLOYMENT_GROUPINGS.get(group, 'All'), 'inventories': results}
 
-    def cluster_inventory_summary() -> dict[str, Any]:
+    def cluster_inventory_summary(choice: Any = '') -> dict[str, Any]:
         """Count inventory identifiers per operator, deduplicating overlapping uploads."""
         task_repository = bound_repository()
         frames: dict[str, list[pd.DataFrame]] = {}
-        for dataset in inventory_datasets(task_repository):
+        for dataset in inventory_datasets(task_repository, choice):
             frames.setdefault(dataset['operator'], []).append(cached_inventory_projection(task_repository, dataset)['frame'])
         rows = []
         groups = task_repository.list_operator_mapping_groups()
@@ -3234,8 +3294,8 @@ def install_network_insights_routes(core: Any) -> None:
         return {'rows': rows}
 
     @app.get('/api/network-insights/cluster-inventories')
-    def network_insights_cluster_inventories(user=Depends(insights_user)):
-        return cluster_inventory_summary()
+    def network_insights_cluster_inventories(snapshot: str = '', user=Depends(insights_user)):
+        return cluster_inventory_summary(snapshot)
 
     def write_summary(selection: dict[str, Any], export_kind: str, destination: Path,
                       components: list[str] | None = None, compose: bool = True, theme: str | None = None) -> dict[str, Any]:
@@ -3277,7 +3337,7 @@ def install_network_insights_routes(core: Any) -> None:
             groupings.append({'group': group, 'group_label': grouped['group_label'], 'inventories': [
                 {'operator': table['operator'], 'file_name': sources.get(table['family'], ''), 'rows': table['rows'], 'totals': table['totals']}
                 for table in grouped['deployment']]})
-        deployment = {'groupings': groupings, 'cluster_inventories': cluster_inventory_summary(), 'snapshot': snapshot,
+        deployment = {'groupings': groupings, 'cluster_inventories': cluster_inventory_summary(request.snapshot), 'snapshot': snapshot,
                       'nr_duplex': nr_duplex_payload(task_repository, NrDuplexRequest.model_validate(request.model_dump()))}
         # The CDFs and maps in the font and colours of the theme (on the dark cards of a dark theme).
         chart_style = canvas_chart_style()

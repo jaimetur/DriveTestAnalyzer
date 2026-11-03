@@ -156,7 +156,7 @@ Case and separator variations are accepted.
 
 ### Vodafone mapping
 
-VFUK mappings materialise `GCID` as:
+The VFUK Network Inventory materialises `GCID` as:
 
 - 4G: the ECI, `eNodeB ID × 256 + Cell ID`
 - 5G: the NCI, `gNodeB ID × 16384 + Cell ID` (22-bit gNodeB IDs; a `gNodeB ID Length` column changes the multiplier to 2^(36 − length))
@@ -165,7 +165,7 @@ The `Cell ID` is the identity the cell broadcasts and the CDRs report. Huawei an
 
 ### Three mapping
 
-3UK mappings use `Cid__ECI` or `CId___ECI` as the materialised `GCID`.
+The 3UK Network Inventory uses `Cid__ECI` or `CId___ECI` as the materialised `GCID`.
 
 ### Resolution rules
 

@@ -160,11 +160,11 @@
         <p class="ni-pending-box" id="ni-cluster-pending"><strong>Cluster polygons.</strong> Site density per km² needs the cluster or region shapes: import them in Workspace as <strong>Clusters — Geospatial</strong> or <strong>Regions — Geospatial</strong> (GeoJSON, JSON or a ZIP containing a shapefile). Without them the density table groups the sites by the Cluster or Region of the inventory, without areas.</p>
         <div class="ni-map-toolbar"><label>Data source<select id="ni-sites-source"><option value="observed">Observed Sites/Cells</option><option value="inventory">Inventory Sites/Cells</option></select></label></div>
         <div class="table-wrap ni-table-wrap"><table class="ni-table" id="ni-sites-table"><tbody><tr><td class="form-note">No analysis yet.</td></tr></tbody></table></div>
-        <p class="form-note ni-note" id="ni-sites-inventory-note" hidden>Complete uploaded inventories, independent of CDR selection and filters. Overlapping uploads are deduplicated per operator.</p>
+        <p class="form-note ni-note" id="ni-sites-inventory-note" hidden>Complete inventory of every network (the newest one, or the Inventory snapshot chosen for the networks it covers), independent of CDR selection and filters. Overlapping uploads are deduplicated per operator.</p>
         <div id="ni-inventory-totals" class="ni-inventory-totals" hidden></div>
         <h3 class="ni-subtitle" id="ni-density-title">Site density of the inventory snapshot</h3>
         <div id="ni-density" class="ni-density"><p class="form-note">Loading the inventory snapshots…</p></div>
-        <p class="form-note ni-note" id="ni-sites-note">Observed eNodeBs are the distinct LTE eNodeBs (Cell Identity ÷ 256) that served the measuring devices along the route, not the deployed sites. The Inventory Sites/Cells source counts the Vodafone and Three Multivendor Mappings; the density table below uses the inventory snapshot of every network.</p>
+        <p class="form-note ni-note" id="ni-sites-note">Observed eNodeBs are the distinct LTE eNodeBs (Cell Identity ÷ 256) that served the measuring devices along the route, not the deployed sites. The Inventory Sites/Cells source and the density table below read the inventory snapshot of every network.</p>
       </div>
     </details>
 
