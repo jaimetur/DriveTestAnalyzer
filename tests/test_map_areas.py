@@ -144,7 +144,8 @@ def test_map_areas_travel_with_their_polygons(repository, tmp_path):
         map_areas.import_layers_document(other, {'format': 'other'}, 'super')
 
 
-def test_the_countries_of_the_tests_are_found_from_a_sample_of_the_ready_cdrs(repository):
+def test_the_countries_of_the_tests_are_found_from_a_sample_of_the_ready_cdrs(repository, monkeypatch):
+    monkeypatch.setattr(map_areas, '_latest_campaign_cdrs', lambda _repository: set())
     with repository.connection() as connection:
         connection.execute('CREATE TABLE dataset_rows_1 (Call_Start_Latitude_A REAL, Call_Start_Longitude_A REAL)')
         connection.executemany('INSERT INTO dataset_rows_1 VALUES (?, ?)',
@@ -158,6 +159,42 @@ def test_the_countries_of_the_tests_are_found_from_a_sample_of_the_ready_cdrs(re
     # Spain has its own areas (over the provinces shipped with the application); the UK uses its ITL3 areas.
     assert [(item['code'], round(item['share'], 2), item['bundled']['level_label'], bool(item['layer'])) for item in countries] == [
         ('ESP', .9, 'province', True), ('GBR', .1, 'ITL3 area', False)]
+
+
+def test_the_countries_come_from_the_cdrs_of_the_latest_campaign_of_each_nr_mode(repository, monkeypatch):
+    from src.modules import cdr_auto_selection, cdr_store
+
+    cdrs = [{'id': 1, 'nr_mode': 'NSA'}, {'id': 2, 'nr_mode': 'NSA'}, {'id': 3, 'nr_mode': 'SA'}, {'id': 4, 'nr_mode': 'SA'}, {'id': 5, 'nr_mode': 'NSA'}]
+    monkeypatch.setattr(cdr_auto_selection, 'candidate_cdrs', lambda _repository: cdrs)
+    monkeypatch.setattr(cdr_auto_selection, 'cdr_campaigns', lambda _repository, _ids: {
+        1: ['UK_Q3_2025'], 2: ['UK_Q4_2025'], 3: ['UK_Q3_SA_2025'], 4: ['UK_Q4_SA_2025'], 5: ['UK_Flex_2026']})
+    assert map_areas._latest_campaign_cdrs(repository) == {2, 4}
+
+    repository.list_datasets = lambda: [{'id': dataset_id, 'status': 'ready', 'dataset_kind': 'voice'} for dataset_id in range(1, 6)]
+    repository.list_dataset_row_columns = lambda _dataset_id: ['Call_Start_Latitude_A', 'Call_Start_Longitude_A']
+    repository.dataset_rows_table_name = lambda dataset_id: f'dataset_rows_{dataset_id}'
+    # The CDR with its rows in its copy reads only its two columns from it, and the other one its table; the rest, nothing.
+    monkeypatch.setattr(cdr_store, 'shadow_ids', lambda _path: frozenset({2}))
+    read = []
+
+    def read_cdr(_path, kind, dataset_id, columns):
+        read.append((kind, dataset_id, columns))
+        return pd.DataFrame({columns[0]: [40.42] * 8000, columns[1]: [-3.70] * 8000})
+    monkeypatch.setattr(cdr_store, 'read_cdr', read_cdr)
+    with repository.connection() as connection:
+        connection.execute('CREATE TABLE dataset_rows_4 (Call_Start_Latitude_A REAL, Call_Start_Longitude_A REAL)')
+        connection.executemany('INSERT INTO dataset_rows_4 VALUES (?, ?)', [(51.51, -0.13)] * 10)
+    countries = map_areas.detect_countries(repository)
+    assert read == [('voice', 2, ['Call_Start_Latitude_A', 'Call_Start_Longitude_A'])]
+    assert [(item['code'], item['tests']) for item in countries] == [('ESP', 4000), ('GBR', 10)]
+
+    # While no CDR says its campaign, every ready one.
+    monkeypatch.setattr(cdr_auto_selection, 'candidate_cdrs', lambda _repository: [])
+    assert map_areas._latest_campaign_cdrs(repository) == set()
+    read.clear()
+    monkeypatch.setattr(cdr_store, 'shadow_ids', lambda _path: frozenset({1, 2, 3, 4, 5}))
+    map_areas.detect_countries(repository)
+    assert [item[1] for item in read] == [1, 2, 3, 4, 5]
 
 
 def test_areas_whose_edges_cross_after_simplifying_still_place_the_tests(repository):

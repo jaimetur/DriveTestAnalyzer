@@ -130,16 +130,36 @@ def country_outline(code: str, precision: int = 3) -> list[list[list[float]]]:
     return [ring for geometry, item in zip(geometries, codes) if item == code for ring in _rings(geometry, precision)]
 
 
+def _latest_campaign_cdrs(repository: Any) -> set[int]:
+    """The CDRs of the latest campaign of each NR Mode, without Flex campaigns (empty while no CDR says its campaign)."""
+    from src.modules.cdr_auto_selection import LATEST_CAMPAIGN, campaign_groups, candidate_cdrs, cdr_campaigns, preset_campaign_groups
+
+    cdrs = candidate_cdrs(repository)
+    campaigns = cdr_campaigns(repository, [cdr['id'] for cdr in cdrs])
+    chosen: set[int] = set()
+    for nr_mode in {cdr['nr_mode'] for cdr in cdrs}:
+        of_mode = [cdr['id'] for cdr in cdrs if cdr['nr_mode'] == nr_mode]
+        groups = preset_campaign_groups(campaign_groups(value for dataset_id in of_mode for value in campaigns[dataset_id]), [LATEST_CAMPAIGN])
+        latest = {value for group in groups for value in group}
+        chosen.update(dataset_id for dataset_id in of_mode if latest.intersection(campaigns[dataset_id]))
+    return chosen
+
+
 def detect_countries(repository: Any) -> list[dict[str, Any]]:
-    """The countries of the tests of the ready CDRs, from a sample of each, most tests first."""
+    """The countries of the tests of the CDRs of the latest campaign (of every ready CDR while none says its campaign), from
+    a sample of each, most tests first."""
+    from src.modules import cdr_store
     from src.modules.column_names import resolve_column_name
 
     counts: dict[str, int] = {}
     total = 0
+    latest = _latest_campaign_cdrs(repository)
     for row in repository.list_datasets():
         if str(row['status'] or '') != 'ready' or str(row['dataset_kind'] or '') not in {'data', 'voice', 'speech'}:
             continue
         dataset_id = int(row['id'])
+        if latest and dataset_id not in latest:
+            continue
         try:
             columns = repository.list_dataset_row_columns(dataset_id)
         except Exception:  # noqa: BLE001 - a CDR without its rows table is skipped.
@@ -149,13 +169,18 @@ def detect_countries(repository: Any) -> list[dict[str, Any]]:
                     None)
         if pair is None:
             continue
-        table = repository.dataset_rows_table_name(dataset_id)
-        with repository.connection() as connection:
-            rows = connection.execute(
-                f'SELECT "{pair[0]}", "{pair[1]}" FROM "{table}" WHERE rowid % '
-                f'(SELECT MAX(1, COUNT(*) / {SAMPLE_ROWS}) FROM "{table}") = 0 LIMIT {SAMPLE_ROWS}'
-            ).fetchall()
-        frame = pd.DataFrame([tuple(item) for item in rows], columns=['latitude', 'longitude'])
+        if dataset_id in cdr_store.shadow_ids(repository.db_path):
+            # Its rows are in its columnar copy: only those two columns are read, not given to its table.
+            frame = cdr_store.read_cdr(repository.db_path, str(row['dataset_kind']), dataset_id, list(pair))
+            frame = frame.iloc[::max(1, len(frame) // SAMPLE_ROWS)].set_axis(['latitude', 'longitude'], axis=1)
+        else:
+            table = repository.dataset_rows_table_name(dataset_id)
+            with repository.connection() as connection:
+                rows = connection.execute(
+                    f'SELECT "{pair[0]}", "{pair[1]}" FROM "{table}" WHERE rowid % '
+                    f'(SELECT MAX(1, COUNT(*) / {SAMPLE_ROWS}) FROM "{table}") = 0 LIMIT {SAMPLE_ROWS}'
+                ).fetchall()
+            frame = pd.DataFrame([tuple(item) for item in rows], columns=['latitude', 'longitude'])
         if frame.empty:
             continue
         found = country_codes(pd.to_numeric(frame['latitude'], errors='coerce'),
