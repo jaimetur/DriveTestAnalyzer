@@ -90,7 +90,7 @@ def test_best_network_charts_start_scoring_charts_and_legacy_tab_migrates():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
 
     assert 'data-result-tab="best-network"' not in template
-    assert "const resultTabNames = new Set(['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points']);" in script
+    assert "const resultTabNames = new Set(['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points', 'impact']);" in script
     assert "stored.result_tab === 'best-network' ? 'charts'" in script
     renderer = _function_source(script, 'renderBestNetworkChart')
     allocation_renderer = _function_source(script, 'renderCategoryAllocation')
@@ -1814,15 +1814,15 @@ def test_result_tabs_have_their_own_colours_on_a_panel_holding_every_result():
     from lxml import html
     tabbed = html.fromstring(template).xpath('//div[@class="scoring-results-tabbed"]')[0]
     tabs = tabbed.xpath('./div[@class="scoring-result-tabs"]/button')
-    names = ['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points']
+    names = ['summary', 'charts', 'scoring', 'geographical-areas', 'trends', 'gap', 'points', 'impact']
     assert [tab.get('data-result-tab') for tab in tabs] == names
     assert all(tab.xpath('./svg') for tab in tabs)
-    # The seven result panes sit in one panel below the tabs, Summary shown first.
+    # The eight result panes sit in one panel below the tabs, Summary shown first.
     panes = tabbed.xpath('./div[@class="scoring-result-panels"]/div[@role="tabpanel"]')
     assert [pane.get('data-result-pane') for pane in panes] == names
     assert panes[0].get('hidden') is None and all(pane.get('hidden') is not None for pane in panes[1:])
     for tab, colour in (('summary', '#0369a1'), ('scoring', '#0f766e'), ('geographical-areas', '#7c3aed'), ('trends', '#4d7c0f'),
-                        ('gap', '#c2410c'), ('points', '#be123c')):
+                        ('gap', '#c2410c'), ('points', '#be123c'), ('impact', '#a21caf')):
         assert f'.scoring-result-tab[data-result-tab="{tab}"] {{ --tab-color: {colour}; }}' in template
         assert f'.scoring-results-tabbed:has([data-result-tab="{tab}"][aria-selected="true"]) {{ --result-accent: {colour}; }}' in template
 
@@ -2336,7 +2336,7 @@ def test_summary_sections_enable_the_reference_operator_by_default():
     # in subpanels of their own.
     assert len(summary) == 3 and not any('compared: true' in call for call in summary)
     chips = _function_source(script, 'insightOperatorChips')
-    assert "if (!chosen.length) chosen = focusChosen(operators);" in chips and 'appendFocusChips(group, operators, makeChip);' in chips
+    assert "if (!chosen.length) chosen = all ? names : focusChosen(operators);" in chips and 'appendFocusChips(group, operators, makeChip);' in chips
     assert {'ranking-operators', 'gap-parts-operators', 'sites-operators'} <= set(calls)
 
 
