@@ -764,7 +764,7 @@
       if (token !== renderToken) return;
       choices.field = payload.field;
       choices.measure = payload.measure;
-      const names = {City: 'City', Region: 'Region', Cluster: 'Cluster', Area: payload.area_label || 'Map Area', 'Postal Code': 'Postal Code'};
+      const names = {City: 'City', Region: 'Region', Cluster: 'Cluster', Area: 'Map Area', 'Postal Code': 'Postal Code'};
       controls.replaceChildren(
         selectField('Map per', ['City', 'Region', 'Cluster', 'Area', 'Postal Code'].map(name => [name, names[name], !payload.available.includes(name)]), payload.field, (value) => { choices.field = value; drawMap(); }),
         selectField('Measure', [['national', 'National points'], ['rate', 'National points per 1,000 tests'], ['own', 'Scoring of the area']].map(([value, text]) => [value, text, !payload.measures.includes(value)]), payload.measure, (value) => { choices.measure = value; drawMap(); }));

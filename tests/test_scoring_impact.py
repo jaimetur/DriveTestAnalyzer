@@ -214,6 +214,13 @@ def test_the_maps_add_up_to_what_the_methodology_moves(frames):
     assert any(fact['kind'] == 'where' for fact in part['conclusions']['facts'])
 
 
+def test_the_map_areas_keep_their_title_whatever_the_level_of_the_layer():
+    maps = {'series': {'best_network': {'Area': {'Combined': {'EE': {'Kent': [1.0, 2.0]}}}}}}
+    part = {'operators': [{'operator': 'EE'}], 'areas': {}}
+    payload = impact_map(maps, part, 'best_network', 'Area', 'Combined')
+    assert payload['field'] == 'Area' and payload['label'] == 'Map Area' and 'area_label' not in payload
+
+
 def test_each_operator_with_the_areas_that_move_most():
     rows = [{'name': name, 'tests': 100, 'cells': {'EE': {'before': 1.0, 'after': 1.0, 'value': value, 'tests': 100}}}
             for name, value in (('A', 3.0), ('B', 2.0), ('C', 1.0), ('D', 0.0), ('E', -1.0))]

@@ -82,14 +82,9 @@ def build_maps(before_document: dict[str, Any], after_document: dict[str, Any], 
         'version': 1, 'series': series, 'tests': tests, 'places': _places(after_document),
         'boundaries': {field: value for field, value in boundaries.items() if value},
         'outlines': {field: map_background(result, field) for field in (AREA, POSTAL) if map_background(result, field)},
-        'background': after_document.get('background') or [], 'area_label': _area_label(after_document),
+        'background': after_document.get('background') or [],
         'attribution': after_document.get('postal_attribution') or '',
     }
-
-
-def _area_label(document: dict[str, Any]) -> str:
-    labels = list(dict.fromkeys(item.get('label') or 'area' for item in ((document.get('map_areas') or {}).get('countries') or [])))
-    return labels[0] if len(labels) == 1 else 'Map Area'
 
 
 def _rows_of_measure(maps: dict[str, Any], part: dict[str, Any], scoring: str, field: str, environment: str, measure: str) -> list[dict[str, Any]]:
@@ -164,8 +159,7 @@ def impact_map(maps: dict[str, Any] | None, part: dict[str, Any], scoring: str, 
         if row['name'] in places:
             row['place'] = places[row['name']]
     has_polygons = bool((maps.get('boundaries') or {}).get(field))
-    return {'field': field, 'label': FIELD_LABELS.get(field, field) if field != AREA else maps.get('area_label') or FIELD_LABELS[AREA],
-            'area_label': maps.get('area_label') or FIELD_LABELS[AREA], 'measure': measure, 'measure_label': MEASURES.get(measure, measure), 'environment': environment,
+    return {'field': field, 'label': FIELD_LABELS.get(field, field), 'measure': measure, 'measure_label': MEASURES.get(measure, measure), 'environment': environment,
             'available': [name for name in MAP_FIELDS if name in available],
             'measures': [key for key, _label in MEASURES.items() if key != 'own' or field in (part.get('areas') or {})],
             'shape': 'polygons' if has_polygons else 'places' if places else 'none',

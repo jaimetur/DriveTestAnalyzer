@@ -22,6 +22,7 @@ from src.modules.scoring_export_panels import FOCUS_OPERATORS, normalize_export_
 from src.modules.scoring_exports import _slide, _tag_slides, focus_matcher
 from src.modules.scoring_impact_analysis import CAUSE_LABELS, CAUSES
 from src.modules.scoring_impact_maps import MAP_FIELDS, MEASURES, impact_map, map_geometry
+from src.modules.scoring_points_loss import AREA
 from src.modules.scoring_insight_slides import _box, _cell, _table
 from src.modules.scoring_summary_slides import (
     CONTENT_BOTTOM, CONTENT_TOP, GAIN_COLOR, INK, LOSS_COLOR, MAX_TABLE_ROWS, MUTED, STAKE_COLORS, _pages, _text,
@@ -537,7 +538,7 @@ def _map_slides(presentation, impact: dict[str, Any], part: dict[str, Any], maps
         if not shown:
             continue
         scale = _map_scale(payload, [item['operator'] for item in shown])
-        slide = _slide(presentation, f"Methodology Impact — {payload['label'][:1].upper()}{payload['label'][1:]} map", _subtitle(impact, environment, part))
+        slide = _slide(presentation, f"Methodology Impact — {'Map Areas' if field == AREA else f'''{payload['label']} map'''}", _subtitle(impact, environment, part))
         width = (WIDTH - .15 * (len(shown) - 1)) / len(shown)
         list_height = 1.5
         height = CONTENT_BOTTOM - .32 - CONTENT_TOP - .28 - list_height
