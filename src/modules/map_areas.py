@@ -51,10 +51,10 @@ _index_cache: dict[str, tuple[str, Any]] = {}
 _index_lock = Lock()
 
 
-def ensure_table(repository: Any, table: str = TABLE) -> None:
+def ensure_table(repository: Any) -> None:
     with repository.connection() as connection:
         connection.execute(
-            f'CREATE TABLE IF NOT EXISTS {table} ('
+            f'CREATE TABLE IF NOT EXISTS {TABLE} ('
             'id INTEGER PRIMARY KEY AUTOINCREMENT, country_code TEXT NOT NULL UNIQUE, country_name TEXT NOT NULL, '
             'level TEXT NOT NULL, level_label TEXT NOT NULL, origin TEXT NOT NULL, source TEXT NOT NULL, '
             'license TEXT NOT NULL, attribution TEXT NOT NULL, unit_count INTEGER NOT NULL, '
@@ -185,45 +185,44 @@ def _unpack(blob: bytes | None) -> dict[str, list]:
     return json.loads(zlib.decompress(blob).decode('utf-8')) if blob else {}
 
 
-def list_layers(repository: Any, *, table: str = TABLE) -> list[dict[str, Any]]:
-    ensure_table(repository, table)
+def list_layers(repository: Any) -> list[dict[str, Any]]:
+    ensure_table(repository)
     with repository.connection() as connection:
         rows = connection.execute(
             f'SELECT id, country_code, country_name, level, level_label, origin, source, license, attribution, '
-            f'unit_count, updated_by, updated_at FROM {table} ORDER BY country_name').fetchall()
+            f'unit_count, updated_by, updated_at FROM {TABLE} ORDER BY country_name').fetchall()
     return [dict(row) for row in rows]
 
 
-def layer_boundaries(repository: Any, country_code: str, *, table: str = TABLE) -> dict[str, list]:
-    ensure_table(repository, table)
+def layer_boundaries(repository: Any, country_code: str) -> dict[str, list]:
+    ensure_table(repository)
     with repository.connection() as connection:
-        row = connection.execute(f'SELECT boundaries FROM {table} WHERE country_code = ?', (country_code,)).fetchone()
+        row = connection.execute(f'SELECT boundaries FROM {TABLE} WHERE country_code = ?', (country_code,)).fetchone()
     return _unpack(row['boundaries']) if row else {}
 
 
-def delete_layer(repository: Any, layer_id: int, *, table: str = TABLE) -> bool:
-    ensure_table(repository, table)
+def delete_layer(repository: Any, layer_id: int) -> bool:
+    ensure_table(repository)
     with repository.connection() as connection:
-        deleted = connection.execute(f'DELETE FROM {table} WHERE id = ?', (int(layer_id),)).rowcount
+        deleted = connection.execute(f'DELETE FROM {TABLE} WHERE id = ?', (int(layer_id),)).rowcount
     _forget(repository)
     return bool(deleted)
 
 
 def save_layer(repository: Any, *, country_code: str, level: str, level_label: str, origin: str, source: str,
-               license_text: str, attribution: str, boundaries: dict[str, list], username: str,
-               table: str = TABLE) -> dict[str, Any]:
+               license_text: str, attribution: str, boundaries: dict[str, list], username: str) -> dict[str, Any]:
     """Save (or replace) the layer of a country."""
     code = str(country_code or '').strip().upper()
     if not re.fullmatch(r'[A-Z]{3}', code):
         raise ValueError('Choose the country of the map areas (ISO 3166 alpha-3 code, for example ESP).')
     if not boundaries:
         raise ValueError('The map areas have no polygons.')
-    ensure_table(repository, table)
+    ensure_table(repository)
     values = (code, country_name(code), level, level_label, origin, source, license_text, attribution,
               len(boundaries), _pack(boundaries), username, _now())
     with repository.connection() as connection:
         connection.execute(
-            f'INSERT INTO {table} (country_code, country_name, level, level_label, origin, source, license, attribution, '
+            f'INSERT INTO {TABLE} (country_code, country_name, level, level_label, origin, source, license, attribution, '
             'unit_count, boundaries, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
             'ON CONFLICT(country_code) DO UPDATE SET country_name = excluded.country_name, level = excluded.level, '
             'level_label = excluded.level_label, origin = excluded.origin, source = excluded.source, '
@@ -232,7 +231,7 @@ def save_layer(repository: Any, *, country_code: str, level: str, level_label: s
             values,
         )
     _forget(repository)
-    return next(layer for layer in list_layers(repository, table=table) if layer['country_code'] == code)
+    return next(layer for layer in list_layers(repository) if layer['country_code'] == code)
 
 
 def _label(text: Any, level: str) -> str:
@@ -380,9 +379,8 @@ def download_geoboundaries(repository: Any, country_code: str, level: str, usern
     )
 
 
-def import_layer(repository: Any, filename: str, content: bytes, *, country_code: str, level_label: str,
-                 name_field: str, username: str, table: str = TABLE) -> dict[str, Any]:
-    """A layer from a GeoJSON or a ZIP holding one Shapefile, named by one of its attributes."""
+def read_layer_file(filename: str, content: bytes, name_field: str) -> dict[str, list]:
+    """The simplified rings of the areas of a GeoJSON or a ZIP holding one Shapefile, named by one of its attributes."""
     import tempfile
 
     from src.modules.geospatial import _read_region_mapping
@@ -403,11 +401,16 @@ def import_layer(repository: Any, filename: str, content: bytes, *, country_code
             raise ValueError(f"Name the attribute that holds the area names (columns: {', '.join(map(str, frame.columns))}).")
         if len(frame) > MAX_UNITS:
             raise ValueError(f'The file has {len(frame)} areas; use a coarser level (up to {MAX_UNITS}).')
-        boundaries = _features_boundaries(zip(frame[field].astype(str), frame.geometry), _tolerance(len(frame)))
+        return _features_boundaries(zip(frame[field].astype(str), frame.geometry), _tolerance(len(frame)))
+
+
+def import_layer(repository: Any, filename: str, content: bytes, *, country_code: str, level_label: str,
+                 name_field: str, username: str) -> dict[str, Any]:
+    """A layer from a GeoJSON or a ZIP holding one Shapefile, named by one of its attributes."""
     return save_layer(
         repository, country_code=country_code, level='Imported', level_label=(level_label or 'area').strip().lower(),
         origin='Imported', source=Path(filename).name, license_text='Provided by the workspace', attribution=Path(filename).name,
-        boundaries=boundaries, username=username, table=table,
+        boundaries=read_layer_file(filename, content, name_field), username=username,
     )
 
 
@@ -595,22 +598,21 @@ def area_index(repository: Any | None) -> AreaIndex:
 
 
 # -- transfers -------------------------------------------------------------------------------------
-def layers_document(repository: Any, *, table: str = TABLE) -> dict[str, Any]:
+def layers_document(repository: Any) -> dict[str, Any]:
     """Every layer with its polygons, for Import / Export, transfers and backups."""
     return {'format': DOCUMENT_FORMAT, 'version': 1, 'layers': [
         {**{key: value for key, value in layer.items() if key not in {'id', 'country_name'}},
-         'boundaries': layer_boundaries(repository, layer['country_code'], table=table)}
-        for layer in list_layers(repository, table=table)]}
+         'boundaries': layer_boundaries(repository, layer['country_code'])}
+        for layer in list_layers(repository)]}
 
 
-def import_layers_document(repository: Any, document: Any, username: str, *, replace: bool = True,
-                           table: str = TABLE) -> int:
+def import_layers_document(repository: Any, document: Any, username: str, *, replace: bool = True) -> int:
     if not isinstance(document, dict) or document.get('format') != DOCUMENT_FORMAT:
         raise ValueError('The file is not a DriveTest Analyzer Map Areas export.')
     if replace:
-        ensure_table(repository, table)
+        ensure_table(repository)
         with repository.connection() as connection:
-            connection.execute(f'DELETE FROM {table}')
+            connection.execute(f'DELETE FROM {TABLE}')
         _forget(repository)
     imported = 0
     for layer in document.get('layers') or []:
@@ -620,6 +622,6 @@ def import_layers_document(repository: Any, document: Any, username: str, *, rep
                    level_label=str(layer.get('level_label') or 'area'), origin=str(layer.get('origin') or 'Imported'),
                    source=str(layer.get('source') or ''), license_text=str(layer.get('license') or ''),
                    attribution=str(layer.get('attribution') or ''), boundaries=layer.get('boundaries') or {},
-                   username=str(layer.get('updated_by') or username), table=table)
+                   username=str(layer.get('updated_by') or username))
         imported += 1
     return imported

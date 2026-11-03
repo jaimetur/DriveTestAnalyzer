@@ -2792,7 +2792,7 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                    boundaries=views.get('_points_loss_boundaries'),
                                    outlines=views.get('_points_loss_outlines'),
                                    environment_labels=environment_labels, scope=scope, postal_only=True,
-                                   postal_note=insights.get('postal_attribution') or '')
+                                   postal_note=insights.get('postal_note') or '')
         if _option(options, 'points', 'vendors'):
             vendors_base = panel_operators('points', 'vendors')
             add_serving_loss_slides(presentation, compared_items('vendor_losses-operators', items.get('vendor_losses', []),

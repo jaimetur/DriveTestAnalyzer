@@ -32,6 +32,8 @@ from src.modules.scoring import START_TIME_COLUMNS, normalize_time_split
 AREA_SUMMARY_BREAKDOWNS = ('Region', 'Cluster', 'City')
 GEOGRAPHIC_FILTER_FIELDS = ('Region', 'Cluster', 'City')
 # All aggregates every selected CDR; Campaign splits by campaign; the periods split by the tests' start time.
+# The maps of the Postal Codes a Saved Filter can choose instead of the full postcodes (see postal_areas).
+OTHER_POSTAL_MAPS = ('place', 'own')
 AREA_SUMMARY_TIME_SPLITS = ('All', 'Campaign', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly')
 NATIONAL = 'National'
 # The prefix of the warnings of the summary (summaries calculated before name it National & Areas Trends or National
@@ -89,6 +91,9 @@ def normalize_area_summary_request(area_summary: Any, context_filters: dict[str,
     # (Only when asked: every other request keeps the form, and the identity, it had.)
     if area_summary.get('postal_codes'):
         normalized['postal_codes'] = True
+        # (The default map, the full postcodes, is not said: Saved Filters of before keep their form.)
+        if area_summary.get('postal_map') in OTHER_POSTAL_MAPS:
+            normalized['postal_map'] = area_summary['postal_map']
     campaigns = normalize_trend_campaigns(area_summary.get('campaigns'))
     # (Without campaigns of its own, the request keeps the form of the summaries saved before they had any.)
     if campaigns:

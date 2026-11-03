@@ -587,7 +587,9 @@ def saved_filter_key(
     context_filters: dict[str, list[str]] | None, scoring_profile_id: str, area_summary: dict[str, Any] | None,
 ) -> str:
     """The identity of a selection: its CDRs, Split by, NR Mode, GAP reference, filters, methodology and National &
-    area summary. The same selection is one Saved Filter, whatever its CDRs or methodology hold today."""
+    area summary. The same selection is one Saved Filter, whatever its CDRs or methodology hold today, and whatever map of
+    its Postal Codes it uses: another one replaces its result."""
+    area_summary = {key: value for key, value in (area_summary or {}).items() if key != 'postal_map'}
     payload = {
         'dataset_ids': sorted({int(value) for value in dataset_ids}),
         'levels': [str(level) for level in levels],
@@ -1256,7 +1258,8 @@ def edit_saved_filter(
     )
     previous = {key: saved_filter[key] for key in (
         'nr_mode', 'dataset_ids', 'levels', 'baseline_operator', 'context_filters', 'scoring_profile_id', 'area_summary')}
-    if prepared['selection_key'] == saved_filter['selection_key']:
+    # (Another map of its Postal Codes is the same selection, with another result.)
+    if prepared['selection_key'] == saved_filter['selection_key'] and postal_areas.chosen_map(prepared['snapshot']) == postal_areas.chosen_map(saved_filter):
         return {'saved_filter': saved_filter, 'changed': False,
                 'previous': previous, 'merged_filter_id': None}
     updated, merged_filter_id = _replace_selection(repository, filter_id, prepared, username)
@@ -1763,7 +1766,9 @@ def _resolve_imported_filters(repository: Repository, selection_keys: Iterable[s
         with repository.connection() as connection:
             existing = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?',
                                           (prepared['selection_key'],)).fetchone()
-            brings_postal_codes = False
+            # Another map of its Postal Codes is the same Saved Filter too: it takes the one the import brings.
+            brings_postal_codes = (existing is not None and postal_areas.wanted(prepared['snapshot']) and postal_areas.chosen_map(prepared['snapshot'])
+                                   != postal_areas.chosen_map(_decode_json(existing['source_metadata_json'], {})))
             if existing is None:
                 # With or without Postal Codes it is the same Saved Filter: the option the import brings is added, to be
                 # drawn when it is calculated again, and, as a star, the one of the workspace stays.
@@ -2598,7 +2603,7 @@ def _points_loss_of(repository: Repository, saved_filter: dict[str, Any], source
         # The postal codes of the countries that lack them, before the map reads them (its key follows them).
         postal_missing = postal_areas.ensure_postal_layers(
             repository, _campaign_sources(sources, _normalize_context_filters(context_filters)),
-            progress=lambda step: progress(0, step))
+            progress=lambda step: progress(0, step), map_key=postal_areas.chosen_map(saved_filter))
         if engine is scoring_engine:
             key = scoring_cache.key_of(_points_loss_inputs(repository, saved_filter, sources, configuration, context_filters))
     if engine is scoring_engine and POINTS_LOSS_APART:
@@ -2869,7 +2874,7 @@ def draw_points_loss(repository: Repository, saved_filter: dict[str, Any], sourc
 
 def _postal_index(repository: Repository, saved_filter: dict[str, Any]) -> Any:
     """The postal code areas that place the tests of a Saved Filter that asks for Postal Codes."""
-    return postal_areas.postal_index(repository) if postal_areas.wanted(saved_filter) else None
+    return postal_areas.postal_index(repository, postal_areas.chosen_map(saved_filter)) if postal_areas.wanted(saved_filter) else None
 
 
 def _points_loss_inputs(repository: Repository, saved_filter: dict[str, Any], sources: list[dict[str, Any]],
@@ -2889,7 +2894,7 @@ def _points_loss_inputs(repository: Repository, saved_filter: dict[str, Any], so
         'filters': _filters_key(context_filters), 'operator_mappings': saved_filter.get('operator_mappings', {}),
         'map_areas': areas_version(repository),
         **({'nr_mode_campaigns': True} if _compares_nr_modes(saved_filter) else {}),
-        **({'postal_codes': postal_areas.postal_version(repository)} if postal_areas.wanted(saved_filter) else {}),
+        **({'postal_codes': postal_areas.postal_version(repository, postal_areas.chosen_map(saved_filter))} if postal_areas.wanted(saved_filter) else {}),
     }
 
 

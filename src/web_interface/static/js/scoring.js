@@ -408,6 +408,10 @@
   const areaSummaryCities = root.querySelector('[data-scoring-area-cities]');
   // Postal Codes in the Points Lost Map: only for the Saved Filters that ask for them.
   const areaSummaryPostalCodes = root.querySelector('[data-scoring-area-postal-codes]');
+  // And the map they use, of those the workspace has or a calculation downloads.
+  const areaSummaryPostalMap = root.querySelector('[data-scoring-area-postal-map]');
+  const areaSummaryPostalMapField = root.querySelector('[data-scoring-area-postal-map-field]');
+  const POSTAL_MAP_LABELS = {full: 'Full postcodes', place: 'One point per place', own: 'Own file'};
   // The campaigns of the Scoring Trends tab, whatever the Campaign filter of the rest of the scoring.
   const trendCampaigns = root.querySelector('[data-scoring-trend-campaigns]');
   const message = root.querySelector('[data-scoring-message]');
@@ -842,6 +846,7 @@
       cities: chosenAreaCities().filter(value => value !== MAIN_CITIES_TOKEN),
       main_cities: chosenAreaCities().includes(MAIN_CITIES_TOKEN),
       postal_codes: Boolean(areaSummaryPostalCodes?.checked),
+      postal_map: String(areaSummaryPostalMap?.value || 'full'),
       campaigns: selectedTrendCampaigns(),
     };
   }
@@ -849,6 +854,7 @@
   // Without a Breakdown the Separate cities are the only areas: None is offered only with some of them, and the Breakdown
   // goes back to Region when the last one is left out.
   function syncAreaSummary() {
+    if (areaSummaryPostalMapField) areaSummaryPostalMapField.hidden = !areaSummaryPostalCodes?.checked;
     if (!areaSummaryPanel || !areaSummaryBreakdown) return;
     const cities = areaSummaryCities ? [...areaSummaryCities.selectedOptions].filter(option => option.value).length : 0;
     const none = [...areaSummaryBreakdown.options].find(option => option.value === 'None');
@@ -1068,10 +1074,11 @@
       baseline_operator: String(selection?.baseline_operator || ''),
       scoring_profile_id: String(selection?.scoring_profile_id || ''),
       context_filters: normalizedFilters,
-      area_summary: (({enabled, time_split: timeSplit, breakdown, cities, campaigns, postal_codes: postalCodes} = {}) => ({
+      area_summary: (({enabled, time_split: timeSplit, breakdown, cities, campaigns, postal_codes: postalCodes, postal_map: postalMap} = {}) => ({
         enabled: Boolean(enabled), time_split: String(timeSplit || 'Campaign'), breakdown: String(breakdown || 'Region'),
         cities: (Array.isArray(cities) ? cities : []).map(String), campaigns: (Array.isArray(campaigns) ? campaigns : []).map(String),
         postal_codes: Boolean(postalCodes),
+        postal_map: postalCodes ? String(postalMap || 'full') : '',
       }))(selection?.area_summary || {}),
     });
   }
@@ -1192,6 +1199,8 @@
         areaSummaryBreakdown.value = summary.breakdown;
       }
       if (areaSummaryPostalCodes) areaSummaryPostalCodes.checked = Boolean(summary.postal_codes);
+      if (areaSummaryPostalMap) areaSummaryPostalMap.value = summary.postal_map || 'full';
+      if (areaSummaryPostalMapField) areaSummaryPostalMapField.hidden = !summary.postal_codes;
       if (areaSummaryCities && Array.isArray(summary.cities)) {
         const cities = [...(summary.main_cities ? [MAIN_CITIES_TOKEN] : []), ...summary.cities.map(String)];
         const known = new Set([...areaSummaryCities.options].map(option => option.value.toLocaleLowerCase()));
@@ -1249,7 +1258,7 @@
         ? {...savedFilter.area_summary, breakdown: savedFilter.area_summary.breakdown || 'None', campaigns: savedFilter.area_summary.campaigns || [],
           enabled: true}
         : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedFilter.area_summary?.time_split || 'Campaign',
-          campaigns: savedFilter.area_summary?.campaigns || [], ...(savedFilter.area_summary?.postal_codes ? {postal_codes: true} : {})},
+          campaigns: savedFilter.area_summary?.campaigns || [], ...(savedFilter.area_summary?.postal_codes ? {postal_codes: true, postal_map: savedFilter.area_summary.postal_map} : {})},
     });
     scheduleSelectionSave();
     scheduleAutoCdrRefresh({delay: 0});
@@ -1505,6 +1514,7 @@
     const summary = selectedAreaSummary();
     return {time_split: summary.time_split, breakdown: summary.breakdown, cities: summary.cities,
       ...(summary.main_cities ? {main_cities: true} : {}), ...(summary.postal_codes ? {postal_codes: true} : {}),
+      ...(summary.postal_codes && summary.postal_map !== 'full' ? {postal_map: summary.postal_map} : {}),
       ...(summary.campaigns.length ? {campaigns: summary.campaigns} : {})};
   }
 
@@ -1566,7 +1576,7 @@
         } else if (existing?.up_to_date) {
           text = 'This selection is a Saved Filter with its result up to date: Open Scoring opens it, Recalculate calculates it again.';
         } else if (existing) {
-          text = 'This selection is a Saved Filter: Calculate updates its result with the current CDRs and methodology.';
+          text = 'This selection is a Saved Filter: Calculate updates its result with the current CDRs, methodology and Postal Codes map.';
         }
         if (editingSavedFilter && duplicateName !== null) {
           // Save as New Filter saves a selection that is no Saved Filter yet.
@@ -1580,7 +1590,8 @@
           // Save Changes gives the selection to the Saved Filter being edited.
           const editedId = String(savedFilterIdOf(editingSavedFilter));
           text = !existing ? 'Save Changes gives this selection to the Saved Filter and calculates it again.'
-            : String(savedFilterIdOf(existing)) === editedId ? 'This is the selection of the Saved Filter being edited.'
+            : String(savedFilterIdOf(existing)) === editedId ? ((existing.area_summary?.postal_map || 'full') !== (selectedAreaSummary().postal_codes ? selectedAreaSummary().postal_map : (existing.area_summary?.postal_map || 'full'))
+              ? 'Save Changes gives this Postal Codes map to the Saved Filter and calculates it again.' : 'This is the selection of the Saved Filter being edited.')
             : `Saved Filter ${savedFilterIdOf(existing)} has this selection: Save Changes merges it into the one being edited.`;
           kind = '';
         }
@@ -1944,7 +1955,7 @@
     let breakdown = summary.breakdown && summary.breakdown !== 'None' ? summary.breakdown : null;
     if (!breakdown && !cities.length) [breakdown, cities] = ['Region', ['London']];
     return [['breakdown', 'Breakdown', breakdown || 'None'], ['cities', 'Separate cities', cities.length ? cities.join(', ') : 'None'],
-      ...(summary.postal_codes ? [['postal', 'Postal Codes', 'Included']] : [])];
+      ...(summary.postal_codes ? [['postal', 'Postal Codes', POSTAL_MAP_LABELS[summary.postal_map] || POSTAL_MAP_LABELS.full]] : [])];
   }
 
   // The time split of the National & Geographical Areas Trends of a Saved Filter.
@@ -9042,6 +9053,13 @@
         + 'the tests there: download or import them in Workspace Config → Map Areas and calculate the scoring again.';
       section.append(warning);
     }
+    // A Saved Filter whose map of the Postal Codes the workspace does not have in a country.
+    for (const item of (payload?.views?.insights?.postal_maps || []).filter(map => map.replaces)) {
+      const warning = document.createElement('p');
+      warning.className = 'scoring-insight-note scoring-loss-unmapped';
+      warning.textContent = `${item.name} has no ${item.replaces} map, so Maps per Postal Code uses ${item.label} there: download or import it in Workspace Config → Map Areas and calculate the scoring again.`;
+      section.append(warning);
+    }
     section.append(grid);
     pane.append(section);
   }
@@ -9173,7 +9191,7 @@
     } else {
       const postalNote = document.createElement('p');
       postalNote.className = 'scoring-loss-map-hint';
-      postalNote.textContent = `Approximate areas, not official borders: tests near a border can fall in the neighbouring code. ${payload?.views?.insights?.postal_attribution || ''}`;
+      postalNote.textContent = `Approximate areas, not official borders: tests near a border can fall in the neighbouring code. ${payload?.views?.insights?.postal_note || payload?.views?.insights?.postal_attribution || ''}`;
       const download = document.createElement('button');
       download.type = 'button';
       download.className = 'secondary-button scoring-loss-map-download';
@@ -10904,7 +10922,7 @@
       scheduleSelectionSave();
       return;
     }
-    if (event.target.matches?.('[data-scoring-area-summary] select, [data-scoring-area-time-split], [data-scoring-trend-campaigns]')) {
+    if (event.target.matches?.('[data-scoring-area-summary] select, [data-scoring-area-postal-codes], [data-scoring-area-time-split], [data-scoring-trend-campaigns]')) {
       syncAreaSummary();
       updateSelection();
       scheduleSelectionSave();
@@ -11871,5 +11889,19 @@
   applyNrFilter(false);
   // Closed before the page was reloaded: it stays closed.
   if (scoringClosed) syncResultsShown();
+  // The maps of the Postal Codes: a Saved Filter can only choose an Own file the workspace has.
+  async function loadPostalMaps() {
+    if (!areaSummaryPostalMap) return;
+    const {maps} = await requestJson('/api/scoring/postal-maps');
+    for (const map of maps) {
+      const option = [...areaSummaryPostalMap.options].find(item => item.value === map.key);
+      if (!option) continue;
+      option.disabled = map.key === 'own' && !map.countries.length;
+      option.textContent = map.key === 'own'
+        ? (map.countries.length ? map.label : `${map.label} (none imported)`)
+        : (map.countries.length ? map.label : `${map.label} (downloaded when calculated)`);
+    }
+  }
+  loadPostalMaps().catch(() => {});
   Promise.all([loadCalculationSelection(), refreshSavedFilters()]).catch(() => {});
 })();

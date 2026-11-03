@@ -2622,9 +2622,9 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
                          source='test', license_text='CC BY 4.0', attribution='test', username='super',
                          boundaries={'Madrid': [[[-3.9, 40.3], [-3.5, 40.3], [-3.5, 40.6], [-3.9, 40.3]]]})
     from src.modules import postal_areas
-    map_areas.save_layer(app_module.repository, country_code='ESP', level='Postal code', level_label='postal code', origin='GeoNames',
-                         source='test', license_text='CC BY 4.0', attribution='test', username='super', table=postal_areas.TABLE,
-                         boundaries={'28001 · Madrid': [[[-3.9, 40.3], [-3.5, 40.3], [-3.5, 40.6], [-3.9, 40.3]]]})
+    postal_areas.save_postal_layer(app_module.repository, country_code='ESP', map_key=postal_areas.PLACE, level='Postal code', level_label='postal code',
+                                   origin='GeoNames', source='test', license_text='CC BY 4.0', attribution='test', username='super',
+                                   boundaries={'28001 · Madrid': [[[-3.9, 40.3], [-3.5, 40.3], [-3.5, 40.6], [-3.9, 40.3]]]})
     full_response = client.get('/admin/import-export/export?export_target=full-environment')
     assert full_response.status_code == 200
     with zipfile.ZipFile(BytesIO(full_response.content)) as archive:

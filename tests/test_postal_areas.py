@@ -202,10 +202,10 @@ def test_the_full_postcodes_of_the_uk_are_saved_in_the_workspace(fake_repository
     index = postal_areas.postal_index(fake_repository)
     assert index.sources['GBR'][2] is False and index.attributions['GBR'] == layer['attribution']
     assert index.names_of(pd.Series([53.48]), pd.Series([-2.23])).tolist() == ['M1 · Manchester']
-    # One point per place replaces it: a country keeps one map.
+    # One point per place is kept beside it: each Saved Filter chooses.
     layer = postal_areas.download_postal_layer(fake_repository, 'GBR', 'super', full=False)
     assert requested[1:] == ['https://download.geonames.org/export/zip/GB.zip'] and layer['origin'] == 'GeoNames'
-    assert [item['origin'] for item in postal_areas.list_postal_layers(fake_repository)] == ['GeoNames']
+    assert [item['map_key'] for item in postal_areas.list_postal_layers(fake_repository)] == [postal_areas.FULL, postal_areas.PLACE]
     # A country without full postcodes has one point per place, whatever is asked.
     monkeypatch.setattr(postal_areas, '_fetch', lambda url, timeout: requested.append(url) or _geonames_zip())
     assert postal_areas.download_postal_layer(fake_repository, 'ESP', 'super', full=True)['origin'] == 'GeoNames'
@@ -264,7 +264,7 @@ def test_the_copy_included_stands_in_until_the_postal_codes_can_be_downloaded(fa
     assert postal_areas.ensure_postal_layers(fake_repository, [], 'super') == []
     assert attempts == [postal_areas.INCLUDED_TIMEOUT]
     # After a while it is tried again, and the map downloaded takes over.
-    monkeypatch.setitem(postal_areas._UNREACHED, 'GBR', time.monotonic() - postal_areas.RETRY_SECONDS)
+    monkeypatch.setitem(postal_areas._UNREACHED, ('GBR', postal_areas.FULL), time.monotonic() - postal_areas.RETRY_SECONDS)
     monkeypatch.setattr(postal_areas, '_fetch', lambda url, timeout: _geonames_zip('GB', UK_ROWS))
     assert postal_areas.ensure_postal_layers(fake_repository, [], 'super') == []
     assert postal_areas.postal_index(fake_repository).sources['GBR'][2] is False
@@ -272,15 +272,101 @@ def test_the_copy_included_stands_in_until_the_postal_codes_can_be_downloaded(fa
 
 
 def test_layers_round_trip_in_their_document(fake_repository, tmp_path):
-    postal_areas.save_layer(fake_repository, country_code='ESP', level='Postal code', level_label='postal code', origin='GeoNames',
-                            source='test', license_text='CC BY 4.0', attribution='GeoNames', boundaries={'28001': LAND},
-                            username='super', table=postal_areas.TABLE)
-    document = map_areas.layers_document(fake_repository, table=postal_areas.TABLE)
-    assert document['layers'][0]['boundaries'] == {'28001': LAND}
+    for key, origin, code in ((postal_areas.PLACE, 'GeoNames', '28001'), (postal_areas.OWN, 'Imported', 'Team')):
+        postal_areas.save_postal_layer(fake_repository, country_code='ESP', map_key=key, level='Postal code', level_label='postal code',
+                                       origin=origin, source='test', license_text='CC BY 4.0', attribution='GeoNames',
+                                       boundaries={code: LAND}, username='super')
+    document = postal_areas.postal_layers_document(fake_repository)
+    assert [layer['boundaries'] for layer in document['layers']] == [{'28001': LAND}, {'Team': LAND}]
     other = FakeRepository(tmp_path / 'other.db')
-    assert map_areas.import_layers_document(other, document, 'super', table=postal_areas.TABLE) == 1
-    assert [layer['country_code'] for layer in postal_areas.list_postal_layers(other)] == ['ESP']
+    assert postal_areas.import_postal_layers_document(other, document, 'super') == 2
+    assert [(layer['country_code'], layer['map_key']) for layer in postal_areas.list_postal_layers(other)] == [
+        ('ESP', postal_areas.PLACE), ('ESP', postal_areas.OWN)]
+    assert postal_areas.postal_layer_boundaries(other, 'ESP', postal_areas.OWN) == {'Team': LAND}
     assert map_areas.list_layers(other) == []
+    # A document of earlier versions, with one map per country, says which one it is by where it comes from; what the
+    # workspace had goes, as with any document.
+    earlier = {**document, 'layers': [{key: value for key, value in layer.items() if key != 'map_key'} for layer in document['layers'][:1]]}
+    assert postal_areas.import_postal_layers_document(other, earlier, 'super') == 1
+    assert [layer['map_key'] for layer in postal_areas.list_postal_layers(other)] == [postal_areas.PLACE]
+    with pytest.raises(ValueError, match='not a DriveTest Analyzer'):
+        postal_areas.import_postal_layers_document(other, {'format': 'other'}, 'super')
+
+
+def _old_table(repository, rows):
+    """The table of earlier versions, with one map per country."""
+    from src.modules.map_areas import _pack
+
+    with repository.connection() as connection:
+        connection.execute(
+            f'CREATE TABLE {postal_areas.TABLE} (id INTEGER PRIMARY KEY AUTOINCREMENT, country_code TEXT NOT NULL UNIQUE, country_name TEXT NOT NULL, '
+            'level TEXT NOT NULL, level_label TEXT NOT NULL, origin TEXT NOT NULL, source TEXT NOT NULL, license TEXT NOT NULL, attribution TEXT NOT NULL, '
+            'unit_count INTEGER NOT NULL, boundaries BLOB NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL)')
+        for code, origin, name in rows:
+            connection.execute(
+                f'INSERT INTO {postal_areas.TABLE} (country_code, country_name, level, level_label, origin, source, license, attribution, unit_count, '
+                "boundaries, updated_by, updated_at) VALUES (?, ?, 'Postal code', 'postal code', ?, 'file.geojson', 'CC BY 4.0', 'credit', 1, ?, 'ana', '2026-11-03')",
+                (code, code, origin, _pack({name: LAND})))
+
+
+def test_the_table_of_earlier_versions_is_converted_keeping_what_it_holds(fake_repository):
+    _old_table(fake_repository, [('GBR', postal_areas.FULL_ORIGIN, 'M1'), ('ESP', 'GeoNames', '28001'), ('FRA', 'Imported', 'Team')])
+    layers = {layer['country_code']: layer for layer in postal_areas.list_postal_layers(fake_repository)}
+    assert {code: layer['map_key'] for code, layer in layers.items()} == {
+        'GBR': postal_areas.FULL, 'ESP': postal_areas.PLACE, 'FRA': postal_areas.OWN}
+    assert layers['GBR']['updated_by'] == 'ana' and layers['GBR']['updated_at'] == '2026-11-03' and layers['GBR']['id']
+    assert postal_areas.postal_layer_boundaries(fake_repository, 'ESP', postal_areas.PLACE) == {'28001': LAND}
+    # Once: a second map joins the first, and nothing is converted again.
+    postal_areas.save_postal_layer(fake_repository, country_code='ESP', map_key=postal_areas.OWN, level='Imported', level_label='postal code',
+                                   origin='Imported', source='team.geojson', license_text='Own', attribution='Own',
+                                   boundaries={'Team': LAND}, username='ana')
+    assert [layer['map_key'] for layer in postal_areas.list_postal_layers(fake_repository) if layer['country_code'] == 'ESP'] == [
+        postal_areas.PLACE, postal_areas.OWN]
+    with fake_repository.connection() as connection:
+        tables = [row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'map_area_postal%'")]
+    assert tables == [postal_areas.TABLE]
+
+
+def test_each_map_places_the_tests_and_another_stands_in_for_one_the_workspace_lacks(fake_repository):
+    def save(key, name):
+        postal_areas.save_postal_layer(fake_repository, country_code='GBR', map_key=key, level='Postal code', level_label='postal code',
+                                       origin='test', source=f'{key}.geojson', license_text='Own', attribution=f'credit {key}',
+                                       boundaries={name: LAND}, username='ana')
+    # Nothing saved: the copy included stands in for the full postcodes, and for whatever a Saved Filter chooses.
+    assert postal_areas.postal_index(fake_repository).sources['GBR'][2] is True
+    index = postal_areas.postal_index(fake_repository, postal_areas.OWN)
+    assert index.sources['GBR'][2] is True and index.maps['GBR'] == {'used': postal_areas.FULL, 'copy': True, 'chosen': postal_areas.OWN}
+    copy = postal_areas.postal_version(fake_repository)
+    save(postal_areas.PLACE, 'Place')
+    save(postal_areas.OWN, 'Team')
+    # A map not used does not touch the version of the others: the maps drawn with them stay.
+    assert postal_areas.postal_version(fake_repository) == copy
+    versions = {key: postal_areas.postal_version(fake_repository, key) for key in postal_areas.MAP_LABELS}
+    assert len(set(versions.values())) == 3
+    assert list(postal_areas.postal_index(fake_repository, postal_areas.OWN).sources['GBR'][1]()) == ['Team']
+    assert list(postal_areas.postal_index(fake_repository, postal_areas.PLACE).sources['GBR'][1]()) == ['Place']
+    # With the map chosen, nobody is told anything; with another one, they are.
+    found = postal_areas.postal_map(postal_areas.postal_index(fake_repository, postal_areas.OWN), ['Team'])
+    assert found['maps'] == [{'code': 'GBR', 'name': 'United Kingdom', 'label': 'Own file'}] and found['attribution'] == f'credit {postal_areas.OWN}'
+    save(postal_areas.FULL, 'Full')
+    postal_areas.delete_postal_layer(fake_repository, next(layer['id'] for layer in postal_areas.list_postal_layers(fake_repository)
+                                                           if layer['map_key'] == postal_areas.OWN))
+    found = postal_areas.postal_map(postal_areas.postal_index(fake_repository, postal_areas.OWN), ['Full'])
+    assert found['maps'] == [{'code': 'GBR', 'name': 'United Kingdom', 'label': 'Full postcodes', 'replaces': 'Own file'}]
+
+
+def test_a_calculation_downloads_the_map_it_chooses(fake_repository, monkeypatch):
+    monkeypatch.setattr(postal_areas, 'countries_of_tests', lambda repository, sources: ['GBR'])
+    fetched = []
+    monkeypatch.setattr(postal_areas, '_fetch', lambda url, timeout: fetched.append(url.rsplit('/', 1)[1]) or _geonames_zip('GB', UK_ROWS))
+    assert postal_areas.ensure_postal_layers(fake_repository, [], 'super', map_key=postal_areas.PLACE) == []
+    assert fetched == ['GB.zip']
+    assert postal_areas.ensure_postal_layers(fake_repository, [], 'super', map_key=postal_areas.PLACE) == [] and fetched == ['GB.zip']
+    # An Own file cannot be downloaded: what stands in for one the workspace lacks, the full postcodes, can.
+    assert postal_areas.ensure_postal_layers(fake_repository, [], 'super', map_key=postal_areas.OWN) == []
+    assert fetched == ['GB.zip', 'GB_full.csv.zip']
+    assert postal_areas.ensure_postal_layers(fake_repository, [], 'super') == [] and fetched == ['GB.zip', 'GB_full.csv.zip']
+    assert [layer['map_key'] for layer in postal_areas.list_postal_layers(fake_repository)] == [postal_areas.FULL, postal_areas.PLACE]
 
 
 def test_the_map_of_the_postal_codes_of_a_country_is_chosen_in_workspace_config(client, monkeypatch):
@@ -294,7 +380,7 @@ def test_the_map_of_the_postal_codes_of_a_country_is_chosen_in_workspace_config(
     assert postal_areas.postal_index(repository).sources['GBR'][2] is True
     monkeypatch.setattr(map_areas, 'detect_countries', lambda _repository: [{'code': 'GBR', 'name': 'United Kingdom'}])
     [country] = client.get('/api/workspace-config/map-areas/countries').json()['countries']
-    assert country['postal_full'] is True and country['postal_bundled']['unit_count'] > 2000 and country['postal_layer'] is None
+    assert country['postal_full'] is True and country['postal_bundled']['unit_count'] > 2000 and country['postal_layers'] == []
     # A download that fails leaves it as it is, and says why.
     response = client.post('/api/workspace-config/map-areas/postal/download', json={'country_code': 'GBR', 'full': True})
     assert response.status_code == 400 and 'no route to host' in response.json()['detail']
@@ -307,17 +393,24 @@ def test_the_map_of_the_postal_codes_of_a_country_is_chosen_in_workspace_config(
     assert response.json()['layer']['origin'] == postal_areas.FULL_ORIGIN
     [listed] = client.get('/api/workspace-config/map-areas/postal').json()['layers']
     assert listed['country_code'] == 'GBR' and listed['origin'] == postal_areas.FULL_ORIGIN
-    # One point per place replaces them.
+    # One point per place is saved beside them.
     response = client.post('/api/workspace-config/map-areas/postal/download', json={'country_code': 'GBR', 'full': False})
     assert response.status_code == 200, response.text
     layer = response.json()['layer']
     assert layer['origin'] == 'GeoNames' and layer['unit_count'] == 2
     index = postal_areas.postal_index(repository)
+    index = postal_areas.postal_index(repository, postal_areas.PLACE)
     assert index.sources['GBR'][2] is False and index.attributions['GBR'] == postal_areas.GEONAMES_ATTRIBUTION
     assert index.names_of(pd.Series([53.80]), pd.Series([-1.55])).tolist() == ['LS1 · Leeds']
-    # Deleted, the copy stands in again.
+    assert [item['map_key'] for item in client.get('/api/workspace-config/map-areas/postal').json()['layers']] == [postal_areas.FULL, postal_areas.PLACE]
+    [country] = client.get('/api/workspace-config/map-areas/countries').json()['countries']
+    assert [item['map_key'] for item in country['postal_layers']] == [postal_areas.FULL, postal_areas.PLACE]
+    # What a Saved Filter can choose.
+    maps = {item['key']: item for item in client.get('/api/scoring/postal-maps').json()['maps']}
+    assert maps[postal_areas.FULL]['countries'] == ['United Kingdom'] and maps[postal_areas.OWN]['countries'] == []
+    # Deleted, the full postcodes stand in for it.
     assert client.delete(f"/api/workspace-config/map-areas/postal/{layer['id']}").status_code == 200
-    assert postal_areas.postal_index(repository).sources['GBR'][2] is True
+    assert postal_areas.postal_index(repository, postal_areas.PLACE).maps['GBR']['used'] == postal_areas.FULL
     assert client.delete(f"/api/workspace-config/map-areas/postal/{layer['id']}").status_code == 404
     # Own file: imported as Postal Codes, not as Map Areas.
     document = {'type': 'FeatureCollection', 'features': [{'type': 'Feature', 'properties': {'code': 'SW1'}, 'geometry': {
@@ -327,9 +420,12 @@ def test_the_map_of_the_postal_codes_of_a_country_is_chosen_in_workspace_config(
                            files={'file': ('coverage.geojson', json.dumps(document), 'application/geo+json')})
     assert response.status_code == 200, response.text
     assert response.json()['layer']['origin'] == 'Imported' and response.json()['layer']['source'] == 'coverage.geojson'
+    assert response.json()['layer']['map_key'] == postal_areas.OWN
     assert map_areas.list_layers(repository) == []
-    index = postal_areas.postal_index(repository)
+    index = postal_areas.postal_index(repository, postal_areas.OWN)
     assert index.names_of(pd.Series([51.45]), pd.Series([-.15])).tolist() == ['SW1']
+    # The other map stays.
+    assert [item['map_key'] for item in postal_areas.list_postal_layers(repository)] == [postal_areas.FULL, postal_areas.OWN]
     # App Events records each change with enough details.
     events = sorted(((row['id'], row['action'], json.loads(row['details'])) for row in repository.list_logs()
                      if row['action'].startswith('postal_areas_')), key=lambda event: event[0])
@@ -337,11 +433,10 @@ def test_the_map_of_the_postal_codes_of_a_country_is_chosen_in_workspace_config(
     assert [action for action, _details in events] == ['postal_areas_download_failed', 'postal_areas_download', 'postal_areas_download',
                                                        'postal_areas_delete', 'postal_areas_import']
     assert [events[1][1]['origin'], events[2][1]['origin']] == [postal_areas.FULL_ORIGIN, 'GeoNames']
-    assert events[3][1]['country'] == 'GBR' and events[3][1]['origin'] == 'GeoNames'
+    assert events[3][1]['country'] == 'GBR' and events[3][1]['map'] == postal_areas.PLACE and events[3][1]['origin'] == 'GeoNames'
     # The panel knows what each country uses.
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/map_areas.js').read_text(encoding='utf-8')
     assert 'Full postcodes' in script and 'One point per place' in script and 'Own file' in script
-    assert postal_areas.FULL_ORIGIN in script
 
 
 # -- the map --------------------------------------------------------------------------------------
@@ -489,6 +584,31 @@ def test_a_transfer_without_postal_codes_leaves_the_ones_of_the_destination(tmp_
     assert joined['id'] == local['id'] and joined['name'] == 'From there' and joined['area_summary']['postal_codes'] is True
 
 
+def test_a_transfer_brings_the_map_of_the_postal_codes_to_the_same_filter(tmp_path):
+    source, source_ids, target, target_ids = _transfer_workspaces(tmp_path)
+    used, _ = saved_filters.save_saved_filter(source, source_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True, 'postal_map': 'own'})
+    saved_filters.update_saved_filter(source, used['id'], name='Quarter', pinned=True, username='ana')
+    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
+    assert document['saved_filters'][0]['area_summary']['postal_map'] == 'own'
+    local, _ = saved_filters.save_saved_filter(target, target_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True})
+    saved_filters.update_saved_filter(target, local['id'], name='Quarter', pinned=True, username='ana')
+    with target.connection() as connection:
+        connection.execute("UPDATE saved_filters SET status = 'completed', result_json = '{}' WHERE id = ?", (local['id'],))
+    saved_filters.import_saved_filters(target, document)
+    [joined] = saved_filters.list_saved_filters(target)
+    assert joined['id'] == local['id'] and joined['area_summary']['postal_map'] == 'own'
+    # Its result was drawn with another map: it is calculated again.
+    queued, _reason = saved_filters.refresh_saved_filter(target, local['id'])
+    assert queued and saved_filters.get_saved_filter(target, local['id'])['status'] == 'queued'
+    # A package without Postal Codes leaves them, with their map.
+    with target.connection() as connection:
+        connection.execute("UPDATE saved_filters SET status = 'completed' WHERE id = ?", (local['id'],))
+    plain = {**document, 'saved_filters': [{**document['saved_filters'][0], 'area_summary': SUMMARY}]}
+    saved_filters.import_saved_filters(target, plain)
+    [joined] = saved_filters.list_saved_filters(target)
+    assert joined['id'] == local['id'] and joined['area_summary']['postal_codes'] is True and joined['area_summary']['postal_map'] == 'own'
+
+
 def test_the_preview_of_a_transfer_tells_the_same_filter_with_its_postal_codes():
     from src.modules.import_changes import favourites_filter_items, kept_postal_codes, predict
 
@@ -536,6 +656,75 @@ def test_postal_codes_are_a_selection_of_their_own_and_every_other_keeps_its_ide
     assert postal_areas.wanted({'area_summary': {**SUMMARY, 'postal_codes': True}})
     assert postal_areas.wanted({'area_summary': None, 'geographical_areas': {'postal_codes': True}})
     assert not postal_areas.wanted({'area_summary': SUMMARY}) and not postal_areas.wanted(None)
+
+
+def test_the_map_of_the_postal_codes_is_kept_with_the_selection_but_is_not_its_identity():
+    from src.modules.scoring_area_summary import normalize_area_summary_request
+    from src.modules.scoring_reports import _normalize_area_summary
+
+    asked = {**SUMMARY, 'postal_codes': True}
+    # Only another map than the default one is said, so that the Saved Filters of before keep their form and their result.
+    for normalize in (normalize_area_summary_request, _normalize_area_summary):
+        assert 'postal_map' not in normalize({**asked, 'postal_map': 'full'})
+        assert normalize({**asked, 'postal_map': 'place'})['postal_map'] == 'place'
+        assert normalize({**asked, 'postal_map': 'own'})['postal_map'] == 'own'
+        assert 'postal_map' not in normalize({**asked, 'postal_map': 'other'})
+        assert 'postal_map' not in normalize({**SUMMARY, 'postal_map': 'place'})
+    key = saved_filters.saved_filter_key([1], ['Operator'], 'NSA', 'EE', {}, '', asked)
+    assert saved_filters.saved_filter_key([1], ['Operator'], 'NSA', 'EE', {}, '', {**asked, 'postal_map': 'place'}) == key
+    assert postal_areas.chosen_map({'area_summary': asked}) == postal_areas.FULL
+    assert postal_areas.chosen_map({'area_summary': {**asked, 'postal_map': 'own'}}) == postal_areas.OWN
+    assert postal_areas.chosen_map(None) == postal_areas.FULL
+
+
+def test_another_map_replaces_the_result_of_the_same_saved_filter(repository, monkeypatch):
+    dataset_id = _voice_dataset(repository)
+    ask = {**SUMMARY, 'postal_codes': True}
+    first, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
+    done = saved_filters.calculate_saved_filter(repository, first['id'])
+    assert done['result']['points_loss']['postal_maps'][0]['label'] == postal_areas.COPY_LABEL
+    # Asking again with the same map is that result.
+    same, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
+    assert same['id'] == first['id'] and reused
+    # Another map: the same Saved Filter, calculated again, without another one.
+    rows = [('LS1', 'Leeds', 53.80, -1.55), ('M1', 'Manchester', 53.48, -2.24)]
+    monkeypatch.setattr(postal_areas, 'countries_of_tests', lambda _repository, _sources: ['GBR'])
+    monkeypatch.setattr(postal_areas, '_fetch', lambda url, timeout: _geonames_zip('GB', rows))
+    other = {**ask, 'postal_map': 'place'}
+    second, reused = saved_filters.save_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=other)
+    assert second['id'] == first['id'] and not reused and second['area_summary']['postal_map'] == 'place'
+    assert [item['id'] for item in saved_filters.list_saved_filters(repository)] == [first['id']]
+    done = saved_filters.calculate_saved_filter(repository, first['id'])
+    document = done['result']['points_loss']
+    assert done['status'] == 'completed' and document['postal_maps'] == [{'code': 'GBR', 'name': 'United Kingdom', 'label': 'One point per place'}]
+    names = {name for entry in document['shares'] for name in entry['areas'].get(POSTAL, {})}
+    assert names and names <= {'LS1 · Leeds', 'M1 · Manchester', points_loss.NOT_SPECIFIED}
+    assert [layer['map_key'] for layer in postal_areas.list_postal_layers(repository)] == [postal_areas.PLACE]
+    # The maps and the exports say which one it is, with who to credit for it.
+    assert build_scoring_views(done, done['result'])['insights']['postal_note'].startswith('Map: One point per place. GeoNames')
+    # Its result is the one of that map.
+    assert saved_filters.find_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', area_summary=other)['up_to_date']
+    assert not saved_filters.find_saved_filter(repository, [dataset_id], ['Operator'], 'NSA', area_summary=ask)['up_to_date']
+    # Edited with another map too, it stays one Saved Filter and is calculated again.
+    edited = saved_filters.edit_saved_filter(repository, first['id'], [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
+    assert edited['changed'] and edited['saved_filter']['id'] == first['id'] and edited['merged_filter_id'] is None
+    assert 'postal_map' not in edited['saved_filter']['area_summary']
+    assert [item['id'] for item in saved_filters.list_saved_filters(repository)] == [first['id']]
+    done = saved_filters.calculate_saved_filter(repository, first['id'])
+    assert done['result']['points_loss']['postal_maps'][0]['label'] == postal_areas.COPY_LABEL
+    # An edit with the same map changes nothing.
+    again = saved_filters.edit_saved_filter(repository, first['id'], [dataset_id], ['Operator'], 'NSA', username='tester', area_summary=ask)
+    assert not again['changed']
+
+
+def test_the_page_chooses_the_map_only_with_postal_codes_and_says_which_one_it_used():
+    root = Path(__file__).resolve().parents[1] / 'src/web_interface'
+    page = (root / 'templates/scoring.html').read_text(encoding='utf-8')
+    script = (root / 'static/js/scoring.js').read_text(encoding='utf-8')
+    assert 'data-scoring-area-postal-map-field hidden' in page and 'data-scoring-area-postal-map ' in page
+    assert all(f'<option value="{key}"' in page for key in postal_areas.MAP_LABELS)
+    assert "/api/scoring/postal-maps" in script and 'postal_note' in script and 'map.replaces' in script
+    assert 'POSTAL_MAP_LABELS[summary.postal_map]' in script
 
 
 def test_a_saved_filter_that_asks_for_postal_codes_draws_them_with_its_map(repository):

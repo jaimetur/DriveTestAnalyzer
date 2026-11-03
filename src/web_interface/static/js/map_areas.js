@@ -70,31 +70,38 @@
     return layers;
   }
 
-  // Saved postal code layers: one per country.
+  // The maps of the Postal Codes saved in the workspace.
+  const POSTAL_MAPS = {full: 'Full postcodes', place: 'One point per place', own: 'Own file'};
+  // Which map each country has chosen to download, while the panel is open.
+  const postalChoices = new Map();
+
   async function renderPostalLayers() {
     const {layers} = await api('/api/workspace-config/map-areas/postal');
     const target = $('[data-postal-area-layers]');
     if (!layers.length) {
-      target.replaceChildren(node('p', 'No Postal Codes saved in this workspace yet: a calculation that asks for them downloads them, or choose or download them in Countries of the tests. Until then, a country with a copy included with the application uses that copy.', 'form-note'));
+      target.replaceChildren(node('p', 'No Postal Codes saved in this workspace yet: download or import them in Countries of the tests, or a calculation that asks for them downloads them. Until then, a country with a copy included with the application uses that copy.', 'form-note'));
       return;
     }
-    target.replaceChildren(table(['Country', 'Areas', 'Source', 'Licence', 'Updated', 'Actions'], layers.map((layer) => {
+    target.replaceChildren(table(['Country', 'Map', 'Areas', 'Source', 'Licence', 'Updated', 'Actions'], layers.map((layer) => {
       const remove = node('button', 'Delete', 'danger-button');
       remove.type = 'button';
       remove.addEventListener('click', async () => {
+        const title = `${POSTAL_MAPS[layer.map_key]} of ${layer.country_name}`;
+        const consequence = layer.map_key === 'own'
+          ? 'The Saved Filters that use it take the full postcodes when they are calculated again.'
+          : 'A calculation that uses it downloads it again.';
         const confirmed = typeof window.showConfirmDialog === 'function'
-          ? await window.showConfirmDialog(`Delete the Postal Codes of ${layer.country_name}? A calculation that asks for them downloads them again.`,
-            {title: 'Delete Postal Codes?', confirmLabel: 'Delete'})
-          : window.confirm(`Delete the Postal Codes of ${layer.country_name}?`);
+          ? await window.showConfirmDialog(`Delete the Postal Codes ${title}? ${consequence}`, {title: 'Delete Postal Codes?', confirmLabel: 'Delete'})
+          : window.confirm(`Delete the Postal Codes ${title}?`);
         if (!confirmed) return;
         try {
           await api(`/api/workspace-config/map-areas/postal/${layer.id}`, {method: 'DELETE'});
-          message(`Postal Codes of ${layer.country_name} deleted.`, 'success');
+          message(`Postal Codes ${title} deleted.`, 'success');
           await refresh();
         } catch (error) { message(error.message, 'error'); }
       });
-      return [`${layer.country_name} (${layer.country_code})`, `${layer.level} · ${number(layer.unit_count)}`,
-        layer.origin, layer.license, String(layer.updated_at || '').slice(0, 16).replace('T', ' '), remove];
+      return [`${layer.country_name} (${layer.country_code})`, POSTAL_MAPS[layer.map_key], `${layer.level} · ${number(layer.unit_count)}`,
+        layer.map_key === 'own' ? layer.source : 'GeoNames', layer.license, String(layer.updated_at || '').slice(0, 16).replace('T', ' '), remove];
     })));
   }
 
@@ -105,7 +112,7 @@
     const {layer} = await api('/api/workspace-config/map-areas/postal/download', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({country_code: country.code, full}),
     });
-    message(`${layer.country_name}: ${number(layer.unit_count)} postal code areas saved. Calculate the scoring again to use them.`, 'success');
+    message(`${layer.country_name}: ${POSTAL_MAPS[layer.map_key]} saved, ${number(layer.unit_count)} areas. Choose it in the Geographical Areas of the Scoring calculation to use it.`, 'success');
   }
 
   // A file of the workspace is chosen in the import form, ready for this country.
@@ -115,76 +122,57 @@
     form.elements.country_code.value = country.code;
     form.scrollIntoView({block: 'center'});
     form.elements.file.focus();
-    message(`Choose the file with the postal code areas of ${country.name} and press Import areas.`);
+    message(`Choose the file with the postal code areas of ${country.name} and press Import areas: it is saved as its Own file.`);
   }
 
-  // The map of the Postal Codes of a country, saved in the workspace: the one worked out from its full postcodes or from
-  // the points per place of GeoNames, or a file of the workspace. It applies as soon as it is chosen. Without one saved, a
-  // copy included with the application stands in for the full postcodes.
+  // The maps of the Postal Codes of a country: the select chooses which one to download or import and nothing else, since
+  // a workspace keeps them all and each Saved Filter chooses the one it uses in the calculation panel.
   function postalChooser(country) {
-    const layer = country.postal_layer;
-    const fullSaved = layer?.origin === 'GeoNames full postcodes';
-    const current = layer ? (fullSaved ? 'full' : layer.origin === 'GeoNames' ? 'place' : 'own') : (country.postal_full ? 'full' : 'place');
-    const fullAreas = fullSaved ? layer.unit_count : country.postal_bundled?.unit_count;
-    // A failed download leaves what the workspace has, which is worth saying when that is the copy of the application.
-    const failed = (error) => (!layer && country.postal_bundled
-      ? `${error.message} The copy included with the application stays in use.` : error.message);
+    const saved = Object.fromEntries((country.postal_layers || []).map((layer) => [layer.map_key, layer]));
+    const keys = [...(country.postal_full ? ['full'] : []), 'place', 'own'];
     const box = node('div', undefined, 'map-area-chooser');
     const select = node('select');
     select.setAttribute('aria-label', `Map of the Postal Codes of ${country.name}`);
     select.dataset.postalMap = country.code;
-    const options = [
-      ...(country.postal_full ? [['full', `Full postcodes${fullAreas ? ` · ${number(fullAreas)} areas` : ''} (default)`]] : []),
-      ['place', layer && current === 'place' ? `One point per place · ${number(layer.unit_count)} areas` : 'One point per place'],
-      ['own', current === 'own' ? `Own file · ${layer.source} · ${number(layer.unit_count)} areas` : 'Own file'],
-    ];
-    for (const [value, text] of options) {
-      const option = node('option', text);
-      option.value = value;
-      option.selected = value === current;
+    for (const key of keys) {
+      const layer = saved[key];
+      const state = layer ? `${key === 'own' ? `${layer.source} · ` : ''}${number(layer.unit_count)} areas` : (key === 'own' ? 'not imported' : 'not downloaded');
+      const option = node('option', `${POSTAL_MAPS[key]} · ${state}`);
+      option.value = key;
       select.append(option);
     }
-    select.addEventListener('change', async () => {
-      const chosen = select.value;
-      if (chosen === 'own') {
-        select.value = current;
+    select.value = keys.includes(postalChoices.get(country.code)) ? postalChoices.get(country.code) : keys[0];
+    const action = node('button', '', 'secondary-button');
+    action.type = 'button';
+    const label = () => {
+      const key = select.value;
+      action.textContent = key === 'own' ? (saved.own ? 'Import another file' : 'Import file') : (saved[key] ? 'Download again' : 'Download');
+    };
+    label();
+    select.addEventListener('change', () => {
+      postalChoices.set(country.code, select.value);
+      label();
+    });
+    action.addEventListener('click', async () => {
+      const key = select.value;
+      if (key === 'own') {
         openPostalImport(country);
         return;
       }
-      if (current === 'own') {
-        const text = `Use another map for the Postal Codes of ${country.name}? ${layer.source} is removed from the workspace.`;
-        const confirmed = typeof window.showConfirmDialog === 'function'
-          ? await window.showConfirmDialog(text, {title: 'Replace your map?', confirmLabel: 'Replace'}) : window.confirm(text);
-        if (!confirmed) {
-          select.value = current;
-          return;
-        }
-      }
+      action.disabled = true;
       select.disabled = true;
       try {
-        await downloadPostal(country, chosen === 'full');
+        await downloadPostal(country, key === 'full');
         await refresh();
       } catch (error) {
-        message(failed(error), 'error');
-        await renderCountries().catch(() => {});
+        // What the workspace has stays, which is worth saying when that is the copy of the application.
+        message(key === 'full' && !saved.full && country.postal_bundled
+          ? `${error.message} The copy included with the application stays in use.` : error.message, 'error');
+        action.disabled = false;
+        select.disabled = false;
       }
     });
-    box.append(select);
-    if (current !== 'own') {
-      const download = node('button', layer ? 'Download again' : 'Download now', 'secondary-button');
-      download.type = 'button';
-      download.addEventListener('click', async () => {
-        download.disabled = true;
-        try {
-          await downloadPostal(country, current === 'full');
-          await refresh();
-        } catch (error) {
-          message(failed(error), 'error');
-          download.disabled = false;
-        }
-      });
-      box.append(download);
-    }
+    box.append(select, action);
     return box;
   }
 

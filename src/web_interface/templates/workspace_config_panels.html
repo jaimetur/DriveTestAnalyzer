@@ -294,12 +294,12 @@
         </section>
         <section>
           <h3>Saved Postal Codes</h3>
-          <p class="form-note">The areas of <strong>Maps per Postal Code</strong> in the Points Lost Map, for the Saved Filters that ask for Postal Codes: the map saved in this workspace for each country. Choose it in <strong>Countries of the tests</strong>: <strong>Full postcodes</strong> (the default where GeoNames publishes them), <strong>One point per place</strong> or <strong>Own file</strong>; a calculation that asks for Postal Codes downloads the ones a country lacks. Without a file of your own they are worked out from the postal code points of <a href="https://www.geonames.org" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0, about 120 countries): they are approximate, not official borders.</p>
+          <p class="form-note">The areas of <strong>Maps per Postal Code</strong> in the Points Lost Map, for the Saved Filters that ask for Postal Codes: this workspace keeps up to three maps per country. Download or import them in <strong>Countries of the tests</strong>: <strong>Full postcodes</strong> (where GeoNames publishes them), <strong>One point per place</strong> and <strong>Own file</strong>. Each Saved Filter chooses the one it uses in the <strong>Geographical Areas</strong> of the Scoring calculation, which downloads it when the workspace lacks it. Without a file of your own they are worked out from the postal code points of <a href="https://www.geonames.org" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0, about 120 countries): they are approximate, not official borders.</p>
           <div class="table-wrap" data-postal-area-layers></div>
         </section>
         <section>
           <h3>Import areas from a file</h3>
-          <p class="form-note">A GeoJSON, or a ZIP holding one Shapefile, with one polygon per area. Importing the areas of a country replaces the saved ones. Use only maps whose licence allows it.</p>
+          <p class="form-note">A GeoJSON, or a ZIP holding one Shapefile, with one polygon per area. Importing the areas of a country replaces the saved ones (with Postal Codes, only its Own file). Use only maps whose licence allows it.</p>
           <form class="map-area-import" data-map-area-import>
             <label>Areas<select name="layer"><option value="map-areas">Map Areas</option><option value="postal-codes">Postal Codes</option></select></label>
             <label>File<input type="file" name="file" accept=".geojson,.json,.zip" required></label>

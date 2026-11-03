@@ -433,6 +433,7 @@ def add_postal_map(document: dict[str, Any], index) -> None:
         document.setdefault('boundaries', {})[POSTAL] = found['boundaries']
         document['postal_background'] = found['background']
         document['postal_attribution'] = found['attribution']
+        document['postal_maps'] = found['maps']
 
 
 def _numeric(frame: pd.DataFrame, field: str) -> pd.Series:

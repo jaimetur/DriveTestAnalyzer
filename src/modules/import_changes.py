@@ -418,15 +418,17 @@ def _selection_key(entry: dict[str, Any]) -> str:
                                                   'scoring_profile_id', 'area_summary')}
     # With or without Postal Codes it is the same Saved Filter (see saved_filters._resolve_imported_filters).
     if isinstance(selection['area_summary'], dict):
-        selection['area_summary'] = {key: value for key, value in selection['area_summary'].items() if key != 'postal_codes'}
+        selection['area_summary'] = {key: value for key, value in selection['area_summary'].items() if key not in {'postal_codes', 'postal_map'}}
     return hashlib.sha256(_canonical({**selection, 'cdrs': cdrs}).encode('utf-8')).hexdigest()
 
 
 def kept_postal_codes(values: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
-    """A Favourites Filter as an import saves it over the one it finds: Postal Codes stay, as a star, when the package
-    does not bring them."""
-    if (previous.get('area_summary') or {}).get('postal_codes') and isinstance(values.get('area_summary'), dict):
-        values['area_summary'] = {**values['area_summary'], 'postal_codes': True}
+    """A Favourites Filter as an import saves it over the one it finds: Postal Codes stay, as a star and with their map,
+    when the package does not bring them."""
+    summary = previous.get('area_summary') or {}
+    if summary.get('postal_codes') and isinstance(values.get('area_summary'), dict) and not values['area_summary'].get('postal_codes'):
+        values['area_summary'] = {**values['area_summary'], 'postal_codes': True,
+                                  **({'postal_map': summary['postal_map']} if summary.get('postal_map') else {})}
     return values
 
 

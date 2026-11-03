@@ -5,12 +5,13 @@ for about 120 countries (https://www.geonames.org, Creative Commons Attribution 
 its points (Voronoi cells cut to its country). They are approximate, not the official borders, and the codes that only
 have a point shared with others (the centre of a city, in the UK) are one area named after all of them.
 
-The map of a country is stored with the workspace, one per country: downloaded from GeoNames (its full postcodes where it
-publishes them, else one point per place), or imported from a GeoJSON or a zipped Shapefile, such as a licensed map. Workspace
-Config chooses it, and a Saved Filter that asks for Postal Codes downloads those its countries lack. The copy shipped with
-the application in ``assets/map-areas/postal`` stands in for its country until then, also on a server that cannot reach
-GeoNames. Layers travel with the Mappings & Reference Data in Import / Export, transfers and backups. Tests are placed while
-the map is drawn, so the CDRs do not change.
+A workspace keeps up to three maps per country: its full postcodes (where GeoNames publishes them), one point per place,
+both downloaded from GeoNames, and a file of its own, a GeoJSON or a zipped Shapefile such as a licensed map. A Saved Filter
+that asks for Postal Codes chooses one of them (its ``postal_map``, not part of its identity: with another map it is the
+same Saved Filter, whose result is replaced) and downloads it when the workspace lacks it. The copy of the full postcodes
+shipped with the application in ``assets/map-areas/postal`` stands in until then, also on a server that cannot reach
+GeoNames. The maps travel with the Mappings & Reference Data in Import / Export, transfers and backups. Tests are placed
+while the map is drawn, so the CDRs do not change.
 """
 from __future__ import annotations
 
@@ -25,19 +26,24 @@ import urllib.error
 import zipfile
 from collections import Counter
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Callable, Iterable
 
 import pandas as pd
 
 from src.config import PROJECT_ROOT
 from src.modules.map_areas import (
-    MAX_UNITS, AreaIndex, _features_boundaries, _fetch, _tolerance, _valid_polygons, country_codes, country_name,
-    country_outline, delete_layer, import_layer, layer_boundaries, list_layers, save_layer,
+    DOCUMENT_FORMAT, MAX_UNITS, AreaIndex, _features_boundaries, _fetch, _now, _pack, _tolerance, _unpack, _valid_polygons,
+    country_codes, country_name, country_outline, layer_boundaries, read_layer_file,
 )
 from src.modules.map_areas import bundled_rings as _map_area_rings
 
 TABLE = 'map_area_postal_layers'
 TABLE_TITLE = 'Map Area Postal Layers'
+# The maps a country can have in a workspace.
+FULL, PLACE, OWN = 'full', 'place', 'own'
+MAP_LABELS = {FULL: 'Full postcodes', PLACE: 'One point per place', OWN: 'Own file'}
+COPY_LABEL = 'Full postcodes, copy included with the application'
 BUNDLED_DIR = PROJECT_ROOT / 'assets' / 'map-areas' / 'postal'
 GEONAMES_URL = 'https://download.geonames.org/export/zip/{code}.zip'
 GEONAMES_FULL_URL = 'https://download.geonames.org/export/zip/{code}_full.csv.zip'
@@ -61,7 +67,7 @@ COAST_BUFFER = .02
 # The countries with at least this share of the sampled tests have their postal codes downloaded.
 MIN_COUNTRY_SHARE = .01
 SAMPLE_ROWS = 2000
-_UNREACHED: dict[str, float] = {}
+_UNREACHED: dict[tuple[str, str], float] = {}
 _DOWNLOADS = threading.Lock()
 
 
@@ -71,20 +77,148 @@ def wanted(saved_filter: dict[str, Any] | None) -> bool:
     return bool(isinstance(summary, dict) and summary.get('postal_codes'))
 
 
+def chosen_map(saved_filter: dict[str, Any] | None) -> str:
+    """The map of the Postal Codes a Saved Filter uses: the full postcodes unless it chooses another one."""
+    summary = (saved_filter or {}).get('area_summary') or (saved_filter or {}).get('geographical_areas')
+    chosen = summary.get('postal_map') if isinstance(summary, dict) else None
+    return chosen if chosen in MAP_LABELS else FULL
+
+
 # -- layers ---------------------------------------------------------------------------------------
+def _map_key_of(origin: Any) -> str:
+    """The map of a layer saved or exported when a country had only one."""
+    return {FULL_ORIGIN: FULL, 'GeoNames': PLACE}.get(str(origin or ''), OWN)
+
+
+def _ensure_table(repository: Any) -> None:
+    """The table of the maps, one of each kind per country. That of earlier versions, with one per country, is converted."""
+    create = (f'CREATE TABLE IF NOT EXISTS {TABLE} ('
+              'id INTEGER PRIMARY KEY AUTOINCREMENT, country_code TEXT NOT NULL, map_key TEXT NOT NULL, country_name TEXT NOT NULL, '
+              'level TEXT NOT NULL, level_label TEXT NOT NULL, origin TEXT NOT NULL, source TEXT NOT NULL, '
+              'license TEXT NOT NULL, attribution TEXT NOT NULL, unit_count INTEGER NOT NULL, '
+              'boundaries BLOB NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (country_code, map_key))')
+    columns = 'id, country_code, country_name, level, level_label, origin, source, license, attribution, unit_count, boundaries, updated_by, updated_at'
+    with repository.connection() as connection:
+        found = {row[1] for row in connection.execute(f'PRAGMA table_info({TABLE})').fetchall()}
+        if 'map_key' in found:
+            return
+        connection.execute('BEGIN IMMEDIATE')
+        found = {row[1] for row in connection.execute(f'PRAGMA table_info({TABLE})').fetchall()}
+        if 'map_key' in found:
+            return
+        if not found:
+            connection.execute(create)
+            return
+        connection.execute(f'ALTER TABLE {TABLE} RENAME TO {TABLE}_one_per_country')
+        connection.execute(create)
+        connection.execute(
+            f'INSERT INTO {TABLE} (map_key, {columns}) SELECT '
+            f"CASE origin WHEN '{FULL_ORIGIN}' THEN '{FULL}' WHEN 'GeoNames' THEN '{PLACE}' ELSE '{OWN}' END, {columns} "
+            f'FROM {TABLE}_one_per_country')
+        connection.execute(f'DROP TABLE {TABLE}_one_per_country')
+
+
 def list_postal_layers(repository: Any) -> list[dict[str, Any]]:
-    return list_layers(repository, table=TABLE)
+    """The maps saved in the workspace, by country."""
+    _ensure_table(repository)
+    with repository.connection() as connection:
+        rows = connection.execute(
+            'SELECT id, country_code, map_key, country_name, level, level_label, origin, source, license, attribution, '
+            f"unit_count, updated_by, updated_at FROM {TABLE} ORDER BY country_name, CASE map_key WHEN '{FULL}' THEN 0 "
+            f"WHEN '{PLACE}' THEN 1 ELSE 2 END").fetchall()
+    return [dict(row) for row in rows]
+
+
+def _layers_of_countries(repository: Any) -> dict[str, dict[str, dict[str, Any]]]:
+    found: dict[str, dict[str, dict[str, Any]]] = {}
+    for layer in list_postal_layers(repository):
+        found.setdefault(layer['country_code'], {})[layer['map_key']] = layer
+    return found
+
+
+def postal_layer_boundaries(repository: Any, country_code: str, map_key: str) -> dict[str, list]:
+    _ensure_table(repository)
+    with repository.connection() as connection:
+        row = connection.execute(f'SELECT boundaries FROM {TABLE} WHERE country_code = ? AND map_key = ?',
+                                 (country_code, map_key)).fetchone()
+    return _unpack(row['boundaries']) if row else {}
 
 
 def delete_postal_layer(repository: Any, layer_id: int) -> bool:
-    return delete_layer(repository, layer_id, table=TABLE)
+    _ensure_table(repository)
+    with repository.connection() as connection:
+        return bool(connection.execute(f'DELETE FROM {TABLE} WHERE id = ?', (int(layer_id),)).rowcount)
+
+
+def save_postal_layer(repository: Any, *, country_code: str, map_key: str, level: str, level_label: str, origin: str,
+                      source: str, license_text: str, attribution: str, boundaries: dict[str, list],
+                      username: str) -> dict[str, Any]:
+    """Save (or replace) one of the maps of a country."""
+    code = str(country_code or '').strip().upper()
+    if not re.fullmatch(r'[A-Z]{3}', code):
+        raise ValueError('Choose the country of the postal codes (ISO 3166 alpha-3 code, for example ESP).')
+    if map_key not in MAP_LABELS:
+        raise ValueError('Choose the map of the postal codes.')
+    if not boundaries:
+        raise ValueError('The postal codes have no polygons.')
+    _ensure_table(repository)
+    with repository.connection() as connection:
+        connection.execute(
+            f'INSERT INTO {TABLE} (country_code, map_key, country_name, level, level_label, origin, source, license, attribution, '
+            'unit_count, boundaries, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) '
+            'ON CONFLICT(country_code, map_key) DO UPDATE SET country_name = excluded.country_name, level = excluded.level, '
+            'level_label = excluded.level_label, origin = excluded.origin, source = excluded.source, '
+            'license = excluded.license, attribution = excluded.attribution, unit_count = excluded.unit_count, '
+            'boundaries = excluded.boundaries, updated_by = excluded.updated_by, updated_at = excluded.updated_at',
+            (code, map_key, country_name(code), level, level_label, origin, source, license_text, attribution,
+             len(boundaries), _pack(boundaries), username, _now()))
+    return _layers_of_countries(repository)[code][map_key]
 
 
 def import_postal_layer(repository: Any, filename: str, content: bytes, *, country_code: str, name_field: str,
                         username: str) -> dict[str, Any]:
-    """A layer from a GeoJSON or a ZIP holding one Shapefile, such as a map the workspace has a licence for."""
-    return import_layer(repository, filename, content, country_code=country_code, level_label=LEVEL_LABEL,
-                        name_field=name_field, username=username, table=TABLE)
+    """The file of a country from a GeoJSON or a ZIP holding one Shapefile, such as a map the workspace has a licence for.
+    It replaces its Own file; its other maps stay."""
+    return save_postal_layer(repository, country_code=country_code, map_key=OWN, level='Imported', level_label=LEVEL_LABEL,
+                             origin='Imported', source=Path(filename).name, license_text='Provided by the workspace',
+                             attribution=Path(filename).name, boundaries=read_layer_file(filename, content, name_field),
+                             username=username)
+
+
+def postal_layers_document(repository: Any) -> dict[str, Any]:
+    """Every map with its polygons, for Import / Export, transfers and backups."""
+    return {'format': DOCUMENT_FORMAT, 'version': 1, 'layers': [
+        {**{key: value for key, value in layer.items() if key not in {'id', 'country_name'}},
+         'boundaries': postal_layer_boundaries(repository, layer['country_code'], layer['map_key'])}
+        for layer in list_postal_layers(repository)]}
+
+
+def import_postal_layers_document(repository: Any, document: Any, username: str) -> int:
+    """The maps of a document replace those of the workspace. A document of earlier versions has one per country."""
+    if not isinstance(document, dict) or document.get('format') != DOCUMENT_FORMAT:
+        raise ValueError('The file is not a DriveTest Analyzer Map Areas export.')
+    _ensure_table(repository)
+    with repository.connection() as connection:
+        connection.execute(f'DELETE FROM {TABLE}')
+    imported = 0
+    for layer in document.get('layers') or []:
+        if not isinstance(layer, dict):
+            continue
+        save_postal_layer(repository, country_code=layer.get('country_code'),
+                          map_key=layer['map_key'] if layer.get('map_key') in MAP_LABELS else _map_key_of(layer.get('origin')),
+                          level=str(layer.get('level') or ''), level_label=str(layer.get('level_label') or 'area'),
+                          origin=str(layer.get('origin') or 'Imported'), source=str(layer.get('source') or ''),
+                          license_text=str(layer.get('license') or ''), attribution=str(layer.get('attribution') or ''),
+                          boundaries=layer.get('boundaries') or {}, username=str(layer.get('updated_by') or username))
+        imported += 1
+    return imported
+
+
+def map_choices(repository: Any) -> list[dict[str, Any]]:
+    """The maps a Saved Filter can choose, with the countries the workspace has each of them for."""
+    layers = list_postal_layers(repository)
+    return [{'key': key, 'label': label, 'countries': [layer['country_name'] for layer in layers if layer['map_key'] == key]}
+            for key, label in MAP_LABELS.items()]
 
 
 @lru_cache(maxsize=1)
@@ -110,46 +244,76 @@ def bundled_rings(country_code: str) -> dict[str, list]:
         return {}
 
 
-def postal_index(repository: Any) -> AreaIndex:
-    """The postal code areas of a workspace, to place the tests: its own layers, else the copies shipped. A country
-    without a layer has none: its tests stay out of the Postal Code map."""
-    sources: dict[str, tuple[str, Any, bool]] = {
-        code: (item.get('level_label') or LEVEL_LABEL, (lambda code=code: bundled_rings(code)), True)
-        for code, item in bundled_layers().items()}
-    for layer in list_postal_layers(repository):
-        code = layer['country_code']
-        sources[code] = (layer['level_label'], (lambda code=code: layer_boundaries(repository, code, table=TABLE)), False)
+def _map_of_country(saved: dict[str, dict[str, Any]], included: bool, map_key: str) -> str | None:
+    """The map of a country a Saved Filter uses, among those saved: the one it chooses, else its full postcodes, and else
+    any other unless the application includes a copy of them (``None``: that copy)."""
+    if map_key in saved:
+        return map_key
+    if FULL in saved or included:
+        return FULL if FULL in saved else None
+    return next((key for key in (PLACE, OWN) if key in saved), None)
+
+
+def _maps_used(repository: Any, map_key: str) -> dict[str, dict[str, Any] | None]:
+    """The layer each country uses with a map (``None``: the copy included with the application)."""
+    layers = _layers_of_countries(repository)
+    included = bundled_layers()
+    return {code: (layers.get(code, {}).get(used) if (used := _map_of_country(layers.get(code, {}), code in included, map_key)) else None)
+            for code in {*included, *layers}}
+
+
+def postal_index(repository: Any, map_key: str = FULL) -> AreaIndex:
+    """The postal code areas of a workspace with a map, to place the tests. A country without any has none: its tests
+    stay out of the Postal Code map."""
+    used = _maps_used(repository, map_key)
+    included = bundled_layers()
+    sources: dict[str, tuple[str, Any, bool]] = {}
+    for code, layer in used.items():
+        if layer is None:
+            sources[code] = (included[code].get('level_label') or LEVEL_LABEL, (lambda code=code: bundled_rings(code)), True)
+        else:
+            sources[code] = (layer['level_label'], (lambda code=code, key=layer['map_key']: postal_layer_boundaries(repository, code, key)), False)
     index = AreaIndex(sources)
-    index.attributions = {**{code: item.get('attribution') for code, item in bundled_layers().items()},
-                          **{layer['country_code']: layer['attribution'] for layer in list_postal_layers(repository)}}
+    index.attributions = {code: (layer['attribution'] if layer else included[code].get('attribution')) for code, layer in used.items()}
+    index.maps = {code: {'used': layer['map_key'] if layer else FULL, 'copy': layer is None, 'chosen': map_key}
+                  for code, layer in used.items()}
     return index
 
 
-def postal_version(repository: Any) -> str:
-    """The version of the postal code layers of a workspace: a map drawn with others is drawn again."""
+def postal_version(repository: Any, map_key: str = FULL) -> str:
+    """The version of the postal code areas of a workspace with a map: a map drawn with others is drawn again."""
     payload = json.dumps({
-        'layers': [(layer['country_code'], layer['updated_at']) for layer in list_postal_layers(repository)],
+        'layers': sorted((code, layer['map_key'], layer['updated_at']) for code, layer in _maps_used(repository, map_key).items() if layer),
         'shipped': sorted((code, str(item.get('year') or ''), str(item.get('unit_count') or ''))
                           for code, item in bundled_layers().items()),
+        # (Also while another map stands in for it: what a map drawn with that one lacks is the map chosen.)
+        **({'map': map_key} if map_key != FULL else {}),
     }, sort_keys=True)
     return hashlib.sha1(payload.encode('utf-8')).hexdigest()[:16]
 
 
 def postal_map(index: AreaIndex, used: Iterable[str]) -> dict[str, Any]:
     """The polygons of the postal codes ``used`` by a map, the outlines of their countries (drawn in grey under them) and
-    who to credit for them."""
+    who to credit for them, with the map of each country and, when it is not the one chosen, that it replaces it."""
     used = set(used)
     boundaries: dict[str, list] = {}
     background: list = []
     attributions: dict[str, None] = {}
+    maps = []
     for code in sorted(index.codes):
         found = {name: rings for name, rings in (index.sources[code][1]() or {}).items() if name in used}
         if found:
             boundaries.update(found)
             background.extend(country_outline(code))
             attributions.setdefault(str(getattr(index, 'attributions', {}).get(code) or ''))
+            item = getattr(index, 'maps', {}).get(code)
+            if item:
+                # (A country without full postcodes has one point per place when they are chosen: it replaces nothing.)
+                replaced = item['used'] != item['chosen'] and (item['chosen'] != FULL or code in FULL_POSTCODES)
+                maps.append({'code': code, 'name': country_name(code), 'label': COPY_LABEL if item['copy'] else MAP_LABELS[item['used']],
+                             **({'replaces': MAP_LABELS[item['chosen']]} if replaced else {})})
     return {'boundaries': boundaries, 'background': background,
-            'attribution': ' · '.join(text for text in attributions if text)}
+            'attribution': ' · '.join(text for text in attributions if text), 'maps': maps}
 
 
 # -- working the areas out from the points ----------------------------------------------------------
@@ -379,10 +543,10 @@ def download_postal_layer(repository: Any, country_code: str, username: str, *, 
     if not points:
         raise ValueError(f'GeoNames has no postal codes with coordinates for {country_name(code)}.')
     boundaries = postal_boundaries(points, land_of(repository, code))
-    return save_layer(repository, country_code=code, level=level, level_label=LEVEL_LABEL,
-                      origin=FULL_ORIGIN if full else 'GeoNames', source=url, license_text=GEONAMES_LICENSE,
-                      attribution=f'{GEONAMES_ATTRIBUTION}; {FULL_POSTCODES[code]}' if full else GEONAMES_ATTRIBUTION,
-                      boundaries=boundaries, username=username, table=TABLE)
+    return save_postal_layer(repository, country_code=code, map_key=FULL if full else PLACE, level=level, level_label=LEVEL_LABEL,
+                             origin=FULL_ORIGIN if full else 'GeoNames', source=url, license_text=GEONAMES_LICENSE,
+                             attribution=f'{GEONAMES_ATTRIBUTION}; {FULL_POSTCODES[code]}' if full else GEONAMES_ATTRIBUTION,
+                             boundaries=boundaries, username=username)
 
 
 # -- the countries of a calculation -----------------------------------------------------------------
@@ -427,30 +591,35 @@ def countries_of_tests(repository: Any, sources: Iterable[dict[str, Any]]) -> li
 
 
 def ensure_postal_layers(repository: Any, sources: Iterable[dict[str, Any]], username: str = 'system',
-                         progress: Callable[[str], None] = lambda _step: None) -> list[dict[str, str]]:
-    """Download the postal codes of the countries of a calculation that the workspace does not have; returns those that
-    could not be and have no copy to stand in, each with why (a map still draws the others)."""
+                         progress: Callable[[str], None] = lambda _step: None, *, map_key: str = FULL) -> list[dict[str, str]]:
+    """Download what the countries of a calculation lack of the map it chooses (an Own file cannot be: then the full
+    postcodes, which stand in for it). Returns the countries that could not be and have no other map to stand in, each with
+    why (a map still draws the others)."""
     missing = []
     for code in countries_of_tests(repository, sources):
-        included = code in bundled_layers()
-        # (Calculations at the same time download a country once.)
+        full = map_key != PLACE and code in FULL_POSTCODES
+        wanted_map = FULL if full else PLACE
+        # (Calculations at the same time download a map once.)
         with _DOWNLOADS:
-            if code in {layer['country_code'] for layer in list_postal_layers(repository)}:
+            saved = _layers_of_countries(repository).get(code, {})
+            if map_key in saved or wanted_map in saved:
                 continue
-            if included and time.monotonic() - _UNREACHED.get(code, -RETRY_SECONDS) < RETRY_SECONDS:
+            stand_in = bool(saved) or code in bundled_layers()
+            if stand_in and time.monotonic() - _UNREACHED.get((code, wanted_map), -RETRY_SECONDS) < RETRY_SECONDS:
                 continue
             progress(f'Downloading the postal codes of {country_name(code)}')
             try:
-                layer = download_postal_layer(repository, code, username)
+                layer = download_postal_layer(repository, code, username, full=full)
             except ValueError as exc:
-                if included:
-                    _UNREACHED[code] = time.monotonic()
+                if stand_in:
+                    _UNREACHED[(code, wanted_map)] = time.monotonic()
                 else:
                     missing.append({'code': code, 'name': country_name(code), 'error': str(exc)})
                 repository.try_add_log(username, 'postal_areas_download_failed', json.dumps(
-                    {'country': code, 'error': str(exc)}, ensure_ascii=False))
+                    {'country': code, 'map': wanted_map, 'error': str(exc)}, ensure_ascii=False))
                 continue
-            _UNREACHED.pop(code, None)
+            _UNREACHED.pop((code, wanted_map), None)
         repository.try_add_log(username, 'postal_areas_download', json.dumps(
-            {'country': code, 'origin': layer['origin'], 'level': layer['level'], 'areas': layer['unit_count']}, ensure_ascii=False))
+            {'country': code, 'map': layer['map_key'], 'origin': layer['origin'], 'level': layer['level'], 'areas': layer['unit_count']},
+            ensure_ascii=False))
     return missing

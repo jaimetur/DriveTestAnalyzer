@@ -8884,7 +8884,7 @@ def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
     from src.modules.campaign_maps import load_campaign_map
     from src.modules.map_areas import layers_document
     from src.modules.mapping_assignments import load_name_comments
-    from src.modules.postal_areas import TABLE as POSTAL_TABLE
+    from src.modules.postal_areas import postal_layers_document
     from src.modules.network_insights import load_spectrum_holdings
     from src.modules.serving_cells import load_serving_networks
 
@@ -8892,7 +8892,7 @@ def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
         workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
     )
     map_areas = layers_document(task_repository)
-    postal_areas = layers_document(task_repository, table=POSTAL_TABLE)
+    postal_areas = postal_layers_document(task_repository)
     document = {
         'format': 'drivetest-analyzer-mappings-reference-data',
         'version': 1,
@@ -8993,10 +8993,9 @@ def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: by
             raise ValueError(f'Map Areas for "{workspace.name}" are invalid: {exc}') from exc
     # (Files saved before Postal Codes keep the ones of the workspace.)
     if isinstance(document.get('postal_areas'), dict):
-        from src.modules.map_areas import import_layers_document
-        from src.modules.postal_areas import TABLE as POSTAL_TABLE
+        from src.modules.postal_areas import import_postal_layers_document
         try:
-            import_layers_document(task_repository, document['postal_areas'], 'system', replace=True, table=POSTAL_TABLE)
+            import_postal_layers_document(task_repository, document['postal_areas'], 'system')
         except ValueError as exc:
             raise ValueError(f'Postal Codes for "{workspace.name}" are invalid: {exc}') from exc
     if active_workspace and workspace.id == active_workspace.id:
@@ -19561,6 +19560,13 @@ def scoring_cdr_selection(payload: ScoringCdrSelectionRequest, user: SessionUser
     return scoring_auto_cdrs(scoring_repository(user), payload.nr_mode, filters, default_campaign=payload.default_campaign)
 
 
+@app.get('/api/scoring/postal-maps')
+def scoring_postal_maps(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+    """The maps of the Postal Codes a Saved Filter can choose, with the countries the workspace has each of them for."""
+    from src.modules.postal_areas import map_choices
+    return {'maps': map_choices(scoring_repository(user))}
+
+
 @app.post('/api/scoring/saved-filters/match')
 def saved_filters_match(payload: SavedFilterRequest, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """The Saved Filter of the selection being made, if it was used before, and whether its result is up to date."""
@@ -25065,8 +25071,8 @@ def get_workspace_map_area_countries(user: SessionUser = Depends(current_user)) 
     from src.modules.map_areas import detect_countries
     from src.modules.postal_areas import FULL_POSTCODES, bundled_layers, list_postal_layers
     _map_areas_workspace()
-    postal_layers = {layer['country_code']: layer for layer in list_postal_layers(repository)}
-    return {'countries': [{**country, 'postal_layer': postal_layers.get(country['code']),
+    postal_layers = list_postal_layers(repository)
+    return {'countries': [{**country, 'postal_layers': [layer for layer in postal_layers if layer['country_code'] == country['code']],
                            'postal_full': country['code'] in FULL_POSTCODES,
                            'postal_bundled': bundled_layers().get(country['code'])}
                           for country in detect_countries(repository)]}
@@ -25074,7 +25080,7 @@ def get_workspace_map_area_countries(user: SessionUser = Depends(current_user)) 
 
 @app.get('/api/workspace-config/map-areas/postal')
 def get_workspace_postal_areas(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    """The Postal Codes saved in the active workspace: one layer of postal code areas per country."""
+    """The Postal Codes saved in the active workspace: up to three maps per country."""
     from src.modules.postal_areas import list_postal_layers
     _map_areas_workspace()
     return {'layers': list_postal_layers(repository)}
@@ -25098,7 +25104,7 @@ def download_workspace_postal_areas(payload: PostalAreaDownloadPayload, user: Se
             {'country': payload.country_code, 'error': str(exc)}, ensure_ascii=False))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     repository.add_log(user.username, 'postal_areas_download', json.dumps(
-        {'country': layer['country_code'], 'origin': layer['origin'], 'level': layer['level'], 'areas': layer['unit_count']}))
+        {'country': layer['country_code'], 'map': layer['map_key'], 'origin': layer['origin'], 'level': layer['level'], 'areas': layer['unit_count']}))
     return {'layer': layer}
 
 
@@ -25110,7 +25116,7 @@ def delete_workspace_postal_areas(layer_id: int, user: SessionUser = Depends(con
     if layer is None or not delete_postal_layer(repository, layer_id):
         raise HTTPException(status_code=404, detail='Postal Codes not found.')
     repository.add_log(user.username, 'postal_areas_delete', json.dumps(
-        {'layer_id': layer_id, 'country': layer['country_code'], 'origin': layer['origin'], 'source': layer['source'],
+        {'layer_id': layer_id, 'country': layer['country_code'], 'map': layer['map_key'], 'origin': layer['origin'], 'source': layer['source'],
          'areas': layer['unit_count']}, ensure_ascii=False))
     return {'deleted': layer_id}
 

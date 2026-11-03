@@ -17,7 +17,7 @@ import json
 from typing import Any
 
 from src.modules.cdr_auto_selection import ALL_CAMPAIGNS
-from src.modules.scoring_area_summary import normalize_trend_campaigns
+from src.modules.scoring_area_summary import OTHER_POSTAL_MAPS, normalize_trend_campaigns
 from src.modules.scoring_themes import DEFAULT_THEME, normalize_theme
 
 REPORT_CONFIGURATIONS_STATE_KEY = 'scoring_report_configurations'
@@ -123,6 +123,7 @@ def _normalize_area_summary(raw: Any) -> dict[str, Any]:
         'main_cities': bool(raw.get('main_cities')),
         # (Only when asked: every other selection keeps the form it had.)
         **({'postal_codes': True} if raw.get('postal_codes') else {}),
+        **({'postal_map': raw['postal_map']} if raw.get('postal_codes') and raw.get('postal_map') in OTHER_POSTAL_MAPS else {}),
         # (Saved before the Scoring Trends had campaigns: the default.)
         'campaigns': normalize_trend_campaigns(raw['campaigns']) if 'campaigns' in raw else [ALL_CAMPAIGNS],
     }

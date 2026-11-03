@@ -65,6 +65,10 @@ def build_scoring_insights(score_tables: list[dict[str, Any]], configuration: di
     # The countries of the tests whose postal codes could not be downloaded.
     insights['postal_missing'] = ((result or {}).get('points_loss') or {}).get('postal_missing') or []
     insights['postal_attribution'] = ((result or {}).get('points_loss') or {}).get('postal_attribution') or ''
+    # The map of the Postal Codes each country uses, which the maps say with who to credit for it.
+    insights['postal_maps'] = ((result or {}).get('points_loss') or {}).get('postal_maps') or []
+    labels = list(dict.fromkeys(item['label'] for item in insights['postal_maps']))
+    insights['postal_note'] = ' '.join(([f"Map: {', '.join(labels)}."] if labels else []) + [insights['postal_attribution']]).strip()
     insights.update(_serving_views(maps, result))
     # Where to act: the plan, each performance owner, the places ranked and the route that loses most.
     from src.modules.scoring_where_to_act import build_where_to_act
