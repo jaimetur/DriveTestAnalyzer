@@ -5295,7 +5295,7 @@ def rebuild_dataset_artifacts(
         })
         if dataset_kind == MULTIVENDOR_MAPPING_KIND and (not snapshot_row or mapping_operators(snapshot_row) is None):
             # Until they are chosen, it applies to the Operators that the networks of its cells serve.
-            suggested_operators = suggest_mapping_operators(task_repository, built_cells['summary']['families'])
+            suggested_operators = suggest_mapping_operators(task_repository, built_cells['summary']['families'], operator_options(task_repository))
             if suggested_operators:
                 task_repository.update_dataset_profile(dataset_id, mapping_operators=json.dumps(suggested_operators))
                 task_repository.add_log(

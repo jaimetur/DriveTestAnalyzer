@@ -229,6 +229,19 @@ def test_multivendor_mapping_applies_only_to_its_operators(client, tmp_path):
     assert mapped['Operator_Vendor'].tolist()[0].endswith(' - All')
 
 
+def test_multivendor_mapping_applies_to_its_operators_without_operator_maps(client, tmp_path, monkeypatch):
+    login(client)
+    monkeypatch.setattr(core.Repository, 'list_operator_mapping_groups', lambda self: [])
+    mapping = _upload(client, 'VF3_All_Vendor_2026_Week41.csv', MAPPING_CSV, 'multivendor_mapping')
+    assert {'3', 'Vodafone'} <= set(mapping['mapping_operator_names']) and 'EE' not in mapping['mapping_operator_names']
+    cdr_id = _cdr(tmp_path, {'Operator': ['Vodafone UK', '3', 'EE'], 'Cell_ID_A': [str(10 * 256 + 1), str(20 * 256 + 2), str(10 * 256 + 1)], 'Session_ID_A': [1, 2, 3]})
+    assert client.post('/workspace/map-mappings', data={
+        'cdr_dataset_ids': str(cdr_id), 'vendor_source': 'inventory', 'multivendor_mapping_dataset_ids': str(mapping['id']),
+    }, follow_redirects=False).status_code == 303
+    wait_for_background_dataset_work()
+    assert core.repository.load_dataset_rows(cdr_id, ['Vendor'], {})['Vendor'].tolist()[:2] == ['Ericsson', 'Samsung']
+
+
 def test_multivendor_mapping_without_a_network_column_belongs_to_its_operator(client, tmp_path):
     login(client)
     content = 'OP/ Vendor,Site ID,eNodeB ID,Cell ID,Longitude,Latitude\nHuawei,S1,40,4,-1.5,53.8\n'

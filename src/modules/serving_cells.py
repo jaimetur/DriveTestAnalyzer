@@ -30,6 +30,7 @@ import pandas as pd
 from src.modules.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.cdr_reporting import (
     VENDOR_UNKNOWN, _first_existing, _normalise_operator, _split_global_cells, _vendor_from_ends, _vendor_prefix, _with_vendor_columns,
+    operator_key,
 )
 from src.modules.network_inventory import (
     INVENTORY_CELLS_TABLE, MAPPING_CELLS_TABLE, MULTIVENDOR_MAPPING_KIND, NETWORK_FAMILY_LABELS, dataset_revision,
@@ -320,9 +321,13 @@ def assign_serving_vendors(
     families = {operator: serving_families(operator, config) for operator in pd.unique(operators)}
     # The snapshots of each Operator: a Multivendor Mapping applies only to the Operators chosen for it.
     labels = operator_labels(repository)
-    label = {operator: labels.get(operator.casefold(), operator).casefold() for operator in families}
+
+    def identity(name: str) -> str:
+        # Each Operator of the Operator Maps on its own (VF and VF SA); without them, the identity of its spellings.
+        return labels.get(name.casefold(), name).casefold() if labels else operator_key(name)
+
     usable = {operator: [item for item in snapshots if 'operators' not in item
-                         or label[operator] in {labels.get(name.casefold(), name).casefold() for name in item['operators']}]
+                         or identity(operator) in {identity(name) for name in item['operators']}]
               for operator in families}
     available = {operator: {family for item in usable[operator] for family in item['families']} for operator in families}
     excluded = [(operator, item['dataset_id']) for operator in families for item in snapshots if item not in usable[operator]]
@@ -374,12 +379,11 @@ def operator_labels(repository: Any) -> dict[str, str]:
     return labels
 
 
-def suggest_mapping_operators(repository: Any, families: Iterable[str], config: dict[str, Any] | None = None) -> list[str]:
-    """The Operators of the Operator Maps that the networks of a Multivendor Mapping serve (see Serving Networks)."""
+def suggest_mapping_operators(repository: Any, families: Iterable[str], operators: Iterable[str], config: dict[str, Any] | None = None) -> list[str]:
+    """The ``operators`` offered in the workspace that the networks of a Multivendor Mapping serve (see Serving Networks)."""
     config = config if config is not None else load_serving_networks(repository)
     families = {family for family in families if family}
-    names = sorted(set(operator_labels(repository).values()), key=str.casefold)
-    return [name for name in names if families & set(serving_families(name, config))]
+    return [name for name in operators if families & set(serving_families(name, config))]
 
 
 def vendor_mapping_signature(repository: Any, config: dict[str, Any] | None = None, inventory_ids: Iterable[int] = ()) -> str:
