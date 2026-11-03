@@ -29,7 +29,7 @@ from src.modules.saved_filters import (
     _prepare_saved_filter, _read_campaigns, _source_snapshot,
 )
 from src.modules.scoring_area_summary import has_area_filters, whole_country_filters
-from src.modules.scoring_impact_analysis import competition_part, conclusions, drivers_part, exposure_part, stability_part
+from src.modules.scoring_impact_analysis import conclusions, drivers_part
 from src.modules.scoring_impact_maps import build_maps, impact_map
 from src.modules.scoring_config import BEST_NETWORK_SCORING, MOST_RELIABLE_SCORING
 from src.modules.scoring_history import HistoryUnavailable, calculate_scoring_from_history, history_gap
@@ -41,8 +41,6 @@ from src.modules.scoring_views import build_scoring_views, refresh_baseline_warn
 
 CACHE_KIND = 'methodology-impact'
 MAPS_CACHE_KIND = 'methodology-impact-maps'
-# The other campaigns the same change is tried on, the newest first.
-OTHER_CAMPAIGNS = 6
 MODES = ('campaigns', 'methodologies')
 AREA_LEVELS = ('Region', 'Cluster', 'City')
 COMBINED = 'Combined'
@@ -343,8 +341,10 @@ def methodology_changes(before: dict[str, Any], after: dict[str, Any]) -> dict[s
         was = (before.get('interpolation') or {}).get(key)
         if key != 'source_note' and was != value and _differ(was, value):
             settings.append({'label': f"Interpolation: {key.replace('_', ' ')}", 'before': _text(was), 'after': _text(value)})
-    if list(before.get('gap_priority') or []) != list(after.get('gap_priority') or []):
-        settings.append({'label': 'Order of the GAP priorities', 'before': 'Other order', 'after': 'Changed'})
+    # (A KPI only one of them has is already a change of its own.)
+    priority_before, priority_after = list(before.get('gap_priority') or []), list(after.get('gap_priority') or [])
+    if [code for code in priority_before if code in priority_after] != [code for code in priority_after if code in priority_before]:
+        settings.append({'label': 'Order of the GAP priorities', 'before': 'Previous order', 'after': 'New order'})
     environment_rows = []
     for name in environments:
         was = _number((((before.get('scope') or {}).get('environments') or {}).get(name) or {}).get('total_points')) or 0.0
@@ -674,87 +674,6 @@ def _area_part(results_before: dict[str, Any], results_after: dict[str, Any], en
     return part
 
 
-def _area_category_part(results_before: dict[str, Any], results_after: dict[str, Any], environments: list[str],
-                        operators: list[str]) -> dict[str, dict[str, list[dict[str, Any]]]]:
-    """The difference of each category in each area, for an operator: {level: {environment: [{area, categories: {category:
-    {operator: difference}}}]}}. All Environments scales the environments measured in an area as the scoring of the area does."""
-    part: dict[str, dict[str, list[dict[str, Any]]]] = {}
-    for level in AREA_LEVELS:
-        before, after = results_before.get(level), results_after.get(level)
-        if not before or not after:
-            continue
-        field = level.lower()
-        points_before, points_after = _area_category_points(before, field, environments), _area_category_points(after, field, environments)
-        by_environment: dict[str, list[dict[str, Any]]] = {}
-        for environment in [COMBINED, *environments]:
-            rows = []
-            for area in sorted({*points_before, *points_after}, key=str.casefold):
-                categories: dict[str, dict[str, float]] = {}
-                for name in operators:
-                    was = ((points_before.get(area) or {}).get(name) or {}).get(environment) or {}
-                    now = ((points_after.get(area) or {}).get(name) or {}).get(environment) or {}
-                    for category in {*was, *now}:
-                        delta = now.get(category, 0.0) - was.get(category, 0.0)
-                        categories.setdefault(category, {})[name] = _rounded(delta)
-                if categories:
-                    rows.append({'area': area, 'categories': categories})
-            if rows:
-                by_environment[environment] = rows
-        if by_environment:
-            part[level] = by_environment
-    return part
-
-
-def _area_category_points(result: dict[str, Any], field: str, environments: list[str]) -> dict[str, dict[str, dict[str, dict[str, float]]]]:
-    """The points of each area, operator, environment and category of a result (All Environments as in _area_points)."""
-    measured: dict[tuple[str, str, str], dict[str, Any]] = {}
-    for row in result.get('totals') or []:
-        if not isinstance(row, dict) or row.get('environment') == COMBINED or row.get('environment') not in environments:
-            continue
-        area, operator = row.get(field), row.get('operator')
-        if area in (None, '') or operator in (None, ''):
-            continue
-        entry = measured.setdefault((str(area), str(operator), str(row['environment'])), {'points': {}, 'maximum': 0.0})
-        if row.get('category') == 'Overall':
-            if (_number(row.get('available_points')) or 0) > 0:
-                entry['maximum'] = _number(row.get('max_points')) or 0.0
-        else:
-            entry['points'][str(row.get('category'))] = _number(row.get('weighted_points')) or 0.0
-    full = sum(_number((((result.get('configuration') or {}).get('scope') or {}).get('environments', {}).get(name) or {}).get('total_points')) or 0.0
-               for name in environments)
-    reached: dict[tuple[str, str], float] = {}
-    for (area, operator, _environment), entry in measured.items():
-        reached[(area, operator)] = reached.get((area, operator), 0.0) + entry['maximum']
-    out: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
-    for (area, operator, environment), entry in measured.items():
-        if entry['maximum'] <= 0:
-            continue
-        target = out.setdefault(area, {}).setdefault(operator, {})
-        target[environment] = dict(entry['points'])
-        factor = full / reached[(area, operator)] if reached[(area, operator)] > 0 and full > 0 else 1.0
-        combined = target.setdefault(COMBINED, {})
-        for category, points in entry['points'].items():
-            combined[category] = combined.get(category, 0.0) + points * factor
-    return out
-
-
-def _campaign_change(label: str, value: str, before: dict[str, dict], after: dict[str, dict], names: list[str]) -> dict[str, Any]:
-    """What the methodology changes on the tests of a campaign, per operator; a campaign without tests of a KPI of either
-    methodology (that KPI did not exist yet) cannot be compared."""
-    first, second = before.get(COMBINED) or {}, after.get(COMBINED) or {}
-    missing = []
-    for table in (first, second):
-        for row in _kpi_rows(table):
-            if (_number(row.get('max_points')) or 0) > 0 and not any(_points(row, name) is not None for name in table.get('operators') or []):
-                missing.append(str(row.get('kpi') or row.get('kpi_code')))
-    deltas = {}
-    for name in names:
-        was, now = _points(first.get('total'), name), _points(second.get('total'), name)
-        if was is not None and now is not None:
-            deltas[name] = _rounded(now - was)
-    return {'campaign': value, 'label': label, 'operators': deltas, 'comparable': not missing and bool(deltas), 'missing': list(dict.fromkeys(missing))}
-
-
 def _impact_part(results: dict[str, dict[str, Any]], baseline: str, aliases: list[str], operator_groups: list[dict],
                  vendor_groups: list[dict]) -> tuple[dict[str, Any], dict[str, Any]]:
     """The panels of one scoring from the results of its calculations, and the KPI rows and score tables each methodology gives the
@@ -780,19 +699,10 @@ def _impact_part(results: dict[str, dict[str, Any]], baseline: str, aliases: lis
         'categories': _category_part(before, after, environments, names),
         'kpis': _kpi_part(pairs, changes, before, after, environments, names),
         'areas': _area_part(before_results, after_results, measured, names),
-        'area_categories': _area_category_part(before_results, after_results, measured, names),
         'gap': _gap_part(pairs, before, after, environments, names, reference),
         'points_lost': _points_lost_part(pairs, before, after, configuration_before, configuration_after, environments, names),
     }
-    part['competition'] = competition_part(part['scoring'], environments, names)
     part['drivers'] = drivers_part(part['kpis'], environments, names)
-    part['exposure'] = exposure_part(part['kpis'], environments, names)
-    campaigns = [{'campaign': results['tests']['value'], 'label': results['tests']['label'], 'current': True, 'comparable': True, 'missing': [],
-                  'operators': {name: cell['delta'] for name, cell in ((part['scoring'].get(COMBINED) or {}).get('operators') or {}).items() if cell.get('delta') is not None}}]
-    for other in results.get('others') or []:
-        campaigns.append(_campaign_change(other['label'], other['value'], _views(other['before'], baseline, aliases, operator_groups, vendor_groups),
-                                          _views(other['after'], baseline, aliases, operator_groups, vendor_groups), names))
-    part['stability'] = stability_part(campaigns, names)
     country_before, country_after = before_results.get('Country'), after_results.get('Country')
     sides = {'before_rows': (country_before or before_results['Operator']).get('scoring') or [],
              'after_rows': (country_after or after_results['Operator']).get('scoring') or [],
@@ -802,8 +712,7 @@ def _impact_part(results: dict[str, dict[str, Any]], baseline: str, aliases: lis
 
 
 def _finish_part(part: dict[str, Any], maps: dict[str, Any] | None, scoring: str) -> None:
-    """Add to the panels of a scoring what comes from the maps: the serving cells and, with all of it, the conclusions."""
-    part['serving'] = ((maps or {}).get('serving') or {}).get(scoring) or {}
+    """Add to the panels of a scoring what stands out, with all of them and the maps."""
     environment = COMBINED if COMBINED in part['scoring'] else next(iter(part['scoring']), COMBINED)
     available = [name for name in ('City', 'Region', 'Cluster') if (((maps or {}).get('series') or {}).get(scoring) or {}).get(name)]
     measure = 'national' if available else 'own'
@@ -838,8 +747,7 @@ def _prepare_run(repository: Any, saved_filter: dict[str, Any], nr_mode: str, pr
 
 
 def prepare_impact(repository: Any, saved_filter: dict[str, Any], raw_selection: Any = None) -> dict[str, Any]:
-    """What a comparison calculates and its key: the same tests with each methodology and, to see whether the effect is stable, the
-    tests of the other campaigns with both."""
+    """What a comparison calculates and its key: the same tests with each methodology."""
     options = impact_options(repository, saved_filter)
     selection = normalize_selection(raw_selection, options)
     profiles = repository.get_scoring_profiles()
@@ -865,25 +773,15 @@ def prepare_impact(repository: Any, saved_filter: dict[str, Any], raw_selection:
     runs = {'before': _prepare_run(repository, saved_filter, nr_mode, profile_before, tests, baseline, cache)}
     runs['after'] = (runs['before'] if profile_before['id'] == profile_after['id'] else
                      _prepare_run(repository, saved_filter, nr_mode, profile_after, tests, baseline, cache))
-    others = []
-    if runs['after'] is not runs['before']:
-        for entry in [item for item in options['campaigns'][nr_mode] if item['value'] != tests['value'] and not item['flex']][:OTHER_CAMPAIGNS]:
-            try:
-                others.append({'value': entry['value'], 'label': entry['label'],
-                               'before': _prepare_run(repository, saved_filter, nr_mode, profile_before, entry, baseline, cache),
-                               'after': _prepare_run(repository, saved_filter, nr_mode, profile_after, entry, baseline, cache)})
-            except ValueError:  # (The filters leave nothing of that campaign: the same change is not tried on it.)
-                continue
     postal = postal_areas.wanted(saved_filter) or bool(postal_areas.list_postal_layers(repository))
     key = scoring_cache.key_of({
         'kind': CACHE_KIND, 'code': _code_version(), 'selection': selection,
         'runs': {name: run['result_key'] for name, run in runs.items()},
-        'others': [[item['before']['result_key'], item['after']['result_key']] for item in others],
         'postal': postal_areas.postal_version(repository, postal_areas.chosen_map(saved_filter)) if postal else '',
         'operator_groups': repository.list_operator_mapping_groups(), 'vendor_groups': repository.list_vendor_mapping_groups(),
     })
-    return {'key': key, 'selection': selection, 'runs': runs, 'others': others, 'notes': notes, 'methodology_of': sources_of,
-            'postal': postal, 'postal_map': postal_areas.chosen_map(saved_filter), 'tests': {'value': tests['value'], 'label': tests['label']},
+    return {'key': key, 'selection': selection, 'runs': runs, 'notes': notes, 'methodology_of': sources_of,
+            'postal': postal, 'postal_map': postal_areas.chosen_map(saved_filter),
             'saved_filter_id': saved_filter.get('id'), 'saved_filter_name': saved_filter.get('name') or ''}
 
 
@@ -968,7 +866,7 @@ def calculate_impact(repository: Any, prepared: dict[str, Any], progress: Callab
     vendor_operators = scoring_vendor_operators(catalogues, repository.list_operator_mapping_groups())
     for index, (name, level) in enumerate(plan):
         run = runs[name]
-        current = 5 + round(index / len(plan) * 45)
+        current = 5 + round(index / len(plan) * 60)
         report(current, f"Scoring {run['campaign_label']} with {run['profile_name']}" + (f' per {level}' if level not in ('Operator', 'Country') else ''))
         levels = ['Operator'] if level in ('Operator', 'Country') else ['Operator', level]
         filters = run['filters'] if level == 'Operator' else whole_country_filters(run['filters'])
@@ -981,32 +879,18 @@ def calculate_impact(repository: Any, prepared: dict[str, Any], progress: Callab
             results[name][level] = None
     rows.frames = {}
     # The maps, with their own processes.
-    current = 50
+    current = 65
     maps_error = ''
     documents = None
     try:
         documents = _draw_maps(repository, prepared, lambda message: report(current, message))
     except Exception as exc:  # The scores stay; only the maps are missing, and the tab says why.
         maps_error = str(exc) or type(exc).__name__
-    # The same change on the other campaigns.
-    others = []
-    for index, other in enumerate(prepared['others']):
-        current = 72 + round(index / max(1, len(prepared['others'])) * 20)
-        report(current, f"Trying the change on the tests of {other['label']}")
-        try:
-            entry = {'value': other['value'], 'label': other['label']}
-            for name in ('before', 'after'):
-                entry[name] = _result_of(repository, other[name], ['Operator'], other[name]['filters'], rows, vendor_operators)
-            others.append(entry)
-        except ValueError:
-            continue
-    rows.frames = {}
     report(94, 'Comparing the results')
     operator_groups = repository.list_operator_mapping_groups()
     vendor_groups = repository.list_vendor_mapping_groups()
     run = runs['before']
     baseline, aliases = run['baseline_operator'], run['baseline_aliases']
-    results = {**results, 'others': others, 'tests': prepared['tests']}
     part, sides = _impact_part(results, baseline, aliases, operator_groups, vendor_groups)
     scorings = {BEST_NETWORK_SCORING: part}
     all_sides = {BEST_NETWORK_SCORING: sides}
@@ -1023,28 +907,19 @@ def calculate_impact(repository: Any, prepared: dict[str, Any], progress: Callab
     for scoring, item in scorings.items():
         _finish_part(item, maps, scoring)
     warnings = [warning for name in ('before', 'after') for warning in (results[name].get('Operator') or {}).get('warnings') or []]
-    if maps is not None:
-        maps.pop('serving', None)
     return {**summary, 'same_methodology': False, 'warnings': list(dict.fromkeys(warnings)), 'scorings': scorings, 'maps_error': maps_error,
             'maps': maps}
 
 
 def _most_reliable(results: dict[str, Any], baseline: str, configuration: dict[str, Any]) -> dict[str, Any] | None:
     """The same calculations in the Most Reliable scoring, when both methodologies have it."""
-    reliable: dict[str, Any] = {'tests': results['tests']}
+    reliable: dict[str, Any] = {}
     for name in ('before', 'after'):
         converted = {level: (engine.most_reliable_result(result, baseline, result.get('configuration') or configuration) if result else None)
                      for level, result in results[name].items()}
         if converted.get('Operator') is None:
             return None
         reliable[name] = converted
-    others = []
-    for other in results.get('others') or []:
-        before = engine.most_reliable_result(other['before'], baseline, other['before'].get('configuration') or configuration)
-        after = engine.most_reliable_result(other['after'], baseline, other['after'].get('configuration') or configuration)
-        if before is not None and after is not None:
-            others.append({**other, 'before': before, 'after': after})
-    reliable['others'] = others
     return reliable
 
 

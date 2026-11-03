@@ -20182,7 +20182,7 @@ def scoring_impact_status(filter_id: int, request: Request, key: str, user: Sess
 
 @app.get('/api/scoring/saved-filters/{filter_id}/impact/map')
 def scoring_impact_map(filter_id: int, request: Request, key: str, field: str = '', environment: str = 'Combined', measure: str = 'national',
-                       relative: bool = False, scoring: str = 'best_network', user: SessionUser = Depends(current_user)) -> Response:
+                       scoring: str = 'best_network', user: SessionUser = Depends(current_user)) -> Response:
     """The values of a map of a comparison calculated before (one methodology against the other), with how they spread."""
     from src.modules.scoring_impact import read_impact, read_maps
     from src.modules.scoring_impact_maps import MEASURES, impact_map
@@ -20193,7 +20193,7 @@ def scoring_impact_map(filter_id: int, request: Request, key: str, field: str = 
     if not impact or not impact.get('scorings'):
         raise HTTPException(status_code=409, detail='The Methodology Impact must finish calculating before its maps.')
     scoring = scoring if scoring in impact['scorings'] else 'best_network'
-    return _scoring_impact_json(request, impact_map(read_maps(task_repository, key), impact['scorings'][scoring], scoring, field, environment, measure, relative))
+    return _scoring_impact_json(request, impact_map(read_maps(task_repository, key), impact['scorings'][scoring], scoring, field, environment, measure))
 
 
 @app.get('/api/scoring/saved-filters/{filter_id}/impact/boundaries/{field}')

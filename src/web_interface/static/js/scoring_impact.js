@@ -1,6 +1,6 @@
-// Methodology Impact of Scoring & GAP Analysis: what a change of methodology does to the results, with the scope of the open
-// Saved Filter. The same tests are scored with both methodologies in the background (see scoring_impact.py), so every figure
-// comes from the methodology and none from the network: who it favours, why, where and how stable it is.
+// Methodology Impact of Scoring & GAP Analysis: two methodologies face to face, A against B, with the scope of the open Saved
+// Filter. The same tests are scored with both in the background (see scoring_impact.py), so every figure comes from the methodology
+// and none from the network.
 (() => {
   const POLL_MS = 1500;
   const STORAGE_KEY = 'scoring-methodology-impact';
@@ -16,11 +16,13 @@
   const mapData = new Map();
   const geometry = new Map();
   const expanded = new Set();
-  const choices = {field: null, measure: 'national', compare: 'each', cube: null, cubeOperator: null, table: null};
+  const choices = {field: null, measure: 'national', table: null, changeKind: null};
   // The operators enabled in the panels drawn, which the documents show.
   let chosenOperators = null;
   // The width the charts are drawn at, that of their card: their text keeps its size on every screen.
   let chartWidth = 860;
+  // The colours of the theme of the panels drawn.
+  let palette = {};
   let renderToken = 0;
   let pollTimer = null;
 
@@ -103,50 +105,42 @@
     const style = getComputedStyle(pane.closest('[data-scoring-workspace]') || pane);
     const surface = ctx.theme?.surface || '#FFFFFF';
     const ink = ctx.theme?.ink || '#1F2A37';
-    return {surface, ink, gain: style.getPropertyValue('--st-gain').trim() || '#4ca65a', loss: style.getPropertyValue('--st-loss').trim() || '#e8414f',
+    return {surface, ink, a: '#94a3b8', b: style.getPropertyValue('--st-title').trim() || '#a21caf',
+      gain: style.getPropertyValue('--st-gain').trim() || '#4ca65a', loss: style.getPropertyValue('--st-loss').trim() || '#e8414f',
       zero: mix(surface, ink, .07), grid: mix(surface, ink, .18), muted: mix(surface, ink, .55), dark: lightness(hexChannels(surface) || [255, 255, 255]) < .4};
   }
 
   // A value from the loss colour to the gain colour; a root scale so the small differences show beside the large ones.
-  function heatColor(value, scale, palette) {
+  function heatColor(value, scale) {
     if (value === null || value === undefined || !Number.isFinite(Number(value))) return palette.zero;
     if (!scale || Math.abs(value) < NO_CHANGE) return palette.zero;
     const share = Math.min(1, Math.sqrt(Math.abs(value) / scale));
     return mix(palette.surface, value > 0 ? palette.gain : palette.loss, .14 + share * .86);
   }
 
-  function inkOn(color, palette) {
+  function inkOn(color) {
     const channels = String(color).match(/\d+/g)?.slice(0, 3).map(Number) || hexChannels(color) || [255, 255, 255];
     const parsed = String(color).startsWith('rgb') ? channels : (hexChannels(color) || channels);
     return lightness(parsed) > .58 ? '#17232d' : '#ffffff';
   }
 
   // The colour of an operator, readable on the theme (a black operator on a dark theme takes its ink).
-  function operatorColor(item, ctx, palette) {
+  function operatorColor(item, ctx) {
     const color = ctx.safeHexColor(item?.color) || palette.ink;
     const channels = hexChannels(color);
     return palette.dark && channels && lightness(channels) < .2 ? palette.ink : color;
   }
 
   // ---- Cells and tables --------------------------------------------------------------------------------------------------
-  // The bar either side of zero of a difference, as long as the difference against the largest of its table.
-  function track(delta, scale, tone) {
-    const bar = element('span', 'scoring-impact-track');
-    const share = Math.abs(Number(delta) || 0) / Math.max(Number(scale) || 0, NO_CHANGE);
-    if (share > 0 && tone !== 'flat') {
-      const fill = element('i', `is-${delta > 0 ? 'right' : 'left'} is-${tone}`);
-      fill.style.width = `${Math.min(share, 1) * 50}%`;
-      bar.append(fill);
-    }
-    return bar;
-  }
-
   function toneOf(delta, inverse = false) {
     if (delta === null || delta === undefined || Math.abs(delta) < NO_CHANGE) return 'flat';
     return (delta > 0) !== inverse ? 'gain' : 'loss';
   }
 
-  // A cell of the impact: its difference with the bar, and the value before and after.
+  // The letter of each methodology, the same one in every panel.
+  const sideBadge = side => element('span', `scoring-impact-badge is-${side}`, side.toUpperCase());
+
+  // A cell of the impact: its difference on the colour of the difference, and the value with each methodology.
   function shiftCell(cell, scale, {inverse = false, title = '', flip = false, digits = 1} = {}) {
     const box = element('td', 'scoring-impact-cell');
     if (!cell || (cell.before === null && cell.after === null)) {
@@ -156,10 +150,16 @@
     }
     const tone = toneOf(cell.delta, inverse);
     box.dataset.tone = tone;
-    const head = element('span', 'scoring-impact-head', element('b', `is-${tone}`, signed(cell.delta)));
+    if (tone !== 'flat') {
+      const share = Math.min(1, Math.sqrt(Math.abs(cell.delta) / Math.max(Number(scale) || 0, NO_CHANGE)));
+      const color = mix(palette.surface, tone === 'gain' ? palette.gain : palette.loss, .12 + share * .58);
+      // (Over the colours each theme gives the cells of a table.)
+      box.style.setProperty('background', color, 'important');
+      box.style.setProperty('color', inkOn(color), 'important');
+    }
+    const head = element('span', 'scoring-impact-head', element('b', '', signed(cell.delta)));
     if (flip) head.append(element('em', 'scoring-impact-flag', 'Changes side'));
-    box.append(head, track(cell.delta, scale, tone),
-      element('small', '', `${cell.before === null ? 'none' : number(cell.before, digits)} → ${cell.after === null ? 'none' : number(cell.after, digits)}`));
+    box.append(head, element('small', '', `${cell.before === null ? 'none' : number(cell.before, digits)} → ${cell.after === null ? 'none' : number(cell.after, digits)}`));
     if (title) box.title = title;
     return box;
   }
@@ -206,7 +206,6 @@
     const scale = Math.max(0, ...rows.flatMap(row => cellsOf(row).map(cell => Math.abs(Number(cell?.delta) || 0))));
     const addRow = (section, row, rowScale) => {
       const line = section.insertRow();
-      if (row.className) line.className = row.className;
       const first = line.insertCell();
       first.className = 'scoring-impact-row-label';
       first.append(row.label);
@@ -259,9 +258,15 @@
     return wrapper;
   }
 
+  function panel(body, key, label, title, ctx) {
+    const section = ctx.insightSection(body, title, `scoring-impact-${key}-card`, false);
+    section.dataset.impactPanel = label;
+    return section;
+  }
+
   // ---- Charts (each fits its card: it scales with its width) ---------------------------------------------------------------
   // Bars either side of zero, from the largest: a label, the bar and its value.
-  function divergingChart(items, palette, {labelWidth: wantedLabel = 240, valueWidth = 66, rowHeight = 26, digits = 2, inverse = false, width = chartWidth} = {}) {
+  function divergingChart(items, {labelWidth: wantedLabel = 240, valueWidth = 66, rowHeight = 26, digits = 2, inverse = false, width = chartWidth} = {}) {
     const height = Math.max(rowHeight * items.length + 8, 30);
     const svg = svgElement('svg', {viewBox: `0 0 ${width} ${height}`, class: 'scoring-impact-chart', role: 'img'});
     const labelWidth = Math.min(wantedLabel, width * .38);
@@ -269,15 +274,16 @@
     const middle = labelWidth + valueWidth + room;
     const scale = Math.max(NO_CHANGE, ...items.map(item => Math.abs(Number(item.value) || 0)));
     svg.append(svgElement('line', {x1: middle, x2: middle, y1: 0, y2: height, stroke: palette.grid}));
-    const room_chars = Math.max(12, Math.floor(labelWidth / 7));
+    const roomChars = Math.max(12, Math.floor(labelWidth / 7));
     items.forEach((item, index) => {
       const y = index * rowHeight + 4;
       const value = Number(item.value) || 0;
       const reach = Math.abs(value) / scale * room;
-      const label = withTitle(svgElement('text', {x: labelWidth - 8, y: y + rowHeight / 2 + 2, 'text-anchor': 'end', fill: item.color || 'currentColor', 'font-size': 12, 'font-weight': item.color ? 700 : 500},
-        String(item.label).length > room_chars ? `${String(item.label).slice(0, room_chars - 1)}…` : item.label), String(item.label));
+      const label = withTitle(svgElement('text', {x: labelWidth - 8, y: y + rowHeight / 2 + (item.detail ? -2 : 2), 'text-anchor': 'end', fill: item.color || 'currentColor', 'font-size': 12, 'font-weight': item.color ? 700 : 500},
+        String(item.label).length > roomChars ? `${String(item.label).slice(0, roomChars - 1)}…` : item.label), String(item.label));
+      if (item.detail) svg.append(svgElement('text', {x: labelWidth - 8, y: y + rowHeight / 2 + 10, 'text-anchor': 'end', fill: palette.muted, 'font-size': 9.5}, item.detail));
       const tone = toneOf(value, inverse);
-      const bar = withTitle(svgElement('rect', {x: value < 0 ? middle - reach : middle, y: y + 3, width: Math.max(reach, tone === 'flat' ? 0 : 1), height: rowHeight - 9, rx: 2,
+      const bar = withTitle(svgElement('rect', {x: value < 0 ? middle - reach : middle, y: y + 3, width: Math.max(reach, tone === 'flat' ? 0 : 1), height: rowHeight - 9, rx: 3,
         fill: tone === 'gain' ? palette.gain : palette.loss}), item.title || `${item.label}: ${signed(value, digits)}`);
       const text = svgElement('text', {x: value < 0 ? middle - reach - 5 : middle + reach + 5, y: y + rowHeight / 2 + 2, 'text-anchor': value < 0 ? 'end' : 'start', 'font-size': 12, 'font-weight': 700,
         fill: tone === 'flat' ? palette.muted : tone === 'gain' ? palette.gain : palette.loss}, signed(value, digits));
@@ -286,48 +292,12 @@
     return svg;
   }
 
-  // A heatmap: rows by columns, each cell in the colour of its value.
-  function heatTable(firstHeader, columns, rows, palette, {digits = 2, scale = null, format = null} = {}) {
-    const values = rows.flatMap(row => row.cells.map(cell => Math.abs(Number(cell?.value) || 0)));
-    const peak = scale ?? Math.max(NO_CHANGE, ...values);
-    const table = element('table', 'scoring-insight-table scoring-impact-heat');
-    table.createTHead().insertRow().append(element('th', '', firstHeader), ...columns.map((column) => {
-      const cell = element('th', '', column.label ?? column);
-      if (column.color) cell.style.color = column.color;
-      return cell;
-    }));
-    const body = table.createTBody();
-    for (const row of rows) {
-      const line = body.insertRow();
-      const first = line.insertCell();
-      first.className = 'scoring-impact-row-label';
-      first.append(row.label);
-      for (const cell of row.cells) {
-        const box = line.insertCell();
-        const value = cell?.value;
-        if (value === null || value === undefined) {
-          box.textContent = '—';
-          box.className = 'scoring-impact-heat-cell is-empty';
-          continue;
-        }
-        const color = heatColor(value, peak, palette);
-        box.className = 'scoring-impact-heat-cell';
-        // (Over the colours each theme gives the cells of a table.)
-        box.style.setProperty('background', color, 'important');
-        box.style.setProperty('color', inkOn(color, palette), 'important');
-        box.textContent = format ? format(value) : signed(value, digits);
-        if (cell.title) box.title = cell.title;
-      }
-    }
-    return element('div', 'scoring-insight-table-wrap', table);
-  }
-
   // Per row, its parts stacked either side of zero, each in its colour.
-  function stackedDiverging(rows, partsMeta, palette, {labelWidth: wantedLabel = 150, width = chartWidth, rowHeight = 34} = {}) {
+  function stackedDiverging(rows, partsMeta, {labelWidth: wantedLabel = 150, width = chartWidth, rowHeight = 34} = {}) {
     const labelWidth = Math.min(wantedLabel, width * .25);
     const height = rowHeight * rows.length + 8;
     const svg = svgElement('svg', {viewBox: `0 0 ${width} ${height}`, class: 'scoring-impact-chart', role: 'img'});
-    const room = (width - labelWidth - 90) / 2;
+    const room = (width - labelWidth - 70) / 2;
     const middle = labelWidth + room;
     const extent = Math.max(NO_CHANGE, ...rows.map(row => Math.max(sum(Object.values(row.parts).filter(value => value > 0)), -sum(Object.values(row.parts).filter(value => value < 0)))));
     svg.append(svgElement('line', {x1: middle, x2: middle, y1: 0, y2: height, stroke: palette.grid}));
@@ -342,12 +312,86 @@
         const reach = Math.abs(value) / extent * room;
         const x = value > 0 ? right : leftEdge - reach;
         svg.append(withTitle(svgElement('rect', {x, y: y + 4, width: Math.max(reach, 1), height: rowHeight - 12, fill: part.color}), `${row.label} · ${part.label}: ${signed(value)}`));
-        if (reach > 44) svg.append(svgElement('text', {x: x + reach / 2, y: y + rowHeight / 2 + 1, 'text-anchor': 'middle', 'font-size': 10.5, 'font-weight': 700, fill: inkOn(part.color, palette)}, signed(value, Math.abs(value) >= 10 ? 1 : 2)));
+        if (reach > 44) svg.append(svgElement('text', {x: x + reach / 2, y: y + rowHeight / 2 + 1, 'text-anchor': 'middle', 'font-size': 10.5, 'font-weight': 700, fill: inkOn(part.color)}, signed(value, Math.abs(value) >= 10 ? 1 : 2)));
         if (value > 0) right += reach; else leftEdge -= reach;
       }
       const tone = toneOf(row.total);
       svg.append(svgElement('text', {x: width - 4, y: y + rowHeight / 2 + 2, 'text-anchor': 'end', 'font-size': 13, 'font-weight': 800,
         fill: tone === 'flat' ? palette.muted : tone === 'gain' ? palette.gain : palette.loss}, signed(row.total)));
+    });
+    return svg;
+  }
+
+  // The ranking with each methodology, each operator joined to itself: a level line keeps its position.
+  function rankingChart(combined, operators, doc, ctx, {width = Math.min(chartWidth, 760)} = {}) {
+    const placed = side => operators.filter(item => combined.operators[item.operator]?.[side] !== null && combined.operators[item.operator]?.[side] !== undefined)
+      .sort((first, second) => combined.operators[second.operator][side] - combined.operators[first.operator][side]);
+    const before = placed('before');
+    const after = placed('after');
+    const rowHeight = 36;
+    const top = 30;
+    const height = top + Math.max(before.length, after.length) * rowHeight + 2;
+    const room = Math.min(210, Math.max(118, width * .3));
+    const svg = svgElement('svg', {viewBox: `0 0 ${width} ${height}`, class: 'scoring-impact-chart', role: 'img'});
+    const heads = [[room - 12, 'end', 'A', doc.before.profile_name, palette.a], [width - room + 12, 'start', 'B', doc.after.profile_name, palette.b]];
+    for (const [x, anchor, letter, name, fill] of heads) {
+      const clipped = name.length > room / 7 ? `${name.slice(0, Math.floor(room / 7) - 1)}…` : name;
+      svg.append(withTitle(svgElement('text', {x, y: 14, 'text-anchor': anchor, 'font-size': 12, 'font-weight': 800, fill}, `${letter} · ${clipped}`), name));
+    }
+    const yOf = index => top + index * rowHeight + rowHeight / 2;
+    for (const item of operators) {
+      const first = before.indexOf(item);
+      const second = after.indexOf(item);
+      if (first < 0 || second < 0) continue;
+      const color = operatorColor(item, ctx);
+      svg.append(svgElement('line', {x1: room, y1: yOf(first), x2: width - room, y2: yOf(second), stroke: color, 'stroke-width': first === second ? 2.5 : 4, 'stroke-opacity': first === second ? .45 : 1, 'stroke-linecap': 'round'}));
+      for (const [x, y] of [[room, yOf(first)], [width - room, yOf(second)]]) svg.append(svgElement('circle', {cx: x, cy: y, r: 5, fill: color, stroke: palette.surface, 'stroke-width': 1.5}));
+    }
+    const line = (list, side, anchor, x) => list.forEach((item, index) => {
+      const value = number(combined.operators[item.operator][side], 1);
+      const label = item.label.length > room / 11 ? `${item.label.slice(0, Math.floor(room / 11) - 1)}…` : item.label;
+      const text = svgElement('text', {x, y: yOf(index) + 4, 'text-anchor': anchor, 'font-size': 13, fill: 'currentColor'});
+      const name = svgElement('tspan', {'font-weight': 800, fill: operatorColor(item, ctx)}, label);
+      const figure = svgElement('tspan', {'font-weight': 500, fill: palette.muted}, value);
+      text.append(svgElement('tspan', {'font-weight': 800}, `${index + 1}. `), name, svgElement('tspan', {}, '  '), figure);
+      svg.append(withTitle(text, `${item.label}: ${value} points`));
+    });
+    line(before, 'before', 'end', room - 12);
+    line(after, 'after', 'start', width - room + 12);
+    svg.style.maxWidth = `${width}px`;
+    svg.style.margin = '0 auto';
+    return svg;
+  }
+
+  // The GAP with each methodology, as two bars from the reference.
+  function gapChart(items, {width = chartWidth} = {}) {
+    const rowHeight = 46;
+    const height = items.length * rowHeight + 6;
+    const labelWidth = Math.min(130, width * .24);
+    const totalWidth = Math.min(150, width * .26);
+    const svg = svgElement('svg', {viewBox: `0 0 ${width} ${height}`, class: 'scoring-impact-chart', role: 'img'});
+    const extent = Math.max(NO_CHANGE, ...items.flatMap(item => [Math.abs(item.before || 0), Math.abs(item.after || 0)]));
+    const anySide = items.some(item => (item.before || 0) > 0 || (item.after || 0) > 0) && items.some(item => (item.before || 0) < 0 || (item.after || 0) < 0);
+    const valueRoom = 46;
+    const span = width - labelWidth - totalWidth - valueRoom * 2;
+    const allNegative = !items.some(item => (item.before || 0) > 0 || (item.after || 0) > 0);
+    const middle = anySide ? labelWidth + valueRoom + span / 2 : allNegative ? labelWidth + valueRoom + span : labelWidth + valueRoom;
+    const room = anySide ? span / 2 : span;
+    svg.append(svgElement('line', {x1: middle, x2: middle, y1: 0, y2: height, stroke: palette.grid, 'stroke-width': 1.5}));
+    items.forEach((item, index) => {
+      const y = index * rowHeight + 3;
+      svg.append(svgElement('text', {x: labelWidth - 8, y: y + rowHeight / 2 + 2, 'text-anchor': 'end', 'font-size': 13, 'font-weight': 800, fill: item.color}, item.label));
+      [['before', palette.a, 'A', 5], ['after', palette.b, 'B', 22]].forEach(([side, fill, letter, offset]) => {
+        const value = item[side];
+        if (value === null || value === undefined) return;
+        const reach = Math.abs(value) / extent * room;
+        svg.append(withTitle(svgElement('rect', {x: value < 0 ? middle - reach : middle, y: y + offset, width: Math.max(reach, 1), height: 14, rx: 2, fill}), `${item.label} with ${letter}: ${signed(value, 1)} points against the reference`));
+        svg.append(svgElement('text', {x: value < 0 ? middle - reach - 5 : middle + reach + 5, y: y + offset + 11, 'text-anchor': value < 0 ? 'end' : 'start', 'font-size': 11, 'font-weight': 600, fill: palette.muted}, signed(value, 1)));
+      });
+      const tone = toneOf(item.delta);
+      svg.append(svgElement('text', {x: width - 4, y: y + rowHeight / 2 + (item.flip ? -3 : 3), 'text-anchor': 'end', 'font-size': 14, 'font-weight': 800,
+        fill: tone === 'flat' ? palette.muted : tone === 'gain' ? palette.gain : palette.loss}, signed(item.delta)));
+      if (item.flip) svg.append(svgElement('text', {x: width - 4, y: y + rowHeight / 2 + 12, 'text-anchor': 'end', 'font-size': 10.5, 'font-weight': 800, fill: palette.loss}, 'Changes side'));
     });
     return svg;
   }
@@ -370,276 +414,186 @@
     return box;
   }
 
-  // Each step adds to the one before, from zero to the total.
-  function waterfallChart(steps, total, palette, {width = 420, height = 210, color = null} = {}) {
-    const svg = svgElement('svg', {viewBox: `0 0 ${width} ${height}`, class: 'scoring-impact-chart', role: 'img'});
-    const levels = [0];
-    let running = 0;
-    for (const step of steps) {
-      running += step.value;
-      levels.push(running);
-    }
-    const low = Math.min(0, ...levels, total);
-    const high = Math.max(0, ...levels, total);
-    const spread = Math.max(high - low, NO_CHANGE);
-    const top = 16;
-    const bottom = height - 38;
-    const y = value => top + (high - value) / spread * (bottom - top);
-    const count = steps.length + 1;
-    const band = (width - 8) / count;
-    svg.append(svgElement('line', {x1: 0, x2: width, y1: y(0), y2: y(0), stroke: palette.grid}));
-    running = 0;
-    steps.forEach((step, index) => {
-      const start = running;
-      running += step.value;
-      const x = 4 + index * band;
-      svg.append(withTitle(svgElement('rect', {x: x + 3, y: Math.min(y(start), y(running)), width: band - 6, height: Math.max(Math.abs(y(start) - y(running)), 1),
-        fill: step.value >= 0 ? palette.gain : palette.loss}), `${step.label}: ${signed(step.value)}`));
-      svg.append(svgElement('text', {x: x + band / 2, y: Math.min(y(start), y(running)) - 3, 'text-anchor': 'middle', 'font-size': 9.5, 'font-weight': 700, fill: 'currentColor'}, signed(step.value, Math.abs(step.value) >= 10 ? 1 : 2)));
-      String(step.label).split(/[\s/]+/).slice(0, 2).forEach((word, line) => svg.append(svgElement('text', {x: x + band / 2, y: bottom + 12 + line * 10, 'text-anchor': 'middle', 'font-size': 8.5, fill: palette.muted}, word.length > 10 ? `${word.slice(0, 9)}…` : word)));
-    });
-    const x = 4 + steps.length * band;
-    svg.append(withTitle(svgElement('rect', {x: x + 3, y: Math.min(y(0), y(total)), width: band - 6, height: Math.max(Math.abs(y(0) - y(total)), 1), fill: color || palette.ink}), `Total: ${signed(total)}`));
-    svg.append(svgElement('text', {x: x + band / 2, y: Math.min(y(0), y(total)) - 3, 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 800, fill: 'currentColor'}, signed(total)));
-    svg.append(svgElement('text', {x: x + band / 2, y: bottom + 12, 'text-anchor': 'middle', 'font-size': 8.5, 'font-weight': 700, fill: palette.muted}, 'Total'));
-    return svg;
-  }
-
-  // Dots of two measures with the straight line that fits them and the lines of zero.
-  function scatterChart(points, palette, {xLabel = '', yLabel = '', fit = null, color = null, width = 420, height = 280, describe = null, showZeroX = true} = {}) {
-    const svg = svgElement('svg', {viewBox: `0 0 ${width} ${height}`, class: 'scoring-impact-chart', role: 'img'});
-    if (!points.length) return svg;
-    const [left, right, top, bottom] = [46, 10, 10, 34];
-    const rangeOf = (values, withZero) => {
-      const low = Math.min(...values, ...(withZero ? [0] : []));
-      const high = Math.max(...values, ...(withZero ? [0] : []));
-      const margin = Math.max((high - low) * .08, NO_CHANGE);
-      return [low - margin, high + margin];
-    };
-    const [minX, maxX] = rangeOf(points.map(point => point.x), showZeroX);
-    const [minY, maxY] = rangeOf(points.map(point => point.y), true);
-    const px = value => left + (value - minX) / (maxX - minX) * (width - left - right);
-    const py = value => top + (maxY - value) / (maxY - minY) * (height - top - bottom);
-    svg.append(svgElement('rect', {x: left, y: top, width: width - left - right, height: height - top - bottom, fill: 'none', stroke: palette.grid}));
-    if (minY < 0 && maxY > 0) svg.append(svgElement('line', {x1: left, x2: width - right, y1: py(0), y2: py(0), stroke: palette.grid}));
-    if (showZeroX && minX < 0 && maxX > 0) svg.append(svgElement('line', {x1: px(0), x2: px(0), y1: top, y2: height - bottom, stroke: palette.grid}));
-    for (const [value, anchor] of [[minX, 'start'], [maxX, 'end']]) svg.append(svgElement('text', {x: px(value), y: height - bottom + 13, 'text-anchor': anchor, 'font-size': 9.5, fill: palette.muted}, number(value, Math.abs(value) >= 100 ? 0 : 1)));
-    for (const value of [minY, maxY]) svg.append(svgElement('text', {x: left - 4, y: py(value) + (value === maxY ? 8 : -2), 'text-anchor': 'end', 'font-size': 9.5, fill: palette.muted}, number(value, 1)));
-    svg.append(svgElement('text', {x: (left + width - right) / 2, y: height - 6, 'text-anchor': 'middle', 'font-size': 10.5, fill: palette.muted}, xLabel));
-    svg.append(svgElement('text', {x: 11, y: (top + height - bottom) / 2, 'text-anchor': 'middle', 'font-size': 10.5, fill: palette.muted, transform: `rotate(-90 11 ${(top + height - bottom) / 2})`}, yLabel));
-    if (fit) {
-      // (The line stays inside the frame.)
-      const clip = value => Math.min(Math.max(value, minY), maxY);
-      svg.append(svgElement('line', {x1: px(minX), y1: py(clip(fit.slope * minX + fit.intercept)), x2: px(maxX), y2: py(clip(fit.slope * maxX + fit.intercept)), stroke: color || palette.ink, 'stroke-width': 1.6, 'stroke-dasharray': '5 4'}));
-    }
-    for (const point of points) {
-      svg.append(withTitle(svgElement('circle', {cx: px(point.x), cy: py(point.y), r: 3.6, fill: color || palette.ink, 'fill-opacity': .72, stroke: palette.surface, 'stroke-width': .6}), describe ? describe(point) : point.name));
-    }
-    return svg;
-  }
-
-  // Each operator's areas as dots along the value, with the box of their middle half.
-  function spreadChart(rows, operators, analysis, palette, ctx, {width = chartWidth} = {}) {
-    const items = operators.filter(item => analysis.operators?.[item.operator]);
-    const rowHeight = 46;
-    const left = Math.min(120, width * .24);
-    const height = items.length * rowHeight + 30;
-    const svg = svgElement('svg', {viewBox: `0 0 ${width} ${height}`, class: 'scoring-impact-chart', role: 'img'});
-    const values = items.flatMap(item => rows.map(row => row.cells[item.operator]?.value).filter(value => value !== null && value !== undefined));
-    const extent = Math.max(NO_CHANGE, ...values.map(Math.abs));
-    const x = value => left + (value + extent) / (2 * extent) * (width - left - 20);
-    svg.append(svgElement('line', {x1: x(0), x2: x(0), y1: 2, y2: height - 22, stroke: palette.grid}));
-    for (const value of [-extent, 0, extent]) svg.append(svgElement('text', {x: x(value), y: height - 6, 'text-anchor': value < 0 ? 'start' : value > 0 ? 'end' : 'middle', 'font-size': 10, fill: palette.muted}, signed(value)));
-    items.forEach((item, index) => {
-      const summary = analysis.operators[item.operator];
-      const y = index * rowHeight + 24;
-      const color = operatorColor(item, ctx, palette);
-      svg.append(svgElement('text', {x: left - 10, y: y + 4, 'text-anchor': 'end', 'font-size': 12.5, 'font-weight': 700, fill: color}, item.label));
-      if (summary.q1 !== null && summary.q3 !== null) {
-        svg.append(svgElement('rect', {x: x(summary.q1), y: y - 11, width: Math.max(x(summary.q3) - x(summary.q1), 1), height: 22, fill: color, 'fill-opacity': .13, stroke: color, 'stroke-opacity': .45, rx: 2}));
-        svg.append(svgElement('line', {x1: x(summary.median), x2: x(summary.median), y1: y - 11, y2: y + 11, stroke: color, 'stroke-width': 2}));
-      }
-      // (Only those that move, the largest ones when there are thousands.)
-      const moving = rows.map(row => ({name: row.name, value: row.cells[item.operator]?.value})).filter(point => point.value !== null && point.value !== undefined && Math.abs(point.value) >= NO_CHANGE)
-        .sort((first, second) => Math.abs(second.value) - Math.abs(first.value)).slice(0, 260);
-      moving.forEach((point, position) => {
-        const jitter = ((position * 7) % 15) - 7;
-        svg.append(withTitle(svgElement('circle', {cx: x(point.value), cy: y + jitter, r: 2.8, fill: point.value > 0 ? palette.gain : palette.loss, 'fill-opacity': .7}), `${item.label} · ${point.name}: ${signed(point.value)}`));
-      });
-    });
-    return svg;
-  }
-
-  // How much of the movement the areas that move most hold.
-  function concentrationChart(operators, analysis, palette, ctx, {width = 420, height = 250} = {}) {
-    const [left, right, top, bottom] = [36, 10, 10, 30];
-    const svg = svgElement('svg', {viewBox: `0 0 ${width} ${height}`, class: 'scoring-impact-chart', role: 'img'});
-    const px = value => left + value * (width - left - right);
-    const py = value => top + (1 - value) * (height - top - bottom);
-    svg.append(svgElement('rect', {x: left, y: top, width: width - left - right, height: height - top - bottom, fill: 'none', stroke: palette.grid}));
-    svg.append(svgElement('line', {x1: px(0), y1: py(0), x2: px(1), y2: py(1), stroke: palette.grid, 'stroke-dasharray': '4 4'}));
-    for (const value of [0, .5, 1]) {
-      svg.append(svgElement('text', {x: left - 4, y: py(value) + 3, 'text-anchor': 'end', 'font-size': 9.5, fill: palette.muted}, `${value * 100}%`));
-      svg.append(svgElement('text', {x: px(value), y: height - bottom + 12, 'text-anchor': 'middle', 'font-size': 9.5, fill: palette.muted}, `${value * 100}%`));
-    }
-    svg.append(svgElement('text', {x: (left + width - right) / 2, y: height - 4, 'text-anchor': 'middle', 'font-size': 10, fill: palette.muted}, 'Share of the areas, those that move most first'));
-    for (const item of operators) {
-      const curve = analysis.operators?.[item.operator]?.curve;
-      if (!curve?.length) continue;
-      svg.append(withTitle(svgElement('polyline', {points: curve.map(([x, y]) => `${px(x).toFixed(1)},${py(y).toFixed(1)}`).join(' '), fill: 'none', stroke: operatorColor(item, ctx, palette), 'stroke-width': 2}), item.label));
-    }
-    return svg;
-  }
-
-  // The difference of each operator on the tests of each campaign.
-  function campaignChart(campaigns, operators, palette, ctx, {width = chartWidth, height = 250} = {}) {
-    const [left, right, top, bottom] = [52, 16, 12, 30];
-    const svg = svgElement('svg', {viewBox: `0 0 ${width} ${height}`, class: 'scoring-impact-chart', role: 'img'});
-    const values = campaigns.flatMap(item => Object.values(item.operators || {}));
-    const extent = Math.max(NO_CHANGE, ...values.map(Math.abs));
-    const px = index => left + (campaigns.length > 1 ? index / (campaigns.length - 1) : .5) * (width - left - right);
-    const py = value => top + (extent - value) / (2 * extent) * (height - top - bottom);
-    svg.append(svgElement('line', {x1: left, x2: width - right, y1: py(0), y2: py(0), stroke: palette.grid}));
-    for (const value of [-extent, 0, extent]) svg.append(svgElement('text', {x: left - 6, y: py(value) + 3, 'text-anchor': 'end', 'font-size': 10, fill: palette.muted}, signed(value)));
-    campaigns.forEach((item, index) => svg.append(svgElement('text', {x: px(index), y: height - bottom + 16, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': item.current ? 800 : 500, fill: 'currentColor'}, item.label)));
-    for (const operator of operators) {
-      const color = operatorColor(operator, ctx, palette);
-      const points = campaigns.map((item, index) => [index, item.operators?.[operator.operator]]).filter(([, value]) => value !== null && value !== undefined);
-      if (points.length > 1) svg.append(svgElement('polyline', {points: points.map(([index, value]) => `${px(index).toFixed(1)},${py(value).toFixed(1)}`).join(' '), fill: 'none', stroke: color, 'stroke-width': 2}));
-      for (const [index, value] of points) svg.append(withTitle(svgElement('circle', {cx: px(index), cy: py(value), r: 4, fill: color, stroke: palette.surface}), `${operator.label} · ${campaigns[index].label}: ${signed(value)}`));
-    }
-    return svg;
-  }
+  const sidesLegend = doc => element('div', 'scoring-impact-sides-legend', element('span', '', sideBadge('a'), doc.before.profile_name), element('span', '', sideBadge('b'), doc.after.profile_name));
 
   // ---- Panels ---------------------------------------------------------------------------------------------------------
-  // The share of each category or environment of a methodology, as a stacked bar.
-  function allocationBars(groups, doc, categoricalColors, field = 'category') {
-    const peak = Math.max(1, sum(groups.map(row => row.before)), sum(groups.map(row => row.after)));
-    const colorOf = index => categoricalColors[index % categoricalColors.length];
-    const row = (name, side) => {
-      const bar = element('span', 'scoring-impact-stack');
-      groups.forEach((group, index) => {
-        const value = Number(group[side]) || 0;
-        if (value <= 0) return;
-        const segment = element('i', '', value / peak > .05 ? number(value, 0) : '');
-        segment.style.width = `${value / peak * 100}%`;
-        segment.style.background = colorOf(index);
-        segment.title = `${group[field] ?? group.label}: ${number(value, 2)} points`;
-        bar.append(segment);
-      });
-      return element('div', 'scoring-impact-stack-row', element('strong', '', name), bar);
-    };
-    return element('div', 'scoring-impact-allocation', row(doc.before.profile_name, 'before'), row(doc.after.profile_name, 'after'),
-      legend(groups.map((group, index) => ({color: colorOf(index), label: group[field] ?? group.label}))));
+  function headPanel(body, doc, part, scoring, ctx, control) {
+    const section = panel(body, 'head', '', `Methodology Impact${scoring === 'most_reliable' ? ' — Most Reliable Network' : ''}`, ctx);
+    delete section.dataset.impactPanel;
+    const method = (side, summary, source) => element('div', `scoring-impact-method is-${side}`, sideBadge(side),
+      element('div', '', element('strong', '', summary.profile_name), source ? element('small', '', `Methodology of ${source}`) : null));
+    section.append(element('div', 'scoring-impact-versus', method('a', doc.before, doc.methodology_of?.before), element('span', 'scoring-impact-vs', 'vs'), method('b', doc.after, doc.methodology_of?.after)));
+    const reference = part.operators.find(item => item.is_reference)?.label || part.reference;
+    section.append(element('p', 'scoring-impact-context', `The same tests of ${doc.after.campaign_label} (${doc.nr_mode}) scored with both, so every difference comes from the methodology. GAP reference: ${reference}.`));
+    if (scoring !== ctx.scoring) section.append(note('The Most Reliable scoring is not compared: one of the methodologies does not have it. This is the Best Network scoring.'));
+    const {headline, facts = []} = part.conclusions || {};
+    if (headline) section.append(element('p', 'scoring-impact-headline', headline));
+    if (facts.length) {
+      const grid = element('div', 'scoring-impact-facts');
+      for (const fact of facts) {
+        const card = element('article', 'scoring-impact-fact', element('span', '', fact.title), element('strong', '', fact.text));
+        card.dataset.tone = fact.tone;
+        grid.append(card);
+      }
+      section.append(grid);
+    }
+    for (const text of doc.notes) section.append(note(text));
+    section.append(ctx.insightControls(control));
+    return section;
   }
 
-  // The changes of a KPI, once per change: the environments with the same change are named together.
-  function detailLines(details) {
+  // The points of each category with each methodology, face to face.
+  function butterfly(rows, doc, labelOf) {
+    const peak = Math.max(NO_CHANGE, ...rows.flatMap(row => [Number(row.before) || 0, Number(row.after) || 0]));
+    const box = element('div', 'scoring-impact-butterfly');
+    box.append(element('div', 'scoring-impact-butterfly-head', element('span', '', sideBadge('a'), doc.before.profile_name), element('span'), element('span', '', sideBadge('b'), doc.after.profile_name), element('span')));
+    for (const row of rows) {
+      const bar = (side) => {
+        const fill = element('i');
+        fill.style.width = `${(Number(row[side]) || 0) / peak * 100}%`;
+        return element('span', `scoring-impact-butterfly-bar is-${side === 'before' ? 'a' : 'b'}`, fill, element('b', '', number(row[side], 1)));
+      };
+      const tone = Math.abs(row.delta) >= NO_CHANGE ? (row.delta > 0 ? 'gain' : 'loss') : 'flat';
+      const line = element('div', 'scoring-impact-butterfly-row', bar('before'), element('strong', '', labelOf(row)), bar('after'),
+        element('span', `scoring-impact-pill is-${tone}`, tone === 'flat' ? 'Same' : signed(row.delta, 1)));
+      line.dataset.moved = String(tone !== 'flat');
+      box.append(line);
+    }
+    return box;
+  }
+
+  function sideValue(row, side, peak, doc) {
+    const value = row[side === 'a' ? 'before' : 'after'];
+    const absent = (side === 'a' && row.status === 'added') || (side === 'b' && row.status === 'removed');
+    if (absent) return element('div', `scoring-impact-diff-side is-${side} is-absent`, sideBadge(side), element('span', '', `Not in ${side === 'a' ? doc.before.profile_name : doc.after.profile_name}`));
+    const fill = element('i');
+    fill.style.width = `${(Number(value) || 0) / peak * 100}%`;
+    return element('div', `scoring-impact-diff-side is-${side}`, sideBadge(side), element('span', 'scoring-impact-diff-bar', fill), element('b', '', `${number(value, 1)} pts`));
+  }
+
+  // A row per value that changes: what it is, its value in A and in B. The environments with the same change go together.
+  function diffLines(details) {
     const groups = new Map();
     for (const item of details || []) {
       const key = JSON.stringify([item.label, item.before, item.after]);
       if (!groups.has(key)) groups.set(key, {...item, environments: []});
       if (item.environment) groups.get(key).environments.push(item.environment);
     }
-    const box = element('div', 'scoring-impact-details');
+    const box = element('div', 'scoring-impact-diff-lines');
     for (const item of groups.values()) {
-      box.append(element('div', '', element('strong', '', `${item.label}${item.environments.length ? ` (${item.environments.join(', ')})` : ''}: `),
-        element('code', '', item.before), ' → ', element('code', '', item.after)));
+      box.append(element('div', 'scoring-impact-diff-line', element('span', 'scoring-impact-diff-what', element('strong', '', item.label), item.environments.length ? element('small', '', item.environments.join(', ')) : null),
+        element('code', 'is-a', item.before), element('code', 'is-b', item.after)));
     }
     return box;
   }
 
-  function conclusionsPanel(section, part) {
-    if (!part.conclusions?.length) return;
-    const grid = element('div', 'scoring-impact-conclusions');
-    for (const item of part.conclusions) {
-      const card = element('article', 'scoring-impact-conclusion', element('span', 'scoring-impact-conclusion-title', item.title),
-        element('strong', '', item.headline), element('p', '', item.text));
-      card.dataset.tone = item.tone || 'neutral';
-      grid.append(card);
+  function changesList(box, doc, changes) {
+    const kind = choices.changeKind;
+    const kpis = changes.kpis.filter(row => !kind || row.kinds.includes(kind));
+    const peak = Math.max(NO_CHANGE, ...changes.kpis.flatMap(row => [Number(row.before) || 0, Number(row.after) || 0]));
+    const categories = new Map();
+    for (const row of kpis) {
+      const name = row.category || 'Other';
+      if (!categories.has(name)) categories.set(name, []);
+      categories.get(name).push(row);
     }
-    section.append(grid);
+    box.replaceChildren();
+    for (const [name, rows] of categories) {
+      const group = element('section', 'scoring-impact-diff-group', element('header', '', element('h5', '', name), element('small', '', `${rows.length} KPI${rows.length === 1 ? '' : 's'}`)));
+      for (const row of rows) {
+        const tone = toneOf(row.delta);
+        const line = element('article', 'scoring-impact-diff-row',
+          element('div', 'scoring-impact-diff-kpi', kpiLabel(row), kindChips(row.kinds, changes.kinds)),
+          sideValue(row, 'a', peak, doc), sideValue(row, 'b', peak, doc),
+          element('span', `scoring-impact-pill is-${tone}`, tone === 'flat' ? 'Same pts' : `${signed(row.delta, 1)} pts`));
+        line.dataset.status = row.status;
+        const details = (row.details || []).filter(item => !(row.status !== 'changed' && item.kind === 'points'));
+        if (details.length) line.append(diffLines(details));
+        group.append(line);
+      }
+      box.append(group);
+    }
+    if (!kpis.length) box.append(note('No KPI has this change.'));
   }
 
-  function changesPanel(pane, doc, part, palette, ctx) {
+  function changesPanel(body, doc, part, ctx) {
     const changes = part.changes;
-    const section = ctx.insightSection(pane, `What changed: ${doc.before.profile_name} → ${doc.after.profile_name}`, 'scoring-impact-changes-card', false);
+    const section = panel(body, 'changes', 'What changed', 'What changed in the methodology', ctx);
     if (changes.same) {
       section.append(note('Both methodologies are the same: nothing that scores a test changes between them.'));
       return;
     }
+    const listBox = element('div', 'scoring-impact-diff');
     const tiles = element('div', 'scoring-impact-tiles');
-    for (const [kind, label] of [['added', 'New KPIs'], ['removed', 'Removed KPIs'], ['points', 'Other points'], ['thresholds', 'Other thresholds'],
-      ['calculation', 'Other formula or filters'], ['scoring', 'Other score mapping'], ['definition', 'Other definition'], ['unchanged', 'Unchanged KPIs']]) {
-      const count = changes.counts[kind] || 0;
-      if (!count && !['added', 'removed', 'unchanged'].includes(kind)) continue;
-      const tile = element('div', 'scoring-impact-tile', element('strong', '', number(count, 0)), element('span', '', label));
+    const kinds = [['added', 'New KPIs'], ['removed', 'Removed KPIs'], ['points', 'Points changed'], ['thresholds', 'Thresholds changed'],
+      ['calculation', 'Formula or filters changed'], ['scoring', 'Score mapping changed'], ['definition', 'Definition changed']].filter(([kind]) => changes.counts[kind] > 0);
+    if (!kinds.some(([kind]) => kind === choices.changeKind)) choices.changeKind = null;
+    const buttons = kinds.map(([kind, label]) => {
+      const tile = element('button', 'scoring-impact-tile', element('strong', '', number(changes.counts[kind], 0)), element('span', '', label));
+      tile.type = 'button';
       tile.dataset.kind = kind;
-      tiles.append(tile);
-    }
+      tile.setAttribute('aria-pressed', String(choices.changeKind === kind));
+      tile.title = 'Show only these KPIs';
+      tile.addEventListener('click', () => {
+        choices.changeKind = choices.changeKind === kind ? null : kind;
+        buttons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.kind === choices.changeKind)));
+        changesList(listBox, doc, changes);
+      });
+      return tile;
+    });
+    const same = element('div', 'scoring-impact-tile', element('strong', '', number(changes.counts.unchanged || 0, 0)), element('span', '', 'Unchanged KPIs'));
+    same.dataset.kind = 'unchanged';
+    tiles.append(...buttons, same);
     section.append(tiles);
-    const categorical = ctx.theme?.categories || ['#4472C4', '#7030A0', '#C55A11', '#5B9BD5', '#A64D79', '#548235'];
-    section.append(subtitle('Points of each category'), allocationBars(changes.categories, doc, categorical));
-    const moved = changes.categories.filter(row => Math.abs(row.delta) >= NO_CHANGE);
-    section.append(note(moved.length
-      ? moved.map(row => `${row.category}: ${number(row.before, 2)} → ${number(row.after, 2)}`).join(' · ')
-      : 'Every category keeps its points: a KPI that gives or takes points shares them within its category.'));
-    if (changes.environments.some(row => Math.abs(row.delta) >= NO_CHANGE)) {
-      section.append(subtitle('Points of each environment'), allocationBars(changes.environments, doc, categorical, 'label'));
-    }
-    const shifted = changes.kpis.filter(row => Math.abs(row.delta) >= NO_CHANGE).sort((first, second) => second.delta - first.delta);
-    if (shifted.length) {
-      section.append(subtitle('The points each KPI gains or loses'), divergingChart(shifted.map(row => ({
-        label: `${row.kpi}`, value: row.delta, title: `${row.category}: ${number(row.before, 2)} → ${number(row.after, 2)} points`,
-      })), palette, {labelWidth: 330}));
-    }
-    if (changes.settings.length) section.append(subtitle('General settings'), detailLines(changes.settings));
+    const categories = changes.categories.filter(row => row.before > 0 || row.after > 0);
+    if (categories.some(row => Math.abs(row.delta) >= NO_CHANGE)) section.append(subtitle('Points per category'), butterfly(categories, doc, row => row.category));
+    else section.append(note('Every category keeps its points: a KPI that gives or takes points shares them within its category.'));
+    if (changes.environments.some(row => Math.abs(row.delta) >= NO_CHANGE)) section.append(subtitle('Points per environment'), butterfly(changes.environments, doc, row => row.label));
     if (changes.kpis.length) {
-      const details = element('details', 'scoring-impact-more-details', element('summary', '', `Each change of the ${changes.kpis.length} KPIs that change`));
-      const table = element('table', 'scoring-insight-table scoring-impact-matrix');
-      table.createTHead().insertRow().append(...['KPI', 'Category', 'What changes', 'Points', 'Changes'].map(text => element('th', '', text)));
-      const body = table.createTBody();
-      for (const row of changes.kpis) {
-        const line = body.insertRow();
-        line.dataset.status = row.status;
-        line.insertCell().append(kpiLabel(row));
-        line.insertCell().append(row.category || '');
-        line.insertCell().append(kindChips(row.kinds, changes.kinds));
-        const points = line.insertCell();
-        points.className = 'scoring-insight-number';
-        points.textContent = `${number(row.before, 2)} → ${number(row.after, 2)}`;
-        line.insertCell().append(detailLines(row.details));
-      }
-      details.append(element('div', 'scoring-insight-table-wrap', table));
-      section.append(details);
+      section.append(subtitle(`KPI by KPI: the ${changes.kpis.length} that change`), listBox);
+      changesList(listBox, doc, changes);
+    }
+    if (changes.settings.length) {
+      const settings = diffLines(changes.settings);
+      settings.classList.add('scoring-impact-general');
+      section.append(subtitle('General settings'), settings);
     }
   }
 
-  function scoringPanel(pane, part, chosen, ctx) {
-    const section = ctx.insightSection(pane, 'Impact on the scoring: each operator in All Environments and in each environment', 'scoring-impact-scoring-card', false);
+  function scoringPanel(body, doc, part, chosen, environment, ctx) {
+    const section = panel(body, 'scoring', 'Operators', 'Scoring of each operator with A and with B', ctx);
     const combined = part.scoring.Combined || part.scoring[part.environments[0]?.name];
     const operators = part.operators.filter(item => chosen.includes(item.operator));
     if (combined) {
-      const scale = Math.max(...operators.map(item => Math.abs(Number(combined.operators[item.operator]?.delta) || 0)), 0);
       const cards = element('div', 'scoring-impact-cards');
       const ordered = [...operators].sort((left, right) => (combined.operators[left.operator]?.rank_after ?? 99) - (combined.operators[right.operator]?.rank_after ?? 99));
       for (const item of ordered) {
         const cell = combined.operators[item.operator];
         if (!cell) continue;
         const tone = toneOf(cell.delta);
-        const color = ctx.safeHexColor(item.color);
         const moved = (cell.rank_before || 0) - (cell.rank_after || 0);
         const rank = element('span', `scoring-impact-rank is-${moved > 0 ? 'gain' : moved < 0 ? 'loss' : 'flat'}`,
           cell.rank_before && cell.rank_after && moved ? `${ordinal(cell.rank_before)} → ${ordinal(cell.rank_after)}` : (cell.rank_after ? ordinal(cell.rank_after) : ''));
         const card = element('article', 'scoring-impact-card',
           element('header', '', element('strong', '', `${item.label}${item.is_reference ? ' (reference)' : ''}`), rank),
           element('div', `scoring-impact-big is-${tone}`, signed(cell.delta)),
-          track(cell.delta, scale, tone),
-          element('small', '', `${number(cell.before, 1)} → ${number(cell.after, 1)} of ${number(combined.max_after, 0)} points`));
+          element('div', 'scoring-impact-card-sides', element('span', '', sideBadge('a'), number(cell.before, 1)), element('span', '', sideBadge('b'), number(cell.after, 1))));
+        const color = ctx.safeHexColor(item.color);
         if (color) card.style.setProperty('--operator-color', color);
         cards.append(card);
       }
-      section.append(subtitle('All Environments'), cards);
+      section.append(subtitle(`All Environments, of ${number(combined.max_after, 0)} points`), cards);
+      if (operators.length > 1) section.append(subtitle('Who is ahead of whom'), rankingChart(combined, operators, doc, ctx));
+    }
+    const drivers = part.drivers?.[environment];
+    const moved = operators.filter(item => drivers?.[item.operator] && Math.abs(drivers[item.operator].total) >= NO_CHANGE);
+    if (moved.length) {
+      const colours = {weights: ctx.theme?.categories?.[0] || '#4472C4', rules: ctx.theme?.categories?.[2] || '#C55A11', new: palette.gain, removed: palette.loss};
+      const meta = Object.entries(CAUSES).map(([key, label]) => ({key, label, color: colours[key]}))
+        .filter(item => moved.some(operator => Math.abs(drivers[operator.operator].causes[item.key] || 0) >= NO_CHANGE));
+      section.append(subtitle('Why each operator moves'), stackedDiverging(moved.map(item => ({
+        label: item.label, color: operatorColor(item, ctx), parts: drivers[item.operator].causes, total: drivers[item.operator].total,
+      })), meta), legend(meta));
     }
     const environments = part.environments.filter(item => item.name !== 'Combined');
     if (environments.length) {
@@ -650,138 +604,56 @@
         cells: part.scoring[item.name]?.operators || {},
       })), ctx));
     }
-    section.append(note('Each difference is the points of the operator with the second methodology minus those with the first one, on the same tests, so it comes from the methodology alone.'));
   }
 
-  function competitionPanel(pane, part, chosen, environment, palette, ctx) {
-    const data = part.competition?.[environment];
-    if (!data) return;
-    const operators = part.operators.filter(item => chosen.includes(item.operator) && data.relative[item.operator] !== undefined);
-    if (operators.length < 2) return;
-    const section = ctx.insightSection(pane, 'Who it favours and who it hurts, against the other operators', 'scoring-impact-competition-card', false);
-    const ordered = [...operators].sort((first, second) => data.relative[second.operator] - data.relative[first.operator]);
-    section.append(subtitle(`Each operator against the mean of the operators (${signed(data.mean)})`),
-      divergingChart(ordered.map(item => ({label: item.label, value: data.relative[item.operator], color: operatorColor(item, ctx, palette)})), palette, {labelWidth: 150, rowHeight: 30}),
-      note('If the change moved every operator alike it would not change anything between them: this is what it changes.'));
-    const columns = operators.map(item => ({label: item.label, color: operatorColor(item, ctx, palette)}));
-    const rows = operators.map(first => ({
-      label: element('strong', '', first.label),
-      cells: operators.map((second) => {
-        const step = data.matrix[first.operator]?.[second.operator];
-        return step ? {value: step.delta, title: `${first.label} against ${second.label}: ${signed(step.before, 1)} → ${signed(step.after, 1)} points`} : null;
-      }),
-    }));
-    section.append(subtitle('Head to head: how much each row gains against each column'), heatTable('Against', columns, rows, palette));
-    if (data.margins?.length) {
-      const labels = Object.fromEntries(part.operators.map(item => [item.operator, item.label]));
-      const margins = element('table', 'scoring-insight-table scoring-impact-matrix');
-      margins.createTHead().insertRow().append(...['Operators', 'Distance before', 'Distance after', 'Change', 'Share of the distance'].map(text => element('th', '', text)));
-      const body = margins.createTBody();
-      for (const step of data.margins) {
-        const line = body.insertRow();
-        line.insertCell().append(element('strong', '', `${labels[step.operator]} over ${labels[step.next]}`));
-        for (const text of [number(step.before, 2), number(step.after, 2)]) {
-          const cell = line.insertCell();
-          cell.className = 'scoring-insight-number';
-          cell.textContent = text;
-        }
-        const change = line.insertCell();
-        change.className = `scoring-insight-number is-${toneOf(step.delta)}`;
-        change.textContent = signed(step.delta);
-        const share = line.insertCell();
-        share.className = 'scoring-insight-number';
-        share.textContent = step.share === null ? 'N/A' : `${number(step.share * 100, 1)}%`;
-      }
-      section.append(subtitle('The distance between one position and the next'), element('div', 'scoring-insight-table-wrap', margins),
-        note('Share of the distance: how much of the distance between two operators the methodology gives or takes. Near 100% the position could change.'));
-    }
-  }
-
-  function driversPanel(pane, part, chosen, environment, palette, ctx) {
-    const data = part.drivers?.[environment];
-    if (!data) return;
-    const operators = part.operators.filter(item => chosen.includes(item.operator) && data[item.operator]);
-    if (!operators.length) return;
-    const section = ctx.insightSection(pane, 'Why each operator moves', 'scoring-impact-drivers-card', false);
-    const colours = {weights: ctx.theme?.categories?.[0] || '#4472C4', rules: ctx.theme?.categories?.[2] || '#C55A11', new: palette.gain, removed: palette.loss};
-    const meta = Object.entries(CAUSES).map(([key, label]) => ({key, label, color: colours[key]}))
-      .filter(item => operators.some(operator => Math.abs(data[operator.operator].causes[item.key] || 0) >= NO_CHANGE));
-    section.append(subtitle('What causes the difference of each operator'), stackedDiverging(operators.map(item => ({
-      label: item.label, color: operatorColor(item, ctx, palette), parts: data[item.operator].causes, total: data[item.operator].total,
-    })), meta, palette), legend(meta),
-    note('Points moved between KPIs: what the operator gains or loses at the same score, because a KPI is worth other points. Other thresholds, formula or filters: what scores differently with its new maximum.'));
-    const {grid, width} = smallMultiples(operators.length);
+  // The points of each operator in a category, with a bar as long as the maximum of the category in each methodology.
+  function categoryCard(row, operators, ctx) {
+    const scale = Math.max(NO_CHANGE, Number(row.max_before) || 0, Number(row.max_after) || 0);
+    const card = element('article', 'scoring-impact-category', element('header', '', element('strong', '', row.category),
+      element('small', '', `Maximum ${number(row.max_before, 1)} → ${number(row.max_after, 1)}`)));
+    const line = (side, value, maximum) => {
+      const fill = element('i');
+      fill.style.width = `${maximum ? (Number(value) || 0) / maximum * 100 : 0}%`;
+      const track = element('span', 'scoring-impact-pair-track', fill);
+      track.style.width = `${(Number(maximum) || 0) / scale * 100}%`;
+      return element('div', `scoring-impact-pair-line is-${side}`, element('span', 'scoring-impact-pair-scale', track), element('small', '', value === null || value === undefined ? '—' : number(value, 1)));
+    };
     for (const item of operators) {
-      const categories = Object.entries(data[item.operator].categories).filter(([, value]) => Math.abs(value.delta) >= NO_CHANGE)
-        .map(([label, value]) => ({label, value: value.delta}));
-      if (!categories.length) continue;
-      grid.append(element('figure', 'scoring-chart-card scoring-impact-figure', element('figcaption', '', item.label),
-        waterfallChart(categories, data[item.operator].total, palette, {color: operatorColor(item, ctx, palette), width})));
+      const cell = row.operators[item.operator];
+      if (!cell) continue;
+      const name = element('strong', 'scoring-impact-pair-name', item.label);
+      name.style.color = operatorColor(item, ctx);
+      const tone = toneOf(cell.delta);
+      card.append(element('div', 'scoring-impact-pair', name, element('div', 'scoring-impact-pair-bars', line('a', cell.before, row.max_before), line('b', cell.after, row.max_after)),
+        element('b', `is-${tone}`, signed(cell.delta, 1))));
     }
-    if (grid.childElementCount) section.append(subtitle('From category to category, up to its total'), grid);
+    return card;
   }
 
-  function exposurePanel(pane, part, chosen, environment, palette, ctx) {
-    const data = part.exposure?.[environment];
-    if (!data || data.kpis < 3) return;
-    const section = ctx.insightSection(pane, 'With or against the strengths of each operator', 'scoring-impact-exposure-card', false);
-    const operators = part.operators.filter(item => chosen.includes(item.operator) && data.operators[item.operator]?.points?.length);
-    const {grid, width} = smallMultiples(operators.length);
-    for (const item of operators) {
-      const entry = data.operators[item.operator];
-      const color = operatorColor(item, ctx, palette);
-      const reading = entry.r === null ? 'no correlation' : `r = ${signed(entry.r)}`;
-      grid.append(element('figure', 'scoring-chart-card scoring-impact-figure', element('figcaption', '', item.label, element('small', '', ` · ${reading}`)),
-        scatterChart(entry.points, palette, {xLabel: 'Points the KPI gains or loses', yLabel: 'Against the mean (score %)', fit: entry.r === null ? null : entry.fit, color, width,
-          describe: point => `${point.kpi} (${point.category})\nThe KPI: ${signed(point.x)} points\n${item.label} against the mean: ${signed(point.y, 1)} points of score %`})));
-    }
-    section.append(grid);
-    const table = element('table', 'scoring-insight-table scoring-impact-matrix');
-    table.createTHead().insertRow().append(...['Operator', 'Correlation', 'Reads', 'What the points moved give it, against the others'].map(text => element('th', '', text)));
-    const body = table.createTBody();
-    for (const item of operators) {
-      const entry = data.operators[item.operator];
-      const line = body.insertRow();
-      const name = element('strong', '', item.label);
-      name.style.color = operatorColor(item, ctx, palette);
-      line.insertCell().append(name);
-      const r = line.insertCell();
-      r.className = 'scoring-insight-number';
-      r.textContent = entry.r === null ? 'N/A' : number(entry.r, 2);
-      const size = Math.abs(entry.r ?? 0);
-      line.insertCell().append(entry.r === null ? 'No correlation'
-        : size < .3 ? 'No clear relation' : `${size >= .7 ? 'Strong' : size >= .5 ? 'Moderate' : 'Weak'}: the points go ${entry.r > 0 ? 'towards' : 'away from'} its strengths`);
-      const net = line.insertCell();
-      net.className = `scoring-insight-number is-${toneOf(entry.net)}`;
-      net.textContent = signed(entry.net);
-    }
-    section.append(element('div', 'scoring-insight-table-wrap', table),
-      note(`Each dot is one of the ${data.kpis} KPIs with other points: right, the methodology gives it points; up, the operator beats the mean of the operators in it. A line that rises means the points go towards its strengths. With few KPIs, a correlation is only a hint.`));
-  }
-
-  function categoryPanel(pane, part, chosen, environment, ctx) {
+  function categoryPanel(body, doc, part, chosen, environment, label, ctx) {
     const rows = part.categories[environment] || [];
     if (!rows.length) return;
-    const section = ctx.insightSection(pane, 'Impact per category', 'scoring-impact-category-card', false);
+    const section = panel(body, 'category', 'Categories', `Impact per category · ${label}`, ctx);
     const operators = part.operators.filter(item => chosen.includes(item.operator));
-    const scoring = part.scoring[environment];
-    const total = scoring ? {label: element('strong', '', 'Total'), cells: scoring.operators} : null;
-    section.append(matrix('Category', operators, rows.map(row => ({
-      label: element('div', 'scoring-impact-label', element('strong', '', row.category),
-        element('small', '', `${row.service} · maximum ${number(row.max_before, 1)} → ${number(row.max_after, 1)}`)),
-      cells: row.operators,
-    })), ctx, {total}));
-    section.append(note('The points of each category with both methodologies; the colour and bar show the difference, against the largest of the table.'));
+    const moved = rows.filter(row => row.peak >= NO_CHANGE).sort((first, second) => second.peak - first.peak);
+    const same = rows.filter(row => row.peak < NO_CHANGE);
+    if (moved.length) {
+      section.append(sidesLegend(doc));
+      const grid = element('div', 'scoring-impact-category-grid');
+      for (const row of moved) grid.append(categoryCard(row, operators, ctx));
+      section.append(grid);
+    }
+    if (same.length) section.append(note(`${moved.length ? 'Not affected' : 'No category moves'}: ${same.map(row => row.category).join(', ')}.`));
   }
 
-  function kpiPanel(pane, part, chosen, environment, palette, ctx) {
+  function kpiPanel(body, part, chosen, environment, label, ctx) {
     const all = part.kpis[environment] || [];
     const rows = all.filter(row => (row.kinds || []).length || row.peak >= NO_CHANGE);
+    const section = panel(body, 'kpi', 'KPIs', `KPIs affected · ${label}`, ctx);
     if (!rows.length) {
-      ctx.insightSection(pane, 'KPIs affected', 'scoring-impact-kpi-card', false).append(note('No KPI changes.'));
+      section.append(note('No KPI changes.'));
       return;
     }
-    const section = ctx.insightSection(pane, `KPIs affected: ${rows.length} of ${all.length}, those that move most first`, 'scoring-impact-kpi-card', false);
     const operators = part.operators.filter(item => chosen.includes(item.operator));
     const {grid, width} = smallMultiples(operators.length);
     for (const item of operators) {
@@ -789,29 +661,21 @@
         .filter(row => row.value !== null && row.value !== undefined && Math.abs(row.value) >= NO_CHANGE)
         .sort((first, second) => Math.abs(second.value) - Math.abs(first.value)).slice(0, 8).sort((first, second) => second.value - first.value);
       if (!moved.length) continue;
-      grid.append(element('figure', 'scoring-chart-card scoring-impact-figure', element('figcaption', '', item.label),
-        divergingChart(moved.map(row => ({label: row.label, value: row.value, title: `${row.category} · ${row.label}: ${signed(row.value)}`})), palette, {labelWidth: 230, valueWidth: 48, rowHeight: 24, width})));
+      const caption = element('figcaption', '', item.label);
+      caption.style.color = operatorColor(item, ctx);
+      grid.append(element('figure', 'scoring-chart-card scoring-impact-figure', caption,
+        divergingChart(moved.map(row => ({label: row.label, detail: row.category, value: row.value, title: `${row.category} · ${row.label}: ${signed(row.value)}`})), {labelWidth: 230, valueWidth: 48, rowHeight: 32, width})));
     }
-    if (grid.childElementCount) section.append(subtitle('The KPIs that move each operator most'), grid);
-    const heatRows = rows.slice(0, 20).map(row => ({
-      label: kpiLabel(row, element('small', '', row.category)),
-      cells: operators.map(item => {
-        const cell = row.operators[item.operator];
-        return cell ? {value: cell.delta, title: `${item.label}: ${number(cell.before, 2)} → ${number(cell.after, 2)} points\nKPI value: ${number(cell.value_before, 2)} → ${number(cell.value_after, 2)}`} : null;
-      }),
-    }));
-    section.append(subtitle('The KPIs against the operators'), heatTable('KPI', operators.map(item => ({label: item.label, color: operatorColor(item, ctx, palette)})), heatRows, palette));
+    if (grid.childElementCount) section.append(subtitle('What gives and takes the most points from each operator'), grid);
     const titleOf = (item, cell) => (cell ? `${item.label}\nKPI value: ${number(cell.value_before, 2)} → ${number(cell.value_after, 2)}\nScore: ${number((cell.score_before ?? NaN) * 100, 1)}% → ${number((cell.score_after ?? NaN) * 100, 1)}%` : '');
-    section.append(element('details', 'scoring-impact-more-details', element('summary', '', 'Each KPI with its points before and after'),
-      pagedRows(`kpis:${environment}`, rows, shown => matrix('KPI', operators, shown.map(row => ({
-        label: kpiLabel(row, element('small', '', `${row.category} · maximum ${number(row.max_before, 1)} → ${number(row.max_after, 1)}`)),
-        extra: [kindChips(row.kinds, part.changes.kinds)], cells: row.operators, titleOf,
-      })), ctx, {extraHeaders: ['What changes']}))));
-    section.append(note('A KPI one methodology does not have counts none there. Hover a cell for the value and the score of the KPI with both methodologies.'));
+    section.append(subtitle(`The ${rows.length} KPIs, those that move most first`), pagedRows(`kpis:${environment}`, rows, shown => matrix('KPI', operators, shown.map(row => ({
+      label: kpiLabel(row, element('small', '', `${row.category} · maximum ${number(row.max_before, 1)} → ${number(row.max_after, 1)}`)),
+      cells: row.operators, titleOf,
+    })), ctx)));
   }
 
   // ---- Maps ---------------------------------------------------------------------------------------------------------------
-  function diagramOfMap(payload, shapes, item, palette, scale, relative) {
+  function diagramOfMap(payload, shapes, item, scale) {
     const svg = svgElement('svg', {class: 'scoring-loss-map-svg scoring-impact-map'});
     const {boundaries = {}, outlines = []} = shapes || {};
     const rings = Object.entries(boundaries).flatMap(([name, polygons]) => polygons.map(ring => [name, ring]));
@@ -832,12 +696,12 @@
     const pathOf = ring => `M${ring.map(([x, y]) => project(x, y).map(value => value.toFixed(1)).join(',')).join('L')}Z`;
     const values = new Map(payload.rows.map(row => [row.name, row.cells[item.operator]]));
     const unitText = payload.measure === 'national' ? 'National points' : payload.measure === 'rate' ? 'National points per 1,000 tests' : 'points of the area';
-    const describe = (name, cell) => (cell ? `${name}\n${item.label}: ${signed(cell.value)} ${unitText}${relative ? ' against the other operators' : ''}`
+    const describe = (name, cell) => (cell ? `${name}\n${item.label}: ${signed(cell.value)} ${unitText}`
       + `${payload.measure === 'own' ? `\nScoring: ${number(cell.before, 1)} → ${number(cell.after, 1)}` : `\nPoints lost: ${number(cell.before, 2)} → ${number(cell.after, 2)}`}${cell.tests ? `\nTests: ${number(cell.tests, 0)}` : ''}` : `${name}: no tests of ${item.label}`);
     for (const ring of outlines) svg.append(svgElement('path', {d: pathOf(ring), fill: palette.zero, stroke: palette.surface, 'stroke-width': .5}));
     for (const [name, ring] of rings) {
       const cell = values.get(name);
-      svg.append(withTitle(svgElement('path', {d: pathOf(ring), fill: cell ? heatColor(cell.value, scale, palette) : palette.zero, stroke: palette.surface, 'stroke-width': .5}), describe(name, cell)));
+      svg.append(withTitle(svgElement('path', {d: pathOf(ring), fill: cell ? heatColor(cell.value, scale) : palette.zero, stroke: palette.surface, 'stroke-width': .5}), describe(name, cell)));
     }
     if (!rings.length) {
       const ordered = [...places].filter(row => row.cells[item.operator]).sort((first, second) => Math.abs(first.cells[item.operator].value || 0) - Math.abs(second.cells[item.operator].value || 0));
@@ -863,10 +727,10 @@
     return list;
   }
 
-  function colourScale(scale, palette, unit) {
+  function colourScale(scale, unit) {
     const bar = element('span', 'scoring-impact-scale');
     bar.style.background = `linear-gradient(90deg, ${palette.loss}, ${palette.zero} 50%, ${palette.gain})`;
-    return element('div', 'scoring-impact-scale-row', element('span', '', signed(-scale)), bar, element('span', '', signed(scale)), element('small', '', unit));
+    return element('div', 'scoring-impact-scale-row', element('span', '', `${signed(-scale)} worse with B`), bar, element('span', '', `${signed(scale)} better with B`), element('small', '', unit));
   }
 
   async function loadGeometry(ctx, doc, field) {
@@ -878,68 +742,14 @@
     return geometry.get(key);
   }
 
-  function spreadPanels(body, payload, part, chosen, palette, ctx) {
-    const operators = part.operators.filter(item => chosen.includes(item.operator) && payload.analysis.operators?.[item.operator]);
-    if (!operators.length) return;
-    const rows = payload.rows;
-    const analysis = payload.analysis;
-    body.append(subtitle(`How the impact spreads among the ${rows.length} ${payload.label} areas`),
-      spreadChart(rows, operators, analysis, palette, ctx),
-      note('Each dot is an area that moves; the box holds the middle half of the areas of the operator and the line inside it their median. A wide spread means the methodology hits some areas more than others.'));
-    const table = element('table', 'scoring-insight-table scoring-impact-matrix');
-    table.createTHead().insertRow().append(...['Operator', 'Areas up', 'Areas down', 'Total', 'Typical spread', `Share of the top ${analysis.operators[operators[0].operator].concentration_areas} areas`, 'Against the value before', 'Against the tests'].map(text => element('th', '', text)));
-    const lines = table.createTBody();
-    for (const item of operators) {
-      const entry = analysis.operators[item.operator];
-      const line = lines.insertRow();
-      const name = element('strong', '', item.label);
-      name.style.color = operatorColor(item, ctx, palette);
-      line.insertCell().append(name);
-      for (const [text, className] of [[number(entry.up, 0), ''], [number(entry.down, 0), ''], [signed(entry.total), `is-${toneOf(entry.total)}`], [number(entry.deviation, 3), ''],
-        [entry.concentration === null ? 'N/A' : `${number(entry.concentration * 100, 0)}%`, ''], [entry.r_before === null ? 'N/A' : `r = ${number(entry.r_before, 2)}`, ''], [entry.r_tests === null ? 'N/A' : `r = ${number(entry.r_tests, 2)}`, '']]) {
-        const cell = line.insertCell();
-        cell.className = `scoring-insight-number ${className}`.trim();
-        cell.textContent = text;
-      }
-    }
-    body.append(element('div', 'scoring-insight-table-wrap', table));
-    const {grid: pair, width: pairWidth} = smallMultiples(2);
-    pair.append(element('figure', 'scoring-chart-card scoring-impact-figure', element('figcaption', '', 'How concentrated the movement is'),
-      concentrationChart(operators, analysis, palette, ctx, {width: pairWidth}), legend(operators.map(item => ({color: operatorColor(item, ctx, palette), label: item.label})))));
-    if (operators.length > 1) {
-      const columns = operators.map(item => ({label: item.label, color: operatorColor(item, ctx, palette)}));
-      pair.append(element('figure', 'scoring-chart-card scoring-impact-figure', element('figcaption', '', 'Do the operators move together in the same areas?'),
-        heatTable('Correlation', columns, operators.map(first => ({
-          label: element('strong', '', first.label),
-          cells: operators.map(second => (first.operator === second.operator ? null : {value: analysis.together?.[first.operator]?.[second.operator] ?? null,
-            title: `${first.label} and ${second.label}`})),
-        })), palette, {scale: 1, format: value => number(value, 2)}),
-        note('Near +1: the same areas move for both, so it comes from the tests of the area. Near 0: each operator moves in its own areas.')));
-    }
-    body.append(pair);
-    const measureBefore = payload.measure === 'own' ? 'Scoring of the area before' : 'National points lost before';
-    const {grid: scatterGrid, width: scatterWidth} = smallMultiples(operators.length);
-    for (const item of operators) {
-      const entry = analysis.operators[item.operator];
-      const points = rows.map(row => ({name: row.name, cell: row.cells[item.operator]})).filter(({cell}) => cell && cell.before !== null && cell.before !== undefined && cell.value !== null && cell.value !== undefined)
-        .map(({name, cell}) => ({name, x: cell.before, y: cell.value})).sort((first, second) => Math.abs(second.y) - Math.abs(first.y)).slice(0, 300);
-      if (points.length < 3) continue;
-      scatterGrid.append(element('figure', 'scoring-chart-card scoring-impact-figure',
-        element('figcaption', '', item.label, element('small', '', entry.r_before === null ? '' : ` · r = ${number(entry.r_before, 2)}`)),
-        scatterChart(points, palette, {xLabel: measureBefore, yLabel: 'Difference', fit: entry.r_before === null ? null : entry.fit_before, color: operatorColor(item, ctx, palette), showZeroX: false, width: scatterWidth,
-          describe: point => `${point.name}\nBefore: ${number(point.x, 2)}\nDifference: ${signed(point.y)}`})));
-    }
-    if (scatterGrid.childElementCount) body.append(subtitle(`Does it depend on the area? The difference against the ${measureBefore.toLowerCase()}`), scatterGrid);
-  }
-
-  function mapsPanel(pane, doc, part, chosen, environment, palette, ctx) {
-    const section = ctx.insightSection(pane, 'Maps: one methodology against the other', 'scoring-impact-maps-card', false);
+  function mapsPanel(body, doc, part, chosen, environment, label, ctx) {
+    const section = panel(body, 'maps', 'Maps', `Maps: where B gives or takes points · ${label}`, ctx);
     const controls = element('div', 'scoring-loss-controls');
-    const body = element('div', 'scoring-impact-maps-body', element('div', 'scoring-empty', 'Loading the maps…'));
-    section.append(controls, body);
+    const box = element('div', 'scoring-impact-maps-body', element('div', 'scoring-empty', 'Loading the maps…'));
+    section.append(controls, box);
     const token = renderToken;
     const drawMap = async () => {
-      const query = {key: doc.key, scoring: doc.scorings[ctx.scoring] ? ctx.scoring : 'best_network', environment, field: choices.field || '', measure: choices.measure, relative: choices.compare === 'relative'};
+      const query = {key: doc.key, scoring: doc.scorings[ctx.scoring] ? ctx.scoring : 'best_network', environment, field: choices.field || '', measure: choices.measure};
       const cacheKey = JSON.stringify(query);
       let payload = mapData.get(cacheKey);
       if (!payload) {
@@ -947,7 +757,7 @@
           payload = await ctx.requestJson(`/api/scoring/saved-filters/${encodeURIComponent(ctx.savedFilterId)}/impact/map?${new URLSearchParams(query)}`);
           mapData.set(cacheKey, payload);
         } catch (error) {
-          body.replaceChildren(element('div', 'scoring-empty', error.message || 'The maps could not be read.'));
+          box.replaceChildren(element('div', 'scoring-empty', error.message || 'The maps could not be read.'));
           return;
         }
       }
@@ -957,12 +767,11 @@
       const names = {City: 'City', Region: 'Region', Cluster: 'Cluster', Area: payload.area_label || 'Map Area', 'Postal Code': 'Postal Code'};
       controls.replaceChildren(
         selectField('Map per', ['City', 'Region', 'Cluster', 'Area', 'Postal Code'].map(name => [name, names[name], !payload.available.includes(name)]), payload.field, (value) => { choices.field = value; drawMap(); }),
-        selectField('Measure', [['national', 'National points'], ['rate', 'National points per 1,000 tests'], ['own', 'Scoring of the area']].map(([value, text]) => [value, text, !payload.measures.includes(value)]), payload.measure, (value) => { choices.measure = value; drawMap(); }),
-        selectField('Show', [['each', 'What moves for each operator'], ['relative', 'Against the other operators']], choices.compare, (value) => { choices.compare = value; drawMap(); }));
-      body.replaceChildren();
-      if (doc.maps_error) body.append(note(`The National points could not be mapped: ${doc.maps_error}. The scoring of each area is still shown.`));
+        selectField('Measure', [['national', 'National points'], ['rate', 'National points per 1,000 tests'], ['own', 'Scoring of the area']].map(([value, text]) => [value, text, !payload.measures.includes(value)]), payload.measure, (value) => { choices.measure = value; drawMap(); }));
+      box.replaceChildren();
+      if (doc.maps_error) box.append(note(`The National points could not be mapped: ${doc.maps_error}. The scoring of each area is still shown.`));
       if (!payload.rows.length) {
-        body.append(element('div', 'scoring-empty', 'These tests have no values for this map.'));
+        box.append(element('div', 'scoring-empty', 'These tests have no values for this map.'));
         return;
       }
       const operators = part.operators.filter(item => chosen.includes(item.operator));
@@ -979,132 +788,87 @@
         for (const item of operators) {
           const summary = payload.analysis.operators?.[item.operator];
           const title = element('h5', 'scoring-loss-map-operator', item.label);
-          title.style.color = operatorColor(item, ctx, palette);
-          const svg = diagramOfMap(payload, shapes, item, palette, scale, payload.relative);
-          const figure = element('div', 'scoring-loss-map-figure', svg);
+          title.style.color = operatorColor(item, ctx);
+          const figure = element('div', 'scoring-loss-map-figure', diagramOfMap(payload, shapes, item, scale));
           const card = element('article', 'scoring-loss-map-card scoring-impact-map-card', title, figure);
           if (summary) {
+            card.append(element('div', 'scoring-impact-map-summary', element('span', 'is-gain', `${number(summary.up, 0)} areas better`), element('span', 'is-loss', `${number(summary.down, 0)} areas worse`)));
             const lists = element('div', 'scoring-impact-ranked-pair');
-            if (summary.top?.length) lists.append(element('div', '', element('strong', 'is-gain', 'Gains most'), rankedList(summary.top.slice(0, 6), 'gain')));
-            if (summary.bottom?.length) lists.append(element('div', '', element('strong', 'is-loss', 'Loses most'), rankedList(summary.bottom.slice(0, 6), 'loss')));
+            if (summary.top?.length) lists.append(element('div', '', element('strong', 'is-gain', 'Gains most'), rankedList(summary.top, 'gain')));
+            if (summary.bottom?.length) lists.append(element('div', '', element('strong', 'is-loss', 'Loses most'), rankedList(summary.bottom, 'loss')));
             card.append(lists);
           }
           grid.append(card);
         }
-        body.append(colourScale(scale, palette, unit), grid);
+        box.append(colourScale(scale, unit), grid);
         grid.querySelectorAll('.scoring-loss-map-figure').forEach(figure => ctx.enableMapZoom?.(figure, figure.querySelector('svg')));
       } else {
-        body.append(note(`The ${payload.label} areas have no polygons or positions to draw: their values are below.`));
+        box.append(note(`The ${payload.label} areas have no polygons or positions to draw: their values are in the panel below.`));
       }
-      if (payload.attribution) body.append(note(payload.attribution));
-      body.append(note(payload.measure === 'own'
-        ? 'Scoring of the area: its own scoring (scaled to the full maximum in All Environments) with the second methodology minus the first one.'
-        : 'National points: what the area gives or takes of the National scoring of the operator, so they add up to its difference. Green: it loses fewer points with the second methodology; red: it loses more.'
-          + (payload.measure === 'rate' ? ' Per 1,000 tests, so an area does not move only because it was measured more; the areas with few tests are left out.' : '')));
-      spreadPanels(body, payload, part, chosen, palette, ctx);
+      if (payload.attribution) box.append(note(payload.attribution));
+      box.append(note(payload.measure === 'own'
+        ? 'The scoring of each area with B minus its scoring with A.'
+        : `What each area gives or takes of the National scoring of the operator: the areas add up to its difference.${payload.measure === 'rate' ? ' Per 1,000 tests, so an area does not move only because it was measured more; the areas with few tests are left out.' : ''}`));
     };
     drawMap();
   }
 
-  function areaCubePanel(pane, part, chosen, environment, palette, ctx) {
-    const levels = Object.keys(part.area_categories || {});
-    if (!levels.length) return;
-    const section = ctx.insightSection(pane, 'Which categories move in which areas', 'scoring-impact-cube-card', false);
-    const operators = part.operators.filter(item => chosen.includes(item.operator));
-    if (!levels.includes(choices.cube)) choices.cube = levels[levels.length - 1];
-    if (!operators.some(item => item.operator === choices.cubeOperator)) choices.cubeOperator = operators[0]?.operator;
-    const body = element('div');
-    const drawCube = () => {
-      const rows = part.area_categories[choices.cube]?.[environment] || [];
-      const name = choices.cubeOperator;
-      const categories = [...new Set(rows.flatMap(row => Object.keys(row.categories)))].filter(category => rows.some(row => Math.abs(row.categories[category]?.[name] || 0) >= NO_CHANGE));
-      const ranked = rows.map(row => ({row, peak: Math.max(0, ...categories.map(category => Math.abs(row.categories[category]?.[name] || 0)))})).filter(item => item.peak >= NO_CHANGE)
-        .sort((first, second) => second.peak - first.peak).slice(0, 20);
-      body.replaceChildren(ranked.length ? heatTable(choices.cube, categories, ranked.map(({row}) => ({
-        label: element('strong', '', row.area),
-        cells: categories.map(category => ({value: row.categories[category]?.[name] ?? null, title: `${row.area} · ${category}: ${signed(row.categories[category]?.[name] ?? 0)} points of the area`})),
-      })), palette) : note('No category moves in these areas for this operator.'));
-    };
-    section.append(ctx.insightControls(
-      selectField('Area', levels.map(name => [name, name]), choices.cube, (value) => { choices.cube = value; drawCube(); }),
-      selectField('Operator', operators.map(item => [item.operator, item.label]), choices.cubeOperator, (value) => { choices.cubeOperator = value; drawCube(); })), body,
-    note('The difference of each category in the scoring of each area, the areas that move most first (up to 20).'));
-    drawCube();
-  }
-
-  function areaTablePanel(pane, part, chosen, environment, ctx) {
+  function areaTablePanel(body, part, chosen, environment, label, ctx) {
     const levels = Object.keys(part.areas || {});
     if (!levels.length) return;
-    const section = ctx.insightSection(pane, 'Who leads each area, before and after', 'scoring-impact-area-card', false);
+    const section = panel(body, 'area', 'Areas', `Impact per area · ${label}`, ctx);
     if (!levels.includes(choices.table)) choices.table = levels[0];
-    const body = element('div');
+    const box = element('div');
     const drawTable = (name) => {
       const rows = part.areas[name]?.[environment] || [];
       const operators = part.operators.filter(item => chosen.includes(item.operator));
       const swaps = rows.filter(row => row.leader_before !== row.leader_after);
       const labels = Object.fromEntries(part.operators.map(item => [item.operator, item.label]));
-      body.replaceChildren(pagedRows(`areas:${name}:${environment}`, rows, shown => matrix(name, operators, shown.map(row => ({
-        label: element('strong', '', row.area), cells: row.operators,
-        extra: [row.leader_before === row.leader_after ? element('span', 'scoring-impact-leader', labels[row.leader_after] || row.leader_after || '')
-          : element('span', 'scoring-impact-leader is-changed', `${labels[row.leader_before] || row.leader_before} → ${labels[row.leader_after] || row.leader_after}`)],
-      })), ctx, {extraHeaders: ['Leader']})),
-      note(`${rows.length} ${name} areas, those that move most first; the leader changes in ${swaps.length}. Each is scored on the whole country, as the Geographical Areas; in All Environments the environments measured in an area are scaled to the full maximum.`));
+      box.replaceChildren(element('p', 'scoring-impact-context', rows.length ? `The leader changes in ${swaps.length} of the ${rows.length} ${name} areas.` : `These tests have no ${name} areas.`),
+        pagedRows(`areas:${name}:${environment}`, rows, shown => matrix(name, operators, shown.map(row => ({
+          label: element('strong', '', row.area), cells: row.operators,
+          extra: [row.leader_before === row.leader_after ? element('span', 'scoring-impact-leader', labels[row.leader_after] || row.leader_after || '')
+            : element('span', 'scoring-impact-leader is-changed', `${labels[row.leader_before] || row.leader_before} → ${labels[row.leader_after] || row.leader_after}`)],
+        })), ctx, {extraHeaders: ['Leader']})));
     };
-    section.append(ctx.insightControls(selectField('Area', levels.map(name => [name, name]), choices.table, (value) => { choices.table = value; drawTable(value); })), body);
+    section.append(ctx.insightControls(selectField('Area', levels.map(name => [name, name]), choices.table, (value) => { choices.table = value; drawTable(value); })), box);
     drawTable(choices.table);
   }
 
-  function servingPanel(pane, part, chosen, environment, ctx) {
-    const fields = {Vendor: 'Vendor of the serving cell', 'Site Type': 'Kind of site of the serving cell'};
-    const present = Object.keys(fields).filter(name => (part.serving?.[name]?.[environment] || []).some(row => row.peak >= NO_CHANGE));
-    if (!present.length) return;
-    const section = ctx.insightSection(pane, 'Who serves the tests that move', 'scoring-impact-serving-card', false);
-    const operators = part.operators.filter(item => chosen.includes(item.operator));
-    for (const name of present) {
-      section.append(subtitle(fields[name]), matrix(fields[name], operators, part.serving[name][environment].filter(row => row.peak >= NO_CHANGE).map(row => ({
-        label: element('strong', '', row.name), cells: row.operators,
-      })), ctx, {digits: 2}));
-    }
-    section.append(note('What the operator gains (positive) or loses of its National scoring in the tests served by each one; below each figure, the National points lost with the first and the second methodology.'));
-  }
-
-  function gapPanel(pane, part, chosen, environment, palette, ctx) {
+  function gapPanel(body, doc, part, chosen, environment, label, ctx) {
     const gap = part.gap[environment];
     if (!gap) return;
     const reference = part.operators.find(item => item.is_reference);
-    const section = ctx.insightSection(pane, `Impact on the GAP Analysis against ${reference?.label || part.reference}`, 'scoring-impact-gap-card', false);
+    const section = panel(body, 'gap', 'GAP', `GAP against ${reference?.label || part.reference} · ${label}`, ctx);
     const operators = part.operators.filter(item => chosen.includes(item.operator) && !item.is_reference);
     if (!operators.length) {
       section.append(note('Enable an operator other than the reference to see its GAP.'));
       return;
     }
-    section.append(subtitle('How much the GAP of each operator moves'), divergingChart(operators.filter(item => gap.total[item.operator]).map(item => {
-      const cell = gap.total[item.operator];
-      return {label: `${item.label}: ${signed(cell.before, 1)} → ${signed(cell.after, 1)}${cell.flip ? ' (changes side)' : ''}`, value: cell.delta, color: operatorColor(item, ctx, palette)};
-    }).sort((first, second) => second.value - first.value), palette, {labelWidth: 280, rowHeight: 30}));
-    const total = {label: element('strong', '', 'Total GAP'), cells: gap.total};
-    section.append(matrix('Category', operators, gap.categories.map(row => ({label: element('strong', '', row.category), cells: row.operators})), ctx, {total}));
+    section.append(sidesLegend(doc), gapChart(operators.filter(item => gap.total[item.operator]).map(item => ({
+      label: item.label, color: operatorColor(item, ctx), ...gap.total[item.operator],
+    })).sort((first, second) => second.delta - first.delta)));
+    const categories = gap.categories.filter(row => row.peak >= NO_CHANGE);
+    if (categories.length) section.append(subtitle('Per category'), matrix('Category', operators, categories.map(row => ({label: element('strong', '', row.category), cells: row.operators})), ctx));
     const kpis = gap.kpis.filter(row => row.peak >= NO_CHANGE);
     if (kpis.length) {
-      section.append(element('details', 'scoring-impact-more-details', element('summary', '', 'The KPIs whose GAP moves most'),
-        pagedRows(`gap:${environment}`, kpis, shown => matrix('KPI', operators, shown.map(row => ({
-          label: kpiLabel(row, element('small', '', row.category)), cells: row.operators,
-        })), ctx))));
+      section.append(subtitle('Per KPI, those that move most first'), pagedRows(`gap:${environment}`, kpis, shown => matrix('KPI', operators, shown.map(row => ({
+        label: kpiLabel(row, element('small', '', row.category)), cells: row.operators,
+      })), ctx)));
     }
-    section.append(note('Operator minus reference, before → after; the bar shows how much the GAP moves. Changes side: the operator goes from ahead of the reference to behind it, or the other way round.'));
   }
 
-  function pointsPanel(pane, part, chosen, environment, ctx) {
+  function pointsPanel(body, doc, part, chosen, environment, label, ctx) {
     const lost = part.points_lost[environment];
     if (!lost) return;
-    const section = ctx.insightSection(pane, 'Impact on the Points Lost', 'scoring-impact-points-card', false);
+    const section = panel(body, 'points', 'Points Lost', `Points Lost · ${label}`, ctx);
     const operators = part.operators.filter(item => chosen.includes(item.operator) && lost.operators[item.operator]);
     const shown = lost.kinds.filter(kind => (kind.kpis || []).length || operators.some(item => lost.operators[item.operator].parts_before?.[kind.key] || lost.operators[item.operator].parts_after?.[kind.key]));
     const [notCompleted, minimum, below, quality] = ctx.theme?.stake || ['#6e1222', '#a51c30', '#e8414f', '#f4a3aa'];
     const colours = {not_completed: notCompleted, below_minimum: minimum, below_par: below, quality};
     const peak = Math.max(1, ...operators.flatMap(item => [lost.operators[item.operator].before, lost.operators[item.operator].after].map(value => Number(value) || 0)));
-    const bar = (parts) => {
-      const box = element('span', 'scoring-impact-stack');
+    const bar = (side, parts, total) => {
+      const stack = element('span', 'scoring-impact-stack');
       for (const kind of shown) {
         const value = Number(parts?.[kind.key]) || 0;
         if (value <= 0) continue;
@@ -1112,82 +876,52 @@
         segment.style.width = `${value / peak * 100}%`;
         segment.style.background = colours[kind.key];
         segment.title = `${kind.label}: ${number(value, 2)} points`;
-        box.append(segment);
+        stack.append(segment);
       }
-      return box;
+      return element('div', 'scoring-impact-lost-line', sideBadge(side), stack, element('small', '', number(total, 1)));
     };
     const list = element('div', 'scoring-impact-lost');
     for (const item of operators) {
       const row = lost.operators[item.operator];
       const name = element('strong', '', `${item.label}${item.is_reference ? ' (reference)' : ''}`);
-      const color = ctx.safeHexColor(item.color);
-      if (color) name.style.color = color;
+      name.style.color = operatorColor(item, ctx);
       const tone = toneOf(row.delta, true);
       list.append(element('div', 'scoring-impact-lost-row', name,
-        element('div', 'scoring-impact-lost-bars', bar(row.parts_before), bar(row.parts_after)),
-        element('div', 'scoring-impact-lost-total', element('b', `is-${tone}`, signed(row.delta)), element('small', '', `${number(row.before, 1)} → ${number(row.after, 1)} lost`))));
+        element('div', 'scoring-impact-lost-bars', bar('a', row.parts_before, row.before), bar('b', row.parts_after, row.after)),
+        element('div', 'scoring-impact-lost-total', element('b', `is-${tone}`, signed(row.delta)), element('small', '', 'points lost'))));
     }
-    section.append(list, legend(shown.map(kind => ({color: colours[kind.key], label: kind.label}))), note('In each operator, the upper bar is the first methodology and the lower one the second.'));
+    section.append(sidesLegend(doc), list, legend(shown.map(kind => ({color: colours[kind.key], label: kind.label}))));
     const inScope = part.operators.filter(item => chosen.includes(item.operator));
-    section.append(subtitle('Points lost per category'),
-      matrix('Category', inScope, lost.categories.map(row => ({label: element('strong', '', row.category), cells: row.operators})), ctx, {inverse: true}));
+    const categories = lost.categories.filter(row => row.peak >= NO_CHANGE);
+    if (categories.length) {
+      section.append(subtitle('Per category'), matrix('Category', inScope, categories.map(row => ({label: element('strong', '', row.category), cells: row.operators})), ctx, {inverse: true}));
+    }
     const kpis = lost.kpis.filter(row => row.peak >= NO_CHANGE);
     if (kpis.length) {
-      section.append(element('details', 'scoring-impact-more-details', element('summary', '', 'The KPIs whose points lost move most'),
-        pagedRows(`lost:${environment}`, kpis, rows => matrix('KPI', inScope, rows.map(row => ({
-          label: kpiLabel(row, element('small', '', row.category)), cells: row.operators,
-        })), ctx, {inverse: true}))));
+      section.append(subtitle('Per KPI, those that move most first'), pagedRows(`lost:${environment}`, kpis, rows => matrix('KPI', inScope, rows.map(row => ({
+        label: kpiLabel(row, element('small', '', row.category)), cells: row.operators,
+      })), ctx, {inverse: true})));
     }
-    section.append(note('More points lost are shown in the colour of a loss. The points lost of a KPI are its maximum minus the points scored, so they also move when the methodology gives it another maximum.'));
+    section.append(note('The points lost of a KPI are its maximum minus the points scored, so they also move when the methodology gives it another maximum. More points lost are shown in red.'));
   }
 
-  function stabilityPanel(pane, doc, part, chosen, palette, ctx) {
-    const data = part.stability;
-    const campaigns = data?.campaigns || [];
-    if (campaigns.length < 2) return;
-    const section = ctx.insightSection(pane, 'Is it stable? The same change on the tests of other campaigns', 'scoring-impact-stability-card', false);
-    const comparable = campaigns.filter(item => item.comparable).sort((first, second) => (globalThis.campaignCompare?.(first.campaign, second.campaign) ?? 0));
-    const operators = part.operators.filter(item => chosen.includes(item.operator));
-    if (comparable.length > 1) {
-      section.append(campaignChart(comparable, operators, palette, ctx), legend(operators.map(item => ({color: operatorColor(item, ctx, palette), label: item.label}))));
-      const table = element('table', 'scoring-insight-table scoring-impact-matrix');
-      table.createTHead().insertRow().append(...['Operator', 'Campaigns up', 'Campaigns down', 'Mean', 'From', 'To'].map(text => element('th', '', text)));
-      const body = table.createTBody();
-      for (const item of operators) {
-        const entry = data.summary[item.operator];
-        if (!entry) continue;
-        const line = body.insertRow();
-        const name = element('strong', '', item.label);
-        name.style.color = operatorColor(item, ctx, palette);
-        line.insertCell().append(name);
-        for (const [text, className] of [[number(entry.up, 0), ''], [number(entry.down, 0), ''], [signed(entry.mean), `is-${toneOf(entry.mean)}`], [signed(entry.low), ''], [signed(entry.high), '']]) {
-          const cell = line.insertCell();
-          cell.className = `scoring-insight-number ${className}`.trim();
-          cell.textContent = text;
-        }
-      }
-      section.append(element('div', 'scoring-insight-table-wrap', table));
+  // To go to a panel without scrolling the whole tab.
+  function jumpLinks(head, body) {
+    const nav = element('nav', 'scoring-impact-nav');
+    nav.setAttribute('aria-label', 'Panels of the Methodology Impact');
+    for (const section of body.querySelectorAll('[data-impact-panel]')) {
+      const link = element('button', '', section.dataset.impactPanel);
+      link.type = 'button';
+      link.addEventListener('click', () => section.scrollIntoView({behavior: 'smooth', block: 'start'}));
+      nav.append(link);
     }
-    const left = campaigns.filter(item => !item.comparable);
-    if (left.length) {
-      const kpis = [...new Set(left.flatMap(item => item.missing || []))];
-      section.append(note(`${left.map(item => item.label).join(', ')} cannot be compared: ${kpis.length ? `they have no tests of ${kpis.slice(0, 4).join(', ')}${kpis.length > 4 ? '…' : ''}` : 'they have no results'}.`));
-    }
-    section.append(note(`What ${doc.after.profile_name} gives against ${doc.before.profile_name} on the same tests of each campaign. It says nothing of how the network changes between them: only whether the methodology moves each operator the same way every time.`));
-  }
-
-  function comparisonBanner(doc, part) {
-    const side = (title, summary, source) => element('div', 'scoring-impact-side', element('span', '', title), element('strong', '', summary.profile_name), source ? element('small', '', `of ${source}`) : null);
-    return element('div', 'scoring-impact-banner', side('First methodology', doc.before, doc.methodology_of?.before), element('span', 'scoring-impact-arrow', '→'), side('Second methodology', doc.after, doc.methodology_of?.after),
-      element('div', 'scoring-impact-side', element('span', '', 'Tests scored with both'), element('strong', '', `${doc.after.campaign_label} · ${doc.nr_mode}`)),
-      element('div', 'scoring-impact-side', element('span', '', 'GAP reference'), element('strong', '', part.operators.find(item => item.is_reference)?.label || part.reference)));
+    head.append(nav);
   }
 
   function draw(body, doc, ctx) {
     body.replaceChildren();
     if (doc.same_methodology) {
-      const section = ctx.insightSection(body, 'Methodology Impact', 'scoring-impact-head-card', false);
-      section.append(note(`Both campaigns are scored with ${doc.before.profile_name}, so the methodology changes nothing between them. Choose two campaigns with different methodologies, or Two methodologies.`));
+      panel(body, 'head', '', 'Methodology Impact', ctx).append(note(`Both campaigns are scored with ${doc.before.profile_name}, so the methodology changes nothing between them. Choose two campaigns with different methodologies, or Two methodologies.`));
       return;
     }
     // (A scoring that one of the methodologies does not have is not compared: Best Network is.)
@@ -1199,31 +933,22 @@
       body.append(element('div', 'scoring-empty', 'These tests have no results in the environments of either methodology.'));
       return;
     }
-    const palette = paletteOf(ctx, body);
+    palette = paletteOf(ctx, body);
+    body.style.setProperty('--impact-b-ink', inkOn(palette.b));
     chartWidth = Math.max(280, (body.parentElement?.clientWidth || 900) - 64);
     const {control, chosen} = ctx.insightOperatorChips('impact-operators', part.operators, {all: true});
     chosenOperators = chosen;
-    const head = ctx.insightSection(body, `Methodology Impact${scoring === 'most_reliable' ? ' — Most Reliable Network' : ''}`, 'scoring-impact-head-card', false);
-    head.append(comparisonBanner(doc, part));
-    if (scoring !== ctx.scoring) head.append(note('The Most Reliable scoring is not compared: one of the methodologies does not have it. This is the Best Network scoring.'));
-    head.append(subtitle('What stands out'));
-    conclusionsPanel(head, part);
-    if (doc.notes.length) head.append(...doc.notes.map(note));
-    head.append(ctx.insightControls(control));
-    changesPanel(body, doc, part, palette, ctx);
-    scoringPanel(body, part, chosen, ctx);
-    competitionPanel(body, part, chosen, environment, palette, ctx);
-    driversPanel(body, part, chosen, environment, palette, ctx);
-    exposurePanel(body, part, chosen, environment, palette, ctx);
-    categoryPanel(body, part, chosen, environment, ctx);
-    kpiPanel(body, part, chosen, environment, palette, ctx);
-    mapsPanel(body, doc, part, chosen, environment, palette, ctx);
-    areaCubePanel(body, part, chosen, environment, palette, ctx);
-    areaTablePanel(body, part, chosen, environment, ctx);
-    servingPanel(body, part, chosen, environment, ctx);
-    gapPanel(body, part, chosen, environment, palette, ctx);
-    pointsPanel(body, part, chosen, environment, ctx);
-    stabilityPanel(body, doc, part, chosen, palette, ctx);
+    const label = part.environments.find(item => item.name === environment)?.label || environment;
+    const head = headPanel(body, doc, part, scoring, ctx, control);
+    changesPanel(body, doc, part, ctx);
+    scoringPanel(body, doc, part, chosen, environment, ctx);
+    categoryPanel(body, doc, part, chosen, environment, label, ctx);
+    kpiPanel(body, part, chosen, environment, label, ctx);
+    mapsPanel(body, doc, part, chosen, environment, label, ctx);
+    areaTablePanel(body, part, chosen, environment, label, ctx);
+    gapPanel(body, doc, part, chosen, environment, label, ctx);
+    pointsPanel(body, doc, part, chosen, environment, label, ctx);
+    jumpLinks(head, body);
   }
 
   function progressCard(body, state) {

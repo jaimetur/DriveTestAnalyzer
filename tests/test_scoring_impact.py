@@ -17,7 +17,6 @@ from src.modules.repository import Repository, local_now_iso
 from src.modules.scoring import calculate_scoring
 from src.modules.scoring_config import validate_scoring_configuration
 from src.modules.scoring_export_panels import default_export_panels, normalize_export_panels
-from src.modules.scoring_impact_analysis import linear_fit, pearson, stability_part
 from src.modules.scoring_impact_exports import export_impact_csv, export_impact_powerpoint, render_impact_map
 from src.modules.scoring_impact_maps import area_analysis, build_maps, impact_map, map_geometry
 from tests.scoring_cdr_synthetic import SOUTH, netcheck_2026_configuration, synthetic_cdr_frames
@@ -57,9 +56,8 @@ def _passes(frames, configuration) -> dict:
             'City': calculate_scoring(frames, ['Operator', 'City'], **options)}
 
 
-def _part(before, after, others=(), maps=None) -> dict:
-    results = {'before': before, 'after': after, 'others': list(others), 'tests': {'value': '2026-Q3', 'label': '26-Q3'}}
-    part, _sides = scoring_impact._impact_part(results, 'EE', ['EE'], [], [])
+def _part(before, after, maps=None) -> dict:
+    part, _sides = scoring_impact._impact_part({'before': before, 'after': after}, 'EE', ['EE'], [], [])
     scoring_impact._finish_part(part, maps, 'best_network')
     return part
 
@@ -94,7 +92,8 @@ def test_a_methodology_compared_with_itself_changes_nothing(frames):
     assert scoring_impact.methodology_changes(configuration, copy.deepcopy(configuration))['same']
     results = _passes(frames, configuration)
     part = _part(results, results)
-    assert part['changes']['same'] and part['conclusions'][0]['headline'] == 'No change'
+    assert part['changes']['same'] and part['conclusions']['headline'] == 'The scoring of every operator stays the same'
+    assert {fact['kind'] for fact in part['conclusions']['facts']} == {'positions'}
     for entry in part['scoring'].values():
         assert all(cell['delta'] == 0 and cell['rank_before'] == cell['rank_after'] for cell in entry['operators'].values())
 
@@ -147,35 +146,27 @@ def test_the_panels_add_up_on_the_same_tests(frames):
     assert 'bridge' not in part
 
 
-def test_who_it_favours_why_and_with_or_against_its_strengths(frames):
+def test_why_each_operator_moves_and_what_stands_out(frames):
     configuration = netcheck_2026_configuration()
     part = _part(_passes(frames, configuration), _passes(frames, _reweighted(configuration)))
     for item in part['environments']:
         environment = item['name']
         scoring = part['scoring'][environment]['operators']
-        competition = part['competition'][environment]
-        # Against the mean of the operators they add up to nothing, and each pair is what each one moves against the other.
-        assert sum(competition['relative'].values()) == pytest.approx(0, abs=.01)
-        for first, others in competition['matrix'].items():
-            for second, step in others.items():
-                assert step['delta'] == pytest.approx(scoring[first]['delta'] - scoring[second]['delta'], abs=.01)
-                assert competition['matrix'][second][first]['delta'] == pytest.approx(-step['delta'], abs=.01)
-        assert {step['operator'] for step in competition['margins']} <= set(scoring)
-        # The causes of each operator and its categories add up to its difference.
+        # The causes of each operator add up to its difference.
         for name, entry in part['drivers'][environment].items():
             assert entry['total'] == pytest.approx(scoring[name]['delta'], abs=.02)
             assert sum(entry['causes'].values()) == pytest.approx(entry['total'], abs=.02)
-            assert sum(value['delta'] for value in entry['categories'].values()) == pytest.approx(entry['total'], abs=.02)
     drivers = part['drivers']['Combined']
     # Moving points between KPIs and tightening thresholds: no KPI is new or removed.
     assert all(entry['causes']['new'] == 0 and entry['causes']['removed'] == 0 for entry in drivers.values())
     assert any(abs(entry['causes']['weights']) > 0 for entry in drivers.values()) and any(abs(entry['causes']['rules']) > 0 for entry in drivers.values())
-    # Only the KPIs with other points tell whether they go with or against the strengths of an operator.
-    exposure = part['exposure']['Combined']
-    assert exposure['kpis'] == 2 and all(len(entry['points']) == 2 for entry in exposure['operators'].values())
-    titles = {item['kind'] for item in part['conclusions']}
-    assert {'size', 'relative', 'head', 'positions', 'cause', 'kpi'} <= titles
-    assert part['conclusions'][0]['text'].startswith('The methodology moves the scoring between')
+    # One headline and short facts, without any statistic to interpret.
+    conclusions = part['conclusions']
+    assert conclusions['headline'].startswith('The scoring moves between')
+    assert {'positions', 'kpi'} <= {fact['kind'] for fact in conclusions['facts']}
+    moved = {cell['delta'] for cell in part['scoring']['Combined']['operators'].values()}
+    assert any(fact['kind'] in ('gains', 'losses') for fact in conclusions['facts']) and len(moved) > 1
+    assert not {'competition', 'exposure', 'stability', 'serving', 'area_categories'} & set(part)
 
 
 def test_a_new_kpi_and_a_removed_kpi_are_causes_of_their_own(frames):
@@ -186,21 +177,6 @@ def test_a_new_kpi_and_a_removed_kpi_are_causes_of_their_own(frames):
     assert all(entry['causes']['new'] > 0 and entry['causes']['removed'] == 0 for entry in part['drivers']['Combined'].values())
     reverse = _part(_passes(frames, configuration), _passes(frames, removed))
     assert all(entry['causes']['removed'] < 0 and entry['causes']['new'] == 0 for entry in reverse['drivers']['Combined'].values())
-
-
-def test_correlations_and_the_same_change_on_other_campaigns():
-    assert pearson([1, 2, 3], [2, 4, 6]) == pytest.approx(1)
-    assert pearson([1, 2, 3], [6, 4, 2]) == pytest.approx(-1)
-    assert pearson([1, 1, 1], [1, 2, 3]) is None and pearson([1], [1]) is None
-    assert linear_fit([0, 1, 2], [1, 3, 5]) == {'slope': 2.0, 'intercept': 1.0}
-    # Only the campaigns with the KPIs of both methodologies measured count.
-    summary = stability_part([
-        {'label': 'A', 'comparable': True, 'operators': {'EE': 1.0, 'O2': -1.0}},
-        {'label': 'B', 'comparable': True, 'operators': {'EE': 2.0, 'O2': 1.0}},
-        {'label': 'C', 'comparable': False, 'missing': ['TIK TOK'], 'operators': {'EE': -9.0, 'O2': -9.0}},
-    ], ['EE', 'O2'])['summary']
-    assert summary['EE'] == {'campaigns': 2, 'up': 2, 'down': 0, 'mean': 1.5, 'low': 1.0, 'high': 2.0}
-    assert summary['O2']['up'] == summary['O2']['down'] == 1
 
 
 def _maps_of(frames, first, second) -> tuple[dict, dict]:
@@ -224,13 +200,6 @@ def test_the_maps_add_up_to_what_the_methodology_moves(frames):
     for name, summary in national['analysis']['operators'].items():
         # What each area gains or loses adds up to the difference of the operator, on any geography.
         assert summary['total'] == pytest.approx(moved[name], abs=.1)
-        assert summary['low'] <= summary['q1'] <= summary['median'] <= summary['q3'] <= summary['high']
-        assert 0 <= summary['concentration'] <= 1 and summary['curve'][-1][1] == pytest.approx(1)
-    # Against the other operators, each area adds up to nothing.
-    relative = impact_map(maps, part, 'best_network', 'City', 'Combined', 'national', True)
-    assert relative['relative'] is True
-    for row in relative['rows']:
-        assert sum(cell['value'] for cell in row['cells'].values()) == pytest.approx(0, abs=.02)
     # The scoring of the area, and only the areas with enough tests per 1,000 tests.
     own = impact_map(maps, part, 'best_network', 'City', 'Combined', 'own')
     assert own['measure'] == 'own' and own['rows'][0]['cells']
@@ -241,22 +210,17 @@ def test_the_maps_add_up_to_what_the_methodology_moves(frames):
     assert map_geometry(maps, 'City')['boundaries'] == {} and 'place' in national['rows'][0]
     picture = render_impact_map(national, map_geometry(maps, 'City'), next(iter(moved)), 1.0)
     assert picture.startswith(b'\x89PNG')
-    # Who serves the tests that move, and the conclusions with them.
-    assert part['serving']['Vendor']['Combined'] and {'Vendor', 'Site Type'} <= set(part['serving'])
-    assert any(item['kind'] == 'where' for item in part['conclusions'])
+    # Where it hits most is one of the conclusions.
+    assert any(fact['kind'] == 'where' for fact in part['conclusions']['facts'])
 
 
-def test_how_the_impact_spreads_among_the_areas():
-    rows = [{'name': name, 'tests': 100, 'cells': {
-        'EE': {'before': before, 'after': before, 'value': first, 'tests': 100}, 'O2': {'before': before, 'after': before, 'value': second, 'tests': 100}}}
-        for name, before, first, second in (('A', 1.0, 3.0, 3.0), ('B', 2.0, 2.0, 2.0), ('C', 3.0, 1.0, 1.0), ('D', 4.0, 0.0, 0.0), ('E', 5.0, -1.0, -1.0))]
-    analysis = area_analysis(rows, ['EE', 'O2'], field='City')
-    summary = analysis['operators']['EE']
-    assert summary['count'] == 5 and summary['total'] == 5 and summary['up'] == 3 and summary['down'] == 1
-    assert summary['median'] == 1 and summary['best'] == {'name': 'A', 'value': 3.0} and summary['worst'] == {'name': 'E', 'value': -1.0}
-    # The more an area lost, the less it gains here; and both operators move in the same areas.
-    assert summary['r_before'] == pytest.approx(-1) and analysis['together']['EE']['O2'] == pytest.approx(1)
-    assert [item['name'] for item in summary['top']] == ['A', 'B', 'C'] and [item['name'] for item in summary['bottom']] == ['E']
+def test_each_operator_with_the_areas_that_move_most():
+    rows = [{'name': name, 'tests': 100, 'cells': {'EE': {'before': 1.0, 'after': 1.0, 'value': value, 'tests': 100}}}
+            for name, value in (('A', 3.0), ('B', 2.0), ('C', 1.0), ('D', 0.0), ('E', -1.0))]
+    summary = area_analysis(rows, ['EE', 'O2'], field='City')['operators']
+    assert set(summary) == {'EE'} and summary['EE']['count'] == 5 and summary['EE']['total'] == 5 and summary['EE']['up'] == 3 and summary['EE']['down'] == 1
+    assert summary['EE']['best'] == {'name': 'A', 'value': 3.0} and summary['EE']['worst'] == {'name': 'E', 'value': -1.0}
+    assert [item['name'] for item in summary['EE']['top']] == ['A', 'B', 'C'] and [item['name'] for item in summary['EE']['bottom']] == ['E']
 
 
 def test_the_areas_scale_all_environments_as_the_geographical_areas(frames):
@@ -340,7 +304,7 @@ def test_the_comparison_of_a_saved_filter_is_calculated_once_and_exported(worksp
     assert set(impact['scorings']) >= {'best_network'}
     part = impact['scorings']['best_network']
     assert part['changes']['counts']['added'] == 3 and 'bridge' not in part and part['areas']['City'] and not impact['maps_error']
-    assert part['conclusions'] and part['serving'] and part['stability']['campaigns'][0]['current']
+    assert part['conclusions']['headline'] and part['drivers']
     # While it is calculated, only how it goes, by its key.
     status = client.get(f'/api/scoring/saved-filters/{filter_id}/impact/status', params={'key': impact['key']}).json()
     assert status['status'] == 'completed' and status['impact']['key'] == impact['key']
@@ -365,8 +329,7 @@ def test_the_comparison_of_a_saved_filter_is_calculated_once_and_exported(worksp
     query = {'mode': 'campaigns'}
     csv_response = client.get(f'/scoring/saved-filters/{filter_id}/impact/export/csv', params=query)
     rows = list(csv.DictReader(StringIO(csv_response.content.decode('utf-8-sig'))))
-    assert {row['Panel'] for row in rows} >= {'What changed', 'Scoring', 'Against the mean of the operators', 'Head to head', 'Causes', 'Exposure', 'Category', 'KPI',
-                                              'Scoring of the area', 'Serving cells (National points lost)', 'GAP', 'Points Lost', 'On the tests of each campaign', 'Map (National points lost)'}
+    assert {row['Panel'] for row in rows} == {'What changed', 'Scoring', 'Causes', 'Category', 'KPI', 'Scoring of the area', 'GAP', 'Points Lost', 'Map (National points lost)'}
     deck = client.get(f'/scoring/saved-filters/{filter_id}/impact/export/ppt', params=query)
     assert deck.status_code == 200, deck.text
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in Presentation(BytesIO(deck.content)).slides if slide.shapes.title is not None]
@@ -397,8 +360,6 @@ def test_a_campaign_keeps_the_scope_of_the_saved_filter_and_refuses_what_cannot_
     assert prepared['selection']['campaign_a'] == '2026-Q2' and prepared['selection']['campaign_b'] == '2026-Q3'
     assert prepared['runs']['before']['campaign'] == prepared['runs']['after']['campaign'] == '2026-Q3' and set(prepared['runs']) == {'before', 'after'}
     assert prepared['methodology_of'] == {'before': '26-Q2', 'after': '26-Q3'} or set(prepared['methodology_of']) == {'before', 'after'}
-    # The same change is tried on the tests of the other campaign, within the same scope.
-    assert [item['value'] for item in prepared['others']] == ['2026-Q2'] and 'EE' in prepared['others'][0]['before']['filters']['Operator']
     assert set(prepared['runs']['before']['dataset_ids']) & set(workspace['ids'][3:]) and not set(prepared['runs']['before']['dataset_ids']) & set(workspace['ids'][:3])
     assert 'EE' in prepared['runs']['before']['filters']['Operator']
     impact = scoring_impact.calculate_impact(repository, prepared)
@@ -442,13 +403,12 @@ def test_the_document_follows_the_scoring_export_panels(frames):
         deck = Presentation(BytesIO(export_impact_powerpoint(impact, TEMPLATE, [], **options)))
         return [slide.shapes.title.text_frame.paragraphs[0].text for slide in deck.slides if slide.shapes.title is not None]
     every = titles()
-    for expected in ('What stands out', 'What changed', 'Scoring per operator', 'Who it favours', 'Why each operator moves', 'Per category', 'KPIs affected', 'Scoring per Region',
-                     'Scoring per City', 'Categories per City', 'How the impact spreads', 'GAP against', 'Points Lost', 'Points lost per category'):
+    for expected in ('What stands out', 'What changed', 'The KPIs that change', 'Scoring per operator', 'Why each operator moves', 'Per category', 'KPIs affected', 'Scoring per Region',
+                     'Scoring per City', 'GAP against', 'Points Lost', 'Points lost per category'):
         assert any(expected in title for title in every), expected
     # A panel that is not exportable is left out.
     panels = default_export_panels()
-    assert set(panels['impact']) == {'changes', 'scoring', 'competition', 'drivers', 'exposure', 'categories', 'kpis', 'maps', 'spread', 'area_categories',
-                                     'areas', 'serving', 'gap', 'points', 'stability'}
+    assert set(panels['impact']) == {'changes', 'scoring', 'categories', 'kpis', 'maps', 'areas', 'gap', 'points'}
     panels['impact']['areas']['exportable'] = False
     panels['impact']['points']['exportable'] = False
     fewer = titles(panels=panels)
@@ -476,7 +436,7 @@ def test_the_maps_reach_the_document(frames):
               'same_methodology': False, 'nr_mode': 'NSA', 'notes': [], 'scorings': {'best_network': part}}
     deck = Presentation(BytesIO(export_impact_powerpoint(impact, TEMPLATE, [], maps=maps)))
     titles = [slide.shapes.title.text_frame.paragraphs[0].text for slide in deck.slides if slide.shapes.title is not None]
-    assert any('City map' in title for title in titles) and any('City map against the other operators' in title for title in titles)
+    assert any('City map' in title for title in titles) and not any('against the other operators' in title for title in titles)
     slide = next(item for item in deck.slides if item.shapes.title is not None and 'City map' in item.shapes.title.text_frame.text)
     assert sum(shape.name == 'Scoring Impact Map' for shape in slide.shapes) == 4
     assert 'Map (National points lost)' in export_impact_csv(impact, 'best_network', maps)
