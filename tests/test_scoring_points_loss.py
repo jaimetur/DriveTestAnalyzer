@@ -49,7 +49,7 @@ def test_points_lost_are_spread_over_the_cities_routes_and_itl3_areas():
     job, result = _result()
     maps = build_scoring_views(job, result)['insights']['points_loss_maps']
     vodafone = {item['field']: item for item in maps if item['operator'] == 'Vodafone UK' and item['environment'] == 'Combined'}
-    assert {'City', 'Area'} <= set(vodafone) and vodafone['Area']['area_label'] == 'ITL3 area'
+    assert {'City', 'Area'} <= set(vodafone) and 'area_label' not in vodafone['Area']
     cities = {area['name']: area for area in vodafone['City']['areas']}
     # Leeds loses most of the city points; the road is a route between cities.
     assert next(iter(cities)) in {'Leeds', 'Sheffield to Leeds'}
@@ -135,7 +135,7 @@ def test_powerpoint_maps_the_points_lost_of_the_compared_operators():
     assert heading.text_frame.text == 'Vodafone UK' and heading.text_frame.paragraphs[0].runs[0].font.size.pt == 24
     # Its figures are National points: the part of the National loss in each place, not the score of the place on its own.
     texts = [shape.text_frame.text for shape in slide.shapes if shape.has_text_frame]
-    assert any('by the National points Vodafone UK loses' in text and 'of its National score lost in total' in text for text in texts)
+    assert any('The map colours each map area by the National points Vodafone UK loses' in text and 'of its National score lost in total' in text for text in texts)
     national = next(shape for shape in slide.shapes if shape.name == 'Scoring Points Lost National Note')
     assert national.text_frame.text.startswith("National points: the part of Vodafone UK's National loss in the tests of each place")
     scenario = default_scenario()

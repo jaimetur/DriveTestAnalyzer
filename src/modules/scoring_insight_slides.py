@@ -1291,7 +1291,7 @@ def _points_loss_slide(presentation, ranking: dict[str, Any], field: str, layer:
     share = sum(area.get('national', area['points']) for area in bars) / ranking['total'] if ranking['total'] else 0
     plural = {'City': 'cities and routes', 'Cluster': 'clusters', 'Region': 'regions', 'Postal Code': 'postal codes'}.get(field, 'areas')
     by_rows = layer is not None and layer['field'] == 'Area' and field == 'City'
-    area_label = (layer or {}).get('area_label') or LOSS_FIELD_TITLES.get((layer or {}).get('field'), 'area')
+    area_label = LOSS_FIELD_TITLES.get((layer or {}).get('field'), 'area').lower()
     map_text = f"The map colours each {area_label} by the National points " if layer is not None else 'The map shows where '
     # The operator, large and in its colour, above the map and the ranking.
     heading = slide.shapes.add_textbox(Inches(.45), Inches(1.35), Inches(12.4), Inches(.5))

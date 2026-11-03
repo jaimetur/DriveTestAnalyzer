@@ -128,10 +128,7 @@ def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str
     styles = operator_styles(score_tables)
     references = {table.get('baseline_operator') for table in score_tables}
     geometry = document.get('areas') or {}
-    # What the map areas are, such as ITL3 areas or municipalities, and the countries without them.
-    countries = (document.get('map_areas') or {}).get('countries') or []
-    labels = list(dict.fromkeys(item.get('label') or 'area' for item in countries))
-    area_label = labels[0] if len(labels) == 1 else 'map area'
+    # The countries without map areas.
     unmapped = (document.get('map_areas') or {}).get('unmapped_countries') or []
     maps = []
     weight = (lambda context, environment, kpi_code: combined_weight(context.get('campaign'), kpi_code, environment)
@@ -179,7 +176,7 @@ def _points_loss_maps(result: dict[str, Any] | None, score_tables: list[dict[str
                         if field != 'operator' and value not in (None, '')},
             'areas': areas, 'total': item['total'],
             **({'rate_tests': RATE_TESTS, 'rate_minimum': minimum} if counted else {}),
-            **({'area_label': area_label, 'unmapped_countries': unmapped} if item['field'] == 'Area' else {}),
+            **({'unmapped_countries': unmapped} if item['field'] == 'Area' else {}),
             **{key: item[key] for key in ('failures', 'city_losses') if item.get(key)},
         })
     maps.sort(key=lambda item: ((styles.get(item['operator']) or {}).get('position', 99), str(item['operator']),
