@@ -12169,7 +12169,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
     ``includes_designs``: the PPT Designs come too, so the PPT Templates they use are replaced)."""
     from src.modules.import_changes import (
         DETAILED_ELEMENTS, ELEMENT_LABELS, ELEMENT_NAMES, SETTINGS_ELEMENTS, breakdown, compare, compare_settings, counted,
-        element_items, joined, predict, settings_values, ticket_items, users_access_items,
+        element_items, joined, kept_postal_codes, predict, settings_values, ticket_items, users_access_items,
     )
     from src.modules.transfer_identities import imported_creator
 
@@ -12207,7 +12207,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
             def creators(values: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
                 if 'created_by' in values:
                     values['created_by'] = imported_creator(values['created_by'], previous.get('created_by'), importing_user, active_user_exists)
-                return values
+                return kept_postal_codes(values, previous) if kind == 'scoring-favourites-filters' else values
             changes = {workspace.id: predict(element_items(kind, _predicted_document(kind, workspace, package, includes_designs)),
                                              element_items(kind, before[workspace.id]), ELEMENT_LABELS.get(kind), creators,
                                              detailed=kind in DETAILED_ELEMENTS)

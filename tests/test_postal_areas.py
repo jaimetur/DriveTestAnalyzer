@@ -382,6 +382,63 @@ def test_the_postal_code_map_is_a_scoring_export_panel():
     assert default_export_panels()['points']['postal_map'] == {'exportable': True, 'operators': 'focus'}
 
 
+# -- transfers ------------------------------------------------------------------------------------
+def _transfer_workspaces(tmp_path):
+    from tests.test_saved_filters_reuse import _three_cdrs, _workspace
+
+    source, target = _workspace(tmp_path, 'source'), _workspace(tmp_path, 'target')
+    return source, _three_cdrs(source, tmp_path / 'source'), target, _three_cdrs(target, tmp_path / 'target')
+
+
+def test_a_transfer_gives_postal_codes_to_the_same_filter_instead_of_adding_another(tmp_path):
+    source, source_ids, target, target_ids = _transfer_workspaces(tmp_path)
+    used, _ = saved_filters.save_saved_filter(source, source_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True})
+    saved_filters.update_saved_filter(source, used['id'], name='Quarter', pinned=True, username='ana')
+    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
+    assert document['saved_filters'][0]['area_summary']['postal_codes'] is True
+
+    local, _ = saved_filters.save_saved_filter(target, target_ids, ['Operator'], 'NSA', area_summary=SUMMARY)
+    saved_filters.update_saved_filter(target, local['id'], name='Quarter', pinned=True, username='ana')
+    with target.connection() as connection:
+        connection.execute("UPDATE saved_filters SET status = 'completed', result_json = '{}' WHERE id = ?", (local['id'],))
+    saved_filters.import_saved_filters(target, document)
+    [joined] = saved_filters.list_saved_filters(target)
+    assert joined['id'] == local['id'] and joined['name'] == 'Quarter' and joined['pinned']
+    assert joined['area_summary']['postal_codes'] is True
+    # Its result has no postal codes yet: it is calculated again, with its selection of today.
+    queued, _reason = saved_filters.refresh_saved_filter(target, local['id'])
+    assert queued and saved_filters.get_saved_filter(target, local['id'])['status'] == 'queued'
+    # Importing it again finds it.
+    saved_filters.import_saved_filters(target, document)
+    assert [item['id'] for item in saved_filters.list_saved_filters(target)] == [local['id']]
+
+
+def test_a_transfer_without_postal_codes_leaves_the_ones_of_the_destination(tmp_path):
+    source, source_ids, target, target_ids = _transfer_workspaces(tmp_path)
+    used, _ = saved_filters.save_saved_filter(source, source_ids, ['Operator'], 'NSA', area_summary=SUMMARY)
+    saved_filters.update_saved_filter(source, used['id'], name='From there', pinned=True, username='ana')
+    document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
+    local, _ = saved_filters.save_saved_filter(target, target_ids, ['Operator'], 'NSA', area_summary={**SUMMARY, 'postal_codes': True})
+    saved_filters.import_saved_filters(target, document)
+    [joined] = saved_filters.list_saved_filters(target)
+    assert joined['id'] == local['id'] and joined['name'] == 'From there' and joined['area_summary']['postal_codes'] is True
+
+
+def test_the_preview_of_a_transfer_tells_the_same_filter_with_its_postal_codes():
+    from src.modules.import_changes import favourites_filter_items, kept_postal_codes, predict
+
+    entry = {'name': 'Quarter', 'nr_mode': 'NSA', 'levels': ['Operator'], 'baseline_operator': 'EE', 'scoring_profile_id': '',
+             'context_filters': {'Campaign': ['@latest-campaign']}, 'pinned': True, 'cdrs': [], 'area_summary': SUMMARY}
+    with_codes = {**entry, 'area_summary': {**SUMMARY, 'postal_codes': True}}
+    items = lambda *entries: favourites_filter_items({'saved_filters': list(entries)})
+    # It is found (not new) and told as updated.
+    changes = predict(items(with_codes), items(entry), {'area_summary': 'Geographical Areas & Scoring Trends'}, kept_postal_codes)
+    assert not changes.new and [name for name, _details in changes.updated] == ['Quarter']
+    # Without them in the package, the destination keeps its own: nothing changes.
+    changes = predict(items(entry), items(with_codes), None, kept_postal_codes)
+    assert not changes.new and not changes.updated and changes.unchanged == 1
+
+
 # -- the Saved Filter -----------------------------------------------------------------------------
 @pytest.fixture()
 def repository(tmp_path: Path) -> Repository:

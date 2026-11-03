@@ -1696,6 +1696,17 @@ def _ready_cdr_hashes(repository: Repository, progress: Callable[[int, int], Non
     return by_hash
 
 
+def _postal_twin_key(prepared: dict[str, Any]) -> str:
+    """The key of a prepared selection with Postal Codes if it has none, or without them if it has them."""
+    snapshot = prepared['snapshot']
+    summary = dict(snapshot.get('area_summary') or {})
+    if not summary.pop('postal_codes', False):
+        summary['postal_codes'] = True
+    filters = snapshot['context_filters']
+    return saved_filter_key([] if campaign_presets(filters.get('Campaign') or []) else prepared['dataset_ids'], prepared['levels'],
+                            prepared['nr_mode'], prepared['baseline_operator'], filters, snapshot['scoring_profile_id'], summary)
+
+
 def _resolve_imported_filters(repository: Repository, selection_keys: Iterable[str] | None = None,
                               progress: Callable[[str, float], None] | None = None) -> None:
     """Give the imported Saved Filters their CDRs once every one of them is in the workspace (found by file); those
@@ -1743,7 +1754,19 @@ def _resolve_imported_filters(repository: Repository, selection_keys: Iterable[s
         with repository.connection() as connection:
             existing = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?',
                                           (prepared['selection_key'],)).fetchone()
+            brings_postal_codes = False
+            if existing is None:
+                # With or without Postal Codes it is the same Saved Filter: the option the import brings is added, to be
+                # drawn when it is calculated again, and, as a star, the one of the workspace stays.
+                existing = connection.execute(f'SELECT * FROM {SAVED_FILTERS_TABLE} WHERE selection_key = ?',
+                                              (_postal_twin_key(prepared),)).fetchone()
+                brings_postal_codes = existing is not None and postal_areas.wanted(prepared['snapshot'])
             if existing is not None:
+                if brings_postal_codes:
+                    connection.execute(
+                        f'UPDATE {SAVED_FILTERS_TABLE} SET selection_key = ?, source_metadata_json = ? WHERE id = ?',
+                        (prepared['selection_key'], json.dumps(prepared['snapshot'], ensure_ascii=False, separators=(',', ':')),
+                         existing['id']))
                 # The same selection: the Saved Filter of the workspace takes the name of the import and its creator
                 # (with the star it brings; a star of the workspace stays with whoever starred it).
                 incoming_creator = str(row['created_by'] or '').strip()

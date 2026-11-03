@@ -392,6 +392,7 @@ Click a row of the ranking to show its areas alone on the map, which centres and
 
 - **The areas are approximate**, not official borders: they are worked out from the postal code points of GeoNames, so a test near a border can fall in the neighbouring code and the figures can differ from those of an official map. In the countries downloaded from GeoNames, codes that share their only point, usually in the centre of a city, are one area (for example `28070, 28071 +6 · Madrid`).
 - **A postal code holds few tests**, some tens per operator and quarter in the UK, so use this view to rank and locate the losses, not as a score per code. **Points lost per 1,000 tests** ranks the postal codes with 100 tests or more.
+- **In transfers:** the option travels with the Favourites Filters. With or without it, a filter is the same one, so the filter of the destination takes the option and draws its postal codes when it is calculated again, without adding another filter; a filter that already has the option keeps it.
 - **Its countries:** a calculation downloads the postal codes of the countries of its tests that lack them. When a download fails, a note above the maps names the country, and its tests are left out of this view until its postal codes are downloaded or imported and the scoring is calculated again.
 
 | View | Map | Ranking |
