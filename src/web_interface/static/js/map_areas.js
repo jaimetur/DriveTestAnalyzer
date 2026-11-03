@@ -75,7 +75,7 @@
     const {layers} = await api('/api/workspace-config/map-areas/postal');
     const target = $('[data-postal-area-layers]');
     if (!layers.length) {
-      target.replaceChildren(node('p', 'No Postal Codes saved yet: each country uses the ones included with the application, or the ones a calculation downloads when it needs them.', 'form-note'));
+      target.replaceChildren(node('p', 'No Postal Codes saved in this workspace yet: a calculation that asks for them downloads them, or choose or download them in Countries of the tests. Until then, a country with a copy included with the application uses that copy.', 'form-note'));
       return;
     }
     target.replaceChildren(table(['Country', 'Areas', 'Source', 'Licence', 'Updated', 'Actions'], layers.map((layer) => {
@@ -98,11 +98,12 @@
     })));
   }
 
-  // The postal codes of a country with one point per place, downloaded from GeoNames.
-  async function downloadPostal(country) {
-    message(`Downloading the postal codes of ${country.name}…`);
+  // The postal codes of a country, downloaded from GeoNames into the workspace: its full postcodes (about a minute) or one
+  // point per place.
+  async function downloadPostal(country, full) {
+    message(`Downloading the postal codes of ${country.name}${full ? ' (about a minute)' : ''}…`);
     const {layer} = await api('/api/workspace-config/map-areas/postal/download', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({country_code: country.code}),
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({country_code: country.code, full}),
     });
     message(`${layer.country_name}: ${number(layer.unit_count)} postal code areas saved. Calculate the scoring again to use them.`, 'success');
   }
@@ -117,17 +118,23 @@
     message(`Choose the file with the postal code areas of ${country.name} and press Import areas.`);
   }
 
-  // The map of the Postal Codes of a country, for the whole workspace: the one included with the application, the one
-  // worked out from the points per place of GeoNames, or a file of the workspace. It applies as soon as it is chosen.
+  // The map of the Postal Codes of a country, saved in the workspace: the one worked out from its full postcodes or from
+  // the points per place of GeoNames, or a file of the workspace. It applies as soon as it is chosen. Without one saved, a
+  // copy included with the application stands in for the full postcodes.
   function postalChooser(country) {
     const layer = country.postal_layer;
-    const current = layer ? (layer.origin === 'GeoNames' ? 'place' : 'own') : (country.postal_bundled ? 'full' : 'place');
+    const fullSaved = layer?.origin === 'GeoNames full postcodes';
+    const current = layer ? (fullSaved ? 'full' : layer.origin === 'GeoNames' ? 'place' : 'own') : (country.postal_full ? 'full' : 'place');
+    const fullAreas = fullSaved ? layer.unit_count : country.postal_bundled?.unit_count;
+    // A failed download leaves what the workspace has, which is worth saying when that is the copy of the application.
+    const failed = (error) => (!layer && country.postal_bundled
+      ? `${error.message} The copy included with the application stays in use.` : error.message);
     const box = node('div', undefined, 'map-area-chooser');
     const select = node('select');
     select.setAttribute('aria-label', `Map of the Postal Codes of ${country.name}`);
     select.dataset.postalMap = country.code;
     const options = [
-      ...(country.postal_bundled ? [['full', `Full postcodes · ${number(country.postal_bundled.unit_count)} areas (default)`]] : []),
+      ...(country.postal_full ? [['full', `Full postcodes${fullAreas ? ` · ${number(fullAreas)} areas` : ''} (default)`]] : []),
       ['place', layer && current === 'place' ? `One point per place · ${number(layer.unit_count)} areas` : 'One point per place'],
       ['own', current === 'own' ? `Own file · ${layer.source} · ${number(layer.unit_count)} areas` : 'Own file'],
     ];
@@ -155,29 +162,24 @@
       }
       select.disabled = true;
       try {
-        if (chosen === 'full') {
-          await api(`/api/workspace-config/map-areas/postal/${layer.id}`, {method: 'DELETE'});
-          message(`${country.name}: Postal Codes from its full postcodes. Calculate the scoring again to use them.`, 'success');
-        } else {
-          await downloadPostal(country);
-        }
+        await downloadPostal(country, chosen === 'full');
         await refresh();
       } catch (error) {
-        message(error.message, 'error');
+        message(failed(error), 'error');
         await renderCountries().catch(() => {});
       }
     });
     box.append(select);
-    if (current === 'place') {
+    if (current !== 'own') {
       const download = node('button', layer ? 'Download again' : 'Download now', 'secondary-button');
       download.type = 'button';
       download.addEventListener('click', async () => {
         download.disabled = true;
         try {
-          await downloadPostal(country);
+          await downloadPostal(country, current === 'full');
           await refresh();
         } catch (error) {
-          message(error.message, 'error');
+          message(failed(error), 'error');
           download.disabled = false;
         }
       });

@@ -5,6 +5,7 @@ import io
 import json
 import random
 import sqlite3
+import time
 import zipfile
 from contextlib import contextmanager
 from io import BytesIO
@@ -58,6 +59,18 @@ class FakeRepository:
 @pytest.fixture()
 def fake_repository(tmp_path):
     return FakeRepository(tmp_path / 'workspace.db')
+
+
+@pytest.fixture(autouse=True)
+def no_download(monkeypatch):
+    """No test reaches GeoNames, and what one finds unreachable does not pass to the next."""
+    def unreachable(url, timeout):
+        raise OSError('no route to host')
+    monkeypatch.setattr(postal_areas, '_fetch', unreachable)
+    monkeypatch.setattr(postal_areas, '_UNREACHED', {})
+
+
+UK_ROWS = [('M1 1AA', 'Manchester', 53.4801, -2.2301), ('M1 1AB', 'Manchester', 53.4805, -2.2305), ('LS1 1AA', 'Leeds', 53.80, -1.55)]
 
 
 def _geonames_zip(alpha2='ES', rows=None):
@@ -133,15 +146,6 @@ def test_the_postal_codes_shipped_cover_the_uk():
     assert 'Royal Mail' in layer['attribution']
 
 
-def _builder():
-    import importlib.util
-    path = Path(__file__).resolve().parents[1] / 'tools' / 'build_postal_layer.py'
-    specification = importlib.util.spec_from_file_location('build_postal_layer', path)
-    module = importlib.util.module_from_spec(specification)
-    specification.loader.exec_module(module)
-    return module
-
-
 def test_a_file_of_full_codes_is_read_and_each_code_counts_for_its_district():
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, 'w') as archive:
@@ -150,7 +154,7 @@ def test_a_file_of_full_codes_is_read_and_each_code_counts_for_its_district():
     # In one cell of the grid, the district with most codes keeps it, at the middle of its codes.
     points = [('M1 1AA', 'Manchester', 53.48012, -2.23012), ('M1 1AB', 'Manchester', 53.48018, -2.23018),
               ('M4 1AA', 'Ancoats', 53.48015, -2.23015)]
-    assert _builder().district_points(points) == [('M1', 'Manchester', 53.48015, -2.23015)]
+    assert postal_areas.district_points(points) == [('M1', 'Manchester', 53.48015, -2.23015)]
 
 
 def test_a_stray_code_draws_no_island_but_a_district_keeps_its_last_cell():
@@ -159,10 +163,10 @@ def test_a_stray_code_draws_no_island_but_a_district_keeps_its_last_cell():
     # One code of B in the middle of A, with another cell of B far away: the middle joins A.
     stray = [point for point in grid if not (abs(point[2] - 50.0012) < 1e-9 and abs(point[3] - 1.0012) < 1e-9)]
     points = [*stray, ('B1 1AA', 'Village', 50.0012, 1.0012), ('B1 1AB', 'Village', 52.0, 3.0)]
-    found = _builder().district_points(points)
+    found = postal_areas.district_points(points)
     assert sum(item[0] == 'A1' for item in found) == 9 and [item[0] for item in found if item[0] == 'B1'] == ['B1']
     # Without the other cell, it is the last one of B: it stays.
-    found = _builder().district_points([*stray, ('B1 1AA', 'Village', 50.0012, 1.0012)])
+    found = postal_areas.district_points([*stray, ('B1 1AA', 'Village', 50.0012, 1.0012)])
     assert sum(item[0] == 'B1' for item in found) == 1
 
 
@@ -188,6 +192,26 @@ def test_download_saves_a_layer_apart_from_the_map_areas(fake_repository, monkey
     assert postal_areas.list_postal_layers(fake_repository) == []
 
 
+def test_the_full_postcodes_of_the_uk_are_saved_in_the_workspace(fake_repository, monkeypatch):
+    requested = []
+    monkeypatch.setattr(postal_areas, '_fetch', lambda url, timeout: requested.append(url) or _geonames_zip('GB', UK_ROWS))
+    layer = postal_areas.download_postal_layer(fake_repository, 'GBR', 'super')
+    assert requested == ['https://download.geonames.org/export/zip/GB_full.csv.zip']
+    assert layer['origin'] == postal_areas.FULL_ORIGIN and layer['level'] == postal_areas.FULL_LEVEL and layer['unit_count'] == 2
+    assert 'Royal Mail' in layer['attribution'] and layer['source'] == requested[0]
+    index = postal_areas.postal_index(fake_repository)
+    assert index.sources['GBR'][2] is False and index.attributions['GBR'] == layer['attribution']
+    assert index.names_of(pd.Series([53.48]), pd.Series([-2.23])).tolist() == ['M1 · Manchester']
+    # One point per place replaces it: a country keeps one map.
+    layer = postal_areas.download_postal_layer(fake_repository, 'GBR', 'super', full=False)
+    assert requested[1:] == ['https://download.geonames.org/export/zip/GB.zip'] and layer['origin'] == 'GeoNames'
+    assert [item['origin'] for item in postal_areas.list_postal_layers(fake_repository)] == ['GeoNames']
+    # A country without full postcodes has one point per place, whatever is asked.
+    monkeypatch.setattr(postal_areas, '_fetch', lambda url, timeout: requested.append(url) or _geonames_zip())
+    assert postal_areas.download_postal_layer(fake_repository, 'ESP', 'super', full=True)['origin'] == 'GeoNames'
+    assert requested[-1].endswith('/ES.zip')
+
+
 def test_a_country_geonames_does_not_have_says_so(fake_repository, monkeypatch):
     import urllib.error
 
@@ -208,18 +232,43 @@ def test_a_calculation_downloads_the_postal_codes_its_countries_lack(fake_reposi
         fetched.append(url)
         if url.endswith('FR.zip'):
             raise OSError('no route to host')
-        return _geonames_zip()
+        return _geonames_zip('GB', UK_ROWS) if '/GB' in url else _geonames_zip()
     monkeypatch.setattr(postal_areas, '_fetch', fetch)
     missing = postal_areas.ensure_postal_layers(fake_repository, [], 'super')
-    # The UK has them shipped; France could not be downloaded, which the map tells, and App Events records both.
-    assert [url.rsplit('/', 1)[1] for url in fetched] == ['ES.zip', 'FR.zip']
+    # France could not be downloaded, which the map tells, and App Events records each.
+    assert [url.rsplit('/', 1)[1] for url in fetched] == ['GB_full.csv.zip', 'ES.zip', 'FR.zip']
     assert [item['name'] for item in missing] == ['France'] and 'no route to host' in missing[0]['error']
     assert [(action, details['country']) for _user, action, details in fake_repository.logs] == [
-        ('postal_areas_download', 'ESP'), ('postal_areas_download_failed', 'FRA')]
+        ('postal_areas_download', 'GBR'), ('postal_areas_download', 'ESP'), ('postal_areas_download_failed', 'FRA')]
+    assert fake_repository.logs[0][2]['origin'] == postal_areas.FULL_ORIGIN
+    assert {layer['country_code'] for layer in postal_areas.list_postal_layers(fake_repository)} == {'GBR', 'ESP'}
     # Downloaded once.
     fetched.clear()
     postal_areas.ensure_postal_layers(fake_repository, [], 'super')
     assert fetched == [url for url in fetched if url.endswith('FR.zip')]
+
+
+def test_the_copy_included_stands_in_until_the_postal_codes_can_be_downloaded(fake_repository, monkeypatch):
+    monkeypatch.setattr(postal_areas, 'countries_of_tests', lambda repository, sources: ['GBR'])
+    attempts = []
+
+    def unreachable(url, timeout):
+        attempts.append(timeout)
+        raise OSError('no route to host')
+    monkeypatch.setattr(postal_areas, '_fetch', unreachable)
+    # The map is drawn with the copy, so it misses nothing, and App Events says why.
+    assert postal_areas.ensure_postal_layers(fake_repository, [], 'super') == []
+    assert postal_areas.postal_index(fake_repository).sources['GBR'][2] is True
+    assert [action for _user, action, _details in fake_repository.logs] == ['postal_areas_download_failed']
+    # A server that cannot reach GeoNames is not waited for long, or with every map.
+    assert postal_areas.ensure_postal_layers(fake_repository, [], 'super') == []
+    assert attempts == [postal_areas.INCLUDED_TIMEOUT]
+    # After a while it is tried again, and the map downloaded takes over.
+    monkeypatch.setitem(postal_areas._UNREACHED, 'GBR', time.monotonic() - postal_areas.RETRY_SECONDS)
+    monkeypatch.setattr(postal_areas, '_fetch', lambda url, timeout: _geonames_zip('GB', UK_ROWS))
+    assert postal_areas.ensure_postal_layers(fake_repository, [], 'super') == []
+    assert postal_areas.postal_index(fake_repository).sources['GBR'][2] is False
+    assert postal_areas._UNREACHED == {}
 
 
 def test_layers_round_trip_in_their_document(fake_repository, tmp_path):
@@ -240,20 +289,33 @@ def test_the_map_of_the_postal_codes_of_a_country_is_chosen_in_workspace_config(
 
     login(client)
     repository = app_module.repository
-    # Full postcodes by default: the map included with the application, nothing saved in the workspace.
+    # Nothing saved in the workspace at first: the copy included with the application stands in for the full postcodes.
     assert client.get('/api/workspace-config/map-areas/postal').json()['layers'] == []
     assert postal_areas.postal_index(repository).sources['GBR'][2] is True
-    # One point per place: downloaded, and first over the one included.
+    monkeypatch.setattr(map_areas, 'detect_countries', lambda _repository: [{'code': 'GBR', 'name': 'United Kingdom'}])
+    [country] = client.get('/api/workspace-config/map-areas/countries').json()['countries']
+    assert country['postal_full'] is True and country['postal_bundled']['unit_count'] > 2000 and country['postal_layer'] is None
+    # A download that fails leaves it as it is, and says why.
+    response = client.post('/api/workspace-config/map-areas/postal/download', json={'country_code': 'GBR', 'full': True})
+    assert response.status_code == 400 and 'no route to host' in response.json()['detail']
+    assert client.get('/api/workspace-config/map-areas/postal').json()['layers'] == []
+    # Full postcodes: downloaded into the workspace, and listed there.
     rows = [('M1', 'Manchester', 53.48, -2.24), ('LS1', 'Leeds', 53.80, -1.55)]
     monkeypatch.setattr(postal_areas, '_fetch', lambda url, timeout: _geonames_zip('GB', rows))
-    response = client.post('/api/workspace-config/map-areas/postal/download', json={'country_code': 'GBR'})
+    response = client.post('/api/workspace-config/map-areas/postal/download', json={'country_code': 'GBR', 'full': True})
+    assert response.status_code == 200, response.text
+    assert response.json()['layer']['origin'] == postal_areas.FULL_ORIGIN
+    [listed] = client.get('/api/workspace-config/map-areas/postal').json()['layers']
+    assert listed['country_code'] == 'GBR' and listed['origin'] == postal_areas.FULL_ORIGIN
+    # One point per place replaces them.
+    response = client.post('/api/workspace-config/map-areas/postal/download', json={'country_code': 'GBR', 'full': False})
     assert response.status_code == 200, response.text
     layer = response.json()['layer']
     assert layer['origin'] == 'GeoNames' and layer['unit_count'] == 2
     index = postal_areas.postal_index(repository)
     assert index.sources['GBR'][2] is False and index.attributions['GBR'] == postal_areas.GEONAMES_ATTRIBUTION
     assert index.names_of(pd.Series([53.80]), pd.Series([-1.55])).tolist() == ['LS1 · Leeds']
-    # Back to Full postcodes: the one saved goes.
+    # Deleted, the copy stands in again.
     assert client.delete(f"/api/workspace-config/map-areas/postal/{layer['id']}").status_code == 200
     assert postal_areas.postal_index(repository).sources['GBR'][2] is True
     assert client.delete(f"/api/workspace-config/map-areas/postal/{layer['id']}").status_code == 404
@@ -272,11 +334,14 @@ def test_the_map_of_the_postal_codes_of_a_country_is_chosen_in_workspace_config(
     events = sorted(((row['id'], row['action'], json.loads(row['details'])) for row in repository.list_logs()
                      if row['action'].startswith('postal_areas_')), key=lambda event: event[0])
     events = [event[1:] for event in events]
-    assert [action for action, _details in events] == ['postal_areas_download', 'postal_areas_delete', 'postal_areas_import']
-    assert events[1][1]['country'] == 'GBR' and events[1][1]['origin'] == 'GeoNames'
+    assert [action for action, _details in events] == ['postal_areas_download_failed', 'postal_areas_download', 'postal_areas_download',
+                                                       'postal_areas_delete', 'postal_areas_import']
+    assert [events[1][1]['origin'], events[2][1]['origin']] == [postal_areas.FULL_ORIGIN, 'GeoNames']
+    assert events[3][1]['country'] == 'GBR' and events[3][1]['origin'] == 'GeoNames'
     # The panel knows what each country uses.
     script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/map_areas.js').read_text(encoding='utf-8')
     assert 'Full postcodes' in script and 'One point per place' in script and 'Own file' in script
+    assert postal_areas.FULL_ORIGIN in script
 
 
 # -- the map --------------------------------------------------------------------------------------

@@ -5,10 +5,12 @@ for about 120 countries (https://www.geonames.org, Creative Commons Attribution 
 its points (Voronoi cells cut to its country). They are approximate, not the official borders, and the codes that only
 have a point shared with others (the centre of a city, in the UK) are one area named after all of them.
 
-The layer of a country stored with the workspace comes first (downloaded from GeoNames, or imported from a GeoJSON or a
-zipped Shapefile, such as a licensed map), then the one shipped with the application in ``assets/map-areas/postal``. A
-Saved Filter that asks for Postal Codes downloads those its countries lack. Layers travel with the Mappings & Reference
-Data in Import / Export, transfers and backups. Tests are placed while the map is drawn, so the CDRs do not change.
+The map of a country is stored with the workspace, one per country: downloaded from GeoNames (its full postcodes where it
+publishes them, else one point per place), or imported from a GeoJSON or a zipped Shapefile, such as a licensed map. Workspace
+Config chooses it, and a Saved Filter that asks for Postal Codes downloads those its countries lack. The copy shipped with
+the application in ``assets/map-areas/postal`` stands in for its country until then, also on a server that cannot reach
+GeoNames. Layers travel with the Mappings & Reference Data in Import / Export, transfers and backups. Tests are placed while
+the map is drawn, so the CDRs do not change.
 """
 from __future__ import annotations
 
@@ -17,6 +19,8 @@ import io
 import json
 import math
 import re
+import threading
+import time
 import urllib.error
 import zipfile
 from collections import Counter
@@ -36,9 +40,20 @@ TABLE = 'map_area_postal_layers'
 TABLE_TITLE = 'Map Area Postal Layers'
 BUNDLED_DIR = PROJECT_ROOT / 'assets' / 'map-areas' / 'postal'
 GEONAMES_URL = 'https://download.geonames.org/export/zip/{code}.zip'
+GEONAMES_FULL_URL = 'https://download.geonames.org/export/zip/{code}_full.csv.zip'
 GEONAMES_LICENSE = 'Creative Commons Attribution 4.0'
 GEONAMES_ATTRIBUTION = 'GeoNames, www.geonames.org; areas worked out from its postal code points'
 LEVEL_LABEL = 'postal code'
+# The countries with their full postcodes in GeoNames, grouped in the districts before the space, with what their file asks
+# to credit.
+FULL_POSTCODES = {'GBR': 'contains Royal Mail data © Royal Mail copyright and database right 2022'}
+FULL_ORIGIN = 'GeoNames full postcodes'
+FULL_LEVEL = 'Postal district'
+# The grid of a file of full codes: about 110 m by 70 m in the UK.
+CELL_DEGREES = .001
+# With a copy to stand in, a server that cannot reach GeoNames is not waited for long, and is tried again after a while.
+INCLUDED_TIMEOUT = 60
+RETRY_SECONDS = 3600
 # A GeoNames file bigger than this is not a list of postal codes.
 MAX_FILE_BYTES = 256 * 1024 * 1024
 # The land of a country reaches a little off its coast, so that tests by the sea (bridges, piers) keep their code.
@@ -46,6 +61,8 @@ COAST_BUFFER = .02
 # The countries with at least this share of the sampled tests have their postal codes downloaded.
 MIN_COUNTRY_SHARE = .01
 SAMPLE_ROWS = 2000
+_UNREACHED: dict[str, float] = {}
+_DOWNLOADS = threading.Lock()
 
 
 def wanted(saved_filter: dict[str, Any] | None) -> bool:
@@ -94,7 +111,7 @@ def bundled_rings(country_code: str) -> dict[str, list]:
 
 
 def postal_index(repository: Any) -> AreaIndex:
-    """The postal code areas of a workspace, to place the tests: its own layers, else the ones shipped. A country
+    """The postal code areas of a workspace, to place the tests: its own layers, else the copies shipped. A country
     without a layer has none: its tests stay out of the Postal Code map."""
     sources: dict[str, tuple[str, Any, bool]] = {
         code: (item.get('level_label') or LEVEL_LABEL, (lambda code=code: bundled_rings(code)), True)
@@ -178,6 +195,43 @@ def coarser_codes(points: list[tuple[str, str, float, float]]) -> tuple[list[tup
         return points, 'Postal code'
     return [(code[:length].rstrip(' -'), place, latitude, longitude) for code, place, latitude, longitude in points], \
         f'First {length} characters of the postal code'
+
+
+def district_points(points: list[tuple[str, str, float, float]], step: float = CELL_DEGREES) -> list[tuple[str, str, float, float]]:
+    """One point per cell of a grid, for the district with most codes in it, so that the areas follow where the codes are
+    without millions of points. A lone cell of a district among others joins them (one stray code draws no island), unless
+    it is the last one of its district."""
+    cells: dict[tuple[int, int], dict[str, list]] = {}
+    for code, place, latitude, longitude in points:
+        district = code.split(' ')[0]
+        cell = cells.setdefault((int(latitude // step), int(longitude // step)), {})
+        entry = cell.setdefault(district, [0, 0.0, 0.0, Counter()])
+        entry[0] += 1
+        entry[1] += latitude
+        entry[2] += longitude
+        entry[3][place] += 1
+    # (Several codes count most: ties go to the first district in the order people read them.)
+    chosen = {key: min(cell, key=lambda name: (-cell[name][0], name)) for key, cell in cells.items()}
+    sizes = Counter(chosen.values())
+    for _round in range(2):
+        for key, district in list(chosen.items()):
+            around = [chosen[other] for other in ((key[0] + rows, key[1] + columns) for rows in (-1, 0, 1) for columns in (-1, 0, 1))
+                      if other != key and other in chosen]
+            if len(around) >= 2 and district not in around and sizes[district] > 1:
+                winner = Counter(around).most_common(1)[0][0]
+                chosen[key] = winner
+                sizes[district] -= 1
+                sizes[winner] += 1
+    found = []
+    for key, district in chosen.items():
+        cell = cells[key]
+        # The point of the cell: where its codes are, those of its district when it has any.
+        count, latitudes, longitudes, places = cell.get(district) or [
+            sum(value) if index < 3 else Counter() for index, value in enumerate(zip(*cell.values()))]
+        for entry in cell.values() if not places else ():
+            places.update(entry[3])
+        found.append((district, places.most_common(1)[0][0] if places else '', round(latitudes / count, 5), round(longitudes / count, 5)))
+    return found
 
 
 def _code_order(code: str) -> list[Any]:
@@ -305,25 +359,30 @@ def alpha2_code(country_code: str) -> str:
     return str(country.alpha_2)
 
 
-def download_postal_layer(repository: Any, country_code: str, username: str) -> dict[str, Any]:
-    """Download the postal code points of a country from GeoNames and save the areas worked out from them."""
+def download_postal_layer(repository: Any, country_code: str, username: str, *, full: bool | None = None) -> dict[str, Any]:
+    """Download the postal code points of a country from GeoNames and save the areas worked out from them in the workspace:
+    its full postcodes (``full``, by default where GeoNames publishes them), or else one point per place."""
     code = str(country_code or '').strip().upper()
     alpha2 = alpha2_code(code)
+    full = code in FULL_POSTCODES and full is not False
+    url = (GEONAMES_FULL_URL if full else GEONAMES_URL).format(code=alpha2)
     try:
-        content = _fetch(GEONAMES_URL.format(code=alpha2), timeout=300)
+        content = _fetch(url, timeout=INCLUDED_TIMEOUT if code in bundled_layers() else 300)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             raise ValueError(f'GeoNames has no postal codes for {country_name(code)}.') from exc
         raise ValueError(f'The postal codes could not be downloaded ({exc}).') from exc
     except Exception as exc:  # noqa: BLE001
         raise ValueError(f'The postal codes could not be downloaded ({exc}).') from exc
-    points, level = coarser_codes(read_geonames(content, alpha2))
+    rows = read_geonames(content, alpha2)
+    points, level = (district_points(rows), FULL_LEVEL) if full else coarser_codes(rows)
     if not points:
         raise ValueError(f'GeoNames has no postal codes with coordinates for {country_name(code)}.')
     boundaries = postal_boundaries(points, land_of(repository, code))
-    return save_layer(repository, country_code=code, level=level, level_label=LEVEL_LABEL, origin='GeoNames',
-                      source=GEONAMES_URL.format(code=alpha2), license_text=GEONAMES_LICENSE,
-                      attribution=GEONAMES_ATTRIBUTION, boundaries=boundaries, username=username, table=TABLE)
+    return save_layer(repository, country_code=code, level=level, level_label=LEVEL_LABEL,
+                      origin=FULL_ORIGIN if full else 'GeoNames', source=url, license_text=GEONAMES_LICENSE,
+                      attribution=f'{GEONAMES_ATTRIBUTION}; {FULL_POSTCODES[code]}' if full else GEONAMES_ATTRIBUTION,
+                      boundaries=boundaries, username=username, table=TABLE)
 
 
 # -- the countries of a calculation -----------------------------------------------------------------
@@ -369,21 +428,29 @@ def countries_of_tests(repository: Any, sources: Iterable[dict[str, Any]]) -> li
 
 def ensure_postal_layers(repository: Any, sources: Iterable[dict[str, Any]], username: str = 'system',
                          progress: Callable[[str], None] = lambda _step: None) -> list[dict[str, str]]:
-    """Download the postal codes of the countries of a calculation that have none; returns those that could not be, each
-    with why (a map still draws the others)."""
-    have = {*bundled_layers(), *(layer['country_code'] for layer in list_postal_layers(repository))}
+    """Download the postal codes of the countries of a calculation that the workspace does not have; returns those that
+    could not be and have no copy to stand in, each with why (a map still draws the others)."""
     missing = []
     for code in countries_of_tests(repository, sources):
-        if code in have:
-            continue
-        progress(f'Downloading the postal codes of {country_name(code)}')
-        try:
-            layer = download_postal_layer(repository, code, username)
-        except ValueError as exc:
-            missing.append({'code': code, 'name': country_name(code), 'error': str(exc)})
-            repository.try_add_log(username, 'postal_areas_download_failed', json.dumps(
-                {'country': code, 'error': str(exc)}, ensure_ascii=False))
-            continue
+        included = code in bundled_layers()
+        # (Calculations at the same time download a country once.)
+        with _DOWNLOADS:
+            if code in {layer['country_code'] for layer in list_postal_layers(repository)}:
+                continue
+            if included and time.monotonic() - _UNREACHED.get(code, -RETRY_SECONDS) < RETRY_SECONDS:
+                continue
+            progress(f'Downloading the postal codes of {country_name(code)}')
+            try:
+                layer = download_postal_layer(repository, code, username)
+            except ValueError as exc:
+                if included:
+                    _UNREACHED[code] = time.monotonic()
+                else:
+                    missing.append({'code': code, 'name': country_name(code), 'error': str(exc)})
+                repository.try_add_log(username, 'postal_areas_download_failed', json.dumps(
+                    {'country': code, 'error': str(exc)}, ensure_ascii=False))
+                continue
+            _UNREACHED.pop(code, None)
         repository.try_add_log(username, 'postal_areas_download', json.dumps(
-            {'country': code, 'level': layer['level'], 'areas': layer['unit_count']}, ensure_ascii=False))
+            {'country': code, 'origin': layer['origin'], 'level': layer['level'], 'areas': layer['unit_count']}, ensure_ascii=False))
     return missing

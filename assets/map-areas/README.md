@@ -28,7 +28,7 @@ Each `<ISO3>.json.gz` holds the simplified polygons of one country (coordinates 
 
 ## Postal Codes
 
-`postal/<ISO3>.json.gz` holds the areas of **Maps per Postal Code** of the Points Lost Map for the Saved Filters that ask for them, listed in `postal/manifest.json`; `tools/build_postal_layer.py` builds them. They are approximate, not official borders: each code takes the land closest to its points, cut to the Map Areas of its country, and the codes that only have a point shared with others are one area. Other countries are downloaded and worked out the same way when a calculation needs them, or imported by the workspace.
+`postal/<ISO3>.json.gz` holds a copy of the areas of **Maps per Postal Code** of the Points Lost Map for the Saved Filters that ask for them, listed in `postal/manifest.json`: it stands in until a workspace downloads its own, also on a server that cannot reach GeoNames; `tools/build_postal_layer.py` builds them. They are approximate, not official borders: each code takes the land closest to its points, cut to the Map Areas of its country, and the codes that only have a point shared with others are one area. Other countries are downloaded and worked out the same way when a calculation needs them, or imported by the workspace.
 
 | Country | Level | Areas | Source | Licence |
 | --- | --- | --- | --- | --- |

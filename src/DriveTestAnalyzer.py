@@ -25063,10 +25063,11 @@ def get_workspace_map_areas(user: SessionUser = Depends(current_user)) -> dict[s
 def get_workspace_map_area_countries(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """The countries of the tests of the workspace CDRs, with the Map Areas and the Postal Codes each one has."""
     from src.modules.map_areas import detect_countries
-    from src.modules.postal_areas import bundled_layers, list_postal_layers
+    from src.modules.postal_areas import FULL_POSTCODES, bundled_layers, list_postal_layers
     _map_areas_workspace()
     postal_layers = {layer['country_code']: layer for layer in list_postal_layers(repository)}
     return {'countries': [{**country, 'postal_layer': postal_layers.get(country['code']),
+                           'postal_full': country['code'] in FULL_POSTCODES,
                            'postal_bundled': bundled_layers().get(country['code'])}
                           for country in detect_countries(repository)]}
 
@@ -25081,21 +25082,23 @@ def get_workspace_postal_areas(user: SessionUser = Depends(current_user)) -> dic
 
 class PostalAreaDownloadPayload(BaseModel):
     country_code: str
+    # Its full postcodes or one point per place; by default, the full ones where GeoNames publishes them.
+    full: bool | None = None
 
 
 @app.post('/api/workspace-config/map-areas/postal/download')
 def download_workspace_postal_areas(payload: PostalAreaDownloadPayload, user: SessionUser = Depends(config_editor_user)) -> dict[str, Any]:
-    """Download the postal code points of a country from GeoNames and save the areas worked out from them."""
+    """Download the postal code points of a country from GeoNames and save the areas worked out from them in the workspace."""
     from src.modules.postal_areas import download_postal_layer
     _map_areas_workspace()
     try:
-        layer = download_postal_layer(repository, payload.country_code, user.username)
+        layer = download_postal_layer(repository, payload.country_code, user.username, full=payload.full)
     except ValueError as exc:
         repository.try_add_log(user.username, 'postal_areas_download_failed', json.dumps(
             {'country': payload.country_code, 'error': str(exc)}, ensure_ascii=False))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     repository.add_log(user.username, 'postal_areas_download', json.dumps(
-        {'country': layer['country_code'], 'level': layer['level'], 'areas': layer['unit_count']}))
+        {'country': layer['country_code'], 'origin': layer['origin'], 'level': layer['level'], 'areas': layer['unit_count']}))
     return {'layer': layer}
 
 
