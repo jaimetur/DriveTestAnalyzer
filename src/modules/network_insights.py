@@ -45,7 +45,7 @@ from src.modules import inventory_insights as ii
 from src.modules import network_insights_favourites as ni_favourites
 from src.modules.network_insights_findings import findings_payload, mode_of_test
 from src.modules.scoring_themes import THEMES, canvas_chart_style, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
-from src.modules.network_inventory import (dataset_revision, effective_snapshot_date, ensure_inventory_cells,
+from src.modules.network_inventory import (DEFAULT_NETWORK_BY_KIND, dataset_revision, effective_snapshot_date, ensure_inventory_cells,
                                            list_inventory_snapshots, network_family, resolve_fields, row_network_family)
 from src.modules.network_inventory import inventory_datasets as snapshot_datasets
 from src.modules.serving_cells import load_serving_networks, serving_families
@@ -1054,9 +1054,7 @@ NR_DUPLEX_SPLITS = {'': 'Owner network', 'region': 'Region', 'cluster': 'Cluster
 # ---------------------------------------------------------------------------
 # Inventory (the rows of the Network Inventories)
 # ---------------------------------------------------------------------------
-# VFUK and 3UK are read whole, as the inventories of Vodafone and Three.
-WHOLE_INVENTORY_KINDS = {'mapping_vodafone': 'Vodafone', 'mapping_three': 'Three'}
-# The table of each network of any other Network Inventory.
+# The table of each network of an inventory.
 INVENTORY_NETWORK_LABELS = {'vodafone': 'Vodafone', 'three': 'Three', 'o2': 'O2', 'ee': 'EE'}
 
 
@@ -1323,7 +1321,7 @@ def prepare_inventory_query(repository, connection, datasets: list[dict[str, Any
 
         fallback = str(dataset['operator']).replace("'", "''")
         # The rows of a network take its name, whatever else the file calls them.
-        named = "''" if dataset.get('network') else expression(INVENTORY_DETAIL_ALIASES['Operator'])
+        named = "''" if dataset['kind'] == 'network_inventory' else expression(INVENTORY_DETAIL_ALIASES['Operator'])
         operator = f"inventory_operator({named}, '{fallback}')"
         raw_vendor = expression(INVENTORY_DETAIL_ALIASES['Source_Vendor'])
         only = expression(INVENTORY_DETAIL_ALIASES['Vendor_Only'])
@@ -1529,8 +1527,9 @@ def install_network_insights_routes(core: Any) -> None:
     def inventory_datasets(task_repository, choice: Any = '') -> list[dict[str, Any]]:
         """The inventory each network is read from: the chosen snapshot for the networks it covers, else the newest one.
 
-        VFUK and 3UK are read whole, as the inventories of Vodafone and Three (overlapping uploads of one of them are
-        read together); any other Network Inventory gives one entry per network of its rows (``network``).
+        Each file gives one entry per network of its rows (``network``): their Network column, else the Operator of the
+        file (Vodafone for VFUK and 3 for 3UK unless another one is chosen). On the same date the file of one network
+        comes first (3UK beside the H3G rows of VFUK), and overlapping uploads of VFUK or of 3UK are read together.
         """
         try:
             chosen = int(choice) if str(choice or '').strip() else None
@@ -1539,25 +1538,29 @@ def install_network_insights_routes(core: Any) -> None:
         datasets = snapshot_datasets(task_repository)
         covered = {item['dataset_id']: item['families'] for item in list_inventory_snapshots(task_repository, datasets)}
         owned: dict[int, dict[str, str]] = {}
-        for row in datasets:
-            kind = str(row['dataset_kind'])
-            owned[int(row['id'])] = ({network_family(WHOLE_INVENTORY_KINDS[kind]): WHOLE_INVENTORY_KINDS[kind]} if kind in WHOLE_INVENTORY_KINDS else {
-                family: INVENTORY_NETWORK_LABELS.get(family) or str((details.get('networks') or [family])[0])
-                for family, details in covered.get(int(row['id']), {}).items() if family and details.get('cells')})
+        default_networks: dict[int, str] = {}
         candidates: dict[str, list[Any]] = {}
-        for row in sorted(datasets, key=lambda row: (effective_snapshot_date(row), int(row['id'])), reverse=True):
-            for family in owned[int(row['id'])]:
+        for row in datasets:
+            row_id = int(row['id'])
+            default_networks[row_id] = str(dict(row).get('dataset_operator') or DEFAULT_NETWORK_BY_KIND.get(str(row['dataset_kind']), ''))
+            networks = {family: str((details.get('networks') or [family])[0])
+                        for family, details in covered.get(row_id, {}).items() if family and details.get('cells')}
+            if not networks and default_networks[row_id]:
+                networks = {network_family(default_networks[row_id]): default_networks[row_id]}
+            owned[row_id] = {family: INVENTORY_NETWORK_LABELS.get(family) or name for family, name in networks.items()}
+            for family in owned[row_id]:
                 candidates.setdefault(family, []).append(row)
         used = set()
         for family, rows in candidates.items():
+            rows.sort(key=lambda row: (effective_snapshot_date(row), int(network_family(DEFAULT_NETWORK_BY_KIND.get(str(row['dataset_kind']), '')) == family),
+                                       int(row['id'])), reverse=True)
             first = next((row for row in rows if int(row['id']) == chosen), rows[0])
-            together = first['dataset_kind'] in WHOLE_INVENTORY_KINDS and int(first['id']) != chosen
+            together = first['dataset_kind'] in DEFAULT_NETWORK_BY_KIND and int(first['id']) != chosen
             used |= {(int(row['id']), family) for row in rows
                      if int(row['id']) == int(first['id']) or (together and row['dataset_kind'] == first['dataset_kind'])}
         return [
             {'id': int(row['id']), 'kind': row['dataset_kind'], 'operator': label,
-             'network': '' if row['dataset_kind'] in WHOLE_INVENTORY_KINDS else family,
-             'default_network': str(dict(row).get('dataset_operator') or ''),
+             'network': family, 'default_network': default_networks[int(row['id'])],
              'file_name': str(row['file_name']), 'updated_at': str(row['updated_at'] or '')}
             for row in datasets for family, label in owned[int(row['id'])].items() if (int(row['id']), family) in used
         ]
@@ -1566,8 +1569,9 @@ def install_network_insights_routes(core: Any) -> None:
         """A ready inventory, in use or not, as a whole file: its complete rows stay available."""
         for row in snapshot_datasets(task_repository):
             if int(row['id']) == dataset_id:
+                default = str(dict(row).get('dataset_operator') or DEFAULT_NETWORK_BY_KIND.get(str(row['dataset_kind']), ''))
                 return {'id': dataset_id, 'kind': row['dataset_kind'], 'file_name': str(row['file_name']),
-                        'operator': WHOLE_INVENTORY_KINDS.get(row['dataset_kind']) or str(dict(row).get('dataset_operator') or 'Inventory'),
+                        'operator': INVENTORY_NETWORK_LABELS.get(network_family(default)) or default or 'Inventory',
                         'updated_at': str(row['updated_at'] or '')}
         raise HTTPException(404, 'Ready Network Inventory not found in the active workspace.')
 

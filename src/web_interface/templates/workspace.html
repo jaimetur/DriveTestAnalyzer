@@ -503,10 +503,12 @@
             <td data-label="Dataset" data-queue-sort-value="{{ dataset.file_name }}" data-queue-sort-cell="dataset">
               <div class="queue-dataset-name" data-queue-file-name>{{ dataset.file_name }}</div>
               {% if not geospatial %}<div class="queue-dataset-kind" data-queue-kind data-queue-sort-value="{{ dataset.input_kind_label }}">{{ dataset.input_kind_label }}</div>{% endif %}
-              {% if dataset.dataset_kind == 'network_inventory' %}
+              {% if dataset.dataset_kind in ['network_inventory', 'mapping_vodafone', 'mapping_three'] %}
+              {% set operator_choice = dataset.operator_choice | default(dataset.dataset_operator or '') %}
               <select class="queue-operator-pill queue-operator-pill-inline" data-dataset-dataset-operator-select data-update-url="/workspace/datasets/{{ dataset.id }}/dataset-operator" aria-label="Operator of {{ dataset.file_name }}" title="The Operator of this Network Inventory, or Multi-operator to take each cell's owner from its Network column; map the CDRs again to apply a change">
-                <option value=""{% if not dataset.dataset_operator %} selected{% endif %}>Multi-operator (Network column)</option>
-                {% for operator in operator_options %}<option value="{{ operator }}"{% if dataset.dataset_operator == operator %} selected{% endif %}>{{ operator }}</option>{% endfor %}
+                <option value=""{% if not operator_choice %} selected{% endif %}>Multi-operator (Network column)</option>
+                {% if operator_choice and operator_choice not in operator_options %}<option value="{{ operator_choice }}" selected>{{ operator_choice }}</option>{% endif %}
+                {% for operator in operator_options %}<option value="{{ operator }}"{% if operator_choice == operator %} selected{% endif %}>{{ operator }}</option>{% endfor %}
               </select>
               {% endif %}
               {% if dataset.dataset_kind == 'multivendor_mapping' %}
@@ -515,6 +517,7 @@
               </div>
               {% endif %}
               {% if dataset.dataset_kind in ['multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory'] %}
+              {% if dataset.vendor_mapping_cdrs %}<div class="queue-vendor-source" title="{{ dataset.vendor_mapping_cdrs }} CDR{{ '' if dataset.vendor_mapping_cdrs == 1 else 's' }} took their Vendor from this file the last time they were mapped.">Used for Vendor Mapping</div>{% endif %}
               <label class="queue-snapshot-date" title="The date of the network this file describes (empty: the date in its file name or its upload date). Network Insights and the Vendor mapping compare them by this date.">
                 <span>Snapshot</span>
                 <input type="date" value="{{ dataset.snapshot_date_effective or '' }}" data-dataset-snapshot-date data-update-url="/workspace/datasets/{{ dataset.id }}/snapshot-date" aria-label="Snapshot date of {{ dataset.file_name }}">
@@ -687,7 +690,7 @@
       <div class="dataset-card-grid">
         {% for card_key, card_title, card_note, card_datasets in [
           ('multivendor-mappings', 'Multivendor Mappings', 'They give CDR samples the Vendor of their serving cells, for the Operators of each one. A Multivendor Mapping does not change the network that the other modules read.', mapping_datasets),
-          ('network-inventory', 'Network Inventories', 'The network inventories of the operators: every cell with its vendor, site and configuration. Network Insights and Non-Qualified Calls read the newest one of every network, and the Vendor mapping can use them too.', vendor_datasets),
+          ('network-inventory', 'Network Inventories', 'The network inventories of the operators: every cell with its vendor, site and configuration. Network Insights and Non-Qualified Calls read the newest one of every network; those that give the Vendor of the CDRs are tagged Used for Vendor Mapping.', vendor_datasets),
           ('geospatial', 'Geographic Datasets', 'Region, Cluster and Vendor polygons that map CDR samples and inventory sites to their area, and CDR samples to the Vendor of each Operator.', geo_datasets),
           ('other', 'Other Datasets', 'Other supported datasets.', other_datasets),
         ] %}

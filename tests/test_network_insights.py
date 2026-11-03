@@ -1232,7 +1232,8 @@ def test_inventory_views_read_the_newest_inventory_of_every_network(client, tmp_
     _login(client)
     repository = app_module.repository
     vfuk = _add_ready_dataset(tmp_path, 'vfuk.xlsx', 'mapping_vodafone', pd.DataFrame({
-        'Site_ID': ['V1', 'V2'], 'eNodeB ID': ['1', '2'], 'Cell ID': ['1', '1'], 'OP/ Vendor': ['VF_Ericsson'] * 2, 'Technology': ['LTE'] * 2,
+        'Site_ID': ['V1', 'T7'], 'eNodeB ID': ['1', '2'], 'Cell ID': ['1', '1'], 'OP/ Vendor': ['VF_Ericsson'] * 2, 'Technology': ['LTE'] * 2,
+        'Network': ['Vodafone', 'H3G'],
     }), None)
     three = _add_ready_dataset(tmp_path, '3uk.csv', 'mapping_three', pd.DataFrame({
         'MBNL_ID': ['T1'], 'Cid__ECI': ['2561'], 'Vendor': ['3_Nokia'], 'Technology': ['LTE'],
@@ -1260,22 +1261,26 @@ def test_inventory_views_read_the_newest_inventory_of_every_network(client, tmp_
     assert tables() == {'Vodafone': (3, ['cells.csv']), 'Three': (1, ['cells.csv']), 'O2': (1, ['cells.csv'])}
     assert counts() == {'Vodafone': (2, 3), 'Three': (1, 1), 'O2': (1, 1)}
     # A chosen snapshot gives the network it covers; the newest one gives the others.
-    assert tables(str(vfuk)) == {'Vodafone': (2, ['vfuk.xlsx']), 'Three': (1, ['cells.csv']), 'O2': (1, ['cells.csv'])}
+    assert tables(str(vfuk)) == {'Vodafone': (1, ['vfuk.xlsx']), 'Three': (1, ['vfuk.xlsx']), 'O2': (1, ['cells.csv'])}
     assert counts(str(three)) == {'Vodafone': (2, 3), 'Three': (1, 1), 'O2': (1, 1)}
     assert tables(str(three))['Three'] == (1, ['3uk.csv'])
     # The complete file of an inventory that is not in use stays available.
     assert client.get(f'/api/network-insights/inventory/{vfuk}').json()['total_rows'] == 2
     assert client.get(f'/api/network-insights/inventory/{newer}').json()['total_rows'] == 5
-    # An older Network Inventory gives way to VFUK and 3UK.
+    # An older Network Inventory gives way to VFUK and 3UK; on the same date 3UK comes before the H3G rows of VFUK.
     repository.update_dataset_profile(newer, snapshot_date='2026-01-01')
-    assert tables() == {'Vodafone': (2, ['vfuk.xlsx']), 'Three': (1, ['3uk.csv']), 'O2': (1, ['cells.csv'])}
+    assert tables() == {'Vodafone': (1, ['vfuk.xlsx']), 'Three': (1, ['3uk.csv']), 'O2': (1, ['cells.csv'])}
 
 
 def test_vfuk_and_3uk_are_listed_among_the_network_inventories(client, tmp_path):
     _login(client)
-    _add_ready_dataset(tmp_path, 'vfuk.xlsx', 'mapping_vodafone', pd.DataFrame({'Site_ID': ['V1']}), None)
-    _add_ready_dataset(tmp_path, '3uk.csv', 'mapping_three', pd.DataFrame({'Site_ID': ['T1']}), None)
+    vfuk = _add_ready_dataset(tmp_path, 'vfuk.xlsx', 'mapping_vodafone', pd.DataFrame({'Site_ID': ['V1'], 'Network': ['Vodafone']}), None)
+    three = _add_ready_dataset(tmp_path, '3uk.csv', 'mapping_three', pd.DataFrame({'Site_ID': ['T1']}), None)
     _add_ready_dataset(tmp_path, 'week41.xlsx', 'multivendor_mapping', pd.DataFrame({'Site_ID': ['W1']}), None)
+    cdr = _add_ready_dataset(tmp_path, 'cdr.xlsx', 'data', _data_rows('2026-Q2'))
+    app_module.repository.update_dataset_profile(cdr, vendor_mapping_applied=1, processing_options_json=json.dumps({
+        'vodafone_mapping_dataset_id': vfuk, 'network_inventory_dataset_ids': [],
+    }))
     page = client.get('/workspace').text
     mappings = page.split('data-dataset-card="multivendor-mappings"', 1)[1].split('</section>', 1)[0]
     inventories = page.split('data-dataset-card="network-inventory"', 1)[1].split('</section>', 1)[0]
@@ -1283,6 +1288,19 @@ def test_vfuk_and_3uk_are_listed_among_the_network_inventories(client, tmp_path)
     assert 'vfuk.xlsx' in inventories and '3uk.csv' in inventories and 'week41.xlsx' not in inventories
     assert 'Network Inventory — Vodafone UK (VFUK)' in inventories and 'Network Inventory — Three UK (3UK)' in inventories
     assert '>1 Multivendor Mapping<' in page and '>2 Network Inventories<' in page
+
+    def row(name):
+        return inventories.split(name, 1)[1].split('</tr>', 1)[0]
+
+    # Only the file a CDR took its Vendor from is tagged.
+    assert 'Used for Vendor Mapping</div>' in row('vfuk.xlsx') and 'Used for Vendor Mapping</div>' not in row('3uk.csv')
+    assert 'Used for Vendor Mapping</div>' not in mappings
+    # Both have the Operator choice: VFUK by its Network column, 3UK with the Operator of its network.
+    assert f'/workspace/datasets/{vfuk}/dataset-operator' in inventories and f'/workspace/datasets/{three}/dataset-operator' in inventories
+    assert '<option value="" selected>Multi-operator' in row('vfuk.xlsx') and '<option value="" selected>Multi-operator' not in row('3uk.csv')
+    changed = client.post(f'/workspace/datasets/{three}/dataset-operator', json={'dataset_operator': 'O2'})
+    assert changed.status_code == 200 and app_module.repository.get_dataset(three)['dataset_operator'] == 'O2'
+    assert any(log['action'] == 'update_dataset_operator' for log in app_module.repository.list_logs())
 
 
 def test_combined_inventory_export_prepares_all_rows_before_delivery(client, tmp_path):

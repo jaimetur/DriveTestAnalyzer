@@ -25,7 +25,7 @@ import warnings
 import tempfile
 import time as time_module
 import zipfile
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from collections.abc import Mapping
 from concurrent.futures import Future
 from contextlib import asynccontextmanager, closing, contextmanager, nullcontext
@@ -86,7 +86,7 @@ from src.modules.report_layouts import canonical_layout_name, selectable_layout_
 from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, calculated_dimension_editor_json, calculated_dimension_preview, calculated_dimension_reads, CALCULATED_FIELD_OPERATORS, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, preview_catalog_chart_data, render_catalog_chart_preview, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
 from src.modules.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
 from src.modules.email_delivery import DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_SECURITY_MODES, email_delivery_settings, invalid_recipients, parse_recipients, save_email_delivery_settings, send_email
-from src.modules.network_inventory import INVENTORY_DATASET_KINDS, MULTIVENDOR_MAPPING_KIND, SNAPSHOT_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, list_mapping_snapshots, mapping_operators, normalise_snapshot_date
+from src.modules.network_inventory import DEFAULT_NETWORK_BY_KIND, INVENTORY_DATASET_KINDS, MULTIVENDOR_MAPPING_KIND, SNAPSHOT_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, list_mapping_snapshots, mapping_operators, network_family, normalise_snapshot_date
 from src.modules.l3_dt_logs import KIND as L3_DT_LOGS_KIND, dataset_summary as l3_dataset_summary, forget_datasets as l3_forget_datasets
 from src.modules.l3_dt_logs import preview_frame as l3_preview_frame, source_columns as l3_source_columns
 from src.modules.serving_cells import suggest_mapping_operators, vendor_mapping_signature
@@ -4059,6 +4059,36 @@ def add_workspace_mapping_capabilities(datasets: list[dict[str, Any]]) -> None:
         dataset['can_clear_mappings'] = bool(is_cdr and (dataset.get('can_clear_vendors') or dataset.get('can_clear_regions') or dataset['can_clear_clusters']))
 
 
+def add_inventory_row_details(datasets: list[dict[str, Any]]) -> None:
+    """What the rows of the Network Inventories and Multivendor Mappings show: how many CDRs take their Vendor from each one
+    (``vendor_mapping_cdrs``) and its Operator (``operator_choice``: without one chosen, VFUK and 3UK belong to the Operator
+    of their network unless they have a Network column).
+    """
+    from src.modules.cdr_reporting import operator_key
+
+    used: Counter[int] = Counter()
+    for dataset in datasets:
+        if dataset.get('dataset_kind') not in CDR_DATASET_KINDS or not dataset.get('vendor_mapping_applied'):
+            continue
+        options = parse_json_field(dataset.get('processing_options_json'), {})
+        options = options if isinstance(options, dict) else {}
+        if not options.get('vendor_polygon_dataset_ids'):
+            sources = (options.get('vodafone_mapping_dataset_id'), options.get('three_mapping_dataset_id'),
+                       *(options.get('network_inventory_dataset_ids') or []))
+            used.update({int(source) for source in sources if source})
+    aliases = operator_aliases(repository)
+    names = operator_options()
+    for dataset in datasets:
+        dataset['vendor_mapping_cdrs'] = used[int(dataset['id'])]
+        operator = str(dataset.get('dataset_operator') or '')
+        default = DEFAULT_NETWORK_BY_KIND.get(str(dataset.get('dataset_kind') or ''))
+        if default and not operator and dataset.get('is_ready') and repository.resolve_dataset_row_column_name(int(dataset['id']), 'Network') is None:
+            same = [name for name in names if operator_key(name, aliases) == operator_key(default, aliases)]
+            same = same or [name for name in names if network_family(name) == network_family(default)]
+            operator = min(same, key=len) if same else default
+        dataset['operator_choice'] = operator
+
+
 def derive_runtime_available_metrics(dataset: dict[str, Any]) -> list[str]:
     available_metrics = [metric for metric in (dataset.get('available_metrics') or []) if is_metric_candidate(metric)]
     if not available_metrics or not dataset.get('is_ready'):
@@ -4974,10 +5004,8 @@ def vendor_source_operators(
         return operator_key(value, aliases)
 
     inventory = set()
-    if vodafone_mappings:
-        inventory.add(identity('Vodafone UK'))
-    if three_mappings:
-        inventory.add(identity('3'))
+    inventory |= {identity(item.get('dataset_operator') or 'Vodafone UK') for item in vodafone_mappings}
+    inventory |= {identity(item.get('dataset_operator') or '3') for item in three_mappings}
     inventory |= {identity(item['dataset_operator']) for item in network_inventories
                   if item.get('can_map_vendors_from') and str(item.get('dataset_operator') or '').strip()}
     inventory |= {identity(name) for item in multivendor_mappings for name in item.get('mapping_operator_names') or []}
@@ -15124,6 +15152,7 @@ def workspace(
         for dataset in ready_datasets if dataset.get('dataset_kind') == MULTIVENDOR_MAPPING_KIND
     ]
     add_workspace_mapping_capabilities(datasets)
+    add_inventory_row_details(datasets)
     add_combined_inclusion(datasets)
     add_l3_nq_calls(datasets)
     mappable_cdr_datasets = [dataset for dataset in datasets if dataset.get('can_map_mappings')]
@@ -21916,13 +21945,13 @@ class DatasetOperatorUpdate(BaseModel):
 def update_dataset_operator(
     dataset_id: int, payload: DatasetOperatorUpdate, user: SessionUser = Depends(workspace_editor_user),
 ) -> JSONResponse:
-    """Change the Operator of Vendor polygons, or make them Multi-operator; map the CDRs again to apply it."""
+    """Change the Operator of Vendor polygons or of a Network Inventory, or make them Multi-operator; map the CDRs again to apply it."""
     if active_workspace:
         require_workspace_access(user, active_workspace.id)
     dataset = repository.get_dataset(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail='Dataset not found')
-    if str(dataset['dataset_kind'] or '') not in {'vendors', 'network_inventory'}:
+    if str(dataset['dataset_kind'] or '') not in {'vendors', 'network_inventory', *DEFAULT_NETWORK_BY_KIND}:
         raise HTTPException(status_code=400, detail='Only Vendor polygons and Network Inventories have an Operator.')
     # Blank (Multi-operator): each polygon takes the Operator of its Operator attribute.
     operator = str(payload.dataset_operator or '').strip()

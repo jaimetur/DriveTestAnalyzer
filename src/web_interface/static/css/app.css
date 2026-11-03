@@ -2001,6 +2001,7 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .queue-mapping-operator input:checked + span { border-color: #c2571a; background: #c2571a; color: #ffffff; }
 .queue-mapping-operator input:focus-visible + span { outline: 2px solid #1d5b85; outline-offset: 1px; }
 .queue-mapping-operator input:disabled + span { opacity: 0.6; }
+.queue-vendor-source { width: fit-content; margin-top: 0.35rem; padding: 0.14rem 0.5rem; border-radius: 999px; background: #e3effb; color: #0c4c8c; font-size: 0.7rem; font-weight: 800; white-space: nowrap; }
 .queue-snapshot-date > span { white-space: nowrap; }
 .queue-snapshot-date { display: inline-flex; flex-wrap: nowrap; white-space: nowrap; max-width: 100%; align-items: center; gap: 0.35rem; margin: 0.35rem 0 0 0.35rem; padding: 0 0.15rem 0 0.55rem; border: 1px solid #b7d4e8; border-radius: 999px; background: #f1f8fd; color: #1d5b85; font-size: 0.72rem; font-weight: 800; vertical-align: middle; }
 .queue-snapshot-date input { height: 1.5rem; min-height: 0; padding: 0 0.35rem; border: 0; border-radius: 999px; background: #ffffff; color: #1d5b85; font-size: 0.72rem; font-weight: 700; }
