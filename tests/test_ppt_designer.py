@@ -1328,7 +1328,7 @@ def test_designs_lifecycle_and_layout(client):
     assert 'id="ds-ppt-chart-viewer"' not in page.text
     assert page.text.count('id="ds-chart-expanded-overlay"') == 1
     assert page.text.index('<th>Status</th>') < page.text.index('<th>Actions</th>')
-    assert 'colspan="5" class="form-note">Loading Designs' in page.text
+    assert 'colspan="7" class="form-note">Loading Designs' in page.text
     assert 'id="ds-library"' not in page.text
     assert 'id="ds-save"' in page.text
     assert '>Save Filters<' in page.text
@@ -2085,8 +2085,9 @@ def test_designs_lifecycle_and_layout(client):
     listed = client.get('/api/ppt-designer')
     assert listed.json()['test']['name'] == 'Comparison'
     # The saved Design comes back as the list gives it, so the page does not take it for an unsaved change (its place in
-    # the library comes with the list only, and the page keeps it apart from the definition).
-    assert saved.json()['definition'] == {key: value for key, value in listed.json()['test'].items() if key != 'position'}
+    # the library and who last changed it come with the list only, and the page keeps them apart from the definition).
+    assert saved.json()['definition'] == {key: value for key, value in listed.json()['test'].items()
+                                          if key not in {'position', 'updated_by', 'updated_at'}}
     assert "const appliedDefinition = () => applyingDesignDefinition || appliedDesignDefinition || savedDesignDefinition();" in design_script
     # A running preparation does not hold Apply and Save Filters: a new preparation replaces it.
     preparation = design_script[design_script.index('  async function prepareDefinition() {'):design_script.index('  async function openDesign(')]
