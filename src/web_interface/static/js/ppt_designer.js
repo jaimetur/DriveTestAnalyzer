@@ -3281,7 +3281,47 @@
   };
   // Hiding or showing a legend entry or an axis value applies to the whole
   // Design (every slide, the expanded viewer and its PPT export).
+  // Every value hidden in the Design, listed by the Hidden button and the right-click menus: a value hidden everywhere may
+  // be drawn nowhere to right-click it.
+  const hiddenDesignValues = () => {
+    const state = legendVisibility();
+    return [...new Set([state.design, ...state.charts.values()].flatMap(labels => [...labels].filter(([, hidden]) => hidden).map(([label]) => label)))];
+  };
+  // The states before each hide or show of the open Design, for Undo. Fresh while no change of the Designer came after it.
+  const legendUndoStacks = new Map();
+  let legendUndoFresh = false;
+  const legendUndoStack = () => { if (!legendUndoStacks.has(activeId)) legendUndoStacks.set(activeId, []); return legendUndoStacks.get(activeId); };
+  const syncHiddenValuesButton = () => {
+    const holder = $('ds-hidden-values'); if (!holder) return;
+    const count = !pptDesignViewer && activeId ? hiddenDesignValues().length : 0;
+    holder.hidden = Boolean(pptDesignViewer) || !activeId || (!count && !legendUndoStack().length);
+    $('ds-hidden-values-toggle').textContent = `Hidden (${count})`;
+  };
+  const legendStatesChanged = () => {
+    saveLegendVisibility();
+    refreshLegendCanvases();
+    syncHiddenValuesButton();
+    const slide = prepared?.slides?.[slideIndex];
+    if (slide && !$('ds-viewer').hidden && slideCardsSignature(slide) !== renderedSlideCards) renderSlide();
+    document.dispatchEvent(new CustomEvent('ds:legend-changed'));
+  };
+  const undoLegendChange = () => {
+    const previous = legendUndoStack().pop();
+    if (previous === undefined) return false;
+    const stored = JSON.parse(previous);
+    legendVisibilityStates.set(activeId, {
+      design: new Map(Object.entries(stored.design)),
+      charts: new Map(Object.entries(stored.charts).map(([key, states]) => [key, new Map(Object.entries(states))])),
+    });
+    legendUndoFresh = legendUndoStack().length > 0;
+    legendStatesChanged();
+    return true;
+  };
   const setDesignLegendStates = states => {
+    const undo = legendUndoStack();
+    undo.push(JSON.stringify(legendVisibilityPayload()));
+    if (undo.length > 80) undo.shift();
+    legendUndoFresh = true;
     const state = legendVisibility();
     // Hiding or showing a value also drops the explicit states of the labels
     // that contain it at some level ("O2 · 2026-Q1" for O2), which would
@@ -3294,10 +3334,7 @@
       state.design.set(label, hidden);
       state.charts.forEach(chartStates => chartStates.delete(label));
     });
-    saveLegendVisibility();
-    refreshLegendCanvases();
-    const slide = prepared?.slides?.[slideIndex];
-    if (slide && !$('ds-viewer').hidden && slideCardsSignature(slide) !== renderedSlideCards) renderSlide();
+    legendStatesChanged();
   };
   let legendMenu = null;
   const closeLegendMenu = () => { legendMenu?.remove(); legendMenu = null; };
@@ -3324,7 +3361,9 @@
     // Hidden values no longer appear on the axis: list them with a Show
     // submenu that only opens while the pointer moves over the value (or
     // with ArrowRight, Enter or a click from the keyboard or touch).
-    const hiddenValues = axis ? labels.filter(label => label !== target && hiddenLabels.has(label)) : [];
+    // The values hidden in the rest of the Design follow them, as they may be drawn nowhere else.
+    const hiddenValues = [...new Set([...(axis ? labels.filter(label => label !== target && hiddenLabels.has(label)) : []),
+      ...hiddenDesignValues().filter(value => value !== target && !labels.includes(value))])];
     if (hiddenValues.length) {
       menu.append(node('div', 'Hidden values', 'ds-legend-menu-heading'));
       hiddenValues.forEach(value => {
@@ -3364,6 +3403,35 @@
     legendMenu = menu;
     menu.querySelector('button')?.focus();
   }
+  // The Hidden button: every value hidden in the Design with its way back, whatever is left on the charts.
+  $('ds-hidden-values-toggle')?.addEventListener('click', event => {
+    closeLegendMenu();
+    const menu = node('div', undefined, 'ds-legend-menu ds-hidden-values-menu');
+    menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', 'Hidden values of the Design');
+    const action = (label, title, handler) => {
+      const button = node('button', label, 'ds-legend-menu-item');
+      button.type = 'button'; button.title = title; button.setAttribute('role', 'menuitem');
+      button.onclick = clicked => { clicked.stopPropagation(); closeLegendMenu(); handler(); };
+      menu.append(button);
+    };
+    const values = hiddenDesignValues();
+    values.forEach(value => action(`Show ${value}`, `Show ${value} in every slide of the Design`, () => setDesignLegendStates(new Map([[value, false]]))));
+    if (values.length > 1) action('Show all', 'Show every hidden value in every slide of the Design', () => setDesignLegendStates(new Map(values.map(value => [value, false]))));
+    if (legendUndoStack().length) action('Undo', 'Undo the last hide or show', undoLegendChange);
+    document.body.append(menu);
+    const bounds = event.currentTarget.getBoundingClientRect(), {width} = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - width - 8))}px`;
+    menu.style.top = `${bounds.bottom + 6}px`;
+    legendMenu = menu;
+    menu.querySelector('button')?.focus();
+  });
+  // Ctrl/Cmd+Z in the viewer; while designing, the Undo of the Designer takes it (undoLegendChangeFirst).
+  document.addEventListener('keydown', event => {
+    if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.key.toLowerCase() !== 'z') return;
+    if ($('ds-viewer').hidden || pptDesignViewer || $('ds-design-bar')?.hidden === false) return;
+    if (event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    if (undoLegendChange()) event.preventDefault();
+  });
   document.addEventListener('pointerdown', event => { if (legendMenu && !legendMenu.contains(event.target)) closeLegendMenu(); }, true);
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && legendMenu) { event.stopPropagation(); closeLegendMenu(); } }, true);
   window.addEventListener('resize', closeLegendMenu);
@@ -4465,6 +4533,7 @@
     $('ds-slide-content').classList.toggle('ds-comments-right', /\bcomments\s+right\b/i.test(slide.layout || ''));
     const {cards, layout: cardLayout, hiddenBy} = slideCards(slide);
     renderedSlideCards = slideCardsSignature(slide);
+    syncHiddenValuesButton();
     const stage = $('ds-charts'); stage.classList.remove('ds-slide-transition'); stage.replaceChildren(); stage.classList.toggle('ds-positioned',cards.length > 0 && cards.every(card=>card.position)); stage.classList.toggle('ds-structural-stage', !slide.charts.length);
     if (!slide.charts.length) structuralDesign(stage, slide);
     else if (!cards.length) {
@@ -5105,6 +5174,10 @@
       return true;
     },
     renderSlide() { if (prepared) renderSlide(); },
+    // A hide or show done after the last change of the Designer goes first in its Undo.
+    legendUndoReady: () => legendUndoFresh,
+    undoLegendChangeFirst: () => legendUndoFresh && undoLegendChange(),
+    designerChanged() { legendUndoFresh = false; },
     // The slide set saved: the Design keeps it, so its filters saved later do not count it as a change.
     storeSlides(id, fields) {
       if (!designs[id]) return;

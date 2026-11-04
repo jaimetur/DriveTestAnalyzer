@@ -1679,6 +1679,7 @@
 .ds-legend-menu{position:fixed;z-index:9000;display:flex;flex-direction:column;min-width:13rem;padding:.35rem;border:1px solid #d6cfe3;border-radius:.6rem;background:#fff;box-shadow:0 12px 32px rgba(38,26,64,.22)}
 .ds-legend-menu-item{appearance:none;border:0;border-radius:.4rem;background:transparent;color:#2b1f45;font:inherit;font-size:.86rem;font-weight:700;text-align:left;padding:.5rem .7rem;cursor:pointer}
 .ds-legend-menu-item:hover,.ds-legend-menu-item:focus-visible{background:#efe9fb;color:#55358d;outline:none}
+.ds-hidden-values-menu{max-height:60vh;overflow:auto}
 .ds-legend-menu-heading{margin:.35rem .7rem .15rem;padding-top:.35rem;border-top:1px solid #e6e0ef;color:#7a6c90;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
 .ds-legend-menu-entry{position:relative}
 .ds-legend-menu-parent{width:100%;display:flex;justify-content:space-between;gap:1rem}

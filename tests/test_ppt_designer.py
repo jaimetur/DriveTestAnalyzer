@@ -1329,6 +1329,7 @@ def test_designs_lifecycle_and_layout(client):
     assert page.text.count('id="ds-chart-expanded-overlay"') == 1
     assert page.text.index('<th>Status</th>') < page.text.index('<th>Actions</th>')
     assert 'colspan="7" class="form-note">Loading Designs' in page.text
+    assert 'id="ds-hidden-values-toggle"' in page.text
     assert 'id="ds-library"' not in page.text
     assert 'id="ds-save"' in page.text
     assert '>Save Filters<' in page.text

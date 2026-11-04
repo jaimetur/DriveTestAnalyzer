@@ -222,6 +222,7 @@
     state.history.push(before);
     if (state.history.length > 80) state.history.shift();
     state.future = [];
+    viewer().designerChanged();
     if (slide !== undefined) state.slide = slide;
     if (element !== undefined) state.element = element;
     renderDesigner();
@@ -236,6 +237,7 @@
   }
 
   async function undo() {
+    if (viewer().undoLegendChangeFirst()) return;
     await state.queue.catch(() => undefined);
     const previous = state.history.pop();
     if (!previous) return;
@@ -776,7 +778,7 @@
             scopeButton('design', 'This Design', 'Changes only this Design: kept as its differences from the template', state.rights.design),
             scopeButton('template', `Template · ${count} Design${count === 1 ? '' : 's'}`, `Changes the template ${state.info?.template?.name || ''}: every Design that follows it`, state.rights.template))),
       h('div', {class: 'ds-design-bar-group'},
-        h('button', {type: 'button', class: 'ds-design-tool', title: 'Undo (Ctrl/Cmd+Z)', 'aria-label': 'Undo', disabled: !state.history.length, onclick: guarded(undo)}, icon('undo')),
+        h('button', {type: 'button', class: 'ds-design-tool', title: 'Undo (Ctrl/Cmd+Z)', 'aria-label': 'Undo', disabled: !state.history.length && !viewer().legendUndoReady(), onclick: guarded(undo)}, icon('undo')),
         h('button', {type: 'button', class: 'ds-design-tool', title: 'Redo (Shift+Ctrl/Cmd+Z)', 'aria-label': 'Redo', disabled: !state.future.length, onclick: guarded(redo)}, icon('redo')),
         h('button', {type: 'button', class: 'ds-design-action ds-design-with-icon', onclick: guarded(openParametersDialog), disabled: state.detached ? false : !state.rights.template && !parameters().length, title: 'The parameters of the template'},
           icon('parameters'), 'Parameters', parameters().length ? h('span', {class: 'ds-design-count', text: String(parameters().length)}) : null),
@@ -1793,6 +1795,7 @@
     placePopover(menu, anchor, event);
   }
   document.addEventListener('pointerdown', event => { if (!event.target.closest('.ds-design-popover, [aria-haspopup]')) closeMenus(); }, true);
+  document.addEventListener('ds:legend-changed', () => { if (state.active) renderDesigner(); });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && document.querySelector('.ds-design-popover')) { closeMenus(); return; }
     if (!state.active || event.target.closest('input, textarea, select, [contenteditable="true"]')) return;

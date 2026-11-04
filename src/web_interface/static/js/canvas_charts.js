@@ -3117,10 +3117,21 @@
   function axisLevelValues(payload, axis, level) {
     const unique = values => [...new Set(values.map(value => String(value ?? '')).filter(value => value && value !== '(all)'))];
     if (!payload) return [];
-    if (axis === 'row') return unique((payload.row_keys || []).map(key => key?.[level]));
+    // The charts whose rows are not a table of keys: named pies, panes, the nodes of a Sankey (by level) or a Treemap (by depth).
+    const atDepth = (nodes, depth) => (depth ? (nodes || []).flatMap(item => atDepth(item.children, depth - 1)) : (nodes || []));
+    const named = items => (items || []).map(item => item.key?.[level] ?? item.label);
+    if (axis === 'row') {
+      if (Array.isArray(payload.row_keys)) return unique(payload.row_keys.map(key => key?.[level]));
+      if (Array.isArray(payload.pie_row_keys)) return unique(payload.pie_row_keys.map(key => key?.[level]));
+      if (payload.type === 'sankey') return unique((payload.nodes?.[level] || []).map(node => node.name));
+      if (payload.type === 'treemap') return unique(atDepth(payload.nodes, level).map(node => node.name));
+      return unique(named(payload.pies || payload.panes));
+    }
     if (axis === 'table-row') return unique((payload.rows || []).map(row => row?.[level]));
     if (axis === 'table-column') return unique((payload.headers || []).slice(Math.max(1, Number(payload.row_dimension_count) || 1)));
     if (Array.isArray(payload.column_keys)) return unique(payload.column_keys.map(key => key?.[level]));
+    if (Array.isArray(payload.pie_column_keys)) return unique(payload.pie_column_keys.map(key => key?.[level]));
+    if (Array.isArray(payload.panels)) return unique(named(payload.panels));
     if (Array.isArray(payload.keys)) return unique(payload.keys.map(key => key?.[level]));
     if (Array.isArray(payload.categories)) return unique(payload.categories);
     return unique((payload.bars || []).map(bar => bar.key?.[level]));

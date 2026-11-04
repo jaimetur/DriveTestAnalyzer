@@ -15,6 +15,7 @@
 
 #### 🐛 Bug fixes:
 - **PPT Designer — Hidden chart values can always be shown again:** a **Hidden (N)** button in the viewer lists every value hidden in the Design with **Show**, **Show all** and **Undo**, even when nothing is left on the chart to click. The right-click menus work on every chart type and list the other hidden values, and Ctrl/Cmd+Z and the Undo of the Designer undo the last hide or show.
+- **PPT Designer — Hidden chart values can always be shown again:** a **Hidden (N)** button in the viewer lists every value hidden in the Design with **Show**, **Show all** and **Undo**, even when nothing is left on the chart to click. The right-click menus work on every chart type and list the other hidden values, and Ctrl/Cmd+Z and the Undo of the Designer undo the last hide or show.
 
 #### 📚 Documentation:
 

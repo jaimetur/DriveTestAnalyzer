@@ -317,7 +317,9 @@ Hover or focus a chart for **Dataset**, **Expand**, **Refresh** and **Zoom**; wh
 | Drag when zoomed | Pan the chart |
 | Direction arrows when zoomed | Move the camera; arrows disable at boundaries |
 | Click a legend entry | Hide or show that value in every slide of the Design; a hidden entry stays faded and struck through |
-| Right-click a legend entry or an axis label | **Keep only**, **Hide** or **Show**, **Hide All** and **Show All** for that legend or axis level; an axis menu also lists its hidden values, each opening a **Show** submenu when the pointer moves over it |
+| Right-click a legend entry or an axis label | **Keep only**, **Hide** or **Show**, **Hide All** and **Show All** for that legend or axis level; the menu also lists the values hidden in the rest of the Design (an axis menu, those of its level too), each opening a **Show** submenu when the pointer moves over it |
+| **Hidden (N)**, in the viewer | Shown while a value is hidden: lists every hidden value of the Design to **Show** it, **Show all** and **Undo** the last hide or show, even when nothing is left on the chart to click |
+| **Ctrl/Cmd+Z** | Undoes the last hide or show; in the Designer, its **Undo** does so when it was the last change |
 
 Hiding a value applies to the whole Design. Every series, bar, stacked segment, row, column and category where the value appears, at any aggregation level, disappears and the chart closes the gap: hiding Operator VF_SA also hides each VF_SA Campaign, for example. In dynamic grids, the cards of a hidden value (such as an Operator) leave the slide and the remaining cards fill a smaller grid. A slide whose cards are all hidden offers **Show hidden values** and is left out of the PPT.
 
