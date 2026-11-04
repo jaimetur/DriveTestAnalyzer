@@ -565,7 +565,8 @@
               }]));
             }
             const anchor = event.currentTarget;
-            const limits = () => openBucketsDialog(anchor);
+            // The panel may have been drawn again while the menu was open: the dialog opens beside the pill now on the shelf.
+            const limits = () => openBucketsDialog(anchor.isConnected ? anchor : document.querySelector(`.ds-cb-pill[data-shelf="${key}"][data-index="${index}"] .ds-cb-pill-label`) || anchor);
             if (key !== 'kpi' && BUCKET_PILLS.includes(identity(field))) actions.push(['Limits of the classes…', limits]);
             if (index > 0) actions.push(['Move before', () => { const next = [...items]; next.splice(index - 1, 0, next.splice(index, 1)[0]); writeShelf(key, next); }]);
             if (index < items.length - 1) actions.push(['Move after', () => { const next = [...items]; next.splice(index + 1, 0, next.splice(index, 1)[0]); writeShelf(key, next); }]);
