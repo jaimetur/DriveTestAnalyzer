@@ -897,7 +897,7 @@ Change only `Chart type` to `Median Vertical Bars` for the median.
 
 #### Distribution Stacked Vertical Bars
 
-Use explicit numeric ranges with `Buckets = ...`, or ordered upper bounds with `Buckets < ...` / `Buckets <= ...`. Upper-bound mode generates `belowN` categories plus `Above`; use `Rate Bucket` as the final column aggregation.
+Use explicit numeric ranges with `Buckets = ...`, or ordered upper bounds with `Buckets < ...` / `Buckets <= ...`. Upper-bound mode generates `belowN` categories plus `Above`; use `Rate Bucket` as the final column aggregation. In the [Designer](#designer) and in [Chart Builder](chart-builder.md), `Rate Bucket` and `Buckets` are in the **Distribution classes** group of **Fields**, although they are not columns of the CDRs: drag `Rate Bucket` to the end of **Columns** and `Rate Bucket` or `Buckets` to **Legend**, and write the limits in the **Buckets** box of **Chart Type**: `1,5,20` for ranges, `< 2,5,20,100` or `<= 2,5,20,100` for `belowN` categories. `Rate Bucket` also goes on **Rows**, and `Buckets` goes only on **Legend**.
 
 ```text
 Source Dataset: CDR-Data

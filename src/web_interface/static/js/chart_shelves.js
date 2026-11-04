@@ -80,6 +80,13 @@
   };
   // The settings beside a chart type (kept among its filters as `Name = value`): free text, or one of its choices.
   const BUCKETS = {name: 'Buckets', placeholder: '4 limits: -110, -100, -90, -80'};
+  // The fields the chart works out from its measure and the Buckets setting: no column of the CDRs, and only on these shelves.
+  const DERIVED_FIELDS = [
+    {name: 'Rate Bucket', type: 'text', category: 'Distribution classes', shelves: ['rows_split', 'columns_split', 'legend'],
+      hint: 'The class of each sample of the measure, from the limits of Buckets in Chart Type. Last in Columns, it gives the stacks of a Distribution chart'},
+    {name: 'Buckets', type: 'text', category: 'Distribution classes', shelves: ['legend'],
+      hint: 'On Legend, shows the classes of a Distribution chart. Its limits are set in Buckets, in Chart Type'},
+  ];
   const DIRECTION = {name: 'Direction', title: 'Which values the colours show as good', choices: [['', 'From the KPI'], ['Higher is better', 'Higher is better'], ['Lower is better', 'Lower is better'], ['Neutral', 'Neutral (blues)']]};
   const SORT = {name: 'Sort', title: 'The order of the rows', choices: [['', 'As the Rows'], ['Descending', 'Largest first'], ['Ascending', 'Smallest first']]};
   const TARGET = {name: 'Target', placeholder: '20, Previous campaign or Best competitor', title: 'The mark each bar is measured against (a second measure gives it too)'};
@@ -95,7 +102,7 @@
     {type: '100% Stacked Vertical Bars', need: s => s.text === 1 && s.measures === 1 || s.distinct === 1 && s.measures === 2 && s.dimensions === 1 || 'One dimension as the measure (such as Call_Status), and COUNTD of a field to share out its distinct values instead of the rows', fits: s => !s.numeric && s.text <= 1},
     {type: 'Count Stacked Horizontal Bars', need: s => s.measures === 1 || 'One measure', fits: s => s.measures <= 1},
     {type: 'Threshold Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Threshold', placeholder: '1.6 or {Threshold}'}], fits: s => !s.text && s.numeric <= 1},
-    {type: 'Distribution Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Buckets', placeholder: '1, 5, 10, 20'}], fits: s => !s.text && s.numeric <= 1},
+    {type: 'Distribution Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Buckets', placeholder: '1, 5, 10, 20 or < 2, 5, 20, 100', title: '1, 5, 20 names the classes as ranges (<1, 1-5, 5-20, 20+). < 2, 5, 20 or <= 2, 5, 20 names them below2, below5, below20, Above'}], fits: s => !s.text && s.numeric <= 1},
     {type: 'Histogram Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Bin Size', placeholder: '1'}], fits: s => !s.text && s.numeric <= 1},
     {type: 'Histogram Line', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Bin Size', placeholder: '1'}], fits: s => !s.text && s.numeric <= 1},
     {type: 'Scatter', need: s => s.numeric === 2 && s.measures === 2 || 'Two numeric measures', fits: s => !s.text && s.numeric <= 2},
@@ -183,6 +190,7 @@
     const sourceKey = source.toLowerCase();
     const fieldList = [...(options.fields?.[sourceKey] || [])];
     for (const name of options.calculated || []) if (!fieldList.some(item => identity(item.name) === identity(name))) fieldList.push({name, type: 'text', category: 'Auto-calculated Fields'});
+    if (fieldList.length) for (const item of DERIVED_FIELDS) if (!fieldList.some(known => identity(known.name) === identity(item.name))) fieldList.push(item);
     const typeOf = name => fieldList.find(item => identity(item.name) === identity(name))?.type || 'text';
     const change = changes => options.onChange(changes);
     const filterList = conditions(values.filters);
@@ -299,10 +307,14 @@
     const rows = chosenType.settings.map(setting => {
       const key = identity(setting.name);
       const current = settings.find(item => identity(conditionField(item)) === key);
-      const value = current ? current.replace(/^.+?\s*=\s*/, '') : '';
+      // Buckets also takes upper limits (< 2, 5, 20), kept with their operator.
+      const upperLimits = key === 'buckets' && current ? /^.+?\s*(<=|<)\s*(.*)$/.exec(current) : null;
+      const value = upperLimits ? `${upperLimits[1]} ${upperLimits[2]}` : current ? current.replace(/^.+?\s*=\s*/, '') : '';
       const write = text => {
         const kept = settings.filter(item => identity(conditionField(item)) !== key);
-        if (String(text || '').trim()) kept.push(`${setting.name} = ${String(text).trim()}`);
+        const typed = String(text || '').trim();
+        const upper = key === 'buckets' ? /^(<=|<)\s*(.+)$/.exec(typed) : null;
+        if (typed) kept.push(upper ? `${setting.name} ${upper[1]} ${upper[2]}` : `${setting.name} = ${typed}`);
         writeFilters(plainFilters, kept);
       };
       const control = setting.choices
@@ -348,7 +360,7 @@
    *            chartTypes (false: Chart Type is drawn apart, with renderTypes), repeat (One chart per where the source is chosen
    *            elsewhere, as in Chart Builder)} */
   // The groups of fields in the order they are used most: the main fields first, the fields of no section last.
-  const GROUP_ORDER = ['CDR-Main fields', 'Normalised fields', 'Network Insights', 'Non-Qualified Calls', 'DT Analyzer RCA', 'Vendor Mapping', 'Auto-calculated Fields'];
+  const GROUP_ORDER = ['CDR-Main fields', 'Normalised fields', 'Network Insights', 'Non-Qualified Calls', 'DT Analyzer RCA', 'Vendor Mapping', 'Auto-calculated Fields', 'Distribution classes'];
   const groupRank = group => (group === 'Other fields' ? 1000 : GROUP_ORDER.includes(group) ? GROUP_ORDER.indexOf(group) : 500);
   function render(host, options) {
     const context = analyse(options);
@@ -371,8 +383,8 @@
       if (!fieldsHost.childElementCount) fieldsHost.append(h('p', {class: 'ds-cb-empty', text: fieldList.length ? 'No field matches.' : 'The fields appear once the Design is prepared.'}));
     };
     const fieldPill = item => {
-      const pill = h('button', {type: 'button', class: `ds-cb-field is-${item.type}`, draggable: 'true', title: `${item.name} · ${item.type === 'number' ? 'measure (numbers)' : 'dimension (values)'} · drag it to a shelf, or click to choose one`,
-        onclick: event => openMenu(event.currentTarget, SHELVES.map(([key, label]) => [label, () => addToShelf(key, item.name)]))},
+      const pill = h('button', {type: 'button', class: `ds-cb-field is-${item.type}`, draggable: 'true', title: `${item.name} · ${item.hint || (item.type === 'number' ? 'measure (numbers)' : 'dimension (values)')} · drag it to a shelf, or click to choose one`,
+        onclick: event => openMenu(event.currentTarget, SHELVES.filter(([key]) => !item.shelves || item.shelves.includes(key)).map(([key, label]) => [label, () => addToShelf(key, item.name)]))},
       h('span', {class: 'ds-cb-type', text: item.type === 'number' ? '#' : 'Abc'}), item.name);
       pill.addEventListener('dragstart', event => { event.dataTransfer.setData('application/x-ds-field', item.name); event.dataTransfer.effectAllowed = 'copy'; });
       return pill;
@@ -397,7 +409,12 @@
     }
     // A field goes where it is dropped: on a pill it takes its place, before or after one it goes there, and chosen from the
     // menu of the field it goes last (a field already on the shelf moves there).
+    const shelfTakes = (key, field) => {
+      const shelves = fieldList.find(item => identity(item.name) === identity(field))?.shelves;
+      return !shelves || shelves.includes(key);
+    };
     function addToShelf(key, field, place = null) {
+      if (!shelfTakes(key, field)) return;
       if (key === 'filters') { openFilterDialog(field); return; }
       if (key === 'repeat') { change({repeat: {field}}); return; }
       // A time splits the chart by day (its pill changes the period): each time apart would give a split per sample.
@@ -502,6 +519,7 @@
       const [item] = source.splice(fromIndex, 1);
       if (!item) return;
       const field = fromKey === 'kpi' ? kpiField(item) : item;
+      if (!shelfTakes(toKey, field)) return;
       if (fromKey === toKey) {
         // (The place is counted with the pill still in it.)
         source.splice(toIndex === null ? source.length : toIndex - (fromIndex < toIndex ? 1 : 0), 0, item);
