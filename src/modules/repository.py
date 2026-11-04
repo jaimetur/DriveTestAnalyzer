@@ -534,6 +534,14 @@ CREATE TABLE IF NOT EXISTS users (
     last_login_at TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS user_login_sessions (
+    token_hash TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    session_marker TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS application_state (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -3094,6 +3102,27 @@ class Repository:
             )
             if result.rowcount != 1:
                 raise ValueError('User not found')
+
+    def save_login_session(self, token_hash: str, username: str, session_marker: str, created_at: str, expires_at: str) -> None:
+        """Keep a login session (only the hash of its token), so it outlives a restart; those that expired go."""
+        with self.global_connection() as conn:
+            conn.execute('DELETE FROM user_login_sessions WHERE expires_at <= ?', (created_at,))
+            conn.execute('INSERT OR REPLACE INTO user_login_sessions (token_hash, username, session_marker, created_at, expires_at) '
+                         'VALUES (?, ?, ?, ?, ?)', (token_hash, username, session_marker, created_at, expires_at))
+
+    def login_session(self, token_hash: str) -> sqlite3.Row | None:
+        with self.global_connection() as conn:
+            return conn.execute('SELECT * FROM user_login_sessions WHERE token_hash = ?', (token_hash,)).fetchone()
+
+    def end_login_session(self, token_hash: str) -> None:
+        with self.global_connection() as conn:
+            conn.execute('DELETE FROM user_login_sessions WHERE token_hash = ?', (token_hash,))
+
+    def end_user_login_sessions(self, username: str, keep_token_hash: str = '') -> None:
+        """End the login sessions of a user (all but the one given)."""
+        with self.global_connection() as conn:
+            conn.execute('DELETE FROM user_login_sessions WHERE username COLLATE NOCASE = ? AND token_hash <> ?',
+                         (username.strip(), keep_token_hash))
 
     def delete_user(self, user_id: int) -> None:
         with self.global_connection() as conn:

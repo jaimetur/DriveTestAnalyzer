@@ -28,7 +28,7 @@ import zipfile
 from collections import Counter, OrderedDict
 from collections.abc import Mapping
 from concurrent.futures import Future
-from contextlib import asynccontextmanager, closing, contextmanager, nullcontext
+from contextlib import asynccontextmanager, closing, contextmanager, suppress, nullcontext
 from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone, tzinfo
 from functools import lru_cache
@@ -156,6 +156,10 @@ from src.utils.filesystem import ensure_directories, safe_join
 
 SESSION_COOKIE = 'bench_automations_session'
 SESSIONS: dict[str, SessionUser] = {}
+# A login lasts this long, whatever restarts the application; every so often it is checked against its user.
+SESSION_LIFETIME = timedelta(days=90)
+SESSION_CHECK_SECONDS = 60.0
+SESSION_CHECKS: dict[str, float] = {}
 ANALYSIS_CACHE: dict[str, dict[str, Any]] = {}
 # CDR Analysis shows these first metrics at once and loads the rest progressively.
 DATASETS_ANALYSIS_INITIAL_METRICS = 4
@@ -6081,16 +6085,61 @@ def refresh_selected_dataset_if_stale(
     return serialize_dataset_row(refreshed) if refreshed else selected_dataset
 
 
-def create_session(response: Response, user: SessionUser) -> None:
+def _session_hash(token: str) -> str:
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
+
+
+def create_session(response: Response, user: SessionUser, *, secure: bool = False) -> None:
     token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
     SESSIONS[token] = user
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite='lax')
+    # If it cannot be kept, the session lasts until the application restarts.
+    with suppress(sqlite3.Error):
+        repository.save_login_session(_session_hash(token), user.username, user.session_marker,
+                                      now.isoformat(timespec='seconds'), (now + SESSION_LIFETIME).isoformat(timespec='seconds'))
+        SESSION_CHECKS[token] = time_module.monotonic()
+    response.set_cookie(SESSION_COOKIE, token, max_age=int(SESSION_LIFETIME.total_seconds()), httponly=True, samesite='lax', secure=secure)
+
+
+def end_session(token: str) -> None:
+    SESSIONS.pop(token, None)
+    SESSION_CHECKS.pop(token, None)
+    with suppress(sqlite3.Error):
+        repository.end_login_session(_session_hash(token))
+
+
+def end_user_sessions(username: str, keep_token: str | None = None) -> None:
+    """End the sessions of a user, on every browser, but the one given."""
+    for token, session in list(SESSIONS.items()):
+        if session.username.casefold() == username.casefold() and token != keep_token:
+            SESSIONS.pop(token, None)
+            SESSION_CHECKS.pop(token, None)
+    with suppress(sqlite3.Error):
+        repository.end_user_login_sessions(username, _session_hash(keep_token) if keep_token else '')
 
 
 def session_user(token: str | None) -> SessionUser | None:
+    """The user of a session: kept in memory and, every so often or after a restart, read again with its current role. A
+    session that expired or whose user is no longer active ends."""
     if not token:
         return None
-    return SESSIONS.get(token)
+    user = SESSIONS.get(token)
+    checked = SESSION_CHECKS.get(token)
+    if user and (checked is None or time_module.monotonic() - checked < SESSION_CHECK_SECONDS):
+        return user
+    try:
+        stored = repository.login_session(_session_hash(token))
+        record = repository.get_user(str(stored['username'])) if stored else None
+    except sqlite3.Error:
+        return user
+    if not record or not record.active or str(stored['expires_at']) <= datetime.now(timezone.utc).isoformat(timespec='seconds'):
+        end_session(token)
+        return None
+    if not user or user.username != record.username or user.role != record.role:
+        user = SessionUser(username=record.username, role=record.role, session_marker=str(stored['session_marker']))
+        SESSIONS[token] = user
+    SESSION_CHECKS[token] = time_module.monotonic()
+    return user
 
 
 def optional_user(request: Request) -> SessionUser | None:
@@ -6117,6 +6166,7 @@ def add_analysis_audit_log(username: str, action: str, details: str) -> None:
 
 @app.post('/account/change-password')
 def change_password(
+    request: Request,
     current_password: str = Form(...),
     new_password: str = Form(...),
     new_password_confirmation: str = Form(...),
@@ -6136,6 +6186,8 @@ def change_password(
     if not valid_current:
         raise HTTPException(status_code=400, detail='The current password is incorrect.')
     repository.update_password(user.username, new_password)
+    # The other browsers sign in with the new password.
+    end_user_sessions(user.username, keep_token=request.cookies.get(SESSION_COOKIE))
     repository.add_log(user.username, 'change_password', 'Password changed from the account badge.')
     return JSONResponse({'changed': True})
 
@@ -13985,6 +14037,7 @@ def render_admin_template(
         'workspace_groups': 'Workspace Groups',
         'workspace_group_members': 'Workspace Group Members',
         'application_sessions': 'Application Sessions',
+        'user_login_sessions': 'User Login Sessions',
         'tickets': 'Tickets',
         'ticket_comments': 'Ticket Comments',
         'ticket_attachments': 'Ticket Attachments',
@@ -14794,7 +14847,7 @@ def login(
 
     user = SessionUser(username=record.username, role=record.role)
     response = RedirectResponse(next_url or '/documents/view/help', status_code=status.HTTP_303_SEE_OTHER)
-    create_session(response, user)
+    create_session(response, user, secure=request.url.scheme == 'https')
     try:
         repository.record_user_login(record.username)
     except sqlite3.Error:
@@ -14913,9 +14966,7 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         repository.set_user_workspace_groups(user_id, kept + requested_groups)
         repository.set_users_modules_profile([user_id], profile['id'])
         repository.update_user(user_id, username, role, False, first_name=first_name, last_name=last_name)
-        for token, session in list(SESSIONS.items()):
-            if session.username.casefold() == username.casefold():
-                SESSIONS.pop(token, None)
+        end_user_sessions(username)
     else:
         if payload.password != payload.password_confirmation:
             raise HTTPException(status_code=400, detail='The passwords do not match.')
@@ -14984,7 +15035,7 @@ def logout(request: Request) -> Response:
     if logged_in_user:
         repository.add_log(logged_in_user.username, 'logout', json.dumps({'success': True}))
     if token:
-        SESSIONS.pop(token, None)
+        end_session(token)
     response = RedirectResponse('/login', status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(SESSION_COOKIE)
     return response
@@ -16294,7 +16345,7 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
     if name.startswith(('dataset_rows_', 'reporting_rows_')):
         kind_type = {'voice': 'Voice CDRs', 'data': 'Data CDRs', 'speech': 'Speech CDRs'}.get(kind, 'Other datasets')
         return kind_type, colors[kind_type]
-    if name in {'users', 'modules_profiles', 'workspace_groups', 'workspace_group_members', 'application_sessions'}:
+    if name in {'users', 'modules_profiles', 'workspace_groups', 'workspace_group_members', 'user_login_sessions', 'application_sessions'}:
         kind_type = 'Users & Access'
     elif name in {'application_state', 'transfer_offers', 'admin_notices_seen', WORKSPACE_REGISTRY_TABLE.casefold()}:
         kind_type = 'Application'
@@ -26955,6 +27006,8 @@ def reset_user_password(
     }
     reset_password = default_passwords.get(str(target_user['username']).casefold(), 'Ericsson123')
     repository.update_password(str(target_user['username']), reset_password)
+    # A super-admin resetting their own password stays signed in on this browser.
+    end_user_sessions(str(target_user['username']), keep_token=request.cookies.get(SESSION_COOKIE))
     repository.add_log(user.username, 'reset_user_password', json.dumps({'user_id': target_user_id, 'username': target_user['username']}))
     if wants_json:
         return JSONResponse({'ok': True, 'user': {'id': int(target_user['id']), 'username': target_user['username']}})

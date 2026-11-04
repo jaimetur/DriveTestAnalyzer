@@ -54,7 +54,9 @@ See [Application Config](app-config.md) for the complete in-app workflow. Worksp
 
 `0.0.0.0` is a server bind address, not a browser destination. When the application binds to it locally, open `http://127.0.0.1:7278` or `http://localhost:7278`. From another computer, use the server's reachable hostname or IP address and the published host port.
 
-Always replace `APP_SECRET_KEY` outside local development. Changing it invalidates existing signed sessions.
+Always replace `APP_SECRET_KEY` outside local development.
+
+A login lasts 90 days in its browser, also across restarts and updates of the application: only the hash of its token is kept, in the **User Login Sessions** table of the application database. It ends when the user signs out, changes their password (on their other browsers) or has it reset, and when the account is deactivated or deleted. A change of role applies within a minute. A session token is a credential: serve the application over HTTPS outside local development.
 
 ## Storage roots
 
