@@ -419,7 +419,7 @@
   .ds-designs-table tbody td:last-child { border-bottom: 0; }
   .ds-design-name-editor { min-width: 0; width: 100%; }
   /* The status and the actions of a Design use the whole width of its card. */
-  .ds-designs-table tbody td:nth-child(4), .ds-designs-table tbody td:nth-child(5) { grid-column: 1 / -1; }
+  .ds-designs-table tbody td:nth-child(6), .ds-designs-table tbody td:nth-child(7) { grid-column: 1 / -1; }
   .ds-designs-table tbody .ds-design-status { max-width: 100%; white-space: normal; text-align: center; line-height: 1.25; }
   .ds-library-actions {
     display:grid;
@@ -1551,13 +1551,23 @@
 .report-jobs-table.ds-ppt-jobs-table td:nth-child(7) .ds-ppt-job-filters { display: grid; margin-inline: auto; }
 .report-jobs-table.ds-ppt-jobs-table th:last-child, .report-jobs-table.ds-ppt-jobs-table td:last-child { width: 20.5rem; min-width: 20.5rem; }
 
-/* PPT Designs gives the Design name and its Template equal widths. */
+/* PPT Designs gives the Design name the widest column, as its names are longer than those of its Template. */
 @media (min-width:641px) {
-  .ds-designs-table th:first-child, .ds-designs-table td:first-child,
-  .ds-designs-table th:nth-child(3), .ds-designs-table td:nth-child(3) { width:27%; min-width:15rem; }
+  .ds-designs-table th:first-child, .ds-designs-table td:first-child { width:29%; min-width:13rem; }
+  .ds-designs-table th:nth-child(3), .ds-designs-table td:nth-child(3) { width:25%; min-width:13rem; }
+  /* The arrow of a selector has its own room. */
+  .ds-designs-table .ds-design-definition-select { padding-right:.4rem; }
+}
+/* Who created a Design and who last changed it take the width of their name. */
+.ds-designs-table .ds-design-author { white-space:nowrap; color:#4c3277; font-size:.84rem; font-weight:600; }
+/* The name of a Design, at the size of the selectors beside it, keeps the room of its check only while it is shown. */
+@media (min-width:641px) {
+  .ds-designs-table .ds-design-name-editor input { padding-right:8px; font-size:.78rem; }
+  .ds-designs-table .ds-design-name-editor:has(.ds-design-name-save:not([hidden])) input { padding-right:2.15rem; }
+  .ds-designs-table th:nth-child(5) { min-width:8.2rem; }
 }
 /* The NR Mode selector fits NSA & SA. */
-.ds-designs-table .ds-design-nr-mode-select { min-width:8.4rem; }
+.ds-designs-table .ds-design-nr-mode-select { min-width:6.4rem; }
 
 /* The PPT job Filters tooltip matches the Reports and Charts Jobs datasets
    tooltip; the Filters dialog keeps its light palette. */

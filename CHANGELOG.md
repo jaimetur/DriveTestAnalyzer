@@ -10,6 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- **PPT Designer — Who created and last changed each Design:** the PPT Designs table has the columns **Created by** and **Last Updated by** (pointing at the name shows when). A Design changed before shows the last change its App Events recorded, and exports, transfers and backups carry both.
 
 #### 🐛 Bug fixes:
 

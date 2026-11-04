@@ -388,6 +388,77 @@ def test_design_export_uses_the_admin_import_archive_format(client):
     assert document['designs'][design_id]['auto_cdrs'] is True
 
 
+def test_design_library_shows_who_created_and_last_changed_each_design(client):
+    from src.modules.ppt_designer import read_design_updates
+
+    payload = setup_design(client)
+    saved = client.put('/api/ppt-designer/design-a', json={**payload, 'name': 'Alpha'})
+    assert saved.status_code == 200
+    # Kept apart from the definition, whose fingerprint tells the page if it has unsaved changes.
+    assert 'updated_by' not in saved.json()['definition'] and saved.json()['updated_by'] == 'super'
+    assert 'updated_by' not in json.loads(core.repository.get_workspace_state('ppt_designs_v2'))['design-a']
+    listed = lambda: client.get('/api/ppt-designer').json()['design-a']
+    assert listed()['created_by'] == listed()['updated_by'] == 'super' and listed()['updated_at']
+
+    core.repository.create_user('design-editor', 'test-password', 'user-editor')
+    account = next(row for row in core.repository.list_users() if row['username'] == 'design-editor')
+    core.repository.set_user_workspace_access(int(account['id']), [core.active_workspace.id])
+    core.SESSIONS['design-editor'] = core.SessionUser(username='design-editor', role='user-editor')
+    client.cookies.set(core.SESSION_COOKIE, 'design-editor')
+    # Saved as it is, or moved in the library, nothing changes.
+    assert client.put('/api/ppt-designer/design-a', json={**payload, 'name': 'Alpha'}).json()['updated_by'] == 'super'
+    assert client.post('/api/ppt-designer/order', json={'ids': ['design-a']}).status_code == 200
+    assert listed()['updated_by'] == 'super'
+    # Each change names who made it and its creator stays.
+    renamed = client.patch('/api/ppt-designer/design-a/name', json={'name': 'Alpha 2'})
+    assert renamed.json()['updated_by'] == 'design-editor'
+    assert listed()['created_by'] == 'super' and listed()['updated_by'] == 'design-editor'
+    core.SESSIONS['design-admin'] = core.SessionUser(username='super', role='super-admin')
+    client.cookies.set(core.SESSION_COOKIE, 'design-admin')
+    comments = {'slide_comments': {'1': ['A comment']}}
+    assert client.patch('/api/ppt-designer/design-a/comments', json=comments).status_code == 200
+    assert listed()['updated_by'] == 'super'
+    client.cookies.set(core.SESSION_COOKIE, 'design-editor')
+    assert client.patch('/api/ppt-designer/design-a/comments', json=comments).status_code == 200
+    assert listed()['updated_by'] == 'super'
+    client.cookies.set(core.SESSION_COOKIE, 'design-admin')
+
+    # Packages carry it: a user of this server stays, any other gives way to who imports, and so does a package without it.
+    workspace = core.active_workspace
+    package = json.loads(core._design_archive_payload(workspace))
+    assert package['updates']['design-a']['by'] == 'super'
+    stamp = package['updates']['design-a']['at']
+    design_changes = lambda: read_design_updates(core.repository)['design-a']
+    package['updates']['design-a'] = {'by': 'design-editor', 'at': stamp}
+    core._import_workspace_designs(workspace, json.dumps(package).encode(), 'super')
+    assert design_changes() == {'by': 'design-editor', 'at': stamp}
+    package['updates']['design-a'] = {'by': 'nobody-here', 'at': stamp}
+    core._import_workspace_designs(workspace, json.dumps(package).encode(), 'super')
+    assert design_changes() == {'by': 'super', 'at': stamp}
+    del package['updates']
+    core._import_workspace_designs(workspace, json.dumps(package).encode(), 'design-editor')
+    assert design_changes()['by'] == 'design-editor'
+
+    # A deleted Design is forgotten.
+    assert client.delete('/api/ppt-designer/design-a').status_code == 200
+    assert 'design-a' not in read_design_updates(core.repository)
+
+
+def test_designs_changed_before_it_was_kept_show_the_last_change_of_their_app_events(client):
+    payload = setup_design(client)
+    core.repository.set_workspace_state('ppt_designs_v2', json.dumps({'design-old': {**payload, 'name': 'Old'}}))
+    core.repository.add_log('user-a', 'save_design', json.dumps({'id': 'design-old', 'name': 'Old'}))
+    core.repository.add_log('user-b', 'design_slides_saved', json.dumps({'id': 'design-old', 'name': 'Old'}))
+    core.repository.add_log('user-c', 'design_opened', json.dumps({'id': 'design-old', 'name': 'Old'}))
+    with core.repository.connection() as connection:
+        connection.execute('DELETE FROM workspace_state WHERE key = ?', ('ppt_design_updates_v1',))
+    listed = client.get('/api/ppt-designer').json()['design-old']
+    assert listed['updated_by'] == 'user-b' and listed['updated_at']
+    # Only the first read looks at them.
+    core.repository.add_log('user-d', 'save_design', json.dumps({'id': 'design-old', 'name': 'Old'}))
+    assert client.get('/api/ppt-designer').json()['design-old']['updated_by'] == 'user-b'
+
+
 def test_design_library_order_is_saved_listed_and_carried_by_packages(client):
     from src.modules.ppt_designer import read_design_order
 
@@ -2640,7 +2711,7 @@ def test_design_state_migrates_from_legacy_storage(client):
     assert result.json()['legacy']['name'] == 'Comparison'
     # Listed with who created it (nobody known here: only admins and super-admins delete it) and its place in the
     # library (none until its editors order it).
-    listed = {key: {**definition, 'created_by': '', 'position': None}
+    listed = {key: {**definition, 'created_by': '', 'updated_by': '', 'updated_at': '', 'position': None}
               for key, definition in json.loads(core.repository.get_workspace_state('ppt_designs_v2')).items()}
     assert listed == result.json()
 
@@ -2667,7 +2738,8 @@ def test_design_migrates_all_saved_definitions_to_current_default_filters(client
     }
     assert 'datasets' not in migrated and migrated['auto_cdrs'] is True
     assert core.repository.get_workspace_state('ppt_design_default_filters_v6') == '1'
-    assert {**json.loads(core.repository.get_workspace_state('ppt_designs_v2'))['legacy'], 'created_by': '', 'position': None} == migrated
+    assert {**json.loads(core.repository.get_workspace_state('ppt_designs_v2'))['legacy'],
+            'created_by': '', 'updated_by': '', 'updated_at': '', 'position': None} == migrated
 
 
 def test_design_custom_fields_and_snapshot_filters(client):

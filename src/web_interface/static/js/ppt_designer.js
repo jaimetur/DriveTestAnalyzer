@@ -82,10 +82,17 @@
   const rememberFiltersOpen = isOpen => { try { sessionStorage.setItem(filtersOpenStorageKey, isOpen ? 'open' : 'closed'); } catch (_) { /* Storage is optional. */ } };
   const rememberLibrary = () => { try { sessionStorage.setItem(libraryStorageKey, JSON.stringify(designs)); sessionStorage.setItem(libraryOrderStorageKey, JSON.stringify(designOrder)); } catch (_) { /* Storage is optional. */ } };
   // The Designs of the library as listed: their place in it is taken apart from their definitions.
+  // Who last changed each Design and when: kept apart from its definition, whose fingerprint tells if it has unsaved changes.
+  const designUpdates = new Map();
+  const noteDesignUpdate = (id, source) => { if (source?.updated_by) designUpdates.set(id, {by: source.updated_by, at: source.updated_at || ''}); };
   const loadDesigns = loaded => {
     designOrder = Object.entries(loaded).filter(([, item]) => Number.isInteger(item?.position))
       .sort(([, left], [, right]) => left.position - right.position).map(([id]) => id);
-    for (const item of Object.values(loaded)) if (item && typeof item === 'object') delete item.position;
+    for (const [id, item] of Object.entries(loaded)) {
+      if (!item || typeof item !== 'object') continue;
+      noteDesignUpdate(id, item);
+      delete item.position; delete item.updated_by; delete item.updated_at;
+    }
     designs = loaded;
   };
   const rememberScroll = () => { try { sessionStorage.setItem(scrollStorageKey, String(window.scrollY)); } catch (_) { /* Storage is optional. */ } };
@@ -895,6 +902,7 @@
         if (campaignSelection !== null) item.filters.Campaign = campaignSelection;
         const result = await api(`/${encodeURIComponent(designId)}`, 'PUT', item);
         designs[designId] = structuredClone(result.definition);
+        noteDesignUpdate(designId, result);
         savedDesign = designs[designId];
         if (designId === activeId && definition) {
           definition = copyDefinitionFields(definition, canonicalDesignDefinition(result.definition), filterDefinitionFields);
@@ -1307,6 +1315,7 @@
       template: selectedTemplate.name,
     });
     designs[id] = structuredClone(result.definition);
+    noteDesignUpdate(id, result);
     designStatuses.delete(id);
     if (id === activeId) await openDesign(id, {showFilters: designFiltersOpen});
     else library();
@@ -1348,7 +1357,7 @@
       || compareText(sortName(left.name), sortName(right.name))
       || compareText(String(left.name).toLowerCase(), String(right.name).toLowerCase())
     ));
-    if (!rows.length) { const row = node('tr'), cell = node('td', 'No Designs have been created yet.', 'form-note'); cell.colSpan = 5; row.append(cell); body.append(row); return; }
+    if (!rows.length) { const row = node('tr'), cell = node('td', 'No Designs have been created yet.', 'form-note'); cell.colSpan = 7; row.append(cell); body.append(row); return; }
     for (const [id, item] of rows) {
       const row = node('tr'); if (id === activeId) row.classList.add('ds-design-active');
       row.dataset.designId = id;
@@ -1361,7 +1370,7 @@
         nameCell.classList.add('ds-design-name-cell'); nameCell.append(handle);
       }
       const nameEditor = node('div', undefined, 'ds-design-name-editor');
-      const nameInput = document.createElement('input'); nameInput.type = 'text'; nameInput.value = item.name; nameInput.maxLength = 120; nameInput.setAttribute('aria-label', `PPT name: ${item.name}`);
+      const nameInput = document.createElement('input'); nameInput.type = 'text'; nameInput.value = item.name; nameInput.title = item.name; nameInput.maxLength = 120; nameInput.setAttribute('aria-label', `PPT name: ${item.name}`);
       const nameSave = node('button', '✓', 'ds-design-name-save'); nameSave.type = 'button'; nameSave.title = 'Save PPT name'; nameSave.setAttribute('aria-label', 'Save PPT name'); nameSave.hidden = true;
       const updateNameSave = () => { nameSave.hidden = nameInput.value.trim() === item.name; };
       nameInput.addEventListener('input', updateNameSave);
@@ -1371,6 +1380,7 @@
         if (!name || name === item.name) { nameInput.value = item.name; updateNameSave(); return; }
         const result = await api(`/${id}/name`, 'PATCH', {name});
         designs[id].name = result.name;
+        noteDesignUpdate(id, result);
         if (id === activeId && definition) {
           definition.name = result.name; $('ds-name').value = result.name;
           setActiveDesignHeading(result.name);
@@ -1402,6 +1412,14 @@
       });
       technologyCell.append(technologySelect); templateCell.append(templateSelect);
       row.append(nameCell, technologyCell, templateCell);
+      // Who created the Design and who last changed it (when, on hover).
+      const authorCell = (label, name, title = '') => {
+        const cell = node('td', name || '—', 'ds-design-author'); cell.dataset.label = label;
+        if (title) cell.title = title;
+        return cell;
+      };
+      const update = designUpdates.get(id);
+      row.append(authorCell('Created by', item.created_by), authorCell('Last Updated by', update?.by, update?.at ? `Last updated on ${update.at}` : ''));
       const statusCell = node('td'); statusCell.dataset.label = 'Status';
       const designStatus = designStatuses.get(id) || {state: 'checking', label: 'Checking Cache'};
       const statusBadge = node('span', designStatus.label, `ds-design-status ds-design-status-${designStatus.state}`);
@@ -2748,6 +2766,7 @@
       const item = copyDefinitionFields(canonicalDesignDefinition(savedDesignDefinition()), draft, filterDefinitionFields);
       item.name = $('ds-name').value.trim(); const result = await api(`/${designId}`,'PUT',item);
       designs[designId] = structuredClone(result.definition);
+      noteDesignUpdate(designId, result);
       library();
       if (designId !== activeId) return;
       savedDefinition = definitionFingerprint(result.definition);
@@ -2851,7 +2870,7 @@
     const item = {name,template:selected.name,nr_mode:nrMode,scope:'single',auto_cdrs:true,filters:{Campaign: defaultCampaignFilter('single')},sa_campaigns:normalizeDesignNrMode(nrMode) === NSA_AND_SA ? defaultCampaignFilter('single') : [],custom_fields:[],date_from:'Oldest',date_to:'Newest'};
     status(`Creating “${item.name}”…`); $('ds-create').disabled = true;
     try {
-      const id = designId(), result = await api(`/${id}`,'PUT',item); designs[id] = result.definition;
+      const id = designId(), result = await api(`/${id}`,'PUT',item); designs[id] = result.definition; noteDesignUpdate(id, result);
       if (!blank) { await openDesignFilters(id); return; }
       // Blank, it opens in its Designer, where its slides are added.
       library();
@@ -3005,7 +3024,7 @@
   async function duplicateDesign(sourceId) {
     const id = designId(), item = runtimeDesignDefinition(designs[sourceId]); item.name = nextName(`${item.name.slice(0,110)} (copy)`);
     status(`Duplicating “${designs[sourceId].name}”…`);
-    const result = await api(`/${id}`,'PUT',item); designs[id] = result.definition; await openDesignFilters(id);
+    const result = await api(`/${id}`,'PUT',item); designs[id] = result.definition; noteDesignUpdate(id, result); await openDesignFilters(id);
   }
   // A Design just created, duplicated or imported opens in its viewer with its PPT Filters, to choose its CDRs and filters.
   async function openDesignFilters(id) {
@@ -3028,7 +3047,7 @@
     await api(`/${id}`,'DELETE'); delete designs[id]; designStatuses.delete(id); if (id === activeId) closeDesign(); else { library(); status(`Deleted “${item.name}”.`); }
   }
   bind('ds-import',() => $('ds-import-file').click());
-  $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-').replace(/^drivetest-analyzer-dashboard/, 'drivetest-analyzer-design') /* a file of PPT Dashboards */; const legacy = format === 'drivetest-analyzer-design-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-design' || payload.version !== 2)) throw new Error('Unsupported Design file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name); if (!payload.definition.auto_cdrs) delete payload.definition.datasets; /* CDRs of another workspace: its newest campaigns are used. */ const id = designId(), result = await api(`/${id}`,'PUT',payload.definition); designs[id] = result.definition; await openDesignFilters(id); $('ds-import-file').value = ''; });
+  $('ds-import-file').onchange = safe(async () => { const file = $('ds-import-file').files[0]; if (!file) return; const payload = JSON.parse(await file.text()); const format = String(payload.format || '').replace(/^dashboard-analytic-/, 'drivetest-analyzer-').replace(/^drivetest-analyzer-dashboard/, 'drivetest-analyzer-design') /* a file of PPT Dashboards */; const legacy = format === 'drivetest-analyzer-design-set' && payload.version === 1; if (!legacy && (format !== 'drivetest-analyzer-design' || payload.version !== 2)) throw new Error('Unsupported Design file.'); if (!await confirmDiscard()) return; payload.definition.name = nextName(payload.definition.name); if (!payload.definition.auto_cdrs) delete payload.definition.datasets; /* CDRs of another workspace: its newest campaigns are used. */ const id = designId(), result = await api(`/${id}`,'PUT',payload.definition); noteDesignUpdate(id, result); designs[id] = result.definition; await openDesignFilters(id); $('ds-import-file').value = ''; });
   function closeDesign() { delete $('ds-viewer-export-ppt').dataset.designPptId; $('ds-viewer-export-ppt').disabled = true; clearTimeout(facetsRefreshTimer); dismissPreparationStatus(); stopPresentation(); rememberOpen(''); rememberFiltersOpen(false); ++sequence; clearTimeout(timer); controller?.abort(); preparing = null; activeId = ''; designFiltersOpen = false; definition = null; savedDefinition = ''; appliedFilterState = ''; appliedSelectionState = ''; appliedDesignDefinition = null; applyingDesignDefinition = null; prepared = null; dirty = false; updateUnsavedFiltersBadge(); setViewEnabled(false); setPreparationState('hidden'); $('ds-filter-panel').hidden = true; document.dispatchEvent(new CustomEvent('page-panel-navigation:update')); setActiveDesignHeading(''); $('ds-name').value = ''; setNrMode('nsa'); syncNewDesignNameFromTemplate(); library(); status('Design closed.'); document.dispatchEvent(new CustomEvent('ds:design-closed')); }
   $('ds-name').oninput = () => { if (definition) { definition.name = $('ds-name').value; updateDirtyState(); } };
   // The NR Mode chooses the CDRs the open Design reads; its template stays (it serves any NR Mode).
@@ -4857,6 +4876,8 @@
     pptDesignViewer = null;
     if (closingPptSnapshot) { prepared = null; chartPayloads.clear(); renderedChartPayloads.clear(); }
     syncPptDesignViewerControls();
+    // What changed in the viewer (the Designer, the comments) shows in the table it goes back to.
+    if (!closingPptSnapshot) void api().then(loaded => { for (const [id, item] of Object.entries(loaded)) noteDesignUpdate(id, item); library(); }).catch(() => {});
   });
   const designDataRequest = async (request) => {
     const parameters = new URLSearchParams({page: String(request.page || 0)});

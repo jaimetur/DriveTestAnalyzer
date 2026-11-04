@@ -9423,10 +9423,13 @@ def _design_archive_payload(workspace: Workspace) -> bytes:
     # The identity of each PPT Design (its ID, or that of the package it came from) and its creator.
     uids, known = identities(task_repository, DESIGN_IDENTITIES), creators(task_repository, PPT_DESIGNER)
     from src.modules.design_images import portable_images, referenced_images
-    from src.modules.ppt_designer import read_design_order
+    from src.modules.ppt_designer import read_design_order, read_design_updates
+    updates = read_design_updates(task_repository)
     return json.dumps({'format': 'drivetest-analyzer-designs', 'version': 1, 'designs': designs, 'cdrs': cdrs,
                        'identities': {key: uids.get(str(key).casefold()) or str(key) for key in designs},
                        'creators': {key: known[str(key).casefold()] for key in designs if known.get(str(key).casefold())},
+                       # Who last changed each one and when.
+                       'updates': {key: updates[str(key).casefold()] for key in designs if updates.get(str(key).casefold())},
                        # The order of the library (empty while it is sorted by NR Mode and name).
                        'order': [key for key in read_design_order(task_repository) if key in designs],
                        # The pictures of the Image elements of their own slides.
@@ -9512,7 +9515,9 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
     before, with an NR Mode of their own and of their template, read it as part of their selection and follow their
     template as the workspace merged it (report_template_modes). Returns the renamed PPT Designs."""
     from src.modules.deletion_rights import PPT_DESIGNER, creators, set_creator
+    from src.modules.ppt_designer import keep_design_updates
     from src.modules.ppt_naming import renamed_design
+    from src.modules.repository import local_now_iso
     from src.modules.report_template_modes import migrate_designs_state
     from src.modules.transfer_identities import PPT_DESIGNER as DESIGN_IDENTITIES, ItemMatcher, identities, set_identities
 
@@ -9532,6 +9537,7 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
     incoming = _designs_on_workspace_templates(incoming, task_repository)
     package_uids = document.get('identities') if isinstance(document.get('identities'), dict) else {}
     package_creators = document.get('creators') if isinstance(document.get('creators'), dict) else {}
+    package_updates = document.get('updates') if isinstance(document.get('updates'), dict) else {}
     try:
         current = json.loads(task_repository.get_workspace_state(DESIGN_STATE_KEY) or '{}')
     except (TypeError, ValueError):
@@ -9541,6 +9547,7 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
     matcher = ItemMatcher([(key, str(item.get('name') or ''), local_uids.get(str(key).casefold()) or str(key))
                            for key, item in current.items() if isinstance(item, dict)])
     imported_uids: dict[str, str] = {}
+    imported_updates: dict[str, dict[str, str]] = {}
     targets: dict[str, str] = {}
     for design_id, definition in incoming.items():
         if not isinstance(definition, dict):
@@ -9554,7 +9561,11 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
         targets[str(design_id)] = str(target)
         set_creator(task_repository, PPT_DESIGNER, target, transfer_creator(
             package_creators.get(design_id), local_creators.get(str(target).casefold(), ''), importing_user))
+        # Who last changed it, as its creator (a package that does not say: the import has just changed it).
+        update = package_updates.get(design_id) if isinstance(package_updates.get(design_id), dict) else {}
+        imported_updates[target] = {'by': transfer_creator(update.get('by'), '', importing_user), 'at': str(update.get('at') or local_now_iso())}
     task_repository.set_workspace_state(DESIGN_STATE_KEY, json.dumps(current, ensure_ascii=False))
+    keep_design_updates(task_repository, imported_updates)
     set_identities(task_repository, DESIGN_IDENTITIES, imported_uids)
     order = document.get('order') if isinstance(document.get('order'), list) else []
     package_order = [targets[str(key)] for key in order if str(key) in targets]
