@@ -341,7 +341,7 @@ Backups that include the workspace database, complete workspace and Full Environ
 
 Vendor mapping is required only for Vendor Comparison. The Vendor comes from one of two sources:
 
-- **Cell inventories**: the [Multivendor Mappings](#multivendor-mappings) and the [Network Inventories](#network-inventories) (Cell Configuration KMZ packages included), by the cells that served each sample. With a Multivendor Mapping in the workspace, the mappings give the Vendor: each one for its Operators, and where several have a cell, the one whose Snapshot date is closest to the CDR. A Network Inventory then takes part only if it is ticked, and only for the cells the mappings do not have. Without any, the Network Inventories map the Vendors as well.
+- **Cell inventories**: the [Multivendor Mappings](#multivendor-mappings) and the [Network Inventories](#network-inventories) (Cell Configuration KMZ packages included), by the cells that served each sample. With a Multivendor Mapping in the workspace, the mappings give the Vendor: each one for its Operators, and where several have a cell, the one whose Snapshot date is closest to the CDR. The other sources (VFUK, 3UK and the Network Inventories, which start ticked), whatever their date, only complete the cells the mappings do not have: a Vendor that a mapping gives is never kept from an older file. Without any, the Network Inventories map the Vendors as well.
 - **Vendor Polygons (Geographic Datasets)**: the [Vendor polygons](#vendor-polygons) of each sample's Operator, by its position; every Operator that has polygons.
 
 The Map dialog asks for the source when the workspace has both, and uses the only one otherwise; its Vendor mapping rule follows the chosen source.
@@ -374,7 +374,7 @@ The Map dialog asks for the source when the workspace has both, and uses the onl
 - The ready VFUK and 3UK Network Inventories appear beside each CDR row.
 - The newest ready one of each is proposed.
 - Either, both or neither may be selected.
-- Every Multivendor Mapping of the workspace and of the upload is applied; without any, every ready Network Inventory that can map Vendors: all of them are snapshots of the same networks.
+- Every Multivendor Mapping of the workspace and of the upload is applied, with every ready Network Inventory that can map Vendors, which only completes the cells the mappings do not have: all of them are snapshots of the same networks.
 - **Vendor source** is offered only when the CDRs have both sources, in the workspace or in the same upload: the **Cell inventories** (the networks of the Multivendor Mappings and of the Network Inventories) and the **Vendor polygons**, which applies every Vendor polygons dataset. The Vendor polygons are proposed when they cover every Operator of the cell inventories (polygons of that Operator, or multi-operator polygons whose Operator attribute includes it), and the Cell inventories otherwise. With a single source, that source is used.
 
 #### After Upload

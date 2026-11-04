@@ -68,6 +68,20 @@ def test_serving_networks_defaults_csv_and_snapshot_preference():
     assert sc.rank_snapshots(snapshots, date(2026, 9, 10)) == {2: 0, 1: 1}
     assert sc.rank_snapshots(snapshots, date(2026, 6, 1)) == {1: 0, 2: 1}
     assert sc.rank_snapshots(snapshots, None) == {2: 0, 1: 1}
+    # Beside a Multivendor Mapping every other source comes last, however close its date is.
+    sources = [{'dataset_id': 1, 'kind': 'mapping_vodafone', 'snapshot_date': '2026-08-20'}, {'dataset_id': 2, 'kind': 'network_inventory', 'snapshot_date': '2026-09-17'},
+               {'dataset_id': 3, 'kind': 'multivendor_mapping', 'snapshot_date': '2026-10-05'}, {'dataset_id': 4, 'kind': 'mapping_three', 'snapshot_date': '2026-08-20'}]
+    assert sc.complement_snapshots(sources) == {1, 2, 4} and sc.complement_snapshots(sources[:2]) == set()
+    assert sc.rank_snapshots(sources, date(2026, 8, 20))[3] == 0
+    assert sc.rank_snapshots(sources, date(2026, 8, 20))[2] == 3
+    # The mapping gives the Vendor even when an older file has the cell in the Operator's own network.
+    endpoints = pd.DataFrame({'row': [0, 1], 'end': ['first', 'first'], 'cell': ['10', '20'], 'longitude': [float('nan')] * 2, 'latitude': [float('nan')] * 2})
+    cells = pd.DataFrame({'dataset_id': [1, 3, 1], 'cell_identity': ['10', '10', '20'], 'technology': 'LTE', 'network': ['Vodafone', '3', 'Vodafone'], 'network_family': ['vodafone', 'three', 'vodafone'],
+                          'host_network': '', 'vendor': ['Huawei', 'Ericsson', 'NSN'], 'site_id': '', 'emocn': '', 'latitude': float('nan'), 'longitude': float('nan')})
+    operators = pd.Series(['Vodafone UK', 'Vodafone UK'])
+    dates = {1: '2026-08-20', 3: '2026-10-05'}
+    assert sc.match_serving_cells(endpoints, operators, cells, {3: 0, 1: 1}, dates, None, 30.0, (), {1})['vendor'].tolist() == ['Ericsson', 'NSN']
+    assert sc.match_serving_cells(endpoints, operators, cells, {1: 0, 3: 1}, dates, None, 30.0)['vendor'].tolist() == ['Huawei', 'NSN']
     assert sc.cdr_reference_date(_cdr('2026-09-10')) == date(2026, 9, 10)
     assert sc.cdr_reference_date(pd.DataFrame({'x': [1]}), '20260623 Final Data CDR.xlsx') == date(2026, 6, 23)
 

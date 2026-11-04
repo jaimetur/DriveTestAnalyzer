@@ -10,9 +10,11 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- **Workspace — Multivendor Mappings first:** beside a Multivendor Mapping, every other source of the Vendor (VFUK and 3UK too), whatever its date, only completes the cells the mapping does not have, so an older file no longer keeps a Vendor the mapping has changed in the campaigns closer to its date. The Network Inventories start ticked in the Map dialog and also complete new CDRs.
 - **PPT Designer — Who created and last changed each Design:** the PPT Designs table has the columns **Created by** and **Last Updated by** (pointing at the name shows when). A Design changed before shows the last change its App Events recorded, and exports, transfers and backups carry both.
 
 #### 🐛 Bug fixes:
+- **PPT Designer — Hidden chart values can always be shown again:** a **Hidden (N)** button in the viewer lists every value hidden in the Design with **Show**, **Show all** and **Undo**, even when nothing is left on the chart to click. The right-click menus work on every chart type and list the other hidden values, and Ctrl/Cmd+Z and the Undo of the Designer undo the last hide or show.
 
 #### 📚 Documentation:
 

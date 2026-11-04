@@ -190,10 +190,18 @@ def cdr_reference_date(frame: pd.DataFrame, file_name: str = '', profile: CdrFie
     return date.fromisoformat(inferred) if inferred else None
 
 
+def complement_snapshots(snapshots: list[dict[str, Any]]) -> set[int]:
+    """Beside a Multivendor Mapping, the dataset IDs of the other snapshots (VFUK and 3UK too), whatever their date: they only
+    complete the cells the mappings do not have."""
+    if not any(snapshot.get('kind') == MULTIVENDOR_MAPPING_KIND for snapshot in snapshots):
+        return set()
+    return {int(snapshot['dataset_id']) for snapshot in snapshots if snapshot.get('kind') != MULTIVENDOR_MAPPING_KIND}
+
+
 def rank_snapshots(snapshots: list[dict[str, Any]], reference: date | None) -> dict[int, int]:
-    """Snapshot dataset ID → preference rank: closest date to ``reference`` first, the newest on a tie. Beside a Multivendor
-    Mapping, a Network Inventory comes last: it only completes the cells the mappings do not have."""
-    complements = any(snapshot.get('kind') == MULTIVENDOR_MAPPING_KIND for snapshot in snapshots)
+    """Snapshot dataset ID → preference rank: closest date to ``reference`` first, the newest on a tie, the snapshots that
+    only complete a Multivendor Mapping last."""
+    complements = complement_snapshots(snapshots)
 
     def key(snapshot: dict[str, Any]) -> tuple[bool, float, float]:
         try:
@@ -201,7 +209,7 @@ def rank_snapshots(snapshots: list[dict[str, Any]], reference: date | None) -> d
         except ValueError:
             moment = date.min
         distance = abs((moment - reference).days) if reference else 0
-        return complements and snapshot.get('kind') == 'network_inventory', distance, -moment.toordinal()
+        return int(snapshot['dataset_id']) in complements, distance, -moment.toordinal()
     ordered = sorted(snapshots, key=key)
     return {int(snapshot['dataset_id']): rank for rank, snapshot in enumerate(ordered)}
 
@@ -269,11 +277,12 @@ def serving_endpoints(frame: pd.DataFrame, dataset_kind: str, profile: CdrFieldP
 def match_serving_cells(
     endpoints: pd.DataFrame, operators: pd.Series, candidates: pd.DataFrame, snapshot_ranks: dict[int, int],
     snapshot_dates: dict[int, str], config: dict[str, Any] | None, max_distance_km: float,
-    excluded: Iterable[tuple[str, int]] = (),
+    excluded: Iterable[tuple[str, int]] = (), complements: Iterable[int] = (),
 ) -> pd.DataFrame:
     """The inventory cell chosen for every sample end: an allowed network (own first), the preferred snapshot,
     then the nearest cell; cells beyond ``max_distance_km`` of a located sample are never chosen, nor those of a
-    snapshot that does not apply to the Operator (``excluded``: its Operator and dataset ID pairs)."""
+    snapshot that does not apply to the Operator (``excluded``: its Operator and dataset ID pairs). A snapshot of
+    ``complements`` gives a cell only when no other has it, in any allowed network."""
     columns = ['row', 'end', 'vendor', 'network', 'host_network', 'site_id', 'emocn', 'distance_km', 'snapshot_date']
     if endpoints.empty or candidates.empty:
         return pd.DataFrame(columns=columns)
@@ -298,7 +307,8 @@ def match_serving_cells(
     matched['snapshot_rank'] = matched['dataset_id'].map(snapshot_ranks)
     matched['snapshot_date'] = matched['dataset_id'].map(snapshot_dates)
     matched['sort_distance'] = matched['distance_km'].fillna(np.inf)
-    matched = matched.sort_values(['row', 'end', 'family_rank', 'snapshot_rank', 'sort_distance'], kind='stable')
+    matched['complement'] = matched['dataset_id'].isin(set(complements))
+    matched = matched.sort_values(['row', 'end', 'complement', 'family_rank', 'snapshot_rank', 'sort_distance'], kind='stable')
     return matched.drop_duplicates(['row', 'end'])[columns].reset_index(drop=True)
 
 
@@ -335,7 +345,7 @@ def assign_serving_vendors(
     wanted = sorted({family for operator, values in families.items() for family in set(values) & available[operator]})
     candidates = _candidate_cells(repository, list(ranks), wanted, sorted(set(endpoints['cell'])))
     matches = match_serving_cells(endpoints, operators, candidates, ranks, dates, config,
-                                  float(config.get('max_distance_km') or DEFAULT_MAX_DISTANCE_KM), excluded)
+                                  float(config.get('max_distance_km') or DEFAULT_MAX_DISTANCE_KM), excluded, complement_snapshots(snapshots))
     first = matches.loc[matches['end'] == 'first'].set_index('row')
     last = matches.loc[matches['end'] == 'last'].set_index('row')
     first_vendor = first['vendor'].reindex(range(len(result)))

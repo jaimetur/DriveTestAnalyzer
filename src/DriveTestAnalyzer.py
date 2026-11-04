@@ -21260,13 +21260,13 @@ def register_uploaded_datasets(
             vodafone_mapping_dataset_id = three_mapping_dataset_id = None
         network_inventory_ids: list[int] = []
         if dataset_kind in CDR_DATASET_KINDS and not vendor_polygon_dataset_ids:
-            # Every Multivendor Mapping of the workspace, those of this upload included; without any, every ready Network
-            # Inventory that can map Vendors (those of other Operators than Vodafone and Three).
+            # Every Multivendor Mapping of the workspace, those of this upload included, and every ready Network Inventory
+            # that can map Vendors (those of other Operators than Vodafone and Three), which only completes the mappings.
             network_inventory_ids = [
                 int(row['id']) for row in task_repository.list_datasets()
                 if row['dataset_kind'] == MULTIVENDOR_MAPPING_KIND and (row['status'] == 'ready' or any(
                     int(item['dataset_id']) == int(row['id']) for item in registered.values()))
-            ] or [
+            ] + [
                 int(row['id']) for row in task_repository.list_datasets()
                 if row['dataset_kind'] == 'network_inventory' and row['status'] == 'ready' and inventory_can_map_vendors(int(row['id']), task_repository)
             ]

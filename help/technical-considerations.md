@@ -173,7 +173,7 @@ Every selected source (Multivendor Mappings and Network Inventories, Cell Config
 
 - only among the cells of the networks that can serve the sample's Operator, its own network first (Workspace Config → Serving Networks; by default Vodafone and Three serve each other through eMOCN, Lebara is served by both and every other Operator by its own network);
 - only among the Multivendor Mappings that apply to the sample's Operator (the Operators of each one) and the other selected sources;
-- in the snapshot whose date is closest to the CDR's measurements (the median start time of its samples, else the date in its file name), the newest on a tie; beside a Multivendor Mapping, a Network Inventory comes last, so it only completes the cells the mappings do not have;
+- in the snapshot whose date is closest to the CDR's measurements (the median start time of its samples, else the date in its file name), the newest on a tie; beside a Multivendor Mapping, every other source (VFUK and 3UK too), whatever its date, only completes the cells the mappings do not have, in any network that can serve the Operator;
 - ignoring cells farther from the sample's position than the maximum serving distance (30 km by default), since a global cell identity only identifies a cell within its Operator.
 
 Vodafone UK (`Vodafone_`), Three UK (`3_`) and every other Operator (its own name as prefix, for example `Vodafone VoNR_`, `VF_SA_` or `O2 (UK)_`) resolve the first and last cell with the same rule, stored in `Operator_Vendor`:

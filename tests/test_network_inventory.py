@@ -196,11 +196,10 @@ def test_multivendor_mapping_gives_the_vendor_and_leaves_the_network_to_the_inve
         assert connection.execute('SELECT COUNT(*) FROM inventory_cells WHERE dataset_id = ?', (mapping['id'],)).fetchone()[0] == 0
         assert connection.execute('SELECT COUNT(*) FROM multivendor_mapping_cells WHERE dataset_id = ?', (mapping['id'],)).fetchone()[0] == 2
 
-    # The Map dialog offers it, checked, and the Network Inventory only to complete it.
+    # The Map dialog offers it and the Network Inventory that completes it, both checked.
     workspace = client.get('/workspace').text
     assert f'name="multivendor_mapping_dataset_ids" value="{mapping["id"]}" checked' in workspace
-    assert f'name="network_inventory_dataset_ids" value="{inventory["id"]}" checked' not in workspace
-    assert f'name="network_inventory_dataset_ids" value="{inventory["id"]}"' in workspace
+    assert f'name="network_inventory_dataset_ids" value="{inventory["id"]}" checked' in workspace
     card = workspace.split('data-dataset-card="multivendor-mappings"', 1)[1].split('</section>', 1)[0]
     assert 'VF3_All_Vendor_2026_Week41.csv' in card and 'data-dataset-mapping-operators' in card
 
