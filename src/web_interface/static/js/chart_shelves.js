@@ -80,12 +80,14 @@
   };
   // The settings beside a chart type (kept among its filters as `Name = value`): free text, or one of its choices.
   const BUCKETS = {name: 'Buckets', placeholder: '4 limits: -110, -100, -90, -80'};
+  const BUCKET_FORMS = '1, 5, 20 names the classes as ranges (<1, 1-5, 5-20, 20+). < 2, 5, 20 or <= 2, 5, 20 names them below2, below5, below20, Above';
+  const BUCKET_PILLS = ['buckets', 'ratebucket'];
   // The fields the chart works out from its measure and the Buckets setting: no column of the CDRs, and only on these shelves.
   const DERIVED_FIELDS = [
     {name: 'Rate Bucket', type: 'text', category: 'Distribution classes', shelves: ['rows_split', 'columns_split', 'legend'],
-      hint: 'The class of each sample of the measure, from the limits of Buckets in Chart Type. Last in Columns, it gives the stacks of a Distribution chart'},
+      hint: 'The class of each sample of the measure, from the limits set by clicking its pill. Last in Columns, it gives the stacks of a Distribution chart'},
     {name: 'Buckets', type: 'text', category: 'Distribution classes', shelves: ['legend'],
-      hint: 'On Legend, shows the classes of a Distribution chart. Its limits are set in Buckets, in Chart Type'},
+      hint: 'On Legend, shows the classes of a Distribution chart. Its limits are set by clicking its pill'},
   ];
   const DIRECTION = {name: 'Direction', title: 'Which values the colours show as good', choices: [['', 'From the KPI'], ['Higher is better', 'Higher is better'], ['Lower is better', 'Lower is better'], ['Neutral', 'Neutral (blues)']]};
   const SORT = {name: 'Sort', title: 'The order of the rows', choices: [['', 'As the Rows'], ['Descending', 'Largest first'], ['Ascending', 'Smallest first']]};
@@ -102,7 +104,7 @@
     {type: '100% Stacked Vertical Bars', need: s => s.text === 1 && s.measures === 1 || s.distinct === 1 && s.measures === 2 && s.dimensions === 1 || 'One dimension as the measure (such as Call_Status), and COUNTD of a field to share out its distinct values instead of the rows', fits: s => !s.numeric && s.text <= 1},
     {type: 'Count Stacked Horizontal Bars', need: s => s.measures === 1 || 'One measure', fits: s => s.measures <= 1},
     {type: 'Threshold Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Threshold', placeholder: '1.6 or {Threshold}'}], fits: s => !s.text && s.numeric <= 1},
-    {type: 'Distribution Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Buckets', placeholder: '1, 5, 10, 20 or < 2, 5, 20, 100', title: '1, 5, 20 names the classes as ranges (<1, 1-5, 5-20, 20+). < 2, 5, 20 or <= 2, 5, 20 names them below2, below5, below20, Above'}], fits: s => !s.text && s.numeric <= 1},
+    {type: 'Distribution Stacked Vertical Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Buckets', placeholder: '1, 5, 10, 20 or < 2, 5, 20, 100', title: BUCKET_FORMS}], fits: s => !s.text && s.numeric <= 1},
     {type: 'Histogram Bars', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Bin Size', placeholder: '1'}], fits: s => !s.text && s.numeric <= 1},
     {type: 'Histogram Line', need: s => s.numeric === 1 && s.measures === 1 || 'One numeric measure', settings: [{name: 'Bin Size', placeholder: '1'}], fits: s => !s.text && s.numeric <= 1},
     {type: 'Scatter', need: s => s.numeric === 2 && s.measures === 2 || 'Two numeric measures', fits: s => !s.text && s.numeric <= 2},
@@ -178,6 +180,15 @@
   const conditions = value => splitParts(value, /;|\n+/);
   const conditionField = condition => (/^(.+?)\s+(NOT\s+CONTAINS|NOT\s+IN|CONTAINS|IN|>=|<=|!=|=|>|<)\s+/i.exec(condition)?.[1] || condition).trim();
   const isSetting = condition => SETTINGS.includes(identity(conditionField(condition)));
+  // Buckets, as a box shows it and as the filters keep it: upper limits (< 2, 5, 20) keep their operator.
+  const bucketsText = condition => {
+    const upper = /^.+?\s*(<=|<)\s*(.*)$/.exec(condition);
+    return upper ? `${upper[1]} ${upper[2]}` : condition.replace(/^.+?\s*=\s*/, '');
+  };
+  const bucketsCondition = text => {
+    const upper = /^(<=|<)\s*(.+)$/.exec(text);
+    return upper ? `Buckets ${upper[1]} ${upper[2]}` : `Buckets = ${text}`;
+  };
   // A field of dates and times (Test_Start_Time, Test_End_Time…): Gantt measures it, and Rows and Columns can group it by
   // a period (DAY(Test_Start_Time)).
   const isTimeField = name => /(^|_)(time|date|timestamp)$|_time_|_date_/i.test(String(name || '')) && !/duration|_times?_to|time_to|setup_time/i.test(String(name || ''));
@@ -307,14 +318,11 @@
     const rows = chosenType.settings.map(setting => {
       const key = identity(setting.name);
       const current = settings.find(item => identity(conditionField(item)) === key);
-      // Buckets also takes upper limits (< 2, 5, 20), kept with their operator.
-      const upperLimits = key === 'buckets' && current ? /^.+?\s*(<=|<)\s*(.*)$/.exec(current) : null;
-      const value = upperLimits ? `${upperLimits[1]} ${upperLimits[2]}` : current ? current.replace(/^.+?\s*=\s*/, '') : '';
+      const value = !current ? '' : key === 'buckets' ? bucketsText(current) : current.replace(/^.+?\s*=\s*/, '');
       const write = text => {
         const kept = settings.filter(item => identity(conditionField(item)) !== key);
         const typed = String(text || '').trim();
-        const upper = key === 'buckets' ? /^(<=|<)\s*(.+)$/.exec(typed) : null;
-        if (typed) kept.push(upper ? `${setting.name} ${upper[1]} ${upper[2]}` : `${setting.name} = ${typed}`);
+        if (typed) kept.push(key === 'buckets' ? bucketsCondition(typed) : `${setting.name} = ${typed}`);
         writeFilters(plainFilters, kept);
       };
       const control = setting.choices
@@ -541,7 +549,7 @@
       const field = isMeasure ? kpiField(item) : key === 'filters' ? conditionField(item) : item;
       const aggregation = isMeasure ? kpiAggregation(item) : '';
       const pill = h('span', {class: `ds-cb-pill is-${key === 'filters' ? 'filter' : typeOf(field)}`, draggable: key === 'filters' || key === 'repeat' ? 'false' : 'true', dataset: {shelf: key, index: String(index)}, tabindex: '0'},
-        h('button', {type: 'button', class: 'ds-cb-pill-label', title: key === 'filters' ? 'Change the filter' : isMeasure ? 'Aggregation and order' : DATE_BIN_PATTERN.test(field) || isTimeField(field) ? 'Period and order' : 'Order',
+        h('button', {type: 'button', class: 'ds-cb-pill-label', title: key === 'filters' ? 'Change the filter' : !isMeasure && BUCKET_PILLS.includes(identity(field)) ? 'Limits of the classes' : isMeasure ? 'Aggregation and order' : DATE_BIN_PATTERN.test(field) || isTimeField(field) ? 'Period and order' : 'Order',
           onclick: event => {
             if (key === 'filters') { openFilterDialog(field, item, index); return; }
             if (key === 'repeat') return;
@@ -556,9 +564,13 @@
                 const next = [...items]; next[index] = code ? `${code}(${base})` : base; writeShelf(key, next);
               }]));
             }
+            const anchor = event.currentTarget;
+            const limits = () => openBucketsDialog(anchor);
+            if (key !== 'kpi' && BUCKET_PILLS.includes(identity(field))) actions.push(['Limits of the classes…', limits]);
             if (index > 0) actions.push(['Move before', () => { const next = [...items]; next.splice(index - 1, 0, next.splice(index, 1)[0]); writeShelf(key, next); }]);
             if (index < items.length - 1) actions.push(['Move after', () => { const next = [...items]; next.splice(index + 1, 0, next.splice(index, 1)[0]); writeShelf(key, next); }]);
-            if (actions.length) openMenu(event.currentTarget, actions);
+            if (actions.length === 1 && actions[0][1] === limits) limits();
+            else if (actions.length) openMenu(event.currentTarget, actions);
           }},
         isMeasure && aggregation ? `${AGGREGATIONS.find(([code]) => code === aggregation)?.[1] || aggregation} of ${field}` : item),
         h('button', {type: 'button', class: 'ds-cb-pill-remove', 'aria-label': `Remove ${item}`, onclick: () => {
@@ -572,6 +584,29 @@
       pill.addEventListener('dragend', () => pill.classList.remove('is-dragging'));
       return pill;
     };
+
+    // The limits of the classes of Rate Bucket and Buckets: the setting of Chart Type, from the pill that shows them.
+    function openBucketsDialog(anchor) {
+      closeMenus();
+      const current = settings.find(item => identity(conditionField(item)) === 'buckets');
+      const input = h('input', {type: 'text', value: current ? bucketsText(current) : '', placeholder: '1, 5, 10, 20 or < 2, 5, 20, 100', 'aria-label': 'Limits of the classes'});
+      const note = h('p', {class: 'ds-cb-empty', text: BUCKET_FORMS});
+      const keep = () => {
+        const text = input.value.trim();
+        const limits = text.replace(/^(<=|<)\s*/, '').split(',').map(item => Number(item.trim() || NaN));
+        if (text && !limits.every((limit, position) => Number.isFinite(limit) && (!position || limit > limits[position - 1]))) {
+          note.textContent = 'Write ascending numbers separated by commas.';
+          return;
+        }
+        closeMenus();
+        writeFilters(plainFilters, [...settings.filter(item => item !== current), ...(text ? [bucketsCondition(text)] : [])]);
+      };
+      input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); keep(); } });
+      placePopover(h('div', {class: 'ds-design-popover ds-cb-filter', role: 'dialog', 'aria-label': 'Limits of the classes'},
+        h('h4', {text: 'Limits of the classes'}), input, note,
+        h('div', {class: 'ds-cb-actions'}, h('button', {type: 'button', onclick: keep}, 'Keep'))), anchor);
+      input.focus();
+    }
 
     // Filter dialog: the values of a field with their samples in the Design's selection, or a numeric condition;
     // a parameter of the template can stand for the values.
