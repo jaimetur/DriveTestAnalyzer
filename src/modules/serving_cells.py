@@ -312,6 +312,14 @@ def match_serving_cells(
     return matched.drop_duplicates(['row', 'end'])[columns].reset_index(drop=True)
 
 
+def serving_input_columns(columns: Iterable[str], dataset_kind: str, profile: CdrFieldProfile = NETCHECK_PROFILE) -> list[str]:
+    """The columns of a CDR that ``assign_serving_vendors`` reads: its Operator, cells, positions and measurement times."""
+    wanted = {'operator', *(name.casefold() for name in (*profile.cell_columns, *profile.time_columns))}
+    for pairs in (profile.start_coordinates.get(dataset_kind, ()), profile.end_coordinates.get(dataset_kind, ())):
+        wanted |= {name.casefold() for pair in pairs for name in pair}
+    return [column for column in columns if str(column).casefold() in wanted]
+
+
 def assign_serving_vendors(
     frame: pd.DataFrame, dataset_kind: str, repository: Any, inventory_dataset_ids: Iterable[int], *,
     file_name: str = '', config: dict[str, Any] | None = None,

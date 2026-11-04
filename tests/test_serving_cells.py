@@ -4,9 +4,11 @@ import json
 from datetime import date
 
 import pandas as pd
+import pytest
 
 import src.DriveTestAnalyzer as core
 from conftest import wait_for_background_dataset_work
+from src.modules import cdr_store
 from src.modules import network_inventory as ni
 from src.modules import serving_cells as sc
 from src.modules.repository import local_now_iso
@@ -175,3 +177,50 @@ def test_inventory_snapshots_are_built_once_and_rebuilt_when_their_operator_chan
     core.repository.update_dataset_profile(inventory, dataset_operator='O2')
     snapshot = next(item for item in ni.ensure_inventory_cells(core.repository) if item['dataset_id'] == inventory)
     assert set(snapshot['families']) == {'o2'} and snapshot['cells'] == 1
+
+
+def test_mapping_the_vendor_of_a_cdr_in_its_copy_rewrites_only_its_columns(client, tmp_path, monkeypatch):
+    login(client)
+    first = _inventory(tmp_path, '260917_Cell_Config.zip', _cells('Ericsson'), '2026-09-17')
+    source = tmp_path / 'UK Data CDR.xlsx'
+    source.write_text('cdr', encoding='utf-8')
+    cdr_id, _created = core.repository.add_dataset(source.name, str(source), 'super')
+    rows = _cdr('2026-09-10')
+    core.repository.replace_dataset_rows(cdr_id, rows)
+    core.repository.update_dataset_profile(
+        cdr_id, status='ready', progress=100, dataset_kind='data', nr_mode='NSA', cdr_stage='final', row_count=len(rows),
+        column_count=len(rows.columns), processed_at=local_now_iso(), normalization_version=core.DATASET_NORMALIZATION_VERSION,
+        vendor_mapping_applied=1,
+    )
+    assert client.post('/workspace/map-mappings', data={
+        'cdr_dataset_ids': str(cdr_id), 'vendor_source': 'inventory', 'network_inventory_dataset_ids': str(first),
+    }, follow_redirects=False).status_code == 303
+    wait_for_background_dataset_work()
+    repository = core.Repository(core.active_workspace.database_path, global_db_path=core.repository.global_db_path)
+    cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))
+    cdr_store.empty_combined_table(repository, 'data')
+    with core.repository.connection() as connection:
+        assert cdr_id in cdr_store.shadows(connection)
+    assert core.repository._combined_in_copies('data')
+    others = cdr_store.read_cdr(core.repository.db_path, 'data', cdr_id, ['Operator', 'Cell_ID'])
+
+    # A newer inventory changes the Vendor of the swapped cell: only the Vendor columns are read and rewritten.
+    newer = _inventory(tmp_path, '261001_Cell_Config.zip', _cells('Samsung'), '2026-10-01')
+    options = json.loads(core.repository.get_dataset(cdr_id)['processing_options_json'] or '{}')
+    core.repository.update_dataset_profile(cdr_id, processing_options_json=json.dumps({**options, 'network_inventory_dataset_ids': [newer]}))
+    monkeypatch.setattr(core, '_reporting_frame', lambda *_args: pytest.fail('The whole CDR was read.'))
+    core.process_vendor_mapping(cdr_id, 'super', None, None, core.repository)
+    row = core.repository.get_dataset(cdr_id)
+    assert row['status'] == 'ready' and row['vendor_mapping_applied']
+    stored = cdr_store.read_cdr(core.repository.db_path, 'data', cdr_id, ['Operator', 'Cell_ID', 'Operator_Vendor', 'Vendor', 'Serving_Distance_km'])
+    assert stored['Operator_Vendor'].tolist()[0] == 'Vodafone_Samsung' and stored['Vendor'].tolist()[0] == 'Samsung'
+    assert pd.api.types.is_float_dtype(stored['Serving_Distance_km'])
+    assert stored[['Operator', 'Cell_ID']].equals(others)
+    assert 'Samsung' in json.loads(row['filter_options_json'])['vendor']
+    with core.repository.connection() as connection:
+        assert cdr_id in cdr_store.shadows(connection)
+        assert 'Samsung' in connection.execute('SELECT vendors_only_json FROM cdr_catalogues WHERE dataset_id = ?', (cdr_id,)).fetchone()[0]
+
+    # An Auto-calculated Field that reads the Vendor needs the whole CDR.
+    monkeypatch.setattr(core, 'load_repository_calculated_dimensions', lambda _repository: ('Vendor_Group from Vendor',))
+    assert not core.map_vendor_in_copy(core.serialize_dataset_row(row), None, None, [newer], core.repository)

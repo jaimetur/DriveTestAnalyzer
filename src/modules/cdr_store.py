@@ -1045,11 +1045,12 @@ def drop_copied_table(repository: Any, dataset_id: int) -> bool:
 
 def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame | None = None, drop: Any = (),
                         should_stop: Callable[[], bool] = lambda: False, *, constants: dict[str, str | None] | None = None,
-                        nr_mode: bool = False) -> bool:
+                        nr_mode: bool = False, numeric: Any = ()) -> bool:
     """Change some columns of a CDR whose copy is its only store in the copy itself, never putting its rows back in its
     table: ``drop`` columns, and set the text columns of ``values`` (ROWID and one column per field, a row for every
-    row of the CDR; a row it lacks gets no value) and of ``constants`` (one value for every row), added or in place of
-    the columns of those names; with ``nr_mode`` its rows take the NR Mode the CDR has now. Its empty table follows
+    row of the CDR; a row it lacks gets no value; the ``numeric`` ones are real numbers instead of text) and of
+    ``constants`` (one value for every row), added or in place of the columns of those names; with ``nr_mode`` its rows
+    take the NR Mode the CDR has now. Its empty table follows
     (ALTER TABLE), its manifest says the new columns and its version goes up (as a change of its rows), so the copy
     stays its store. Returns whether it did: not for a CDR whose table holds its rows or that a writer holds (its table
     is then changed instead, see change_cdr), nor when it stopped."""
@@ -1087,7 +1088,8 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
         # A column written keeps its place among the columns of the copy; a new one goes last.
         columns = [column for column, _type in manifest['columns'] if column not in dropped]
         columns += [column for column in written if column not in types]
-        new_types = {column: 'VARCHAR' if column in written else types[column] for column in columns}
+        numeric = {str(column) for column in numeric}
+        new_types = {column: ('DOUBLE' if column in numeric else 'VARCHAR') if column in written else types[column] for column in columns}
         needed, free = required_space(int(manifest.get('rows') or cdr['row_count'])), free_space(target.parent)
         if free < needed:
             raise NotEnoughSpace(needed, free)
@@ -1103,7 +1105,7 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
                 value = constants[column]
                 selected.append(f'CAST({"NULL" if value is None else _sql_text(str(value))} AS VARCHAR) AS {quote(column)}')
             elif column in written:
-                selected.append(f'CAST(v.{quote(column)} AS VARCHAR) AS {quote(column)}')
+                selected.append(f'CAST(v.{quote(column)} AS {new_types[column]}) AS {quote(column)}')
             else:
                 selected += [f'p.{quote(part)}' for part in stored_parts([column], types)]
         duck = duckdb.connect(config={'memory_limit': '1GB', 'threads': 2})
@@ -1114,7 +1116,7 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
                 frame = values[[ROWID, *from_values]].copy()
                 frame[ROWID] = frame[ROWID].astype('int64')
                 for column in from_values:
-                    frame[column] = frame[column].astype('string')
+                    frame[column] = frame[column].astype('float64' if column in numeric else 'string')
                 duck.register('field_values', frame)
                 joined = f' LEFT JOIN field_values v ON v.{quote(ROWID)} = p.{quote(ROWID)}'
             # Part by part (each a range of row ids, see export_rows), so a CDR of any size is never held whole.
@@ -1152,7 +1154,7 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
                         connection.execute(f'ALTER TABLE {quote(table)} DROP COLUMN {quote(present.pop(column.casefold()))}')
                 for column in written:
                     if column.casefold() not in present:
-                        connection.execute(f'ALTER TABLE {quote(table)} ADD COLUMN {quote(column)} TEXT')
+                        connection.execute(f'ALTER TABLE {quote(table)} ADD COLUMN {quote(column)} {"REAL" if column in numeric else "TEXT"}')
                 table_columns = _table_columns(connection, dataset_id)
                 if sorted(table_columns) != sorted(columns):
                     raise RuntimeError(f'The table of CDR {dataset_id} and its changed copy do not have the same columns.')

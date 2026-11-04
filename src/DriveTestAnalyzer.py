@@ -5397,6 +5397,14 @@ def ensure_mapping_gcid(dataset: dict[str, Any]) -> dict[str, Any]:
     return serialize_dataset_row(refreshed) if refreshed else dataset
 
 
+# The fields of the CDR catalogue, each with the columns that can hold it.
+CDR_CATALOGUE_FIELDS = {
+    'vendors': ('Operator_Vendor',), 'vendors_only': ('Vendor',), 'clusters': ('Cluster',),
+    'regions': ('region', 'g_level_2', 'g level 2'), 'cities': ('city', 'g_level_4', 'g level 4'), 'campaigns': ('campaign',),
+    'operators': ('operator', 'operator_a', 'home_operator', 'home_operator_a'), 'g_level_1': ('g_level_1',), 'g_level_2': ('g_level_2',),
+}
+
+
 def cache_cdr_catalogue(dataset_id: int, frame: pd.DataFrame, task_repository: Repository | None = None) -> None:
     """Store CDR universe values once, avoiding later scans of combined rows."""
     task_repository = task_repository or repository
@@ -5409,18 +5417,7 @@ def cache_cdr_catalogue(dataset_id: int, frame: pd.DataFrame, task_repository: R
         series = frame[column].dropna().astype(str).str.strip()
         return series[series.ne('')].tolist()
 
-    task_repository.replace_cdr_catalogue(
-        dataset_id,
-        vendors=values('Operator_Vendor'),
-        vendors_only=values('Vendor'),
-        clusters=values('Cluster'),
-        regions=values('region', 'g_level_2', 'g level 2'),
-        cities=values('city', 'g_level_4', 'g level 4'),
-        campaigns=values('campaign'),
-        operators=values('operator', 'operator_a', 'home_operator', 'home_operator_a'),
-        g_level_1=values('g_level_1'),
-        g_level_2=values('g_level_2'),
-    )
+    task_repository.replace_cdr_catalogue(dataset_id, **{field: values(*aliases) for field, aliases in CDR_CATALOGUE_FIELDS.items()})
 
 
 def _distinct_cdr_row_values(task_repository: Repository, dataset_id: int, columns: set[str], *aliases: str) -> list[str]:
@@ -5553,6 +5550,65 @@ def persist_mapped_cdr_frame(
         processed_at=now_iso(),
         last_error=None,
     )
+
+
+def map_vendor_in_copy(
+    dataset: dict[str, Any], vodafone_mapping_dataset_id: int | None, three_mapping_dataset_id: int | None,
+    inventory_dataset_ids: Iterable[Any], task_repository: Repository,
+) -> bool:
+    """Map again the Vendor of a CDR whose rows are in its columnar copy reading and rewriting only the columns involved: a
+    CDR has hundreds of columns and hundreds of thousands of rows, and the Vendor needs a few of them. Returns whether it
+    did: not for a CDR whose rows are in its table or a first mapping, nor when an Auto-calculated Field reads the Vendor
+    or the serving cell, which ``persist_mapped_cdr_frame`` calculates again."""
+    from src.modules.cdr_reporting import OPERATOR_VENDOR_FIELD, VENDOR_FIELD
+    from src.modules.serving_cells import SERVING_FIELDS, serving_input_columns
+
+    dataset_id = int(dataset['id'])
+    dataset_kind = str(dataset.get('dataset_kind') or '').casefold()
+    available = task_repository.list_dataset_row_columns(dataset_id)
+    with task_repository.connection() as connection:
+        in_copy = dataset_id in cdr_store.shadows(connection)
+    if (not in_copy or dataset_kind not in CDR_DATASET_KINDS or not task_repository._combined_in_copies(dataset_kind)
+            or not {OPERATOR_VENDOR_FIELD, VENDOR_FIELD} <= set(available)
+            or any(name in repr(dimension).casefold() for dimension in load_repository_calculated_dimensions(task_repository)
+                   for name in ('vendor', 'serving_'))):
+        return False
+    identities = {column_identity(alias) for aliases in CDR_CATALOGUE_FIELDS.values() for alias in aliases}
+    metric = str(dataset.get('default_metric') or '')
+    inputs = serving_input_columns(available, dataset_kind, workspace_field_profile(task_repository))
+    frame = cdr_store.read_cdr(task_repository.db_path, dataset_kind, dataset_id, list(dict.fromkeys([
+        *inputs, *(column for column in available if column_identity(column) in identities or column == metric)])))
+    mapped = assign_inventory_vendors(
+        frame[inputs], dataset_kind, vodafone_mapping_dataset_id, three_mapping_dataset_id, inventory_dataset_ids,
+        task_repository, file_name=str(dataset.get('file_name') or ''),
+    )
+    task_repository.update_dataset_profile(dataset_id, progress=75, processing_step='Writing mapped CDR rows')
+    ensure_not_stopped(dataset_id, task_repository)
+    written = [OPERATOR_VENDOR_FIELD, VENDOR_FIELD, *SERVING_FIELDS]
+    with task_repository.connection() as connection:
+        rowids = cdr_store.cdr_rowids(connection, dataset_kind, dataset_id)
+    values = pd.DataFrame({cdr_store.ROWID: rowids, **{column: mapped[column].to_numpy() for column in written}})
+    with workspace_write_lock(task_repository.db_path):
+        if not cdr_store.change_copy_columns(task_repository, dataset_id, values, numeric=[column for column in written if pd.api.types.is_numeric_dtype(mapped[column])]):
+            return False
+        task_repository.copy_dataset_rows_to_reporting(
+            dataset_id, dataset_kind,
+            combined_reporting_required_columns(load_repository_calculated_dimensions(task_repository), dataset_kind, task_repository),
+        )
+    frame = frame.assign(**{column: mapped[column] for column in (OPERATOR_VENDOR_FIELD, VENDOR_FIELD)})
+    cache_cdr_catalogue(dataset_id, frame, task_repository)
+    try_sync_combined_cdr_inclusion(task_repository)
+    # Among the fields of its profile, only the Vendor options change.
+    options = {key: value for key, value in dataset['filter_options'].items()
+               if column_identity(key) not in {column_identity(OPERATOR_VENDOR_FIELD), column_identity(VENDOR_FIELD)}}
+    options.update(derive_filter_options(restrict_frame_to_metric(frame, metric)[[OPERATOR_VENDOR_FIELD, VENDOR_FIELD]]))
+    options = {key: options[key] for key in FILTER_DIMENSIONS if key in options}
+    task_repository.update_dataset_profile(
+        dataset_id, vendor_mapping_applied=True, vendor_values_complete=True, filter_options_json=json.dumps(options),
+        available_aggregations_json=json.dumps(derive_available_aggregations(options)),
+        column_count=len(task_repository.list_dataset_row_columns(dataset_id)), last_error=None,
+    )
+    return True
 
 
 def persist_region_mapped_cdr_frame(dataset: dict[str, Any], frame: pd.DataFrame, mapping_id: int, task_repository: Repository | None = None) -> None:
@@ -5702,18 +5758,18 @@ def process_vendor_mapping(
                 inventory_ids = _dataset_option(task_repository, dataset_id, 'network_inventory_dataset_ids') or []
                 vendor_polygon_ids = [] if (vodafone_mapping or three_mapping or inventory_ids) else (
                     _dataset_option(task_repository, dataset_id, 'vendor_polygon_dataset_ids') or [])
-                mapped_frame = assign_polygon_vendors(
-                    _reporting_frame(dataset_id, task_repository), str(dataset.get('dataset_kind') or ''),
-                    vendor_polygon_ids, task_repository,
-                ) if vendor_polygon_ids else assign_inventory_vendors(
-                    _reporting_frame(dataset_id, task_repository), str(dataset.get('dataset_kind') or ''),
-                    int(vodafone_mapping['id']) if vodafone_mapping else None,
-                    int(three_mapping['id']) if three_mapping else None,
-                    inventory_ids, task_repository, file_name=str(dataset.get('file_name') or ''),
-                )
-                task_repository.update_dataset_profile(dataset_id, progress=75, processing_step='Writing mapped CDR rows')
-                ensure_not_stopped(dataset_id, task_repository)
-                persist_mapped_cdr_frame(dataset, mapped_frame, task_repository)
+                vodafone_id, three_id = int(vodafone_mapping['id']) if vodafone_mapping else None, int(three_mapping['id']) if three_mapping else None
+                if vendor_polygon_ids or not map_vendor_in_copy(dataset, vodafone_id, three_id, inventory_ids, task_repository):
+                    mapped_frame = assign_polygon_vendors(
+                        _reporting_frame(dataset_id, task_repository), str(dataset.get('dataset_kind') or ''),
+                        vendor_polygon_ids, task_repository,
+                    ) if vendor_polygon_ids else assign_inventory_vendors(
+                        _reporting_frame(dataset_id, task_repository), str(dataset.get('dataset_kind') or ''),
+                        vodafone_id, three_id, inventory_ids, task_repository, file_name=str(dataset.get('file_name') or ''),
+                    )
+                    task_repository.update_dataset_profile(dataset_id, progress=75, processing_step='Writing mapped CDR rows')
+                    ensure_not_stopped(dataset_id, task_repository)
+                    persist_mapped_cdr_frame(dataset, mapped_frame, task_repository)
                 _record_vendor_mapping_signature(
                     task_repository, dataset_id, None if vendor_polygon_ids else vendor_mapping_signature(task_repository, inventory_ids=inventory_ids))
                 clear_dataset_analysis_cache(dataset_path)
