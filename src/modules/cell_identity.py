@@ -61,12 +61,18 @@ def lte_eci(enodeb_id: Any, cell_id: Any, local_cell_id: Any = None) -> int | No
 
 
 def nr_nci(gnodeb_id: Any, cell_id: Any, local_cell_id: Any = None, gnodeb_id_length: Any = None) -> int | None:
-    """``gNodeB ID × 2^(36 − length) + Cell ID`` (22-bit gNodeB IDs unless the inventory says otherwise)."""
+    """``gNodeB ID × 2^(36 − length) + Cell ID`` (22-bit gNodeB IDs unless the inventory says otherwise).
+
+    A Cell ID that is already the NCI of its gNodeB, as some Nokia rows hold it, is the NCI as it is.
+    """
     node = integer_value(gnodeb_id)
     bits = nr_cell_bits(gnodeb_id_length)
-    cell = cell_part(cell_id, local_cell_id, bits)
-    if node is None or cell is None or node >= 1 << (NR_IDENTITY_BITS - bits):
+    if node is None or node >= 1 << (NR_IDENTITY_BITS - bits):
         return None
+    cell = cell_part(cell_id, local_cell_id, bits)
+    if cell is None:
+        whole = integer_value(cell_id)
+        return whole if whole is not None and whole >> bits == node else None
     return (node << bits) | cell
 
 
@@ -112,8 +118,11 @@ def nr_nci_series(
     bits = NR_IDENTITY_BITS - lengths
     limit = 2.0 ** bits
     part = cell.where(_whole(cell) & cell.lt(limit), local.where(_whole(local) & local.lt(limit)))
-    valid = _whole(node) & node.lt(2.0 ** lengths) & part.notna()
+    known = _whole(node) & node.lt(2.0 ** lengths)
+    valid = known & part.notna()
+    whole = known & part.isna() & _whole(cell) & (cell // limit).eq(node)
     result = pd.Series(pd.NA, index=index, dtype='Int64')
     result.loc[valid] = (node.loc[valid].astype('int64') * limit.loc[valid].astype('int64')
                          + part.loc[valid].astype('int64'))
+    result.loc[whole] = cell.loc[whole].astype('int64')
     return result

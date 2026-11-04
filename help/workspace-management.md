@@ -348,7 +348,7 @@ The Map dialog asks for the source when the workspace has both, and uses the onl
 
 #### Supported Mapping Files
 
-- **VFUK** workbooks use a `4G` worksheet with `eNodeB ID`, `Cell ID` and `OP/ Vendor`, and a `5G` worksheet with `gNodeB ID`, `Cell ID` and the vendor field. Both map Vendors: the 4G cells by their ECI, `eNodeB ID × 256 + Cell ID`, and the 5G cells by their NCI, `gNodeB ID × 16384 + Cell ID`, the identities the CDRs report. The `Local Cell ID` is used only for rows without a `Cell ID`: Huawei and Nokia cells carry an internal Local Cell ID that is not part of the identity they broadcast.
+- **VFUK** workbooks use a `4G` worksheet with `eNodeB ID`, `Cell ID` and `OP/ Vendor`, and a `5G` worksheet with `gNodeB ID`, `Cell ID` and the vendor field. Both map Vendors: the 4G cells by their ECI, `eNodeB ID × 256 + Cell ID`, and the 5G cells by their NCI, `gNodeB ID × 16384 + Cell ID`, the identities the CDRs report. A `Cell ID` that already is the NCI of the `gNodeB ID` of its row is used as it is. The `Local Cell ID` is used only for rows without a `Cell ID`: Huawei and Nokia cells carry an internal Local Cell ID that is not part of the identity they broadcast.
 - **3UK** files contain `Cid__ECI` (the spelling `CId___ECI` is also accepted) and `Vendor`. The ECI value becomes the mapping `GCID` directly.
 - Source headers are resolved without regard to case or spaces, underscores and hyphens. Rows without a valid cell identifier or vendor do not create a mapping entry.
 

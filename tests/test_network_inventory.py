@@ -9,8 +9,9 @@ import pandas as pd
 import src.DriveTestAnalyzer as core
 from conftest import wait_for_background_dataset_work
 from src.modules.cdr_reporting import assign_cdr_vendors, build_inventory_vendor_lookup, inventory_vendor_columns, operator_key
+from src.modules.cell_identity import nr_nci, nr_nci_series
 from src.modules.inventory_insights import snapshot_choice
-from src.modules.network_inventory import infer_snapshot_date, list_inventory_snapshots
+from src.modules.network_inventory import infer_snapshot_date, list_inventory_snapshots, normalise_inventory
 from src.modules.repository import local_now_iso
 from src.modules.serving_cells import vendor_mapping_signature
 
@@ -38,6 +39,24 @@ def test_network_inventory_cells_take_the_identity_they_broadcast():
     assert build_inventory_vendor_lookup(inventory) == {
         str(1491 * 256 + 110): 'Huawei', str(13008 * 256 + 1): 'Ericsson', str(16628 * 16384 + 515): 'Nokia',
     }
+
+
+def test_nr_cells_whose_cell_id_is_already_their_nci_keep_it():
+    # A Cell ID above the cell part is the NCI of its gNodeB as it is; one of another gNodeB gives no identity.
+    nci = 26774 * 16384 + 527
+    gnodeb, cell, local = [26774, 26774, 9346, 16628], [nci, nci, 416973229, 515], [nci, 7, 416973229, 10]
+    frame = pd.DataFrame({'gNodeB ID': gnodeb, 'Cell ID': cell, 'Local Cell ID': local})
+    series = nr_nci_series(frame['gNodeB ID'], frame['Cell ID'], frame['Local Cell ID'])
+    # The second row has a usable Local Cell ID, which comes first as ever.
+    expected = [nci, 26774 * 16384 + 7, None, 16628 * 16384 + 515]
+    assert [None if pd.isna(value) else int(value) for value in series] == expected
+    assert [nr_nci(*row) for row in zip(gnodeb, cell, local, strict=True)] == expected
+    assert nr_nci(26774, nci, None, 24) is None
+    cells = normalise_inventory(frame.assign(**{'OP/ Vendor': 'NSN', 'Network': 'Vodafone', 'source_row': range(1, 5)}), 'multivendor_mapping')
+    assert cells['cell_identity'].tolist() == [str(nci), str(26774 * 16384 + 7), str(16628 * 16384 + 515)]
+    # The NCI column of a Cell Configuration KMZ doubles those identities: the CDRs report the Cell ID.
+    kmz = pd.DataFrame({'gNodeB ID': [24096], 'Cell ID': [394789379], 'NCI': [789578243], 'OP/ Vendor': ['NSN'], 'Network': ['Telefonica'], 'source_row': [1]})
+    assert normalise_inventory(kmz, 'network_inventory')['cell_identity'].tolist() == ['394789379']
 
 
 def test_network_inventories_map_the_vendor_of_their_operator():

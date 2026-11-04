@@ -161,7 +161,7 @@ The VFUK Network Inventory materialises `GCID` as:
 - 4G: the ECI, `eNodeB ID × 256 + Cell ID`
 - 5G: the NCI, `gNodeB ID × 16384 + Cell ID` (22-bit gNodeB IDs; a `gNodeB ID Length` column changes the multiplier to 2^(36 − length))
 
-The `Cell ID` is the identity the cell broadcasts and the CDRs report. Huawei and Nokia cells also carry a different internal `Local Cell ID`, used only when a row has no `Cell ID`.
+The `Cell ID` is the identity the cell broadcasts and the CDRs report. Huawei and Nokia cells also carry a different internal `Local Cell ID`, used only when a row has no `Cell ID`. A `Cell ID` too large for the cell part whose gNodeB part is the `gNodeB ID` of its row, as in some Nokia rows, already is the NCI and is used as it is; it comes before an `NCI` column.
 
 ### Three mapping
 

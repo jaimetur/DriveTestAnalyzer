@@ -37,7 +37,7 @@ INVENTORY_SNAPSHOTS_TABLE = 'inventory_snapshots'
 MAPPING_CELLS_TABLE = 'multivendor_mapping_cells'
 MAPPING_SNAPSHOTS_TABLE = 'multivendor_mapping_snapshots'
 # Raise when the normalisation changes, so every snapshot is built again from its rows.
-INVENTORY_CELLS_VERSION = 3
+INVENTORY_CELLS_VERSION = 4
 # The owner network of the cells of an inventory without a Network column.
 DEFAULT_NETWORK_BY_KIND = {'mapping_vodafone': 'Vodafone', 'mapping_three': '3'}
 NETWORK_FAMILY_LABELS = {'vodafone': 'Vodafone', 'three': '3', 'o2': 'O2', 'ee': 'EE'}
