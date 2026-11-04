@@ -224,3 +224,35 @@ def test_mapping_the_vendor_of_a_cdr_in_its_copy_rewrites_only_its_columns(clien
     # An Auto-calculated Field that reads the Vendor needs the whole CDR.
     monkeypatch.setattr(core, 'load_repository_calculated_dimensions', lambda _repository: ('Vendor_Group from Vendor',))
     assert not core.map_vendor_in_copy(core.serialize_dataset_row(row), None, None, [newer], core.repository)
+
+
+def test_the_region_mapping_a_cdr_already_has_keeps_the_mapping_vendor_only(client, tmp_path, monkeypatch):
+    login(client)
+    inventory = _inventory(tmp_path, '260917_Cell_Config.zip', _cells('Ericsson'), '2026-09-17')
+    regions = _inventory(tmp_path, 'Regions.zip', [{'Region': 'North'}], '2026-09-17', kind='regions')
+    other = _inventory(tmp_path, 'Regions_2.zip', [{'Region': 'South'}], '2026-09-17', kind='regions')
+    source = tmp_path / 'UK Data CDR.xlsx'
+    source.write_text('cdr', encoding='utf-8')
+    cdr_id, _created = core.repository.add_dataset(source.name, str(source), 'super')
+    rows = _cdr('2026-09-10')
+    core.repository.replace_dataset_rows(cdr_id, rows)
+    core.repository.update_dataset_profile(
+        cdr_id, status='ready', progress=100, dataset_kind='data', nr_mode='NSA', cdr_stage='final', row_count=len(rows), column_count=len(rows.columns),
+        processed_at=local_now_iso(), normalization_version=core.DATASET_NORMALIZATION_VERSION, vendor_mapping_applied=1, region_mapping_applied=1, region_mapping_dataset_id=regions,
+    )
+    calls = []
+    monkeypatch.setattr(core, 'enqueue_vendor_mapping', lambda *_args, **_kwargs: calls.append('vendor'))
+    monkeypatch.setattr(core, 'enqueue_dataset_processing', lambda *_args, **_kwargs: calls.append('whole'))
+
+    def mapped_with(region):
+        calls.clear()
+        assert client.post('/workspace/map-mappings', data={
+            'cdr_dataset_ids': str(cdr_id), 'vendor_source': 'inventory', 'network_inventory_dataset_ids': str(inventory), 'region_mapping_dataset_id': str(region),
+        }, follow_redirects=False).status_code == 303
+        return calls[0]
+
+    assert mapped_with(regions) == 'vendor'
+    assert mapped_with(other) == 'whole'
+    # Polygons processed after the CDR was mapped are applied again.
+    core.repository.update_dataset_profile(regions, processed_at=core.datetime(2099, 1, 1).astimezone().isoformat())
+    assert mapped_with(regions) == 'whole'

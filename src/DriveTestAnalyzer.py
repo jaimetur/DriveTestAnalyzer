@@ -22564,7 +22564,10 @@ def map_dataset_mappings(
             previous_vodafone, previous_three, previous_region = _previous_mapping_ids(dataset)
             previous_cluster = dataset.get('cluster_mapping_dataset_id') if dataset.get('cluster_mapping_applied') else None
             current_build = int(dataset.get('normalization_version') or 1) >= DATASET_NORMALIZATION_VERSION
-            if (vendor_selected and not region_mapping_dataset_id and not cluster_mapping_dataset_id
+            # The dialog proposes the Region and Cluster mappings: the ones the CDR already has change nothing.
+            region_changes = region_mapping_dataset_id and not _polygon_mapping_current(dataset, region_mapping_dataset_id, previous_region)
+            cluster_changes = cluster_mapping_dataset_id and not _polygon_mapping_current(dataset, cluster_mapping_dataset_id, previous_cluster)
+            if (vendor_selected and not region_changes and not cluster_changes
                     and dataset.get('vendor_mapping_applied') and current_build):
                 # Vendor only: recalculate Vendor on the stored rows, much faster
                 # than rebuilding the CDR, and keep its Region mapping.
@@ -22586,6 +22589,17 @@ def map_dataset_mappings(
             )
     repository.add_log(user.username, 'queue_dataset_mappings', json.dumps({'dataset_ids': selected_ids, 'vodafone_mapping_dataset_id': vodafone_mapping_dataset_id, 'three_mapping_dataset_id': three_mapping_dataset_id, 'region_mapping_dataset_id': region_mapping_dataset_id, 'cluster_mapping_dataset_id': cluster_mapping_dataset_id, 'vendor_polygon_dataset_ids': polygon_ids, 'network_inventory_dataset_ids': inventory_ids}))
     return RedirectResponse(f'/workspace?dataset_id={selected_ids[0]}', status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _polygon_mapping_current(dataset: dict[str, Any], mapping_id: int, previous_id: Any) -> bool:
+    """Whether a Region or Cluster mapping chosen for a CDR is the one it has, applied after its polygons were processed."""
+    polygons = repository.get_dataset(mapping_id)
+    if not polygons or not previous_id or int(previous_id) != int(mapping_id):
+        return False
+    try:
+        return datetime.fromisoformat(str(polygons['processed_at'])) <= datetime.fromisoformat(str(dataset.get('processed_at')))
+    except (TypeError, ValueError):
+        return False
 
 
 def _previous_vendor_source(dataset: dict[str, Any], key: str) -> list[int]:
