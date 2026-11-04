@@ -4965,7 +4965,11 @@ def test_workspace_management_isolates_dataset_databases_and_remembers_last_open
     assert 'Data Ingestion' not in closed_workspace.text
     assert 'module-tab-disabled' in closed_workspace.text
     assert client.get('/datasets-analysis', follow_redirects=False).status_code == 303
+    # The login page shows them to whoever is not signed in.
+    session_cookies = dict(client.cookies)
+    client.cookies.clear()
     login_page = client.get('/login')
+    client.cookies.update(session_cookies)
     assert login_page.text.index('>Campaign benchmark Q3</option>') < login_page.text.index('>Default</option>')
     assert '<option value="default" selected>Default</option>' in login_page.text
 

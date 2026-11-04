@@ -14767,7 +14767,10 @@ def safe_next_url(value: object) -> str:
 
 
 @app.get('/login', response_class=HTMLResponse)
-def login_page(request: Request) -> HTMLResponse:
+def login_page(request: Request) -> Response:
+    # Already signed in (a bookmark, or a tab left on this page): the application opens without signing in again.
+    if session_user(request.cookies.get(SESSION_COOKIE)) and request.query_params.get('reset') != '1':
+        return RedirectResponse(safe_next_url(request.query_params.get('next')) or '/documents/view/help', status_code=status.HTTP_303_SEE_OTHER)
     workspaces = workspace_registry.list()
     selected_workspace_id = active_workspace.id if active_workspace else workspace_registry.most_recent().id
     return render_template(

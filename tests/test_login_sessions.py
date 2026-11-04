@@ -91,3 +91,21 @@ def test_a_new_password_ends_the_other_sessions(client, how):
         assert client.post(f'/admin/users/{target}/reset-password', follow_redirects=False).status_code == 303
         assert stored(current) is None
     assert stored(other) is None and core.session_user(other) is None
+
+
+def test_the_login_page_opens_the_application_when_already_signed_in(client):
+    assert client.get('/login', follow_redirects=False).status_code == 200
+    login(client)
+    opened = client.get('/login', follow_redirects=False)
+    assert opened.status_code == 303 and opened.headers['location'] == '/documents/view/help'
+    assert client.get('/login?next=/tickets', follow_redirects=False).headers['location'] == '/tickets'
+    # It also opens after a restart, without a new session.
+    restart()
+    with core.repository.global_connection() as connection:
+        before = connection.execute('SELECT COUNT(*) FROM user_login_sessions').fetchone()[0]
+    assert client.get('/login', follow_redirects=False).status_code == 303
+    with core.repository.global_connection() as connection:
+        assert connection.execute('SELECT COUNT(*) FROM user_login_sessions').fetchone()[0] == before
+    client.get('/logout', follow_redirects=False)
+    assert client.get('/login', follow_redirects=False).status_code == 200
+
