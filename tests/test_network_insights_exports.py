@@ -57,11 +57,20 @@ def test_network_ppt_preserves_design_template_and_fits_group_cells(tmp_path):
             assert all(run.font.size.pt >= 8 for cell in row.cells for run in cell.text_frame.paragraphs[0].runs)
         actual.extend([[cell.text for cell in row.cells] for row in list(table.rows)[1:]])
     assert actual == values
-    # The same XML content; python-pptx may write a part again with another XML declaration.
-    canonical = lambda xml: etree.tostring(etree.fromstring(xml), method='c14n')
+    # The same XML content; python-pptx may write a part again with another XML declaration. The SVG logos of the
+    # template only gain the PNG the iPhone and Mac previews draw (report_structure.add_svg_fallbacks).
+    from pptx.oxml.ns import qn
+    from src.modules.reporting.report_structure import SVG_BLIP
+
+    def canonical(xml, *, fallbacks=0):
+        root = etree.fromstring(xml)
+        blips = [blip for blip in root.iter(qn('a:blip')) if next(blip.iter(SVG_BLIP), None) is not None]
+        assert sum(blip.attrib.pop(qn('r:embed'), None) is not None for blip in blips) == fallbacks
+        return etree.tostring(root, method='c14n')
     with zipfile.ZipFile(output) as generated, zipfile.ZipFile(TEMPLATE) as original:
-        for part in ('ppt/theme/theme1.xml', 'ppt/slideMasters/slideMaster1.xml'):
-            assert canonical(generated.read(part)) == canonical(original.read(part))
+        assert canonical(generated.read('ppt/theme/theme1.xml')) == canonical(original.read('ppt/theme/theme1.xml'))
+        master = 'ppt/slideMasters/slideMaster1.xml'
+        assert canonical(generated.read(master), fallbacks=1) == canonical(original.read(master))
 
 
 def test_network_word_is_composed_from_the_powerpoint_as_the_bundle_report_template(tmp_path, monkeypatch):
