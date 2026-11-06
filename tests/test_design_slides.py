@@ -2,6 +2,7 @@
 import copy
 import csv
 import json
+import time
 from dataclasses import replace
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -12,6 +13,7 @@ import src.DriveTestAnalyzer as core
 from src.modules.ppt_designer import design_slides as dd
 from src.modules.cdr_analysis.cdr_reporting import catalogue_csv, parse_catalog_csv
 from src.modules.reporting.report_layouts import csv_with_slide_ids
+from src.modules.scoring.scoring_history import history_job
 
 TEMPLATES = Path(__file__).parents[1] / 'assets' / 'ppt-templates'
 
@@ -203,6 +205,15 @@ def setup(client, *, created_by='super'):
     return definition
 
 
+def wait_for_scoring_history(timeout: float = 60.0) -> None:
+    """Wait for the Scoring History to index the CDRs just processed: it reads their rows in the background (queued when
+    their processing ends), so a test that counts the reads of the workspace would count its read too."""
+    deadline = time.monotonic() + timeout
+    while (job := history_job(core.repository.db_path)) and job['status'] in {'queued', 'processing'}:
+        assert time.monotonic() < deadline, f'The Scoring History is still {job["status"]} after {timeout:.0f} s'
+        time.sleep(0.02)
+
+
 def logged(action):
     return [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == action]
 
@@ -391,6 +402,8 @@ def test_the_chart_builder_reads_fields_and_values_and_adds_a_chart_to_a_design(
 
 def test_the_chart_builder_reads_only_the_columns_of_its_chart_once_and_leaves_out_of_scope_operators_out(client, monkeypatch):
     setup(client)
+    # Only the reads of the charts are counted: the Scoring History reads the CDR just uploaded in the background.
+    wait_for_scoring_history()
     # The columns and models another test of this worker left in memory are not this test's.
     core._clear_chart_preview_caches()
     reads = []
