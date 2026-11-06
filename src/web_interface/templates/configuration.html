@@ -102,7 +102,7 @@
         {% if email_delivery.webhook_configured %}<label class="configuration-toggle" data-email-webhook><input type="checkbox" name="clear_webhook_url" value="true"><span><strong>Remove the saved flow address</strong></span></label>{% endif %}
         <label>Download Links Valid For (days)
           <input type="number" name="link_days" value="{{ email_delivery.link_days }}" min="1" max="{{ email_max_link_days }}" step="1" required>
-          <span class="table-help">The link of each file of a report email downloads it without signing in until then. The links of the emails (tickets, sign-in, password resets, report downloads) use the <a href="#application-runtime">Public address of the server</a>{% if not configuration.public_address %}, not set yet: report emails need it for their links{% endif %}.</span>
+          <span class="table-help">The link of each file of a report email downloads it from this server, without signing in, until then (while its run is kept in the Run History). The links of the emails (tickets, sign-in, password resets, report downloads) use the <a href="#application-runtime">Public address of the server</a>{% if not configuration.public_address %}, not set yet: report emails need it for their links{% endif %}.</span>
         </label>
       </section>
       <section class="configuration-card" data-configuration-card data-email-smtp>
@@ -148,18 +148,6 @@
         <label class="configuration-toggle">
           <input type="checkbox" name="notify_tickets" value="true" {% if email_delivery.notify_tickets %}checked{% endif %}>
           <span><strong>Ticket Center</strong><small>The reporter of a ticket gets its confirmation and every change others make to it, or to a ticket that mentions it as #&lt;number&gt;.</small></span>
-        </label>
-        <label class="configuration-toggle" data-email-webhook>
-          <input type="checkbox" name="onedrive_copy" value="true" {% if email_delivery.onedrive_copy %}checked{% endif %}>
-          <span><strong>Copy the report files to OneDrive</strong><small>The flow copies the files of each report email to a folder of the OneDrive Folder below and the email links that folder. Needs the OneDrive steps of the flow.</small></span>
-        </label>
-        <label data-email-webhook>OneDrive Folder
-          <input type="text" name="onedrive_folder" value="{{ email_delivery.onedrive_folder }}" placeholder="{{ email_default_onedrive_folder }}" maxlength="300" spellcheck="false">
-          <span class="table-help">Where each report email gets a folder of its own: a path inside your OneDrive, or inside the SharePoint library of a team folder the flow moves the files to. Empty for {{ email_default_onedrive_folder }}.</span>
-        </label>
-        <label data-email-webhook>Delete OneDrive Copies After (days)
-          <input type="number" name="onedrive_keep_days" value="{{ email_delivery.onedrive_keep_days }}" min="0" max="{{ email_max_onedrive_keep_days }}" step="1" required>
-          <span class="table-help">Once a copy is this old, the tool asks the flow to delete its folder (it needs the cleanup steps of the flow). 0 keeps the copies.</span>
         </label>
       </section>
       <div class="form-actions configuration-field-wide">

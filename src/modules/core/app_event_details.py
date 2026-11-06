@@ -294,10 +294,6 @@ _DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'password_reset_requested': lambda details: f"Link to choose a new password emailed to {details.get('email')}.",
     'password_reset': lambda details: 'Password changed with the link of a password reset email.',
     'download_reporting_file_link': lambda details: f"{details.get('file')} of a Reporting Job downloaded from the link of its email.",
-    'onedrive_copies_deleted': lambda details: (
-        f"Power Automate flow asked to delete {len(details.get('folders') or [])} OneDrive copies of Reporting files older than "
-        f"{details.get('keep_days')} days: {', '.join(str(item) for item in details.get('folders') or [])}."),
-    'onedrive_cleanup_failed': lambda details: f"The OneDrive copies of Reporting files could not be deleted: {details.get('error')}",
     'operator_mapping_assign': _mapping_assign('Operator'),
     'operator_name_comments': _name_comments,
     'vendor_mapping_assign': _mapping_assign('Vendor'),
@@ -350,7 +346,7 @@ def describe_app_event(action: str, details: Any) -> str:
 SERVER_EVENT_KINDS = (('scheduler', 'Scheduler'), ('background', 'Background job'), ('idle', 'Idle task'), ('startup', 'Startup'))
 PUBLIC_EVENT_PAGES = (('sign-in', 'Sign-in'), ('access-request', 'Access request'), ('ticket-center', 'Ticket Center'), ('page', 'Page'))
 _SERVER_ACTIONS = {
-    'scheduler': {'reporting_scheduler_error', 'onedrive_copies_deleted', 'onedrive_cleanup_failed'},
+    'scheduler': {'reporting_scheduler_error'},
     'idle': {'precompute_design_charts', 'prewarm_design_cache', 'prewarm_design_cache_failed', 'nq_calls_reindexed',
              'map_area_fill_failed'},
     'startup': {'application_started', 'recover_interrupted_background_jobs', 'recover_interrupted_saved_filters',

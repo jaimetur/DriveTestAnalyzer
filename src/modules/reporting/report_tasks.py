@@ -39,8 +39,7 @@ from src.modules.cdr.column_names import compact_campaign_value
 from src.modules.cdr.nr_mode import DEFAULT_NR_MODE, NSA_VS_SA, normalize_scoring_nr_mode, nr_mode_label
 from src.modules.scoring.scoring_reports import NR_CHARTS, NR_CHARTS_LABELS, NR_LAYOUT_LABELS, NR_LAYOUTS
 from src.modules.core.output_layout import REPORTING_JOBS_FOLDER, module_output_dir
-from src.modules.core.email_delivery import (WEBHOOK_MAX_BYTES, delete_old_onedrive_copies, onedrive_copy, record_onedrive_copy,
-                                             webhook_payload)
+from src.modules.core.email_delivery import DEFAULT_LINK_DAYS, WEBHOOK_MAX_BYTES, webhook_payload
 from src.modules.scoring.scoring_themes import DEFAULT_THEME, normalize_theme, themes_payload
 
 REPORT_TASKS_TABLE = 'report_tasks'
@@ -69,8 +68,6 @@ RUN_ACTIVE_STATUSES = ('queued', 'running', 'stopping')
 RUN_RERUN_STATUSES = ('failed', 'stopped')
 DESIGN_JOB_TIMEOUT_SECONDS = 3 * 60 * 60
 SCHEDULER_INTERVAL_SECONDS = 30
-# How often the scheduler asks the Power Automate flow to delete the OneDrive copies older than the days of Email Delivery.
-ONEDRIVE_CLEANUP_INTERVAL_SECONDS = 3600
 INTERRUPTED_RUN_MESSAGE = 'The run was interrupted by an application restart.'
 # A run interrupted by application restarts goes on from the step it was on, up to this many times.
 MAX_RUN_RESUMES = 3
@@ -1330,10 +1327,6 @@ def email_subject(task_name: str, started: datetime) -> str:
     return f'{task_name} · {started.strftime("%Y-%m-%d %H:%M")}'
 
 
-# The placeholder of the email that the Power Automate flow replaces with the link of the OneDrive folder it copies the
-# files of the run to.
-ONEDRIVE_LINK_PLACEHOLDER = '{{onedrive_link}}'
-
 
 def _size_text(size: Any) -> str:
     size = int(size or 0)
@@ -1341,10 +1334,10 @@ def _size_text(size: Any) -> str:
 
 
 def email_bodies(task_name: str, started: datetime, artifacts: list[dict[str, Any]], app_name: str, *,
-                 links: dict[str, str] | None = None, attached: bool = True, link_days: int = 0, onedrive_folder: str = '',
-                 onedrive_days: int = 0, details: bool = True) -> tuple[str, str]:
+                 links: dict[str, str] | None = None, attached: bool = True, link_days: int = 0,
+                 details: bool = True) -> tuple[str, str]:
     """Plain-text and HTML bodies listing each artifact, its content and its filters: attached, or with its download link
-    (valid ``link_days``), and the OneDrive folder the flow copies them to (deleted after ``onedrive_days``, if any)."""
+    (valid ``link_days``)."""
     links = links or {}
     ready = [item for item in artifacts if item.get('status') == 'ready']
     failed = [item for item in artifacts if item.get('status') != 'ready']
@@ -1357,11 +1350,6 @@ def email_bodies(task_name: str, started: datetime, artifacts: list[dict[str, An
                 f'Download each file from its link, valid for {link_days} days.')
         text += [note, '']
         parts.append(f'<p>{html.escape(note)}</p>')
-    if onedrive_folder:
-        note = f'the files appear there once copied{f" and are deleted after {onedrive_days} days" if onedrive_days else ""}'
-        text += [f'OneDrive copy: {onedrive_folder} ({note}).', '']
-        parts.append(f'<p>OneDrive copy: <a href="{ONEDRIVE_LINK_PLACEHOLDER}">{html.escape(onedrive_folder)}</a> '
-                     f'({html.escape(note)}).</p>')
     text.append(f'{heading}:')
     parts.append(f'<p><strong>{heading}</strong></p><ol>')
     for item in ready:
@@ -1507,14 +1495,14 @@ def install_report_task_routes(core: Any) -> None:
         base = str(core.runtime_configuration().get('public_address') or '').rstrip('/')
         if not base:
             return {}
-        seconds = int(settings.get('link_days') or 7) * 86400
+        seconds = int(settings.get('link_days') or DEFAULT_LINK_DAYS) * 86400
         return {item['file_name']: f"{base}/reporting/files/" + core.sign_link(core.repository, {
             'k': 'report-file', 'p': f"{folder.name}/{item['file_name']}", 'o': owner}, seconds=seconds) for item in ready}
 
     def email_run(task: dict[str, Any], started: datetime, folder: Path, artifacts: list[dict[str, Any]]) -> str:
         """Email the artifacts of a run; returns its status. Through SMTP they are attached while they fit the size limit;
-        otherwise, and always through a Power Automate flow, the email gives a download link of each one, and the flow can
-        copy them to OneDrive."""
+        otherwise, and always through a Power Automate flow, the email gives a download link of each one, which works while
+        the run is kept and the link is valid."""
         settings = core.email_delivery_settings(core.repository, include_password=True)
         ready = [item for item in artifacts if item['status'] == 'ready']
         links = file_links(folder, ready, task['created_by'], settings)
@@ -1524,27 +1512,18 @@ def install_report_task_routes(core: Any) -> None:
         if webhook and not links:
             raise RuntimeError('Set the Public address of the server in Application Runtime: a Power Automate flow sends links '
                                'to the files, not attachments.')
-        onedrive = None
-        if webhook and settings.get('onedrive_copy'):
-            onedrive = onedrive_copy(settings, folder.name, [
-                {'name': item['file_name'], 'url': links[item['file_name']], 'size': int(item.get('size') or 0)} for item in ready])
         subject = email_subject(task['name'], started)
         for details in (True, False):
             text, body = email_bodies(task['name'], started, artifacts, core.__app_name__, links=links, attached=attach,
-                                      link_days=settings['link_days'], onedrive_folder=onedrive['folder'] if onedrive else '',
-                                      onedrive_days=settings['onedrive_keep_days'], details=details)
+                                      link_days=settings['link_days'], details=details)
             # (A flow request takes about 28 KB: without the filters of each file when they do not fit.)
             if not webhook or not details or len(json.dumps(webhook_payload(
-                    settings, task['recipients'], subject, body, kind='report', onedrive=onedrive), ensure_ascii=False).encode()) <= WEBHOOK_MAX_BYTES:
+                    settings, task['recipients'], subject, body, kind='report'), ensure_ascii=False).encode()) <= WEBHOOK_MAX_BYTES:
                 break
         core.send_email(settings, task['recipients'], subject, text, body,
                         [(item['file_name'], folder / item['file_name']) for item in ready] if attach else [],
-                        kind='report', onedrive=onedrive)
-        if onedrive:
-            # (Deleted by the flow, at the tool's request, once older than the days of Email Delivery.)
-            record_onedrive_copy(core.repository, onedrive['folder'])
-        how = 'attached' if attach else 'as links'
-        return f"Sent to {', '.join(task['recipients'])} ({how}{', copied to OneDrive' if onedrive else ''})"
+                        kind='report')
+        return f"Sent to {', '.join(task['recipients'])} ({'attached' if attach else 'as links'})"
 
     # -- artifact generators ------------------------------------------------
     def dataset_names(task_repository) -> dict[int, str]:
@@ -2138,36 +2117,16 @@ def install_report_task_routes(core: Any) -> None:
                         for task in claim_due_tasks(task_repository, now or now_local())]
         return started
 
-    def delete_old_onedrive_copies_now(now: datetime | None = None) -> list[str]:
-        """Ask the Power Automate flow to delete the OneDrive copies of the Reporting files older than the days of Email
-        Delivery; App Events records the folders, or why the flow could not be asked."""
-        settings = core.email_delivery_settings(core.repository, include_password=True)
-        deleted, error = delete_old_onedrive_copies(core.repository, settings, now=now)
-        if deleted:
-            core.repository.try_add_log('system', 'onedrive_copies_deleted', json.dumps({
-                'folders': deleted, 'keep_days': settings['onedrive_keep_days']}))
-        if error:
-            core.repository.try_add_log('system', 'onedrive_cleanup_failed', json.dumps({'error': error}))
-        return deleted
-
     def scheduler_loop(stop_event: Event) -> None:
-        onedrive_checked: float | None = None
         while not stop_event.wait(SCHEDULER_INTERVAL_SECONDS):
             try:
                 run_due_tasks()
             except Exception as exc:  # The scheduler keeps running after a failed check.
                 core.repository.try_add_log('system', 'reporting_scheduler_error', json.dumps({'error': str(exc)}))
-            if onedrive_checked is None or time.monotonic() - onedrive_checked >= ONEDRIVE_CLEANUP_INTERVAL_SECONDS:
-                onedrive_checked = time.monotonic()
-                try:
-                    delete_old_onedrive_copies_now()
-                except Exception as exc:
-                    core.repository.try_add_log('system', 'onedrive_cleanup_failed', json.dumps({'error': str(exc)}))
 
     core.register_report_artifact_provider = register_report_artifact_provider
     core.report_task_scheduler_loop = scheduler_loop
     core.run_due_report_tasks = run_due_tasks
-    core.delete_old_onedrive_copies = delete_old_onedrive_copies_now
     core.execute_report_run = execute_run
 
     # -- options ------------------------------------------------------------
@@ -2570,8 +2529,7 @@ def install_report_task_routes(core: Any) -> None:
 
     @app.get('/reporting/files/{token}')
     def reporting_jobs_file_link(token: str):
-        """A file of a Reporting Job from the link of its email: no sign-in, while the link is valid (also how the Power
-        Automate flow copies it to OneDrive)."""
+        """A file of a Reporting Job from the link of its email: no sign-in, while the link is valid and the run is kept."""
         payload = core.read_link(core.repository, token, 'report-file')
         if payload is None:
             return HTMLResponse('<p style="font-family:Arial,sans-serif">This download link has expired or is not valid: '

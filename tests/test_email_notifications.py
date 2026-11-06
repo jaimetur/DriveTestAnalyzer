@@ -1,6 +1,6 @@
 """The emails of the tool through Email Delivery (an SMTP server or a Power Automate flow): access requests and the
 activation of their users, password resets from the login page, the email address of each user, the updates of Ticket
-Center for the reporters of the tickets, and the download links (and OneDrive copy) of the Reporting emails."""
+Center for the reporters of the tickets, and the download links of the Reporting emails."""
 import json
 import re
 from pathlib import Path
@@ -60,6 +60,8 @@ def logged(action):
 
 
 def test_email_delivery_sends_through_a_power_automate_flow(client, flow):
+    # The download links of the report emails work 60 days unless Email Delivery says otherwise.
+    assert core.email_delivery_settings(core.repository)['link_days'] == 60
     login(client)
     saved = client.post('/application-config/email-delivery', data={
         'transport': 'webhook', 'webhook_url': FLOW, 'link_days': '5',
@@ -69,7 +71,7 @@ def test_email_delivery_sends_through_a_power_automate_flow(client, flow):
     settings = core.email_delivery_settings(core.repository, include_password=True)
     assert (settings['transport'], settings['configured'], settings['webhook_url'], settings['link_days']) == ('webhook', True, FLOW, 5)
     # Unchecked switches are off; the flow address is a secret the page never shows, kept when left empty.
-    assert (settings['notify_tickets'], settings['notify_access_requests'], settings['onedrive_copy']) == (True, False, False)
+    assert (settings['notify_tickets'], settings['notify_access_requests']) == (True, False)
     page = client.get('/application-config').text
     assert 'Power Automate flow' in page and 'secret-signature' not in page
     client.post('/application-config/email-delivery', data={'transport': 'webhook', 'webhook_url': '', 'port': '587',
@@ -247,7 +249,7 @@ def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_t
     assert len(flow) == count
 
 
-def test_reporting_emails_give_download_links_and_the_flow_copies_the_files_to_onedrive(client, flow):
+def test_reporting_emails_give_download_links_of_the_files_kept_on_the_server(client, flow):
     from tests.test_reporting_jobs import wait_for_run
     from src.modules.reporting.report_tasks import register_report_artifact_provider
 
@@ -259,76 +261,25 @@ def test_reporting_emails_give_download_links_and_the_flow_copies_the_files_to_o
 
     register_report_artifact_provider('fake', 'Fake module', 'datasets-analysis', generate)
     try:
-        use_flow(onedrive_copy=True)
+        use_flow()
         login(client)
         task = client.post('/api/reporting/tasks', json={
             'name': 'Weekly check', 'definition': {'modules': {'fake': {'enabled': True}}}, 'send_email': True,
             'recipients': 'a@example.com; b@example.com', 'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}, 'enabled': False,
         }).json()['task']
         run = wait_for_run(client, client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id'])
-        assert run['status'] == 'sent' and 'as links, copied to OneDrive' in run['email_status'], run
+        assert run['status'] == 'sent' and 'as links' in run['email_status'], run
         message = flow[-1]
         assert message['kind'] == 'report' and message['to'] == 'a@example.com;b@example.com'
-        files = message['onedrive']['files']
-        assert message['onedrive']['folder'].startswith('DriveTest Analyzer/Reporting/') and [item['name'] for item in files] == [
-            run['artifacts'][0]['file_name']]
-        copy = message['onedrive']
-        assert (copy['parent'], copy['folder'], copy['wait_seconds'], copy['delete']) == (
-            'DriveTest Analyzer/Reporting', f"DriveTest Analyzer/Reporting/{copy['name']}", 120, [])
-        # The tool remembers the copy, to have the flow delete it once older than the days of Email Delivery.
-        assert [item['folder'] for item in email_delivery.onedrive_copies(core.repository)] == [copy['folder']]
-        assert 'deleted after 60 days' in message['html']
-        assert report_tasks.ONEDRIVE_LINK_PLACEHOLDER in message['html'] and 'valid for 7 days' in message['html']
-        assert files[0]['url'] in message['html'] and 'Filter: everything' in message['html']
-        # The link downloads the file without signing in, while it is valid.
+        assert 'onedrive' not in message and 'valid for 7 days' in message['html'] and 'Filter: everything' in message['html']
+        links = re.findall(r'href="(https://tool\.example:8443/reporting/files/[^"]+)"', message['html'])
+        assert len(links) == 1 and run['artifacts'][0]['file_name'] in message['html']
+        # The link downloads the file from the server without signing in, while it is valid.
         client.cookies.clear()
-        path = urlsplit(files[0]['url']).path
+        path = urlsplit(links[0]).path
         downloaded = client.get(path)
         assert downloaded.status_code == 200 and downloaded.content == b'big report'
         assert logged('download_reporting_file_link')[-1]['file'] == run['artifacts'][0]['file_name']
         assert client.get(path[:-3] + 'abc').status_code == 410
     finally:
         report_tasks.ARTIFACT_PROVIDERS.pop('fake', None)
-
-
-def test_the_flow_is_asked_to_delete_the_onedrive_copies_older_than_the_days_of_email_delivery(client, flow, monkeypatch):
-    from datetime import datetime, timedelta, timezone
-
-    login(client)
-    saved = client.post('/application-config/email-delivery', data={
-        'transport': 'webhook', 'webhook_url': FLOW, 'link_days': '7', 'from_address': 'admin@example.com', 'port': '587',
-        'max_attachments_mb': '20', 'onedrive_copy': 'true', 'onedrive_folder': ' /Team Delivery\\DT Reports/ Bundle Reports/ ',
-        'onedrive_keep_days': '60',
-    }, follow_redirects=False)
-    assert 'error' not in saved.headers['location'], saved.headers['location']
-    settings = core.email_delivery_settings(core.repository, include_password=True)
-    assert (settings['onedrive_folder'], settings['onedrive_keep_days']) == ('Team Delivery/DT Reports/Bundle Reports', 60)
-    assert 'Team Delivery/DT Reports/Bundle Reports' in client.get('/application-config').text
-    invalid = client.post('/application-config/email-delivery', data={
-        'transport': 'webhook', 'port': '587', 'max_attachments_mb': '20', 'from_address': 'admin@example.com',
-        'onedrive_copy': 'true', 'onedrive_folder': 'Reports/../Other', 'onedrive_keep_days': '60'}, follow_redirects=False)
-    assert 'error=' in invalid.headers['location']
-    copy = email_delivery.onedrive_copy(settings, 'run 1', [{'name': 'big.pptx', 'url': 'https://x', 'size': 150 * 1024 * 1024}])
-    assert (copy['folder'], copy['wait_seconds']) == ('Team Delivery/DT Reports/Bundle Reports/run 1', 240)
-    now = datetime(2026, 11, 6, 12, tzinfo=timezone.utc)
-    for name, days in (('old', 61), ('older', 90), ('recent', 59)):
-        email_delivery.record_onedrive_copy(core.repository, f'Team Delivery/DT Reports/Bundle Reports/{name}', now - timedelta(days=days))
-    count = len(flow)
-    assert core.delete_old_onedrive_copies(now) == ['Team Delivery/DT Reports/Bundle Reports/older',
-                                                    'Team Delivery/DT Reports/Bundle Reports/old']
-    message = flow[-1]
-    assert len(flow) == count + 1 and message['kind'] == 'onedrive_cleanup' and message['to'] == ''
-    assert message['onedrive']['delete'] == ['Team Delivery/DT Reports/Bundle Reports/older', 'Team Delivery/DT Reports/Bundle Reports/old']
-    assert [item['folder'] for item in email_delivery.onedrive_copies(core.repository)] == ['Team Delivery/DT Reports/Bundle Reports/recent']
-    assert logged('onedrive_copies_deleted')[-1]['keep_days'] == 60
-    # A flow that cannot be reached keeps the copies for the next time, which App Events explains.
-    def unreachable(request, timeout=None):
-        raise email_delivery.urllib.error.URLError('down')
-
-    monkeypatch.setattr(email_delivery.urllib.request, 'urlopen', unreachable)
-    assert core.delete_old_onedrive_copies(now + timedelta(days=10)) == []
-    assert 'could not be reached' in logged('onedrive_cleanup_failed')[-1]['error']
-    assert len(email_delivery.onedrive_copies(core.repository)) == 1
-    # With 0 days (or the OneDrive copy off) the copies are kept.
-    use_flow(onedrive_copy=True, onedrive_keep_days=0)
-    assert core.delete_old_onedrive_copies(now + timedelta(days=400)) == [] and len(email_delivery.onedrive_copies(core.repository)) == 1
