@@ -129,7 +129,7 @@
         {% if email_delivery.password_configured %}<label class="configuration-toggle"><input type="checkbox" name="clear_password" value="true"><span><strong>Remove the saved password</strong></span></label>{% endif %}
         <label>Attachment Size Limit (MB)
           <input type="number" name="max_attachments_mb" value="{{ email_delivery.max_attachments_mb }}" min="1" max="500" step="1" required>
-          <span class="table-help">A report whose files exceed this total is emailed with their download links instead (or fails without the Address of the Tool).</span>
+          <span class="table-help">A report whose files exceed this total is emailed with their download links instead (or fails without the Public address of the server).</span>
         </label>
       </section>
       <section class="configuration-card" data-configuration-card>
@@ -151,7 +151,15 @@
         </label>
         <label class="configuration-toggle" data-email-webhook>
           <input type="checkbox" name="onedrive_copy" value="true" {% if email_delivery.onedrive_copy %}checked{% endif %}>
-          <span><strong>Copy the report files to OneDrive</strong><small>The flow copies the files of each report email to a folder of its OneDrive and the email links that folder. Needs the OneDrive steps of the flow.</small></span>
+          <span><strong>Copy the report files to OneDrive</strong><small>The flow copies the files of each report email to a folder of the OneDrive Folder below and the email links that folder. Needs the OneDrive steps of the flow.</small></span>
+        </label>
+        <label data-email-webhook>OneDrive Folder
+          <input type="text" name="onedrive_folder" value="{{ email_delivery.onedrive_folder }}" placeholder="{{ email_default_onedrive_folder }}" maxlength="300" spellcheck="false">
+          <span class="table-help">Where each report email gets a folder of its own: a path inside your OneDrive, or inside the SharePoint library of a team folder the flow moves the files to. Empty for {{ email_default_onedrive_folder }}.</span>
+        </label>
+        <label data-email-webhook>Delete OneDrive Copies After (days)
+          <input type="number" name="onedrive_keep_days" value="{{ email_delivery.onedrive_keep_days }}" min="0" max="{{ email_max_onedrive_keep_days }}" step="1" required>
+          <span class="table-help">Once a copy is this old, the tool asks the flow to delete its folder (it needs the cleanup steps of the flow). 0 keeps the copies.</span>
         </label>
       </section>
       <div class="form-actions configuration-field-wide">

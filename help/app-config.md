@@ -52,7 +52,9 @@ The **Email Delivery** panel sets how the tool sends its emails: the artifacts o
 | Sender Address, Sender Name | The `From` of every SMTP email. With a flow, the sender is its mailbox: give its address, where the replies go when nobody else should get them |
 | Access requests | Each access request goes to the administrator and the approvers, copied to the requester, and the requester is told when the user is activated |
 | Ticket Center | The reporter of a ticket gets its confirmation and every change others make to it or to a ticket that mentions it |
-| Copy the report files to OneDrive | With a flow, the flow copies the files of each report email to a folder of its OneDrive and the email links that folder (it needs the OneDrive steps below) |
+| Copy the report files to OneDrive | With a flow, the flow copies the files of each report email to a folder of the **OneDrive Folder** and the email links that folder (it needs the OneDrive steps below) |
+| OneDrive Folder | Where each report email gets a folder named after its run: a path inside your OneDrive, or inside the SharePoint library of a team folder (`DriveTest Analyzer/Reporting` by default) |
+| Delete OneDrive Copies After (days) | Once a copy is this old, the tool asks the flow to delete its folder (60 by default; 0 keeps the copies). It needs the cleanup steps below |
 
 The links of the emails (a ticket, the sign-in page, a password reset, the download of a file) use the **Public address of the server** of [Application Runtime](#runtime-settings), or else the address the user who caused the email opened the tool with. Select **Save Email Delivery**, then **Send Test Email** to check the settings. The deployment variables `EMAIL_TRANSPORT` (`smtp` or `webhook`), `EMAIL_WEBHOOK_URL`, `EMAIL_LINK_DAYS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_FROM_NAME` and `SMTP_MAX_ATTACHMENTS_MB` provide defaults; saved values take precedence. App Events records every email sent or not sent (`email_sent`, `email_failed`), with its kind, subject, recipients and error.
 
@@ -62,16 +64,37 @@ The links of the emails (a ticket, the sign-in page, a password reset, the downl
 2. Add the action **Send an email (V2)** (Office 365 Outlook) and fill it with expressions: **To** `triggerBody()?['to']`, **Subject** `triggerBody()?['subject']` and **Body** `triggerBody()?['html']`; under the advanced parameters, **CC** `triggerBody()?['cc']` and **Reply To** `triggerBody()?['reply_to']`.
 3. Save the flow, copy the **HTTP POST URL** of its trigger to **Power Automate Flow Address**, choose **Power Automate flow** in **Send Through**, save and **Send Test Email**.
 
-Each email reaches the flow as JSON: `kind` (`report`, `ticket`, `access_request`, `access_granted`, `password_reset` or `test`), `to` and `cc` (addresses separated by semicolons), `reply_to`, `subject`, `html` and `onedrive` (`folder` and `files`, each with `name`, `url` and `size`). A flow request takes about 28 KB, so a flow carries no attachments: the report emails give a download link of each file, the quoted text of a ticket is shortened and an email that still does not fit is not sent (App Events says why).
+Each email reaches the flow as JSON: `kind` (`report`, `ticket`, `access_request`, `access_granted`, `password_reset` or `test`), `to` and `cc` (addresses separated by semicolons), `reply_to`, `subject`, `html` and `onedrive`: for a report copied to OneDrive, its `folder` (the `parent`, the OneDrive Folder, and the `name` of the run folder), its `files` (each with `name`, `url` and `size`) and `wait_seconds`, the time its copies may take. A request of kind `onedrive_cleanup` carries no email, only the folders to delete in `onedrive.delete`. A flow request takes about 28 KB, so a flow carries no attachments: the report emails give a download link of each file, the quoted text of a ticket is shortened and an email that still does not fit is not sent (App Events says why).
 
-**OneDrive copy (optional).** To have the flow copy the files of the report emails to its OneDrive, add these steps before **Send an email (V2)** and check **Copy the report files to OneDrive**:
+**OneDrive copy (optional).** To have the flow copy the files of the report emails, check **Copy the report files to OneDrive**, set the **OneDrive Folder** and add these steps before **Send an email (V2)**:
 
 1. **Initialize variable** `html`, of type String, with `triggerBody()?['html']`; the Body of **Send an email (V2)** becomes `variables('html')`.
-2. A **Condition** that `length(triggerBody()?['onedrive']?['files'])` is greater than 0. In its **True** branch:
-   1. **Create file** (OneDrive for Business) in the folder `concat('/', triggerBody()?['onedrive']?['folder'])`, named `README.txt`, with any text: it creates the folder of the run.
-   2. **Create share link by path** (OneDrive for Business) for that folder, with the link type **View** and the scope **Organization**.
-   3. **Apply to each** of `triggerBody()?['onedrive']?['files']`: **Upload file from URL** (OneDrive for Business) with the source URL `items('Apply_to_each')?['url']`, the destination file path `concat('/', triggerBody()?['onedrive']?['folder'], '/', items('Apply_to_each')?['name'])` and **Overwrite** on.
-   4. **Set variable** `html` to `replace(variables('html'), '{{onedrive_link}}', body('Create_share_link_by_path')?['WebUrl'])`, the **Web URL** of the share link.
+2. A **Condition** that `length(triggerBody()?['onedrive']?['files'])` is greater than 0. Its **True** branch depends on where the OneDrive Folder is.
+
+*In your OneDrive* (for example `DriveTest Analyzer/Reporting`):
+
+1. **Create file** (OneDrive for Business) in the folder `concat('/', triggerBody()?['onedrive']?['folder'])`, named `README.txt`, with any text: it creates the folder of the run.
+2. **Create share link by path** (OneDrive for Business) for that folder, with the link type **View** and the scope **Organization**.
+3. **Apply to each** of `triggerBody()?['onedrive']?['files']`: **Upload file from URL** (OneDrive for Business) with the source URL `item()?['url']`, the destination file path `concat('/', triggerBody()?['onedrive']?['folder'], '/', item()?['name'])` and **Overwrite** on.
+4. **Set variable** `html` to `replace(variables('html'), '{{onedrive_link}}', body('Create_share_link_by_path')?['WebUrl'])`, the **Web URL** of the share link.
+
+*In a team folder* (a SharePoint library or the files of a Teams channel, even when it shows in your OneDrive as a shortcut added with **Add shortcut to My files**): the OneDrive for Business actions only write to the OneDrive of their account, not through a shortcut, so the flow copies the files to your OneDrive and then moves them with SharePoint actions. The OneDrive Folder is the path inside the library, without the library (for example `Delivery/Reports/Bundle Reports`):
+
+1. **Apply to each** of `triggerBody()?['onedrive']?['files']`: **Upload file from URL** (OneDrive for Business) with the source URL `item()?['url']`, the destination file path `concat('/DriveTest Analyzer Staging/', triggerBody()?['onedrive']?['name'], '/', item()?['name'])` and **Overwrite** on.
+2. **Delay** of `triggerBody()?['onedrive']?['wait_seconds']` seconds: **Upload file from URL** reports success after 20 seconds and keeps copying, and the tool asks for 2 minutes plus 1 minute per 100 MB.
+3. **Get folder metadata using path** (SharePoint) with the address of your OneDrive as site (`https://<company>-my.sharepoint.com/personal/<account>`) and the path `concat('/Documents/DriveTest Analyzer Staging/', triggerBody()?['onedrive']?['name'])`.
+4. **Move folder** (SharePoint) from your OneDrive (the **Id** of the previous step) to the team site, in the destination folder `concat('/<library>/', triggerBody()?['onedrive']?['parent'])`, where `<library>` is the address name of the library, such as `Shared Documents`.
+5. **Get folder metadata using path** (SharePoint) on the team site with the path `concat('/<library>/', triggerBody()?['onedrive']?['folder'])`.
+6. **Create sharing link for a file or folder** (SharePoint) on the team site and library, with the **ItemId** of the previous step, the link type **View** and the scope **Organization**.
+7. **Set variable** `html` to `replace(variables('html'), '{{onedrive_link}}', ...)` with the **Sharing Link** of the previous step.
+
+**Deleting old copies.** Once an hour the tool sends a request of kind `onedrive_cleanup` with the folders of the copies older than **Delete OneDrive Copies After**, and lists them in App Events (`onedrive_copies_deleted`; `onedrive_cleanup_failed` when the flow could not be reached, retried an hour later). Add these steps at the start of the flow, before everything else:
+
+1. A **Condition** that `triggerBody()?['kind']` is equal to `onedrive_cleanup`. In its **True** branch:
+   1. **Apply to each** of `triggerBody()?['onedrive']?['delete']`: **Get folder metadata using path** (SharePoint) on the site of the folders (your OneDrive or the team site) with the path `concat('/<library>/', item())` (`Documents` in your OneDrive), then **Delete item** (SharePoint) on the same site and library with the **ItemId** of that step.
+   2. **Terminate** with the status **Succeeded**, so that no email is sent.
+
+Deleted folders go to the recycle bin of the site, where they can be restored for a while. The tool only deletes the folders it had the flow create, while **Copy the report files to OneDrive** is checked.
 
 Microsoft downloads the files from their links, so the Public address of the server must be reachable from the Internet with a valid certificate. **Upload file from URL** finishes in the background: a large file appears in the folder a while after the email.
 
