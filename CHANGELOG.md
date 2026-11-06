@@ -18,6 +18,7 @@
 
 #### 🐛 Bug fixes:
 - **PPT Designer — Hidden chart values can always be shown again:** a **Hidden (N)** button in the viewer lists every value hidden in the Design with **Show**, **Show all** and **Undo**, even when nothing is left on the chart to click. The right-click menus work on every chart type and list the other hidden values, and Ctrl/Cmd+Z and the Undo of the Designer undo the last hide or show.
+- **Workspace — Data folder copied from another machine:** a data folder copied or moved to another place, machine or user opens as it is: at startup, a workspace whose folder is no longer at the path stored for it but is in the `workspaces/` folder of the data folder is pointed at it, with the paths of its CDRs, scoring history files, PPT jobs and report runs, instead of failing to open with a permission error; `storage-paths.conf` uses `~/DriveTestAnalyzer`, the home folder of whoever runs the application.
 
 #### 📚 Documentation:
 

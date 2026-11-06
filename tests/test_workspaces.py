@@ -75,6 +75,60 @@ def test_registry_keeps_existing_workspace_database_with_external_roots(tmp_path
     assert target_database.exists()
 
 
+def test_registry_rebases_a_data_folder_copied_from_another_user(tmp_path: Path) -> None:
+    old_data_dir = tmp_path / 'other-user' / 'DriveTestAnalyzer' / 'data'
+    data_dir = tmp_path / 'this-user' / 'DriveTestAnalyzer' / 'data'
+    database = data_dir / 'workspaces' / 'UK' / 'UK.db'
+    registry_path = data_dir / 'workspaces' / 'workspace-registry.db'
+    old_root = old_data_dir / 'workspaces' / 'UK'
+    database.parent.mkdir(parents=True)
+    with sqlite3.connect(database) as conn:
+        conn.executescript(
+            '''
+            CREATE TABLE datasets (id INTEGER PRIMARY KEY, stored_path TEXT, note TEXT);
+            CREATE TABLE report_task_runs (id INTEGER PRIMARY KEY, output_dir TEXT);
+            CREATE TABLE dataset_rows_1 (id INTEGER PRIMARY KEY, file_path TEXT);
+            '''
+        )
+        conn.execute('INSERT INTO datasets VALUES (1, ?, ?)', (f'{old_root}/input/cdr.csv', f'{old_root}/input/cdr.csv'))
+        conn.execute('INSERT INTO datasets VALUES (2, ?, NULL)', ('/elsewhere/cdr.csv',))
+        conn.execute('INSERT INTO report_task_runs VALUES (1, ?)', (f'{old_root}/output/reports',))
+        conn.execute('INSERT INTO dataset_rows_1 VALUES (1, ?)', (f'{old_root}/input/row.csv',))
+    with sqlite3.connect(registry_path) as conn:
+        conn.executescript(
+            '''
+            CREATE TABLE workspaces (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                database_path TEXT NOT NULL, input_dir TEXT NOT NULL, output_dir TEXT NOT NULL,
+                export_dir TEXT NOT NULL, slides_templates_dir TEXT NOT NULL,
+                created_at TEXT NOT NULL, last_opened_at TEXT NOT NULL
+            );
+            CREATE TABLE workspace_state (key TEXT PRIMARY KEY, value TEXT);
+            '''
+        )
+        conn.execute(
+            'INSERT INTO workspaces VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            ('workspace-6', 'UK', str(old_root / 'UK.db'), str(old_root / 'input'), str(old_root / 'output'),
+             str(old_root / 'output' / 'reports'), str(old_root / 'report-templates'), '2026-01-01', '2026-01-01'),
+        )
+
+    registry = WorkspaceRegistry(registry_path, data_dir, tmp_path / 'slides-templates')
+    registry.initialize()
+
+    workspace = registry.get('workspace-6')
+    new_root = data_dir / 'workspaces' / 'UK'
+    assert workspace is not None
+    assert (workspace.database_path, workspace.input_dir, workspace.output_dir) == (
+        database, new_root / 'input', new_root / 'output')
+    assert workspace.slides_templates_dir == new_root / 'report-templates'
+    with sqlite3.connect(database) as conn:
+        assert conn.execute('SELECT stored_path, note FROM datasets ORDER BY id').fetchall() == [
+            (f'{new_root}/input/cdr.csv', f'{old_root}/input/cdr.csv'), ('/elsewhere/cdr.csv', None)]
+        assert conn.execute('SELECT output_dir FROM report_task_runs').fetchone() == (f'{new_root}/output/reports',)
+        assert conn.execute('SELECT file_path FROM dataset_rows_1').fetchone() == (f'{old_root}/input/row.csv',)
+    assert not old_data_dir.exists()
+
+
 def test_workspace_accesses_are_consolidated_into_users_table(tmp_path: Path) -> None:
     workspace_db = tmp_path / 'workspace.db'
     application_db = tmp_path / 'application.db'

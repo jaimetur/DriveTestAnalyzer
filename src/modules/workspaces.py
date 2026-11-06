@@ -96,6 +96,7 @@ class WorkspaceRegistry:
                 conn.execute("ALTER TABLE workspaces ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
             for row in conn.execute("SELECT id FROM workspaces WHERE uid = ''").fetchall():
                 conn.execute('UPDATE workspaces SET uid = ? WHERE id = ?', (uuid4().hex, row['id']))
+        self._rebase_moved_data_directory()
         self._migrate_default_workspace_name()
         self._migrate_workspace_directories()
         self._migrate_workspace_exports()
@@ -245,6 +246,54 @@ class WorkspaceRegistry:
             return new_root / path.relative_to(old_root)
         except ValueError:
             return path
+
+    def _rebase_moved_data_directory(self) -> None:
+        """Point the workspaces at this data folder when it was copied or moved from another one.
+
+        The registry and the workspace databases keep absolute paths. A data folder copied from another
+        machine or user (``/Users/<other>/DriveTestAnalyzer/data``) keeps pointing there, so a workspace
+        whose folder is missing at its stored place but present here under ``workspaces/`` is rebased.
+        """
+        managed_root = self.legacy_data_dir / 'workspaces'
+        for workspace in self.list():
+            old_root = workspace.database_path.parent
+            new_root = managed_root / old_root.name
+            if old_root == new_root or old_root.exists() or not (new_root / workspace.database_path.name).exists():
+                continue
+            old_data_dir = old_root.parent.parent
+            relocated = [
+                self._relocate_path(path, old_data_dir, self.legacy_data_dir)
+                for path in (workspace.database_path, workspace.input_dir, workspace.output_dir,
+                             workspace.export_dir, workspace.slides_templates_dir)
+            ]
+            self._rebase_workspace_database_paths(relocated[0], old_data_dir, self.legacy_data_dir)
+            with self._connection() as conn:
+                conn.execute(
+                    '''UPDATE workspaces
+                       SET database_path = ?, input_dir = ?, output_dir = ?, export_dir = ?, slides_templates_dir = ?
+                       WHERE id = ?''',
+                    (*(str(path) for path in relocated), workspace.id),
+                )
+
+    @staticmethod
+    def _rebase_workspace_database_paths(database_path: Path, old_data_dir: Path, new_data_dir: Path) -> None:
+        """Rewrite the stored file and folder paths (``*path`` and ``*_dir`` columns) under the old data folder."""
+        old_prefix, new_prefix = f'{old_data_dir}/', f'{new_data_dir}/'
+        with closing(sqlite3.connect(database_path)) as conn, conn:
+            tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
+            for table in tables:
+                if table.startswith(('dataset_rows_', 'reporting_rows_', 'sqlite_')):
+                    continue
+                columns = [
+                    row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')
+                    if str(row[1]).lower().endswith(('path', '_dir'))
+                ]
+                for column in columns:
+                    conn.execute(
+                        f'UPDATE "{table}" SET "{column}" = ? || substr("{column}", ?) '
+                        f'WHERE typeof("{column}") = \'text\' AND substr("{column}", 1, ?) = ?',
+                        (new_prefix, len(old_prefix) + 1, len(old_prefix), old_prefix),
+                    )
 
     def _migrate_workspace_directories(self) -> None:
         """Move earlier ID-based folders to their human-readable names."""

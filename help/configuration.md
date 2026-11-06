@@ -76,6 +76,8 @@ APP_ASSETS_DIR = /srv/drivetest-analyzer/assets
 
 Relative paths are resolved from the project root. `~` and environment-variable references are expanded. If the file is absent, the defaults are `config/`, `data/` and `assets/` inside the project. Environment variables with the same names override the file, which lets Docker use `/app/config`, `/app/data` and `/app/assets` without editing a developer's local configuration.
 
+A data folder copied or moved to another place, machine or user (for example from `/Users/<other>/DriveTestAnalyzer/data`) can be used as it is: at startup, a workspace whose folder is missing at the path the registry stored but exists under `APP_DATA_DIR/workspaces/` is pointed at its new place, together with the file and folder paths its database stored (CDRs, scoring history files, PPT jobs and report runs).
+
 The process needs read/write access to `APP_CONFIG_DIR` and `APP_DATA_DIR`, including permission to create SQLite WAL/SHM sidecars and atomic temporary files. `APP_ASSETS_DIR` only needs to be readable during ordinary operation.
 
 ## Code asset overrides
