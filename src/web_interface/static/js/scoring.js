@@ -8440,29 +8440,38 @@
       banner.className = 'scoring-insight-banner';
       const color = safeHexColor(item.color);
       if (color) banner.style.setProperty('--banner-color', color);
-      banner.append(insightStrong(item.label), ` · ${insightNumber(item.total, 1)} points lost`);
+      // Split by Vendor, each Vendor is scored on its own tests: a row per Vendor with the points its scoring loses, no
+      // share of the points, and the average of the Vendors weighted by their tests as the total.
+      const byVendor = Boolean(item.by_vendor);
+      banner.append(insightStrong(item.label), byVendor
+        ? ` · ${item.rows.length} Vendor${item.rows.length === 1 ? '' : 's'} · ${insightNumber(item.total, 1)} points lost on average (weighted by tests)`
+        : ` · ${insightNumber(item.total, 1)} points lost`);
       const peak = Math.max(...item.rows.map(row => row.points), 0);
       const withTests = item.has_tests;
       const withCities = kind === 'vendor_losses' && item.rows.some(row => row.cities?.length);
       const withEnvironments = item.rows.some(row => row.environments?.length);
       const sum = field => item.rows.reduce((total, row) => total + (Number(row[field]) || 0), 0);
-      const total = [insightTotalLabel(), insightTotalCell(sum('points'), {digits: 1}), insightTotalCell(sum('share'), {digits: 1, suffix: '%'}),
+      const total = [insightTotalLabel(byVendor ? item.total_label : undefined), insightTotalCell(byVendor ? item.total : sum('points'), {digits: 1}),
+        ...(byVendor ? [] : [insightTotalCell(sum('share'), {digits: 1, suffix: '%'})]),
         ...(withTests ? [insightTotalCell(item.rows.some(row => row.tests_share !== null) ? sum('tests_share') : null, {digits: 1, suffix: '%'})] : []),
         ...(withEnvironments ? [''] : []), ...(withCities ? [''] : [])];
-      wrapper.append(banner, insightTable([column, 'Points lost', 'Share of points', ...(withTests ? ['Share of tests'] : []),
+      wrapper.append(banner, insightTable([column, 'Points lost', ...(byVendor ? [] : ['Share of points']), ...(withTests ? ['Share of tests'] : []),
         ...(withEnvironments ? ['Where'] : []), ...(withCities ? ['Cities and routes that lose most'] : [])], item.rows.map(row => [
         {text: row.name, className: row.identified ? 'scoring-insight-kpi' : 'scoring-insight-kpi is-muted'},
         gapBarCell(row.points, peak, {loss: true, total: true}),
-        {text: `${insightNumber(row.share, 1)}%`, className: 'scoring-insight-number'},
+        ...(byVendor ? [] : [{text: `${insightNumber(row.share, 1)}%`, className: 'scoring-insight-number'}]),
         ...(withTests ? [{text: row.tests_share === null ? '—' : `${insightNumber(row.tests_share, 1)}%`,
-          className: `scoring-insight-number ${row.tests_share !== null && row.share > row.tests_share * 1.25 && row.share - row.tests_share > 3 ? 'is-loss' : ''}`,
+          className: `scoring-insight-number ${!byVendor && row.tests_share !== null && row.share > row.tests_share * 1.25 && row.share - row.tests_share > 3 ? 'is-loss' : ''}`,
           title: 'Share of the tests of the operator served by it'}] : []),
         ...(withEnvironments ? [{text: (row.environments || []).map(name => shortEnvironmentLabel(name)).join(', '), className: 'scoring-loss-environment'}] : []),
         ...(withCities ? [(row.cities || []).map(city => `${city.name} ${insightNumber(city.points, 1)}`).join(' · ')] : []),
       ]), {total}));
       grid.append(wrapper);
     }
-    section.append(grid, insightParagraph('scoring-insight-note', kind === 'vendor_losses'
+    const vendorSeries = inScope.some(entry => entry.by_vendor);
+    section.append(grid, insightParagraph('scoring-insight-note', kind === 'vendor_losses' && vendorSeries
+      ? 'The scoring is split by Vendor: each Vendor is scored on its own tests (the RAN Vendor of the cells that served them), so its points lost compare directly with the other Vendors. Share of tests: the tests of the operator it served. Unknown and Mixed in grey. Total: the average of the Vendors weighted by their tests.'
+      : kind === 'vendor_losses'
       ? 'Each test belongs to the RAN Vendor of the cell that served its start (Not identified: no serving cell in the inventories). In red, a share of the points lost well above the share of the tests.'
       : 'The kind of each serving site: the network that owns it and, when another network hosts its RAN, "on" that network (Beacon, MORAN); NNS sites apart. In red, a share of the points lost well above the share of the tests.'));
   }

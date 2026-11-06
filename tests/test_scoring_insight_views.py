@@ -132,6 +132,51 @@ def test_operators_without_identified_sites_are_listed_apart_from_the_sites_to_r
     assert 'none of the cells `' in script and 'cannot be `' in script
 
 
+def test_points_lost_per_vendor_puts_the_vendor_series_of_an_operator_together():
+    # Ticket #81: split by Vendor, each Vendor is a series of its own, whose table held that Vendor alone at 100%.
+    from src.modules.scoring_exports import _slide
+    from src.modules.scoring_insights import VENDORS_TOTAL_LABEL, _serving_views
+    from src.modules.scoring_points_loss import VENDOR
+    from src.modules.scoring_summary_slides import add_serving_loss_slides
+
+    def vendor_map(operator, vendor, total, cities):
+        return {'field': VENDOR, 'operator': operator, 'label': operator, 'color': '#E60000', 'is_reference': False,
+                'environment': 'Combined', 'context': {'vendor': vendor, 'city': 'London', 'campaign': '2026-Q3'},
+                'total': total, 'areas': [{'name': vendor, 'points': total, 'share': 1.0, 'environments': ['City']}],
+                'city_losses': {vendor: cities}}
+
+    series = {'operator': 'VF', 'city': 'London', 'campaign': '2026-Q3', 'environment': 'City'}
+    result = {'points_loss': {
+        'shares': [{**series, 'vendor': 'Ericsson', 'kpi_code': 'K1', 'areas': {}}],
+        'serving_tests': [{**series, 'vendor': vendor, 'counts': {VENDOR: {vendor: count}}}
+                          for vendor, count in (('Ericsson', 300), ('Samsung', 100))]}}
+    views = _serving_views([vendor_map('VF', 'Samsung', 120.0, {'London': 120.0}),
+                            vendor_map('VF', 'Ericsson', 40.0, {'London': 30.0, 'Leeds': 10.0}),
+                            vendor_map('EE', 'All', 25.0, {'London': 25.0})], result)
+    vf, ee = views['vendor_losses']
+    # One table per operator, without the Vendor in its scope: a row per Vendor with the points its own scoring loses.
+    assert vf['by_vendor'] and vf['context'] == {'city': 'London', 'campaign': '2026-Q3'}
+    assert [(row['name'], row['points']) for row in vf['rows']] == [('Samsung', 120.0), ('Ericsson', 40.0)]
+    assert [row['tests_share'] for row in vf['rows']] == pytest.approx([25.0, 75.0])
+    assert all(row['share'] is None for row in vf['rows'])
+    assert vf['rows'][1]['cities'] == [{'name': 'London', 'points': 30.0}, {'name': 'Leeds', 'points': 10.0}]
+    # The total: the average of the Vendors weighted by their tests.
+    assert vf['total_label'] == VENDORS_TOTAL_LABEL and vf['total'] == pytest.approx(120 * .25 + 40 * .75)
+    # An operator without a Vendor has one row All (without tests counted, the plain average).
+    assert [row['name'] for row in ee['rows']] == ['All'] and ee['total'] == 25.0 and not ee['has_tests']
+
+    deck = Presentation(TEMPLATE)
+    add_serving_loss_slides(deck, views['vendor_losses'], title='Points Lost — per Vendor', column='Vendor', subtitle='',
+                            new_slide=_slide)
+    tables = [shape.table for slide in deck.slides for shape in slide.shapes if shape.has_table]
+    table = next(table for table in tables if table.cell(1, 0).text == 'Samsung')
+    headers = [cell.text for cell in table.rows[0].cells]
+    assert 'Share of points' not in headers and headers[:3] == ['Vendor', 'Points lost', 'Share of tests']
+    assert [cell.text for cell in table.rows[len(table.rows) - 1].cells][:3] == [VENDORS_TOTAL_LABEL, '60.00', '100.0%']
+    texts = [shape.text_frame.text for slide in deck.slides for shape in slide.shapes if shape.has_text_frame]
+    assert any('VF · 2 Vendors · 60.0 points lost on average (weighted by tests)' in text for text in texts)
+
+
 def test_points_at_stake_share_every_point_lost(national):
     _job, _result, insights = national
     stake = _combined(insights['points_at_stake'])[0]

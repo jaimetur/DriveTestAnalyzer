@@ -693,20 +693,25 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
             slide = new_slide(presentation, title, _subtitle(subtitle, scope, first['context'], _context_text(first['context'])))
             for index, (item, (left, top, width, height)) in enumerate(zip(group, operator_frames(len(group)))):
                 color = _color(item.get('color'), index)
-                _banner(slide, [(item['label'], True, color), (f" · {item['total']:,.1f} points lost", False, None)], left,
-                        top, width, color)
+                # Split by Vendor (``by_vendor``), each Vendor is scored on its own tests: no share of the points, and the
+                # average of the Vendors weighted by their tests as the total.
+                by_vendor = bool(item.get('by_vendor'))
+                lost = (f" · {len(item['rows'])} Vendor{'' if len(item['rows']) == 1 else 's'} · {item['total']:,.1f} points lost "
+                        'on average (weighted by tests)') if by_vendor else f" · {item['total']:,.1f} points lost"
+                _banner(slide, [(item['label'], True, color), (lost, False, None)], left, top, width, color)
                 # As many rows as keep a legible size (the Vendors or kinds of site that lose most first).
                 rows = item['rows'][:min(16, max(3, int((height - .38) / .2) - 1))]
                 with_tests = item.get('has_tests')
                 # Narrow panels leave the cities and routes out.
                 narrow = width < 5
-                headers = [column, 'Points lost', 'Share of points', *(['Share of tests'] if with_tests else []),
+                headers = [column, 'Points lost', *([] if by_vendor else ['Share of points']), *(['Share of tests'] if with_tests else []),
                            *([] if narrow else ['Cities and routes that lose most'])]
                 if narrow:
-                    shares = (.36, .24, .2, .2) if with_tests else (.44, .3, .26)
+                    shares = {2: (.6, .4), 3: (.44, .3, .26), 4: (.36, .24, .2, .2)}[len(headers)]
                     widths = [width * share for share in shares]
                 else:
-                    widths = [1.45, 1.1, .8, *([.8] if with_tests else []), width - (4.15 if with_tests else 3.35)]
+                    fixed = [1.45, 1.1, *([.8] * (len(headers) - 3))]
+                    widths = [*fixed, width - sum(fixed)]
                 row_height = _fitted_rows(height - .38, len(rows) + 2, largest=.34)
                 size = _font(row_height, 8, .34)
                 shape, table = _table(slide, len(rows) + 2, len(headers), left, top + .38, width, row_height, widths)
@@ -715,26 +720,33 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                 for row_index, row in enumerate(rows, start=1):
                     _cell(table.cell(row_index, 0), row['name'], size=size, color=INK if row['identified'] else MUTED)
                     _cell(table.cell(row_index, 1), f"{row['points']:,.2f}", size=size, bold=True, fill=None, align=PP_ALIGN.RIGHT)
-                    _cell(table.cell(row_index, 2), f"{row['share']:.1f}%", size=size, align=PP_ALIGN.RIGHT)
-                    offset = 3
+                    offset = 2
+                    if not by_vendor:
+                        _cell(table.cell(row_index, 2), f"{row['share']:.1f}%", size=size, align=PP_ALIGN.RIGHT)
+                        offset = 3
                     if with_tests:
-                        above = row['tests_share'] is not None and row['share'] > row['tests_share'] * 1.25 and row['share'] - row['tests_share'] > 3
-                        _cell(table.cell(row_index, 3), '—' if row['tests_share'] is None else f"{row['tests_share']:.1f}%", size=size,
+                        above = (not by_vendor and row['tests_share'] is not None and row['share'] > row['tests_share'] * 1.25
+                                 and row['share'] - row['tests_share'] > 3)
+                        _cell(table.cell(row_index, offset), '—' if row['tests_share'] is None else f"{row['tests_share']:.1f}%", size=size,
                               color=LOSS_COLOR if above else INK, bold=above, align=PP_ALIGN.RIGHT)
-                        offset = 4
+                        offset += 1
                     if not narrow:
                         _cell(table.cell(row_index, offset), ' · '.join(f"{city['name']} {city['points']:,.1f}"
                                                                          for city in (row.get('cities') or [])[:2]), size=max(6.0, size - 1))
                 # The total of the Vendors or kinds of site listed.
                 tests = [row['tests_share'] for row in rows if row['tests_share'] is not None]
-                _total_row(table, len(rows) + 1, ['Total', f"{sum(row['points'] for row in rows):,.2f}",
-                                                  f"{sum(row['share'] for row in rows):.1f}%",
+                _total_row(table, len(rows) + 1, [item.get('total_label') or 'Total',
+                                                  f"{item['total'] if by_vendor else sum(row['points'] for row in rows):,.2f}",
+                                                  *([] if by_vendor else [f"{sum(row['share'] for row in rows):.1f}%"]),
                                                   *([f'{sum(tests):.1f}%' if tests else '—'] if with_tests else []),
                                                   *([] if narrow else [''])], size=size)
                 _row_bars(slide, [row['points'] for row in rows], left=left + widths[0], top=top + .38 + row_height,
                           width=widths[1], row_height=row_height, color=LOSS_COLOR)
                 _to_front(slide, shape)
-            _text(slide, 'Each test belongs to the serving cell of its start (Not identified: no serving cell in the inventories). '
+            _text(slide, 'The scoring is split by Vendor: each Vendor is scored on its own tests, so its points lost compare directly '
+                         'with the other Vendors. Share of tests: the tests of the operator it served. Total: the average of the '
+                         'Vendors weighted by their tests.' if any(item.get('by_vendor') for item in group) else
+                         'Each test belongs to the serving cell of its start (Not identified: no serving cell in the inventories). '
                          'In red, a share of the points lost well above the share of the tests.', .45, CONTENT_BOTTOM - .22,
                   12.4, .25, size=8, color=MUTED)
 

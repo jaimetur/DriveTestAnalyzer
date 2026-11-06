@@ -12,6 +12,7 @@
 
 #### 🚀 Enhancements:
 - **Network Insights — Legend of the RSRP and SINR classes:** in PowerPoint and Word (also in a Bundle Report Template), the RF Quality and NR quality per carrier tables have a legend under them with the colour of each class of their bars and its range (RSRP from Excellent ≥ -80 dBm to Very poor < -110 dBm, SINR from Excellent ≥ 20 dB to Bad < 0 dB), kept under the table when it is joined, fitted or continued on more slides.
+- **Scoring & GAP Analysis — Every Vendor in one Points lost per Vendor table:** when the Saved Filter splits the scoring by Vendor, Points lost per Vendor of the serving cell shows each operator with every Vendor at once instead of a Vendor selector with one row at 100%: the points the scoring of each Vendor loses (on the same scale, so they compare directly), its share of the tests of the operator, where and in which cities and routes it loses most, Unknown and Mixed in grey, and the average of the Vendors weighted by their tests as the total. The same in PowerPoint and Word.
 
 #### 🐛 Bug fixes:
 - **Workspace — Vendor only for the Operators of the Multivendor Mappings:** beside a Multivendor Mapping, only the Operators chosen for it receive a Vendor; the Network Inventories that complete it no longer give one to the others, which keep `<Operator> - All` with their serving cell (network, host network, site). Leaving O2 out, whose cells are known only where Vodafone hosts them, shows it in Scoring as one All bar in every split by Vendor, as EE. CDRs mapped before show Vendor mapping outdated.

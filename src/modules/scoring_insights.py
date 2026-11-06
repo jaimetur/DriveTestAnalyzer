@@ -1209,6 +1209,58 @@ def _bearing_label(latitude: float, longitude: float, places: dict[str, Any]) ->
     return f'{distance:,.0f} km {direction} of {name}'
 
 
+VENDORS_TOTAL_LABEL = 'All vendors (weighted by tests)'
+
+
+def _vendor_series_together(series: list[tuple[dict[str, Any], int, dict[str, dict[str, float]]]]) -> list[dict[str, Any]]:
+    """The Points lost per Vendor of each series; with the scoring split by Vendor, the Vendor series of each operator
+    together in one table (``by_vendor``).
+
+    Split by Vendor, each Vendor is scored on its own tests, so its table would hold that Vendor alone: a row per Vendor
+    gives instead the points its own scoring loses (all on the same scale, so they compare directly), its share of the
+    tests of the operator and the cities and routes that lose most. Unknown and the Mixed Vendors are muted. The total
+    is the average of the Vendors weighted by their tests (by the Vendors alone without tests counted).
+    """
+    from src.modules.cdr_reporting import VENDOR_UNKNOWN
+    from src.modules.scoring_points_loss import NOT_SPECIFIED
+    items: list[dict[str, Any]] = []
+    groups: dict[str, dict[str, Any]] = {}
+    for item, tests, city_losses in series:
+        vendor = item['context'].get('vendor')
+        if vendor in (None, ''):
+            items.append(item)
+            continue
+        context = {field: value for field, value in item['context'].items() if field != 'vendor'}
+        key = json.dumps([item['environment'], item['operator'], context], sort_keys=True, default=str)
+        if key not in groups:
+            groups[key] = {**{field: item[field] for field in ('environment', 'operator', 'label', 'color', 'is_reference')},
+                           'context': context, 'rows': [], 'by_vendor': True, 'total_label': VENDORS_TOTAL_LABEL}
+            items.append(groups[key])
+        cities: dict[str, float] = {}
+        for losses in city_losses.values():
+            for city, points in losses.items():
+                if city != NOT_SPECIFIED:
+                    cities[city] = cities.get(city, 0.0) + points
+        name = str(vendor)
+        groups[key]['rows'].append({
+            'name': name, 'identified': name != VENDOR_UNKNOWN and 'Mixed' not in name,
+            'points': item['total'], 'share': None, 'tests': tests,
+            'environments': list(dict.fromkeys(environment for row in item['rows'] for environment in row['environments'])),
+            'cities': [{'name': city, 'points': points} for city, points in sorted(cities.items(), key=lambda pair: -pair[1])[:3]],
+        })
+    for group in groups.values():
+        rows = sorted(group['rows'], key=lambda row: -row['points'])
+        counted = sum(row['tests'] for row in rows)
+        for row in rows:
+            tests = row.pop('tests')
+            row['tests_share'] = tests / counted * 100 if counted else None
+        group['rows'] = rows
+        group['has_tests'] = bool(counted)
+        group['total'] = (sum(row['points'] * row['tests_share'] for row in rows) / 100 if counted
+                          else sum(row['points'] for row in rows) / len(rows))
+    return items
+
+
 def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) -> dict[str, list[dict[str, Any]]]:
     """The Points Lost of each operator per Vendor, Site Type, site and route stretch, from its points-lost maps: each
     with its share of the points lost and, for vendors and kinds of site, its share of the tests."""
@@ -1223,6 +1275,8 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
     views: dict[str, list[dict[str, Any]]] = {'vendor_losses': [], 'site_type_losses': [], 'sites_to_review': [],
                                               'sites_unidentified': [], 'route_stretches': []}
     sites_by_series: dict[tuple, dict[str, dict[str, Any]]] = {}
+    # The Vendor table of each series, with its tests and the points each City loses per Vendor.
+    vendor_series: list[tuple[dict[str, Any], int, dict[str, dict[str, float]]]] = []
     for item in maps:
         field = item['field']
         if field not in (VENDOR, SITE_TYPE, SITE, STRETCH):
@@ -1246,8 +1300,11 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
                         ((item.get('city_losses') or {}).get(name) or {}).items(), key=lambda pair: -pair[1])[:3]
                         if city != NOT_SPECIFIED],
                 })
-            views['vendor_losses' if field == VENDOR else 'site_type_losses'].append(
-                {**base, 'rows': rows, 'has_tests': bool(counted)})
+            entry = {**base, 'rows': rows, 'has_tests': bool(counted)}
+            if field == VENDOR:
+                vendor_series.append((entry, counted, item.get('city_losses') or {}))
+            else:
+                views['site_type_losses'].append(entry)
         elif field == SITE:
             failures = item.get('failures') or {}
             sites = {}
@@ -1289,6 +1346,7 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
                 for stretch_route in stretch_routes:
                     stretch_route['landmarks'] = _landmarks(stretch_route, places)
                 views['route_stretches'].append({**base, 'routes': stretch_routes})
+    views['vendor_losses'] = _vendor_series_together(vendor_series)
     for (operator, environment, _series), by_campaign in sites_by_series.items():
         campaigns = sorted(by_campaign, key=campaign_sort_key)
         latest = by_campaign[campaigns[-1]]
