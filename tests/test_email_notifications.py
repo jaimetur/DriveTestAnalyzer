@@ -73,7 +73,8 @@ def test_email_delivery_sends_through_a_power_automate_flow(client, flow):
     page = client.get('/application-config').text
     assert 'Power Automate flow' in page and 'secret-signature' not in page
     client.post('/application-config/email-delivery', data={'transport': 'webhook', 'webhook_url': '', 'port': '587',
-                                                            'max_attachments_mb': '20', 'link_days': '5'})
+                                                            'from_address': 'admin@example.com', 'max_attachments_mb': '20',
+                                                            'link_days': '5', 'notify_tickets': 'true'})
     assert core.email_delivery_settings(core.repository, include_password=True)['webhook_url'] == FLOW
     assert 'secret-signature' not in json.dumps(logged('save_email_delivery'))
     invalid = client.post('/application-config/email-delivery', data={'transport': 'webhook', 'webhook_url': 'http://insecure',
