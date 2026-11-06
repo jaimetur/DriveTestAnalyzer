@@ -10,6 +10,7 @@ import pytest
 
 import src.DriveTestAnalyzer as core
 from src.modules.core import email_delivery, notifications
+from src.modules.core.email_markdown import markdown_html
 from src.modules.reporting import report_tasks
 from src.modules.core.repository import derived_email
 
@@ -209,6 +210,26 @@ def test_a_user_who_forgot_the_password_chooses_a_new_one_from_an_emailed_link(c
     assert [item['email'] for item in logged('password_reset_requested')] == ['pending@example.com'] and logged('password_reset')
 
 
+def test_the_texts_of_a_ticket_email_read_with_their_formats_as_on_the_page_of_the_ticket():
+    text = ('## Problem\nCategory: Bug Fixes:\n- One **bold** `code`\n  - Nested, like #7 and #8\n1. First\n2. Second\n'
+            '> [!WARNING] Careful\n> Read it.\n\n```\n<b>raw</b>\n```\n[page](/tickets) [bad](javascript:alert(1)) <script>x</script>')
+    markup = markdown_html(text, base_url='https://tool.example:8443', tickets={7: 'Seven'})
+    blocks = re.findall(r'<div[^>]*>(.*?)</div>', markup)
+    assert blocks[:2] == ['Problem', 'Category: Bug Fixes:'] and 'font-size:1.25em">Problem' in markup
+    assert '•&nbsp;</span>One <strong>bold</strong> <code' in markup and '◦&nbsp;</span>Nested' in markup
+    assert '1.&nbsp;</span>First' in markup and '2.&nbsp;</span>Second' in markup
+    # Only the tickets given are linked; the pages of the tool at its address; never a script.
+    assert '<a href="https://tool.example:8443/tickets/7" title="Seven"' in markup and 'tickets/8' not in markup
+    assert 'href="https://tool.example:8443/tickets"' in markup and 'javascript' not in markup.replace('(javascript:alert(1))', '')
+    assert '<script>' not in markup and '&lt;script&gt;' in markup and '&lt;b&gt;raw&lt;/b&gt;</pre>' in markup
+    assert 'border-left:4px solid #a8590a' in markup and 'Careful</div><div>Read it.</div>' in markup
+    # The text of the email keeps one line per line.
+    assert notifications.html_to_text(markup).splitlines()[:4] == ['Problem', 'Category: Bug Fixes:', '• One bold code', '◦ Nested, like #7 and #8']
+    # A text whose formats would not fit a flow goes line by line as it was written.
+    long = notifications.text_block('\n'.join(f'- **{index}**' for index in range(300)))
+    assert len(long) < notifications.TEXT_HTML_LIMIT and '- **0**<br>- **1**<br>' in long
+
+
 def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_tickets_that_mention_it(client, flow):
     use_flow(notify_tickets=True)
     for username, email in (('EREPORT', 'reporter@example.com'), ('EOTHERS', 'others@example.com')):
@@ -236,6 +257,7 @@ def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_t
     told = {item['to']: item for item in flow[-2:]}
     assert set(told) == {'others@example.com', 'reporter@example.com'}
     assert f'mentions your ticket <strong>#{first}</strong> (Export fails)' in told['reporter@example.com']['html']
+    assert f'Like <a href="https://tool.example:8443/tickets/{first}" title="Export fails"' in told['reporter@example.com']['html']
     count = len(flow)
     login(client)
     client.post(f'/api/tickets/{second}/manage', data={'status': 'in_progress'})

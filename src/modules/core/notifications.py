@@ -13,12 +13,15 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Iterable
 
 from src.modules.core.email_delivery import email_delivery_settings, send_email
+from src.modules.core.email_markdown import markdown_html
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix='email-notifications')
 # A ticket mentioned as #<number>, not inside a word, a web address or another number.
 MENTION = re.compile(r'(?<![\w&/#])#([1-9][0-9]{0,8})(?!\w)')
 # The text of a description or comment an email quotes; the ticket has the rest.
 QUOTED_CHARACTERS = 3000
+# The HTML of that text with its formats: a Power Automate flow request takes about 28 KB in all.
+TEXT_HTML_LIMIT = 14_000
 TICKET_EVENTS = {
     'created': 'opened', 'updated': 'updated', 'managed': 'updated', 'commented': 'new comment',
     'comment_edited': 'comment edited', 'comment_deleted': 'comment deleted', 'attachments_added': 'attachments added',
@@ -32,9 +35,9 @@ def submit(task: Callable[[], Any]) -> None:
 
 
 def html_to_text(markup: str) -> str:
-    text = re.sub(r'<br\s*/?>|</p>|</li>|</tr>|</h\d>', '\n', markup, flags=re.IGNORECASE)
-    text = re.sub(r'<[^>]+>', '', text)
-    return re.sub(r'\n{3,}', '\n\n', html.unescape(text)).strip() + '\n'
+    text = re.sub(r'<br\s*/?>|</p>|</li>|</tr>|</h\d>|</div>|</pre>', '\n', markup, flags=re.IGNORECASE)
+    text = '\n'.join(line.rstrip() for line in html.unescape(re.sub(r'<[^>]+>', '', text)).replace('\xa0', ' ').split('\n'))
+    return re.sub(r'\n{3,}', '\n\n', text).strip() + '\n'
 
 
 def email_page(app_name: str, title: str, parts: Iterable[str], *, link: tuple[str, str] | None = None) -> str:
@@ -48,10 +51,14 @@ def email_page(app_name: str, title: str, parts: Iterable[str], *, link: tuple[s
             '</body></html>')
 
 
-def plain_block(text: str) -> str:
-    """A text of the user (a comment, a request) as it was written, line by line."""
-    return ('<div style="white-space:pre-wrap;border-left:3px solid #d0d7de;padding:4px 0 4px 12px;margin:8px 0;color:#374151">'
-            f'{html.escape(text)}</div>')
+def text_block(text: str, *, base_url: str = '', tickets: dict[int, str] | None = None) -> str:
+    """A text of Ticket Center (a description, a comment) as the ticket shows it: its Markdown with its formats, its
+    #<number> of the ``tickets`` linked to them; line by line as it was written when its formats would not fit a flow."""
+    markup = markdown_html(text, base_url=base_url, tickets=tickets)
+    if len(markup) > TEXT_HTML_LIMIT:
+        markup = '<br>'.join(html.escape(line) for line in str(text).splitlines())
+    return ('<div style="border:1px solid #dde3e9;border-radius:8px;padding:10px 14px;margin:10px 0;color:#23394a;'
+            f'line-height:1.55;overflow-wrap:anywhere">{markup}</div>')
 
 
 def deliver(repository: Any, *, kind: str, recipients: list[str], subject: str, html_body: str, cc: Iterable[str] = (),
@@ -141,8 +148,9 @@ def _change_text(field: str, value: object, names: dict[str, str]) -> str:
 
 def ticket_email(app_name: str, ticket: dict[str, Any], event: str, actor_name: str, base_url: str, names: dict[str, str], *,
                  changes: dict[str, Any] | None = None, comment: str = '', files: Iterable[str] = (),
-                 own_ticket: int | None = None, own_title: str = '') -> tuple[str, str]:
-    """The subject and HTML of an email about ``ticket``; ``own_ticket`` is the ticket of the recipient it mentions."""
+                 own_ticket: int | None = None, own_title: str = '', references: dict[int, str] | None = None) -> tuple[str, str]:
+    """The subject and HTML of an email about ``ticket``; ``own_ticket`` is the ticket of the recipient it mentions, and
+    ``references`` the title of each ticket its texts mention as #<number>."""
     from src.modules.ticket_center.ticket_center import FIELD_LABELS, PRIORITIES, STATUSES, TICKET_TYPES
 
     number, title = int(ticket['id']), str(ticket['title'])
@@ -178,9 +186,9 @@ def ticket_email(app_name: str, ticket: dict[str, Any], event: str, actor_name: 
     if rows:
         parts.append('<table style="border-collapse:collapse;font-size:14px">' + ''.join(rows) + '</table>')
     if event == 'created' and ticket.get('description'):
-        parts.append(plain_block(_quoted(ticket['description'])))
+        parts.append(text_block(_quoted(ticket['description']), base_url=base_url, tickets=references))
     if comment:
-        parts.append(plain_block(_quoted(comment)))
+        parts.append(text_block(_quoted(comment), base_url=base_url, tickets=references))
     listed = [str(name) for name in files if str(name)]
     if listed:
         parts.append('<ul>' + ''.join(f'<li>{html.escape(name)}</li>' for name in listed) + '</ul>')
@@ -210,6 +218,11 @@ def notify_ticket(repository: Any, app_name: str, ticket_id: int, actor: str, ev
         names = people_names(repository)
         base = str(base_url or '').rstrip('/')
         listed = list(files)
+        references = {}
+        for number in mentioned_tickets([ticket.get('description') if event == 'created' else '', comment]):
+            mentioned = ticket if number == int(ticket['id']) else get_ticket(repository, number)
+            if mentioned:
+                references[number] = str(mentioned['title'])
         for username, own_ticket in owners.items():
             address = emails.get(username)
             if not address:
@@ -219,7 +232,8 @@ def notify_ticket(repository: Any, app_name: str, ticket_id: int, actor: str, ev
                 mentioned = get_ticket(repository, own_ticket)
                 own_title = str(mentioned['title']) if mentioned else ''
             subject, body = ticket_email(app_name, ticket, event, names.get(str(actor).casefold(), str(actor)), base, names,
-                                         changes=changes, comment=comment, files=listed, own_ticket=own_ticket, own_title=own_title)
+                                         changes=changes, comment=comment, files=listed, own_ticket=own_ticket, own_title=own_title,
+                                         references=references)
             deliver(repository, kind='ticket', recipients=[address], subject=subject, html_body=body, actor=actor,
                     details={'ticket_id': int(ticket['id']), 'event': event, 'user': username.upper(),
                              'about_ticket': own_ticket}, switch='notify_tickets')

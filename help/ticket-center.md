@@ -202,7 +202,7 @@ When [Email Delivery](app-config.md#email-delivery) is set up with **Ticket Cent
 - of every change other users make to it: a comment (with its text), an edited or deleted comment, attachments added or deleted, an edit of the title, module, description or priority, a change of its status, type, assignee or versions (each field before and after), and its deletion;
 - of the same changes in any other ticket that mentions its ticket as `#<number>` in the description or a comment, and of a new ticket that mentions it: the email says which of its tickets it mentions.
 
-Its own comments and changes are not emailed to it. Each email names who made the change, the status, priority, type and reporter of the ticket, and links its page. The emails go in the background, so they never slow a page down, and App Events records each one sent or not sent (`email_sent`, `email_failed`).
+Its own comments and changes are not emailed to it. Each email names who made the change, the status, priority, type and reporter of the ticket, and links its page. The description and the comments read as on the page of the ticket, with their formats (headings, titles, bullets and numbers, tasks, quotes and cards, code, links), and their `#<number>` link to the tickets they mention. The emails go in the background, so they never slow a page down, and App Events records each one sent or not sent (`email_sent`, `email_failed`).
 
 ## Clean up attachments
 
