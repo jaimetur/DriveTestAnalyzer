@@ -257,6 +257,7 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .admin-stack .comment-writers-key-field .comment-writers-remove-key:hover { background: #fdecee; border-color: #c9626f; color: #7d1220; }
 .comment-writers-kiro-install { margin-top: .85rem; padding-top: .85rem; border-top: 1px solid var(--line); }
 #api-keys-overlay [hidden] { display: none !important; }
+#email-overlay [hidden], [data-email-delivery] [hidden] { display: none !important; }
 .api-keys-fields { display: grid; gap: .65rem; margin: .4rem 0; }
 .api-keys-fields .checkbox-row { display: flex; align-items: center; gap: .45rem; justify-self: start; margin-top: -.3rem; font-weight: 500; }
 .api-keys-fields .checkbox-row input { width: auto; margin: 0; }
@@ -534,6 +535,7 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .form-note { color: var(--muted); font-size: 0.92rem; }
 .alert { background: rgba(225, 95, 58, 0.13); color: #9d3417; padding: 0.9rem 1rem; border-radius: 14px; margin-top: 1rem; }
 .alert-warning { background: rgba(213, 143, 31, 0.16); color: #80520a; border: 1px solid rgba(181, 114, 14, 0.28); }
+.alert-success { background: rgba(31, 157, 107, 0.12); color: #14684a; border: 1px solid rgba(31, 157, 107, 0.28); }
 .workspace-materializing-notice { margin: 0 0 1rem; }
 .user-password-editor { display: grid; width: 100%; }
 .user-password-editor > input { grid-area: 1 / 1; min-width: 0; width: 100%; padding-right: 3rem; }
@@ -1783,6 +1785,9 @@ body[data-embedded-template-editor] .slides-templates-editor-table-wrap .form-ac
 .login-default-role-user { color: #1f5fae; }
 /* Access requests: the button below the sign-in and its dialog. */
 .login-request-access { justify-self: start; min-height: 3.2rem; padding: 0.6rem 1.7rem; background: linear-gradient(135deg, #e0701b, #f2a33a); color: #fff; box-shadow: 0 8px 20px rgba(224, 112, 27, 0.28); font-size: 1.3rem; font-weight: 800; line-height: 1.2; }
+.login-forgot-password { justify-self: start; min-height: 0; padding: .2rem 0; border: 0; background: transparent; box-shadow: none; color: #0b7a75; font-size: .88rem; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.login-forgot-password:hover, .login-forgot-password:focus-visible { background: transparent; color: #075c58; }
+.password-reset-dialog { width: min(520px, calc(100vw - 2rem)); }
 .login-request-access:hover, .login-request-access:focus-visible { background: linear-gradient(135deg, #c95f10, #e0901f); box-shadow: 0 10px 24px rgba(201, 95, 16, 0.34); }
 .access-request-dialog { width: min(700px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); border: 0; border-radius: 22px; padding: 0; color: var(--text); background: #fff; box-shadow: 0 30px 80px rgba(7, 21, 31, 0.38); }
 .access-request-dialog::backdrop { background: rgba(9, 28, 40, 0.52); backdrop-filter: blur(4px); }
@@ -4937,7 +4942,8 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 .user-identity-edit { display: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; width: min(19rem, 100%); }
 .user-identity.is-editing .user-identity-view { display: none; }
 .user-identity.is-editing .user-identity-edit, .users-create-row .user-identity-edit { display: grid; }
-.user-identity-edit .user-login-input { grid-column: 1 / -1; }
+.user-identity-edit .user-login-input, .user-identity-edit .user-email-input { grid-column: 1 / -1; }
+.user-meta.user-email:not([hidden]) { display: block; overflow: hidden; text-overflow: ellipsis; max-width: 19rem; }
 .admin-stack .users-table .user-identity-edit input.table-input { min-width: 0; padding: .38rem .55rem; border-color: rgba(16, 49, 74, .18); background: #fff; font-size: .82rem; }
 .admin-stack .users-table .user-identity-edit input.table-input::placeholder { color: #a7b3bc; font-weight: 500; }
 .admin-stack .users-table .user-identity-edit input.table-input:focus { border-color: #0b7a75; box-shadow: 0 0 0 3px rgba(11, 122, 117, .15); }

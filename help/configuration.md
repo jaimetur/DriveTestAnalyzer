@@ -36,6 +36,9 @@ DriveTest Analyzer separates application settings, storage roots and Docker depl
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | Default SMTP account. The password is used whenever no password is saved in Application Config. | Not set |
 | `SMTP_FROM`, `SMTP_FROM_NAME` | Default sender address and name of [Reporting](reporting.md) emails. | Not set; `DriveTest Analyzer` |
 | `SMTP_MAX_ATTACHMENTS_MB` | Default limit for the total size of a [Reporting](reporting.md) email's attachments. | `20` |
+| `EMAIL_TRANSPORT` | How the tool sends its emails: `smtp` (an SMTP server) or `webhook` (a Power Automate flow, see [Email Delivery](app-config.md#email-delivery)). Application Config → Email Delivery overrides it. | `smtp` |
+| `EMAIL_WEBHOOK_URL` | Default HTTP POST address of the Power Automate flow, used whenever none is saved in Application Config. | Not set |
+| `EMAIL_LINK_DAYS` | Default days the download links of the [Reporting](reporting.md) emails work. | `7` |
 
 Before version 0.6.0 the application was named Dashboard Analytic. Variables with the former `DASHBOARD_ANALYTIC_` prefix are still read when the matching `DRIVETEST_ANALYZER_` variable is not set, and export packages, JSON exports and backups created with the former name (format identifiers and backup files starting with `dashboard-analytic-`) are still imported and restored.
 

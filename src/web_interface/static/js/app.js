@@ -8554,6 +8554,47 @@ function showInfoDialog(message, options = {}) {
   });
 })();
 
+// The email address of the user, changed from the account badge as its password: where the tool sends the updates of its
+// tickets and the links to choose a new password.
+(() => {
+  const openButton = document.querySelector('[data-account-email-open]');
+  const overlay = document.getElementById('email-overlay');
+  const form = document.querySelector('[data-account-email-form]');
+  const cancel = document.querySelector('[data-account-email-cancel]');
+  const error = document.querySelector('[data-account-email-error]');
+  if (!openButton || !overlay || !form || !cancel) return;
+  const close = () => { overlay.hidden = true; form.reset(); if (error) error.hidden = true; };
+  const open = async () => {
+    overlay.hidden = false;
+    try {
+      const response = await fetch('/account/email', {headers: {'Accept': 'application/json'}, cache: 'no-store'});
+      const payload = await response.json();
+      if (response.ok) form.email.value = payload.email || '';
+    } catch (_error) { /* The field stays empty: the user can still type the address. */ }
+    form.email.focus();
+  };
+  openButton.addEventListener('click', open);
+  cancel.addEventListener('click', close);
+  overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (error) error.hidden = true;
+    const submit = form.querySelector('button[type="submit"]');
+    if (submit) submit.disabled = true;
+    try {
+      const response = await fetch('/account/email', {method: 'POST', body: new FormData(form), headers: {'Accept': 'application/json'}});
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'The email address could not be saved.');
+      close();
+      showInfoDialog(payload.email ? `The tool sends your emails to ${payload.email}.` : 'The tool sends you no emails.', {title: 'Email address saved', tone: 'info'});
+    } catch (requestError) {
+      if (error) { error.textContent = requestError.message; error.hidden = false; }
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  });
+})();
+
 // The personal API keys of the user for the LLM writers of the generated comments of PPT Designer that Super Admin
 // sets to each user's key (Kiro CLI, Claude): one field per writer, each saved, replaced or removed.
 (() => {

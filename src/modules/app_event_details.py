@@ -137,7 +137,8 @@ def _user(details: Any) -> str:
 def _account(details: dict[str, Any]) -> str:
     """``name Ana García, role user-editor, active, Modules Profile Analysts, Workspace Groups UK``."""
     name = ' '.join(str(part) for part in (details.get('first_name'), details.get('last_name')) if part)
-    parts = [f'name {name}' if name else '', f"role {details['role']}" if details.get('role') else '',
+    parts = [f'name {name}' if name else '', f"email {details['email']}" if details.get('email') else '',
+             f"role {details['role']}" if details.get('role') else '',
              ('active' if details['active'] else 'inactive') if 'active' in details else '']
     parts += [f'{field_label(key)} {value_text(details[key])}' for key in ('modules_profile', 'workspace_groups', 'workspaces')
               if not _empty(details.get(key))]
@@ -271,7 +272,28 @@ def _name_comments(details: Any) -> str:
         if isinstance(values, (list, tuple)) and len(values) == 2)])
 
 
+_EMAIL_KINDS = {'ticket': 'Ticket Center email', 'access_request': 'Access request email', 'access_granted': 'Access granted email',
+                'password_reset': 'Password reset email', 'report': 'Reporting email', 'test': 'Test email'}
+
+
+def _email(sent: bool) -> Callable[[Any], str]:
+    """An email of the tool, sent or failed: its kind, subject and recipients (and why it failed)."""
+    def describe(details: Any) -> str:
+        kind = _EMAIL_KINDS.get(str(details.get('kind') or ''), 'Email')
+        recipients = ', '.join(str(item) for item in [*(details.get('recipients') or []), *(details.get('cc') or [])])
+        text = f"{kind} \"{details.get('subject') or ''}\" {'sent to' if sent else 'not sent to'} {recipients or 'nobody'}"
+        return f"{text}: {details.get('error')}." if not sent and details.get('error') else f'{text}.'
+    return describe
+
+
 _DESCRIBERS: dict[str, Callable[[Any], str]] = {
+    'email_sent': _email(True),
+    'email_failed': _email(False),
+    'change_email': lambda details: _sentence('Email address', [
+        f"{value_text(details['changes']['email'][0]) or 'none'} → {value_text(details['changes']['email'][1]) or 'none'}"]),
+    'password_reset_requested': lambda details: f"Link to choose a new password emailed to {details.get('email')}.",
+    'password_reset': lambda details: 'Password changed with the link of a password reset email.',
+    'download_reporting_file_link': lambda details: f"{details.get('file')} of a Reporting Job downloaded from the link of its email.",
     'operator_mapping_assign': _mapping_assign('Operator'),
     'operator_name_comments': _name_comments,
     'vendor_mapping_assign': _mapping_assign('Vendor'),
@@ -338,12 +360,13 @@ _SERVER_ACTIONS = {
                    'chart_set_rendering_warning', 'chart_set_published', 'chart_set_generation_failed', 'export_design_ppt_failed',
                    'export_design_ppt_warning', 'export_netcheck_cdr_report_failed', 'scoring_calculation_failed',
                    'sync_combined_cdr_tables_completed', 'sync_combined_cdr_tables_failed', 'reporting_job_run',
-                   'generate_presentations', 'generate_presentations_failed'},
+                   'generate_presentations', 'generate_presentations_failed', 'email_sent', 'email_failed'},
 }
 _SERVER_ACTION_PREFIXES = (('scheduled_database_backup_', 'scheduler'),)
 _REMOTE_ACTION_PREFIXES = ('incoming_server_transfer_', 'incoming_transfer_import_')
 _PUBLIC_ACTIONS = {'access_request': 'access-request', 'access_change_request': 'access-request', 'login': 'sign-in',
-                   'logout': 'sign-in'}
+                   'logout': 'sign-in', 'password_reset_requested': 'sign-in', 'password_reset': 'sign-in',
+                   'download_reporting_file_link': 'page'}
 # The module of the events of earlier versions, which did not record the page they came from (by action, or its start).
 _MODULE_ACTIONS = (
     ('non-qualified-calls', ('nq_',)),

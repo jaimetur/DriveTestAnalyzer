@@ -8905,7 +8905,7 @@ def test_admin_can_update_user_identity_fields(client) -> None:
     )
     assert update_response.status_code == 200
     assert update_response.json()['user'] == {
-        'id': analyst['id'], 'username': 'analyst-updated', 'first_name': '', 'last_name': '', 'role': 'admin', 'active': False,
+        'id': analyst['id'], 'username': 'analyst-updated', 'first_name': '', 'last_name': '', 'email': '', 'role': 'admin', 'active': False,
         'workspace_ids': [], 'modules_profile_id': next(profile['id'] for profile in app_module.repository.list_modules_profiles() if profile['is_default']),
         'workspace_group_ids': [],
     }

@@ -140,11 +140,13 @@
                   <div class="user-identity-view">
                     <strong class="user-display-name" data-user-display-name>{{ full_name or row['username'] }}</strong>
                     <span class="user-meta" title="Created {{ row['created_at'] }}" data-user-display-meta>{% if full_name %}{{ row['username'] }} · {% endif %}#{{ row['id'] }} · {{ row['created_at'][:10] }}</span>
+                    <span class="user-meta user-email" title="The emails of the tool go to this address" data-user-display-email {% if not row['email'] %}hidden{% endif %}>{{ row['email'] }}</span>
                   </div>
                   <div class="user-identity-edit">
                     <input class="table-input user-name-input" type="text" name="first_name" value="{{ row['first_name'] }}" placeholder="First name" form="user-update-{{ row['id'] }}" autocomplete="off" aria-label="First name of {{ row['username'] }}" {% if locked %}disabled{% endif %}>
                     <input class="table-input user-name-input" type="text" name="last_name" value="{{ row['last_name'] }}" placeholder="Last name" form="user-update-{{ row['id'] }}" autocomplete="off" aria-label="Last name of {{ row['username'] }}" {% if locked %}disabled{% endif %}>
                     <input class="table-input user-login-input" type="text" name="username" value="{{ row['username'] }}" form="user-update-{{ row['id'] }}" autocomplete="off" readonly data-user-autofill-guard required aria-label="Username of {{ row['username'] }}" {% if locked %}disabled{% endif %}>
+                    <input class="table-input user-email-input" type="email" name="email" value="{{ row['email'] }}" placeholder="Email address" form="user-update-{{ row['id'] }}" autocomplete="off" readonly data-user-autofill-guard aria-label="Email address of {{ row['username'] }}" {% if locked %}disabled{% endif %}>
                   </div>
                 </div>
                 {% if not locked %}<button type="button" class="user-identity-toggle" data-user-identity-toggle aria-label="Edit the name and username of {{ row['username'] }}" title="Edit name and username"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg></button>{% endif %}
@@ -206,6 +208,7 @@
                     <input class="table-input user-name-input" type="text" name="first_name" placeholder="First name" form="user-create" autocomplete="off" aria-label="First name of the new user">
                     <input class="table-input user-name-input" type="text" name="last_name" placeholder="Last name" form="user-create" autocomplete="off" aria-label="Last name of the new user">
                     <input class="table-input user-login-input" type="text" name="username" placeholder="Username" form="user-create" autocomplete="off" required aria-label="Username of the new user">
+                    <input class="table-input user-email-input" type="email" name="email" placeholder="Email address" form="user-create" autocomplete="off" aria-label="Email address of the new user">
                   </div>
                 </div>
               </div>
@@ -2219,7 +2222,7 @@
       const role = document.querySelector(`[form="${form.id}"][name="role"]`);
       const active = document.querySelector(`[form="${form.id}"][name="active"]`);
       if (username instanceof HTMLInputElement) username.value = username.defaultValue;
-      document.querySelectorAll(`input[form="${form.id}"]:is([name="first_name"], [name="last_name"])`).forEach((input) => { input.value = input.defaultValue; });
+      document.querySelectorAll(`input[form="${form.id}"]:is([name="first_name"], [name="last_name"], [name="email"])`).forEach((input) => { input.value = input.defaultValue; });
       if (password instanceof HTMLInputElement) password.value = '';
       document.querySelectorAll(`select[form="${form.id}"]`).forEach((select) => {
         Array.from(select.options).forEach((option) => { option.selected = option.defaultSelected; });
@@ -2302,6 +2305,8 @@
     identity.querySelector('[data-user-display-name]').textContent = name || username;
     identity.querySelector('[data-user-display-meta]').textContent = name ? `${username} · ${identity.dataset.created}` : identity.dataset.created;
     identity.querySelector('[data-user-initials]').textContent = (first && last ? first[0] + last[0] : username.slice(0, 2)).toUpperCase();
+    const email = identity.querySelector('[data-user-display-email]');
+    if (email) { email.textContent = value('email'); email.hidden = !value('email'); }
   };
   document.querySelectorAll('[data-user-identity]').forEach((identity) => {
     const toggle = identity.querySelector('[data-user-identity-toggle]');
@@ -2338,7 +2343,7 @@
       return;
     }
     if (username instanceof HTMLInputElement) username.value = user.username;
-    ['first_name', 'last_name'].forEach((name) => {
+    ['first_name', 'last_name', 'email'].forEach((name) => {
       const input = document.querySelector(`[form="${form.id}"][name="${name}"]`);
       if (input instanceof HTMLInputElement) input.value = user[name] || '';
     });

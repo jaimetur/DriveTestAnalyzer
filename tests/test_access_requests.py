@@ -43,11 +43,12 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     nq_calls = options['modules_profiles'][2]
     assert nq_calls['modules'] == ['Workspace', 'Non-Qualified Calls', 'Reporting', 'Builders', 'AI Assistant', 'Ticket Center']
     assert nq_calls['module_tabs'][0]['title'] == 'Workspace' and nq_calls['module_tabs'][0]['color'] and nq_calls['module_tabs'][0]['icon']
-    request = {'username': 'eabcdef', 'first_name': ' Ana ', 'last_name': 'García', 'password': 'secret1', 'password_confirmation': 'secret1',
-               'workspace_group_ids': [uk], 'modules_profile_id': nq_calls['id']}
+    request = {'username': 'eabcdef', 'first_name': ' Ana ', 'last_name': 'García', 'email': 'ana.garcia@example.com', 'password': 'secret1',
+               'password_confirmation': 'secret1', 'workspace_group_ids': [uk], 'modules_profile_id': nq_calls['id']}
     # Only with the names, an Ericsson signum, matching passwords, and workspaces and modules of the lists.
     for change, message in (({'first_name': ''}, 'first name'), ({'last_name': ' '}, 'last name'),
                             ({'username': 'xabcdef'}, 'signum'), ({'username': 'eabc12f'}, 'signum'),
+                            ({'email': ''}, 'email address'), ({'email': 'ana@'}, 'valid email address'),
                             ({'username': 'eabcdefg'}, 'signum'), ({'password_confirmation': 'other'}, 'do not match'),
                             ({'workspace_group_ids': []}, 'workspace'), ({'workspace_group_ids': [uk + 99]}, 'workspace'),
                             ({'modules_profile_id': 999}, 'modules profile')):
@@ -59,19 +60,23 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     assert (result['username'], result['name']) == ('EABCDEF', 'Ana García')
     assert result['modules_profile'] == 'Non-Qualified Calls (Workspace, Non-Qualified Calls, Reporting, Builders, AI Assistant, Ticket Center)'
     assert result['email']['to'] == 'jaime.tur@ericsson.com' and result['email']['subject'].endswith('access request: EABCDEF')
-    # Copied to the approvers: any of them approves the request before the administrator activates the user.
+    # Copied to the approvers (any of them approves the request before the administrator activates the user) and to the
+    # requester. Without Email Delivery it is not sent by the tool: the user sends it from its mail client.
     assert result['email']['cc'] == ['kleber.gomes@ericsson.com', 'angelo.reis@ericsson.com', 'mohammadreza.rajabi@ericsson.com',
-                                     'alfonso.j.alvarez@ericsson.com']
+                                     'alfonso.j.alvarez@ericsson.com', 'ana.garcia@example.com']
+    assert result['email_sent'] is False
     body = result['email']['body']
     assert body.startswith('Hello Jaime, Kleber, Angelo, Mohammadreza and Alfonso,')
     # The approvers' part is framed in capitals, and the administrator's line comes apart below it.
     assert ('APPROVAL NEEDED\nKleber, Angelo, Mohammadreza or Alfonso: please review the request and approve it by replying to all.\n'
             '========================================\n\nJaime: once one of them has approved it, please activate my user in Super Admin › Users.') in body
     assert 'User: EABCDEF' in body and 'Name: Ana García' in body and f'Workspaces: UK ({core.active_workspace.name})' in body
+    assert 'Email: ana.garcia@example.com' in body
     record = core.repository.get_user('eabcdef')
     assert (record.username, record.role, record.active) == ('EABCDEF', 'user-editor', False)
     user_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'EABCDEF')
     assert (core.repository.get_user_by_id(user_id)['first_name'], core.repository.get_user_by_id(user_id)['last_name']) == ('Ana', 'García')
+    assert core.repository.get_user_by_id(user_id)['email'] == 'ana.garcia@example.com'
     assert [group['name'] for group in core.repository.list_workspace_groups() if user_id in group['member_ids']] == ['UK']
     assert user_id in profiles()['Non-Qualified Calls']['member_ids']
     # The user signs in only once an administrator activates it.

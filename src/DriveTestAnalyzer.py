@@ -68,7 +68,7 @@ from src.config import PROJECT_ROOT, settings
 from src.modules.analytics import build_analysis, shared_frame_attrs
 from src.modules.app_event_details import app_event_origin, app_event_origin_parts, changed_values, describe_app_event
 from src.modules.background_scheduler import BackgroundTaskScheduler
-from src.modules import cdr_store, design_slides, ppt_design_cache, workspace_cache
+from src.modules import cdr_store, design_slides, notifications, ppt_design_cache, workspace_cache
 from src.modules.auth import SessionUser, verify_password
 from src.modules.workspace_countries import country_options
 from src.modules.operator_roles import (
@@ -85,7 +85,7 @@ from src.modules.value_maps import ValueMapper, field_kind
 from src.modules.report_layouts import canonical_layout_name, selectable_layout_name
 from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, calculated_dimension_editor_json, calculated_dimension_preview, calculated_dimension_reads, CALCULATED_FIELD_OPERATORS, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, preview_catalog_chart_data, render_catalog_chart_preview, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
 from src.modules.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
-from src.modules.email_delivery import DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_SECURITY_MODES, email_delivery_settings, invalid_recipients, parse_recipients, save_email_delivery_settings, send_email
+from src.modules.email_delivery import DEFAULT_LINK_DAYS, DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_ADDRESS_PATTERN, EMAIL_SECURITY_MODES, EMAIL_TRANSPORTS, MAX_LINK_DAYS, email_delivery_settings, invalid_recipients, parse_recipients, read_link, save_email_delivery_settings, send_email, sign_link
 from src.modules.network_inventory import DEFAULT_NETWORK_BY_KIND, INVENTORY_DATASET_KINDS, MULTIVENDOR_MAPPING_KIND, SNAPSHOT_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, list_mapping_snapshots, mapping_operators, network_family, normalise_snapshot_date
 from src.modules.l3_dt_logs import KIND as L3_DT_LOGS_KIND, dataset_summary as l3_dataset_summary, forget_datasets as l3_forget_datasets
 from src.modules.l3_dt_logs import preview_frame as l3_preview_frame, source_columns as l3_source_columns
@@ -6193,6 +6193,29 @@ def change_password(
     end_user_sessions(user.username, keep_token=request.cookies.get(SESSION_COOKIE))
     repository.add_log(user.username, 'change_password', 'Password changed from the account badge.')
     return JSONResponse({'changed': True})
+
+
+@app.get('/account/email')
+def account_email(user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """The address the emails of the tool send to the signed-in user (its tickets, its password resets)."""
+    record = repository.get_user(user.username)
+    return JSONResponse({'email': record.email if record else '', 'delivery': email_delivery_settings(repository)['configured']},
+                        headers={'Cache-Control': 'no-store'})
+
+
+@app.post('/account/email')
+def change_account_email(email: str = Form(''), user: SessionUser = Depends(current_user)) -> JSONResponse:
+    """Each user changes its own address from the account badge, as its password (empty: no emails)."""
+    address = email.strip()
+    if address and not EMAIL_ADDRESS_PATTERN.match(address):
+        raise HTTPException(status_code=400, detail='Enter a valid email address.')
+    record = repository.get_user(user.username)
+    if not record or not record.active:
+        raise HTTPException(status_code=403, detail='The current user is not active.')
+    repository.set_user_email(user.username, address)
+    if address != record.email:
+        repository.add_log(user.username, 'change_email', json.dumps({'changes': {'email': [record.email, address]}}))
+    return JSONResponse({'email': address})
 
 
 def admin_user(user: SessionUser = Depends(current_user)) -> SessionUser:
@@ -14886,8 +14909,11 @@ def safe_next_url(value: object) -> str:
 
 @app.get('/login', response_class=HTMLResponse)
 def login_page(request: Request) -> Response:
+    # A link of a password reset email opens the page to choose the new password.
+    reset_token = str(request.query_params.get('reset_token') or '')
+    reset_user = password_reset_user(reset_token) if reset_token else None
     # Already signed in (a bookmark, or a tab left on this page): the application opens without signing in again.
-    if session_user(request.cookies.get(SESSION_COOKIE)) and request.query_params.get('reset') != '1':
+    if session_user(request.cookies.get(SESSION_COOKIE)) and request.query_params.get('reset') != '1' and not reset_token:
         return RedirectResponse(safe_next_url(request.query_params.get('next')) or '/documents/view/help', status_code=status.HTTP_303_SEE_OTHER)
     workspaces = workspace_registry.list()
     selected_workspace_id = active_workspace.id if active_workspace else workspace_registry.most_recent().id
@@ -14903,6 +14929,7 @@ def login_page(request: Request) -> Response:
             'active_workspace': active_workspace,
             'selected_workspace_id': selected_workspace_id,
             'next_url': safe_next_url(request.query_params.get('next')),
+            'reset_token': reset_token, 'reset_username': reset_user.username if reset_user else '',
         },
     )
 
@@ -15007,6 +15034,7 @@ class AccessRequestPayload(BaseModel):
     username: str = ''
     first_name: str = ''
     last_name: str = ''
+    email: str = ''
     password: str = ''
     password_confirmation: str = ''
     workspace_group_ids: list[int] = Field(default_factory=list)
@@ -15053,6 +15081,9 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
     first_name, last_name = payload.first_name.strip(), payload.last_name.strip()
     if not first_name or not last_name:
         raise HTTPException(status_code=400, detail='Enter your first name and last name.')
+    email = payload.email.strip()
+    if email and not EMAIL_ADDRESS_PATTERN.match(email):
+        raise HTTPException(status_code=400, detail='Enter a valid email address.')
     if not payload.password:
         raise HTTPException(status_code=400, detail='Choose a password.')
     options = access_request_options()
@@ -15086,14 +15117,18 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         kept = [group_id for group_id in member_of if group_id not in {group['id'] for group in options['workspace_groups']}]
         repository.set_user_workspace_groups(user_id, kept + requested_groups)
         repository.set_users_modules_profile([user_id], profile['id'])
-        repository.update_user(user_id, username, role, False, first_name=first_name, last_name=last_name)
+        repository.update_user(user_id, username, role, False, first_name=first_name, last_name=last_name, email=email or None)
+        email = email or record.email
         end_user_sessions(username)
     else:
         if payload.password != payload.password_confirmation:
             raise HTTPException(status_code=400, detail='The passwords do not match.')
+        if not email:
+            raise HTTPException(status_code=400, detail='Enter your email address.')
         username, role = signum.upper(), 'user-editor'
         try:
-            user_id = repository.create_user(username, payload.password, role, active=False, first_name=first_name, last_name=last_name)
+            user_id = repository.create_user(username, payload.password, role, active=False, first_name=first_name, last_name=last_name,
+                                             email=email)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=f'The user {username} already exists.') from exc
         repository.set_user_workspace_groups(user_id, requested_groups)
@@ -15130,6 +15165,7 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         '',
         f'User: {username}',
         f'Name: {first_name} {last_name}',
+        *([f'Email: {email}'] if email else []),
         f'Role: {role}',
         f'Workspaces: {workspaces}',
         f'Modules Profile: {profile_text}',
@@ -15142,11 +15178,137 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         username,
     ])
     subject = f"{__app_name__} access {'change ' if record else ''}request: {username}"
+    approvers_cc = [address for _, address in ACCESS_REQUEST_APPROVERS]
+    # Sent on its own when Email Delivery is set up: to the administrator, copied to the approvers and the requester, whose
+    # address the replies go to. Otherwise (or when it fails) the user sends it from its mail client.
+    sent = notifications.deliver(
+        repository, kind='access_request', recipients=[__author_email__], cc=[*approvers_cc, *([email] if email else [])],
+        reply_to=email, subject=subject, actor=username, background=False, switch='notify_access_requests',
+        details={'user': username}, html_body=notifications.email_page(__app_name__, subject, [
+            f'<p style="color:#4b5563">Sent by {html.escape(__app_name__)} on behalf of <strong>{html.escape(f"{first_name} {last_name}")}</strong> '
+            f'({html.escape(username)}{f", {html.escape(email)}" if email else ""}). Reply to all to answer the request.</p>',
+            f'<div style="white-space:pre-wrap">{html.escape(body)}</div>',
+        ]))
     return JSONResponse({
         'username': username, 'name': f'{first_name} {last_name}', 'role': role, 'existing': record is not None,
-        'workspaces': workspaces, 'modules_profile': profile_text,
-        'email': {'to': __author_email__, 'cc': [email for _, email in ACCESS_REQUEST_APPROVERS], 'subject': subject, 'body': body},
+        'workspaces': workspaces, 'modules_profile': profile_text, 'email_sent': sent,
+        'email': {'to': __author_email__, 'cc': [*approvers_cc, *([email] if email else [])], 'subject': subject, 'body': body},
     }, status_code=status.HTTP_201_CREATED)
+
+
+# -- password resets from the login page -------------------------------------------------------------------------------
+PASSWORD_RESET_MINUTES = 60
+PASSWORD_RESET_INTERVAL_SECONDS = 60
+_password_reset_sent: dict[str, float] = {}
+
+
+def email_base_url(request: Request) -> str:
+    """The address of the tool in the links of an email: the Public address of the server of Application Runtime, or the
+    one the request came with."""
+    return str(runtime_configuration().get('public_address') or str(request.base_url)).rstrip('/')
+
+
+def password_reset_marker(password_hash: str) -> str:
+    """Part of a reset link: once the password changes (the link was used) the link no longer works."""
+    return hashlib.sha256(str(password_hash).encode()).hexdigest()[:16]
+
+
+def masked_email(address: str) -> str:
+    name, _, domain = address.partition('@')
+    return f'{name[:1]}{"*" * max(len(name) - 1, 2)}@{domain}'
+
+
+class PasswordResetPayload(BaseModel):
+    username: str = ''
+
+
+class PasswordResetConfirmPayload(BaseModel):
+    token: str = ''
+    password: str = ''
+    password_confirmation: str = ''
+
+
+@app.post('/api/password-reset')
+def request_password_reset(request: Request, payload: PasswordResetPayload) -> JSONResponse:
+    """Forgot your password? on the login page: a link to choose a new one, sent to the email of the user (also of a user
+    that waits for activation after its access request)."""
+    signum = payload.username.strip()
+    settings = email_delivery_settings(repository)
+    if not settings['configured']:
+        raise HTTPException(status_code=409, detail='Email delivery is not set up: ask the administrator to reset your password.')
+    record = repository.get_user(signum) if signum else None
+    if record is None:
+        raise HTTPException(status_code=404, detail='There is no user with that username.')
+    if not record.email:
+        raise HTTPException(status_code=409, detail=f'{record.username} has no email address: ask the administrator to reset your password.')
+    last = _password_reset_sent.get(record.username.casefold(), 0.0)
+    if time_module.monotonic() - last < PASSWORD_RESET_INTERVAL_SECONDS:
+        raise HTTPException(status_code=429, detail='A link was sent a moment ago: check your email, or try again in a minute.')
+    token = sign_link(repository, {'k': 'password-reset', 'u': record.username, 'h': password_reset_marker(record.password_hash)},
+                      seconds=PASSWORD_RESET_MINUTES * 60)
+    link = f"{email_base_url(request)}/login?{urlencode({'reset_token': token})}"
+    names = notifications.people_names(repository)
+    subject = f'{__app_name__}: choose a new password'
+    body = notifications.email_page(__app_name__, 'Choose a new password', [
+        f'<p>Hello {html.escape(names.get(record.username.casefold(), record.username))},</p>',
+        f'<p>A new password was asked for your user <strong>{html.escape(record.username)}</strong> of {html.escape(__app_name__)}. '
+        f'The button below opens the page to choose it, for the next {PASSWORD_RESET_MINUTES} minutes and only once.</p>',
+        '<p style="color:#4b5563">If you did not ask for it, ignore this email: your password does not change.</p>',
+    ], link=('Choose a new password', link))
+    if not notifications.deliver(repository, kind='password_reset', recipients=[record.email], subject=subject, html_body=body,
+                                 actor=record.username, background=False, details={'user': record.username}):
+        raise HTTPException(status_code=502, detail='The email could not be sent: ask the administrator to reset your password.')
+    _password_reset_sent[record.username.casefold()] = time_module.monotonic()
+    repository.try_add_log(record.username, 'password_reset_requested', json.dumps({'email': record.email, 'active': record.active}))
+    return JSONResponse({'email': masked_email(record.email), 'minutes': PASSWORD_RESET_MINUTES})
+
+
+def password_reset_user(token: str) -> Any:
+    """The user a reset link is for, while the link is valid and its password has not changed since."""
+    payload = read_link(repository, token, 'password-reset')
+    record = repository.get_user(str(payload.get('u') or '')) if payload else None
+    if record is None or password_reset_marker(record.password_hash) != payload.get('h'):
+        return None
+    return record
+
+
+@app.post('/api/password-reset/confirm')
+def confirm_password_reset(request: Request, payload: PasswordResetConfirmPayload) -> JSONResponse:
+    record = password_reset_user(payload.token)
+    if record is None:
+        raise HTTPException(status_code=400, detail='This link has expired or was already used: ask for a new one.')
+    if not payload.password:
+        raise HTTPException(status_code=400, detail='Choose a password.')
+    if payload.password != payload.password_confirmation:
+        raise HTTPException(status_code=400, detail='The passwords do not match.')
+    repository.update_password(record.username, payload.password)
+    end_user_sessions(record.username)
+    repository.try_add_log(record.username, 'password_reset', json.dumps({'active': record.active}))
+    return JSONResponse({'username': record.username, 'active': record.active})
+
+
+def notify_access_granted(before: Any, actor: str, base_url: str) -> None:
+    """Tell a user whose access request waited that an administrator activated it."""
+    if not before or before['active'] or not before['access_requested_at'] or not before['email']:
+        return
+    updated = repository.get_user_by_id(int(before['id']))
+    if not updated or not updated['active']:
+        return
+    state = user_account_state(updated)
+    base = base_url.rstrip('/')
+    names = notifications.people_names(repository)
+    subject = f'{__app_name__}: your access has been granted'
+    body = notifications.email_page(__app_name__, 'Your access has been granted', [
+        f"<p>Hello {html.escape(updated['first_name'] or updated['username'])},</p>",
+        f"<p>{html.escape(names.get(actor.casefold(), actor))} has activated your user <strong>{html.escape(updated['username'])}</strong> "
+        f'of {html.escape(__app_name__)}. Sign in with it and the password you chose.</p>',
+        '<p style="color:#4b5563">' + ' · '.join(html.escape(item) for item in (
+            f"Modules Profile: {state['modules_profile'] or 'Full Access'}",
+            f"Workspace Groups: {', '.join(state['workspace_groups']) or 'None'}")) + '</p>',
+        '<p style="color:#4b5563">Forgot your password? Use <strong>Forgot your password?</strong> on the sign-in page.</p>',
+    ], link=('Sign in', f'{base}/login'))
+    notifications.deliver(repository, kind='access_granted', recipients=[str(updated['email'])], subject=subject, html_body=body,
+                          actor=actor, switch='notify_access_requests', details={'user': str(updated['username'])})
 
 
 @app.get('/logout')
@@ -18373,6 +18535,8 @@ def user_choices(usernames: Iterable[str] | None = None) -> list[dict[str, Any]]
 
 
 templates.env.globals['user_choices'] = user_choices
+# Whether the tool can send emails (the Forgot your password? of the login page).
+templates.env.globals['email_delivery_ready'] = lambda: bool(email_delivery_settings(repository)['configured'])
 
 
 def ticket_people() -> dict[str, dict[str, str]]:
@@ -18609,11 +18773,15 @@ async def open_ticket(
         'ticket_id': ticket_id, 'type': ticket_type, 'title': title.strip()[:160], 'module': module, 'priority': priority,
         'app_version': __version__, 'attachments': [file['file_name'] for file in files],
     }, ensure_ascii=False))
+    # Its reporter gets the confirmation, and the reporters of the tickets it mentions are told.
+    notifications.notify_ticket(repository, __app_name__, ticket_id, user.username, 'created', email_base_url(request),
+                                files=[file['file_name'] for file in files])
     return JSONResponse({'id': ticket_id, 'url': f'/tickets/{ticket_id}', 'message': f'Ticket #{ticket_id} opened.'})
 
 
 @app.post('/api/tickets/{ticket_id:int}/update')
 def edit_ticket(
+    request: Request,
     ticket_id: int,
     title: str | None = Form(None),
     description: str | None = Form(None),
@@ -18639,11 +18807,13 @@ def edit_ticket(
             # The description is long: the App Events only note that it changed.
             'ticket_id': ticket_id, 'changes': {field: pair if field != 'description' else ['…', '…'] for field, pair in changes.items()},
         }, ensure_ascii=False))
+        notifications.notify_ticket(repository, __app_name__, ticket_id, user.username, 'updated', email_base_url(request), changes=changes)
     return JSONResponse({'changes': changes})
 
 
 @app.post('/api/tickets/{ticket_id:int}/manage')
 def manage_ticket(
+    request: Request,
     ticket_id: int,
     status_value: str | None = Form(None, alias='status'),
     ticket_type: str | None = Form(None),
@@ -18708,11 +18878,13 @@ def manage_ticket(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if changes:
         repository.try_add_log(user.username, 'ticket_managed', json.dumps({'ticket_id': ticket_id, 'changes': changes}, ensure_ascii=False))
+        notifications.notify_ticket(repository, __app_name__, ticket_id, user.username, 'managed', email_base_url(request), changes=changes)
     return JSONResponse({'changes': changes})
 
 
 @app.post('/api/tickets/{ticket_id:int}/comments')
 async def comment_on_ticket(
+    request: Request,
     ticket_id: int,
     body: str = Form(''),
     attachments: list[UploadFile] = File(default=[]),
@@ -18729,11 +18901,14 @@ async def comment_on_ticket(
     repository.try_add_log(user.username, 'ticket_commented', json.dumps({
         'ticket_id': ticket_id, 'comment_id': comment_id, 'length': len(body.strip()), 'attachments': [file['file_name'] for file in files],
     }, ensure_ascii=False))
+    notifications.notify_ticket(repository, __app_name__, ticket_id, user.username, 'commented', email_base_url(request), comment=body,
+                                files=[file['file_name'] for file in files])
     return JSONResponse({'id': comment_id})
 
 
 @app.post('/api/tickets/{ticket_id:int}/attachments')
 async def add_ticket_attachments(
+    request: Request,
     ticket_id: int,
     attachments: list[UploadFile] = File(default=[]),
     user: SessionUser = Depends(current_user),
@@ -18750,11 +18925,13 @@ async def add_ticket_attachments(
     repository.try_add_log(user.username, 'ticket_attachments_added', json.dumps({
         'ticket_id': ticket_id, 'attachments': [file['file_name'] for file in files],
     }, ensure_ascii=False))
+    notifications.notify_ticket(repository, __app_name__, ticket_id, user.username, 'attachments_added', email_base_url(request),
+                                files=[file['file_name'] for file in files])
     return JSONResponse({'added': added})
 
 
 @app.post('/api/tickets/comments/{comment_id:int}/update')
-def edit_ticket_comment(comment_id: int, body: str = Form(''), user: SessionUser = Depends(current_user)) -> JSONResponse:
+def edit_ticket_comment(request: Request, comment_id: int, body: str = Form(''), user: SessionUser = Depends(current_user)) -> JSONResponse:
     from src.modules.ticket_center import edit_comment, get_comment
 
     comment = get_comment(repository, comment_id)
@@ -18767,11 +18944,13 @@ def edit_ticket_comment(comment_id: int, body: str = Form(''), user: SessionUser
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     repository.try_add_log(user.username, 'ticket_comment_edited', json.dumps({'ticket_id': comment['ticket_id'], 'comment_id': comment_id}))
+    notifications.notify_ticket(repository, __app_name__, int(comment['ticket_id']), user.username, 'comment_edited', email_base_url(request),
+                                comment=body)
     return JSONResponse({'edited': True})
 
 
 @app.post('/api/tickets/comments/{comment_id:int}/delete')
-def delete_ticket_comment(comment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
+def delete_ticket_comment(request: Request, comment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
     from src.modules.ticket_center import delete_comment, get_comment
 
     comment = get_comment(repository, comment_id)
@@ -18783,11 +18962,12 @@ def delete_ticket_comment(comment_id: int, user: SessionUser = Depends(current_u
     repository.try_add_log(user.username, 'ticket_comment_deleted', json.dumps({
         'ticket_id': comment['ticket_id'], 'comment_id': comment_id, 'author': comment['username'],
     }))
+    notifications.notify_ticket(repository, __app_name__, int(comment['ticket_id']), user.username, 'comment_deleted', email_base_url(request))
     return JSONResponse({'deleted': True})
 
 
 @app.post('/api/tickets/attachments/{attachment_id:int}/delete')
-def delete_ticket_attachment(attachment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
+def delete_ticket_attachment(request: Request, attachment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
     from src.modules.ticket_center import delete_attachment, get_attachment
 
     attachment = get_attachment(repository, attachment_id, with_content=False)
@@ -18800,6 +18980,8 @@ def delete_ticket_attachment(attachment_id: int, user: SessionUser = Depends(cur
         'ticket_id': attachment['ticket_id'], 'comment_id': attachment['comment_id'], 'attachment': attachment['file_name'],
         'content_type': attachment['content_type'], 'size': attachment['size'],
     }, ensure_ascii=False))
+    notifications.notify_ticket(repository, __app_name__, int(attachment['ticket_id']), user.username, 'attachment_deleted',
+                                email_base_url(request), files=[str(attachment['file_name'])])
     return JSONResponse({'deleted': True})
 
 
@@ -18853,7 +19035,7 @@ def clean_up_ticket_attachments(
 
 
 @app.post('/api/tickets/{ticket_id:int}/delete')
-def remove_ticket(ticket_id: int, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
+def remove_ticket(request: Request, ticket_id: int, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     from src.modules.ticket_center import delete_ticket
 
     ticket = require_ticket(ticket_id)
@@ -18862,6 +19044,7 @@ def remove_ticket(ticket_id: int, user: SessionUser = Depends(super_admin_user))
         'ticket_id': ticket_id, 'type': ticket.get('ticket_type') or 'bug', 'title': ticket['title'], 'created_by': ticket['created_by'],
         'status': ticket['status'],
     }, ensure_ascii=False))
+    notifications.notify_ticket(repository, __app_name__, ticket_id, user.username, 'deleted', email_base_url(request), ticket=ticket)
     return JSONResponse({'deleted': True, 'url': '/tickets'})
 
 
@@ -23333,6 +23516,7 @@ def configuration_panel(request: Request, user: SessionUser = Depends(config_edi
         'timezone_options': sorted(available_timezones()),
         'email_delivery': email_delivery_settings(repository),
         'email_security_modes': EMAIL_SECURITY_MODES,
+        'email_transports': EMAIL_TRANSPORTS, 'email_max_link_days': MAX_LINK_DAYS,
         'notice': request.query_params.get('notice'),
         'error': request.query_params.get('error'),
     })
@@ -23340,6 +23524,13 @@ def configuration_panel(request: Request, user: SessionUser = Depends(config_edi
 
 @app.post('/application-config/email-delivery')
 def save_email_delivery_configuration(
+    transport: str = Form('smtp'),
+    webhook_url: str = Form(''),
+    clear_webhook_url: bool = Form(False),
+    link_days: int = Form(DEFAULT_LINK_DAYS),
+    notify_access_requests: bool = Form(False),
+    notify_tickets: bool = Form(False),
+    onedrive_copy: bool = Form(False),
     host: str = Form(''),
     port: int = Form(587),
     security: str = Form('starttls'),
@@ -23351,19 +23542,24 @@ def save_email_delivery_configuration(
     max_attachments_mb: int = Form(DEFAULT_MAX_ATTACHMENTS_MB),
     user: SessionUser = Depends(config_editor_user),
 ) -> RedirectResponse:
-    logged = ('host', 'port', 'security', 'username', 'from_address', 'from_name', 'max_attachments_mb', 'password_configured')
+    logged = ('transport', 'host', 'port', 'security', 'username', 'from_address', 'from_name', 'max_attachments_mb',
+              'password_configured', 'webhook_configured', 'link_days', 'notify_access_requests', 'notify_tickets',
+              'onedrive_copy')
     before = {key: email_delivery_settings(repository).get(key) for key in logged}
     try:
         saved = save_email_delivery_settings(repository, {
+            'transport': transport, 'webhook_url': webhook_url, 'link_days': link_days,
+            'notify_access_requests': notify_access_requests, 'notify_tickets': notify_tickets, 'onedrive_copy': onedrive_copy,
             'host': host, 'port': port, 'security': security, 'username': username, 'password': password,
             'from_address': from_address, 'from_name': from_name, 'max_attachments_mb': max_attachments_mb,
-        }, keep_password=not password and not clear_password)
+        }, keep_password=not password and not clear_password, keep_webhook_url=not webhook_url.strip() and not clear_webhook_url)
     except ValueError as exc:
         return RedirectResponse('/application-config?' + urlencode({'error': str(exc)}) + '#email-delivery', status_code=status.HTTP_303_SEE_OTHER)
     after = {key: saved.get(key) for key in logged}
+    # (Never the password nor the address of the flow, which are secrets: only whether they are set and changed.)
     repository.try_add_log(user.username, 'save_email_delivery', json.dumps({
-        **{key: saved[key] for key in ('host', 'port', 'security', 'username', 'from_address', 'max_attachments_mb', 'password_configured')},
-        'changes': changed_values(before, after), 'password_changed': bool(password),
+        **{key: saved[key] for key in logged if key != 'from_name'},
+        'changes': changed_values(before, after), 'password_changed': bool(password), 'webhook_url_changed': bool(webhook_url.strip()),
     }))
     return RedirectResponse('/application-config?notice=Email+delivery+saved.#email-delivery', status_code=status.HTTP_303_SEE_OTHER)
 
@@ -23377,10 +23573,13 @@ def send_email_delivery_test(recipient: str = Form(''), user: SessionUser = Depe
         send_email(
             email_delivery_settings(repository, include_password=True), recipients,
             f'{__app_name__} · Test email',
-            f'This test email confirms that {__app_name__} can deliver scheduled reports.',
-            f'<p>This test email confirms that <strong>{html.escape(__app_name__)}</strong> can deliver scheduled reports.</p>',
+            f'This test email confirms that {__app_name__} can deliver its emails.',
+            notifications.email_page(__app_name__, 'Test email', [
+                f'<p>This test email confirms that <strong>{html.escape(__app_name__)}</strong> can deliver its emails: the scheduled '
+                'reports, the access requests, the password resets and the updates of Ticket Center.</p>']),
+            kind='test',
         )
-    except Exception as exc:  # SMTP errors are reported to the user as they are.
+    except Exception as exc:  # SMTP and flow errors are reported to the user as they are.
         repository.try_add_log(user.username, 'email_delivery_test_failed', json.dumps({'recipients': recipients, 'error': str(exc)}))
         return RedirectResponse('/application-config?' + urlencode({'error': f'Test email failed: {exc}'}) + '#email-delivery', status_code=status.HTTP_303_SEE_OTHER)
     repository.try_add_log(user.username, 'email_delivery_test_sent', json.dumps({'recipients': recipients}))
@@ -26623,6 +26822,7 @@ def create_user(
     role: str = Form(...),
     first_name: str = Form(''),
     last_name: str = Form(''),
+    email: str = Form(''),
     modules_profile_id: str = Form(''),
     workspace_group_ids: list[int] = Form(default=[]),
     workspace_ids: list[str] = Form(default=[]),
@@ -26636,7 +26836,9 @@ def create_user(
             raise ValueError('Unsupported role')
         if user.role != 'super-admin' and normalized_role == 'super-admin':
             raise ValueError('Only super-admins can create super-admin users.')
-        user_id = repository.create_user(username, password, normalized_role, first_name=first_name, last_name=last_name)
+        if email.strip() and not EMAIL_ADDRESS_PATTERN.match(email.strip()):
+            raise ValueError('Enter a valid email address.')
+        user_id = repository.create_user(username, password, normalized_role, first_name=first_name, last_name=last_name, email=email)
         # A new super-admin sees every module until it is given a profile.
         if modules_profile_id.strip().isdigit() and normalized_role != 'super-admin':
             repository.set_users_modules_profile([user_id], int(modules_profile_id))
@@ -26659,7 +26861,7 @@ def user_account_state(row: Any) -> dict[str, Any]:
     workspace_names = {workspace.id: workspace.name for workspace in workspace_registry.list()}
     return {
         'username': row['username'], 'first_name': row['first_name'] or '', 'last_name': row['last_name'] or '',
-        'role': row['role'], 'active': bool(row['active']),
+        'email': row['email'] or '', 'role': row['role'], 'active': bool(row['active']),
         'modules_profile': next((profile['name'] for profile in repository.list_modules_profiles() if user_id in profile['member_ids']), None),
         'workspace_groups': [group['name'] for group in repository.list_workspace_groups() if user_id in group['member_ids']],
         'workspaces': [workspace_names.get(item, item) for item in repository.list_user_workspace_ids(user_id)],
@@ -26676,6 +26878,7 @@ def update_user_account(
     active: str | None = Form(default=None),
     first_name: str | None = Form(default=None),
     last_name: str | None = Form(default=None),
+    email: str | None = Form(default=None),
     modules_profile_id: str = Form(''),
     workspace_ids: list[str] = Form(default=[]),
     workspace_group_ids: list[int] = Form(default=[]),
@@ -26694,6 +26897,7 @@ def update_user_account(
             'username': row['username'],
             'first_name': row['first_name'],
             'last_name': row['last_name'],
+            'email': row['email'],
             'role': row['role'],
             'active': bool(row['active']),
             'workspace_ids': repository.list_user_workspace_ids(int(row['id'])),
@@ -26730,6 +26934,8 @@ def update_user_account(
         )
     if would_remove_last_active_admin(target_user, normalized_role, will_be_active):
         return failure('At least one active admin user must remain. You cannot demote or deactivate the last active admin.', 400, target_user)
+    if email is not None and email.strip() and not EMAIL_ADDRESS_PATTERN.match(email.strip()):
+        return failure('Enter a valid email address.', 400, target_user)
     before = user_account_state(target_user)
     try:
         repository.update_user(
@@ -26740,6 +26946,7 @@ def update_user_account(
             password.strip() or None,
             first_name=first_name,
             last_name=last_name,
+            email=email,
         )
         if normalized_role == 'super-admin' and target_user['role'] != 'super-admin':
             # A new super-admin sees every module until it is given a profile.
@@ -26762,6 +26969,8 @@ def update_user_account(
                         'changes': changed_values(before, user_account_state(updated_user)),
                         'password_changed': bool(password.strip())}),
         )
+        # A user activated after its access request is told by email.
+        notify_access_granted(target_user, user.username, email_base_url(request))
         if wants_json():
             return JSONResponse({'ok': True, 'user': payload_for(updated_user)})
         return RedirectResponse('/super-admin', status_code=status.HTTP_303_SEE_OTHER)
@@ -26774,6 +26983,7 @@ BULK_USER_ACTIONS = ('modules_profile', 'add_workspace_group', 'remove_workspace
 
 @app.post('/admin/users/bulk')
 def bulk_update_users(
+    request: Request,
     user_ids: list[int] = Form(default=[]),
     action: str = Form(''),
     value: str = Form(''),
@@ -26830,6 +27040,8 @@ def bulk_update_users(
             repository.update_user(target_id, name, new_role, will_be_active)
             if new_role == 'super-admin' and target['role'] != 'super-admin':
                 repository.set_users_modules_profile([target_id], None)
+            if action == 'activate':
+                notify_access_granted(target, user.username, email_base_url(request))
             if action == 'role' and new_role != target['role']:
                 changes[name] = [target['role'], new_role]
         updated.append(name)

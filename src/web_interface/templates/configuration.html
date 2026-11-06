@@ -68,7 +68,7 @@
         <div class="configuration-card-head"><p class="eyebrow">Shared Links</p><h3>Public Address</h3></div>
         <label>Public address of the server
           <input type="url" name="public_address" value="{{ configuration.public_address }}" placeholder="https://dta.example.com:8443" autocomplete="off" spellcheck="false">
-          <span class="table-help">The address of the links of the presentations (Copy link) and of their previews. Give the name of the server rather than its IP: WhatsApp on Android does not open links with an IP. Leave it empty to use the address each user opened the application with.</span>
+          <span class="table-help">The address of the links of the presentations (Copy link) and of their previews, and of the links of the emails of the tool. Give the name of the server rather than its IP: WhatsApp on Android does not open links with an IP. Leave it empty to use the address each user opened the application with (the report emails of the scheduled jobs then have no download links).</span>
         </label>
       </section>
 
@@ -78,16 +78,34 @@
     </form>
   </article>
 
-  <article class="panel configuration-panel" id="email-delivery">
+  <article class="panel configuration-panel" id="email-delivery" data-email-delivery>
     <div class="section-head">
       <div>
-        <p class="eyebrow">Scheduled Reports</p>
+        <p class="eyebrow">Emails of the Tool</p>
         <h2>Email Delivery</h2>
       </div>
-      <span class="pill">{% if email_delivery.configured %}Configured{% else %}Not configured{% endif %}</span>
+      <span class="pill">{% if email_delivery.configured %}Configured · {{ 'Power Automate flow' if email_delivery.transport == 'webhook' else 'SMTP server' }}{% else %}Not configured{% endif %}</span>
     </div>
+    <p class="table-help">The scheduled reports of Reporting, the access requests of the login page, the password resets and the updates of Ticket Center are sent through an SMTP server or a Power Automate flow. A flow sends them from a Microsoft 365 mailbox (yours), so they arrive as internal mail; see <a href="/documents/view/help/app-config.md#email-delivery">Email Delivery</a> in the Help to create it.</p>
     <form method="post" action="/application-config/email-delivery" class="configuration-form" autocomplete="off">
       <section class="configuration-card" data-configuration-card>
+        <div class="configuration-card-head"><p class="eyebrow">Delivery</p><h3>How Emails Are Sent</h3></div>
+        <label>Send Through
+          <select name="transport" data-email-transport>
+            {% for transport in email_transports %}<option value="{{ transport }}" {% if email_delivery.transport == transport %}selected{% endif %}>{{ {'smtp': 'SMTP server', 'webhook': 'Power Automate flow'}[transport] }}</option>{% endfor %}
+          </select>
+        </label>
+        <label data-email-webhook>Power Automate Flow Address
+          <input type="password" name="webhook_url" value="" autocomplete="new-password" spellcheck="false" placeholder="{% if email_delivery.webhook_configured %}Saved · leave empty to keep it{% else %}https://…powerplatform.com/… or https://…logic.azure.com/…{% endif %}">
+          <span class="table-help">The HTTP POST address of the trigger <strong>When a Teams webhook request is received</strong> of your flow. It is a secret: whoever has it sends emails from your mailbox. Stored in the application database, which configuration exports and backups include.</span>
+        </label>
+        {% if email_delivery.webhook_configured %}<label class="configuration-toggle" data-email-webhook><input type="checkbox" name="clear_webhook_url" value="true"><span><strong>Remove the saved flow address</strong></span></label>{% endif %}
+        <label>Download Links Valid For (days)
+          <input type="number" name="link_days" value="{{ email_delivery.link_days }}" min="1" max="{{ email_max_link_days }}" step="1" required>
+          <span class="table-help">The link of each file of a report email downloads it without signing in until then. The links of the emails (tickets, sign-in, password resets, report downloads) use the <a href="#application-runtime">Public address of the server</a>{% if not configuration.public_address %}, not set yet: report emails need it for their links{% endif %}.</span>
+        </label>
+      </section>
+      <section class="configuration-card" data-configuration-card data-email-smtp>
         <div class="configuration-card-head"><p class="eyebrow">SMTP</p><h3>Server</h3></div>
         <label>SMTP Server
           <input type="text" name="host" value="{{ email_delivery.host }}" placeholder="smtp.example.com" spellcheck="false">
@@ -101,9 +119,6 @@
           </select>
           <span class="table-help">STARTTLS usually uses port 587 and SSL/TLS port 465.</span>
         </label>
-      </section>
-      <section class="configuration-card" data-configuration-card>
-        <div class="configuration-card-head"><p class="eyebrow">Authentication</p><h3>Account And Sender</h3></div>
         <label>Username
           <input type="text" name="username" value="{{ email_delivery.username }}" autocomplete="off" spellcheck="false">
         </label>
@@ -112,15 +127,31 @@
           <span class="table-help">Stored in the application database, which configuration exports and backups include. Leave empty to keep the saved password, or the SMTP_PASSWORD deployment value.</span>
         </label>
         {% if email_delivery.password_configured %}<label class="configuration-toggle"><input type="checkbox" name="clear_password" value="true"><span><strong>Remove the saved password</strong></span></label>{% endif %}
-        <label>Sender Address
-          <input type="email" name="from_address" value="{{ email_delivery.from_address }}" placeholder="reports@example.com">
-        </label>
-        <label>Sender Name
-          <input type="text" name="from_name" value="{{ email_delivery.from_name }}">
-        </label>
         <label>Attachment Size Limit (MB)
           <input type="number" name="max_attachments_mb" value="{{ email_delivery.max_attachments_mb }}" min="1" max="500" step="1" required>
-          <span class="table-help">A scheduled report whose attachments exceed this total fails instead of being rejected by the mail server.</span>
+          <span class="table-help">A report whose files exceed this total is emailed with their download links instead (or fails without the Address of the Tool).</span>
+        </label>
+      </section>
+      <section class="configuration-card" data-configuration-card>
+        <div class="configuration-card-head"><p class="eyebrow">Sender</p><h3>Sender And Automatic Emails</h3></div>
+        <label>Sender Address
+          <input type="email" name="from_address" value="{{ email_delivery.from_address }}" placeholder="reports@example.com">
+          <span class="table-help" data-email-webhook>With a flow, the address of its mailbox: replies that go to nobody else go there.</span>
+        </label>
+        <label data-email-smtp>Sender Name
+          <input type="text" name="from_name" value="{{ email_delivery.from_name }}">
+        </label>
+        <label class="configuration-toggle">
+          <input type="checkbox" name="notify_access_requests" value="true" {% if email_delivery.notify_access_requests %}checked{% endif %}>
+          <span><strong>Access requests</strong><small>Each access request of the login page goes to the administrator and the approvers, copied to the requester, and the requester is told when the user is activated.</small></span>
+        </label>
+        <label class="configuration-toggle">
+          <input type="checkbox" name="notify_tickets" value="true" {% if email_delivery.notify_tickets %}checked{% endif %}>
+          <span><strong>Ticket Center</strong><small>The reporter of a ticket gets its confirmation and every change others make to it, or to a ticket that mentions it as #&lt;number&gt;.</small></span>
+        </label>
+        <label class="configuration-toggle" data-email-webhook>
+          <input type="checkbox" name="onedrive_copy" value="true" {% if email_delivery.onedrive_copy %}checked{% endif %}>
+          <span><strong>Copy the report files to OneDrive</strong><small>The flow copies the files of each report email to a folder of its OneDrive and the email links that folder. Needs the OneDrive steps of the flow.</small></span>
         </label>
       </section>
       <div class="form-actions configuration-field-wide">
@@ -131,9 +162,24 @@
       <label>Send a test email to
         <input type="email" name="recipient" placeholder="name@example.com" required>
       </label>
-      <button type="submit" {% if not email_delivery.configured %}disabled title="Save the SMTP server and sender first"{% endif %}>Send Test Email</button>
+      <button type="submit" {% if not email_delivery.configured %}disabled title="Save the SMTP server or the flow first"{% endif %}>Send Test Email</button>
     </form>
   </article>
 
 </section>
+<script>
+// Email Delivery shows the fields of the way of sending chosen: the SMTP server or the Power Automate flow.
+(() => {
+  const panel = document.querySelector('[data-email-delivery]');
+  const transport = panel?.querySelector('[data-email-transport]');
+  if (!transport) return;
+  const show = () => {
+    const webhook = transport.value === 'webhook';
+    panel.querySelectorAll('[data-email-webhook]').forEach((node) => { node.hidden = !webhook; });
+    panel.querySelectorAll('[data-email-smtp]').forEach((node) => { node.hidden = webhook; });
+  };
+  transport.addEventListener('change', show);
+  show();
+})();
+</script>
 {% endblock %}

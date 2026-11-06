@@ -56,6 +56,7 @@
       </label>
       <button type="submit">Open workspace</button>
     </form>
+    {% if email_delivery_ready() %}<button type="button" class="login-forgot-password" data-password-reset-open>Forgot your password?</button>{% endif %}
     {% if default_access_accounts %}
     <p class="login-defaults-label">Default Access:</p>
     <div class="login-defaults">
@@ -85,6 +86,10 @@
       <div class="access-request-grid">
         <label>First name<input type="text" name="first_name" autocomplete="given-name" maxlength="60" required></label>
         <label>Last name<input type="text" name="last_name" autocomplete="family-name" maxlength="60" required></label>
+        <label class="access-request-wide"><span data-access-request-email-label>Email address</span>
+          <input type="email" name="email" autocomplete="email" maxlength="120" required placeholder="name.surname@ericsson.com"
+                 title="Where the tool sends your request, your tickets and the links to choose a new password">
+        </label>
         <label class="access-request-wide">Username (Ericsson signum)
           <input class="access-request-signum" type="text" name="username" autocomplete="username" maxlength="7" required
                  pattern="[Ee][A-Za-z]{6}" placeholder="EABCDEF" title="Your Ericsson signum: 7 letters starting with E">
@@ -111,7 +116,7 @@
       <span class="access-request-icon access-request-icon-done" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
       <div>
         <h3 data-access-request-done-title>User Created</h3>
-        <p class="form-note"><span data-access-request-done-note>Your user has been created but it is not active yet: ask the administrator to activate it.</span> <strong>Request Activation</strong> opens an email with your request to the administrator, copied to the approvers: one of them approves it and the administrator then activates your user.</p>
+        <p class="form-note"><span data-access-request-done-note>Your user has been created but it is not active yet: ask the administrator to activate it.</span> <span data-access-request-mail-note><strong>Request Activation</strong> opens an email with your request to the administrator, copied to the approvers: one of them approves it and the administrator then activates your user.</span></p>
       </div>
     </header>
     <dl class="access-request-summary" data-access-request-summary></dl>
@@ -121,8 +126,140 @@
     </div>
   </section>
 </dialog>
+{# Forgot your password?: a link to choose a new password, sent to the email of the user (also while it waits for activation). #}
+<dialog class="access-request-dialog password-reset-dialog" data-password-reset-dialog aria-labelledby="password-reset-title">
+  <form class="access-request-form" data-password-reset-form novalidate>
+    <header class="access-request-head">
+      <span class="access-request-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5M16 7l2.5 2.5M18.5 4.5 21 7"/></svg></span>
+      <div>
+        <h3 id="password-reset-title">Forgot your password?</h3>
+        <p class="form-note">Enter your username: the tool emails you a link to choose a new password, also while your access request waits for activation.</p>
+      </div>
+      <button type="button" class="access-request-close" data-password-reset-cancel aria-label="Close" title="Close">×</button>
+    </header>
+    <div class="alert" role="alert" data-password-reset-error hidden></div>
+    <div class="alert alert-success" role="status" data-password-reset-sent hidden></div>
+    <div class="access-request-grid">
+      <label class="access-request-wide">Username (Ericsson signum)
+        <input class="access-request-signum" type="text" name="username" autocomplete="username" maxlength="40" required placeholder="EABCDEF">
+      </label>
+    </div>
+    <div class="access-request-actions">
+      <button type="button" class="access-request-secondary" data-password-reset-cancel>Close</button>
+      <button type="submit" data-password-reset-submit>Email me a link</button>
+    </div>
+  </form>
+</dialog>
+{% if reset_token %}
+{# The link of a password reset email: choose the new password. #}
+<dialog class="access-request-dialog password-reset-dialog" data-password-new-dialog aria-labelledby="password-new-title">
+  <form class="access-request-form" data-password-new-form novalidate>
+    <input type="hidden" name="token" value="{{ reset_token }}">
+    <header class="access-request-head">
+      <span class="access-request-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg></span>
+      <div>
+        <h3 id="password-new-title">Choose a new password</h3>
+        <p class="form-note">{% if reset_username %}For your user <strong>{{ reset_username }}</strong>.{% else %}This link has expired or was already used: ask for a new one with <strong>Forgot your password?</strong>.{% endif %}</p>
+      </div>
+      <button type="button" class="access-request-close" data-password-new-cancel aria-label="Close" title="Close">×</button>
+    </header>
+    <div class="alert" role="alert" data-password-new-error hidden></div>
+    <div class="alert alert-success" role="status" data-password-new-done hidden></div>
+    {% if reset_username %}
+    <div class="access-request-grid" data-password-new-fields>
+      <label>New password<input type="password" name="password" autocomplete="new-password" required></label>
+      <label>Confirm Password<input type="password" name="password_confirmation" autocomplete="new-password" required></label>
+    </div>
+    {% endif %}
+    <div class="access-request-actions">
+      <button type="button" class="access-request-secondary" data-password-new-cancel>Close</button>
+      {% if reset_username %}<button type="submit" data-password-new-submit>Change password</button>{% endif %}
+    </div>
+  </form>
+</dialog>
+{% endif %}
 {% endblock %}
 {% block extra_scripts %}
+<script>
+// Forgot your password?: the link to choose a new one is emailed to the user; the link opens this page with the dialog
+// to choose it.
+(() => {
+  const dialog = document.querySelector('[data-password-reset-dialog]');
+  const open = document.querySelector('[data-password-reset-open]');
+  if (dialog instanceof HTMLDialogElement && open) {
+    const form = dialog.querySelector('[data-password-reset-form]');
+    const error = dialog.querySelector('[data-password-reset-error]');
+    const sent = dialog.querySelector('[data-password-reset-sent]');
+    const submit = dialog.querySelector('[data-password-reset-submit]');
+    open.addEventListener('click', () => {
+      form.reset();
+      error.hidden = true;
+      sent.hidden = true;
+      const typed = document.querySelector('.login-form [name="username"]')?.value || '';
+      form.username.value = typed.trim();
+      dialog.showModal();
+      form.username.focus();
+    });
+    dialog.querySelectorAll('[data-password-reset-cancel]').forEach((button) => button.addEventListener('click', () => dialog.close()));
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      error.hidden = true;
+      sent.hidden = true;
+      const username = form.username.value.trim();
+      if (!username) { error.textContent = 'Enter your username.'; error.hidden = false; return; }
+      submit.disabled = true;
+      try {
+        const response = await fetch('/api/password-reset', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username})});
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.detail || 'The link could not be sent.');
+        sent.textContent = `A link to choose a new password has been sent to ${result.email}. It works once, for the next ${result.minutes} minutes.`;
+        sent.hidden = false;
+      } catch (exc) {
+        error.textContent = exc.message;
+        error.hidden = false;
+      } finally {
+        submit.disabled = false;
+      }
+    });
+  }
+  const choose = document.querySelector('[data-password-new-dialog]');
+  if (!(choose instanceof HTMLDialogElement)) return;
+  const form = choose.querySelector('[data-password-new-form]');
+  const error = choose.querySelector('[data-password-new-error]');
+  const done = choose.querySelector('[data-password-new-done]');
+  const submit = choose.querySelector('[data-password-new-submit]');
+  // The token leaves the address bar: the page can be reloaded or bookmarked without it.
+  window.history.replaceState(null, '', window.location.pathname);
+  choose.querySelectorAll('[data-password-new-cancel]').forEach((button) => button.addEventListener('click', () => choose.close()));
+  choose.showModal();
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    error.hidden = true;
+    const data = new FormData(form);
+    if (!data.get('password')) { error.textContent = 'Choose a password.'; error.hidden = false; return; }
+    if (data.get('password') !== data.get('password_confirmation')) { error.textContent = 'The passwords do not match.'; error.hidden = false; return; }
+    submit.disabled = true;
+    try {
+      const response = await fetch('/api/password-reset/confirm', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({token: data.get('token'), password: data.get('password'), password_confirmation: data.get('password_confirmation')})});
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.detail || 'The password could not be changed.');
+      done.textContent = result.active
+        ? `The password of ${result.username} has been changed: sign in with it.`
+        : `The password of ${result.username} has been changed. Your user is still waiting for the administrator to activate it.`;
+      done.hidden = false;
+      choose.querySelector('[data-password-new-fields]').hidden = true;
+      submit.hidden = true;
+      const login = document.querySelector('.login-form [name="username"]');
+      if (login) login.value = result.username;
+    } catch (exc) {
+      error.textContent = exc.message;
+      error.hidden = false;
+      submit.disabled = false;
+    }
+  });
+})();
+</script>
 <script>
 (() => {
   const password = document.querySelector('[data-login-password]');
@@ -150,6 +287,18 @@
   const warning = dialog.querySelector('[data-access-request-existing]');
   const passwordLabel = dialog.querySelector('[data-access-request-password] span');
   const confirmation = dialog.querySelector('[data-access-request-confirmation]');
+  const emailLabel = dialog.querySelector('[data-access-request-email-label]');
+  // The email is first.last@ericsson.com from the names until the user types another one.
+  let emailTyped = false;
+  const derivedEmail = () => {
+    const part = (name) => String(name || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '');
+    const [first, last] = [part(form.first_name.value), part(form.last_name.value)];
+    return first && last ? `${first}.${last}@ericsson.com` : '';
+  };
+  form.email.addEventListener('input', () => { emailTyped = Boolean(form.email.value.trim()); });
+  [form.first_name, form.last_name].forEach((input) => input.addEventListener('input', () => {
+    if (!emailTyped) form.email.value = derivedEmail();
+  }));
   let email = null;
   // The user of the signum when it already exists: the request then changes its access (with its current password).
   let existing = null;
@@ -220,6 +369,7 @@
   const updateSubmit = () => {
     const data = new FormData(form);
     const filled = String(data.get('first_name') || '').trim() && String(data.get('last_name') || '').trim()
+      && (existing || String(data.get('email') || '').trim())
       && String(data.get('username') || '').trim() && data.get('password') && (existing || data.get('password_confirmation'))
       && data.getAll('workspace_group_ids').length && data.get('modules_profile_id') && !existing?.administrator;
     submit.disabled = !filled;
@@ -238,6 +388,9 @@
       ? 'Your request changes the access of your user, which stays inactive until the administrator activates it again.'
       : 'Your user is created when you submit the request and stays inactive until the administrator activates it.';
     confirmation.hidden = Boolean(user);
+    // An existing user keeps its email unless another one is given.
+    emailLabel.textContent = user ? 'Email address (empty: keep the current one)' : 'Email address';
+    form.email.required = !user;
     form.password.autocomplete = user ? 'current-password' : 'new-password';
     updateSubmit();
   };
@@ -262,6 +415,7 @@
   });
   open.addEventListener('click', async () => {
     form.reset();
+    emailTyped = false;
     form.hidden = false;
     done.hidden = true;
     showError('');
@@ -278,6 +432,9 @@
     const firstName = String(data.get('first_name') || '').trim();
     const lastName = String(data.get('last_name') || '').trim();
     if (!firstName || !lastName) { showError('Enter your first name and last name.'); return; }
+    const address = String(data.get('email') || '').trim();
+    if (!existing && !address) { showError('Enter your email address.'); return; }
+    if (address && !/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(address)) { showError('Enter a valid email address.'); return; }
     if (!/^[Ee][A-Za-z]{6}$/.test(username)) { showError('The username must be your Ericsson signum: 7 letters starting with E.'); return; }
     if (!data.get('password')) { showError('Choose a password.'); return; }
     if (!existing && data.get('password') !== data.get('password_confirmation')) { showError('The passwords do not match.'); return; }
@@ -289,7 +446,7 @@
       const response = await fetch('/api/access-requests', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          username, first_name: firstName, last_name: lastName,
+          username, first_name: firstName, last_name: lastName, email: address,
           password: data.get('password'), password_confirmation: data.get('password_confirmation'),
           workspace_group_ids: data.getAll('workspace_group_ids').map(Number), modules_profile_id: Number(data.get('modules_profile_id')),
         }),
@@ -304,6 +461,15 @@
       dialog.querySelector('[data-access-request-done-note]').textContent = result.existing
         ? 'The access of your user has been changed and it is inactive until the administrator activates it again.'
         : 'Your user has been created but it is not active yet: ask the administrator to activate it.';
+      // Sent by the tool: nothing to send from the mail client, and the requester is told once it is activated.
+      const mailNote = dialog.querySelector('[data-access-request-mail-note]');
+      const mailButton = dialog.querySelector('[data-access-request-mail]');
+      mailButton.hidden = Boolean(result.email_sent);
+      if (result.email_sent) {
+        mailNote.textContent = 'Your request has been emailed to the administrator and the approvers, with a copy to you: one of them approves it, the administrator activates your user and you get an email when it is active.';
+      } else {
+        mailNote.innerHTML = '<strong>Request Activation</strong> opens an email with your request to the administrator, copied to the approvers: one of them approves it and the administrator then activates your user.';
+      }
       form.hidden = true;
       done.hidden = false;
     } catch (exc) {

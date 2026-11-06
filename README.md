@@ -86,7 +86,7 @@ See [PPT Designer Help](help/ppt-designer.md) for the operational workflow and [
 
 ### Reporting
 
-Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, PPTs and Scoring PPTs, each configured with the options of its own module, run them once or daily, weekly or monthly and email the artifacts with a description of each one and its filters. SMTP delivery is configured in Application Config → Email Delivery. Reporting is available to the users whose Modules Profile includes it (Super Admin → Modules Profiles).
+Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, PPTs and Scoring PPTs, each configured with the options of its own module, run them once or daily, weekly or monthly and email the artifacts with a description of each one and its filters. Email delivery, through an SMTP server or a Power Automate flow, with a download link of each file, is configured in Application Config → Email Delivery. Reporting is available to the users whose Modules Profile includes it (Super Admin → Modules Profiles).
 
 ### Scoring & GAP Analysis
 

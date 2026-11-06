@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import logging
+import unicodedata
 from pathlib import Path
 from threading import Lock, RLock
 from time import monotonic
@@ -531,7 +532,8 @@ CREATE TABLE IF NOT EXISTS users (
     first_name TEXT NOT NULL DEFAULT '',
     last_name TEXT NOT NULL DEFAULT '',
     access_requested_at TEXT NOT NULL DEFAULT '',
-    last_login_at TEXT NOT NULL DEFAULT ''
+    last_login_at TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS user_login_sessions (
@@ -697,6 +699,24 @@ class UserRecord:
     password_hash: str
     role: str
     active: bool
+    email: str = ''
+
+
+# The domain of the address an account is given from its names (first.last@...), until its user or an administrator
+# changes it.
+DERIVED_EMAIL_DOMAIN = 'ericsson.com'
+
+
+def derived_email(first_name: object, last_name: object, domain: str = DERIVED_EMAIL_DOMAIN) -> str:
+    """``first.last@domain`` from the names of an account (accents dropped, spaces as dots); empty without both."""
+    parts = []
+    for name in (first_name, last_name):
+        text = unicodedata.normalize('NFKD', str(name or '')).encode('ascii', 'ignore').decode().casefold()
+        text = re.sub(r'[^a-z0-9]+', '.', text).strip('.')
+        if not text:
+            return ''
+        parts.append(text)
+    return f'{parts[0]}.{parts[1]}@{domain}'
 
 
 # Chart mapping reads are memoised for a moment: one Design chart reads
@@ -1282,6 +1302,17 @@ class Repository:
             conn.execute("UPDATE users SET access_requested_at = created_at WHERE active = 0 AND role IN ('user-viewer', 'user-editor')")
         if 'last_login_at' not in user_columns:
             conn.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT NOT NULL DEFAULT ''")
+        if 'email' not in user_columns:
+            # The accounts of earlier versions get first.last@ericsson.com from their names, which their users and the
+            # administrators can change; an address two accounts would share is left empty.
+            conn.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+            derived = {int(row['id']): derived_email(row['first_name'], row['last_name'])
+                       for row in conn.execute('SELECT id, first_name, last_name FROM users').fetchall()}
+            counts: dict[str, int] = {}
+            for address in derived.values():
+                counts[address] = counts.get(address, 0) + 1
+            conn.executemany('UPDATE users SET email = ? WHERE id = ?',
+                             [(address, user_id) for user_id, address in derived.items() if address and counts[address] == 1])
         # The identity of each account, Modules Profile and Workspace Group, which never changes: a Users & Access import
         # finds them again by it after a rename.
         for table in ('users', 'modules_profiles', 'workspace_groups'):
@@ -3026,23 +3057,23 @@ class Repository:
     def get_user(self, username: str) -> UserRecord | None:
         with self.global_connection() as conn:
             row = conn.execute(
-                "SELECT username, password_hash, role, active FROM users WHERE username COLLATE NOCASE = ?",
+                "SELECT username, password_hash, role, active, email FROM users WHERE username COLLATE NOCASE = ?",
                 (username.strip(),),
             ).fetchone()
         if not row:
             return None
-        return UserRecord(row['username'], row['password_hash'], row['role'], bool(row['active']))
+        return UserRecord(row['username'], row['password_hash'], row['role'], bool(row['active']), str(row['email'] or ''))
 
     def get_user_by_id(self, user_id: int) -> sqlite3.Row | None:
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
             return conn.execute(
-                "SELECT id, username, role, active, created_at, first_name, last_name FROM users WHERE id = ?",
+                "SELECT id, username, role, active, created_at, first_name, last_name, email, access_requested_at FROM users WHERE id = ?",
                 (user_id,),
             ).fetchone()
 
     def create_user(self, username: str, password: str, role: str, *, active: bool = True,
-                    first_name: str = '', last_name: str = '') -> int:
+                    first_name: str = '', last_name: str = '', email: str = '') -> int:
         """Create a user (inactive until an administrator activates it with ``active=False``); returns its ID."""
         normalized_username = username.strip()
         with self.global_connection() as conn:
@@ -3054,13 +3085,15 @@ class Repository:
             if duplicate:
                 raise ValueError('A user with that username already exists.')
             return int(conn.execute(
-                "INSERT INTO users (username, password_hash, role, active, created_at, first_name, last_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (normalized_username, hash_password(password), role, int(active), local_now_iso(), first_name.strip(), last_name.strip()),
+                "INSERT INTO users (username, password_hash, role, active, created_at, first_name, last_name, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (normalized_username, hash_password(password), role, int(active), local_now_iso(), first_name.strip(), last_name.strip(),
+                 email.strip()),
             ).lastrowid)
 
     def update_user(self, user_id: int, username: str, role: str, active: bool, password: str | None = None, *,
-                    first_name: str | None = None, last_name: str | None = None) -> None:
-        """Update an account; a first or last name of None is kept. Activating it ends its pending access request."""
+                    first_name: str | None = None, last_name: str | None = None, email: str | None = None) -> None:
+        """Update an account; a first or last name or an email of None is kept. Activating it ends its pending access
+        request."""
         normalized_username = username.strip()
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
@@ -3083,7 +3116,7 @@ class Repository:
                     "UPDATE users SET username = ?, role = ?, active = ? WHERE id = ?",
                     (normalized_username, role, int(active), user_id),
                 )
-            for column, value in (('first_name', first_name), ('last_name', last_name)):
+            for column, value in (('first_name', first_name), ('last_name', last_name), ('email', email)):
                 if value is not None:
                     conn.execute(f'UPDATE users SET {column} = ? WHERE id = ?', (value.strip(), user_id))
             if active:
@@ -3094,6 +3127,24 @@ class Repository:
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
             conn.execute('UPDATE users SET access_requested_at = ? WHERE id = ? AND active = 0', (requested_at, user_id))
+
+    def set_user_email(self, username: str, email: str) -> None:
+        """The address the emails of the tool (Ticket Center, access requests, password resets) send to the user."""
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            if conn.execute('UPDATE users SET email = ? WHERE username COLLATE NOCASE = ?',
+                            (email.strip(), username.strip())).rowcount != 1:
+                raise ValueError('User not found')
+
+    def user_emails(self, usernames: Iterable[str]) -> dict[str, str]:
+        """The addresses of the active accounts among ``usernames`` that have one, by username in lower case."""
+        wanted = {str(name).strip().casefold() for name in usernames if str(name or '').strip()}
+        if not wanted:
+            return {}
+        with self.global_connection() as conn:
+            self._ensure_user_access_schema(conn)
+            rows = conn.execute("SELECT username, email FROM users WHERE active = 1 AND email <> ''").fetchall()
+        return {str(row['username']).casefold(): str(row['email']) for row in rows if str(row['username']).casefold() in wanted}
 
     def update_password(self, username: str, password: str) -> None:
         with self.global_connection() as conn:
@@ -3138,7 +3189,7 @@ class Repository:
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
             return list(conn.execute(
-                "SELECT id, username, role, active, created_at, first_name, last_name, access_requested_at, last_login_at "
+                "SELECT id, username, role, active, created_at, first_name, last_name, access_requested_at, last_login_at, email "
                 "FROM users ORDER BY id ASC"
             ).fetchall())
 
@@ -3250,8 +3301,8 @@ class Repository:
         with self.global_connection() as conn:
             self._ensure_user_access_schema(conn)
             users = conn.execute(
-                'SELECT id, uid, username, password_hash, role, active, created_at, workspace_ids_json, first_name, last_name, access_requested_at '
-                'FROM users ORDER BY id'
+                'SELECT id, uid, username, password_hash, role, active, created_at, workspace_ids_json, first_name, last_name, access_requested_at, '
+                'email FROM users ORDER BY id'
             ).fetchall()
             profile_uids = {int(row['id']): str(row['uid']) for row in conn.execute('SELECT id, uid FROM modules_profiles').fetchall()}
             group_uids = {int(row['id']): str(row['uid']) for row in conn.execute('SELECT id, uid FROM workspace_groups').fetchall()}
@@ -3264,7 +3315,7 @@ class Repository:
             'workspace_groups': [{'uid': group_uids.get(int(group['id']), ''), 'name': group['name'], 'description': group['description'],
                                   'workspaces': names(group['workspace_ids'])} for group in groups],
             'users': [{'uid': str(row['uid']), 'username': str(row['username']), 'first_name': str(row['first_name'] or ''),
-                       'last_name': str(row['last_name'] or ''),
+                       'last_name': str(row['last_name'] or ''), 'email': str(row['email'] or ''),
                        'password_hash': str(row['password_hash']), 'role': str(row['role']),
                        'active': bool(row['active']), 'created_at': str(row['created_at'] or ''),
                        'access_requested_at': str(row['access_requested_at'] or '') if not row['active'] else '',
@@ -3374,7 +3425,7 @@ class Repository:
                 summary['workspace_groups'] += 1
             summary['renamed'] += [f'Workspace Group {line}' for line in group_matcher.summary()]
             user_rows = {int(row['id']): row for row in conn.execute(
-                'SELECT id, uid, username, role, active, password_hash, workspace_ids_json, access_requested_at FROM users').fetchall()}
+                'SELECT id, uid, username, role, active, password_hash, workspace_ids_json, access_requested_at, email FROM users').fetchall()}
             user_matcher = ItemMatcher([(user_id, str(row['username']), str(row['uid'])) for user_id, row in user_rows.items()])
             for account in payload['users']:
                 if not isinstance(account, dict):
@@ -3400,6 +3451,9 @@ class Repository:
                 # The pending access request of an inactive account (packages of earlier versions keep the local one).
                 requested_at = str(account.get('access_requested_at') or '') if 'access_requested_at' in account else (
                     str(row['access_requested_at'] or '') if row else '')
+                # Its email (packages of earlier versions keep the local one, or derive it from the names).
+                email = str(account.get('email') or '').strip() if 'email' in account else (
+                    str(row['email'] or '') if row else derived_email(first_name, last_name))
                 if row:
                     user_id = int(row['id'])
                     new_username = final
@@ -3413,20 +3467,20 @@ class Repository:
                         summary['renamed'].append(f'user "{row["username"]}" renamed "{new_username}"')
                     conn.execute(
                         'UPDATE users SET username = ?, role = ?, active = ?, password_hash = ?, workspace_ids_json = ?, modules_profile_id = ?, '
-                        "first_name = ?, last_name = ?, access_requested_at = ?, uid = CASE WHEN ? <> '' THEN ? ELSE uid END WHERE id = ?",
+                        "first_name = ?, last_name = ?, access_requested_at = ?, email = ?, uid = CASE WHEN ? <> '' THEN ? ELSE uid END WHERE id = ?",
                         (new_username, role, int(active), password_hash,
                          self._workspace_ids_json(resolve(account.get('workspaces'), self._workspace_ids_from_json(row['workspace_ids_json']))),
-                         profile_id, first_name, last_name, '' if active else requested_at, uid, uid, user_id),
+                         profile_id, first_name, last_name, '' if active else requested_at, email, uid, uid, user_id),
                     )
                     summary['users_updated'] += 1
                 else:
                     user_id = int(conn.execute(
                         'INSERT INTO users (username, password_hash, role, active, created_at, workspace_ids_json, modules_profile_id, '
-                        "first_name, last_name, access_requested_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                        "first_name, last_name, access_requested_at, email, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
                         "CASE WHEN ? <> '' THEN ? ELSE lower(hex(randomblob(16))) END)",
                         (username, password_hash, role, int(active), str(account.get('created_at') or '') or local_now_iso(),
                          self._workspace_ids_json(resolve(account.get('workspaces'))), profile_id, first_name, last_name,
-                         '' if active else requested_at, uid, uid),
+                         '' if active else requested_at, email, uid, uid),
                     ).lastrowid)
                     summary['users_created'] += 1
                 conn.executemany('DELETE FROM workspace_group_members WHERE group_id = ? AND user_id = ?',
