@@ -2370,8 +2370,10 @@ def calculate_selection(repository: Repository, campaigns: list[str], levels: li
         result, _from_history = _scoring_result(repository, calculation, configuration, prepared['dataset_ids'], sources,
                                                 context, engine, report)
         job['history_gap'] = calculation.get('history_gap', '')
+    # The campaigns calculated (those an automatic choice such as Latest campaign stands for now).
+    resolved_campaigns = [str(value) for value in context.get('Campaign') or [] if not str(value).startswith('@')]
     selection = {
-        'dataset_ids': prepared['dataset_ids'], 'campaigns': list(chosen['campaign_selection'] or campaigns),
+        'dataset_ids': prepared['dataset_ids'], 'campaigns': resolved_campaigns or list(chosen['campaign_selection'] or campaigns),
         'nr_mode': prepared['nr_mode'], 'levels': prepared['levels'], 'baseline_operator': prepared['baseline_operator'],
         'context_filters': snapshot['context_filters'], 'methodology': snapshot.get('scoring_profile_name') or '',
         'methodology_groups': [{'methodology': group.get('profile_name') or '', 'campaigns': list(group.get('campaigns') or [])}
