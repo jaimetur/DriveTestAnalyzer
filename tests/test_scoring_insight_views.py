@@ -273,7 +273,15 @@ def test_points_lost_per_ran_vendor_puts_the_vendors_of_an_operator_together_by_
     assert [(table.cell(index, 0).text, table.cell(index, 1).text) for index in range(1, 5)] == [
         ('VF_Hosted', 'Ericsson'), ('', 'Samsung'), ('MIX', ''), ('VMO2_Hosted', 'Samsung')]
     assert table.cell(1, 0).is_merge_origin and table.cell(1, 0).span_height == 2
-    assert table.cell(3, 0).is_merge_origin and table.cell(3, 0).span_width == 2
+    assert not table.cell(3, 0).is_merge_origin and table.cell(3, 1).text == ''
+    # A rule under every network but the last (the bottom of its last row and of its merged cell).
+    from pptx.oxml.ns import qn
+
+    def ruled(row, column):
+        properties = table.cell(row, column)._tc.tcPr
+        return properties is not None and properties.find(qn('a:lnB')) is not None
+    assert [row for row in range(1, 5) if all(ruled(row, column) for column in range(1, len(table.columns)))] == [2, 3]
+    assert ruled(1, 0) and ruled(3, 0) and not ruled(4, 0)
     total = len(table.rows) - 1
     assert table.cell(total, 0).span_width == 2 and table.cell(total, 0).text == VENDORS_TOTAL_LABEL
     assert table.cell(total, 2).text == '60.00'
@@ -289,9 +297,10 @@ def _vendor_summary(vendor, *operators):
                           for name, total, position in operators]}
 
 
-def test_scoring_nationwide_split_by_vendor_is_a_row_of_vendor_cards_per_operator():
-    # Split by Vendor, the scoring Nationwide was a card per Vendor that did not say which: a row per operator with a
-    # small card per Vendor, each Vendor in the same column, its position among the operators of the Vendor.
+def test_scoring_nationwide_split_by_vendor_is_a_grid_of_operators_and_vendors():
+    # Split by Vendor, the scoring Nationwide was a card per Vendor that did not say which: a column per operator and a
+    # row per Vendor (each Vendor always on its own row), a small card where the operator was measured with it, with its
+    # position among the operators of the Vendor.
     from src.modules.scoring.scoring_exports import _slide
     from src.modules.scoring.scoring_insight_slides import add_location_card_slides
     from src.modules.scoring.scoring_insights import _location_cards, _national_cards
@@ -305,17 +314,18 @@ def test_scoring_nationwide_split_by_vendor_is_a_row_of_vendor_cards_per_operato
     ])}
     [group] = _national_cards(summaries, ['Operator', 'Vendor'], 'Combined')
     assert group['by_vendor'] and group['level'] == 'National' and group['title'] == '' and group['context'] == {}
-    assert [card['label'] for card in group['cards']] == ['All', 'Ericsson', 'Huawei', 'Ericsson (Mixed)', 'Unknown']
+    columns = [column['operator'] for column in group['operator_columns']]
+    assert columns == ['EE', 'O2', 'Three', 'VF']
+    rows = {row['label']: row['cards'] for row in group['vendor_rows']}
+    assert list(rows) == ['All', 'Ericsson', 'Huawei', 'Ericsson (Mixed)', 'Unknown']
 
-    def cells(row):
-        return [card and (card['label'], card['operators'][0]['rank'], round(card['operators'][0]['behind'], 1))
-                for card in row['cards']]
-    rows = {row['operator']: row for row in group['operator_rows']}
-    assert [row['operator'] for row in group['operator_rows']] == ['EE', 'O2', 'Three', 'VF']
-    assert cells(rows['EE']) == [('All', 1, 0.0)] and cells(rows['O2']) == [('All', 2, -145.0)]
-    # Ericsson, Huawei, Ericsson (Mixed) and Unknown in the same columns for both operators.
-    assert cells(rows['Three']) == [('Ericsson', 2, -1.0), ('Huawei', 1, 0.0), ('Ericsson (Mixed)', 1, 0.0)]
-    assert cells(rows['VF']) == [('Ericsson', 1, 0.0), ('Huawei', 2, -17.0), None, ('Unknown', 1, 0.0)]
+    def cell(vendor, operator):
+        card = rows[vendor].get(operator)
+        return card and (card['operators'][0]['rank'], round(card['operators'][0]['behind'], 1))
+    assert [cell('All', operator) for operator in columns] == [(1, 0.0), (2, -145.0), None, None]
+    assert [cell('Ericsson', operator) for operator in columns] == [None, None, (2, -1.0), (1, 0.0)]
+    assert [cell('Huawei', operator) for operator in columns] == [None, None, (1, 0.0), (2, -17.0)]
+    assert cell('Ericsson (Mixed)', 'VF') is None and cell('Unknown', 'VF') == (1, 0.0)
 
     # The cards of the areas split by Vendor name their Vendor.
     regions = {index: {**summary, 'context': {**summary['context'], 'region': region}}

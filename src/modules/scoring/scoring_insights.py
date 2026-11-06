@@ -322,39 +322,33 @@ def _vendor_card_order(vendor: str) -> tuple:
 
 
 def _national_vendor_cards(members: list[dict[str, Any]], levels: list[str], environment: str) -> dict[str, Any]:
-    """The scoring of the whole country split by Vendor: a row per operator with a small card per Vendor, in the same
-    column for every operator (an empty place where it has none), each with its position among the operators of the
-    Vendor and its distance to the first one. The operators without a Vendor have the card All alone."""
+    """The scoring of the whole country split by Vendor, as a grid: a column per operator (``operator_columns``, in the
+    order of the Operator Maps) and a row per Vendor (``vendor_rows``, every Vendor always on its own row), each with a
+    small card per operator measured with it (``cards`` by operator): its Data and Voice points, its position among
+    the operators of the Vendor and its distance to the first one. The operators without a Vendor are on the row All."""
     members = sorted(members, key=lambda summary: _vendor_card_order(summary['context'].get('vendor')))
     context = {field: value for field, value in members[0]['context'].items() if field != 'vendor'}
     cards = [{'label': _display('Vendor', summary['context'].get('vendor')), 'operators': summary['operators']}
              for summary in members]
-    rows: dict[str, dict[str, Any]] = {}
+    columns: dict[str, dict[str, Any]] = {}
+    vendor_rows = []
     for card in cards:
         ranked = sorted(card['operators'], key=lambda item: -item['total'])
         leader = ranked[0]['total'] if ranked else 0.0
+        row = {'label': card['label'], 'cards': {}}
         for item, rank in zip(ranked, _ranks([item['total'] for item in ranked])):
-            row = rows.setdefault(item['operator'], {
-                **{field: item.get(field) for field in ('operator', 'label', 'color', 'is_reference', 'position')},
-                'cards': {}})
-            row['cards'][card['label']] = {'label': card['label'],
-                                           'operators': [{**item, 'rank': rank, 'behind': item['total'] - leader}]}
-    columns = [card['label'] for card in cards if card['label'] != ALL_VENDORS_CARD]
-    operator_rows = []
-    for row in sorted(rows.values(), key=lambda item: (item['position'] is None, item['position'] or 0,
-                                                      not item['is_reference'], str(item['label']).casefold())):
-        own = row.pop('cards')
-        placed = [own[ALL_VENDORS_CARD]] if ALL_VENDORS_CARD in own else []
-        if set(own) - {ALL_VENDORS_CARD}:
-            placed += [own.get(column) for column in columns]
-        while placed and placed[-1] is None:
-            placed.pop()
-        operator_rows.append({**row, 'cards': placed})
+            columns.setdefault(item['operator'], {field: item.get(field)
+                                                  for field in ('operator', 'label', 'color', 'is_reference', 'position')})
+            row['cards'][item['operator']] = {'label': card['label'],
+                                              'operators': [{**item, 'rank': rank, 'behind': item['total'] - leader}]}
+        vendor_rows.append(row)
+    operator_columns = sorted(columns.values(), key=lambda item: (item['position'] is None, item['position'] or 0,
+                                                                 not item['is_reference'], str(item['label']).casefold()))
     return {
         'environment': environment, 'level': NATIONAL_CARDS, 'title': _group_label(context, levels, {'Campaign', 'Vendor'}),
         'maximum': max(summary['maximum'] for summary in members), 'scaled': any(summary['scaled'] for summary in members),
         'max_voice': members[0]['max_voice'], 'max_data': members[0]['max_data'], 'campaign': context.get('campaign'),
-        'context': {}, 'by_vendor': True, 'cards': cards, 'operator_rows': operator_rows,
+        'context': {}, 'by_vendor': True, 'cards': cards, 'operator_columns': operator_columns, 'vendor_rows': vendor_rows,
     }
 
 

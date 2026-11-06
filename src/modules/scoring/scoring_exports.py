@@ -2728,10 +2728,11 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
         if _option(options, 'geographical_areas', 'cards'):
             cards_base = panel_operators('geographical_areas', 'cards')
             # The whole country first, then Region, Cluster and City, as the page shows them (split by Vendor, the
-            # rows of the operators of the scoring Nationwide too).
+            # columns of the operators of the scoring Nationwide too).
             groups = [{**group, 'cards': _with_operators(group.get('cards') or [], cards_base),
-                       **({'operator_rows': [row for row in group['operator_rows'] if cards_base(row.get('operator'), row.get('label'))]}
-                          if group.get('operator_rows') else {})}
+                       **({'operator_columns': [column for column in group['operator_columns']
+                                                if cards_base(column.get('operator'), column.get('label'))]}
+                          if group.get('operator_columns') else {})}
                       for group in sorted(items.get('location_cards', []), key=lambda group: _geographical_level_rank(group['level']))]
             add_location_card_slides(presentation, [group for group in groups if group['cards']], scoring_label=label,
                                      subtitle=subtitle, new_slide=_slide, scope=scope)

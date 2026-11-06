@@ -810,14 +810,24 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
 
 
 def _merge_hosted_cells(table, placed: list[tuple[dict[str, Any], str, str | None]], total_row: int) -> None:
-    """One cell for the network of the RAN Vendors it hosts (its consecutive rows), MIX and Not identified across the
-    network and Vendor columns, and the label of the total across both."""
+    """One cell for the network of the RAN Vendors it hosts (its consecutive rows; MIX and Not identified, without a
+    Vendor, alone) and the label of the total across both columns; a rule under every network but the last, as the
+    page draws it, so each one stands apart."""
+    from src.modules.scoring.scoring_pptx_scorecard import border
+    first = 1
+    for index in range(2, len(placed) + 1):
+        if placed[index - 1][1] == placed[index - 2][1]:
+            continue
+        # The bottom of the last row of the network above and of its merged cell: PowerPoint and LibreOffice draw a
+        # merged cell with the edges of its first cell, and LibreOffice draws a top edge under the cell too.
+        for column in range(len(table.columns)):
+            border(table.cell(index - 1, column), 'lnB', '#5B6B78', 1.5)
+        border(table.cell(first, 0), 'lnB', '#5B6B78', 1.5)
+        first = index
     start = 1
     for index in range(1, len(placed) + 1):
         row_index = index + 1
         _row, host, vendor = placed[index - 1]
-        if vendor is None:
-            table.cell(index, 0).merge(table.cell(index, 1))
         last = index == len(placed) or placed[index][1] != host or placed[index][2] is None or vendor is None
         if last:
             if vendor is not None and index > start:

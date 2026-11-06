@@ -6829,15 +6829,15 @@
   // its Voice points (in the Data and Voice colours of the theme), with its total and, behind the first, its distance to it.
   // ``wide``: the card of the whole country (Nationwide), across the panel (``width``, its width in pixels) with larger
   // bars and text.
-  // ``compact``: the small card of an operator and a Vendor (the scoring Nationwide split by Vendor), without its name
-  // (its row gives it), with its position among the operators of the Vendor (``rank``) and its distance to the first
-  // (``behind``).
+  // ``compact``: the small card of an operator and a Vendor (the scoring Nationwide split by Vendor, ``width`` the width
+  // of its cell in pixels), without its name (its column gives it), with its position among the operators of the
+  // Vendor (``rank``) and its distance to the first (``behind``).
   function makeLocationCardChart(card, maximum, {wide = false, width: wideWidth = 1000, compact = false} = {}) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const operators = [...(card.operators || [])].sort((left, right) => right.total - left.total);
     const ranks = operators.map((item, index) => item.rank ?? insightRanks(operators.map(other => other.total))[index]);
     const k = wide ? 1.45 : 1;
-    const width = wide ? Math.max(480, wideWidth) : compact ? 210 : 320, rowHeight = 30 * k, top = 4 * k,
+    const width = wide ? Math.max(480, wideWidth) : compact ? Math.max(150, Math.min(wideWidth, 900)) : 320, rowHeight = 30 * k, top = 4 * k,
       labelWidth = compact ? 24 : 96 * k, valueWidth = compact ? 74 : 78 * k;
     const height = top + operators.length * rowHeight + 4 * k;
     const plot = width - labelWidth - valueWidth;
@@ -6876,48 +6876,59 @@
     return svg;
   }
 
-  // The scoring Nationwide split by Vendor: a row per operator (in the order of the Operator Maps, ``position``) with a
-  // small card per Vendor, each Vendor in the same column for every operator.
-  function makeVendorCardRows(group, position) {
-    const rows = [...(group.operator_rows || [])].sort((left, right) => position(left.operator) - position(right.operator));
-    const columns = Math.max(1, ...rows.map(row => (row.cards || []).length));
-    const box = document.createElement('div');
-    box.className = 'scoring-location-vendor-rows';
-    box.style.setProperty('--vendor-columns', String(columns));
-    for (const row of rows) {
-      const line = document.createElement('div');
-      line.className = 'scoring-location-vendor-row';
+  // The scoring Nationwide split by Vendor, as a grid: a column per operator (in the order of the Operator Maps,
+  // ``position``) and a row per Vendor, each Vendor always on its own row, with a small card where the operator was
+  // measured with it. Each chart is drawn at the width of its cell, so its text keeps its size.
+  function makeVendorCardGrid(group, position) {
+    const columns = [...(group.operator_columns || [])].sort((left, right) => position(left.operator) - position(right.operator));
+    const grid = document.createElement('div');
+    grid.className = 'scoring-location-vendor-grid';
+    grid.style.setProperty('--operator-columns', String(Math.max(1, columns.length)));
+    grid.append(Object.assign(document.createElement('div'), {className: 'scoring-location-vendor-corner', textContent: 'Vendor'}));
+    for (const column of columns) {
       const name = document.createElement('div');
       name.className = 'scoring-location-vendor-operator';
-      name.textContent = String(row.label ?? row.operator ?? '');
-      const color = safeHexColor(row.color);
-      if (color) name.style.color = color;
-      const cards = document.createElement('div');
-      cards.className = 'scoring-location-cards is-vendor-row';
-      for (const card of row.cards || []) {
+      name.textContent = String(column.label ?? column.operator ?? '');
+      const color = safeHexColor(column.color);
+      if (color) name.style.setProperty('--operator-color', color);
+      grid.append(name);
+    }
+    for (const row of group.vendor_rows || []) {
+      grid.append(Object.assign(document.createElement('div'), {className: 'scoring-location-vendor-name', textContent: String(row.label)}));
+      for (const column of columns) {
+        const card = row.cards?.[column.operator];
         const article = document.createElement('article');
         if (!card) {
-          article.className = 'scoring-location-card is-empty';
+          article.className = 'scoring-location-card is-vendor is-empty';
           article.setAttribute('aria-hidden', 'true');
         } else {
           article.className = 'scoring-location-card is-vendor';
+          article.title = `${column.label ?? column.operator} · ${row.label}`;
+          const color = safeHexColor(column.color);
           if (color) article.style.setProperty('--operator-color', color);
-          const heading = document.createElement('h5');
-          heading.textContent = String(card.label);
-          article.append(heading, makeLocationCardChart(card, group.maximum, {compact: true}));
+          const chartBox = document.createElement('div');
+          let drawnWidth = 0;
+          const draw = () => {
+            const available = Math.round(chartBox.clientWidth);
+            if (!available || Math.abs(available - drawnWidth) < 3) return;
+            drawnWidth = available;
+            chartBox.replaceChildren(makeLocationCardChart(card, group.maximum, {compact: true, width: available}));
+          };
+          chartBox.append(makeLocationCardChart(card, group.maximum, {compact: true, width: 260}));
+          article.append(chartBox);
+          requestAnimationFrame(draw);
+          if (typeof ResizeObserver === 'function') new ResizeObserver(draw).observe(chartBox);
         }
-        cards.append(article);
+        grid.append(article);
       }
-      line.append(name, cards);
-      box.append(line);
     }
-    return box;
+    return grid;
   }
 
   function makeLocationCardsView(group, position = () => 0) {
     const wrapper = document.createElement('div');
     const plural = {City: 'cities', Cluster: 'clusters', Region: 'regions'}[group.level] || 'locations';
-    const byVendor = Boolean(group.by_vendor && group.operator_rows);
+    const byVendor = Boolean(group.by_vendor && group.vendor_rows);
     const national = group.level === 'National' && !byVendor;
     const note = document.createElement('p');
     note.className = `scoring-insight-note scoring-location-note${national ? ' is-national' : ''}`;
@@ -6929,7 +6940,7 @@
     note.append(maximum, ` at most (Voice ${insightNumber(group.max_voice)} · Data ${insightNumber(group.max_data)})`,
       group.scaled ? ', the environments measured in each one scaled to them, so they compare with the overall scoring.' : '.');
     // The card of the whole country goes across the panel, its bars and text larger.
-    const layout = byVendor ? makeVendorCardRows(group, position) : document.createElement('div');
+    const layout = byVendor ? makeVendorCardGrid(group, position) : document.createElement('div');
     if (!byVendor) layout.className = `scoring-location-cards${national ? ' is-national' : ''}`;
     for (const card of byVendor ? [] : group.cards || []) {
       const article = document.createElement('article');
@@ -7252,7 +7263,8 @@
 
   // A table of the insights; ``total`` (the cells of a row) closes it in its footer, styled as the total row of the
   // Score and GAP tables in each theme.
-  function insightTable(headers, rows, {className = '', total = null} = {}) {
+  // ``rowClasses``: a class per row of the body (for example the first row of each group).
+  function insightTable(headers, rows, {className = '', total = null, rowClasses = []} = {}) {
     const table = document.createElement('table');
     table.className = `scoring-insight-table ${className}`.trim();
     const head = table.createTHead().insertRow();
@@ -7263,8 +7275,9 @@
     }
     const body = table.createTBody();
     const footer = total ? table.createTFoot() : null;
-    for (const [section, cells] of [...rows.map(cells => [body, cells]), ...(footer ? [[footer, total]] : [])]) {
+    for (const [index, [section, cells]] of [...rows.map(cells => [body, cells]), ...(footer ? [[footer, total]] : [])].entries()) {
       const row = section.insertRow();
+      if (section === body && rowClasses[index]) row.className = rowClasses[index];
       for (const content of cells) {
         const cell = row.insertCell();
         if (content instanceof Node) cell.append(content);
@@ -8509,7 +8522,7 @@
 
   // The rows of the Points lost per RAN Vendor grouped by the network that hosts them (VF_Hosted_Ericsson: VF_Hosted and
   // Ericsson), the network that loses most first and its Vendors from the one that loses most; the cells of each
-  // network joined in one. MIX and Not identified, without a network, take both columns.
+  // network joined in one. MIX and Not identified have no Vendor.
   function hostedVendorRows(rows) {
     const split = name => {
       const match = /^(.+?_Hosted)_(.+)$/.exec(String(name ?? ''));
@@ -8526,14 +8539,16 @@
       .sort((left, right) => right.reduce((total, row) => total + (Number(row.points) || 0), 0)
         - left.reduce((total, row) => total + (Number(row.points) || 0), 0));
     const spans = new Map(ordered.map(members => [members[0], members.length]));
+    // A rule over the first row of every network but the first, so each one stands apart.
+    const rowClasses = ordered.flatMap((members, index) => members.map((_row, position) => (index && !position ? 'is-group-start' : '')));
     const lead = row => {
       const {host, vendor} = split(row.name);
       const className = row.identified ? 'scoring-insight-kpi' : 'scoring-insight-kpi is-muted';
-      if (vendor === null) return [{text: host, colSpan: 2, className}];
+      if (vendor === null) return [{text: host, className}, {text: '', className}];
       return [...(spans.has(row) ? [{text: host, rowSpan: spans.get(row), className: 'scoring-insight-kpi scoring-insight-host'}] : []),
         {text: vendor, className}];
     };
-    return {rows: ordered.flat(), lead, leadColumns: ['Host network', 'Vendor']};
+    return {rows: ordered.flat(), lead, leadColumns: ['Host network', 'Vendor'], rowClasses, className: 'is-hosted'};
   }
 
   function renderServingLosses(pane, payload, environment, kind, title, column, pending) {
@@ -8571,7 +8586,7 @@
         : ` · ${insightNumber(item.total, 1)} points lost`);
       // The RAN Vendors: the network that hosts them (in one cell for all its Vendors, the network that loses most
       // first), then each Vendor; MIX and Not identified across both columns.
-      const {rows: shownRows, lead, leadColumns} = kind === 'ran_vendor_losses' ? hostedVendorRows(item.rows)
+      const {rows: shownRows, lead, leadColumns, rowClasses = [], className: tableClass = ''} = kind === 'ran_vendor_losses' ? hostedVendorRows(item.rows)
         : {rows: item.rows, lead: row => [{text: row.name, className: row.identified ? 'scoring-insight-kpi' : 'scoring-insight-kpi is-muted'}], leadColumns: [column]};
       const peak = Math.max(...item.rows.map(row => row.points), 0);
       const withTests = item.has_tests;
@@ -8600,7 +8615,7 @@
         ...(withCounts ? [{text: row.rate === null || row.rate === undefined ? '—' : insightNumber(row.rate, 1), className: 'scoring-insight-number', title: rateTitle}] : []),
         ...(withEnvironments ? [{text: (row.environments || []).map(name => shortEnvironmentLabel(name)).join(', '), className: 'scoring-loss-environment'}] : []),
         ...(withCities ? [(row.cities || []).map(city => `${city.name} ${insightNumber(city.points, 1)}`).join(' · ')] : []),
-      ]), {total}));
+      ]), {total, rowClasses, className: tableClass}));
       grid.append(wrapper);
     }
     const vendorSeries = inScope.some(entry => entry.by_vendor);
