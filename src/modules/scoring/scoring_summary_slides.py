@@ -8,6 +8,7 @@ are teal and Voice points amber.
 """
 from __future__ import annotations
 
+import re
 from io import BytesIO
 from math import ceil, cos, radians, sqrt
 from typing import Any, Callable
@@ -678,11 +679,28 @@ def latest_campaign_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [item for item in items if item['context'].get('campaign') in (None, latest)]
 
 
+def hosted_vendor_rows(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], str, str | None]]:
+    """The rows of the Points lost per RAN Vendor as the page groups them: each with the network that hosts it and its
+    Vendor (VF_Hosted_Ericsson: VF_Hosted and Ericsson), the network that loses most first and its Vendors from the one
+    that loses most; MIX and Not identified have no Vendor."""
+    def split(name: Any) -> tuple[str, str | None]:
+        match = re.match(r'^(.+?_Hosted)_(.+)$', str(name or ''))
+        return (match.group(1), match.group(2)) if match else (str(name or ''), None)
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(split(row['name'])[0], []).append(row)
+    ordered = sorted((sorted(members, key=lambda row: -(row['points'] or 0)) for members in groups.values()),
+                     key=lambda members: -sum(row['points'] or 0 for row in members))
+    return [(row, *split(row['name'])) for members in ordered for row in members]
+
+
 def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title: str, column: str, subtitle: str,
                             new_slide: Callable, scope: ScopeLabels | None = None,
-                            compared: Callable[[str, str], bool] = lambda _operator, _label: True) -> None:
+                            compared: Callable[[str, str], bool] = lambda _operator, _label: True,
+                            hosted: bool = False) -> None:
     """The points each compared operator lost per Vendor or kind of serving site, with its share of the tests (up to
-    six operators per slide)."""
+    six operators per slide). ``hosted``: the RAN Vendors, in two columns (the network that hosts them, one merged cell
+    for all its Vendors, and the Vendor), as the page shows them."""
     chosen = [item for item in latest_campaign_items(items) if compared(item['operator'], item['label'])]
     by_scope: dict[str, list[dict[str, Any]]] = {}
     for item in chosen:
@@ -697,37 +715,53 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                 # average of the Vendors weighted by their tests as the total.
                 by_vendor = bool(item.get('by_vendor'))
                 lost = (f" · {len(item['rows'])} Vendor{'' if len(item['rows']) == 1 else 's'} · {item['total']:,.1f} points lost "
-                        'on average (weighted by tests)') if by_vendor else f" · {item['total']:,.1f} points lost"
+                        'on average (weighted by tests)') if by_vendor else (
+                    f" · {item['total']:,.1f} points lost on average of its Vendors (weighted by tests)" if item.get('vendors_together')
+                    else f" · {item['total']:,.1f} points lost")
                 _banner(slide, [(item['label'], True, color), (lost, False, None)], left, top, width, color)
-                # As many rows as keep a legible size (the Vendors or kinds of site that lose most first).
-                rows = item['rows'][:min(16, max(3, int((height - .38) / .2) - 1))]
+                # As many rows as keep a legible size (the Vendors or kinds of site that lose most first; the RAN Vendors
+                # by the network that hosts them).
+                placed = hosted_vendor_rows(item['rows']) if hosted else [(row, row['name'], None) for row in item['rows']]
+                placed = placed[:min(16, max(3, int((height - .38) / .2) - 1))]
+                rows = [row for row, _host, _vendor in placed]
+                leads = ['Host network', 'Vendor'] if hosted else [column]
                 with_tests = item.get('has_tests')
                 # A RAN Vendor or site type: its calls and tests and the points it loses per 1,000 of them too.
                 with_counts = bool(with_tests and item.get('has_counts'))
-                headers = [column, 'Points lost', *([] if by_vendor else ['Share of points']), *(['Tests'] if with_counts else []),
+                headers = [*leads, 'Points lost', *([] if by_vendor else ['Share of points']), *(['Tests'] if with_counts else []),
                            *(['Share of tests'] if with_tests else []), *(['Per 1,000 tests'] if with_counts else [])]
+                fixed = [*([.95, .85] if hosted else [1.45]), 1.1, *([.8] * (len(headers) - len(leads) - 1))]
                 # Narrow panels leave the cities and routes out (with the calls and tests, those without 1.6 in. for them).
-                narrow = width < 5 or (with_counts and width - (1.45 + 1.1 + .8 * (len(headers) - 2)) < 1.6)
+                narrow = width < 5 or (with_counts and width - sum(fixed) < 1.6)
                 headers += [] if narrow else ['Cities and routes that lose most']
-                if narrow:
+                if narrow and hosted:
+                    shares = (.2, .17, *([.63 / (len(headers) - 2)] * (len(headers) - 2)))
+                    widths = [width * share for share in shares]
+                elif narrow:
                     shares = {2: (.6, .4), 3: (.44, .3, .26), 4: (.36, .24, .2, .2)}.get(len(headers)) or (
                         .28, *([.72 / (len(headers) - 1)] * (len(headers) - 1)))
                     widths = [width * share for share in shares]
                 else:
-                    fixed = [1.45, 1.1, *([.8] * (len(headers) - 3))]
                     widths = [*fixed, width - sum(fixed)]
                 row_height = _fitted_rows(height - .38, len(rows) + 2, largest=.34)
                 size = _font(row_height, 8, .34)
                 shape, table = _table(slide, len(rows) + 2, len(headers), left, top + .38, width, row_height, widths)
                 shape.name = 'Scoring Serving Loss Table'
-                _header(table, headers, size=size)
-                for row_index, row in enumerate(rows, start=1):
-                    _cell(table.cell(row_index, 0), row['name'], size=size, color=INK if row['identified'] else MUTED)
-                    _cell(table.cell(row_index, 1), f"{row['points']:,.2f}", size=size, bold=True, fill=None, align=PP_ALIGN.RIGHT)
-                    offset = 2
+                _header(table, headers, size=size, numeric_from=len(leads))
+                lead = len(leads)
+                for row_index, (row, host, vendor) in enumerate(placed, start=1):
+                    if hosted:
+                        first = row_index == 1 or placed[row_index - 2][1] != host or vendor is None
+                        _cell(table.cell(row_index, 0), host if first else '', size=size, bold=vendor is not None,
+                              color=INK if row['identified'] else MUTED)
+                        _cell(table.cell(row_index, 1), vendor or '', size=size, color=INK if row['identified'] else MUTED)
+                    else:
+                        _cell(table.cell(row_index, 0), row['name'], size=size, color=INK if row['identified'] else MUTED)
+                    _cell(table.cell(row_index, lead), f"{row['points']:,.2f}", size=size, bold=True, fill=None, align=PP_ALIGN.RIGHT)
+                    offset = lead + 1
                     if not by_vendor:
-                        _cell(table.cell(row_index, 2), f"{row['share']:.1f}%", size=size, align=PP_ALIGN.RIGHT)
-                        offset = 3
+                        _cell(table.cell(row_index, offset), f"{row['share']:.1f}%", size=size, align=PP_ALIGN.RIGHT)
+                        offset += 1
                     if with_counts:
                         _cell(table.cell(row_index, offset), f"{row.get('tests') or 0:,}", size=size, align=PP_ALIGN.RIGHT)
                         offset += 1
@@ -746,19 +780,26 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                                                                          for city in (row.get('cities') or [])[:2]), size=max(6.0, size - 1))
                 # The total of the Vendors or kinds of site listed.
                 tests = [row['tests_share'] for row in rows if row['tests_share'] is not None]
-                _total_row(table, len(rows) + 1, [item.get('total_label') or 'Total',
+                _total_row(table, len(rows) + 1, [item.get('total_label') or 'Total', *([''] if hosted else []),
                                                   f"{item['total'] if by_vendor else sum(row['points'] for row in rows):,.2f}",
                                                   *([] if by_vendor else [f"{sum(row['share'] for row in rows):.1f}%"]),
                                                   *([f"{item.get('tests') or 0:,}"] if with_counts else []),
                                                   *([f'{sum(tests):.1f}%' if tests else '—'] if with_tests else []),
                                                   *(['—' if item.get('rate') is None else f"{item['rate']:,.1f}"] if with_counts else []),
-                                                  *([] if narrow else [''])], size=size)
-                _row_bars(slide, [row['points'] for row in rows], left=left + widths[0], top=top + .38 + row_height,
-                          width=widths[1], row_height=row_height, color=LOSS_COLOR)
+                                                  *([] if narrow else [''])], size=size, labels=lead)
+                if hosted:
+                    _merge_hosted_cells(table, placed, len(rows) + 1)
+                _row_bars(slide, [row['points'] for row in rows], left=left + sum(widths[:lead]), top=top + .38 + row_height,
+                          width=widths[lead], row_height=row_height, color=LOSS_COLOR)
                 _to_front(slide, shape)
             _text(slide, 'The scoring is split by Vendor: each Vendor is scored on its own tests, so its points lost compare directly '
                          'with the other Vendors. Share of tests: the tests of the operator it served. Total: the average of the '
                          'Vendors weighted by their tests.' if any(item.get('by_vendor') for item in group) else
+                         'Each call or test belongs to the network that hosts its first and last serving cells and to their RAN '
+                         'Vendor, MIX when they differ (Not identified: no serving cell in the inventories). Per 1,000 tests: from 100.'
+                         + (' Split by Vendor: each Vendor counts in proportion to its tests (Total: their average weighted by tests).'
+                            if any(item.get('vendors_together') for item in group) else
+                            ' In red, a share of the points lost well above the share of the tests.') if hosted else
                          'Each call or test belongs to the class of its first and last serving cells, MIX when they differ (Not '
                          'identified: no serving cell in the inventories). Per 1,000 tests: the points lost per 1,000 calls and '
                          'tests it served (from 100). In red, a share of the points lost well above the share of the tests.'
@@ -766,6 +807,23 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                          'Each test belongs to the serving cell of its start (Not identified: no serving cell in the inventories). '
                          'In red, a share of the points lost well above the share of the tests.', .45, CONTENT_BOTTOM - .22,
                   12.4, .25, size=8, color=MUTED)
+
+
+def _merge_hosted_cells(table, placed: list[tuple[dict[str, Any], str, str | None]], total_row: int) -> None:
+    """One cell for the network of the RAN Vendors it hosts (its consecutive rows), MIX and Not identified across the
+    network and Vendor columns, and the label of the total across both."""
+    start = 1
+    for index in range(1, len(placed) + 1):
+        row_index = index + 1
+        _row, host, vendor = placed[index - 1]
+        if vendor is None:
+            table.cell(index, 0).merge(table.cell(index, 1))
+        last = index == len(placed) or placed[index][1] != host or placed[index][2] is None or vendor is None
+        if last:
+            if vendor is not None and index > start:
+                table.cell(start, 0).merge(table.cell(index, 0))
+            start = row_index
+    table.cell(total_row, 0).merge(table.cell(total_row, 1))
 
 
 def add_sites_slides(presentation, items: list[dict[str, Any]], *, subtitle: str, new_slide: Callable,

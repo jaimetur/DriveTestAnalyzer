@@ -41,7 +41,7 @@ from src.modules.scoring.scoring_summary_slides import (
     add_location_versus_slides, add_points_at_stake_slides, add_position_matrix_slides, add_serving_loss_slides,
     add_sites_slides, add_standings_slides, add_stretch_slides, latest_campaign_items,
 )
-from src.modules.scoring.scoring_area_summary import build_area_summary
+from src.modules.scoring.scoring_area_summary import build_area_summary, whole_country_filters
 from src.modules.scoring.scoring_config import BEST_NETWORK_SCORING, MOST_RELIABLE_SCORING, SCORING_LABELS
 from src.modules.scoring.scoring_insights import operator_styles
 from src.modules.scoring.scoring_export_panels import (
@@ -2723,10 +2723,15 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                              scoring_label=label, subtitle=subtitle, new_slide=_slide, scope=scope)
         return
     if stage == 'geographical_areas':
+        # Calculated on the whole country: their area is never the City, Cluster or Region filters of the scoring.
+        scope = (lambda context=None: views['_scope'](context, whole_country=True)) if views.get('_scope') else scope
         if _option(options, 'geographical_areas', 'cards'):
             cards_base = panel_operators('geographical_areas', 'cards')
-            # The whole country first, then Region, Cluster and City, as the page shows them.
-            groups = [{**group, 'cards': _with_operators(group.get('cards') or [], cards_base)}
+            # The whole country first, then Region, Cluster and City, as the page shows them (split by Vendor, the
+            # rows of the operators of the scoring Nationwide too).
+            groups = [{**group, 'cards': _with_operators(group.get('cards') or [], cards_base),
+                       **({'operator_rows': [row for row in group['operator_rows'] if cards_base(row.get('operator'), row.get('label'))]}
+                          if group.get('operator_rows') else {})}
                       for group in sorted(items.get('location_cards', []), key=lambda group: _geographical_level_rank(group['level']))]
             add_location_card_slides(presentation, [group for group in groups if group['cards']], scoring_label=label,
                                      subtitle=subtitle, new_slide=_slide, scope=scope)
@@ -2813,7 +2818,7 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                 class_base = panel_operators('points', option)
                 add_serving_loss_slides(presentation, compared_items(f'{view}-operators', items.get(view, []), class_base),
                                         title=title, column=column, subtitle=subtitle, new_slide=_slide, scope=scope,
-                                        compared=chosen(f'{view}-operators', class_base))
+                                        compared=chosen(f'{view}-operators', class_base), hosted=option == 'ran_vendors')
         if _option(options, 'points', 'sites'):
             sites_base = panel_operators('points', 'sites')
             add_sites_slides(presentation, compared_items('sites-operators', latest_campaign_items(items.get('sites_to_review', [])),
@@ -2908,8 +2913,9 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
     scope_filters = job.get('context_filters') or {}
     scope_operators = list(dict.fromkeys(str(operator) for matrix in views.get('score_tables', [])
                                          for operator in matrix.get('operators') or []))
-    views['_scope'] = lambda context=None: scoring_scope_labels(context, scope_filters, scope_operators,
-                                                                omit_context=True)
+    # (``whole_country``: a view calculated without the City, Cluster and Region filters, the Geographical Areas.)
+    views['_scope'] = lambda context=None, whole_country=False: scoring_scope_labels(
+        context, whole_country_filters(scope_filters) if whole_country else scope_filters, scope_operators, omit_context=True)
     for matrix_key in ('score_tables', 'gap_summary_tables', 'gap_tables',
                        'hierarchy_score_tables', 'hierarchy_gap_tables'):
         for matrix in views.get(matrix_key, []):

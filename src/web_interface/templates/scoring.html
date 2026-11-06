@@ -465,6 +465,15 @@
   .scoring-location-legend i.is-data { background: var(--st-data); }
   .scoring-location-legend i.is-voice { background: var(--st-voice); }
   .scoring-location-legend b { display: inline-grid; place-items: center; width: 1rem; height: 1rem; margin-right: .3rem; border: 1.5px solid #475569; border-radius: 50%; font-size: .6rem; }
+  /* The scoring Nationwide split by Vendor: a row per operator, a small card per Vendor in the same column for every operator. */
+  .scoring-location-vendor-rows { display: grid; gap: .55rem; }
+  .scoring-location-vendor-row { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: .6rem; align-items: center; }
+  .scoring-location-vendor-operator { overflow: hidden; color: var(--st-title); font-size: .95rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+  .scoring-location-cards.is-vendor-row { grid-template-columns: repeat(var(--vendor-columns, 4), minmax(0, 1fr)); gap: .5rem; }
+  .scoring-location-card.is-vendor { padding: .4rem .5rem .3rem; }
+  .scoring-location-card.is-vendor h5 { margin-bottom: .2rem; overflow: hidden; font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+  .scoring-location-card.is-empty { visibility: hidden; }
+  @media (max-width: 760px) { .scoring-location-vendor-row { grid-template-columns: minmax(0, 1fr); } }
   .scoring-trend-chart { display: block; width: 100%; min-width: 46rem; height: auto; }
   .scoring-insight-select { margin: .2rem 0 .55rem; }
   .scoring-insight-select select { min-width: 18rem; max-width: 100%; }
@@ -552,6 +561,8 @@
   .scoring-insight-banner strong { font-weight: 850; }
   .scoring-insight-table td.scoring-insight-group { background-color: var(--st-group) !important; color: var(--st-soft-header-text); font-weight: 800; }
   .scoring-profile-table td.scoring-insight-kpi, .scoring-insight-table td.scoring-insight-kpi { padding-left: .9rem; white-space: normal; }
+  /* The network that hosts the RAN Vendors of the Points lost per RAN Vendor, one cell for all its Vendors. */
+  .scoring-insight-table td.scoring-insight-host { border-right: 1px solid #d5dbe2; color: var(--st-title); font-weight: 800; vertical-align: middle; }
   :is(.scoring-insight-table, .scoring-impact-diff-kpi) .scoring-kpi-name-row { display: flex; align-items: center; }
   :is(.scoring-insight-table, .scoring-impact-diff-kpi) .scoring-kpi-name-row .scoring-kpi-badge { flex: none; }
   .scoring-insight-table td.is-muted { color: #7a8a96; font-style: italic; }

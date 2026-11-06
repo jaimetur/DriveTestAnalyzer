@@ -240,7 +240,9 @@ def _latest_campaign_groups(groups: list[dict[str, Any]]) -> list[dict[str, Any]
 def add_location_card_slides(presentation, groups: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
                              new_slide: Callable, scope: ScopeLabels | None = None) -> None:
     """One slide per group: a card per City, Cluster or Region with each operator's Data and Voice points as a bar,
-    from the highest score; the scoring Nationwide (level National) comes first, with the card of the whole country.
+    from the highest score; the scoring Nationwide (level National) comes first, with the card of the whole country
+    (split by Vendor, a row per operator with a small card per Vendor, see _add_vendor_card_rows). The subtitle names the
+    Vendor of each group split by Vendor.
 
     With several campaigns only the latest one gets cards; the scoring trend shows the others.
     """
@@ -248,21 +250,31 @@ def add_location_card_slides(presentation, groups: list[dict[str, Any]], *, scor
     for group in groups[:MAX_GROUP_SLIDES]:
         level = group['level']
         national = level == 'National'
+        by_vendor = bool(group.get('by_vendor') and group.get('operator_rows'))
         plural = {'City': 'cities', 'Cluster': 'clusters', 'Region': 'regions'}.get(level, 'areas')
         slide = new_slide(presentation, f'{scoring_label} Scoring Nationwide' if national else f'{scoring_label} Scoring per {level}',
-                          ' · '.join(part for part in (_with_scope(subtitle, scope), group['title']) if part))
+                          ' · '.join(part for part in (_with_scope(subtitle, scope, group.get('context') or None),
+                                                       group['title']) if part))
         cards = group['cards']
         maximum = group['maximum']
         voice_max, data_max = group.get('max_voice') or 0, group.get('max_data') or 0
         note = slide.shapes.add_textbox(Inches(.45), Inches(1.45), Inches(12.4), Inches(.3))
         note.name = 'Scoring Location Cards Note'
         _write_runs(note.text_frame, [
-            (f'The {scoring_label} scoring of the whole country, from its highest score: ' if national
+            (f'The {scoring_label} scoring of the whole country per Vendor (each Vendor scored on its own tests), from its highest score: '
+             if by_vendor else f'The {scoring_label} scoring of the whole country, from its highest score: ' if national
              else f'The {scoring_label} scoring of the selected {plural}, each from its highest score: ', False, None),
             (f'{_points(maximum)} points', True, None),
             (f' at most (Voice {_points(voice_max)} · Data {_points(data_max)})', False, None),
             (', the environments measured in each one scaled to them.' if group['scaled'] else '.', False, None)],
             size=9.5, color='#4A5B65')
+        if by_vendor:
+            _add_vendor_card_rows(slide, group['operator_rows'], maximum)
+            _legend_key(slide, 4.2, 6.98, [('Data', DATA_COLOR), ('Voice', VOICE_COLOR)])
+            key = slide.shapes.add_textbox(Inches(6.95), Inches(6.98), Inches(5.6), Inches(.24))
+            _write(key.text_frame, [('1: position among the operators of the Vendor (−: points behind the first)', 9, False, '#4A5B65')])
+            key.text_frame.margin_left = 0
+            continue
         count = len(cards)
         columns = count if count <= 3 else 4 if count <= 8 else ceil(count / 3)
         rows = ceil(count / columns)
@@ -293,6 +305,58 @@ def add_location_card_slides(presentation, groups: list[dict[str, Any]], *, scor
             chart_shape.name = f'Scoring Location Chart {card["label"]}'
             _format_card_chart(chart_shape.chart, maximum, label_size, operators)
         _legend_key(slide, 5.6, 6.98, [('Data', DATA_COLOR), ('Voice', VOICE_COLOR)])
+
+
+def _add_vendor_card_rows(slide, rows: list[dict[str, Any]], maximum: float) -> None:
+    """The scoring Nationwide split by Vendor, as the page draws it: a row per operator (its name in its colour) with a
+    small card per Vendor, each Vendor in the same column for every operator; in each card the operator's Data and Voice
+    points as a bar, its position among the operators of the Vendor and its distance to the first one."""
+    columns = max(1, *(len(row['cards']) for row in rows))
+    gap, name_width = .1, 1.0
+    area_left, area_top, area_width, area_height = .45, 1.85, 12.45, 4.95
+    width = (area_width - name_width - gap * (columns - 1)) / columns
+    height = min(1.0, (area_height - gap * (len(rows) - 1)) / max(1, len(rows)))
+    for row_index, row in enumerate(rows):
+        top = area_top + row_index * (height + gap)
+        color = row.get('color') or FALLBACK_COLORS[row_index % len(FALLBACK_COLORS)]
+        name = slide.shapes.add_textbox(Inches(area_left), Inches(top), Inches(name_width - .08), Inches(height))
+        name.name = f"Scoring Vendor Cards Operator {row.get('label') or row.get('operator')}"
+        _write(name.text_frame, [(str(row.get('label') or row.get('operator') or ''), 12, True, color)])
+        name.text_frame.margin_left = 0
+        name.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+        for column, card in enumerate(row['cards']):
+            if not card or not card.get('operators'):
+                continue
+            item = card['operators'][0]
+            left = area_left + name_width + column * (width + gap)
+            background = _box(slide, left, top, width, height, CARD_COLOR)
+            background.name = f"Scoring Vendor Card {row.get('label') or row.get('operator')} {card['label']}"
+            heading = slide.shapes.add_textbox(Inches(left + .04), Inches(top + .02), Inches(width - .08), Inches(.26))
+            _write(heading.text_frame, [(str(card['label']), 9.5 if width >= 1.4 else 8.5, True, TITLE_BLUE)])
+            bar_top = top + .3 + max(0.0, (height - .3 - .2) / 2 - .02)
+            rank = item.get('rank') or 1
+            badge = _box(slide, left + .07, bar_top - .01, .22, .22, color if rank == 1 else '#FFFFFF', shape=MSO_SHAPE.OVAL)
+            badge.line.color.rgb = _rgb(color)
+            badge.line.width = Pt(1)
+            frame = badge.text_frame
+            frame.margin_left = frame.margin_right = frame.margin_top = frame.margin_bottom = 0
+            frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+            _write(frame, [(str(rank), 7.5, True, '#FFFFFF' if rank == 1 else color)], align=PP_ALIGN.CENTER)
+            frame.margin_left = frame.margin_right = frame.margin_top = frame.margin_bottom = 0
+            bar_left, value_width = left + .34, .6
+            scale = max(0.0, width - .34 - value_width - .04) / max(1.0, maximum)
+            data_width, voice_width = max(0.0, item['data']) * scale, max(0.0, item['voice']) * scale
+            if data_width > 0:
+                _box(slide, bar_left, bar_top, data_width, .2, DATA_COLOR)
+            if voice_width > 0:
+                _box(slide, bar_left + data_width, bar_top, voice_width, .2, VOICE_COLOR)
+            value = slide.shapes.add_textbox(Inches(bar_left + data_width + voice_width + .03), Inches(bar_top - .02),
+                                             Inches(value_width + .1), Inches(.24))
+            behind = item.get('behind') or 0.0
+            _write_runs(value.text_frame, [(f"{item['total']:,.0f}{'' if item.get('complete', True) else '*'}", True, TEXT_COLOR),
+                                           *([(f" −{abs(behind):.1f}", False, '#7A8A96')] if abs(behind) >= .05 else [])],
+                        size=8.5, color=TEXT_COLOR)
+            value.text_frame.word_wrap = False
 
 
 def _format_card_chart(chart, maximum: float, label_size: float, operators: list[dict[str, Any]]) -> None:

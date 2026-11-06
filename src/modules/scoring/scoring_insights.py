@@ -276,7 +276,7 @@ def _scope_summary(tables: dict[str, dict[str, Any]], environment: str) -> dict[
             'operator': operator, 'label': style.get('label') or operator, 'color': style.get('color'),
             'voice': voice, 'data': data, 'total': voice + data,
             'complete': all(part['complete'] for part in measured) and len(measured) == len(parts),
-            'is_reference': operator == table.get('baseline_operator'),
+            'is_reference': operator == table.get('baseline_operator'), 'position': style.get('position'),
         })
     if not operators:
         return None
@@ -304,21 +304,89 @@ def _group_label(context: dict[str, Any], levels: list[str], excluded: set[str])
 NATIONAL_CARDS = 'National'
 
 
+# The Vendor of the operators that have none (EE, or an operator out of the Multivendor Mappings) in a scoring split
+# by Vendor (see scoring_vendors.scoring_vendor_group).
+ALL_VENDORS_CARD = 'All'
+
+
+def _card_context(context: dict[str, Any]) -> dict[str, Any]:
+    """The Vendor of a group of location cards, which its title pills name (its areas are the cards themselves)."""
+    return {'vendor': context['vendor']} if context.get('vendor') not in (None, '') else {}
+
+
+def _vendor_card_order(vendor: str) -> tuple:
+    """All (the operators without a Vendor) first, then the Vendors by name, the Mixed ones and Unknown last."""
+    from src.modules.cdr_analysis.cdr_reporting import VENDOR_UNKNOWN
+    name = str(vendor)
+    return (0 if name == ALL_VENDORS_CARD else 3 if name == VENDOR_UNKNOWN else 2 if 'Mixed' in name else 1, name.casefold())
+
+
+def _national_vendor_cards(members: list[dict[str, Any]], levels: list[str], environment: str) -> dict[str, Any]:
+    """The scoring of the whole country split by Vendor: a row per operator with a small card per Vendor, in the same
+    column for every operator (an empty place where it has none), each with its position among the operators of the
+    Vendor and its distance to the first one. The operators without a Vendor have the card All alone."""
+    members = sorted(members, key=lambda summary: _vendor_card_order(summary['context'].get('vendor')))
+    context = {field: value for field, value in members[0]['context'].items() if field != 'vendor'}
+    cards = [{'label': _display('Vendor', summary['context'].get('vendor')), 'operators': summary['operators']}
+             for summary in members]
+    rows: dict[str, dict[str, Any]] = {}
+    for card in cards:
+        ranked = sorted(card['operators'], key=lambda item: -item['total'])
+        leader = ranked[0]['total'] if ranked else 0.0
+        for item, rank in zip(ranked, _ranks([item['total'] for item in ranked])):
+            row = rows.setdefault(item['operator'], {
+                **{field: item.get(field) for field in ('operator', 'label', 'color', 'is_reference', 'position')},
+                'cards': {}})
+            row['cards'][card['label']] = {'label': card['label'],
+                                           'operators': [{**item, 'rank': rank, 'behind': item['total'] - leader}]}
+    columns = [card['label'] for card in cards if card['label'] != ALL_VENDORS_CARD]
+    operator_rows = []
+    for row in sorted(rows.values(), key=lambda item: (item['position'] is None, item['position'] or 0,
+                                                      not item['is_reference'], str(item['label']).casefold())):
+        own = row.pop('cards')
+        placed = [own[ALL_VENDORS_CARD]] if ALL_VENDORS_CARD in own else []
+        if set(own) - {ALL_VENDORS_CARD}:
+            placed += [own.get(column) for column in columns]
+        while placed and placed[-1] is None:
+            placed.pop()
+        operator_rows.append({**row, 'cards': placed})
+    return {
+        'environment': environment, 'level': NATIONAL_CARDS, 'title': _group_label(context, levels, {'Campaign', 'Vendor'}),
+        'maximum': max(summary['maximum'] for summary in members), 'scaled': any(summary['scaled'] for summary in members),
+        'max_voice': members[0]['max_voice'], 'max_data': members[0]['max_data'], 'campaign': context.get('campaign'),
+        'context': {}, 'by_vendor': True, 'cards': cards, 'operator_rows': operator_rows,
+    }
+
+
+def _ranks(values: list[float]) -> list[int]:
+    """The rank of each value (1 for the highest; equal values share their rank), as the page ranks the cards."""
+    return [1 + sum(1 for other in values if other > value + 1e-9) for value in values]
+
+
 def _national_cards(summaries: dict[tuple, dict[str, Any]], levels: list[str], environment: str) -> list[dict[str, Any]]:
     """The scoring of the whole country, in the form of the location cards: a card per campaign (and combination of the
-    other levels), of which the page and the slides show the latest campaign, as they do the cards of the areas."""
+    other levels), of which the page and the slides show the latest campaign, as they do the cards of the areas. Split
+    by Vendor, the Vendors of each campaign are one group (see _national_vendor_cards)."""
     groups = []
+    by_vendor: dict[str, list[dict[str, Any]]] = {}
     for summary in summaries.values():
         context = summary['context']
         if any(context.get(field) not in (None, '') for field in ('region', 'cluster', 'city')):
+            continue
+        if context.get('vendor') not in (None, ''):
+            key = json.dumps({field: value for field, value in context.items() if field != 'vendor'}, sort_keys=True, default=str)
+            if key not in by_vendor:
+                by_vendor[key] = []
+                groups.append(by_vendor[key])
+            by_vendor[key].append(summary)
             continue
         groups.append({
             'environment': environment, 'level': NATIONAL_CARDS, 'title': _group_label(context, levels, {'Campaign'}),
             'maximum': summary['maximum'], 'scaled': summary['scaled'],
             'max_voice': summary['max_voice'], 'max_data': summary['max_data'], 'campaign': context.get('campaign'),
-            'cards': [{'label': 'National', 'operators': summary['operators']}],
+            'context': {}, 'cards': [{'label': 'National', 'operators': summary['operators']}],
         })
-    return groups
+    return [_national_vendor_cards(group, levels, environment) if isinstance(group, list) else group for group in groups]
 
 
 def _location_cards(summaries: dict[tuple, dict[str, Any]], levels: list[str], environment: str,
@@ -338,7 +406,7 @@ def _location_cards(summaries: dict[tuple, dict[str, Any]], levels: list[str], e
             continue
         return [{
             'environment': environment, 'level': level,
-            'title': _group_label(cards[0]['context'], levels, {level}),
+            'title': _group_label(cards[0]['context'], levels, {level}), 'context': _card_context(cards[0]['context']),
             'maximum': cards[0]['maximum'], 'scaled': any(card['scaled'] for card in cards),
             'max_voice': cards[0]['max_voice'], 'max_data': cards[0]['max_data'],
             'campaign': cards[0]['context'].get('campaign') if level != 'Campaign' else None,
@@ -1265,6 +1333,57 @@ def _vendor_series_together(series: list[tuple[dict[str, Any], int, dict[str, di
     return items
 
 
+def _class_series_together(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The Points lost per RAN Vendor of each operator; with the scoring split by Vendor, its Vendor series in one table
+    (``vendors_together``), so every RAN Vendor of the operator is in it.
+
+    Split by Vendor, each Vendor is scored on its own tests: its points lost count in proportion to its share of the
+    tests of the operator (as the total of the Points lost per Vendor, the average of the Vendors weighted by their
+    tests), so the rows of every Vendor add up to that total; a RAN Vendor in several series (MIX) adds them up.
+    """
+    from src.modules.scoring.scoring_points_loss import NOT_SPECIFIED
+    items: list[dict[str, Any]] = []
+    groups: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        if entry['context'].get('vendor') in (None, ''):
+            items.append(entry)
+            continue
+        context = {field: value for field, value in entry['context'].items() if field != 'vendor'}
+        key = json.dumps([entry['environment'], entry['operator'], context], sort_keys=True, default=str)
+        if key not in groups:
+            groups[key] = {**{field: entry[field] for field in ('environment', 'operator', 'label', 'color', 'is_reference')},
+                           'context': context, 'series': []}
+            items.append(groups[key])
+        groups[key]['series'].append(entry)
+    for group in groups.values():
+        series = group.pop('series')
+        counted = sum(entry.get('tests') or 0 for entry in series)
+        rows: dict[str, dict[str, Any]] = {}
+        for entry in series:
+            weight = (entry.get('tests') or 0) / counted if counted else 1 / len(series)
+            for row in entry['rows']:
+                target = rows.setdefault(row['name'], {'name': row['name'], 'identified': row['identified'], 'points': 0.0,
+                                                       'tests': 0, 'environments': [], 'cities': {}})
+                target['points'] += row['points'] * weight
+                target['tests'] += row.get('tests') or 0
+                target['environments'] = list(dict.fromkeys([*target['environments'], *(row.get('environments') or [])]))
+                for city in row.get('cities') or []:
+                    target['cities'][city['name']] = target['cities'].get(city['name'], 0.0) + city['points'] * weight
+        total = sum(row['points'] for row in rows.values())
+        group['rows'] = [{
+            **row, 'share': row['points'] / total * 100 if total else 0.0,
+            'tests_share': row['tests'] / counted * 100 if counted else None,
+            'rate': row['points'] / row['tests'] * RATE_TESTS if row['tests'] >= MIN_CLASS_RATE_TESTS else None,
+            'cities': [{'name': city, 'points': points} for city, points in sorted(row['cities'].items(), key=lambda pair: -pair[1])[:3]
+                       if city != NOT_SPECIFIED],
+        } for row in sorted(rows.values(), key=lambda row: -row['points'])]
+        group.update({'total': total, 'has_tests': bool(counted), 'has_counts': True, 'tests': counted,
+                      'rate_tests': RATE_TESTS, 'rate_minimum': MIN_CLASS_RATE_TESTS,
+                      'rate': total / counted * RATE_TESTS if counted >= MIN_CLASS_RATE_TESTS else None,
+                      'vendors_together': True, 'total_label': VENDORS_TOTAL_LABEL})
+    return items
+
+
 def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) -> dict[str, list[dict[str, Any]]]:
     """The Points Lost of each operator per Vendor, Site Type, site and route stretch, from its points-lost maps: each
     with its share of the points lost and, for vendors and kinds of site, its share of the tests; and per RAN Vendor
@@ -1361,6 +1480,7 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
                     stretch_route['landmarks'] = _landmarks(stretch_route, places)
                 views['route_stretches'].append({**base, 'routes': stretch_routes})
     views['vendor_losses'] = _vendor_series_together(vendor_series)
+    views['ran_vendor_losses'] = _class_series_together(views['ran_vendor_losses'])
     for (operator, environment, _series), by_campaign in sites_by_series.items():
         campaigns = sorted(by_campaign, key=campaign_sort_key)
         latest = by_campaign[campaigns[-1]]

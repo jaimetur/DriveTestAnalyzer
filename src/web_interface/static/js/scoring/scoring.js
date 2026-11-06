@@ -5793,9 +5793,12 @@
   // its operators and vendors. Each is the value of its context (the City, Cluster or Region, the most specific
   // first), else the filters of the Saved Filter, else National, All Operators or All Vendors. A long list keeps its
   // first two names and counts the others; the tooltip lists them all.
-  function resultScope(context = null) {
+  // ``wholeCountry``: a view calculated without the City, Cluster and Region filters (the Geographical Areas), whose area
+  // is never taken from them.
+  function resultScope(context = null, {wholeCountry = false} = {}) {
+    const areaLevels = new Set(['City', 'Cluster', 'Region']);
     const find = key => {
-      for (const source of [context, resultScopeFilters]) {
+      for (const source of wholeCountry && areaLevels.has(key) ? [context] : [context, resultScopeFilters]) {
         const value = source?.[key] ?? source?.[key.toLowerCase()];
         const values = (Array.isArray(value) ? value : [value]).map(item => String(item ?? '').trim()).filter(Boolean);
         if (values.length) return [...new Set(key === 'Vendor' ? values.map(scoringVendorName) : values)];
@@ -5829,8 +5832,8 @@
 
   // Ends a chart or table title with the pills of its area, operators and vendors; the title alone is kept for its
   // larger view.
-  function appendResultScope(heading, context = null) {
-    const scope = resultScope(context);
+  function appendResultScope(heading, context = null, options = {}) {
+    const scope = resultScope(context, options);
     heading.dataset.title = heading.textContent.trim();
     for (const item of scope) {
       const pill = document.createElement('span');
@@ -5864,14 +5867,14 @@
     return note;
   }
 
-  function makeExpandableChartCard(title, meta, chart, context = null, {outOfScope = false} = {}) {
+  function makeExpandableChartCard(title, meta, chart, context = null, {outOfScope = false, wholeCountry = false} = {}) {
     const card = document.createElement('article');
     card.className = 'scoring-chart-card';
     card.tabIndex = 0;
     card.setAttribute('role', 'button');
     const heading = document.createElement('h4');
     heading.textContent = title;
-    const scope = context === false ? null : appendResultScope(heading, context);
+    const scope = context === false ? null : appendResultScope(heading, context, {wholeCountry});
     heading.title = scope ? [title, ...scope.map(item => item.title)].join(' — ') : title;
     const label = scope ? `${title} — ${scope.map(item => item.label).join(' · ')}` : title;
     card.setAttribute('aria-label', `${label}. Double-click or press Enter to enlarge.`);
@@ -6826,12 +6829,16 @@
   // its Voice points (in the Data and Voice colours of the theme), with its total and, behind the first, its distance to it.
   // ``wide``: the card of the whole country (Nationwide), across the panel (``width``, its width in pixels) with larger
   // bars and text.
-  function makeLocationCardChart(card, maximum, {wide = false, width: wideWidth = 1000} = {}) {
+  // ``compact``: the small card of an operator and a Vendor (the scoring Nationwide split by Vendor), without its name
+  // (its row gives it), with its position among the operators of the Vendor (``rank``) and its distance to the first
+  // (``behind``).
+  function makeLocationCardChart(card, maximum, {wide = false, width: wideWidth = 1000, compact = false} = {}) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const operators = [...(card.operators || [])].sort((left, right) => right.total - left.total);
-    const ranks = insightRanks(operators.map(item => item.total));
+    const ranks = operators.map((item, index) => item.rank ?? insightRanks(operators.map(other => other.total))[index]);
     const k = wide ? 1.45 : 1;
-    const width = wide ? Math.max(480, wideWidth) : 320, rowHeight = 30 * k, top = 4 * k, labelWidth = 96 * k, valueWidth = 78 * k;
+    const width = wide ? Math.max(480, wideWidth) : compact ? 210 : 320, rowHeight = 30 * k, top = 4 * k,
+      labelWidth = compact ? 24 : 96 * k, valueWidth = compact ? 74 : 78 * k;
     const height = top + operators.length * rowHeight + 4 * k;
     const plot = width - labelWidth - valueWidth;
     const scale = value => Math.max(0, Number(value) || 0) / (Number(maximum) || 1) * plot;
@@ -6850,7 +6857,7 @@
         fill: ranks[index] === 1 ? readableTextColor(color) : color});
       rank.textContent = String(ranks[index]);
       const label = svgElement(svg, 'text', {x: 22 * k, y: y + 19 * k, 'font-size': 11.5 * k, 'font-weight': 700, fill: '#263746'});
-      label.textContent = String(item.label ?? '').length > 13 ? `${String(item.label).slice(0, 12)}…` : String(item.label ?? '');
+      label.textContent = compact ? '' : String(item.label ?? '').length > 13 ? `${String(item.label).slice(0, 12)}…` : String(item.label ?? '');
       const dataWidth = scale(item.data), voiceWidth = scale(item.voice);
       group.append(badge, rank, label,
         svgElement(svg, 'rect', {x: labelWidth, y: y + 7 * k, width: Math.max(0, dataWidth), height: 16 * k, fill: insightDataColor}),
@@ -6858,9 +6865,10 @@
       const total = svgElement(svg, 'text', {x: labelWidth + dataWidth + voiceWidth + 5 * k, y: y + 19 * k, 'font-size': 11.5 * k, 'font-weight': 800, fill: '#17232d'});
       total.textContent = `${insightNumber(item.total)}${item.complete ? '' : '*'}`;
       group.append(total);
-      if (index) {
+      const distance = item.behind ?? item.total - leader;
+      if (item.behind === undefined || item.behind === null ? index : Math.abs(distance) >= .05) {
         const behind = svgElement(svg, 'tspan', {dx: 4 * k, 'font-size': 9.5 * k, 'font-weight': 600, fill: '#7a8a96'});
-        behind.textContent = insightNumber(item.total - leader, 1).replace('-', '−');
+        behind.textContent = insightNumber(distance, 1).replace('-', '−');
         total.append(behind);
       }
       svg.append(group);
@@ -6868,22 +6876,62 @@
     return svg;
   }
 
-  function makeLocationCardsView(group) {
+  // The scoring Nationwide split by Vendor: a row per operator (in the order of the Operator Maps, ``position``) with a
+  // small card per Vendor, each Vendor in the same column for every operator.
+  function makeVendorCardRows(group, position) {
+    const rows = [...(group.operator_rows || [])].sort((left, right) => position(left.operator) - position(right.operator));
+    const columns = Math.max(1, ...rows.map(row => (row.cards || []).length));
+    const box = document.createElement('div');
+    box.className = 'scoring-location-vendor-rows';
+    box.style.setProperty('--vendor-columns', String(columns));
+    for (const row of rows) {
+      const line = document.createElement('div');
+      line.className = 'scoring-location-vendor-row';
+      const name = document.createElement('div');
+      name.className = 'scoring-location-vendor-operator';
+      name.textContent = String(row.label ?? row.operator ?? '');
+      const color = safeHexColor(row.color);
+      if (color) name.style.color = color;
+      const cards = document.createElement('div');
+      cards.className = 'scoring-location-cards is-vendor-row';
+      for (const card of row.cards || []) {
+        const article = document.createElement('article');
+        if (!card) {
+          article.className = 'scoring-location-card is-empty';
+          article.setAttribute('aria-hidden', 'true');
+        } else {
+          article.className = 'scoring-location-card is-vendor';
+          if (color) article.style.setProperty('--operator-color', color);
+          const heading = document.createElement('h5');
+          heading.textContent = String(card.label);
+          article.append(heading, makeLocationCardChart(card, group.maximum, {compact: true}));
+        }
+        cards.append(article);
+      }
+      line.append(name, cards);
+      box.append(line);
+    }
+    return box;
+  }
+
+  function makeLocationCardsView(group, position = () => 0) {
     const wrapper = document.createElement('div');
     const plural = {City: 'cities', Cluster: 'clusters', Region: 'regions'}[group.level] || 'locations';
-    const national = group.level === 'National';
+    const byVendor = Boolean(group.by_vendor && group.operator_rows);
+    const national = group.level === 'National' && !byVendor;
     const note = document.createElement('p');
     note.className = `scoring-insight-note scoring-location-note${national ? ' is-national' : ''}`;
-    note.append(national ? `The ${scoringLabel()} scoring of the whole country, from its highest score: `
+    note.append(byVendor ? `The ${scoringLabel()} scoring of the whole country per Vendor (each Vendor scored on its own tests), from its highest score: `
+      : national ? `The ${scoringLabel()} scoring of the whole country, from its highest score: `
       : `The ${scoringLabel()} scoring of the selected ${plural}, each from its highest score: `);
     const maximum = document.createElement('strong');
     maximum.textContent = `${insightNumber(group.maximum)} points`;
     note.append(maximum, ` at most (Voice ${insightNumber(group.max_voice)} · Data ${insightNumber(group.max_data)})`,
       group.scaled ? ', the environments measured in each one scaled to them, so they compare with the overall scoring.' : '.');
     // The card of the whole country goes across the panel, its bars and text larger.
-    const layout = document.createElement('div');
-    layout.className = `scoring-location-cards${national ? ' is-national' : ''}`;
-    for (const card of group.cards || []) {
+    const layout = byVendor ? makeVendorCardRows(group, position) : document.createElement('div');
+    if (!byVendor) layout.className = `scoring-location-cards${national ? ' is-national' : ''}`;
+    for (const card of byVendor ? [] : group.cards || []) {
       const article = document.createElement('article');
       article.className = `scoring-location-card${national ? ' is-national' : ''}`;
       const heading = document.createElement('h5');
@@ -6909,7 +6957,8 @@
     }
     const legend = document.createElement('div');
     legend.className = `scoring-location-legend${national ? ' is-national' : ''}`;
-    legend.innerHTML = '<span><i class="is-data"></i>Data</span><span><i class="is-voice"></i>Voice</span><span><b>1</b> Position in the location</span>';
+    legend.innerHTML = `<span><i class="is-data"></i>Data</span><span><i class="is-voice"></i>Voice</span><span><b>1</b> ${byVendor
+      ? 'Position among the operators of the Vendor (−: points behind the first)' : 'Position in the location'}</span>`;
     wrapper.append(note, layout, legend);
     return wrapper;
   }
@@ -7222,6 +7271,7 @@
         else if (content && typeof content === 'object') {
           cell.textContent = content.text ?? '';
           if (content.colSpan) cell.colSpan = content.colSpan;
+          if (content.rowSpan) cell.rowSpan = content.rowSpan;
           if (content.kpiType) {
             // A KPI starts with the R or D badge of its type, as in the Score and GAP tables. Its name wraps beside the
             // badge, and its threshold and unit (> 5Mbit/s [%]) never break apart, so a unit never stands alone on a line.
@@ -7542,7 +7592,18 @@
 
   // The scope of a section when the results have several (for example City: London or Vendor: Nokia), the first one by
   // default; ``items`` carry their context.
-  function insightScopeControl(key, items, {withCampaign = false} = {}) {
+  // The Vendor chosen by default where a view is split by Vendor.
+  const DEFAULT_SCOPE_VENDOR = 'ericsson';
+  // The views of the Points Lost tab choose their Vendor (Region, Cluster or City) together.
+  const POINTS_LOST_SCOPE = 'points-lost-scope';
+  // A scope without its campaign: the same Vendor, Region, Cluster or City whatever the campaign.
+  const scopeWithoutCampaign = context => JSON.stringify(Object.fromEntries(Object.entries(context || {})
+    .filter(([field]) => field !== 'campaign').sort()));
+
+  // ``shared``: the selection the control shares with the others of that name (its scope without the campaign): a
+  // control follows the scope another one chose, in the fields it has (a view without Vendors follows its Region). By
+  // default the scope of the Vendor Ericsson when there is one.
+  function insightScopeControl(key, items, {withCampaign = false, shared = null} = {}) {
     const keyOf = item => JSON.stringify(Object.fromEntries(Object.entries(item.context || {})
       .filter(([field]) => withCampaign || field !== 'campaign').sort()));
     const scopes = [...new Map(items.map(item => [keyOf(item), item.context || {}])).entries()];
@@ -7552,18 +7613,37 @@
     const byCampaign = withCampaign && scopes.every(([, context]) => context.campaign) && typeof globalThis.campaignCompare === 'function';
     if (byCampaign) scopes.sort(([, left], [, right]) => globalThis.campaignCompare(left.campaign, right.campaign) || 0);
     const latestOf = context => scopes.filter(([, other]) => sameScope(other, context)).at(-1)?.[0];
+    const pick = context => (byCampaign ? latestOf(context) : scopes.find(([, other]) => sameScope(other, context))?.[0]);
+    const preferred = candidates => candidates.find(([, context]) => String(context.vendor ?? '').trim().toLowerCase() === DEFAULT_SCOPE_VENDOR)
+      || candidates[0];
+    let target = null;
+    try { target = shared ? JSON.parse(insightSelections.get(shared) || 'null') : null; } catch (_error) { target = null; }
+    const unset = value => value === undefined || value === null || value === '';
+    // The scopes that agree with the one chosen in another view of the group in the fields they have.
+    const following = target && typeof target === 'object'
+      ? scopes.filter(([, context]) => Object.entries(target).every(([field, value]) => unset(context[field]) || String(context[field]) === String(value)))
+      : [];
+    const own = scopes.find(([scope]) => scope === insightSelections.get(key));
+    // (Unless this view chose another campaign of it.)
+    if (following.length && !(own && following.includes(own))) insightSelections.set(key, pick(preferred(following)[1]));
     const {wrapper, value} = insightSelect(key, scopes.map(([scope, context]) => [scope, label(context).value || 'All']),
-      label(scopes[0][1]).title || 'Scope', byCampaign ? latestOf(scopes[0][1]) : scopes[0][0]);
-    return {control: wrapper, inScope: items.filter(item => keyOf(item) === value), context: (scopes.find(([scope]) => scope === value) || scopes[0])[1]};
+      label(scopes[0][1]).title || 'Scope', pick(preferred(scopes)[1]));
+    const context = (scopes.find(([scope]) => scope === value) || scopes[0])[1];
+    if (shared) {
+      wrapper.querySelector('select').dataset.insightScopeShared = shared;
+      // The first view of the group gives its scope to the others.
+      if (!target) insightSelections.set(shared, scopeWithoutCampaign(context));
+    }
+    return {control: wrapper, inScope: items.filter(item => keyOf(item) === value), context};
   }
 
-  function insightSection(pane, title, className, context = null) {
+  function insightSection(pane, title, className, context = null, scopeOptions = {}) {
     const section = document.createElement('section');
     section.className = `scoring-insight-section scoring-result-card ${className}`.trim();
     const heading = document.createElement('h4');
     heading.className = 'scoring-table-section-title';
     heading.textContent = title;
-    appendResultScope(heading, context);
+    appendResultScope(heading, context, scopeOptions);
     section.append(heading);
     pane.append(section);
     return section;
@@ -8188,10 +8268,14 @@
       const latest = campaigns.sort((left, right) => insightCampaignKey(left) - insightCampaignKey(right)).at(-1);
       groups = groups.filter(group => !group.campaign || group.campaign === latest);
     }
+    const position = mappedOperatorPosition(payload);
     for (const group of groups) {
-      // The scoring Nationwide (the card of the whole country) comes first, then each Region, Cluster and City.
+      // The scoring Nationwide (the card of the whole country) comes first, then each Region, Cluster and City. They are
+      // calculated on the whole country, so their pills name no City, Cluster or Region filter; split by Vendor, those
+      // of each area name its Vendor.
       pane.append(makeExpandableChartCard(group.level === 'National' ? `${scoringLabel()} Scoring Nationwide` : `${scoringLabel()} Scoring per ${group.level}`,
-        [environmentLabel(environment), group.title].filter(Boolean).join(' · '), makeLocationCardsView(group)));
+        [environmentLabel(environment), group.title].filter(Boolean).join(' · '), makeLocationCardsView(group, position),
+        group.context || {}, {wholeCountry: true}));
     }
     const rankings = insightItems(payload, 'location_rankings', environment);
     if (rankings.length) {
@@ -8207,14 +8291,14 @@
       const inGroup = ofLevel.filter(item => (item.title || '') === title);
       const {control: chips, chosen} = insightOperatorChips('ranking-operators', inGroup);
       const words = locationWords(level, inGroup.flatMap(item => item.rows));
-      const section = insightSection(pane, `${words.title} ranked${inGroup[0]?.campaign ? ` — ${inGroup[0].campaign}` : ''}`, 'scoring-ranking-card', inGroup[0]?.context);
+      const section = insightSection(pane, `${words.title} ranked${inGroup[0]?.campaign ? ` — ${inGroup[0].campaign}` : ''}`, 'scoring-ranking-card', inGroup[0]?.context, {wholeCountry: true});
       section.append(insightControls(levels.length > 1 ? levelControl : null, titles.length > 1 ? groupControl : null, chips));
       for (const item of inGroup.filter(entry => chosen.includes(entry.operator))) section.append(makeRankingTable(item));
       section.append(insightParagraph('scoring-insight-note', `Points %: the share of the points available in each ${words.one} (its environments scaled to the full maximum); `,
         'Δ: the change since the previous campaign in points of percentage; the bar of Points lost shares one scale per table.'));
       const versus = inGroup.filter(entry => chosen.includes(entry.operator) && !entry.is_reference && entry.rows.some(row => row.gap !== null));
       if (versus.length) {
-        const compare = insightSection(pane, `Each operator against ${versus[0].reference_label} per ${words.one}`, 'scoring-versus-card', versus[0].context);
+        const compare = insightSection(pane, `Each operator against ${versus[0].reference_label} per ${words.one}`, 'scoring-versus-card', versus[0].context, {wholeCountry: true});
         for (const item of versus) compare.append(makeVersusTable(item));
         compare.append(insightParagraph('scoring-insight-note', `The GAP in points of percentage of the points available: to the left the operator trails ${versus[0].reference_label}, to the right it is ahead.`));
       }
@@ -8357,7 +8441,7 @@
   function renderPointsAtStake(pane, payload, environment) {
     const items = insightItems(payload, 'points_at_stake', environment);
     if (!items.length) return;
-    const {control: scopeControl, inScope, context} = insightScopeControl('stake-scope', items);
+    const {control: scopeControl, inScope, context} = insightScopeControl('stake-scope', items, {shared: POINTS_LOST_SCOPE});
     const item = inScope[0];
     const section = insightSection(pane, `Where the points go${item.campaign ? ` — ${item.campaign}` : ''}`, 'scoring-stake-card', context);
     section.append(insightControls(scopeControl));
@@ -8423,6 +8507,35 @@
       : 'Calculate the scoring again to share its points lost among the Vendors, kinds of site, sites and route stretches of the cells that served the tests (the CDRs need the serving cells of the Vendor Mapping).'));
   }
 
+  // The rows of the Points lost per RAN Vendor grouped by the network that hosts them (VF_Hosted_Ericsson: VF_Hosted and
+  // Ericsson), the network that loses most first and its Vendors from the one that loses most; the cells of each
+  // network joined in one. MIX and Not identified, without a network, take both columns.
+  function hostedVendorRows(rows) {
+    const split = name => {
+      const match = /^(.+?_Hosted)_(.+)$/.exec(String(name ?? ''));
+      return match ? {host: match[1], vendor: match[2]} : {host: String(name ?? ''), vendor: null};
+    };
+    const groups = new Map();
+    for (const row of rows) {
+      const {host} = split(row.name);
+      if (!groups.has(host)) groups.set(host, []);
+      groups.get(host).push(row);
+    }
+    const ordered = [...groups.values()]
+      .map(members => [...members].sort((left, right) => (Number(right.points) || 0) - (Number(left.points) || 0)))
+      .sort((left, right) => right.reduce((total, row) => total + (Number(row.points) || 0), 0)
+        - left.reduce((total, row) => total + (Number(row.points) || 0), 0));
+    const spans = new Map(ordered.map(members => [members[0], members.length]));
+    const lead = row => {
+      const {host, vendor} = split(row.name);
+      const className = row.identified ? 'scoring-insight-kpi' : 'scoring-insight-kpi is-muted';
+      if (vendor === null) return [{text: host, colSpan: 2, className}];
+      return [...(spans.has(row) ? [{text: host, rowSpan: spans.get(row), className: 'scoring-insight-kpi scoring-insight-host'}] : []),
+        {text: vendor, className}];
+    };
+    return {rows: ordered.flat(), lead, leadColumns: ['Host network', 'Vendor']};
+  }
+
   function renderServingLosses(pane, payload, environment, kind, title, column, pending) {
     const items = insightItems(payload, kind, environment);
     const classKind = kind === 'ran_vendor_losses' || kind === 'site_class_losses';
@@ -8436,7 +8549,7 @@
       }
       return;
     }
-    const {control: scopeControl, inScope, context} = insightScopeControl(`${kind}-scope`, items, {withCampaign: true});
+    const {control: scopeControl, inScope, context} = insightScopeControl(`${kind}-scope`, items, {withCampaign: true, shared: POINTS_LOST_SCOPE});
     const {control: chips, chosen} = insightOperatorChips(`${kind}-operators`, inScope);
     const section = insightSection(pane, title, 'scoring-serving-card', context);
     section.append(insightControls(scopeControl, chips));
@@ -8454,7 +8567,12 @@
       const byVendor = Boolean(item.by_vendor);
       banner.append(insightStrong(item.label), byVendor
         ? ` · ${item.rows.length} Vendor${item.rows.length === 1 ? '' : 's'} · ${insightNumber(item.total, 1)} points lost on average (weighted by tests)`
+        : item.vendors_together ? ` · ${insightNumber(item.total, 1)} points lost on average of its Vendors (weighted by tests)`
         : ` · ${insightNumber(item.total, 1)} points lost`);
+      // The RAN Vendors: the network that hosts them (in one cell for all its Vendors, the network that loses most
+      // first), then each Vendor; MIX and Not identified across both columns.
+      const {rows: shownRows, lead, leadColumns} = kind === 'ran_vendor_losses' ? hostedVendorRows(item.rows)
+        : {rows: item.rows, lead: row => [{text: row.name, className: row.identified ? 'scoring-insight-kpi' : 'scoring-insight-kpi is-muted'}], leadColumns: [column]};
       const peak = Math.max(...item.rows.map(row => row.points), 0);
       const withTests = item.has_tests;
       // A RAN Vendor or site type: its calls and tests and the points it loses per 1,000 of them too.
@@ -8463,16 +8581,16 @@
       const withEnvironments = item.rows.some(row => row.environments?.length);
       const sum = field => item.rows.reduce((total, row) => total + (Number(row[field]) || 0), 0);
       const rateTitle = `Points lost per ${insightNumber(item.rate_tests || 1000, 0)} calls and tests (from ${insightNumber(item.rate_minimum || 0, 0)} tests)`;
-      const total = [insightTotalLabel(byVendor ? item.total_label : undefined), insightTotalCell(byVendor ? item.total : sum('points'), {digits: 1}),
+      const total = [insightTotalLabel(item.total_label || undefined, leadColumns.length), insightTotalCell(byVendor ? item.total : sum('points'), {digits: 1}),
         ...(byVendor ? [] : [insightTotalCell(sum('share'), {digits: 1, suffix: '%'})]),
         ...(withCounts ? [insightTotalCell(item.tests, {digits: 0})] : []),
         ...(withTests ? [insightTotalCell(item.rows.some(row => row.tests_share !== null) ? sum('tests_share') : null, {digits: 1, suffix: '%'})] : []),
         ...(withCounts ? [insightTotalCell(item.rate, {digits: 1})] : []),
         ...(withEnvironments ? [''] : []), ...(withCities ? [''] : [])];
-      wrapper.append(banner, insightTable([column, 'Points lost', ...(byVendor ? [] : ['Share of points']), ...(withCounts ? ['Tests'] : []),
+      wrapper.append(banner, insightTable([...leadColumns, 'Points lost', ...(byVendor ? [] : ['Share of points']), ...(withCounts ? ['Tests'] : []),
         ...(withTests ? ['Share of tests'] : []), ...(withCounts ? ['Per 1,000 tests'] : []),
-        ...(withEnvironments ? ['Where'] : []), ...(withCities ? ['Cities and routes that lose most'] : [])], item.rows.map(row => [
-        {text: row.name, className: row.identified ? 'scoring-insight-kpi' : 'scoring-insight-kpi is-muted'},
+        ...(withEnvironments ? ['Where'] : []), ...(withCities ? ['Cities and routes that lose most'] : [])], shownRows.map(row => [
+        ...lead(row),
         gapBarCell(row.points, peak, {loss: true, total: true}),
         ...(byVendor ? [] : [{text: `${insightNumber(row.share, 1)}%`, className: 'scoring-insight-number'}]),
         ...(withCounts ? [{text: insightNumber(row.tests || 0, 0), className: 'scoring-insight-number', title: 'Calls and tests of the operator served by it'}] : []),
@@ -8491,7 +8609,8 @@
       : kind === 'vendor_losses'
       ? 'Each test belongs to the RAN Vendor of the cell that served its start (Not identified: no serving cell in the inventories). In red, a share of the points lost well above the share of the tests.'
       : kind === 'ran_vendor_losses'
-      ? 'Each call or test belongs to the RAN Vendor of its first and last serving cells with the network that hosts them (VF_Hosted_Ericsson, VMO2_Hosted_Nokia…), MIX when they differ (Not identified: no serving cell in the inventories). Per 1,000 tests: the points lost per 1,000 calls and tests it served (from 100 tests). In red, a share of the points lost well above the share of the tests.'
+      ? `Each call or test belongs to the network that hosts its first and last serving cells (Host network) and to their RAN Vendor, MIX when they differ (Not identified: no serving cell in the inventories); each network groups its Vendors, the network that loses most first. Per 1,000 tests: the points lost per 1,000 calls and tests it served (from 100 tests). In red, a share of the points lost well above the share of the tests.${
+        inScope.some(entry => entry.vendors_together) ? ' The scoring is split by Vendor: each Vendor is scored on its own tests and its points lost count in proportion to its tests, so every Vendor of the operator is in one table (Total: the average of the Vendors weighted by their tests).' : ''}`
       : kind === 'site_class_losses'
       ? 'Each call or test belongs to the site type of its first and last serving cells: the network that owns the site with its eMOCN scenario (S0, S1…, as the inventory names it), NNS, or Legacy without one; MIX when they differ (Not identified: no serving cell in the inventories). Per 1,000 tests: the points lost per 1,000 calls and tests it served (from 100 tests). In red, a share of the points lost well above the share of the tests.'
       : 'The kind of each serving site: the network that owns it and, when another network hosts its RAN, "on" that network (Beacon, MORAN); NNS sites apart. In red, a share of the points lost well above the share of the tests.'));
@@ -8502,7 +8621,7 @@
     // The operators none of whose serving cells is in the cell inventories have no site to review: a note says so.
     const unidentified = insightItems(payload, 'sites_unidentified', environment);
     if (!items.length && !unidentified.length) return;
-    const {control: scopeControl, inScope, context} = insightScopeControl('sites-scope', items.length ? items : unidentified);
+    const {control: scopeControl, inScope, context} = insightScopeControl('sites-scope', items.length ? items : unidentified, {shared: POINTS_LOST_SCOPE});
     const scopeKey = value => JSON.stringify(Object.fromEntries(Object.entries(value || {}).filter(([field]) => field !== 'campaign').sort()));
     const without = unidentified.filter(item => scopeKey(item.context) === scopeKey(context));
     const listed = items.length ? inScope : [];
@@ -8549,7 +8668,7 @@
   function renderRouteStretches(pane, payload, environment, pending) {
     const items = insightItems(payload, 'route_stretches', environment);
     if (!items.length) return;
-    const {control: scopeControl, inScope, context} = insightScopeControl('stretches-scope', items, {withCampaign: true});
+    const {control: scopeControl, inScope, context} = insightScopeControl('stretches-scope', items, {withCampaign: true, shared: POINTS_LOST_SCOPE});
     // Every chosen operator at once, as the sections above: the stretches of each one on the route chosen.
     const {control: chips, chosen} = insightOperatorChips('stretches-operators', inScope);
     const shown = inScope.filter(item => chosen.includes(item.operator));
@@ -10980,6 +11099,12 @@
     }
     if (event.target.matches?.('[data-insight-select]') && currentResults) {
       insightSelections.set(event.target.dataset.insightSelect, event.target.value);
+      // (A scope shared by several views: the others follow it.)
+      if (event.target.dataset.insightScopeShared) {
+        try {
+          insightSelections.set(event.target.dataset.insightScopeShared, scopeWithoutCampaign(JSON.parse(event.target.value)));
+        } catch (_error) { /* not a scope */ }
+      }
       persistScoringViewState();
       renderResult(currentResults, selectedSavedFilter);
       return;

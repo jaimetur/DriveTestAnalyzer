@@ -227,6 +227,113 @@ def test_points_lost_per_ran_vendor_and_site_type_count_the_calls_and_tests():
     assert any('first and last serving cells, MIX when they differ' in text for text in texts)
 
 
+def test_points_lost_per_ran_vendor_puts_the_vendors_of_an_operator_together_by_host_network():
+    # Split by Vendor, the RAN Vendors of each Vendor series of an operator are one table, each Vendor counting in
+    # proportion to its tests; the slide shows the network that hosts them once for all its Vendors, as the page.
+    from src.modules.scoring.scoring_exports import _slide
+    from src.modules.scoring.scoring_insights import VENDORS_TOTAL_LABEL, _serving_views
+    from src.modules.scoring.scoring_points_loss import RAN_VENDOR
+    from src.modules.scoring.scoring_summary_slides import add_serving_loss_slides, hosted_vendor_rows
+
+    def ran_map(vendor, areas):
+        total = sum(points for _name, points in areas)
+        return {'field': RAN_VENDOR, 'operator': 'VF', 'label': 'VF', 'color': '#E60000', 'is_reference': False,
+                'environment': 'Combined', 'context': {'vendor': vendor, 'campaign': '2026-Q3'}, 'total': total,
+                'areas': [{'name': name, 'points': points, 'share': points / total, 'environments': ['City']} for name, points in areas],
+                'city_losses': {name: {'London': points} for name, points in areas}}
+
+    series = {'operator': 'VF', 'campaign': '2026-Q3', 'environment': 'City'}
+    counts = {'Ericsson': {'VF_Hosted_Ericsson': 250, 'MIX': 50},
+              'Samsung': {'VF_Hosted_Samsung': 60, 'VMO2_Hosted_Samsung': 20, 'MIX': 20}}
+    result = {'points_loss': {
+        'shares': [{**series, 'vendor': 'Ericsson', 'kpi_code': 'K1', 'areas': {}}],
+        'serving_tests': [{**series, 'vendor': vendor, 'counts': {RAN_VENDOR: values}} for vendor, values in counts.items()]}}
+    views = _serving_views([ran_map('Ericsson', [('VF_Hosted_Ericsson', 30.0), ('MIX', 10.0)]),
+                            ran_map('Samsung', [('VF_Hosted_Samsung', 80.0), ('VMO2_Hosted_Samsung', 20.0), ('MIX', 20.0)])],
+                           result)
+    [vodafone] = views['ran_vendor_losses']
+    assert vodafone['vendors_together'] and vodafone['context'] == {'campaign': '2026-Q3'}
+    # Ericsson holds 300 of the 400 tests and Samsung 100: their points lost count three to one.
+    assert [(row['name'], row['points']) for row in vodafone['rows']] == pytest.approx(
+        [('VF_Hosted_Ericsson', 22.5), ('VF_Hosted_Samsung', 20.0), ('MIX', 12.5), ('VMO2_Hosted_Samsung', 5.0)])
+    assert vodafone['total'] == pytest.approx(40.0 * .75 + 120.0 * .25) and vodafone['total_label'] == VENDORS_TOTAL_LABEL
+    assert [row['tests'] for row in vodafone['rows']] == [250, 60, 70, 20] and vodafone['tests'] == 400
+    assert sum(row['share'] for row in vodafone['rows']) == pytest.approx(100)
+    assert [row['rate'] for row in vodafone['rows']] == [pytest.approx(90.0), None, None, None]
+    assert vodafone['rate'] == pytest.approx(150.0)
+    # The network that loses most first (VF_Hosted, 42.5), each with its Vendors; MIX without a network.
+    assert [(host, vendor) for _row, host, vendor in hosted_vendor_rows(vodafone['rows'])] == [
+        ('VF_Hosted', 'Ericsson'), ('VF_Hosted', 'Samsung'), ('MIX', None), ('VMO2_Hosted', 'Samsung')]
+
+    deck = Presentation(TEMPLATE)
+    add_serving_loss_slides(deck, views['ran_vendor_losses'], title='Points Lost — per RAN Vendor (host and vendor)',
+                            column='RAN Vendor', subtitle='', new_slide=_slide, hosted=True)
+    [table] = [shape.table for slide in deck.slides for shape in slide.shapes if shape.has_table]
+    assert [cell.text for cell in table.rows[0].cells][:4] == ['Host network', 'Vendor', 'Points lost', 'Share of points']
+    assert [(table.cell(index, 0).text, table.cell(index, 1).text) for index in range(1, 5)] == [
+        ('VF_Hosted', 'Ericsson'), ('', 'Samsung'), ('MIX', ''), ('VMO2_Hosted', 'Samsung')]
+    assert table.cell(1, 0).is_merge_origin and table.cell(1, 0).span_height == 2
+    assert table.cell(3, 0).is_merge_origin and table.cell(3, 0).span_width == 2
+    total = len(table.rows) - 1
+    assert table.cell(total, 0).span_width == 2 and table.cell(total, 0).text == VENDORS_TOTAL_LABEL
+    assert table.cell(total, 2).text == '60.00'
+    texts = [shape.text_frame.text for slide in deck.slides for shape in slide.shapes if shape.has_text_frame]
+    assert any('VF · 60.0 points lost on average of its Vendors (weighted by tests)' in text for text in texts)
+
+
+def _vendor_summary(vendor, *operators):
+    return {'context': {'vendor': vendor, 'campaign': '2026-Q3'}, 'maximum': 1000.0, 'scaled': False,
+            'max_voice': 350.0, 'max_data': 650.0,
+            'operators': [{'operator': name, 'label': name, 'color': '#123456', 'voice': total * .35, 'data': total * .65,
+                           'total': total, 'complete': True, 'is_reference': name == 'EE', 'position': position}
+                          for name, total, position in operators]}
+
+
+def test_scoring_nationwide_split_by_vendor_is_a_row_of_vendor_cards_per_operator():
+    # Split by Vendor, the scoring Nationwide was a card per Vendor that did not say which: a row per operator with a
+    # small card per Vendor, each Vendor in the same column, its position among the operators of the Vendor.
+    from src.modules.scoring.scoring_exports import _slide
+    from src.modules.scoring.scoring_insight_slides import add_location_card_slides
+    from src.modules.scoring.scoring_insights import _location_cards, _national_cards
+
+    summaries = {index: summary for index, summary in enumerate([
+        _vendor_summary('Unknown', ('VF', 482.0, 3)),
+        _vendor_summary('Ericsson', ('VF', 922.0, 3), ('Three', 921.0, 2)),
+        _vendor_summary('All', ('EE', 940.0, 0), ('O2', 795.0, 1)),
+        _vendor_summary('Ericsson (Mixed)', ('Three', 707.0, 2)),
+        _vendor_summary('Huawei', ('Three', 749.0, 2), ('VF', 732.0, 3)),
+    ])}
+    [group] = _national_cards(summaries, ['Operator', 'Vendor'], 'Combined')
+    assert group['by_vendor'] and group['level'] == 'National' and group['title'] == '' and group['context'] == {}
+    assert [card['label'] for card in group['cards']] == ['All', 'Ericsson', 'Huawei', 'Ericsson (Mixed)', 'Unknown']
+
+    def cells(row):
+        return [card and (card['label'], card['operators'][0]['rank'], round(card['operators'][0]['behind'], 1))
+                for card in row['cards']]
+    rows = {row['operator']: row for row in group['operator_rows']}
+    assert [row['operator'] for row in group['operator_rows']] == ['EE', 'O2', 'Three', 'VF']
+    assert cells(rows['EE']) == [('All', 1, 0.0)] and cells(rows['O2']) == [('All', 2, -145.0)]
+    # Ericsson, Huawei, Ericsson (Mixed) and Unknown in the same columns for both operators.
+    assert cells(rows['Three']) == [('Ericsson', 2, -1.0), ('Huawei', 1, 0.0), ('Ericsson (Mixed)', 1, 0.0)]
+    assert cells(rows['VF']) == [('Ericsson', 1, 0.0), ('Huawei', 2, -17.0), None, ('Unknown', 1, 0.0)]
+
+    # The cards of the areas split by Vendor name their Vendor.
+    regions = {index: {**summary, 'context': {**summary['context'], 'region': region}}
+               for index, (summary, region) in enumerate((summary, region) for summary in summaries.values()
+                                                           for region in ('North', 'South'))}
+    areas = _location_cards(regions, ['Operator', 'Vendor', 'Region'], 'Combined')
+    assert {(item['title'], item['context'].get('vendor')) for item in areas} >= {('Vendor: Ericsson', 'Ericsson'), ('Vendor: All', 'All')}
+
+    deck = Presentation(TEMPLATE)
+    add_location_card_slides(deck, [group], scoring_label='Best Network', subtitle='', new_slide=_slide)
+    names = [shape.name for slide in deck.slides for shape in slide.shapes]
+    assert {'Scoring Vendor Card VF Ericsson', 'Scoring Vendor Card VF Unknown', 'Scoring Vendor Card EE All'} <= set(names)
+    assert 'Scoring Vendor Card Three Unknown' not in names
+    texts = [shape.text_frame.text for slide in deck.slides for shape in slide.shapes if shape.has_text_frame]
+    assert any('scoring of the whole country per Vendor' in text for text in texts)
+    assert any(text.startswith('921') and '−1.0' in text for text in texts)
+
+
 def test_points_at_stake_share_every_point_lost(national):
     _job, _result, insights = national
     stake = _combined(insights['points_at_stake'])[0]
