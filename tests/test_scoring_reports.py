@@ -7,8 +7,8 @@ import json
 import pytest
 from pptx import Presentation
 
-from src.modules.scoring_exports import export_scoring_report
-from src.modules.scoring_reports import (
+from src.modules.scoring.scoring_exports import export_scoring_report
+from src.modules.scoring.scoring_reports import (
     default_report_configuration, default_scenario, delete_named_configuration,
     import_report_configurations, load_report_state, normalize_report_configuration, remember_last_configuration,
     report_configurations_document, save_named_configuration,
@@ -79,7 +79,7 @@ def test_report_configuration_is_normalized():
     assert options['points']['kpis'] is False and options['gap']['profile'] is False
     assert options['geographical_areas']['ranking'] is True and options['points']['stake'] is True
     # Geographical Areas was called Locations.
-    from src.modules.scoring_reports import _normalize_options
+    from src.modules.scoring.scoring_reports import _normalize_options
     assert _normalize_options({'locations': {'ranking': False}})['geographical_areas'] == {'cards': True, 'ranking': False, 'versus': True}
     assert 'location_cards' not in options['charts'] and 'points_loss_map' not in options['gap']
     with pytest.raises(ValueError, match='at least one scenario'):
@@ -142,7 +142,7 @@ def test_report_document_has_one_section_per_scenario_and_scoring():
     assert 'Scenarios: National, Main Cities' in ' '.join(shape.text_frame.text for shape in cover.shapes
                                                           if shape.has_text_frame)
     # Each scenario opens with its transition (01, 02); its scorings are the transitions below it.
-    from src.modules import report_structure
+    from src.modules.reporting import report_structure
     deck = Presentation(BytesIO(content))
     transitions = [(next(shape.text for shape in slide.shapes if shape.name.startswith(report_structure.COUNTER_PREFIX)),
                     slide.shapes.title.text_frame.paragraphs[0].text)
@@ -182,7 +182,7 @@ def test_split_environments_and_kpi_values():
 
 
 def test_reporting_job_scoring_entry_keeps_its_report():
-    from src.modules.report_tasks import normalize_definition
+    from src.modules.reporting.report_tasks import normalize_definition
     report = default_report_configuration()
     definition = normalize_definition({'scoring': [{'nr_mode': 'NSA', 'report': report}]})
     assert definition['scoring'][0]['report']['scenarios'][0]['name'] == 'National'
@@ -196,8 +196,8 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
 
     import pandas as pd
 
-    from src.modules import scoring as scoring_engine
-    from src.modules import saved_filters
+    from src.modules.scoring import scoring as scoring_engine
+    from src.modules.scoring import saved_filters
     from tests.test_scoring_most_reliable import _reliable_configuration
 
     client = scoring_api['client']
@@ -206,7 +206,7 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
     rows = [{'Campaign': '2026-Q2', 'Operator': operator, 'G_Level_1': 'Drive', 'G_Level_2': 'City',
              'Session_Type': 'CALL', 'Call_Status': status}
             for operator, status in (('EE', 'Completed'), ('O2 UK', 'Completed'), ('Three UK', 'Failed'))]
-    engine = ModuleType('src.modules.scoring')
+    engine = ModuleType('src.modules.scoring.scoring')
     engine.METHOD_VERSION = 'scoring-report-api-test'
     engine.required_input_columns = lambda kind, levels: [*levels, 'score']
     engine.calculate_scoring = lambda frames, levels, *, baseline_operator, configuration=None: (
@@ -266,7 +266,7 @@ def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_
 
 def test_levels_with_a_single_value_are_left_out_of_report_scenarios(monkeypatch):
     import src.DriveTestAnalyzer as core
-    from src.modules.scoring_views import single_value_levels
+    from src.modules.scoring.scoring_views import single_value_levels
 
     one_campaign = {'scoring': [
         {'operator': 'EE', 'campaign': 'UK_Q2_2026', 'city': 'London'},

@@ -268,7 +268,7 @@
         </div>
       </div>
       <p class="form-note">Saving refreshes chart caches; it never changes the stored CDR values. The map travels with the Mappings &amp; Reference Data in Import / Export, transfers and backups.</p>
-      <script defer src="{{ static_path('js/campaign_maps.js') }}?v={{ asset_version('js/campaign_maps.js') }}"></script>
+      <script defer src="{{ static_path('js/workspace/campaign_maps.js') }}?v={{ asset_version('js/workspace/campaign_maps.js') }}"></script>
       {% else %}<p class="form-note">Open a workspace before managing Campaign Maps.</p>{% endif %}
     </div>
   </details>
@@ -312,7 +312,7 @@
         <p class="campaign-map-message" data-map-area-message role="status" aria-live="polite"></p>
       </div>
       <p class="form-note">Country borders: Natural Earth (public domain). The Map Areas and Postal Codes travel with the Mappings &amp; Reference Data in Import / Export, transfers and backups.</p>
-      <script defer src="{{ static_path('js/map_areas.js') }}?v={{ asset_version('js/map_areas.js') }}"></script>
+      <script defer src="{{ static_path('js/workspace/map_areas.js') }}?v={{ asset_version('js/workspace/map_areas.js') }}"></script>
       {% else %}<p class="form-note">Open a workspace before managing Map Areas.</p>{% endif %}
     </div>
   </details>
@@ -376,7 +376,7 @@
         </div>
       </form>
       <p class="form-note">Each Operator starts with the defaults: Vodafone and 3 serve each other (eMOCN), Lebara is served by both and any other Operator by its own network. These relations come from RAN sharing and MVNO agreements, not from the Network Inventories, so change an Operator only when its networks differ, and <strong>Use default</strong> to undo it. Only the changed Operators are saved, and saving marks the mapped CDRs as <em>Vendor mapping outdated</em> until they are mapped again. A cell farther from a sample than the maximum serving distance is never its serving cell.</p>
-      <script defer src="{{ static_path('js/serving_networks.js') }}?v={{ asset_version('js/serving_networks.js') }}"></script>
+      <script defer src="{{ static_path('js/workspace/serving_networks.js') }}?v={{ asset_version('js/workspace/serving_networks.js') }}"></script>
       {% else %}<p class="form-note">Open a workspace before managing the Serving Networks.</p>{% endif %}
     </div>
   </details>
@@ -423,7 +423,7 @@
         </div>
       </form>
       <p class="form-note">Only the changed fields are saved: a field left empty, or with its default columns, returns to the default (<strong>Use default</strong>). Non-Qualified Calls, the DT Analyzer RCA, Network Insights and the Vendor Mapping read the changed columns at once (the NQ calls are indexed again); the Processing and CDR-Main fields are filled when the CDRs are processed, so reprocess them to apply those. The dictionary travels with the Mappings &amp; Reference Data of the workspace.</p>
-      <script defer src="{{ static_path('js/cdr_field_dictionary.js') }}?v={{ asset_version('js/cdr_field_dictionary.js') }}"></script>
+      <script defer src="{{ static_path('js/workspace/cdr_field_dictionary.js') }}?v={{ asset_version('js/workspace/cdr_field_dictionary.js') }}"></script>
       {% else %}<p class="form-note">Open a workspace before managing the CDR Field Dictionary.</p>{% endif %}
     </div>
   </details>
@@ -469,7 +469,7 @@
         <div class="acf-cards" data-acf-panel-cards></div>
         <p class="form-note acf-panel-empty" data-acf-panel-empty hidden></p>
       </div>
-      <script defer src="{{ static_path('js/auto_calculated_fields_panel.js') }}?v={{ asset_version('js/auto_calculated_fields_panel.js') }}"></script>
+      <script defer src="{{ static_path('js/workspace/auto_calculated_fields_panel.js') }}?v={{ asset_version('js/workspace/auto_calculated_fields_panel.js') }}"></script>
       {% else %}<p class="form-note">Open a workspace before managing its Auto-calculated Fields.</p>{% endif %}
     </div>
   </details>

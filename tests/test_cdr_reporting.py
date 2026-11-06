@@ -12,9 +12,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 from pptx import Presentation
 
-from src.modules.cdr_reporting import CATALOG_HEADERS, TRAILING_DYNAMIC_CATALOG_HEADERS, CatalogEntry, _apply_catalog_filters, _apply_catalog_grouping, _cdf_campaign_line_widths, _cdf_plot_geometry, _cdf_terminal_x_maximum, _cdf_visible_points, _draw_adjacent_stacked_bar_label, _draw_chart_legend, _draw_configured_bar_label, _draw_inside_bar_label, _draw_top_column_group_separators, _hierarchical_complete_keys, _hierarchical_unique_keys, _hierarchy_caption_spans, _hierarchy_group_colours, _hierarchy_spans, _horizontal_legend_columns, _layout_chart_frames, _legend_dimensions, _legend_labels, _named_slide_layout, _render_cdf_line, _render_failure_count, _render_failure_count_hierarchy, _render_map, _render_mean_column, _render_stacked_distribution, _render_status_100, _render_table, _resolved_legend_items, _series_colours, _series_line_dashes, _status_chart_categories, assign_cdr_vendors, catalog_chart_hover_targets, catalog_chart_payload, catalogue_csv, convert_catalog_csv, ensure_vendor_group, enrich_multivendor, load_catalog_csv, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_kpi_expression, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, prepare_multivendor_catalog_entry, render_catalog_chart_preview, vendor_from_cells
-from src.modules.cdr_reporting import catalog_kpi_fields
-from src.modules.cdr_reporting import _draw_fitted_aggregation_header
+from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS, TRAILING_DYNAMIC_CATALOG_HEADERS, CatalogEntry, _apply_catalog_filters, _apply_catalog_grouping, _cdf_campaign_line_widths, _cdf_plot_geometry, _cdf_terminal_x_maximum, _cdf_visible_points, _draw_adjacent_stacked_bar_label, _draw_chart_legend, _draw_configured_bar_label, _draw_inside_bar_label, _draw_top_column_group_separators, _hierarchical_complete_keys, _hierarchical_unique_keys, _hierarchy_caption_spans, _hierarchy_group_colours, _hierarchy_spans, _horizontal_legend_columns, _layout_chart_frames, _legend_dimensions, _legend_labels, _named_slide_layout, _render_cdf_line, _render_failure_count, _render_failure_count_hierarchy, _render_map, _render_mean_column, _render_stacked_distribution, _render_status_100, _render_table, _resolved_legend_items, _series_colours, _series_line_dashes, _status_chart_categories, assign_cdr_vendors, catalog_chart_hover_targets, catalog_chart_payload, catalogue_csv, convert_catalog_csv, ensure_vendor_group, enrich_multivendor, load_catalog_csv, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_kpi_expression, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, prepare_multivendor_catalog_entry, render_catalog_chart_preview, vendor_from_cells
+from src.modules.cdr_analysis.cdr_reporting import catalog_kpi_fields
+from src.modules.cdr_analysis.cdr_reporting import _draw_fitted_aggregation_header
 
 
 CHART_MAPPING_ATTRS = {
@@ -246,7 +246,7 @@ def test_dynamic_table_rejects_an_unreadable_number_of_pivot_columns() -> None:
         'Dynamic Table has 21 distinct column values for G Level 4. '
         'Add a filter to reduce the table to 20 columns or fewer.'
     )
-from src.modules.repository import Repository
+from src.modules.core.repository import Repository
 
 
 def with_default_calculated_dimensions(entry: CatalogEntry) -> CatalogEntry:
@@ -404,7 +404,7 @@ def test_dataset_storage_coalesces_case_only_columns_without_sqlite_suffixes(tmp
 
 
 def test_vendor_only_removes_equivalent_operator_alias_prefixes() -> None:
-    from src.modules.column_names import vendor_only_value
+    from src.modules.cdr.column_names import vendor_only_value
 
     assert vendor_only_value('Vodafone_Ericsson', 'Vodafone UK') == 'Ericsson'
     assert vendor_only_value('VF_Samsung', 'Vodafone UK') == 'Samsung'
@@ -1381,7 +1381,7 @@ def test_static_distribution_draws_horizontal_white_percentage_labels_inside_seg
         'below2', 'below5', 'below20', 'below100', 'Above',
     ]
 
-    with patch('src.modules.cdr_reporting._draw_inside_horizontal_bar_label', return_value=True) as draw_label:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_inside_horizontal_bar_label', return_value=True) as draw_label:
         _render_stacked_distribution(
             'Distribution', frame, 'Operator', 'Campaign', '__catalog_stack',
         )
@@ -1476,7 +1476,7 @@ def test_bar_value_label_rotates_when_it_only_fits_vertically() -> None:
     image = Image.new('RGB', (200, 200), 'white')
     draw = ImageDraw.Draw(image)
 
-    with patch('src.modules.cdr_reporting._draw_vertical_label') as draw_vertical:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_vertical_label') as draw_vertical:
         drawn = _draw_inside_bar_label(
             image, draw, '104.62', x=20, y=20, width=30, height=150,
             fill='white', font=ImageFont.load_default(),
@@ -1490,7 +1490,7 @@ def test_configured_vertical_bar_label_rotates_when_many_bars_make_it_too_wide()
     image = Image.new('RGB', (200, 200), 'white')
     draw = ImageDraw.Draw(image)
 
-    with patch('src.modules.cdr_reporting._draw_vertical_label') as draw_vertical:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_vertical_label') as draw_vertical:
         _draw_configured_bar_label(
             image, draw, '104.62', x=20, y=20, width=30, height=150,
             colour='#4E79A7', font=ImageFont.load_default(), position='middle',
@@ -1675,7 +1675,7 @@ def test_mean_chart_renders_selected_dimension_legend_at_requested_position() ->
         '__catalog_row_0': 'Operator', '__catalog_column_0': 'Campaign',
     }
 
-    with patch('src.modules.cdr_reporting._draw_chart_legend') as draw_legend:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_chart_legend') as draw_legend:
         _render_mean_column(
             'Average', frame, '__catalog_primary', '__catalog_series', 'Metric',
             legend_dimensions=('Operator',), legend_position='right',
@@ -1692,7 +1692,7 @@ def test_status_chart_draws_legend_at_the_catalogue_position() -> None:
         'Call_Status': ['Completed'],
     })
 
-    with patch('src.modules.cdr_reporting._draw_chart_legend') as draw_legend:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_chart_legend') as draw_legend:
         _render_status_100('Status', frame, 'Operator', 'Campaign', legend_position='left')
 
     assert draw_legend.call_args.args[2] == 'left'
@@ -2124,7 +2124,7 @@ def test_cdf_renders_a_curve_for_each_complete_rows_and_columns_combination() ->
         'Metric': [1.0, 2.0, 1.5, 2.5, 1.2, 2.2, 1.7, 2.7],
     })
 
-    with patch('src.modules.cdr_reporting._draw_chart_legend') as draw_legend:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_chart_legend') as draw_legend:
         _render_cdf_line('CDF', frame, '__catalog_primary', '__catalog_series', 'Metric')
 
     legend_items = draw_legend.call_args.args[1]
@@ -2140,7 +2140,7 @@ def test_cdf_uses_emphasised_lines_when_only_one_campaign_is_rendered() -> None:
         'Campaign': ['2026 Q2'] * 4, 'Metric': [1.0, 2.0, 1.2, 2.2],
     })
 
-    with patch('src.modules.cdr_reporting._draw_chart_legend') as draw_legend:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_chart_legend') as draw_legend:
         _render_cdf_line('CDF', frame, '__catalog_primary', '__catalog_series', 'Metric')
 
     assert {item[2] for item in draw_legend.call_args.args[1]} == {4}
@@ -2161,7 +2161,7 @@ def test_cdf_renderer_uses_progressive_widths_for_four_campaigns() -> None:
         '__catalog_column_0': ('Campaign',),
     }
 
-    with patch('src.modules.cdr_reporting._draw_chart_legend') as draw_legend:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_chart_legend') as draw_legend:
         _render_cdf_line('CDF', frame, '__catalog_primary', '__catalog_series', 'Metric')
 
     assert [item[2] for item in draw_legend.call_args.args[1]] == [1, 2, 3, 4]
@@ -2566,7 +2566,7 @@ def test_design_canvas_report_renderer_uses_design_payload() -> None:
         'NR SINR': [4.0, 8.0],
     })
 
-    with patch('src.modules.cdr_reporting._render_canvas_payload_png', return_value=b'canvas-png') as render:
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_canvas_payload_png', return_value=b'canvas-png') as render:
         image = render_catalog_chart_preview(frame, entry, renderer='canvas')
 
     assert image == b'canvas-png'
@@ -2577,7 +2577,7 @@ def test_design_canvas_report_renderer_uses_design_payload() -> None:
 
 
 def test_canvas_chart_renderer_uses_configured_node_path(monkeypatch, tmp_path: Path) -> None:
-    import src.modules.cdr_reporting as reporting
+    import src.modules.cdr_analysis.cdr_reporting as reporting
 
     node = tmp_path / 'node'
     node.write_text('', encoding='utf-8')
@@ -2599,7 +2599,7 @@ def test_report_renderer_rejects_unknown_engine() -> None:
 
 
 def test_report_renderer_defaults_to_canvas_and_keeps_pil_override(monkeypatch) -> None:
-    import src.modules.cdr_reporting as reporting
+    import src.modules.cdr_analysis.cdr_reporting as reporting
 
     monkeypatch.delenv(reporting.REPORT_CHART_RENDERER_ENV, raising=False)
     assert reporting.report_chart_renderer_name() == 'canvas'
@@ -2608,7 +2608,7 @@ def test_report_renderer_defaults_to_canvas_and_keeps_pil_override(monkeypatch) 
 
 
 def test_canvas_hits_are_reused_by_static_chart_tooltips() -> None:
-    import src.modules.cdr_reporting as reporting
+    import src.modules.cdr_analysis.cdr_reporting as reporting
 
     entry = CatalogEntry(
         1, 'Throughput', '', '', 'Throughput', 'CDR-Data',
@@ -2620,7 +2620,7 @@ def test_canvas_hits_are_reused_by_static_chart_tooltips() -> None:
         'label': 'EE · 2026 Q1', 'series': 'EE', 'value': '42.00',
     }]
 
-    with patch('src.modules.cdr_reporting._render_canvas_payload', return_value=(b'canvas-png', hits)):
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_canvas_payload', return_value=(b'canvas-png', hits)):
         image, targets = reporting.render_catalog_chart_preview_with_hover(frame, entry)
 
     assert image == b'canvas-png'
@@ -2666,7 +2666,7 @@ def test_catalogue_call_family_uses_documented_netcheck_session_values() -> None
     assert grouped['__catalog_column_0'].tolist() == ['EE', 'EE', 'EE']
     assert grouped['__catalog_column_1'].tolist() == ['Q1', 'Q1', 'Q1']
 
-    with patch('src.modules.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
         hierarchy_renderer.return_value = BytesIO(b'nested-chart')
         chart = _render_status_100('Completed Call Ratio', grouped, primary, series)
 
@@ -2687,7 +2687,7 @@ def test_status_chart_uses_nested_columns_without_a_row_grouping() -> None:
     })
     grouped, primary, series = _apply_catalog_grouping(frame, entry, False, 'Call_Status')
 
-    with patch('src.modules.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
         hierarchy_renderer.return_value = BytesIO(b'nested-columns')
         chart = _render_status_100('Completed Call Ratio', grouped, primary, series)
 
@@ -2708,7 +2708,7 @@ def test_status_chart_keeps_row_only_hierarchy_on_the_left() -> None:
     })
     grouped, primary, series = _apply_catalog_grouping(frame, entry, False, 'Test_Result')
 
-    with patch('src.modules.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
         hierarchy_renderer.return_value = BytesIO(b'row-hierarchy')
         chart = _render_status_100('Status', grouped, primary, series)
 
@@ -2725,7 +2725,7 @@ def test_status_chart_leaves_status_row_inclusion_to_the_template_filter() -> No
         '__catalog_column_0': ['EE'] * 8,
     })
 
-    with patch('src.modules.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
         hierarchy_renderer.return_value = BytesIO(b'filtered-status-chart')
         chart = _render_status_100('Data failures', frame, 'Operator', 'Campaign')
 
@@ -2745,7 +2745,7 @@ def test_status_chart_honours_selected_kpi_when_other_status_columns_exist() -> 
         '__catalog_column_0': ['EE', 'EE'],
     })
 
-    with patch('src.modules.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
         hierarchy_renderer.return_value = BytesIO(b'selected-status-kpi')
         chart = _render_status_100('Data failures', frame, 'Operator', 'Campaign', metric='Test_Result')
 
@@ -2762,7 +2762,7 @@ def test_status_chart_maps_cutoff_to_a_visible_failure_segment_without_filtering
         '__catalog_column_0': ['EE'] * 8,
     })
 
-    with patch('src.modules.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
         hierarchy_renderer.return_value = BytesIO(b'negative-statuses')
         _render_status_100('Data failures', frame, 'Operator', 'Campaign', metric='Test_Result')
 
@@ -2784,7 +2784,7 @@ def test_data_cutoffs_are_excluded_from_tableau_status_denominator() -> None:
         '__catalog_column_0': ['EE'] * 1000,
     })
 
-    with patch('src.modules.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_status_100_hierarchy') as hierarchy_renderer:
         hierarchy_renderer.return_value = BytesIO(b'tableau-status-ratio')
         _render_status_100('Data failures', frame, 'Operator', 'Campaign', metric='Test_Result')
 
@@ -2896,7 +2896,7 @@ def test_failure_count_uses_row_and_column_hierarchies_without_flattening() -> N
     })
     grouped, primary, series = _apply_catalog_grouping(frame, entry, False, 'Call_Status')
 
-    with patch('src.modules.cdr_reporting._render_failure_count_hierarchy') as hierarchy_renderer:
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_failure_count_hierarchy') as hierarchy_renderer:
         hierarchy_renderer.return_value = BytesIO(b'nested-failure-chart')
         chart = _render_failure_count('Voice failures per Q/city', grouped, primary, series)
 
@@ -3029,7 +3029,7 @@ def test_failure_count_keeps_zero_count_hierarchy_categories_from_all_filtered_r
     })
     grouped, primary, series = _apply_catalog_grouping(frame, entry, False, 'Call_Status')
 
-    with patch('src.modules.cdr_reporting._render_failure_count_hierarchy') as hierarchy_renderer:
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_failure_count_hierarchy') as hierarchy_renderer:
         hierarchy_renderer.return_value = BytesIO(b'zero-count-grid')
         chart = _render_failure_count('Voice failures', grouped, primary, series)
 
@@ -3066,7 +3066,7 @@ def test_failure_hierarchy_reserves_a_right_legend_lane() -> None:
         '__catalog_failure_state': ['Failed'],
     })
 
-    with patch('src.modules.cdr_reporting._draw_chart_legend') as draw_legend:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_chart_legend') as draw_legend:
         _render_failure_count_hierarchy(
             'Voice failures per Q/city', frame,
             ['__catalog_row_0'], ['__catalog_column_0', '__catalog_column_1'],
@@ -3086,7 +3086,7 @@ def test_failure_hierarchy_keeps_complete_column_headers() -> None:
         '__catalog_failure_state': ['Failed'],
     })
 
-    with patch('src.modules.cdr_reporting._draw_fitted_aggregation_header', return_value=20) as draw_header:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_fitted_aggregation_header', return_value=20) as draw_header:
         _render_failure_count_hierarchy(
             'Voice failures', frame,
             ['__catalog_row_0'], ['__catalog_column_0', '__catalog_column_1'],
@@ -3113,7 +3113,7 @@ def test_failure_hierarchy_header_fonts_decrease_at_each_column_level() -> None:
         sizes.append((kwargs['level'], size))
         return size
 
-    with patch('src.modules.cdr_reporting._draw_fitted_aggregation_header', side_effect=record_header):
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_fitted_aggregation_header', side_effect=record_header):
         _render_failure_count_hierarchy(
             'Voice failures', frame,
             ['__catalog_row_0'],
@@ -3132,8 +3132,8 @@ def test_failure_hierarchy_reserves_space_below_column_headers() -> None:
         '__catalog_failure_state': ['Failed'] * 21,
     })
 
-    with patch('src.modules.cdr_reporting._draw_fitted_aggregation_header', return_value=20) as draw_header:
-        with patch('src.modules.cdr_reporting._draw_configured_bar_label') as draw_bar_label:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_fitted_aggregation_header', return_value=20) as draw_header:
+        with patch('src.modules.cdr_analysis.cdr_reporting._draw_configured_bar_label') as draw_bar_label:
             _render_failure_count_hierarchy(
                 'Voice failures', frame,
                 ['__catalog_row_0'], ['__catalog_column_0', '__catalog_column_1'],
@@ -3152,7 +3152,7 @@ def test_failure_hierarchy_uses_dashed_child_boundaries_within_one_operator() ->
         '__catalog_failure_state': ['Failed', 'Dropped'],
     })
 
-    with patch('src.modules.cdr_reporting._draw_dashed_vertical_line') as draw_dashed:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_dashed_vertical_line') as draw_dashed:
         _render_failure_count_hierarchy(
             'Voice failures per campaign', frame,
             ['__catalog_row_0'], ['__catalog_column_0', '__catalog_column_1'],
@@ -3169,7 +3169,7 @@ def test_failure_hierarchy_uses_dashed_child_boundaries_within_one_row_group() -
         '__catalog_failure_state': ['Failed', 'Dropped', 'Failed'],
     })
 
-    with patch('src.modules.cdr_reporting._draw_dashed_horizontal_line') as draw_dashed:
+    with patch('src.modules.cdr_analysis.cdr_reporting._draw_dashed_horizontal_line') as draw_dashed:
         _render_failure_count_hierarchy(
             'Voice failures per city', frame,
             ['__catalog_row_0', '__catalog_row_1'], ['__catalog_column_0'],
@@ -3205,7 +3205,7 @@ def test_catalogue_uses_explicit_title_and_transition_slides() -> None:
 
 
 def test_grid_layout_without_comments_keeps_placeholder_ten_as_a_chart() -> None:
-    from src.modules.cdr_reporting import (
+    from src.modules.cdr_analysis.cdr_reporting import (
         _clear_commentary,
         _named_slide_layout,
         _remove_template_chart_placeholders,
@@ -3302,7 +3302,7 @@ def test_template_chart_image_preview_uses_combined_reporting_rows(client, monke
     ('Operator', 'Campaign', [[10.0, 20.0], [30.0, 40.0]]),
 ])
 def test_average_vertical_bars_have_a_value_in_each_bar_with_rows_columns_or_both(rows, columns, cells) -> None:
-    from src.modules.cdr_reporting import CatalogEntry, catalog_chart_payload
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, catalog_chart_payload
 
     frame = pd.DataFrame({'Operator': ['EE', 'EE', 'O2', 'O2'], 'Campaign': ['C1', 'C2', 'C1', 'C2'], 'Mean_Data_Rate': [10.0, 20.0, 30.0, 40.0]})
     entry = CatalogEntry(slide=1, slide_title='Rates', slide_subtitle='', layout='', chart_title='Rate', cdr_source='CDR-Data',

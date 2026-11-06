@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 
 import src.DriveTestAnalyzer as app_module
-from src.modules import l3_dt_logs
+from src.modules.cdr import l3_dt_logs
 
 HEADER = ['Log_Day', 'Campaign', 'Operator', 'Session_Type', 'Session_Name', 'Call_Status', 'JoinID', 'File_Name',
           'Call_Start_Time', 'Call_End_Time', 'Session_Duration', 'UE', 'SourceTable', 'EventFullDate', 'Latitude',
@@ -166,7 +166,7 @@ def test_campaign_profile_and_identifiers() -> None:
 def add_data_cdr(tmp_path: Path, join_ids: list[str]) -> int:
     """A Data CDR whose tests failed, one per JOIN_ID."""
     import pandas as pd
-    from src.modules.repository import local_now_iso
+    from src.modules.core.repository import local_now_iso
 
     rows = pd.DataFrame({
         'Operator': ['Vodafone UK'] * len(join_ids), 'Campaign': ['UK_Q3_SA_2026'] * len(join_ids),
@@ -187,7 +187,7 @@ def add_data_cdr(tmp_path: Path, join_ids: list[str]) -> int:
 
 
 def test_nq_calls_list_filter_and_show_the_ues_of_their_layer_3_sessions(client, tmp_path, monkeypatch) -> None:
-    from src.modules import non_qualified_calls as nq
+    from src.modules.nq import non_qualified_calls as nq
 
     monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: callback(*args))
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
@@ -287,7 +287,7 @@ def test_the_points_of_the_layers_follow_the_kmz_files(tmp_path) -> None:
 
 
 def test_the_map_of_a_call_reads_its_layers_and_records(client, tmp_path, monkeypatch) -> None:
-    from src.modules import non_qualified_calls as nq
+    from src.modules.nq import non_qualified_calls as nq
 
     monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: callback(*args))
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
@@ -333,7 +333,7 @@ def weak_coverage_rows() -> list[dict[str, str]]:
 
 
 def test_the_dt_analyzer_rca_reads_the_layer_3_dt_logs_of_the_campaign_of_the_call(client, tmp_path, monkeypatch) -> None:
-    from src.modules import non_qualified_calls as nq
+    from src.modules.nq import non_qualified_calls as nq
 
     monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: callback(*args))
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
@@ -364,7 +364,7 @@ def test_the_dt_analyzer_rca_reads_the_layer_3_dt_logs_of_the_campaign_of_the_ca
 def test_the_rules_of_a_workspace_take_the_rules_of_the_logs_and_keep_those_changed_by_hand() -> None:
     import json as json_module
 
-    from src.modules import nq_dta_rca
+    from src.modules.nq import nq_dta_rca
 
     class Repository:
         def __init__(self, rules):
@@ -397,7 +397,7 @@ def test_the_rules_of_a_workspace_take_the_rules_of_the_logs_and_keep_those_chan
 
 
 def test_the_map_of_a_call_gives_the_hints_of_its_layer_3_dt_logs(client, tmp_path, monkeypatch) -> None:
-    from src.modules import non_qualified_calls as nq
+    from src.modules.nq import non_qualified_calls as nq
 
     monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: callback(*args))
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
@@ -422,7 +422,7 @@ def test_the_map_of_a_call_gives_the_hints_of_its_layer_3_dt_logs(client, tmp_pa
 
 
 def test_layer_3_maps_gives_a_grid_zoomed_out_and_the_points_of_the_area_zoomed_in(client, tmp_path, monkeypatch) -> None:
-    from src.modules import non_qualified_calls as nq
+    from src.modules.nq import non_qualified_calls as nq
 
     monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: callback(*args))
     client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
@@ -472,8 +472,8 @@ def test_layer_3_maps_gives_a_grid_zoomed_out_and_the_points_of_the_area_zoomed_
 def test_layer_3_maps_reads_the_samples_of_the_area_from_a_copy_of_each_cdr(client, monkeypatch) -> None:
     import numpy as np
 
-    from src.modules import non_qualified_calls as nq
-    from src.modules import nq_call_map
+    from src.modules.nq import non_qualified_calls as nq
+    from src.modules.nq import nq_call_map
 
     nq.sync_nq_calls(app_module.repository)
     entry = {'kind': 'data', 'latitude': np.array([52.40, 52.41, 53.0]), 'longitude': np.array([-0.10, -0.11, 1.0]),

@@ -4,8 +4,8 @@ import json
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules.campaign_maps import load_campaign_map
-from src.modules.column_names import (
+from src.modules.mapping.campaign_maps import load_campaign_map
+from src.modules.cdr.column_names import (
     DEFAULT_CAMPAIGN_MAP, campaign_sort_key, compact_campaign_value, format_campaign, normalize_campaign_map,
     use_campaign_map,
 )

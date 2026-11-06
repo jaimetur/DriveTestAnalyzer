@@ -9,7 +9,7 @@ import io
 
 from PIL import Image
 
-from src.modules.network_insights_export import export_network_insights_powerpoint, rf_quality_table
+from src.modules.network_insights.network_insights_export import export_network_insights_powerpoint, rf_quality_table
 
 TEMPLATE = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
 
@@ -65,8 +65,8 @@ def test_network_ppt_preserves_design_template_and_fits_group_cells(tmp_path):
 
 
 def test_network_word_is_composed_from_the_powerpoint_as_the_bundle_report_template(tmp_path, monkeypatch):
-    import src.modules.pptx_to_docx as pptx_to_docx_module
-    from src.modules import bundle_report_templates
+    import src.modules.reporting.pptx_to_docx as pptx_to_docx_module
+    from src.modules.reporting import bundle_report_templates
 
     output = tmp_path / 'network.pptx'
     export_network_insights_powerpoint(output, _analysis(), {}, {}, _png, template=TEMPLATE)
@@ -85,8 +85,9 @@ def test_network_word_is_composed_from_the_powerpoint_as_the_bundle_report_templ
 def test_network_summaries_include_all_grouped_deployment_views_and_exclude_full_inventory(client, tmp_path, monkeypatch):
     import pandas as pd
     import src.DriveTestAnalyzer as app_module
-    from src.modules import bundle_report_templates, network_insights as ni, network_insights_export as export
-    from src.modules.repository import local_now_iso
+    from src.modules.reporting import bundle_report_templates
+    from src.modules.network_insights import network_insights as ni, network_insights_export as export
+    from src.modules.core.repository import local_now_iso
 
     client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     repo = app_module.repository
@@ -231,7 +232,7 @@ def _bandwidth_spectrum():
 
 
 def test_bandwidth_views_and_nr_sites_by_duplex_mode_are_exported(tmp_path):
-    from src.modules.network_insights_export import (
+    from src.modules.network_insights.network_insights_export import (
         bandwidth_caption, bandwidth_ladder_image, bandwidth_tables, nr_duplex_table, scope_text,
     )
 
@@ -295,9 +296,9 @@ def test_bandwidth_views_and_nr_sites_by_duplex_mode_are_exported(tmp_path):
 
 
 def test_class_bars_have_a_legend_with_the_colour_and_range_of_each_class(tmp_path):
-    from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
-    from src.modules.network_insights_export import class_bar_segments, class_ranges
-    from src.modules.pptx_compose import TABLE_LEGEND
+    from src.modules.network_insights.network_insights import RSRP_CLASSES, SINR_CLASSES
+    from src.modules.network_insights.network_insights_export import class_bar_segments, class_ranges
+    from src.modules.reporting.pptx_compose import TABLE_LEGEND
 
     assert [text for _label, text, _colour in class_ranges(RSRP_CLASSES)] == ['≥ -80', '-90 to -80', '-100 to -90', '-110 to -100', '< -110']
     assert [text for _label, text, _colour in class_ranges(SINR_CLASSES)] == ['≥ 20', '13 to 20', '5 to 13', '0 to 5', '< 0']

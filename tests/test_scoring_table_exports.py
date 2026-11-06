@@ -8,14 +8,14 @@ from pptx import Presentation
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches
 
-from src.modules.scoring_exports import (
+from src.modules.scoring.scoring_exports import (
     _hierarchy_chart_color, _hierarchy_score_tables, _score_tables, _summary_extreme_columns,
     _summary_extreme_operators,
     _table_for_mode, _score_total_label, export_scoring_csv, export_scoring_powerpoint,
 )
-from src.modules.scoring_views import build_scoring_views
+from src.modules.scoring.scoring_views import build_scoring_views
 from tests.scoring_fixtures import scoring_configuration
-from src.modules.scoring_pptx_scorecard import STYLES
+from src.modules.scoring.scoring_pptx_scorecard import STYLES
 from tests.test_scoring_exports import (
     SECTION_FILL, TEMPLATE, TOTAL_FILL, _comparison_matrices, _label_name, _nested_shapes, _result, _rgb, _section_rows,
 )

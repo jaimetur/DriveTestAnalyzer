@@ -3,8 +3,8 @@ from datetime import datetime
 from pathlib import Path
 
 from pptx import Presentation
-from src.modules.cdr_report_filenames import build_scoring_report_filename, scoring_display_selections
-from src.modules.scoring_exports import _scoring_filter_subtitle, _add_scoring_intro_slides, prepare_scoring_display_selections
+from src.modules.cdr.cdr_report_filenames import build_scoring_report_filename, scoring_display_selections
+from src.modules.scoring.scoring_exports import _scoring_filter_subtitle, _add_scoring_intro_slides, prepare_scoring_display_selections
 
 
 def test_complete_unicode_values_and_filename_budget():

@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from src.modules.module_labels import MODULE_SECTIONS, section_anchor
+from src.modules.core.module_labels import MODULE_SECTIONS, section_anchor
 
 TEMPLATE = Path(__file__).resolve().parents[1] / 'src' / 'web_interface' / 'templates' / 'network_insights.html'
 
@@ -28,7 +28,7 @@ def test_every_panel_is_a_part_of_its_category() -> None:
 
 
 def test_the_owners_of_the_host_matrix_read_as_its_body_in_every_theme() -> None:
-    css = (TEMPLATE.parents[1] / 'static' / 'css' / 'network_insights.css').read_text(encoding='utf-8')
+    css = (TEMPLATE.parents[1] / 'static' / 'css' / 'network_insights' / 'network_insights.css').read_text(encoding='utf-8')
     # The header colour of a theme (the Ericsson blue…) stays on the header row: the owners heading the rows take the
     # rows and ink of the body, and the own-network cells stay readable on the dark Midnight rows.
     assert '.network-insights[data-ni-theme] .ni-matrix tbody th{background:transparent!important;color:var(--nit-ink' in css

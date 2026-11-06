@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules.module_labels import section_links
+from src.modules.core.module_labels import section_links
 from src.version import __version__
 
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 64
@@ -84,7 +84,7 @@ def test_a_user_reports_a_bug_with_screenshots_and_its_version(client):
     add_user('ana', 'user-viewer')
     login(client, 'ana', 'secret123')
     ticket_id = open_ticket(client)
-    from src.modules.ticket_center import get_ticket
+    from src.modules.ticket_center.ticket_center import get_ticket
     ticket = get_ticket(core.repository, ticket_id)
     assert (ticket['title'], ticket['priority'], ticket['status'], ticket['module'], ticket['created_by']) == ('Export fails', 'P2', 'new', 'scoring', 'ana')
     assert ticket['app_version'] == __version__ and ticket['created_at'][:4].isdigit()
@@ -108,7 +108,7 @@ def test_files_are_attached_beside_the_screenshots_and_only_downloaded(client):
         ('attachments', ('page.png', b'<html><script>alert(1)</script></html>', 'image/png'))])
     assert added.status_code == 200 and added.json()['added'] == 3
     assert logged('ticket_attachments_added')[0]['attachments'] == ['report.pdf', 'shot.png', 'page.png']
-    from src.modules.ticket_center import get_ticket
+    from src.modules.ticket_center.ticket_center import get_ticket
     attachments = {item['file_name']: item for item in get_ticket(core.repository, ticket_id)['attachments']}
     assert [(name, item['content_type'], item['is_screenshot'], item['extension']) for name, item in attachments.items()] == [
         ('report.pdf', 'application/pdf', False, '.pdf'), ('shot.png', 'image/png', True, '.png'),
@@ -141,7 +141,7 @@ def test_files_are_attached_beside_the_screenshots_and_only_downloaded(client):
 
 
 def test_super_admins_clean_up_the_large_attachments_of_finished_tickets(client):
-    from src.modules.ticket_center import MAX_ATTACHMENT_BYTES, get_ticket, list_tickets
+    from src.modules.ticket_center.ticket_center import MAX_ATTACHMENT_BYTES, get_ticket, list_tickets
 
     assert MAX_ATTACHMENT_BYTES == 100 * 1024 * 1024
     login(client)
@@ -219,7 +219,7 @@ def test_the_reporter_edits_and_only_super_admins_attend(client):
     assert client.post(f'/api/tickets/{ticket_id}/manage', data={'assigned_to': 'ana'}).status_code == 400
     resolved = client.post(f'/api/tickets/{ticket_id}/manage', data={'status': 'resolved'}).json()['changes']
     assert resolved == {'status': ['in_progress', 'resolved'], 'fixed_version': ['', __version__]}
-    from src.modules.ticket_center import get_ticket
+    from src.modules.ticket_center.ticket_center import get_ticket
     ticket = get_ticket(core.repository, ticket_id)
     assert ticket['resolved_at'] and [entry['kind'] for entry in ticket['comments']] == ['change', 'comment', 'change', 'change']
     page = client.get(f'/tickets/{ticket_id}').text
@@ -258,7 +258,7 @@ def test_ticket_center_exports_imports_and_backs_up_on_its_own(client):
     assert 'ticket-center/ticket-center.json' in names and len([name for name in names if name.startswith('ticket-center/attachments/')]) == 3
     assert sorted(name.rsplit('.', 1)[-1] for name in names if name.startswith('ticket-center/attachments/')) == ['log', 'png', 'png']
 
-    from src.modules.ticket_center import delete_ticket, list_tickets
+    from src.modules.ticket_center.ticket_center import delete_ticket, list_tickets
     delete_ticket(core.repository, ticket_id)
     inspected = client.post('/admin/import-export/inspect/upload', content=package, headers={'X-Import-File-Name': 'bugs.zip'})
     assert inspected.status_code == 200 and inspected.json()['kind'] == 'ticket-center'
@@ -269,7 +269,7 @@ def test_ticket_center_exports_imports_and_backs_up_on_its_own(client):
         assert core.import_ticket_center(archive) == 'Imported Ticket Center: 1 ticket (1 unchanged), 0 new comments and 0 new attachments.'
     tickets = list_tickets(core.repository)
     assert [(ticket['title'], ticket['comment_count'], ticket['attachment_count']) for ticket in tickets] == [('Export fails', 1, 3)]
-    from src.modules.ticket_center import get_ticket
+    from src.modules.ticket_center.ticket_center import get_ticket
     log = get_ticket(core.repository, int(tickets[0]['id']))['comments'][0]['attachments'][1]
     assert (log['file_name'], log['content_type'], log['is_screenshot']) == ('run.log', 'text/plain', False)
     assert client.get(f"/tickets/attachments/{log['id']}").content == b'line 1\nline 2'
@@ -304,15 +304,15 @@ def test_descriptions_and_comments_are_markdown_shown_and_edited_by_the_rich_tex
     # The texts are kept as written (escaped) for rich_text.js, which shows them; the text areas become its editors.
     assert 'data-rich-text data-raw="Cause\n- One\n  - Two\n&lt;b&gt;x&lt;/b&gt;"' in page
     assert '<div class="ticket-text" data-rich-text data-raw="It fails.">It fails.</div>' in page
-    assert 'js/rich_text.js' in page and 'css/rich_text.css' in page
-    assert page.index('js/rich_text.js') < page.index('js/ticket_center.js')
+    assert 'js/core/rich_text.js' in page and 'css/core/rich_text.css' in page
+    assert page.index('js/core/rich_text.js') < page.index('js/ticket_center/ticket_center.js')
     assert page.count('data-rich-editor data-rich-class="ticket-text"') == 2
     assert 'data-rich-files="form"' in page
     assert 'placeholder="Problem\n- What you did and what happened' in page
     assert 'rich_text_html' not in Path(core.__file__).read_text(encoding='utf-8')
     new_ticket = client.get('/tickets').text
     assert 'data-ticket-description data-rich-editor data-rich-class="ticket-text" data-rich-files="form"' in new_ticket
-    assert 'js/rich_text.js' in new_ticket and 'css/rich_text.css' in new_ticket
+    assert 'js/core/rich_text.js' in new_ticket and 'css/core/rich_text.css' in new_ticket
 
 
 def test_the_tickets_mentioned_as_numbers_are_given_to_the_rich_text_script(client):
@@ -325,7 +325,7 @@ def test_the_tickets_mentioned_as_numbers_are_given_to_the_rich_text_script(clie
     references = json.loads(html.unescape(re.search(r"data-rich-refs='([^']*)'", page).group(1)))
     assert references == {'href': '/tickets/{id}', 'titles': {str(first): 'Export fails · New'},
                           'help': 'A link to ticket 7, once the text is saved'}
-    assert "references: window.RichText.referencesOf(page)" in (Path(core.__file__).parent / 'web_interface/static/js/ticket_center.js').read_text(encoding='utf-8')
+    assert "references: window.RichText.referencesOf(page)" in (Path(core.__file__).parent / 'web_interface/static/js/ticket_center/ticket_center.js').read_text(encoding='utf-8')
     client.post(f'/api/tickets/{first}/comments', data={'body': f"See #{second}"})
     page = client.get(f'/tickets/{first}').text
     # A title with a quote stays within the attribute.
@@ -333,7 +333,7 @@ def test_the_tickets_mentioned_as_numbers_are_given_to_the_rich_text_script(clie
 
 
 def test_a_ticket_page_goes_to_the_first_previous_next_and_last_tickets(client):
-    from src.modules.ticket_center import ticket_neighbours
+    from src.modules.ticket_center.ticket_center import ticket_neighbours
 
     assert ticket_neighbours([3, 5, 9], 5) == {'first': 3, 'previous': 3, 'next': 9, 'last': 9, 'position': 2, 'total': 3}
     assert ticket_neighbours([3, 5, 9], 3) == {'first': None, 'previous': None, 'next': 5, 'last': 9, 'position': 1, 'total': 3}
@@ -355,7 +355,7 @@ def test_a_ticket_page_goes_to_the_first_previous_next_and_last_tickets(client):
     # The titles of every ticket for the order of the list, which ticket_center.js takes from what the list showed.
     titles = json.loads(html.unescape(re.search(r"data-ticket-titles='([^']*)'", page).group(1)))
     assert titles == [[first, 'Export fails'], [second, 'Map labels'], [fourth, "Chart's legend"]]
-    script = (Path(core.__file__).parent / 'web_interface/static/js/ticket_center.js').read_text(encoding='utf-8')
+    script = (Path(core.__file__).parent / 'web_interface/static/js/ticket_center/ticket_center.js').read_text(encoding='utf-8')
     assert 'window.localStorage.setItem(listOrderKey, JSON.stringify(rows.filter((row) => !row.hidden)' in script
     assert "get('order') !== 'number'" in script
     # The first and the last tickets cannot move further.
@@ -372,7 +372,7 @@ def test_anyone_reads_tickets_without_signing_in_but_only_signed_in_users_change
     login(client)
     ticket_id = open_ticket(client)
     client.post(f'/api/tickets/{ticket_id}/comments', data={'body': 'Seen in DE too'})
-    from src.modules.ticket_center import get_ticket
+    from src.modules.ticket_center.ticket_center import get_ticket
     screenshot = get_ticket(core.repository, ticket_id)['attachments'][0]['id']
 
     client.cookies.clear()
@@ -430,7 +430,7 @@ def test_super_admins_change_the_reporter_module_and_version_of_any_ticket(clien
 
 
 def test_super_admins_correct_the_dates_of_a_ticket_and_its_timeline_follows_them(client):
-    from src.modules.ticket_center import get_ticket
+    from src.modules.ticket_center.ticket_center import get_ticket
 
     login(client)
     # A ticket recorded after the work it describes: opened, assigned, commented and resolved at once (its new dates in
@@ -468,7 +468,7 @@ def test_super_admins_correct_the_dates_of_a_ticket_and_its_timeline_follows_the
 
 
 def test_corrected_dates_keep_the_timeline_written_between_and_after_them(monkeypatch):
-    from src.modules.ticket_center import add_comment, create_ticket, get_ticket, set_ticket_dates, update_ticket
+    from src.modules.ticket_center.ticket_center import add_comment, create_ticket, get_ticket, set_ticket_dates, update_ticket
 
     # The dates are written in the time of the server: the server of the test is in the time zone of its dates (+01:00
     # in January), also on a machine in UTC.
@@ -535,7 +535,7 @@ def test_the_tickets_of_earlier_versions_become_bugs(client):
         conn.execute('ALTER TABLE tickets DROP COLUMN ticket_type')
         conn.execute("INSERT INTO tickets (uid, title, created_by, created_at, updated_at) VALUES ('old', 'Old bug', 'super', '2026-01-02T10:00:00', '2026-01-02T10:00:00')")
     core.repository.initialize()
-    from src.modules.ticket_center import list_tickets
+    from src.modules.ticket_center.ticket_center import list_tickets
     assert sorted((ticket['title'], ticket['ticket_type']) for ticket in list_tickets(core.repository)) == [('Export fails', 'bug'), ('Old bug', 'bug')]
 
 
@@ -556,7 +556,7 @@ def test_the_addresses_of_bugs_report_lead_to_ticket_center(client):
 def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     from datetime import date
 
-    from src.modules.ticket_center import TREND_PERIODS, recently_resolved, ticket_board, ticket_dashboard, ticket_trend
+    from src.modules.ticket_center.ticket_center import TREND_PERIODS, recently_resolved, ticket_board, ticket_dashboard, ticket_trend
 
     def ticket(number, ticket_type, status, priority='P3', module='', created='2026-10-05', resolved='', created_by='ana'):
         return {'id': number, 'title': f'T{number}', 'ticket_type': ticket_type, 'status': status, 'priority': priority, 'module': module,
@@ -644,7 +644,7 @@ def test_the_dashboard_draws_the_days_of_a_month_as_one_bar_each(client):
 
 
 def test_times_are_written_in_calendar_days_hours_and_minutes():
-    from src.modules.ticket_center import _duration_text
+    from src.modules.ticket_center.ticket_center import _duration_text
 
     assert [_duration_text(days) for days in (None, 0, 0.03, 0.25, 0.3, 1, 2.0417, 13.2)] == [
         '—', '< 1m', '43m', '6h', '7h 12m', '1d', '2d 1h', '13d 4h']
@@ -653,7 +653,7 @@ def test_times_are_written_in_calendar_days_hours_and_minutes():
 def test_the_dashboard_shows_the_tickets_to_attend_and_the_latest_activity():
     from datetime import date, datetime, timedelta, timezone
 
-    from src.modules.ticket_center import ticket_attention, ticket_feed
+    from src.modules.ticket_center.ticket_center import ticket_attention, ticket_feed
 
     def ticket(number, status, priority='P3', created='2026-10-05T09:00', resolved='', assigned='', fixed=''):
         return {'id': number, 'title': f'T{number}', 'ticket_type': 'bug', 'status': status, 'priority': priority, 'module': '',
@@ -698,7 +698,7 @@ def test_the_dashboard_shows_the_tickets_to_attend_and_the_latest_activity():
 def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activity():
     from datetime import date
 
-    from src.modules.ticket_center import DURATION_BUCKETS, STATISTICS_VERSIONS, TICKET_SCOPES, ticket_statistics, ticket_time_spent
+    from src.modules.ticket_center.ticket_center import DURATION_BUCKETS, STATISTICS_VERSIONS, TICKET_SCOPES, ticket_statistics, ticket_time_spent
 
     def ticket(number, ticket_type, status, priority='P3', created='2026-10-05T09:00', resolved='', created_by='ANA', assigned='',
                fixed='', version='0.9.0', module=''):
@@ -835,7 +835,7 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
 def test_the_type_travels_with_the_tickets(client):
     login(client)
     open_ticket(client, title='Dark theme', ticket_type='new_feature', screenshots=())
-    from src.modules.ticket_center import EXPORT_FORMAT, delete_ticket, list_tickets, merge_ticket_center, ticket_center_payload
+    from src.modules.ticket_center.ticket_center import EXPORT_FORMAT, delete_ticket, list_tickets, merge_ticket_center, ticket_center_payload
     payload, files = ticket_center_payload(core.repository)
     assert payload['format'] == EXPORT_FORMAT == 'drivetest-analyzer-ticket-center' and payload['tickets'][0]['ticket_type'] == 'new_feature'
     delete_ticket(core.repository, int(list_tickets(core.repository)[0]['id']))
@@ -849,8 +849,8 @@ def test_the_type_travels_with_the_tickets(client):
 
 def test_the_bugs_report_tables_settings_and_events_take_the_ticket_center_names(client):
     """Ticket Center was Bugs Report: an application database and App Events of before are renamed in place."""
-    from src.modules.module_labels import MODULE_LABELS_STATE_KEY, load_module_labels
-    from src.modules.ticket_center import get_ticket, list_tickets
+    from src.modules.core.module_labels import MODULE_LABELS_STATE_KEY, load_module_labels
+    from src.modules.ticket_center.ticket_center import get_ticket, list_tickets
 
     login(client)
     ticket_id = open_ticket(client)
@@ -894,7 +894,7 @@ def test_the_bugs_report_tables_settings_and_events_take_the_ticket_center_names
 
 
 def test_a_stored_bugs_report_title_becomes_ticket_center_once(client):
-    from src.modules.module_labels import (
+    from src.modules.core.module_labels import (
         MODULE_LABELS_STATE_KEY, TICKET_CENTER_TITLE_MIGRATION_KEY, load_module_labels, migrate_ticket_center_title,
     )
 

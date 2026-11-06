@@ -7,10 +7,10 @@ from io import BytesIO
 import pytest
 from pptx import Presentation
 
-from src.modules.scoring import calculate_scoring
-from src.modules.scoring_exports import export_scoring_powerpoint
-from src.modules.scoring_points_loss import setting_of
-from src.modules.scoring_views import build_scoring_views
+from src.modules.scoring.scoring import calculate_scoring
+from src.modules.scoring.scoring_exports import export_scoring_powerpoint
+from src.modules.scoring.scoring_points_loss import setting_of
+from src.modules.scoring.scoring_views import build_scoring_views
 from tests.scoring_cdr_synthetic import synthetic_cdr_frames
 from tests.scoring_fixtures import export_panels_only, scoring_configuration
 from tests.test_scoring_exports import TEMPLATE
@@ -141,8 +141,8 @@ def test_the_summary_slides_of_where_to_act(owned):
 
 
 def test_where_to_act_of_a_report_follows_the_focus_operators_of_the_operator_maps(owned):
-    from src.modules.scoring_exports import export_scoring_report
-    from src.modules.scoring_reports import default_scenario, normalize_report_configuration
+    from src.modules.scoring.scoring_exports import export_scoring_report
+    from src.modules.scoring.scoring_reports import default_scenario, normalize_report_configuration
 
     job, result, _insights = owned
 
@@ -172,7 +172,7 @@ def test_where_to_act_of_a_report_follows_the_focus_operators_of_the_operator_ma
 
 
 def test_focus_operators_are_names_or_patterns_and_every_operator_without_a_match():
-    from src.modules.scoring_exports import focus_matcher
+    from src.modules.scoring.scoring_exports import focus_matcher
 
     operators = ['EE', 'VF', 'VF SA', 'VF VoNR', 'Three', '3 UK', 'VMO2']
     focus = focus_matcher(['VF*', 'three*', '3*'], operators)

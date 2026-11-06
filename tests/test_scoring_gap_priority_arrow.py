@@ -1,7 +1,7 @@
 import pytest
 from pptx.enum.text import PP_ALIGN
 
-from src.modules.scoring_pptx_scorecard import STYLES
+from src.modules.scoring.scoring_pptx_scorecard import STYLES
 from tests.test_scoring_exports import _export, _result
 
 

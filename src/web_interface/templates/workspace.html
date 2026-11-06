@@ -1244,7 +1244,7 @@
     return '';
   }
 
-  // Mirrors src/modules/nr_mode.py: SA only when the name explicitly says so.
+  // Mirrors src/modules/cdr/nr_mode.py: SA only when the name explicitly says so.
   function inferNrMode(fileName) {
     const stem = String(fileName || '').replace(/\.[^.]+$/, '');
     const tokens = stem.replace(/([a-z0-9])(?=[A-Z])/g, '$1 ').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
@@ -1254,7 +1254,7 @@
     return 'NSA';
   }
 
-  // Mirrors src/modules/cdr_stage.py: "final" in the name, then weekly and daily words, then dates
+  // Mirrors src/modules/cdr/cdr_stage.py: "final" in the name, then weekly and daily words, then dates
   // (a range is a Final CDR; a single date after the start of the name is a Daily CDR).
   // The export stamp that ends the CDRs of a provider other than NetCheck (..._2025-07-30_16-05-07) is not a
   // measurement date.
@@ -1272,7 +1272,7 @@
     return 'final';
   }
 
-  // Mirrors infer_snapshot_date in src/modules/network_inventory.py: 2026-09-17 (or 20260917) or 260917 in the name.
+  // Mirrors infer_snapshot_date in src/modules/network/network_inventory.py: 2026-09-17 (or 20260917) or 260917 in the name.
   function inferSnapshotDate(fileName) {
     const stem = String(fileName || '').replace(/\.[^.]+$/, '');
     const patterns = [

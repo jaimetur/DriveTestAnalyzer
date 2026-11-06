@@ -12,8 +12,8 @@ from types import SimpleNamespace
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import comment_writers as writers
-from src.modules import design_comments as comments
+from src.modules.ppt_designer import comment_writers as writers
+from src.modules.ppt_designer import design_comments as comments
 from tests.test_design_comments import prepare_rates_design
 
 FAKE_KIRO = '''#!/bin/sh

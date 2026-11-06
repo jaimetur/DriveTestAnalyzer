@@ -4,7 +4,7 @@ import json
 import re
 
 import src.DriveTestAnalyzer as app_module
-from src.modules import saved_filters
+from src.modules.scoring import saved_filters
 from tests.test_scoring_api import scoring_api
 
 

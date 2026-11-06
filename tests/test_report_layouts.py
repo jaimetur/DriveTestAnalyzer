@@ -3,7 +3,7 @@ import io
 
 import pytest
 
-from src.modules.report_layouts import (
+from src.modules.reporting.report_layouts import (
     DYNAMIC_LAYOUTS,
     canonical_layout_name,
     grid_layout_name,
@@ -28,7 +28,7 @@ def test_grid_layout_names_are_canonical(rows, columns, comments, expected):
 
 def test_template_contains_every_fixed_grid_size_and_comment_variant():
     from pptx import Presentation
-    from src.modules.cdr_reporting import _layout_chart_frames
+    from src.modules.cdr_analysis.cdr_reporting import _layout_chart_frames
 
     deck = Presentation('assets/powerpoint-templates/Template_VodafoneThree.pptx')
     layouts = {canonical_layout_name(layout.name): layout for layout in deck.slide_layouts}
@@ -141,7 +141,7 @@ def test_layout_normalization_changes_only_layout_cells_and_keeps_csv_schema():
 
 @pytest.mark.parametrize('column_count', [13, 19])
 def test_recognized_legacy_catalog_schemas_upgrade_to_22_columns_without_losing_values(column_count):
-    from src.modules.cdr_reporting import CATALOG_HEADERS, PRE_LEGEND_FORMAT_CATALOG_HEADERS, RANGELESS_CATALOG_HEADERS
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS, PRE_LEGEND_FORMAT_CATALOG_HEADERS, RANGELESS_CATALOG_HEADERS
 
     legacy_headers = RANGELESS_CATALOG_HEADERS if column_count == 13 else PRE_LEGEND_FORMAT_CATALOG_HEADERS
     output = io.StringIO()
@@ -169,9 +169,9 @@ def test_recognized_legacy_catalog_schemas_upgrade_to_22_columns_without_losing_
 
 
 def test_legacy_dynamic_field_migration_maps_to_the_declared_axis():
-    from src.modules.cdr_reporting import CATALOG_HEADERS, catalogue_csv, parse_catalog_csv
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS, catalogue_csv, parse_catalog_csv
 
-    from src.modules.cdr_reporting import SINGLE_DYNAMIC_CATALOG_HEADERS
+    from src.modules.cdr_analysis.cdr_reporting import SINGLE_DYNAMIC_CATALOG_HEADERS
 
     old_headers = SINGLE_DYNAMIC_CATALOG_HEADERS
     old_rows = []
@@ -210,7 +210,7 @@ def test_legacy_dynamic_field_migration_maps_to_the_declared_axis():
 
 
 def test_two_axis_dynamic_template_round_trips_both_fields():
-    from src.modules.cdr_reporting import CATALOG_HEADERS, CatalogEntry, catalogue_csv, parse_catalog_csv
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS, CatalogEntry, catalogue_csv, parse_catalog_csv
 
     entry = CatalogEntry(
         slide=1, slide_title='Quality', slide_subtitle='',
@@ -231,7 +231,7 @@ def test_two_axis_dynamic_template_round_trips_both_fields():
 
 
 def test_catalogue_csv_accepts_reordered_headers_and_legacy_trailing_dynamic_headers():
-    from src.modules.cdr_reporting import (
+    from src.modules.cdr_analysis.cdr_reporting import (
         CATALOG_HEADERS, TRAILING_DYNAMIC_CATALOG_HEADERS, CatalogEntry,
         catalogue_csv, parse_catalog_csv,
     )
@@ -265,7 +265,7 @@ def test_catalogue_csv_accepts_reordered_headers_and_legacy_trailing_dynamic_hea
 
 
 def test_catalogue_csv_rejects_duplicate_canonical_header_aliases():
-    from src.modules.cdr_reporting import CatalogEntry, catalogue_csv, parse_catalog_csv
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, catalogue_csv, parse_catalog_csv
 
     exported = catalogue_csv([CatalogEntry(
         slide=1, slide_title='Quality', slide_subtitle='', layout='Title + 1 rows + 1 columns',
@@ -290,7 +290,7 @@ def test_catalogue_csv_rejects_duplicate_canonical_header_aliases():
     ],
 )
 def test_dynamic_layout_requires_fields_for_each_dynamic_axis(layout, count, error):
-    from src.modules.cdr_reporting import CatalogEntry, catalogue_csv, parse_catalog_csv
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, catalogue_csv, parse_catalog_csv
 
     entries = [CatalogEntry(
         slide=1, slide_title='Quality', slide_subtitle='', layout=layout,
@@ -305,7 +305,7 @@ def test_dynamic_layout_requires_fields_for_each_dynamic_axis(layout, count, err
 
 
 def test_catalogue_csv_renames_source_dataset_and_accepts_the_legacy_header():
-    from src.modules.cdr_reporting import CatalogEntry, catalogue_csv, parse_catalog_csv
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, catalogue_csv, parse_catalog_csv
 
     entry = CatalogEntry(
         slide=1, slide_title='Quality', slide_subtitle='', layout='Title + 1 rows + 1 columns',
@@ -326,8 +326,8 @@ def test_catalogue_csv_renames_source_dataset_and_accepts_the_legacy_header():
 
 def test_compact_grids_and_dynamic_title_parts():
     from dataclasses import replace
-    from src.modules.cdr_reporting import CatalogEntry, chart_title_parts
-    from src.modules.report_layouts import compact_grid_layout
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, chart_title_parts
+    from src.modules.reporting.report_layouts import compact_grid_layout
 
     assert compact_grid_layout('Title + 2 rows + 6 columns + comments down')
     assert compact_grid_layout('Title + 5 rows + 2 columns')
@@ -352,7 +352,7 @@ def test_rows_and_column_aggregation_columns_become_rows_and_columns_split():
 
 
 def test_counts_written_as_words_keep_their_grid():
-    from src.modules.report_layouts import canonical_layout_name
+    from src.modules.reporting.report_layouts import canonical_layout_name
 
     # Templates whose "3 columns" a rename of the operator 3 turned into "Three columns" keep their grid.
     assert canonical_layout_name('Title + 1 rows + Three columns + comments down') == 'Title + 1 rows + 3 columns + comments down'

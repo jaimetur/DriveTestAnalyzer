@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from src.modules.scoring_themes import THEMES
+from src.modules.scoring.scoring_themes import THEMES
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring.js'
+SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring/scoring.js'
 
 
 def _function_source(script: str, name: str) -> str:

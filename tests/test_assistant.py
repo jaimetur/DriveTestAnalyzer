@@ -8,9 +8,11 @@ import time
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import assistant, assistant_tools, comment_writers as writers, saved_filters, scoring_history
-from src.modules.assistant_privacy import Pseudonymizer, workspace_pseudonymizer
-from src.modules.repository import Repository
+from src.modules.assistant import assistant, assistant_tools
+from src.modules.ppt_designer import comment_writers as writers
+from src.modules.scoring import saved_filters, scoring_history
+from src.modules.assistant.assistant_privacy import Pseudonymizer, workspace_pseudonymizer
+from src.modules.core.repository import Repository
 from tests.scoring_fixtures import load_initial_scoring_configuration
 from tests.test_scoring_history import _add_cdr
 

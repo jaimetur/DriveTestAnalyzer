@@ -3,9 +3,9 @@
 import pandas as pd
 
 import src.DriveTestAnalyzer as core
-from src.modules import inventory_insights as ii
-from src.modules import serving_cells as sc
-from src.modules.repository import local_now_iso
+from src.modules.network_insights import inventory_insights as ii
+from src.modules.network import serving_cells as sc
+from src.modules.core.repository import local_now_iso
 
 LEEDS = (-1.55, 53.80)
 
@@ -142,7 +142,7 @@ def test_inventory_bands_and_snapshot_choice():
 def test_sector_overlay_draws_the_sites_near_the_weak_areas_in_their_vendor_colours(client, tmp_path):
     login(client)
     inventory = _dataset(tmp_path, '260917_Cell_Config.zip', 'network_inventory', _inventory_rows())
-    from src.modules.network_inventory import ensure_inventory_cells
+    from src.modules.network.network_inventory import ensure_inventory_cells
     snapshots = ensure_inventory_cells(core.repository)
     cells = ii.load_cells(core.repository, ii.snapshot_choice(snapshots))
     overlay = ii.sector_overlay(cells, {'vodafone'}, [(LEEDS[0], LEEDS[1])], radius_km=1.5)
@@ -338,7 +338,7 @@ def test_inventory_cells_and_snapshot_panels_are_kept_on_disk_with_the_network_c
     folder = Path(core.repository.db_path).resolve().parent / '.cache' / 'network-insights'
     # The derived cells of the snapshot and the snapshot panels are stored for the next runs, also after a restart.
     assert list(folder.glob('cells-*.pkl')) and list(folder.glob('snapshot-base-*.json')) and len(list(folder.glob('snapshot-*.json'))) >= 2
-    from src.modules.network_inventory import ensure_inventory_cells
+    from src.modules.network.network_inventory import ensure_inventory_cells
     selection = ii.snapshot_choice(ensure_inventory_cells(core.repository))
     first = ii.load_cells(core.repository, selection)
     ii._cell_cache.clear()

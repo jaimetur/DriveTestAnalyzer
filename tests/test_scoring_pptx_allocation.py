@@ -8,7 +8,7 @@ from pptx.oxml.ns import qn
 from pptx.util import Inches
 import pytest
 
-from src.modules.scoring_pptx_allocation import (
+from src.modules.scoring.scoring_pptx_allocation import (
     _add_percentage_labels,
     add_maximum_allocation_donut,
     category_maximum_allocations,

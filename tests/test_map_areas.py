@@ -8,9 +8,9 @@ from contextlib import contextmanager
 import pandas as pd
 import pytest
 
-from src.modules import map_areas
-from src.modules.scoring import calculate_scoring
-from src.modules.scoring_points_loss import map_background, map_boundaries
+from src.modules.network import map_areas
+from src.modules.scoring.scoring import calculate_scoring
+from src.modules.scoring.scoring_points_loss import map_background, map_boundaries
 from tests.scoring_fixtures import scoring_configuration
 
 # Two square areas around Madrid and one around Barcelona, as a downloaded layer would hold them.
@@ -162,7 +162,7 @@ def test_the_countries_of_the_tests_are_found_from_a_sample_of_the_ready_cdrs(re
 
 
 def test_the_countries_come_from_the_cdrs_of_the_latest_campaign_of_each_nr_mode(repository, monkeypatch):
-    from src.modules import cdr_auto_selection, cdr_store
+    from src.modules.cdr import cdr_auto_selection, cdr_store
 
     cdrs = [{'id': 1, 'nr_mode': 'NSA'}, {'id': 2, 'nr_mode': 'NSA'}, {'id': 3, 'nr_mode': 'SA'}, {'id': 4, 'nr_mode': 'SA'}, {'id': 5, 'nr_mode': 'NSA'}]
     monkeypatch.setattr(cdr_auto_selection, 'candidate_cdrs', lambda _repository: cdrs)

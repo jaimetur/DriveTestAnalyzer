@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from src.modules import saved_filters, scoring_history
-from src.modules.column_names import use_campaign_map
-from src.modules.nr_mode import (
+from src.modules.scoring import saved_filters, scoring_history
+from src.modules.cdr.column_names import use_campaign_map
+from src.modules.cdr.nr_mode import (
     NSA_VS_SA, campaign_with_nr_mode, normalize_scoring_nr_mode, nr_mode_label, nr_modes_of,
 )
-from src.modules.repository import Repository, local_now_iso
-from src.modules.scoring_selection import expand_scoring_campaigns, load_scoring_selection, normalize_scoring_selection, scoring_auto_cdrs
+from src.modules.core.repository import Repository, local_now_iso
+from src.modules.scoring.scoring_selection import expand_scoring_campaigns, load_scoring_selection, normalize_scoring_selection, scoring_auto_cdrs
 from tests.scoring_fixtures import export_panels_only, load_initial_scoring_configuration
 from tests.test_scoring_history import _rows
 
@@ -132,7 +132,7 @@ def test_nsa_vs_sa_from_the_scoring_history_keeps_the_nr_modes_apart(tmp_path):
     sources, _campaigns, _fingerprint = saved_filters._source_snapshot(repository, dataset_ids, expected_nr_mode=NSA_VS_SA)
     for source in sources:
         source['levels'] = ['Operator', 'Campaign']
-    from src.modules import scoring
+    from src.modules.scoring import scoring
     frames = saved_filters._load_source_frames(repository, sources, lambda *args: None, scoring.load_input_columns, {},
                                               nr_mode_campaigns=True)
     by_rows = scoring.calculate_scoring(frames, ['Operator', 'Campaign'], configuration=configuration)
@@ -143,8 +143,8 @@ def test_an_operator_without_a_network_in_an_nr_mode_is_left_out_of_its_cdrs(tmp
     # Three has no SA (the NR Modes of its label in the Operator Maps): its tests of the SA CDRs are out of scope in the rows
     # read and in the Scoring History, its NSA tests stay, and the results calculated before are out of date.
     import src.DriveTestAnalyzer as core
-    from src.modules import scoring
-    from src.modules.nr_mode import NR_MODE_COLUMN
+    from src.modules.scoring import scoring
+    from src.modules.cdr.nr_mode import NR_MODE_COLUMN
 
     repository, ids = _workspace(tmp_path, 'UK_Q3_NSA_2026')
     scoring_history.sync_history(repository)
@@ -212,7 +212,7 @@ def test_nsa_vs_sa_saved_filters_travel_with_their_nr_mode(tmp_path):
 
 def test_the_saved_selection_keeps_nsa_vs_sa(tmp_path):
     repository, _ids = _workspace(tmp_path)
-    from src.modules.scoring_selection import save_scoring_selection
+    from src.modules.scoring.scoring_selection import save_scoring_selection
     selection, _warnings = normalize_scoring_selection(repository, {'nr_mode': NSA_VS_SA, 'context_filters': {
         'Campaign': ['@latest-campaign']}})
     assert save_scoring_selection(repository, selection)
@@ -221,8 +221,8 @@ def test_the_saved_selection_keeps_nsa_vs_sa(tmp_path):
 
 
 def test_reporting_jobs_and_bundle_report_templates_keep_nsa_vs_sa():
-    from src.modules import bundle_report_templates, report_tasks
-    from src.modules.scoring_reports import default_report_configuration
+    from src.modules.reporting import bundle_report_templates, report_tasks
+    from src.modules.scoring.scoring_reports import default_report_configuration
     definition = report_tasks.normalize_definition({'scoring': [
         {'nr_mode': 'NSA+SA', 'report': default_report_configuration()},
         {'nr_mode': 'LTE', 'report': default_report_configuration()}]})
@@ -239,15 +239,15 @@ def test_reporting_jobs_and_bundle_report_templates_keep_nsa_vs_sa():
 
 def test_documents_name_nsa_vs_sa():
     from datetime import datetime
-    from src.modules.cdr_report_filenames import build_scoring_report_filename
-    from src.modules.scoring_exports import _scoring_filter_subtitle
+    from src.modules.cdr.cdr_report_filenames import build_scoring_report_filename
+    from src.modules.scoring.scoring_exports import _scoring_filter_subtitle
     assert ' - NSA-vs-SA - ' in build_scoring_report_filename(datetime(2026, 10, 20), NSA_VS_SA, {})
     assert ' - NSA - ' in build_scoring_report_filename(datetime(2026, 10, 20), 'NSA', {})
     assert _scoring_filter_subtitle({'nr_mode': NSA_VS_SA}).startswith('Non-Standalone vs Standalone')
 
 
 def _same_operator_result(tmp_path):
-    from src.modules.nr_mode import SAME_OPERATOR_NSA
+    from src.modules.cdr.nr_mode import SAME_OPERATOR_NSA
     repository, ids = _workspace(tmp_path)
     saved, _ = saved_filters.save_saved_filter(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
                                                baseline_operator=SAME_OPERATOR_NSA)
@@ -257,8 +257,8 @@ def _same_operator_result(tmp_path):
 
 
 def test_same_operator_in_nsa_gives_the_gap_of_each_operator_in_sa_to_itself_in_nsa(tmp_path):
-    from src.modules.nr_mode import SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL
-    from src.modules.scoring_views import build_scoring_views
+    from src.modules.cdr.nr_mode import SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL
+    from src.modules.scoring.scoring_views import build_scoring_views
     repository, ids, calculated = _same_operator_result(tmp_path)
     result = calculated['result']
     assert not [warning for warning in result['warnings'] if 'unavailable' in warning]
@@ -303,8 +303,8 @@ def test_same_operator_in_nsa_gives_the_gap_of_each_operator_in_sa_to_itself_in_
 def test_same_operator_in_nsa_needs_nsa_vs_sa_and_exports(tmp_path):
     from io import BytesIO
     from pptx import Presentation
-    from src.modules.nr_mode import SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL
-    from src.modules.scoring_exports import export_scoring_powerpoint
+    from src.modules.cdr.nr_mode import SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL
+    from src.modules.scoring.scoring_exports import export_scoring_powerpoint
     repository, ids, calculated = _same_operator_result(tmp_path)
     with pytest.raises(ValueError, match='choose NSA vs SA'):
         saved_filters.save_saved_filter(repository, ids['SA'], ['Operator'], 'SA', baseline_operator=SAME_OPERATOR_NSA)
@@ -345,7 +345,7 @@ def test_each_panel_of_nsa_goes_before_the_same_panel_of_sa():
     import json
     import shutil
     import subprocess
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     start = script.index('  function interleaveNrModeBlocks(')
     source = script[start:script.index('\n  }', start) + len('\n  }')]
     node = shutil.which('node')
@@ -369,7 +369,7 @@ def test_nsa_and_sa_trends_share_one_axis_of_quarters_in_the_same_chart():
     import json
     import shutil
     import subprocess
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
 
     def function(name):
         start = script.index(f'  function {name}(')
@@ -395,15 +395,15 @@ process.stdout.write(JSON.stringify({quarters, series: series.map(item => [item.
 def _nr_mode_slides(content: bytes) -> list[tuple[str, str]]:
     from io import BytesIO
     from pptx import Presentation
-    from src.modules.scoring_exports import SECTION_TAG_PREFIX
+    from src.modules.scoring.scoring_exports import SECTION_TAG_PREFIX
     return [(str(slide._element.cSld.get('name') or '')[len(SECTION_TAG_PREFIX):],
              slide.shapes.title.text_frame.paragraphs[0].text if slide.shapes.title is not None else '')
             for slide in Presentation(BytesIO(content)).slides]
 
 
 def test_documents_show_each_nr_mode_as_the_results_of_the_page(tmp_path):
-    from src.modules.scoring_exports import export_scoring_report
-    from src.modules.scoring_reports import normalize_report_configuration
+    from src.modules.scoring.scoring_exports import export_scoring_report
+    from src.modules.scoring.scoring_reports import normalize_report_configuration
     repository, ids = _workspace(tmp_path)
     saved, _ = saved_filters.save_saved_filter(repository, [*ids['NSA'], *ids['SA']], ['Operator'], NSA_VS_SA,
                                                area_summary={'time_split': 'Campaign', 'breakdown': 'Region', 'cities': []})
@@ -441,7 +441,7 @@ def test_documents_show_each_nr_mode_as_the_results_of_the_page(tmp_path):
     assert titles(grouped, 'tables') == ['NSA · Scoring Tables — Summary', 'NSA · Scoring Tables — Breakdown',
                                          'SA · Scoring Tables — Summary', 'SA · Scoring Tables — Breakdown']
     # Export Selected Scoring Report follows the NSA vs SA and NSA & SA charts of the page too.
-    from src.modules.scoring_exports import export_scoring_powerpoint
+    from src.modules.scoring.scoring_exports import export_scoring_powerpoint
     single = _nr_mode_slides(export_scoring_powerpoint(calculated, calculated['result'], template, [],
                                                        nr_layout='interleaved', nr_charts='separate'))
     assert titles(single, 'tables')[:2] == ['NSA · Scoring Tables — Summary', 'SA · Scoring Tables — Summary']
@@ -458,7 +458,7 @@ def test_the_charts_name_the_operators_out_of_scope_at_their_foot(tmp_path):
     from pptx import Presentation
 
     import src.DriveTestAnalyzer as core
-    from src.modules.scoring_exports import export_scoring_powerpoint
+    from src.modules.scoring.scoring_exports import export_scoring_powerpoint
 
     repository, ids = _workspace(tmp_path, 'UK_Q3_NSA_2026')
     repository.replace_operator_mapping_group(None, 'Three', ['Three UK'], '#000000', None, ['NSA'])
@@ -488,8 +488,8 @@ def test_the_charts_name_the_operators_out_of_scope_at_their_foot(tmp_path):
 def test_documents_draw_the_nsa_and_sa_trends_on_one_axis_of_quarters():
     from io import BytesIO
     from pptx import Presentation
-    from src.modules.scoring_exports import _nr_mode_area_summaries, _nr_mode_trends, _remove_all_slides, _slide
-    from src.modules.scoring_insight_slides import add_trend_slides
+    from src.modules.scoring.scoring_exports import _nr_mode_area_summaries, _nr_mode_trends, _remove_all_slides, _slide
+    from src.modules.scoring.scoring_insight_slides import add_trend_slides
     nsa = [{'environment': 'Combined', 'title': '', 'campaigns': ['2026-Q2', '2026-Q3'], 'maximum': 1000,
             'series': [{'label': 'EE', 'operator': 'EE', 'points': [500.0, 520.0]}]}]
     sa = [{'environment': 'Combined', 'title': '', 'campaigns': ['2026-Q3-SA'], 'maximum': 1000,
@@ -520,7 +520,8 @@ def test_documents_draw_the_nsa_and_sa_trends_on_one_axis_of_quarters():
 
 def test_bundle_report_templates_show_each_nr_mode_as_chosen(monkeypatch, tmp_path):
     from types import SimpleNamespace
-    from src.modules import bundle_report_templates, scoring_selection
+    from src.modules.reporting import bundle_report_templates
+    from src.modules.scoring import scoring_selection
     definition = bundle_report_templates.normalize_definition({'sections': [
         {'key': 'scoring', 'options': {'nsa_vs_sa': True, 'nr_layout': 'grouped', 'nr_charts': 'unknown'}}]})
     [scoring] = [section for section in definition['sections'] if section['key'] == 'scoring']
@@ -549,12 +550,12 @@ def test_bundle_report_templates_show_each_nr_mode_as_chosen(monkeypatch, tmp_pa
     # Without NSA vs SA, the report has a single NR Mode.
     assert 'nr_layout' not in report
     # The editor offers both choices below Compare NSA vs SA while it is checked.
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
     assert "selectField('NSA vs SA', brtOptions.nr_layouts || [], saved.nr_layout)" in script
     assert "selectField('NSA & SA charts', brtOptions.nr_charts || [], saved.nr_charts)" in script
     assert 'nr_layout: nrLayout.input.value, nr_charts: nrCharts.input.value' in script
     # The Scoring page sends the choices of its results with both exports.
-    page = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    page = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     assert "const nrViews = selection.nr_mode === 'NSA+SA' && typeof selectedNrLayout !== 'undefined'" in page
     assert "if (typeof nrLayoutControl !== 'undefined' && nrLayoutControl && !nrLayoutControl.hidden) {" in page
     assert "url.searchParams.set('nr_layout', selectedNrLayout);" in page

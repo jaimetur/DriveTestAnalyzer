@@ -8,8 +8,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.modules import saved_filters, scoring, scoring_history
-from src.modules.repository import Repository, local_now_iso
+from src.modules.scoring import saved_filters, scoring, scoring_history
+from src.modules.core.repository import Repository, local_now_iso
 from tests.scoring_fixtures import load_initial_scoring_configuration
 
 OPERATORS = ('EE', 'Vodafone UK', 'Three UK')
@@ -215,7 +215,7 @@ def test_the_points_lost_map_of_a_result_from_the_history_is_a_job_of_its_own(hi
 
 def test_queued_work_of_the_saved_filter_being_looked_at_goes_first():
     from threading import Event
-    from src.modules.background_scheduler import BackgroundTaskScheduler
+    from src.modules.core.background_scheduler import BackgroundTaskScheduler
 
     scheduler = BackgroundTaskScheduler(max_workers=1)
     release, order = Event(), []
@@ -238,7 +238,7 @@ def test_a_city_without_measurements_in_the_filtered_campaigns_is_left_out_of_th
     result = scoring_history.calculate_scoring_from_history(repository, ids, ['Operator'], configuration=configuration,
                                                             context_filters=filters, cities=['Madrid'])
     assert result['scoring'] == []
-    from src.modules.scoring_area_summary import calculate_area_summary_from_history
+    from src.modules.scoring.scoring_area_summary import calculate_area_summary_from_history
 
     def calculate(levels, *, time_split=None, cities=None):
         return scoring_history.calculate_scoring_from_history(repository, ids, levels, configuration=configuration,
@@ -308,7 +308,7 @@ def test_the_points_lost_map_drawn_apart_is_the_one_drawn_in_the_application(his
 
 
 def test_the_points_lost_map_put_together_by_cdr_type_is_the_one_drawn_at_once(history_repository):
-    from src.modules import scoring_points_loss
+    from src.modules.scoring import scoring_points_loss
 
     repository, ids, _configuration = history_repository
     saved_filter, sources, configuration, filters = _points_loss_inputs_of(repository, ids)
@@ -331,7 +331,7 @@ def test_the_points_lost_map_put_together_by_cdr_type_is_the_one_drawn_at_once(h
 
 
 def test_the_points_lost_map_reads_each_cdr_type_from_the_copies_with_the_same_rows_and_map(history_repository):
-    from src.modules import cdr_store
+    from src.modules.cdr import cdr_store
 
     repository, ids, _configuration = history_repository
     assert cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))['status'] == 'ready'
@@ -422,7 +422,7 @@ def test_the_points_lost_map_task_shows_its_progress_and_the_time_left(monkeypat
 
 
 def test_saved_filters_reuse_the_points_lost_maps_and_trends_of_the_same_cdrs_and_methodology(history_repository, monkeypatch):
-    from src.modules import scoring_cache
+    from src.modules.scoring import scoring_cache
 
     repository, ids, _configuration = history_repository
     scoring_history.sync_history(repository)
@@ -461,7 +461,7 @@ def test_rows_are_read_only_from_the_cdrs_of_the_chosen_campaigns():
 
 def test_a_running_job_sees_the_work_of_its_workspace_waiting_before_it():
     from threading import Event
-    from src.modules.background_scheduler import BackgroundTaskScheduler
+    from src.modules.core.background_scheduler import BackgroundTaskScheduler
 
     scheduler = BackgroundTaskScheduler(max_workers=1)
     started, release, seen = Event(), Event(), []

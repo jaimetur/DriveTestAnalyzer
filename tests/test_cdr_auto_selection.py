@@ -6,15 +6,15 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as app_module
-from src.modules import cdr_facets
-from src.modules.cdr_auto_selection import (
+from src.modules.cdr import cdr_facets
+from src.modules.cdr.cdr_auto_selection import (
     ALL_CAMPAIGNS, LATEST_CAMPAIGN, LATEST_FOUR_CAMPAIGNS, LATEST_THREE_CAMPAIGNS, LATEST_TWO_CAMPAIGNS, NO_PREVIOUS_CAMPAIGN,
     PREVIOUS_CAMPAIGN, campaign_values,
     complete_campaign_cdrs, describe_cdrs, expand_campaign_filter, is_flex_cdr, resolve_campaign_filter, resolve_cdrs,
 )
-from src.modules.cdr_facets import cascading_options, fill_missing_facets, stored_facets
-from src.modules.repository import Repository, local_now_iso
-from src.modules.value_maps import ValueMapper
+from src.modules.cdr.cdr_facets import cascading_options, fill_missing_facets, stored_facets
+from src.modules.core.repository import Repository, local_now_iso
+from src.modules.mapping.value_maps import ValueMapper
 from tests.scoring_fixtures import scoring_configuration
 
 
@@ -112,7 +112,7 @@ def test_scoring_leaves_out_campaigns_without_every_type(workspace):
 
 
 def test_scoring_previous_campaign_is_the_complete_campaign_before_the_newest(workspace):
-    from src.modules.scoring_selection import expand_scoring_campaigns, scoring_auto_cdrs
+    from src.modules.scoring.scoring_selection import expand_scoring_campaigns, scoring_auto_cdrs
     add = workspace['add']
     repository = workspace['repository']
     q1 = [add(name=f'UK_Q1_2026_{kind}.csv', kind=kind, campaign='UK_Q1_2026') for kind in ('data', 'voice', 'speech')]
@@ -134,9 +134,9 @@ def test_scoring_previous_campaign_is_the_complete_campaign_before_the_newest(wo
 
 
 def test_flex_campaigns_are_used_only_when_checked_by_hand(workspace):
-    from src.modules.column_names import use_campaign_map
-    from src.modules.nr_mode import NSA_VS_SA
-    from src.modules.scoring_selection import expand_scoring_campaigns, scoring_auto_cdrs
+    from src.modules.cdr.column_names import use_campaign_map
+    from src.modules.cdr.nr_mode import NSA_VS_SA
+    from src.modules.scoring.scoring_selection import expand_scoring_campaigns, scoring_auto_cdrs
     add = workspace['add']
     repository = workspace['repository']
     kinds = ('data', 'voice', 'speech')
@@ -270,7 +270,7 @@ def test_scoring_selection_chooses_the_newest_complete_campaign_and_migrates_sav
     assert selection['auto_cdrs'] is True
 
     # A selection saved when CDRs were chosen by hand keeps choosing them through their campaign.
-    from src.modules.scoring_selection import SCORING_SELECTION_STATE_KEY, serialize_scoring_selection
+    from src.modules.scoring.scoring_selection import SCORING_SELECTION_STATE_KEY, serialize_scoring_selection
     repository.set_workspace_state(SCORING_SELECTION_STATE_KEY, serialize_scoring_selection({
         'dataset_ids': q1, 'nr_mode': 'NSA', 'aggregation_levels': ['Operator'], 'baseline_operator': 'EE',
         'context_filters': {},
@@ -297,7 +297,7 @@ def _nq_voice(join_ids: list[str], day: str, campaign: str = 'UK_Q3_2026', resul
 
 
 def test_nq_calls_show_the_version_of_the_cdr_the_combined_tables_include(workspace):
-    from src.modules import non_qualified_calls as nq
+    from src.modules.nq import non_qualified_calls as nq
 
     repository = workspace['repository']
     add = workspace['add']
@@ -323,7 +323,7 @@ def test_nq_calls_show_the_version_of_the_cdr_the_combined_tables_include(worksp
 
 
 def test_nq_workspace_indexed_before_the_combined_versions_is_migrated(workspace):
-    from src.modules import non_qualified_calls as nq
+    from src.modules.nq import non_qualified_calls as nq
 
     repository = workspace['repository']
     workspace['add'](name='UK_Voice_Q3_Final.csv', kind='voice', rows=_nq_voice(['0xA'], '2026-09-30').to_dict('records'))
@@ -342,7 +342,7 @@ def test_nq_workspace_indexed_before_the_combined_versions_is_migrated(workspace
 
 
 def test_nq_filter_values_offer_the_nr_mode_first_and_each_mode_its_campaigns(workspace):
-    from src.modules import non_qualified_calls as nq
+    from src.modules.nq import non_qualified_calls as nq
 
     repository = workspace['repository']
     add = workspace['add']
@@ -363,7 +363,7 @@ def test_designs_follow_the_newest_campaigns_and_need_no_campaign_predicate(work
     q1 = add(name='UK_Q1_2026_Data.csv', kind='data', campaign='UK_Q1_2026')
     q2 = add(name='UK_Q2_2026_Data.csv', kind='data', campaign='UK_Q2_2026')
     q3 = add(name='UK_Q3_2026_Data.csv', kind='data', campaign='UK_Q3_2026')
-    import src.modules.ppt_designer  # noqa: F401 - registers the module
+    import src.modules.ppt_designer.ppt_designer  # noqa: F401 - registers the module
     resolve = core_runtime_definition()
     latest_two = resolve({'name': 'D', 'template': 'T', 'technology': 'nsa', 'auto_cdrs': True,
                           'filters': {'Campaign': ['@latest-2-campaigns'], 'City': ['London']}}, workspace['repository'])
@@ -382,7 +382,7 @@ def test_designs_follow_the_newest_campaigns_and_need_no_campaign_predicate(work
 def test_designs_saved_with_main_cities_use_the_main_cities_of_the_workspace(workspace):
     import json
 
-    import src.modules.ppt_designer  # noqa: F401 - registers the module
+    import src.modules.ppt_designer.ppt_designer  # noqa: F401 - registers the module
     repository = workspace['repository']
     workspace['add'](name='UK_Q1_2026_Data.csv', kind='data', campaign='UK_Q1_2026')
     resolve = core_runtime_definition()
@@ -414,7 +414,7 @@ def core_runtime_definition():
 
 
 def test_reporting_jobs_saved_with_cdrs_choose_them_by_their_campaigns(workspace):
-    from src.modules.scoring_reports import default_report_configuration
+    from src.modules.scoring.scoring_reports import default_report_configuration
 
     add = workspace['add']
     client = workspace['client']
@@ -444,7 +444,7 @@ def test_reporting_jobs_saved_with_cdrs_choose_them_by_their_campaigns(workspace
 
 
 def test_a_saved_filter_keeps_its_campaign_choice_and_follows_it(workspace):
-    from src.modules import saved_filters
+    from src.modules.scoring import saved_filters
     add = workspace['add']
     client = workspace['client']
     repository = workspace['repository']

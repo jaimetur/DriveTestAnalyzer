@@ -8,8 +8,8 @@ import zipfile
 import pytest
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.repository import Repository
-from src.modules.scoring_config import (
+from src.modules.core.repository import Repository
+from src.modules.scoring.scoring_config import (
     default_scoring_profile, scoring_profiles_document,
     validate_scoring_configuration, validate_scoring_profiles,
 )
@@ -547,7 +547,7 @@ def test_unconfigured_workspace_configuration_backup_round_trip(client):
 
 
 def test_scoring_configuration_backup_leaves_the_report_configurations_to_their_own_element(client, tmp_path: Path) -> None:
-    from src.modules.scoring_reports import (
+    from src.modules.scoring.scoring_reports import (
         default_scenario, load_report_state, remember_last_configuration, report_configurations_document,
         save_named_configuration,
     )

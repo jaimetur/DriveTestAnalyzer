@@ -3,7 +3,7 @@
 {# A reload (or Back and Forward) returns to where the page was being read; opening the module starts at its top. Before
    the page is drawn, it is opened at that position with what was in view when the page was left shown dimmed under a
    notice (page_restore.js); scoring.js keeps it there (see restoreScoringViewScroll) until its content reaches it. #}
-<script src="{{ static_path('js/page_restore.js') }}?v={{ asset_version('js/page_restore.js') }}"></script>
+<script src="{{ static_path('js/core/page_restore.js') }}?v={{ asset_version('js/core/page_restore.js') }}"></script>
 <script>
   window.PageRestore.begin({key: window.PageRestore.keyOf('scoring-view', {{ (active_workspace.id if active_workspace else '') | tojson }}),
     notice: 'Loading Scoring & GAP Analysis where you left it…'});
@@ -2118,10 +2118,10 @@
 </section>
 {% endblock %}
 {% block extra_scripts %}
-<script src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
-<script src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
-<script src="{{ static_path('js/scoring_report_editor.js') }}?v={{ asset_version('js/scoring_report_editor.js') }}"></script>
-<script src="{{ static_path('js/scoring_impact.js') }}?v={{ asset_version('js/scoring_impact.js') }}"></script>
-<script src="{{ static_path('js/scoring.js') }}?v={{ asset_version('js/scoring.js') }}"></script>
-<script src="{{ static_path('js/scoring_exclusions.js') }}?v={{ asset_version('js/scoring_exclusions.js') }}"></script>
+<script src="{{ static_path('js/core/element_image.js') }}?v={{ asset_version('js/core/element_image.js') }}"></script>
+<script src="{{ static_path('js/core/image_buttons.js') }}?v={{ asset_version('js/core/image_buttons.js') }}"></script>
+<script src="{{ static_path('js/scoring/scoring_report_editor.js') }}?v={{ asset_version('js/scoring/scoring_report_editor.js') }}"></script>
+<script src="{{ static_path('js/scoring/scoring_impact.js') }}?v={{ asset_version('js/scoring/scoring_impact.js') }}"></script>
+<script src="{{ static_path('js/scoring/scoring.js') }}?v={{ asset_version('js/scoring/scoring.js') }}"></script>
+<script src="{{ static_path('js/scoring/scoring_exclusions.js') }}?v={{ asset_version('js/scoring/scoring_exclusions.js') }}"></script>
 {% endblock %}

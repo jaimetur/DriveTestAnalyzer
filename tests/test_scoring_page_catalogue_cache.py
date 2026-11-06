@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.repository import Repository, local_now_iso
+from src.modules.core.repository import Repository, local_now_iso
 from tests.scoring_fixtures import scoring_configuration
 
 

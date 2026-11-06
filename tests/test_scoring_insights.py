@@ -6,9 +6,9 @@ from io import BytesIO
 import pytest
 from pptx import Presentation
 
-from src.modules.column_names import compact_campaign_value
-from src.modules.scoring_exports import export_scoring_powerpoint
-from src.modules.scoring_views import build_scoring_views
+from src.modules.cdr.column_names import compact_campaign_value
+from src.modules.scoring.scoring_exports import export_scoring_powerpoint
+from src.modules.scoring.scoring_views import build_scoring_views
 from tests.scoring_fixtures import export_panels_only
 from tests.scoring_synthetic import CITIES, most_reliable_result, synthetic_result
 from tests.test_scoring_exports import TEMPLATE
@@ -134,7 +134,7 @@ def _video_kpis():
 
 
 def test_campaign_comparison_compares_a_category_whose_methodology_changed_as_a_whole():
-    from src.modules.scoring_insights import comparison_rows
+    from src.modules.scoring.scoring_insights import comparison_rows
     compared = comparison_rows(_video_kpis(), 0, 1)
     rows = compared['rows']
     assert compared['changed_categories'] == ['VIDEO STREAM']
@@ -161,7 +161,7 @@ def test_campaign_comparison_compares_a_category_whose_methodology_changed_as_a_
 
 
 def test_campaign_comparison_without_maximum_points_compares_every_kpi_on_its_own():
-    from src.modules.scoring_insights import comparison_rows
+    from src.modules.scoring.scoring_insights import comparison_rows
     kpis = [{key: value for key, value in kpi.items() if key != 'max_points'} for kpi in _video_kpis()]
     compared = comparison_rows(kpis, 0, 1)
     assert compared['changed_categories'] == []
@@ -172,11 +172,11 @@ def test_campaign_comparison_without_maximum_points_compares_every_kpi_on_its_ow
 def test_campaign_comparison_names_the_methodologies_of_a_result_by_campaign():
     import copy
 
-    from src.modules import scoring
-    from src.modules.saved_filters import AGGREGATION_CONTRACT_VERSION
-    from src.modules.scoring_config import validate_scoring_profiles
-    from src.modules.scoring_insights import comparison_note
-    from src.modules.scoring_methodologies import merge_results, methodology_groups
+    from src.modules.scoring import scoring
+    from src.modules.scoring.saved_filters import AGGREGATION_CONTRACT_VERSION
+    from src.modules.scoring.scoring_config import validate_scoring_profiles
+    from src.modules.scoring.scoring_insights import comparison_note
+    from src.modules.scoring.scoring_methodologies import merge_results, methodology_groups
     from tests.scoring_fixtures import scoring_configuration
     from tests.test_scoring_history import _rows
 
@@ -224,8 +224,8 @@ def test_campaign_comparison_names_the_methodologies_of_a_result_by_campaign():
 def test_campaign_comparison_slides_show_a_category_whose_methodology_changed():
     from pptx.util import Inches
 
-    from src.modules.scoring_insight_slides import add_campaign_comparison_slides
-    from src.modules.scoring_insights import comparison_rows
+    from src.modules.scoring.scoring_insight_slides import add_campaign_comparison_slides
+    from src.modules.scoring.scoring_insights import comparison_rows
     presentation = Presentation(TEMPLATE)
     comparison = {'operator': 'EE', 'label': 'EE', 'color': '#009A9A', 'title': '',
                   'previous_campaign': '26-Q2', 'latest_campaign': '26-Q3',
@@ -266,7 +266,7 @@ def test_kpi_gap_profiles_rank_points_lost_and_reference_gaps():
 
 
 def test_kpi_gap_profiles_count_in_the_points_of_a_scaled_combined():
-    from src.modules.scoring import apply_environment_scaling
+    from src.modules.scoring.scoring import apply_environment_scaling
 
     job, result = synthetic_result(levels=('Operator',))
     # Without Connecting Roads results in any series, All Environments scales Drive - City up to the full maximum.
@@ -361,7 +361,7 @@ def test_profile_bars_line_up_with_their_rows():
 
 
 def test_kpi_gap_profile_slides_cover_every_selected_city():
-    from src.modules.scoring_insight_slides import MAX_PROFILE_SCOPES, _block_profiles
+    from src.modules.scoring.scoring_insight_slides import MAX_PROFILE_SCOPES, _block_profiles
 
     cities = ['Belfast', 'Bristol', 'Cardiff', 'Edinburgh', 'Leeds', 'London', 'Sheffield']
     profiles = [{'operator': operator, 'reference': 'EE', 'context': {'city': city}}
@@ -388,7 +388,7 @@ def test_kpi_gap_profile_slides_cover_every_selected_city():
     ('K31', 'Diff', '100 * SUM(totalpacketlost) / SUM(Packets_Sent)', 'quality'),
 ])
 def test_each_kpi_loses_its_points_in_one_kind(code, kpi_type, formula, kind):
-    from src.modules.scoring_insights import loss_kind
+    from src.modules.scoring.scoring_insights import loss_kind
 
     assert loss_kind({'kpi_code': code, 'kpi_type': kpi_type, 'kpi': code}, {code: formula}) == kind
 

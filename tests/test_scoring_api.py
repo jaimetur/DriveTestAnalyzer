@@ -17,10 +17,10 @@ import pytest
 from pptx import Presentation
 
 import src.DriveTestAnalyzer as app_module
-from src.modules import saved_filters
-from src.modules.repository import Repository, local_now_iso
+from src.modules.scoring import saved_filters
+from src.modules.core.repository import Repository, local_now_iso
 from tests.scoring_fixtures import scoring_configuration
-from src.modules.scoring_config import load_aggregation_hierarchy
+from src.modules.scoring.scoring_config import load_aggregation_hierarchy
 
 
 def _login(client) -> None:
@@ -86,7 +86,7 @@ def scoring_api(client, tmp_path, monkeypatch):
     repository.replace_scoring_configuration(scoring_configuration())
 
     calls = []
-    engine = ModuleType('src.modules.scoring')
+    engine = ModuleType('src.modules.scoring.scoring')
     engine.METHOD_VERSION = 'scoring-api-test-v1'
     engine.required_input_columns = lambda kind, levels: [*levels, 'score']
 
@@ -537,7 +537,7 @@ def test_workspace_config_renders_kpi_and_gap_priority_panels(scoring_api):
     assert 'data-scoring-environment' in page.text
     assert 'data-scoring-kpi-rows' in page.text
     assert 'data-scoring-priority-rows' in page.text
-    assert '/static/js/scoring_config.js?v=' in page.text
+    assert '/static/js/scoring/scoring_config.js?v=' in page.text
     assert 'data-no-persist' in page.text
     assert 'Import Methodology (JSON)' in page.text
     assert 'Export all methodologies or back them up in Admin' in page.text
@@ -745,7 +745,7 @@ def test_global_raw_kpis_survive_job_reload_api_get_and_csv_export(scoring_api, 
     assert global_row, [row for row in exported_rows if row['kpi_code'] == metric['code']][:8]
     assert global_row['kpi_value'] == '98.75'
 
-    from src.modules.scoring_exports import export_scoring_csv
+    from src.modules.scoring.scoring_exports import export_scoring_csv
 
     without_global_kpis = deepcopy(persisted['result'])
     without_global_kpis.pop('global_kpis')
@@ -774,7 +774,7 @@ def test_scoring_ppt_export_normalizes_legacy_gap_without_mutating_saved_result(
     saved_filters.calculate_saved_filter(scoring_api['repository'], job_id)
     _mark_scoring_result_as_legacy(scoring_api['repository'], job_id)
 
-    from src.modules import scoring_exports
+    from src.modules.scoring import scoring_exports
     captured = {}
 
     def capture_export(job, result, *_args, **kwargs):
@@ -786,7 +786,7 @@ def test_scoring_ppt_export_normalizes_legacy_gap_without_mutating_saved_result(
 
     monkeypatch.setattr(scoring_exports, 'export_scoring_powerpoint', capture_export)
     # The deck is composed as the Scoring section of a Bundle Report Template.
-    from src.modules import bundle_report_templates
+    from src.modules.reporting import bundle_report_templates
     composed = []
     monkeypatch.setattr(bundle_report_templates, 'module_document',
                         lambda key, content, kind, _title='', **_options: composed.append((key, content, kind)) or content)

@@ -5,10 +5,10 @@ import pytest
 import pandas as pd
 
 from scoring_fixtures import scoring_configuration
-from src.modules import scoring, scoring_config
-from src.modules.repository import Repository
-from src.modules.scoring_exports import export_scoring_powerpoint
-from src.modules.scoring_views import build_scoring_views
+from src.modules.scoring import scoring, scoring_config
+from src.modules.core.repository import Repository
+from src.modules.scoring.scoring_exports import export_scoring_powerpoint
+from src.modules.scoring.scoring_views import build_scoring_views
 
 
 def test_scoring_calculation_views_and_export_use_only_the_persisted_configuration(tmp_path, monkeypatch):
@@ -34,7 +34,7 @@ def test_scoring_calculation_views_and_export_use_only_the_persisted_configurati
         imported_configuration['metrics'][0]['contexts']['DriveConnectionroad']
     )
 
-    asset_path = Path(scoring_config.__file__).resolve().parents[2] / 'assets' / 'scoring' / 'netcheck_2026.json'
+    asset_path = Path(scoring_config.__file__).resolve().parents[3] / 'assets' / 'scoring' / 'netcheck_2026.json'
     original_read_text = Path.read_text
     original_path_open = Path.open
     original_builtin_open = builtins.open

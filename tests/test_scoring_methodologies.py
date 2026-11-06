@@ -7,10 +7,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.modules import saved_filters
-from src.modules.repository import Repository, local_now_iso
-from src.modules.scoring_config import validate_scoring_profiles
-from src.modules.scoring_methodologies import (
+from src.modules.scoring import saved_filters
+from src.modules.core.repository import Repository, local_now_iso
+from src.modules.scoring.scoring_config import validate_scoring_profiles
+from src.modules.scoring.scoring_methodologies import (
     BY_CAMPAIGN, campaign_quarters, check_campaign_overlaps, display_configuration, merge_results, methodology_for, methodology_groups,
     methodology_label, normalize_campaign_range, split_result,
 )
@@ -158,7 +158,7 @@ def test_a_saved_filter_by_campaign_scores_each_campaign_with_its_methodology(tm
 
 
 def test_campaign_ranges_travel_in_methodology_exports():
-    from src.modules.scoring_config import scoring_profiles_document, unwrap_scoring_profiles_payload
+    from src.modules.scoring.scoring_config import scoring_profiles_document, unwrap_scoring_profiles_payload
 
     profiles = two_methodologies({'to': '2026-Q2'}, {'from': '2026-Q3'})
     restored = unwrap_scoring_profiles_payload(scoring_profiles_document(profiles))
@@ -181,8 +181,8 @@ def test_overlapping_methodologies_saved_before_are_read_but_not_saved_again(tmp
 
 
 def test_each_campaign_of_a_result_by_campaign_is_shown_with_its_methodology():
-    from src.modules import scoring
-    from src.modules.scoring_views import build_scoring_views
+    from src.modules.scoring import scoring
+    from src.modules.scoring.scoring_views import build_scoring_views
     from tests.test_scoring_history import _rows
 
     profiles = two_methodologies({'to': '2026-Q2'}, {'from': '2026-Q3'})
@@ -193,7 +193,7 @@ def test_each_campaign_of_a_result_by_campaign_is_shown_with_its_methodology():
         parts.append((group, scoring.calculate_scoring(frames, ['Operator', 'Campaign'], baseline_operator='EE',
                                                        configuration=group['configuration'])))
     merged = merge_results(parts)
-    from src.modules.saved_filters import AGGREGATION_CONTRACT_VERSION
+    from src.modules.scoring.saved_filters import AGGREGATION_CONTRACT_VERSION
     views = build_scoring_views({'levels': ['Operator', 'Campaign'],
                                  'aggregation_contract_version': AGGREGATION_CONTRACT_VERSION}, merged)
     by_campaign = {}

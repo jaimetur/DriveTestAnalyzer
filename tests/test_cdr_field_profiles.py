@@ -6,10 +6,14 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import cdr_types, ingestion, map_area_columns, network_insights, nq_call_map, scoring_points_loss, serving_cells
-from src.modules import non_qualified_calls as nq
-from src.modules.cdr_field_profiles import NETCHECK_PROFILE, field_profile, workspace_field_profile
-from src.modules.repository import local_now_iso
+from src.modules.cdr import cdr_types, ingestion
+from src.modules.network import map_area_columns, serving_cells
+from src.modules.network_insights import network_insights
+from src.modules.nq import nq_call_map
+from src.modules.scoring import scoring_points_loss
+from src.modules.nq import non_qualified_calls as nq
+from src.modules.cdr.cdr_field_profiles import NETCHECK_PROFILE, field_profile, workspace_field_profile
+from src.modules.core.repository import local_now_iso
 
 
 def login(client, username='super', password='super123'):

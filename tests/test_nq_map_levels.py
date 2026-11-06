@@ -6,8 +6,8 @@ import json
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import non_qualified_calls as nq
-from src.modules import nq_call_map, nq_map_levels
+from src.modules.nq import non_qualified_calls as nq
+from src.modules.nq import nq_call_map, nq_map_levels
 from tests.test_non_qualified_calls import enable_module, login, workspace_user
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from threading import Event, Thread
 
-from src.modules.repository import Repository
+from src.modules.core.repository import Repository
 
 
 def test_workspace_writes_wait_for_the_active_transaction_while_reads_continue(tmp_path) -> None:

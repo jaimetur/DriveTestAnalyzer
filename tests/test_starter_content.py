@@ -7,7 +7,7 @@ import re
 
 import pytest
 from src.config import PROJECT_ROOT
-from src.modules import starter_content
+from src.modules.core import starter_content
 
 ASSETS = PROJECT_ROOT / 'assets'
 FDFS = 'DT Analyzer - FDFS DL (NSA & SA)'
@@ -95,8 +95,8 @@ def test_a_workspace_already_set_up_gets_the_auto_calculated_fields_the_template
 
 def test_the_other_starter_content_fits_any_market(client):
     import src.DriveTestAnalyzer as app_module
-    from src.modules import report_tasks
-    from src.modules.scoring_reports import load_report_state
+    from src.modules.reporting import report_tasks
+    from src.modules.scoring.scoring_reports import load_report_state
 
     repository = app_module.repository
     # Scoring report configurations without filters of a market (the GAP compares the Focus operators of the Operator
@@ -186,8 +186,8 @@ def test_a_methodology_shipped_later_reaches_existing_workspaces_once(client):
 
 
 def test_netcheck_2025_follows_the_2025_26_methodology_up_to_2026_q1():
-    from src.modules.scoring_config import validate_scoring_profiles
-    from src.modules.scoring_methodologies import methodology_for
+    from src.modules.scoring.scoring_config import validate_scoring_profiles
+    from src.modules.scoring.scoring_methodologies import methodology_for
 
     def load(name):
         return json.loads((ASSETS / 'scoring-methodologies' / name).read_text(encoding='utf-8'))['profiles'][0]
@@ -243,7 +243,8 @@ def test_netcheck_2025_reaches_a_workspace_with_overlapping_campaigns_without_th
 
 def test_a_new_workspace_starts_with_the_favourites_of_the_uk_workspace(client):
     import src.DriveTestAnalyzer as app_module
-    from src.modules import bundle_report_templates, saved_filters
+    from src.modules.reporting import bundle_report_templates
+    from src.modules.scoring import saved_filters
 
     repository = app_module.repository
 
@@ -279,7 +280,7 @@ def test_a_new_workspace_starts_with_the_favourites_of_the_uk_workspace(client):
 
 def test_the_starter_jobs_generate_the_starter_favourites_they_name(client):
     import src.DriveTestAnalyzer as app_module
-    from src.modules import bundle_report_templates, report_tasks
+    from src.modules.reporting import bundle_report_templates, report_tasks
 
     repository = app_module.repository
     for task in report_tasks.list_tasks(repository):
@@ -319,7 +320,7 @@ def test_the_nsa_and_sa_example_reaches_an_existing_workspace_once(client):
 
 def test_the_all_chart_types_example_draws_every_supported_chart_type_and_reaches_an_existing_workspace_once(client):
     import src.DriveTestAnalyzer as app_module
-    from src.modules.cdr_reporting import CHART_TYPES, parse_catalog_csv
+    from src.modules.cdr_analysis.cdr_reporting import CHART_TYPES, parse_catalog_csv
 
     name = 'DT Analyzer - All Supported Chart Types'
     entries = [entry for entry in parse_catalog_csv((ASSETS / 'ppt-templates' / f'{name}.csv').read_text(encoding='utf-8'))

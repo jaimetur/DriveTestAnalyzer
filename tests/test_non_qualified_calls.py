@@ -10,8 +10,8 @@ import pytest
 from openpyxl import load_workbook
 
 import src.DriveTestAnalyzer as core
-from src.modules import non_qualified_calls as nq
-from src.modules.repository import local_now_iso
+from src.modules.nq import non_qualified_calls as nq
+from src.modules.core.repository import local_now_iso
 
 
 @pytest.fixture(autouse=True)
@@ -322,7 +322,7 @@ def test_tracking_travels_with_workspace_packages_and_imports_once(client, tmp_p
 def test_the_preview_of_a_tracking_import_tells_what_its_import_changes(client, tmp_path):
     import copy
 
-    from src.modules.import_changes import compare, element_items
+    from src.modules.core.import_changes import compare, element_items
 
     enable_module()
     add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', voice_rows())
@@ -528,7 +528,7 @@ def test_teams_members_progress_shared_filters_and_reporting_artifact(client, tm
         'city': ['Leeds'], 'open_only': True, 'search': 'drop', 'service': ['voice']}
 
     # Reporting Jobs: the Executive Summary and Progress Status artifact with its filters.
-    from src.modules.report_tasks import ARTIFACT_PROVIDERS
+    from src.modules.reporting.report_tasks import ARTIFACT_PROVIDERS
 
     login(client)
     provider = ARTIFACT_PROVIDERS['non_qualified_calls']
@@ -683,7 +683,7 @@ def test_root_cause_taxonomy_imports_with_the_tracking_and_shows_in_exports(clie
     assert {'Selected Root Category', 'Selected Root Cause', 'Root Domain', 'Recommended Root Category',
             'Recommended Root Cause'} <= set(headers)
     # The slides of the module, before they are composed as a Bundle Report Template composes its section.
-    from src.modules import bundle_report_templates
+    from src.modules.reporting import bundle_report_templates
     monkeypatch.setattr(bundle_report_templates, 'module_document', lambda _key, content, _kind, _title='': content)
     deck = client.post('/api/non-qualified-calls/export/powerpoint', json={'filters': {}, 'granularity': 'month'})
     headers = [slide.shapes.title.text_frame.paragraphs for slide in Presentation(io.BytesIO(deck.content)).slides
@@ -892,8 +892,8 @@ def test_progress_and_root_cause_values_filter_the_calls(client, tmp_path):
 
 
 def test_campaigns_read_year_quarter_and_mode_everywhere():
-    from src.modules.column_names import campaign_sort_key, compact_campaign_value
-    from src.modules.non_qualified_calls_visuals import _items, campaign_label
+    from src.modules.cdr.column_names import campaign_sort_key, compact_campaign_value
+    from src.modules.nq.non_qualified_calls_visuals import _items, campaign_label
 
     raw = ['UK_Q2_SA_2026', 'UK_Q2_2026', 'UK_Q2_NSA_2026', 'UK_Q1_2026', '2026-Q2_SA', 'Special campaign']
     assert [campaign_label(value) for value in raw] == [
@@ -1071,7 +1071,7 @@ def test_nq_rate_of_each_campaign_and_operator(client, tmp_path):
 
 
 def test_nq_rates_take_one_slide_or_two_when_the_operators_or_campaigns_are_many():
-    from src.modules.non_qualified_calls_visuals import rate_panels
+    from src.modules.nq.non_qualified_calls_visuals import rate_panels
 
     def cell(nq, total):
         return {'nq': nq, 'total': total, 'rate': round(nq * 100 / total, 2)}
@@ -1100,7 +1100,7 @@ def test_nq_rates_take_one_slide_or_two_when_the_operators_or_campaigns_are_many
 def test_root_cause_tables_keep_to_one_slide_with_the_first_rows_that_fit():
     from PIL import Image
 
-    from src.modules.non_qualified_calls_visuals import DPI, PANEL_HEIGHT, domain_donuts_panel, table_panels, technology_panel
+    from src.modules.nq.non_qualified_calls_visuals import DPI, PANEL_HEIGHT, domain_donuts_panel, table_panels, technology_panel
 
     rows = [[f'gNB {index}', 'VF', '—', '—', 'Ericsson', '3', 'RF'] for index in range(25)]
     columns = ['eNB / gNB', 'Operator', 'Site', 'Host', 'Vendor', 'Calls', 'Main Domain']
@@ -1367,7 +1367,7 @@ def test_the_failure_panels_read_the_counts_of_the_indexing(client, tmp_path, mo
             f'SELECT COUNT(*), SUM(is_nq) FROM {nq.NQ_CALL_POPULATION_TABLE} WHERE is_latest = 1').fetchone()
     assert tuple(stored) == tuple(scanned)
     # ...and wrote them to a Parquet copy in the columnar store, which DuckDB adds up for the panels.
-    from src.modules import cdr_store
+    from src.modules.cdr import cdr_store
     folder = cdr_store.store_root(repository.db_path) / nq.POPULATION_COUNTS_COPY_FOLDER
     assert len(list(folder.glob('population-counts-*.parquet'))) == 1
     monkeypatch.setattr(nq, 'MIN_SITE_CALLS', 1)
@@ -1424,7 +1424,7 @@ def test_workspaces_indexed_before_get_the_serving_cell_columns(client, tmp_path
 
 
 def test_the_reindex_reads_the_same_calls_from_the_columnar_copies(client, tmp_path, monkeypatch):
-    from src.modules import cdr_store
+    from src.modules.cdr import cdr_store
 
     datasets = [add_cdr(tmp_path, 'voice.csv', 'voice', voice_rows()), add_cdr(tmp_path, 'data.csv', 'data', data_rows())]
 
@@ -1458,7 +1458,7 @@ def test_the_reindex_reads_the_same_calls_from_the_columnar_copies(client, tmp_p
 
 def test_the_view_stays_in_place_while_the_calls_reload():
     """A change of the filters keeps what was in use (or read) where it was while every panel on screen is drawn again."""
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/non_qualified_calls.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/nq/non_qualified_calls.js').read_text(encoding='utf-8')
     # Before the chips and the loading bars change the panels, and not for the quiet reloads of the page.
     load = script.split('async function loadCalls(', 1)[1].split('const filters = currentFilters();', 1)[0]
     assert 'if (!quiet) keepViewWhileLoading();' in load

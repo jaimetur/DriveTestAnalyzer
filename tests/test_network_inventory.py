@@ -8,12 +8,12 @@ import pandas as pd
 
 import src.DriveTestAnalyzer as core
 from conftest import wait_for_background_dataset_work
-from src.modules.cdr_reporting import assign_cdr_vendors, build_inventory_vendor_lookup, inventory_vendor_columns, operator_key
-from src.modules.cell_identity import nr_nci, nr_nci_series
-from src.modules.inventory_insights import snapshot_choice
-from src.modules.network_inventory import infer_snapshot_date, list_inventory_snapshots, normalise_inventory
-from src.modules.repository import local_now_iso
-from src.modules.serving_cells import vendor_mapping_signature
+from src.modules.cdr_analysis.cdr_reporting import assign_cdr_vendors, build_inventory_vendor_lookup, inventory_vendor_columns, operator_key
+from src.modules.network.cell_identity import nr_nci, nr_nci_series
+from src.modules.network_insights.inventory_insights import snapshot_choice
+from src.modules.network.network_inventory import infer_snapshot_date, list_inventory_snapshots, normalise_inventory
+from src.modules.core.repository import local_now_iso
+from src.modules.network.serving_cells import vendor_mapping_signature
 
 
 def login(client):

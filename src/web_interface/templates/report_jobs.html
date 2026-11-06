@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<link rel="stylesheet" href="{{ static_path('css/report_jobs.css') }}?v={{ asset_version('css/report_jobs.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/reporting/report_jobs.css') }}?v={{ asset_version('css/reporting/report_jobs.css') }}">
 <section class="dashboard-stack spacious-stack report-jobs" id="report-jobs" data-workspace-id="{{ active_workspace.id if active_workspace else '' }}">
   <article class="panel module-hero report-jobs-hero">
     <p class="eyebrow">Reporting</p>
@@ -233,7 +233,7 @@
     </div>
   </details>
 </section>
-<script defer src="{{ static_path('js/scoring_report_editor.js') }}?v={{ asset_version('js/scoring_report_editor.js') }}"></script>
-<script defer src="{{ static_path('js/report_jobs.js') }}?v={{ asset_version('js/report_jobs.js') }}"></script>
-<script defer src="{{ static_path('js/bundle_report_template.js') }}?v={{ asset_version('js/bundle_report_template.js') }}"></script>
+<script defer src="{{ static_path('js/scoring/scoring_report_editor.js') }}?v={{ asset_version('js/scoring/scoring_report_editor.js') }}"></script>
+<script defer src="{{ static_path('js/reporting/report_jobs.js') }}?v={{ asset_version('js/reporting/report_jobs.js') }}"></script>
+<script defer src="{{ static_path('js/reporting/bundle_report_template.js') }}?v={{ asset_version('js/reporting/bundle_report_template.js') }}"></script>
 {% endblock %}

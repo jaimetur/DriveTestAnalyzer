@@ -3,7 +3,7 @@
 
     python tools/build_postal_layer.py GBR /path/to/GB_full.csv.zip --year 2026 --districts
 
-The layer (the areas worked out from the points, see src/modules/postal_areas.py) goes to assets/map-areas/postal, with
+The layer (the areas worked out from the points, see src/modules/network/postal_areas.py) goes to assets/map-areas/postal, with
 its entry in the manifest of that folder; it stands in until a workspace downloads its own. Download the file from
 https://download.geonames.org/export/zip/ (CC BY 4.0).
 ``--districts`` is for a file of full codes (GB_full): each code counts for its district, the part before the space.
@@ -34,7 +34,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix='postal-layer-') as folder:
         os.environ['APP_CONFIG_DIR'] = str(Path(folder) / 'config')
         os.environ['APP_DATA_DIR'] = str(Path(folder) / 'data')
-        from src.modules.postal_areas import (
+        from src.modules.network.postal_areas import (
             BUNDLED_DIR, GEONAMES_ATTRIBUTION, GEONAMES_LICENSE, GEONAMES_URL, LEVEL_LABEL, alpha2_code, coarser_codes,
             district_points, land_of, postal_boundaries, read_geonames,
         )

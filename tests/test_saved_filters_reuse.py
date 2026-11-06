@@ -9,9 +9,9 @@ from typing import Any
 import pytest
 
 import src.DriveTestAnalyzer as app_module
-from src.modules import saved_filters
-from src.modules.import_changes import favourites_order_changes
-from src.modules.repository import Repository, local_now_iso
+from src.modules.scoring import saved_filters
+from src.modules.core.import_changes import favourites_order_changes
+from src.modules.core.repository import Repository, local_now_iso
 from tests.scoring_fixtures import load_initial_scoring_configuration
 from tests.test_scoring_history import _rows
 
@@ -490,7 +490,7 @@ def test_use_newer_cdrs_endpoint_is_recorded_and_leaves_the_open_saved_filter_wh
 
 
 def test_scoring_report_templates_travel_with_their_own_backup_element(client, tmp_path: Path) -> None:
-    from src.modules import scoring_reports
+    from src.modules.scoring import scoring_reports
 
     response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
     assert response.status_code == 303
@@ -679,7 +679,7 @@ def test_an_import_prepares_only_its_favourites_filters_and_tells_its_progress(t
 def test_a_cdr_file_that_only_moved_keeps_its_hash(tmp_path):
     import os
 
-    from src.modules.scoring_history import HISTORY_FILES_TABLE, ensure_history_tables, file_sha256
+    from src.modules.scoring.scoring_history import HISTORY_FILES_TABLE, ensure_history_tables, file_sha256
 
     repository = _workspace(tmp_path, 'workspace')
     [dataset_id, *_rest] = _three_cdrs(repository, tmp_path / 'workspace')

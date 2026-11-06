@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-<link rel="stylesheet" href="{{ static_path('css/network_insights.css') }}?v={{ asset_version('css/network_insights.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/network_insights/network_insights.css') }}?v={{ asset_version('css/network_insights/network_insights.css') }}">
 <section class="dashboard-stack spacious-stack network-insights" id="network-insights">
   <article class="panel hero-panel ni-hero">
     <p class="eyebrow">Network Insights</p>
@@ -214,9 +214,9 @@
   </dialog>
 </section>
 <script id="ni-config" type="application/json">{{ network_insights_config | tojson }}</script>
-<script defer src="{{ static_path('js/canvas_charts.js') }}?v={{ asset_version('js/canvas_charts.js') }}"></script>
-<script defer src="{{ static_path('js/network_insights_findings.js') }}?v={{ asset_version('js/network_insights_findings.js') }}"></script>
-<script defer src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
-<script defer src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
-<script defer src="{{ static_path('js/network_insights.js') }}?v={{ asset_version('js/network_insights.js') }}"></script>
+<script defer src="{{ static_path('js/core/canvas_charts.js') }}?v={{ asset_version('js/core/canvas_charts.js') }}"></script>
+<script defer src="{{ static_path('js/network_insights/network_insights_findings.js') }}?v={{ asset_version('js/network_insights/network_insights_findings.js') }}"></script>
+<script defer src="{{ static_path('js/core/element_image.js') }}?v={{ asset_version('js/core/element_image.js') }}"></script>
+<script defer src="{{ static_path('js/core/image_buttons.js') }}?v={{ asset_version('js/core/image_buttons.js') }}"></script>
+<script defer src="{{ static_path('js/network_insights/network_insights.js') }}?v={{ asset_version('js/network_insights/network_insights.js') }}"></script>
 {% endblock %}

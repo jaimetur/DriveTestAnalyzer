@@ -9,13 +9,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.modules.cdr_reporting import (
+from src.modules.cdr_analysis.cdr_reporting import (
     CHART_SETTING_FILTERS, CHART_TYPES, CatalogEntry, _design_hits_to_hover_targets, catalog_chart_hover_targets,
     catalog_chart_payload, render_catalog_chart_preview,
 )
-from src.modules.chart_types import EXTENDED_CHART_TYPES, date_bin_labels, date_bin_parts, date_bin_time
-from src.modules.design_comments import slide_comments
-from src.modules.report_template_modes import chart_fields
+from src.modules.ppt_designer.chart_types import EXTENDED_CHART_TYPES, date_bin_labels, date_bin_parts, date_bin_time
+from src.modules.ppt_designer.design_comments import slide_comments
+from src.modules.reporting.report_template_modes import chart_fields
 
 
 def cdrs(rows: int = 2400, seed: int = 11) -> pd.DataFrame:
@@ -244,7 +244,7 @@ def test_filled_map_colours_the_map_areas_with_their_polygons() -> None:
 
 def test_the_new_chart_types_are_drawn_by_the_canvas_renderer_only() -> None:
     entry = chart('Pie', 'Test_Result', 'Operator')
-    with patch('src.modules.cdr_reporting._render_canvas_payload_png', return_value=b'canvas-png') as render:
+    with patch('src.modules.cdr_analysis.cdr_reporting._render_canvas_payload_png', return_value=b'canvas-png') as render:
         assert render_catalog_chart_preview(cdrs(), entry, prefiltered=True, renderer='pil') == b'canvas-png'
     assert render.call_args.args[0]['type'] == 'pie'
     assert catalog_chart_hover_targets(cdrs(), entry, prefiltered=True) == []
@@ -303,15 +303,15 @@ def test_kpi_cards_keep_their_shape_in_a_frame_of_any_proportions() -> None:
 
 
 def render_catalog_chart_preview_hits(model: dict, width: int, height: int) -> tuple[bytes, list[dict]]:
-    from src.modules.cdr_reporting import _render_canvas_payload
+    from src.modules.cdr_analysis.cdr_reporting import _render_canvas_payload
     return _render_canvas_payload(model, width=width, height=height)
 
 
 def test_an_auto_calculated_field_named_nr_mode_does_not_hide_the_nr_mode_of_the_cdrs() -> None:
     from dataclasses import replace
 
-    from src.modules.cdr_reporting import parse_calculated_dimensions
-    from src.modules.ppt_designer import compact_chart_columns
+    from src.modules.cdr_analysis.cdr_reporting import parse_calculated_dimensions
+    from src.modules.ppt_designer.ppt_designer import compact_chart_columns
 
     frame = cdrs()
     frame['NR_Mode'] = np.where(np.arange(len(frame)) % 2, 'SA', 'NSA')

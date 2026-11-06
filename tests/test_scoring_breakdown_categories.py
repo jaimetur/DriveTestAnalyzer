@@ -1,8 +1,8 @@
 import pytest
 from pptx import Presentation
 
-from src.modules.scoring_exports import _hierarchy_score_tables, _score_tables, _table_for_mode
-from src.modules.scoring_views import build_scoring_views
+from src.modules.scoring.scoring_exports import _hierarchy_score_tables, _score_tables, _table_for_mode
+from src.modules.scoring.scoring_views import build_scoring_views
 from tests.test_scoring_table_exports import _job, _result
 
 
@@ -40,7 +40,7 @@ def test_breakdown_opens_each_category_with_its_subtotal(hierarchy):
 
 
 def test_breakdown_slides_keep_up_to_fifty_bars_together():
-    from src.modules.scoring_exports import BREAKDOWN_BARS_PER_SLIDE, _breakdown_pages
+    from src.modules.scoring.scoring_exports import BREAKDOWN_BARS_PER_SLIDE, _breakdown_pages
 
     categories = [f'C{index}' for index in range(1, 11)]
     assert BREAKDOWN_BARS_PER_SLIDE == 50

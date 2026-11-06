@@ -2,9 +2,9 @@
 import pytest
 import pandas as pd
 
-from src.modules.repository import Repository
-from src.modules.scoring import calculate_scoring
-from src.modules.scoring_config import default_scoring_profile
+from src.modules.core.repository import Repository
+from src.modules.scoring.scoring import calculate_scoring
+from src.modules.scoring.scoring_config import default_scoring_profile
 from tests.scoring_fixtures import scoring_configuration
 
 

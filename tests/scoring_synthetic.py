@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import random
 
-from src.modules.scoring import _gap_rows, _gap_totals, _totals, environment_scaling, most_reliable_result
+from src.modules.scoring.scoring import _gap_rows, _gap_totals, _totals, environment_scaling, most_reliable_result
 from tests.test_scoring_most_reliable import _reliable_configuration
 
 OPERATORS = ('Vodafone UK', 'Three UK', 'EE', 'O2 UK')

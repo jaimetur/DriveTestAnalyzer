@@ -14,13 +14,13 @@ from pptx.enum.text import MSO_ANCHOR
 from pptx.oxml.ns import qn
 from pptx.util import Inches
 
-from src.modules.scoring_exports import (
+from src.modules.scoring.scoring_exports import (
     _add_chart_hierarchy_grid, _charts, _cell, _format_chart, _format_stacked_segment_labels, _header_foreground,
     _hierarchy_chart_color, _stacked_chart_pages, export_scoring_powerpoint,
 )
-from src.modules.scoring_pptx_scorecard import STYLES
-from src.modules.scoring_themes import THEMES, blend
-from src.modules.scoring_views import THRESHOLD_COLORS, _hierarchy_display_value, build_scoring_views
+from src.modules.scoring.scoring_pptx_scorecard import STYLES
+from src.modules.scoring.scoring_themes import THEMES, blend
+from src.modules.scoring.scoring_views import THRESHOLD_COLORS, _hierarchy_display_value, build_scoring_views
 from tests.scoring_fixtures import export_panels_only, scoring_configuration
 
 
@@ -1054,7 +1054,7 @@ def test_cover_campaigns_prefer_scored_contexts_and_include_context_filters():
 
 
 def test_intro_slides_show_all_canonical_scope_filters_without_overlapping_campaigns():
-    from src.modules import report_structure
+    from src.modules.reporting import report_structure
     job_fields = {
         'context_filters': {
             'Region': ['North', 'South'],
@@ -1159,7 +1159,7 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
     assert titles.count('Best Network Scoring per Category') == 1
     assert titles.count('Best Network Scoring per Service') == 1
     # Up to 50 bars per Breakdown slide, in as few slides as possible.
-    from src.modules.scoring_exports import BREAKDOWN_BARS_PER_SLIDE, _breakdown_pages
+    from src.modules.scoring.scoring_exports import BREAKDOWN_BARS_PER_SLIDE, _breakdown_pages
     breakdown_slides = [slide for slide, title in zip(presentation.slides, titles)
                         if title == 'Best Network Scoring per Category (Breakdown)']
     bars = [len(_charts_on_slide(slide)[0].plots[0].categories) for slide in breakdown_slides]
@@ -1577,7 +1577,7 @@ def test_content_slide_subtitles_match_environment_transition(hierarchy):
     ([-4, float('nan'), float('inf')], '-4.00', '-4.00', 'CC2424'),
 ])
 def test_individual_gap_side_note_average_total_and_color(values, expected, total, color):
-    from src.modules.scoring_exports import _add_individual_gap_notes, _slide
+    from src.modules.scoring.scoring_exports import _add_individual_gap_notes, _slide
 
     presentation = Presentation(TEMPLATE)
     slide = _slide(presentation, 'GAP Analysis', 'Drive - City')
@@ -1594,7 +1594,7 @@ def test_individual_gap_side_note_average_total_and_color(values, expected, tota
 
 
 def test_individual_gap_side_note_hierarchy_mean_marks_partial_coverage():
-    from src.modules.scoring_exports import _add_individual_gap_notes, _slide
+    from src.modules.scoring.scoring_exports import _add_individual_gap_notes, _slide
 
     presentation = Presentation(TEMPLATE)
     slide = _slide(presentation, 'GAP Analysis', 'All Environments')
@@ -1609,7 +1609,7 @@ def test_individual_gap_side_note_hierarchy_mean_marks_partial_coverage():
 
 
 def test_gap_total_footer_sums_columns_and_marks_missing_contributions():
-    from src.modules.scoring_exports import _add_gap_total_row, _slide
+    from src.modules.scoring.scoring_exports import _add_gap_total_row, _slide
 
     presentation = Presentation(TEMPLATE)
     slide = _slide(presentation, 'GAP Analysis', 'Drive - City')
@@ -1636,7 +1636,7 @@ def test_saved_environment_display_name_replaces_historical_name_in_ppt():
 
 
 def test_powerpoint_shows_environment_scaling_in_orange_and_in_the_allocation_donut():
-    from src.modules.scoring import apply_environment_scaling
+    from src.modules.scoring.scoring import apply_environment_scaling
 
     result = _result()
     result.setdefault('configuration', scoring_configuration())
@@ -1657,8 +1657,8 @@ def test_powerpoint_shows_environment_scaling_in_orange_and_in_the_allocation_do
 def test_slides_name_the_area_operators_and_vendors_of_their_tables_as_the_web_titles(monkeypatch):
     from docx import Document
 
-    import src.modules.pptx_to_docx as pptx_to_docx_module
-    from src.modules.scoring_insight_slides import scoring_scope_labels
+    import src.modules.reporting.pptx_to_docx as pptx_to_docx_module
+    from src.modules.scoring.scoring_insight_slides import scoring_scope_labels
 
     filters = {'Region': [], 'City': ['Bristol', 'Cardiff', 'Leeds', 'London'], 'Operator': ['EE', 'O2 UK'],
                'Vendor': ['EE_Nokia', 'O2 UK_Ericsson']}

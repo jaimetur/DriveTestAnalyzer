@@ -10,8 +10,8 @@ import pytest
 from shapely.geometry import Polygon
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.geospatial import validate_cluster_mapping, validate_region_mapping
-from src.modules.repository import Repository
+from src.modules.network.geospatial import validate_cluster_mapping, validate_region_mapping
+from src.modules.core.repository import Repository
 
 
 def _cluster_geojson(attribute='Cluster', value='North', geometry=None):

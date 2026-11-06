@@ -5,7 +5,7 @@ import math
 import pandas as pd
 import pytest
 
-from src.modules import ran_context
+from src.modules.nq import ran_context
 
 # About 1 km of latitude (the haversine of the module measures within 1 %).
 KM = 1 / 110.574

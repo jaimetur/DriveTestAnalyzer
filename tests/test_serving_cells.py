@@ -8,10 +8,10 @@ import pytest
 
 import src.DriveTestAnalyzer as core
 from conftest import wait_for_background_dataset_work
-from src.modules import cdr_store
-from src.modules import network_inventory as ni
-from src.modules import serving_cells as sc
-from src.modules.repository import local_now_iso
+from src.modules.cdr import cdr_store
+from src.modules.network import network_inventory as ni
+from src.modules.network import serving_cells as sc
+from src.modules.core.repository import local_now_iso
 
 LEEDS = (-1.55, 53.80)
 SWAPPED_CELL = str(1491 * 256 + 110)  # Huawei in August, Ericsson after the swap of September

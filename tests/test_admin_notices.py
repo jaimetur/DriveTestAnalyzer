@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import src.DriveTestAnalyzer as core
-from src.modules import admin_notices
+from src.modules.core import admin_notices
 
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 64
 
@@ -114,7 +114,7 @@ def test_each_super_admin_is_told_once_of_each_access_request(client):
 
 
 def test_each_super_admin_is_told_once_of_new_tickets_of_other_users(client):
-    from src.modules.ticket_center import create_ticket, delete_ticket
+    from src.modules.ticket_center.ticket_center import create_ticket, delete_ticket
 
     core.repository.create_user('ana', 'secret123', 'user-viewer', first_name='Ana', last_name='García')
     reported = create_ticket(core.repository, title='Export fails', description='', module='scoring', priority='P2', username='ana', app_version='0.7.1',
@@ -159,11 +159,11 @@ def test_each_super_admin_is_told_once_of_new_tickets_of_other_users(client):
 
 def test_the_dialog_and_its_links_are_in_the_pages(client):
     root = Path(core.__file__).parent / 'web_interface' / 'static' / 'js'
-    script = (root / 'app.js').read_text(encoding='utf-8')
+    script = (root / 'core' / 'app.js').read_text(encoding='utf-8')
     assert "fetch('/api/admin-notices'" in script and "'/api/admin-notices/seen'" in script
     # The poll of incoming transfer offers hands the ids to the dialog.
     assert "new CustomEvent('drivetest-analyzer:admin-notices'" in script and 'Administrator notice' in script
-    assert "get('status')" in (root / 'ticket_center.js').read_text(encoding='utf-8')
+    assert "get('status')" in (root / 'ticket_center' / 'ticket_center.js').read_text(encoding='utf-8')
     login(client)
     assert "get('users') === 'access-requests'" in client.get('/super-admin').text
     # The table is listed in Database Management.
@@ -172,7 +172,7 @@ def test_the_dialog_and_its_links_are_in_the_pages(client):
 
 
 def test_the_poll_of_the_pages_tells_super_admins_while_signed_in(client):
-    from src.modules.ticket_center import create_ticket
+    from src.modules.ticket_center.ticket_center import create_ticket
 
     login(client)
     assert polled(client) == {'access_requests': [], 'tickets': []}

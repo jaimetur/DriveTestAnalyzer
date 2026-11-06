@@ -7,9 +7,10 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import network_inventory, nq_call_map, nq_prioritization, ran_context
-from src.modules import non_qualified_calls as nq
-from src.modules.value_maps import ValueMapper, field_kind
+from src.modules.network import network_inventory
+from src.modules.nq import nq_call_map, nq_prioritization, ran_context
+from src.modules.nq import non_qualified_calls as nq
+from src.modules.mapping.value_maps import ValueMapper, field_kind
 from tests.test_non_qualified_calls import add_cdr, enable_module, login
 
 LONDON = (51.5074, -0.1278)

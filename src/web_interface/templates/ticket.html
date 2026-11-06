@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
 {% from 'ticket_center_macros.html' import priority_pill, status_pill, module_chip, attachments_zone, attachment_gallery, type_badge %}
 {% block content %}
-<link rel="stylesheet" href="{{ static_path('css/ticket_center.css') }}?v={{ asset_version('css/ticket_center.css') }}">
-<link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/ticket_center/ticket_center.css') }}?v={{ asset_version('css/ticket_center/ticket_center.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/core/rich_text.css') }}?v={{ asset_version('css/core/rich_text.css') }}">
 <section class="dashboard-stack spacious-stack ticket-center ticket-page" data-ticket-page="{{ ticket.id }}" data-ticket-center-title="{{ ticket_center_title }}" data-rich-refs='{{ ticket_references | tojson }}'>
   {# A link to another ticket by number (ticket_center.js changes them to the order of the Tickets list when the ticket is in it), disabled where it cannot move. #}
   {% macro pager_link(step, label, path) %}{% set target = ticket_pager[step] %}<a class="ticket-pager-link" data-ticket-pager-link="{{ step }}" aria-label="{{ label }}"{% if target %} href="/tickets/{{ target }}?order=number" title="{{ label }} · #{{ target }} {{ ticket_titles[target] }}"{% else %} aria-disabled="true" title="{{ label }}"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{ path }}"/></svg></a>{% endmacro %}
@@ -140,6 +140,6 @@
 </section>
 {% endblock %}
 {% block extra_scripts %}
-<script src="{{ static_path('js/rich_text.js') }}?v={{ asset_version('js/rich_text.js') }}"></script>
-<script src="{{ static_path('js/ticket_center.js') }}?v={{ asset_version('js/ticket_center.js') }}"></script>
+<script src="{{ static_path('js/core/rich_text.js') }}?v={{ asset_version('js/core/rich_text.js') }}"></script>
+<script src="{{ static_path('js/ticket_center/ticket_center.js') }}?v={{ asset_version('js/ticket_center/ticket_center.js') }}"></script>
 {% endblock %}

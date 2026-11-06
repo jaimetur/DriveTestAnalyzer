@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.modules import exports
+from src.modules.cdr_analysis import exports
 
 
 def test_powerpoint_cdf_export_applies_default_x_range_before_downsampling(monkeypatch) -> None:

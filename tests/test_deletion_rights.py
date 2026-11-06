@@ -3,13 +3,13 @@ from types import SimpleNamespace
 from urllib.parse import quote
 
 import src.DriveTestAnalyzer as core
-from src.modules import saved_filters
-from src.modules.deletion_rights import (
+from src.modules.scoring import saved_filters
+from src.modules.core.deletion_rights import (
     PPT_DESIGNER, SCORING_METHODOLOGIES, SCORING_REPORT_CONFIGURATIONS, UNKNOWN_CREATOR_OWNER, assign_unknown_creators,
     can_delete, creator_of, creators, record_creator,
 )
-from src.modules.ppt_designer import STATE_KEY as DESIGNS_STATE_KEY
-from src.modules.scoring_reports import (
+from src.modules.ppt_designer.ppt_designer import STATE_KEY as DESIGNS_STATE_KEY
+from src.modules.scoring.scoring_reports import (
     REPORT_CONFIGURATIONS_FORMAT, REPORT_CONFIGURATIONS_VERSION, default_report_configuration, default_scenario,
 )
 from tests.test_non_qualified_calls import login, workspace_user

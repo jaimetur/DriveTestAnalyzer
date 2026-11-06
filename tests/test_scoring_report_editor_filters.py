@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring_report_editor.js').read_text(encoding='utf-8')
+SCRIPT = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring_report_editor.js').read_text(encoding='utf-8')
 
 # A minimal DOM: elements with children, inputs that toggle on click and fire their change listeners.
 DOM = r'''
@@ -80,7 +80,7 @@ def test_choosing_a_configuration_loads_it_and_unsaved_changes_ask_first():
     # Every toolbar button has its icon; the JSON buttons share one colour and Delete is red.
     for kind in ('save', 'delete', 'export', 'import'):
         assert f"{kind}: '<path" in SCRIPT
-    css = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    css = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
     assert '.scoring-report-tool:is(.is-export, .is-import)' in css
     assert '.scoring-report-tool.is-delete { border-color: #c62828; background: #c62828;' in css
 
@@ -105,11 +105,11 @@ def test_the_selector_shows_the_configuration_whose_scenarios_are_shown():
 
 def test_reporting_artifacts_show_the_cdrs_of_their_automatic_choice_and_tabs_sit_on_their_panel():
     root = Path(__file__).resolve().parents[1]
-    script = (root / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    script = (root / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
     # Every artifact lists the CDRs its Campaigns choose now.
     # A Design of NSA & SA resolves the Latest choices among the campaigns of each NR Mode (each_nr_mode).
     assert "const result = await api('/api/reporting/auto-cdrs', {method: 'POST', body: JSON.stringify({nr_mode: nrModeOf(), campaigns: value(), complete, each_nr_mode: eachNrMode})});" in script
-    css = (root / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
+    css = (root / 'src/web_interface/static/css/reporting/report_jobs.css').read_text(encoding='utf-8')
     assert 'border-radius: 10px 10px 0 0;' in css and 'margin: .3rem 0 -1rem;' in css
     assert 'margin-bottom: -1px; padding: .62rem 1.15rem .6rem;' in css
     # Module artifacts (Non-Qualified Calls) sit inside #rj-providers and join the tabs as well.
@@ -117,7 +117,7 @@ def test_reporting_artifacts_show_the_cdrs_of_their_automatic_choice_and_tabs_si
 
 
 def test_reporting_artifacts_choose_their_cdrs_by_campaign():
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
     assert 'Every ready' not in script
     # CDR Analysis chooses its CDRs from its NR Mode and Campaigns too: no CDR list is left.
     assert 'function datasetPicker(' not in script and 'NEWEST_COMPLETE_TEXT' not in script
@@ -253,7 +253,7 @@ console.log(JSON.stringify(result));
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
 def test_operator_patterns_are_kept_and_listed_first_in_the_report_scenarios():
-    app = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    app = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     # The patterns of the page (valuePatterns), as app.js defines them.
     helper = app[app.index('const VALUE_EXCLUSION'):app.index('function setupCustomMultiSelects() {')]
     el_start = SCRIPT.index('  const el = (tag, className, text) => {')
@@ -277,7 +277,7 @@ console.log(JSON.stringify({kept: loaded.scenarios[0].context_filters.Operator, 
 
 
 def test_the_report_of_the_page_takes_the_filters_of_its_calculation_panel():
-    page = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    page = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     # The scenarios of the page report choose only their content: no filters, Split by or Geographical Areas & Scoring
     # Trends in the editor, which the request takes from the Calculation panel.
     assert "themes: scoringThemes, theme: activeTheme?.id || 'netcheck', pageScope: true}," in page

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from src.modules.output_layout import migrate_output_layout
+from src.modules.core.output_layout import migrate_output_layout
 
 
 def _workspace(tmp_path: Path) -> tuple[Path, Path]:

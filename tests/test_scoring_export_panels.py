@@ -11,12 +11,12 @@ from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.repository import Repository
-from src.modules.scoring_export_panels import (
+from src.modules.core.repository import Repository
+from src.modules.scoring.scoring_export_panels import (
     EXPORT_PANELS, default_export_panels, export_panel_catalogue, export_panel_changes, exportable_options,
     load_export_panels, normalize_export_panels,
 )
-from src.modules.scoring_exports import _ranking_groups, export_scoring_powerpoint
+from src.modules.scoring.scoring_exports import _ranking_groups, export_scoring_powerpoint
 from tests.scoring_fixtures import export_panels_only, scoring_configuration
 from tests.test_scoring_exports import TEMPLATE
 from tests.test_scoring_where_to_act import owned  # noqa: F401 (fixture)
@@ -44,7 +44,7 @@ def test_the_panels_of_each_tab_and_the_operators_they_export_by_default():
     assert normalized['summary']['act'] == {'exportable': False, 'operators': 'focus'} and 'unknown' not in normalized
     assert export_panel_changes(panels, normalized) == ['Summary > Where to act: not exportable']
     # The tabs and panels of the Scoring section of the Bundle Report Templates (the Methodology Impact has documents of its own).
-    from src.modules.bundle_report_templates import SCORING_SUBMODULES
+    from src.modules.reporting.bundle_report_templates import SCORING_SUBMODULES
     assert [(group['key'], group['title'], [panel['key'] for panel in group['panels']]) for group in export_panel_catalogue()
             if group['key'] != 'impact'] == [(key, title, [name for name, _label in components]) for key, title, components in SCORING_SUBMODULES]
 
@@ -133,14 +133,14 @@ def test_every_level_and_group_of_the_geographical_areas_is_exported():
     assert [[(item['level'], item['title'], item['operator']) for item in group] for group in _ranking_groups(items)] == [
         [('Region', '', 'A')], [('Cluster', '', 'A')], [('City', 'Vendor: X', 'A'), ('City', 'Vendor: X', 'B')],
         [('City', 'Vendor: Y', 'A')]]
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     assert "const GEOGRAPHICAL_LEVEL_ORDER = {National: 0, Region: 1, Cluster: 2, City: 3};" in script
     assert '.sort((left, right) => geographicalLevelRank(left) - geographicalLevelRank(right));' in script
 
 
 def test_reports_and_bundle_report_templates_carry_export_all_operators():
-    from src.modules.bundle_report_templates import _normalize_options, catalogue_payload
-    from src.modules.scoring_reports import default_scenario, normalize_report_configuration
+    from src.modules.reporting.bundle_report_templates import _normalize_options, catalogue_payload
+    from src.modules.scoring.scoring_reports import default_scenario, normalize_report_configuration
 
     assert normalize_report_configuration({'scenarios': [default_scenario()], 'all_operators': True})['all_operators'] is True
     # (Configurations saved before: no.)

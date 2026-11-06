@@ -1,9 +1,9 @@
 import pandas as pd
 
-from src.modules.analytics import _category_order_key, _chart_mapping_group
-from src.modules.cdr_reporting import _vendor_display_sort_key, _vendor_only_display_sort_key
-from src.modules.mapping_order import dimension_order_key, split_operator_vendor, vendor_order_key
-from src.modules.scoring_views import _hierarchy_column_sort_key
+from src.modules.cdr_analysis.analytics import _category_order_key, _chart_mapping_group
+from src.modules.cdr_analysis.cdr_reporting import _vendor_display_sort_key, _vendor_only_display_sort_key
+from src.modules.mapping.mapping_order import dimension_order_key, split_operator_vendor, vendor_order_key
+from src.modules.scoring.scoring_views import _hierarchy_column_sort_key
 
 OPERATORS = [{'canonical': name, 'aliases': [], 'position': index}
              for index, name in enumerate(['EE', '3', 'VF_UK', 'VF_SA', 'O2', 'Lebara'])]
@@ -70,7 +70,7 @@ def test_vendor_operator_orders_ericsson_mixed_with_ericsson_and_other_mixed_gro
 
 
 def test_mixed_groups_of_no_vendor_come_last():
-    from src.modules.mapping_order import dimension_order_key
+    from src.modules.mapping.mapping_order import dimension_order_key
 
     vendors = [{'canonical': name, 'aliases': [], 'position': index}
                for index, name in enumerate(['Ericsson', 'Ericsson (Mixed)', 'Huawei', 'NSN', 'Mixed (non-Ericsson)'])]

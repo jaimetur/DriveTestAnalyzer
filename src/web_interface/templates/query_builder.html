@@ -81,7 +81,7 @@
 </section>
 {% endblock %}
 {% block extra_scripts %}
-<script src="{{ static_path('js/query_builder_assistant_state.js') }}?v={{ asset_version('js/query_builder_assistant_state.js') }}"></script>
+<script src="{{ static_path('js/builders/query_builder_assistant_state.js') }}?v={{ asset_version('js/builders/query_builder_assistant_state.js') }}"></script>
 <script>
 (() => {
   const sources = document.querySelector('[data-sql-datasets]'); const editor = document.querySelector('[data-sql-editor]'); const status = document.querySelector('[data-sql-status]'); const results = document.querySelector('[data-sql-results]'); const resultCount = document.querySelector('[data-sql-result-count]'); const paginationGroups = [...document.querySelectorAll('[data-sql-pagination]')]; const pageLabels = [...document.querySelectorAll('[data-sql-page]')]; const firstButtons = [...document.querySelectorAll('[data-sql-first]')]; const previousButtons = [...document.querySelectorAll('[data-sql-previous]')]; const nextButtons = [...document.querySelectorAll('[data-sql-next]')]; const lastButtons = [...document.querySelectorAll('[data-sql-last]')]; const runningOverlay = document.querySelector('[data-sql-running-overlay]'); const runButton = document.querySelector('[data-sql-run]'); const clearButton = document.querySelector('[data-sql-clear]'); const saveButton = document.querySelector('[data-sql-save]'); const copyButton = document.querySelector('[data-sql-copy]'); const exportButton = document.querySelector('[data-sql-export]'); const cancelRunButton = document.querySelector('[data-sql-cancel-run]'); let activeExecutionId = ''; let activeExportToken = 0; let nextOffset = null; let totalRows = 0; let currentOffset = 0; const pageSize = 50;

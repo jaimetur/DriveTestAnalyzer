@@ -12,9 +12,9 @@ import pytest
 from openpyxl import Workbook, load_workbook
 
 import src.DriveTestAnalyzer as core
-from src.modules import non_qualified_calls as nq
-from src.modules import non_qualified_calls_visuals as visuals
-from src.modules import nq_analyses_rules, nq_catalog, nq_rca
+from src.modules.nq import non_qualified_calls as nq
+from src.modules.nq import non_qualified_calls_visuals as visuals
+from src.modules.nq import nq_analyses_rules, nq_catalog, nq_rca
 from tests.test_non_qualified_calls import add_cdr, enable_module, login, query, workspace_user
 
 
@@ -1164,7 +1164,7 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     assert 'nq-import-toggle' not in page
     menu = page.split('data-module-sections-for="non-qualified-calls"', 1)[1].split('</nav>', 1)[0]
     assert menu.index('<span>NQ Calls</span>') < menu.index('module-sections-separator') < menu.index('<span>NQ Analysis Configuration</span>')
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/non_qualified_calls.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/nq/non_qualified_calls.js').read_text(encoding='utf-8')
     anchors = ('fields-and-sections', 'statuses-and-teams', 'status-rules', 'root-cause-catalog', 'dta-rca-rules',
                'import-ericsson-rca-results', 'import-previous-nq-analyses', 'analysts-reviewers-to-asignees')
     for anchor in ('section-nq-analysis-configuration', *anchors):
@@ -1908,8 +1908,8 @@ def test_rf_is_blue_also_in_workspaces_before(client, tmp_path):
 
 
 def test_the_documents_leave_out_not_classified_and_empty_unless_asked(monkeypatch):
-    from src.modules import non_qualified_calls_export as export
-    from src.modules import non_qualified_calls_visuals as visuals
+    from src.modules.nq import non_qualified_calls_export as export
+    from src.modules.nq import non_qualified_calls_visuals as visuals
 
     stats = {'source': 'netcheck', 'summary': {'total': 10}, 'columns': ['RF', 'Not classified'],
              'domains': [{'value': 'RF', 'count': 4}, {'value': 'Not classified', 'count': 6}],

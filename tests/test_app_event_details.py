@@ -1,7 +1,7 @@
 """Readable App Events: what an event changed, as one sentence."""
 from __future__ import annotations
 
-from src.modules.app_event_details import changed_values, describe_app_event
+from src.modules.core.app_event_details import changed_values, describe_app_event
 
 
 def test_changed_values_keep_only_what_changed() -> None:
@@ -55,7 +55,7 @@ def test_events_read_as_one_sentence_old_and_new() -> None:
 
 
 def test_where_an_event_ran_new_and_old() -> None:
-    from src.modules.app_event_details import app_event_origin, app_event_origin_parts
+    from src.modules.core.app_event_details import app_event_origin, app_event_origin_parts
 
     # The server's own work and transfers by their action; the page recorded with the event otherwise.
     assert app_event_origin('process_dataset', {}, 'module:workspace') == 'server:background'

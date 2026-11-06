@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 
 import src.DriveTestAnalyzer as core
-from src.modules.ppt_designer import design_viewer_tokens
-from src.modules.scoring_themes import THEMES
+from src.modules.ppt_designer.ppt_designer import design_viewer_tokens
+from src.modules.scoring.scoring_themes import THEMES
 
 
 def _login(client) -> None:
@@ -58,8 +58,8 @@ def test_the_page_variables_follow_each_theme() -> None:
 
 def test_the_theme_is_chosen_only_in_the_floating_bar() -> None:
     root = core.PROJECT_ROOT / 'src' / 'web_interface' / 'static'
-    script = (root / 'js' / 'app.js').read_text(encoding='utf-8')
-    css = (root / 'css' / 'app.css').read_text(encoding='utf-8')
+    script = (root / 'js' / 'core' / 'app.js').read_text(encoding='utf-8')
+    css = (root / 'css' / 'core' / 'app.css').read_text(encoding='utf-8')
     # The bar copies the Theme selector of Scoring & GAP Analysis, Network Insights, CDR Analysis and PPT Designer and
     # hides the one of the page, which stays as the one the module reads.
     assert "document.querySelector('select[data-section-bar-theme], select[data-scoring-theme-select], select#ni-theme')" in script

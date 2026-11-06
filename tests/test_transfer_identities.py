@@ -7,15 +7,15 @@ import json
 from pathlib import Path
 
 import src.DriveTestAnalyzer as core
-from src.modules import bundle_report_templates as brt
-from src.modules import network_insights_favourites as ni_favourites
-from src.modules import saved_filters
-from src.modules.deletion_rights import (
+from src.modules.reporting import bundle_report_templates as brt
+from src.modules.network_insights import network_insights_favourites as ni_favourites
+from src.modules.scoring import saved_filters
+from src.modules.core.deletion_rights import (
     AUTO_CALCULATED_FIELDS, PPT_DESIGNER, SCORING_METHODOLOGIES, SCORING_REPORT_CONFIGURATIONS, creators, set_creator,
 )
-from src.modules.repository import Repository
-from src.modules.scoring_reports import default_report_configuration, load_report_state, save_named_configuration
-from src.modules.transfer_identities import (
+from src.modules.core.repository import Repository
+from src.modules.scoring.scoring_reports import default_report_configuration, load_report_state, save_named_configuration
+from src.modules.core.transfer_identities import (
     SCORING_REPORT_CONFIGURATIONS as REPORT_IDENTITIES, ItemMatcher, identities, imported_creator, move_identity,
 )
 from tests.scoring_fixtures import load_initial_scoring_configuration
@@ -115,7 +115,7 @@ def test_designs_are_replaced_by_identity_or_name_and_the_others_kept(client, tm
 
     # A Reporting Job that names the Design by its ID on the source finds the one it replaced.
     assert brt.design_aliases(destination_repo) == {'d2': 'x9'}
-    from src.modules.report_tasks import import_tasks_document, list_tasks
+    from src.modules.reporting.report_tasks import import_tasks_document, list_tasks
     document = {'format': 'drivetest-analyzer-reporting-jobs', 'version': 1, 'reporting_jobs': [{
         'name': 'Weekly', 'enabled': False, 'schedule': {'mode': 'manual'}, 'created_by': 'super',
         'definition': {'designs': [{'design_id': 'd2', 'label': 'Speed v2'}]},
@@ -204,7 +204,7 @@ def test_scoring_report_templates_follow_their_renames_and_creators(client, tmp_
     # Kept with its identity under another name on the source, it takes that name in the destination.
     state = load_report_state(source_repo)
     state['configurations'][0]['name'] = 'Monthly v2'
-    from src.modules.scoring_reports import store_configurations
+    from src.modules.scoring.scoring_reports import store_configurations
     store_configurations(source_repo, state['configurations'])
     move_identity(source_repo, REPORT_IDENTITIES, 'Monthly', 'Monthly v2')
     _transfer('scoring-report-templates', source, destination, tmp_path)
@@ -387,8 +387,8 @@ def test_designs_transferred_back_and_forth_keep_the_identity_of_their_template_
 
 
 def test_reporting_jobs_and_excluded_calls_follow_their_renames(client, tmp_path):
-    from src.modules import scoring_exclusions
-    from src.modules.report_tasks import list_tasks, save_task
+    from src.modules.scoring import scoring_exclusions
+    from src.modules.reporting.report_tasks import list_tasks, save_task
 
     source, source_repo = _workspace('Jobs source')
     destination, destination_repo = _workspace('Jobs destination')
@@ -467,7 +467,7 @@ def test_users_profiles_and_groups_are_found_by_their_identity(client):
 
 
 def test_an_imported_workspace_keeps_the_hashes_of_the_cdr_files_it_placed(client, tmp_path):
-    from src.modules.scoring_history import HISTORY_FILES_TABLE, ensure_history_tables, file_sha256
+    from src.modules.scoring.scoring_history import HISTORY_FILES_TABLE, ensure_history_tables, file_sha256
 
     workspace, repo = _workspace('Hashes')
     placed = workspace.input_dir / 'cdr.xlsx'
@@ -526,21 +526,21 @@ def test_import_summaries_come_in_parts_for_the_summary_window():
     assert json.loads(json.dumps({'notice': notice, 'details': core.import_notice_details(notice)}))['details']['packages'][1] == 'PPT Templates imported successfully.'
     assert core.import_notice_details('Plain message.') is None
     # The incoming and outgoing transfers and the imports open it in a wide window.
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert "showImportSummary(offer.notice || 'The incoming transfer was imported successfully.', offer.notice_details" in script
     assert "showImportSummary(transfer.notice || 'The destination server received and imported the package successfully.', transfer.notice_details" in script
     assert 'function importSummaryContent(details) {' in script and "infoOverlay.classList.toggle('info-wide', Boolean(options.wide));" in script
     # What an import added and updated stands out, each in its colour, also in the sections of the updated items.
     assert "mark.className = match[1] ? 'import-count-new' : match[3] ? 'import-count-removed' : 'import-count-updated';" in script
     assert "entry.kind === 'updated' ? 'import-summary-section import-summary-updated'" in script
-    css = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    css = (Path(__file__).parents[1] / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
     assert 'mark.import-count-new {' in css and 'mark.import-count-updated {' in css and '.import-summary-updated h4 {' in css
 
 
 def test_the_incoming_transfer_dialog_names_every_element_with_its_title():
     import re
 
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     start = script.index('const transferContentLabels = {')
     labels = set(re.findall(r"^\s*'?([a-z_-]+)'?\s*:", script[start:script.index('};', start)], re.M))
     elements = {*core.STATIC_EXPORT_TARGETS, *core.WORKSPACE_ELEMENT_EXPORT_TARGETS, *core.WORKSPACE_ARCHIVE_COMPONENTS,
@@ -605,8 +605,9 @@ def test_a_ppt_template_its_ppt_designs_use_changes_only_with_them_as_the_previe
 
 
 def test_importing_the_same_map_areas_and_nq_layouts_again_changes_nothing(client, tmp_path, monkeypatch):
-    from src.modules import map_areas, non_qualified_calls
-    from src.modules.import_changes import describe_changes
+    from src.modules.network import map_areas
+    from src.modules.nq import non_qualified_calls
+    from src.modules.core.import_changes import describe_changes
 
     workspace = core.active_workspace
     map_areas.save_layer(core.repository, country_code='GBR', level='region', level_label='Region', origin='Imported',
@@ -667,7 +668,7 @@ def test_the_preview_tells_what_an_import_would_do_and_only_the_chosen_packages_
     else:
         raise AssertionError('A bundle with no package chosen was imported.')
     # The preview window is the step before an Import ZIP and a received transfer.
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert 'function showImportPreview(preview, options = {}) {' in script
     assert "await fetch('/admin/import-export/import/preview', {" in script
     assert "/preview/${chosen ? 'import' : 'reject'}" in script
@@ -720,8 +721,8 @@ def test_the_preview_of_an_application_config_tells_what_replacing_the_applicati
 def test_the_nq_calls_configuration_and_the_follow_up_of_the_calls_tell_what_changed_in_detail(client):
     import copy
 
-    from src.modules import non_qualified_calls
-    from src.modules.import_changes import DETAILED_ELEMENTS, compare, element_items, predict
+    from src.modules.nq import non_qualified_calls
+    from src.modules.core.import_changes import DETAILED_ELEMENTS, compare, element_items, predict
 
     non_qualified_calls.ensure_nq_tables(core.repository)
     before = json.loads(non_qualified_calls.export_configuration_document(core.repository))
@@ -767,8 +768,8 @@ def test_the_nq_calls_configuration_and_the_follow_up_of_the_calls_tell_what_cha
 
 
 def test_favourites_filters_with_a_campaign_choice_are_compared_without_the_cdrs_of_the_exporting_server():
-    from src.modules.cdr_auto_selection import LATEST_TWO_CAMPAIGNS
-    from src.modules.import_changes import element_items, predict
+    from src.modules.cdr.cdr_auto_selection import LATEST_TWO_CAMPAIGNS
+    from src.modules.core.import_changes import element_items, predict
 
     def items(cdrs: list[str], campaign: str) -> list:
         entry = {'name': 'Latest 2 Campaigns - All Regions', 'pinned': True, 'nr_mode': 'NSA', 'levels': ['Region'],
@@ -787,8 +788,8 @@ def test_favourites_filters_with_a_campaign_choice_are_compared_without_the_cdrs
 
 
 def test_the_preview_predicts_each_element_as_its_import_saves_it(client, tmp_path, monkeypatch):
-    from src.modules import non_qualified_calls
-    from src.modules.import_changes import describe_changes, element_items, predict, settings_values
+    from src.modules.nq import non_qualified_calls
+    from src.modules.core.import_changes import describe_changes, element_items, predict, settings_values
 
     workspace = core.active_workspace
     # PPT Templates: their content, not their default (an import keeps that of the workspace), and their creator.

@@ -8,8 +8,8 @@ import sqlite3
 from pptx import Presentation
 
 import src.DriveTestAnalyzer as app_module
-from src.modules import saved_filters
-from src.modules.repository import Repository
+from src.modules.scoring import saved_filters
+from src.modules.core.repository import Repository
 from tests.test_scoring_api import scoring_api
 
 

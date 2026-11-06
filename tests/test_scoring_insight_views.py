@@ -12,9 +12,9 @@ import zlib
 import pytest
 from pptx import Presentation
 
-from src.modules.scoring_exports import export_scoring_powerpoint
-from src.modules.scoring_insights import MAX_LEVERS, MAX_ROUTE_STRETCHES, MAX_SITES
-from src.modules.scoring_views import build_scoring_views
+from src.modules.scoring.scoring_exports import export_scoring_powerpoint
+from src.modules.scoring.scoring_insights import MAX_LEVERS, MAX_ROUTE_STRETCHES, MAX_SITES
+from src.modules.scoring.scoring_views import build_scoring_views
 from tests.scoring_cdr_synthetic import ROUTES, synthetic_cdr_result
 from tests.scoring_fixtures import export_panels_only
 from tests.shared_results import shared_result
@@ -112,8 +112,8 @@ def test_gap_parts_add_up_to_the_total_gap_of_each_campaign(national):
 
 
 def test_operators_without_identified_sites_are_listed_apart_from_the_sites_to_review():
-    from src.modules.scoring_insights import _serving_views
-    from src.modules.scoring_points_loss import NOT_SPECIFIED, SITE
+    from src.modules.scoring.scoring_insights import _serving_views
+    from src.modules.scoring.scoring_points_loss import NOT_SPECIFIED, SITE
 
     def site_map(operator, areas):
         return {'field': SITE, 'operator': operator, 'label': operator, 'color': '#123456', 'is_reference': operator == 'BT',
@@ -127,17 +127,17 @@ def test_operators_without_identified_sites_are_listed_apart_from_the_sites_to_r
     assert [item['operator'] for item in views['sites_to_review']] == ['VF']
     [missing] = views['sites_unidentified']
     assert (missing['operator'], missing['unidentified'], missing['campaign']) == ('BT', 61.5, '26-Q3')
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     assert "const unidentified = insightItems(payload, 'sites_unidentified', environment);" in script
     assert 'none of the cells `' in script and 'cannot be `' in script
 
 
 def test_points_lost_per_vendor_puts_the_vendor_series_of_an_operator_together():
     # Ticket #81: split by Vendor, each Vendor is a series of its own, whose table held that Vendor alone at 100%.
-    from src.modules.scoring_exports import _slide
-    from src.modules.scoring_insights import VENDORS_TOTAL_LABEL, _serving_views
-    from src.modules.scoring_points_loss import VENDOR
-    from src.modules.scoring_summary_slides import add_serving_loss_slides
+    from src.modules.scoring.scoring_exports import _slide
+    from src.modules.scoring.scoring_insights import VENDORS_TOTAL_LABEL, _serving_views
+    from src.modules.scoring.scoring_points_loss import VENDOR
+    from src.modules.scoring.scoring_summary_slides import add_serving_loss_slides
 
     def vendor_map(operator, vendor, total, cities):
         return {'field': VENDOR, 'operator': operator, 'label': operator, 'color': '#E60000', 'is_reference': False,
@@ -182,10 +182,10 @@ def test_points_lost_per_ran_vendor_and_site_type_count_the_calls_and_tests():
     # site types (Legacy, eMOCN, NNS) of the serving cells, with the calls and tests and the points lost per 1,000 of them.
     import pandas as pd
 
-    from src.modules.scoring import calculate_scoring
-    from src.modules.scoring_exports import _slide
-    from src.modules.scoring_summary_slides import add_serving_loss_slides
-    from src.modules.serving_cells import ran_vendor_class, site_class
+    from src.modules.scoring.scoring import calculate_scoring
+    from src.modules.scoring.scoring_exports import _slide
+    from src.modules.scoring.scoring_summary_slides import add_serving_loss_slides
+    from src.modules.network.serving_cells import ran_vendor_class, site_class
     from tests.scoring_cdr_synthetic import netcheck_2026_configuration, synthetic_cdr_frames
 
     frames = synthetic_cdr_frames(campaigns=('2026-Q3',), repeats=1)
@@ -267,8 +267,8 @@ def test_sites_vendors_and_stretches_find_where_the_points_are_lost(national):
 def test_the_route_stretch_map_colours_each_stretch_by_its_points_lost(national) -> None:
     from PIL import Image
 
-    from src.modules.scoring_summary_slides import render_stretch_map, stretch_colour
-    from src.modules.scoring_themes import THEMES
+    from src.modules.scoring.scoring_summary_slides import render_stretch_map, stretch_colour
+    from src.modules.scoring.scoring_themes import THEMES
     scale = THEMES['ericsson']['scale']
     # From the third colour of the quality scale (little lost) through the second to the first (the most lost).
     assert (stretch_colour(0, scale), stretch_colour(.5, scale), stretch_colour(1, scale)) == (scale[2], scale[1], scale[0])
@@ -292,8 +292,8 @@ def test_locations_are_ranked_and_compared_with_the_reference(cities):
         assert row['delta'] is not None and row['vendors']
     assert {row['kind'] for row in ranking['rows']} == {'place', 'route'}
     # Their slides name the level instead of Location, as the page does.
-    from src.modules.scoring_summary_slides import add_location_ranking_slides, add_location_versus_slides
-    from src.modules.scoring_exports import _slide
+    from src.modules.scoring.scoring_summary_slides import add_location_ranking_slides, add_location_versus_slides
+    from src.modules.scoring.scoring_exports import _slide
     deck = Presentation(TEMPLATE)
     add_location_ranking_slides(deck, [ranking], subtitle='', new_slide=_slide)
     add_location_versus_slides(deck, [ranking], subtitle='', new_slide=_slide)
@@ -362,7 +362,7 @@ def test_the_campaigns_card_lists_the_other_analysed_campaigns_below_the_referen
     # The reference (the latest campaign), then the others, the newest first.
     assert 'CAMPAIGNS' in texts and '26-Q3' in texts
     assert '+2 campaigns: 26-Q2, 26-Q1' in texts
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     assert "const otherCampaigns = scope.campaigns.filter(campaign => !latest.includes(campaign)).reverse();" in script
     # With NSA vs SA the reference is the latest NSA and the latest SA campaign.
     assert "[scope.campaigns.filter(campaign => !isSa(campaign)).at(-1), scope.campaigns.filter(isSa).at(-1)]" in script
@@ -370,7 +370,7 @@ def test_the_campaigns_card_lists_the_other_analysed_campaigns_below_the_referen
 
 
 def test_the_campaign_comparison_exports_the_focus_operators(national, monkeypatch):
-    import src.modules.scoring_exports as exports
+    import src.modules.scoring.scoring_exports as exports
     job, result, _insights = national
     shown = []
     monkeypatch.setattr(exports, 'add_campaign_comparison_slides',
@@ -389,7 +389,7 @@ def test_the_campaign_comparison_exports_the_focus_operators(national, monkeypat
 
 
 def test_the_biggest_levers_export_the_focus_operators(national, monkeypatch):
-    import src.modules.scoring_exports as exports
+    import src.modules.scoring.scoring_exports as exports
     job, result, _insights = national
     shown = []
     monkeypatch.setattr(exports, 'add_levers_slides', lambda _presentation, levers, compared, **_options: shown.append(
@@ -407,8 +407,8 @@ def test_the_biggest_levers_export_the_focus_operators(national, monkeypatch):
 
 
 def test_the_route_of_where_to_act_is_drawn_as_the_routes_of_points_lost(national, monkeypatch) -> None:
-    import src.modules.scoring_summary_slides as summary_slides
-    from src.modules.scoring_act_slides import render_owner_route_map
+    import src.modules.scoring.scoring_summary_slides as summary_slides
+    from src.modules.scoring.scoring_act_slides import render_owner_route_map
     _job, _result, insights = national
     route = next(item for item in insights['route_focus'] if item['routes'])['routes'][0]
     calls = []
@@ -419,7 +419,7 @@ def test_the_route_of_where_to_act_is_drawn_as_the_routes_of_points_lost(nationa
     # One map for both: its top stretches numbered, each owner as the ring of its circles, on a square for the slide.
     assert image.size == (1100, 1100)
     assert calls and calls[0]['ranked'] == route['top'] and calls[0]['measure'] == 'Points lost' and calls[0]['ring_color']
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     # On the page: the same map, opened larger on a double-click, its stretches chosen in the table beside it, and the
     # operators of every view of the results in the order of the Operator Maps.
     assert "return makeStretchMap(route, '#64748b', [], {ranked: route.top, ringColor: ownerColor" in script
@@ -431,9 +431,9 @@ def test_the_route_of_where_to_act_is_drawn_as_the_routes_of_points_lost(nationa
 
 
 def test_owners_take_their_colours_in_one_order_and_cards_without_a_breakdown_ask_to_recalculate() -> None:
-    from src.modules.scoring_act_slides import owner_palette
-    from src.modules.scoring_themes import THEMES, use_theme
-    from src.modules.scoring_where_to_act import owner_cards, owner_order
+    from src.modules.scoring.scoring_act_slides import owner_palette
+    from src.modules.scoring.scoring_themes import THEMES, use_theme
+    from src.modules.scoring.scoring_where_to_act import owner_cards, owner_order
     # The owners of the UK measurements first, Vendor B before Vendor A (their colours swapped), the others by name.
     assert owner_order(['Vendor A', 'Region X', 'Vendor B', 'VMO2 South', 'VMO2 North', '']) == [
         'VMO2 North', 'VMO2 South', 'Vendor B', 'Vendor A', 'Region X']

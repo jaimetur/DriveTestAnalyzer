@@ -2,7 +2,7 @@
 import json
 import sqlite3
 
-from src.modules import ppt_naming
+from src.modules.ppt_designer import ppt_naming
 
 
 class _State:

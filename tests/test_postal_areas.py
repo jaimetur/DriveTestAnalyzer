@@ -15,16 +15,17 @@ import pandas as pd
 import pytest
 from pptx import Presentation
 
-from src.modules import map_areas, postal_areas, saved_filters
-from src.modules import scoring_points_loss as points_loss
-from src.modules.map_areas import AreaIndex
-from src.modules.repository import Repository
-from src.modules.scoring import calculate_points_loss, calculate_scoring
-from src.modules.scoring_exports import export_scoring_powerpoint, export_scoring_report
-from src.modules.scoring_export_panels import default_export_panels
-from src.modules.scoring_points_loss import POSTAL, map_background, map_boundaries
-from src.modules.scoring_reports import default_scenario
-from src.modules.scoring_views import build_scoring_views
+from src.modules.network import map_areas, postal_areas
+from src.modules.scoring import saved_filters
+from src.modules.scoring import scoring_points_loss as points_loss
+from src.modules.network.map_areas import AreaIndex
+from src.modules.core.repository import Repository
+from src.modules.scoring.scoring import calculate_points_loss, calculate_scoring
+from src.modules.scoring.scoring_exports import export_scoring_powerpoint, export_scoring_report
+from src.modules.scoring.scoring_export_panels import default_export_panels
+from src.modules.scoring.scoring_points_loss import POSTAL, map_background, map_boundaries
+from src.modules.scoring.scoring_reports import default_scenario
+from src.modules.scoring.scoring_views import build_scoring_views
 from tests.scoring_fixtures import scoring_configuration
 from tests.test_scoring_exports import TEMPLATE
 
@@ -295,7 +296,7 @@ def test_layers_round_trip_in_their_document(fake_repository, tmp_path):
 
 def _old_table(repository, rows):
     """The table of earlier versions, with one map per country."""
-    from src.modules.map_areas import _pack
+    from src.modules.network.map_areas import _pack
 
     with repository.connection() as connection:
         connection.execute(
@@ -435,7 +436,7 @@ def test_the_map_of_the_postal_codes_of_a_country_is_chosen_in_workspace_config(
     assert [events[1][1]['origin'], events[2][1]['origin']] == [postal_areas.FULL_ORIGIN, 'GeoNames']
     assert events[3][1]['country'] == 'GBR' and events[3][1]['map'] == postal_areas.PLACE and events[3][1]['origin'] == 'GeoNames'
     # The panel knows what each country uses.
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/map_areas.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/workspace/map_areas.js').read_text(encoding='utf-8')
     assert 'Full postcodes' in script and 'One point per place' in script and 'Own file' in script
 
 
@@ -499,7 +500,7 @@ def test_the_points_lost_are_spread_over_the_postal_codes():
 
 
 def test_postal_codes_rank_by_their_points_per_1000_tests_with_a_lower_minimum(monkeypatch):
-    from src.modules import scoring_insights
+    from src.modules.scoring import scoring_insights
 
     monkeypatch.setattr(scoring_insights, 'MIN_POSTAL_RATE_TESTS', 35)
     job, result = _postal_result()
@@ -610,7 +611,7 @@ def test_a_transfer_brings_the_map_of_the_postal_codes_to_the_same_filter(tmp_pa
 
 
 def test_the_preview_of_a_transfer_tells_the_same_filter_with_its_postal_codes():
-    from src.modules.import_changes import favourites_filter_items, kept_postal_codes, predict
+    from src.modules.core.import_changes import favourites_filter_items, kept_postal_codes, predict
 
     entry = {'name': 'Quarter', 'nr_mode': 'NSA', 'levels': ['Operator'], 'baseline_operator': 'EE', 'scoring_profile_id': '',
              'context_filters': {'Campaign': ['@latest-campaign']}, 'pinned': True, 'cdrs': [], 'area_summary': SUMMARY}
@@ -649,7 +650,7 @@ SUMMARY = {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign'
 
 def test_postal_codes_are_a_selection_of_their_own_and_every_other_keeps_its_identity():
     plain = saved_filters.saved_filter_key([1], ['Operator'], 'NSA', 'EE', {}, '', SUMMARY)
-    from src.modules.scoring_area_summary import normalize_area_summary_request
+    from src.modules.scoring.scoring_area_summary import normalize_area_summary_request
     assert 'postal_codes' not in normalize_area_summary_request(SUMMARY)
     assert normalize_area_summary_request({**SUMMARY, 'postal_codes': True})['postal_codes'] is True
     assert saved_filters.saved_filter_key([1], ['Operator'], 'NSA', 'EE', {}, '', {**SUMMARY, 'postal_codes': True}) != plain
@@ -659,8 +660,8 @@ def test_postal_codes_are_a_selection_of_their_own_and_every_other_keeps_its_ide
 
 
 def test_the_map_of_the_postal_codes_is_kept_with_the_selection_but_is_not_its_identity():
-    from src.modules.scoring_area_summary import normalize_area_summary_request
-    from src.modules.scoring_reports import _normalize_area_summary
+    from src.modules.scoring.scoring_area_summary import normalize_area_summary_request
+    from src.modules.scoring.scoring_reports import _normalize_area_summary
 
     asked = {**SUMMARY, 'postal_codes': True}
     # Only another map than the default one is said, so that the Saved Filters of before keep their form and their result.
@@ -720,7 +721,7 @@ def test_another_map_replaces_the_result_of_the_same_saved_filter(repository, mo
 def test_the_page_chooses_the_map_only_with_postal_codes_and_says_which_one_it_used():
     root = Path(__file__).resolve().parents[1] / 'src/web_interface'
     page = (root / 'templates/scoring.html').read_text(encoding='utf-8')
-    script = (root / 'static/js/scoring.js').read_text(encoding='utf-8')
+    script = (root / 'static/js/scoring/scoring.js').read_text(encoding='utf-8')
     assert 'data-scoring-area-postal-map-field hidden' in page and 'data-scoring-area-postal-map ' in page
     assert all(f'<option value="{key}"' in page for key in postal_areas.MAP_LABELS)
     assert "/api/scoring/postal-maps" in script and 'postal_note' in script and 'map.replaces' in script

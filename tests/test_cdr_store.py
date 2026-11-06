@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import cdr_store
-from src.modules.repository import CDR_ROWS_IN_COPY_MESSAGE, local_now_iso
+from src.modules.cdr import cdr_store
+from src.modules.core.repository import CDR_ROWS_IN_COPY_MESSAGE, local_now_iso
 
 
 @pytest.fixture(autouse=True)
@@ -261,7 +261,7 @@ def test_the_rows_of_a_cdr_with_filters_are_the_same_from_its_copy(client, tmp_p
 def test_the_design_columns_of_the_copies_are_those_of_the_combined_table(client, tmp_path):
     import numpy as np
     import sqlite3
-    from src.modules import design_column_cache as dcc
+    from src.modules.ppt_designer import design_column_cache as dcc
 
     first = add_cdr(tmp_path, 'first.csv', 'data', pd.DataFrame({
         'Operator': ['EE', ' o2 ', 'EE'], 'Call Status': ['Completed', 'Failed', None], 'Mean_Data_Rate': [12.5, None, 3],
@@ -307,8 +307,8 @@ def test_the_design_columns_of_the_copies_are_those_of_the_combined_table(client
 def test_the_rf_number_and_day_columns_of_the_copies_are_those_sqlite_gives(client, tmp_path, monkeypatch):
     import numpy as np
     import sqlite3
-    from src.modules import design_column_cache as dcc
-    from src.modules.rf_catalog_source import rf_number_term
+    from src.modules.ppt_designer import design_column_cache as dcc
+    from src.modules.ppt_designer.rf_catalog_source import rf_number_term
 
     # Numbers with up to 17 digits (kept as they are, not written as text), text with spaces or blank, numbers and text
     # in one column, and times whose day is (or is not) that of their first 10 characters.
@@ -776,7 +776,7 @@ def test_the_copies_travel_with_the_database_of_their_workspace(client, tmp_path
 
 
 def test_the_query_builder_reads_the_rows_of_an_emptied_table_from_its_copy(client, tmp_path):
-    from src.modules import query_builder
+    from src.modules.builders import query_builder
 
     first = add_cdr(tmp_path, 'first.csv', 'data', data_rows())
     second = add_cdr(tmp_path, 'second.csv', 'data', pd.DataFrame({'Operator': ['O2', 'EE'], 'RSRP': [-95, -80]}))
@@ -851,7 +851,7 @@ def test_the_copies_become_the_only_store_and_the_database_gives_back_the_room(c
 
 
 def test_the_query_builder_pages_need_only_the_first_rows_of_the_copies(client, tmp_path, monkeypatch):
-    from src.modules import query_builder
+    from src.modules.builders import query_builder
 
     first = add_cdr(tmp_path, 'first.csv', 'data', pd.DataFrame({
         'Operator': (['EE', 'O2', 'EE', 'Three', 'EE', 'O2'] * 5)[:28], 'Rate': range(28)}))
@@ -891,7 +891,7 @@ def test_the_query_builder_pages_need_only_the_first_rows_of_the_copies(client, 
 
 
 def test_reading_an_emptied_table_takes_no_write_lock_of_the_workspace(client, tmp_path):
-    from src.modules.repository import workspace_read_connection, workspace_write_lock
+    from src.modules.core.repository import workspace_read_connection, workspace_write_lock
 
     data = add_cdr(tmp_path, 'data.csv', 'data', data_rows())
     copy_everything()

@@ -6,7 +6,7 @@ from zipfile import ZipFile
 from lxml import etree
 from pptx import Presentation
 
-from src.modules.scoring_exports import export_scoring_powerpoint
+from src.modules.scoring.scoring_exports import export_scoring_powerpoint
 from tests.scoring_fixtures import scoring_configuration
 from tests.test_scoring_exports import TEMPLATE, _mapping_groups, _result
 
@@ -165,7 +165,7 @@ def test_generated_scoring_pptx_serializes_valid_table_and_combo_chart_structure
 
 def test_titles_keep_the_template_size_while_they_fit_the_title_placeholder():
     from pptx.util import Pt
-    from src.modules.scoring_exports import _emphasize_title, _fit_slide_title_on_one_line
+    from src.modules.scoring.scoring_exports import _emphasize_title, _fit_slide_title_on_one_line
 
     presentation = Presentation(TEMPLATE)
     layout = next(layout for layout in presentation.slide_layouts if layout.name == 'Title Only')

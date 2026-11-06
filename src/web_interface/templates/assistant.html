@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
-<link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
-<link rel="stylesheet" href="{{ static_path('css/assistant.css') }}?v={{ asset_version('css/assistant.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/core/rich_text.css') }}?v={{ asset_version('css/core/rich_text.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/assistant/assistant.css') }}?v={{ asset_version('css/assistant/assistant.css') }}">
 <section class="dashboard-stack spacious-stack assistant-page" id="assistant">
   <article class="panel hero-panel module-hero-assistant">
     <p class="eyebrow">AI Assistant</p>
@@ -78,6 +78,6 @@
   </div>
 </div>
 <script id="assistant-config" type="application/json">{{ assistant_config | tojson }}</script>
-<script defer src="{{ static_path('js/rich_text.js') }}?v={{ asset_version('js/rich_text.js') }}"></script>
-<script defer src="{{ static_path('js/assistant.js') }}?v={{ asset_version('js/assistant.js') }}"></script>
+<script defer src="{{ static_path('js/core/rich_text.js') }}?v={{ asset_version('js/core/rich_text.js') }}"></script>
+<script defer src="{{ static_path('js/assistant/assistant.js') }}?v={{ asset_version('js/assistant/assistant.js') }}"></script>
 {% endblock %}

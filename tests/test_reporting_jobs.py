@@ -9,12 +9,12 @@ from pathlib import Path
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import report_tasks
-from src.modules.report_tasks import (
+from src.modules.reporting import report_tasks
+from src.modules.reporting.report_tasks import (
     next_run_after, normalize_definition, normalize_schedule, recurrence_label, register_report_artifact_provider,
     safe_file_name,
 )
-from src.modules.scoring_reports import default_report_configuration
+from src.modules.scoring.scoring_reports import default_report_configuration
 
 # The Reporting Jobs every workspace starts with (assets/reporting-jobs).
 STARTER_JOBS = {json.loads(path.read_text(encoding='utf-8'))['name']
@@ -767,7 +767,7 @@ def test_reporting_state_names_its_workspace_for_editor_drafts(client):
 
 
 def test_module_artifacts_always_include_a_document_with_their_excel():
-    from src.modules import report_tasks
+    from src.modules.reporting import report_tasks
 
     register_report_artifact_provider('document_and_excel_test', 'Document Test', 'reporting', lambda *_args: [],
                                       formats=('powerpoint', 'word', 'excel'))
@@ -781,7 +781,7 @@ def test_module_artifacts_always_include_a_document_with_their_excel():
 
 
 def test_job_artifacts_are_grouped_by_module_with_their_entries():
-    from src.modules import report_tasks
+    from src.modules.reporting import report_tasks
 
     groups = report_tasks.artifact_groups({
         'dataset_analysis': {'enabled': True, 'formats': ['powerpoint', 'word']},
@@ -801,7 +801,7 @@ def test_cdr_analysis_word_keeps_the_powerpoint_of_the_same_run(tmp_path, monkey
     # from an intermediate presentation must not replace or remove the PowerPoint next to it.
     monkeypatch.setattr(core, 'build_dataset_summary_reports', lambda *_args, **_kwargs: ([], []))
     monkeypatch.setattr(core, 'export_dataset_summary_powerpoint', lambda path, _reports: Path(path).write_bytes(b'pptx'))
-    monkeypatch.setattr('src.modules.pptx_to_docx.pptx_to_docx', lambda content, *_args, **_kwargs: b'docx')
+    monkeypatch.setattr('src.modules.reporting.pptx_to_docx.pptx_to_docx', lambda content, *_args, **_kwargs: b'docx')
     # No workspace is open: the user's theme (kept in the workspace) is the default one.
     monkeypatch.setattr(core, 'load_user_theme', lambda *_args, **_kwargs: 'ericsson')
     powerpoint = tmp_path / '20261007_120000 - CDR Analysis.pptx'
@@ -814,8 +814,8 @@ def test_cdr_analysis_word_keeps_the_powerpoint_of_the_same_run(tmp_path, monkey
 
 def test_the_non_qualified_calls_artifact_keeps_campaign_choices_until_each_run():
     root = Path(__file__).parents[1]
-    script = (root / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
-    module = (root / 'src/modules/non_qualified_calls.py').read_text(encoding='utf-8')
+    script = (root / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
+    module = (root / 'src/modules/nq/non_qualified_calls.py').read_text(encoding='utf-8')
 
     # Its Campaign filter offers the automatic choices first, each alone, and keeps a saved one when NR Mode changes.
     assert "const presets = key === 'campaign' ? campaignPresets : [];" in script
@@ -842,7 +842,7 @@ def test_a_job_can_start_from_a_favourite_bundle_report_template():
     assert not report_tasks.based_on_favourite({**definition, 'scoring': [SCORING_ENTRY]})
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
     assert 'name="rj-source" value="favourite" checked' in page and 'name="rj-source" value="editor"' in page
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
     # From a favourite, the job generates only its Bundle Report Template; one that does opens as such in the editor.
     assert 'function favouriteDefinition(base)' in script and 'function favouriteOf(definition)' in script
     assert "if (jobSource() === 'favourite' && !$('rj-favourite')?.value)" in script
@@ -891,8 +891,8 @@ def test_jobs_are_labelled_with_the_area_and_nr_modes_of_their_artifacts(client)
                                               'definition': {'scoring': [SCORING_ENTRY]}}).raise_for_status()
     task = next(item for item in client.get('/api/reporting/state').json()['tasks'] if item['name'] == 'Labelled')
     assert task['nr_modes'] == ['NSA'] and task['scopes'][0]['dimension'] == 'all'
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
-    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
+    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/reporting/report_jobs.css').read_text(encoding='utf-8')
     assert 'const tabs = scopeTabs(task);' in script and "label.dataset.nrMode = mode === 'NSA+SA' ? 'nsa-vs-sa' : mode.toLowerCase();" in script
     # The NR Modes on the line of the modules, after a separator.
     assert "if (modes.length && line.childElementCount) line.append(node('span', undefined, 'rj-task-separator'));" in script
@@ -916,8 +916,8 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
     task = next(item for item in client.get('/api/reporting/state').json()['tasks'] if item['name'] == 'Modules')
     assert task['modules'] == ['scoring']
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
-    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
+    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/reporting/report_jobs.css').read_text(encoding='utf-8')
     # On the first line of the name, always on one line: the box of the job and its modules abbreviated.
     assert "const MODULE_TAGS = {scoring: 'SCO', network_insights: 'NI', non_qualified_calls: 'NQ', designs: 'PPT', dataset_analysis: 'CDR'};" in script
     assert '.report-jobs .rj-task-modules { display: flex; flex-wrap: nowrap;' in styles
@@ -973,9 +973,9 @@ def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(
 
 def test_reporting_tables_filter_by_column_show_ten_rows_and_keep_their_bar_and_header_in_view():
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
-    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
-    helper = (core.PROJECT_ROOT / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
+    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/reporting/report_jobs.css').read_text(encoding='utf-8')
+    helper = (core.PROJECT_ROOT / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     # Every column of the Reporting Jobs and of the Run History but Actions filters as in Excel, Artifacts by module and
     # the dates by year, month and day, whatever their time.
     assert "head: head.tHead, rowSelector: kind === 'tasks' ? 'tr[data-task-id]' : 'tr[data-run-id]', menuClass: 'rj-column-filter-menu'," in script
@@ -1014,7 +1014,7 @@ def test_reporting_tables_filter_by_column_show_ten_rows_and_keep_their_bar_and_
     assert '.report-jobs .reporting-jobs-table.excel-filter-table thead th:last-child { padding: .55rem .6rem; vertical-align: middle; }' in styles
 
 def test_reporting_page_keeps_its_scroll_position_when_reloaded():
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
     assert "const SCROLL_KEY = 'drivetest-analyzer:/reporting:scroll';" in script
     assert "['reload', 'back_forward'].includes(navigation)" in script
     # An editor reopened by the reload does not move the page to it.
@@ -1022,7 +1022,7 @@ def test_reporting_page_keeps_its_scroll_position_when_reloaded():
 
 
 def test_imported_reporting_jobs_find_their_favourites_by_name(client):
-    from src.modules import bundle_report_templates
+    from src.modules.reporting import bundle_report_templates
     login(client)
     weekly = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
     monthly = bundle_report_templates.save_favourite(core.repository, None, 'Monthly', {'sections': [{'key': 'scoring', 'enabled': False}]}, 'super')
@@ -1063,7 +1063,7 @@ def test_imported_reporting_jobs_find_their_favourites_by_name(client):
 
 
 def test_deleting_a_favourite_disables_the_jobs_based_on_it(client):
-    from src.modules import bundle_report_templates
+    from src.modules.reporting import bundle_report_templates
     login(client)
     weekly = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
     other = bundle_report_templates.save_favourite(core.repository, None, 'Other', {}, 'super')
@@ -1087,12 +1087,12 @@ def test_deleting_a_favourite_disables_the_jobs_based_on_it(client):
     actions = [row['action'] for row in core.repository.list_logs(limit=20)] if hasattr(core.repository, 'list_logs') else []
     if actions:
         assert 'bundle_report_template_favourite_deleted' in actions and 'disable_reporting_job' in actions
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
     assert "'The associated Bundle Report Template no longer exists.'" in script
 
 
 def test_renaming_a_favourite_renames_the_jobs_based_on_it(client):
-    from src.modules import bundle_report_templates
+    from src.modules.reporting import bundle_report_templates
     login(client)
     weekly = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
     bundle_report_templates.save_favourite(core.repository, None, 'Taken', {}, 'super')
@@ -1113,7 +1113,7 @@ def test_renaming_a_favourite_renames_the_jobs_based_on_it(client):
     assert [tasks[task_id]['name'] for task_id in ids] == ['Weekly NetCheck', 'Weekly NetCheck']
     assert tasks[other]['name'] == 'Everything'
     assert tasks[ids[1]]['artifact_groups'][-1]['items'] == ['Weekly NetCheck (Word)']
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
     assert 'const named = (await jobsOf(selected)).based_on;' in script
     assert bundle_report_templates.get_favourite(core.repository, weekly['id'])['definition'] == weekly['definition']
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
@@ -1145,7 +1145,7 @@ def test_reporting_jobs_keep_the_order_they_are_dragged_to(client):
     actions = [str(row['action']) for row in core.repository.list_logs(limit=50)] if hasattr(core.repository, 'list_logs') else []
     if actions:
         assert 'reorder_reporting_jobs' in actions
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
     assert "api('/api/reporting/tasks/order', {method: 'POST', body: JSON.stringify({ids})})" in script
 
 
@@ -1189,8 +1189,8 @@ def test_jobs_saved_before_the_order_keep_their_alphabetical_order(tmp_path):
 def test_jobs_saved_before_store_one_theme(tmp_path):
     # Jobs saved when each artifact had its own theme (or none) store the default theme of the job, once, and those saved
     # when Bundle Report Templates had a former name their current artifact key.
-    from src.modules.repository import Repository
-    from src.modules.scoring_themes import DEFAULT_THEME
+    from src.modules.core.repository import Repository
+    from src.modules.scoring.scoring_themes import DEFAULT_THEME
 
     repository = Repository(tmp_path / 'workspace.db')
     with repository.connection() as connection:
@@ -1242,7 +1242,7 @@ def test_nsa_vs_sa_scoring_entries_show_each_nr_mode_as_chosen(client, monkeypat
     options = client.get('/api/reporting/options').json()
     assert options['nr_layouts'] == [['interleaved', 'Each panel: NSA then SA'], ['grouped', 'All NSA, then all SA']]
     # The editor offers both choices while NR Mode is NSA vs SA.
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
     assert "const syncNrViews = () => { nrViews.hidden = nrMode.value !== 'NSA+SA'; };" in script
     assert 'nr_layout: nrLayout.value, nr_charts: nrCharts.value,' in script
 
@@ -1262,7 +1262,7 @@ def test_the_jobs_table_enables_and_disables_a_job_with_its_switch(client):
     # The table shows the switch in its own column, before the actions (which no longer have ⏸ / ⏵).
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
     assert '<th>Status</th><th>Enable/Disable</th><th>Actions</th>' in page
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
     assert "const switchLabel = node('label', undefined, 'rj-enabled-switch rj-table-switch');" in script
     assert 'lastCell, statusCell, cellWith(switchLabel), cellWith(actions),' in script
     assert "'Disable the schedule'" not in script and "emptyRow(body, 'No Reporting Jobs yet.', 10);" in script
@@ -1276,13 +1276,13 @@ def test_checked_jobs_and_runs_run_stop_download_and_delete_from_a_toolbar(clien
                    'id="rj-delete-runs-selected"'):
         assert button in page
     assert page.count('class="bulk-toolbar" role="toolbar"') == 2
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
     # Each button acts only when every checked job or run has that button on in its row.
     assert 'const on = !busy && items.length > 0 && items.every(test);' in script
     assert "syncBulkButton(stopCheckedTasks, 'Stop', checked, (task) => taskStoppableRuns(task).length > 0, deletingCheckedTasks);" in script
     assert "syncBulkButton(downloadCheckedRuns, 'Download', checked, runDownloadable, actingOnCheckedRuns);" in script
     assert "actionButton('■', 'Stop its queued or running run', () => stopRuns(taskStoppableRuns(task)), 'icon-action rj-stop')" in script
-    styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
     assert all(f'.bulk-toolbar .bulk-action-{name} {{' in styles for name in ('up', 'down', 'run', 'stop', 'download', 'rerun', 'newer', 'delete'))
 
 
@@ -1312,11 +1312,11 @@ def test_several_runs_download_in_one_zip_with_a_folder_each(client):
 
 
 def test_bundle_report_files_of_reporting_jobs_are_named_dt_analyzer_bundle_report():
-    from src.modules import bundle_report_templates
-    from src.modules.report_tasks import artifact_path
+    from src.modules.reporting import bundle_report_templates
+    from src.modules.reporting.report_tasks import artifact_path
 
     assert bundle_report_templates.BUNDLE_REPORT_FILE_PREFIX == 'DT Analyzer Bundle Report'
-    source = (Path(__file__).parents[1] / 'src/modules/bundle_report_templates.py').read_text(encoding='utf-8')
+    source = (Path(__file__).parents[1] / 'src/modules/reporting/bundle_report_templates.py').read_text(encoding='utf-8')
     assert "artifact_path(folder, stamp, BUNDLE_REPORT_FILE_PREFIX, favourite['name'], suffix)" in source
     assert artifact_path(Path('/nonexistent'), '20261021_050000', 'DT Analyzer Bundle Report', 'Complete Report', '.pptx').name \
         == '20261021_050000 - DT Analyzer Bundle Report - Complete Report.pptx'

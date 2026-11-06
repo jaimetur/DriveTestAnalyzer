@@ -10,9 +10,10 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import non_qualified_calls as nq
-from src.modules import nq_catalog, nq_prioritization, scoring, scoring_exclusions, scoring_history
-from src.modules.repository import local_now_iso
+from src.modules.nq import non_qualified_calls as nq
+from src.modules.nq import nq_catalog, nq_prioritization
+from src.modules.scoring import scoring, scoring_exclusions, scoring_history
+from src.modules.core.repository import local_now_iso
 from tests.scoring_cdr_synthetic import synthetic_cdr_frames
 from tests.scoring_fixtures import load_initial_scoring_configuration
 from tests.test_non_qualified_calls import enable_module, login, workspace_user
@@ -773,7 +774,7 @@ def test_the_site_of_a_node_is_that_of_a_network_serving_the_operator_near_the_c
     site near Hull (named ENB0, the placeholder of the H3G rows of the VFUK mapping) never put the calls of both at one
     site: each call takes the node of a network that serves its operator (its own first) within the Serving Networks
     distance of it, and a node takes the sites of the newest snapshot that lists it."""
-    from src.modules import network_inventory
+    from src.modules.network import network_inventory
 
     cardiff, hull, london = (51.4857, -3.2041), (53.8031, -0.5652), (51.5072, -0.1276)
 
@@ -928,8 +929,8 @@ def test_every_call_holds_its_share_of_the_points_its_kpis_lose(prioritized):
         ('NSA', '2026-Q3', 'scored'), ('SA', '2026-Q3', 'scored')]
     # The points of the call success ratio the operators lose in the scoring of the NSA CDRs (calculated from their rows),
     # which every Non-Qualified Voice call shares.
-    from src.modules.scoring_config import validate_scoring_configuration
-    from src.modules.scoring_methodologies import methodology_for
+    from src.modules.scoring.scoring_config import validate_scoring_configuration
+    from src.modules.scoring.scoring_methodologies import methodology_for
     configuration = validate_scoring_configuration(methodology_for(core.repository.get_scoring_profiles(), '2026-Q3')['configuration'])
     result = scoring.calculate_scoring(prioritized['frames']['NSA'], ['Campaign', 'Operator'], configuration=configuration,
                                        operator_mappings=core.repository.list_operator_mappings())
@@ -1176,7 +1177,7 @@ def test_hotspots_and_consecutive_failures_mix_the_call_types(prioritized):
 def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     from pptx import Presentation
 
-    from src.modules import non_qualified_calls_export
+    from src.modules.nq import non_qualified_calls_export
 
     client = prioritized['client']
     panel = client.post('/api/non-qualified-calls/prioritization', json={'filters': {}}).json()

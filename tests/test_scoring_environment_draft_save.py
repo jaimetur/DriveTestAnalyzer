@@ -8,7 +8,7 @@ import pytest
 
 @pytest.mark.parametrize('persist_changes', [True, False])
 def test_environment_drafts_and_save_verification(persist_changes):
-    script = Path('src/web_interface/static/js/scoring_config.js').read_text()
+    script = Path('src/web_interface/static/js/scoring/scoring_config.js').read_text()
     start = script.index('  const environmentSaveSignature =')
     end = script.index('  const appendCell =', start)
     functions = script[start:end]
@@ -57,7 +57,7 @@ const setProfileCollection = saved => { profileCollection = saved; configuration
 
 
 def test_capture_selected_context_builds_and_saves_score_mapping():
-    script = Path('src/web_interface/static/js/scoring_config.js').read_text()
+    script = Path('src/web_interface/static/js/scoring/scoring_config.js').read_text()
     start = script.index('  const captureSelectedContext =')
     end = script.index('  const hydrateSelectedContext =', start)
     capture = script[start:end]

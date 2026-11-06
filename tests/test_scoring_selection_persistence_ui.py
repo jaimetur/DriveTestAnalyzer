@@ -6,7 +6,7 @@ from tests.test_scoring_results_controls import _function_source, _run_node_json
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCORING_TEMPLATE = PROJECT_ROOT / 'src/web_interface/templates/scoring.html'
-SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring.js'
+SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring/scoring.js'
 
 
 class _ScoringMarkupParser(HTMLParser):

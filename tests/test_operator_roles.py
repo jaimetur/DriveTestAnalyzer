@@ -7,12 +7,12 @@ import numpy as np
 import pandas as pd
 
 import src.DriveTestAnalyzer as core
-from src.modules.operator_roles import (
+from src.modules.mapping.operator_roles import (
     drop_excluded_operators, drop_out_of_scope_operators, excluded_operators, focus_operators, normalize_mapping_role,
     normalize_nr_modes, out_of_scope_operators, out_of_scope_pairs, out_of_scope_sql, with_exclusions,
 )
-from src.modules.repository import Repository
-from src.modules.value_maps import ValueMapper
+from src.modules.core.repository import Repository
+from src.modules.mapping.value_maps import ValueMapper
 
 GROUPS = [
     {'canonical': 'VF', 'aliases': ['Vodafone'], 'position': 0, 'color': '#E60000', 'role': 'focus'},
@@ -118,7 +118,7 @@ def test_the_operator_maps_editor_saves_the_role_of_each_label(client):
 
 
 def test_the_design_column_cache_leaves_out_the_excluded_values():
-    from src.modules.design_column_cache import SelectionTerms, keep_sheets
+    from src.modules.ppt_designer.design_column_cache import SelectionTerms, keep_sheets
 
     terms = SelectionTerms(excluded_values=(('lower(operator)', frozenset({'lebara', 'leb'})),))
     assert terms.expressions() == ['lower(operator)']
@@ -127,7 +127,7 @@ def test_the_design_column_cache_leaves_out_the_excluded_values():
 
 
 def test_non_qualified_calls_leave_out_the_excluded_operators():
-    from src.modules.non_qualified_calls import _filter_sql
+    from src.modules.nq.non_qualified_calls import _filter_sql
 
     where, params = _filter_sql({'_excluded_operators': ['Lebara', 'LEB']}, 'tester', [])
     assert "lower(COALESCE(operator, '')) NOT IN (?, ?)" in where and params[-2:] == ['lebara', 'leb']
@@ -183,7 +183,7 @@ def test_the_operator_maps_editor_keeps_one_operator_included(client):
                 if group['canonical'] == last['canonical']).get('role') == last.get('role')
 
     # The page puts the Role back at once, and adds no label as excluded when every label is.
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     helpers = script[script.index('const OPERATOR_ROLE_LAST_INCLUDED'):script.index("document.addEventListener('submit', (event) => {\n  const form")]
     node = shutil.which('node')
     if not node:
@@ -242,7 +242,7 @@ def test_the_names_of_the_cdrs_show_the_role_of_their_label_read_only(client, mo
     assert not page.xpath('//*[@id="vendor-assignments"]//*[@data-mapping-role-badge]')
 
     # The Role follows the label chosen for a name, before it is saved.
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     start = script.index('function refreshMappingRoleBadge(select) {')
     helper = script[start:script.index('\n}\n', start) + 3]
     node = shutil.which('node')
@@ -383,7 +383,7 @@ def test_every_module_names_the_operators_out_of_scope_of_its_nr_modes():
 
     import pytest
 
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     helpers = script[script.index('function outOfScopePairs(nrModes) {'):script.index('globalThis.outOfScopePill = outOfScopePill;')]
     node = shutil.which('node')
     if not node:

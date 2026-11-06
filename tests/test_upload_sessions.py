@@ -2,7 +2,7 @@
 import json
 
 import src.DriveTestAnalyzer as core
-from src.modules.repository import Repository
+from src.modules.core.repository import Repository
 from tests.conftest import wait_for_background_dataset_work
 
 CSV = (b'Operator,City,Mean_Data_Rate,Test_Name,Test_Start_Time\n'
@@ -89,7 +89,7 @@ def test_each_file_is_processed_as_soon_as_it_is_uploaded(client):
 def test_parallel_workspace_work_runs_side_by_side_but_never_beside_exclusive_work():
     import threading
 
-    from src.modules.background_scheduler import BackgroundTaskScheduler
+    from src.modules.core.background_scheduler import BackgroundTaskScheduler
 
     scheduler = BackgroundTaskScheduler(max_workers=2)
     running, peak, lock = set(), [], threading.Lock()

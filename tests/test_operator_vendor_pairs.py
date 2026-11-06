@@ -8,7 +8,7 @@ import pytest
 
 ROOT = Path(__file__).parents[1]
 WEB = ROOT / 'src/web_interface'
-HELPER = (WEB / 'static/js/operator_vendor_pairs.js').read_text(encoding='utf-8')
+HELPER = (WEB / 'static/js/core/operator_vendor_pairs.js').read_text(encoding='utf-8')
 
 # Minimal DOM: two native multi-selects in one container, as in Network Insights, NQ, Scoring and PPT Designer.
 PROGRAM = '''
@@ -96,7 +96,7 @@ def test_vendor_filter_stays_in_sync_with_operator_vendor_and_vendor_operator():
 
 
 def test_every_operator_vendor_filter_is_paired():
-    assert "js/operator_vendor_pairs.js" in (WEB / 'templates/base.html').read_text(encoding='utf-8')
+    assert "js/core/operator_vendor_pairs.js" in (WEB / 'templates/base.html').read_text(encoding='utf-8')
     analysis = (WEB / 'templates/datasets_analysis.html').read_text(encoding='utf-8')
     assert 'data-operator-vendor-pair="{{ dimension }}"' in analysis
     for template in ('non_qualified_calls.html', 'network_insights.html'):
@@ -105,15 +105,15 @@ def test_every_operator_vendor_filter_is_paired():
         assert 'data-operator-vendor-pair="vendor_operator"' in markup
     scoring = (WEB / 'templates/scoring.html').read_text(encoding='utf-8')
     assert 'data-operator-vendor-pair="{{ field | lower }}"' in scoring
-    designs = (WEB / 'static/js/ppt_designer.js').read_text(encoding='utf-8')
+    designs = (WEB / 'static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
     assert "values.dataset.operatorVendorPair = 'vendor_operator'" in designs
-    for script in ('report_jobs.js', 'scoring_report_editor.js'):
+    for script in ('reporting/report_jobs.js', 'scoring/scoring_report_editor.js'):
         assert 'operatorVendorPairs.mirrorValues(' in (WEB / 'static/js' / script).read_text(encoding='utf-8')
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
 def test_vendor_operator_choices_order_ericsson_mixed_with_ericsson_and_other_mixed_groups_last():
-    script = (WEB / 'static/js/app.js').read_text(encoding='utf-8')
+    script = (WEB / 'static/js/core/app.js').read_text(encoding='utf-8')
     start = script.index('function vendorOnlyFilterChoices(')
     end = script.index('window.vendorOnlyFilterChoices = vendorOnlyFilterChoices;', start)
     configured = {

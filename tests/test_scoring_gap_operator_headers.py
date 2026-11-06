@@ -29,7 +29,7 @@ def test_gap_operator_headers_use_mapping_fill_in_combined_and_individual_slides
 
 def test_web_gap_headers_preserve_hierarchy_and_use_operator_fill():
     root = Path(__file__).resolve().parents[1]
-    script = (root / 'src/web_interface/static/js/scoring.js').read_text()
+    script = (root / 'src/web_interface/static/js/scoring/scoring.js').read_text()
     template = (root / 'src/web_interface/templates/scoring.html').read_text()
     assert 'const row = gapBaseline && depthIndex === 0 ? firstRow' in script
     assert 'for (const block of gapBaseline ? [] : blocks)' in script

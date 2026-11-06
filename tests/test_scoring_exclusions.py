@@ -11,8 +11,8 @@ import pandas as pd
 import pytest
 from openpyxl import Workbook
 
-from src.modules import saved_filters, scoring, scoring_exclusions, scoring_history
-from src.modules.repository import Repository, local_now_iso
+from src.modules.scoring import saved_filters, scoring, scoring_exclusions, scoring_history
+from src.modules.core.repository import Repository, local_now_iso
 from tests.scoring_fixtures import load_initial_scoring_configuration
 
 OPERATORS = ('EE', 'Vodafone UK', 'Three UK')
@@ -245,7 +245,7 @@ def test_the_panel_imports_changes_and_deletes_lists_and_records_them_in_app_eve
     monkeypatch.setattr(app_module, 'queue_scoring_history', lambda task_repository: queued.append(task_repository.db_path))
     voice, speech = _name(repository, ids['voice']), _name(repository, ids['speech'])
     page = client.get('/scoring').text
-    assert 'data-scoring-exclusions' in page and 'js/scoring_exclusions.js' in page and '<h2>Excluded Calls</h2>' in page
+    assert 'data-scoring-exclusions' in page and 'js/scoring/scoring_exclusions.js' in page and '<h2>Excluded Calls</h2>' in page
     # The panel sits below the Scoring & GAP Results and above the Favourites Filters.
     assert page.index('id="scoring-results-title"') < page.index('id="scoring-excluded-calls"') < page.index('class="panel collapsible-panel saved-filters-panel"')
     state = client.get('/api/scoring/excluded-calls').json()

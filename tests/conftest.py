@@ -31,8 +31,9 @@ from fastapi.testclient import TestClient
 
 import src.DriveTestAnalyzer as app_module
 from src.config import settings
-from src.modules import cdr_store, presentations
-from src.modules.workspace_countries import set_workspace_country
+from src.modules.cdr import cdr_store
+from src.modules.help import presentations
+from src.modules.mapping.workspace_countries import set_workspace_country
 
 
 # The tests that need the columnar copy of their CDRs make it themselves (tests/test_cdr_store.py): the other tests
@@ -235,7 +236,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client_workspace_tem
 
 
 def remove_starter_favourites(repository) -> None:
-    from src.modules import bundle_report_templates, saved_filters
+    from src.modules.reporting import bundle_report_templates
+    from src.modules.scoring import saved_filters
 
     for favourite in bundle_report_templates.list_favourites(repository):
         bundle_report_templates.delete_favourite(repository, favourite['id'])
