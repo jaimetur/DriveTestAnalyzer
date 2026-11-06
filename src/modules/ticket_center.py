@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 from statistics import median
 from typing import Any, Iterable, Iterator
 
+from src.modules.module_labels import MAIN_MODULES, RETIRED_MODULES
 from src.modules.repository import Repository, local_now_iso
 
 # The kinds of ticket, chosen when it is opened (the tickets of before the types are bugs).
@@ -108,7 +109,8 @@ RECENT_RESOLVED_TICKETS = 8
 FEED_ENTRIES = 12
 STATISTICS_VERSIONS = 10
 STATISTICS_PEOPLE = 8
-STATISTICS_MODULES = 10
+# Every main module and General, so no module (the AI Assistant either) is folded into the others of By module.
+STATISTICS_MODULES = len(MAIN_MODULES) + len(RETIRED_MODULES) + 1
 ACTIVITY_WEEKS = 26
 
 

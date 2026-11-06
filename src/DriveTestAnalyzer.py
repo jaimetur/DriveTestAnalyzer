@@ -490,8 +490,8 @@ HELP_NAVIGATION_DOCUMENTS = (
     'reporting.md',
     'chart-builder.md',
     'query-builder.md',
-    'ticket-center.md',
     'assistant.md',
+    'ticket-center.md',
     'app-logs.md',
     'app-config.md',
     'workspace-config.md',
@@ -569,8 +569,8 @@ FEATURES: tuple[dict[str, Any], ...] = (
     {'key': 'non-qualified-calls', 'label': 'Non-Qualified Calls', 'paths': ('/non-qualified-calls', '/api/non-qualified-calls')},
     {'key': 'reporting', 'label': 'Reporting', 'paths': ('/reporting', '/api/reporting')},
     {'key': 'builders', 'label': 'Builders', 'paths': ('/chart-builder', '/query-builder', '/api/chart-builder', '/api/query-builder')},
-    {'key': 'ticket-center', 'label': 'Ticket Center', 'paths': ('/tickets', '/api/tickets', '/bugs-report', '/api/bugs-report')},
     {'key': 'assistant', 'label': 'AI Assistant', 'paths': ('/assistant', '/api/assistant')},
+    {'key': 'ticket-center', 'label': 'Ticket Center', 'paths': ('/tickets', '/api/tickets', '/bugs-report', '/api/bugs-report')},
 )
 FEATURE_KEYS = tuple(feature['key'] for feature in FEATURES)
 MODULE_ACCESS_CACHE_SECONDS = 5.0

@@ -233,12 +233,12 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
     ids = presentations.expected_ids()
     assert ids == ['overview', 'one-slider', 'roadmap', 'benchmarking-providers', 'workspace', 'workspace-config', 'cdr-analysis', 'ppt-designer',
                    'scoring-gap-analysis', 'network-insights', 'non-qualified-calls', 'dt-analyzer-rca', 'reporting', 'builders',
-                   'ticket-center', 'administration', 'full-presentation']
+                   'assistant', 'ticket-center', 'administration', 'full-presentation']
     chapters = {'workspace-management': 'workspace\nworkspace-config', 'workspace-config': 'workspace-config',
                 'datasets-analysis': 'cdr-analysis', 'ppt-designer': 'ppt-designer',
                 'scoring-gap-analysis': 'scoring-gap-analysis', 'network-insights': 'network-insights',
                 'non-qualified-calls': 'non-qualified-calls\ndt-analyzer-rca', 'reporting': 'reporting', 'chart-builder': 'builders',
-                'query-builder': 'builders', 'ticket-center': 'ticket-center', 'super-admin': 'administration',
+                'query-builder': 'builders', 'assistant': 'assistant', 'ticket-center': 'ticket-center', 'super-admin': 'administration',
                 'administrator-config': 'administration'}
     for chapter, blocks in chapters.items():
         text = (help_folder / f'{chapter}.md').read_text(encoding='utf-8')
@@ -271,7 +271,7 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
     # in their own section; Product Overview points to Product Presentations.
     general = ['overview', 'benchmarking-providers', 'one-slider', 'roadmap']
     modules_order = ['workspace', 'workspace-config', 'cdr-analysis', 'network-insights', 'ppt-designer', 'scoring-gap-analysis',
-                     'non-qualified-calls', 'dt-analyzer-rca', 'reporting', 'builders', 'ticket-center', 'administration']
+                     'non-qualified-calls', 'dt-analyzer-rca', 'reporting', 'builders', 'assistant', 'ticket-center', 'administration']
     assert sorted(general + modules_order + ['full-presentation']) == sorted(ids)
     for chapter, level in (('help', '###'), ('presentations', '##')):
         text = (help_folder / f'{chapter}.md').read_text(encoding='utf-8')
@@ -318,7 +318,7 @@ def test_the_server_generates_every_presentation_with_the_pictures_of_their_slid
     full = by_id['full-presentation']
     assert [section['presentation'] for section in full['sections']] == [
         'overview', 'benchmarking-providers', 'workspace', 'workspace-config', 'cdr-analysis', 'network-insights', 'ppt-designer',
-        'scoring-gap-analysis', 'non-qualified-calls', 'reporting', 'builders', 'ticket-center', 'administration', 'dt-analyzer-rca', 'roadmap']
+        'scoring-gap-analysis', 'non-qualified-calls', 'reporting', 'builders', 'assistant', 'ticket-center', 'administration', 'dt-analyzer-rca', 'roadmap']
     for section in full['sections']:
         part = by_id[section['presentation']]
         assert section['title'] == part['title'].removeprefix('DriveTest Analyzer — ')

@@ -46,6 +46,7 @@ roadmap
 - Tableau connected to the data of the workspace, through PostgreSQL with pg_duckdb.
 - PPT Designer, whose charts are built as in Tableau, and slide comments written by rules or by GenAI (Kiro or Claude).
 - The Layer3 Logs: the parsed drive test logs of each campaign, whose layers and signalling the maps of the Non-Qualified Calls and NQ Maps draw and the DT Analyzer RCA reads.
+- The AI Assistant: questions on the workspace asked in natural language and answered with the calculations of the tool by the AI engines of the tool (Kiro CLI or Claude), with the names of operators, vendors, areas and campaigns sent as codes (see [AI Assistant](assistant.md)).
 
 ## Planned product work
 

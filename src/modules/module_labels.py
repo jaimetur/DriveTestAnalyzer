@@ -29,8 +29,8 @@ MAIN_MODULES: tuple[tuple[str, str], ...] = (
     ('non-qualified-calls', 'Non-Qualified Calls'),
     ('reporting', 'Reporting'),
     ('builders', 'Builders'),
-    ('ticket-center', 'Ticket Center'),
     ('assistant', 'AI Assistant'),
+    ('ticket-center', 'Ticket Center'),
 )
 # Main modules the tool no longer has, by the key their App Events and tickets keep: their title, for that history only.
 RETIRED_MODULES: dict[str, str] = {'ppt-reporting-old': 'PPT Reporting (old)'}
@@ -231,7 +231,19 @@ def normalize_module_labels(raw: object) -> dict[str, dict[str, Any]]:
             'tab_color': _colour(entry.get('tab_color'), default['tab_color']),
             'position': _position(entry.get('position'), index),
         }
-    order = sorted(labels, key=lambda module: (labels[module]['position'], MODULE_ORDER[module]))
+    # A module the tool gained after the order was saved (no position of its own) goes right before the module that follows
+    # it in the default order, wherever that one was moved (the AI Assistant before Ticket Center).
+    keys = {module: float(labels[module]['position']) for module in labels}
+    stored_positions = {module for module in labels if isinstance(stored.get(module), dict)
+                        and _position(stored[module].get('position'), -1) >= 0}
+    if stored_positions:
+        modules = [module for module, _name in MAIN_MODULES]
+        for index, module in enumerate(modules):
+            if module not in stored_positions:
+                following = next((other for other in modules[index + 1:] if other in stored_positions), None)
+                if following is not None:
+                    keys[module] = keys[following] - 0.5
+    order = sorted(labels, key=lambda module: (keys[module], MODULE_ORDER[module]))
     return {module: {**labels[module], 'position': position} for position, module in enumerate(order)}
 
 

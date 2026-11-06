@@ -53,7 +53,7 @@ def test_ticket_center_is_in_every_profile_once_and_opens_without_a_workspace(cl
     core.repository.initialize()
     modules = {profile['name']: profile['modules'] for profile in core.repository.list_modules_profiles()}
     # (The AI Assistant, added to the tool later, joins every profile the same way.)
-    assert modules['Non-Qualified Calls'] == ['workspace', 'non-qualified-calls', 'ticket-center', 'assistant']
+    assert modules['Non-Qualified Calls'] == ['workspace', 'non-qualified-calls', 'assistant', 'ticket-center']
     core.repository.save_modules_profile(nq['id'], nq['name'], nq['description'], ['workspace', 'non-qualified-calls'])
     core.repository.initialize()
     assert 'ticket-center' not in next(item for item in core.repository.list_modules_profiles() if item['id'] == nq['id'])['modules']

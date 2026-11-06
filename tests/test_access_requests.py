@@ -14,8 +14,8 @@ def profiles():
 def test_a_new_deployment_has_the_modules_profiles_of_each_team(client):
     available = profiles()
     assert set(available) == {'Non-Qualified Calls', 'Benchmarking', 'All Modules'}
-    assert available['Non-Qualified Calls']['modules'] == ['workspace', 'non-qualified-calls', 'reporting', 'builders', 'ticket-center',
-                                                          'assistant']
+    assert available['Non-Qualified Calls']['modules'] == ['workspace', 'non-qualified-calls', 'reporting', 'builders', 'assistant',
+                                                          'ticket-center']
     assert set(available['Benchmarking']['modules']) == set(core.FEATURE_KEYS) - {'non-qualified-calls'}
     assert set(available['All Modules']['modules']) == set(core.FEATURE_KEYS)
     assert [name for name, profile in available.items() if profile['is_default']] == ['All Modules']
@@ -41,7 +41,7 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     assert options['workspace_groups'][0]['description'] == ''
     assert [profile['name'] for profile in options['modules_profiles']] == ['All Modules', 'Benchmarking', 'Non-Qualified Calls']
     nq_calls = options['modules_profiles'][2]
-    assert nq_calls['modules'] == ['Workspace', 'Non-Qualified Calls', 'Reporting', 'Builders', 'Ticket Center', 'AI Assistant']
+    assert nq_calls['modules'] == ['Workspace', 'Non-Qualified Calls', 'Reporting', 'Builders', 'AI Assistant', 'Ticket Center']
     assert nq_calls['module_tabs'][0]['title'] == 'Workspace' and nq_calls['module_tabs'][0]['color'] and nq_calls['module_tabs'][0]['icon']
     request = {'username': 'eabcdef', 'first_name': ' Ana ', 'last_name': 'García', 'password': 'secret1', 'password_confirmation': 'secret1',
                'workspace_group_ids': [uk], 'modules_profile_id': nq_calls['id']}
@@ -57,7 +57,7 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     assert response.status_code == 201, response.text
     result = response.json()
     assert (result['username'], result['name']) == ('EABCDEF', 'Ana García')
-    assert result['modules_profile'] == 'Non-Qualified Calls (Workspace, Non-Qualified Calls, Reporting, Builders, Ticket Center, AI Assistant)'
+    assert result['modules_profile'] == 'Non-Qualified Calls (Workspace, Non-Qualified Calls, Reporting, Builders, AI Assistant, Ticket Center)'
     assert result['email']['to'] == 'jaime.tur@ericsson.com' and result['email']['subject'].endswith('access request: EABCDEF')
     # Copied to the approvers: any of them approves the request before the administrator activates the user.
     assert result['email']['cc'] == ['kleber.gomes@ericsson.com', 'angelo.reis@ericsson.com', 'mohammadreza.rajabi@ericsson.com',

@@ -40,12 +40,16 @@ const M = {
   nq: { name: 'Non-Qualified Calls', short: 'NQ Calls', color: 'D92B2B', icon: 'TbPhoneX', desc: 'Root cause & follow-up' },
   reporting: { name: 'Reporting', short: 'Reporting', color: '8C60A8', icon: 'TbReportAnalytics', desc: 'Bundle reports, scheduled' },
   tickets: { name: 'Ticket Center', short: 'Ticket Center', color: 'FAD22D', iconColor: '242424', icon: 'TbTicket', desc: 'Bugs & requests, tracked' },
+  assistant: { name: 'AI Assistant', short: 'AI Assistant', color: '0E7490', icon: 'TbMessageChatbot', desc: 'Ask your data, names as codes' },
   builders: { name: 'Builders', short: 'Builders', color: '0082F0', icon: 'TbCode', desc: 'Ad-hoc charts & SQL' },
   cdr: { name: 'CDR Analysis', short: 'CDR Analysis', color: '4D4D4D', icon: 'TbFileAnalytics', desc: 'Deep dive into one CDR' },
   dash: { name: 'PPT Designer', short: 'PPT Designer', color: 'E07800', icon: 'TbPresentationAnalytics', desc: 'Template-driven KPI decks' },
 };
 // The modules in the order of the tabs of the tool.
-const TOOL_ORDER = ['cdr', 'dash', 'scoring', 'ni', 'nq', 'reporting', 'builders', 'tickets'];
+const TOOL_ORDER = ['cdr', 'dash', 'scoring', 'ni', 'nq', 'reporting', 'builders', 'assistant', 'tickets'];
+// How many modules there are, in words for the titles.
+const MODULE_COUNT = TOOL_ORDER.length;
+const MODULE_WORD = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'][MODULE_COUNT] || String(MODULE_COUNT);
 
 const iconCache = new Map();
 async function icon(name, color, size = 256) {
@@ -194,17 +198,19 @@ async function platform(pres) {
   text(slide, `Live figures of ${STATS.where}, ${plural(FIGURES.campaigns, 'campaign')}, ${FIGURES.month}`, { x: 0.6, y: 6.55, w: 9, h: 0.28, fontSize: 10, color: K.grey2 });
   slide.addNotes('Five steps: upload the CDRs once; the platform normalises them, maps vendors and regions and adds calculated '
     + 'fields; every module analyses the same data; reports come out as PowerPoint and Word, on demand or on schedule; and '
-    + 'teams act on them with the NQ follow-up and the Ticket Center. It ingests CDRs, Network Inventories, Vendor Mappings '
+    + 'teams act on them with the NQ follow-up, ask them in the AI Assistant and report back in the Ticket Center. It ingests '
+    + 'CDRs, Network Inventories, Vendor Mappings '
     + `and Geographical polygons; the figures are live from ${STATS.where}.`);
 }
 
 async function modules(pres) {
   const slide = pres.addSlide({ masterName: 'CONTENT', sectionTitle: 'Modules' });
-  heading(slide, 'Eight modules, ', 'one shared workspace', 'Every module reads the same processed CDRs, mappings and inventories');
+  heading(slide, `${MODULE_WORD} modules, `, 'one shared workspace', 'Every module reads the same processed CDRs, mappings and inventories');
   const cx = 6.67; const cy = 4.35; const rx = 3.5; const ry = 2.05;
   shape(slide, pres.shapes.OVAL, { x: cx - rx, y: cy - ry, w: 2 * rx, h: 2 * ry, fill: { type: 'none' }, line: { color: K.line, width: 1, dashType: 'dash' } });
+  const step = 360 / TOOL_ORDER.length;
   const nodes = TOOL_ORDER.map((key, index) => {
-    const angle = (-112.5 + index * 45) * Math.PI / 180;
+    const angle = (-90 - step / 2 + index * step) * Math.PI / 180;
     return { key, x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle), right: Math.cos(angle) > 0 };
   });
   for (const node of nodes) lineBetween(slide, pres, cx, cy, node.x, node.y, { color: K.line, width: 1.5 });
@@ -222,10 +228,11 @@ async function modules(pres) {
       { text: module.desc, options: { fontSize: 11, color: K.grey } },
     ], { x, y: node.y - 0.4, w: 2.25, h: 0.8, align: node.right ? 'left' : 'right', valign: 'middle' });
   }
-  slide.addNotes('Eight modules around one workspace, in the order of the tool: CDR Analysis, the template-driven PPT '
+  slide.addNotes(`${MODULE_WORD} modules around one workspace, in the order of the tool: CDR Analysis, the template-driven `
     + 'PPT Designs, the scores and GAPs of Scoring & GAP Analysis, the radio and network view of Network Insights, the '
-    + 'follow-up of every Non-Qualified Call, Reporting, the Chart and Query Builders and the Ticket Center. They all read '
-    + 'the same processed CDRs.');
+    + 'follow-up of every Non-Qualified Call, Reporting, the Chart and Query Builders, the AI Assistant, which answers '
+    + 'questions on the workspace in natural language without sending a customer name to the AI engine, and the Ticket '
+    + 'Center. They all read the same processed CDRs.');
 }
 
 async function teams(pres) {
@@ -233,22 +240,23 @@ async function teams(pres) {
   heading(slide, 'Built for ', 'every team', 'Each team starts where it adds value, on the same data');
   const columns = TOOL_ORDER.filter((key) => key !== 'tickets');
   const rows = [
-    ['TbScale', 'Benchmarking', 'Who wins, by how much, city by city', { scoring: 2, dash: 2, reporting: 2, ni: 1, cdr: 1, builders: 1 }],
-    ['TbPhoneX', 'NQ Calls', 'Every failed call root-caused and closed', { nq: 2, cdr: 1, reporting: 1, ni: 1, builders: 1 }],
-    ['TbStethoscope', 'Troubleshooting', 'Where coverage and cells hurt the KPIs', { ni: 2, cdr: 2, builders: 2, nq: 1, scoring: 1 }],
+    ['TbScale', 'Benchmarking', 'Who wins, by how much, city by city', { scoring: 2, dash: 2, reporting: 2, ni: 1, cdr: 1, builders: 1, assistant: 1 }],
+    ['TbPhoneX', 'NQ Calls', 'Every failed call root-caused and closed', { nq: 2, cdr: 1, reporting: 1, ni: 1, builders: 1, assistant: 1 }],
+    ['TbStethoscope', 'Troubleshooting', 'Where coverage and cells hurt the KPIs', { ni: 2, cdr: 2, builders: 2, nq: 1, scoring: 1, assistant: 1 }],
     ['TbChartDots3', 'Technical reporting', 'Template-driven KPI decks in minutes', { dash: 2, reporting: 2, scoring: 1, ni: 1, cdr: 1 }],
-    ['TbBriefcase', 'Executive reporting', 'One scheduled story for the leadership', { reporting: 2, scoring: 2, ni: 1, dash: 1 }],
+    ['TbBriefcase', 'Executive reporting', 'One scheduled story for the leadership', { reporting: 2, scoring: 2, ni: 1, dash: 1, assistant: 2 }],
   ];
   // Legend: core and supporting modules.
   shape(slide, pres.shapes.OVAL, { x: 10.35, y: 1.21, w: 0.2, h: 0.2, fill: { color: K.deep }, line: { color: K.deep, width: 0 } });
   text(slide, 'Core', { x: 10.62, y: 1.16, w: 0.7, h: 0.3, fontSize: 11, color: K.grey });
   shape(slide, pres.shapes.OVAL, { x: 11.35, y: 1.21, w: 0.2, h: 0.2, fill: { color: K.white }, line: { color: K.blue, width: 1.5 } });
   text(slide, 'Supporting', { x: 11.62, y: 1.16, w: 1.1, h: 0.3, fontSize: 11, color: K.grey });
-  const colX = (index) => 5.0 + index * 1.1;
+  const colStep = Math.min(1.1, 7.7 / columns.length);
+  const colX = (index) => 5.0 + index * colStep;
   for (const [index, key] of columns.entries()) {
     const module = M[key];
-    await badge(slide, pres, module.icon, colX(index) + 0.3, 1.75, 0.5, module.color, module.iconColor || K.white);
-    text(slide, module.short, { x: colX(index), y: 2.3, w: 1.1, h: 0.5, fontSize: 10.5, bold: true, align: 'center', valign: 'top' });
+    await badge(slide, pres, module.icon, colX(index) + colStep / 2 - 0.25, 1.75, 0.5, module.color, module.iconColor || K.white);
+    text(slide, module.short, { x: colX(index) + 0.02, y: 2.3, w: colStep - 0.04, h: 0.5, fontSize: colStep < 1.05 ? 10 : 10.5, bold: true, align: 'center', valign: 'top' });
   }
   for (const [rowIndex, [iconName, name, value, use]] of rows.entries()) {
     const y = 2.95 + rowIndex * 0.78;
@@ -259,14 +267,15 @@ async function teams(pres) {
     for (const [index, key] of columns.entries()) {
       const level = use[key];
       if (!level) continue;
-      const x = colX(index) + 0.41; const cyDot = y + 0.23;
+      const x = colX(index) + colStep / 2 - 0.14; const cyDot = y + 0.23;
       shape(slide, pres.shapes.OVAL, { x, y: cyDot, w: 0.28, h: 0.28, fill: level === 2 ? { color: K.deep } : { color: K.white },
         line: { color: level === 2 ? K.deep : K.blue, width: 1.5 } });
     }
   }
   slide.addNotes('Benchmarking scores operators with Scoring & GAP Analysis and shares PPT Designer and reports; the NQ team '
     + 'follows every failed call; troubleshooting reads coverage, interference and serving cells in Network Insights with CDR '
-    + 'Analysis and the Builders; technical and executive reports come from the same modules, scheduled in Reporting.');
+    + 'Analysis and the Builders; technical and executive reports come from the same modules, scheduled in Reporting. Every '
+    + 'team, and leadership above all, asks its questions in the AI Assistant and gets the figures in seconds.');
 }
 
 // The operators of the Scoring slides (illustrative), the reference first: their Voice and Data points of the latest
@@ -787,6 +796,72 @@ async function builders(pres) {
     + 'downloaded as CSV. Charts and results use illustrative data.');
 }
 
+async function assistant(pres) {
+  const slide = pres.addSlide({ masterName: 'CONTENT', sectionTitle: 'Modules' });
+  heading(slide, 'AI Assistant — ', 'ask your data in your own words', 'Answers in seconds, calculated by the tool, every figure traced, and no customer name sent to the AI engine');
+  const accent = M.assistant.color;
+  // The chat: a question and its answer with a table (illustrative operators and figures).
+  shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 0.6, y: 1.8, w: 6.25, h: 4.55, rectRadius: 0.14, fill: { color: K.tint }, line: { color: K.tint, width: 0 } });
+  shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 2.55, y: 2.0, w: 4.1, h: 0.72, rectRadius: 0.2, fill: { color: accent }, line: { color: accent, width: 0 } });
+  text(slide, 'What is the scoring of Operator A in 2026-Q3, broken down by Vendor?', { x: 2.72, y: 2.0, w: 3.8, h: 0.72, fontSize: 12, bold: true, color: K.white, valign: 'middle' });
+  shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 0.8, y: 2.9, w: 5.4, h: 3.25, rectRadius: 0.16, fill: { color: K.white }, line: { color: K.line, width: 1 } });
+  text(slide, [
+    { text: 'Operator A scores ', options: {} }, { text: '864.2 / 1000', options: { bold: true } },
+    { text: ' in 2026-Q3. Ericsson leads with 912.4.', options: {} },
+  ], { x: 1.0, y: 3.0, w: 5.0, h: 0.5, fontSize: 12, valign: 'middle' });
+  const rows = [['Vendor', 'Total', 'City', 'Roads'], ['Ericsson', '912.4', '608.1', '304.3'], ['Nokia', '801.7', '552.0', '249.7'],
+    ['Huawei', '736.2', '505.9', '230.3'], ['Samsung', '690.5', '461.2', '229.3']];
+  for (const [index, row] of rows.entries()) {
+    const y = 3.6 + index * 0.36;
+    const header = index === 0;
+    shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 1.0, y, w: 5.0, h: 0.32, rectRadius: 0.05, fill: { color: header ? '155E75' : (index % 2 ? K.white : K.tint2) }, line: { color: header ? '155E75' : K.line, width: header ? 0 : 0.5 } });
+    for (const [column, value] of row.entries()) {
+      text(slide, value, { x: 1.12 + column * 1.22, y, w: 1.1, h: 0.32, fontSize: 10.5, bold: header || column < 2, color: header ? K.white : K.ink,
+        align: column ? 'right' : 'left', valign: 'middle' });
+    }
+  }
+  for (const [index, label] of ['And in SA?', 'Where does Nokia lose points?'].entries()) {
+    const x = 1.0 + index * 1.45; const w = index ? 2.6 : 1.3;
+    shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x, y: 5.55, w, h: 0.36, rectRadius: 0.18, fill: { color: 'ECFEFF' }, line: { color: '67C1D6', width: 1 } });
+    text(slide, label, { x, y: 5.55, w, h: 0.36, fontSize: 10, bold: true, color: '155E75', align: 'center', valign: 'middle' });
+  }
+  // What leaves the server: the names become codes.
+  const panel = (x, y, h, title, iconName, color) => {
+    shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x, y, w: 5.75, h, rectRadius: 0.14, fill: { color: K.white }, line: { color: K.line, width: 1 } });
+    return badge(slide, pres, iconName, x + 0.22, y + 0.18, 0.46, color).then(() => text(slide, title, { x: x + 0.82, y: y + 0.18, w: 4.7, h: 0.46, fontSize: 14, bold: true, valign: 'middle' }));
+  };
+  await panel(7.0, 1.8, 2.2, 'Names leave the server as codes', 'TbMask', accent);
+  for (const [index, [name, code]] of [['Operator A', 'OP1'], ['Ericsson', 'VN1'], ['London', 'CT5'], ['2026-Q3 NSA', 'CP5']].entries()) {
+    const x = 7.25 + (index % 2) * 2.75; const y = 2.5 + Math.floor(index / 2) * 0.5;
+    text(slide, name, { x, y, w: 1.3, h: 0.36, fontSize: 11.5, bold: true, valign: 'middle' });
+    lineBetween(slide, pres, x + 1.3, y + 0.18, x + 1.7, y + 0.18, { color: K.grey2, width: 1.25, endArrowType: 'triangle' });
+    shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: x + 1.78, y: y + 0.02, w: 0.7, h: 0.32, rectRadius: 0.16, fill: { color: accent }, line: { color: accent, width: 0 } });
+    text(slide, code, { x: x + 1.78, y: y + 0.02, w: 0.7, h: 0.32, fontSize: 10.5, bold: true, color: K.white, align: 'center', valign: 'middle' });
+  }
+  text(slide, 'The engine (Kiro CLI or Claude) sees codes and figures; the server puts the names back.', { x: 7.25, y: 3.55, w: 5.3, h: 0.4, fontSize: 10.5, color: K.grey });
+  await panel(7.0, 4.15, 2.2, 'The tool calculates, the engine explains', 'TbShieldCheck', '0C9B5B');
+  for (const [index, [name, label]] of [['TbTrophy', 'Scoring as a Saved Filter'], ['TbPhoneX', 'Non-Qualified Calls'], ['TbBook2', 'Help'], ['TbCalculator', 'Calculator'],
+    ['TbListDetails', 'How it was calculated'], ['TbEye', 'What was sent']].entries()) {
+    const x = 7.25 + (index % 2) * 2.75; const y = 4.82 + Math.floor(index / 2) * 0.44;
+    slide.addImage({ data: await icon(name, index < 4 ? accent : '0C9B5B'), x, y: y + 0.06, w: 0.26, h: 0.26, objectName: named('icon') });
+    text(slide, label, { x: x + 0.36, y, w: 2.3, h: 0.38, fontSize: 11, bold: true, valign: 'middle' });
+  }
+  const chips = [['TbLanguage', 'Any language'], ['TbChecks', 'Every figure traced'], ['TbBook2', 'Glossary learnt from use'], ['TbHistory', 'Every question in App Events']];
+  for (const [index, [name, label]] of chips.entries()) {
+    const x = 0.6 + index * 3.07;
+    shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x, y: 6.52, w: 2.95, h: 0.42, rectRadius: 0.12, fill: { color: K.white }, line: { color: K.line, width: 1 } });
+    slide.addImage({ data: await icon(name, accent), x: x + 0.14, y: 6.6, w: 0.26, h: 0.26, objectName: named('icon') });
+    text(slide, label, { x: x + 0.5, y: 6.52, w: 2.4, h: 0.42, fontSize: 11, bold: true, valign: 'middle' });
+  }
+  slide.addNotes('The AI Assistant answers questions about the workspace asked in natural language, in any language, in a chat: '
+    + 'the scoring of the operators with any split and filter, calculated as a Saved Filter of the same selection, the saved '
+    + 'results, the Non-Qualified Calls and how the tool works. Before anything reaches the AI engine (Kiro CLI or Claude), every '
+    + 'name of an operator, vendor, area, campaign or methodology is replaced by a code, and the server puts the real names back '
+    + 'in the answer. Every figure must come from a calculation of the tool; each answer shows how it was calculated and what '
+    + 'was sent, and a glossary of the workspace, fed by the suggestions of the users, teaches it what the data does not tell. '
+    + 'The operators and figures of this slide are illustrative.');
+}
+
 async function ticketCenter(pres) {
   const slide = pres.addSlide({ masterName: 'CONTENT', sectionTitle: 'Modules' });
   heading(slide, 'Ticket Center — ', 'every bug and idea, tracked to closure', 'Report bugs, improvements and new features with their screenshots and files, and follow each one until it is resolved');
@@ -938,9 +1013,9 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
   // items fill a column before the next one).
   const phases = [
     { label: 'TODAY', color: '0C9B5B', pin: 'TbCircleCheck', x: 1.5, y: 4.5, card: [0.6, 1.58, 5.3, 2.44], columns: 2, items: [
-      ['TbCircleCheck', '8 modules live', `${names}, ${plural(FIGURES.campaigns, 'campaign')}`],
+      ['TbCircleCheck', `${MODULE_COUNT} modules live`, `${names}, ${plural(FIGURES.campaigns, 'campaign')}`],
       ['TbPresentationAnalytics', 'PPT Designer', 'Charts built as in Tableau'],
-      ['TbSparkles', 'GenAI slide comments', 'Written by Kiro or Claude'],
+      ['TbMessageChatbot', 'AI Assistant', 'GenAI chat & slide comments'],
       ['TbColumns3', 'Columnar store', '79–300× faster, 10× lighter'],
       ['TbDatabaseSearch', 'DuckDB engine', 'SQL on the Parquet copies'],
       ['TbBolt', 'Fast at any size', 'Durable analytical caches'],
@@ -984,8 +1059,9 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
       shadow: { type: 'outer', color: '000000', opacity: 0.25, blur: 6, offset: 1.5, angle: 90 } });
     await badge(slide, pres, phase.pin, phase.x - 0.28, phase.y - 0.28, 0.56, phase.color);
   }
-  slide.addNotes(`Today: eight modules in production on ${STATS.where}; PPT Designer, which builds its charts as Tableau does; `
-    + 'slide comments written by GenAI (Kiro or Claude); the columnar store of the CDRs, Parquet copies read with the DuckDB '
+  slide.addNotes(`Today: ${MODULE_WORD.toLowerCase()} modules in production on ${STATS.where}; PPT Designer, which builds its charts as Tableau does; `
+    + 'the AI Assistant, which answers questions on the workspace without sending a customer name to the AI engine, and slide '
+    + 'comments written by GenAI (Kiro or Claude); the columnar store of the CDRs, Parquet copies read with the DuckDB '
     + 'engine, which made the analyses 79 to more than 300 times faster and the workspace database 10 times lighter; durable '
     + 'analytical caches, fast at any size; Tableau connected to the workspace database; and the Layer3 Logs, the parsed '
     + 'drive test logs of each campaign, whose signalling the maps of the Non-Qualified Calls, NQ Maps and the DT Analyzer RCA '
@@ -1001,7 +1077,7 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
 // The small road of the one-slider and its milestones (inches of the slide).
 const MINI_ROAD = [[8.1, 6.42], [8.5, 6.36], [9.1, 6.46], [9.75, 6.42], [10.4, 6.34], [11.0, 6.4], [11.6, 6.48], [12.2, 6.4], [12.75, 6.36]];
 
-// Everything on one slide, to tell the whole story on it: the data that comes in, the eight modules on the shared
+// Everything on one slide, to tell the whole story on it: the data that comes in, the modules on the shared
 // workspace, the teams they serve, the platform and the roadmap.
 async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'DriveTest Analyzer') {
   const slide = pres.addSlide({ masterName, sectionTitle });
@@ -1030,15 +1106,22 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
       { x: 1.32, y: y + 0.4, w: 2.05, h: 0.3, valign: 'middle' });
   }
 
-  // The eight modules around the workspace, each with what it does.
+  // The modules around the workspace, each with what it does.
   const modules = [
     ['cdr', 'KPIs per CDR'], ['dash', 'Template KPI decks'], ['scoring', 'Best Network · GAP'], ['ni', 'RSRP · SINR · 5G'],
-    ['nq', `${STATS.nq} NQ calls`], ['reporting', 'PPT · Word · email'], ['builders', 'Charts · SQL'], ['tickets', 'Bugs & requests'],
+    ['nq', `${STATS.nq} NQ calls`], ['reporting', 'PPT · Word · email'], ['builders', 'Charts · SQL'], ['assistant', 'Ask your data'],
+    ['tickets', 'Bugs & requests'],
   ];
-  // (Turned a half step, no module sits at the ends of the ring: the label of each one goes outside it.)
+  // No module sits at the ends of the ring, where the arrows come in and go out: the modules share its upper and lower
+  // halves, 20 degrees away from its ends, and the label of each one goes above or below it. The first module is the
+  // second of the upper half, so the last one closes the ring on its upper left.
   const rx = 2.35; const ry = 1.4;
+  const spread = (count, from, to) => Array.from({ length: count }, (_, index) => from + (count > 1 ? index * (to - from) / (count - 1) : (to - from) / 2));
+  const upper = Math.floor(modules.length / 2);
+  const angles = [...spread(upper, -160, -20), ...spread(modules.length - upper, 20, 160)];
+  const ringAngles = [...angles.slice(1), angles[0]];
   const nodes = modules.map(([key, detail], index) => {
-    const angle = (-112.5 + index * 45) * Math.PI / 180;
+    const angle = ringAngles[index] * Math.PI / 180;
     return { key, detail, x: hub.x + rx * Math.cos(angle), y: hub.y + ry * Math.sin(angle) };
   });
   shape(slide, pres.shapes.OVAL, { x: hub.x - rx, y: hub.y - ry, w: 2 * rx, h: 2 * ry, fill: { color: 'F7FAFD' }, line: { color: K.line, width: 1, dashType: 'dash' } });
@@ -1046,7 +1129,7 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
   shape(slide, pres.shapes.OVAL, { x: hub.x - 0.63, y: hub.y - 0.63, w: 1.26, h: 1.26, fill: { color: K.black }, line: { color: K.black, width: 0 } });
   text(slide, [
     { text: 'Workspace', options: { fontSize: 12.5, bold: true, color: K.white, breakLine: true } },
-    { text: '8 modules', options: { fontSize: 10, color: K.grey2, breakLine: true } },
+    { text: `${modules.length} modules`, options: { fontSize: 10, color: K.grey2, breakLine: true } },
     { text: plural(FIGURES.campaigns, 'campaign'), options: { fontSize: 10, color: K.grey2 } },
   ], { x: hub.x - 0.6, y: hub.y - 0.45, w: 1.2, h: 0.9, align: 'center', valign: 'middle' });
   for (const node of nodes) {
@@ -1090,7 +1173,7 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
   // The roadmap on its small road: each milestone with its phase above and what it brings below.
   label('ROADMAP', 8.15, 5.72);
   const milestones = [
-    { x: 8.5, y: 6.36, color: '0C9B5B', phase: 'TODAY', pin: 'TbCircleCheck', text: '8 modules, L3 logs, GenAI' },
+    { x: 8.5, y: 6.36, color: '0C9B5B', phase: 'TODAY', pin: 'TbCircleCheck', text: `${MODULE_COUNT} modules, AI Assistant` },
     { x: 9.75, y: 6.42, color: K.blue, phase: 'NEXT', pin: 'TbRocket', text: 'Germany, Umlaut & P3' },
     { x: 11.0, y: 6.4, color: '8C60A8', phase: 'SOON', pin: 'TbTrendingUp', text: 'Network Insights, emails' },
     { x: 12.2, y: 6.4, color: 'E07800', phase: 'LATER', pin: 'TbClock', text: 'TEMS logs, health' },
@@ -1103,11 +1186,11 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
   }
   slide.addNotes(`DriveTest Analyzer in one slide. Data in: CDRs (${STATS.calls} Data and Voice calls in ${STATS.cdrs} CDRs of `
     + `${plural(FIGURES.campaigns, 'campaign')} of ${STATS.where}), network inventories, vendor mappings and regions and clusters. `
-    + 'On one shared workspace, eight modules: CDR Analysis, PPT Designer, Scoring & GAP Analysis, Network Insights, '
-    + `Non-Qualified Calls (${STATS.nqExact} NQ calls), Reporting, the Builders and the Ticket Center. They serve `
+    + `On one shared workspace, ${MODULE_WORD.toLowerCase()} modules: CDR Analysis, PPT Designer, Scoring & GAP Analysis, Network Insights, `
+    + `Non-Qualified Calls (${STATS.nqExact} NQ calls), Reporting, the Builders, the AI Assistant and the Ticket Center. They serve `
     + 'benchmarking, the NQ team, troubleshooting and technical and executive reporting, on an enterprise platform on AWS with '
     + `roles, isolated workspaces, automated backups, a Ticket Center, a ${STATS.chapters}-chapter Help and ${STATS.tests} `
-    + 'automated tests. Roadmap: today the columnar store on DuckDB, Tableau connected, GenAI slide comments and the Layer3 '
+    + 'automated tests. Roadmap: today the columnar store on DuckDB, Tableau connected, the AI Assistant and GenAI slide comments and the Layer3 '
     + 'Logs on the maps and the RCA of the Non-Qualified Calls; next the Germany pilot, Umlaut and P3 CDRs and the Active '
     + 'Tests community; then Network Insights and automatic emails; later TEMS logs and health monitoring.');
 }
@@ -1209,8 +1292,8 @@ function presentationsOf(decks) {
         { title: 'Introduction', slides: ['DriveTest Analyzer', 'One platform, from CDRs to decisions'] },
         { title: 'Teams', slides: ['Built for every team'] },
         { title: 'Platform', slides: ['Enterprise-ready'] },
-        { title: 'Modules', slides: ['Eight modules, one shared workspace', 'CDR Analysis', 'PPT Designer', 'Scoring & GAP Analysis — who wins',
-          'Scoring & GAP Analysis — where to win the points back', 'Network Insights', 'NQ Calls', 'Reporting', 'Builders', 'Ticket Center'] },
+        { title: 'Modules', slides: [`${MODULE_WORD} modules, one shared workspace`, 'CDR Analysis', 'PPT Designer', 'Scoring & GAP Analysis — who wins',
+          'Scoring & GAP Analysis — where to win the points back', 'Network Insights', 'NQ Calls', 'Reporting', 'Builders', 'AI Assistant', 'Ticket Center'] },
         { title: 'Roadmap', slides: ['Roadmap'] },
         { title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] },
       ] },
@@ -1235,7 +1318,7 @@ function presentationsOf(decks) {
   ];
   presentations.push({ id: 'full-presentation', title: 'DriveTest Analyzer — Full Presentation', file: 'full-presentation.pptx',
     download: 'DriveTest Analyzer - Full Presentation.pptx',
-    description: 'Every presentation in one: the Overview, the Benchmarking Providers Roadmap, the presentation of every main module, of Workspace Config and of Administration, the DT Analyzer RCA and the Roadmap.',
+    description: 'Every presentation in one: the Overview, the Benchmarking Providers Roadmap, the presentation of every main module (the AI Assistant too), of Workspace Config and of Administration, the DT Analyzer RCA and the Roadmap.',
     sections: FULL_PARTS.map((id) => {
       const part = presentations.find((item) => item.id === id);
       return { title: part.title.replace('DriveTest Analyzer — ', ''), presentation: id, slides: part.sections.flatMap((section) => section.slides) };
@@ -1267,6 +1350,7 @@ async function overviewSlides(deck, files, sectionTitle = '') {
   await nqCalls(pres);
   await reporting(pres);
   await builders(pres);
+  await assistant(pres);
   await ticketCenter(pres);
   section('Roadmap');
   await roadmap(pres, files);

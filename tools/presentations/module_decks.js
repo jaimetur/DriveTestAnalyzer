@@ -19,13 +19,13 @@ const tb = require('react-icons/tb');
 // The decks in the order of the tabs of the tool, Workspace Config after Workspace and the
 // administration (Admin and Super Admin) after them, and those drawn from a slides.html.
 const DECKS = ['workspace', 'workspace-config', 'cdr-analysis', 'ppt-designer', 'scoring-gap-analysis', 'network-insights', 'non-qualified-calls', 'reporting',
-  'builders', 'ticket-center', 'administration'];
+  'builders', 'assistant', 'ticket-center', 'administration'];
 const DRAWN = [...DECKS, 'dt-analyzer-rca'];
 // The colour of each module, that of its tab (module_labels.MODULE_TABS), for the chips naming the other modules.
 const MODULES = {
   'Workspace': '#08736D', 'Workspace Config': '#0369A1', 'CDR Analysis': '#1F6FBF', 'PPT Designer': '#7751B9',
   'Scoring & GAP Analysis': '#176E77', 'Network Insights': '#4F46E5', 'Non-Qualified Calls': '#B0234F', 'Reporting': '#2E8C58',
-  'Builders': '#B85B20', 'Ticket Center': '#DC2626', 'DT Analyzer RCA': '#7C3AED', 'Admin': '#B84343',
+  'Builders': '#B85B20', 'AI Assistant': '#0E7490', 'Ticket Center': '#DC2626', 'DT Analyzer RCA': '#7C3AED', 'Admin': '#B84343',
 };
 // The Ericsson logo at the top right of every slide, as in the other decks of the Help.
 const LOGO = `data:image/png;base64,${fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'web_interface', 'static', 'img', 'ericsson-logo-white.png')).toString('base64')}`;
@@ -1267,10 +1267,151 @@ const VISUALS = {
     });
     return out;
   },
+  // -- the AI Assistant (illustrative operators and figures, never those of a workspace) ------------------------------
+  // The chat as the page shows it (1656 × 560): a question, its answer with a table and follow-ups, and its steps.
+  assistantChat(p) {
+    const t = (x, y, value, size, fill, weight = 400, anchor = 'start') => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${escape(value)}</text>`;
+    let out = `<rect x="16" y="14" width="1060" height="532" rx="24" fill="#111a2e" stroke="#2a3a5c" stroke-width="2"/>`
+      + `<g transform="translate(40 32)">${icon('TbMessageChatbot', p.light, 34)}</g>` + t(86, 58, 'AI Assistant', 24, '#ffffff', 800)
+      + `<rect x="814" y="32" width="236" height="36" rx="18" fill="#1f9d55"/><g transform="translate(828 38)">${icon('TbLock', '#ffffff', 24)}</g>`
+      + t(858, 57, 'Names sent as codes', 17, '#ffffff', 800);
+    // The question.
+    out += `<rect x="470" y="86" width="580" height="78" rx="24" fill="${p.accent}"/>`
+      + t(496, 118, 'What is the scoring of Operator A in 2026-Q3,', 21, '#ffffff', 600)
+      + t(496, 148, 'broken down by Vendor?', 21, '#ffffff', 600);
+    // The answer: its sentence, its table and the questions to ask next.
+    out += `<rect x="40" y="180" width="840" height="350" rx="24" fill="#f4f6fb"/>`
+      + `<text x="66" y="218" font-size="21" fill="${INK}">Operator A scores <tspan font-weight="800">864.2 / 1000</tspan> in 2026-Q3 (NSA).</text>`
+      + `<text x="66" y="248" font-size="21" fill="${INK}"><tspan font-weight="800">Ericsson</tspan> leads with 912.4 and 74.8% of the samples.</text>`;
+    const rows = [['Ericsson', 912.4, '608.1', '304.3'], ['Nokia', 801.7, '552.0', '249.7'], ['Huawei', 736.2, '505.9', '230.3'], ['Samsung', 690.5, '461.2', '229.3']];
+    out += `<rect x="66" y="266" width="788" height="38" rx="10" fill="${p.deep}"/>`
+      + ['Vendor', 'Total /1000', 'City /650', 'Roads /350'].map((name, index) => t([86, 470, 640, 834][index], 291, name, 17, '#ffffff', 800, index ? 'end' : 'start')).join('');
+    rows.forEach(([vendor, total, city, roads], index) => {
+      const y = 312 + index * 40;
+      out += `<rect x="66" y="${y}" width="788" height="36" rx="8" fill="${index % 2 ? '#eef2f8' : '#ffffff'}"/>`
+        + `<rect x="200" y="${y + 12}" width="${(total - 600) * 0.62}" height="12" rx="6" fill="${index ? p.light : p.accent}" opacity="${index ? 0.55 : 1}"/>`
+        + t(86, y + 24, vendor, 18, INK, 700) + t(470, y + 24, total.toFixed(1), 18, INK, 800, 'end') + t(640, y + 24, city, 18, INK, 400, 'end')
+        + t(834, y + 24, roads, 18, INK, 400, 'end');
+    });
+    ['And in SA?', 'Where does Nokia lose points?', 'Compare with Operator B'].forEach((question, index) => {
+      const x = [66, 230, 556][index]; const w = [150, 312, 296][index];
+      out += `<rect x="${x}" y="480" width="${w}" height="36" rx="18" fill="#ecfeff" stroke="${p.light}" stroke-width="2"/>` + t(x + w / 2, 504, question, 16, p.deep, 700, 'middle');
+    });
+    // How it got there: the steps of the question, then the engine.
+    out += `<rect x="1110" y="14" width="530" height="532" rx="24" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/>`
+      + t(1140, 60, 'Answered in 23 s', 26, '#ffffff', 800) + t(1140, 92, 'every step on the server', 18, '#9fb0cc');
+    [['TbBuildingWarehouse', 'Read the workspace', 'campaigns · operators · methodology'], ['TbTrophy', 'Score Operator × Vendor', 'as a Saved Filter, 0.8 s'],
+      ['TbCalculator', 'Calculate the shares', '74.8% of the samples'], ['TbShieldCheck', 'Check every figure', '6 of 6 traced to a result']].forEach(([name, title, detail], index) => {
+      const y = 124 + index * 84;
+      out += `<circle cx="1166" cy="${y + 28}" r="26" fill="${index === 3 ? '#1f9d55' : p.accent}"/><g transform="translate(1150 ${y + 12})">${icon(name, '#ffffff', 32)}</g>`
+        + (index < 3 ? `<line x1="1166" y1="${y + 56}" x2="1166" y2="${y + 84}" stroke="#2a3a5c" stroke-width="4"/>` : '')
+        + t(1210, y + 24, title, 21, '#ffffff', 700) + t(1210, y + 50, detail, 17, '#9fb0cc');
+    });
+    out += t(1140, 494, 'Engine', 17, '#9fb0cc', 700)
+      + `<rect x="1210" y="474" width="128" height="34" rx="17" fill="${p.accent}"/>` + t(1274, 497, 'Kiro CLI', 17, '#ffffff', 800, 'middle')
+      + `<rect x="1350" y="474" width="110" height="34" rx="17" fill="#22304f"/>` + t(1405, 497, 'Claude', 17, '#ffffff', 800, 'middle');
+    return out;
+  },
+  // What leaves the server (1656 × 560): the names become codes before the engine, and come back in the answer.
+  assistantPrivacy(p) {
+    const t = (x, y, value, size, fill, weight = 400, anchor = 'start') => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${escape(value)}</text>`;
+    const arrow = (x1, x2, y, label) => `<path d="M${x1} ${y} H${x2 - 14}" stroke="${p.light}" stroke-width="5" stroke-dasharray="12 9"/><path d="M${x2 - 18} ${y - 13} L${x2} ${y} L${x2 - 18} ${y + 13} Z" fill="${p.light}"/>`
+      + `<rect x="${(x1 + x2) / 2 - 78}" y="${y - 46}" width="156" height="32" rx="16" fill="#0b1220" stroke="${p.light}" stroke-width="2"/>` + t((x1 + x2) / 2, y - 24, label, 16, p.light, 800, 'middle');
+    // The server, on both sides: the question with its names, then the answer with them.
+    let out = `<rect x="10" y="10" width="560" height="540" rx="28" fill="none" stroke="#1f9d55" stroke-width="3" stroke-dasharray="14 10"/>`
+      + `<rect x="1086" y="10" width="560" height="540" rx="28" fill="none" stroke="#1f9d55" stroke-width="3" stroke-dasharray="14 10"/>`
+      + `<rect x="190" y="-6" width="200" height="34" rx="17" fill="#1f9d55"/>` + t(290, 18, 'YOUR SERVER', 16, '#ffffff', 800, 'middle')
+      + `<rect x="1266" y="-6" width="200" height="34" rx="17" fill="#1f9d55"/>` + t(1366, 18, 'YOUR SERVER', 16, '#ffffff', 800, 'middle');
+    out += `<rect x="40" y="52" width="500" height="150" rx="20" fill="#f4f6fb"/>` + t(64, 86, 'The question', 17, '#5b6478', 800)
+      + `<text x="64" y="124" font-size="24" fill="${INK}">Scoring of <tspan font-weight="800" fill="#c2410c">Operator A</tspan> in</text>`
+      + `<text x="64" y="158" font-size="24" fill="${INK}"><tspan font-weight="800" fill="#c2410c">London</tspan>, by Vendor, in <tspan font-weight="800" fill="#c2410c">UK_Q3_NSA</tspan></text>`
+      + `<rect x="40" y="222" width="500" height="300" rx="20" fill="#16213a" stroke="${p.accent}" stroke-width="2"/>`
+      + `<g transform="translate(64 246)">${icon('TbMask', p.light, 40)}</g>` + t(116, 276, 'Pseudonymizer', 24, '#ffffff', 800);
+    [['Operator A', 'OP1'], ['Ericsson', 'VN1'], ['London', 'CT5'], ['UK_Q3_NSA', 'CP5'], ['NetCheck 2026', 'MT2']].forEach(([name, code], index) => {
+      const y = 302 + index * 42;
+      out += t(64, y + 24, name, 20, '#c9d4e6', 600) + `<path d="M260 ${y + 17} H330" stroke="${p.light}" stroke-width="3"/><path d="M326 ${y + 10} L340 ${y + 17} L326 ${y + 24} Z" fill="${p.light}"/>`
+        + `<rect x="352" y="${y}" width="96" height="34" rx="17" fill="${p.accent}"/>` + t(400, y + 24, code, 18, '#ffffff', 800, 'middle');
+    });
+    // The AI engine, outside: codes and figures only.
+    out += `<rect x="676" y="70" width="304" height="420" rx="28" fill="#16213a" stroke="#475569" stroke-width="2"/>`
+      + `<g transform="translate(788 96)">${icon('TbCloudComputing', '#c9d4e6', 80)}</g>` + t(828, 212, 'AI engine', 26, '#ffffff', 800, 'middle')
+      + `<rect x="716" y="230" width="104" height="32" rx="16" fill="#22304f"/>` + t(768, 252, 'Kiro CLI', 16, '#ffffff', 800, 'middle')
+      + `<rect x="836" y="230" width="104" height="32" rx="16" fill="#22304f"/>` + t(888, 252, 'Claude', 16, '#ffffff', 800, 'middle')
+      + `<rect x="700" y="284" width="256" height="64" rx="14" fill="#0b1220"/>` + t(716, 310, 'Scoring of OP1 in CT5,', 18, p.light, 700) + t(716, 336, 'by Vendor, in CP5', 18, p.light, 700)
+      + `<rect x="700" y="360" width="256" height="40" rx="14" fill="#0b1220"/>` + t(716, 387, 'OP1 · VN1 · 912.4', 18, '#ffffff', 700)
+      + t(828, 440, 'sees codes and figures,', 18, '#9fb0cc', 600, 'middle') + t(828, 466, 'never a customer name', 18, '#ffffff', 800, 'middle');
+    out += arrow(570, 676, 270, 'codes only') + arrow(980, 1086, 270, 'answer in codes');
+    // The answer, back with its names.
+    out += `<rect x="1116" y="52" width="500" height="200" rx="20" fill="#f4f6fb"/>` + t(1140, 86, 'The answer you read', 17, '#5b6478', 800)
+      + `<text x="1140" y="128" font-size="24" fill="${INK}"><tspan font-weight="800">Operator A</tspan> scores 864.2;</text>`
+      + `<text x="1140" y="162" font-size="24" fill="${INK}"><tspan font-weight="800">Ericsson</tspan> leads with 912.4</text>`
+      + `<text x="1140" y="196" font-size="24" fill="${INK}">in <tspan font-weight="800">London</tspan>.</text>`;
+    [['TbArrowBackUp', 'Names restored on the server'], ['TbShieldCheck', 'Checked before every request'], ['TbEye', 'What was sent: on every answer']].forEach(([name, label], index) => {
+      const y = 280 + index * 82;
+      out += `<rect x="1116" y="${y}" width="500" height="64" rx="18" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/><circle cx="1150" cy="${y + 32}" r="20" fill="#1f9d55"/>`
+        + `<g transform="translate(1136 ${y + 18})">${icon(name, '#ffffff', 28)}</g>` + t(1186, y + 40, label, 21, '#ffffff', 700);
+    });
+    return out;
+  },
+  // How an answer was calculated and checked (820 × 560).
+  assistantTrace(p) {
+    const t = (x, y, value, size, fill, weight = 400, anchor = 'start', extra = '') => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}"${extra}>${escape(value)}</text>`;
+    let out = `<rect x="10" y="10" width="800" height="250" rx="20" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/>`
+      + `<g transform="translate(34 30)">${icon('TbListDetails', p.light, 30)}</g>` + t(76, 54, 'How it was calculated', 22, '#ffffff', 800);
+    [['scoring', 'campaigns 2026-Q3 · split Operator × Vendor', '0.8 s'], ['scoring', 'only Operator A · points as in the module', '0.7 s'],
+      ['calculate', '297 104 / 397 214 × 100 = 74.8', '0.0 s']].forEach(([tool, detail, time], index) => {
+      const y = 78 + index * 58;
+      out += `<rect x="34" y="${y}" width="752" height="46" rx="12" fill="#0b1220"/><rect x="48" y="${y + 9}" width="${tool.length * 12 + 26}" height="28" rx="14" fill="${p.accent}"/>`
+        + t(61, y + 29, tool, 17, '#ffffff', 800) + t(70 + tool.length * 12 + 20, y + 29, detail, 17, '#c9d4e6', 400, 'start', ' class="mono"') + t(770, y + 29, time, 16, '#9fb0cc', 700, 'end');
+    });
+    out += `<rect x="10" y="276" width="390" height="274" rx="20" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/>`
+      + `<g transform="translate(32 296)">${icon('TbShieldCheck', '#1f9d55', 30)}</g>` + t(72, 320, 'Every figure checked', 21, '#ffffff', 800);
+    ['864.2', '912.4', '801.7', '74.8%', '736.2', '690.5'].forEach((figure, index) => {
+      const x = 32 + (index % 3) * 120; const y = 340 + Math.floor(index / 3) * 52;
+      out += `<rect x="${x}" y="${y}" width="108" height="38" rx="19" fill="#14532d" stroke="#1f9d55" stroke-width="2"/>` + t(x + 54, y + 26, `${figure} ✓`, 17, '#ffffff', 800, 'middle');
+    });
+    out += `<rect x="32" y="448" width="348" height="38" rx="19" fill="#3b1219" stroke="#e0533d" stroke-width="2" stroke-dasharray="7 5"/>`
+      + t(206, 474, '123.45 — in no result: sent back', 16, '#fca5a5', 800, 'middle')
+      + t(32, 522, 'The engine must copy figures, not make them up', 16, '#9fb0cc');
+    out += `<rect x="420" y="276" width="390" height="274" rx="20" fill="#16213a" stroke="#2a3a5c" stroke-width="2"/>`
+      + `<g transform="translate(442 296)">${icon('TbEye', p.light, 30)}</g>` + t(482, 320, 'What was sent', 21, '#ffffff', 800);
+    [['Requests', '3'], ['Size', '14.8 KB'], ['Customer names', '0']].forEach(([label, value], index) => {
+      const y = 346 + index * 58;
+      out += `<rect x="442" y="${y}" width="346" height="46" rx="12" fill="#0b1220"/>` + t(462, y + 30, label, 18, '#c9d4e6', 600)
+        + t(772, y + 31, value, 22, index === 2 ? '#4ade80' : '#ffffff', 800, 'end');
+    });
+    return out;
+  },
+  // How it learns (1656 × 560): the conversation remembers corrections, the glossary teaches every question.
+  assistantLoop(p) {
+    const t = (x, y, value, size, fill, weight = 400, anchor = 'middle') => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${escape(value)}</text>`;
+    const nodes = [
+      { x: 150, icon: 'TbMessageQuestion', title: 'Ask', lines: ['in your own words,', 'any language'] },
+      { x: 470, icon: 'TbMessageChatbot', title: 'Answer', lines: ['👍 👎 and a comment', 'recorded with it'] },
+      { x: 790, icon: 'TbBulb', title: 'Suggest a term', lines: ['what the data does', 'not tell, from the chat'] },
+      { x: 1110, icon: 'TbUserCheck', title: 'Editor accepts', lines: ['in Workspace Config,', 'corrected if needed'] },
+      { x: 1430, icon: 'TbBook2', title: 'Glossary', lines: ['given with every', 'question of the workspace'] },
+    ];
+    let out = `<path d="M1430 352 C 1430 470, 150 470, 150 352" fill="none" stroke="#1f9d55" stroke-width="5" stroke-dasharray="14 10"/>`
+      + `<path d="M136 368 L150 346 L164 368 Z" fill="#1f9d55"/>`
+      + `<rect x="522" y="458" width="616" height="50" rx="25" fill="#14532d" stroke="#1f9d55" stroke-width="2"/>`
+      + t(830, 491, 'Every next question of the workspace knows it', 22, '#ffffff', 800);
+    nodes.forEach((node, index) => {
+      if (index) out += `<path d="M${nodes[index - 1].x + 92} 150 H${node.x - 104}" stroke="${p.light}" stroke-width="5" stroke-dasharray="12 9"/><path d="M${node.x - 108} 137 L${node.x - 90} 150 L${node.x - 108} 163 Z" fill="${p.light}"/>`;
+      out += `<circle cx="${node.x}" cy="150" r="84" fill="#16213a" stroke="${index === 4 ? '#1f9d55' : p.accent}" stroke-width="5"/>`
+        + `<circle cx="${node.x}" cy="150" r="58" fill="${index === 4 ? '#1f9d55' : p.accent}"/><g transform="translate(${node.x - 30} 120)">${icon(node.icon, '#ffffff', 60)}</g>`
+        + t(node.x, 272, node.title, 26, '#ffffff', 800) + t(node.x, 306, node.lines[0], 19, '#c9d4e6') + t(node.x, 332, node.lines[1], 19, '#c9d4e6');
+    });
+    return out;
+  },
 };
 
 // Small pictures of the tiles (360 × 150), one per idea, in the colours of the deck.
 const MINIS = {
+  // App Events of the AI Assistant: the events of a question, one per line.
+  assistantEvents: (p) => [['assistant_question', p.accent], ['assistant_answered', '#1f9d55'], ['assistant_feedback', p.light], ['assistant_glossary_saved', '#f0a830']]
+    .map(([name, colour], index) => `<circle cx="44" cy="${28 + index * 32}" r="9" fill="${colour}"/><rect x="64" y="${16 + index * 32}" width="${150 + name.length * 4}" height="24" rx="12" fill="#22304f"/>`
+      + `<text x="76" y="${33 + index * 32}" font-size="15" font-weight="700" fill="#ffffff" class="mono">${name}</text>`).join(''),
   // The Layer3 Logs on the map of a call: the layers of the KMZ files in the colours of their ranges, the real way of
   // the UE from START to END, the cursor of the signalling timeline with the UE on the map, and the logs around it.
   layers: () => ['#8b0000', '#ff8c00', '#90ee64', '#0000ff'].map((colour, index) => `<path d="M90 ${118 - index * 24} L180 ${96 - index * 24} L270 ${118 - index * 24} L180 ${140 - index * 24} Z" fill="${colour}" opacity=".9" stroke="#ffffff" stroke-width="2"/>`).join(''),
