@@ -955,6 +955,18 @@ def _components(entries: list[Entry]) -> list[Component]:
 PAGE_MINIMUM_SCALE = 0.6
 
 
+def _fitted_table_pages(composer: compose.DeckComposer, target: Any, legible_font: int) -> list[Any]:
+    """The table of ``target`` (its pages joined) as large as it fits: a long or wide table keeps readable text, its
+    rows continuing in tables side by side, and on more slides when even so its values would be too small. Other
+    content with it (such as charts above it) is shown with it as large as it fits on the slide."""
+    blocks = [compose.Block(target, compose.content_shapes(target))]
+    frame = compose.content_frame(target, composer.width, composer.height, [blocks[0].box])
+    pages = compose.split_table(composer, target, compose.table_slides(target, frame, legible_font=legible_font))
+    if not all(compose.fit_table(page, frame) is not None for page in pages) and any(block.shapes for block in blocks):
+        compose.merge_onto_slide(composer, target, blocks, captions=False)
+    return pages
+
+
 def _place_component(composer: compose.DeckComposer, component: Component, legible_font: int = compose.LEGIBLE_FONT) -> list[Any]:
     """The component on one slide of ``composer`` (its slides): its pages joined (tables) or side by side, as large as
     they fit; a table that would need a font smaller than ``legible_font`` there continues on more slides."""
@@ -964,13 +976,18 @@ def _place_component(composer: compose.DeckComposer, component: Component, legib
     if len(copies) > 1:
         title, subtitle = component.title
         if compose.join_table_pages(composer, copies):
-            blocks = [compose.Block(target, compose.content_shapes(target))]
-            # A long or wide table keeps readable text: its rows continue in tables side by side, and on more slides
-            # when even so its values would be too small.
-            frame = compose.content_frame(target, composer.width, composer.height, [blocks[0].box])
-            pages = compose.split_table(composer, target, compose.table_slides(target, frame, legible_font=legible_font))
-            if not all(compose.fit_table(page, frame) is not None for page in pages) and any(block.shapes for block in blocks):
-                compose.merge_onto_slide(composer, target, blocks, captions=False)
+            scale = compose.merged_scale(composer, target)
+            if scale is not None and scale < PAGE_MINIMUM_SCALE:
+                # Charts with a table too long to share their slide (its text would stop at the smallest font while
+                # its columns keep shrinking, and the table would run past the slide): the first page keeps the
+                # charts and the first rows as the module laid them out, and the rest of the table continues.
+                composer.remove_slide(target)
+                copies = [composer.add_slide(slide, component.size) for slide in component.slides]
+                rest = copies[1:]
+                joined = len(rest) == 1 or compose.join_table_pages(composer, rest)
+                pages = [copies[0], *(_fitted_table_pages(composer, rest[0], legible_font) if joined else rest)]
+            else:
+                pages = _fitted_table_pages(composer, target, legible_font)
         elif compose.join_panel_pages(composer, copies):
             # Tables side by side (such as one per network) continue together on as few slides as keep them legible.
             frame = compose.content_frame(target, composer.width, composer.height, [compose.bounds(compose.content_shapes(target))])

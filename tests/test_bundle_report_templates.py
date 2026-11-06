@@ -399,6 +399,48 @@ def test_a_table_with_a_legend_keeps_it_under_the_table_when_joined_fitted_and_c
     assert max(flows) > 1
 
 
+def test_charts_with_a_table_too_long_to_share_their_slide_keep_its_first_rows_and_the_table_continues():
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
+
+    classes = lambda definition: [{'label': label, 'colour': colour, 'share': 20.0} for label, _lower, colour in definition]
+    section = {'rf_rows': [{'operator': f'VF · Q{index}', 'samples': 5751, 'rsrp_median': -90.4, 'rsrp_p10': -104.8, 'low_coverage_share': 2.4,
+                            'sinr_median': 6.9, 'sinr_p10': -0.8, 'high_interference_share': 13.8, 'rsrp_classes': classes(RSRP_CLASSES),
+                            'sinr_classes': classes(SINR_CLASSES)} for index in range(25)]}
+
+    def build(presentation):
+        start = len(presentation.slides)
+        ni._visual_slides(presentation, 'RF Quality', [('', BytesIO(PNG), '', None), ('', BytesIO(PNG), '', None)],
+                          ni.rf_quality_table(section), 'Scope')
+        ni._tag_report_slides(presentation, start, 'rf_quality')
+
+    deck = _deck(build)
+    first_rows = len(next(shape for shape in Presentation(BytesIO(deck)).slides[0].shapes if shape.has_table).table.rows) - 1
+    bundle = bundle_report_templates.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, deck)], order=['rf_quality'])
+    component = bundle_report_templates._components(bundle_report_templates._section_entries(bundle))[0]
+    assert len(component.slides) > 1
+    composer = pptx_compose.DeckComposer(TEMPLATE)
+    pages = bundle_report_templates._place_component(composer, component)
+    # Joined under the charts the whole would need less than 60 % of its size: the charts keep the first rows as the
+    # module drew them, and the rest of the table continues on the next slides at a legible size.
+    assert len(pages) > 1
+    assert [pptx_compose.title_parts(page)[0] for page in pages] == [f'RF Quality · {number}/{len(pages)}' for number in range(1, len(pages) + 1)]
+    assert sum(shape.shape_type == MSO_SHAPE_TYPE.PICTURE for shape in pptx_compose.content_shapes(pages[0])) == 2
+    names = []
+    for page in pages:
+        shapes = pptx_compose.content_shapes(page)
+        tables = [shape for shape in shapes if shape.has_table]
+        legends = [shape for shape in shapes if shape.name == pptx_compose.TABLE_LEGEND]
+        assert len(legends) == 1 and legends[0].top >= max(shape.top + shape.height for shape in tables)
+        assert all(shape.top + shape.height <= composer.height - Inches(0.3) for shape in shapes)
+        sizes = [run.font.size.pt for shape in tables for row in list(shape.table.rows)[1:] for cell in row.cells
+                 for paragraph in cell.text_frame.paragraphs for run in paragraph.runs if run.font.size]
+        assert min(sizes) >= pptx_compose.LEGIBLE_FONT / 100
+        names.extend(shape.table.cell(row, 0).text for shape in tables for row in range(1, len(shape.table.rows)))
+    assert names == [f'VF · Q{index}' for index in range(25)]
+    assert sum(len(shape.table.rows) - 1 for shape in pptx_compose.content_shapes(pages[0]) if shape.has_table) == first_rows
+
+
 def test_a_wide_table_of_few_rows_keeps_one_slide():
     places = ['London', 'Birmingham', 'Glasgow', 'Lowestoft to Rochester', 'Kingston upon Hull (Hull)', 'Plymouth to Oxford',
               'Newcastle upon Tyne', 'Bangor to Newcastle-under-Lyme', 'Blackburn to Liverpool', 'Luton to Lowestoft',

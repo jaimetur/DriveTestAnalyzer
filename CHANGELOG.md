@@ -16,6 +16,7 @@
 
 #### 🐛 Bug fixes:
 - **Workspace — Vendor only for the Operators of the Multivendor Mappings:** beside a Multivendor Mapping, only the Operators chosen for it receive a Vendor; the Network Inventories that complete it no longer give one to the others, which keep `<Operator> - All` with their serving cell (network, host network, site). Leaving O2 out, whose cells are known only where Vodafone hosts them, shows it in Scoring as one All bar in every split by Vendor, as EE. CDRs mapped before show Vendor mapping outdated.
+- **Network Insights & Bundle Report Templates — Long tables under charts:** in PowerPoint and Word, a long table under charts (such as the RF Quality table under its CDFs) no longer runs past the bottom of the slide with its last rows hidden: when the charts and the whole table would need less than 60 % of their size on one slide, the charts keep the first rows and the rest of the table continues on the next slides, legible and with its legend.
 
 #### 📚 Documentation:
 

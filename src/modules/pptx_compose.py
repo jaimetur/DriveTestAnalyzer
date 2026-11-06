@@ -845,6 +845,15 @@ def fit_table(slide: Any, frame: tuple[int, int, int, int], gap: int = Inches(0.
     return scale
 
 
+def merged_scale(composer: DeckComposer, slide: Any) -> float | None:
+    """The scale merge_onto_slide would give the content of ``slide`` in its content frame, or None when its only
+    content is a table (fit_table shows it, continuing on more slides when needed)."""
+    if _only_table(slide) is not None:
+        return None
+    block = Block(slide, content_shapes(slide))
+    return arrange([block], content_frame(slide, composer.width, composer.height, [block.box])).scale
+
+
 def _fit(slide: Any, shape: Any, table: Any, frame: tuple[int, int, int, int], gap: int, flows: int = 4) -> float:
     """Lay out ``table`` (of ``shape``) in ``frame`` as fit_table does, in up to ``flows`` tables side by side."""
     rows = table.findall(f'{{{A_NS}}}tr')
