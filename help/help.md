@@ -81,6 +81,7 @@ full-presentation
 | Calculating NetCheck scores or comparing operator gaps | [Scoring & GAP Analysis](scoring-gap-analysis.md) |
 | Building ad-hoc SQL queries with guided controls | [Query Builder](query-builder.md) |
 | Reporting a bug, suggesting an improvement or asking for a new feature, and following it | [Ticket Center](ticket-center.md) |
+| Asking the workspace a question in your own words (scoring, Non-Qualified Calls, how the tool works) | [AI Assistant](assistant.md) |
 | Authoring templates | [PPT Designer → PPT Templates](ppt-designer.md#ppt-templates), including the [Report Template reference](ppt-designer.md#report-template-reference) |
 | Managing users, their access and the databases | [Super Admin](super-admin.md) |
 | Importing, exporting and transferring packages and managing datasets | [Administrator Config](administrator-config.md) |
@@ -107,6 +108,7 @@ full-presentation
 - [Chart Builder](chart-builder.md) — temporary ad-hoc chart construction.
 - [Query Builder](query-builder.md) — guided query design, SQL editing, execution and saved queries.
 - [Ticket Center](ticket-center.md) — tickets of bugs, improvements and new features with screenshots and files, the version and date they were opened with, priorities, statuses, a timeline of comments and changes, and a design.
+- [AI Assistant](assistant.md) — a chat that answers questions about the workspace in natural language with the calculations of its modules, the names of operators, vendors, areas and campaigns sent to the AI engine as codes, every figure traced to its calculation, and a glossary of the workspace fed from the chat.
 - [App Logs](app-logs.md) — workspace events and live server output.
 - [Application Config](app-config.md) — application-wide runtime settings and their effect.
 - [Workspace Config](workspace-config.md) — workspace-owned templates, Main Cities, chart mappings and scoring methodologies.

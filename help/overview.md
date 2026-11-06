@@ -27,6 +27,7 @@ To present the tool to an audience, every presentation of DriveTest Analyzer is 
 | Chart Builder | [Open section](#chart-builder) |
 | Query Builder | [Open section](#query-builder) |
 | Ticket Center | [Open section](#ticket-center) |
+| AI Assistant | [Open section](#ai-assistant) |
 | App Logs | [Open section](#app-logs) |
 | Administrator Config | [Open section](#administrator-config) |
 | Super Admin | [Open section](#super-admin) |
@@ -44,7 +45,8 @@ To present the tool to an audience, every presentation of DriveTest Analyzer is 
 8. Use **Network Insights** to compare RSRP and SINR, map weak-coverage and high-interference areas and review sites, spectrum and network deployment. See [Network Insights](network-insights.md).
 9. Use **Non-Qualified Calls** to review every call and test that did not complete in the ready CDRs: summarise them, compare the NQ rate of each campaign and operator, find their root causes and follow each one up in the NQ Analysis Center (status, team, assignee, root cause and comments) until it is closed. See [Non-Qualified Calls](non-qualified-calls.md).
 10. Report the bugs you find in the tool, suggest improvements and ask for new features, with their screenshots and files, in [Ticket Center](ticket-center.md), and follow them until they are resolved.
-11. Use **App Logs** for traceability and **Admin** for shared configuration.
+11. Ask the workspace in your own words in the [AI Assistant](assistant.md): it answers with the calculations of the modules and shows how it calculated every figure.
+12. Use **App Logs** for traceability and **Admin** for shared configuration.
 
 ## Header and navigation
 
@@ -250,6 +252,10 @@ For the full workflow and SQL rules, see [Query Builder](query-builder.md).
 ## Ticket Center
 
 Ticket Center collects the bugs, improvements and new features users ask for in the tool. Each ticket has a type (Bug, Improvement or New Feature), a title, the module it is about, a priority from P1 (Critical) to P5 (Trivial), a description and screenshots and files pasted, dropped or chosen, and keeps the version of the tool and the date it was opened with. Its page shows a timeline of comments and changes; its reporter edits it and changes its priority, and only super-admins attend it: its status (New, In Progress, Waiting for Info, Resolved, Closed or Rejected), who handles it and the version that fixes it. Its design counts the tickets by type and status, the open ones by priority and module, and those created and resolved each day, week, month, quarter or year. It opens without a workspace and is in every Modules Profile. See [Ticket Center](ticket-center.md).
+
+## AI Assistant
+
+The AI Assistant answers questions about the active workspace asked in natural language, in any language, in a chat: the scoring of the operators with any split and filter (calculated as a Saved Filter of the same selection), the saved Scoring results, the Non-Qualified Calls, the campaigns and methodologies of the workspace and how the tool works. It uses the AI engines enabled in Super Admin → AI Comment Writers (Kiro CLI or Claude) and only reads. Before anything is sent to the engine, every name of an operator, vendor, region, cluster, city, campaign, methodology or workspace is replaced by a code, and the real names are put back in the answer; every figure must come from a calculation of the tool, each answer shows how it was calculated and exactly what was sent, and a glossary of the workspace, fed by the suggestions of users and kept in Workspace Config, tells it what the data does not. See [AI Assistant](assistant.md).
 
 ## App Logs
 

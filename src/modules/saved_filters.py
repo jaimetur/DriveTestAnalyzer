@@ -2323,6 +2323,64 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
     return result, False
 
 
+def calculate_selection(repository: Repository, campaigns: list[str], levels: list[str], nr_mode: str, *,
+                        context_filters: dict[str, list[str]] | None = None, baseline_operator: str = DEFAULT_BASELINE_OPERATOR,
+                        scoring_profile_id: str | None = 'by-campaign',
+                        progress: Callable[[int, str], None] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The scoring of a selection calculated at once, as a Saved Filter of the same selection calculates it (the
+    AI Assistant), without saving one: the complete campaigns of the NR Mode choose the CDRs, each campaign is scored
+    with the methodology that applies to it, and the Scoring History is used when it covers the selection (else the
+    rows of the CDRs are read). Neither the Geographical Areas nor the trends of a Saved Filter are calculated.
+
+    Returns the result and the selection it was calculated for (its CDRs, campaigns, methodology and filters)."""
+    from src.modules.scoring_selection import scoring_auto_cdrs
+
+    report = progress or (lambda _value, _message: None)
+    filters = {key: list(values) for key, values in (context_filters or {}).items() if values}
+    chosen = scoring_auto_cdrs(repository, nr_mode, {'Campaign': list(campaigns)}, fields=['Campaign'])
+    dataset_ids = list(chosen['dataset_ids'])
+    if not dataset_ids:
+        raise ValueError('No campaign with Data, Voice and Speech CDRs matches this selection.')
+    filters['Campaign'] = list(chosen['campaign_selection'] or campaigns)
+    prepared = _prepare_saved_filter(repository, dataset_ids, levels, chosen['nr_mode'], baseline_operator=baseline_operator,
+                                     context_filters=filters, scoring_profile_id=scoring_profile_id)
+    snapshot = prepared['snapshot']
+    job = {'levels': prepared['levels'], 'nr_mode': prepared['nr_mode'], 'baseline_operator': prepared['baseline_operator'],
+           'baseline_aliases': snapshot.get('baseline_aliases', []), 'operator_mappings': snapshot.get('operator_mappings', {}),
+           'source_fingerprint': prepared['source_fingerprint'], 'geographical': False}
+    sources, _campaigns, _fingerprint = _source_snapshot(repository, prepared['dataset_ids'], expected_nr_mode=prepared['nr_mode'])
+    context = snapshot['resolved_context_filters']
+    engine = _scoring_engine()
+    groups = snapshot.get('methodology_groups') or []
+    if len(groups) > 1:
+        from src.modules.scoring_methodologies import merge_results
+        parts = []
+        for group in groups:
+            configuration = validate_scoring_configuration(group['configuration'])
+            calculation = {**job, 'configuration': configuration}
+            part, _from_history = _scoring_result(repository, calculation, configuration, prepared['dataset_ids'],
+                                                  [dict(source) for source in sources],
+                                                  {**context, 'Campaign': list(group['campaigns'])}, engine, report)
+            job['history_gap'] = job.get('history_gap') or calculation.get('history_gap', '')
+            parts.append((group, part))
+        result = merge_results(parts)
+    else:
+        configuration = validate_scoring_configuration(snapshot['configuration'])
+        calculation = {**job, 'configuration': configuration}
+        result, _from_history = _scoring_result(repository, calculation, configuration, prepared['dataset_ids'], sources,
+                                                context, engine, report)
+        job['history_gap'] = calculation.get('history_gap', '')
+    selection = {
+        'dataset_ids': prepared['dataset_ids'], 'campaigns': list(chosen['campaign_selection'] or campaigns),
+        'nr_mode': prepared['nr_mode'], 'levels': prepared['levels'], 'baseline_operator': prepared['baseline_operator'],
+        'context_filters': snapshot['context_filters'], 'methodology': snapshot.get('scoring_profile_name') or '',
+        'methodology_groups': [{'methodology': group.get('profile_name') or '', 'campaigns': list(group.get('campaigns') or [])}
+                               for group in groups],
+        'history_gap': job.get('history_gap', ''),
+    }
+    return result, selection
+
+
 def _compares_nr_modes(saved_filter: dict[str, Any]) -> bool:
     """Whether a Saved Filter scores NSA vs SA (each campaign with the NR Mode of its CDRs)."""
     return normalize_scoring_nr_mode(saved_filter.get('nr_mode')) == NSA_VS_SA

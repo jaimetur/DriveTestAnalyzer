@@ -458,8 +458,8 @@ def _comments_from(document: Any) -> list[str]:
     return [re.sub(r'\s+', ' ', str(item)).strip() for item in comments if str(item).strip()]
 
 
-def _json_reply(text: str) -> Any:
-    """The last JSON object of a reply that holds the comments (Kiro CLI may print other text around it)."""
+def _json_reply(text: str, key: str = 'comments', what: str = 'the comments') -> Any:
+    """The last JSON object of a reply that holds ``key`` (Kiro CLI may print other text around it)."""
     decoder = json.JSONDecoder()
     clean = ANSI_SEQUENCE.sub('', text or '')
     found = None
@@ -468,28 +468,29 @@ def _json_reply(text: str) -> Any:
             document, _end = decoder.raw_decode(clean[match.start():])
         except ValueError:
             continue
-        if isinstance(document, dict) and 'comments' in document:
+        if isinstance(document, dict) and key in document:
             found = document
     if found is None:
-        raise WriterError('The reply has no JSON with the comments.')
+        raise WriterError(f'The reply has no JSON with {what}.')
     return found
 
 
-def write_with_kiro_cli(brief: dict[str, Any], settings: dict[str, Any], cli: Path | None, api_key: str,
-                        config_dir: Path, source: str = 'user') -> tuple[list[str], dict[str, Any]]:
-    """Kiro CLI headless (``kiro-cli chat --no-interactive``) with the API key of the user or of the server and no tools
-    trusted, run in an empty folder so it has nothing to read."""
+def run_kiro_cli(prompt: str, settings: dict[str, Any], cli: Path | None, api_key: str, config_dir: Path,
+                 source: str = 'user', purpose: str = 'write comments with Kiro') -> str:
+    """What Kiro CLI headless (``kiro-cli chat --no-interactive``) prints for a prompt, with the API key of the user or of
+    the server and no tools trusted, run in an empty folder so it has nothing to read. ``purpose`` ends the message that
+    asks a user for their key. Shared by the comment writers and the AI Assistant."""
     if cli is None:
         raise WriterError('Kiro CLI is not installed on this server.')
     if not api_key:
-        raise WriterError('Add your Kiro API key in the user menu (API keys) to write comments with Kiro.' if source == 'user'
+        raise WriterError(f'Add your Kiro API key in the user menu (API keys) to {purpose}.' if source == 'user'
                           else 'Kiro has no API key of the server: Super Admin saves it in AI Comment Writers.')
     home = kiro_home(config_dir)
     home.mkdir(parents=True, exist_ok=True)
     command = [str(cli), 'chat', '--no-interactive']
     if settings.get('kiro_model'):
         command += ['--model', str(settings['kiro_model'])]
-    command.append(f'{STYLE_GUIDE}\n\nBrief of the slide (JSON):\n{_prompt(brief)}')
+    command.append(prompt)
     environment = {**os.environ, 'KIRO_API_KEY': api_key, 'HOME': str(home),
                    'PATH': f'{cli.parent}{os.pathsep}{os.environ.get("PATH", "")}', 'NO_COLOR': '1'}
     with tempfile.TemporaryDirectory() as empty:
@@ -503,15 +504,25 @@ def write_with_kiro_cli(brief: dict[str, Any], settings: dict[str, Any], cli: Pa
     if completed.returncode != 0:
         detail = ANSI_SEQUENCE.sub('', completed.stderr or completed.stdout or '').strip()[-300:]
         raise WriterError(f'Kiro CLI failed (exit code {completed.returncode}): {detail}')
-    return _comments_from(_json_reply(completed.stdout)), {'model': str(settings.get('kiro_model') or '')}
+    return completed.stdout
 
 
-def write_with_claude(brief: dict[str, Any], settings: dict[str, Any], api_key: str,
-                      source: str = 'server') -> tuple[list[str], dict[str, Any]]:
-    """Claude with structured output; a refusal routes to Anthropic's default fallback model on the server. Without a
-    key of the server it uses the credentials of the server's environment (ANTHROPIC_API_KEY)."""
+def write_with_kiro_cli(brief: dict[str, Any], settings: dict[str, Any], cli: Path | None, api_key: str,
+                        config_dir: Path, source: str = 'user') -> tuple[list[str], dict[str, Any]]:
+    """The comments Kiro CLI writes for the brief of a slide (see ``run_kiro_cli``)."""
+    output = run_kiro_cli(f'{STYLE_GUIDE}\n\nBrief of the slide (JSON):\n{_prompt(brief)}', settings, cli, api_key,
+                          config_dir, source)
+    return _comments_from(_json_reply(output)), {'model': str(settings.get('kiro_model') or '')}
+
+
+def run_claude(system: str, messages: list[dict[str, Any]], schema: dict[str, Any], settings: dict[str, Any], api_key: str,
+               source: str = 'server', purpose: str = 'write comments with Claude',
+               refused: str = 'write these comments') -> tuple[Any, dict[str, Any]]:
+    """The JSON document Claude replies with structured output (``schema``); a refusal routes to Anthropic's default
+    fallback model on the server. Without a key of the server it uses the credentials of the server's environment
+    (ANTHROPIC_API_KEY). Shared by the comment writers and the AI Assistant."""
     if source == 'user' and not api_key:
-        raise WriterError('Add your Claude API key in the user menu (API keys) to write comments with Claude.')
+        raise WriterError(f'Add your Claude API key in the user menu (API keys) to {purpose}.')
     try:
         import anthropic
     except ImportError as exc:
@@ -523,10 +534,10 @@ def write_with_claude(brief: dict[str, Any], settings: dict[str, Any], api_key: 
             max_tokens=16000,
             betas=['server-side-fallback-2026-07-01'],
             fallbacks='default',
-            system=[{'type': 'text', 'text': STYLE_GUIDE, 'cache_control': {'type': 'ephemeral'}}],
+            system=[{'type': 'text', 'text': system, 'cache_control': {'type': 'ephemeral'}}],
             output_config={'effort': settings.get('claude_effort') or 'medium',
-                           'format': {'type': 'json_schema', 'schema': COMMENTS_SCHEMA}},
-            messages=[{'role': 'user', 'content': f'Brief of the slide (JSON):\n{_prompt(brief)}'}],
+                           'format': {'type': 'json_schema', 'schema': schema}},
+            messages=messages,
         )
     except anthropic.AuthenticationError as exc:
         raise WriterError('Your Claude API key was rejected.' if source == 'user' else 'The Claude API key of the server was rejected.') from exc
@@ -537,17 +548,25 @@ def write_with_claude(brief: dict[str, Any], settings: dict[str, Any], api_key: 
     except anthropic.APIConnectionError as exc:
         raise WriterError('This server cannot reach the Claude API.') from exc
     if response.stop_reason == 'refusal':
-        raise WriterError('Claude declined to write these comments.')
-    text = next((block.text for block in response.content if block.type == 'text'), '')
+        raise WriterError(f'Claude declined to {refused}.')
+    text =next((block.text for block in response.content if block.type == 'text'), '')
     try:
         document = json.loads(text)
     except ValueError as exc:
         raise WriterError('Claude did not reply with JSON.') from exc
     usage = getattr(response, 'usage', None)
-    return _comments_from(document), {
+    return document, {
         'model': str(getattr(response, 'model', '') or settings.get('claude_model') or ''),
         'input_tokens': int(getattr(usage, 'input_tokens', 0) or 0), 'output_tokens': int(getattr(usage, 'output_tokens', 0) or 0),
     }
+
+
+def write_with_claude(brief: dict[str, Any], settings: dict[str, Any], api_key: str,
+                      source: str = 'server') -> tuple[list[str], dict[str, Any]]:
+    """The comments Claude writes for the brief of a slide (see ``run_claude``)."""
+    document, details = run_claude(STYLE_GUIDE, [{'role': 'user', 'content': f'Brief of the slide (JSON):\n{_prompt(brief)}'}],
+                                   COMMENTS_SCHEMA, settings, api_key, source)
+    return _comments_from(document), details
 
 
 def _numbers(text: str) -> list[float]:

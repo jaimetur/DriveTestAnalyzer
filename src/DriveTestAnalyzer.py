@@ -491,6 +491,7 @@ HELP_NAVIGATION_DOCUMENTS = (
     'chart-builder.md',
     'query-builder.md',
     'ticket-center.md',
+    'assistant.md',
     'app-logs.md',
     'app-config.md',
     'workspace-config.md',
@@ -513,6 +514,7 @@ HELP_DOCUMENT_LABELS = {
     'chart-builder.md': 'Chart Builder',
     'query-builder.md': 'Query Builder',
     'ticket-center.md': 'Ticket Center',
+    'assistant.md': 'AI Assistant',
     'workspace-management.md': 'Workspace Management',
     'configuration.md': 'Deployment Configuration',
     'web-interface.md': 'Web Interfaces',
@@ -568,6 +570,7 @@ FEATURES: tuple[dict[str, Any], ...] = (
     {'key': 'reporting', 'label': 'Reporting', 'paths': ('/reporting', '/api/reporting')},
     {'key': 'builders', 'label': 'Builders', 'paths': ('/chart-builder', '/query-builder', '/api/chart-builder', '/api/query-builder')},
     {'key': 'ticket-center', 'label': 'Ticket Center', 'paths': ('/tickets', '/api/tickets', '/bugs-report', '/api/bugs-report')},
+    {'key': 'assistant', 'label': 'AI Assistant', 'paths': ('/assistant', '/api/assistant')},
 )
 FEATURE_KEYS = tuple(feature['key'] for feature in FEATURES)
 MODULE_ACCESS_CACHE_SECONDS = 5.0
@@ -6264,6 +6267,11 @@ def spectrum_holdings_context(request: Request) -> dict[str, Any]:
     }
 
 
+def assistant_glossary_context(request: Request) -> dict[str, Any]:
+    from src.modules.assistant import glossary_context
+    return glossary_context(sys.modules[__name__], request)
+
+
 def serving_networks_context(request: Request) -> dict[str, Any]:
     """The Serving Networks of the active workspace: which networks' cells serve each Operator's samples."""
     from src.modules.network_inventory import list_inventory_snapshots
@@ -7081,7 +7089,7 @@ WORKSPACE_ARCHIVE_COMPONENTS = frozenset({
     'workspace_database', 'input', 'output', 'designs', 'report_templates', 'mappings_reference_data',
     'auto_calculated_fields', 'query_builder_queries', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'main_cities',
     'scoring_configuration', 'app_events', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters',
-    'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls',
+    'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'assistant_glossary',
 })
 # The components and elements of packages, backups and saved selections made when Bundle Report Templates had a former
 # name (Complete Reports, then briefly Reporting Jobs Templates and Bundle Reports Templates), and their current names.
@@ -7134,7 +7142,8 @@ ARCHIVE_KIND_COMPONENTS = {
 WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'ppt-templates', 'auto-calculated-fields', 'designs', 'mappings-reference-data', 'query-builder-queries',
     'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'main-cities', 'scoring-configuration',
-    'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls',
+    'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
+    'assistant-glossary',
 })
 # The module of each Workspace Content element (Export / Transfer and backups), where the content is managed or used
 # (PPT Templates with the PPT Designer that use them): the subgroups of Workspace Content start with Workspace Config
@@ -7150,6 +7159,7 @@ WORKSPACE_ELEMENT_MODULES = {
     'nq-call-tracking': 'non-qualified-calls', 'nq-calls-configuration': 'non-qualified-calls',
     'bundle-report-template-favourites': 'reporting', 'reporting-jobs': 'reporting',
     'query-builder-queries': 'builders',
+    'assistant-glossary': 'assistant',
 }
 # The Workspace Content of backups: each component with its label and the element it holds (the workspace database and
 # its Input and Output folders hold none, so they belong to no module).
@@ -7183,6 +7193,8 @@ BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
                          'and history)', 'nq-call-tracking'),
     ('nq_calls_configuration', 'NQ Calls Configuration (one JSON file with the Non-Qualified Calls Analysis Center '
                                'configuration, without the follow-up)', 'nq-calls-configuration'),
+    ('assistant_glossary', 'AI Assistant Glossary (one JSON file with the terms of the workspace, without the suggestions not '
+                           'accepted)', 'assistant-glossary'),
     ('app_events', 'App Events (one JSON file with every event of the workspace; restore adds the ones it does not have)',
      'app-events'),
 )
@@ -7248,6 +7260,7 @@ def archive_workspace_components(manifest: dict[str, Any]) -> list[str]:
         'nq-call-tracking': ('nq_call_tracking',),
         'nq-calls-configuration': ('nq_calls_configuration',),
         'app-events': ('app_events',),
+        'assistant-glossary': ('assistant_glossary',),
     }
     return list(fallback.get(str(manifest.get('kind') or ''), ()))
 
@@ -7314,7 +7327,7 @@ def full_workspace_archive_components(*, include_input_files: bool = True, inclu
         components.append('input')
     if include_generated_outputs:
         components.append('output')
-    return [*components, 'designs', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'reporting_jobs', 'nq_call_tracking']
+    return [*components, 'designs', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'reporting_jobs', 'nq_call_tracking', 'assistant_glossary']
 
 
 def archive_workspace_components_for_target(
@@ -7337,6 +7350,8 @@ def archive_workspace_components_for_target(
         return ['query_builder_queries']
     if target == 'network-insights-favourites':
         return ['network_insights_favourites']
+    if target == 'assistant-glossary':
+        return ['assistant_glossary']
     if target == 'bundle-report-template-favourites':
         return ['bundle_report_template_favourites']
     if target == 'scoring-favourites-filters':
@@ -7785,7 +7800,7 @@ def create_recurring_database_backup(
             'workspace_database', 'designs', 'input', 'output', 'report_templates',
             'mappings_reference_data', 'main_cities', 'auto_calculated_fields', 'query_builder_queries',
             'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'reporting_jobs',
-            'nq_call_tracking', 'nq_calls_configuration', 'scoring_configuration', 'app_events',
+            'nq_call_tracking', 'nq_calls_configuration', 'scoring_configuration', 'app_events', 'assistant_glossary',
         )
         if component in components
     ]
@@ -7832,6 +7847,8 @@ def create_recurring_database_backup(
             total_bytes += len(json.dumps(_query_builder_queries_payload(workspace), ensure_ascii=False).encode('utf-8'))
         if 'network_insights_favourites' in components:
             total_bytes += len(_network_insights_favourites_payload(workspace))
+        if 'assistant_glossary' in components:
+            total_bytes += len(_assistant_glossary_payload(workspace))
         if 'bundle_report_template_favourites' in components:
             total_bytes += len(_bundle_report_template_favourites_payload(workspace))
         if 'scoring_favourites_filters' in components:
@@ -7932,6 +7949,9 @@ def create_recurring_database_backup(
                 if 'network_insights_favourites' in components:
                     report_progress(f'Exporting Network Insights Favourites for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_network_insights_favourites(archive, workspace, archive_workspace_root, archived_bytes)
+                if 'assistant_glossary' in components:
+                    report_progress(f'Exporting AI Assistant Glossary for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
+                    _archive_workspace_assistant_glossary(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'bundle_report_template_favourites' in components:
                     report_progress(f'Exporting Bundle Report Template Favourites for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_bundle_report_template_favourites(archive, workspace, archive_workspace_root, archived_bytes)
@@ -8541,6 +8561,8 @@ def _backup_archive_components(archive_path: Path) -> list[str]:
         components.append('query_builder_queries')
     if any(name.startswith('workspaces/') and f'/{NI_FAVOURITES_ARCHIVE_NAME}' in name for name in names):
         components.append('network_insights_favourites')
+    if any(name.startswith('workspaces/') and f'/{ASSISTANT_GLOSSARY_ARCHIVE_NAME}' in name for name in names):
+        components.append('assistant_glossary')
     if any(name.startswith('workspaces/') and any(f'/{archive_name}' in name for archive_name in BRT_FAVOURITES_ARCHIVE_NAMES)
            for name in names):
         components.append('bundle_report_template_favourites')
@@ -8649,6 +8671,8 @@ def restore_database_backup(
                 total_steps += int(f'{prefix}query-builder-queries/query-builder-queries.json' in name_set)
             if 'network_insights_favourites' in selected:
                 total_steps += int(f'{prefix}{NI_FAVOURITES_ARCHIVE_NAME}' in name_set)
+            if 'assistant_glossary' in selected:
+                total_steps += int(f'{prefix}{ASSISTANT_GLOSSARY_ARCHIVE_NAME}' in name_set)
             if 'bundle_report_template_favourites' in selected:
                 total_steps += int(any(f'{prefix}{archive_name}' in name_set for archive_name in BRT_FAVOURITES_ARCHIVE_NAMES))
             if 'scoring_favourites_filters' in selected:
@@ -8805,6 +8829,13 @@ def restore_database_backup(
                         progress_callback(f'Restoring Network Insights Favourites for {workspace_name}', completed_steps, total_steps)
                     _restore_workspace_network_insights_favourites(workspace, archive.read(member), importing_user)
                     advance(f'Network Insights Favourites restored for {workspace_name}')
+            if 'assistant_glossary' in selected:
+                member = f'{prefix}{ASSISTANT_GLOSSARY_ARCHIVE_NAME}'
+                if member in names:
+                    if progress_callback:
+                        progress_callback(f'Restoring AI Assistant Glossary for {workspace_name}', completed_steps, total_steps)
+                    _restore_workspace_assistant_glossary(workspace, archive.read(member), importing_user)
+                    advance(f'AI Assistant Glossary restored for {workspace_name}')
             if 'bundle_report_template_favourites' in selected:
                 member = next((f'{prefix}{archive_name}' for archive_name in BRT_FAVOURITES_ARCHIVE_NAMES
                                if f'{prefix}{archive_name}' in names), '')
@@ -9805,6 +9836,45 @@ def _restore_workspace_network_insights_favourites(
         raise ValueError(f'Network Insights Favourites for "{workspace.name}" are invalid: {exc}') from exc
 
 
+ASSISTANT_GLOSSARY_ARCHIVE_NAME = 'assistant-glossary/assistant-glossary.json'
+
+
+def _assistant_glossary_payload(workspace: Workspace) -> bytes:
+    """The terms of the AI Assistant Glossary of a workspace (the suggestions not accepted stay in it)."""
+    from src.modules.assistant import export_glossary
+
+    return export_glossary(Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path))
+
+
+def _archive_workspace_assistant_glossary(
+    archive: zipfile.ZipFile, workspace: Workspace, archive_prefix: str,
+    progress_callback: Callable[[int], None] | None = None,
+) -> None:
+    payload = _assistant_glossary_payload(workspace)
+    archive.writestr(f'{archive_prefix}/{ASSISTANT_GLOSSARY_ARCHIVE_NAME}', payload)
+    if progress_callback:
+        progress_callback(len(payload))
+
+
+def _restore_workspace_assistant_glossary(
+    workspace: Workspace, payload: bytes, importing_user: str, summary: list[str] | None = None,
+) -> int:
+    """Replace (found by their identity, then by their term) or add the AI Assistant Glossary terms of a package in a
+    workspace, each new one belonging to its creator when that user is active here (otherwise to ``importing_user``)."""
+    from src.modules.assistant import import_glossary
+
+    task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
+    renamed: list[str] = []
+    try:
+        counts = import_glossary(task_repository, payload, importing_user, summary=renamed,
+                                 creator=lambda package, local: transfer_creator(package, local, importing_user))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f'AI Assistant Glossary for "{workspace.name}" is invalid: {exc}') from exc
+    if summary is not None and renamed:
+        summary.append(summary_section(f'AI Assistant Glossary terms of "{workspace.name}"', renamed))
+    return counts['added'] + counts['replaced']
+
+
 BRT_FAVOURITES_ARCHIVE_NAME = 'bundle-report-template-favourites/bundle-report-template-favourites.json'
 # Packages and backups made when Bundle Report Templates had a former name keep them in the former names.
 BRT_FAVOURITES_ARCHIVE_NAMES = (BRT_FAVOURITES_ARCHIVE_NAME, 'complete-report-favourites/complete-report-favourites.json',
@@ -10120,6 +10190,7 @@ def _archive_workspace(
     )
     _archive_workspace_query_builder_queries(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_network_insights_favourites(archive, workspace, archive_prefix, progress_callback)
+    _archive_workspace_assistant_glossary(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_bundle_report_template_favourites(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_favourites_filters(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_scoring_report_templates(archive, workspace, archive_prefix, progress_callback)
@@ -10174,6 +10245,9 @@ def export_archive_filename(target: str | Iterable[str]) -> str:
     if target == 'network-insights-favourites':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_network-insights-favourites_{generated_at}.zip'
+    if target == 'assistant-glossary':
+        workspace_name = active_workspace.name if active_workspace else 'workspace'
+        return f'{workspace_name}_assistant-glossary_{generated_at}.zip'
     if target == 'bundle-report-template-favourites':
         workspace_name = active_workspace.name if active_workspace else 'workspace'
         return f'{workspace_name}_bundle-report-template-favourites_{generated_at}.zip'
@@ -10408,6 +10482,18 @@ def _build_single_export_archive_file(
             )
             archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
             _archive_workspace_network_insights_favourites(archive, source_workspace, f'workspaces/{source_workspace.name}', progress_callback)
+        elif target == 'assistant-glossary':
+            source_workspace_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
+            source_workspace = workspace_registry.get(source_workspace_id) if source_workspace_id else None
+            if not source_workspace:
+                raise ValueError('Open a workspace before exporting the AI Assistant Glossary.')
+            archive_path = f'workspaces/{source_workspace.name}/{ASSISTANT_GLOSSARY_ARCHIVE_NAME}'
+            manifest = archive_manifest(
+                'assistant-glossary', source_workspace={'id': source_workspace.id, 'name': source_workspace.name},
+                workspace_components=archive_workspace_components_for_target(target), archive_path=archive_path,
+            )
+            archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
+            _archive_workspace_assistant_glossary(archive, source_workspace, f'workspaces/{source_workspace.name}', progress_callback)
         elif target in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
                        'scoring-excluded-calls'}:
             source_workspace_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
@@ -10827,6 +10913,10 @@ def _recovered_transfer_details(manifest: dict[str, Any]) -> tuple[str, list[str
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
         return ('Network Insights Favourites', [name] if name else [])
+    if kind == 'assistant-glossary':
+        source = manifest.get('source_workspace')
+        name = str(source.get('name') or '') if isinstance(source, dict) else ''
+        return ('AI Assistant Glossary', [name] if name else [])
     if kind in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
                        'scoring-excluded-calls'}:
         source = manifest.get('source_workspace')
@@ -10890,7 +10980,7 @@ def _recover_unimported_transfer_packages() -> None:
                 'config', 'users-access', 'ticket-center', 'workspace', 'full-environment', 'ppt-templates',
                 'auto-calculated-fields', 'designs', 'mappings-reference-data', 'main-cities',
                 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls',
+                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
                 'database-backup', 'bundle',
             }:
                 raise ValueError('Unsupported transfer package.')
@@ -12086,6 +12176,7 @@ ELEMENT_DOCUMENTS: dict[str, Callable[[Workspace], Any]] = {
     'auto-calculated-fields': _exported_calculated_dimensions,
     'query-builder-queries': _query_builder_queries_payload,
     'network-insights-favourites': _network_insights_favourites_payload,
+    'assistant-glossary': _assistant_glossary_payload,
     'bundle-report-template-favourites': _bundle_report_template_favourites_payload,
     'scoring-favourites-filters': _favourites_filters_payload,
     'scoring-report-templates': _scoring_report_templates_archive_payload,
@@ -12870,6 +12961,28 @@ def _apply_import_archive(
             message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)),
                                              imported_count)
             return told(message, [*renamed, *lines])
+        if kind == 'assistant-glossary':
+            member = str(manifest.get('archive_path') or '')
+            if member not in archive.namelist() or not re.fullmatch(
+                    r'workspaces/[^/]+/' + re.escape(ASSISTANT_GLOSSARY_ARCHIVE_NAME), member):
+                raise ValueError('The package does not contain a valid AI Assistant Glossary.')
+            destinations = [workspace_registry.get(workspace_id) for workspace_id in destination_workspace_ids]
+            destinations = [workspace for workspace in destinations if workspace]
+            if not destinations:
+                source = manifest.get('source_workspace')
+                if isinstance(source, dict) and source.get('id'):
+                    candidate = workspace_registry.get(str(source['id']))
+                    destinations = [candidate] if candidate else []
+            if not destinations:
+                raise ValueError('Select at least one destination workspace.')
+            payload = archive.read(member)
+            renamed = []
+            before = _element_documents(kind, destinations)
+            imported_count = sum(_restore_workspace_assistant_glossary(workspace, payload, importing_user, renamed)
+                                 for workspace in destinations)
+            message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)),
+                                             imported_count)
+            return told(message, [*renamed, *lines])
         if kind in {'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels',
                        'scoring-excluded-calls'}:
             favourites = kind == 'bundle-report-template-favourites'
@@ -13251,6 +13364,7 @@ def _transfer_content_label(target: str | Iterable[str]) -> str:
         'scoring-configuration': 'Scoring & GAP Analysis Methodologies',
         'query-builder-queries': 'Query Builder Queries',
         'network-insights-favourites': 'Network Insights Favourites',
+        'assistant-glossary': 'AI Assistant Glossary',
         'bundle-report-template-favourites': 'Bundle Report Template Favourites',
         'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
         'scoring-report-templates': 'Scoring & GAP Report Templates',
@@ -13881,7 +13995,7 @@ def require_import_export_permission(user: SessionUser, target: str) -> None:
     if user.role == 'super-admin' or target in {
         'ppt-templates', 'auto-calculated-fields', 'designs', 'mappings-reference-data', 'main-cities',
         'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls',
+        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
     }:
         return
     raise HTTPException(
@@ -13915,7 +14029,7 @@ def require_export_permission(user: SessionUser, target: str) -> None:
     """Authorize exports and transfers without exposing other workspaces."""
     if user.role == 'super-admin':
         return
-    if target in {'auto-calculated-fields', 'ppt-templates', 'designs', 'mappings-reference-data', 'main-cities', 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls'}:
+    if target in {'auto-calculated-fields', 'ppt-templates', 'designs', 'mappings-reference-data', 'main-cities', 'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events', 'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary'}:
         if active_workspace and repository.user_has_workspace_access(user.username, active_workspace.id):
             return
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Open a workspace you can access first.')
@@ -14000,6 +14114,7 @@ def render_admin_template(
     }
     from src.modules.cdr_store import TABLE_TITLES as CDR_STORE_TABLE_TITLES
     from src.modules.non_qualified_calls import NQ_TABLE_TITLES
+    from src.modules.assistant import TABLE_TITLES as ASSISTANT_TABLE_TITLES
     from src.modules.scoring_exclusions import TABLE_TITLES as SCORING_EXCLUSION_TABLE_TITLES
     from src.modules.l3_dt_logs import TABLE_TITLES as L3_DT_LOGS_TABLE_TITLES
 
@@ -14050,6 +14165,7 @@ def render_admin_template(
         'map_area_postal_layers': 'Map Area Postal Layers',
         'report_task_runs': 'Report Task Runs',
         **NQ_TABLE_TITLES,
+        **ASSISTANT_TABLE_TITLES,
         **SCORING_EXCLUSION_TABLE_TITLES,
         **CDR_STORE_TABLE_TITLES,
         **L3_DT_LOGS_TABLE_TITLES,
@@ -14107,7 +14223,8 @@ def render_admin_template(
         {'value': 'nq-call-tracking', 'label': 'NQ Call Tracking (from active workspace)', 'disabled': not active_workspace},
         {'value': 'nq-calls-configuration', 'label': 'NQ Calls Configuration (from active workspace)', 'disabled': not active_workspace},
         {'value': 'app-events', 'label': 'App Events (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'full-environment', 'label': 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + Selected Workspaces)',
+        {'value': 'assistant-glossary', 'label': 'AI Assistant Glossary (from active workspace)', 'disabled': not active_workspace},
+        {'value': 'full-environment', 'label': 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)',
          'tag': 'Whole application and workspace databases', 'tag_class': 'user-choice-tag-database'},
         *[
             {'value': f'workspace:{workspace.id}', 'label': f'Full Workspace: {workspace.name}', 'tag': 'Whole workspace database',
@@ -14123,7 +14240,7 @@ def render_admin_template(
             option for option in export_options
             if option['value'] in {
                 'ppt-templates', 'auto-calculated-fields', 'designs', 'mappings-reference-data', 'main-cities', 'scoring-configuration',
-                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls',
+                'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
             } or option['value'].startswith('workspace:')
         ]
     export_option_groups = [
@@ -14194,6 +14311,7 @@ def render_admin_template(
             'default_campaign_map': DEFAULT_CAMPAIGN_MAP,
             'vendor_mapping_error': request.query_params.get('vendor_mapping_error') or None,
             **spectrum_holdings_context(request),
+            **assistant_glossary_context(request),
             **serving_networks_context(request),
             **cdr_field_dictionary_context(request),
             **(auto_calculated_fields_context(request) if workspace_config_page else {}),
@@ -16335,7 +16453,8 @@ def workspace_access_map(user: SessionUser, workspaces: list[Workspace]) -> dict
 DATABASE_TABLE_TYPES: tuple[tuple[str, str], ...] = (
     ('Users & Access', '#6B46C1'), ('Application', '#48606F'), ('Datasets', '#1F6FBF'), ('PPT Designer & Templates', '#7751B9'),
     ('Scoring & GAP Analysis', '#176E77'), ('Non-Qualified Calls', '#B0234F'), ('Reporting', '#2E8C58'),
-    ('Mappings & Maps', '#B85B20'), ('Query Builder', '#8A6D0B'), ('Ticket Center', '#DC2626'), ('Workspace', '#5A6773'),
+    ('Mappings & Maps', '#B85B20'), ('Query Builder', '#8A6D0B'), ('Ticket Center', '#DC2626'), ('AI Assistant', '#0E7490'),
+    ('Workspace', '#5A6773'),
     ('Voice CDRs', '#1F6FBF'), ('Data CDRs', '#2E8C58'), ('Speech CDRs', '#7751B9'), ('Other datasets', '#5A6773'),
 )
 
@@ -16368,6 +16487,8 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
         kind_type = 'Mappings & Maps'
     elif name == 'saved_query_builder_queries':
         kind_type = 'Query Builder'
+    elif name.startswith('assistant_'):
+        kind_type = 'AI Assistant'
     else:
         kind_type = 'Workspace'
     return kind_type, colors[kind_type]
@@ -24057,7 +24178,7 @@ async def receive_transfer_offer(request: Request) -> JSONResponse:
             'config', 'users-access', 'ticket-center', 'workspace', 'full-environment', 'ppt-templates',
             'auto-calculated-fields', 'designs', 'dashboards', 'mappings-reference-data', 'main-cities',
             'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-            'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls',
+            'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
                 'database-backup', 'bundle',
     }:
         raise HTTPException(status_code=400, detail='The offered export type is not supported.')
@@ -24872,7 +24993,7 @@ def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser,
         'config', 'users-access', 'ticket-center', 'workspace', 'full-environment', 'ppt-templates',
         'auto-calculated-fields', 'designs', 'mappings-reference-data', 'main-cities',
         'scoring-configuration', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
-        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls',
+        'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
                 'database-backup', 'bundle',
     }:
         raise ValueError('The export package type is not supported.')
@@ -28098,3 +28219,5 @@ from src.modules.presentations import install_presentation_routes
 install_presentation_routes(sys.modules[__name__])
 from src.modules.comment_writers import install_comment_writer_routes
 install_comment_writer_routes(sys.modules[__name__])
+from src.modules.assistant import install_assistant_routes
+install_assistant_routes(sys.modules[__name__])

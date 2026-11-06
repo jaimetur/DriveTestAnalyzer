@@ -8,6 +8,7 @@
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:
+- **AI Assistant — Ask the workspace in your own words:** a new main module answers questions about the active workspace in a chat, in any language: the scoring of the operators with any split and filter (calculated as a Saved Filter of the same selection), the saved Scoring results, the Non-Qualified Calls, the campaigns and methodologies, and how the tool works. It answers with the AI engines of Super Admin → AI Comment Writers (Kiro CLI or Claude). Every name of an operator, vendor, region, cluster, city, campaign, methodology or workspace leaves the server as a code and comes back as its name in the answer; every figure must come from a calculation of the tool, and each answer shows how it was calculated and exactly what was sent to the engine. Users rate the answers and suggest terms for the new **AI Assistant Glossary** of Workspace Config, which every question of the workspace takes and which travels with Import / Export, Transfers and backups. Questions, answers, feedback and glossary changes are recorded in App Events.
 
 #### 🚀 Enhancements:
 - **Network Insights — Legend of the RSRP and SINR classes:** in PowerPoint and Word (also in a Bundle Report Template), the RF Quality and NR quality per carrier tables have a legend under them with the colour of each class of their bars and its range (RSRP from Excellent ≥ -80 dBm to Very poor < -110 dBm, SINR from Excellent ≥ 20 dB to Bad < 0 dB), kept under the table when it is joined, fitted or continued on more slides.

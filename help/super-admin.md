@@ -126,7 +126,7 @@ The server generates every presentation of the Help, with the pictures of their 
 
 ## AI Comment Writers
 
-The writers of the generated comments of [PPT Designer](ppt-designer.md#generated-comments) (Generate comments for this slide or for all slides, and Auto comments). The rules always read the charts on the server; an LLM writer rewrites their facts, and every figure it writes must be one of them, or the rules comment is kept.
+The writers of the generated comments of [PPT Designer](ppt-designer.md#generated-comments) (Generate comments for this slide or for all slides, and Auto comments). The rules always read the charts on the server; an LLM writer rewrites their facts, and every figure it writes must be one of them, or the rules comment is kept. The [AI Assistant](assistant.md) answers with the same engines: the enabled Kiro CLI and Claude, their keys, models, effort and timeout (for each request of a question), the default one first in its engine selector; without any enabled, it asks nothing.
 
 | Setting | Effect |
 | --- | --- |

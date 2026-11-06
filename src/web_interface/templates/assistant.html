@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block content %}
+<link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/assistant.css') }}?v={{ asset_version('css/assistant.css') }}">
+<section class="dashboard-stack spacious-stack assistant-page" id="assistant">
+  <article class="panel hero-panel module-hero-assistant">
+    <p class="eyebrow">AI Assistant</p>
+    <h2>Ask your workspace in your own words</h2>
+    <p class="lede">Ask about the scoring, the Non-Qualified Calls, the campaigns or how the tool works, in any language. The assistant reads the workspace with the same calculations as its modules and answers here, with how it calculated every figure. The names of operators, vendors, areas, campaigns and methodologies leave this server as codes only: the AI engine never sees them, and you see the real names.</p>
+  </article>
+
+  <div class="assistant-layout">
+    <aside class="panel assistant-sidebar" aria-label="Conversations">
+      <button type="button" class="assistant-new" id="assistant-new"><span aria-hidden="true">+</span> New conversation</button>
+      <h3 class="assistant-sidebar-title">Conversations</h3>
+      <ul class="assistant-conversations" id="assistant-conversations"></ul>
+      <p class="form-note assistant-empty-list" id="assistant-empty-list">Your conversations of this workspace appear here. Only you see them.</p>
+      <div class="assistant-sidebar-foot">
+        <p class="form-note">Glossary: <strong id="assistant-glossary-count">{{ assistant_config.glossary_count }}</strong> terms of this workspace.{% if assistant_config.can_edit_glossary %} <a href="/workspace-config#assistant-glossary">Edit the glossary</a>{% endif %}</p>
+      </div>
+    </aside>
+
+    <article class="panel assistant-chat" aria-label="Chat">
+      <header class="assistant-chat-head">
+        <h3 id="assistant-title">New conversation</h3>
+        <div class="assistant-chat-actions">
+          <button type="button" class="assistant-icon-button" id="assistant-rename" title="Rename this conversation" hidden>Rename</button>
+          <button type="button" class="assistant-icon-button danger" id="assistant-delete" title="Delete this conversation" hidden>Delete</button>
+        </div>
+      </header>
+      <div class="assistant-messages" id="assistant-messages" aria-live="polite">
+        <div class="assistant-welcome" id="assistant-welcome">
+          <p class="assistant-welcome-title">What do you want to know about <strong>{{ assistant_config.workspace }}</strong>?</p>
+          <div class="assistant-examples" id="assistant-examples">
+            {% for example in assistant_config.examples %}<button type="button" class="assistant-chip" data-example="{{ example }}">{{ example }}</button>{% endfor %}
+          </div>
+        </div>
+      </div>
+      <form class="assistant-composer" id="assistant-composer" autocomplete="off">
+        <textarea id="assistant-question" rows="2" maxlength="{{ assistant_config.max_question_length }}" placeholder="Ask a question about this workspace… (Enter sends, Shift+Enter adds a line)" aria-label="Question"></textarea>
+        <div class="assistant-composer-bar">
+          <label class="assistant-engine" title="The AI engine that answers: those a super-admin enabled in Super Admin → AI Comment Writers">Engine
+            <select id="assistant-engine" aria-label="AI engine">
+              {% for engine in assistant_config.engines.engines %}<option value="{{ engine.id }}"{% if engine.id == assistant_config.engines.default %} selected{% endif %}>{{ engine.label }}</option>{% endfor %}
+            </select>
+          </label>
+          <span class="assistant-privacy-chip" title="Before anything is sent, every name of an operator, vendor, region, cluster, city, campaign or methodology is replaced by a code. Open What was sent below an answer to see it.">Names sent as codes</span>
+          <button type="button" class="assistant-stop" id="assistant-stop" hidden>Stop</button>
+          <button type="submit" class="assistant-send" id="assistant-send">Ask</button>
+        </div>
+        <p class="form-note assistant-status" id="assistant-status" role="status"></p>
+      </form>
+    </article>
+  </div>
+</section>
+
+<div class="confirm-overlay assistant-dialog" id="assistant-suggest-dialog" hidden>
+  <form class="confirm-panel" id="assistant-suggest-form" role="dialog" aria-modal="true" aria-labelledby="assistant-suggest-title">
+    <h3 id="assistant-suggest-title">Suggest a Glossary Term</h3>
+    <p class="form-note">Teach the assistant something the data does not tell, such as "Vendor A is Ericsson" or what a word of your team means. An editor of Workspace Configuration accepts it; from then on every question of this workspace uses it.</p>
+    <label>Term<input type="text" id="assistant-suggest-term" maxlength="120" required placeholder="Vendor A"></label>
+    <label>Meaning<textarea id="assistant-suggest-meaning" rows="4" maxlength="2000" required placeholder="The Region of the tests whose network Ericsson operates (the performance owner)."></textarea></label>
+    <p class="form-note assistant-dialog-status" id="assistant-suggest-status" role="status"></p>
+    <div class="confirm-actions">
+      <button type="button" class="secondary" id="assistant-suggest-cancel">Cancel</button>
+      <button type="submit" id="assistant-suggest-save">Suggest</button>
+    </div>
+  </form>
+</div>
+
+<div class="confirm-overlay assistant-dialog" id="assistant-sent-dialog" hidden>
+  <div class="confirm-panel assistant-sent-panel" role="dialog" aria-modal="true" aria-labelledby="assistant-sent-title">
+    <h3 id="assistant-sent-title">What Was Sent to the AI Engine</h3>
+    <p class="form-note">Every request the engine received for this answer, exactly as it was sent, and what it replied. The codes stand for the names below, which never left this server.</p>
+    <div class="assistant-legend" id="assistant-sent-legend"></div>
+    <div class="assistant-sent-steps" id="assistant-sent-steps"></div>
+    <div class="confirm-actions"><button type="button" id="assistant-sent-close">Close</button></div>
+  </div>
+</div>
+<script id="assistant-config" type="application/json">{{ assistant_config | tojson }}</script>
+<script defer src="{{ static_path('js/rich_text.js') }}?v={{ asset_version('js/rich_text.js') }}"></script>
+<script defer src="{{ static_path('js/assistant.js') }}?v={{ asset_version('js/assistant.js') }}"></script>
+{% endblock %}

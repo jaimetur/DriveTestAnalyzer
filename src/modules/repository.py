@@ -653,8 +653,9 @@ DEFAULT_ACCOUNT_USERNAMES = ('super', 'admin', 'demo')
 PROFILE_COLOR_ALL_MODULES, PROFILE_COLOR_BENCHMARKING, PROFILE_COLOR_NON_QUALIFIED_CALLS = '#096767', '#1E61A3', '#D74B75'
 # The Modules Profiles of a new deployment: (name, description, modules, colour, default).
 DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], str, bool], ...] = (
-    ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Reporting, Builders & Ticket Center.',
-     ('workspace', 'non-qualified-calls', 'reporting', 'builders', 'ticket-center'), PROFILE_COLOR_NON_QUALIFIED_CALLS, False),
+    ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Reporting, Builders, Ticket Center & AI Assistant.',
+     ('workspace', 'non-qualified-calls', 'reporting', 'builders', 'ticket-center', 'assistant'), PROFILE_COLOR_NON_QUALIFIED_CALLS,
+     False),
     ('Benchmarking', 'Every main module except Non-Qualified Calls.',
      tuple(key for key, _name in MAIN_MODULES if key != 'non-qualified-calls'), PROFILE_COLOR_BENCHMARKING, False),
     ('All Modules', 'Every main module.', tuple(key for key, _name in MAIN_MODULES), PROFILE_COLOR_ALL_MODULES, True),
@@ -663,7 +664,7 @@ DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], str, bool], ...
 
 # Main modules that joined every Modules Profile of a deployment when they were added to the tool; each one is added
 # once, so a profile it is later taken out of keeps without it.
-MODULES_ADDED_TO_EVERY_PROFILE: tuple[str, ...] = ('ticket-center',)
+MODULES_ADDED_TO_EVERY_PROFILE: tuple[str, ...] = ('ticket-center', 'assistant')
 MODULES_ADDED_TO_PROFILES_STATE_KEY = 'modules_profiles_added_modules'
 
 

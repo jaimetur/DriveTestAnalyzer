@@ -123,6 +123,10 @@ Build read-only SQL in Assistance Mode or SQL Mode, inspect paginated results an
 
 Report the bugs of the tool, suggest improvements and ask for new features in tickets of their type, with their screenshots (pasted, dropped or chosen), the version and the date, a priority from P1 to P5 and the module they are about, and follow them with comments; super-admins attend them until they are resolved. A design counts them by type and status, the open ones by priority and module, and those created and resolved each week. See [Ticket Center Help](help/ticket-center.md).
 
+### AI Assistant
+
+Ask the active workspace questions in your own words, in any language, and get the answer in a chat: the scoring of the operators with any split and filter, the saved Scoring results, the Non-Qualified Calls, the campaigns and how the tool works. It uses the AI engines of Super Admin → AI Comment Writers (Kiro CLI or Claude); every name of an operator, vendor, area, campaign or methodology is sent to the engine as a code and put back in the answer, every figure comes from a calculation of the tool, and a glossary of the workspace in Workspace Config tells it what the data does not. See [AI Assistant Help](help/assistant.md).
+
 ### App Logs
 
 - Filter by User, Executed by, date, type and action.
@@ -423,6 +427,7 @@ DriveTestAnalyzer/
 - [Chart Builder](help/chart-builder.md)
 - [Query Builder](help/query-builder.md)
 - [Ticket Center](help/ticket-center.md)
+- [AI Assistant](help/assistant.md)
 - [App Logs](help/app-logs.md)
 - [Application Config](help/app-config.md)
 - [Workspace Config](help/workspace-config.md)

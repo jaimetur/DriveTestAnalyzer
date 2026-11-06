@@ -2475,6 +2475,7 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
         ('nq-call-tracking', 'Non-Qualified Calls'), ('nq-calls-configuration', 'Non-Qualified Calls'),
         ('bundle-report-template-favourites', 'Reporting'), ('reporting-jobs', 'Reporting'),
         ('query-builder-queries', 'Builders'),
+        ('assistant-glossary', 'AI Assistant'),
     ]
     export = group('Current Workspace Content', 'data-export-target-select')
     assert re.findall(r'<option value="([^"]+)" data-subgroup="([^"]+)"', export) == modules
@@ -2518,7 +2519,7 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert 'Mappings &amp; Reference Data (from active workspace)</option>' in admin_response.text
     assert admin_response.text.index('Main Cities (from active workspace)</option>') < admin_response.text.index('Mappings &amp; Reference Data (from active workspace)</option>')
     assert 'Scoring &amp; GAP Analysis Methodologies (from active workspace)' in admin_response.text
-    assert 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring &amp; GAP Favourites Filters + Scoring &amp; GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + Selected Workspaces)' in admin_response.text
+    assert 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring &amp; GAP Favourites Filters + Scoring &amp; GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)' in admin_response.text
     # The backups, in the Database Management of Super Admin.
     backups_page = client.get('/super-admin').text
     assert backups_page.index('Main Cities (workspace city selection)') < backups_page.index('Mappings &amp; Reference Data (Operator and Vendor aliases, order and theme colors')
@@ -9846,6 +9847,7 @@ def test_docs_routes_expose_readme_changelog_and_help(client) -> None:
         'chart-builder.md',
         'query-builder.md',
         'ticket-center.md',
+        'assistant.md',
         'app-logs.md',
         'app-config.md',
         'workspace-config.md',
@@ -11007,7 +11009,7 @@ def test_module_tabs_take_order_title_icon_and_colour_from_interface_settings(cl
     admin_page = client.get('/super-admin').text
     assert 'name="title__scoring" value="Scoring &amp; GAP Analysis"' in admin_page and 'data-module-tab-icons' in admin_page
     order = ['workspace', 'network-insights', 'datasets-analysis', 'ppt-designer', 'scoring',
-             'non-qualified-calls', 'reporting', 'builders', 'ticket-center']
+             'non-qualified-calls', 'reporting', 'builders', 'ticket-center', 'assistant']
     form = {'show_module_stage_labels': 'true', **{f'position__{module}': str(index) for index, module in enumerate(order)}}
     form.update({'title__network-insights': 'Radio Insights', 'short_title__network-insights': 'Radio',
                  'tab_icon__network-insights': 'signal', 'tab_color__network-insights': '#aa3300',

@@ -30,6 +30,7 @@ MAIN_MODULES: tuple[tuple[str, str], ...] = (
     ('reporting', 'Reporting'),
     ('builders', 'Builders'),
     ('ticket-center', 'Ticket Center'),
+    ('assistant', 'AI Assistant'),
 )
 # Main modules the tool no longer has, by the key their App Events and tickets keep: their title, for that history only.
 RETIRED_MODULES: dict[str, str] = {'ppt-reporting-old': 'PPT Reporting (old)'}
@@ -65,6 +66,8 @@ MODULE_TABS: dict[str, dict[str, Any]] = {
     'ticket-center': {'css': 'module-tab-ticket-center', 'href': '/tickets', 'title': 'Ticket Center', 'short_title': 'Tickets',
                       'nav_title': 'Ticket Center', 'tab_icon': 'ticket-center', 'tab_color': '#DC2626',
                       'docs': ('ticket-center.md',), 'needs_workspace': False},
+    'assistant': {'css': 'module-tab-assistant', 'href': '/assistant', 'title': 'AI Assistant', 'short_title': 'Assistant',
+                  'nav_title': 'AI Assistant', 'tab_icon': 'assistant', 'tab_color': '#0E7490', 'docs': ('assistant.md',)},
 }
 
 # Icons a main tab can show before its title (24 x 24, drawn with lines).
@@ -86,6 +89,8 @@ TAB_ICONS: dict[str, dict[str, str]] = {
     'builders': {'label': 'Wrench (Builders)',
                  'd': '<path d="M14.7 6.3a4 4 0 0 0-5.3 5.3L3.5 17.5a2 2 0 0 0 2.9 2.9l5.9-5.9a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.4-.5-.5-2.4z"/>'},
     'ticket-center': {'label': 'Ticket (Ticket Center)', 'd': '<path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h15A1.5 1.5 0 0 1 21 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5V14a2 2 0 0 0 0-4z"/><path d="M15 6.5v2M15 11v2M15 15.5v2"/>'},
+    'assistant': {'label': 'Chat with a sparkle (AI Assistant)',
+                  'd': '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h7A2.5 2.5 0 0 1 16 5.5V11a2.5 2.5 0 0 1-2.5 2.5H9l-4 3.5v-3.5A2.5 2.5 0 0 1 4 11z"/><path d="M18.5 11.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9z"/><path d="M8 7.5h5M8 10h3"/>'},
     'bug': {'label': 'Bug',
             'd': '<path d="M9 7.5a3 3 0 0 1 6 0z"/><rect x="7" y="7.5" width="10" height="12" rx="5"/><path d="M12 11v8.5M7 12H3.5M20.5 12H17M7.6 16.5 4.5 18.5M16.4 16.5l3.1 2M7.4 9 4.5 7M16.6 9l2.9-2M10 4.5 9 3M14 4.5 15 3"/>'},
     'bar-chart': {'label': 'Bar chart', 'd': '<path d="M4 20h16M7 16v-5M12 16V6M17 16v-8"/>'},
@@ -151,6 +156,7 @@ DEFAULT_MODULE_LABELS: dict[str, dict[str, str]] = {
     'reporting': {'text': 'BETA', 'color': STAGE_COLOURS['beta'], 'icon': '', 'icon_color': '#3D2A00'},
     'builders': {'text': 'BETA', 'color': STAGE_COLOURS['beta'], 'icon': '', 'icon_color': '#3D2A00'},
     'ticket-center': {'text': 'NEW', 'color': STAGE_COLOURS['new'], 'icon': '', 'icon_color': '#FFFFFF'},
+    'assistant': {'text': 'ALPHA', 'color': STAGE_COLOURS['alpha'], 'icon': 'sparkle', 'icon_color': '#FFFFFF'},
 }
 
 # Predefined icons drawn in a 10 x 10 box at the left of the label (x 3–13, y 2–12).

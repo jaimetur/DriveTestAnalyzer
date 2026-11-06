@@ -37,6 +37,7 @@ workspace-config
 | Portable operations | [Open section](#portable-operations) |
 | Scoring & GAP Analysis Setup | [Open section](#scoring-gap-analysis-setup) |
 | Scoring Export Panels | [Open section](#scoring-export-panels) |
+| AI Assistant Glossary | [Open section](#ai-assistant-glossary) |
 
 ## Access and active workspace
 
@@ -315,6 +316,17 @@ The **Scoring Export Panels** panel, after the Scoring & GAP Analysis Setup, lis
 - **What to Export** chooses its operators with two buttons: **All Operators** (the reference included) or **Focus Operators**, those with the **Focus** role in the [Operator Maps](#operator-maps) (every operator when no label has it; the reference only when it is one of them). The default of each panel is marked with a dot: Focus Operators in Where to act, Where to act by performance owner, Biggest levers, Cities, Towns, Roads and Railways ranked, the route that loses most, Campaign comparison, Geographical Areas ranked, Each operator against the reference, the individual GAP tables, GAP by part, KPI GAP Profile and every Points Lost panel but Where the points go; All Operators in the others.
 
 **Save Export Panels** saves the table for the workspace and **Restore Defaults** brings back the defaults; both are registered in App Events with the panels that changed. **Export All Operators in Focus panels**, in every export dialog and report editor, shows every operator in the Focus Operators panels of one document. The operators chosen on the page with the operator buttons of a panel still apply to **Export Selected Scoring Report** (see [Scoring & GAP Analysis](scoring-gap-analysis.md#what-is-in-the-powerpoint)). The panels travel as the **Scoring Export Panels** element of Admin's Import / Export / Transfer (importing them replaces those of each destination workspace), with Full Workspace transfers and with backups.
+
+
+### AI Assistant Glossary
+
+The **AI Assistant Glossary** panel, the last of the page, holds what the [AI Assistant](assistant.md) needs to know about the workspace that its data does not tell: what a Region, a label or a word of the team means (for example *Vendor A: the Region of the tests whose network Ericsson operates*). Every question of the workspace takes its terms, the names they hold sent as codes like every other name; the Operator Maps, Campaign Maps and methodologies are read from the workspace and need no entry.
+
+- **Suggestions from the chat** lists the terms users suggest below the answers of the assistant, with who suggested them and when: **Accept** adds one to the glossary as it is or corrected, **Dismiss** removes it.
+- **Terms** lists the glossary, each term with its meaning, who changed it last and when: **Save** keeps a change and **×** deletes the term once you confirm.
+- **Add Term** adds a term with its meaning.
+
+Every change is registered in App Events. The terms travel as the **AI Assistant Glossary** element of Admin's Import / Export / Transfer (an imported term replaces the one with the same identity, or else the same term, and nothing is deleted), with Full Workspace transfers and with backups; suggestions not accepted stay in their workspace.
 
 
 ### Vendor-only filter labels

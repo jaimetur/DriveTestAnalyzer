@@ -350,6 +350,7 @@ _MODULE_ACTIONS = (
     ('network-insights', ('network_insights_', 'export_network_insights_')),
     ('scoring', ('scoring_', 'save_scoring_', 'export_scoring_', 'import_scoring_', 'delete_scoring_')),
     ('ticket-center', ('ticket_',)),
+    ('assistant', ('assistant_',)),
     ('ppt-designer', ('save_design', 'delete_design', 'rename_design', 'export_design_', 'download_design_ppt',
                         'delete_all_design_ppts', 'stop_design_ppt_job', 'change_design_template',
                         'update_design_chart_template', 'interrupt_design_preparation')),

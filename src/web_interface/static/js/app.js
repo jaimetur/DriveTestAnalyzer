@@ -4804,7 +4804,7 @@ const workspaceElementExportTargets = new Set([
   'designs', 'ppt-templates', 'main-cities', 'mappings-reference-data', 'scoring-configuration',
   'auto-calculated-fields', 'query-builder-queries', 'reporting-jobs', 'nq-call-tracking', 'nq-calls-configuration', 'app-events',
   'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates',
-  'scoring-export-panels', 'scoring-excluded-calls',
+  'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
 ]);
 
 // The Input and Output folders of a backup only make sense with the workspace database they belong to.
@@ -6761,6 +6761,7 @@ function importPackageContents(payload) {
     'scoring-configuration': 'Scoring & GAP Analysis Methodologies',
     'auto-calculated-fields': 'Auto-calculated Fields',
     'query-builder-queries': 'Query Builder Queries', 'network-insights-favourites': 'Network Insights Favourites',
+    'assistant-glossary': 'AI Assistant Glossary',
     'bundle-report-template-favourites': 'Bundle Report Template Favourites', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
     'scoring-report-templates': 'Scoring & GAP Report Templates', 'scoring-export-panels': 'Scoring Export Panels',
     'scoring-excluded-calls': 'Scoring Excluded Calls',
@@ -7689,6 +7690,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         query_builder_queries: 'Query Builder Queries',
         'network-insights-favourites': 'Network Insights Favourites',
         network_insights_favourites: 'Network Insights Favourites',
+        'assistant-glossary': 'AI Assistant Glossary',
+        assistant_glossary: 'AI Assistant Glossary',
         'bundle-report-template-favourites': 'Bundle Report Template Favourites',
         bundle_report_template_favourites: 'Bundle Report Template Favourites',
         'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',

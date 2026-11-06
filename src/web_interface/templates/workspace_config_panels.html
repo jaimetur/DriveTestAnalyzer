@@ -544,3 +544,58 @@
       {% else %}<p class="form-note">Open a workspace before choosing the Scoring Export Panels.</p>{% endif %}
     </div>
   </details>
+
+  <details id="assistant-glossary" class="panel collapsible-panel assistant-glossary-panel" open data-panel-state-key="workspace-config:assistant-glossary">
+    <summary class="collapsible-summary">
+      <div><p class="eyebrow">AI Assistant</p><h2>AI Assistant Glossary</h2></div>
+      <span class="collapse-chip">Collapse</span>
+    </summary>
+    <div class="collapsible-panel-body">
+      {% if active_workspace %}
+      <p class="lede">What the AI Assistant needs to know about <strong>"{{ active_workspace.name }}"</strong> that its data does not tell: what a Region, a label or a word of your team means (for example "Vendor A: the Region of the tests whose network Ericsson operates"). Every question of this workspace takes these terms; the names they hold are sent as codes, like every other name. The Operator Maps, Campaign Maps and methodologies are read from the workspace and need no entry.</p>
+      {% if assistant_glossary_notice %}<div class="alert alert-success">{{ assistant_glossary_notice }}</div>{% endif %}
+      {% if assistant_glossary_error %}<div class="alert alert-error">{{ assistant_glossary_error }}</div>{% endif %}
+      {% if assistant_glossary_suggestions %}
+      <h3 class="assistant-glossary-heading">Suggestions from the chat <span class="assistant-count">{{ assistant_glossary_suggestions | length }}</span></h3>
+      <p class="form-note">Users suggest terms below the answers of the AI Assistant. Accept a suggestion (you can correct it first) to add it to the glossary, or dismiss it.</p>
+      <div class="assistant-glossary-list">
+        {% for entry in assistant_glossary_suggestions %}
+        <div class="assistant-glossary-row is-suggestion">
+          <form action="/workspace-config/assistant-glossary/save" method="post" class="assistant-glossary-form">
+            <input type="hidden" name="entry_id" value="{{ entry.id }}">
+            <label>Term<input type="text" name="term" value="{{ entry.term }}" maxlength="120" required></label>
+            <label>Meaning<textarea name="meaning" rows="2" maxlength="2000" required>{{ entry.meaning }}</textarea></label>
+            <span class="form-note">Suggested by {{ entry.created_by }} · {{ entry.created_at[:16] | replace('T', ' ') }}</span>
+            <button type="submit">Accept</button>
+          </form>
+          <form action="/workspace-config/assistant-glossary/{{ entry.id }}/delete" method="post" data-confirm="Dismiss the suggestion {{ entry.term }}?"><button type="submit" class="secondary">Dismiss</button></form>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <h3 class="assistant-glossary-heading">Terms <span class="assistant-count">{{ assistant_glossary | length }}</span></h3>
+      <div class="assistant-glossary-list">
+        {% for entry in assistant_glossary %}
+        <div class="assistant-glossary-row">
+          <form action="/workspace-config/assistant-glossary/save" method="post" class="assistant-glossary-form">
+            <input type="hidden" name="entry_id" value="{{ entry.id }}">
+            <label>Term<input type="text" name="term" value="{{ entry.term }}" maxlength="120" required></label>
+            <label>Meaning<textarea name="meaning" rows="2" maxlength="2000" required>{{ entry.meaning }}</textarea></label>
+            <span class="form-note">{{ entry.updated_by or entry.created_by }} · {{ entry.updated_at[:16] | replace('T', ' ') }}</span>
+            <button type="submit">Save</button>
+          </form>
+          <form action="/workspace-config/assistant-glossary/{{ entry.id }}/delete" method="post" data-confirm="Delete the term {{ entry.term }} from the glossary?"><button type="submit" class="danger-button icon-action" aria-label="Delete the term {{ entry.term }}" title="Delete term">×</button></form>
+        </div>
+        {% else %}
+        <p class="form-note">No term yet.</p>
+        {% endfor %}
+      </div>
+      <form action="/workspace-config/assistant-glossary/save" method="post" class="assistant-glossary-form assistant-glossary-new">
+        <label>New term<input type="text" name="term" maxlength="120" required placeholder="Vendor A"></label>
+        <label>Meaning<textarea name="meaning" rows="2" maxlength="2000" required placeholder="The Region of the tests whose network Ericsson operates (the performance owner)."></textarea></label>
+        <button type="submit">Add Term</button>
+      </form>
+      <p class="form-note">The glossary travels with Admin → Import / Export and Transfers (AI Assistant Glossary of the workspace) and with backups; suggestions not accepted stay here.</p>
+      {% else %}<p class="form-note">Open a workspace before editing the AI Assistant Glossary.</p>{% endif %}
+    </div>
+  </details>

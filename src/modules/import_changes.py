@@ -524,6 +524,10 @@ ELEMENT_ITEMS = {
     'scoring-excluded-calls': lambda document: named_items(_documents(document, 'lists')),
     'reporting-jobs': lambda document: named_items(_documents(document, 'reporting_jobs')),
     'nq-call-tracking': nq_call_items,
+    # The terms of the AI Assistant Glossary, by their meaning (who and when they changed is no change).
+    'assistant-glossary': lambda document: named_items(
+        [{'uid': entry.get('uid'), 'term': entry.get('term'), 'meaning': entry.get('meaning')} for entry in _documents(document, 'items')],
+        'term'),
 }
 # How the completion message names the items of each element: one, several, and what comes before their count.
 ELEMENT_NAMES = {
@@ -539,6 +543,7 @@ ELEMENT_NAMES = {
     'scoring-excluded-calls': ('list of Scoring Excluded Calls', 'lists of Scoring Excluded Calls', ''),
     'reporting-jobs': ('Reporting Job', 'Reporting Jobs', ''),
     'nq-call-tracking': ('Non-Qualified Call', 'Non-Qualified Calls', 'the follow-up of '),
+    'assistant-glossary': ('AI Assistant Glossary term', 'AI Assistant Glossary terms', ''),
 }
 # The settings elements: as the completion message names them, as the title of their changes names them, and the
 # labels of their sections.

@@ -60,9 +60,9 @@ def test_former_user_groups_become_modules_profiles_and_workspace_groups(client)
     core.invalidate_module_access_cache()
 
     profiles = {profile['name']: profile for profile in core.repository.list_modules_profiles()}
-    # Ticket Center (then Bugs Report), added to the tool after those groups, joins every profile.
-    assert profiles['NQ Calls']['modules'] == ['workspace', 'non-qualified-calls', 'ticket-center']
-    assert profiles['Benchmarking']['modules'] == [*benchmarking, 'ticket-center']
+    # Ticket Center (then Bugs Report) and the AI Assistant, added to the tool after those groups, join every profile.
+    assert profiles['NQ Calls']['modules'] == ['workspace', 'non-qualified-calls', 'ticket-center', 'assistant']
+    assert profiles['Benchmarking']['modules'] == [*benchmarking, 'ticket-center', 'assistant']
     assert profiles['All Modules']['is_default'] and 'ppt-reporting-old' not in profiles['All Modules']['modules']
     assert [profiles[name]['color'] for name in ('NQ Calls', 'Benchmarking', 'All Modules')] == ['#D74B75', '#1E61A3', '#096767']
     # One module group gives its profile; several give every module of them, and none the modules the user saw.
@@ -284,7 +284,7 @@ def test_users_access_exports_and_imports_users_profiles_and_groups(client):
     assert core.repository.get_user_by_id(user_id('ana'))['last_name'] == 'García'
     assert core.verify_password('secret123', core.repository.get_user('ana').password_hash)
     assert next(profile for profile in core.repository.list_modules_profiles() if profile['id'] == nq)['modules'] == \
-        ['workspace', 'non-qualified-calls', 'reporting', 'builders', 'ticket-center']
+        ['workspace', 'non-qualified-calls', 'reporting', 'builders', 'ticket-center', 'assistant']
     groups = {item['name']: item['workspace_ids'] for item in core.repository.list_workspace_groups()}
     assert groups == {'UK': sorted([core.active_workspace.id, local_only.id]), 'DE': []}
     assert core.repository.get_user('local') is not None
