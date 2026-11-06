@@ -1353,13 +1353,16 @@ def email_bodies(task_name: str, started: datetime, artifacts: list[dict[str, An
     text.append(f'{heading}:')
     parts.append(f'<p><strong>{heading}</strong></p><ol>')
     for item in ready:
+        # The title of each file (what it is, from which module) on its own line, its link and file below, then its content.
         link = links.get(item['file_name'])
-        text.append(f"- {item['file_name']} — {item['title']}" + (f' ({_size_text(item.get("size"))}): {link}' if link else ''))
+        size = _size_text(item.get('size'))
+        text += [f"- {item['title']}", f"    {item['file_name']} ({size})"] + ([f'    Download: {link}'] if link else [])
         lines = item.get('details') or [] if details else []
         text.extend(f'    {line}' for line in lines)
         listed = ''.join(f'<li>{html.escape(line)}</li>' for line in lines)
-        download = (f' · <a href="{html.escape(link, quote=True)}">Download</a> ({_size_text(item.get("size"))})' if link else '')
-        parts.append(f"<li><strong>{html.escape(item['title'])}</strong> · <code>{html.escape(item['file_name'])}</code>{download}"
+        download = f'<a href="{html.escape(link, quote=True)}"><strong>Download</strong></a> · ' if link else ''
+        parts.append(f"<li style=\"margin-bottom:12px\"><strong>{html.escape(item['title'])}</strong><br>"
+                     f"{download}{size} · <code>{html.escape(item['file_name'])}</code>"
                      f"{f'<ul>{listed}</ul>' if listed else ''}</li>")
     parts.append('</ol>')
     if failed:
