@@ -186,11 +186,79 @@ def size_empty_table_paragraphs(presentation: Any) -> None:
                     properties.set('sz', str(size))
 
 
+# The style python-pptx gives every shape it adds (lnRef, fillRef, effectRef): the line, fill and effect of the theme.
+PPTX_SHAPE_STYLE = ('1', '3', '2')
+SVG_BLIP = '{http://schemas.microsoft.com/office/drawing/2016/SVG/main}svgBlip'
+# The width (pixels) of the PNG drawn from an SVG picture.
+SVG_FALLBACK_WIDTH = 1200
+
+
+def drop_theme_shadows(presentation: Any) -> None:
+    """Take the shadow of the theme off the shapes the modules draw. python-pptx gives every shape it adds the second
+    effect of the theme through its style, a drop shadow in the Ericsson templates, which the iPhone and Mac previews
+    draw as boxes in the first accent colour of the theme away from their shapes. Shapes with effects of their own and
+    those of the templates (another style) keep theirs."""
+    from pptx.oxml.ns import qn
+
+    for slide in presentation.slides:
+        for shape in slide.shapes._spTree.iter(qn('p:sp')):
+            style, properties = shape.find(qn('p:style')), shape.find(qn('p:spPr'))
+            if style is None or properties is None:
+                continue
+            references = tuple(None if (reference := style.find(qn(f'a:{name}'))) is None else reference.get('idx')
+                               for name in ('lnRef', 'fillRef', 'effectRef'))
+            if references == PPTX_SHAPE_STYLE and properties.find(qn('a:effectLst')) is None \
+                    and properties.find(qn('a:effectDag')) is None:
+                properties.get_or_add_effectLst()
+
+
+def _svg_png(svg: bytes) -> bytes | None:
+    """A PNG of an SVG, SVG_FALLBACK_WIDTH pixels wide with its transparency, or None when it cannot be drawn."""
+    try:
+        import pymupdf
+
+        with pymupdf.open(stream=svg, filetype='svg') as document:
+            page = document[0]
+            zoom = max(1.0, SVG_FALLBACK_WIDTH / max(page.rect.width, 1.0))
+            return page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=True).tobytes('png')
+    except Exception:  # noqa: BLE001 - a picture that cannot be drawn keeps only its SVG
+        return None
+
+
+def add_svg_fallbacks(presentation: Any) -> None:
+    """Give every picture of the slides, layouts and masters that has only an SVG (the operators' logo of the
+    templates) a PNG of it, as PowerPoint does when it inserts one: the iPhone and Mac previews, which do not draw SVG,
+    show an empty frame without it."""
+    from io import BytesIO
+
+    from pptx.opc.constants import CONTENT_TYPE, RELATIONSHIP_TYPE
+    from pptx.oxml.ns import qn
+
+    kinds = {CONTENT_TYPE.PML_SLIDE, CONTENT_TYPE.PML_SLIDE_LAYOUT, CONTENT_TYPE.PML_SLIDE_MASTER}
+    package = presentation.part.package
+    images: dict[str, Any] = {}
+    for part in list(package.iter_parts()):
+        if part.content_type not in kinds:
+            continue
+        for blip in part._element.iter(qn('a:blip')):
+            svg = next(blip.iter(SVG_BLIP), None)
+            if svg is None or blip.get(qn('r:embed')) or blip.get(qn('r:link')) or svg.get(qn('r:embed')) not in part.rels:
+                continue
+            svg_part = part.related_part(svg.get(qn('r:embed')))
+            name = str(svg_part.partname)
+            if name not in images:
+                png = _svg_png(svg_part.blob)
+                images[name] = package.get_or_add_image_part(BytesIO(png)) if png else None
+            if images[name] is not None:
+                blip.set(qn('r:embed'), part.relate_to(images[name], RELATIONSHIP_TYPE.IMAGE))
+
+
 def finish(presentation: Any) -> None:
     """Write the counter of every transition, in order, and give the cover and the transitions their sizes and places.
     The cover is the first slide when it is a cover layout and no transition. The paragraphs without text of the
     tables keep the size of their text (size_empty_table_paragraphs). The slides of a dark theme turn their content dark
-    (theme_dark)."""
+    (theme_dark). The shapes the modules draw lose the shadow of the theme (drop_theme_shadows) and the SVG pictures get
+    a PNG (add_svg_fallbacks), so the iPhone and Mac previews draw the slides as PowerPoint does."""
     from src.modules.reporting.pptx_compose import is_cover
 
     width = presentation.slide_width
@@ -207,3 +275,5 @@ def finish(presentation: Any) -> None:
     # The content of the slides of a dark theme (Midnight) on their dark background.
     from src.modules.reporting.theme_dark import darken_presentation
     darken_presentation(presentation)
+    drop_theme_shadows(presentation)
+    add_svg_fallbacks(presentation)

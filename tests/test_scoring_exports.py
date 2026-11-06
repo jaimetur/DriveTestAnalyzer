@@ -1132,6 +1132,41 @@ def test_finished_decks_draw_the_empty_table_cells_at_the_size_of_their_rows():
     assert other.cell(0, 1)._tc.txBody.p_lst[0].find(qn('a:endParaRPr')).get('sz') == '900'
 
 
+def test_finished_decks_drop_the_theme_shadow_of_their_shapes_and_draw_the_svg_logos_as_png():
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.opc.constants import CONTENT_TYPE
+    from pptx.oxml import parse_xml
+    from src.modules.reporting import report_structure
+    from src.modules.scoring.scoring_exports import _slide
+    deck = Presentation(TEMPLATE)
+    slide = _slide(deck, 'Title', 'Subtitle')
+    # A shape as python-pptx adds it inherits the second effect of the theme (a drop shadow in the template), which the
+    # iPhone and Mac previews draw as a blue box away from it; one with a shadow of its own and one of a template keep theirs.
+    added = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(1), Inches(2), Inches(2), Inches(.4))
+    own = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1), Inches(3), Inches(2), Inches(.4))
+    own._element.spPr.append(parse_xml('<a:effectLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+                                       '<a:outerShdw dist="20000"><a:srgbClr val="000000"/></a:outerShdw></a:effectLst>'))
+    designed = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1), Inches(4), Inches(2), Inches(.4))
+    designed._element.find(qn('p:style')).find(qn('a:effectRef')).set('idx', '3')
+    # The operators' logo of the template is an SVG without the PNG PowerPoint adds when it inserts one.
+    pictures = [(part, blip) for part in deck.part.package.iter_parts()
+                if part.content_type in {CONTENT_TYPE.PML_SLIDE, CONTENT_TYPE.PML_SLIDE_LAYOUT, CONTENT_TYPE.PML_SLIDE_MASTER}
+                for blip in part._element.iter(qn('a:blip')) if next(blip.iter(report_structure.SVG_BLIP), None) is not None]
+    assert any(part.content_type == CONTENT_TYPE.PML_SLIDE for part, _blip in pictures)
+    assert any(not blip.get(qn('r:embed')) for _part, blip in pictures)
+    report_structure.finish(deck)
+    effects = added._element.spPr.find(qn('a:effectLst'))
+    assert effects is not None and not len(effects)
+    assert own._element.spPr.find(qn('a:effectLst')).find(qn('a:outerShdw')) is not None
+    assert designed._element.spPr.find(qn('a:effectLst')) is None
+    for part, blip in pictures:
+        assert part.related_part(blip.get(qn('r:embed'))).content_type == 'image/png'
+    # Finishing again adds nothing.
+    rels = {part.partname: len(part.rels) for part, _blip in pictures}
+    report_structure.finish(deck)
+    assert {part.partname: len(part.rels) for part, _blip in pictures} == rels
+
+
 def test_intro_dimension_lines_keep_requested_order_independent_of_hierarchy_configuration():
     fields = ['Campaign', 'City', 'Vendor', 'Operator', 'Region']
     job_fields = {
