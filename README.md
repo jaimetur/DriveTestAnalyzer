@@ -178,7 +178,7 @@ See [Product overview](help/overview.md) for a detailed tour of every module and
 
 ## Requirements
 
-- Python 3.12 to 3.15 for source development, with pandas 3 (`requirements.txt` installs it; pandas 2 has no build for Python 3.15).
+- Python 3.15 for source development, with pandas 3 (`requirements.txt` installs it; pandas 2 has no build for Python 3.15). The Docker image uses `python:3.15-slim`.
 - Docker Engine with Compose for the recommended service deployment.
 - Writable persistent configuration and data directories.
 
@@ -200,7 +200,7 @@ The project keeps `DriveTest Analyzer.app` under `macos-launcher/`. It uses the 
 
 Use **Open in Browser** to open the configured local URL, **Restart Server** to stop the current process cleanly before starting its replacement, or **Stop Server and Quit**. Closing the window, pressing `⌘Q`, or choosing **Quit** in the Dock also stops the server cleanly. The launcher monitors forced application termination so the server cannot remain orphaned after its window disappears.
 
-It reuses a working project `.venv` when available; otherwise, including when that environment contains Intel-only packages, it creates the separate native `.drivetest-analyzer-venv` environment and installs the dependencies. Python 3.12 or later must be available on the Mac.
+It reuses a working project `.venv` when available; otherwise, including when that environment contains Intel-only packages, it creates the separate native `.drivetest-analyzer-venv` environment and installs the dependencies. Python 3.15 or later must be available on the Mac.
 
 Build the complete installer from the project root:
 
