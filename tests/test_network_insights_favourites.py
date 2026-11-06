@@ -3,7 +3,7 @@ import zipfile
 from io import BytesIO
 
 import src.DriveTestAnalyzer as core
-from src.modules import network_insights_favourites as favourites
+from src.modules.network_insights import network_insights_favourites as favourites
 
 SELECTION = {
     'controls': {'ni-nr-mode': 'SA', 'ni-technology': 'nr', 'ni-group': ['operator', 'campaign'], 'ni-coverage-threshold': '-105',
@@ -86,7 +86,7 @@ def test_a_reload_keeps_the_favourite_the_page_opens_with():
     import subprocess
 
     import pytest
-    script = (core.PROJECT_ROOT / 'src' / 'web_interface' / 'static' / 'js' / 'network_insights.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src' / 'web_interface' / 'static' / 'js' / 'network_insights' / 'network_insights.js').read_text(encoding='utf-8')
     # The favourite just opened, else one with the same choices and filters as the selection the page opens with.
     assert 'const shownFavourite = chosenFavourite || favourites.find(item => sameSelection(item.selection, savedSelection));' in script
     node = shutil.which('node')

@@ -1,7 +1,7 @@
 """Campaign presentation preserves source identities across web and PowerPoint."""
 import pytest
 
-from src.modules.scoring_views import _hierarchy_display_value
+from src.modules.scoring.scoring_views import _hierarchy_display_value
 from tests.test_scoring_results_controls import SCORING_SCRIPT, _function_source, _run_node_json
 
 

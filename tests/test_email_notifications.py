@@ -9,8 +9,9 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import email_delivery, notifications, report_tasks
-from src.modules.repository import derived_email
+from src.modules.core import email_delivery, notifications
+from src.modules.reporting import report_tasks
+from src.modules.core.repository import derived_email
 
 FLOW = 'https://prod-00.westeurope.logic.azure.com/workflows/abc/triggers/manual/paths/invoke?sig=secret-signature'
 
@@ -247,7 +248,7 @@ def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_t
 
 def test_reporting_emails_give_download_links_and_the_flow_copies_the_files_to_onedrive(client, flow):
     from tests.test_reporting_jobs import wait_for_run
-    from src.modules.report_tasks import register_report_artifact_provider
+    from src.modules.reporting.report_tasks import register_report_artifact_provider
 
     def generate(config, folder, stamp, user):
         path = folder / f'{stamp} - Big report.pptx'

@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from src.modules import scoring_config
-from src.modules.repository import Repository, SCORING_CONFIGURATION_STATE_KEY
-from src.modules.scoring_config import (
+from src.modules.scoring import scoring_config
+from src.modules.core.repository import Repository, SCORING_CONFIGURATION_STATE_KEY
+from src.modules.scoring.scoring_config import (
     CONFIGURATION_FORMAT,
     load_initial_scoring_configuration,
     validate_scoring_configuration,

@@ -65,45 +65,47 @@ from starlette.requests import ClientDisconnect
 DEFAULT_TRANSFER_PORT = 7278
 
 from src.config import PROJECT_ROOT, settings
-from src.modules.analytics import build_analysis, shared_frame_attrs
-from src.modules.app_event_details import app_event_origin, app_event_origin_parts, changed_values, describe_app_event
-from src.modules.background_scheduler import BackgroundTaskScheduler
-from src.modules import cdr_store, design_slides, notifications, ppt_design_cache, workspace_cache
-from src.modules.auth import SessionUser, verify_password
-from src.modules.workspace_countries import country_options
-from src.modules.operator_roles import (
+from src.modules.cdr_analysis.analytics import build_analysis, shared_frame_attrs
+from src.modules.core.app_event_details import app_event_origin, app_event_origin_parts, changed_values, describe_app_event
+from src.modules.core.background_scheduler import BackgroundTaskScheduler
+from src.modules.cdr import cdr_store
+from src.modules.ppt_designer import design_slides, ppt_design_cache
+from src.modules.core import notifications, workspace_cache
+from src.modules.core.auth import SessionUser, verify_password
+from src.modules.mapping.workspace_countries import country_options
+from src.modules.mapping.operator_roles import (
     drop_excluded_operators, drop_out_of_scope_operators, excluded_operators, normalize_mapping_role, normalize_nr_modes,
     out_of_scope_pairs,
 )
-from src.modules.cdr_types import (
+from src.modules.cdr.cdr_types import (
     CDR_TYPES, DEFAULT_CDR_TYPE, cdr_type_options, normalize_cdr_type, set_workspace_cdr_type, workspace_cdr_type,
 )
-from src.modules.cdr_field_profiles import NETCHECK_PROFILE, workspace_field_profile
-from src.modules.column_names import DEFAULT_CAMPAIGN_MAP, MAIN_CDR_FIELDS, MAIN_DISPLAY_FIELDS, compact_campaign_value, PREVIEW_METADATA_FIELDS, VENDOR_FIELD_IDENTITIES, clean_column_name, normalize_campaign_map, set_campaign_map_resolver, column_identity, resolve_column_name, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
-from src.modules.mapping_order import swap_operator_vendor
-from src.modules.value_maps import ValueMapper, field_kind
-from src.modules.report_layouts import canonical_layout_name, selectable_layout_name
-from src.modules.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, calculated_dimension_editor_json, calculated_dimension_preview, calculated_dimension_reads, CALCULATED_FIELD_OPERATORS, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, preview_catalog_chart_data, render_catalog_chart_preview, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
-from src.modules.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
-from src.modules.email_delivery import DEFAULT_LINK_DAYS, DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_ADDRESS_PATTERN, EMAIL_SECURITY_MODES, EMAIL_TRANSPORTS, MAX_LINK_DAYS, email_delivery_settings, invalid_recipients, parse_recipients, read_link, save_email_delivery_settings, send_email, sign_link
-from src.modules.network_inventory import DEFAULT_NETWORK_BY_KIND, INVENTORY_DATASET_KINDS, MULTIVENDOR_MAPPING_KIND, SNAPSHOT_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, list_mapping_snapshots, mapping_operators, network_family, normalise_snapshot_date
-from src.modules.l3_dt_logs import KIND as L3_DT_LOGS_KIND, dataset_summary as l3_dataset_summary, forget_datasets as l3_forget_datasets
-from src.modules.l3_dt_logs import preview_frame as l3_preview_frame, source_columns as l3_source_columns
-from src.modules.serving_cells import suggest_mapping_operators, vendor_mapping_signature
-from src.modules.ingestion import CDR_IGNORED_SHEET_KEYS, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, ensure_fixed_cdr_fields, get_dataset_source_columns, get_excel_sheet_columns, infer_dataset_kind, load_dataset, summarise_dataset
-from src.modules.geospatial import assign_clusters, assign_regions, polygon_vendor_endpoints, validate_cluster_mapping, validate_region_mapping, validate_vendor_polygons, vendor_polygon_operators
-from src.modules.nr_mode import DEFAULT_NR_MODE, NR_MODE_FIELD, NR_MODES, dataset_nr_mode, infer_nr_mode, normalize_nr_mode, nr_mode_label
-from src.modules.report_template_modes import design_nr_mode_value
-from src.modules.cdr_campaign import campaign_of_rows, catalogued_campaigns, dataset_campaign, normalize_campaign
-from src.modules.disk_space import available_disk_space
-from src.modules.cdr_stage import (
+from src.modules.cdr.cdr_field_profiles import NETCHECK_PROFILE, workspace_field_profile
+from src.modules.cdr.column_names import DEFAULT_CAMPAIGN_MAP, MAIN_CDR_FIELDS, MAIN_DISPLAY_FIELDS, compact_campaign_value, PREVIEW_METADATA_FIELDS, VENDOR_FIELD_IDENTITIES, clean_column_name, normalize_campaign_map, set_campaign_map_resolver, column_identity, resolve_column_name, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
+from src.modules.mapping.mapping_order import swap_operator_vendor
+from src.modules.mapping.value_maps import ValueMapper, field_kind
+from src.modules.reporting.report_layouts import canonical_layout_name, selectable_layout_name
+from src.modules.cdr_analysis.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, calculated_dimension_editor_json, calculated_dimension_preview, calculated_dimension_reads, CALCULATED_FIELD_OPERATORS, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, preview_catalog_chart_data, render_catalog_chart_preview, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
+from src.modules.cdr_analysis.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
+from src.modules.core.email_delivery import DEFAULT_LINK_DAYS, DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_ADDRESS_PATTERN, EMAIL_SECURITY_MODES, EMAIL_TRANSPORTS, MAX_LINK_DAYS, email_delivery_settings, invalid_recipients, parse_recipients, read_link, save_email_delivery_settings, send_email, sign_link
+from src.modules.network.network_inventory import DEFAULT_NETWORK_BY_KIND, INVENTORY_DATASET_KINDS, MULTIVENDOR_MAPPING_KIND, SNAPSHOT_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, list_mapping_snapshots, mapping_operators, network_family, normalise_snapshot_date
+from src.modules.cdr.l3_dt_logs import KIND as L3_DT_LOGS_KIND, dataset_summary as l3_dataset_summary, forget_datasets as l3_forget_datasets
+from src.modules.cdr.l3_dt_logs import preview_frame as l3_preview_frame, source_columns as l3_source_columns
+from src.modules.network.serving_cells import suggest_mapping_operators, vendor_mapping_signature
+from src.modules.cdr.ingestion import CDR_IGNORED_SHEET_KEYS, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, ensure_fixed_cdr_fields, get_dataset_source_columns, get_excel_sheet_columns, infer_dataset_kind, load_dataset, summarise_dataset
+from src.modules.network.geospatial import assign_clusters, assign_regions, polygon_vendor_endpoints, validate_cluster_mapping, validate_region_mapping, validate_vendor_polygons, vendor_polygon_operators
+from src.modules.cdr.nr_mode import DEFAULT_NR_MODE, NR_MODE_FIELD, NR_MODES, dataset_nr_mode, infer_nr_mode, normalize_nr_mode, nr_mode_label
+from src.modules.reporting.report_template_modes import design_nr_mode_value
+from src.modules.cdr.cdr_campaign import campaign_of_rows, catalogued_campaigns, dataset_campaign, normalize_campaign
+from src.modules.core.disk_space import available_disk_space
+from src.modules.cdr.cdr_stage import (
     CDR_STAGE_LABELS, CDR_STAGES, IN_COMBINED_LABELS, IN_COMBINED_VALUES, combined_dataset_ids, combined_inclusion,
     dataset_cdr_stage, infer_cdr_stage, normalize_cdr_stage, normalize_in_combined,
 )
-from src.modules.scoring_themes import THEMES as SCORING_THEMES, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
-from src.modules.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name, scoring_vendor_names, scoring_vendor_operators
-from src.modules.cdr_auto_selection import campaign_presets, is_flex_cdr
-from src.modules.saved_filters import (
+from src.modules.scoring.scoring_themes import THEMES as SCORING_THEMES, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
+from src.modules.scoring.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name, scoring_vendor_names, scoring_vendor_operators
+from src.modules.cdr.cdr_auto_selection import campaign_presets, is_flex_cdr
+from src.modules.scoring.saved_filters import (
     POINTS_LOSS_STOPPED,
     calculate_saved_filter,
     delete_saved_filter,
@@ -124,8 +126,8 @@ from src.modules.saved_filters import (
     use_newer_cdrs,
     validate_complete_scoring_cdr_selection,
 )
-from src.modules.cdr_facets import fill_missing_facets
-from src.modules.scoring_selection import (
+from src.modules.cdr.cdr_facets import fill_missing_facets
+from src.modules.scoring.scoring_selection import (
     SCORING_SELECTION_STATE_KEY,
     load_scoring_selection,
     normalize_scoring_selection,
@@ -133,21 +135,21 @@ from src.modules.scoring_selection import (
     scoring_auto_cdrs,
     expand_scoring_context_filters,
 )
-from src.modules.scoring_export_panels import OPERATOR_MODES, export_panel_catalogue, load_export_panels
-from src.modules.repository import APP_EVENT_ORIGIN, APP_EVENTS_LIMIT, Repository, SCORING_CONFIGURATION_STATE_KEY, USER_ROLES, WORKSPACE_REGISTRY_TABLE, workspace_write_lock
-from src.modules.runtime_config import IGNORE_EVENT_TIME_FILTERING_ENV, env_flag, ignore_event_time_filtering
-from src.modules.query_builder import MAX_PREVIEW_ROWS, execute_query, iter_query_csv, query_column_values, validate_query
+from src.modules.scoring.scoring_export_panels import OPERATOR_MODES, export_panel_catalogue, load_export_panels
+from src.modules.core.repository import APP_EVENT_ORIGIN, APP_EVENTS_LIMIT, Repository, SCORING_CONFIGURATION_STATE_KEY, USER_ROLES, WORKSPACE_REGISTRY_TABLE, workspace_write_lock
+from src.modules.core.runtime_config import IGNORE_EVENT_TIME_FILTERING_ENV, env_flag, ignore_event_time_filtering
+from src.modules.builders.query_builder import MAX_PREVIEW_ROWS, execute_query, iter_query_csv, query_column_values, validate_query
 from src.runtime_logs import execution_log_entries
-from src.modules.workspaces import Workspace, WorkspaceRegistry
+from src.modules.core.workspaces import Workspace, WorkspaceRegistry
 from src.branding import APP_SLUG, BACKUP_FILE_PATTERNS, BACKUP_SCRATCH_PATTERNS, LEGACY_APP_SLUG, canonical_format
-from src.modules.mapping_renames import count_saved_filters, rename_saved_filters
-from src.modules.module_labels import (
+from src.modules.mapping.mapping_renames import count_saved_filters, rename_saved_filters
+from src.modules.core.module_labels import (
     ICONS as MODULE_LABEL_ICONS, MAIN_MODULES, MAX_LABEL_LENGTH as MAX_MODULE_LABEL_LENGTH, MAX_SHORT_TITLE_LENGTH,
     MAX_TITLE_LENGTH, MODULE_LABELS_STATE_KEY, MODULE_TABS, RETIRED_MODULES, SECTION_ICONS, TAB_ICONS, load_module_labels, module_label_badges,
     module_tabs, section_links,
     ADMINISTRATIVE_ICONS, help_chapter_icons, normalize_module_labels, ordered_help_documents, rename_modules_in_help, renamed_help_chapters,
 )
-from src.modules.output_layout import (
+from src.modules.core.output_layout import (
     CDR_ANALYSIS_FOLDER, migrate_output_layout, module_output_dir,
 )
 from src.version import __app_name__, __author__, __author_email__, __release_date__, __version__
@@ -364,7 +366,7 @@ active_workspace: Workspace | None = None
 
 def _active_campaign_map() -> dict | None:
     """The Campaign Map of the active workspace, used by every campaign label and order."""
-    from src.modules.campaign_maps import load_campaign_map
+    from src.modules.mapping.campaign_maps import load_campaign_map
 
     return load_campaign_map(repository) if active_workspace else None
 
@@ -676,7 +678,7 @@ def catalogue_registry_key(name: str) -> str:
     """Use the visible template name as the persistent JSON key."""
     name = str(name or '').strip()
     template_filename(name)
-    from src.modules.design_slides import BLANK_PPT_TEMPLATE
+    from src.modules.ppt_designer.design_slides import BLANK_PPT_TEMPLATE
     if name.casefold() == BLANK_PPT_TEMPLATE.casefold():
         raise ValueError(f"'{name}' names the PPT Designs created blank: choose another template name.")
     return name
@@ -796,8 +798,8 @@ def keep_calculated_dimension_identities(
 ) -> None:
     """A renamed field keeps its identity and its creator (Import / Export and Transfer find it again by them), a new
     one is created by the user who saves it and a removed one forgets them."""
-    from src.modules.deletion_rights import AUTO_CALCULATED_FIELDS, forget_creator, move_creator, record_creator
-    from src.modules.transfer_identities import AUTO_CALCULATED_FIELDS as FIELD_IDENTITIES, forget_identities, move_identity
+    from src.modules.core.deletion_rights import AUTO_CALCULATED_FIELDS, forget_creator, move_creator, record_creator
+    from src.modules.core.transfer_identities import AUTO_CALCULATED_FIELDS as FIELD_IDENTITIES, forget_identities, move_identity
 
     normalize = _normalise_catalogue_dimension_name
     for old_name, new_name in renames.items():
@@ -1119,7 +1121,7 @@ def rename_calculated_dimension_design_references(renames: dict[str, str], task_
 def rename_calculated_dimension_query_references(renames: dict[str, str], task_repository: Repository | None = None) -> int:
     """Rename calculated fields in the SQL of every saved Query Builder query of the workspace (the active one by
     default), where they are columns of the CDR tables; returns how many queries changed."""
-    from src.modules.query_builder import rename_identifiers
+    from src.modules.builders.query_builder import rename_identifiers
 
     if not renames:
         return 0
@@ -1138,7 +1140,7 @@ def load_template_catalogue(catalogue_content: bytes | str, *, validate_filters:
     """The chart rows of a Report Template; given the NR Mode of the CDRs it is used with (NSA, SA or NSA+SA), as
     that NR Mode shows them (``entry_for_nr_mode``: titles naming the mode, NR Mode in the splits of a chart that reads
     both). The editor reads them without one, as written."""
-    from src.modules.report_template_modes import entry_for_nr_mode
+    from src.modules.reporting.report_template_modes import entry_for_nr_mode
 
     dimensions = load_repository_calculated_dimensions(task_repository) if task_repository else load_workspace_calculated_dimensions()
     entries = [replace(entry, calculated_dimensions=dimensions)
@@ -1388,7 +1390,7 @@ def _columnar_auto_field_update(
     the columns the changed fields read are read from it, the fields worked out as a CDR being processed works them out
     (materialize_calculated_dimensions), and only their columns written, so the CDR never goes back to its table. Returns
     whether it did; else the table of the CDR is changed (_apply_auto_field_table_update)."""
-    from src.modules import cdr_store
+    from src.modules.cdr import cdr_store
 
     match = re.fullmatch(r'dataset_rows_(\d+)', str(table_name))
     if not match or int(match.group(1)) not in cdr_store.shadow_ids(task_repository.db_path):
@@ -1456,7 +1458,7 @@ def _incremental_auto_field_table_update(
     if not match:
         return _apply_auto_field_table_update(task_repository, table_name, cdr_source, previous, current, renames,
                                               checkpoint, row_progress)
-    from src.modules import cdr_store
+    from src.modules.cdr import cdr_store
 
     # The fields go where the rows of the CDR are, never moved between its table and its copy.
     return cdr_store.change_cdr(
@@ -1689,7 +1691,7 @@ def workspace_template_fields(task_repository: Repository, kind: str) -> list[st
             continue
         for entry in entries:
             if entry.source_kind == 'all' and kind in ('data', 'voice', 'speech'):
-                from src.modules.rf_catalog_source import rf_source_columns
+                from src.modules.ppt_designer.rf_catalog_source import rf_source_columns
                 requested.extend(rf_source_columns(kind))
             if entry.source_kind not in {kind, 'all'}:
                 continue
@@ -2659,7 +2661,7 @@ def legacy_template_files(templates_dir: Path) -> list[dict[str, Any]]:
 def add_legacy_template_files(target_repository: Repository, templates_dir: Path) -> None:
     """Add the CSV templates of the folders of before that the workspace does not have yet, each NSA and SA copy of a
     template as one (see report_template_modes)."""
-    from src.modules.report_template_modes import merge_mode_templates
+    from src.modules.reporting.report_template_modes import merge_mode_templates
 
     files = legacy_template_files(templates_dir)
     if not files:
@@ -2750,7 +2752,7 @@ def catalogue_editor_columns(datasets: Iterable[Any] | None = None, calculated_d
         if source not in columns or dataset['status'] != 'ready':
             continue
         columns[source].update(str(column) for column in repository.list_dataset_row_columns(dataset['id']))
-    from src.modules.rf_catalog_source import RF_CATALOG_FIELDS
+    from src.modules.ppt_designer.rf_catalog_source import RF_CATALOG_FIELDS
     columns['cdr-all'] = set().union(*columns.values()) | set(RF_CATALOG_FIELDS) | {'CDR_Type'}
     result: dict[str, list[str]] = {}
     for source, values in columns.items():
@@ -2950,7 +2952,7 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
             if first_initialization:
                 _startup_step(f'{"Upgrading" if STARTUP_STATUS["note"] else "Checking"} the database of workspace "{workspace.name}"…')
                 # A workspace restored or transferred from a server with the former module names.
-                from src.modules.ppt_naming import migrate_workspace_database
+                from src.modules.ppt_designer.ppt_naming import migrate_workspace_database
                 migrate_workspace_database(workspace.database_path)
                 repository.initialize()
                 _startup_step(f'Checking the Output folder of workspace "{workspace.name}"…')
@@ -2993,14 +2995,14 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
             # Templates, PPT Designs and Auto-calculated Fields it does not have yet.
             _startup_step('Checking the starter content and the creators of the shared items…')
             try:
-                from src.modules.starter_content import seed_starter_content
+                from src.modules.core.starter_content import seed_starter_content
                 seed_starter_content(repository)
             except Exception as exc:  # noqa: BLE001 - starter content never blocks opening a workspace
                 repository.try_add_log('system', 'starter_content_failed', json.dumps({'error': str(exc)}))
             # Once: the NR Mode · operator pairs out of scope of the NQ Calls become NR Modes of the Operator Maps, which
             # leave them out of every module.
             try:
-                from src.modules.nq_prioritization import migrate_excluded_modes
+                from src.modules.nq.nq_prioritization import migrate_excluded_modes
                 if migrate_excluded_modes(repository)['changed']:
                     ANALYSIS_CACHE.clear()
                     PREPARED_ANALYSIS_FRAME_CACHE.clear()
@@ -3010,13 +3012,13 @@ def activate_workspace(workspace_id: str, *, initialize: bool = True) -> Workspa
                 repository.try_add_log('system', 'operator_nr_modes_migration_failed', json.dumps({'error': str(exc)}))
             # Once: the levels shared by every strategy of the NQ Prioritization take the recommended configuration.
             try:
-                from src.modules.nq_prioritization import migrate_recommended_levels
+                from src.modules.nq.nq_prioritization import migrate_recommended_levels
                 migrate_recommended_levels(repository)
             except Exception as exc:  # noqa: BLE001 - never blocks opening a workspace
                 repository.try_add_log('system', 'nq_recommended_levels_migration_failed', json.dumps({'error': str(exc)}))
             # What has no known creator, or was created by the application, belongs to UNKNOWN_CREATOR_OWNER.
             try:
-                from src.modules.deletion_rights import UNKNOWN_CREATOR_OWNER, assign_unknown_creators
+                from src.modules.core.deletion_rights import UNKNOWN_CREATOR_OWNER, assign_unknown_creators
                 assigned = assign_unknown_creators(repository)
                 if assigned:
                     repository.try_add_log('system', 'assign_unknown_creators', json.dumps(
@@ -3420,7 +3422,7 @@ def _prepare_active_workspace(started_at: float) -> None:
         STARTUP_STATUS['message'] = 'Ready.'
         STARTUP_READY.set()
     # The presentations of the Help, generated in the background when one is missing or they changed.
-    from src.modules.presentations import generate_at_startup
+    from src.modules.help.presentations import generate_at_startup
     generate_at_startup(sys.modules[__name__])
     # In a thread of its own: the server waits for this one at startup, and never for the other workspaces.
     Thread(
@@ -3474,7 +3476,7 @@ async def lifespan(_: FastAPI):
         apply_runtime_configuration(stored_runtime_configuration)
     migrate_workspace_template_registries()
     migrate_ppt_module_names()
-    from src.modules.module_labels import migrate_reporting_title, migrate_ticket_center_title
+    from src.modules.core.module_labels import migrate_reporting_title, migrate_ticket_center_title
     migrate_reporting_title(repository)
     migrate_ticket_center_title(repository)
     submit_background_task(empty_workspace_trash)
@@ -4023,7 +4025,7 @@ def add_l3_nq_calls(datasets: list[dict[str, Any]], task_repository: Repository 
     """How many NQ calls of the workspace have a session in each Layer3 Logs dataset, for its Datasets card."""
     if not any(dataset.get('dataset_kind') == L3_DT_LOGS_KIND for dataset in datasets):
         return
-    from src.modules.l3_dt_logs import nq_calls_by_dataset
+    from src.modules.cdr.l3_dt_logs import nq_calls_by_dataset
 
     try:
         counts = nq_calls_by_dataset(task_repository or repository)
@@ -4071,7 +4073,7 @@ def add_inventory_row_details(datasets: list[dict[str, Any]]) -> None:
     (``vendor_mapping_cdrs``) and its Operator (``operator_choice``: without one chosen, VFUK and 3UK belong to the Operator
     of their network unless they have a Network column).
     """
-    from src.modules.cdr_reporting import operator_key
+    from src.modules.cdr_analysis.cdr_reporting import operator_key
 
     used: Counter[int] = Counter()
     for dataset in datasets:
@@ -4246,7 +4248,7 @@ def _submit_workspace_job(
 
 def queue_scoring_history(task_repository: Repository) -> None:
     """Index the CDRs the Scoring History does not hold yet, after the other background work."""
-    from src.modules.scoring_history import queue_history_sync
+    from src.modules.scoring.scoring_history import queue_history_sync
     try:
         queue_history_sync(task_repository, BACKGROUND_TASK_SCHEDULER)
     except RuntimeError:  # The scheduler is shutting down.
@@ -4255,7 +4257,7 @@ def queue_scoring_history(task_repository: Repository) -> None:
 
 def queue_cdr_store(task_repository: Repository) -> None:
     """Copy the new or changed CDRs to the columnar store, after the other background work."""
-    from src.modules.cdr_store import queue_store_sync
+    from src.modules.cdr.cdr_store import queue_store_sync
     try:
         queue_store_sync(task_repository, BACKGROUND_TASK_SCHEDULER, APP_SHUTTING_DOWN.is_set)
     except RuntimeError:  # The scheduler is shutting down.
@@ -4270,7 +4272,7 @@ MAP_AREA_FILL_IDLE_SECONDS = 60
 def queue_map_area_fill(task_repository: Repository) -> None:
     """Keep the map area of each test in the rows of the CDRs not placed with the current Map Areas (in the
     background, after the calculations waiting)."""
-    from src.modules.map_area_columns import queue_fill
+    from src.modules.network.map_area_columns import queue_fill
     try:
         # Stopped at once when the application stops (its shutdown waits for the running job).
         queue_fill(task_repository, lambda run: _submit_workspace_job(task_repository, run, phase=6),
@@ -4985,7 +4987,7 @@ def operator_options(task_repository: Repository | None = None) -> list[str]:
 @lru_cache(maxsize=64)
 def _vendor_polygon_file_operators(path: str, modified: float) -> tuple[str, ...]:
     """The Operator attribute values of a Vendor polygons file (read again when the file changes)."""
-    from src.modules.geospatial import vendor_polygon_operators
+    from src.modules.network.geospatial import vendor_polygon_operators
 
     try:
         return tuple(vendor_polygon_operators(Path(path)))
@@ -5003,7 +5005,7 @@ def vendor_source_operators(
     Uploading CDRs prefers the Vendor polygons when they cover every Operator of the Network Inventory
     source (the Multivendor Mappings and the Network Inventories).
     """
-    from src.modules.cdr_reporting import operator_key
+    from src.modules.cdr_analysis.cdr_reporting import operator_key
 
     aliases = operator_aliases(task_repository)
 
@@ -5049,7 +5051,7 @@ def infer_dataset_operator(file_name: str, task_repository: Repository | None = 
 
 def inventory_can_map_vendors(dataset_id: int, task_repository: Repository | None = None) -> bool:
     """Whether a Network Inventory has a Vendor column and a cell identifier to map Vendors."""
-    from src.modules.cdr_reporting import inventory_vendor_columns
+    from src.modules.cdr_analysis.cdr_reporting import inventory_vendor_columns
 
     try:
         return inventory_vendor_columns((task_repository or repository).list_dataset_row_columns(int(dataset_id))) is not None
@@ -5066,7 +5068,7 @@ def assign_inventory_vendors(
     Every selected inventory is a snapshot of the network; each sample's cells are looked up among the networks
     allowed to serve its Operator (Workspace Config → Serving Networks), see ``serving_cells``.
     """
-    from src.modules.serving_cells import assign_serving_vendors
+    from src.modules.network.serving_cells import assign_serving_vendors
 
     task_repository = task_repository or repository
     snapshot_ids = [int(value) for value in (vodafone_mapping_dataset_id, three_mapping_dataset_id, *inventory_dataset_ids) if value]
@@ -5077,7 +5079,7 @@ def assign_polygon_vendors(
     df: pd.DataFrame, dataset_kind: str, polygon_dataset_ids: Iterable[Any], task_repository: Repository | None = None,
 ) -> pd.DataFrame:
     """Assign Vendor from Vendor polygons: the polygons of each sample's Operator at its start and end positions."""
-    from src.modules.cdr_reporting import operator_key
+    from src.modules.cdr_analysis.cdr_reporting import operator_key
 
     task_repository = task_repository or repository
     polygon_sets = []
@@ -5134,7 +5136,7 @@ def rebuild_dataset_artifacts(
     if forced_dataset_kind == L3_DT_LOGS_KIND:
         # A Layer3 Logs delivery never goes through SQLite: its rows are written as one Parquet source per
         # campaign, each the source of a dataset (see l3_dt_logs).
-        from src.modules import l3_dt_logs
+        from src.modules.cdr import l3_dt_logs
 
         task_repository.update_dataset_profile(dataset_id, processing_step='Reading the drivetest logs')
         delivery = l3_dt_logs.process_delivery(
@@ -5183,7 +5185,7 @@ def rebuild_dataset_artifacts(
     elif forced_dataset_kind == 'mapping_three':
         df = add_three_gcid_column(df)
     if forced_dataset_kind in MAPPING_DATASET_KINDS:
-        from src.modules.column_names import vendor_filter_value
+        from src.modules.cdr.column_names import vendor_filter_value
         # An inventory's vendor comes from OP/ Vendor, OP_Vendor or Vendor; Vendor keeps the vendor alone.
         vendor_columns = [column for column in (
             resolve_column_name(df.columns, name) for name in ('OP/ Vendor', 'OP_Vendor', 'Operator_Vendor', 'Vendor')
@@ -5567,8 +5569,8 @@ def map_vendor_in_copy(
     CDR has hundreds of columns and hundreds of thousands of rows, and the Vendor needs a few of them. Returns whether it
     did: not for a CDR whose rows are in its table or a first mapping, nor when an Auto-calculated Field reads the Vendor
     or the serving cell, which ``persist_mapped_cdr_frame`` calculates again."""
-    from src.modules.cdr_reporting import OPERATOR_VENDOR_FIELD, VENDOR_FIELD
-    from src.modules.serving_cells import SERVING_FIELDS, serving_input_columns
+    from src.modules.cdr_analysis.cdr_reporting import OPERATOR_VENDOR_FIELD, VENDOR_FIELD
+    from src.modules.network.serving_cells import SERVING_FIELDS, serving_input_columns
 
     dataset_id = int(dataset['id'])
     dataset_kind = str(dataset.get('dataset_kind') or '').casefold()
@@ -6277,7 +6279,7 @@ def super_admin_user(user: SessionUser = Depends(current_user)) -> SessionUser:
 
 
 def spectrum_holdings_context(request: Request) -> dict[str, Any]:
-    from src.modules.network_insights import BAND_CLASSES, licensed_spectrum_summary, load_spectrum_holdings, spectrum_holdings_csv
+    from src.modules.network_insights.network_insights import BAND_CLASSES, licensed_spectrum_summary, load_spectrum_holdings, spectrum_holdings_csv
 
     holdings = load_spectrum_holdings(repository) if active_workspace else []
     return {
@@ -6291,14 +6293,14 @@ def spectrum_holdings_context(request: Request) -> dict[str, Any]:
 
 
 def assistant_glossary_context(request: Request) -> dict[str, Any]:
-    from src.modules.assistant import glossary_context
+    from src.modules.assistant.assistant import glossary_context
     return glossary_context(sys.modules[__name__], request)
 
 
 def serving_networks_context(request: Request) -> dict[str, Any]:
     """The Serving Networks of the active workspace: which networks' cells serve each Operator's samples."""
-    from src.modules.network_inventory import list_inventory_snapshots
-    from src.modules.serving_cells import load_serving_networks, serving_networks_csv, serving_networks_editor
+    from src.modules.network.network_inventory import list_inventory_snapshots
+    from src.modules.network.serving_cells import load_serving_networks, serving_networks_csv, serving_networks_editor
 
     config = load_serving_networks(repository) if active_workspace else {'rows': [], 'max_distance_km': 30.0}
     # The networks of the inventory snapshots, offered beside the known ones.
@@ -6317,8 +6319,8 @@ def serving_networks_context(request: Request) -> dict[str, Any]:
 
 def cdr_field_dictionary_context(request: Request) -> dict[str, Any]:
     """The CDR Field Dictionary of the active workspace: the CDR columns each module reads for every field."""
-    from src.modules import cdr_field_dictionary
-    from src.modules.cdr_field_profiles import field_profile
+    from src.modules.cdr import cdr_field_dictionary
+    from src.modules.cdr.cdr_field_profiles import field_profile
 
     if not active_workspace:
         return {'cdr_field_dictionary': {}}
@@ -6338,7 +6340,7 @@ def cdr_field_dictionary_context(request: Request) -> dict[str, Any]:
 
 def user_api_key_writers() -> list[str]:
     """The writers of generated comments whose API key each user saves (the user menu offers API keys for them)."""
-    from src.modules.comment_writers import ENGINE_LABELS, user_key_engines
+    from src.modules.ppt_designer.comment_writers import ENGINE_LABELS, user_key_engines
     try:
         return [ENGINE_LABELS[engine] for engine in user_key_engines(repository)]
     except sqlite3.Error:
@@ -7050,7 +7052,7 @@ def recreate_combined_cdr_table(
 
 
 def choose_filter_values(query_values: list[str], options: dict[str, list[str]], key: str) -> list[str]:
-    from src.modules.value_patterns import is_pattern
+    from src.modules.cdr.value_patterns import is_pattern
 
     values = options.get(key, [])
     # Patterns (VF*) are kept: they take every value they match (see value_patterns).
@@ -8135,7 +8137,7 @@ def remove_stale_leftovers() -> list[tuple[str, int]]:
     temporary files of the caches of each workspace (never in its Input folder). The ``-import-backup-`` folders a
     workspace replacement keeps are left, since they may hold the only copy of the replaced workspace. Returns what was
     removed, each with its size, recorded in App Events."""
-    from src.modules.upload_sessions import cleanup_stale, sessions_root
+    from src.modules.core.upload_sessions import cleanup_stale, sessions_root
 
     cutoff = time_module.time() - STALE_BACKUP_SCRATCH_SECONDS
     removed: list[tuple[str, int]] = []
@@ -9087,13 +9089,13 @@ DESIGN_STATE_KEY = 'ppt_designs_v2'
 
 def _mappings_reference_data_archive_payload(workspace: Workspace) -> bytes:
     """Serialize complete Operator and Vendor chart mappings (with the comments of the Operator names), Spectrum Holdings, Serving Networks, the CDR Field Dictionary, the Campaign Map and the Map Areas."""
-    from src.modules import cdr_field_dictionary
-    from src.modules.campaign_maps import load_campaign_map
-    from src.modules.map_areas import layers_document
-    from src.modules.mapping_assignments import load_name_comments
-    from src.modules.postal_areas import postal_layers_document
-    from src.modules.network_insights import load_spectrum_holdings
-    from src.modules.serving_cells import load_serving_networks
+    from src.modules.cdr import cdr_field_dictionary
+    from src.modules.mapping.campaign_maps import load_campaign_map
+    from src.modules.network.map_areas import layers_document
+    from src.modules.mapping.mapping_assignments import load_name_comments
+    from src.modules.network.postal_areas import postal_layers_document
+    from src.modules.network_insights.network_insights import load_spectrum_holdings
+    from src.modules.network.serving_cells import load_serving_networks
 
     task_repository = Repository(
         workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
@@ -9139,7 +9141,7 @@ def active_user_exists(username: str) -> bool:
 def transfer_creator(package_creator: Any, local_creator: Any, importing_user: str) -> str:
     """Who an imported item belongs to: its creator on the server of the package when that user is active here,
     otherwise the user who accepts the transfer or imports the package (see transfer_identities.imported_creator)."""
-    from src.modules.transfer_identities import imported_creator
+    from src.modules.core.transfer_identities import imported_creator
     return imported_creator(package_creator, local_creator, importing_user, active_user_exists)
 
 
@@ -9159,8 +9161,8 @@ def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: by
         or not isinstance(document.get('campaign_map'), dict)
     ):
         raise ValueError(f'Mappings & Reference Data for "{workspace.name}" are invalid.')
-    from src.modules.campaign_maps import save_campaign_map
-    from src.modules.network_insights import normalise_spectrum_holdings, save_spectrum_holdings
+    from src.modules.mapping.campaign_maps import save_campaign_map
+    from src.modules.network_insights.network_insights import normalise_spectrum_holdings, save_spectrum_holdings
 
     try:
         campaign_map = normalize_campaign_map(document['campaign_map'])
@@ -9176,31 +9178,31 @@ def _restore_workspace_mappings_reference_data(workspace: Workspace, payload: by
     task_repository.replace_operator_mapping_groups(document['operator_mappings'])
     if isinstance(document.get('operator_name_comments'), dict):
         # Packages exported before the comments of the Operator names keep the workspace's own.
-        from src.modules.mapping_assignments import save_name_comments
+        from src.modules.mapping.mapping_assignments import save_name_comments
         save_name_comments(task_repository, document['operator_name_comments'])
     task_repository.replace_vendor_mapping_groups(document['vendor_mappings'])
     save_spectrum_holdings(task_repository, spectrum_holdings)
     if isinstance(document.get('serving_networks'), dict):
         # Packages exported before the Serving Networks keep the workspace's own.
-        from src.modules.serving_cells import save_serving_networks
+        from src.modules.network.serving_cells import save_serving_networks
         save_serving_networks(task_repository, document['serving_networks'])
     if isinstance(document.get('cdr_field_dictionary'), dict):
         # Packages exported before the CDR Field Dictionary, or for another CDR type, keep the workspace's own.
-        from src.modules import cdr_field_dictionary
+        from src.modules.cdr import cdr_field_dictionary
         try:
             cdr_field_dictionary.restore_document(task_repository, document['cdr_field_dictionary'])
         except ValueError as exc:
             raise ValueError(f'The CDR Field Dictionary for "{workspace.name}" is invalid: {exc}') from exc
     save_campaign_map(task_repository, campaign_map)
     if isinstance(document.get('map_areas'), dict):
-        from src.modules.map_areas import import_layers_document
+        from src.modules.network.map_areas import import_layers_document
         try:
             import_layers_document(task_repository, document['map_areas'], 'system', replace=True)
         except ValueError as exc:
             raise ValueError(f'Map Areas for "{workspace.name}" are invalid: {exc}') from exc
     # (Files saved before Postal Codes keep the ones of the workspace.)
     if isinstance(document.get('postal_areas'), dict):
-        from src.modules.postal_areas import import_postal_layers_document
+        from src.modules.network.postal_areas import import_postal_layers_document
         try:
             import_postal_layers_document(task_repository, document['postal_areas'], 'system')
         except ValueError as exc:
@@ -9263,10 +9265,10 @@ def _scoring_configuration_archive_payload(workspace: Workspace) -> bytes:
     )
     profiles = (task_repository.get_scoring_profiles()
                 if task_repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY) else None)
-    from src.modules.deletion_rights import SCORING_METHODOLOGIES, creators
-    from src.modules.scoring_config import scoring_profiles_document
+    from src.modules.core.deletion_rights import SCORING_METHODOLOGIES, creators
+    from src.modules.scoring.scoring_config import scoring_profiles_document
     document = scoring_profiles_document(profiles)
-    from src.modules.transfer_identities import SCORING_METHODOLOGIES as METHODOLOGY_IDENTITIES, identities
+    from src.modules.core.transfer_identities import SCORING_METHODOLOGIES as METHODOLOGY_IDENTITIES, identities
     # Who created each methodology and, when it replaced one of another server, the ID it came with, for Import /
     # Export and Transfer.
     known, uids = creators(task_repository, SCORING_METHODOLOGIES), identities(task_repository, METHODOLOGY_IDENTITIES)
@@ -9298,9 +9300,9 @@ SCORING_REPORT_TEMPLATES_ARCHIVE_NAME = 'scoring-report-templates/scoring-report
 
 
 def _scoring_report_templates_archive_payload(workspace: Workspace) -> bytes:
-    from src.modules.deletion_rights import SCORING_REPORT_CONFIGURATIONS, creators
-    from src.modules.scoring_reports import load_report_state, report_configurations_document
-    from src.modules.transfer_identities import SCORING_REPORT_CONFIGURATIONS as REPORT_IDENTITIES, portable_identities
+    from src.modules.core.deletion_rights import SCORING_REPORT_CONFIGURATIONS, creators
+    from src.modules.scoring.scoring_reports import load_report_state, report_configurations_document
+    from src.modules.core.transfer_identities import SCORING_REPORT_CONFIGURATIONS as REPORT_IDENTITIES, portable_identities
     task_repository = Repository(
         workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
     )
@@ -9331,10 +9333,10 @@ def _import_workspace_scoring_report_templates(
     name) and add the others, each belonging to its creator when that user is active here (otherwise to
     ``importing_user``). A renamed configuration takes its new name in the Scoring artifacts of the Reporting Jobs;
     ``summary`` receives the renamed ones. Returns how many the package had."""
-    from src.modules.deletion_rights import SCORING_REPORT_CONFIGURATIONS, creators, move_creator, set_creator
-    from src.modules.report_tasks import rename_definition_values
-    from src.modules.scoring_reports import load_report_state, store_configurations, unwrap_report_configurations_document
-    from src.modules.transfer_identities import (
+    from src.modules.core.deletion_rights import SCORING_REPORT_CONFIGURATIONS, creators, move_creator, set_creator
+    from src.modules.reporting.report_tasks import rename_definition_values
+    from src.modules.scoring.scoring_reports import load_report_state, store_configurations, unwrap_report_configurations_document
+    from src.modules.core.transfer_identities import (
         SCORING_REPORT_CONFIGURATIONS as REPORT_IDENTITIES, ItemMatcher, identities, move_identity, set_identities,
     )
 
@@ -9390,7 +9392,7 @@ SCORING_EXPORT_PANELS_ARCHIVE_NAME = 'scoring-export-panels/scoring-export-panel
 
 
 def _scoring_export_panels_archive_payload(workspace: Workspace) -> bytes:
-    from src.modules.scoring_export_panels import export_panels_document
+    from src.modules.scoring.scoring_export_panels import export_panels_document
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     return json.dumps(export_panels_document(load_export_panels(task_repository)), ensure_ascii=False, indent=2).encode('utf-8')
 
@@ -9407,7 +9409,7 @@ def _archive_workspace_scoring_export_panels(
 
 def _restore_workspace_scoring_export_panels(workspace: Workspace, payload: bytes) -> int:
     """Replace the Scoring Export Panels of a workspace with those of a package; returns how many panels it has."""
-    from src.modules.scoring_export_panels import save_export_panels, unwrap_export_panels_document
+    from src.modules.scoring.scoring_export_panels import save_export_panels, unwrap_export_panels_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
@@ -9422,7 +9424,7 @@ SCORING_EXCLUDED_CALLS_ARCHIVE_NAME = 'scoring-excluded-calls/scoring-excluded-c
 
 
 def _scoring_excluded_calls_archive_payload(workspace: Workspace) -> bytes:
-    from src.modules.scoring_exclusions import export_document
+    from src.modules.scoring.scoring_exclusions import export_document
     return export_document(Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path))
 
 
@@ -9442,7 +9444,7 @@ def _restore_workspace_scoring_excluded_calls(
     """Replace the Scoring Excluded Calls lists of a workspace that a package brings (found by their identity, then by
     their name) and add the others; returns how many lists it has (their calls are found in the CDRs of the workspace
     in the background), and ``summary`` receives the renamed ones."""
-    from src.modules.scoring_exclusions import import_document
+    from src.modules.scoring.scoring_exclusions import import_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
@@ -9477,7 +9479,7 @@ def _restore_workspace_saved_filters(workspace: Workspace, payload: bytes | None
     before they existed have none."""
     if payload is None:
         return
-    from src.modules.saved_filters import import_saved_filters
+    from src.modules.scoring.saved_filters import import_saved_filters
     try:
         task_repository = Repository(
             workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
@@ -9491,7 +9493,7 @@ def _restore_workspace_scoring_report_configurations(workspace: Workspace, paylo
     """Replace the saved report configurations; packages created before they existed have none."""
     if payload is None:
         return
-    from src.modules.scoring_reports import import_report_configurations
+    from src.modules.scoring.scoring_reports import import_report_configurations
     try:
         task_repository = Repository(
             workspace.database_path, repository.global_db_path, workspace_registry.registry_path,
@@ -9509,9 +9511,9 @@ def _import_workspace_scoring_configuration(
     workspace without methodologies). A methodology is found by its ID (or the ID it came with), then by its name; a
     replaced one keeps its ID here, so what uses it still finds it. Each belongs to its creator when that user is active
     here (otherwise to ``importing_user``); ``summary`` receives the renamed ones."""
-    from src.modules.deletion_rights import SCORING_METHODOLOGIES, creators, set_creator
-    from src.modules.scoring_config import unwrap_scoring_profiles_payload
-    from src.modules.transfer_identities import (
+    from src.modules.core.deletion_rights import SCORING_METHODOLOGIES, creators, set_creator
+    from src.modules.scoring.scoring_config import unwrap_scoring_profiles_payload
+    from src.modules.core.transfer_identities import (
         SCORING_METHODOLOGIES as METHODOLOGY_IDENTITIES, ItemMatcher, identities, set_identities,
     )
 
@@ -9580,12 +9582,12 @@ def _design_archive_payload(workspace: Workspace) -> bytes:
         {'id': int(row['id']), 'name': str(row['file_name']), 'kind': str(row['dataset_kind'] or '')}
         for row in task_repository.list_datasets() if int(row['id']) in chosen
     ] if chosen else []
-    from src.modules.deletion_rights import PPT_DESIGNER, creators
-    from src.modules.transfer_identities import PPT_DESIGNER as DESIGN_IDENTITIES, identities
+    from src.modules.core.deletion_rights import PPT_DESIGNER, creators
+    from src.modules.core.transfer_identities import PPT_DESIGNER as DESIGN_IDENTITIES, identities
     # The identity of each PPT Design (its ID, or that of the package it came from) and its creator.
     uids, known = identities(task_repository, DESIGN_IDENTITIES), creators(task_repository, PPT_DESIGNER)
-    from src.modules.design_images import portable_images, referenced_images
-    from src.modules.ppt_designer import read_design_order, read_design_updates
+    from src.modules.ppt_designer.design_images import portable_images, referenced_images
+    from src.modules.ppt_designer.ppt_designer import read_design_order, read_design_updates
     updates = read_design_updates(task_repository)
     return json.dumps({'format': 'drivetest-analyzer-designs', 'version': 1, 'designs': designs, 'cdrs': cdrs,
                        'identities': {key: uids.get(str(key).casefold()) or str(key) for key in designs},
@@ -9601,7 +9603,7 @@ def _design_archive_payload(workspace: Workspace) -> bytes:
 
 def _designs_on_destination_cdrs(designs: dict[str, Any], cdrs: Any, task_repository: Repository) -> dict[str, Any]:
     """Point the chosen CDRs of imported PPT Designs at the CDRs of the destination with the same name and type."""
-    from src.modules.ppt_designer import existing_dataset_selection
+    from src.modules.ppt_designer.ppt_designer import existing_dataset_selection
 
     destination = list(task_repository.list_datasets())
     kinds = {int(row['id']): str(row['dataset_kind'] or '') for row in destination}
@@ -9630,7 +9632,7 @@ def _designs_on_workspace_templates(designs: dict[str, Any], task_repository: Re
     """The PPT Designs referring to the PPT Templates of a workspace by the identity those have there, as the PPT
     Designer keeps them (follow_template_identities): a template added apart on each server has an identity of its own
     on each, and the identity of the other server would be taken back at once, so every transfer would tell it changed."""
-    from src.modules.ppt_designer import follow_template_identities, template_uids
+    from src.modules.ppt_designer.ppt_designer import follow_template_identities, template_uids
 
     try:
         return follow_template_identities(designs, template_uids(task_repository))
@@ -9654,8 +9656,8 @@ def _exported_calculated_dimensions(workspace: Workspace) -> list[dict[str, obje
 def _calculated_dimensions_with_identities(task_repository: Repository, definitions: list[Any]) -> list[Any]:
     """Each field with its identity and its creator, so the workspace that imports or restores it finds it again
     after a rename."""
-    from src.modules.deletion_rights import AUTO_CALCULATED_FIELDS, creators
-    from src.modules.transfer_identities import AUTO_CALCULATED_FIELDS as FIELD_IDENTITIES, portable_identities
+    from src.modules.core.deletion_rights import AUTO_CALCULATED_FIELDS, creators
+    from src.modules.core.transfer_identities import AUTO_CALCULATED_FIELDS as FIELD_IDENTITIES, portable_identities
 
     keys = [_normalise_catalogue_dimension_name(str(item.get('name') or '')) if isinstance(item, dict) else '' for item in definitions]
     uids = portable_identities(task_repository, FIELD_IDENTITIES, [key for key in keys if key])
@@ -9676,12 +9678,12 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
     one renamed on the other server takes its new name here (its references go by ID). The PPT Designs of a package of
     before, with an NR Mode of their own and of their template, read it as part of their selection and follow their
     template as the workspace merged it (report_template_modes). Returns the renamed PPT Designs."""
-    from src.modules.deletion_rights import PPT_DESIGNER, creators, set_creator
-    from src.modules.ppt_designer import keep_design_updates
-    from src.modules.ppt_naming import renamed_design
-    from src.modules.repository import local_now_iso
-    from src.modules.report_template_modes import migrate_designs_state
-    from src.modules.transfer_identities import PPT_DESIGNER as DESIGN_IDENTITIES, ItemMatcher, identities, set_identities
+    from src.modules.core.deletion_rights import PPT_DESIGNER, creators, set_creator
+    from src.modules.ppt_designer.ppt_designer import keep_design_updates
+    from src.modules.ppt_designer.ppt_naming import renamed_design
+    from src.modules.core.repository import local_now_iso
+    from src.modules.reporting.report_template_modes import migrate_designs_state
+    from src.modules.core.transfer_identities import PPT_DESIGNER as DESIGN_IDENTITIES, ItemMatcher, identities, set_identities
 
     try:
         document = json.loads(payload.decode('utf-8'))
@@ -9734,9 +9736,9 @@ def _import_workspace_designs(workspace: Workspace, payload: bytes, importing_us
     if package_order:
         # The PPT Designs keep the order they had in their workspace, before the Designs only this one has (packages
         # made before the order, or of a library sorted by NR Mode and name, leave new Designs at the end).
-        from src.modules.ppt_designer import save_design_order
+        from src.modules.ppt_designer.ppt_designer import save_design_order
         save_design_order(task_repository, package_order, current)
-    from src.modules.design_images import restore_images
+    from src.modules.ppt_designer.design_images import restore_images
     restore_images(task_repository, document.get('images'))
     return matcher.summary()
 
@@ -9748,7 +9750,7 @@ def _query_builder_queries_payload(workspace: Workspace) -> dict[str, Any]:
         saved_queries = task_repository.list_query_builder_queries()
     except sqlite3.OperationalError:
         return {'format': 'drivetest-analyzer-query-builder-queries', 'version': 1, 'queries': []}
-    from src.modules.transfer_identities import QUERY_BUILDER_QUERIES, portable_identities
+    from src.modules.core.transfer_identities import QUERY_BUILDER_QUERIES, portable_identities
     # Each query with its identity, so the destination finds it again after a rename.
     uids = portable_identities(task_repository, QUERY_BUILDER_QUERIES, [str(row['id']) for row in saved_queries])
     return {'format': 'drivetest-analyzer-query-builder-queries', 'version': 1, 'queries': [
@@ -9777,7 +9779,7 @@ def _restore_workspace_query_builder_queries(
 ) -> int:
     """Replace the queries of a workspace that a package brings (found by their identity, then by their name) and add
     the others; ``summary`` receives the renamed queries. Returns how many the package had."""
-    from src.modules.transfer_identities import QUERY_BUILDER_QUERIES, ItemMatcher, identities, set_identities
+    from src.modules.core.transfer_identities import QUERY_BUILDER_QUERIES, ItemMatcher, identities, set_identities
 
     try:
         document = json.loads(payload.decode('utf-8'))
@@ -9824,7 +9826,7 @@ NI_FAVOURITES_ARCHIVE_NAME = 'network-insights-favourites/network-insights-favou
 
 def _network_insights_favourites_payload(workspace: Workspace) -> bytes:
     """Portable Network Insights favourite Analysis Selections of a workspace."""
-    from src.modules.network_insights_favourites import export_document
+    from src.modules.network_insights.network_insights_favourites import export_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     return export_document(task_repository)
@@ -9845,7 +9847,7 @@ def _restore_workspace_network_insights_favourites(
 ) -> int:
     """Replace (found by their identity, then by their name) or add the Network Insights favourites of a package in a
     workspace, each belonging to its creator when that user is active here (otherwise to ``importing_user``)."""
-    from src.modules.network_insights_favourites import import_document
+    from src.modules.network_insights.network_insights_favourites import import_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     renamed: list[str] = []
@@ -9864,7 +9866,7 @@ ASSISTANT_GLOSSARY_ARCHIVE_NAME = 'assistant-glossary/assistant-glossary.json'
 
 def _assistant_glossary_payload(workspace: Workspace) -> bytes:
     """The terms of the AI Assistant Glossary of a workspace (the suggestions not accepted stay in it)."""
-    from src.modules.assistant import export_glossary
+    from src.modules.assistant.assistant import export_glossary
 
     return export_glossary(Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path))
 
@@ -9884,7 +9886,7 @@ def _restore_workspace_assistant_glossary(
 ) -> int:
     """Replace (found by their identity, then by their term) or add the AI Assistant Glossary terms of a package in a
     workspace, each new one belonging to its creator when that user is active here (otherwise to ``importing_user``)."""
-    from src.modules.assistant import import_glossary
+    from src.modules.assistant.assistant import import_glossary
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     renamed: list[str] = []
@@ -9907,7 +9909,7 @@ BRT_FAVOURITES_ARCHIVE_NAMES = (BRT_FAVOURITES_ARCHIVE_NAME, 'complete-report-fa
 
 def _bundle_report_template_favourites_payload(workspace: Workspace) -> bytes:
     """Portable favourite Bundle Report Templates of a workspace (their PPT Designs named, to find them elsewhere)."""
-    from src.modules.bundle_report_templates import export_favourites_document
+    from src.modules.reporting.bundle_report_templates import export_favourites_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     return export_favourites_document(task_repository)
@@ -9928,7 +9930,7 @@ def _restore_workspace_bundle_report_template_favourites(
 ) -> int:
     """Replace (found by their identity, then by their name) or add the favourite Bundle Report Templates of a package
     in a workspace, each belonging to its creator when that user is active here (otherwise to ``importing_user``)."""
-    from src.modules.bundle_report_templates import import_favourites_document
+    from src.modules.reporting.bundle_report_templates import import_favourites_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     renamed: list[str] = []
@@ -9947,7 +9949,7 @@ FAVOURITES_FILTERS_ARCHIVE_NAME = 'scoring-favourites-filters/scoring-favourites
 
 def _favourites_filters_payload(workspace: Workspace) -> bytes:
     """The Favourites Filters of a workspace without their results, their CDRs named by the SHA-256 of their files."""
-    from src.modules.saved_filters import saved_filters_document
+    from src.modules.scoring.saved_filters import saved_filters_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     return json.dumps(saved_filters_document(task_repository, favourites_only=True), ensure_ascii=False, indent=2).encode('utf-8')
@@ -9970,7 +9972,7 @@ def _restore_workspace_favourites_filters(
     """Add the Favourites Filters of a package to a workspace (they find their CDRs there by file), each belonging to its
     creator when that user is active here (otherwise to ``importing_user``); one the workspace already has is replaced
     by the imported one, and ``progress(phase, share done)`` follows them. Returns how many were added."""
-    from src.modules.saved_filters import import_saved_filters
+    from src.modules.scoring.saved_filters import import_saved_filters
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
@@ -9982,7 +9984,7 @@ def _restore_workspace_favourites_filters(
 
 def _reporting_jobs_payload(workspace: Workspace) -> bytes:
     """Portable Reporting Jobs of a workspace (definitions only; runs are generated output)."""
-    from src.modules.report_tasks import export_tasks_document
+    from src.modules.reporting.report_tasks import export_tasks_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     return export_tasks_document(task_repository)
@@ -10003,7 +10005,7 @@ def _restore_workspace_reporting_jobs(
 ) -> int:
     """Replace (found by their identity, then by their name) or add the Reporting Jobs of a package in a workspace;
     ``summary`` receives the renamed ones."""
-    from src.modules.report_tasks import import_tasks_document
+    from src.modules.reporting.report_tasks import import_tasks_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     renamed: list[str] = []
@@ -10056,7 +10058,7 @@ def _restore_workspace_app_events(workspace: Workspace, payload: bytes) -> int:
 
 def _nq_call_tracking_payload(workspace: Workspace) -> bytes:
     """Portable Non-Qualified Calls follow-up of a workspace: statuses, teams, tracking, comments and history."""
-    from src.modules.non_qualified_calls import export_tracking_document
+    from src.modules.nq.non_qualified_calls import export_tracking_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     return export_tracking_document(task_repository)
@@ -10074,7 +10076,7 @@ def _archive_workspace_nq_call_tracking(
 
 def _restore_workspace_nq_call_tracking(workspace: Workspace, payload: bytes) -> int:
     """Merge the Non-Qualified Calls follow-up of a package into a workspace."""
-    from src.modules.non_qualified_calls import import_tracking_document
+    from src.modules.nq.non_qualified_calls import import_tracking_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
@@ -10085,7 +10087,7 @@ def _restore_workspace_nq_call_tracking(workspace: Workspace, payload: bytes) ->
 
 def _nq_calls_configuration_payload(workspace: Workspace) -> bytes:
     """Portable Non-Qualified Calls Analysis Center configuration of a workspace, without the follow-up of its calls."""
-    from src.modules.non_qualified_calls import export_configuration_document
+    from src.modules.nq.non_qualified_calls import export_configuration_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     return export_configuration_document(task_repository)
@@ -10103,7 +10105,7 @@ def _archive_workspace_nq_calls_configuration(
 
 def _restore_workspace_nq_calls_configuration(workspace: Workspace, payload: bytes) -> None:
     """Merge the Non-Qualified Calls configuration of a package into a workspace."""
-    from src.modules.non_qualified_calls import import_configuration_document
+    from src.modules.nq.non_qualified_calls import import_configuration_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     try:
@@ -11426,7 +11428,7 @@ def _carry_cdr_file_hashes(workspace: Workspace) -> None:
     """The CDR files an import placed in a workspace (or kept, holding the same files) keep the hash their workspace
     database already knows (scoring_history.file_sha256), instead of being read again for it: only their place and
     their modification time are new."""
-    from src.modules.scoring_history import HISTORY_FILES_TABLE
+    from src.modules.scoring.scoring_history import HISTORY_FILES_TABLE
 
     try:
         with closing(sqlite3.connect(workspace.database_path)) as connection, connection:
@@ -11501,7 +11503,7 @@ def _archive_workspace_report_templates(
             if progress_callback:
                 progress_callback(len(content))
     # The pictures of the Image elements of their slides, beside them (an import adds those it does not have).
-    from src.modules.design_images import portable_images, template_images
+    from src.modules.ppt_designer.design_images import portable_images, template_images
     images = portable_images(target_repository, template_images(contents))
     if images:
         archive.writestr(f'{archive_prefix}/{TEMPLATE_IMAGES_FILE}', json.dumps({'format': 'drivetest-analyzer-design-images', 'version': 1, 'images': images}))
@@ -11509,8 +11511,8 @@ def _archive_workspace_report_templates(
 
 def migrate_ppt_module_names() -> None:
     """Rename the stored E2E Dashboards and Reporting (old) names to PPT Designer and PPT Reporting (old)."""
-    from src.modules.module_labels import MODULE_LABELS_STATE_KEY
-    from src.modules.ppt_naming import migrate_application_state, migrate_workspace_database
+    from src.modules.core.module_labels import MODULE_LABELS_STATE_KEY
+    from src.modules.ppt_designer.ppt_naming import migrate_application_state, migrate_workspace_database
 
     migrate_application_state(repository, (MODULE_LABELS_STATE_KEY,))
     for workspace in workspace_registry.list():
@@ -11548,7 +11550,7 @@ def _design_template_references(task_repository: Repository) -> set[str]:
         designs = {}
     if not isinstance(designs, dict):
         return set()
-    from src.modules.ppt_designer import follow_template_identities, template_uids
+    from src.modules.ppt_designer.ppt_designer import follow_template_identities, template_uids
     # A PPT Design refers to its template by its identity, also when the template was renamed since it was saved.
     designs = follow_template_identities(designs, template_uids(task_repository))
     return {
@@ -11597,7 +11599,7 @@ TEMPLATE_IMAGES_FILE = 'design-images.json'
 
 
 def _restore_template_images(target_repository: Repository, templates_payload: Path) -> None:
-    from src.modules.design_images import restore_images
+    from src.modules.ppt_designer.design_images import restore_images
 
     path = templates_payload / TEMPLATE_IMAGES_FILE
     if not path.is_file():
@@ -11627,7 +11629,7 @@ def package_report_templates(
     its identity and creator from the manifest. The templates of a package of before, kept per NR Mode, become those of
     one library as the workspaces were migrated (report_template_modes); the merge is returned so the PPT Designs of the
     package follow it."""
-    from src.modules.report_template_modes import TemplateMerge, merge_mode_templates
+    from src.modules.reporting.report_template_modes import TemplateMerge, merge_mode_templates
 
     metadata = {
         (str(item.get('technology') or '').casefold(), str(item.get('name') or '').casefold()): item
@@ -11673,9 +11675,9 @@ def _merge_report_templates(
     """Replace the templates of a workspace that a package brings (by identity, then name) and add the others; a
     renamed template keeps its PPT Designs. The PPT Designs of the workspace that named a template of a package of before
     (kept per NR Mode) follow it as merged (``merge``). Returns the renamed templates."""
-    from src.modules.ppt_designer import rename_template_in_designs
-    from src.modules.report_template_modes import TEMPLATE_MODE_MERGE_STATE_KEY, migrate_designs_state
-    from src.modules.transfer_identities import ItemMatcher
+    from src.modules.ppt_designer.ppt_designer import rename_template_in_designs
+    from src.modules.reporting.report_template_modes import TEMPLATE_MODE_MERGE_STATE_KEY, migrate_designs_state
+    from src.modules.core.transfer_identities import ItemMatcher
 
     try:
         designs = json.loads(target_repository.get_workspace_state(DESIGN_STATE_KEY) or '{}')
@@ -11777,7 +11779,7 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
     source = manifest.get('source_workspaces')
     source_names = [str(entry.get('name') or '') for entry in source if isinstance(entry, dict)] if isinstance(source, list) else None
     source_uids = [str(entry.get('uid') or '') for entry in source if isinstance(entry, dict)] if isinstance(source, list) else None
-    from src.modules.import_changes import breakdown, compare, counted, joined, users_access_items
+    from src.modules.core.import_changes import breakdown, compare, counted, joined, users_access_items
 
     workspaces = workspace_registry.list()
     before = users_access_items(json.loads(_users_access_archive_payload()))
@@ -11806,7 +11808,7 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
 def _ticket_center_archive_files() -> list[tuple[str, int, Callable[[], bytes]]]:
     """The Ticket Center files of a package: the tickets in one JSON document and each attachment, as (archive path,
     size, a reader of its content), so the attachments (up to 100 MB each) are read one at a time as they are written."""
-    from src.modules.ticket_center import attachment_archive_entries, get_attachment, ticket_center_payload
+    from src.modules.ticket_center.ticket_center import attachment_archive_entries, get_attachment, ticket_center_payload
 
     payload, _ = ticket_center_payload(repository, attachments=False)
     document = json.dumps(payload, ensure_ascii=False, indent=2).encode('utf-8')
@@ -11839,13 +11841,13 @@ class _ArchiveFiles(Mapping):
 
 def import_ticket_center(archive: zipfile.ZipFile) -> str:
     """Merge the Ticket Center of a package into this server; returns its completion message."""
-    from src.modules.ticket_center import ATTACHMENTS_ARCHIVE_DIR, merge_ticket_center, ticket_center_payload
+    from src.modules.ticket_center.ticket_center import ATTACHMENTS_ARCHIVE_DIR, merge_ticket_center, ticket_center_payload
 
     try:
         payload = json.loads(archive.read(TICKET_CENTER_ARCHIVE_PATH).decode('utf-8'))
     except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError('The Ticket Center file is not valid.') from exc
-    from src.modules.import_changes import breakdown, compare, counted, ticket_items
+    from src.modules.core.import_changes import breakdown, compare, counted, ticket_items
 
     files = _ArchiveFiles(archive, ATTACHMENTS_ARCHIVE_DIR)
     before = ticket_items(ticket_center_payload(repository, attachments=False)[0])
@@ -11987,8 +11989,8 @@ def import_auto_calculated_fields(
 
     The materialization of an import of several packages waits in ``deferred_jobs`` until all of them are imported.
     """
-    from src.modules.deletion_rights import AUTO_CALCULATED_FIELDS, creators, move_creator, set_creator
-    from src.modules.transfer_identities import (
+    from src.modules.core.deletion_rights import AUTO_CALCULATED_FIELDS, creators, move_creator, set_creator
+    from src.modules.core.transfer_identities import (
         AUTO_CALCULATED_FIELDS as FIELD_IDENTITIES, ItemMatcher, identities, move_identity, set_identities,
     )
 
@@ -12234,7 +12236,7 @@ def _element_documents(kind: str, destinations: Iterable[Workspace]) -> dict[str
 def _element_changes(kind: str, destinations: list[Workspace], before: dict[str, Any] | None, package: Any) -> dict[str, Any] | None:
     """What the import of an element did in each destination workspace (see import_changes), from its documents before
     and after the import and that of the package; ``None`` when they could not be read."""
-    from src.modules.import_changes import (
+    from src.modules.core.import_changes import (
         DETAILED_ELEMENTS, ELEMENT_LABELS, SETTINGS_ELEMENTS, compare, compare_settings, element_items, settings_values,
     )
 
@@ -12242,11 +12244,11 @@ def _element_changes(kind: str, destinations: list[Workspace], before: dict[str,
     if after is None:
         return None
     if kind == 'scoring-export-panels':
-        from src.modules.scoring_export_panels import export_panel_changes
+        from src.modules.scoring.scoring_export_panels import export_panel_changes
         return {workspace.id: compare_settings('', {}, {}, described=export_panel_changes(
             (before[workspace.id] or {}).get('panels'), (after[workspace.id] or {}).get('panels'))) for workspace in destinations}
     if kind == 'nq-calls-configuration':
-        from src.modules.non_qualified_calls import configuration_changes
+        from src.modules.nq.non_qualified_calls import configuration_changes
         return {workspace.id: compare_settings('', {}, {}, described=configuration_changes(before[workspace.id], after[workspace.id]))
                 for workspace in destinations}
     if kind in SETTINGS_ELEMENTS:
@@ -12263,7 +12265,7 @@ def _element_notice(kind: str, destinations: list[Workspace], changes: dict[str,
     """The completion message of an element imported into the destination workspaces, ``Imported 32 Reporting Jobs into
     1 workspace: 2 new, 1 updated and 29 unchanged.`` (the ``count`` items it had when what changed could not be told),
     and the lines that tell what changed in the updated items of each workspace."""
-    from src.modules.import_changes import (
+    from src.modules.core.import_changes import (
         ELEMENT_NAMES, SETTINGS_ELEMENTS, Changes, breakdown, counted, settings_breakdown,
     )
 
@@ -12335,8 +12337,8 @@ def _predicted_document(kind: str, workspace: Workspace, package: Any, includes_
     if kind == 'ppt-templates' and not includes_designs and isinstance(package, list):
         return _kept_report_template_rows(workspace, package)
     if kind == 'designs' and isinstance(package, dict) and isinstance(package.get('designs', package.get('dashboards')), dict):
-        from src.modules.ppt_naming import renamed_design
-        from src.modules.report_template_modes import migrate_designs_state
+        from src.modules.ppt_designer.ppt_naming import renamed_design
+        from src.modules.reporting.report_template_modes import migrate_designs_state
 
         task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
         designs, _changed = migrate_designs_state(
@@ -12345,7 +12347,7 @@ def _predicted_document(kind: str, workspace: Workspace, package: Any, includes_
         return {**package, 'designs': _designs_on_workspace_templates(designs, task_repository)}
     if kind != 'reporting-jobs' or not isinstance(package, dict):
         return package
-    from src.modules.report_tasks import imported_jobs, normalize_definition, normalize_schedule
+    from src.modules.reporting.report_tasks import imported_jobs, normalize_definition, normalize_schedule
 
     def normalized(normalize: Callable[[Any], Any], value: Any) -> Any:
         try:
@@ -12363,7 +12365,7 @@ def _predicted_settings(kind: str, before: Any, package: Any) -> Any:
     """The export document of a settings element after importing a package, as its import merges it (the NQ Calls
     Configuration adds what the workspace lacks), for the preview of the import; the others replace it."""
     if kind == 'nq-calls-configuration' and isinstance(before, dict) and isinstance(package, dict):
-        from src.modules.non_qualified_calls import predicted_configuration
+        from src.modules.nq.non_qualified_calls import predicted_configuration
         return predicted_configuration(before, package)
     return package
 
@@ -12379,10 +12381,10 @@ def _application_settings_items(target: Repository) -> dict[str, list[Any]]:
     """What an Application Config import replaces in the application database of ``target`` besides the users, their
     Modules Profiles and Workspace Groups: the tickets, the Interface Settings (each module and the stage labels) and
     the Scoring Aggregation Hierarchy, as items of a preview."""
-    from src.modules.import_changes import Item, ticket_items
-    from src.modules.module_labels import load_module_labels
-    from src.modules.scoring_config import load_aggregation_hierarchy
-    from src.modules.ticket_center import ticket_center_payload
+    from src.modules.core.import_changes import Item, ticket_items
+    from src.modules.core.module_labels import load_module_labels
+    from src.modules.scoring.scoring_config import load_aggregation_hierarchy
+    from src.modules.ticket_center.ticket_center import ticket_center_payload
 
     # The order of a module is told (its position is not compared in other elements).
     modules = [Item(name=label['title'], values={**{key: value for key, value in label.items() if key != 'position'}, 'order': label['position'] + 1},
@@ -12399,7 +12401,7 @@ def _preview_application_config(archive: zipfile.ZipFile, manifest: dict[str, An
     """What importing an Application Config would do: it replaces the whole application database of this server, so
     the import is made on a copy of it and the copy is compared with it (the users, Modules Profiles, Workspace Groups,
     tickets, Interface Settings and Scoring Aggregation Hierarchy it would add, update and remove)."""
-    from src.modules.import_changes import Changes, compare, counted, joined, removed, users_access_items
+    from src.modules.core.import_changes import Changes, compare, counted, joined, removed, users_access_items
 
     member = 'config/application.db'
     if member not in archive.namelist():
@@ -12444,12 +12446,12 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
     would add, and those it would update with what would change) and whether it would change anything
     (``importing_user`` owns the items whose creator is not on this server, as the import gives them;
     ``includes_designs``: the PPT Designs come too, so the PPT Templates they use are replaced)."""
-    from src.modules.import_changes import (
+    from src.modules.core.import_changes import (
         DETAILED_ELEMENTS, ELEMENT_LABELS, ELEMENT_NAMES, SETTINGS_ELEMENTS, breakdown, compare, compare_settings, counted,
         element_items, favourites_order_changes, joined, kept_postal_codes, predict, settings_values, ticket_items,
         users_access_items,
     )
-    from src.modules.transfer_identities import imported_creator
+    from src.modules.core.transfer_identities import imported_creator
 
     kind = str(manifest.get('kind') or '')
     if kind in ELEMENT_DOCUMENTS:
@@ -12461,11 +12463,11 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
         if package is None or before is None:
             return _preview_wording(_element_notice(kind, destinations, None)[0]), [], True
         if kind == 'scoring-export-panels':
-            from src.modules.scoring_export_panels import export_panel_changes
+            from src.modules.scoring.scoring_export_panels import export_panel_changes
             changes = {workspace.id: compare_settings('', {}, {}, described=export_panel_changes(
                 (before[workspace.id] or {}).get('panels'), (package or {}).get('panels'))) for workspace in destinations}
         elif kind == 'nq-calls-configuration':
-            from src.modules.non_qualified_calls import configuration_changes
+            from src.modules.nq.non_qualified_calls import configuration_changes
             changes = {workspace.id: compare_settings('', {}, {}, described=configuration_changes(
                 before[workspace.id], _predicted_settings(kind, before[workspace.id], package))) for workspace in destinations}
         elif kind in SETTINGS_ELEMENTS:
@@ -12474,7 +12476,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
         elif kind == 'nq-call-tracking':
             # The follow-up merges as its import merges it (newer values win, comments are added once, nothing is
             # removed), and is told as the completion message tells it.
-            from src.modules.non_qualified_calls import predicted_tracking_document
+            from src.modules.nq.non_qualified_calls import predicted_tracking_document
             changes = {workspace.id: compare(element_items(kind, package), element_items(kind, before[workspace.id]),
                                              element_items(kind, predicted_tracking_document(before[workspace.id], package)),
                                              ELEMENT_LABELS.get(kind), detailed=True)
@@ -12512,7 +12514,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
         lines += [changes_section(f'Updates {plural}', changes.updated) for _singular, plural, changes in kinds if changes.updated]
         return message, lines, any(changes.new or changes.updated for _singular, _plural, changes in kinds)
     if kind == 'ticket-center':
-        from src.modules.ticket_center import ticket_center_payload
+        from src.modules.ticket_center.ticket_center import ticket_center_payload
 
         if TICKET_CENTER_ARCHIVE_PATH not in archive.namelist():
             return 'The package does not contain Ticket Center.', [], True
@@ -12545,7 +12547,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
         document = _json_document(archive.read(member)) if member in archive.namelist() else None
         if not destinations or not isinstance(document, dict) or not isinstance(document.get('events'), list):
             return 'Adds the App Events of the package that the destination workspace does not have.', [], True
-        from src.modules.import_changes import Changes
+        from src.modules.core.import_changes import Changes
 
         added = sum(Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
                     .count_new_logs(document['events']) for workspace in destinations)
@@ -13050,7 +13052,7 @@ def _apply_import_archive(
                 for position, workspace in enumerate(destinations))
             message, lines = _element_notice(kind, destinations, _element_changes(kind, destinations, before, _json_document(payload)),
                                              imported_count)
-            from src.modules.import_changes import favourites_order_changes
+            from src.modules.core.import_changes import favourites_order_changes
 
             order = [f'Favourites Filters of "{workspace.name}" took the order of the package.' for workspace in destinations
                      if kind == 'scoring-favourites-filters' and before is not None
@@ -13137,7 +13139,7 @@ def _apply_import_archive(
                 raise ValueError('Select at least one destination workspace.')
             payload = archive.read(member)
             added = sum(_restore_workspace_app_events(workspace, payload) for workspace in destinations)
-            from src.modules.import_changes import Changes, breakdown, counted
+            from src.modules.core.import_changes import Changes, breakdown, counted
             events = len((_json_document(payload) or {}).get('events') or []) * len(destinations)
             changes = Changes(new=[''] * added, unchanged=max(events - added, 0))
             return (f'Imported {counted(changes.count, "App Event")} into {counted(len(destinations), "workspace")}'
@@ -14092,8 +14094,8 @@ def render_admin_template(
 ) -> HTMLResponse:
     """Admin (Import / Export / Transfer and Datasets Management), Super Admin (users, profiles, groups, interface
     settings and databases) or the Workspace Config page."""
-    from src.modules.presentations import presentation_settings
-    from src.modules.comment_writers import writer_settings_panel
+    from src.modules.help.presentations import presentation_settings
+    from src.modules.ppt_designer.comment_writers import writer_settings_panel
     embedded_template_editor = request.query_params.get('embedded_template_editor') == '1'
     selected_catalogue = request.query_params.get('catalogue_id') or request.query_params.get('catalogue_selection') or None
     # Links of before named the NR Mode library of the template too (nsa:Name).
@@ -14127,7 +14129,7 @@ def render_admin_template(
         all_main_cities = []
     selected_main_cities = repository.list_main_cities() if active_workspace else []
     workspace_campaigns = workspace_campaign_values() if active_workspace else []
-    from src.modules.scoring_methodologies import campaign_quarters
+    from src.modules.scoring.scoring_methodologies import campaign_quarters
     dataset_names = {
         int(dataset['id']): str(dataset['file_name'])
         for dataset in admin_datasets
@@ -14135,11 +14137,11 @@ def render_admin_template(
     database_table_groups: dict[str, list[dict[str, Any]]] = {
         'Config Tables': [], 'Workspace Tables': [], 'Individual Datasets': [], 'Combined CDR rows': [],
     }
-    from src.modules.cdr_store import TABLE_TITLES as CDR_STORE_TABLE_TITLES
-    from src.modules.non_qualified_calls import NQ_TABLE_TITLES
-    from src.modules.assistant import TABLE_TITLES as ASSISTANT_TABLE_TITLES
-    from src.modules.scoring_exclusions import TABLE_TITLES as SCORING_EXCLUSION_TABLE_TITLES
-    from src.modules.l3_dt_logs import TABLE_TITLES as L3_DT_LOGS_TABLE_TITLES
+    from src.modules.cdr.cdr_store import TABLE_TITLES as CDR_STORE_TABLE_TITLES
+    from src.modules.nq.non_qualified_calls import NQ_TABLE_TITLES
+    from src.modules.assistant.assistant import TABLE_TITLES as ASSISTANT_TABLE_TITLES
+    from src.modules.scoring.scoring_exclusions import TABLE_TITLES as SCORING_EXCLUSION_TABLE_TITLES
+    from src.modules.cdr.l3_dt_logs import TABLE_TITLES as L3_DT_LOGS_TABLE_TITLES
 
     friendly_tables = {
         WORKSPACE_REGISTRY_TABLE: 'Workspace registry',
@@ -15073,7 +15075,7 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
     with the chosen Modules Profile. For a user that already exists (with its current password) its Workspace Groups and
     Modules Profile are replaced and it is deactivated until an administrator activates it again.
     Returns the email, to the administrator and copied to the approvers, that asks for the approval and the activation."""
-    from src.modules.repository import local_now_iso
+    from src.modules.core.repository import local_now_iso
 
     signum = payload.username.strip()
     if not SIGNUM_PATTERN.fullmatch(signum):
@@ -15134,7 +15136,7 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         repository.set_user_workspace_groups(user_id, requested_groups)
         repository.set_users_modules_profile([user_id], profile['id'])
     requested_at = local_now_iso()
-    # The super-admins are told of the request after signing in (src/modules/admin_notices.py).
+    # The super-admins are told of the request after signing in (src/modules/core/admin_notices.py).
     repository.set_access_requested(user_id, requested_at)
     invalidate_module_access_cache()
     workspaces = describe(workspace_groups, 'workspaces')
@@ -15331,7 +15333,7 @@ def documents_view(request: Request, doc_name: str, user: SessionUser | None = D
         raise HTTPException(status_code=404, detail='Document not found')
     pretty_title = {'readme': 'README.md', 'changelog': 'CHANGELOG.md', 'help': 'Help'}[normalized]
     back_label = {'readme': 'Readme', 'changelog': 'Changelog', 'help': 'Documentation'}[normalized]
-    from src.modules.presentations import link_preview
+    from src.modules.help.presentations import link_preview
     return render_template(
         request,
         'doc_view.html',
@@ -15351,7 +15353,7 @@ def documents_view(request: Request, doc_name: str, user: SessionUser | None = D
 @app.get('/documents/view/help/{doc_file:path}', response_class=HTMLResponse)
 def help_document_view(request: Request, doc_file: str, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     path = resolve_help_doc_path(doc_file)
-    from src.modules.presentations import link_preview
+    from src.modules.help.presentations import link_preview
     return render_template(
         request,
         'doc_view.html',
@@ -16055,7 +16057,7 @@ BACKGROUND_TASK_PROVIDERS: list[Callable[[Workspace], list[dict[str, Any]]]] = [
 
 def _saved_filter_points_loss_tasks(workspace: Workspace) -> list[dict[str, Any]]:
     """The Points Lost Maps of the Saved Filters waiting or being drawn."""
-    from src.modules.saved_filters import points_loss_tasks
+    from src.modules.scoring.saved_filters import points_loss_tasks
     # Each can be stopped from the card (see stop_background_task).
     return [{**task, 'stop_task_id': task['id'], 'stop_url': f'/api/background-tasks/{workspace.id}/stop'}
             for task in points_loss_tasks(workspace.database_path)]
@@ -16066,7 +16068,7 @@ BACKGROUND_TASK_PROVIDERS.append(_saved_filter_points_loss_tasks)
 
 def _map_area_fill_tasks(workspace: Workspace) -> list[dict[str, Any]]:
     """The placing of the tests of the CDRs in the Map Areas."""
-    from src.modules.map_area_columns import fill_tasks
+    from src.modules.network.map_area_columns import fill_tasks
     return fill_tasks(workspace.database_path)
 
 
@@ -16077,7 +16079,7 @@ def _place_tests_when_idle() -> None:
     """Place the tests of the active workspace's CDRs not placed with its current Map Areas."""
     if not active_workspace or APP_SHUTTING_DOWN.is_set():
         return
-    from src.modules.map_area_columns import stale_datasets
+    from src.modules.network.map_area_columns import stale_datasets
     task_repository = Repository(active_workspace.database_path, global_db_path=repository.global_db_path,
                                  workspace_registry_db_path=workspace_registry.registry_path)
     if stale_datasets(task_repository):
@@ -16381,7 +16383,7 @@ def stop_background_task(
     if not raw_identifier:
         raise HTTPException(status_code=400, detail='Invalid background task.')
     if prefix == 'saved-filter-map':
-        from src.modules.saved_filters import request_points_loss_stop
+        from src.modules.scoring.saved_filters import request_points_loss_stop
         try:
             filter_id = int(raw_identifier)
         except ValueError as exc:
@@ -16675,7 +16677,7 @@ USER_LAST_LOGINS_FILLED_KEY = 'users_last_logins_filled'
 def fill_user_last_logins_from_app_events() -> None:
     """Once, give the accounts the last sign-in that the App Events of the workspaces recorded before the Users table
     kept it."""
-    from src.modules.repository import local_now_iso
+    from src.modules.core.repository import local_now_iso
 
     if repository.get_application_state(USER_LAST_LOGINS_FILLED_KEY):
         return
@@ -16714,7 +16716,7 @@ def upload_cdr_profile(task_repository: Repository) -> dict[str, Any]:
 
 def workspace_cdr_types(workspaces: list[Workspace]) -> dict[str, str]:
     """The CDR type of each workspace, read without opening (or migrating) its database."""
-    from src.modules.cdr_types import CDR_TYPE_STATE_KEY
+    from src.modules.cdr.cdr_types import CDR_TYPE_STATE_KEY
 
     types = {}
     for workspace in workspaces:
@@ -16731,7 +16733,7 @@ def workspace_cdr_types(workspaces: list[Workspace]) -> dict[str, str]:
 
 def workspace_countries(workspaces: list[Workspace]) -> dict[str, str]:
     """The country of each workspace ('' for none), read without opening (or migrating) its database."""
-    from src.modules.workspace_countries import COUNTRY_STATE_KEY, countries
+    from src.modules.mapping.workspace_countries import COUNTRY_STATE_KEY, countries
 
     codes = {}
     for workspace in workspaces:
@@ -16811,7 +16813,7 @@ def create_workspace(
     country: str = Form(''), workspace_group_ids: list[int] = Form(default=[]),
     user: SessionUser = Depends(current_user),
 ) -> Response:
-    from src.modules.workspace_countries import normalize_country, set_workspace_country
+    from src.modules.mapping.workspace_countries import normalize_country, set_workspace_country
 
     require_workspace_admin(user)
     try:
@@ -16869,7 +16871,7 @@ def save_workspace(
     country: str | None = Form(None),
     user: SessionUser = Depends(current_user),
 ) -> Response:
-    from src.modules.workspace_countries import set_workspace_country
+    from src.modules.mapping.workspace_countries import set_workspace_country
 
     require_workspace_admin(user)
     require_workspace_access(user, workspace_id)
@@ -17615,8 +17617,8 @@ def _dataset_preview_request(payload: Any, available_columns: list[str]) -> tupl
 
 def polygon_dataset_map(dataset: dict[str, Any]) -> dict[str, Any]:
     """The polygons of a Regions, Clusters or Vendors dataset, by name, and the outlines of their countries."""
-    from src.modules.map_areas import country_codes, country_name, country_outline
-    from src.modules.scoring_points_loss import mapping_boundaries
+    from src.modules.network.map_areas import country_codes, country_name, country_outline
+    from src.modules.scoring.scoring_points_loss import mapping_boundaries
 
     field = {'clusters': 'Cluster', 'vendors': 'Vendor'}.get(dataset['dataset_kind'], 'Region')
     try:
@@ -18252,7 +18254,7 @@ def reporting_query_columns(dataset_kind: str, catalog_entries: list[Any], multi
     }
     for entry in catalog_entries:
         if entry.source_kind == 'all' and dataset_kind in ('data', 'voice', 'speech'):
-            from src.modules.rf_catalog_source import rf_source_columns
+            from src.modules.ppt_designer.rf_catalog_source import rf_source_columns
             requested.update(rf_source_columns(dataset_kind))
         if entry.source_kind not in {dataset_kind, 'all'}:
             continue
@@ -18336,7 +18338,7 @@ def _combined_reporting_frame(
     """
     task_repository = task_repository or repository
     if len({str(dataset['dataset_kind']) for dataset in datasets}) > 1:
-        from src.modules.rf_catalog_source import pool_rf_frames
+        from src.modules.ppt_designer.rf_catalog_source import pool_rf_frames
         return pool_rf_frames({kind: _combined_reporting_frame(
             [dataset for dataset in datasets if dataset['dataset_kind'] == kind],
             catalog_entries, multivendor, task_repository,
@@ -18365,7 +18367,7 @@ def _combined_reporting_frame(
     combined.attrs.update(shared_frame_attrs(mapping_settings))
     combined = normalise_operator_aliases(combined)
     if any(entry.source_kind == 'all' for entry in catalog_entries):
-        from src.modules.rf_catalog_source import pool_rf_frames
+        from src.modules.ppt_designer.rf_catalog_source import pool_rf_frames
         combined = pool_rf_frames({dataset_kind: combined})
     return combined
 
@@ -18488,7 +18490,7 @@ def _local_report_date(value: Any) -> str:
 
 # ---------------------------------------------------------------------------
 # Ticket Center (formerly Bugs Report): the tickets of the bugs, improvements and new features of the tool
-# (src/modules/ticket_center.py), under /tickets (the /bugs-report addresses of before redirect there). Anyone with a link
+# (src/modules/ticket_center/ticket_center.py), under /tickets (the /bugs-report addresses of before redirect there). Anyone with a link
 # reads the list, a ticket and its attachments without signing in; every signed-in user with the module opens tickets
 # and comments on them; the reporter edits the ticket and its priority, and only super-admins attend it (status, type,
 # assignment, fixed version) or delete it.
@@ -18505,7 +18507,7 @@ def user_choices(usernames: Iterable[str] | None = None) -> list[dict[str, Any]]
     with ``divider`` on the first one of each group. ``usernames`` limits the list to those users (in any case);
     ``system``, the application's user, goes before them all as System tagged application, and other names of no
     account show as they are."""
-    from src.modules.repository import DEFAULT_ACCOUNT_USERNAMES
+    from src.modules.core.repository import DEFAULT_ACCOUNT_USERNAMES
 
     accounts = {}
     for row in repository.list_users():
@@ -18557,7 +18559,7 @@ def ticket_modules() -> list[dict[str, str]]:
 
 
 def serialize_ticket(row: dict[str, Any], modules: dict[str, dict[str, str]], people: dict[str, dict[str, str]]) -> dict[str, Any]:
-    from src.modules.ticket_center import DEFAULT_TICKET_TYPE, OPEN_STATUSES, PRIORITIES, STATUSES, TICKET_TYPES
+    from src.modules.ticket_center.ticket_center import DEFAULT_TICKET_TYPE, OPEN_STATUSES, PRIORITIES, STATUSES, TICKET_TYPES
 
     key = str(row.get('module') or '')
     module = modules.get(key, {'title': RETIRED_MODULES.get(key) or key or 'General', 'color': '#5A6773'})
@@ -18583,7 +18585,7 @@ def can_edit_ticket(user: SessionUser | None, ticket: dict[str, Any]) -> bool:
 
 
 def require_ticket(ticket_id: int) -> dict[str, Any]:
-    from src.modules.ticket_center import get_ticket
+    from src.modules.ticket_center.ticket_center import get_ticket
 
     ticket = get_ticket(repository, ticket_id)
     if ticket is None:
@@ -18593,7 +18595,7 @@ def require_ticket(ticket_id: int) -> dict[str, Any]:
 
 async def read_ticket_attachments(files: list[UploadFile]) -> list[dict[str, Any]]:
     """The screenshots and files of a form, read at most 10 MB each and checked (attachment_files)."""
-    from src.modules.ticket_center import MAX_ATTACHMENT_BYTES, attachment_files
+    from src.modules.ticket_center.ticket_center import MAX_ATTACHMENT_BYTES, attachment_files
 
     uploads = []
     for upload in files or []:
@@ -18625,7 +18627,7 @@ def ticket_center_title() -> str:
 
 @app.get('/tickets', response_class=HTMLResponse)
 def ticket_center_page(request: Request, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
-    from src.modules.ticket_center import (
+    from src.modules.ticket_center.ticket_center import (
         BLOCKED_EXTENSIONS, CLEANUP_STATUSES, DEFAULT_CLEANUP_MB, DEFAULT_CLEANUP_STATUSES, DEFAULT_PRIORITY,
         MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES, STATUSES, TEXT_GUIDE, TEXT_GUIDES,
         TICKET_TYPE_HINTS, TICKET_TYPES, list_tickets, local_today, recently_resolved, ticket_dashboard, ticket_board,
@@ -18670,7 +18672,7 @@ def ticket_center_page(request: Request, user: SessionUser | None = Depends(opti
 
 @app.get('/tickets/{ticket_id:int}', response_class=HTMLResponse)
 def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
-    from src.modules.ticket_center import (
+    from src.modules.ticket_center.ticket_center import (
         BLOCKED_EXTENSIONS, FIELD_LABELS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_UPLOAD, OPEN_STATUSES, PRIORITIES,
         STATUSES, TEXT_GUIDES, TICKET_TYPES, ticket_neighbours, ticket_references, ticket_titles,
     )
@@ -18681,7 +18683,7 @@ def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Dep
     ticket = serialize_ticket(require_ticket(ticket_id), by_key, people)
     titles = ticket_titles(repository)
     if user and user.role == 'super-admin':
-        from src.modules.admin_notices import mark_seen
+        from src.modules.core.admin_notices import mark_seen
 
         # A super-admin who has opened the ticket is not told of it after signing in.
         mark_seen(repository, user.username, tickets=[ticket['uid']])
@@ -18730,7 +18732,7 @@ def ticket_page(request: Request, ticket_id: int, user: SessionUser | None = Dep
 def ticket_attachment(attachment_id: int, user: SessionUser | None = Depends(optional_user)) -> Response:
     """An attachment of a ticket: a screenshot shows in the page; any other file (or an image its bytes do not prove)
     is only downloaded, never opened in the page."""
-    from src.modules.ticket_center import (
+    from src.modules.ticket_center.ticket_center import (
         FILE_CONTENT_TYPE, attachment_chunks, get_attachment, image_content_type, is_screenshot, read_attachment,
     )
 
@@ -18758,7 +18760,7 @@ async def open_ticket(
     attachments: list[UploadFile] = File(default=[]),
     user: SessionUser = Depends(current_user),
 ) -> JSONResponse:
-    from src.modules.ticket_center import create_ticket
+    from src.modules.ticket_center.ticket_center import create_ticket
 
     if module and module not in {item['key'] for item in ticket_modules()}:
         raise HTTPException(status_code=400, detail='Choose a module of the tool.')
@@ -18790,7 +18792,7 @@ def edit_ticket(
     user: SessionUser = Depends(current_user),
 ) -> JSONResponse:
     """The reporter (or a super-admin) edits the ticket and changes its priority."""
-    from src.modules.ticket_center import update_ticket
+    from src.modules.ticket_center.ticket_center import update_ticket
 
     ticket = require_ticket(ticket_id)
     if not can_edit_ticket(user, ticket):
@@ -18829,7 +18831,7 @@ def manage_ticket(
     """Super-admins manage a ticket: its status, its type, who handles it and the version that fixes it, and also who
     reported it, its module, the version it was opened with, whoever opened it, and the dates it was opened and resolved
     (its timeline follows them, see set_ticket_dates)."""
-    from src.modules.ticket_center import OPEN_STATUSES, set_ticket_dates, ticket_date, update_ticket
+    from src.modules.ticket_center.ticket_center import OPEN_STATUSES, set_ticket_dates, ticket_date, update_ticket
 
     ticket = require_ticket(ticket_id)
     values: dict[str, Any] = {}
@@ -18890,7 +18892,7 @@ async def comment_on_ticket(
     attachments: list[UploadFile] = File(default=[]),
     user: SessionUser = Depends(current_user),
 ) -> JSONResponse:
-    from src.modules.ticket_center import add_comment
+    from src.modules.ticket_center.ticket_center import add_comment
 
     require_ticket(ticket_id)
     files = await read_ticket_attachments(attachments)
@@ -18913,7 +18915,7 @@ async def add_ticket_attachments(
     attachments: list[UploadFile] = File(default=[]),
     user: SessionUser = Depends(current_user),
 ) -> JSONResponse:
-    from src.modules.ticket_center import add_attachments
+    from src.modules.ticket_center.ticket_center import add_attachments
 
     ticket = require_ticket(ticket_id)
     if not can_edit_ticket(user, ticket):
@@ -18932,7 +18934,7 @@ async def add_ticket_attachments(
 
 @app.post('/api/tickets/comments/{comment_id:int}/update')
 def edit_ticket_comment(request: Request, comment_id: int, body: str = Form(''), user: SessionUser = Depends(current_user)) -> JSONResponse:
-    from src.modules.ticket_center import edit_comment, get_comment
+    from src.modules.ticket_center.ticket_center import edit_comment, get_comment
 
     comment = get_comment(repository, comment_id)
     if comment is None or comment['kind'] != 'comment':
@@ -18951,7 +18953,7 @@ def edit_ticket_comment(request: Request, comment_id: int, body: str = Form(''),
 
 @app.post('/api/tickets/comments/{comment_id:int}/delete')
 def delete_ticket_comment(request: Request, comment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
-    from src.modules.ticket_center import delete_comment, get_comment
+    from src.modules.ticket_center.ticket_center import delete_comment, get_comment
 
     comment = get_comment(repository, comment_id)
     if comment is None or comment['kind'] != 'comment':
@@ -18968,7 +18970,7 @@ def delete_ticket_comment(request: Request, comment_id: int, user: SessionUser =
 
 @app.post('/api/tickets/attachments/{attachment_id:int}/delete')
 def delete_ticket_attachment(request: Request, attachment_id: int, user: SessionUser = Depends(current_user)) -> JSONResponse:
-    from src.modules.ticket_center import delete_attachment, get_attachment
+    from src.modules.ticket_center.ticket_center import delete_attachment, get_attachment
 
     attachment = get_attachment(repository, attachment_id, with_content=False)
     if attachment is None:
@@ -18993,7 +18995,7 @@ def list_large_ticket_attachments(
 ) -> JSONResponse:
     """Clean up attachments: the attachments of the finished tickets chosen larger than a size, for super-admins to
     review before deleting them, with the size of the application database."""
-    from src.modules.ticket_center import database_size, large_attachments
+    from src.modules.ticket_center.ticket_center import database_size, large_attachments
 
     try:
         found = large_attachments(repository, larger_than_mb=larger_than_mb, statuses=statuses)
@@ -19011,7 +19013,7 @@ def clean_up_ticket_attachments(
 ) -> JSONResponse:
     """Delete the attachments chosen in Clean up attachments (only those still larger than the size, in a ticket of the
     statuses chosen) and compact the application database to give their space back."""
-    from src.modules.ticket_center import compact_database, database_size, delete_large_attachments
+    from src.modules.ticket_center.ticket_center import compact_database, database_size, delete_large_attachments
 
     if not ids:
         raise HTTPException(status_code=400, detail='Choose the attachments to delete.')
@@ -19036,7 +19038,7 @@ def clean_up_ticket_attachments(
 
 @app.post('/api/tickets/{ticket_id:int}/delete')
 def remove_ticket(request: Request, ticket_id: int, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
-    from src.modules.ticket_center import delete_ticket
+    from src.modules.ticket_center.ticket_center import delete_ticket
 
     ticket = require_ticket(ticket_id)
     delete_ticket(repository, ticket_id)
@@ -19152,7 +19154,7 @@ def _chart_builder_dataset_frame(item: dict[str, Any], columns: list[str], mappi
     (``load_dataset_rows(..., in_scope_only=True)``) nor those of the operators the Operator Maps exclude, with its Operator
     fields mapped by the Operator and Vendor Maps (``apply_operator_mappings``, ``normalise_operator_aliases``). The rows
     kept and the mapped Operator fields are worked out once per CDR, so a new column only reads that column."""
-    from src.modules.operator_roles import out_of_scope_operators
+    from src.modules.mapping.operator_roles import out_of_scope_operators
 
     dataset_id = int(item['id'])
     version = _chart_builder_version(item)
@@ -19227,7 +19229,7 @@ def _chart_builder_version(item: dict[str, Any]) -> tuple[Any, ...]:
 def _chart_builder_context(payload: dict[str, Any]) -> tuple[pd.DataFrame, CatalogEntry, str]:
     """Build an ad-hoc chart from explicitly selected ready CDRs: the rows of the columns it reads (with the key they are
     kept by) and its template row."""
-    from src.modules.ppt_designer import compact_chart_columns
+    from src.modules.ppt_designer.ppt_designer import compact_chart_columns
 
     selected_datasets, dataset_columns = _chart_builder_selection(payload)
     definition = payload.get('definition') if isinstance(payload.get('definition'), dict) else {}
@@ -19675,8 +19677,8 @@ def _chart_builder_field_types(dataset_ids: Iterable[int]) -> dict[str, str]:
 async def chart_builder_fields(request: Request, user: SessionUser = Depends(current_user)) -> JSONResponse:
     """The fields of the chosen CDRs for the shelves of Chart Builder: name, type (number or text) and the section of the
     CDR Field Dictionary they belong to."""
-    from src.modules import cdr_field_dictionary
-    from src.modules.cdr_field_profiles import workspace_field_profile
+    from src.modules.cdr import cdr_field_dictionary
+    from src.modules.cdr.cdr_field_profiles import workspace_field_profile
     payload = await request.json()
     selected = {int(value) for value in payload.get('dataset_ids', []) if str(value).isdigit()}
     columns: list[str] = []
@@ -19902,7 +19904,7 @@ def _scoring_export_job_with_catalogue_defaults(
 @app.get('/scoring', response_class=HTMLResponse)
 def scoring_page(request: Request, user: SessionUser = Depends(current_user)) -> HTMLResponse:
     task_repository = scoring_repository(user)
-    from src.modules.scoring_config import load_aggregation_hierarchy
+    from src.modules.scoring.scoring_config import load_aggregation_hierarchy
     configuration_error = ''
     aggregation_hierarchy = load_aggregation_hierarchy(task_repository)
     active_profile_id = ''
@@ -20047,7 +20049,7 @@ def scoring_cdr_selection(payload: ScoringCdrSelectionRequest, user: SessionUser
 @app.get('/api/scoring/postal-maps')
 def scoring_postal_maps(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """The maps of the Postal Codes a Saved Filter can choose, with the countries the workspace has each of them for."""
-    from src.modules.postal_areas import map_choices
+    from src.modules.network.postal_areas import map_choices
     return {'maps': map_choices(scoring_repository(user))}
 
 
@@ -20165,7 +20167,7 @@ register_idle_task(_calculate_favourites_filters_when_idle, FAVOURITES_FILTERS_I
 def _resume_stopped_points_loss_maps_when_idle() -> None:
     """Draw again, one at a time, the Points Lost Maps of the open workspace a user stopped, once nobody uses the
     application."""
-    from src.modules.saved_filters import queue_points_loss, resume_stopped_points_loss, stopped_points_loss_ids
+    from src.modules.scoring.saved_filters import queue_points_loss, resume_stopped_points_loss, stopped_points_loss_ids
     workspace = active_workspace
     if not workspace:
         return
@@ -20187,7 +20189,7 @@ SELECTED_SAVED_FILTERS: dict[str, int] = {}
 
 def _prioritize_saved_filter(task_repository: Repository, filter_id: int, *, only_if_selected: bool = False) -> None:
     """Move the queued calculation and Points Lost Map of the Saved Filter being looked at before the others."""
-    from src.modules.saved_filters import is_saved_filter_work
+    from src.modules.scoring.saved_filters import is_saved_filter_work
     key = str(task_repository.db_path.resolve())
     if only_if_selected and SELECTED_SAVED_FILTERS.get(key) != int(filter_id):
         return
@@ -20367,7 +20369,7 @@ class SavedFilterUpdate(BaseModel):
 def saved_filters_update(filter_id: int, payload: SavedFilterUpdate,
                                     user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
     """Rename a Saved Filter or pin it at the top of the list."""
-    from src.modules.deletion_rights import can_delete
+    from src.modules.core.deletion_rights import can_delete
     task_repository = scoring_repository(user)
     # Unstarred, it goes once another one is used: only admins, super-admins and the user who starred it unstar it.
     if payload.pinned is False:
@@ -20442,8 +20444,8 @@ def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[di
 
     NSA vs SA also gives the results of each NR Mode on their own (``nr_mode_parts``, NSA then SA), which the page shows
     one below the other in every tab."""
-    from src.modules.scoring_views import normalize_result_gaps, nr_mode_result
-    from src.modules.nr_mode import NR_MODES, NSA_VS_SA, normalize_scoring_nr_mode, nr_modes_of
+    from src.modules.scoring.scoring_views import normalize_result_gaps, nr_mode_result
+    from src.modules.cdr.nr_mode import NR_MODES, NSA_VS_SA, normalize_scoring_nr_mode, nr_modes_of
 
     def out_of_scope(nr_mode: Any) -> dict[str, Any]:
         # The NR Mode · operator pairs out of scope in the NR Modes of a result (the NR Modes of the Operator Maps), which
@@ -20473,12 +20475,12 @@ def _saved_filter_payload(saved_filter: dict[str, Any], operator_groups: list[di
 def _scoring_result_payload(saved_filter: dict[str, Any], result: dict[str, Any], operator_groups: list[dict],
                             vendor_groups: list[dict], fallback: dict[str, Any] | None) -> dict[str, Any]:
     """A result with the views of both scorings and their National & area summaries."""
-    from src.modules.scoring_views import build_scoring_views, refresh_baseline_warning, scoring_coverage_notes
+    from src.modules.scoring.scoring_views import build_scoring_views, refresh_baseline_warning, scoring_coverage_notes
     views = {}
     scorings = {}
     if result.get('scoring') or result.get('score_rows'):
-        from src.modules.scoring import most_reliable_result
-        from src.modules.scoring_config import MOST_RELIABLE_SCORING, SCORING_LABELS
+        from src.modules.scoring.scoring import most_reliable_result
+        from src.modules.scoring.scoring_config import MOST_RELIABLE_SCORING, SCORING_LABELS
         baseline = str(saved_filter.get('baseline_operator') or 'EE')
         try:
             views = build_scoring_views(
@@ -20487,7 +20489,7 @@ def _scoring_result_payload(saved_filter: dict[str, Any], result: dict[str, Any]
             )
             refresh_baseline_warning(result, views, baseline)
             # The National & Geographical Areas Trends of the Saved Filter, shown in Scoring Trends.
-            from src.modules.scoring_area_summary import build_area_summary
+            from src.modules.scoring.scoring_area_summary import build_area_summary
             views.setdefault('insights', {})['area_summaries'] = build_area_summary(
                 saved_filter if saved_filter.get('configuration') or result.get('configuration') else {**saved_filter, 'configuration': fallback},
                 result, operator_groups,
@@ -20545,7 +20547,7 @@ def _scoring_impact_selection(mode: str, nr_mode: str, campaign_a: str, campaign
 @app.get('/api/scoring/saved-filters/{filter_id}/impact/options')
 def scoring_impact_options(filter_id: int, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """The campaigns and methodologies the Methodology Impact of a Saved Filter can compare."""
-    from src.modules.scoring_impact import impact_options
+    from src.modules.scoring.scoring_impact import impact_options
     task_repository, saved_filter = _scoring_impact_saved_filter(user, filter_id)
     try:
         return impact_options(task_repository, saved_filter)
@@ -20559,7 +20561,7 @@ def scoring_impact(filter_id: int, request: Request, mode: str = '', nr_mode: st
                    user: SessionUser = Depends(current_user)) -> Response:
     """A comparison of the Methodology Impact with its panels; one not calculated yet (or calculated before its CDRs,
     methodologies or Operator Maps changed) is calculated in the background, and this says how it goes."""
-    from src.modules.scoring_impact import impact_state, prepare_impact, queue_impact
+    from src.modules.scoring.scoring_impact import impact_state, prepare_impact, queue_impact
     task_repository, saved_filter = _scoring_impact_saved_filter(user, filter_id)
     selection = _scoring_impact_selection(mode, nr_mode, campaign_a, campaign_b, methodology_a, methodology_b, campaign)
     try:
@@ -20600,7 +20602,7 @@ def _scoring_impact_key(key: str) -> str:
 @app.get('/api/scoring/saved-filters/{filter_id}/impact/status')
 def scoring_impact_status(filter_id: int, request: Request, key: str, user: SessionUser = Depends(current_user)) -> Response:
     """How the calculation of a comparison goes, by its key: asked again and again while it is calculated."""
-    from src.modules.scoring_impact import state_of
+    from src.modules.scoring.scoring_impact import state_of
     task_repository, _saved_filter = _scoring_impact_saved_filter(user, filter_id)
     state = state_of(task_repository, _scoring_impact_key(key)) or {'key': key, 'status': 'queued', 'progress': 0, 'message': '', 'error': ''}
     return _scoring_impact_json(request, state)
@@ -20610,8 +20612,8 @@ def scoring_impact_status(filter_id: int, request: Request, key: str, user: Sess
 def scoring_impact_map(filter_id: int, request: Request, key: str, field: str = '', environment: str = 'Combined', measure: str = 'national',
                        scoring: str = 'best_network', user: SessionUser = Depends(current_user)) -> Response:
     """The values of a map of a comparison calculated before (one methodology against the other), with how they spread."""
-    from src.modules.scoring_impact import read_impact, read_maps
-    from src.modules.scoring_impact_maps import MEASURES, impact_map
+    from src.modules.scoring.scoring_impact import read_impact, read_maps
+    from src.modules.scoring.scoring_impact_maps import MEASURES, impact_map
     if measure not in MEASURES:
         raise HTTPException(status_code=400, detail='Unknown measure of the Methodology Impact.')
     task_repository, _saved_filter = _scoring_impact_saved_filter(user, filter_id)
@@ -20625,8 +20627,8 @@ def scoring_impact_map(filter_id: int, request: Request, key: str, field: str = 
 @app.get('/api/scoring/saved-filters/{filter_id}/impact/boundaries/{field}')
 def scoring_impact_boundaries(filter_id: int, field: str, request: Request, key: str, user: SessionUser = Depends(current_user)) -> Response:
     """The polygons of a map of a comparison calculated before."""
-    from src.modules.scoring_impact import read_maps
-    from src.modules.scoring_impact_maps import map_geometry
+    from src.modules.scoring.scoring_impact import read_maps
+    from src.modules.scoring.scoring_impact_maps import map_geometry
     task_repository, _saved_filter = _scoring_impact_saved_filter(user, filter_id)
     return _scoring_impact_json(request, map_geometry(read_maps(task_repository, _scoring_impact_key(key)), field))
 
@@ -20641,8 +20643,8 @@ def scoring_impact_export(filter_id: int, export_kind: str, mode: str = '', nr_m
         raise HTTPException(status_code=404, detail='Unknown Methodology Impact export format.')
     if scoring not in {'best_network', 'most_reliable'}:
         raise HTTPException(status_code=400, detail='Scoring must be best_network or most_reliable.')
-    from src.modules.scoring_impact import impact_state, prepare_impact, read_maps
-    from src.modules.scoring_impact_exports import export_impact_csv, export_impact_powerpoint, impact_filename
+    from src.modules.scoring.scoring_impact import impact_state, prepare_impact, read_maps
+    from src.modules.scoring.scoring_impact_exports import export_impact_csv, export_impact_powerpoint, impact_filename
     task_repository, saved_filter = _scoring_impact_saved_filter(user, filter_id)
     selection = _scoring_impact_selection(mode, nr_mode, campaign_a, campaign_b, methodology_a, methodology_b, campaign)
     try:
@@ -20668,7 +20670,7 @@ def scoring_impact_export(filter_id: int, export_kind: str, mode: str = '', nr_m
     if export_kind == 'csv':
         content, media_type, filename = (export_impact_csv(impact, scoring, maps).encode('utf-8-sig'), 'text/csv', impact_filename(impact, stamp, 'csv'))
     else:
-        from src.modules.bundle_report_templates import module_document
+        from src.modules.reporting.bundle_report_templates import module_document
         try:
             deck = export_impact_powerpoint(impact, settings.powerpoint_templates_dir / TEMPLATE_NAMES['nsa'], task_repository.list_operator_mapping_groups(),
                                             scoring=scoring, environment=environment, operators=chosen, panels=load_export_panels(task_repository),
@@ -20691,7 +20693,7 @@ def scoring_impact_export(filter_id: int, export_kind: str, mode: str = '', nr_m
 def saved_filters_boundaries(filter_id: int, field: str, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """Polygons of a points-lost map layer: the map areas (with the outlines of their countries) or the job's
     Clusters or Region Mapping."""
-    from src.modules.scoring_points_loss import MAP_FIELDS, map_background, map_boundaries
+    from src.modules.scoring.scoring_points_loss import MAP_FIELDS, map_background, map_boundaries
     if field not in MAP_FIELDS:
         raise HTTPException(status_code=404, detail='Unknown points-lost map layer.')
     saved_filter = get_saved_filter(scoring_repository(user), filter_id, include_result=True)
@@ -20703,7 +20705,7 @@ def saved_filters_boundaries(filter_id: int, field: str, user: SessionUser = Dep
 
 @app.delete('/api/scoring/saved-filters/{filter_id}')
 def saved_filters_delete(filter_id: int, user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
-    from src.modules.deletion_rights import can_delete, deletion_refusal
+    from src.modules.core.deletion_rights import can_delete, deletion_refusal
     task_repository = scoring_repository(user)
     saved_filter = get_saved_filter(task_repository, filter_id)
     if saved_filter is not None and not can_delete(user, saved_filter.get('created_by')):
@@ -20723,7 +20725,7 @@ def saved_filters_delete_many(payload: SavedFiltersDeleteRequest,
                               user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
     """Delete the Saved Filters checked in the Favourites Filters panel, with their results; their CDRs and the
     Scoring History stay."""
-    from src.modules.deletion_rights import can_delete, deletion_refusal
+    from src.modules.core.deletion_rights import can_delete, deletion_refusal
     task_repository = scoring_repository(user)
     # Nothing is deleted while one of them belongs to another user (for the roles below admin).
     refused = [saved_filter.get('name') or f"#{saved_filter.get('id')}" for saved_filter in (
@@ -20746,9 +20748,9 @@ def saved_filters_delete_many(payload: SavedFiltersDeleteRequest,
 
 def build_saved_filter_powerpoint(task_repository: Repository, filter_id: int) -> tuple[bytes, str, dict[str, Any]]:
     """PowerPoint of the result of a Saved Filter with the default export options (all environments)."""
-    from src.modules.scoring_exports import export_scoring_powerpoint, prepare_scoring_display_selections
-    from src.modules.scoring_views import normalize_result_gaps
-    from src.modules.cdr_report_filenames import build_scoring_report_filename
+    from src.modules.scoring.scoring_exports import export_scoring_powerpoint, prepare_scoring_display_selections
+    from src.modules.scoring.scoring_views import normalize_result_gaps
+    from src.modules.cdr.cdr_report_filenames import build_scoring_report_filename
 
     saved_filter = get_saved_filter(task_repository, filter_id, include_result=True)
     if not saved_filter:
@@ -20879,7 +20881,7 @@ def scoring_saved_filter_export(
     if table_mode is not None and table_mode not in {'expanded', 'summary'}:
         raise HTTPException(status_code=400, detail='Table mode must be expanded or summary.')
     # NSA vs SA: each NR Mode on its own, as the results of the page show it (see scoring_exports.export_scoring_report).
-    from src.modules.scoring_reports import NR_CHARTS, NR_LAYOUTS
+    from src.modules.scoring.scoring_reports import NR_CHARTS, NR_LAYOUTS
     if (nr_layout is not None and nr_layout not in NR_LAYOUTS) or (nr_charts is not None and nr_charts not in NR_CHARTS):
         raise HTTPException(status_code=400, detail='NSA vs SA must be interleaved or grouped, and NSA & SA charts same or separate.')
     # The operators each section of the page has enabled ({section: [operators]}), so the PowerPoint and Word show
@@ -20928,7 +20930,7 @@ def scoring_saved_filter_export(
             **({'nr_layout': nr_layout, 'nr_charts': nr_charts or 'same'} if export_kind in {'ppt', 'word'} and nr_layout else {}),
         }))
         return response
-    from src.modules.scoring_views import normalize_result_gaps
+    from src.modules.scoring.scoring_views import normalize_result_gaps
     result = normalize_scoring_vendor_result(
         normalize_result_gaps(saved_filter.get('result') or {}), task_repository.list_operator_mapping_groups(),
     )
@@ -20939,7 +20941,7 @@ def scoring_saved_filter_export(
     if selected_environment.casefold() == 'all':
         selected_environment = 'all'
     else:
-        from src.modules.scoring_views import build_scoring_views
+        from src.modules.scoring.scoring_views import build_scoring_views
         workspace_configuration = None
         if not export_configuration:
             try:
@@ -20965,13 +20967,13 @@ def scoring_saved_filter_export(
     if export_kind in {'scoring', 'gap'}:
         if scoring == 'most_reliable':
             # The CSV keeps its schema; it carries the Most Reliable points instead of the Best Network ones.
-            from src.modules.scoring import most_reliable_result
+            from src.modules.scoring.scoring import most_reliable_result
             reliable = most_reliable_result(result, str(saved_filter.get('baseline_operator') or 'EE'), export_configuration)
             if reliable is None:
                 raise HTTPException(status_code=400, detail='This Saved Filter has no Most Reliable scoring.')
             result = reliable
         if table_mode is not None:
-            from src.modules.scoring_exports import export_scoring_csv
+            from src.modules.scoring.scoring_exports import export_scoring_csv
             try:
                 content = export_scoring_csv(
                     saved_filter, result, export_kind, table_mode,
@@ -20986,7 +20988,7 @@ def scoring_saved_filter_export(
         rows = result.get(export_kind, [])
         summaries = result.get('totals' if export_kind == 'scoring' else 'gap_totals', [])
         if selected_environment != 'all':
-            from src.modules.scoring_views import _canonical_environment
+            from src.modules.scoring.scoring_views import _canonical_environment
             configured_environments = list(
                 export_configuration.get('scope', {}).get('environments', {})
             ) if isinstance(export_configuration, dict) else []
@@ -21004,8 +21006,8 @@ def scoring_saved_filter_export(
             'Content-Disposition': f'attachment; filename="saved-filter-{filter_id}-{export_kind}.csv"',
         }))
     if export_kind in {'ppt', 'word'}:
-        from src.modules.scoring_exports import export_scoring_powerpoint, prepare_scoring_display_selections
-        from src.modules.cdr_report_filenames import build_scoring_report_filename
+        from src.modules.scoring.scoring_exports import export_scoring_powerpoint, prepare_scoring_display_selections
+        from src.modules.cdr.cdr_report_filenames import build_scoring_report_filename
         try:
             if not saved_filter.get('configuration') and not result.get('configuration'):
                 saved_filter['configuration'] = export_configuration or task_repository.get_scoring_configuration()
@@ -21036,7 +21038,7 @@ def scoring_saved_filter_export(
         )
         media_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
         # Composed as the Scoring section of a Bundle Report Template (PowerPoint and Word alike).
-        from src.modules.bundle_report_templates import module_document
+        from src.modules.reporting.bundle_report_templates import module_document
         content = module_document('scoring', content, 'word' if export_kind == 'word' else 'powerpoint', 'Scoring & GAP Analysis',
                                   theme=export_theme)
         if export_kind == 'word':
@@ -21059,7 +21061,7 @@ def _scenario_saved_filter(task_repository: Repository, base: dict[str, Any], sc
     Aggregation levels with a single value in the selected CDRs (for example one Campaign)
     split nothing, so the scenario is calculated again without them.
     """
-    from src.modules.scoring_views import single_value_levels
+    from src.modules.scoring.scoring_views import single_value_levels
 
     context_filters = {field: list(values) for field, values in scenario['context_filters'].items()}
     area_summary = _scenario_area_summary(task_repository, scenario)
@@ -21154,7 +21156,7 @@ def _completed_scenario_calculation(task_repository: Repository, base: dict[str,
             break
         # An identical calculation (or its Points Lost Map) is still running: wait for it (unless the Reporting Job run
         # generating the report is stopped).
-        from src.modules.report_tasks import check_run_stopped
+        from src.modules.reporting.report_tasks import check_run_stopped
         check_run_stopped()
         time_module.sleep(2)
     if saved_filter is None or saved_filter['status'] != 'completed':
@@ -21169,10 +21171,10 @@ def build_scoring_report_document(task_repository: Repository, base: dict[str, A
 
     ``base`` gives the CDRs, NR Mode, GAP reference and methodology shared by the scenarios.
     """
-    from src.modules.scoring_exports import export_scoring_report, prepare_scoring_display_selections
-    from src.modules.scoring_reports import normalize_report_configuration
-    from src.modules.scoring_views import normalize_result_gaps
-    from src.modules.cdr_report_filenames import build_scoring_report_filename
+    from src.modules.scoring.scoring_exports import export_scoring_report, prepare_scoring_display_selections
+    from src.modules.scoring.scoring_reports import normalize_report_configuration
+    from src.modules.scoring.scoring_views import normalize_result_gaps
+    from src.modules.cdr.cdr_report_filenames import build_scoring_report_filename
 
     report = normalize_report_configuration(configuration)
     operator_mapping_groups = task_repository.list_operator_mapping_groups()
@@ -21242,7 +21244,7 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
         raise HTTPException(status_code=404, detail='Unknown scoring report format.')
     if not payload.dataset_ids:
         raise HTTPException(status_code=400, detail='Select the CDRs of the report in the Calculation panel.')
-    from src.modules.scoring_reports import NR_CHARTS, NR_LAYOUTS, remember_last_configuration
+    from src.modules.scoring.scoring_reports import NR_CHARTS, NR_LAYOUTS, remember_last_configuration
     if (payload.nr_layout is not None and payload.nr_layout not in NR_LAYOUTS) or (
             payload.nr_charts is not None and payload.nr_charts not in NR_CHARTS):
         raise HTTPException(status_code=400, detail='NSA vs SA must be interleaved or grouped, and NSA & SA charts same or separate.')
@@ -21274,8 +21276,8 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     media_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     # Composed as the Scoring section of a Bundle Report Template (PowerPoint and Word alike).
-    from src.modules.bundle_report_templates import module_document
-    from src.modules.scoring_reports import normalize_report_configuration
+    from src.modules.reporting.bundle_report_templates import module_document
+    from src.modules.scoring.scoring_reports import normalize_report_configuration
     content = module_document('scoring', content, 'word' if export_kind == 'word' else 'powerpoint', 'Scoring & GAP Analysis',
                               theme=normalize_report_configuration(payload.configuration)['theme'])
     if export_kind == 'word':
@@ -21292,7 +21294,7 @@ def scoring_report(export_kind: str, payload: ScoringReportRequest, user: Sessio
 
 def scoring_report_state_with_creators(task_repository: Repository, state: dict[str, Any]) -> dict[str, Any]:
     """The saved report configurations, each with who created it (the pages offer Delete to admins and to them)."""
-    from src.modules.deletion_rights import SCORING_REPORT_CONFIGURATIONS, creators
+    from src.modules.core.deletion_rights import SCORING_REPORT_CONFIGURATIONS, creators
     known = creators(task_repository, SCORING_REPORT_CONFIGURATIONS)
     return {**state, 'configurations': [{**item, 'created_by': known.get(item['name'].casefold(), '')}
                                         for item in state.get('configurations') or []]}
@@ -21300,7 +21302,7 @@ def scoring_report_state_with_creators(task_repository: Repository, state: dict[
 
 @app.get('/api/scoring/report-configurations')
 def scoring_report_configurations(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    from src.modules.scoring_reports import load_report_state
+    from src.modules.scoring.scoring_reports import load_report_state
     task_repository = scoring_repository(user)
     return scoring_report_state_with_creators(task_repository, load_report_state(task_repository))
 
@@ -21309,9 +21311,9 @@ def scoring_report_configurations(user: SessionUser = Depends(current_user)) -> 
 def scoring_report_configuration_save(
     payload: ScoringReportConfigurationRequest, user: SessionUser = Depends(workspace_editor_user),
 ) -> dict[str, Any]:
-    from src.modules.deletion_rights import SCORING_REPORT_CONFIGURATIONS, record_creator
-    from src.modules.repository import local_now_iso
-    from src.modules.scoring_reports import save_named_configuration
+    from src.modules.core.deletion_rights import SCORING_REPORT_CONFIGURATIONS, record_creator
+    from src.modules.core.repository import local_now_iso
+    from src.modules.scoring.scoring_reports import save_named_configuration
     task_repository = scoring_repository(user)
     try:
         state = save_named_configuration(task_repository, payload.name, payload.configuration,
@@ -21329,7 +21331,7 @@ def scoring_report_configuration_last(
     payload: ScoringReportRequest, user: SessionUser = Depends(current_user),
 ) -> dict[str, Any]:
     """Remember the configuration in use, so the next session opens it."""
-    from src.modules.scoring_reports import load_report_state, remember_last_configuration
+    from src.modules.scoring.scoring_reports import load_report_state, remember_last_configuration
     task_repository = scoring_repository(user)
     try:
         remember_last_configuration(task_repository, payload.configuration)
@@ -21342,8 +21344,8 @@ def scoring_report_configuration_last(
 def scoring_report_configuration_delete(
     name: str, user: SessionUser = Depends(workspace_editor_user),
 ) -> dict[str, Any]:
-    from src.modules.deletion_rights import SCORING_REPORT_CONFIGURATIONS, can_delete, creator_of, deletion_refusal, forget_creator
-    from src.modules.scoring_reports import delete_named_configuration
+    from src.modules.core.deletion_rights import SCORING_REPORT_CONFIGURATIONS, can_delete, creator_of, deletion_refusal, forget_creator
+    from src.modules.scoring.scoring_reports import delete_named_configuration
     task_repository = scoring_repository(user)
     if not can_delete(user, creator_of(task_repository, SCORING_REPORT_CONFIGURATIONS, name)):
         raise HTTPException(status_code=403, detail=deletion_refusal('report configuration'))
@@ -21355,7 +21357,7 @@ def scoring_report_configuration_delete(
 
 @app.get('/api/scoring/report-configurations/export')
 def scoring_report_configurations_export(user: SessionUser = Depends(current_user)) -> Response:
-    from src.modules.scoring_reports import load_report_state, report_configurations_document
+    from src.modules.scoring.scoring_reports import load_report_state, report_configurations_document
     task_repository = scoring_repository(user)
     document = report_configurations_document(load_report_state(task_repository))
     content = json.dumps(document, ensure_ascii=False, indent=2)
@@ -21372,10 +21374,10 @@ async def scoring_report_configurations_import(
     package: UploadFile = File(...), replace: bool = Form(False),
     user: SessionUser = Depends(workspace_editor_user),
 ) -> dict[str, Any]:
-    from src.modules.deletion_rights import (
+    from src.modules.core.deletion_rights import (
         SCORING_REPORT_CONFIGURATIONS, can_delete, creators, deletion_refusal, forget_creator, record_creator,
     )
-    from src.modules.scoring_reports import import_report_configurations, load_report_state, unwrap_report_configurations_document
+    from src.modules.scoring.scoring_reports import import_report_configurations, load_report_state, unwrap_report_configurations_document
     task_repository = scoring_repository(user)
     try:
         payload = await package.read(2 * 1024 * 1024 + 1)
@@ -21826,7 +21828,7 @@ def _upload_workspace(user: SessionUser, workspace_id: str) -> tuple[Workspace, 
 
 
 def _upload_session_of(user: SessionUser, workspace: Workspace, upload_id: str) -> dict[str, Any]:
-    from src.modules.upload_sessions import load_session, sessions_root
+    from src.modules.core.upload_sessions import load_session, sessions_root
 
     try:
         manifest = load_session(sessions_root(workspace.database_path.parent), upload_id)
@@ -21840,7 +21842,7 @@ def _upload_session_of(user: SessionUser, workspace: Workspace, upload_id: str) 
 @app.post('/api/uploads')
 def start_dataset_upload(payload: DatasetUploadPayload, user: SessionUser = Depends(dataset_upload_user)) -> JSONResponse:
     """Start a resumable upload of datasets to a workspace: their names, sizes and classification."""
-    from src.modules.upload_sessions import create_session, sessions_root
+    from src.modules.core.upload_sessions import create_session, sessions_root
 
     workspace, task_repository = _upload_workspace(user, payload.workspace_id)
     names = [Path(str(item.get('name') or '')).name for item in payload.files]
@@ -21857,7 +21859,7 @@ def start_dataset_upload(payload: DatasetUploadPayload, user: SessionUser = Depe
 
 @app.get('/api/uploads/{workspace_id}/{upload_id}')
 def dataset_upload_status(workspace_id: str, upload_id: str, user: SessionUser = Depends(workspace_editor_user)) -> JSONResponse:
-    from src.modules.upload_sessions import sessions_root, status as upload_status
+    from src.modules.core.upload_sessions import sessions_root, status as upload_status
 
     workspace, _task_repository = _upload_workspace(user, workspace_id)
     _upload_session_of(user, workspace, upload_id)
@@ -21871,7 +21873,7 @@ async def dataset_upload_chunk(
     user: SessionUser = Depends(dataset_upload_user),
 ) -> JSONResponse:
     """Append the bytes of one file that start at ``offset``."""
-    from src.modules.upload_sessions import append_chunk, sessions_root
+    from src.modules.core.upload_sessions import append_chunk, sessions_root
 
     workspace, _task_repository = _upload_workspace(user, workspace_id)
     _upload_session_of(user, workspace, upload_id)
@@ -21901,7 +21903,7 @@ def _register_upload_files(
     user: SessionUser, workspace_id: str, upload_id: str, indexes: list[int] | None, background_tasks: BackgroundTasks,
 ) -> JSONResponse:
     """Register complete files of an upload (all the complete ones without ``indexes``) and queue their processing."""
-    from src.modules.upload_sessions import mark_registered, registered_files, sessions_root, status as upload_status, take_file
+    from src.modules.core.upload_sessions import mark_registered, registered_files, sessions_root, status as upload_status, take_file
 
     workspace, task_repository = _upload_workspace(user, workspace_id)
     manifest = _upload_session_of(user, workspace, upload_id)
@@ -21956,7 +21958,7 @@ def complete_dataset_upload(
 
 @app.delete('/api/uploads/{workspace_id}/{upload_id}')
 def cancel_dataset_upload(workspace_id: str, upload_id: str, user: SessionUser = Depends(workspace_editor_user)) -> JSONResponse:
-    from src.modules.upload_sessions import delete_session, sessions_root
+    from src.modules.core.upload_sessions import delete_session, sessions_root
 
     workspace, task_repository = _upload_workspace(user, workspace_id)
     _upload_session_of(user, workspace, upload_id)
@@ -22259,7 +22261,7 @@ def update_dataset_nr_mode(
         raise HTTPException(status_code=422, detail='Choose NSA or SA.')
     previous = dataset_nr_mode(dataset['dataset_kind'], dataset['nr_mode'], dataset['file_name'])
     if previous != nr_mode:
-        from src.modules import cdr_store
+        from src.modules.cdr import cdr_store
 
         repository.update_dataset_profile(dataset_id, nr_mode=nr_mode)
         # The columnar copy keeps the NR Mode of its rows: where it is the only store of the CDR, its NR Mode column is
@@ -22354,7 +22356,7 @@ def update_dataset_cdr_type(
         if not connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone():
             removed = 0
         elif repository._combined_in_copies(previous):
-            from src.modules import cdr_store
+            from src.modules.cdr import cdr_store
 
             removed = cdr_store.unmap_cdr_rows(connection, previous, [dataset_id])
         else:
@@ -22445,7 +22447,7 @@ def workspace_serving_networks_save(
     serving_networks_csv: str = Form(''), max_distance_km: str = Form(''), user: SessionUser = Depends(config_editor_user),
 ) -> RedirectResponse:
     """Save which networks serve each Operator's samples and the maximum serving distance of the Vendor mapping."""
-    from src.modules.serving_cells import parse_serving_networks_csv, save_serving_networks
+    from src.modules.network.serving_cells import parse_serving_networks_csv, save_serving_networks
 
     def redirect(key: str, message: str) -> RedirectResponse:
         return RedirectResponse(f'/workspace-config?{urlencode({key: message})}#serving-networks', status_code=status.HTTP_303_SEE_OTHER)
@@ -22466,8 +22468,8 @@ def workspace_serving_networks_save(
 async def workspace_cdr_field_dictionary_save(request: Request, user: SessionUser = Depends(config_editor_user)) -> RedirectResponse:
     """Save the CDR columns the fields of the CDR Field Dictionary read; a field left empty or with its default columns
     returns to the default."""
-    from src.modules import cdr_field_dictionary
-    from src.modules.cdr_field_profiles import field_profile
+    from src.modules.cdr import cdr_field_dictionary
+    from src.modules.cdr.cdr_field_profiles import field_profile
 
     def redirect(key: str, message: str) -> RedirectResponse:
         return RedirectResponse(f'/workspace-config?{urlencode({key: message})}#cdr-field-dictionary', status_code=status.HTTP_303_SEE_OTHER)
@@ -23305,7 +23307,7 @@ def write_dataset_summary(
         if export_kind == 'word':
             # The Word document is the PowerPoint summary: one landscape page per slide. The intermediate
             # presentation has its own name, so it never replaces a PowerPoint written next to it.
-            from src.modules.pptx_to_docx import pptx_to_docx
+            from src.modules.reporting.pptx_to_docx import pptx_to_docx
             presentation = destination.with_name(f'.{destination.stem}.{uuid4().hex}.pptx')
             export_dataset_summary_powerpoint(presentation, reports)
             try:
@@ -23326,7 +23328,7 @@ def cdr_analysis_chart_tokens(theme: dict[str, Any]) -> dict[str, str]:
     cards (and the charts on them) in its surface and ink, its tables with its headers and alternate rows, its statistic
     tiles in its header colour, its labels and accents in its accent; the bars without an Operator or Vendor colour take
     its accent and the curves its series."""
-    from src.modules.scoring_themes import blend
+    from src.modules.scoring.scoring_themes import blend
     surface, ink = theme['surface'], theme['ink']
     return {'--cdr-chart-ink': ink, '--cdr-chart-muted': blend(ink, surface, .35), '--cdr-chart-axis': blend(ink, surface, .6),
             '--cdr-chart-bar': theme['accent'], '--cdr-chart-series': ','.join(theme['series']),
@@ -23488,7 +23490,7 @@ def export_report(
                 export_powerpoint_report(presentation, report_payload)
         if export_kind == 'word':
             # The Word document is the same report: one landscape page per slide, as in PowerPoint.
-            from src.modules.pptx_to_docx import pptx_to_docx
+            from src.modules.reporting.pptx_to_docx import pptx_to_docx
             destination = presentation.with_suffix('.docx')
             if not destination.exists():
                 destination.write_bytes(pptx_to_docx(presentation.read_bytes()))
@@ -23822,7 +23824,7 @@ async def save_workspace_scoring_export_panels(
 ) -> Response:
     """Save the Scoring panels the PowerPoint and Word documents include and the operators of each one (or restore the
     defaults)."""
-    from src.modules.scoring_export_panels import (
+    from src.modules.scoring.scoring_export_panels import (
         EXPORT_PANELS, OPERATOR_MODES, default_export_panels, export_panel_changes, save_export_panels,
     )
 
@@ -23852,7 +23854,7 @@ async def save_workspace_scoring_export_panels(
 @app.get('/api/scoring/export-panels')
 def get_scoring_export_panels(user: SessionUser = Depends(current_user)) -> JSONResponse:
     """The Scoring panels the workspace exports and the operators of each one, for the editors of the reports."""
-    from src.modules.scoring_export_panels import export_panel_catalogue
+    from src.modules.scoring.scoring_export_panels import export_panel_catalogue
 
     panels = load_export_panels(scoring_repository(user))
     return JSONResponse({'panels': panels, 'groups': export_panel_catalogue(panels)}, headers={'Cache-Control': 'no-store'})
@@ -23906,7 +23908,7 @@ def get_workspace_scoring_profiles(
 def methodology_changes(task_repository: Repository, user: SessionUser, profiles: Any) -> tuple[list[str], list[str]]:
     """The ids of the Scoring Methodologies a save removes and adds; it is refused when it removes one the user may
     not delete (only admins, super-admins and the user who created it delete a methodology)."""
-    from src.modules.deletion_rights import SCORING_METHODOLOGIES, can_delete, creators, deletion_refusal
+    from src.modules.core.deletion_rights import SCORING_METHODOLOGIES, can_delete, creators, deletion_refusal
     try:
         current = task_repository.get_scoring_profiles()['profiles'] if task_repository.get_workspace_state(SCORING_CONFIGURATION_STATE_KEY) else []
     except ValueError:
@@ -23923,7 +23925,7 @@ def methodology_changes(task_repository: Repository, user: SessionUser, profiles
 
 
 def record_methodology_changes(task_repository: Repository, username: str, removed: list[str], added: list[str]) -> None:
-    from src.modules.deletion_rights import SCORING_METHODOLOGIES, forget_creator, record_creator
+    from src.modules.core.deletion_rights import SCORING_METHODOLOGIES, forget_creator, record_creator
     for profile_id in removed:
         forget_creator(task_repository, SCORING_METHODOLOGIES, profile_id)
     for profile_id in added:
@@ -23933,7 +23935,7 @@ def record_methodology_changes(task_repository: Repository, username: str, remov
 @app.get('/api/workspace-config/scoring-methodology-creators')
 def scoring_methodology_creators(user: SessionUser = Depends(config_editor_user)) -> JSONResponse:
     """Who created each Scoring Methodology, by its id: the page offers Delete to admins and to them."""
-    from src.modules.deletion_rights import SCORING_METHODOLOGIES, creators
+    from src.modules.core.deletion_rights import SCORING_METHODOLOGIES, creators
     return JSONResponse(creators(scoring_repository(user), SCORING_METHODOLOGIES), headers={'Cache-Control': 'no-store'})
 
 
@@ -23966,7 +23968,7 @@ def save_scoring_aggregation_hierarchy(
     payload: ScoringHierarchyPayload, user: SessionUser = Depends(config_editor_user),
 ) -> JSONResponse:
     """Save the application's aggregation hierarchy, shared by every workspace and methodology."""
-    from src.modules.scoring_config import save_aggregation_hierarchy
+    from src.modules.scoring.scoring_config import save_aggregation_hierarchy
 
     task_repository = scoring_repository(user)
     try:
@@ -23991,7 +23993,7 @@ def export_workspace_scoring_configuration(
         if profile is None:
             raise HTTPException(status_code=404, detail='The selected scoring methodology no longer exists.')
         profiles = {'active_profile_id': profile_id, 'profiles': [profile]}
-    from src.modules.scoring_config import scoring_profiles_document
+    from src.modules.scoring.scoring_config import scoring_profiles_document
     content = json.dumps(scoring_profiles_document(profiles), ensure_ascii=False, indent=2)
     task_repository.try_add_log(user.username, 'export_scoring_configuration', json.dumps({
         'methodologies': [profile['name'] for profile in profiles['profiles']],
@@ -24008,7 +24010,7 @@ async def import_workspace_scoring_configuration(
     mode: str = 'replace',
 ) -> JSONResponse:
     task_repository = scoring_repository(user)
-    from src.modules.scoring_config import unwrap_scoring_profiles_payload
+    from src.modules.scoring.scoring_config import unwrap_scoring_profiles_payload
     try:
         payload = await package.read(4 * 1024 * 1024 + 1)
         if len(payload) > 4 * 1024 * 1024:
@@ -24701,9 +24703,9 @@ async def receive_transfer_package(offer_id: str, request: Request) -> JSONRespo
 @app.get('/api/admin-notices')
 def list_admin_notices(user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     """The access requests waiting for activation and the new tickets the super-admin has not been told about yet, for
-    the dialog the pages show when the poll of transfer offers reports them (src/modules/admin_notices.py)."""
-    from src.modules.admin_notices import unseen_notices
-    from src.modules.ticket_center import DEFAULT_TICKET_TYPE, PRIORITIES, TICKET_TYPES
+    the dialog the pages show when the poll of transfer offers reports them (src/modules/core/admin_notices.py)."""
+    from src.modules.core.admin_notices import unseen_notices
+    from src.modules.ticket_center.ticket_center import DEFAULT_TICKET_TYPE, PRIORITIES, TICKET_TYPES
 
     notices = unseen_notices(repository, user.username, include_tickets=user_has_feature(user, 'ticket-center'))
     people = ticket_people()
@@ -24739,7 +24741,7 @@ ADMIN_NOTICE_CHOICES = {'access-requests': 'Open Access Requests', 'ticket-cente
 @app.post('/api/admin-notices/seen')
 def mark_admin_notices_seen(payload: AdminNoticesSeenPayload, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     """Record that the super-admin has been told of the notices of the dialog, so that they are not shown again."""
-    from src.modules.admin_notices import mark_seen
+    from src.modules.core.admin_notices import mark_seen
 
     recorded = mark_seen(repository, user.username, access_requests=payload.access_requests, tickets=payload.tickets)
     repository.try_add_log(user.username, 'admin_notices_seen', json.dumps({
@@ -24776,7 +24778,7 @@ def list_pending_transfer_offers(user: SessionUser = Depends(super_admin_user)) 
     # (A preview a restart interrupted is prepared again.)
     for offer_id in missing_previews:
         _start_transfer_preview(offer_id)
-    from src.modules.admin_notices import unseen_notice_ids
+    from src.modules.core.admin_notices import unseen_notice_ids
 
     return JSONResponse({
         'offers': sorted(offers, key=lambda offer: float(offer.get('created_at') or 0)),
@@ -25159,7 +25161,7 @@ def _log_rejected_import_upload(user: SessionUser, file_name: str, package_path:
 def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser, file_name: str = '') -> JSONResponse:
     """Validate and retain an already disk-backed import upload."""
     if not zipfile.is_zipfile(package_path):
-        from src.modules.scoring_config import unwrap_scoring_profiles_payload
+        from src.modules.scoring.scoring_config import unwrap_scoring_profiles_payload
         with package_path.open('rb') as handle:
             head = handle.read(64)
         # A ZIP signature without a readable ZIP is a package cut short or damaged.
@@ -25185,7 +25187,7 @@ def _retain_import_upload(upload_id: str, package_path: Path, user: SessionUser,
         # Normalize an explicitly uploaded JSON into the existing package workflow.
         with zipfile.ZipFile(package_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr('manifest.json', json.dumps(manifest))
-            from src.modules.scoring_config import scoring_profiles_document
+            from src.modules.scoring.scoring_config import scoring_profiles_document
             archive.writestr(archive_path, json.dumps(scoring_profiles_document(profiles)))
     manifest = read_import_manifest(package_path)
     kind = str(manifest.get('kind') or '')
@@ -25582,8 +25584,8 @@ def save_admin_operator_mapping_group(
 
 def mapping_assignment_rows() -> dict[str, list[dict[str, Any]]]:
     """The Operators, Vendors and Campaigns of the ready CDRs with the label the workspace maps give them."""
-    from src.modules.campaign_maps import load_campaign_map
-    from src.modules.mapping_assignments import assignment_rows, detected_values, load_name_comments, value_campaigns
+    from src.modules.mapping.campaign_maps import load_campaign_map
+    from src.modules.mapping.mapping_assignments import assignment_rows, detected_values, load_name_comments, value_campaigns
 
     names = repository.ready_cdr_dataset_names()
     catalogues = repository.cdr_catalogues_by_dataset(names) if names else {}
@@ -25608,8 +25610,8 @@ def operator_scope_summary() -> dict[str, Any]:
     """What is out of scope in the workspace: in every module, the Operator labels with the Role Exclude and the NR Mode ·
     operator pairs of their NR Modes; in the Non-Qualified Calls alone, the regions and the operators that are not Focus
     operators (as the NQ Prioritization takes them; none of them on an error)."""
-    from src.modules import nq_prioritization
-    from src.modules.operator_roles import EXCLUDE, labels_with_role, out_of_scope_pairs
+    from src.modules.nq import nq_prioritization
+    from src.modules.mapping.operator_roles import EXCLUDE, labels_with_role, out_of_scope_pairs
 
     groups = repository.list_operator_mapping_groups()
     summary: dict[str, Any] = {'excluded': labels_with_role(groups, EXCLUDE),
@@ -25625,7 +25627,7 @@ def operator_scope_summary() -> dict[str, Any]:
 
 def operator_nr_mode_suggestions() -> dict[str, str]:
     """The NR Modes suggested for the Operator labels (see nq_prioritization.nr_mode_suggestions), none on an error."""
-    from src.modules.nq_prioritization import nr_mode_suggestions
+    from src.modules.nq.nq_prioritization import nr_mode_suggestions
 
     try:
         return nr_mode_suggestions(repository)
@@ -25635,7 +25637,7 @@ def operator_nr_mode_suggestions() -> dict[str, str]:
 
 def unassigned_mapping_values() -> dict[str, list[str]]:
     """The values of the ready CDRs that no Operator, Vendor or Campaign Map assigns (none without a workspace)."""
-    from src.modules.mapping_assignments import unassigned_values
+    from src.modules.mapping.mapping_assignments import unassigned_values
 
     if not active_workspace:
         return {}
@@ -25661,7 +25663,7 @@ def preview_mapping_assignments(
     mapping_type: str, payload: MappingAssignmentPreviewPayload, user: SessionUser = Depends(config_editor_user),
 ) -> dict[str, Any]:
     """What saving some Operator or Vendor assignments does: merges, values leaving a label and its saved filters."""
-    from src.modules.mapping_assignments import assignment_effects
+    from src.modules.mapping.mapping_assignments import assignment_effects
 
     if mapping_type not in {'operator', 'vendor'}:
         raise HTTPException(status_code=404, detail='Unknown mapping type.')
@@ -25720,7 +25722,7 @@ def assign_admin_mapping_values(
         }, ensure_ascii=False))
     notice = f'{changed} {"name" if changed == 1 else "names"} assigned.' if changed else 'No assignment changed.'
     if mapping_type == 'operator' and comment and len(comment) == len(source):
-        from src.modules.mapping_assignments import comment_changes, load_name_comments, save_name_comments
+        from src.modules.mapping.mapping_assignments import comment_changes, load_name_comments, save_name_comments
 
         comments, comment_edits = comment_changes(load_name_comments(repository), zip(source, comment))
         if comment_edits:
@@ -25752,7 +25754,7 @@ class CampaignMapPayload(BaseModel):
 
 @app.get('/api/workspace-config/campaign-map')
 def get_campaign_map(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
-    from src.modules.campaign_maps import campaign_map_preview, load_campaign_map
+    from src.modules.mapping.campaign_maps import campaign_map_preview, load_campaign_map
 
     if not active_workspace:
         raise HTTPException(status_code=409, detail='Open a workspace before editing Campaign Maps.')
@@ -25764,7 +25766,7 @@ def get_campaign_map(user: SessionUser = Depends(current_user)) -> dict[str, Any
 @app.post('/api/workspace-config/campaign-map/preview')
 def preview_campaign_map(payload: CampaignMapPayload, user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """The workspace campaigns with the labels and order of a map being edited."""
-    from src.modules.campaign_maps import campaign_map_preview
+    from src.modules.mapping.campaign_maps import campaign_map_preview
 
     if not active_workspace:
         raise HTTPException(status_code=409, detail='Open a workspace before editing Campaign Maps.')
@@ -25778,7 +25780,7 @@ def preview_campaign_map(payload: CampaignMapPayload, user: SessionUser = Depend
 @app.put('/api/workspace-config/campaign-map')
 def save_workspace_campaign_map(payload: CampaignMapPayload, user: SessionUser = Depends(config_editor_user)) -> dict[str, Any]:
     """Save the Campaign Map of the active workspace; no map restores the default one."""
-    from src.modules.campaign_maps import campaign_map_preview, save_campaign_map
+    from src.modules.mapping.campaign_maps import campaign_map_preview, save_campaign_map
 
     if not active_workspace:
         raise HTTPException(status_code=409, detail='Open a workspace before editing Campaign Maps.')
@@ -25802,7 +25804,7 @@ def _map_areas_workspace() -> None:
 @app.get('/api/workspace-config/map-areas')
 def get_workspace_map_areas(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """The Map Areas of the active workspace: one layer of administrative areas per country."""
-    from src.modules.map_areas import list_layers
+    from src.modules.network.map_areas import list_layers
     _map_areas_workspace()
     return {'layers': list_layers(repository)}
 
@@ -25810,8 +25812,8 @@ def get_workspace_map_areas(user: SessionUser = Depends(current_user)) -> dict[s
 @app.get('/api/workspace-config/map-areas/countries')
 def get_workspace_map_area_countries(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """The countries of the tests of the workspace CDRs, with the Map Areas and the Postal Codes each one has."""
-    from src.modules.map_areas import detect_countries
-    from src.modules.postal_areas import FULL_POSTCODES, bundled_layers, list_postal_layers
+    from src.modules.network.map_areas import detect_countries
+    from src.modules.network.postal_areas import FULL_POSTCODES, bundled_layers, list_postal_layers
     _map_areas_workspace()
     postal_layers = list_postal_layers(repository)
     return {'countries': [{**country, 'postal_layers': [layer for layer in postal_layers if layer['country_code'] == country['code']],
@@ -25823,7 +25825,7 @@ def get_workspace_map_area_countries(user: SessionUser = Depends(current_user)) 
 @app.get('/api/workspace-config/map-areas/postal')
 def get_workspace_postal_areas(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     """The Postal Codes saved in the active workspace: up to three maps per country."""
-    from src.modules.postal_areas import list_postal_layers
+    from src.modules.network.postal_areas import list_postal_layers
     _map_areas_workspace()
     return {'layers': list_postal_layers(repository)}
 
@@ -25837,7 +25839,7 @@ class PostalAreaDownloadPayload(BaseModel):
 @app.post('/api/workspace-config/map-areas/postal/download')
 def download_workspace_postal_areas(payload: PostalAreaDownloadPayload, user: SessionUser = Depends(config_editor_user)) -> dict[str, Any]:
     """Download the postal code points of a country from GeoNames and save the areas worked out from them in the workspace."""
-    from src.modules.postal_areas import download_postal_layer
+    from src.modules.network.postal_areas import download_postal_layer
     _map_areas_workspace()
     try:
         layer = download_postal_layer(repository, payload.country_code, user.username, full=payload.full)
@@ -25852,7 +25854,7 @@ def download_workspace_postal_areas(payload: PostalAreaDownloadPayload, user: Se
 
 @app.delete('/api/workspace-config/map-areas/postal/{layer_id}')
 def delete_workspace_postal_areas(layer_id: int, user: SessionUser = Depends(config_editor_user)) -> dict[str, Any]:
-    from src.modules.postal_areas import delete_postal_layer, list_postal_layers
+    from src.modules.network.postal_areas import delete_postal_layer, list_postal_layers
     _map_areas_workspace()
     layer = next((item for item in list_postal_layers(repository) if item['id'] == layer_id), None)
     if layer is None or not delete_postal_layer(repository, layer_id):
@@ -25866,7 +25868,7 @@ def delete_workspace_postal_areas(layer_id: int, user: SessionUser = Depends(con
 @app.get('/api/workspace-config/map-areas/levels/{country_code}')
 def get_workspace_map_area_levels(country_code: str, user: SessionUser = Depends(config_editor_user)) -> dict[str, Any]:
     """The administrative levels geoBoundaries offers for a country, with their licences."""
-    from src.modules.map_areas import geoboundaries_levels
+    from src.modules.network.map_areas import geoboundaries_levels
     _map_areas_workspace()
     try:
         return {'levels': geoboundaries_levels(country_code)}
@@ -25882,7 +25884,7 @@ class MapAreaDownloadPayload(BaseModel):
 @app.post('/api/workspace-config/map-areas/download')
 def download_workspace_map_areas(payload: MapAreaDownloadPayload, user: SessionUser = Depends(config_editor_user)) -> dict[str, Any]:
     """Download the administrative areas of a country from geoBoundaries into the workspace."""
-    from src.modules.map_areas import download_geoboundaries
+    from src.modules.network.map_areas import download_geoboundaries
     _map_areas_workspace()
     try:
         layer = download_geoboundaries(repository, payload.country_code, payload.level, user.username)
@@ -25900,8 +25902,8 @@ async def import_workspace_map_areas(
 ) -> dict[str, Any]:
     """Import the administrative areas of a country, or its postal code areas (``layer``), from a GeoJSON or a ZIP holding
     a Shapefile."""
-    from src.modules.map_areas import import_layer
-    from src.modules.postal_areas import import_postal_layer
+    from src.modules.network.map_areas import import_layer
+    from src.modules.network.postal_areas import import_postal_layer
     _map_areas_workspace()
     content = await file.read()
     postal = layer == 'postal-codes'
@@ -25919,7 +25921,7 @@ async def import_workspace_map_areas(
 
 @app.delete('/api/workspace-config/map-areas/{layer_id}')
 def delete_workspace_map_areas(layer_id: int, user: SessionUser = Depends(config_editor_user)) -> dict[str, Any]:
-    from src.modules.map_areas import delete_layer
+    from src.modules.network.map_areas import delete_layer
     _map_areas_workspace()
     if not delete_layer(repository, layer_id):
         raise HTTPException(status_code=404, detail='Map Areas not found.')
@@ -26142,8 +26144,8 @@ def catalogue_filter_values(
             continue
         requested_columns = definition.default_from if definition else (column,)
         if kind == 'all' and not definition:
-            from src.modules.rf_catalog_source import RF_CATALOG_FIELDS
-            from src.modules.network_insights import RF_FIELD_ALIASES
+            from src.modules.ppt_designer.rf_catalog_source import RF_CATALOG_FIELDS
+            from src.modules.network_insights.network_insights import RF_FIELD_ALIASES
             logical = next((value for key, value in RF_CATALOG_FIELDS.items() if column_identity(key) == column_identity(column)), None)
             if logical:
                 requested_columns = RF_FIELD_ALIASES[logical][dataset_kind]
@@ -26298,7 +26300,7 @@ def _named_catalogue(catalogue_id: str) -> dict[str, Any] | None:
 def ensure_report_template_editable(user: SessionUser, template_name: str) -> None:
     """Admins and super-admins change any PPT Template, a user-editor only those they created (as PPT Designs): raises
     PermissionError otherwise."""
-    from src.modules.deletion_rights import can_delete
+    from src.modules.core.deletion_rights import can_delete
     row = next((row for row in repository.list_report_templates() if str(row['name']) == str(template_name)), None)
     if row is not None and not can_delete(user, row['created_by']):
         raise PermissionError('Only admins and super-admins, or the user who created it, can change this PPT Template.')
@@ -26404,7 +26406,7 @@ def delete_report_catalogue(
     catalogue_id: str,
     user: SessionUser = Depends(ppt_template_editor_user),
 ) -> HTMLResponse:
-    from src.modules.deletion_rights import can_delete, deletion_refusal
+    from src.modules.core.deletion_rights import can_delete, deletion_refusal
     catalogue = _named_catalogue(catalogue_id)
     if not catalogue:
         return ppt_templates_redirect(request, catalogue_error='Report Template not found.')
@@ -26501,7 +26503,7 @@ def cdr_fields_by_nr_mode(task_repository: Repository, kind: str, dataset_ids: I
 
 def nr_mode_field_warnings(entries: Iterable[CatalogEntry], task_repository: Repository | None = None) -> list[str]:
     """The charts of a template that use a field only the CDRs of one NR Mode have: they show no samples of the other."""
-    from src.modules.report_template_modes import missing_nr_mode_fields, missing_nr_mode_note
+    from src.modules.reporting.report_template_modes import missing_nr_mode_fields, missing_nr_mode_note
 
     task_repository = task_repository or repository
     by_kind: dict[str, dict[str, set[str]]] = {}
@@ -26574,7 +26576,7 @@ def save_report_catalogue(
 def template_preview_datasets(source_kind: str, nr_mode: object) -> list[dict[str, Any]]:
     """The ready CDRs a template editor preview reads for a Source Dataset: those of the NR Mode it previews (both for
     NSA & SA)."""
-    from src.modules.nr_mode import nr_modes_of
+    from src.modules.cdr.nr_mode import nr_modes_of
     modes = nr_modes_of(design_nr_mode_value(nr_mode))
     ready = [
         serialize_dataset_row(dataset)
@@ -26586,7 +26588,7 @@ def template_preview_datasets(source_kind: str, nr_mode: object) -> list[dict[st
 
 def template_preview_entry(entry: CatalogEntry, nr_mode: object) -> CatalogEntry:
     """A template chart as a preview of the NR Mode shows it, as a PPT Design of that NR Mode does."""
-    from src.modules.report_template_modes import entry_for_nr_mode
+    from src.modules.reporting.report_template_modes import entry_for_nr_mode
     return entry_for_nr_mode(entry, nr_mode)
 
 
@@ -27971,7 +27973,7 @@ def auto_field_cards(dimensions: Iterable[Any]) -> list[dict[str, Any]]:
 def auto_field_usage(dimensions: tuple[Any, ...]) -> dict[str, dict[str, list[str]]]:
     """Where each field (by its key) is used: the PPT Templates whose charts show, split or filter by it, the PPT Designs
     that filter by it or use one of those templates, the Query Builder queries that read it and the fields that read it."""
-    from src.modules.query_builder import rename_identifiers
+    from src.modules.builders.query_builder import rename_identifiers
 
     normalize = _normalise_catalogue_dimension_name
     names = {normalize(item.name): item.name for item in dimensions}
@@ -28310,7 +28312,7 @@ async def copy_report_catalogue_items(
         payload = await request.json()
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=400, detail='The copy request is not valid JSON.') from exc
-    from src.modules.design_slides import copied_entry
+    from src.modules.ppt_designer.design_slides import copied_entry
     kind = str(payload.get('kind') or '').strip().lower()
     target_identifier = str(payload.get('target_identifier') or '').strip()
     if kind not in {'slide', 'chart'}:
@@ -28395,42 +28397,42 @@ templates.env.filters['file_size'] = format_workspace_size
 templates.env.filters['campaign_label'] = lambda value: compact_campaign_value(value) or value
 
 # Register the template-driven design workspace after the shared reporting helpers.
-from src.modules.ppt_designer import (
+from src.modules.ppt_designer.ppt_designer import (
     DESIGN_SELECTION_CACHE_VERSION,
     install_design_routes,
 )
 install_design_routes(sys.modules[__name__])
 
 # Network Insights reuses the reporting helpers and the Canvas chart models.
-from src.modules.network_insights import install_network_insights_routes
+from src.modules.network_insights.network_insights import install_network_insights_routes
 install_network_insights_routes(sys.modules[__name__])
 
 # Non-Qualified Calls is in development and hidden until it is activated; it adds
 # its report to Reporting Jobs.
-from src.modules.non_qualified_calls import install_non_qualified_calls_routes
+from src.modules.nq.non_qualified_calls import install_non_qualified_calls_routes
 install_non_qualified_calls_routes(sys.modules[__name__])
 
 # The Scoring History keeps the KPI components of every CDR, indexed when the server is idle.
-from src.modules.scoring_history import install_scoring_history
+from src.modules.scoring.scoring_history import install_scoring_history
 install_scoring_history(sys.modules[__name__])
 
 # The columnar copy of the CDRs (a Parquet file per CDR, read with DuckDB), kept up to date in the background.
-from src.modules.cdr_store import install_cdr_store
+from src.modules.cdr.cdr_store import install_cdr_store
 install_cdr_store(sys.modules[__name__])
 # The Excluded Calls of Scoring & GAP Analysis: lists of calls left out of every scoring.
-from src.modules.scoring_exclusions import install_scoring_exclusion_routes
+from src.modules.scoring.scoring_exclusions import install_scoring_exclusion_routes
 install_scoring_exclusion_routes(sys.modules[__name__])
 
 # Reporting schedules jobs that collect CDR Analysis, Network Insights,
 # PPT Design and Scoring artifacts and email them.
-from src.modules.report_tasks import install_report_task_routes
+from src.modules.reporting.report_tasks import install_report_task_routes
 install_report_task_routes(sys.modules[__name__])
-from src.modules.bundle_report_templates import install_bundle_report_template_routes
+from src.modules.reporting.bundle_report_templates import install_bundle_report_template_routes
 install_bundle_report_template_routes(sys.modules[__name__])
 # The presentations of the Help, generated again with the live figures of the workspaces chosen in Super Admin.
-from src.modules.presentations import install_presentation_routes
+from src.modules.help.presentations import install_presentation_routes
 install_presentation_routes(sys.modules[__name__])
-from src.modules.comment_writers import install_comment_writer_routes
+from src.modules.ppt_designer.comment_writers import install_comment_writer_routes
 install_comment_writer_routes(sys.modules[__name__])
-from src.modules.assistant import install_assistant_routes
+from src.modules.assistant.assistant import install_assistant_routes
 install_assistant_routes(sys.modules[__name__])

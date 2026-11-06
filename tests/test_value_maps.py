@@ -1,6 +1,6 @@
 """Mapped Operator, Vendor, Operator_Vendor and Vendor_Operator values shown and filtered everywhere."""
-from src.modules.mapping_order import dimension_order_key, swap_operator_vendor, swap_vendor_operator
-from src.modules.value_maps import ValueMapper, field_kind
+from src.modules.mapping.mapping_order import dimension_order_key, swap_operator_vendor, swap_vendor_operator
+from src.modules.mapping.value_maps import ValueMapper, field_kind
 
 OPERATORS = [
     {'canonical': 'VF', 'aliases': ['Vodafone UK', 'Vodafone', 'VF_SA'], 'position': 0},
@@ -60,7 +60,7 @@ def test_vendor_operator_is_operator_vendor_the_other_way_round():
 
 
 def test_mixed_vendor_groups_keep_their_whole_label():
-    from src.modules.value_maps import ValueMapper
+    from src.modules.mapping.value_maps import ValueMapper
 
     # "Mixed" alone is a Vendor spelling of Mixed (non-Ericsson); Ericsson (Mixed) is a Vendor of its own.
     mapper = ValueMapper({'vodafone uk': 'VF'}, {'Mixed': 'Mixed (non-Ericsson)', 'Ericsson (Mixed)': 'Ericsson (Mixed)', 'Nokia': 'NSN'})

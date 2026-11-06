@@ -9,11 +9,11 @@ import pandas as pd
 import pytest
 from pptx import Presentation
 
-from src.modules import scoring_points_loss as points_loss
-from src.modules.scoring import calculate_scoring
-from src.modules.scoring_exports import export_scoring_powerpoint, export_scoring_report
-from src.modules.scoring_reports import default_scenario
-from src.modules.scoring_views import build_scoring_views
+from src.modules.scoring import scoring_points_loss as points_loss
+from src.modules.scoring.scoring import calculate_scoring
+from src.modules.scoring.scoring_exports import export_scoring_powerpoint, export_scoring_report
+from src.modules.scoring.scoring_reports import default_scenario
+from src.modules.scoring.scoring_views import build_scoring_views
 from tests.scoring_fixtures import scoring_configuration
 from tests.test_scoring_api import scoring_api  # noqa: F401  (fixture)
 from tests.test_scoring_exports import TEMPLATE
@@ -95,7 +95,7 @@ def test_map_areas_take_the_points_of_the_city_or_route_that_loses_most_in_them(
 
 
 def test_the_itl3_areas_shipped_for_the_uk_cover_it():
-    from src.modules import map_areas
+    from src.modules.network import map_areas
 
     assert map_areas.bundled_layers()['GBR']['level_label'] == 'ITL3 area'
     boundaries = map_areas.bundled_rings('GBR')
@@ -148,13 +148,13 @@ def test_powerpoint_maps_the_points_lost_of_the_compared_operators():
 def test_job_api_serves_the_map_layers_without_the_raw_shares(scoring_api, monkeypatch):
     from types import ModuleType
 
-    from src.modules import saved_filters
+    from src.modules.scoring import saved_filters
 
     client = scoring_api['client']
     repository = scoring_api['repository']
     repository.replace_scoring_configuration(scoring_configuration())
     _job, computed = _result()
-    engine = ModuleType('src.modules.scoring')
+    engine = ModuleType('src.modules.scoring.scoring')
     engine.METHOD_VERSION = 'points-loss-api-test'
     engine.required_input_columns = lambda kind, levels: [*levels, 'score']
     engine.calculate_scoring = lambda frames, levels, *, baseline_operator, configuration=None: computed
@@ -182,7 +182,7 @@ def test_job_api_serves_the_map_layers_without_the_raw_shares(scoring_api, monke
 def test_the_web_map_links_the_ranking_and_the_areas():
     from pathlib import Path
 
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     # Each column is headed by its operator; rows and areas choose each other, and chosen rows centre the map.
     assert "title.className = 'scoring-loss-map-operator';" in script
     # Its figures are National points (the part of the National loss in each place), as those of the performance owners.
@@ -213,7 +213,7 @@ def test_a_level_with_a_single_value_keeps_the_maps():
 
 
 def test_operators_of_some_tables_only_keep_their_colour():
-    from src.modules.scoring_insights import operator_styles
+    from src.modules.scoring.scoring_insights import operator_styles
 
     # VF SA is measured in the 2026-Q2 campaign only, not in the first score table.
     tables = [
@@ -253,7 +253,7 @@ def test_points_lost_views_count_in_the_points_of_a_scaled_combined():
 def test_the_reference_operator_has_its_map_and_its_gap_to_maximum():
     from pathlib import Path
 
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     # The reference operator keeps its Points Lost Map and its points lost per KPI; the KPI GAP Profile leaves it out,
     # as its GAP to itself would be empty.
     assert "const maps = insightItems(payload, 'points_loss_maps', environment);" in script
@@ -287,7 +287,7 @@ def test_exports_include_the_reference_operator_only_when_it_is_a_focus_operator
 
 
 def test_places_rank_by_their_points_lost_per_1000_tests(monkeypatch):
-    from src.modules import scoring_insights
+    from src.modules.scoring import scoring_insights
 
     monkeypatch.setattr(scoring_insights, 'MIN_RATE_TESTS', 35)
     job, result = _result()

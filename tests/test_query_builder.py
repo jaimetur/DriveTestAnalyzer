@@ -17,7 +17,7 @@ def _database_with_query_rows(database_path: Path) -> None:
 
 
 def test_query_builder_reads_committed_wal_rows(tmp_path: Path) -> None:
-    from src.modules.query_builder import execute_query, iter_query_csv, query_column_values
+    from src.modules.builders.query_builder import execute_query, iter_query_csv, query_column_values
 
     database_path = tmp_path / 'query-builder-wal.sqlite'
     writer = sqlite3.connect(database_path)
@@ -40,7 +40,7 @@ def test_query_builder_reads_committed_wal_rows(tmp_path: Path) -> None:
 
 
 def test_query_builder_source_names_with_quotes_are_sql_literals(tmp_path: Path) -> None:
-    from src.modules.query_builder import execute_query
+    from src.modules.builders.query_builder import execute_query
 
     database_path = tmp_path / 'query-builder-quotes.sqlite'
     _database_with_query_rows(database_path)
@@ -56,7 +56,7 @@ def test_query_builder_source_names_with_quotes_are_sql_literals(tmp_path: Path)
 
 
 def test_query_builder_save_validation_checks_columns_without_running_query(tmp_path: Path) -> None:
-    from src.modules.query_builder import validate_query
+    from src.modules.builders.query_builder import validate_query
 
     database_path = tmp_path / 'query-builder-validation.sqlite'
     _database_with_query_rows(database_path)
@@ -70,7 +70,7 @@ def test_query_builder_save_validation_checks_columns_without_running_query(tmp_
 
 
 def test_query_builder_column_filters_apply_before_pagination_and_csv(tmp_path: Path) -> None:
-    from src.modules.query_builder import execute_query, iter_query_csv
+    from src.modules.builders.query_builder import execute_query, iter_query_csv
 
     database_path = tmp_path / 'query-builder-filters.sqlite'
     _database_with_query_rows(database_path)
@@ -189,7 +189,7 @@ def test_query_builder_filter_values_ignores_own_filter_and_supports_search(clie
 
 
 def test_vendor_result_filters_filter_their_own_column_and_preserve_exported_columns(tmp_path: Path) -> None:
-    from src.modules.query_builder import execute_query, iter_query_csv, query_column_values
+    from src.modules.builders.query_builder import execute_query, iter_query_csv, query_column_values
 
     database_path = tmp_path / 'query-builder-vendors.sqlite'
     with sqlite3.connect(database_path) as connection:
@@ -217,7 +217,7 @@ def test_vendor_result_filters_filter_their_own_column_and_preserve_exported_col
 
 
 def test_renamed_columns_are_renamed_in_saved_sql_but_not_in_strings_or_comments() -> None:
-    from src.modules.query_builder import rename_identifiers
+    from src.modules.builders.query_builder import rename_identifiers
 
     renames = {'Area kind': 'Area type', 'Zone': 'Zone 2', 'old_col': 'new_col'}
     query = ("SELECT \"Area kind\", [area KIND], `Zone`, t.old_col, old_col2, 3G, 'old_col' -- old_col\n"

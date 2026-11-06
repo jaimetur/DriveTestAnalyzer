@@ -7,9 +7,9 @@ import pandas as pd
 
 import src.DriveTestAnalyzer as core
 from conftest import wait_for_background_dataset_work
-from src.modules.cdr_reporting import assign_cdr_vendors, operator_key
-from src.modules.geospatial import polygon_vendor_endpoints, validate_vendor_polygons
-from src.modules.repository import local_now_iso
+from src.modules.cdr_analysis.cdr_reporting import assign_cdr_vendors, operator_key
+from src.modules.network.geospatial import polygon_vendor_endpoints, validate_vendor_polygons
+from src.modules.core.repository import local_now_iso
 
 
 def square(west, south, size=.1):

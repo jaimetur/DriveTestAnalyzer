@@ -9,11 +9,11 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules.cdr_reporting import (
+from src.modules.cdr_analysis.cdr_reporting import (
     calculated_dimension_editor_json, calculated_dimension_preview, calculated_dimensions_json,
     materialize_calculated_dimensions, parse_calculated_dimensions,
 )
-from src.modules.repository import Repository, local_now_iso
+from src.modules.core.repository import Repository, local_now_iso
 
 NR_MODE_FROM_RAT = {
     'name': 'NR_Mode_from_RAT', 'sources': ['cdr-data', 'cdr-voice', 'cdr-speech'], 'default': 'Others',
@@ -269,7 +269,7 @@ def test_fields_saved_while_the_tables_are_updated_stay_pending(tmp_path: Path) 
 
 def _only_copy(tmp_path: Path, name: str, kind: str, rows: pd.DataFrame) -> int:
     """A CDR whose columnar copy is its only store (its table emptied), as the CDRs of a workspace are once copied."""
-    from src.modules import cdr_store
+    from src.modules.cdr import cdr_store
 
     dataset_id = add_cdr(tmp_path, name, kind, rows)
     core.repository.set_workspace_state(cdr_store.ONLY_COPIES_STATE_KEY, '1')
@@ -281,7 +281,7 @@ def _only_copy(tmp_path: Path, name: str, kind: str, rows: pd.DataFrame) -> int:
 
 
 def test_fields_of_a_cdr_whose_copy_is_its_only_store_are_worked_out_on_the_copy(client, tmp_path, monkeypatch) -> None:
-    from src.modules import cdr_store
+    from src.modules.cdr import cdr_store
 
     login(client)
     monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
@@ -354,7 +354,7 @@ def test_pending_fields_are_reconciled_without_opening_workspace(client, monkeyp
 
 
 def test_workspace_config_shows_a_card_per_field(client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.modules.cdr_reporting import CatalogEntry, catalogue_csv
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, catalogue_csv
 
     login(client)
     add_cdr(tmp_path, 'voice.csv', 'voice', pd.DataFrame({'Operator': ['EE'] * len(RATS), 'RAT': RATS}))
@@ -368,7 +368,7 @@ def test_workspace_config_shows_a_card_per_field(client, tmp_path: Path, monkeyp
     assert page.text.index('id="cdr-field-dictionary"') < page.text.index('id="auto-calculated-fields"') < page.text.index('id="scoring-export-panels"')
     panel = page.text.split('id="auto-calculated-fields"', 1)[1].split('</details>', 1)[0]
     assert 'data-acf-panel-new' in panel and '>Import JSON…</button>' in panel and '>Re-materialize All Fields</button>' in panel
-    assert 'href="/workspace/calculated-dimensions/export"' in panel and 'js/auto_calculated_fields_panel.js' in panel
+    assert 'href="/workspace/calculated-dimensions/export"' in panel and 'js/workspace/auto_calculated_fields_panel.js' in panel
     cards = json.loads(panel.split("data-fields='", 1)[1].split("'", 1)[0])
     assert [card['name'] for card in cards] == [item.name for item in current]
     rat_group = next(card for card in cards if card['name'] == 'RAT_Group')

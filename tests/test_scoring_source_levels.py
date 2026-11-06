@@ -4,7 +4,7 @@ import sqlite3
 import pandas as pd
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.repository import Repository
+from src.modules.core.repository import Repository
 from tests.test_scoring_api import scoring_api
 
 

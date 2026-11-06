@@ -5,9 +5,9 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules.mapping_assignments import (assignment_effects, assignment_rows, comment_changes, detected_values,
+from src.modules.mapping.mapping_assignments import (assignment_effects, assignment_rows, comment_changes, detected_values,
                                             load_name_comments, unassigned_values, value_campaigns)
-from src.modules.mapping_renames import count_saved_filters
+from src.modules.mapping.mapping_renames import count_saved_filters
 from tests.test_non_qualified_calls import add_cdr, login, voice_rows, workspace_user
 
 

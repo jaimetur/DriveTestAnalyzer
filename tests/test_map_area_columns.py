@@ -6,9 +6,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.modules import map_area_columns, map_areas, saved_filters
-from src.modules.repository import Repository, local_now_iso
-from src.modules.scoring import calculate_scoring
+from src.modules.network import map_area_columns, map_areas
+from src.modules.scoring import saved_filters
+from src.modules.core.repository import Repository, local_now_iso
+from src.modules.scoring.scoring import calculate_scoring
 from tests.scoring_fixtures import scoring_configuration
 from tests.test_map_areas import SPAIN
 
@@ -123,7 +124,7 @@ def test_placing_stops_with_the_application_and_starts_again_later(repository, m
 
 
 def test_a_cdr_whose_copy_is_its_only_store_keeps_its_areas_in_its_copy(repository, monkeypatch):
-    from src.modules import cdr_store
+    from src.modules.cdr import cdr_store
 
     monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
     dataset_id = add_voice_cdr(repository)

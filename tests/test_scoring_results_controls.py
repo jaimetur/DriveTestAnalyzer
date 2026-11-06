@@ -6,12 +6,12 @@ import subprocess
 
 import pytest
 
-from src.modules.scoring_themes import THEMES
+from src.modules.scoring.scoring_themes import THEMES
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCORING_TEMPLATE = PROJECT_ROOT / 'src/web_interface/templates/scoring.html'
-SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring.js'
+SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring/scoring.js'
 
 
 def _function_source(script: str, name: str) -> str:
@@ -271,7 +271,7 @@ def test_results_controls_are_grouped_with_icons_and_unique_environment_heading(
     # buttons in a .scoring-export-actions box (such as Workspace Config's) moves them.
     assert ('.scoring-results-tools :is(.scoring-results-config-shortcuts, .scoring-export-actions) a { box-sizing: border-box; '
             'min-height: 2.45rem; }') in template
-    stylesheet = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    stylesheet = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
     assert '\n.scoring-export-actions' not in stylesheet and '.scoring-export-panels-actions {' in stylesheet
 
     payload = {
@@ -1962,7 +1962,7 @@ def test_charts_maps_and_tables_open_larger_and_charts_zoom():
 
 
 def test_the_calculation_message_stays_while_the_selected_job_calculates():
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     # The status of the selected CDRs and filters is kept while the job list refreshes every few seconds.
     assert "text = `${verb} the scoring of the selected CDRs and filters…`;" in script
     assert "const verb = recalculatingSavedFilters.has(String(savedFilterIdOf(existing))) ? 'Recalculating' : 'Calculating';" in script
@@ -2342,7 +2342,7 @@ def test_summary_sections_enable_the_reference_operator_by_default():
 
 def test_focus_operators_come_first_in_the_operator_choices_of_their_sections():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    app = (SCORING_SCRIPT.parent / 'app.js').read_text(encoding='utf-8')
+    app = (SCORING_SCRIPT.parents[1] / 'core' / 'app.js').read_text(encoding='utf-8')
     # The patterns of the page (valuePatterns), as app.js defines them.
     helper = app[app.index('const VALUE_EXCLUSION'):app.index('function setupCustomMultiSelects() {')]
     program = helper + r"""

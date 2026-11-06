@@ -11,14 +11,14 @@ import pandas as pd
 import pytest
 from pptx import Presentation
 
-from src.modules import scoring as scoring_engine
-from src.modules.scoring import most_reliable_result
-from src.modules.scoring_area_summary import (
+from src.modules.scoring import scoring as scoring_engine
+from src.modules.scoring.scoring import most_reliable_result
+from src.modules.scoring.scoring_area_summary import (
     area_summary_levels, build_area_summary, calculate_area_summary, calculate_geographical, geographical_insights,
     geographical_levels, geographical_passes, has_area_filters, normalize_area_summary_request, whole_country_filters,
 )
-from src.modules.scoring_exports import export_scoring_report
-from src.modules.scoring_reports import default_scenario, has_geographic_filters, normalize_report_configuration
+from src.modules.scoring.scoring_exports import export_scoring_report
+from src.modules.scoring.scoring_reports import default_scenario, has_geographic_filters, normalize_report_configuration
 from tests.scoring_synthetic import synthetic_result
 from tests.test_scoring_exports import TEMPLATE
 from tests.test_scoring_api import scoring_api  # noqa: F401  (fixture)
@@ -60,7 +60,7 @@ def test_area_summary_request_is_scored_on_the_whole_country():
         'breakdown': 'Region', 'cities': [], 'time_split': 'Campaign', 'main_cities': True}
     assert normalize_area_summary_request({'breakdown': 'None', 'cities': ['@main-cities', 'Leeds', 'leeds']}, {}) == {
         'breakdown': None, 'cities': ['Leeds'], 'time_split': 'Campaign', 'main_cities': True}
-    from src.modules.scoring_area_summary import resolve_main_cities
+    from src.modules.scoring.scoring_area_summary import resolve_main_cities
     assert resolve_main_cities({'breakdown': 'Region', 'cities': ['Leeds'], 'main_cities': True}, ['London', 'leeds']) == {
         'breakdown': 'Region', 'cities': ['Leeds', 'London']}
     # Always included: without a breakdown or separate cities (one saved when they could be left out), each Region and London.
@@ -114,7 +114,7 @@ def test_a_job_with_area_filters_never_reuses_its_rows_for_the_summary():
 
 
 def test_a_job_split_by_no_area_has_its_geographical_areas():
-    from src.modules.scoring_views import build_scoring_views
+    from src.modules.scoring.scoring_views import build_scoring_views
     job, result, frames, kwargs = _calculation()
     assert [item['kind'] for item in geographical_passes(['Operator', 'Campaign'])] == ['National', 'Region', 'City']
     # Whatever the Split by: its levels without the areas (the scoring Nationwide), split by the Breakdown, and the
@@ -273,7 +273,7 @@ def test_an_area_without_an_environment_is_scaled_to_the_full_maximum():
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')
 def test_the_areas_are_national_then_the_breakdown_then_the_cities():
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     sources = []
     for name in ('areaCategory', 'areaChartOrder'):
         start = script.index(f'  function {name}(')
@@ -384,7 +384,7 @@ def _timed_calls():
 
 
 def test_the_time_split_divides_the_campaign_level_by_period():
-    from src.modules.scoring import normalize_time_split
+    from src.modules.scoring.scoring import normalize_time_split
 
     configuration = _reliable_configuration()
     rows = _timed_calls()
@@ -446,12 +446,12 @@ def test_the_area_summary_has_its_own_time_split(monkeypatch):
 def test_the_scoring_page_calculates_and_shows_the_national_and_areas(scoring_api, monkeypatch):
     from types import ModuleType
 
-    from src.modules import saved_filters
+    from src.modules.scoring import saved_filters
 
     client = scoring_api['client']
     repository = scoring_api['repository']
     repository.replace_scoring_configuration(_reliable_configuration())
-    engine = ModuleType('src.modules.scoring')
+    engine = ModuleType('src.modules.scoring.scoring')
     engine.METHOD_VERSION = 'scoring-area-summary-api-test'
     engine.required_input_columns = lambda kind, levels: [*levels, 'score']
     engine.calculate_scoring = lambda frames, levels, *, baseline_operator, configuration=None, **kwargs: (
@@ -510,14 +510,14 @@ def test_the_calculation_selection_keeps_the_national_and_area_summary(scoring_a
 def test_national_and_areas_trends_score_campaigns_of_their_own(scoring_api, monkeypatch):
     from types import ModuleType
 
-    from src.modules import saved_filters
+    from src.modules.scoring import saved_filters
 
     client = scoring_api['client']
     repository = scoring_api['repository']
     repository.replace_scoring_configuration(_reliable_configuration())
     earlier = [scoring_api['add_ready_cdr'](name=f'UK_Q1_2026_NSA_{kind.title()}.csv', kind=kind, campaign='2026-Q1')
                for kind in ('data', 'voice', 'speech')]
-    engine = ModuleType('src.modules.scoring')
+    engine = ModuleType('src.modules.scoring.scoring')
     engine.METHOD_VERSION = 'scoring-area-trends-api-test'
     engine.required_input_columns = lambda kind, levels: [*levels, 'score']
 
@@ -568,7 +568,7 @@ def test_the_scoring_nationwide_comes_first_on_the_page_and_in_the_slides():
 
     from pptx import Presentation
 
-    from src.modules.scoring_exports import export_scoring_powerpoint
+    from src.modules.scoring.scoring_exports import export_scoring_powerpoint
     from tests.test_scoring_exports import TEMPLATE
 
     job, result, frames, kwargs = _calculation()
@@ -581,7 +581,7 @@ def test_the_scoring_nationwide_comes_first_on_the_page_and_in_the_slides():
     assert any(text.startswith('The Best Network scoring of the whole country') for text in texts)
     # On the page: first, across the panel and drawn at its width; the notes above the cards keep their room.
     root = Path(__file__).resolve().parents[1] / 'src/web_interface'
-    script = (root / 'static/js/scoring.js').read_text(encoding='utf-8')
+    script = (root / 'static/js/scoring/scoring.js').read_text(encoding='utf-8')
     template = (root / 'templates/scoring.html').read_text(encoding='utf-8')
     assert "group.level === 'National' ? `${scoringLabel()} Scoring Nationwide`" in script
     assert 'makeLocationCardChart(card, group.maximum, {wide: true, width: available})' in script

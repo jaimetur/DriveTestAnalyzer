@@ -8,11 +8,11 @@ import json
 from pptx import Presentation
 
 import src.DriveTestAnalyzer as core
-from src.modules.scoring_exports import export_scoring_powerpoint
-from src.modules.scoring_pptx_scorecard import STYLES
-from src.modules.scoring_reports import normalize_report_configuration
-from src.modules.scoring_themes import BASE_THEME, DEFAULT_THEME, THEMES, blend, normalize_theme, themed, themes_payload, use_theme
-from src.modules.scoring_views import THRESHOLD_COLORS, gap_color
+from src.modules.scoring.scoring_exports import export_scoring_powerpoint
+from src.modules.scoring.scoring_pptx_scorecard import STYLES
+from src.modules.scoring.scoring_reports import normalize_report_configuration
+from src.modules.scoring.scoring_themes import BASE_THEME, DEFAULT_THEME, THEMES, blend, normalize_theme, themed, themes_payload, use_theme
+from src.modules.scoring.scoring_views import THRESHOLD_COLORS, gap_color
 from tests.scoring_fixtures import export_panels_only
 from tests.scoring_synthetic import synthetic_result
 from tests.test_scoring_exports import TEMPLATE
@@ -118,9 +118,9 @@ def test_each_user_keeps_a_theme_and_the_page_offers_every_theme(client):
 
 
 def test_each_theme_styles_the_titles_and_subtitles_of_the_slides():
-    from src.modules.cdr_reporting import _remove_all_slides
-    from src.modules.network_insights_export import _slide
-    from src.modules.theme_titles import split_focus, title_style
+    from src.modules.cdr_analysis.cdr_reporting import _remove_all_slides
+    from src.modules.network_insights.network_insights_export import _slide
+    from src.modules.reporting.theme_titles import split_focus, title_style
 
     assert split_focus('Scoring Tables — Summary') == ('Scoring Tables — ', 'Summary')
     assert split_focus('Best Network Scoring per Category') == ('Best Network Scoring ', 'per Category')
@@ -151,8 +151,8 @@ def test_each_theme_styles_the_titles_and_subtitles_of_the_slides():
 
 
 def test_light_scoring_slides_leave_out_the_mark_of_the_red_layouts():
-    from src.modules.cdr_reporting import _remove_all_slides
-    from src.modules.scoring_exports import _slide
+    from src.modules.cdr_analysis.cdr_reporting import _remove_all_slides
+    from src.modules.scoring.scoring_exports import _slide
 
     deck = Presentation(TEMPLATE)
     _remove_all_slides(deck)
@@ -163,9 +163,9 @@ def test_light_scoring_slides_leave_out_the_mark_of_the_red_layouts():
 
 
 def test_ericsson_titles_are_light_with_the_part_that_changes_in_bold():
-    from src.modules.cdr_reporting import _remove_all_slides
-    from src.modules.network_insights_export import _slide
-    from src.modules.pptx_compose import set_title
+    from src.modules.cdr_analysis.cdr_reporting import _remove_all_slides
+    from src.modules.network_insights.network_insights_export import _slide
+    from src.modules.reporting.pptx_compose import set_title
 
     deck = Presentation(TEMPLATE)
     _remove_all_slides(deck)
@@ -187,10 +187,10 @@ def test_ericsson_titles_are_light_with_the_part_that_changes_in_bold():
 
 
 def test_a_title_styled_twice_keeps_its_heading_and_focus():
-    from src.modules.cdr_reporting import _remove_all_slides
-    from src.modules.network_insights_export import _slide
-    from src.modules.pptx_compose import set_title
-    from src.modules.theme_titles import style_title
+    from src.modules.cdr_analysis.cdr_reporting import _remove_all_slides
+    from src.modules.network_insights.network_insights_export import _slide
+    from src.modules.reporting.pptx_compose import set_title
+    from src.modules.reporting.theme_titles import style_title
 
     deck = Presentation(TEMPLATE)
     _remove_all_slides(deck)

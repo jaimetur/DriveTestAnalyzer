@@ -4,13 +4,13 @@ import io
 import json
 import sqlite3
 
-from src.modules.bundle_report_templates import uncheck_other_mode_designs
-from src.modules.cdr_reporting import CATALOG_HEADERS
-from src.modules.report_template_modes import (
+from src.modules.reporting.bundle_report_templates import uncheck_other_mode_designs
+from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS
+from src.modules.reporting.report_template_modes import (
     TEMPLATE_MODE_MERGE_STATE_KEY, merge_mode_templates, merged_title, migrate_design_definition,
     migrate_designs_state, render_nr_mode_tokens, template_base_name,
 )
-from src.modules.repository import Repository
+from src.modules.core.repository import Repository
 import src.DriveTestAnalyzer as app_module
 
 
@@ -187,7 +187,7 @@ def test_bundle_favourites_of_before_keep_generating_the_designs_of_their_nr_mod
 
 def test_bundle_report_templates_generate_every_design_with_their_nr_mode(tmp_path):
     from types import SimpleNamespace
-    from src.modules.bundle_report_templates import SectionGenerator, normalize_definition
+    from src.modules.reporting.bundle_report_templates import SectionGenerator, normalize_definition
 
     queued = []
     output = tmp_path / 'deck.pptx'
@@ -208,7 +208,7 @@ def test_bundle_report_templates_generate_every_design_with_their_nr_mode(tmp_pa
 
 def test_bundle_report_templates_give_the_parameters_of_a_design_the_values_of_their_common_filters(tmp_path):
     from types import SimpleNamespace
-    from src.modules.bundle_report_templates import SectionGenerator, normalize_definition
+    from src.modules.reporting.bundle_report_templates import SectionGenerator, normalize_definition
 
     queued = []
     output = tmp_path / 'deck.pptx'
@@ -233,7 +233,7 @@ def test_bundle_report_templates_give_the_parameters_of_a_design_the_values_of_t
 
 
 def test_reporting_jobs_keep_the_nr_mode_of_each_design_entry():
-    from src.modules.report_tasks import normalize_definition
+    from src.modules.reporting.report_tasks import normalize_definition
 
     definition = normalize_definition({'designs': [
         {'design_id': 'd1', 'nr_mode': 'sa', 'auto_cdrs': True}, {'design_id': 'd2', 'auto_cdrs': True}]})
@@ -246,12 +246,12 @@ def test_reporting_jobs_keep_the_nr_mode_of_each_design_entry():
 def entry_of(**fields):
     from dataclasses import replace
 
-    from src.modules.cdr_reporting import parse_catalog_csv
+    from src.modules.cdr_analysis.cdr_reporting import parse_catalog_csv
     return replace(parse_catalog_csv(template('{NR Mode Name}', chart='{NR Mode} DL Throughput', title='FDFS DL ({NR Mode})'))[0], **fields)
 
 
 def test_a_design_of_both_nr_modes_names_them_and_tells_them_apart():
-    from src.modules.report_template_modes import entry_for_nr_mode
+    from src.modules.reporting.report_template_modes import entry_for_nr_mode
 
     both = entry_for_nr_mode(entry_of(legend='Operator'), 'NSA+SA')
     assert (both.slide_title, both.slide_subtitle, both.chart_title) == (
@@ -271,7 +271,7 @@ def test_a_design_of_both_nr_modes_names_them_and_tells_them_apart():
 
 
 def test_the_nr_modes_a_chart_keeps_with_its_filters():
-    from src.modules.report_template_modes import chart_filter_nr_modes, design_nr_mode_value
+    from src.modules.reporting.report_template_modes import chart_filter_nr_modes, design_nr_mode_value
 
     assert chart_filter_nr_modes(entry_of(filters='')) == ('NSA', 'SA')
     assert chart_filter_nr_modes(entry_of(filters='NR Mode IN (SA)')) == ('SA',)
@@ -282,7 +282,7 @@ def test_the_nr_modes_a_chart_keeps_with_its_filters():
 
 
 def test_a_chart_says_which_nr_mode_has_no_samples_of_its_fields():
-    from src.modules.report_template_modes import missing_nr_mode_fields, missing_nr_mode_note
+    from src.modules.reporting.report_template_modes import missing_nr_mode_fields, missing_nr_mode_note
 
     fields = {'NSA': {'meandatarate', 'operator', 'testresult', 'testname'}, 'SA': {'operator', 'testresult', 'testname'}}
     missing = missing_nr_mode_fields(entry_of(filters='Test_Result = Completed'), fields)
@@ -320,7 +320,7 @@ def test_combined_rows_keep_the_nr_mode_of_their_cdr(client, tmp_path):
 def test_sa_series_take_a_lighter_tint_and_a_dash_of_their_operator():
     import pandas as pd
 
-    from src.modules.cdr_reporting import _cdf_campaign_line_widths, _series_colours, _series_line_dashes
+    from src.modules.cdr_analysis.cdr_reporting import _cdf_campaign_line_widths, _series_colours, _series_line_dashes
 
     frame = pd.DataFrame({'op': ['A'], 'mode': ['NSA']})
     frame.attrs['catalogue_dimension_labels'] = {'op': 'Operator', 'mode': 'NR Mode'}
@@ -340,7 +340,7 @@ def test_sa_series_take_a_lighter_tint_and_a_dash_of_their_operator():
 
 
 def test_auto_comments_compare_each_operator_in_sa_with_itself_in_nsa():
-    from src.modules.design_comments import ChartFacts, Record, chart_findings, kpi_semantics, slide_findings
+    from src.modules.ppt_designer.design_comments import ChartFacts, Record, chart_findings, kpi_semantics, slide_findings
 
     semantics = kpi_semantics('Mean Data Rate')
     records = [Record({'Operator': operator, 'NR Mode': mode}, value, 200)
@@ -360,7 +360,7 @@ def test_auto_comments_compare_each_operator_in_sa_with_itself_in_nsa():
 def add_data_cdr(tmp_path, name, nr_mode, campaign):
     import pandas as pd
 
-    from src.modules.repository import local_now_iso
+    from src.modules.core.repository import local_now_iso
 
     repository = app_module.repository
     (tmp_path / name).write_text('test source', encoding='utf-8')
@@ -378,8 +378,8 @@ def add_data_cdr(tmp_path, name, nr_mode, campaign):
 
 
 def test_a_chart_of_one_nr_mode_reads_only_the_cdrs_of_that_nr_mode(client, tmp_path, monkeypatch):
-    import src.modules.ppt_designer as designs_module
-    from src.modules.cdr_facets import fill_missing_facets
+    import src.modules.ppt_designer.ppt_designer as designs_module
+    from src.modules.cdr.cdr_facets import fill_missing_facets
 
     assert client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False).status_code == 303
     nsa = add_data_cdr(tmp_path, 'nsa.csv', 'NSA', '2026-Q2')
@@ -415,7 +415,7 @@ def test_a_design_of_nsa_and_sa_reads_the_cdrs_of_each_nr_mode_by_its_campaigns(
     sa_q3 = add_data_cdr(tmp_path, 'q3_sa.csv', 'SA', '2026-Q3-SA')
     definition = {'name': 'Comparison', 'template': 'DT Analyzer - FDFS DL (NSA & SA)', 'nr_mode': 'NSA+SA', 'auto_cdrs': True,
                   'filters': {'Campaign': ['@latest-campaign']}, 'sa_campaigns': ['@latest-2-campaigns']}
-    from src.modules.cdr_facets import fill_missing_facets
+    from src.modules.cdr.cdr_facets import fill_missing_facets
 
     fill_missing_facets(app_module.repository, [nsa_q1, nsa_q2, sa_q2, sa_q3])
     automatic = client.post('/api/ppt-designer/auto-cdrs', json=definition)
@@ -439,7 +439,7 @@ def test_a_design_of_nsa_and_sa_reads_the_cdrs_of_each_nr_mode_by_its_campaigns(
 
 
 def test_lines_and_areas_of_both_nr_modes_draw_them_as_series_not_on_their_axis():
-    from src.modules.report_template_modes import entry_for_nr_mode
+    from src.modules.reporting.report_template_modes import entry_for_nr_mode
 
     for chart_type in ('Lines', 'Dual Lines', 'Areas', '100% Stacked Areas', 'Bars and Line'):
         lines = entry_for_nr_mode(entry_of(chart_type=chart_type, rows_split='', columns_split='Hour', legend=''), 'NSA+SA')

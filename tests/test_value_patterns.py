@@ -4,8 +4,8 @@ import sqlite3
 
 import pandas as pd
 
-from src.modules.value_maps import ValueMapper
-from src.modules.value_patterns import ValueSet, expand, is_exclusion, is_pattern, sql_condition
+from src.modules.mapping.value_maps import ValueMapper
+from src.modules.cdr.value_patterns import ValueSet, expand, is_exclusion, is_pattern, sql_condition
 
 OPERATORS = ['EE', 'VF', 'VF SA', 'VF SM', 'Three', 'Lebara', 'Lebara UK']
 

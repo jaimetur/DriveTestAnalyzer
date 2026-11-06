@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from src.modules.cdr_report_filenames import build_cdr_report_filename, build_scoring_report_filename
+from src.modules.cdr.cdr_report_filenames import build_cdr_report_filename, build_scoring_report_filename
 
 
 def test_build_cdr_report_filename_uses_the_shared_design_format():

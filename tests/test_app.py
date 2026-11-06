@@ -21,7 +21,7 @@ import pandas as pd
 import pytest
 from fastapi import BackgroundTasks
 
-from src.modules.auth import hash_password
+from src.modules.core.auth import hash_password
 from src.version import __release_date__, __version__
 
 from conftest import wait_for_background_dataset_work
@@ -198,7 +198,7 @@ def test_query_builder_queries_are_exported_without_cdrs(client) -> None:
 
 def test_query_builder_restore_saves_queries_without_cdrs(monkeypatch, tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     class DestinationWorkspace:
         name = 'Destination'
@@ -337,7 +337,7 @@ def test_query_builder_assistant_preview_and_dataset_name_filter_controls() -> N
         'default_fields': extract('  function selectDefaultFields()', '\n  const refreshTypes'),
         'refresh_types': extract('  const refreshTypes = ', '\n  const refreshFilterConnectors'),
         'build_assisted_sql': extract('  function buildAssistedSql() {', '\n  const setMode'),
-        'parser_path': str(Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/query_builder_assistant_state.js'),
+        'parser_path': str(Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/builders/query_builder_assistant_state.js'),
     }
     node_harness = r"""
 const fs = require('node:fs');
@@ -588,7 +588,7 @@ def test_query_builder_saved_query_restores_assisted_controls_or_keeps_manual_sq
         'set_mode': extract('  const setMode = ', '\n  modeButtons.forEach'),
         'restore': extract('  const restoreAssistedQuery = ', '\n  const loadSavedQuery'),
         'load_saved': extract('  const loadSavedQuery = ', "\n  document.querySelector('[data-sql-load-saved]')"),
-        'parser_path': str(Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/query_builder_assistant_state.js'),
+        'parser_path': str(Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/builders/query_builder_assistant_state.js'),
     }
     node_harness = r"""
 const fs = require('node:fs');
@@ -829,7 +829,7 @@ vm.runInNewContext(run, context).then(value => process.stdout.write(value));
 
 
 def test_query_builder_executes_union_all_with_disjoint_columns_and_grouped_filters(tmp_path: Path) -> None:
-    from src.modules.query_builder import execute_query
+    from src.modules.builders.query_builder import execute_query
 
     database_path = tmp_path / 'query-builder.sqlite'
     with sqlite3.connect(database_path) as connection:
@@ -1042,7 +1042,7 @@ def test_query_builder_filter_values_are_distinct_faceted_searchable_and_typed(c
 
 
 def test_query_builder_csv_stream_includes_more_than_one_hundred_thousand_rows(tmp_path: Path) -> None:
-    from src.modules.query_builder import iter_query_csv
+    from src.modules.builders.query_builder import iter_query_csv
 
     database_path = tmp_path / 'query-builder-csv.sqlite'
     with sqlite3.connect(database_path) as connection:
@@ -1125,7 +1125,7 @@ def test_login_reports_a_busy_workspace_without_an_internal_server_error(client,
 def test_passive_polling_stops_without_redirecting_after_an_expired_session() -> None:
     import src.DriveTestAnalyzer as app_module
 
-    script = (app_module.PROJECT_ROOT / 'src' / 'web_interface' / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+    script = (app_module.PROJECT_ROOT / 'src' / 'web_interface' / 'static' / 'js' / 'core' / 'app.js').read_text(encoding='utf-8')
 
     assert script.count("if (!document.body.dataset.authenticatedUser) return;") >= 2
     assert "window.clearInterval(pollingInterval)" in script
@@ -1150,7 +1150,7 @@ def test_expired_passive_polling_returns_an_inert_response_without_unauthorized_
 
 
 def test_repository_reads_remain_available_while_a_background_writer_is_active(tmp_path: Path) -> None:
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     database_path = tmp_path / 'concurrent-workspace.db'
     repository = Repository(database_path)
@@ -1171,7 +1171,7 @@ def test_repository_reads_remain_available_while_a_background_writer_is_active(t
 
 
 def test_large_excel_ingestion_cooperatively_yields_to_the_web_server(monkeypatch) -> None:
-    from src.modules import ingestion
+    from src.modules.cdr import ingestion
 
     class Worksheet:
         def iter_rows(self, values_only: bool = True):
@@ -1197,7 +1197,7 @@ def test_large_excel_ingestion_cooperatively_yields_to_the_web_server(monkeypatc
 
 
 def test_report_template_timestamp_migration_does_not_rewrite_complete_rows(tmp_path: Path) -> None:
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     database_path = tmp_path / 'workspace.db'
     repository = Repository(database_path)
@@ -1242,7 +1242,7 @@ def test_catalogue_editor_offers_result_group_for_every_cdr_source(client) -> No
 
 def test_cdr_all_assistance_fields_union_every_individual_source(client) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.rf_catalog_source import RF_CATALOG_FIELDS
+    from src.modules.ppt_designer.rf_catalog_source import RF_CATALOG_FIELDS
 
     columns = app_module.catalogue_editor_columns([], ())
 
@@ -1413,7 +1413,7 @@ def test_cdr_materialisation_adds_workspace_dimensions_to_dataset_rows() -> None
 
 def test_calculated_dimension_rules_ignore_case_and_compact_redundant_field_aliases() -> None:
     import pandas as pd
-    from src.modules.cdr_reporting import calculated_dimensions_json, materialize_calculated_dimensions, parse_calculated_dimensions
+    from src.modules.cdr_analysis.cdr_reporting import calculated_dimensions_json, materialize_calculated_dimensions, parse_calculated_dimensions
 
     dimensions = parse_calculated_dimensions([{
         'name': 'Test Family', 'sources': ['cdr-data'], 'default': '', 'default_from': 'Test_Name|test_name',
@@ -1433,7 +1433,7 @@ def test_calculated_dimension_rules_ignore_case_and_compact_redundant_field_alia
 
 def test_calculated_dimension_alias_separators_are_serialized_with_readable_spacing() -> None:
     import pandas as pd
-    from src.modules.cdr_reporting import (
+    from src.modules.cdr_analysis.cdr_reporting import (
         calculated_dimensions_json, materialize_calculated_dimensions, parse_calculated_dimensions,
     )
 
@@ -1455,7 +1455,7 @@ def test_calculated_dimension_alias_separators_are_serialized_with_readable_spac
 
 def test_calculated_dimensions_support_nested_tableau_if_expressions() -> None:
     import pandas as pd
-    from src.modules.cdr_reporting import calculated_dimensions_json, materialize_calculated_dimensions, parse_calculated_dimensions
+    from src.modules.cdr_analysis.cdr_reporting import calculated_dimensions_json, materialize_calculated_dimensions, parse_calculated_dimensions
 
     expression = '''IF ([Test Name] = "FDTT UDP UL ST") THEN
   IF ([Mean Data Rate] < 1) THEN 'below1'
@@ -1495,7 +1495,7 @@ END'''
 
 def test_nested_if_consumes_matching_outer_branch_before_outer_elseif() -> None:
     import pandas as pd
-    from src.modules.cdr_reporting import materialize_calculated_dimensions, parse_calculated_dimensions
+    from src.modules.cdr_analysis.cdr_reporting import materialize_calculated_dimensions, parse_calculated_dimensions
 
     dimensions = parse_calculated_dimensions([{
         'name': 'Decision', 'sources': ['cdr-data'], 'default': 'Fallback',
@@ -1516,7 +1516,7 @@ END''',
 
 def test_incremental_auto_field_materialization_compiles_tableau_if_expression(tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'if-expression.db')
     repository.initialize()
@@ -1552,7 +1552,7 @@ END''',
 
 def test_incremental_auto_field_materialization_updates_columns_in_place(tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'incremental.db')
     repository.initialize()
@@ -1596,7 +1596,7 @@ def test_incremental_auto_field_materialization_updates_columns_in_place(tmp_pat
 
 def test_incremental_auto_fields_preserve_ordered_dependencies(tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'dependencies.db')
     repository.initialize()
@@ -1631,7 +1631,7 @@ def test_incremental_auto_field_materialization_yields_between_write_batches(
     tmp_path: Path, monkeypatch,
 ) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'batched-auto-fields.db')
     repository.initialize()
@@ -1673,7 +1673,7 @@ def test_incremental_auto_field_materialization_yields_between_write_batches(
 
 def test_incremental_auto_fields_use_fallback_when_rule_columns_are_missing(tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'missing-source.db')
     repository.initialize()
@@ -1696,7 +1696,7 @@ def test_incremental_auto_fields_use_fallback_when_rule_columns_are_missing(tmp_
 
 def test_incremental_auto_fields_update_existing_combined_reporting_table(tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'combined.db')
     repository.initialize()
@@ -1728,7 +1728,7 @@ def test_incremental_auto_fields_update_existing_combined_reporting_table(tmp_pa
 
 def test_incremental_auto_fields_reconcile_new_dataset_into_existing_combined_table(tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'combined-membership.db')
     repository.initialize()
@@ -1760,7 +1760,7 @@ def test_incremental_auto_fields_reconcile_new_dataset_into_existing_combined_ta
 
 def test_incremental_auto_fields_create_missing_combined_reporting_table(tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'new-combined.db')
     repository.initialize()
@@ -1786,8 +1786,8 @@ def test_incremental_auto_fields_create_missing_combined_reporting_table(tmp_pat
 
 def test_combined_tables_materialize_fixed_preview_fields_and_every_saved_template_kpi(tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.column_names import MAIN_CDR_FIELDS, PREVIEW_METADATA_FIELDS, column_identity
-    from src.modules.repository import Repository
+    from src.modules.cdr.column_names import MAIN_CDR_FIELDS, PREVIEW_METADATA_FIELDS, column_identity
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'template-kpis.db')
     repository.initialize()
@@ -1827,8 +1827,8 @@ def test_combined_tables_materialize_fixed_preview_fields_and_every_saved_templa
 
 def test_template_field_changes_add_combined_columns_and_keep_unused_fields(tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.column_names import column_identity
-    from src.modules.repository import Repository
+    from src.modules.cdr.column_names import column_identity
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'template-fields.db')
     repository.initialize()
@@ -1874,8 +1874,8 @@ def test_template_field_changes_add_combined_columns_and_keep_unused_fields(tmp_
 
 def test_template_column_reconciliation_is_queued_only_for_missing_fields(tmp_path: Path, monkeypatch) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
-    from src.modules.workspaces import Workspace
+    from src.modules.core.repository import Repository
+    from src.modules.core.workspaces import Workspace
 
     database_path = tmp_path / 'template-queue.db'
     repository = Repository(database_path)
@@ -1924,8 +1924,8 @@ def test_template_column_reconciliation_is_queued_only_for_missing_fields(tmp_pa
 
 def test_recreate_combined_table_recovers_empty_source_rows_and_required_columns(tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
-    from src.modules.workspaces import Workspace
+    from src.modules.core.repository import Repository
+    from src.modules.core.workspaces import Workspace
 
     database_path = tmp_path / 'workspace.db'
     source_path = tmp_path / 'voice.csv'
@@ -1971,7 +1971,7 @@ def test_recreate_combined_table_recovers_empty_source_rows_and_required_columns
 
 
 def test_replacing_calculated_dimensions_marks_materialization_pending_atomically(tmp_path: Path) -> None:
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'workspace.db')
     repository.initialize()
@@ -1987,9 +1987,9 @@ def test_replacing_calculated_dimensions_marks_materialization_pending_atomicall
 
 def test_starting_auto_field_job_does_not_repeat_pending_state_write(tmp_path: Path, monkeypatch) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.cdr_reporting import parse_calculated_dimensions
-    from src.modules.repository import Repository
-    from src.modules.workspaces import Workspace
+    from src.modules.cdr_analysis.cdr_reporting import parse_calculated_dimensions
+    from src.modules.core.repository import Repository
+    from src.modules.core.workspaces import Workspace
 
     database_path = tmp_path / 'workspace.db'
     repository = Repository(database_path)
@@ -2255,8 +2255,8 @@ def legacy_template_csv(*rows: str) -> bytes:
     """Build a canonical template from rows written in the pre-dynamic column order."""
     import csv
     import io
-    from src.modules.cdr_reporting import CATALOG_HEADERS, PRE_DYNAMIC_CATALOG_HEADERS
-    from src.modules.report_layouts import canonical_layout_name
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS, PRE_DYNAMIC_CATALOG_HEADERS
+    from src.modules.reporting.report_layouts import canonical_layout_name
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=CATALOG_HEADERS, lineterminator='\n')
@@ -2449,7 +2449,7 @@ def test_bootstrap_users_have_default_workspace_access(client) -> None:
 
 def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_order(client) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.module_labels import MODULE_LABELS_STATE_KEY
+    from src.modules.core.module_labels import MODULE_LABELS_STATE_KEY
 
     login_super(client)
     # A module renamed in Interface Settings names its subgroup.
@@ -2489,7 +2489,7 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
     assert [(elements[value], subgroup) for subgroup, value in options[3:]] == modules
     # Every content of a module is at the same level.
     assert 'multiselect-option-child' not in export + backup
-    app_script = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    app_script = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert "subheading.className = 'multiselect-subgroup-label';" in app_script
 
 
@@ -2530,8 +2530,8 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert 'value="main_cities" selected' in backups_page
     assert 'value="scoring_configuration" selected' in backups_page
     assert 'Workspace: Default' in backups_page
-    stylesheet = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/css/app.css').read_text(encoding='utf-8')
-    app_script = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    stylesheet = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
+    app_script = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert '.multiselect-shell { position: relative; min-width: 0; max-width: 100%; }' in stylesheet
     assert '.multiselect-trigger-label { flex: 1 1 auto; min-width: 0;' in stylesheet
     assert '.admin-export-components { min-width: 0; }' in stylesheet
@@ -2618,11 +2618,11 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
         'exported-design': {'name': 'Exported Design'},
     }))
     app_module.repository.set_main_cities(['London', 'Leeds'])
-    from src.modules import map_areas
+    from src.modules.network import map_areas
     map_areas.save_layer(app_module.repository, country_code='ESP', level='ADM3', level_label='municipality', origin='Imported',
                          source='test', license_text='CC BY 4.0', attribution='test', username='super',
                          boundaries={'Madrid': [[[-3.9, 40.3], [-3.5, 40.3], [-3.5, 40.6], [-3.9, 40.3]]]})
-    from src.modules import postal_areas
+    from src.modules.network import postal_areas
     postal_areas.save_postal_layer(app_module.repository, country_code='ESP', map_key=postal_areas.PLACE, level='Postal code', level_label='postal code',
                                    origin='GeoNames', source='test', license_text='CC BY 4.0', attribution='test', username='super',
                                    boundaries={'28001 · Madrid': [[[-3.9, 40.3], [-3.5, 40.3], [-3.5, 40.6], [-3.9, 40.3]]]})
@@ -2768,7 +2768,7 @@ def test_auto_calculated_fields_export_does_not_materialize_active_cdrs(client, 
 
 def test_mappings_reference_data_export_and_import_replace_the_selected_workspace_groups(client) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.network_insights import load_spectrum_holdings, save_spectrum_holdings
+    from src.modules.network_insights.network_insights import load_spectrum_holdings, save_spectrum_holdings
 
     login_super(client)
     app_module.repository.replace_operator_mapping_group(None, 'Portable Carrier', ['Portable Alias'])
@@ -3182,7 +3182,7 @@ def test_full_environment_selector_offers_generated_outputs_by_default(client) -
     assert 'Include generated designs and reports' in response.text
     workspace_page = client.get('/workspace')
     assert 'Also duplicate generated designs and reports.' in workspace_page.text
-    app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert "String(group.workspace_id) !== '__server__' && group.dock !== 'export' && (Boolean(group.is_active) || group.dock === 'right')" in app_script
     assert 'activeDock.replaceChildren(...activeGroups.map(refreshPanel), ...exportGroups.map(refreshPanel));' in app_script
     assert "exportTarget?.addEventListener('change'" not in app_script
@@ -3428,7 +3428,7 @@ def test_a_received_transfer_can_be_rejected_after_its_preview(client) -> None:
 
 
 def test_server_transfer_listener_keeps_a_persistent_pending_offer_reminder() -> None:
-    script = (Path(__file__).parents[1] / 'src' / 'web_interface' / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src' / 'web_interface' / 'static' / 'js' / 'core' / 'app.js').read_text(encoding='utf-8')
 
     assert "pendingOfferReminder.className = 'incoming-transfer-reminder'" in script
     assert 'window.addEventListener(\'online\', () => scheduleIncomingOfferPoll(0));' in script
@@ -3664,7 +3664,7 @@ def test_workspace_import_without_input_or_output_keeps_identical_destination_fo
     (workspace.input_dir / 'earlier_cdr.xlsx').write_bytes(b'cdr')
     workspace.output_dir.mkdir(parents=True, exist_ok=True)
     (workspace.output_dir / 'earlier_report.pptx').write_bytes(b'report')
-    from src.modules import report_tasks
+    from src.modules.reporting import report_tasks
 
     with sqlite3.connect(workspace.database_path) as connection:
         connection.executescript(report_tasks.SCHEMA)
@@ -4079,7 +4079,7 @@ def test_accepted_incoming_transfer_runs_as_a_stoppable_background_task(client, 
 
 def test_transfer_dialogs_can_be_hidden_and_block_the_destination_during_import() -> None:
     root = Path(__file__).parents[1] / 'src' / 'web_interface'
-    script = (root / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+    script = (root / 'static' / 'js' / 'core' / 'app.js').read_text(encoding='utf-8')
     base = (root / 'templates' / 'base.html').read_text(encoding='utf-8')
 
     assert '<button id="loading-hide" type="button" class="ghost-link loading-cancel-button" hidden>Hide</button>' in base
@@ -4337,7 +4337,7 @@ def test_chart_builder_uses_design_canvas_model(client) -> None:
     page = client.get('/chart-builder')
     assert page.status_code == 200
     assert 'data-chart-builder-chart' in page.text
-    assert 'js/canvas_charts.js' in page.text
+    assert 'js/core/canvas_charts.js' in page.text
 
     response = client.post('/api/chart-builder/preview', json={
         'dataset_ids': [1],
@@ -4457,7 +4457,7 @@ def test_admin_dataset_table_includes_ordered_global_icon_actions(client, monkey
     assert 'class="admin-dataset-move admin-dataset-move-up icon-action"' in page.text
     assert 'class="admin-dataset-move admin-dataset-move-down icon-action"' in page.text
     assert page.text.count('name="return_to" value="admin"') >= 5
-    styles = client.get('/static/css/app.css')
+    styles = client.get('/static/css/core/app.css')
     assert styles.status_code == 200
     assert '.admin-stack .admin-dataset-bulk-actions .queue-map-all {' in styles.text
     assert '.admin-stack .admin-dataset-bulk-actions .queue-clear-all {' in styles.text
@@ -4569,7 +4569,7 @@ def test_admin_dataset_rows_can_be_reordered_in_descending_order_and_all_ids_are
     individual_tables = client.get('/super-admin').text.split('<optgroup label="Individual Datasets">', 1)[1].split('</optgroup>', 1)[0]
     assert individual_tables.index('value="dataset_rows_3"') < individual_tables.index('value="dataset_rows_2"') < individual_tables.index('value="dataset_rows_1"')
     assert 'Individual dataset rows' not in admin_page.text
-    app_script = client.get('/static/js/app.js').text
+    app_script = client.get('/static/js/core/app.js').text
     assert "currentTable.replaceWith(freshTable)" in app_script
     assert "window.scrollTo({top: scrollTop, left: scrollLeft, behavior: 'auto'})" in app_script
 
@@ -4816,7 +4816,7 @@ def test_reupload_preserves_original_upload_date_for_dataset_ordering(client) ->
     assert 'data-queue-sort-key="uploaded"' in workspace.text
     assert 'data-queue-sort-key="updated"' in workspace.text
     assert workspace.text.index('data-queue-sort-key="uploaded"') < workspace.text.index('data-queue-sort-key="updated"')
-    styles = client.get('/static/css/app.css').text
+    styles = client.get('/static/css/core/app.css').text
     assert '.queue-table th:nth-child(2), .queue-table td:nth-child(2) { width: 290px; min-width: 290px; max-width: 290px; overflow-wrap: anywhere; }' in styles
     assert '.queue-table :is([data-queue-uploaded], [data-queue-updated], [data-combined-dataset-updated]) { white-space: nowrap; overflow-wrap: normal; }' in styles
     assert '<span class="queue-time">' in workspace.text
@@ -5025,7 +5025,7 @@ def test_workspace_cache_clear_removes_only_derived_design_artifacts(client, mon
     legacy_png = workspace_root / '.design-chart-cache' / 'chart.png'
     legacy_png.parent.mkdir(parents=True, exist_ok=True)
     legacy_png.write_bytes(b'png')
-    from src.modules import ppt_design_cache
+    from src.modules.ppt_designer import ppt_design_cache
     kept_model = ppt_design_cache.chart_path(workspace.database_path, 'ab' * 32)
     assert ppt_design_cache.write(kept_model, {'chart': 'kept'})
     before_clear = client.get('/api/workspaces/status').json()
@@ -5161,7 +5161,7 @@ def test_workspace_management_reports_every_supported_row_status(client, tmp_pat
     assert 'action="/workspace/close"' in first_row
     assert 'aria-label="Close workspace"' in first_row
     assert '>⏻</button>' in first_row
-    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
     assert '.workspace-row-actions .workspace-action-open.icon-action::after' in stylesheet
     assert "d='M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'" in stylesheet
     assert '.workspace-row-actions .workspace-action-clear-cache.icon-action::after' in stylesheet
@@ -5465,7 +5465,7 @@ def test_dataset_executor_defaults_to_one_fifo_background_worker(client) -> None
 
 
 def test_background_task_scheduler_starts_queued_work_in_fifo_order() -> None:
-    from src.modules.background_scheduler import BackgroundTaskScheduler
+    from src.modules.core.background_scheduler import BackgroundTaskScheduler
 
     scheduler = BackgroundTaskScheduler(max_workers=1, thread_name_prefix='test-fifo')
     started = Event()
@@ -5493,7 +5493,7 @@ def test_background_task_scheduler_starts_queued_work_in_fifo_order() -> None:
 
 
 def test_background_task_scheduler_orders_workspace_phases_and_dataset_ids() -> None:
-    from src.modules.background_scheduler import BackgroundTaskScheduler
+    from src.modules.core.background_scheduler import BackgroundTaskScheduler
 
     scheduler = BackgroundTaskScheduler(max_workers=2, thread_name_prefix='test-workspace-order')
     started = Event()
@@ -5668,8 +5668,8 @@ def test_backup_list_marks_zips_cut_short_as_incomplete(client) -> None:
 
 def test_design_library_open_close_and_view_actions_include_labels() -> None:
     root = Path(__file__).parents[1] / 'src' / 'web_interface' / 'static'
-    script = (root / 'js' / 'ppt_designer.js').read_text(encoding='utf-8')
-    styles = (root / 'css' / 'ppt_designer.css').read_text(encoding='utf-8')
+    script = (root / 'js' / 'ppt_designer' / 'ppt_designer.js').read_text(encoding='utf-8')
+    styles = (root / 'css' / 'ppt_designer' / 'ppt_designer.css').read_text(encoding='utf-8')
 
     assert "action('View PPT', 'View PPT'" in script
     assert "action('Edit Design', 'Edit Design'" in script
@@ -5687,8 +5687,8 @@ def test_design_library_open_close_and_view_actions_include_labels() -> None:
 def test_design_library_ppt_export_selects_scope_and_campaigns_explicitly() -> None:
     root = Path(__file__).parents[1] / 'src' / 'web_interface'
     template = (root / 'templates' / 'ppt_designer.html').read_text(encoding='utf-8')
-    script = (root / 'static' / 'js' / 'ppt_designer.js').read_text(encoding='utf-8')
-    styles = (root / 'static' / 'css' / 'ppt_designer.css').read_text(encoding='utf-8')
+    script = (root / 'static' / 'js' / 'ppt_designer' / 'ppt_designer.js').read_text(encoding='utf-8')
+    styles = (root / 'static' / 'css' / 'ppt_designer' / 'ppt_designer.css').read_text(encoding='utf-8')
 
     assert 'id="ds-ppt-dataset-overlay"' in template
     # The Campaigns choose the CDRs of the export: the dialog lists them instead of offering CDR checkboxes.
@@ -5747,7 +5747,7 @@ def test_design_library_ppt_export_selects_scope_and_campaigns_explicitly() -> N
 def test_design_filters_panel_defaults_hidden_and_expanded_and_persists_for_the_session() -> None:
     root = Path(__file__).parents[1] / 'src' / 'web_interface'
     template = (root / 'templates' / 'ppt_designer.html').read_text(encoding='utf-8')
-    app_script = (root / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+    app_script = (root / 'static' / 'js' / 'core' / 'app.js').read_text(encoding='utf-8')
 
     panel = template.split('id="ds-filter-panel"', 1)[1].split('>', 1)[0]
     assert ' open' in panel
@@ -5755,7 +5755,7 @@ def test_design_filters_panel_defaults_hidden_and_expanded_and_persists_for_the_
     assert "const sessionScoped = panel.dataset.panelStateStorage === 'session';" in app_script
     assert 'const storage = sessionScoped ? window.sessionStorage : window.localStorage;' in app_script
 
-    design_script = (root / 'static' / 'js' / 'ppt_designer.js').read_text(encoding='utf-8')
+    design_script = (root / 'static' / 'js' / 'ppt_designer' / 'ppt_designer.js').read_text(encoding='utf-8')
     assert "const authenticatedSession = document.body.dataset.authenticatedSession || 'anonymous';" in design_script
     assert ':open:${authenticatedSession}`' in design_script
     assert ':filters-open:${authenticatedSession}`' in design_script
@@ -5763,7 +5763,7 @@ def test_design_filters_panel_defaults_hidden_and_expanded_and_persists_for_the_
 
 
 def test_design_open_hydrates_saved_state_before_preparation_catalogues() -> None:
-    script = (Path(__file__).parents[1] / 'src' / 'web_interface' / 'static' / 'js' / 'ppt_designer.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src' / 'web_interface' / 'static' / 'js' / 'ppt_designer' / 'ppt_designer.js').read_text(encoding='utf-8')
 
     # No universe is remembered apart from the Design: its saved Scope, dates and filters are what opens.
     assert 'rememberedUniverse' not in script
@@ -5772,7 +5772,7 @@ def test_design_open_hydrates_saved_state_before_preparation_catalogues() -> Non
 
 
 def test_ready_open_design_preloads_chart_models_before_viewer_opens() -> None:
-    script = (Path(__file__).parents[1] / 'src' / 'web_interface' / 'static' / 'js' / 'ppt_designer.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src' / 'web_interface' / 'static' / 'js' / 'ppt_designer' / 'ppt_designer.js').read_text(encoding='utf-8')
 
     assert 'function scheduleBackgroundChartPreload(token)' in script
     assert "scheduleBackgroundChartPreload(payload.token);" in script
@@ -5782,8 +5782,8 @@ def test_ready_open_design_preloads_chart_models_before_viewer_opens() -> None:
 
 def test_designs_prepare_nothing_in_the_background_and_restore_the_open_one() -> None:
     root = Path(__file__).parents[1] / 'src'
-    design_source = (root / 'modules' / 'ppt_designer.py').read_text(encoding='utf-8')
-    script = (root / 'web_interface' / 'static' / 'js' / 'ppt_designer.js').read_text(encoding='utf-8')
+    design_source = (root / 'modules' / 'ppt_designer' / 'ppt_designer.py').read_text(encoding='utf-8')
+    script = (root / 'web_interface' / 'static' / 'js' / 'ppt_designer' / 'ppt_designer.js').read_text(encoding='utf-8')
 
     # A Design is prepared when it is opened (from the columnar copies of its CDRs): nothing is pre-cached.
     assert 'schedule_design_warmup' not in design_source
@@ -5793,9 +5793,9 @@ def test_designs_prepare_nothing_in_the_background_and_restore_the_open_one() ->
 
 def test_ppt_job_can_open_its_immutable_design_snapshot() -> None:
     root = Path(__file__).parents[1] / 'src'
-    design_source = (root / 'modules' / 'ppt_designer.py').read_text(encoding='utf-8')
-    script = (root / 'web_interface' / 'static' / 'js' / 'ppt_designer.js').read_text(encoding='utf-8')
-    styles = (root / 'web_interface' / 'static' / 'css' / 'ppt_designer.css').read_text(encoding='utf-8')
+    design_source = (root / 'modules' / 'ppt_designer' / 'ppt_designer.py').read_text(encoding='utf-8')
+    script = (root / 'web_interface' / 'static' / 'js' / 'ppt_designer' / 'ppt_designer.js').read_text(encoding='utf-8')
+    styles = (root / 'web_interface' / 'static' / 'css' / 'ppt_designer' / 'ppt_designer.css').read_text(encoding='utf-8')
 
     # The snapshot keeps the viewer slides as exported, with hidden dynamic cards removed.
     assert "for slide in snapshot.payload.get('slides', []):" in design_source
@@ -5813,8 +5813,8 @@ def test_ppt_job_can_open_its_immutable_design_snapshot() -> None:
 
 def test_design_ppt_job_is_queued_before_preparation_and_chart_rendering() -> None:
     root = Path(__file__).parents[1] / 'src'
-    design_source = (root / 'modules' / 'ppt_designer.py').read_text(encoding='utf-8')
-    script = (root / 'web_interface' / 'static' / 'js' / 'ppt_designer.js').read_text(encoding='utf-8')
+    design_source = (root / 'modules' / 'ppt_designer' / 'ppt_designer.py').read_text(encoding='utf-8')
+    script = (root / 'web_interface' / 'static' / 'js' / 'ppt_designer' / 'ppt_designer.js').read_text(encoding='utf-8')
 
     assert 'never make the library button wait for' in script
     assert 'scopePreview = await api' not in script
@@ -5824,7 +5824,7 @@ def test_design_ppt_job_is_queued_before_preparation_and_chart_rendering() -> No
 
 
 def test_cold_design_ppt_job_progress_covers_prepare_models_and_presentation() -> None:
-    source = (Path(__file__).parents[1] / 'src' / 'modules' / 'ppt_designer.py').read_text(encoding='utf-8')
+    source = (Path(__file__).parents[1] / 'src' / 'modules' / 'ppt_designer' / 'ppt_designer.py').read_text(encoding='utf-8')
 
     # Universe pre-caching owns 1-12% and the export's own preparation 12-24%.
     assert 'progress=max(1, min(12, 1 + round(percent * 0.11))),' in source
@@ -5838,14 +5838,14 @@ def test_cold_design_ppt_job_progress_covers_prepare_models_and_presentation() -
 
 
 def test_design_background_tasks_are_named_without_design_subgroups() -> None:
-    script = (Path(__file__).parents[1] / 'src' / 'web_interface' / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src' / 'web_interface' / 'static' / 'js' / 'core' / 'app.js').read_text(encoding='utf-8')
 
     assert 'Design “${designName}”: ${String(task.label || \'Background task\')}' in script
     assert 'let previousDesignName' not in script
 
 
 def test_complete_design_universe_uses_materialized_row_counts() -> None:
-    source = (Path(__file__).parents[1] / 'src' / 'modules' / 'ppt_designer.py').read_text(encoding='utf-8')
+    source = (Path(__file__).parents[1] / 'src' / 'modules' / 'ppt_designer' / 'ppt_designer.py').read_text(encoding='utf-8')
 
     assert 'def is_complete_unfiltered_universe(' in source
     assert 'known_full_row_counts=selected_source_rows if complete_unfiltered_universe else None' in source
@@ -5854,14 +5854,14 @@ def test_complete_design_universe_uses_materialized_row_counts() -> None:
 
 def test_design_reduced_and_filtered_universes_share_one_combined_count_query(tmp_path: Path) -> None:
     root = Path(__file__).parents[1] / 'src' / 'modules'
-    design_source = (root / 'ppt_designer.py').read_text(encoding='utf-8')
-    repository_source = (root / 'repository.py').read_text(encoding='utf-8')
+    design_source = (root / 'ppt_designer' / 'ppt_designer.py').read_text(encoding='utf-8')
+    repository_source = (root / 'core' / 'repository.py').read_text(encoding='utf-8')
 
     assert 'COUNT(*) AS universe_count' in design_source
     assert 'SUM(CASE WHEN {filtered_where} THEN 1 ELSE 0 END) AS filtered_count' in design_source
     assert 'universe_row_counts_json' in design_source
     assert 'universe_row_counts_json' in repository_source
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'design-counts.db')
     repository.initialize()
@@ -5872,7 +5872,7 @@ def test_design_reduced_and_filtered_universes_share_one_combined_count_query(tm
 
 def test_large_datasets_share_one_memory_slot_per_workspace(client, monkeypatch, tmp_path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     monkeypatch.setattr(app_module, 'HEAVY_DATASET_PROCESSING_THRESHOLD_BYTES', 10)
     large = tmp_path / 'large.csv'
@@ -5911,7 +5911,7 @@ def test_workspace_management_lists_restricted_workspaces_without_enabling_actio
 
 def test_global_background_tasks_groups_active_and_other_workspaces(client) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     login_super(client)
     active = app_module.active_workspace
@@ -5923,7 +5923,7 @@ def test_global_background_tasks_groups_active_and_other_workspaces(client) -> N
         workspace_registry_db_path=app_module.workspace_registry.registry_path,
     )
     other_repository.initialize()
-    from src.modules import report_tasks
+    from src.modules.reporting import report_tasks
 
     for task_repository, name, progress in ((app_module.repository, 'Active Template', 42), (other_repository, 'Other Template', 67)):
         with task_repository.connection() as connection:
@@ -5950,8 +5950,8 @@ def test_global_background_tasks_groups_active_and_other_workspaces(client) -> N
     assert 'id="background-task-panels"' in page.text
     assert 'data-background-task-dock="active"' in page.text
     assert 'data-background-task-dock="other"' in page.text
-    app_css = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
-    app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    app_css = (Path(__file__).parents[1] / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
+    app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert '.background-task-panel { position: relative; pointer-events: auto; flex: 0 0 auto; display: flex; flex-direction: column;' in app_css
     assert '.background-task-panel-header { flex: 0 0 auto;' in app_css
     assert '.background-task-count { flex: 0 0 auto;' in app_css
@@ -6171,13 +6171,13 @@ def test_workspace_dataset_upload_uses_non_blocking_progress_card(client) -> Non
     assert 'data-background-upload' in page.text
     # The upload goes on in the background on every page (resumable chunks, see test_upload_sessions).
     assert 'await window.DriveTestUploads.start(form, {' in page.text
-    assert 'js/background_uploads.js' in page.text and 'id="background-uploads-config"' in page.text
+    assert 'js/workspace/background_uploads.js' in page.text and 'id="background-uploads-config"' in page.text
     assert 'data-loading-label="Uploading datasets"' not in page.text
-    uploads_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/background_uploads.js').read_text(encoding='utf-8')
+    uploads_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/workspace/background_uploads.js').read_text(encoding='utf-8')
     assert "drivetest-analyzer:background-task" in uploads_script and 'cancel: () => cancel(record)' in uploads_script
     assert '?offset=${offset}' in uploads_script and "indexedDB.open(DATABASE, 1)" in uploads_script
 
-    app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert 'formatQueuedAge' in app_script
     assert 'const minimizedPanels = new Map();' in app_script
     assert "typeof task?.cancel === 'function'" in app_script
@@ -6239,7 +6239,7 @@ def test_background_task_stop_endpoint_stops_accessible_workspace_work(client) -
 
 def test_a_points_lost_map_can_be_stopped_from_its_background_card(client) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules import saved_filters
+    from src.modules.scoring import saved_filters
 
     login(client)
     workspace = app_module.active_workspace
@@ -6837,7 +6837,7 @@ def test_admin_vendor_mappings_support_aliases_colours_and_reordering(client) ->
     assert 'data-panel-state-key="admin:vendor-mappings"' in page.text
     assert 'name="color" value="#123456"' in page.text
     assert 'action="/workspace-config/vendor-mappings/move"' in page.text
-    script = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    script = app_module.PROJECT_ROOT.joinpath('src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert 'async function submitChartMappingForm(form)' in script
     assert 'currentBody.replaceWith(freshBody);' in script
     assert 'top: scrollTop, left: scrollLeft, behavior: \'auto\'' in script
@@ -6982,7 +6982,7 @@ def test_paginated_dataset_viewers_preserve_the_exact_horizontal_scroll_offset()
     import src.DriveTestAnalyzer as app_module
 
     script = app_module.PROJECT_ROOT.joinpath(
-        'src/web_interface/static/js/app.js',
+        'src/web_interface/static/js/core/app.js',
     ).read_text(encoding='utf-8')
 
     assert "columnName: anchor?.dataset.columnName || ''," in script
@@ -7551,7 +7551,7 @@ def test_workspace_preview_and_cdr_design_action(client) -> None:
     assert 'id="background-task-panels"' not in embedded_preview.text
     assert 'Back to Workspace' not in embedded_preview.text
     assert 'data-url="/workspace/preview/1?embedded=1"' in embedded_preview.text
-    preview_script = client.get('/static/js/app.js')
+    preview_script = client.get('/static/js/core/app.js')
     assert preview_script.status_code == 200
     assert 'preview-column-filter-trigger' in preview_script.text
     assert 'data-preview-value-option' in preview_script.text
@@ -7740,7 +7740,7 @@ def test_workspace_lists_combined_cdr_with_preview_and_kind_filter_metadata(clie
     assert live_status.status_code == 200
     assert live_status.json()['combined_tables'][0]['kind'] == 'data'
     assert live_status.json()['combined_tables'][0]['column_count'] == combined_columns
-    app_script = app_module.PROJECT_ROOT / 'src' / 'web_interface' / 'static' / 'js' / 'app.js'
+    app_script = app_module.PROJECT_ROOT / 'src' / 'web_interface' / 'static' / 'js' / 'core' / 'app.js'
     script_text = app_script.read_text(encoding='utf-8')
     assert 'workspace-dataset-table-refresh-requested' in script_text
     assert 'combinedTables.forEach(updateCombinedQueueRow)' in script_text
@@ -7898,13 +7898,13 @@ def test_queued_dataset_actions_remain_compact_icons_during_live_updates(client)
     actions = page.text.split('<div class="queue-actions">', 1)[1].split('</div>', 1)[0]
     assert actions.index('action-link-clear-vendors') < actions.index('action-link-stop') < actions.index('danger-button')
 
-    script = client.get('/static/js/app.js')
+    script = client.get('/static/js/core/app.js')
     assert 'class="ghost-link action-link-preview" disabled' in script.text
     assert 'action-link-clear-vendors' in script.text
     assert 'action-link-reprocess' in script.text
     assert 'class="danger-button icon-action" aria-label="Delete dataset"' in script.text
 
-    styles = client.get('/static/css/app.css')
+    styles = client.get('/static/css/core/app.css')
     assert ".queue-actions .action-link-map-vendors::before, .admin-dataset-actions .action-link-map-vendors::before { content: '';" in styles.text
     assert ".queue-actions .action-link-clear-vendors::before, .admin-dataset-actions .action-link-clear-vendors::before { content: '';" in styles.text
     assert '.queue-actions .action-link-reprocess::before, .admin-dataset-actions .action-link-reprocess::before' in styles.text
@@ -7939,7 +7939,7 @@ def test_cdr_preview_groups_every_non_source_field_after_source_sheet(tmp_path: 
 
 def test_cdr_preview_uses_clean_duplicate_names_and_orders_vendor_after_operator_vendor(tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.column_names import clean_column_name
+    from src.modules.cdr.column_names import clean_column_name
 
     source = tmp_path / 'source.csv'
     source.write_text('Campaign,Vendor,Cell_Duplicate_2\nUK_Q3_2026,Ericsson,A\n', encoding='utf-8')
@@ -8072,10 +8072,10 @@ def test_cdr_preview_paginates_and_filters_every_column(client, monkeypatch) -> 
     assert 'data-preview-dataset-switch' in default_preview.text
     assert 'data-preview-dataset-switch-menu' in default_preview.text
     assert "showLoadingOverlay(\n      'Loading Workspace Dataset'" in app_module.PROJECT_ROOT.joinpath(
-        'src/web_interface/static/js/app.js',
+        'src/web_interface/static/js/core/app.js',
     ).read_text(encoding='utf-8')
     assert "new Intl.NumberFormat('en-US')" in app_module.PROJECT_ROOT.joinpath(
-        'src/web_interface/static/js/app.js',
+        'src/web_interface/static/js/core/app.js',
     ).read_text(encoding='utf-8')
     assert "'{:,}'.format(preview_total_rows)" in app_module.PROJECT_ROOT.joinpath(
         'src/web_interface/templates/dataset_preview.html',
@@ -8090,7 +8090,7 @@ def test_cdr_preview_paginates_and_filters_every_column(client, monkeypatch) -> 
     assert 'data-column-kind="Derived"' in operator_vendor_badge
     assert 'data-column-kind="Derived"' in vendor_badge
     preview_css = app_module.PROJECT_ROOT.joinpath(
-        'src/web_interface/static/css/app.css',
+        'src/web_interface/static/css/core/app.css',
     ).read_text(encoding='utf-8')
     assert '.dataset-preview-table .main-cdr-column { background: #ccebd9;' in preview_css
     assert '.dataset-preview-table .derived-cdr-column { background: #e6f7ed;' in preview_css
@@ -9162,8 +9162,8 @@ def test_top_navigation_shows_document_links(client) -> None:
 
 def test_collapsed_side_navigators_reveal_near_viewport_edges() -> None:
     root = Path(__file__).parents[1]
-    app_script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
-    app_styles = (root / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    app_script = (root / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
+    app_styles = (root / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
     base_template = (root / 'src/web_interface/templates/base.html').read_text(encoding='utf-8')
     doc_template = (root / 'src/web_interface/templates/doc_view.html').read_text(encoding='utf-8')
 
@@ -9203,8 +9203,8 @@ def test_collapsed_side_navigators_reveal_near_viewport_edges() -> None:
 
 def test_small_screens_have_a_menu_bar_instead_of_the_tab_rows(client) -> None:
     root = Path(__file__).parents[1]
-    app_script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
-    app_styles = (root / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    app_script = (root / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
+    app_styles = (root / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
 
     login(client)
     page = client.get('/scoring').text
@@ -9233,9 +9233,9 @@ def test_small_screens_have_a_menu_bar_instead_of_the_tab_rows(client) -> None:
 
 def test_the_red_card_stands_at_the_left_above_the_task_cards_and_below_the_open_drawer() -> None:
     root = Path(__file__).parents[1]
-    app_styles = (root / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
-    app_script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
-    nq_styles = (root / 'src/web_interface/static/css/non_qualified_calls.css').read_text(encoding='utf-8')
+    app_styles = (root / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
+    app_script = (root / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
+    nq_styles = (root / 'src/web_interface/static/css/nq/non_qualified_calls.css').read_text(encoding='utf-8')
 
     # The task cards keep their sides: the open workspace at the right, the other workspaces at the left.
     assert '.background-task-dock-active { right: 3.25rem; max-width: calc(100vw - 4.25rem); }' in app_styles
@@ -9281,7 +9281,7 @@ def test_non_admin_navigation_hides_admin_tab(client) -> None:
 
 
 def test_admin_imports_report_catalogue(client) -> None:
-    from src.modules.cdr_reporting import CATALOG_HEADERS
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS
     import src.DriveTestAnalyzer as app_module
 
     login(client)
@@ -9312,7 +9312,7 @@ def test_legacy_layout_alias_is_canonicalized_through_template_import_and_export
     import csv
     import io
     import src.DriveTestAnalyzer as app_module
-    from src.modules.cdr_reporting import CATALOG_HEADERS
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS
 
     login(client)
     output = io.StringIO()
@@ -9342,7 +9342,7 @@ def test_legacy_layout_alias_is_canonicalized_through_template_import_and_export
 
 
 def test_admin_import_preserves_hyphens_in_uploaded_template_name(client) -> None:
-    from src.modules.cdr_reporting import CATALOG_HEADERS
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS
     import src.DriveTestAnalyzer as app_module
 
     login(client)
@@ -9358,7 +9358,7 @@ def test_admin_import_preserves_hyphens_in_uploaded_template_name(client) -> Non
 
 
 def test_importing_an_existing_template_requires_explicit_overwrite(client) -> None:
-    from src.modules.cdr_reporting import CATALOG_HEADERS
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS
     import src.DriveTestAnalyzer as app_module
 
     login(client)
@@ -9412,7 +9412,7 @@ def test_admin_import_converts_a_legacy_catalogue_when_requested(client) -> None
 
 
 def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(client) -> None:
-    from src.modules.cdr_reporting import CATALOG_HEADERS
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS
     import src.DriveTestAnalyzer as app_module
 
     login(client)
@@ -9478,8 +9478,8 @@ def test_admin_stores_multiple_named_report_catalogues_and_can_activate_one(clie
     assert 'Title + 1 rows + 1 columns + comments down' in embedded_editor.text
     assert 'catalogue-editor-catalogue-picker" aria-label="Workspace templates" hidden' in embedded_editor.text
 
-    app_script = (app_module.PROJECT_ROOT / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
-    auto_fields_script = (app_module.PROJECT_ROOT / 'src/web_interface/static/js/auto_calculated_fields.js').read_text(encoding='utf-8')
+    app_script = (app_module.PROJECT_ROOT / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
+    auto_fields_script = (app_module.PROJECT_ROOT / 'src/web_interface/static/js/workspace/auto_calculated_fields.js').read_text(encoding='utf-8')
     # The template editor opens the Auto-calculated Fields editor (in the page holding it when embedded) and follows its saves.
     assert "manager?.open({onChange: (fields) => { calculatedDimensions = fields; refreshCalculatedDimensionSuggestions(); }});" in app_script
     assert "options.addEventListener('change', applyAssistanceValues);" in app_script
@@ -9652,7 +9652,7 @@ def test_report_template_rename_keeps_special_characters_in_action_urls(client) 
 
 
 def test_admin_renaming_named_catalogue_renames_its_csv_file(client) -> None:
-    from src.modules.cdr_reporting import CATALOG_HEADERS
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS
     import src.DriveTestAnalyzer as app_module
 
     login(client)
@@ -9697,7 +9697,7 @@ def test_admin_renaming_named_catalogue_renames_its_csv_file(client) -> None:
 
 
 def test_admin_duplicates_template_using_the_source_template_name(client) -> None:
-    from src.modules.cdr_reporting import CATALOG_HEADERS
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS
     import src.DriveTestAnalyzer as app_module
 
     login(client)
@@ -9719,7 +9719,7 @@ def test_admin_duplicates_template_using_the_source_template_name(client) -> Non
 
 
 def test_template_registry_does_not_rescan_legacy_csv_directories(client) -> None:
-    from src.modules.cdr_reporting import CATALOG_HEADERS
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS
     import src.DriveTestAnalyzer as app_module
 
     login(client)
@@ -10597,7 +10597,7 @@ def test_workspace_dataset_table_defaults_to_descending_ids_and_has_sortable_col
     assert '<th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">' in table
     for key in ('dataset', 'campaign', 'kind', 'rows', 'columns', 'size', 'status', 'progress', 'uploaded', 'updated'):
         assert f'data-queue-sort-key="{key}"' in table
-    script = client.get('/static/js/app.js').text
+    script = client.get('/static/js/core/app.js').text
     # Each dataset card sorts on its own: the CDR cards by Campaign (then NR Mode and CDR Type), the others newest IDs first.
     assert "? {key: 'campaign', direction: 'desc'} : {key: 'id', direction: 'desc'}" in script
     assert 'combinedBoundary' in script
@@ -10730,7 +10730,7 @@ def test_generic_button_click_audit_endpoint_is_not_exposed(client) -> None:
 
 
 def test_nr_mode_is_suggested_from_the_cdr_file_name() -> None:
-    from src.modules.nr_mode import infer_nr_mode
+    from src.modules.cdr.nr_mode import infer_nr_mode
 
     assert infer_nr_mode('NetCheck_CDR_Data.csv') == 'NSA'
     assert infer_nr_mode('UK_Q2_2026_NSA_Voice.xlsx') == 'NSA'
@@ -10796,7 +10796,7 @@ def test_existing_cdrs_receive_a_suggested_nr_mode_on_migration(client) -> None:
 
 
 def test_design_filter_multiselect_action_toggles_select_all_and_none() -> None:
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
 
     assert "actionButton.textContent = 'Select All / None';" in script
     assert "dynamicAll ? 'All values' : 'Select All / None'" not in script
@@ -10854,7 +10854,7 @@ def test_startup_page_says_what_it_does_and_mentions_upgrades_only_for_a_new_ver
 
 def test_workspaces_record_the_cdr_type_they_handle(client) -> None:
     import src.DriveTestAnalyzer as app_module
-    from src.modules.cdr_types import workspace_cdr_type
+    from src.modules.cdr.cdr_types import workspace_cdr_type
 
     login(client)
     page = client.get('/workspace').text
@@ -11097,7 +11097,7 @@ def test_config_menu_lists_the_sections_of_each_config_page(client):
 
 
 def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(client):
-    from src.modules.module_labels import MODULE_SECTIONS, section_anchor
+    from src.modules.core.module_labels import MODULE_SECTIONS, section_anchor
     login_super(client)
     page = client.get('/scoring').text
     menus = dict(re.findall(r'<nav class="module-sections-menu[^"]*" popover="manual" data-module-sections-for="([^"]+)"[^>]*>(.*?)</nav>', page, re.S))
@@ -11154,7 +11154,7 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
 
 def test_a_section_chosen_in_a_menu_opens_at_the_top_of_its_page():
     root = Path(__file__).parents[1] / 'src/web_interface/static/js'
-    app_script = (root / 'app.js').read_text(encoding='utf-8')
+    app_script = (root / 'core' / 'app.js').read_text(encoding='utf-8')
     # The chosen panel goes to the top, with room below it when it is near the end of the page.
     assert 'function showSectionAtTop(target) {' in app_script and "room.dataset.sectionScrollRoom = '';" in app_script
     # It stays there while the page fills (only the last chosen section is followed), and a section added once its
@@ -11164,22 +11164,22 @@ def test_a_section_chosen_in_a_menu_opens_at_the_top_of_its_page():
     assert "window.setTimeout(() => window.dispatchEvent(new HashChangeEvent('hashchange')));" in app_script
     # The pages that return to their earlier position do not when they open at a section (page_restore.js decides it
     # while the address still has it).
-    assert 'const reloaded = () => !window.location.hash' in (root / 'page_restore.js').read_text(encoding='utf-8')
-    assert 'restoreTarget = window.PageRestore.reloaded() &&' in (root / 'non_qualified_calls.js').read_text(encoding='utf-8')
+    assert 'const reloaded = () => !window.location.hash' in (root / 'core' / 'page_restore.js').read_text(encoding='utf-8')
+    assert 'restoreTarget = window.PageRestore.reloaded() &&' in (root / 'nq' / 'non_qualified_calls.js').read_text(encoding='utf-8')
     assert 'function sectionKeptInView() {' in app_script
     # A page whose panels take longer than a minute (Non-Qualified Calls in a large workspace) keeps it there until they
     # are all drawn, for five minutes at most (Safari has no scroll anchoring to keep it otherwise).
     assert "typeof window.pageSectionBusy === 'function' && Boolean(window.pageSectionBusy())" in app_script
     assert 'timer = window.setTimeout(check, SECTION_KEPT_MS);' in app_script and 'const SECTION_KEPT_BUSY_MS = 300000;' in app_script
     assert ("window.pageSectionBusy = () => root.classList.contains('is-loading') || panelsLoading.size > 0;"
-            in (root / 'non_qualified_calls.js').read_text(encoding='utf-8'))
+            in (root / 'nq' / 'non_qualified_calls.js').read_text(encoding='utf-8'))
     # The section of the address opens after the deferred scripts of the page, which read it (Non-Qualified Calls
     # shows the view of the panel), and panels above it that change size keep it at the top too.
     assert "document.addEventListener('DOMContentLoaded', openAddressSection, {once: true});" in app_script
     assert 'sibling = sibling.previousElementSibling) observer.observe(sibling);' in app_script
-    scoring_script = (root / 'scoring.js').read_text(encoding='utf-8')
+    scoring_script = (root / 'scoring' / 'scoring.js').read_text(encoding='utf-8')
     assert "&& !window.location.hash\n    && ['reload', 'back_forward'].includes(" in scoring_script
-    assert "|| window.location.hash) return;" in (root / 'ppt_designer.js').read_text(encoding='utf-8')
+    assert "|| window.location.hash) return;" in (root / 'ppt_designer' / 'ppt_designer.js').read_text(encoding='utf-8')
     assert 'top > 0 && !window.location.hash' in app_script
     # A page that opens again with its saved selection (CDR Analysis) keeps the section.
     assert 'if (!target.hash && window.location.hash && target.pathname === window.location.pathname) target.hash = window.location.hash;' in app_script
@@ -11204,8 +11204,8 @@ def test_documents_read_without_an_account_show_a_prominent_sign_in(client):
 
 def test_every_single_select_opens_the_application_list_below_its_field():
     root = Path(__file__).parents[1]
-    script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
-    stylesheet = (root / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    script = (root / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
+    stylesheet = (root / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
 
     # One delegated handler replaces the browser's list (which macOS opens over the field) of every single select;
     # the select stays the field, and data-native-select keeps the browser's list.
@@ -11242,8 +11242,8 @@ def test_every_single_select_opens_the_application_list_below_its_field():
 
 def test_the_module_tabs_stay_at_the_top_with_the_sticky_bars_below_them():
     root = Path(__file__).parents[1]
-    script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
-    stylesheet = (root / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    script = (root / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
+    stylesheet = (root / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
 
     assert '.module-tabs { position: sticky; top: 0; }' in stylesheet
     assert '.module-tabs.is-tall { position: relative; }' in stylesheet

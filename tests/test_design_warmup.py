@@ -4,8 +4,8 @@ import time
 from pathlib import Path
 
 import src.DriveTestAnalyzer as core
-import src.modules.ppt_designer as designs_module
-from src.modules import ppt_design_cache
+import src.modules.ppt_designer.ppt_designer as designs_module
+from src.modules.ppt_designer import ppt_design_cache
 from tests.test_design_slides import logged, setup
 
 

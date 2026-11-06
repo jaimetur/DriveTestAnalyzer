@@ -1,5 +1,5 @@
 """The CDRs chosen in a Design always belong to its workspace."""
-from src.modules.ppt_designer import existing_dataset_selection
+from src.modules.ppt_designer.ppt_designer import existing_dataset_selection
 
 
 class _Datasets:

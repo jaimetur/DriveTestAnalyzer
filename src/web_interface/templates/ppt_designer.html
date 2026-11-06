@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
 {% block content %}
-<link rel="stylesheet" href="{{ static_path('css/ppt_designer.css') }}?v={{ asset_version('css/ppt_designer.css') }}">
-<link rel="stylesheet" href="{{ static_path('css/designer.css') }}?v={{ asset_version('css/designer.css') }}">
-<link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/ppt_designer/ppt_designer.css') }}?v={{ asset_version('css/ppt_designer/ppt_designer.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/ppt_designer/designer.css') }}?v={{ asset_version('css/ppt_designer/designer.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/core/rich_text.css') }}?v={{ asset_version('css/core/rich_text.css') }}">
 <section class="dashboard-stack spacious-stack ppt-designer" id="ppt-designer">
   <article class="panel hero-panel module-hero-ppt-designer">
     <p class="eyebrow">PPT Designer</p><h2>Your PPT design, live on screen</h2>
@@ -130,13 +130,13 @@
     });
   })();
 </script>
-<script defer src="{{ static_path('js/canvas_charts.js') }}?v={{ asset_version('js/canvas_charts.js') }}"></script>
-<script defer src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
-<script defer src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
-<script defer src="{{ static_path('js/rich_text.js') }}?v={{ asset_version('js/rich_text.js') }}"></script>
-<script defer src="{{ static_path('js/ppt_designer.js') }}?v={{ asset_version('js/ppt_designer.js') }}"></script>
-<script defer src="{{ static_path('js/chart_shelves.js') }}?v={{ asset_version('js/chart_shelves.js') }}"></script>
-<script defer src="{{ static_path('js/places_editor.js') }}?v={{ asset_version('js/places_editor.js') }}"></script>
-<script defer src="{{ static_path('js/chart_format.js') }}?v={{ asset_version('js/chart_format.js') }}"></script>
-<script defer src="{{ static_path('js/designer.js') }}?v={{ asset_version('js/designer.js') }}"></script>
+<script defer src="{{ static_path('js/core/canvas_charts.js') }}?v={{ asset_version('js/core/canvas_charts.js') }}"></script>
+<script defer src="{{ static_path('js/core/element_image.js') }}?v={{ asset_version('js/core/element_image.js') }}"></script>
+<script defer src="{{ static_path('js/core/image_buttons.js') }}?v={{ asset_version('js/core/image_buttons.js') }}"></script>
+<script defer src="{{ static_path('js/core/rich_text.js') }}?v={{ asset_version('js/core/rich_text.js') }}"></script>
+<script defer src="{{ static_path('js/ppt_designer/ppt_designer.js') }}?v={{ asset_version('js/ppt_designer/ppt_designer.js') }}"></script>
+<script defer src="{{ static_path('js/ppt_designer/chart_shelves.js') }}?v={{ asset_version('js/ppt_designer/chart_shelves.js') }}"></script>
+<script defer src="{{ static_path('js/ppt_designer/places_editor.js') }}?v={{ asset_version('js/ppt_designer/places_editor.js') }}"></script>
+<script defer src="{{ static_path('js/ppt_designer/chart_format.js') }}?v={{ asset_version('js/ppt_designer/chart_format.js') }}"></script>
+<script defer src="{{ static_path('js/ppt_designer/designer.js') }}?v={{ asset_version('js/ppt_designer/designer.js') }}"></script>
 {% endblock %}

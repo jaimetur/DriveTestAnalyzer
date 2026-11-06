@@ -5,8 +5,8 @@ import copy
 import pandas as pd
 import pytest
 
-from src.modules.scoring import METHOD_VERSION, calculate_scoring, method_version_for_configuration
-from src.modules.scoring_config import configuration_hash, validate_scoring_configuration
+from src.modules.scoring.scoring import METHOD_VERSION, calculate_scoring, method_version_for_configuration
+from src.modules.scoring.scoring_config import configuration_hash, validate_scoring_configuration
 from tests.scoring_fixtures import legacy_scoring_configuration, scoring_configuration
 
 

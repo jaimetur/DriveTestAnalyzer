@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.modules.analytics import CDF_DEFAULT_Y_THRESHOLD, MAX_CDF_POINTS, MIN_CDF_POINTS_PER_SERIES, _top_records, apply_filters, build_analysis, compute_cdf
-from src.modules.ingestion import _normalise_dataset, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, infer_dataset_kind, load_dataset
-from src.modules.column_names import MAIN_CDR_FIELDS, column_identity
+from src.modules.cdr_analysis.analytics import CDF_DEFAULT_Y_THRESHOLD, MAX_CDF_POINTS, MIN_CDF_POINTS_PER_SERIES, _top_records, apply_filters, build_analysis, compute_cdf
+from src.modules.cdr.ingestion import _normalise_dataset, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, infer_dataset_kind, load_dataset
+from src.modules.cdr.column_names import MAIN_CDR_FIELDS, column_identity
 from src.DriveTestAnalyzer import derive_available_metrics, derive_filter_options
 
 

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.modules.design_column_cache import (
+from src.modules.ppt_designer.design_column_cache import (
     CacheSource,
     ColumnCache,
     Segment,

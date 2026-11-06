@@ -364,11 +364,11 @@ process.stdout.write(JSON.stringify({unavailable, available, reset, unmatched}))
 def test_reload_opens_scoring_dimmed_at_the_saved_position_until_it_is_drawn():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    restore = (SCORING_SCRIPT.parent / 'page_restore.js').read_text(encoding='utf-8')
-    styles = (SCORING_SCRIPT.parent.parent / 'css' / 'app.css').read_text(encoding='utf-8')
+    restore = (SCORING_SCRIPT.parents[1] / 'core' / 'page_restore.js').read_text(encoding='utf-8')
+    styles = (SCORING_SCRIPT.parents[2] / 'css' / 'core' / 'app.css').read_text(encoding='utf-8')
     # Before the page is drawn, with the same key as scoring.js: the page dimmed under a gradient with a notice.
     early = template.split('{% block content %}', 1)[1].split('<style>', 1)[0]
-    assert "js/page_restore.js" in early and "window.PageRestore.keyOf('scoring-view'," in early
+    assert "js/core/page_restore.js" in early and "window.PageRestore.keyOf('scoring-view'," in early
     assert "notice: 'Loading Scoring & GAP Analysis where you left it…'" in early
     assert "'drivetest-analyzer', 'scoring-view',\n    encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous')," in script
     assert "const keyOf = (view, workspaceId) => ['drivetest-analyzer', view," in restore
@@ -405,7 +405,7 @@ def test_result_tabs_stay_at_the_top_while_the_results_are_scrolled():
     assert 'if (start < top) window.scrollBy({top: start - top, behavior: \'auto\'});' in script
     # The button that downloads a chart as an image stays below it, in light blue.
     assert 'tabs?.height ? tabs.bottom + 3 : 0);' in script
-    styles = (SCORING_TEMPLATE.parents[1] / 'static/css/app.css').read_text(encoding='utf-8')
+    styles = (SCORING_TEMPLATE.parents[1] / 'static/css/core/app.css').read_text(encoding='utf-8')
     assert 'background: #e3f0fc; color: #1f5f9e;' in styles.split('.element-image-button {', 1)[1].split('}', 1)[0]
     # The one of the whole card in a more intense blue.
     assert '.element-image-button[data-image-level="card"] { border-color: #1f6fc0; background: #2f86dc; color: #fff; }' in styles

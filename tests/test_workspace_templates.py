@@ -8,8 +8,8 @@ import zipfile
 
 import pytest
 
-from src.modules.repository import Repository
-from src.modules.workspaces import WorkspaceRegistry
+from src.modules.core.repository import Repository
+from src.modules.core.workspaces import WorkspaceRegistry
 import src.DriveTestAnalyzer as app_module
 
 

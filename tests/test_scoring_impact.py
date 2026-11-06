@@ -12,13 +12,13 @@ import pytest
 from pptx import Presentation
 
 import src.DriveTestAnalyzer as app_module
-from src.modules import saved_filters, scoring_cache, scoring_impact
-from src.modules.repository import Repository, local_now_iso
-from src.modules.scoring import calculate_scoring
-from src.modules.scoring_config import validate_scoring_configuration
-from src.modules.scoring_export_panels import default_export_panels, normalize_export_panels
-from src.modules.scoring_impact_exports import export_impact_csv, export_impact_powerpoint, render_impact_map
-from src.modules.scoring_impact_maps import area_analysis, build_maps, impact_map, map_geometry
+from src.modules.scoring import saved_filters, scoring_cache, scoring_impact
+from src.modules.core.repository import Repository, local_now_iso
+from src.modules.scoring.scoring import calculate_scoring
+from src.modules.scoring.scoring_config import validate_scoring_configuration
+from src.modules.scoring.scoring_export_panels import default_export_panels, normalize_export_panels
+from src.modules.scoring.scoring_impact_exports import export_impact_csv, export_impact_powerpoint, render_impact_map
+from src.modules.scoring.scoring_impact_maps import area_analysis, build_maps, impact_map, map_geometry
 from tests.scoring_cdr_synthetic import SOUTH, netcheck_2026_configuration, synthetic_cdr_frames
 from tests.test_scoring_exports import TEMPLATE
 
@@ -465,9 +465,9 @@ def test_the_key_of_a_comparison_changes_with_what_it_depends_on(workspace):
 
 def test_the_tab_is_in_the_page_and_the_menu(workspace):
     page = workspace['client'].get('/scoring').text
-    assert 'data-result-tab="impact"' in page and 'data-result-pane="impact"' in page and 'js/scoring_impact.js' in page
+    assert 'data-result-tab="impact"' in page and 'data-result-pane="impact"' in page and 'js/scoring/scoring_impact.js' in page
     assert 'scoring-results-methodology-impact' in page
-    script = (ROOT / 'src/web_interface/static/js/scoring.js').read_text()
+    script = (ROOT / 'src/web_interface/static/js/scoring/scoring.js').read_text()
     assert "'points', 'impact']" in script and "'scoring-results-methodology-impact': 'impact'" in script
     config = workspace['client'].get('/workspace-config').text
     assert 'name="exportable:impact:kpis"' in config and 'Methodology Impact' in config

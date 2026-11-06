@@ -2,7 +2,7 @@
 import re
 
 import src.DriveTestAnalyzer as core
-from src.modules import workspace_countries
+from src.modules.mapping import workspace_countries
 
 
 def _operators():

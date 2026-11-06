@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/rich_text.js'
-NQ_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/non_qualified_calls.js'
+SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/core/rich_text.js'
+NQ_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/nq/non_qualified_calls.js'
 
 
 def run(program: str):
@@ -173,7 +173,7 @@ def test_plain_text_for_previews():
 def test_non_qualified_calls_show_and_edit_their_texts_with_it():
     script = NQ_SCRIPT.read_text(encoding='utf-8')
     template = (PROJECT_ROOT / 'src/web_interface/templates/non_qualified_calls.html').read_text(encoding='utf-8')
-    assert template.index('js/rich_text.js') < template.index('js/non_qualified_calls.js') and 'css/rich_text.css' in template
+    assert template.index('js/core/rich_text.js') < template.index('js/nq/non_qualified_calls.js') and 'css/core/rich_text.css' in template
     # Long texts: every line a bullet, edited in place (a label would send the clicks to the hidden text area).
     assert "window.RichText.render(text, {implicitBullets: true, className: 'nq-bullets'})" in script
     assert "window.RichText.attach(editor, {implicitBullets: true, docClass: 'nq-bullets', toolbar: 'focus'" in script

@@ -8,13 +8,13 @@ import pandas as pd
 import pytest
 from pptx import Presentation
 
-from src.modules.scoring import calculate_scoring, interpolate_score, most_reliable_result
-from src.modules.scoring_config import (
+from src.modules.scoring.scoring import calculate_scoring, interpolate_score, most_reliable_result
+from src.modules.scoring.scoring_config import (
     configuration_hash, has_most_reliable_scoring, most_reliable_configuration, scoring_profiles_document,
     unwrap_scoring_profiles_payload, validate_scoring_configuration,
 )
-from src.modules.scoring_exports import export_scoring_csv, export_scoring_powerpoint
-from src.modules.scoring_views import build_scoring_views
+from src.modules.scoring.scoring_exports import export_scoring_csv, export_scoring_powerpoint
+from src.modules.scoring.scoring_views import build_scoring_views
 from tests.scoring_fixtures import scoring_configuration
 from tests.test_scoring_api import scoring_api  # noqa: F401  (fixture)
 from tests.test_scoring_exports import TEMPLATE
@@ -280,8 +280,8 @@ def test_most_reliable_points_survive_methodology_export_and_import():
 def test_scoring_job_api_returns_and_exports_the_most_reliable_scoring(scoring_api, monkeypatch):
     from types import ModuleType
 
-    from src.modules import scoring as scoring_engine
-    from src.modules import saved_filters
+    from src.modules.scoring import scoring as scoring_engine
+    from src.modules.scoring import saved_filters
 
     client = scoring_api['client']
     repository = scoring_api['repository']
@@ -290,7 +290,7 @@ def test_scoring_job_api_returns_and_exports_the_most_reliable_scoring(scoring_a
              'Session_Type': 'CALL', 'Call_Status': status}
             for level_2 in ('City', 'Connectionroad')
             for operator, status in (('EE', 'Completed'), ('O2 UK', 'Completed'), ('O2 UK', 'Failed'))]
-    engine = ModuleType('src.modules.scoring')
+    engine = ModuleType('src.modules.scoring.scoring')
     engine.METHOD_VERSION = 'most-reliable-api-test'
     engine.required_input_columns = lambda kind, levels: [*levels, 'score']
     engine.calculate_scoring = lambda frames, levels, *, baseline_operator, configuration=None: (

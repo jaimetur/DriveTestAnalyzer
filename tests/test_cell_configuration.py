@@ -8,8 +8,8 @@ import pandas as pd
 
 import src.DriveTestAnalyzer as core
 from conftest import wait_for_background_dataset_work
-from src.modules import network_inventory as ni
-from src.modules.cell_configuration import is_cell_configuration_package, read_cell_configuration
+from src.modules.network import network_inventory as ni
+from src.modules.network.cell_configuration import is_cell_configuration_package, read_cell_configuration
 
 LTE_CELLS = (
     # Huawei cell hosted by Vodafone for O2: its Cell ID (110), not its Local Cell ID (7), completes the ECI.

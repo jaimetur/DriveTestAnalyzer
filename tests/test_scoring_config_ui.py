@@ -9,7 +9,7 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PANEL_TEMPLATE = PROJECT_ROOT / 'src/web_interface/templates/scoring_config_panels.html'
-PANEL_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring_config.js'
+PANEL_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring/scoring_config.js'
 
 
 def test_scoring_configuration_panel_exposes_methodology_and_weight_controls():

@@ -7,7 +7,7 @@ import time
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules.scoring_reports import default_scenario
+from src.modules.scoring.scoring_reports import default_scenario
 from tests.test_app import login, login_super
 from tests.test_nq_analysis_center import setup_calls
 
@@ -161,8 +161,8 @@ def test_app_events_export_import_and_back_up_on_their_own(client) -> None:
 
 
 def test_events_of_the_application_belong_to_system(client) -> None:
-    from src.modules import non_qualified_calls as nq
-    from src.modules.repository import PROCESS_EVENT_DETAILS
+    from src.modules.nq import non_qualified_calls as nq
+    from src.modules.core.repository import PROCESS_EVENT_DETAILS
 
     login(client)
     imported = PROCESS_EVENT_DETAILS[('import', 'nq_table_columns')]
@@ -266,7 +266,7 @@ def test_app_events_filters_choose_several_values(client) -> None:
     # An action wraps only at its underscores; the date shows its time as a badge below.
     assert '<td>change_<wbr>password</td>' in page
     # Every badge of the table (the time, the username or application, where it ran) has one size.
-    css = (Path(core.__file__).parent / 'web_interface' / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
+    css = (Path(core.__file__).parent / 'web_interface' / 'static' / 'css' / 'core' / 'app.css').read_text(encoding='utf-8')
     assert '.app-logs-table .user-choice-tag.app-log-badge { font-size: var(--app-log-badge-size);' in css
     # The time in green, like the default user tag, its digits a little larger in a box as high as the other badges.
     assert '.app-logs-table .user-choice-tag.app-log-badge.user-choice-tag-time { font-size: calc(var(--app-log-badge-size) * 1.16);' in css
@@ -277,7 +277,7 @@ def test_app_events_filters_choose_several_values(client) -> None:
 def test_an_open_app_events_filter_list_keeps_its_menu_while_the_table_refreshes() -> None:
     from pathlib import Path
 
-    script = (Path(core.__file__).parent / 'web_interface' / 'static' / 'js' / 'app.js').read_text(encoding='utf-8')
+    script = (Path(core.__file__).parent / 'web_interface' / 'static' / 'js' / 'core' / 'app.js').read_text(encoding='utf-8')
     # The refresh does not rebuild a list while it is open: its new values wait until it closes.
     assert 'if (filterListOpen(control)) {\n      pendingFilterOptions.set(control, options);\n      return;\n    }' in script
     assert 'pendingFilterOptions.forEach((options, control) => { if (!filterListOpen(control)) setFilterOptions(control, options); });' in script
@@ -325,7 +325,7 @@ def test_every_field_changed_in_a_user_is_recorded_once_per_save(client) -> None
 def test_app_events_are_filtered_and_paged_on_the_server(client) -> None:
     import inspect
 
-    from src.modules.repository import APP_EVENTS_LIMIT, Repository
+    from src.modules.core.repository import APP_EVENTS_LIMIT, Repository
 
     login(client)
     # App Events shows the newest 10,000 events (every event is kept); one named limit.
@@ -451,7 +451,7 @@ def test_public_pages_and_sign_in_are_where_their_events_ran(client) -> None:
 
 
 def test_every_application_start_is_recorded_in_every_workspace(client) -> None:
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     assert core.STARTUP_READY.wait(timeout=30)
     started = events('application_started')
@@ -479,8 +479,8 @@ def test_app_events_filter_lists_are_tall_and_compact() -> None:
     from pathlib import Path
 
     static = Path(core.__file__).parent / 'web_interface' / 'static'
-    css = (static / 'css' / 'app.css').read_text(encoding='utf-8')
-    script = (static / 'js' / 'app.js').read_text(encoding='utf-8')
+    css = (static / 'css' / 'core' / 'app.css').read_text(encoding='utf-8')
+    script = (static / 'js' / 'core' / 'app.js').read_text(encoding='utf-8')
     # Only the App Events lists: most of the window tall, values close together, the search and Select All / None fixed.
     assert ('.app-logs-filters .multiselect-menu { width: max-content; min-width: max(100%, 15rem); '
             'max-width: min(32rem, calc(100vw - 2rem));') in css

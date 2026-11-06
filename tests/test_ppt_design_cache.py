@@ -7,7 +7,7 @@ import zlib
 from contextlib import closing
 from pathlib import Path
 
-from src.modules import ppt_design_cache
+from src.modules.ppt_designer import ppt_design_cache
 
 
 def workspace_database(tmp_path: Path) -> Path:

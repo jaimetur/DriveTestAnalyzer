@@ -150,7 +150,7 @@ def netcheck_2026_configuration() -> dict:
     import json
     from pathlib import Path
 
-    from src.modules.scoring_config import validate_scoring_configuration
+    from src.modules.scoring.scoring_config import validate_scoring_configuration
     document = json.loads((Path(__file__).resolve().parents[1] / 'assets' / 'scoring-methodologies'
                            / 'NetCheck_2026.json').read_text())
     return validate_scoring_configuration(document['profiles'][0]['configuration'])
@@ -165,7 +165,7 @@ def synthetic_cdr_result(levels=('Operator', 'City', 'Campaign'), **options) -> 
 
 
 def _synthetic_cdr_result(levels, **options) -> tuple[dict, dict]:
-    from src.modules.scoring import calculate_scoring
+    from src.modules.scoring.scoring import calculate_scoring
     configuration = netcheck_2026_configuration()
     result = calculate_scoring(synthetic_cdr_frames(**options), list(levels), baseline_operator='EE',
                                configuration=configuration)

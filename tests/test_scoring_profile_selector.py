@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.repository import Repository
+from src.modules.core.repository import Repository
 from tests.scoring_fixtures import scoring_configuration
 
 
@@ -84,5 +84,5 @@ def test_scoring_calculation_selector_lists_profiles_and_defaults_to_by_campaign
     assert alternate_page_profile == {'id': 'netcheck-alt', 'name': 'Alternative methodology'}
     assert page_config['active_profile_id'] == active_id
 
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/scoring.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/scoring/scoring.js').read_text(encoding='utf-8')
     assert 'scoring_profile_id: scoringProfileSelect?.value || undefined' in script

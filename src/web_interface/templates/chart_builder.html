@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-<link rel="stylesheet" href="{{ static_path('css/designer.css') }}?v={{ asset_version('css/designer.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/ppt_designer/designer.css') }}?v={{ asset_version('css/ppt_designer/designer.css') }}">
 <section class="dashboard-stack spacious-stack reporting-stack">
   <article class="panel hero-panel chart-builder-hero" style="background:linear-gradient(135deg,#b85b20,#e99b45)!important;color:#fff">
     <p class="eyebrow">Chart Builder</p><h2>Ad-Hoc Charts from your CDRs</h2>
@@ -399,9 +399,9 @@
   document.addEventListener('DOMContentLoaded', () => { render(); loadFields(); });
 })();
 </script>
-<script defer src="{{ static_path('js/canvas_charts.js') }}?v={{ asset_version('js/canvas_charts.js') }}"></script>
-<script defer src="{{ static_path('js/chart_shelves.js') }}?v={{ asset_version('js/chart_shelves.js') }}"></script>
-<script defer src="{{ static_path('js/chart_format.js') }}?v={{ asset_version('js/chart_format.js') }}"></script>
-<script defer src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
-<script defer src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
+<script defer src="{{ static_path('js/core/canvas_charts.js') }}?v={{ asset_version('js/core/canvas_charts.js') }}"></script>
+<script defer src="{{ static_path('js/ppt_designer/chart_shelves.js') }}?v={{ asset_version('js/ppt_designer/chart_shelves.js') }}"></script>
+<script defer src="{{ static_path('js/ppt_designer/chart_format.js') }}?v={{ asset_version('js/ppt_designer/chart_format.js') }}"></script>
+<script defer src="{{ static_path('js/core/element_image.js') }}?v={{ asset_version('js/core/element_image.js') }}"></script>
+<script defer src="{{ static_path('js/core/image_buttons.js') }}?v={{ asset_version('js/core/image_buttons.js') }}"></script>
 {% endblock %}

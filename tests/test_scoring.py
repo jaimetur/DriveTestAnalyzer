@@ -5,7 +5,7 @@ from copy import deepcopy
 import pandas as pd
 import pytest
 
-from src.modules.scoring import calculate_scoring as _calculate_scoring, interpolate_score, required_input_columns
+from src.modules.scoring.scoring import calculate_scoring as _calculate_scoring, interpolate_score, required_input_columns
 from tests.scoring_fixtures import load_initial_scoring_configuration, scoring_configuration
 
 CONFIG = load_initial_scoring_configuration()
@@ -478,7 +478,7 @@ def test_environment_with_results_in_some_series_is_not_scaled():
 
 
 def test_results_saved_before_scaling_are_scaled_when_opened():
-    from src.modules.scoring import apply_environment_scaling
+    from src.modules.scoring.scoring import apply_environment_scaling
 
     source = pd.concat([
         frame([{'Session_Type': 'CALL', 'Call_Status': 'Completed'}], operator='EE'),

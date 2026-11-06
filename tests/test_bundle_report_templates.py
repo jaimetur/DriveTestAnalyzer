@@ -11,13 +11,13 @@ from pptx.enum.chart import XL_CHART_TYPE
 from pptx.util import Inches
 
 import src.DriveTestAnalyzer as core
-from src.modules import bundle_report_templates, pptx_compose
-from src.modules import network_insights_export as ni
-from src.modules import non_qualified_calls_export as nq_export
-from src.modules import report_tasks
-from src.modules.cdr_reporting import _remove_all_slides
-from src.modules.pptx_to_docx import PackItem, pack_pages, packed_component_document
-from src.modules.scoring_reports import normalize_report_configuration
+from src.modules.reporting import bundle_report_templates, pptx_compose
+from src.modules.network_insights import network_insights_export as ni
+from src.modules.nq import non_qualified_calls_export as nq_export
+from src.modules.reporting import report_tasks
+from src.modules.cdr_analysis.cdr_reporting import _remove_all_slides
+from src.modules.reporting.pptx_to_docx import PackItem, pack_pages, packed_component_document
+from src.modules.scoring.scoring_reports import normalize_report_configuration
 
 TEMPLATE = Path(__file__).resolve().parents[1] / 'assets' / 'powerpoint-templates' / 'Template_VodafoneThree.pptx'
 PNG = (b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00'
@@ -151,7 +151,7 @@ def test_the_cdr_analysis_section_analyses_the_cdrs_of_each_chosen_type(client, 
     monkeypatch.setattr(bundle_report_templates.SectionGenerator, 'cdr_analysis_cdrs', cdrs)
     monkeypatch.setattr(core, 'build_dataset_summary_reports',
                         lambda ids, username, **options: analysed.append((ids, options)) or original(ids, username, **options))
-    monkeypatch.setattr('src.modules.pptx_to_docx.document_pdf', lambda content, suffix: None)
+    monkeypatch.setattr('src.modules.reporting.pptx_to_docx.document_pdf', lambda content, suffix: None)
     definition = bundle_report_templates.normalize_definition({'filters': {'nr_mode': 'SA', 'operators': ['EE']}})
     for section in definition['sections']:
         section['enabled'] = section['key'] == 'dataset_analysis'
@@ -366,7 +366,7 @@ def test_a_table_too_long_for_a_legible_font_continues_on_more_slides():
 
 
 def test_a_table_with_a_legend_keeps_it_under_the_table_when_joined_fitted_and_continued():
-    from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
+    from src.modules.network_insights.network_insights import RSRP_CLASSES, SINR_CLASSES
 
     classes = lambda definition: [{'label': label, 'colour': colour, 'share': 20.0} for label, _lower, colour in definition]
     columns = ['Operator → Campaign', 'NR band', 'Samples', 'Share of the group', 'Median SS-RSRP', 'Median SS-SINR', 'RSRP classes',
@@ -401,7 +401,7 @@ def test_a_table_with_a_legend_keeps_it_under_the_table_when_joined_fitted_and_c
 
 def test_charts_with_a_table_too_long_to_share_their_slide_keep_its_first_rows_and_the_table_continues():
     from pptx.enum.shapes import MSO_SHAPE_TYPE
-    from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
+    from src.modules.network_insights.network_insights import RSRP_CLASSES, SINR_CLASSES
 
     classes = lambda definition: [{'label': label, 'colour': colour, 'share': 20.0} for label, _lower, colour in definition]
     section = {'rf_rows': [{'operator': f'VF · Q{index}', 'samples': 5751, 'rsrp_median': -90.4, 'rsrp_p10': -104.8, 'low_coverage_share': 2.4,
@@ -672,7 +672,7 @@ def test_word_pages_do_not_repeat_the_title_of_components_that_share_it():
 
 def test_previews_on_linux_use_installed_fonts_instead_of_missing_ones(monkeypatch):
     from pptx import Presentation as NewPresentation
-    from src.modules import pptx_to_docx
+    from src.modules.reporting import pptx_to_docx
 
     presentation = NewPresentation()
     slide = presentation.slides.add_slide(presentation.slide_layouts[6])
@@ -703,7 +703,7 @@ def test_previews_on_linux_use_installed_fonts_instead_of_missing_ones(monkeypat
 def test_long_decks_are_converted_by_several_libreoffice_runs_at_once(monkeypatch):
     import pymupdf
     from pptx import Presentation as NewPresentation
-    from src.modules import pptx_to_docx
+    from src.modules.reporting import pptx_to_docx
 
     presentation = NewPresentation()
     for number in range(20):
@@ -768,10 +768,10 @@ def test_a_report_being_generated_can_be_cancelled_and_tells_its_processing_time
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
     # While it runs, the dialog offers Cancel and Hide (it keeps being generated) and shows its processing time.
     assert all(f'id="{name}"' in page for name in ('brt-dialog-cancel', 'brt-dialog-hide', 'brt-dialog-done', 'brt-dialog-elapsed', 'brt-open-last'))
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
     assert "title: 'Report Ready'" in script and 'Processed in ${duration(job.elapsed_seconds)}' in script
     # Every page tells when a report hidden in Reporting is ready.
-    app_script = (core.PROJECT_ROOT / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    app_script = (core.PROJECT_ROOT / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert "(function watchBundleReportTemplate()" in app_script and '/reporting?bundle_report_template_job=' in app_script
 
 
@@ -779,7 +779,7 @@ def test_one_action_generates_both_formats_and_the_preview_chooses_one():
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
     assert page.count('data-brt-export') == 1 and 'data-brt-export="powerpoint"' not in page
     assert 'data-brt-format="powerpoint"' in page and 'data-brt-format="word"' in page
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
     # Switching the format shows what is already generated: its pages, its sections and its download.
     assert "download.href = `/api/reporting/bundle-report-template/jobs/${job.id}/download/${previewFormat}`" in script
     assert "dialog.classList.toggle('is-word', previewFormat === 'word')" in script
@@ -810,9 +810,9 @@ def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, mo
         return {}
 
     monkeypatch.setattr(core, 'write_network_insights_summary', network_summary)
-    monkeypatch.setattr('src.modules.pptx_to_docx.document_pdf', lambda content, suffix: b'%PDF-1.4')
+    monkeypatch.setattr('src.modules.reporting.pptx_to_docx.document_pdf', lambda content, suffix: b'%PDF-1.4')
     rendered = []
-    monkeypatch.setattr('src.modules.pptx_to_docx.pdf_page_images',
+    monkeypatch.setattr('src.modules.reporting.pptx_to_docx.pdf_page_images',
                         lambda pdf, dpi, pages=None: rendered.append((dpi, pages)) or [PNG] * (len(pages) if pages is not None else 2))
     # The Word version is packed with the PowerPoint, before the preview opens.
     packed = packed_component_document([PackItem('heading1', 'Network Insights')])
@@ -870,7 +870,7 @@ def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, mo
     assert reopened['status'] == 'ready' and reopened['formats'] == job['formats'] and reopened['title'] == job['title']
     assert client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}/download/word').status_code == 200
     assert client.get('/api/reporting/bundle-report-template/options').json()['last_report']['id'] == job_id
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
     assert "$('brt-open-last').hidden = pending || !lastReport || dialog.open;" in script
     assert 'lastReport = brtOptions.last_report' in script
 
@@ -910,7 +910,7 @@ def test_imported_favourites_find_their_designs_by_name_only_when_their_id_is_un
 
 
 def test_favourites_keep_their_designs_checked_and_ordered_in_another_workspace(client):
-    from src.modules.ppt_designer import STATE_KEY
+    from src.modules.ppt_designer.ppt_designer import STATE_KEY
 
     login(client)
 
@@ -950,14 +950,14 @@ def test_favourites_keep_their_designs_checked_and_ordered_in_another_workspace(
     assert [item['key'] for item in items if item['enabled']] == [target[4], target[0]]
     assert len({item['key'] for item in items}) == 6
     # Saving with the name of a favourite overwrites it once the user confirms it, on the page.
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
     assert "title: 'Overwrite Favourite'" in script
     assert "existing ? `/api/reporting/bundle-report-template/favourites/${existing.id}`" in script
     assert "nr_mode: catalogueItem.nr_mode || ''" in script
 
 
 def test_a_stored_scheduled_reporting_title_becomes_reporting_once(client):
-    from src.modules.module_labels import (
+    from src.modules.core.module_labels import (
         MODULE_LABELS_STATE_KEY, REPORTING_TITLE_MIGRATION_KEY, load_module_labels, migrate_reporting_title,
     )
 
@@ -1012,9 +1012,9 @@ def test_word_pages_start_what_does_not_fit_whole_on_the_next_page():
 
 def test_word_contents_follow_the_cover_in_the_theme_of_the_report():
     from docx import Document
-    from src.modules.bundle_report_templates import word_navigation
-    from src.modules.pptx_to_docx import CONTENTS_TITLE, contents_entries
-    from src.modules.scoring_themes import get_theme
+    from src.modules.reporting.bundle_report_templates import word_navigation
+    from src.modules.reporting.pptx_to_docx import CONTENTS_TITLE, contents_entries
+    from src.modules.scoring.scoring_themes import get_theme
 
     def image(caption, height=3.0):
         return PackItem('image', caption, image=PNG, width=7, height=height, group=caption)
@@ -1055,7 +1055,7 @@ def test_word_contents_follow_the_cover_in_the_theme_of_the_report():
 
 
 def test_long_titles_fit_one_line_and_short_ones_keep_their_size():
-    from src.modules.slide_titles import fit_slide_title
+    from src.modules.reporting.slide_titles import fit_slide_title
 
     presentation = Presentation(TEMPLATE)
     layout = next(item for item in presentation.slide_layouts if item.name == 'Title + 1 rows + 1 columns')
@@ -1070,8 +1070,8 @@ def test_long_titles_fit_one_line_and_short_ones_keep_their_size():
 
 
 def test_dark_layouts_draw_the_white_ericsson_logo_and_light_slides_the_dark_one():
-    from src.modules.scoring_exports import _slide
-    from src.modules.template_logos import WHITE_LOGO_SHAPES
+    from src.modules.scoring.scoring_exports import _slide
+    from src.modules.reporting.template_logos import WHITE_LOGO_SHAPES
 
     presentation = Presentation(TEMPLATE)
     layouts = {layout.name: layout for layout in presentation.slide_masters[0].slide_layouts}
@@ -1090,7 +1090,7 @@ def test_dark_layouts_draw_the_white_ericsson_logo_and_light_slides_the_dark_one
 
 
 def test_slides_with_pictures_pillow_cannot_read_are_copied():
-    from src.modules.scoring_exports import _slide
+    from src.modules.scoring.scoring_exports import _slide
 
     # The Scoring slides draw the WMF logo of the master themselves.
     source = pptx_compose.deck(_deck(lambda presentation: _slide(presentation, 'Scoring Tables — Summary', 'Best Network')))
@@ -1115,7 +1115,7 @@ def test_a_second_export_reuses_the_sections_whose_data_has_not_changed(client, 
 
     monkeypatch.setattr(core, 'write_network_insights_summary', network_summary)
     monkeypatch.setattr(core, 'network_insights_summary_key', lambda selection: 'analysis-' + ','.join(selection['campaigns']))
-    monkeypatch.setattr('src.modules.pptx_to_docx.document_pdf', lambda content, suffix: None)
+    monkeypatch.setattr('src.modules.reporting.pptx_to_docx.document_pdf', lambda content, suffix: None)
     definition = bundle_report_templates.normalize_definition({})
     for section in definition['sections']:
         section['enabled'] = section['key'] == 'network_insights'
@@ -1192,7 +1192,7 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
     login(client)
     definition = bundle_report_templates.normalize_definition({})
     bundle_report_templates.save_favourite(core.repository, None, 'Quarterly', definition, 'super')
-    from src.modules.scoring_reports import load_report_state
+    from src.modules.scoring.scoring_reports import load_report_state
 
     configurations = [item['name'] for item in load_report_state(core.repository)['configurations']]
     # The message names one item or several (``1 Bundle Report Template Favourite``, ``2 … Favourites``).
@@ -1232,8 +1232,8 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
 
 def test_favourites_saved_before_store_only_the_theme_of_the_report(tmp_path):
     # Favourites whose Scoring and Network Insights sections kept the theme store only that of the report.
-    from src.modules import bundle_report_templates
-    from src.modules.repository import Repository
+    from src.modules.reporting import bundle_report_templates
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'workspace.db')
     with repository.connection() as connection:
@@ -1252,7 +1252,7 @@ def test_favourites_saved_before_store_only_the_theme_of_the_report(tmp_path):
 def test_favourites_saved_with_a_former_name_move_to_the_bundle_report_templates(tmp_path):
     # The favourites of a workspace made when they were Complete Reports keep their IDs (which the jobs name), and those
     # of the tables of the names they had briefly are added unless one of the same name is there.
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     repository = Repository(tmp_path / 'workspace.db')
     table = bundle_report_templates.BUNDLE_REPORT_TEMPLATES_TABLE
@@ -1272,7 +1272,7 @@ def test_favourites_saved_with_a_former_name_move_to_the_bundle_report_templates
 
 
 def test_jobs_packages_and_folders_with_a_former_name_take_the_current_one(tmp_path):
-    from src.modules.output_layout import migrate_output_layout
+    from src.modules.core.output_layout import migrate_output_layout
 
     # Jobs saved or exported with a former artifact key take the current one.
     for former in report_tasks.LEGACY_PROVIDER_KEYS:
@@ -1316,11 +1316,11 @@ def test_favourites_travel_with_every_option_of_their_scoring_section(client):
 
 
 def test_each_section_shows_one_campaigns_field():
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/bundle_report_template.js').read_text(encoding='utf-8')
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
     # Scoring lists the campaigns of its own NR Mode while it is drawn, before the section is on the page: its Campaigns
     # field is replaced in its row, never added a second time.
     assert 'if (campaigns?.parentNode) campaigns.replaceWith(field);' in script and 'campaigns?.isConnected' not in script
-    css = (core.PROJECT_ROOT / 'src/web_interface/static/css/report_jobs.css').read_text(encoding='utf-8')
+    css = (core.PROJECT_ROOT / 'src/web_interface/static/css/reporting/report_jobs.css').read_text(encoding='utf-8')
     # Campaigns, GAP reference and Methodology in a row, one below the other on narrow screens.
     assert '.brt-scope { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 14rem) minmax(20rem, 1fr);' in css
     assert css.index('.brt-scope { display: grid;') < css.index('@media (max-width: 900px) { .brt-scope {')

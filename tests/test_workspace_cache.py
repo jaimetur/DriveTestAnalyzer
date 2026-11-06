@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.modules import bundle_report_templates, inventory_insights, ppt_design_cache, scoring_cache, workspace_cache
+from src.modules.reporting import bundle_report_templates
+from src.modules.network_insights import inventory_insights
+from src.modules.ppt_designer import ppt_design_cache
+from src.modules.scoring import scoring_cache
+from src.modules.core import workspace_cache
 
 
 def _write(path: Path, content: bytes = b'x') -> Path:

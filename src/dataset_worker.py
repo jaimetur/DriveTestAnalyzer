@@ -27,8 +27,8 @@ from src.DriveTestAnalyzer import (
     process_vendor_mapping,
     repository,
 )
-from src.modules.repository import Repository
-from src.modules.workspaces import WorkspaceRegistry
+from src.modules.core.repository import Repository
+from src.modules.core.workspaces import WorkspaceRegistry
 
 
 def main() -> None:

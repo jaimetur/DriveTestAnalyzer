@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import design_slides as dd
-from src.modules.cdr_reporting import catalogue_csv, parse_catalog_csv
-from src.modules.report_layouts import csv_with_slide_ids
+from src.modules.ppt_designer import design_slides as dd
+from src.modules.cdr_analysis.cdr_reporting import catalogue_csv, parse_catalog_csv
+from src.modules.reporting.report_layouts import csv_with_slide_ids
 
 TEMPLATES = Path(__file__).parents[1] / 'assets' / 'ppt-templates'
 
@@ -567,7 +567,7 @@ def test_the_chart_builder_draws_its_rows_in_the_order_they_were_dragged_to(clie
 # --------------------------------------------------------------------------------------------------------------------
 
 def test_kpi_cards_text_boxes_pictures_places_and_repeat_travel_in_the_format_column():
-    from src.modules import ppt_designer as designs
+    from src.modules.ppt_designer import ppt_designer as designs
     slide_set = {'version': 1, 'parameters': [], 'slides': [{
         'id': 's1', 'kind': 'content', 'title': 'Overview', 'subtitle': '', 'layout': 'Title and 2 columns + Comments', 'optional': False,
         'options': {'geometry': [[0, 0, 30, 100], [32, 0, 68, 100]], 'grid': {'rows': [1], 'columns': [0.3, 0.7], 'areas': [[0, 0, 1, 1], [0, 1, 1, 1]]}},

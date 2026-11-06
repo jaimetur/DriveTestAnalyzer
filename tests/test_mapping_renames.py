@@ -2,9 +2,9 @@
 import json
 
 import src.DriveTestAnalyzer as core
-from src.modules import report_tasks
-from src.modules.mapping_renames import rename_in_document, rename_in_query, value_renamer
-from src.modules.scoring_reports import default_report_configuration
+from src.modules.reporting import report_tasks
+from src.modules.mapping.mapping_renames import rename_in_document, rename_in_query, value_renamer
+from src.modules.scoring.scoring_reports import default_report_configuration
 
 SETTINGS = {
     'operator_mapping_groups': [{'canonical': name, 'aliases': []} for name in ('EE', '3', 'VF_UK', 'VF_SA', 'O2')],
@@ -77,8 +77,9 @@ def test_renaming_an_operator_in_the_maps_renames_it_in_jobs_and_saved_filters(c
 
 
 def test_renaming_an_operator_renames_it_in_the_scoring_saved_filters_and_the_favourites(client):
-    from src.modules import bundle_report_templates, network_insights_favourites
-    from src.modules.saved_filters import SAVED_FILTERS_TABLE, saved_filter_key
+    from src.modules.reporting import bundle_report_templates
+    from src.modules.network_insights import network_insights_favourites
+    from src.modules.scoring.saved_filters import SAVED_FILTERS_TABLE, saved_filter_key
 
     login(client)
     repository = core.repository
@@ -126,7 +127,7 @@ def test_job_editor_drafts_of_a_changed_job_are_discarded_and_close_is_labelled(
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
-    script = (root / 'src/web_interface/static/js/report_jobs.js').read_text(encoding='utf-8')
+    script = (root / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
     # The draft keeps the version of the job it was made from; a newer saved job is opened instead.
     assert 'editingUpdatedAt = task?.updated_at' in script
     assert 'if (task && draft.editingUpdatedAt !== task.updated_at) {' in script
@@ -137,7 +138,7 @@ def test_job_editor_drafts_of_a_changed_job_are_discarded_and_close_is_labelled(
 def test_mixed_vendor_groups_are_stored_with_their_interface_labels(tmp_path):
     import sqlite3
 
-    from src.modules.repository import SCHEMA, Repository
+    from src.modules.core.repository import SCHEMA, Repository
 
     database_path = tmp_path / 'workspace.db'
     repository = Repository(database_path)

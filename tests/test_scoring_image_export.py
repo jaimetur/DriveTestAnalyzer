@@ -4,14 +4,14 @@ import json
 from pathlib import Path
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.app_event_details import app_event_origin, describe_app_event
+from src.modules.core.app_event_details import app_event_origin, describe_app_event
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCORING_TEMPLATE = PROJECT_ROOT / 'src/web_interface/templates/scoring.html'
-SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring.js'
-IMAGE_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/element_image.js'
-BUTTONS_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/image_buttons.js'
-APP_STYLES = PROJECT_ROOT / 'src/web_interface/static/css/app.css'
+SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring/scoring.js'
+IMAGE_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/core/element_image.js'
+BUTTONS_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/core/image_buttons.js'
+APP_STYLES = PROJECT_ROOT / 'src/web_interface/static/css/core/app.css'
 
 
 def test_downloaded_scoring_images_and_failures_are_recorded_in_app_events(client, monkeypatch):
@@ -72,7 +72,7 @@ def test_scoring_results_place_one_download_button_over_the_chart_or_table_under
     styles = APP_STYLES.read_text(encoding='utf-8')
 
     # The drawing of the image and the buttons (shared by the modules) load before the page script that uses them.
-    assert template.index("js/element_image.js") < template.index("js/image_buttons.js") < template.index("js/scoring.js")
+    assert template.index("js/core/element_image.js") < template.index("js/core/image_buttons.js") < template.index("js/scoring/scoring.js")
     assert '.element-image-button { position: fixed;' in styles
     assert '[data-scoring-theme="midnight"] .element-image-button {' in template
     # The charts, maps, tables and panels of Scoring (the tables and the map of a route too), and the larger view of one.

@@ -7,13 +7,13 @@ from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.util import Inches
 
-from src.modules import report_structure
-from src.modules.cdr_reporting import _remove_all_slides
-from src.modules.pptx_compose import content_shapes
-from src.modules.scoring_themes import THEMES, use_theme
-from src.modules.template_logos import WHITE_LOGO_SHAPES, use_dark_logos
-from src.modules.theme_dark import dark_theme_of, darken_presentation
-from src.modules.theme_titles import style_title
+from src.modules.reporting import report_structure
+from src.modules.cdr_analysis.cdr_reporting import _remove_all_slides
+from src.modules.reporting.pptx_compose import content_shapes
+from src.modules.scoring.scoring_themes import THEMES, use_theme
+from src.modules.reporting.template_logos import WHITE_LOGO_SHAPES, use_dark_logos
+from src.modules.reporting.theme_dark import dark_theme_of, darken_presentation
+from src.modules.reporting.theme_titles import style_title
 from tests.test_scoring_exports import TEMPLATE
 
 

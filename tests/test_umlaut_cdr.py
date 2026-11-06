@@ -7,10 +7,11 @@ import pytest
 from openpyxl import Workbook
 
 import src.DriveTestAnalyzer as core
-from src.modules import cdr_field_dictionary, cdr_store, cdr_types, ingestion, map_area_columns, map_areas, umlaut_cdr
-from src.modules import network_insights as ni
-from src.modules import non_qualified_calls as nq
-from src.modules.cdr_field_profiles import NETCHECK_PROFILE, UMLAUT_PROFILE, field_profile, workspace_field_profile
+from src.modules.cdr import cdr_field_dictionary, cdr_store, cdr_types, ingestion, umlaut_cdr
+from src.modules.network import map_area_columns, map_areas
+from src.modules.network_insights import network_insights as ni
+from src.modules.nq import non_qualified_calls as nq
+from src.modules.cdr.cdr_field_profiles import NETCHECK_PROFILE, UMLAUT_PROFILE, field_profile, workspace_field_profile
 
 
 def login(client, username='super', password='super123'):
@@ -314,7 +315,7 @@ def test_non_qualified_calls_name_the_provider_of_the_cdrs(client):
     fields = {field['key']: field for field in nq.provider_field_labels(nq.list_fields(core.repository), core.repository)}
     assert fields['netcheck_failure_classification']['label'] == 'Umlaut RCA Failure Classification'
     assert 'NetCheck' not in fields['failure_comment']['description']
-    from src.modules.non_qualified_calls_visuals import root_cause_title
+    from src.modules.nq.non_qualified_calls_visuals import root_cause_title
     assert str(root_cause_title({'source': 'netcheck', 'provider': umlaut})) == 'Root Cause Analysis · Umlaut RCA'
     assert str(root_cause_title({'source': 'netcheck'})) == 'Root Cause Analysis · NetCheck RCA'
 

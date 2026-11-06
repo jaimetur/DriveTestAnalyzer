@@ -7,8 +7,8 @@ import pandas as pd
 
 import src.DriveTestAnalyzer as core
 from conftest import wait_for_background_dataset_work
-from src.modules.cdr_stage import combined_inclusion, infer_cdr_stage
-from src.modules.repository import local_now_iso
+from src.modules.cdr.cdr_stage import combined_inclusion, infer_cdr_stage
+from src.modules.core.repository import local_now_iso
 
 
 def login(client, username='super', password='super123'):
@@ -231,7 +231,7 @@ def test_cdr_selectors_highlight_weekly_and_daily_cdrs(client, tmp_path):
     assert 'data-cdr-stage="weekly"' in option(weekly)
     assert 'data-cdr-stage="daily"' in option(daily)
     # Every module lists its CDRs with the shared CDR list of app.js and app.css.
-    styles = (Path(core.__file__).parent / 'web_interface/static/css/app.css').read_text(encoding='utf-8')
+    styles = (Path(core.__file__).parent / 'web_interface/static/css/core/app.css').read_text(encoding='utf-8')
     assert '.auto-cdr[data-cdr-stage="daily"] { border: 1px dashed' in styles
     assert '.auto-cdr[data-cdr-stage="weekly"] { border: 1px dashed' in styles
 

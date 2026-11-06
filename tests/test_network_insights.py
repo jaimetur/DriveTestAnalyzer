@@ -10,9 +10,9 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as app_module
-from src.modules import network_insights as ni
-from src.modules.cdr_reporting import _explicit_bucket_labels, _osm_map_tile_geometry, _status_chart_categories
-from src.modules.repository import local_now_iso
+from src.modules.network_insights import network_insights as ni
+from src.modules.cdr_analysis.cdr_reporting import _explicit_bucket_labels, _osm_map_tile_geometry, _status_chart_categories
+from src.modules.core.repository import local_now_iso
 
 
 TEMPLATE_PATH = Path(__file__).resolve().parent / 'fixtures' / 'rf-quality-template.csv'
@@ -134,7 +134,7 @@ def _bandwidth_rows(campaign: str = '2026-Q3') -> pd.DataFrame:
 
 
 def test_environments_bandwidth_classes_and_band_bandwidths() -> None:
-    from src.modules.cdr_environments import environment_class
+    from src.modules.cdr.cdr_environments import environment_class
 
     assert [environment_class(value) for value in ('Big Cities', 'Medium Cities', 'Small Cities', 'Highway', 'Roads', 'Train',
                                                   'Connecting Roads', 'Train Route', 'City', '')] == [
@@ -300,13 +300,13 @@ def test_threshold_and_negative_bucket_labels_follow_the_configuration() -> None
 def test_bundled_rf_quality_template_is_valid() -> None:
     catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     assert len(catalogue) == 116
-    from src.modules.cdr_reporting import catalogue_csv, parse_catalog_csv
+    from src.modules.cdr_analysis.cdr_reporting import catalogue_csv, parse_catalog_csv
     restored = parse_catalog_csv(catalogue_csv(catalogue))
     assert [(entry.cdr_source, entry.chart_type, entry.kpi, entry.filters) for entry in restored] == [
         (entry.cdr_source, entry.chart_type, entry.kpi, entry.filters) for entry in catalogue
     ]
     from pptx import Presentation
-    from src.modules.cdr_reporting import _named_slide_layout
+    from src.modules.cdr_analysis.cdr_reporting import _named_slide_layout
     presentation = Presentation(str(Path(__file__).resolve().parents[1] / 'assets' / 'powerpoint-templates' / 'Template_VodafoneThree.pptx'))
     for layout_name in {entry.layout for entry in catalogue}:
         assert _named_slide_layout(presentation, layout_name) is not None, layout_name
@@ -335,7 +335,7 @@ def test_bundled_rf_quality_template_is_valid() -> None:
 
 
 def test_a_map_reads_its_coordinates_whether_its_measures_are_written_with_vs_or_with_a_bar() -> None:
-    from src.modules.cdr_reporting import CatalogEntry, catalog_chart_payload
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, catalog_chart_payload
 
     frame = pd.DataFrame({'Latitude': [51.5, 51.51, 51.52], 'Longitude': [-.1, -.11, -.12], 'Operator': ['A', 'B', 'A']})
     models = []
@@ -356,7 +356,7 @@ def test_a_map_reads_its_coordinates_whether_its_measures_are_written_with_vs_or
     ('SINR', [-1, 0, 5, 13, 20], '0,5,13,20'),
 ])
 def test_quality_maps_use_measurement_buckets_without_replacing_coordinates(field, values, edges) -> None:
-    from src.modules.cdr_reporting import CatalogEntry, catalog_chart_payload
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, catalog_chart_payload
 
     entry = CatalogEntry(
         slide=1, slide_title='RF map', slide_subtitle='', layout='Title and 1 column + Comments',
@@ -381,7 +381,7 @@ def test_quality_maps_use_measurement_buckets_without_replacing_coordinates(fiel
 
 
 def test_rf_histogram_counts_samples_in_ordered_quality_ranges() -> None:
-    from src.modules.cdr_reporting import catalog_chart_payload
+    from src.modules.cdr_analysis.cdr_reporting import catalog_chart_payload
 
     catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     entry = next(entry for entry in catalogue if entry.chart_type == 'Histogram Line' and entry.kpi == 'NR_PCell_RSRP_Avg')
@@ -466,7 +466,7 @@ def test_network_insights_page_and_analysis(client, tmp_path) -> None:
 
 
 def test_analysis_reports_bandwidths_per_environment_and_filters_environments(client, tmp_path, monkeypatch) -> None:
-    from src.modules import cdr_facets
+    from src.modules.cdr import cdr_facets
 
     _login(client)
     monkeypatch.setattr(cdr_facets, 'request_missing_facets',
@@ -556,8 +556,8 @@ def test_spectrum_holdings_api_workspace_config_and_archive(client) -> None:
 
 
 def test_combined_rf_source_pools_samples_instead_of_type_means() -> None:
-    from src.modules.rf_catalog_source import pool_rf_frames
-    from src.modules.cdr_reporting import catalog_chart_payload
+    from src.modules.ppt_designer.rf_catalog_source import pool_rf_frames
+    from src.modules.cdr_analysis.cdr_reporting import catalog_chart_payload
 
     frames = {
         'data': pd.DataFrame({'Operator': ['EE'] * 3, 'Campaign': ['2026-Q1'] * 3,
@@ -582,8 +582,8 @@ def test_combined_rf_source_pools_samples_instead_of_type_means() -> None:
 def test_histogram_legacy_png_renderer_accepts_combined_rf_samples(monkeypatch) -> None:
     from PIL import Image
     from io import BytesIO
-    from src.modules.cdr_reporting import render_catalog_chart_preview
-    from src.modules.rf_catalog_source import pool_rf_frames
+    from src.modules.cdr_analysis.cdr_reporting import render_catalog_chart_preview
+    from src.modules.ppt_designer.rf_catalog_source import pool_rf_frames
 
     monkeypatch.setenv('DRIVETEST_ANALYZER_REPORT_CHART_RENDERER', 'pil')
     catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
@@ -606,7 +606,7 @@ def test_histogram_legacy_png_renderer_accepts_combined_rf_samples(monkeypatch) 
 ])
 def test_dynamic_histogram_grids_keep_radio_positions_and_all_operators(layout, columns):
     from dataclasses import replace
-    from src.modules.cdr_reporting import expand_dynamic_layouts, _layout_chart_frames, _named_slide_layout, catalogue_csv, parse_catalog_csv
+    from src.modules.cdr_analysis.cdr_reporting import expand_dynamic_layouts, _layout_chart_frames, _named_slide_layout, catalogue_csv, parse_catalog_csv
     from pptx import Presentation
     catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     base = [entry for entry in catalogue if entry.chart_type == 'Histogram Bars'][:2]
@@ -637,7 +637,7 @@ def test_dynamic_histogram_grids_keep_radio_positions_and_all_operators(layout, 
     else:
         assert [entry.dynamic_rows_field for entry in restored] == ['Operator', 'Operator']
         assert [entry.dynamic_columns_field for entry in restored] == ['', '']
-    from src.modules.report_layouts import canonical_layout_name
+    from src.modules.reporting.report_layouts import canonical_layout_name
     assert [entry.layout for entry in restored] == [canonical_layout_name(layout)] * 2
 
 
@@ -651,7 +651,7 @@ def test_dynamic_histogram_grids_keep_radio_positions_and_all_operators(layout, 
 def test_dynamic_grids_without_comments_expand_to_matching_frames(dynamic_layout, expected_layout):
     from dataclasses import replace
     from pptx import Presentation
-    from src.modules.cdr_reporting import (
+    from src.modules.cdr_analysis.cdr_reporting import (
         _layout_chart_frames,
         _named_slide_layout,
         expand_dynamic_layouts,
@@ -680,7 +680,7 @@ def test_dynamic_grids_without_comments_expand_to_matching_frames(dynamic_layout
 
 
 def test_two_axis_dynamic_expansion_filters_vendor_only_and_paginates_grid_frames():
-    from src.modules.cdr_reporting import (
+    from src.modules.cdr_analysis.cdr_reporting import (
         CatalogEntry,
         _layout_chart_frames,
         _named_slide_layout,
@@ -735,7 +735,7 @@ def test_two_axis_dynamic_expansion_filters_vendor_only_and_paginates_grid_frame
 
 
 def test_operator_histogram_campaign_bars_use_ordered_shades_and_exact_counts():
-    from src.modules.cdr_reporting import catalog_chart_payload, expand_dynamic_layouts
+    from src.modules.cdr_analysis.cdr_reporting import catalog_chart_payload, expand_dynamic_layouts
     catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     expanded = expand_dynamic_layouts(catalogue, {'Operator': ['EE', 'O2']})
     entry = next(entry for entry in expanded if entry.chart_type == 'Histogram Bars' and entry.kpi == 'LTE_RSRP')
@@ -757,7 +757,7 @@ def test_operator_histogram_campaign_bars_use_ordered_shades_and_exact_counts():
 
 def test_legacy_dynamic_template_field_is_optional_for_static_rows_and_required_for_dynamic_layouts():
     import csv, io
-    from src.modules.cdr_reporting import SINGLE_DYNAMIC_CATALOG_HEADERS, catalogue_csv, parse_catalog_csv
+    from src.modules.cdr_analysis.cdr_reporting import SINGLE_DYNAMIC_CATALOG_HEADERS, catalogue_csv, parse_catalog_csv
     catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     static = [entry for entry in catalogue if entry.chart_type != 'Histogram Bars']
     reader = csv.DictReader(io.StringIO(catalogue_csv(static).decode()))
@@ -778,7 +778,7 @@ def test_legacy_dynamic_template_field_is_optional_for_static_rows_and_required_
 
 def test_multivendor_dynamic_histograms_page_by_vendor_and_keep_template_indexes():
     from dataclasses import replace
-    from src.modules.cdr_reporting import expand_dynamic_layouts
+    from src.modules.cdr_analysis.cdr_reporting import expand_dynamic_layouts
 
     catalogue = app_module.load_template_catalogue(TEMPLATE_PATH.read_bytes())
     base = [
@@ -1083,7 +1083,7 @@ def test_required_aggregation_choices_stay_selected_without_closing_menu():
     node = shutil.which('node')
     if not node:
         pytest.skip('Node.js is unavailable.')
-    source = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/network_insights.js').read_text()
+    source = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/network_insights/network_insights.js').read_text()
     grouping_code = source[source.index('  const syncTechnologyGrouping ='):source.index('  const kinds =')]
     script = r'''
 const assert = require('node:assert/strict');
@@ -1452,7 +1452,7 @@ def test_repeated_analysis_reuses_cached_result_until_cdrs_change(client, tmp_pa
 
 
 def test_analysis_reads_the_samples_of_the_columnar_copies_as_the_combined_tables_give_them(client, tmp_path, monkeypatch):
-    from src.modules import cdr_store
+    from src.modules.cdr import cdr_store
 
     _login(client)
     cdrs = [_add_ready_dataset(tmp_path, 'first.xlsx', 'data', _data_rows('2026-Q1')),
@@ -1499,7 +1499,7 @@ def test_lte_nr_summary_export_has_separate_technology_sections(client, tmp_path
     from docx import Document
     from pptx import Presentation
 
-    import src.modules.pptx_to_docx as pptx_to_docx_module
+    import src.modules.reporting.pptx_to_docx as pptx_to_docx_module
 
     _login(client)
     rows = _data_rows('2026-Q1')

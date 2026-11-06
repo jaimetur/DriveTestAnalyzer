@@ -24,7 +24,7 @@ RUN apt-get update \
     && echo ${TZ} > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
-# The generator of the presentations of the Help draws them again with live figures (src/modules/presentations.py): its
+# The generator of the presentations of the Help draws them again with live figures (src/modules/help/presentations.py): its
 # packages are installed from their lock file, in a layer of their own.
 COPY tools/presentations/package.json tools/presentations/package-lock.json ./tools/presentations/
 RUN npm ci --prefix tools/presentations --omit=dev --no-audit --no-fund && npm cache clean --force

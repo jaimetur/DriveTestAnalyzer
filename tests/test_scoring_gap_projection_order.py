@@ -1,9 +1,9 @@
 import pytest
 from pptx import Presentation
 from pptx.util import Inches
-from src.modules.scoring_exports import _merge_category_cells
+from src.modules.scoring.scoring_exports import _merge_category_cells
 
-from src.modules.scoring_exports import _hierarchy_gap_projection
+from src.modules.scoring.scoring_exports import _hierarchy_gap_projection
 
 
 def _column(column_id, operator, *, is_reference=False):

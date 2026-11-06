@@ -10,7 +10,7 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCORING_TEMPLATE = PROJECT_ROOT / 'src/web_interface/templates/scoring.html'
-SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring.js'
+SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring/scoring.js'
 
 
 def test_chart_tooltips_use_delegated_pointer_and_keyboard_events_with_fallbacks():
@@ -173,7 +173,7 @@ console.log(JSON.stringify([stackedSegmentLabelLayout('540.9', 80, 120), stacked
 
 def test_chart_numbers_keep_decimal_dot_under_spanish_locale():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    design_script = (PROJECT_ROOT / 'src/web_interface/static/js/canvas_charts.js').read_text(encoding='utf-8')
+    design_script = (PROJECT_ROOT / 'src/web_interface/static/js/core/canvas_charts.js').read_text(encoding='utf-8')
     node = shutil.which('node')
     if not node:
         pytest.skip('Node.js is required to verify chart number formatting.')

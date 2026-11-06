@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import copy
 
-from src.modules.repository import Repository
-from src.modules.scoring_config import (
+from src.modules.core.repository import Repository
+from src.modules.scoring.scoring_config import (
     default_scoring_profile,
     unwrap_scoring_profiles_payload,
     validate_scoring_profiles,

@@ -19,7 +19,7 @@ from pptx.enum.dml import MSO_THEME_COLOR
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 import src.DriveTestAnalyzer as core
-from src.modules.ppt_designer import DesignDefinition, filter_frame
+from src.modules.ppt_designer.ppt_designer import DesignDefinition, filter_frame
 
 
 def definition(**changes):
@@ -27,7 +27,7 @@ def definition(**changes):
 
 
 def test_design_uses_combined_tables_without_projection_or_warmup_queue():
-    source = (Path(__file__).parents[1] / 'src/modules/ppt_designer.py').read_text(encoding='utf-8')
+    source = (Path(__file__).parents[1] / 'src/modules/ppt_designer/ppt_designer.py').read_text(encoding='utf-8')
     assert 'drivetest-analyzers.sqlite3' not in source
     assert 'def ensure_projection' not in source
     assert 'def enqueue_prefetch' not in source
@@ -46,7 +46,7 @@ def test_design_ppt_chart_filters_use_complete_job_geography_and_cross_filter():
     node_binary = shutil.which('node')
     if node_binary is None:
         pytest.skip('Node.js is required for this browser filter test')
-    script_path = Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer.js'
+    script_path = Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer/ppt_designer.js'
     harness = r"""
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -93,8 +93,8 @@ eval(source.slice(start, end) + `
 
 
 def test_design_library_can_change_nr_mode_and_template_with_confirmation_controls():
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer.js').read_text(encoding='utf-8')
-    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
+    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
 
     assert "technologySelect.className = 'ds-design-definition-select ds-design-nr-mode-select'" in script
     assert "templateSelect.className = 'ds-design-definition-select ds-design-template-select'" in script
@@ -103,13 +103,13 @@ def test_design_library_can_change_nr_mode_and_template_with_confirmation_contro
     assert "api(`/${encodeURIComponent(id)}/template`, 'PATCH'" in script
     assert '.ds-design-definition-select{' in stylesheet
 
-    app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert "activeCell.textContent = operation ? `${operation}(${selected[0]})` : selected[0];" in app_script
     assert "if (editedCell?.dataset.catalogueField === 'Source Dataset' && !assistanceFocused) normaliseCatalogueRows();" in app_script
     assert "const sessionMarker = document.body.dataset.authenticatedSession || 'anonymous';" in app_script
     assert "${sessionScoped ? `:${sessionMarker}` : ''}" in app_script
 
-    design_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer.js').read_text(encoding='utf-8')
+    design_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
     assert "const authenticatedSession = document.body.dataset.authenticatedSession || 'anonymous';" in design_script
     assert ':open:${authenticatedSession}`' in design_script
     assert ':filters-open:${authenticatedSession}`' in design_script
@@ -119,8 +119,8 @@ def test_design_library_can_change_nr_mode_and_template_with_confirmation_contro
 
 def test_template_visual_controls_are_available_for_every_chart_type():
     root = Path(__file__).parents[1]
-    app_script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
-    chart_script = (root / 'src/web_interface/static/js/canvas_charts.js').read_text(encoding='utf-8')
+    app_script = (root / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
+    chart_script = (root / 'src/web_interface/static/js/core/canvas_charts.js').read_text(encoding='utf-8')
 
     assert 'const syncConditionalVisualCells = (row, {clear = true} = {}) =>' in app_script
     assert "'Axis X Range': true" in app_script
@@ -146,7 +146,7 @@ def test_template_visual_controls_are_available_for_every_chart_type():
 
 
 def test_saving_the_embedded_template_rebuilds_the_design_immediately():
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
 
     assert 'const rebuildDesignAfterTemplateSave = async () =>' in script
     assert "const expandedChartIndex = !$('ds-chart-expanded-overlay').hidden" in script
@@ -158,7 +158,7 @@ def test_saving_the_embedded_template_rebuilds_the_design_immediately():
 
 
 def test_compact_landscape_design_comments_are_docked_to_the_bottom():
-    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
+    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
 
     assert '@media (orientation:landscape) and (max-height:600px) {' in stylesheet
     assert '#ds-viewer.ds-overlay {' in stylesheet
@@ -181,7 +181,7 @@ def test_compact_landscape_design_comments_are_docked_to_the_bottom():
 
 
 def test_design_job_panels_use_the_stack_spacing_without_an_empty_filter_row():
-    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
+    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
 
     assert '#ds-filter-home:not(:has(> #ds-filter-panel:not([hidden]))) {' in stylesheet
     assert '.ppt-designer :is(.ds-ppt-jobs-panel,.ds-ppt-charts-panel) {' in stylesheet
@@ -189,7 +189,7 @@ def test_design_job_panels_use_the_stack_spacing_without_an_empty_filter_row():
 
 
 def test_design_discard_restores_saved_scope_dates_and_filters_before_navigation():
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
 
     assert "const discardPart = () => {" in script
     assert "copyDefinitionFields(definition, savedDesignDefinition(), filterDefinitionFields);" in script
@@ -200,7 +200,7 @@ def test_design_discard_restores_saved_scope_dates_and_filters_before_navigation
 
 
 def test_design_prepare_retries_one_transient_proxy_501_response():
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
 
     assert "path.startsWith('/prepare?') && response.status === 501" in script
     assert "await new Promise(resolve => window.setTimeout(resolve, 250));" in script
@@ -208,14 +208,14 @@ def test_design_prepare_retries_one_transient_proxy_501_response():
 
 def test_auto_calculated_field_editor_is_one_wide_dialog_shared_by_every_entry_point():
     root = Path(__file__).parents[1] / 'src/web_interface'
-    stylesheet = (root / 'static/css/app.css').read_text(encoding='utf-8')
-    script = (root / 'static/js/app.js').read_text(encoding='utf-8')
-    editor = (root / 'static/js/auto_calculated_fields.js').read_text(encoding='utf-8')
+    stylesheet = (root / 'static/css/core/app.css').read_text(encoding='utf-8')
+    script = (root / 'static/js/core/app.js').read_text(encoding='utf-8')
+    editor = (root / 'static/js/workspace/auto_calculated_fields.js').read_text(encoding='utf-8')
     base = (root / 'templates/base.html').read_text(encoding='utf-8')
 
     # One editor (auto_calculated_fields.js) for the Workspace panel, PPT Designer and the PPT Templates editor, which
     # opens it in the page holding it when embedded.
-    assert "js/auto_calculated_fields.js" in base
+    assert "js/workspace/auto_calculated_fields.js" in base
     assert 'window.AutoCalculatedFields = {open};' in editor
     assert 'window.AutoCalculatedFields?.open({' in script
     assert 'window.top.AutoCalculatedFields' in script
@@ -234,9 +234,9 @@ def test_auto_calculated_field_editor_is_one_wide_dialog_shared_by_every_entry_p
 
 
 def test_designs_prepare_ahead_only_in_the_idle_warm_up_and_compact_panel_headers_stay_aligned():
-    design_module = (Path(__file__).parents[1] / 'src/modules/ppt_designer.py').read_text(encoding='utf-8')
-    app_stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
-    design_stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
+    design_module = (Path(__file__).parents[1] / 'src/modules/ppt_designer/ppt_designer.py').read_text(encoding='utf-8')
+    app_stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
+    design_stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
 
     # A Design is prepared when it is opened, or ahead by the warm-up while the server is idle (test_design_warmup):
     # no change queues its preparation in the background.
@@ -251,7 +251,7 @@ def test_designs_prepare_ahead_only_in_the_idle_warm_up_and_compact_panel_header
 
 
 def test_compact_landscape_presentation_settings_are_vertically_scrollable():
-    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
+    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
 
     assert '#ds-presentation-overlay.ds-overlay {' in stylesheet
     assert '#ds-presentation-overlay .ds-presentation-dialog {' in stylesheet
@@ -266,7 +266,7 @@ def test_compact_landscape_presentation_settings_are_vertically_scrollable():
 
 
 def test_compact_portrait_design_fills_the_available_viewport():
-    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
+    stylesheet = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
 
     assert '@media (orientation:portrait) and (max-width:640px) {' in stylesheet
     assert '#ds-viewer:not(.ds-presentation-active) .ds-slide-content {' in stylesheet
@@ -389,7 +389,7 @@ def test_design_export_uses_the_admin_import_archive_format(client):
 
 
 def test_design_library_shows_who_created_and_last_changed_each_design(client):
-    from src.modules.ppt_designer import read_design_updates
+    from src.modules.ppt_designer.ppt_designer import read_design_updates
 
     payload = setup_design(client)
     saved = client.put('/api/ppt-designer/design-a', json={**payload, 'name': 'Alpha'})
@@ -460,7 +460,7 @@ def test_designs_changed_before_it_was_kept_show_the_last_change_of_their_app_ev
 
 
 def test_design_library_order_is_saved_listed_and_carried_by_packages(client):
-    from src.modules.ppt_designer import read_design_order
+    from src.modules.ppt_designer.ppt_designer import read_design_order
 
     payload = setup_design(client)
     for design_id, name in (('design-b', 'Bravo'), ('design-a', 'Alpha'), ('design-c', 'Charlie')):
@@ -614,8 +614,8 @@ def test_design_vendor_comparison_defaults_and_persists_vendor_only(client):
 
 def test_vendor_comparison_prompt_uses_confirm_and_secondary_choices():
     root = Path(__file__).parents[1]
-    design_script = (root / 'src/web_interface/static/js/ppt_designer.js').read_text(encoding='utf-8')
-    app_script = (root / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    design_script = (root / 'src/web_interface/static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
+    app_script = (root / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
 
     assert "confirmLabel: 'Vendor (All Operators Combined)', secondaryLabel: 'Operator_Vendor'" in design_script
     assert "if (choice !== 'confirm' && choice !== 'secondary') return;" in design_script
@@ -818,7 +818,7 @@ def test_design_filter_catalogue_includes_values_beyond_legacy_profile_limit(cli
             'UPDATE dataset_profiles SET filter_options_json = ? WHERE dataset_id = 2',
             (json.dumps({'city': cities[:50]}),),
         )
-    monkeypatch.setattr('src.modules.ppt_designer.DESIGN_PROFILE_SELECTION_THRESHOLD', 1)
+    monkeypatch.setattr('src.modules.ppt_designer.ppt_designer.DESIGN_PROFILE_SELECTION_THRESHOLD', 1)
     payload = definition().model_dump(mode='json')
     payload['datasets'] = {'data': [2]}
 
@@ -1248,7 +1248,7 @@ def test_design_refresh_rebuilds_all_models_and_chart_refresh_rebuilds_only_one(
     for index in indexes:
         assert client.get(f'/api/ppt-designer/chart/{token}/{index}').status_code == 200
 
-    import src.modules.ppt_designer as designs_module
+    import src.modules.ppt_designer.ppt_designer as designs_module
     original = designs_module.catalog_chart_payload
     calls = []
 
@@ -1372,7 +1372,7 @@ def test_designs_lifecycle_and_layout(client):
     assert 'id="ds-ppt-save-universe"' not in page.text
     actions = [page.text.index(f'id="{name}"') for name in ('ds-ppt-dataset-cancel', 'ds-ppt-save-filters', 'ds-ppt-dataset-confirm')]
     assert actions == sorted(actions)
-    dialog_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer.js').read_text(encoding='utf-8')
+    dialog_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
     assert "return [key, saved?.length ? {values: saved, all: false} : {values: [], all: true}];" in dialog_script
     assert "options = (await api('/filter-options/batch', 'POST', {definition: exportUniverse(), fields: [...extraFilters.keys()]})).options || {};" in dialog_script
     assert "for (const [field, values] of Object.entries(universeChoice.extra_filters || {})) withPptSelection(exportDefinition, field, values);" in dialog_script
@@ -1480,7 +1480,7 @@ def test_designs_lifecycle_and_layout(client):
     assert '>Use Selected Datasets</button>' not in page.text
     assert '>Use Latest Datasets</button>' not in page.text
     assert 'ds-viewer-refresh-action' in page.text
-    design_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer.js').read_text(encoding='utf-8')
+    design_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
     # Refresh chart (shown only while designing) goes beside View dataset.
     assert "controls.append(refresh, data, expand, zoom)" in design_script
     assert "savedDefinition = definitionFingerprint(savedRuntimeDesignDefinition(designs[id])); dirty = false;" in design_script
@@ -1497,9 +1497,9 @@ def test_designs_lifecycle_and_layout(client):
     assert "last = sessionStorage.getItem(openStorageKey) || '';" in design_script
     assert 'const restoreOpenDesign = restorePageState;' not in design_script
     assert "if (designs[last]) await openDesign(last);" in design_script
-    assert "preview_snapshot = replace(" in (Path(__file__).parents[1] / 'src/modules/ppt_designer.py').read_text(encoding='utf-8')
-    assert "The template owns these required chart attributes." in (Path(__file__).parents[1] / 'src/modules/ppt_designer.py').read_text(encoding='utf-8')
-    app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    assert "preview_snapshot = replace(" in (Path(__file__).parents[1] / 'src/modules/ppt_designer/ppt_designer.py').read_text(encoding='utf-8')
+    assert "The template owns these required chart attributes." in (Path(__file__).parents[1] / 'src/modules/ppt_designer/ppt_designer.py').read_text(encoding='utf-8')
+    app_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert 'function setupPagePanelNavigator()' in app_script
     # Modules & Sections: the drawer of every module with its sections (rendered by the page) in the colour of the module
     # of the page; choosing a module or a section closes it.
@@ -1535,7 +1535,7 @@ def test_designs_lifecycle_and_layout(client):
     assert "exportControl: $('ds-data-download')" in design_script
     assert "window.showLoadingOverlay('Loading Filtered Dataset'" in design_script
     assert "await renderData();\n      overlay('ds-data-overlay', true);" in design_script
-    app_styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
+    app_styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
     assert '.page-panel-navigator{position:fixed;' in app_styles
     assert '.page-panel-navigator-tab{' in app_styles
     assert '.page-panel-navigator[data-theme="datasets"]' in app_styles
@@ -1550,10 +1550,10 @@ def test_designs_lifecycle_and_layout(client):
     assert "control.dataset.previewDisplay = parsed.value.trim();" in app_script
     assert "control.dispatchEvent(new Event('preview-selection-change'));" in app_script
     assert "would erase text the user has just entered but has not completed." in app_script
-    reporting_source = (Path(__file__).parents[1] / 'src/modules/cdr_reporting.py').read_text(encoding='utf-8')
+    reporting_source = (Path(__file__).parents[1] / 'src/modules/cdr_analysis/cdr_reporting.py').read_text(encoding='utf-8')
     assert 'This chart type has no interactive renderer' not in reporting_source
-    app_styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/app.css').read_text(encoding='utf-8')
-    design_styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
+    app_styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
+    design_styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
     # The charts are changed in the Designer: the expanded viewer has no Chart Definition tab.
     assert 'ds-chart-filter-panel' not in design_styles
     assert '#ds-data-overlay .ds-data-dialog { position: absolute; inset: 5%;' in design_styles
@@ -1588,7 +1588,7 @@ def test_designs_lifecycle_and_layout(client):
     task_panel_start = app_script.index("const root = document.getElementById('background-task-panels');")
     task_listener = app_script.index("window.addEventListener('drivetest-analyzer:background-task'")
     assert task_listener > task_panel_start
-    auto_fields_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/auto_calculated_fields.js').read_text(encoding='utf-8')
+    auto_fields_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/workspace/auto_calculated_fields.js').read_text(encoding='utf-8')
     # Closing the Auto-calculated Fields editor asks only while a field has unsaved changes.
     assert "return confirmDialog(`Discard the unsaved changes of ${name}?`, {" in auto_fields_script
     assert "const confirmTertiary = document.getElementById('confirm-tertiary');" in app_script
@@ -1649,7 +1649,7 @@ def test_designs_lifecycle_and_layout(client):
     assert design_script.count('forgetPrepared();') >= 2
     assert "'Reload the current Report Template, rebuild its slides and render every chart in this Design again?'" in design_script
     assert "event.data?.type === 'drivetest-analyzer:template-saved'" in design_script
-    chart_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/canvas_charts.js').read_text(encoding='utf-8')
+    chart_script = (Path(__file__).parents[1] / 'src/web_interface/static/js/core/canvas_charts.js').read_text(encoding='utf-8')
     assert "const percent = (value, digits = 1) => `${(Number(value) * 100).toFixed(digits)}%`;" in chart_script
     # Clicking a legend entry hides or shows its series for every chart type;
     # a hidden value also hides the rows and columns where it is a level.
@@ -1780,7 +1780,7 @@ def test_designs_lifecycle_and_layout(client):
     assert "facetOptionRequests.has(field) ? 'Loading values…'" in design_script
     assert "const filterAliases = config.filter_aliases || {};" in design_script
     assert "facet.dataset.aliasTooltip = aliasTooltip;" in design_script
-    design_styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
+    design_styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
     assert '.ds-facet[data-alias-tooltip]::after' in design_styles
     assert 'const preparedPayloadKey = (id, fingerprint) =>' in design_script
     assert 'const preparedStateFingerprint = value =>' in design_script
@@ -1815,7 +1815,7 @@ def test_designs_lifecycle_and_layout(client):
     assert "previous.status !== 'ready'" in design_script
     assert "renderDesignPptJobs(jobs, newlyReady[0]?.id || '');" in design_script
     assert "const previous = String(preferredJobId || select.value);" in design_script
-    design_module = (Path(__file__).parents[1] / 'src/modules/ppt_designer.py').read_text(encoding='utf-8')
+    design_module = (Path(__file__).parents[1] / 'src/modules/ppt_designer/ppt_designer.py').read_text(encoding='utf-8')
     assert 'for saved_id, saved_definition in read_designs(task_repository).items()' not in design_module
     assert "'design_name': task['name']," in design_module
     assert "'Waiting to prepare PPT dataset'" in design_module
@@ -1902,7 +1902,7 @@ def test_designs_lifecycle_and_layout(client):
     assert 'workspace_read_connection(database_path)' in design_module
     assert 'aggregation_columns = chart_aggregation_columns(' in design_module
     assert "thread_name_prefix='ppt-designer-data'," not in design_module
-    design_css = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
+    design_css = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
     assert '.ppt-designer :is(.ds-unsaved-filters-badge,.ds-unsaved-universe-badge)' in design_css
     assert '.ppt-designer :is(.ds-unapplied-filters-badge,.ds-unapplied-universe-badge)' in design_css
     assert '.ds-scope-control.ds-filter-applied-unsaved select' in design_css
@@ -1983,7 +1983,7 @@ def test_designs_lifecycle_and_layout(client):
     assert "definition.datasets = structuredClone(saved.datasets || {});" not in design_script
     # Reload Saved Filters restores the saved Scope, dates and filters.
     assert "copyDefinitionFields(definition, savedDesignDefinition(), filterDefinitionFields);" in design_script
-    design_css = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
+    design_css = (Path(__file__).parents[1] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
     assert '.ds-design-status-ready{' in design_css
     assert '.ds-design-status-rendering{' in design_css
     assert '.ds-chart-controls button:not(:disabled){cursor:pointer!important}' in design_css
@@ -2132,7 +2132,7 @@ def test_designs_lifecycle_and_layout(client):
     # Charts and their images are kept in memory only.
     assert not (Path(core.repository.db_path).parent / '.design-data-cache').exists()
     entry = core.load_template_catalogue(next(row['content'] for row in core.repository.list_report_templates() if row['name'] == 'Design test'))[0]
-    from src.modules.cdr_reporting import is_empty_catalog_chart
+    from src.modules.cdr_analysis.cdr_reporting import is_empty_catalog_chart
     assert not is_empty_catalog_chart(image.content, entry)
     data = client.get(f'/api/ppt-designer/data/{token}/0').json()
     assert data['total'] == 3
@@ -2174,7 +2174,7 @@ def test_ppt_reporting_old_is_no_longer_a_module(client):
 def test_a_workspace_of_before_drops_the_jobs_of_ppt_reporting_old_and_keeps_its_documents(tmp_path):
     import sqlite3
 
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     database = tmp_path / 'workspace.db'
     document = tmp_path / 'output' / 'reports' / 'reports-old' / 'report' / 'report.pptx'
@@ -2508,7 +2508,7 @@ def test_closed_design_status_uses_its_remembered_session_universe(client):
 
 def test_saving_design_prepares_nothing_and_renders_no_chart(client, monkeypatch):
     payload = setup_design(client)
-    import src.modules.ppt_designer as designs_module
+    import src.modules.ppt_designer.ppt_designer as designs_module
     monkeypatch.setattr(
         designs_module,
         'catalog_chart_payload',
@@ -2586,7 +2586,7 @@ def test_direct_design_preparation_separates_queue_and_execution_timestamps(clie
 
 def test_applying_filters_prepares_only_data_and_renders_charts_on_demand(client, monkeypatch):
     payload = setup_design(client)
-    import src.modules.ppt_designer as designs_module
+    import src.modules.ppt_designer.ppt_designer as designs_module
 
     core.repository.set_workspace_state('ppt_designs_v2', json.dumps({'filtered-design': payload}))
     uncached = client.get('/api/ppt-designer/statuses')
@@ -2795,7 +2795,7 @@ def test_design_source_specific_custom_fields_do_not_repeat_combined_preparation
     first = client.post('/api/ppt-designer/prepare', json=payload)
     assert first.status_code == 200, first.text
 
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     def unexpected_combined_rebuild(*_args, **_kwargs):
         raise AssertionError('Fields from another CDR type must not prepare source columns.')
@@ -2916,7 +2916,7 @@ def test_design_sql_selection_leaves_nr_mode_to_explicit_user_filters(client):
     sa = client.post('/api/ppt-designer/prepare', json=payload).json()
     assert sa['rows']['voice'] == 4
     assert sa['universe_rows']['voice'] == 4
-    design_module = (Path(__file__).parents[1] / 'src/modules/ppt_designer.py').read_text(encoding='utf-8')
+    design_module = (Path(__file__).parents[1] / 'src/modules/ppt_designer/ppt_designer.py').read_text(encoding='utf-8')
     assert 'def nr_mode_sql(' not in design_module
 
 
@@ -2951,7 +2951,7 @@ def test_design_reuses_persistent_sql_selection_and_invalidates_dataset_versions
     with core.repository.connection() as connection:
         assert connection.execute('SELECT COUNT(*) AS count FROM design_filter_selections').fetchone()['count'] == 1
 
-    from src.modules.repository import Repository
+    from src.modules.core.repository import Repository
 
     def unexpected_combined_rebuild(*_args, **_kwargs):
         raise AssertionError('Default Filter value changes must not prepare source columns.')
@@ -2997,7 +2997,7 @@ def test_design_selection_cache_ignores_filter_value_order(client):
 
 def test_design_selection_uses_direct_sql_predicate(client, monkeypatch):
     payload = setup_design(client)
-    import src.modules.ppt_designer as designs_module
+    import src.modules.ppt_designer.ppt_designer as designs_module
 
     monkeypatch.setattr(designs_module, 'DESIGN_PROFILE_SELECTION_THRESHOLD', 1)
     payload['filters'] = {'City': ['London']}
@@ -3023,7 +3023,7 @@ def test_design_selection_uses_direct_sql_predicate(client, monkeypatch):
 
 def test_design_profile_facets_show_values_outside_the_saved_filter(client, monkeypatch):
     payload = setup_design(client)
-    import src.modules.ppt_designer as designs_module
+    import src.modules.ppt_designer.ppt_designer as designs_module
 
     monkeypatch.setattr(designs_module, 'DESIGN_PROFILE_SELECTION_THRESHOLD', 1)
     with core.repository.connection() as connection:
@@ -3039,7 +3039,7 @@ def test_design_profile_facets_show_values_outside_the_saved_filter(client, monk
 
 def combined_scans(monkeypatch, caller):
     """The dataset ids and fields of the combined-table reads ``caller`` (a function of ppt_designer) makes."""
-    import src.modules.cdr_store as cdr_store_module
+    import src.modules.cdr.cdr_store as cdr_store_module
 
     scans = []
     original = cdr_store_module.combined_scope
@@ -3071,7 +3071,7 @@ def test_design_profile_facets_read_values_missing_from_profiles_from_each_cdr(c
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline and core.repository.get_dataset(1)['status'] != 'ready':
         time.sleep(0.05)
-    import src.modules.ppt_designer as designs_module
+    import src.modules.ppt_designer.ppt_designer as designs_module
 
     monkeypatch.setattr(designs_module, 'DESIGN_PROFILE_SELECTION_THRESHOLD', 1)
     # The upload profile lists no Call Status, and the Cluster catalogue of the CDR was read and is empty.
@@ -3162,7 +3162,7 @@ def test_design_operator_patterns_take_the_rows_of_the_spellings_they_match(clie
 
 def test_design_reuses_normalized_snapshot_for_every_chart(client, monkeypatch):
     payload = setup_design(client)
-    import src.modules.ppt_designer as designs_module
+    import src.modules.ppt_designer.ppt_designer as designs_module
 
     calls = []
     original = designs_module.normalise_operator_aliases
@@ -3232,8 +3232,8 @@ def test_adding_combined_columns_keeps_prepared_design_caches_valid(client):
 
 def test_design_viewer_cover_matches_the_exported_ppt_cover():
     root = Path(__file__).parents[1] / 'src/web_interface/static'
-    script = (root / 'js/ppt_designer.js').read_text(encoding='utf-8')
-    stylesheet = (root / 'css/ppt_designer.css').read_text(encoding='utf-8')
+    script = (root / 'js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
+    stylesheet = (root / 'css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
 
     assert "coverGeographyLabel('Region', 'Region', 'Regions', 'All Regions')" in script
     assert "coverGeographyLabel('City', 'City', 'Cities', 'All Cities')" in script
@@ -3261,7 +3261,7 @@ def test_design_viewer_cover_matches_the_exported_ppt_cover():
 def test_design_viewer_scope_selector_confirms_before_rerendering():
     root = Path(__file__).parents[1] / 'src/web_interface'
     template = (root / 'templates/ppt_designer.html').read_text(encoding='utf-8')
-    script = (root / 'static/js/ppt_designer.js').read_text(encoding='utf-8')
+    script = (root / 'static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
 
     assert template.index('id="ds-viewer-scope"') < template.index('id="ds-floating-filters"')
     assert "title: 'Change PPT Scope', confirmLabel: 'Change Scope', tone: 'warning'" in script
@@ -3272,7 +3272,7 @@ def test_design_viewer_scope_selector_confirms_before_rerendering():
 
 def test_transition_slide_subtitle_uses_the_template_yellow_accent():
     from pptx import Presentation as PptxPresentation
-    from src.modules.cdr_reporting import _named_slide_layout, _set_structural_slide_text
+    from src.modules.cdr_analysis.cdr_reporting import _named_slide_layout, _set_structural_slide_text
 
     deck = PptxPresentation(Path(__file__).parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx')
     slide = deck.slides.add_slide(_named_slide_layout(deck, 'Title Only'))
@@ -3287,7 +3287,7 @@ def test_transition_slide_subtitle_uses_the_template_yellow_accent():
 def test_report_template_editor_offers_find_and_replace():
     root = Path(__file__).parents[1] / 'src/web_interface'
     template = (root / 'templates/admin.html').read_text(encoding='utf-8')
-    script = (root / 'static/js/app.js').read_text(encoding='utf-8')
+    script = (root / 'static/js/core/app.js').read_text(encoding='utf-8')
 
     assert 'data-catalogue-find-toggle' in template
     assert 'data-catalogue-replace-all' in template
@@ -3299,7 +3299,7 @@ def test_report_template_editor_offers_find_and_replace():
 def test_design_filters_open_in_the_viewer_of_the_design_never_in_the_table():
     root = Path(__file__).parents[1] / 'src/web_interface'
     template = (root / 'templates/ppt_designer.html').read_text(encoding='utf-8')
-    script = (root / 'static/js/ppt_designer.js').read_text(encoding='utf-8')
+    script = (root / 'static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
 
     assert '<div id="ds-filter-parking" hidden><div id="ds-filter-home">' in template
     assert "const parkFilterPanel = () => { $('ds-filter-parking').append($('ds-filter-home')); };" in script
@@ -3382,7 +3382,7 @@ def test_design_names_are_unique_whatever_their_nr_mode(client):
 
 def test_report_template_changes_record_the_last_editor(client):
     import csv
-    from src.modules.cdr_reporting import CATALOG_HEADERS
+    from src.modules.cdr_analysis.cdr_reporting import CATALOG_HEADERS
 
     client.post('/login', data={'username': 'super', 'password': 'super123'})
     row = {header: '' for header in CATALOG_HEADERS}
@@ -3448,7 +3448,7 @@ def test_combined_rf_design_keeps_samples_and_selected_geography(client):
 
 
 def test_dynamic_histogram_design_filters_operators_and_updates_source_template_row(client):
-    from src.modules.cdr_reporting import CatalogEntry, catalogue_csv
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, catalogue_csv
     client.post('/login', data={'username': 'super', 'password': 'super123'})
     content = (
         'Operator,City,Campaign,Test_Start_Time,LTE_PCell_RSRP_Avg,NR_PCell_RSRP_Avg\n'
@@ -3500,7 +3500,7 @@ def test_dynamic_histogram_design_filters_operators_and_updates_source_template_
 
 
 def test_dynamic_vendor_only_editor_keeps_operator_rows_after_bin_edit(client):
-    from src.modules.cdr_reporting import CatalogEntry, catalogue_csv
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, catalogue_csv
     client.post('/login', data={'username': 'super', 'password': 'super123'})
     response = client.post('/datasets-analysis/upload', data={'dataset_kinds': 'data'}, files={
         'dataset_files': ('Dynamic_RF_NSA.csv', BytesIO(
@@ -3560,7 +3560,7 @@ def test_dynamic_vendor_only_editor_keeps_operator_rows_after_bin_edit(client):
 
 
 def _compact_read_design(client):
-    from src.modules.cdr_reporting import CatalogEntry, catalogue_csv
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, catalogue_csv
     client.post('/login', data={'username': 'super', 'password': 'super123'})
     common = dict(slide_subtitle='', cdr_source='CDR-Data', rows_split='Operator', columns_split='Campaign', legend='Campaign')
     entries = [
@@ -3598,7 +3598,7 @@ def _compact_read_design(client):
 
 
 def test_cached_and_grouped_reads_produce_identical_chart_models(client, monkeypatch):
-    import src.modules.ppt_designer as designs_module
+    import src.modules.ppt_designer.ppt_designer as designs_module
 
     payload = _compact_read_design(client)
     prepared = client.post('/api/ppt-designer/prepare', json=payload)
@@ -3624,7 +3624,7 @@ def test_cached_and_grouped_reads_produce_identical_chart_models(client, monkeyp
     {'filters': {'Operator': ['B'], 'City': ['London']}, 'date_from': '2026-03-01'},
 ])
 def test_column_cache_serves_changed_universes_without_sqlite(client, monkeypatch, changes):
-    import src.modules.ppt_designer as designs_module
+    import src.modules.ppt_designer.ppt_designer as designs_module
 
     payload = _compact_read_design(client)
     baseline = client.post('/api/ppt-designer/prepare', json=payload)
@@ -3638,7 +3638,7 @@ def test_column_cache_serves_changed_universes_without_sqlite(client, monkeypatc
     indexes = [chart['index'] for slide in prepared.json()['slides'] for chart in slide['charts']]
     # Every column and filter of the changed universe is already cached: no
     # CDR row is read from SQLite again.
-    from src.modules import design_column_cache
+    from src.modules.ppt_designer import design_column_cache
     original_build, original_read = design_column_cache.ColumnCache._build, designs_module.pd.read_sql_query
     reads = []
     monkeypatch.setattr(design_column_cache.ColumnCache, '_build', lambda *args: reads.append('build') or original_build(*args))
@@ -3664,7 +3664,7 @@ def _wait_for(condition, timeout=60.0):
 
 
 def test_preloaded_charts_wait_for_the_visible_slide(client, monkeypatch):
-    import src.modules.ppt_designer as designs_module
+    import src.modules.ppt_designer.ppt_designer as designs_module
 
     payload = setup_design(client)
     preview = client.post('/api/ppt-designer/prepare', json=payload).json()
@@ -3709,7 +3709,7 @@ def test_preloaded_charts_wait_for_the_visible_slide(client, monkeypatch):
     {'filters': {'Campaign': ['UK_Q1_2026'], 'City': ['London']}, 'date_from': '2026-02-01', 'date_to': '2026-05-31'},
 ])
 def test_column_cache_preparation_counts_match_sqlite(client, monkeypatch, changes):
-    import src.modules.ppt_designer as designs_module
+    import src.modules.ppt_designer.ppt_designer as designs_module
 
     payload = {**_compact_read_design(client), **changes}
     # The first preparation caches every CDR's filter columns.
@@ -3774,7 +3774,7 @@ def test_ppt_export_keeps_legend_entries_hidden_in_the_viewer(client):
 
 def test_dynamic_grid_reflow_helpers():
     from types import SimpleNamespace
-    from src.modules.ppt_designer import dynamic_card_hidden, dynamic_chart_values, legend_value_hidden, reflowed_dynamic_grid
+    from src.modules.ppt_designer.ppt_designer import dynamic_card_hidden, dynamic_chart_values, legend_value_hidden, reflowed_dynamic_grid
 
     # Hidden values close whole grid columns or rows; the others keep their order.
     assert reflowed_dynamic_grid('Title + 2 rows + 4 columns', [False, True, False, False] * 2) == (
@@ -3797,7 +3797,7 @@ def test_dynamic_grid_reflow_helpers():
 
 
 def test_hidden_dynamic_values_close_their_grid_cards_in_the_ppt(client):
-    from src.modules.cdr_reporting import CatalogEntry, catalogue_csv
+    from src.modules.cdr_analysis.cdr_reporting import CatalogEntry, catalogue_csv
     client.post('/login', data={'username': 'super', 'password': 'super123'})
     response = client.post('/datasets-analysis/upload', data={'dataset_kinds': 'data'}, files={
         'dataset_files': ('Dynamic_Grid_NSA.csv', BytesIO(
@@ -3860,7 +3860,7 @@ def test_hidden_dynamic_values_close_their_grid_cards_in_the_ppt(client):
 
 
 def test_design_closed_during_its_cache_lookup_is_not_prepared():
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
 
     # A Design closed (or another one opened) while its preparation checks the persistent cache is not prepared,
     # and the Scope and filter panels draw nothing once no Design is open.
@@ -3881,8 +3881,8 @@ def test_design_closed_during_its_cache_lookup_is_not_prepared():
 def test_view_design_lists_its_slides_at_the_left_with_the_navigation_below_the_comments():
     root = Path(__file__).parents[1]
     template = (root / 'src/web_interface/templates/ppt_designer.html').read_text(encoding='utf-8')
-    script = (root / 'src/web_interface/static/js/ppt_designer.js').read_text(encoding='utf-8')
-    styles = (root / 'src/web_interface/static/css/ppt_designer.css').read_text(encoding='utf-8')
+    script = (root / 'src/web_interface/static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
+    styles = (root / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
     # The slides at the left of the slide, and Presentation with First / Previous / Next / Last below its comments.
     assert '<div class="ds-viewer-body"><nav class="ds-slide-thumbnails" id="ds-slide-thumbnails" aria-label="Slides of the Design"></nav>' in template
     viewer = template[template.index('<div class="ds-viewer-body">'):template.index('<div class="ds-chart-expanded-overlay"')]
@@ -3903,7 +3903,7 @@ def test_view_design_lists_its_slides_at_the_left_with_the_navigation_below_the_
     assert "$('ds-charts').addEventListener('wheel', event => {" in script
     assert "globalThis.zoomCanvasChartAt(canvas, (globalThis.getCanvasChartZoom?.(canvas) || 1) * Math.exp(-event.deltaY * 0.0015), event.clientX, event.clientY);" in script
     assert "nav.querySelector('.is-current')?.focus({preventScroll: true});" in script
-    charts = (root / 'src/web_interface/static/js/canvas_charts.js').read_text(encoding='utf-8')
+    charts = (root / 'src/web_interface/static/js/core/canvas_charts.js').read_text(encoding='utf-8')
     assert 'function zoomChartAt(canvas, requestedZoom, clientX, clientY) {' in charts and 'globalThis.zoomCanvasChartAt = zoomChartAt;' in charts
 
 
@@ -3913,7 +3913,7 @@ def test_view_design_lists_its_slides_at_the_left_with_the_navigation_below_the_
     {'date_from': '2026-02-01', 'date_to': '2026-04-30'},
 ])
 def test_designs_give_the_same_results_once_the_copies_are_the_only_store(client, monkeypatch, changes):
-    from src.modules import cdr_store
+    from src.modules.cdr import cdr_store
 
     payload = {**_compact_read_design(client), **changes}
     # The keys of the caches (they follow the revisions of the data) and the times.

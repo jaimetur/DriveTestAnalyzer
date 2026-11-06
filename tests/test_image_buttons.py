@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.app_event_details import describe_app_event
+from src.modules.core.app_event_details import describe_app_event
 
 WEB = Path(__file__).resolve().parents[1] / 'src/web_interface'
-BUTTONS_SCRIPT = WEB / 'static/js/image_buttons.js'
+BUTTONS_SCRIPT = WEB / 'static/js/core/image_buttons.js'
 
 
 def _events(action_start: str) -> dict[str, list[dict]]:
@@ -79,21 +79,21 @@ def test_image_export_requires_login(client):
 
 
 @pytest.mark.parametrize('template, script', [
-    ('network_insights.html', 'js/network_insights.js'),
-    ('non_qualified_calls.html', 'js/non_qualified_calls.js'),
-    ('ppt_designer.html', 'js/ppt_designer.js'),
-    ('scoring.html', 'js/scoring.js'),
+    ('network_insights.html', 'js/network_insights/network_insights.js'),
+    ('non_qualified_calls.html', 'js/nq/non_qualified_calls.js'),
+    ('ppt_designer.html', 'js/ppt_designer/ppt_designer.js'),
+    ('scoring.html', 'js/scoring/scoring.js'),
 ])
 def test_module_pages_load_the_image_buttons_before_their_script(template, script):
     page = (WEB / 'templates' / template).read_text(encoding='utf-8')
 
-    assert page.index('js/element_image.js') < page.index('js/image_buttons.js') < page.index(script)
+    assert page.index('js/core/element_image.js') < page.index('js/core/image_buttons.js') < page.index(script)
 
 
 def test_every_module_puts_the_buttons_over_its_panels_charts_and_tables():
-    insights = (WEB / 'static/js/network_insights.js').read_text(encoding='utf-8')
-    calls = (WEB / 'static/js/non_qualified_calls.js').read_text(encoding='utf-8')
-    designs = (WEB / 'static/js/ppt_designer.js').read_text(encoding='utf-8')
+    insights = (WEB / 'static/js/network_insights/network_insights.js').read_text(encoding='utf-8')
+    calls = (WEB / 'static/js/nq/non_qualified_calls.js').read_text(encoding='utf-8')
+    designs = (WEB / 'static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
     designs_page = (WEB / 'templates/ppt_designer.html').read_text(encoding='utf-8')
     builder = (WEB / 'templates/chart_builder.html').read_text(encoding='utf-8')
 
@@ -112,7 +112,7 @@ def test_every_module_puts_the_buttons_over_its_panels_charts_and_tables():
     assert 'id="ds-chart-expanded-overlay" data-image-buttons-host' in designs_page
     # Chart Builder: the card of its chart, once the shared scripts (loaded after its own) are there.
     assert "document.addEventListener('DOMContentLoaded', () => window.attachImageButtons?.({" in builder
-    assert builder.index('js/canvas_charts.js') < builder.index('js/element_image.js') < builder.index('js/image_buttons.js')
+    assert builder.index('js/core/canvas_charts.js') < builder.index('js/core/element_image.js') < builder.index('js/core/image_buttons.js')
     assert "module: 'builders'" in builder
 
 
@@ -133,7 +133,7 @@ def test_the_buttons_live_in_dialogs_and_overlays_and_keep_clear_of_the_page_but
 
 
 def test_map_tiles_are_asked_for_with_cors_so_maps_can_be_saved_as_images():
-    charts = (WEB / 'static/js/canvas_charts.js').read_text(encoding='utf-8')
+    charts = (WEB / 'static/js/core/canvas_charts.js').read_text(encoding='utf-8')
 
     assert "image.crossOrigin = 'anonymous';" in charts
     # A tile server that does not allow it is asked again plainly, so the map still shows.

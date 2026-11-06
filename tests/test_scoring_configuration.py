@@ -5,8 +5,8 @@ import copy
 import pytest
 import pandas as pd
 
-from src.modules.scoring import _aggregate, interpolate_score, method_version_for_configuration
-from src.modules.scoring_config import (
+from src.modules.scoring.scoring import _aggregate, interpolate_score, method_version_for_configuration
+from src.modules.scoring.scoring_config import (
     configuration_hash,
     validate_scoring_configuration,
 )
@@ -184,7 +184,7 @@ def test_source_filters_require_supported_fields_and_nonempty_values(filters, me
 
 
 def test_source_filters_select_environment_rows_during_calculation():
-    from src.modules.scoring import calculate_scoring
+    from src.modules.scoring.scoring import calculate_scoring
 
     configuration = scoring_configuration()
     configuration['scope']['environments']['DriveCity']['source_filters']['G_Level_2'] = 'Urban'
@@ -333,7 +333,7 @@ def test_environment_source_selectors_must_not_overlap_or_use_combined_name():
 
 
 def test_mapping_method_defaults_preserve_legacy_configuration_identity_and_results():
-    from src.modules.scoring import calculate_scoring
+    from src.modules.scoring.scoring import calculate_scoring
 
     legacy = scoring_configuration()
     for item in legacy['metrics']:
@@ -358,7 +358,7 @@ def test_mapping_method_defaults_preserve_legacy_configuration_identity_and_resu
 
 @pytest.mark.parametrize('unsupported', ['logarithmic', '', None, [], 1])
 def test_unsupported_mapping_method_is_rejected_by_validation_and_engine(unsupported):
-    from src.modules.scoring import calculate_scoring
+    from src.modules.scoring.scoring import calculate_scoring
 
     configuration = scoring_configuration()
     metric(configuration, 'K1')['mapping_method'] = unsupported
@@ -396,7 +396,7 @@ def test_selected_mapping_preserves_anchors_and_clamps_in_both_directions(mappin
     ('piecewise_linear', .6), ('piecewise_quadratic', .45), ('piecewise_smoothstep', .675),
 ])
 def test_engine_uses_each_kpi_selected_mapping_method(mapping_method, expected):
-    from src.modules.scoring import calculate_scoring
+    from src.modules.scoring.scoring import calculate_scoring
 
     configuration = scoring_configuration()
     selected = metric(configuration, 'K1')

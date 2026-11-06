@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import presentations
-from src.modules.repository import local_now_iso
+from src.modules.help import presentations
+from src.modules.core.repository import local_now_iso
 
 
 def login(client, username='super', password='super123'):
@@ -138,7 +138,7 @@ def test_no_presentation_is_kept_with_the_application_and_the_help_says_why_unti
     # A visitor who has not signed in sees the same without starting a generation.
     client.cookies.clear()
     assert client.get('/api/presentations').status_code == 200
-    script = (root / 'src/web_interface/static/js/presentation_viewer.js').read_text(encoding='utf-8')
+    script = (root / 'src/web_interface/static/js/help/presentation_viewer.js').read_text(encoding='utf-8')
     assert 'The presentations cannot be generated on this server: ${data.unavailable}' in script
 
 
@@ -287,7 +287,7 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
 @pytest.mark.skipif(bool(presentations.PresentationGenerator.unavailable()), reason='Node.js, its packages, Chromium and LibreOffice are needed.')
 def test_the_server_generates_every_presentation_with_the_pictures_of_their_slides(tmp_path, monkeypatch):
     from PIL import Image
-    from src.modules import pptx_to_docx
+    from src.modules.reporting import pptx_to_docx
 
     logs, rendered = [], []
     document_pdf = pptx_to_docx.document_pdf
@@ -324,14 +324,14 @@ def test_the_server_generates_every_presentation_with_the_pictures_of_their_slid
         assert section['title'] == part['title'].removeprefix('DriveTest Analyzer — ')
         assert section['slides'] == [title for part_section in part['sections'] for title in part_section['slides']]
     assert not (current / 'full-presentation').exists()
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/presentation_viewer.js').read_text(encoding='utf-8')
+    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/help/presentation_viewer.js').read_text(encoding='utf-8')
     assert 'source: section.presentation, position' in script and '[slide.source, slide.position]' in script
 
 
 def test_the_slide_viewer_goes_through_the_slides_from_its_footer_the_wheel_and_the_arrows():
     root = Path(__file__).resolve().parents[1]
-    script = (root / 'src/web_interface/static/js/presentation_viewer.js').read_text(encoding='utf-8')
-    styles = (root / 'src/web_interface/static/css/presentation_viewer.css').read_text(encoding='utf-8')
+    script = (root / 'src/web_interface/static/js/help/presentation_viewer.js').read_text(encoding='utf-8')
+    styles = (root / 'src/web_interface/static/css/help/presentation_viewer.css').read_text(encoding='utf-8')
     # Every control stands in the footer: the zoom buttons and Slideshow, then the previous and next slide (arrows in two
     # colours), then Close and Download PowerPoint.
     footer = script[script.index('<footer class="presentation-dialog-actions">'):script.index('</footer>')]
@@ -358,7 +358,7 @@ def test_the_slide_viewer_goes_through_the_slides_from_its_footer_the_wheel_and_
 
 def test_a_direct_link_opens_its_presentation_in_the_slide_viewer(client):
     root = Path(__file__).resolve().parents[1]
-    script = (root / 'src/web_interface/static/js/presentation_viewer.js').read_text(encoding='utf-8')
+    script = (root / 'src/web_interface/static/js/help/presentation_viewer.js').read_text(encoding='utf-8')
     footer = script[script.index('<footer class="presentation-dialog-actions">'):script.index('</footer>')]
     # Copy link, on each card and beside Close in the viewer, copies the link of the presentation (of the slide shown).
     assert footer.index('data-presentation-link') < footer.index('data-presentation-close>Close</button>')

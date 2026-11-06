@@ -1,0 +1,600 @@
+from __future__ import annotations
+
+import shutil
+import sqlite3
+from contextlib import closing, contextmanager
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Callable
+from uuid import uuid4
+
+from src.modules.cdr import cdr_store
+
+
+@dataclass(frozen=True, slots=True)
+class Workspace:
+    id: str
+    name: str
+    database_path: Path
+    input_dir: Path
+    output_dir: Path
+    export_dir: Path
+    slides_templates_dir: Path
+    created_at: str
+    last_opened_at: str
+    status: str = 'ready'
+    # The identity of the workspace, which never changes: Import / Export and Transfer find it again by it after a rename.
+    uid: str = ''
+
+
+class WorkspaceRegistry:
+    """Persistent workspace registry kept separate from workspace data."""
+
+    def __init__(
+        self,
+        registry_path: Path,
+        legacy_data_dir: Path,
+        legacy_slides_templates_dir: Path,
+        legacy_registry_path: Path | None = None,
+    ) -> None:
+        self.registry_path = registry_path
+        self.legacy_data_dir = legacy_data_dir
+        self.legacy_slides_templates_dir = legacy_slides_templates_dir
+        self.legacy_registry_path = legacy_registry_path
+
+    @contextmanager
+    def _connection(self):
+        self.registry_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(self.registry_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+    def initialize(self) -> None:
+        self._migrate_legacy_registry_file()
+        with self._connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS workspaces (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                    database_path TEXT NOT NULL,
+                    input_dir TEXT NOT NULL,
+                    output_dir TEXT NOT NULL,
+                    export_dir TEXT NOT NULL,
+                    slides_templates_dir TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    last_opened_at TEXT NOT NULL
+                )
+                """
+            )
+            if 'status' not in {row['name'] for row in conn.execute('PRAGMA table_info(workspaces)')}: conn.execute("ALTER TABLE workspaces ADD COLUMN status TEXT NOT NULL DEFAULT 'ready'")
+            conn.execute("CREATE TABLE IF NOT EXISTS workspace_state (key TEXT PRIMARY KEY, value TEXT)")
+            if not conn.execute("SELECT 1 FROM workspaces LIMIT 1").fetchone():
+                now = self._now()
+                default_root = self._workspace_root('Default')
+                conn.execute(
+                    """INSERT INTO workspaces (
+                        id, name, database_path, input_dir, output_dir, export_dir,
+                        slides_templates_dir, created_at, last_opened_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        'default', 'Default', str(default_root / 'Default.db'),
+                        str(default_root / 'input'), str(default_root / 'output'),
+                        str(default_root / 'output' / 'reports'), str(default_root / 'report-templates'), now, now,
+                    ),
+                )
+                conn.execute("INSERT OR REPLACE INTO workspace_state (key, value) VALUES ('active_workspace_id', 'default')")
+            elif not conn.execute("SELECT 1 FROM workspace_state WHERE key = 'active_workspace_id'").fetchone():
+                latest = conn.execute('SELECT id FROM workspaces ORDER BY last_opened_at DESC LIMIT 1').fetchone()
+                conn.execute("INSERT INTO workspace_state (key, value) VALUES ('active_workspace_id', ?)", (latest['id'] if latest else None,))
+            if 'uid' not in {row['name'] for row in conn.execute('PRAGMA table_info(workspaces)')}:
+                conn.execute("ALTER TABLE workspaces ADD COLUMN uid TEXT NOT NULL DEFAULT ''")
+            for row in conn.execute("SELECT id FROM workspaces WHERE uid = ''").fetchall():
+                conn.execute('UPDATE workspaces SET uid = ? WHERE id = ?', (uuid4().hex, row['id']))
+        self._rebase_moved_data_directory()
+        self._migrate_default_workspace_name()
+        self._migrate_workspace_directories()
+        self._migrate_workspace_exports()
+        self._migrate_workspace_templates()
+
+    def _migrate_workspace_templates(self) -> None:
+        """Copy the legacy shared library to the workspaces that existed at migration time."""
+        migration_key = 'workspace_templates_files_v3'
+        if self.get_state(migration_key) == '1':
+            return
+        workspaces = self.list()
+        old_shared_directory = self.legacy_slides_templates_dir.with_name('slides-templates')
+        sources = [old_shared_directory, self.legacy_slides_templates_dir, *(workspace.slides_templates_dir for workspace in workspaces)]
+        source = next(
+            (candidate for candidate in sources if candidate.is_dir() and any(candidate.rglob('*.csv'))),
+            None,
+        )
+        for workspace in workspaces:
+            target = workspace.database_path.parent / 'report-templates'
+            own_source = workspace.slides_templates_dir
+            for candidate in (own_source, source):
+                if candidate is None or candidate == target or not candidate.exists():
+                    continue
+                for path in candidate.rglob('*'):
+                    if not path.is_file():
+                        continue
+                    destination = target / path.relative_to(candidate)
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    if not destination.exists():
+                        shutil.copy2(path, destination)
+            if target.exists():
+                (target / '.migrate-library').touch()
+            with self._connection() as conn:
+                conn.execute('UPDATE workspaces SET slides_templates_dir = ? WHERE id = ?',
+                             (str(target), workspace.id))
+        if source in {self.legacy_slides_templates_dir, old_shared_directory} and source.exists():
+            shutil.rmtree(source)
+        self.set_state(migration_key, '1')
+
+    def get_state(self, key: str) -> str | None:
+        with self._connection() as conn:
+            row = conn.execute('SELECT value FROM workspace_state WHERE key = ?', (key,)).fetchone()
+        return str(row['value']) if row and row['value'] is not None else None
+
+    def set_state(self, key: str, value: str) -> None:
+        with self._connection() as conn:
+            conn.execute('INSERT OR REPLACE INTO workspace_state (key, value) VALUES (?, ?)', (key, value))
+
+    def _migrate_default_workspace_name(self) -> None:
+        """Rename the bootstrap workspace while preserving existing user data."""
+        workspace = self.get('default')
+        if not workspace or workspace.name != 'Default Workspace':
+            return
+        old_root = workspace.database_path.parent
+        new_root = self._workspace_root('Default')
+        if old_root != new_root:
+            if new_root.exists():
+                raise ValueError('Cannot rename the default workspace because the "Default" workspace directory already exists.')
+            elif old_root.exists():
+                shutil.move(str(old_root), str(new_root))
+        old_database = workspace.database_path
+        moved_database = new_root / old_database.name
+        new_database = new_root / 'Default.db'
+        if moved_database.exists() and moved_database != new_database:
+            self._move_database_bundle(moved_database, new_database)
+        elif not new_database.exists() and old_database.exists() and old_database != new_database:
+            self._move_database_bundle(old_database, new_database)
+        new_input = self._relocate_path(workspace.input_dir, old_root, new_root)
+        new_output = self._relocate_path(workspace.output_dir, old_root, new_root)
+        new_export = self._relocate_path(workspace.export_dir, old_root, new_root)
+        with self._connection() as conn:
+            conn.execute(
+                '''UPDATE workspaces
+                   SET name = ?, database_path = ?, input_dir = ?, output_dir = ?, export_dir = ?
+                   WHERE id = ?''',
+                ('Default', str(new_database), str(new_input), str(new_output), str(new_export), workspace.id),
+            )
+
+    def _migrate_workspace_exports(self) -> None:
+        """Move report exports into output/reports and stop creating exports/."""
+        for workspace in self.list():
+            root = self._workspace_root(workspace.name)
+            target = root / 'output' / 'reports'
+            source = workspace.export_dir
+            target.mkdir(parents=True, exist_ok=True)
+            if source != target and source.exists():
+                for item in source.iterdir():
+                    destination = target / item.name
+                    if not destination.exists():
+                        shutil.move(str(item), str(destination))
+                try:
+                    source.rmdir()
+                except OSError:
+                    pass
+            with self._connection() as conn:
+                conn.execute('UPDATE workspaces SET export_dir = ? WHERE id = ?', (str(target), workspace.id))
+
+    def _migrate_legacy_registry_file(self) -> None:
+        """Retain registry state while replacing the ambiguous old filename."""
+        source = self.legacy_registry_path
+        if not source or source == self.registry_path or not source.exists() or self.registry_path.exists():
+            return
+        self.registry_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(self.registry_path))
+        for suffix in ('-wal', '-shm'):
+            sidecar = Path(f'{source}{suffix}')
+            if sidecar.exists():
+                shutil.move(str(sidecar), str(Path(f'{self.registry_path}{suffix}')))
+
+    @staticmethod
+    def _now() -> str:
+        # Opening several workspaces in quick succession must retain a stable
+        # chronology for the Login default, not collapse to the same second.
+        return datetime.now().astimezone().isoformat(timespec='microseconds')
+
+    @staticmethod
+    def _validate_name(name: str) -> str:
+        normalized_name = ' '.join(name.split())
+        if not normalized_name:
+            raise ValueError('Workspace name is required.')
+        if len(normalized_name) > 100:
+            raise ValueError('Workspace name must be 100 characters or fewer.')
+        if normalized_name in {'.', '..'} or any(character in normalized_name for character in '<>:"/\\|?*\0'):
+            raise ValueError('Workspace name contains characters that cannot be used in a database filename.')
+        return normalized_name
+
+    @staticmethod
+    def _move_database_bundle(source: Path, destination: Path) -> None:
+        if source == destination:
+            return
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if source.exists():
+            if destination.exists():
+                raise ValueError(f'The database file "{destination.name}" already exists.')
+            shutil.move(str(source), str(destination))
+            for suffix in ('-wal', '-shm'):
+                sidecar = Path(f'{source}{suffix}')
+                if sidecar.exists():
+                    shutil.move(str(sidecar), str(Path(f'{destination}{suffix}')))
+
+    def _workspace_root(self, name: str) -> Path:
+        return self.legacy_data_dir / 'workspaces' / name
+
+    @staticmethod
+    def _relocate_path(path: Path, old_root: Path, new_root: Path) -> Path:
+        try:
+            return new_root / path.relative_to(old_root)
+        except ValueError:
+            return path
+
+    def _rebase_moved_data_directory(self) -> None:
+        """Point the workspaces at this data folder when it was copied or moved from another one.
+
+        The registry and the workspace databases keep absolute paths. A data folder copied from another
+        machine or user (``/Users/<other>/DriveTestAnalyzer/data``) keeps pointing there, so a workspace
+        whose folder is missing at its stored place but present here under ``workspaces/`` is rebased.
+        """
+        managed_root = self.legacy_data_dir / 'workspaces'
+        for workspace in self.list():
+            old_root = workspace.database_path.parent
+            new_root = managed_root / old_root.name
+            if old_root == new_root or old_root.exists() or not (new_root / workspace.database_path.name).exists():
+                continue
+            old_data_dir = old_root.parent.parent
+            relocated = [
+                self._relocate_path(path, old_data_dir, self.legacy_data_dir)
+                for path in (workspace.database_path, workspace.input_dir, workspace.output_dir,
+                             workspace.export_dir, workspace.slides_templates_dir)
+            ]
+            self._rebase_workspace_database_paths(relocated[0], old_data_dir, self.legacy_data_dir)
+            with self._connection() as conn:
+                conn.execute(
+                    '''UPDATE workspaces
+                       SET database_path = ?, input_dir = ?, output_dir = ?, export_dir = ?, slides_templates_dir = ?
+                       WHERE id = ?''',
+                    (*(str(path) for path in relocated), workspace.id),
+                )
+
+    @staticmethod
+    def _rebase_workspace_database_paths(database_path: Path, old_data_dir: Path, new_data_dir: Path) -> None:
+        """Rewrite the stored file and folder paths (``*path`` and ``*_dir`` columns) under the old data folder."""
+        old_prefix, new_prefix = f'{old_data_dir}/', f'{new_data_dir}/'
+        with closing(sqlite3.connect(database_path)) as conn, conn:
+            tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
+            for table in tables:
+                if table.startswith(('dataset_rows_', 'reporting_rows_', 'sqlite_')):
+                    continue
+                columns = [
+                    row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')
+                    if str(row[1]).lower().endswith(('path', '_dir'))
+                ]
+                for column in columns:
+                    conn.execute(
+                        f'UPDATE "{table}" SET "{column}" = ? || substr("{column}", ?) '
+                        f'WHERE typeof("{column}") = \'text\' AND substr("{column}", 1, ?) = ?',
+                        (new_prefix, len(old_prefix) + 1, len(old_prefix), old_prefix),
+                    )
+
+    def _migrate_workspace_directories(self) -> None:
+        """Move earlier ID-based folders to their human-readable names."""
+        managed_root = self.legacy_data_dir / 'workspaces'
+        for workspace in self.list():
+            old_root = workspace.database_path.parent
+            new_root = self._workspace_root(workspace.name)
+            if old_root.parent != managed_root:
+                continue
+            if old_root != new_root:
+                if new_root.exists():
+                    raise ValueError(f'Workspace directory "{new_root.name}" already exists.')
+                if old_root.exists():
+                    shutil.move(str(old_root), str(new_root))
+            moved_database = new_root / workspace.database_path.name
+            new_database = new_root / f'{workspace.name}.db'
+            self._move_database_bundle(moved_database, new_database)
+            input_dir = self._relocate_path(workspace.input_dir, old_root, new_root)
+            output_dir = self._relocate_path(workspace.output_dir, old_root, new_root)
+            export_dir = self._relocate_path(workspace.export_dir, old_root, new_root)
+            for source_path, target_path in (
+                (input_dir, new_root / 'input'), (output_dir, new_root / 'output'), (export_dir, new_root / 'exports'),
+            ):
+                if source_path != target_path and source_path.exists() and not target_path.exists():
+                    shutil.move(str(source_path), str(target_path))
+                if source_path != target_path:
+                    if source_path == input_dir:
+                        input_dir = target_path
+                    elif source_path == output_dir:
+                        output_dir = target_path
+                    else:
+                        export_dir = target_path
+            slides_templates_dir = self._relocate_path(workspace.slides_templates_dir, old_root, new_root)
+            if input_dir != workspace.input_dir and new_database.exists():
+                with closing(sqlite3.connect(new_database)) as conn, conn:
+                    has_datasets = conn.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'datasets'"
+                    ).fetchone()
+                    if has_datasets:
+                        conn.execute(
+                            'UPDATE datasets SET stored_path = REPLACE(stored_path, ?, ?)',
+                            (str(workspace.input_dir), str(input_dir)),
+                        )
+            with self._connection() as conn:
+                conn.execute(
+                    '''UPDATE workspaces
+                       SET database_path = ?, input_dir = ?, output_dir = ?, export_dir = ?, slides_templates_dir = ?
+                       WHERE id = ?''',
+                    (str(new_database), str(input_dir), str(output_dir), str(export_dir), str(slides_templates_dir), workspace.id),
+                )
+
+    def _row_to_workspace(self, row: sqlite3.Row) -> Workspace:
+        return Workspace(
+            id=str(row['id']), name=str(row['name']), database_path=Path(row['database_path']),
+            input_dir=Path(row['input_dir']), output_dir=Path(row['output_dir']),
+            export_dir=Path(row['export_dir']), slides_templates_dir=Path(row['slides_templates_dir']),
+            created_at=str(row['created_at']), last_opened_at=str(row['last_opened_at']),
+            status=str(row['status']) if 'status' in row.keys() else 'ready',
+            uid=str(row['uid'] or '') if 'uid' in row.keys() else '',
+        )
+
+    def set_uid(self, workspace_id: str, uid: str) -> None:
+        """Give a workspace the identity of the one it replaced on another server (see import_workspace_archive)."""
+        if str(uid or '').strip():
+            with self._connection() as conn:
+                conn.execute('UPDATE workspaces SET uid = ? WHERE id = ?', (str(uid).strip(), workspace_id))
+
+    def set_status(self, workspace_id: str, status: str) -> None:
+        with self._connection() as conn:
+            conn.execute('UPDATE workspaces SET status = ? WHERE id = ?', (status, workspace_id))
+
+    def list(self) -> list[Workspace]:
+        with self._connection() as conn:
+            rows = conn.execute('SELECT * FROM workspaces ORDER BY name COLLATE NOCASE').fetchall()
+        return [self._row_to_workspace(row) for row in rows]
+
+    def get(self, workspace_id: str) -> Workspace | None:
+        with self._connection() as conn:
+            row = conn.execute('SELECT * FROM workspaces WHERE id = ?', (workspace_id,)).fetchone()
+        return self._row_to_workspace(row) if row else None
+
+    def most_recent(self) -> Workspace:
+        with self._connection() as conn:
+            row = conn.execute('SELECT * FROM workspaces ORDER BY last_opened_at DESC, name COLLATE NOCASE LIMIT 1').fetchone()
+        if not row:
+            raise RuntimeError('Workspace registry was not initialized')
+        return self._row_to_workspace(row)
+
+    def active_id(self) -> str | None:
+        with self._connection() as conn:
+            row = conn.execute("SELECT value FROM workspace_state WHERE key = 'active_workspace_id'").fetchone()
+        return str(row['value']) if row and row['value'] else None
+
+    def create(self, name: str) -> Workspace:
+        normalized_name = self._validate_name(name)
+        with self._connection() as conn:
+            # Identifiers are never reused: a deleted workspace's id would otherwise pass to the next one,
+            # with what the browser and the server still keep for the deleted one.
+            highest = int(conn.execute('SELECT COALESCE(MAX(CAST(substr(id, 11) AS INTEGER)), 0) AS highest FROM workspaces WHERE id GLOB "workspace-*"').fetchone()['highest'])
+            last = conn.execute("SELECT value FROM workspace_state WHERE key = 'last_workspace_number'").fetchone()
+            number = max(highest, int(last['value']) if last and str(last['value']).isdigit() else 0) + 1
+            conn.execute(
+                "INSERT INTO workspace_state (key, value) VALUES ('last_workspace_number', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(number),),
+            )
+            workspace_id = f'workspace-{number}'
+            now = self._now()
+            data_root = self._workspace_root(normalized_name)
+            db_path = data_root / f'{normalized_name}.db'
+            slides_templates_dir = data_root / 'report-templates'
+            try:
+                conn.execute(
+                    """INSERT INTO workspaces (
+                        id, name, database_path, input_dir, output_dir, export_dir,
+                        slides_templates_dir, created_at, last_opened_at, uid
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (workspace_id, normalized_name, str(db_path), str(data_root / 'input'), str(data_root / 'output'),
+                     str(data_root / 'output' / 'reports'), str(slides_templates_dir), now, now, uuid4().hex),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise ValueError(f'A workspace named "{normalized_name}" already exists.') from exc
+        data_root.mkdir(parents=True, exist_ok=True)
+        return self.get(workspace_id)  # type: ignore[return-value]
+
+    def duplicate(
+        self, workspace_id: str, *, include_generated_outputs: bool = False,
+        on_created: Callable[[Workspace], None] | None = None,
+        should_stop: Callable[[Workspace], bool] | None = None,
+    ) -> Workspace:
+        source = self.get(workspace_id)
+        if not source:
+            raise ValueError('Workspace not found.')
+        base_name = f'{source.name} - Copy'
+        duplicate_name = base_name
+        names = {workspace.name.casefold() for workspace in self.list()}
+        copy_number = 2
+        while duplicate_name.casefold() in names:
+            duplicate_name = f'{source.name} - Copy {copy_number}'
+            copy_number += 1
+
+        duplicate = self.create(duplicate_name)
+        self.set_status(duplicate.id, 'duplicating')
+        target_root = duplicate.database_path.parent
+        try:
+            if on_created:
+                on_created(duplicate)
+            if should_stop and should_stop(duplicate):
+                raise InterruptedError('Workspace duplication stopped by user.')
+            # ``create`` has prepared the target root. Replace it with an
+            # exact data copy, including its Slides Templates. Generated
+            # Generated Designs and reports are optional
+            # because they can account for most of a workspace's size.
+            shutil.rmtree(target_root)
+            for source_path, target_path in (
+                (source.input_dir, duplicate.input_dir),
+                (source.slides_templates_dir, duplicate.slides_templates_dir),
+            ):
+                if should_stop and should_stop(duplicate):
+                    raise InterruptedError('Workspace duplication stopped by user.')
+                if source_path.exists():
+                    shutil.copytree(source_path, target_path)
+                else:
+                    target_path.mkdir(parents=True, exist_ok=True)
+            if include_generated_outputs and source.output_dir.exists():
+                shutil.copytree(source.output_dir, duplicate.output_dir)
+            else:
+                duplicate.output_dir.mkdir(parents=True, exist_ok=True)
+            duplicate.database_path.parent.mkdir(parents=True, exist_ok=True)
+            # The columnar copies of its CDRs, as they are when its database is copied (see cdr_store.snapshot_copies).
+            with cdr_store.steady_copies(source.database_path):
+                with closing(sqlite3.connect(source.database_path)) as source_conn, source_conn, closing(sqlite3.connect(duplicate.database_path)) as duplicate_conn, duplicate_conn:
+                    if should_stop and should_stop(duplicate):
+                        raise InterruptedError('Workspace duplication stopped by user.')
+                    source_conn.backup(duplicate_conn)
+                duplicate_store = cdr_store.store_root(duplicate.database_path)
+                for copy_file, name in cdr_store.snapshot_copies(duplicate.database_path, source.database_path):
+                    if should_stop and should_stop(duplicate):
+                        raise InterruptedError('Workspace duplication stopped by user.')
+                    target = duplicate_store / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(copy_file, target)
+            with closing(sqlite3.connect(duplicate.database_path)) as duplicate_conn, duplicate_conn:
+                if should_stop and should_stop(duplicate):
+                    raise InterruptedError('Workspace duplication stopped by user.')
+                duplicate_conn.execute(
+                    'UPDATE datasets SET stored_path = REPLACE(stored_path, ?, ?)',
+                    (str(source.input_dir), str(duplicate.input_dir)),
+                )
+                has_design_ppt_jobs = duplicate_conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'design_ppt_jobs'"
+                ).fetchone()
+                if has_design_ppt_jobs:
+                    if include_generated_outputs:
+                        duplicate_conn.execute(
+                            'UPDATE design_ppt_jobs SET output_path = REPLACE(output_path, ?, ?)',
+                            (str(source.output_dir), str(duplicate.output_dir)),
+                        )
+                    else:
+                        duplicate_conn.execute('DELETE FROM design_ppt_jobs')
+        except Exception:
+            with self._connection() as conn:
+                conn.execute('DELETE FROM workspaces WHERE id = ?', (duplicate.id,))
+            shutil.rmtree(target_root, ignore_errors=True)
+            raise
+        # A duplicate is created but not opened. Do not let it replace the
+        # actual last-opened workspace in Login's default selection.
+        with self._connection() as conn:
+            conn.execute("UPDATE workspaces SET last_opened_at = '' WHERE id = ?", (duplicate.id,))
+        self.set_status(duplicate.id, 'ready')
+        return self.get(duplicate.id)  # type: ignore[return-value]
+
+    def rename(self, workspace_id: str, name: str) -> Workspace:
+        normalized_name = self._validate_name(name)
+        workspace = self.get(workspace_id)
+        if not workspace:
+            raise ValueError('Workspace not found.')
+        old_root = workspace.database_path.parent
+        new_root = self._workspace_root(normalized_name)
+        new_database_path = new_root / f'{normalized_name}.db'
+        with self._connection() as conn:
+            duplicate = conn.execute(
+                'SELECT 1 FROM workspaces WHERE name = ? COLLATE NOCASE AND id != ?', (normalized_name, workspace_id),
+            ).fetchone()
+            if duplicate:
+                raise ValueError(f'A workspace named "{normalized_name}" already exists.')
+            if old_root != new_root:
+                if new_root.exists():
+                    raise ValueError(f'Workspace directory "{new_root.name}" already exists.')
+                if old_root.exists():
+                    shutil.move(str(old_root), str(new_root))
+            moved_database_path = new_root / workspace.database_path.name
+            if new_database_path != moved_database_path:
+                self._move_database_bundle(moved_database_path, new_database_path)
+            input_dir = self._relocate_path(workspace.input_dir, old_root, new_root)
+            output_dir = self._relocate_path(workspace.output_dir, old_root, new_root)
+            export_dir = self._relocate_path(workspace.export_dir, old_root, new_root)
+            slides_templates_dir = self._relocate_path(workspace.slides_templates_dir, old_root, new_root)
+            if input_dir != workspace.input_dir and new_database_path.exists():
+                with closing(sqlite3.connect(new_database_path)) as workspace_conn, workspace_conn:
+                    workspace_conn.execute(
+                        'UPDATE datasets SET stored_path = REPLACE(stored_path, ?, ?)',
+                        (str(workspace.input_dir), str(input_dir)),
+                    )
+            result = conn.execute(
+                '''UPDATE workspaces
+                   SET name = ?, database_path = ?, input_dir = ?, output_dir = ?, export_dir = ?, slides_templates_dir = ?
+                   WHERE id = ?''',
+                (normalized_name, str(new_database_path), str(input_dir), str(output_dir), str(export_dir), str(slides_templates_dir), workspace_id),
+            )
+            if result.rowcount != 1:
+                raise ValueError('Workspace not found.')
+        return self.get(workspace_id)  # type: ignore[return-value]
+
+    def mark_opened(self, workspace_id: str) -> Workspace:
+        with self._connection() as conn:
+            result = conn.execute('UPDATE workspaces SET last_opened_at = ? WHERE id = ?', (self._now(), workspace_id))
+            if result.rowcount != 1:
+                raise ValueError('Workspace not found.')
+            conn.execute("INSERT OR REPLACE INTO workspace_state (key, value) VALUES ('active_workspace_id', ?)", (workspace_id,))
+        return self.get(workspace_id)  # type: ignore[return-value]
+
+    def close_active(self, workspace_id: str) -> None:
+        with self._connection() as conn:
+            row = conn.execute("SELECT value FROM workspace_state WHERE key = 'active_workspace_id'").fetchone()
+            if not row or row['value'] != workspace_id:
+                raise ValueError('Only the open workspace can be closed.')
+            conn.execute("UPDATE workspace_state SET value = NULL WHERE key = 'active_workspace_id'")
+
+    def _managed_workspace_root(self, workspace: Workspace) -> Path:
+        """Return the registered workspace directory only when it is safe to remove."""
+        managed_root = (self.legacy_data_dir / 'workspaces').resolve()
+        workspace_root = workspace.database_path.parent.resolve()
+        if workspace_root.parent != managed_root:
+            raise ValueError('Workspace files are outside the managed workspaces directory and cannot be removed automatically.')
+        return workspace_root
+
+    def remove(self, workspace_id: str, *, delete_files: bool = True) -> Workspace:
+        workspace = self.get(workspace_id)
+        if not workspace:
+            raise ValueError('Workspace not found.')
+        workspace_root = self._managed_workspace_root(workspace) if delete_files else None
+        with self._connection() as conn:
+            conn.execute('DELETE FROM workspaces WHERE id = ?', (workspace_id,))
+        if workspace_root:
+            # The path is derived from the registered workspace and verified
+            # as an immediate child of data/workspaces, never from a request.
+            shutil.rmtree(workspace_root, ignore_errors=True)
+        return workspace
+
+    def delete(self, workspace_id: str, *, delete_files: bool = False) -> Workspace:
+        """Remove a workspace registration and database, optionally purging all files."""
+        workspace = self.get(workspace_id)
+        if not workspace:
+            raise ValueError('Workspace not found.')
+        workspace_root = self._managed_workspace_root(workspace)
+        self.remove(workspace_id, delete_files=False)
+        if delete_files:
+            shutil.rmtree(workspace_root, ignore_errors=True)
+        else:
+            # Keep the analyst's source files and generated output, but avoid
+            # leaving an unregistered workspace database behind.
+            for database_file in (workspace.database_path, *(Path(f'{workspace.database_path}{suffix}') for suffix in ('-wal', '-shm'))):
+                database_file.unlink(missing_ok=True)
+        return workspace

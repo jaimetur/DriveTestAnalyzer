@@ -4,8 +4,8 @@ import copy
 import pytest
 
 from scoring_fixtures import scoring_configuration
-from src.modules.scoring_config import validate_scoring_configuration
-from src.modules.scoring_views import (
+from src.modules.scoring.scoring_config import validate_scoring_configuration
+from src.modules.scoring.scoring_views import (
     THRESHOLD_COLORS, build_scoring_views as _build_scoring_views, gap_color, normalize_result_gaps, _gap_order_key,
 )
 

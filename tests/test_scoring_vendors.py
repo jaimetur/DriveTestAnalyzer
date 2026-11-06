@@ -8,10 +8,10 @@ from io import BytesIO
 import pandas as pd
 from pptx import Presentation
 
-from src.modules.scoring import calculate_scoring
-from src.modules import saved_filters
-from src.modules.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name
-from src.modules.scoring_views import build_scoring_views, scoring_coverage_notes
+from src.modules.scoring.scoring import calculate_scoring
+from src.modules.scoring import saved_filters
+from src.modules.scoring.scoring_vendors import normalize_scoring_vendor_result, scoring_vendor_name
+from src.modules.scoring.scoring_views import build_scoring_views, scoring_coverage_notes
 from tests.scoring_fixtures import scoring_configuration
 from tests.test_scoring_api import scoring_api
 

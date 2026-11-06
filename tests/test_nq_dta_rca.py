@@ -8,8 +8,8 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import non_qualified_calls as nq
-from src.modules import nq_catalog, nq_dta_rca, nq_rca
+from src.modules.nq import non_qualified_calls as nq
+from src.modules.nq import nq_catalog, nq_dta_rca, nq_rca
 from tests.test_non_qualified_calls import add_cdr, enable_module, login, query, workspace_user
 
 

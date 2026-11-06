@@ -15,16 +15,16 @@ from PIL import Image, ImageDraw
 from pptx import Presentation
 from pptx.oxml.ns import qn
 
-import src.modules.pptx_to_docx as pptx_to_docx_module
-from src.modules.scoring_exports import SECTION_TAG_PREFIX, export_scoring_powerpoint
-from src.modules.scoring_pptx_scorecard import STYLES, drop_columns
-from src.modules.scoring_themes import THEMES
+import src.modules.reporting.pptx_to_docx as pptx_to_docx_module
+from src.modules.scoring.scoring_exports import SECTION_TAG_PREFIX, export_scoring_powerpoint
+from src.modules.scoring.scoring_pptx_scorecard import STYLES, drop_columns
+from src.modules.scoring.scoring_themes import THEMES
 from tests.scoring_fixtures import export_panels_only
 from tests.scoring_synthetic import synthetic_result
 from tests.test_scoring_exports import TEMPLATE
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring.js'
+SCORING_SCRIPT = PROJECT_ROOT / 'src/web_interface/static/js/scoring/scoring.js'
 SCORING_TEMPLATE = PROJECT_ROOT / 'src/web_interface/templates/scoring.html'
 
 # A small DOM with what the scorecard layout of the page uses.
@@ -292,7 +292,7 @@ def test_exports_keep_the_chosen_scorings_and_environments_and_name_their_sectio
 
 
 def test_scoring_exports_are_composed_as_the_bundle_report_template(monkeypatch):
-    from src.modules import bundle_report_templates, pptx_compose
+    from src.modules.reporting import bundle_report_templates, pptx_compose
 
     job, result = synthetic_result(levels=('Operator',))
     # (The deck has a few panels.)
@@ -328,7 +328,7 @@ def test_scoring_exports_are_composed_as_the_bundle_report_template(monkeypatch)
 
 
 def test_compared_operators_share_slides_without_leaving_one_alone():
-    from src.modules.scoring_summary_slides import operator_frames, operator_groups
+    from src.modules.scoring.scoring_summary_slides import operator_frames, operator_groups
 
     sizes = {count: [len(group) for group in operator_groups(list(range(count)))] for count in range(1, 11)}
     # Up to six on one slide, more on slides of four at most shared evenly: never one alone.
@@ -342,7 +342,7 @@ def test_compared_operators_share_slides_without_leaving_one_alone():
 
 
 def test_slides_of_one_campaign_keep_the_latest_campaign():
-    from src.modules.scoring_summary_slides import latest_campaign_items
+    from src.modules.scoring.scoring_summary_slides import latest_campaign_items
 
     items = [{'operator': 'VF', 'context': {'campaign': '2026-Q2'}}, {'operator': 'VF', 'context': {'campaign': '2026-Q3'}},
              {'operator': 'VF SA', 'context': {'campaign': '2026-Q2'}}, {'operator': 'Lebara', 'context': {'campaign': '2026-Q1'}},
@@ -353,7 +353,7 @@ def test_slides_of_one_campaign_keep_the_latest_campaign():
 
 
 def test_operator_rules_reach_every_campaign_and_trend_labels_stand_apart():
-    from src.modules.scoring_insight_slides import add_trend_slides
+    from src.modules.scoring.scoring_insight_slides import add_trend_slides
 
     job, result = synthetic_result(levels=('Operator', 'Campaign'))
     # (The deck has only the Summary table.)
@@ -381,7 +381,7 @@ def test_operator_rules_reach_every_campaign_and_trend_labels_stand_apart():
 
     # Two lines that end close together have their names moved apart, one up and one down.
     from pptx import Presentation as NewPresentation
-    from src.modules.cdr_reporting import _remove_all_slides
+    from src.modules.cdr_analysis.cdr_reporting import _remove_all_slides
 
     presentation = NewPresentation(TEMPLATE)
     _remove_all_slides(presentation)
@@ -407,7 +407,7 @@ def test_bar_fills_keep_their_edges_at_whole_percents():
     from pptx import Presentation as NewPresentation
     from pptx.util import Inches
 
-    from src.modules.scoring_pptx_scorecard import diverging_bar, share_bar
+    from src.modules.scoring.scoring_pptx_scorecard import diverging_bar, share_bar
 
     slide = NewPresentation().slides.add_slide(NewPresentation().slide_layouts[6])
     table = slide.shapes.add_table(1, 2, Inches(1), Inches(1), Inches(4), Inches(.4)).table
@@ -424,7 +424,7 @@ def test_bar_fills_keep_their_edges_at_whole_percents():
 
 
 def test_exports_show_the_operators_each_section_of_the_page_has_enabled():
-    from src.modules.pptx_compose import title_parts
+    from src.modules.reporting.pptx_compose import title_parts
 
     job, result = synthetic_result(levels=('Operator', 'Campaign'))
 
@@ -450,7 +450,7 @@ def test_exports_show_the_operators_each_section_of_the_page_has_enabled():
 
 
 def test_reliable_and_diff_kpis_carry_badges_of_distinct_colours():
-    from src.modules.pptx_compose import title_parts
+    from src.modules.reporting.pptx_compose import title_parts
 
     # Every theme gives the R and D badges two different colours, neither the colour of the KPI names.
     for name, current in STYLES.items():
@@ -477,7 +477,7 @@ def test_reliable_and_diff_kpis_carry_badges_of_distinct_colours():
 def test_gap_of_one_operator_follows_its_latest_campaign_and_fills_the_slide():
     import re as regex
 
-    from src.modules.pptx_compose import title_parts
+    from src.modules.reporting.pptx_compose import title_parts
 
     job, result = synthetic_result(levels=('Operator', 'Campaign'))
     # (The deck has only the GAP Analysis.)
@@ -519,8 +519,8 @@ def test_gap_figures_sit_beside_the_zero_line_off_their_bar():
 
     from pptx.enum.text import PP_ALIGN
 
-    from src.modules.pptx_compose import title_parts
-    from src.modules.scoring_exports import _text_points
+    from src.modules.reporting.pptx_compose import title_parts
+    from src.modules.scoring.scoring_exports import _text_points
 
     job, result = synthetic_result(levels=('Operator',))
     # (The decks have only the GAP Analysis and the KPI GAP Profile.)
@@ -630,8 +630,8 @@ def test_ericsson_heads_its_scorecards_in_white_and_highlights_stay_in_their_box
 
 
 def test_ericsson_and_vodafone_score_cells_take_the_colours_of_the_legend():
-    from src.modules.scoring_pptx_scorecard import _band_fill
-    from src.modules.scoring_themes import use_theme
+    from src.modules.scoring.scoring_pptx_scorecard import _band_fill
+    from src.modules.scoring.scoring_themes import use_theme
     assert STYLES['ericsson'].get('legend_fill') and STYLES['vodafone'].get('legend_fill') and not STYLES['netcheck'].get('legend_fill')
     with use_theme('ericsson'):
         assert _band_fill({'threshold_band': 'Medium'}) == THEMES['ericsson']['bands']['Medium']
@@ -644,8 +644,8 @@ def test_ericsson_and_vodafone_score_cells_take_the_colours_of_the_legend():
 def test_the_legend_of_the_bands_looks_as_their_cells_in_every_theme():
     from pptx.util import Inches
 
-    from src.modules.scoring_pptx_scorecard import style_legend_band
-    from src.modules.scoring_themes import use_theme
+    from src.modules.scoring.scoring_pptx_scorecard import style_legend_band
+    from src.modules.scoring.scoring_themes import use_theme
 
     def legend_cell(theme):
         table = Presentation().slides.add_slide(Presentation().slide_layouts[6]).shapes.add_table(1, 1, 0, 0, Inches(1), Inches(.2)).table

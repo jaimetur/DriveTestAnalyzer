@@ -6,9 +6,9 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules.cdr_campaign import campaign_of_rows, dataset_campaign, infer_campaign, normalize_campaign
-from src.modules.column_names import normalize_campaign_map
-from src.modules.repository import local_now_iso
+from src.modules.cdr.cdr_campaign import campaign_of_rows, dataset_campaign, infer_campaign, normalize_campaign
+from src.modules.cdr.column_names import normalize_campaign_map
+from src.modules.core.repository import local_now_iso
 
 
 def login(client, username='super', password='super123'):
@@ -72,7 +72,7 @@ def test_a_cdr_without_a_campaign_in_its_name_takes_that_of_its_rows():
 
 
 def test_workspace_proposes_the_campaign_of_the_rows_and_keeps_a_written_name(client, tmp_path):
-    from src.modules.campaign_maps import save_campaign_map
+    from src.modules.mapping.campaign_maps import save_campaign_map
 
     login(client)
     flex = add_cdr(tmp_path, '20260820 Daily Data CDR UK London NSA 20260805 - 20260819.xlsx', kind='data')
@@ -92,7 +92,7 @@ def test_workspace_proposes_the_campaign_of_the_rows_and_keeps_a_written_name(cl
 
 
 def test_workspace_lists_the_cdrs_of_flex_campaigns_apart_with_their_notice(client, tmp_path):
-    from src.modules.campaign_maps import save_campaign_map
+    from src.modules.mapping.campaign_maps import save_campaign_map
 
     login(client)
     regular = add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q3.xlsx')
@@ -133,7 +133,7 @@ def test_workspace_shows_and_changes_the_campaign_of_each_cdr(client, tmp_path):
     assert '>2 CDRs</span>' in page and '>0 Network Inventories</span>' in page and '>0 Geographic Datasets</span>' in page
     assert 'data-datasets-size title="Size of the source files of every dataset">0 MB</span>' in page
     # The rows are grouped by campaign and sorted by Campaign, NR Mode and CDR Type in the page.
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/app.js').read_text(encoding='utf-8')
+    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
     assert "header.dataset.campaignGroupRow = key;" in script and "size.dataset.campaignGroupSize = '';" in script and "label.textContent = key || 'No campaign';" in script
     assert "? {key: 'campaign', direction: 'desc'}" in script and "['nr-mode', 'kind'].reduce(" in script
 

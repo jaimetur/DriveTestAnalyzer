@@ -9,15 +9,15 @@ from types import ModuleType
 import pandas as pd
 import pytest
 
-from src.modules import saved_filters
-from src.modules.repository import Repository, SCHEMA, SCORING_CONFIGURATION_STATE_KEY, local_now_iso
-from src.modules.scoring_config import save_aggregation_hierarchy
+from src.modules.scoring import saved_filters
+from src.modules.core.repository import Repository, SCHEMA, SCORING_CONFIGURATION_STATE_KEY, local_now_iso
+from src.modules.scoring.scoring_config import save_aggregation_hierarchy
 from scoring_fixtures import scoring_configuration
 
 
 @pytest.fixture()
 def scoring_engine(monkeypatch):
-    engine = ModuleType('src.modules.scoring')
+    engine = ModuleType('src.modules.scoring.scoring')
     engine.METHOD_VERSION = 'test-method-v1'
     engine.required_input_columns = lambda kind, levels: [*levels, 'score']
     calls = []
@@ -388,7 +388,7 @@ def test_a_queued_calculation_keeps_its_methodology_and_a_new_one_recalculates_t
 
 def test_legacy_job_configuration_snapshot_is_returned_without_walk_migration(repository, scoring_engine):
     engine, _calls = scoring_engine
-    from src.modules.scoring import method_version_for_configuration
+    from src.modules.scoring.scoring import method_version_for_configuration
 
     engine.method_version_for_configuration = method_version_for_configuration
     dataset_id = add_dataset(repository)
@@ -1091,7 +1091,7 @@ def test_only_starred_saved_filters_are_kept_when_another_one_is_used(repository
 
 
 def test_saved_filters_leave_out_the_operators_the_operator_maps_exclude(repository, scoring_engine):
-    from src.modules.value_patterns import ValueSet
+    from src.modules.cdr.value_patterns import ValueSet
 
     dataset_id = add_dataset(repository)
     # (At least one Operator label is not excluded.)

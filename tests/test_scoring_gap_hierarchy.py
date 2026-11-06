@@ -7,9 +7,9 @@ import pandas as pd
 import pytest
 from pptx import Presentation
 
-from src.modules.scoring import calculate_scoring
-from src.modules.scoring_exports import export_scoring_csv, export_scoring_powerpoint
-from src.modules.scoring_views import build_scoring_views
+from src.modules.scoring.scoring import calculate_scoring
+from src.modules.scoring.scoring_exports import export_scoring_csv, export_scoring_powerpoint
+from src.modules.scoring.scoring_views import build_scoring_views
 from tests.scoring_fixtures import scoring_configuration
 from tests.test_scoring_exports import TEMPLATE
 

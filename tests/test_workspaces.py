@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from src.config import load_storage_paths
-from src.modules.repository import Repository
-from src.modules.workspaces import WorkspaceRegistry
+from src.modules.core.repository import Repository
+from src.modules.core.workspaces import WorkspaceRegistry
 
 
 def test_registry_connection_context_closes_its_sqlite_handle(tmp_path: Path) -> None:

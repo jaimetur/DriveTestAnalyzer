@@ -3,12 +3,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.modules.column_names import (
+from src.modules.cdr.column_names import (
     operator_vendor_filter_values, operator_vendor_value, vendor_filter_column, vendor_match_values,
 )
-from src.modules.ingestion import ensure_fixed_cdr_fields
-from src.modules.report_layouts import rename_template_vendor_fields
-from src.modules.repository import Repository
+from src.modules.cdr.ingestion import ensure_fixed_cdr_fields
+from src.modules.reporting.report_layouts import rename_template_vendor_fields
+from src.modules.core.repository import Repository
 
 
 def test_source_vendor_becomes_operator_vendor_and_vendor_keeps_the_vendor_alone() -> None:

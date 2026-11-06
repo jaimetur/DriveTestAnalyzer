@@ -12,14 +12,14 @@ from PIL import Image
 from pptx import Presentation
 
 import src.DriveTestAnalyzer as core
-from src.modules.cdr_reporting import _remove_all_slides
-from src.modules.network_insights_export import (
+from src.modules.cdr_analysis.cdr_reporting import _remove_all_slides
+from src.modules.network_insights.network_insights_export import (
     REPORT_PANELS, export_network_insights_powerpoint, report_component, table_colours,
 )
-from src.modules.network_insights_findings import findings_payload, lte_band_group, mode_of_test
-from src.modules.network_insights_findings_slides import add_finding_slides, palette
-from src.modules.network_insights_export import _slide
-from src.modules.scoring_themes import THEMES, use_theme
+from src.modules.network_insights.network_insights_findings import findings_payload, lte_band_group, mode_of_test
+from src.modules.network_insights.network_insights_findings_slides import add_finding_slides, palette
+from src.modules.network_insights.network_insights_export import _slide
+from src.modules.scoring.scoring_themes import THEMES, use_theme
 
 TEMPLATE = Path(__file__).resolve().parents[1] / 'assets/powerpoint-templates/Template_VodafoneThree.pptx'
 P_STYLE = '{http://schemas.openxmlformats.org/presentationml/2006/main}style'
@@ -166,7 +166,7 @@ def test_each_user_keeps_a_network_insights_theme(client) -> None:
     client.cookies.clear()
     assert client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False).status_code == 303
     page = client.get('/network-insights').text
-    assert 'id="ni-theme"' in page and 'id="ni-findings"' in page and 'js/network_insights_findings.js' in page
+    assert 'id="ni-theme"' in page and 'id="ni-findings"' in page and 'js/network_insights/network_insights_findings.js' in page
     config = json.loads(page.split('<script id="ni-config" type="application/json">', 1)[1].split('</script>', 1)[0])
     assert config['theme'] == 'ericsson' and [theme['id'] for theme in config['themes']] == list(THEMES)
     assert client.get('/api/network-insights/theme').json() == {'theme': 'ericsson'}
@@ -182,8 +182,8 @@ def test_each_user_keeps_a_network_insights_theme(client) -> None:
 
 
 def test_bundle_report_templates_and_reporting_jobs_give_network_insights_their_one_theme() -> None:
-    from src.modules import bundle_report_templates
-    from src.modules.report_tasks import _network_entry
+    from src.modules.reporting import bundle_report_templates
+    from src.modules.reporting.report_tasks import _network_entry
 
     # The theme belongs to the whole report (Ericsson by default), not to its Network Insights section.
     assert 'theme' not in bundle_report_templates.default_options('network_insights')

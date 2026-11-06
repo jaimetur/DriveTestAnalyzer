@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from src.modules import saved_filters
-from src.modules.repository import Repository, local_now_iso
+from src.modules.scoring import saved_filters
+from src.modules.core.repository import Repository, local_now_iso
 from scoring_fixtures import scoring_configuration
 
 

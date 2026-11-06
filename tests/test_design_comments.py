@@ -6,9 +6,9 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules import cdr_reporting
-from src.modules import design_comments as comments
-from src.modules.ppt_designer import DesignDefinition
+from src.modules.cdr_analysis import cdr_reporting
+from src.modules.ppt_designer import design_comments as comments
+from src.modules.ppt_designer.ppt_designer import DesignDefinition
 
 OPERATOR_CAMPAIGN = [['Operator'], ['Campaign']]
 
@@ -190,7 +190,7 @@ def test_generated_comments_name_their_selection_alike_on_every_deployment_with_
     assert second.json()['cdrs']['data'][0]['id'] != first['cdrs']['data'][0]['id']
     assert second.json()['selection_signature'] == first['selection_signature']
 
-    from src.modules.ppt_designer import comments_selection_signature
+    from src.modules.ppt_designer.ppt_designer import comments_selection_signature
     design = DesignDefinition.model_validate(definition)
     cdrs = {'data': [{'id': 7, 'name': 'rates.csv', 'stage': 'final', 'campaigns': ['26-Q2', '26-Q3']}]}
     signature = comments_selection_signature(design, cdrs, {'data': [{'id': 7, 'row_count': 48}]})
@@ -272,7 +272,7 @@ def failures_only(campaigns=('26-Q2', '26-Q3')):
 
 
 def test_failure_charts_of_failed_and_dropped_tests_only_are_commented_by_their_counts():
-    from src.modules.comment_writers import validate_comments
+    from src.modules.ppt_designer.comment_writers import validate_comments
 
     chart = {'index': 0, 'title': 'Voice failures per City', 'kpi': 'Call_Status', 'model': failures_only()}
     assert texts([chart], focus_operators=['VF']) == [
@@ -378,7 +378,7 @@ def test_auto_comments_fill_the_ppt_without_changing_the_design(client):
 
 
 def test_reporting_jobs_keep_the_auto_comments_of_each_design():
-    from src.modules.report_tasks import normalize_definition
+    from src.modules.reporting.report_tasks import normalize_definition
 
     definition = normalize_definition({'name': 'Weekly', 'designs': [
         {'design_id': 'd1', 'auto_comments': 'generated'}, {'design_id': 'd2'}, {'design_id': 'd3', 'auto_comments': 'every'},

@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 import src.DriveTestAnalyzer as app_module
-from src.modules.geospatial import assign_clusters, assign_regions
+from src.modules.network.geospatial import assign_clusters, assign_regions
 
 
 def _polygons(path, field, name):

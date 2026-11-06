@@ -11,12 +11,12 @@
 {% macro nr_modes_scope_note() %}<p><strong>Operators</strong>: the NR Mode · Operator pairs out of scope are those of the <strong>NR Modes</strong> of each label in the Operator Maps: an operator without a network in an NR Mode (such as Three, which has no SA, whose calls in the SA campaigns are NSA calls its NSA campaigns already have) has its calls of that NR Mode out of scope in every module, NQ Calls included. They show chosen and grey and cannot be changed here. {% if user.role in ['user-editor', 'admin', 'super-admin'] %}<a class="nq-scope-focus-link" href="/workspace-config#operator-labels">Choose the NR Modes in Operator Maps</a>.{% else %}The NR Modes of each label in Workspace Config → Operator Maps choose them.{% endif %} The operators excluded in the Operator Maps are not in the list: their calls count nowhere.</p>{% endmacro %}
 {% set config_lock = '' if nq_can_configure else ' disabled' %}
 {% set priority_lock = '' if nq_can_prioritize else ' disabled' %}
-<link rel="stylesheet" href="{{ static_path('css/rich_text.css') }}?v={{ asset_version('css/rich_text.css') }}">
-<link rel="stylesheet" href="{{ static_path('css/non_qualified_calls.css') }}?v={{ asset_version('css/non_qualified_calls.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/core/rich_text.css') }}?v={{ asset_version('css/core/rich_text.css') }}">
+<link rel="stylesheet" href="{{ static_path('css/nq/non_qualified_calls.css') }}?v={{ asset_version('css/nq/non_qualified_calls.css') }}">
 {# A reload (or Back and Forward) returns to where the page was being read; opening the module starts at its top. Before
    the page is drawn, it is opened at that position with what was in view when the page was left shown dimmed under a
    notice (page_restore.js); non_qualified_calls.js keeps it there until the calls and every panel on screen are drawn. #}
-<script src="{{ static_path('js/page_restore.js') }}?v={{ asset_version('js/page_restore.js') }}"></script>
+<script src="{{ static_path('js/core/page_restore.js') }}?v={{ asset_version('js/core/page_restore.js') }}"></script>
 <script>
   window.PageRestore.begin({key: window.PageRestore.keyOf('nq-view', {{ (active_workspace.id if active_workspace else '') | tojson }}),
     notice: 'Loading Non-Qualified Calls where you left it…', theme: 'nq'});
@@ -817,10 +817,10 @@
     <footer><button type="button" class="nq-secondary-action" id="nq-rule-default">Default Rule</button><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-rule-cancel">Cancel</button><button type="submit" class="nq-primary-action" id="nq-rule-save">Save</button></footer>
   </form>
 </dialog>
-<script defer src="{{ static_path('js/element_image.js') }}?v={{ asset_version('js/element_image.js') }}"></script>
-<script defer src="{{ static_path('js/image_buttons.js') }}?v={{ asset_version('js/image_buttons.js') }}"></script>
-<script defer src="{{ static_path('js/rich_text.js') }}?v={{ asset_version('js/rich_text.js') }}"></script>
-<script defer src="{{ static_path('js/l3_layers.js') }}?v={{ asset_version('js/l3_layers.js') }}"></script>
-<script defer src="{{ static_path('js/nq_call_map.js') }}?v={{ asset_version('js/nq_call_map.js') }}"></script>
-<script defer src="{{ static_path('js/non_qualified_calls.js') }}?v={{ asset_version('js/non_qualified_calls.js') }}"></script>
+<script defer src="{{ static_path('js/core/element_image.js') }}?v={{ asset_version('js/core/element_image.js') }}"></script>
+<script defer src="{{ static_path('js/core/image_buttons.js') }}?v={{ asset_version('js/core/image_buttons.js') }}"></script>
+<script defer src="{{ static_path('js/core/rich_text.js') }}?v={{ asset_version('js/core/rich_text.js') }}"></script>
+<script defer src="{{ static_path('js/nq/l3_layers.js') }}?v={{ asset_version('js/nq/l3_layers.js') }}"></script>
+<script defer src="{{ static_path('js/nq/nq_call_map.js') }}?v={{ asset_version('js/nq/nq_call_map.js') }}"></script>
+<script defer src="{{ static_path('js/nq/non_qualified_calls.js') }}?v={{ asset_version('js/nq/non_qualified_calls.js') }}"></script>
 {% endblock %}

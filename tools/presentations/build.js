@@ -1,7 +1,7 @@
 // The presentations of DriveTest Analyzer shown in the Help, in Ericsson style: the overview deck (which closes with the
 // one-slider), the one-slider and the roadmap, the status of the adaptation to other benchmarking providers, the deck of
 // every main module and of the DT Analyzer RCA in a design of their own, and the full presentation that joins them. The
-// server generates them, with the live figures of the workspaces chosen in Super Admin (src/modules/presentations.py);
+// server generates them, with the live figures of the workspaces chosen in Super Admin (src/modules/help/presentations.py);
 // none is kept in the repository. `node build.js <folder>` writes them, with the figures below, into <folder>, and
 // `python tools/presentations/render.py <folder>` renders their slides as the server does; `node build.js --ids` lists
 // them (see help/project-structure.md).
@@ -110,7 +110,7 @@ function heading(slide, plain, focus, subtitle, size) {
 }
 
 // The figures of the slides: those of the workspaces chosen in Super Admin, which the server passes in the JSON
-// file named by PRESENTATION_FIGURES when it generates the presentations (src/modules/presentations.py); these otherwise.
+// file named by PRESENTATION_FIGURES when it generates the presentations (src/modules/help/presentations.py); these otherwise.
 const DEFAULT_FIGURES = {
   workspaces: ['UK'], month: 'October 2026', cdr_calls: 3762827, cdrs: 27, campaigns: 9, inventory_rows: 519133,
   mapping_rows: 1095986, nq_calls: 48138, nq_calls_total: 4032603, nq_followed: 2357, nq_rca: 2129, nq_comments: 3371,
@@ -1245,7 +1245,7 @@ function imageSlides(pres, deck, sectionTitle = '') {
 }
 
 // The PowerPoint of a deck of its own design and, in its folder, the pictures of its slides and their thumbnails that the
-// Help shows (as src/modules/presentations.py renders those of the other decks: 1920 × 1080 and 600 × 338), so LibreOffice
+// Help shows (as src/modules/help/presentations.py renders those of the other decks: 1920 × 1080 and 600 × 338), so LibreOffice
 // does not render them again.
 async function writeImageDeck(deck, id, subject) {
   const pres = new pptxgen();

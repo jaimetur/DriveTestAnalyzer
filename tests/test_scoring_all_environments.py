@@ -5,8 +5,8 @@ import pytest
 from pptx import Presentation
 from pptx.enum.chart import XL_CHART_TYPE
 
-from src.modules.scoring_exports import export_scoring_powerpoint
-from src.modules.scoring_views import build_scoring_views
+from src.modules.scoring.scoring_exports import export_scoring_powerpoint
+from src.modules.scoring.scoring_views import build_scoring_views
 from tests.test_scoring_exports import (
     TEMPLATE,
     _comparison_matrices,

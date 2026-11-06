@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src.branding import apply_legacy_environment, canonical_format
-from src.modules.scoring_config import unwrap_scoring_profiles_payload
+from src.modules.scoring.scoring_config import unwrap_scoring_profiles_payload
 
 
 def test_canonical_format_maps_legacy_product_prefix() -> None:
