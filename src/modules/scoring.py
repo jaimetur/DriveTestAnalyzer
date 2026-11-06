@@ -836,7 +836,7 @@ def _points_loss_entries(kind: str, frame: pd.DataFrame, valid: pd.Series, group
                     f'{firsts[pair // len(seconds)]}{points_loss.CITY_AREA_SEPARATOR}{seconds[pair % len(seconds)]}':
                         round(value / total, 6)
                     for pair, value in zip(positions[low:high].tolist(), totals[low:high].tolist()) if value > 0}
-                if pair_field in (points_loss.VENDOR_CITY, points_loss.REGION_CITY):
+                if pair_field in points_loss.CITY_PAIRS:
                     pair_shares = {pair: share for pair, share in pair_shares.items()
                                    if not pair.startswith(points_loss.NOT_SPECIFIED + points_loss.CITY_AREA_SEPARATOR)}
                 if pair_shares:
@@ -847,7 +847,8 @@ def _points_loss_entries(kind: str, frame: pd.DataFrame, valid: pd.Series, group
     loss_shares = [entry for group in range(groups) for entries in found if (entry := entries.get(group)) is not None]
     # The tests of each group per Vendor, Site Type and area, ordered as value_counts orders them.
     served = [{} for _group in range(groups)]
-    for field in (points_loss.VENDOR, points_loss.SITE_TYPE, *((*points_loss.AREA_FIELDS, points_loss.POSTAL) if kind != 'speech' else ())):
+    for field in (points_loss.VENDOR, points_loss.SITE_TYPE,
+                  *((*points_loss.AREA_FIELDS, points_loss.POSTAL, *points_loss.CLASS_FIELDS) if kind != 'speech' else ())):
         if field not in categories:
             continue
         category_codes, names = categories[field]

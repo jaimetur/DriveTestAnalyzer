@@ -99,6 +99,10 @@ RATE_TESTS = 1000
 MIN_RATE_TESTS = 500
 # A postal code holds far fewer tests than a City, so it asks for fewer to rank it.
 MIN_POSTAL_RATE_TESTS = 100
+# A RAN Vendor or site type of an operator gives its points lost per 1,000 tests from this many tests.
+MIN_CLASS_RATE_TESTS = 100
+# The Points Lost view of each class of the multivendor analysis (ticket #85).
+CLASS_VIEWS = {'RAN Vendor': 'ran_vendor_losses', 'Site Class': 'site_class_losses'}
 
 
 def _series_tests(document: dict[str, Any], keys: list[str]) -> dict[tuple, dict[str, dict[str, int]]]:
@@ -1263,8 +1267,9 @@ def _vendor_series_together(series: list[tuple[dict[str, Any], int, dict[str, di
 
 def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) -> dict[str, list[dict[str, Any]]]:
     """The Points Lost of each operator per Vendor, Site Type, site and route stretch, from its points-lost maps: each
-    with its share of the points lost and, for vendors and kinds of site, its share of the tests."""
-    from src.modules.scoring_points_loss import NOT_SPECIFIED, OTHER, SITE, SITE_TYPE, STRETCH, VENDOR
+    with its share of the points lost and, for vendors and kinds of site, its share of the tests; and per RAN Vendor
+    and site type (Legacy, eMOCN, NNS) with their tests too and the points they lose per 1,000 of them."""
+    from src.modules.scoring_points_loss import CLASS_FIELDS, NOT_SPECIFIED, OTHER, SITE, SITE_TYPE, STRETCH, VENDOR
     document = (result or {}).get('points_loss') or {}
     places = (document.get('areas') or {}).get('City') or {}
     keys = [key for key in (document.get('shares') or [{}])[0]
@@ -1273,19 +1278,20 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
     # sites_unidentified: the operators none of whose serving cells is in the cell inventories, so no site of theirs can
     # be reviewed.
     views: dict[str, list[dict[str, Any]]] = {'vendor_losses': [], 'site_type_losses': [], 'sites_to_review': [],
-                                              'sites_unidentified': [], 'route_stretches': []}
+                                              'sites_unidentified': [], 'route_stretches': [],
+                                              **{view: [] for view in CLASS_VIEWS.values()}}
     sites_by_series: dict[tuple, dict[str, dict[str, Any]]] = {}
     # The Vendor table of each series, with its tests and the points each City loses per Vendor.
     vendor_series: list[tuple[dict[str, Any], int, dict[str, dict[str, float]]]] = []
     for item in maps:
         field = item['field']
-        if field not in (VENDOR, SITE_TYPE, SITE, STRETCH):
+        if field not in (VENDOR, SITE_TYPE, SITE, STRETCH, *CLASS_FIELDS):
             continue
         context = {**item['context'], 'operator': item['operator']}
         identity = tuple(context.get(key) if key != 'operator' else item['operator'] for key in keys)
         environment_key = None if item['environment'] == COMBINED else item['environment']
         base = {key: item[key] for key in ('environment', 'operator', 'label', 'color', 'is_reference', 'context', 'total')}
-        if field in (VENDOR, SITE_TYPE):
+        if field in (VENDOR, SITE_TYPE, *CLASS_FIELDS):
             counts = (tests.get((identity, environment_key)) or {}).get(field) or {}
             counted = sum(counts.values())
             rows = []
@@ -1299,9 +1305,17 @@ def _serving_views(maps: list[dict[str, Any]], result: dict[str, Any] | None) ->
                     'cities': [{'name': city, 'points': points} for city, points in sorted(
                         ((item.get('city_losses') or {}).get(name) or {}).items(), key=lambda pair: -pair[1])[:3]
                         if city != NOT_SPECIFIED],
+                    # A RAN Vendor or site type: its tests and the points it loses per 1,000 of them.
+                    **({'tests': counts.get(name, 0),
+                        'rate': area['points'] / counts[name] * RATE_TESTS if counts.get(name, 0) >= MIN_CLASS_RATE_TESTS else None}
+                       if field in CLASS_FIELDS else {}),
                 })
             entry = {**base, 'rows': rows, 'has_tests': bool(counted)}
-            if field == VENDOR:
+            if field in CLASS_FIELDS:
+                entry.update({'has_counts': True, 'tests': counted, 'rate_tests': RATE_TESTS, 'rate_minimum': MIN_CLASS_RATE_TESTS,
+                              'rate': item['total'] / counted * RATE_TESTS if counted >= MIN_CLASS_RATE_TESTS else None})
+                views[CLASS_VIEWS[field]].append(entry)
+            elif field == VENDOR:
                 vendor_series.append((entry, counted, item.get('city_losses') or {}))
             else:
                 views['site_type_losses'].append(entry)

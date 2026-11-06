@@ -50,7 +50,7 @@ def test_default_scenario_follows_the_requested_defaults():
         assert options['geographical_areas'] == {'cards': True, 'ranking': True, 'versus': True}
         assert options['trends'] == {'trend': True, 'areas': True}
         assert options['points'] == {'stake': True, 'kpis': True, 'map': True, 'postal_map': True, 'vendors': True, 'site_types': True,
-                                     'sites': True, 'stretches': True}
+                                     'ran_vendors': True, 'site_classes': True, 'sites': True, 'stretches': True}
         assert options['tables']['kpi_values'] is False and options['tables']['gap_values'] is False
         # The operators of the GAP Analysis are the Focus operators of the Operator Maps.
         assert options['gap'] == {'all_operators': True, 'individual': True, 'parts': True, 'profile': True}

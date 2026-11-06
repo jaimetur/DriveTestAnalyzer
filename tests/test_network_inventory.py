@@ -296,6 +296,29 @@ def test_an_operator_left_out_of_the_multivendor_mappings_keeps_its_serving_cell
         assert after[column].tolist() == before[column].tolist()
 
 
+def test_mapping_classifies_the_ran_vendor_and_the_site_type_of_both_ends(client, tmp_path):
+    # Ticket #85: the multivendor analysis reads each call by RAN Vendor with its host network and by site type.
+    login(client)
+    content = ('Network,Host Network,OP/ Vendor,Site ID,eNodeB ID,Cell ID,Longitude,Latitude,eMOCNScenario\n'
+               'Vodafone,Vodafone,Ericsson,S1,10,1,-1.5,53.8,S1\n'
+               'Vodafone,Telefonica,Nokia,S2,11,1,-1.5,53.8,\n'
+               'H3G,H3G,Samsung,S3,20,2,-1.5,53.8,NNS\n')
+    mapping = _upload(client, 'VF3_All_Vendor_2026_Week41.csv', content, 'multivendor_mapping')
+    first, second, third = str(10 * 256 + 1), str(11 * 256 + 1), str(20 * 256 + 2)
+    cdr_id = _cdr(tmp_path, {'Operator': ['Vodafone UK', 'Vodafone UK', 'Vodafone UK', '3', 'EE'],
+                             'Cell_ID_A': [first, f'{first} -> {second}', second, third, first],
+                             'Session_ID_A': [1, 2, 3, 4, 5]})
+    assert client.post('/workspace/map-mappings', data={
+        'cdr_dataset_ids': str(cdr_id), 'vendor_source': 'inventory', 'multivendor_mapping_dataset_ids': str(mapping['id']),
+    }, follow_redirects=False).status_code == 303
+    wait_for_background_dataset_work()
+    mapped = core.repository.load_dataset_rows(cdr_id, ['Serving_RAN_Vendor', 'Serving_Site_Class'], {})
+    # The same class at both ends, else MIX; nothing for an Operator no source serves.
+    assert [value or '' for value in mapped['Serving_RAN_Vendor']] == [
+        'VF_Hosted_Ericsson', 'MIX', 'VMO2_Hosted_Nokia', '3UK_Hosted_Samsung', '']
+    assert [value or '' for value in mapped['Serving_Site_Class']] == ['VF_eMOCN_S1', 'MIX', 'VF_Legacy', '3UK_NNS', '']
+
+
 def test_multivendor_mapping_without_a_network_column_belongs_to_its_operator(client, tmp_path):
     login(client)
     content = 'OP/ Vendor,Site ID,eNodeB ID,Cell ID,Longitude,Latitude\nHuawei,S1,40,4,-1.5,53.8\n'

@@ -2909,7 +2909,8 @@
   // The sections whose operators the page chooses with its chips, as the export names them.
   // (The route that loses most and the Campaign Comparison always export the operators of their panel.)
   const EXPORT_OPERATOR_SECTIONS = ['summary-operators', 'places-operators', 'ranking-operators', 'gap-parts-operators', 'gap-insight-operators',
-    'vendor_losses-operators', 'site_type_losses-operators', 'sites-operators', 'stretches-operators'];
+    'vendor_losses-operators', 'site_type_losses-operators', 'ran_vendor_losses-operators', 'site_class_losses-operators',
+    'sites-operators', 'stretches-operators'];
 
   // The operators chosen in each section ({section: [operators]}); a section never changed is left out, so the export
   // uses its default (as the page does).
@@ -8341,6 +8342,8 @@
     const pending = payload.points_loss_pending;
     renderServingLosses(pane, payload, environment, 'vendor_losses', 'Points lost per Vendor of the serving cell', 'Vendor', pending);
     renderServingLosses(pane, payload, environment, 'site_type_losses', 'Points lost per kind of serving site', 'Kind of site', pending);
+    renderServingLosses(pane, payload, environment, 'ran_vendor_losses', 'Points lost per RAN Vendor (host and vendor)', 'RAN Vendor', pending);
+    renderServingLosses(pane, payload, environment, 'site_class_losses', 'Points lost per site type (Legacy, eMOCN, NNS)', 'Site type', pending);
     renderSitesToReview(pane, payload, environment, pending);
     renderRouteStretches(pane, payload, environment, pending);
     if (!pane.childElementCount) {
@@ -8422,9 +8425,15 @@
 
   function renderServingLosses(pane, payload, environment, kind, title, column, pending) {
     const items = insightItems(payload, kind, environment);
+    const classKind = kind === 'ran_vendor_losses' || kind === 'site_class_losses';
     const maps = insightItems(payload, 'points_loss_maps', environment);
     if (!items.length) {
       if (kind === 'vendor_losses' && (maps.length || pending)) servingNotice(insightSection(pane, title, 'scoring-serving-card'), pending);
+      // The RAN Vendor and the site type of the tests come from CDRs whose Vendor was mapped with this version.
+      if (classKind && !pending && insightItems(payload, 'vendor_losses', environment).length) {
+        insightSection(pane, title, 'scoring-serving-card').append(insightParagraph('scoring-insight-note',
+          'Map the Vendor of the CDRs again (Workspace) and calculate the scoring again to share its points lost among the RAN Vendors and site types (Legacy, eMOCN, NNS) of the cells that served the tests.'));
+      }
       return;
     }
     const {control: scopeControl, inScope, context} = insightScopeControl(`${kind}-scope`, items, {withCampaign: true});
@@ -8448,21 +8457,29 @@
         : ` · ${insightNumber(item.total, 1)} points lost`);
       const peak = Math.max(...item.rows.map(row => row.points), 0);
       const withTests = item.has_tests;
-      const withCities = kind === 'vendor_losses' && item.rows.some(row => row.cities?.length);
+      // A RAN Vendor or site type: its calls and tests and the points it loses per 1,000 of them too.
+      const withCounts = withTests && Boolean(item.has_counts);
+      const withCities = (kind === 'vendor_losses' || classKind) && item.rows.some(row => row.cities?.length);
       const withEnvironments = item.rows.some(row => row.environments?.length);
       const sum = field => item.rows.reduce((total, row) => total + (Number(row[field]) || 0), 0);
+      const rateTitle = `Points lost per ${insightNumber(item.rate_tests || 1000, 0)} calls and tests (from ${insightNumber(item.rate_minimum || 0, 0)} tests)`;
       const total = [insightTotalLabel(byVendor ? item.total_label : undefined), insightTotalCell(byVendor ? item.total : sum('points'), {digits: 1}),
         ...(byVendor ? [] : [insightTotalCell(sum('share'), {digits: 1, suffix: '%'})]),
+        ...(withCounts ? [insightTotalCell(item.tests, {digits: 0})] : []),
         ...(withTests ? [insightTotalCell(item.rows.some(row => row.tests_share !== null) ? sum('tests_share') : null, {digits: 1, suffix: '%'})] : []),
+        ...(withCounts ? [insightTotalCell(item.rate, {digits: 1})] : []),
         ...(withEnvironments ? [''] : []), ...(withCities ? [''] : [])];
-      wrapper.append(banner, insightTable([column, 'Points lost', ...(byVendor ? [] : ['Share of points']), ...(withTests ? ['Share of tests'] : []),
+      wrapper.append(banner, insightTable([column, 'Points lost', ...(byVendor ? [] : ['Share of points']), ...(withCounts ? ['Tests'] : []),
+        ...(withTests ? ['Share of tests'] : []), ...(withCounts ? ['Per 1,000 tests'] : []),
         ...(withEnvironments ? ['Where'] : []), ...(withCities ? ['Cities and routes that lose most'] : [])], item.rows.map(row => [
         {text: row.name, className: row.identified ? 'scoring-insight-kpi' : 'scoring-insight-kpi is-muted'},
         gapBarCell(row.points, peak, {loss: true, total: true}),
         ...(byVendor ? [] : [{text: `${insightNumber(row.share, 1)}%`, className: 'scoring-insight-number'}]),
+        ...(withCounts ? [{text: insightNumber(row.tests || 0, 0), className: 'scoring-insight-number', title: 'Calls and tests of the operator served by it'}] : []),
         ...(withTests ? [{text: row.tests_share === null ? '—' : `${insightNumber(row.tests_share, 1)}%`,
           className: `scoring-insight-number ${!byVendor && row.tests_share !== null && row.share > row.tests_share * 1.25 && row.share - row.tests_share > 3 ? 'is-loss' : ''}`,
           title: 'Share of the tests of the operator served by it'}] : []),
+        ...(withCounts ? [{text: row.rate === null || row.rate === undefined ? '—' : insightNumber(row.rate, 1), className: 'scoring-insight-number', title: rateTitle}] : []),
         ...(withEnvironments ? [{text: (row.environments || []).map(name => shortEnvironmentLabel(name)).join(', '), className: 'scoring-loss-environment'}] : []),
         ...(withCities ? [(row.cities || []).map(city => `${city.name} ${insightNumber(city.points, 1)}`).join(' · ')] : []),
       ]), {total}));
@@ -8473,6 +8490,10 @@
       ? 'The scoring is split by Vendor: each Vendor is scored on its own tests (the RAN Vendor of the cells that served them), so its points lost compare directly with the other Vendors. Share of tests: the tests of the operator it served. Unknown and Mixed in grey. Total: the average of the Vendors weighted by their tests.'
       : kind === 'vendor_losses'
       ? 'Each test belongs to the RAN Vendor of the cell that served its start (Not identified: no serving cell in the inventories). In red, a share of the points lost well above the share of the tests.'
+      : kind === 'ran_vendor_losses'
+      ? 'Each call or test belongs to the RAN Vendor of its first and last serving cells with the network that hosts them (VF_Hosted_Ericsson, VMO2_Hosted_Nokia…), MIX when they differ (Not identified: no serving cell in the inventories). Per 1,000 tests: the points lost per 1,000 calls and tests it served (from 100 tests). In red, a share of the points lost well above the share of the tests.'
+      : kind === 'site_class_losses'
+      ? 'Each call or test belongs to the site type of its first and last serving cells: the network that owns the site with its eMOCN scenario (S0, S1…, as the inventory names it), NNS, or Legacy without one; MIX when they differ (Not identified: no serving cell in the inventories). Per 1,000 tests: the points lost per 1,000 calls and tests it served (from 100 tests). In red, a share of the points lost well above the share of the tests.'
       : 'The kind of each serving site: the network that owns it and, when another network hosts its RAN, "on" that network (Beacon, MORAN); NNS sites apart. In red, a share of the points lost well above the share of the tests.'));
   }
 

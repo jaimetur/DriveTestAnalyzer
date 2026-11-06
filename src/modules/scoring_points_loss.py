@@ -16,7 +16,9 @@ its polygons.
 Besides the areas, the losses are shared among who serves the tests: the RAN Vendor of the cell that served each
 test (``Vendor``), the kind of its site (``Site Type``: the network that owns the site and, when another network hosts
 it, the host, NNS sites apart) and the site itself (``Site``), and, on the Connecting Roads routes, among stretches of
-about 20 km (``Stretch``), so each owner sees where its points go.
+about 20 km (``Stretch``), so each owner sees where its points go. For the multivendor analysis, the RAN Vendor with
+the network that hosts it (``RAN Vendor``: VF_Hosted_Ericsson…) and the site type (``Site Class``: Legacy, eMOCN
+scenario or NNS of each network) of both ends of each test, MIX when they differ, share them too.
 """
 from __future__ import annotations
 
@@ -46,17 +48,26 @@ SHARE_COLUMN = '__share_{}'
 # Who serves each test: the RAN Vendor, the kind of site and the site of its serving cell, and the stretch of the
 # Connecting Roads route it is on. They share the losses like the areas, without polygons.
 VENDOR, SITE_TYPE, SITE, STRETCH = 'Vendor', 'Site Type', 'Site', 'Stretch'
-SERVING_FIELDS = (VENDOR, SITE_TYPE, SITE, STRETCH)
+# The RAN Vendor with its host network and the site type (Legacy, eMOCN, NNS) of the cells of each test (ticket #85).
+RAN_VENDOR, SITE_CLASS = 'RAN Vendor', 'Site Class'
+SERVING_FIELDS = (VENDOR, SITE_TYPE, SITE, STRETCH, RAN_VENDOR, SITE_CLASS)
+# The serving fields whose tests are counted like the areas (calls and tests, not the samples of Speech), for the
+# points they lose per 1,000 tests.
+CLASS_FIELDS = (RAN_VENDOR, SITE_CLASS)
 SHARE_FIELDS = (*MAP_FIELDS, *SERVING_FIELDS)
 # The points each Vendor loses in each City or route, for the biggest areas of each Vendor, and each Region (the
 # performance owners of the networks, such as Vendor A or VMO2 North) in each City or route.
 VENDOR_CITY = 'Vendor|City'
 REGION_CITY = 'Region|City'
+RAN_VENDOR_CITY, SITE_CLASS_CITY = 'RAN Vendor|City', 'Site Class|City'
+# The pairs of a serving field or Region and the City (or route) where it loses, without the tests of no such value.
+CITY_PAIRS = {VENDOR_CITY: VENDOR, REGION_CITY: 'Region', RAN_VENDOR_CITY: RAN_VENDOR, SITE_CLASS_CITY: SITE_CLASS}
 # Where each test ran (Cities, Towns, Roads or Railways) and how (Drive or Walk), for the places ranked in the Summary.
 SETTING, MODE = '__setting', '__mode'
 SETTINGS = ('Cities', 'Towns', 'Roads', 'Railways')
 SERVING_SOURCES = {'vendor': ('Vendor',), 'network': ('Serving_Network',), 'host': ('Serving_Host_Network',),
-                   'site': ('Serving_Site_ID',), 'scenario': ('Serving_eMOCN_Scenario',)}
+                   'site': ('Serving_Site_ID',), 'scenario': ('Serving_eMOCN_Scenario',),
+                   'ran_vendor': ('Serving_RAN_Vendor',), 'site_class': ('Serving_Site_Class',)}
 # A site key is its network and its site ID, as site IDs repeat across networks.
 SITE_SEPARATOR = '\x1e'
 # A stretch of a route is the route and a cell of this grid (about 22 km by 20 km in the UK).
@@ -78,7 +89,8 @@ PACKET_LOSS_FORMULA = '100 * SUM(totalpacketlost) / SUM(Packets_Sent)'
 LOST_PACKET_FIELDS = ('Packets_Lost', 'Packets_Discarded', 'Packets_Corrupted', 'Packets_Not_Sent')
 # The pairs of areas whose losses are kept together: each City (or route) in each map area, each Vendor and each Region
 # in each City or route.
-PAIR_FIELDS = ((CITY_AREA, 'City', AREA), (VENDOR_CITY, VENDOR, 'City'), (REGION_CITY, 'Region', 'City'))
+PAIR_FIELDS = ((CITY_AREA, 'City', AREA), (VENDOR_CITY, VENDOR, 'City'), (REGION_CITY, 'Region', 'City'),
+               (RAN_VENDOR_CITY, RAN_VENDOR, 'City'), (SITE_CLASS_CITY, SITE_CLASS, 'City'))
 _AGGREGATE = re.compile(r'(AVG|MEDIAN|PCT90)\((\w+)\)')
 
 
@@ -237,6 +249,10 @@ def _serving_labels(frame: pd.DataFrame, source: pd.DataFrame, resolved: dict[st
         if site is not None:
             keys = network.fillna('') + SITE_SEPARATOR + site
             frame[AREA_COLUMN.format(SITE)] = keys.where(site.notna() & network.notna())
+    for name, field in (('ran_vendor', RAN_VENDOR), ('site_class', SITE_CLASS)):
+        values = column(name)
+        if values is not None:
+            frame[AREA_COLUMN.format(field)] = values
 
 
 def _stretch_column(frame: pd.DataFrame) -> None:
@@ -521,7 +537,7 @@ def _category_shares(frame: pd.DataFrame, weights: pd.Series, total: float) -> d
         pair_shares = {
             f'{firsts[pair // len(seconds)]}{CITY_AREA_SEPARATOR}{seconds[pair % len(seconds)]}': round(float(value) / total, 6)
             for pair, value in by_pair.items() if value > 0}
-        if pair_field in (VENDOR_CITY, REGION_CITY):
+        if pair_field in CITY_PAIRS:
             pair_shares = {pair: share for pair, share in pair_shares.items()
                            if not pair.startswith(NOT_SPECIFIED + CITY_AREA_SEPARATOR)}
         if pair_shares:
@@ -534,7 +550,7 @@ def serving_counts(frame: pd.DataFrame, *, areas: bool = True) -> dict[str, dict
     the tests with its share of the points lost, and, with ``areas`` (the calls and tests, not the samples of Speech),
     per City, Region, Cluster and Postal Code, for the points each place loses per 1,000 of its tests."""
     counts: dict[str, dict[str, int]] = {}
-    for field in (VENDOR, SITE_TYPE, *((*AREA_FIELDS, POSTAL) if areas else ())):
+    for field in (VENDOR, SITE_TYPE, *((*AREA_FIELDS, POSTAL, *CLASS_FIELDS) if areas else ())):
         column = SHARE_COLUMN.format(field)
         if column in frame:
             values = frame[column].value_counts()
@@ -950,7 +966,7 @@ def points_loss_maps(result: dict[str, Any], keys: list[str],
     for (identity, environment), fields in series.items():
         context = dict(zip(keys, identity))
         # The points each City loses in each map area, kept on the City map, and each Vendor in each City or route.
-        pair_losses: dict[str, dict[str, dict[str, float]]] = {CITY_AREA: {}, VENDOR_CITY: {}, REGION_CITY: {}}
+        pair_losses: dict[str, dict[str, dict[str, float]]] = {CITY_AREA: {}, **{pair: {} for pair in CITY_PAIRS}}
         for pair_field, losses in pair_losses.items():
             for pair, points in (fields.get(pair_field) or {}).items():
                 first, _separator, second = pair.partition(CITY_AREA_SEPARATOR)
@@ -963,10 +979,9 @@ def points_loss_maps(result: dict[str, Any], keys: list[str],
                     'environment': environment}
             if field == 'City' and city_areas:
                 item['area_losses'] = city_areas
-            if field == VENDOR and pair_losses[VENDOR_CITY]:
-                item['city_losses'] = pair_losses[VENDOR_CITY]
-            if field == 'Region' and pair_losses[REGION_CITY]:
-                item['city_losses'] = pair_losses[REGION_CITY]
+            for pair_field, paired in CITY_PAIRS.items():
+                if field == paired and pair_losses[pair_field]:
+                    item['city_losses'] = pair_losses[pair_field]
             if field == SITE and failures.get((identity, environment)):
                 item['failures'] = {name: round(value, 2) for name, value in failures[(identity, environment)].items()}
             if environment is None:

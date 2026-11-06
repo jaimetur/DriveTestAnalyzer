@@ -57,6 +57,8 @@ EXPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str, str], ...]], ...] = (
         ('postal_map', 'Points lost per Postal Code map (Saved Filters with Postal Codes)', FOCUS_OPERATORS),
         ('vendors', 'Points lost per Vendor', FOCUS_OPERATORS),
         ('site_types', 'Points lost per kind of site', FOCUS_OPERATORS),
+        ('ran_vendors', 'Points lost per RAN Vendor (host and vendor)', FOCUS_OPERATORS),
+        ('site_classes', 'Points lost per site type (Legacy, eMOCN, NNS)', FOCUS_OPERATORS),
         ('sites', 'Sites to review', FOCUS_OPERATORS),
         ('stretches', 'Route stretches', FOCUS_OPERATORS))),
     # The documents of the Methodology Impact tab (see scoring_impact_exports).

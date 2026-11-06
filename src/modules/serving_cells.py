@@ -14,7 +14,9 @@ no source serves (O2, whose inventory covers only the cells Vodafone hosts for i
 
 Besides ``Operator_Vendor`` and ``Vendor`` (same rule as before: the same Vendor at both ends, Ericsson
 (Mixed) or Mixed (non-Ericsson)), each sample receives the owner network, host network, site, eMOCN scenario and
-distance of the cell that served its start, and the date of the snapshot it came from.
+distance of the cell that served its start, and the date of the snapshot it came from; and, from both ends as the
+Vendor (the same at both, else MIX), its RAN Vendor with the network that hosts it (``Serving_RAN_Vendor``:
+VF_Hosted_Ericsson, VMO2_Hosted_Nokia…) and its site type (``Serving_Site_Class``: 3UK_Legacy, VF_eMOCN_S1, VF_NNS…).
 """
 
 from __future__ import annotations
@@ -41,8 +43,9 @@ from src.modules.network_inventory import (
 )
 
 SERVING_NETWORKS_STATE_KEY = 'network_serving_networks'
-# Raise when the mapping rule changes, so the CDRs mapped before show that they need mapping again.
-SERVING_ENGINE_VERSION = 2
+# Raise when the mapping rule changes, so the CDRs mapped before show that they need mapping again (3: the RAN Vendor
+# and the site type of the samples, ticket #85).
+SERVING_ENGINE_VERSION = 3
 DEFAULT_MAX_DISTANCE_KM = 30.0
 # The networks whose cells serve the subscribers of each network family, in order of preference: Vodafone and
 # Three share their RAN through eMOCN, and Lebara subscribers use the Vodafone network.
@@ -55,7 +58,11 @@ START_COORDINATES = NETCHECK_PROFILE.start_coordinates
 END_COORDINATES = NETCHECK_PROFILE.end_coordinates
 TIME_COLUMNS = NETCHECK_PROFILE.time_columns
 SERVING_FIELDS = ('Serving_Network', 'Serving_Host_Network', 'Serving_Site_ID', 'Serving_eMOCN_Scenario',
-                  'Serving_Distance_km', 'Serving_Inventory_Snapshot')
+                  'Serving_Distance_km', 'Serving_Inventory_Snapshot', 'Serving_RAN_Vendor', 'Serving_Site_Class')
+# The short name of each network in the RAN Vendor and site type classes (VF_Hosted_Ericsson, 3UK_eMOCN_S1, VMO2_Legacy).
+NETWORK_CLASS_LABELS = {'vodafone': 'VF', 'three': '3UK', 'o2': 'VMO2', 'ee': 'EE'}
+# A sample whose first and last serving cells are of different classes.
+CLASS_MIX = 'MIX'
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +386,60 @@ def assign_serving_vendors(
     result['Serving_eMOCN_Scenario'] = serving['emocn'].fillna('').to_numpy()
     result['Serving_Distance_km'] = serving['distance_km'].round(3).to_numpy()
     result['Serving_Inventory_Snapshot'] = serving['snapshot_date'].fillna('').to_numpy()
+    # The RAN Vendor (only for the Operators that receive a Vendor) and the site type of both ends of the sample.
+    first_ran, first_site = _end_classes(first, len(result))
+    last_ran, last_site = _end_classes(last, len(result))
+    result['Serving_RAN_Vendor'] = np.where(operators.isin(mapped_operators).to_numpy(), classes_from_ends(first_ran, last_ran), '')
+    result['Serving_Site_Class'] = classes_from_ends(first_site, last_site)
     return _with_vendor_columns(result, operator_column, assigned)
+
+
+def network_class_label(network: object) -> str:
+    """The short name of a network in the RAN Vendor and site type classes: VF, 3UK, VMO2, EE or its own name."""
+    text = str(network or '').strip()
+    return NETWORK_CLASS_LABELS.get(network_family(text), text)
+
+
+def ran_vendor_class(host: object, vendor: object) -> str:
+    """The RAN Vendor of a serving cell with the network that hosts it (VF_Hosted_Ericsson, VMO2_Hosted_Nokia); empty
+    without a Vendor."""
+    vendor_text, host_text = _text(vendor), _text(host)
+    if vendor_text is None:
+        return ''
+    return f'{network_class_label(host_text)}_Hosted_{vendor_text}' if host_text else vendor_text
+
+
+def site_class(network: object, scenario: object) -> str:
+    """The site type of a serving cell from its network and eMOCN scenario: <network>_NNS, <network>_eMOCN_<code> (S0,
+    S1, S12, S0_CWP… as the inventory names them) or <network>_Legacy without a code; empty without a network."""
+    network_text = _text(network)
+    if network_text is None:
+        return ''
+    label, code = network_class_label(network_text), _text(scenario)
+    if code is None:
+        return f'{label}_Legacy'
+    return f'{label}_NNS' if code.casefold() == 'nns' else f'{label}_eMOCN_{code}'
+
+
+def _end_classes(end: pd.DataFrame, rows: int) -> tuple[pd.Series, pd.Series]:
+    """The RAN Vendor and the site type (see ran_vendor_class and site_class) of the cell at one end of every sample,
+    empty where no cell matched."""
+    cells = end.reindex(range(rows)).reindex(columns=['vendor', 'network', 'host_network', 'emocn'])
+    cells = cells.fillna('').astype(str).apply(lambda column: column.str.strip())
+    labels = {value: network_class_label(value) for value in pd.unique(pd.concat([cells['network'], cells['host_network']]))}
+    host, network, vendor, code = cells['host_network'].map(labels), cells['network'].map(labels), cells['vendor'], cells['emocn']
+    ran = (host + '_Hosted_' + vendor).where(host != '', vendor).where(vendor != '', '')
+    site = (network + '_eMOCN_' + code).where(code != '', network + '_Legacy')
+    site = site.where(code.str.casefold() != 'nns', network + '_NNS').where(network != '', '')
+    return ran, site
+
+
+def classes_from_ends(first: Iterable[str], last: Iterable[str]) -> np.ndarray:
+    """The class of every sample from those of its first and last serving cells, as the Vendor: the same class at
+    both ends, else MIX (one end without a cell included); empty when neither end has a cell."""
+    first_values, last_values = np.asarray(list(first), dtype=object), np.asarray(list(last), dtype=object)
+    return np.where((first_values == '') & (last_values == ''), '',
+                    np.where(first_values == last_values, first_values, CLASS_MIX)).astype(object)
 
 
 def _text(value: object) -> str | None:

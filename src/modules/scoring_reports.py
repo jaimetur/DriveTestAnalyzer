@@ -56,8 +56,8 @@ _OPTION_DEFAULTS = {
     # The Scoring Trends: the scoring trend and the National & Geographical Areas Trends.
     'trends': {'trend': True, 'areas': True},
     'gap': {'all_operators': True, 'individual': True, 'parts': True, 'profile': True},
-    'points': {'stake': True, 'kpis': True, 'map': True, 'postal_map': True, 'vendors': True, 'site_types': True, 'sites': True,
-               'stretches': True},
+    'points': {'stake': True, 'kpis': True, 'map': True, 'postal_map': True, 'vendors': True, 'site_types': True,
+               'ran_vendors': True, 'site_classes': True, 'sites': True, 'stretches': True},
 }
 # Options of configurations saved before that are now in another group: the location cards and the scoring trend were
 # Scoring Charts and the Points Lost Map was GAP Analysis.

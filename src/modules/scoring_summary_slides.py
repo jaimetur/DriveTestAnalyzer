@@ -702,12 +702,16 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                 # As many rows as keep a legible size (the Vendors or kinds of site that lose most first).
                 rows = item['rows'][:min(16, max(3, int((height - .38) / .2) - 1))]
                 with_tests = item.get('has_tests')
-                # Narrow panels leave the cities and routes out.
-                narrow = width < 5
-                headers = [column, 'Points lost', *([] if by_vendor else ['Share of points']), *(['Share of tests'] if with_tests else []),
-                           *([] if narrow else ['Cities and routes that lose most'])]
+                # A RAN Vendor or site type: its calls and tests and the points it loses per 1,000 of them too.
+                with_counts = bool(with_tests and item.get('has_counts'))
+                headers = [column, 'Points lost', *([] if by_vendor else ['Share of points']), *(['Tests'] if with_counts else []),
+                           *(['Share of tests'] if with_tests else []), *(['Per 1,000 tests'] if with_counts else [])]
+                # Narrow panels leave the cities and routes out (with the calls and tests, those without 1.6 in. for them).
+                narrow = width < 5 or (with_counts and width - (1.45 + 1.1 + .8 * (len(headers) - 2)) < 1.6)
+                headers += [] if narrow else ['Cities and routes that lose most']
                 if narrow:
-                    shares = {2: (.6, .4), 3: (.44, .3, .26), 4: (.36, .24, .2, .2)}[len(headers)]
+                    shares = {2: (.6, .4), 3: (.44, .3, .26), 4: (.36, .24, .2, .2)}.get(len(headers)) or (
+                        .28, *([.72 / (len(headers) - 1)] * (len(headers) - 1)))
                     widths = [width * share for share in shares]
                 else:
                     fixed = [1.45, 1.1, *([.8] * (len(headers) - 3))]
@@ -724,11 +728,18 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                     if not by_vendor:
                         _cell(table.cell(row_index, 2), f"{row['share']:.1f}%", size=size, align=PP_ALIGN.RIGHT)
                         offset = 3
+                    if with_counts:
+                        _cell(table.cell(row_index, offset), f"{row.get('tests') or 0:,}", size=size, align=PP_ALIGN.RIGHT)
+                        offset += 1
                     if with_tests:
                         above = (not by_vendor and row['tests_share'] is not None and row['share'] > row['tests_share'] * 1.25
                                  and row['share'] - row['tests_share'] > 3)
                         _cell(table.cell(row_index, offset), '—' if row['tests_share'] is None else f"{row['tests_share']:.1f}%", size=size,
                               color=LOSS_COLOR if above else INK, bold=above, align=PP_ALIGN.RIGHT)
+                        offset += 1
+                    if with_counts:
+                        _cell(table.cell(row_index, offset), '—' if row.get('rate') is None else f"{row['rate']:,.1f}", size=size,
+                              align=PP_ALIGN.RIGHT)
                         offset += 1
                     if not narrow:
                         _cell(table.cell(row_index, offset), ' · '.join(f"{city['name']} {city['points']:,.1f}"
@@ -738,7 +749,9 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                 _total_row(table, len(rows) + 1, [item.get('total_label') or 'Total',
                                                   f"{item['total'] if by_vendor else sum(row['points'] for row in rows):,.2f}",
                                                   *([] if by_vendor else [f"{sum(row['share'] for row in rows):.1f}%"]),
+                                                  *([f"{item.get('tests') or 0:,}"] if with_counts else []),
                                                   *([f'{sum(tests):.1f}%' if tests else '—'] if with_tests else []),
+                                                  *(['—' if item.get('rate') is None else f"{item['rate']:,.1f}"] if with_counts else []),
                                                   *([] if narrow else [''])], size=size)
                 _row_bars(slide, [row['points'] for row in rows], left=left + widths[0], top=top + .38 + row_height,
                           width=widths[1], row_height=row_height, color=LOSS_COLOR)
@@ -746,6 +759,10 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
             _text(slide, 'The scoring is split by Vendor: each Vendor is scored on its own tests, so its points lost compare directly '
                          'with the other Vendors. Share of tests: the tests of the operator it served. Total: the average of the '
                          'Vendors weighted by their tests.' if any(item.get('by_vendor') for item in group) else
+                         'Each call or test belongs to the class of its first and last serving cells, MIX when they differ (Not '
+                         'identified: no serving cell in the inventories). Per 1,000 tests: the points lost per 1,000 calls and '
+                         'tests it served (from 100). In red, a share of the points lost well above the share of the tests.'
+                         if any(item.get('has_counts') for item in group) else
                          'Each test belongs to the serving cell of its start (Not identified: no serving cell in the inventories). '
                          'In red, a share of the points lost well above the share of the tests.', .45, CONTENT_BOTTOM - .22,
                   12.4, .25, size=8, color=MUTED)

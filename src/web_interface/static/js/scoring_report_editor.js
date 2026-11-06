@@ -26,7 +26,8 @@
   const POINTS_OPTIONS = [
     ['stake', 'Where the points go'], ['kpis', 'Points lost per KPI'], ['map', 'Points lost per City / Region map, by points and per 1,000 tests'],
     ['postal_map', 'Points lost per Postal Code map (Saved Filters with Postal Codes)'], ['vendors', 'Points lost per Vendor'],
-    ['site_types', 'Points lost per kind of site'], ['sites', 'Sites to review'], ['stretches', 'Route stretches'],
+    ['site_types', 'Points lost per kind of site'], ['ran_vendors', 'Points lost per RAN Vendor (host and vendor)'],
+    ['site_classes', 'Points lost per site type (Legacy, eMOCN, NNS)'], ['sites', 'Sites to review'], ['stretches', 'Route stretches'],
   ];
   // Options of configurations saved before that are now in another group.
   const MOVED_OPTIONS = {'geographical_areas:cards': ['charts', 'location_cards'], 'points:map': ['gap', 'points_loss_map'],
@@ -74,7 +75,8 @@
       geographical_areas: {cards: true, ranking: true, versus: true},
       trends: {trend: true, areas: true},
       gap: {all_operators: true, individual: true, parts: true, profile: true},
-      points: {stake: true, kpis: true, map: true, vendors: true, site_types: true, sites: true, stretches: true},
+      points: {stake: true, kpis: true, map: true, vendors: true, site_types: true, ran_vendors: true, site_classes: true, sites: true,
+        stretches: true},
     };
   }
 

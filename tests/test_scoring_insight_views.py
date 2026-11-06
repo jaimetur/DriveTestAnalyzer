@@ -177,6 +177,56 @@ def test_points_lost_per_vendor_puts_the_vendor_series_of_an_operator_together()
     assert any('VF · 2 Vendors · 60.0 points lost on average (weighted by tests)' in text for text in texts)
 
 
+def test_points_lost_per_ran_vendor_and_site_type_count_the_calls_and_tests():
+    # Ticket #85: the multivendor analysis shares the points lost among the RAN Vendors with their host network and the
+    # site types (Legacy, eMOCN, NNS) of the serving cells, with the calls and tests and the points lost per 1,000 of them.
+    import pandas as pd
+
+    from src.modules.scoring import calculate_scoring
+    from src.modules.scoring_exports import _slide
+    from src.modules.scoring_summary_slides import add_serving_loss_slides
+    from src.modules.serving_cells import ran_vendor_class, site_class
+    from tests.scoring_cdr_synthetic import netcheck_2026_configuration, synthetic_cdr_frames
+
+    frames = synthetic_cdr_frames(campaigns=('2026-Q3',), repeats=1)
+    for frame in frames.values():
+        scenarios = frame.get('Serving_eMOCN_Scenario', pd.Series('', index=frame.index))
+        frame['Serving_RAN_Vendor'] = [ran_vendor_class(host, vendor) for host, vendor in zip(frame['Serving_Host_Network'], frame['Vendor'])]
+        frame['Serving_Site_Class'] = [site_class(network, code) for network, code in zip(frame['Serving_Network'], scenarios)]
+    levels = ['Operator', 'Campaign']
+    result = calculate_scoring(frames, levels, baseline_operator='EE', configuration=netcheck_2026_configuration())
+    job = {'id': 1, 'levels': levels, 'aggregation_levels': levels, 'baseline_operator': 'EE', 'nr_mode': 'NSA',
+           'configuration': result['configuration'], 'campaigns': list(result.get('campaigns') or []), 'status': 'completed'}
+    insights = build_scoring_views(job, result)['insights']
+
+    [vodafone] = _combined(insights['ran_vendor_losses'], 'Vodafone UK')
+    assert {row['name'] for row in vodafone['rows']} <= {'VF_Hosted_Ericsson', 'VF_Hosted_Nokia', 'VMO2_Hosted_Ericsson', 'VMO2_Hosted_Nokia'}
+    assert any(row['name'].startswith('VMO2_Hosted_') for row in vodafone['rows'])
+    assert vodafone['has_counts'] and sum(row['tests'] for row in vodafone['rows']) == vodafone['tests']
+    assert sum(row['share'] for row in vodafone['rows']) == pytest.approx(100, abs=.2)
+    assert sum(row['tests_share'] for row in vodafone['rows']) == pytest.approx(100)
+    for row in vodafone['rows']:
+        expected = row['points'] / row['tests'] * 1000 if row['tests'] >= 100 else None
+        assert row['rate'] == (pytest.approx(expected) if expected is not None else None)
+        assert row['cities']
+    assert vodafone['rate'] == pytest.approx(vodafone['total'] / vodafone['tests'] * 1000)
+    # Three is served by Vodafone cells (eMOCN, NNS here) on part of its tests; its own cells are Legacy (the synthetic
+    # Speech samples have no eMOCN scenario, so their Vodafone cells are Legacy).
+    [three] = _combined(insights['site_class_losses'], 'Three UK')
+    assert {'3UK_Legacy', 'VF_NNS'} <= {row['name'] for row in three['rows']} <= {'3UK_Legacy', 'VF_NNS', 'VF_Legacy'}
+    [vodafone_sites] = _combined(insights['site_class_losses'], 'Vodafone UK')
+    assert {row['name'] for row in vodafone_sites['rows']} == {'VF_Legacy', 'VF_eMOCN_S1'}
+
+    deck = Presentation(TEMPLATE)
+    add_serving_loss_slides(deck, insights['ran_vendor_losses'], title='Points Lost — per RAN Vendor (host and vendor)',
+                            column='RAN Vendor', subtitle='', new_slide=_slide)
+    tables = [shape.table for slide in deck.slides for shape in slide.shapes if shape.has_table]
+    headers = [cell.text for cell in tables[0].rows[0].cells]
+    assert headers[:6] == ['RAN Vendor', 'Points lost', 'Share of points', 'Tests', 'Share of tests', 'Per 1,000 tests']
+    texts = [shape.text_frame.text for slide in deck.slides for shape in slide.shapes if shape.has_text_frame]
+    assert any('first and last serving cells, MIX when they differ' in text for text in texts)
+
+
 def test_points_at_stake_share_every_point_lost(national):
     _job, _result, insights = national
     stake = _combined(insights['points_at_stake'])[0]

@@ -2805,6 +2805,15 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                                                                  site_types_base),
                                     title='Points Lost — per kind of site', column='Kind of site', subtitle=subtitle,
                                     new_slide=_slide, scope=scope, compared=chosen('site_type_losses-operators', site_types_base))
+        # The multivendor analysis: the RAN Vendor with its host network and the site type (Legacy, eMOCN, NNS).
+        for option, view, title, column in (
+                ('ran_vendors', 'ran_vendor_losses', 'Points Lost — per RAN Vendor (host and vendor)', 'RAN Vendor'),
+                ('site_classes', 'site_class_losses', 'Points Lost — per site type (Legacy, eMOCN, NNS)', 'Site type')):
+            if _option(options, 'points', option):
+                class_base = panel_operators('points', option)
+                add_serving_loss_slides(presentation, compared_items(f'{view}-operators', items.get(view, []), class_base),
+                                        title=title, column=column, subtitle=subtitle, new_slide=_slide, scope=scope,
+                                        compared=chosen(f'{view}-operators', class_base))
         if _option(options, 'points', 'sites'):
             sites_base = panel_operators('points', 'sites')
             add_sites_slides(presentation, compared_items('sites-operators', latest_campaign_items(items.get('sites_to_review', [])),
