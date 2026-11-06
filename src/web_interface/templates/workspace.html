@@ -512,7 +512,7 @@
               </select>
               {% endif %}
               {% if dataset.dataset_kind == 'multivendor_mapping' %}
-              <div class="queue-mapping-operators" data-dataset-mapping-operators data-update-url="/workspace/datasets/{{ dataset.id }}/mapping-operators" role="group" aria-label="Operators of {{ dataset.file_name }}" title="The Operators this mapping gives a Vendor to, chosen from its cells once it is read. Map the CDRs again to apply a change.">
+              <div class="queue-mapping-operators" data-dataset-mapping-operators data-update-url="/workspace/datasets/{{ dataset.id }}/mapping-operators" role="group" aria-label="Operators of {{ dataset.file_name }}" title="The Operators this mapping gives a Vendor to, chosen from its cells once it is read. The others keep their name as Vendor (for example O2 - All), and only their serving cell (network, host network, site) comes from the mapping and the Network Inventories. Map the CDRs again to apply a change.">
                 {% for operator in operator_options %}<label class="queue-mapping-operator"><input type="checkbox" value="{{ operator }}"{% if operator in (dataset.mapping_operator_names or []) %} checked{% endif %}><span>{{ operator }}</span></label>{% endfor %}
               </div>
               {% endif %}
@@ -689,7 +689,7 @@
       </section>
       <div class="dataset-card-grid">
         {% for card_key, card_title, card_note, card_datasets in [
-          ('multivendor-mappings', 'Multivendor Mappings', 'They give CDR samples the Vendor of their serving cells, for the Operators of each one. A Multivendor Mapping does not change the network that the other modules read.', mapping_datasets),
+          ('multivendor-mappings', 'Multivendor Mappings', 'They give CDR samples the Vendor of their serving cells, only for the Operators of each one: the other Operators keep their name as Vendor (for example O2 - All), and no Network Inventory gives them one. A Multivendor Mapping does not change the network that the other modules read.', mapping_datasets),
           ('network-inventory', 'Network Inventories', 'The network inventories of the operators: every cell with its vendor, site and configuration. Network Insights and Non-Qualified Calls read the newest one of every network; those that give the Vendor of the CDRs are tagged Used for Vendor Mapping.', vendor_datasets),
           ('geospatial', 'Geographic Datasets', 'Region, Cluster and Vendor polygons that map CDR samples and inventory sites to their area, and CDR samples to the Vendor of each Operator.', geo_datasets),
           ('other', 'Other Datasets', 'Other supported datasets.', other_datasets),
@@ -916,7 +916,7 @@
               {% endif %}
               {% if multivendor_mapping_datasets %}
               <fieldset class="mapping-choice-list">
-                <legend>Multivendor Mappings <small>Each one for its Operators. Where several have a cell, the one with the Snapshot date closest to the CDR gives its Vendor. The other sources only complete the cells they do not have.</small></legend>
+                <legend>Multivendor Mappings <small>Each one for its Operators: only they receive a Vendor. Where several have a cell, the one with the Snapshot date closest to the CDR gives its Vendor. The other sources only complete the cells they do not have.</small></legend>
                 {% for mapping in multivendor_mapping_datasets %}
                 <label class="mapping-choice"><input type="checkbox" name="multivendor_mapping_dataset_ids" value="{{ mapping.id }}" checked><span class="mapping-choice-name" title="{{ mapping.file_name }}">{{ mapping.file_name }}</span><span class="mapping-chips"><span class="mapping-chip" title="{{ (mapping.mapping_operator_names or []) | join(', ') }}">{{ (mapping.mapping_operator_names or []) | length }} Operator{{ '' if (mapping.mapping_operator_names or []) | length == 1 else 's' }}</span>{% if mapping.snapshot_date_effective %}<span class="mapping-chip mapping-chip-date">{{ mapping.snapshot_date_effective }}</span>{% endif %}<span class="mapping-chip">LTE {{ '{:,}'.format(mapping.mapping_technologies.get('LTE', 0)) }}</span><span class="mapping-chip{% if not mapping.mapping_technologies.get('NR') %} mapping-chip-warning{% endif %}"{% if not mapping.mapping_technologies.get('NR') %} title="This file has no NR cells: their samples need another Multivendor Mapping or a Network Inventory"{% endif %}>NR {{ '{:,}'.format(mapping.mapping_technologies.get('NR', 0)) }}</span></span></label>
                 {% endfor %}
@@ -991,13 +991,13 @@
         <summary>Vendor mapping rule</summary>
         <ol>
           <li>The <strong>Cell inventories</strong> (the selected Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) are snapshots of the networks on their Snapshot date. Each cell has the vendor of its <code>Host Network</code>.</li>
-          <li>Each sample takes the first and last cells of <code>Cell_ID_A</code> (ECI <code>eNodeB ID × 256 + Cell ID</code> or NCI <code>gNodeB ID × 16384 + Cell ID</code>) and finds them among the networks that serve its Operator (<a href="/workspace-config#serving-networks">Serving Networks</a>), in the snapshot closest to the CDR date and within 30 km of the sample. Beside a Multivendor Mapping, the other sources (VFUK and 3UK too) only complete the cells it does not have.</li>
+          <li>Each sample takes the first and last cells of <code>Cell_ID_A</code> (ECI <code>eNodeB ID × 256 + Cell ID</code> or NCI <code>gNodeB ID × 16384 + Cell ID</code>) and finds them among the networks that serve its Operator (<a href="/workspace-config#serving-networks">Serving Networks</a>), in the snapshot closest to the CDR date and within 30 km of the sample. Beside a Multivendor Mapping, the other sources (VFUK and 3UK too) only complete the cells it does not have, and only the Operators of the Multivendor Mappings receive a Vendor; the others still get their serving cell (network, host network, site).</li>
         </ol>
         <p>Result, with <code>&lt;Operator&gt;</code> as <code>Vodafone</code>, <code>3</code> or the Operator's own name:</p>
         <ul>
           <li>The same Vendor at both cells: <code>&lt;Operator&gt;_&lt;Vendor&gt;</code>.</li>
           <li>Ericsson at one of them: <code>&lt;Operator&gt;_Ericsson (Mixed)</code>; any other mix: <code>&lt;Operator&gt;_Mixed (non-Ericsson)</code>.</li>
-          <li>No cell found: <code>&lt;Operator&gt;_Unknown</code>; an Operator no snapshot serves (for example EE): <code>&lt;Operator&gt; - All</code>.</li>
+          <li>No cell found: <code>&lt;Operator&gt;_Unknown</code>; an Operator no snapshot serves (for example EE), or left out of the Operators of the Multivendor Mappings: <code>&lt;Operator&gt; - All</code>.</li>
         </ul>
         <p>It fills <code>Vendor</code>, <code>Operator_Vendor</code>, <code>Vendor_Operator</code> and the <code>Serving_*</code> columns of the serving cell. CDRs marked <em>Vendor mapping outdated</em> were mapped with other inventories, Serving Networks or rules, and are selected when the dialog opens.</p>
       </details>

@@ -7,8 +7,10 @@ to the CDR's measurements wins (the newest on a tie), so a CDR measured before a
 measured. A cell farther than the maximum serving distance from the sample is ignored: global cell identities are
 only unique within an Operator, and a distant cell with the same number is not the one that served the sample.
 
-The sources are the Multivendor Mappings chosen for the CDR, each only for the Operators chosen for it, and the Network
-Inventories chosen with them, which then only complete the cells the Multivendor Mappings do not have.
+The sources are the Multivendor Mappings chosen for the CDR and the Network Inventories chosen with them, which then only
+complete the cells the Multivendor Mappings do not have. Every source gives every Operator its serving cell, but beside
+Multivendor Mappings only the Operators chosen for them receive a Vendor: the others keep their name, as an Operator that
+no source serves (O2, whose inventory covers only the cells Vodafone hosts for it).
 
 Besides ``Operator_Vendor`` and ``Vendor`` (same rule as before: the same Vendor at both ends, Ericsson
 (Mixed) or Mixed (non-Ericsson)), each sample receives the owner network, host network, site, eMOCN scenario and
@@ -337,28 +339,29 @@ def assign_serving_vendors(
     result = frame.reset_index(drop=True).copy()
     operators = result[operator_column].fillna('').astype(str).str.strip()
     families = {operator: serving_families(operator, config) for operator in pd.unique(operators)}
-    # The snapshots of each Operator: a Multivendor Mapping applies only to the Operators chosen for it.
+    # Every snapshot gives each Operator its serving cell; beside Multivendor Mappings, only the Operators chosen for them
+    # receive a Vendor (the others keep their name, as an Operator no snapshot serves).
     labels = operator_labels(repository)
 
     def identity(name: str) -> str:
         # Each Operator of the Operator Maps on its own (VF and VF SA); without them, the identity of its spellings.
         return labels.get(name.casefold(), name).casefold() if labels else operator_key(name)
 
-    usable = {operator: [item for item in snapshots if 'operators' not in item
-                         or identity(operator) in {identity(name) for name in item['operators']}]
-              for operator in families}
-    available = {operator: {family for item in usable[operator] for family in item['families']} for operator in families}
-    excluded = [(operator, item['dataset_id']) for operator in families for item in snapshots if item not in usable[operator]]
+    mappings = [item for item in snapshots if 'operators' in item]
+    chosen = {identity(name) for item in mappings for name in item['operators']}
+    available = {family for item in snapshots for family in item['families']}
     endpoints = serving_endpoints(result, dataset_kind, profile)
-    wanted = sorted({family for operator, values in families.items() for family in set(values) & available[operator]})
+    wanted = sorted({family for values in families.values() for family in set(values) & available})
     candidates = _candidate_cells(repository, list(ranks), wanted, sorted(set(endpoints['cell'])))
     matches = match_serving_cells(endpoints, operators, candidates, ranks, dates, config,
-                                  float(config.get('max_distance_km') or DEFAULT_MAX_DISTANCE_KM), excluded, complement_snapshots(snapshots))
+                                  float(config.get('max_distance_km') or DEFAULT_MAX_DISTANCE_KM),
+                                  complements=complement_snapshots(snapshots))
     first = matches.loc[matches['end'] == 'first'].set_index('row')
     last = matches.loc[matches['end'] == 'last'].set_index('row')
     first_vendor = first['vendor'].reindex(range(len(result)))
     last_vendor = last['vendor'].reindex(range(len(result)))
-    mapped_operators = {operator for operator, values in families.items() if set(values) & available[operator]}
+    mapped_operators = {operator for operator, values in families.items()
+                        if set(values) & available and (not mappings or identity(operator) in chosen)}
     # Like the Vendor polygons, a sample none of whose cells is in the snapshots is Unknown: an Operator whose
     # inventory covers only part of its network (O2's cells hosted by Vodafone) would otherwise look Mixed.
     assigned = [
@@ -418,5 +421,7 @@ def vendor_mapping_signature(repository: Any, config: dict[str, Any] | None = No
                             if not mappings or str(row['dataset_kind'] or '') != 'network_inventory' or int(row['id']) in chosen)]
     parts.extend(sorted(f"{row['id']}:{dataset_revision(row)}:{effective_snapshot_date(row)}" for row in sources))
     if mappings:
+        # Since v0.12.0 the Operators of the Multivendor Mappings are the only ones that receive a Vendor (ticket #80).
+        parts.append('vendor-for-mapping-operators-only')
         parts.extend(sorted(f"{row['id']}:{row['mapping_operators']}" for row in mappings))
     return hashlib.sha256('\n'.join(parts).encode('utf-8')).hexdigest()[:16]

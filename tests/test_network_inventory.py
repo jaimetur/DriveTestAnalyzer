@@ -262,6 +262,40 @@ def test_multivendor_mapping_applies_to_its_operators_without_operator_maps(clie
     assert core.repository.load_dataset_rows(cdr_id, ['Vendor'], {})['Vendor'].tolist()[:2] == ['Ericsson', 'Samsung']
 
 
+def test_an_operator_left_out_of_the_multivendor_mappings_keeps_its_serving_cell_without_a_vendor(client, tmp_path):
+    # Ticket #80: O2 is split by Vendor only where its cells are known (those Vodafone hosts), so it is left out.
+    login(client)
+    inventory = _upload(client, '260917_Cell_Config.csv', INVENTORY_CSV + 'Telefonica,Telefonica,Huawei,S5,50,5,-1.5,53.8\n',
+                        'network_inventory')
+    mapping = _upload(client, 'VF3_All_Vendor_2026_Week41.csv', MAPPING_CSV + 'Telefonica,Vodafone,Ericsson,S4,40,4,-1.5,53.8\n',
+                      'multivendor_mapping')
+    assert 'O2' in mapping['mapping_operator_names']
+    cdr_id = _cdr(tmp_path, {'Operator': ['Vodafone UK', 'O2', 'O2'],
+                             'Cell_ID_A': [str(10 * 256 + 1), str(40 * 256 + 4), str(50 * 256 + 5)], 'Session_ID_A': [1, 2, 3]})
+    columns = ['Operator_Vendor', 'Vendor', 'Serving_Network', 'Serving_Host_Network', 'Serving_Site_ID']
+
+    def mapped():
+        assert client.post('/workspace/map-mappings', data={
+            'cdr_dataset_ids': str(cdr_id), 'vendor_source': 'inventory', 'multivendor_mapping_dataset_ids': str(mapping['id']),
+            'network_inventory_dataset_ids': str(inventory['id']),
+        }, follow_redirects=False).status_code == 303
+        wait_for_background_dataset_work()
+        return core.repository.load_dataset_rows(cdr_id, columns, {})
+
+    before = mapped()
+    assert before['Vendor'].tolist() == ['Ericsson', 'Ericsson', 'Huawei']
+    operators = [name for name in mapping['mapping_operator_names'] if name != 'O2']
+    assert client.post(f"/workspace/datasets/{mapping['id']}/mapping-operators", json={'operators': operators}).status_code == 200
+
+    # O2 has no Vendor now, not even from the Network Inventory that completes the mapping, but keeps its serving cells.
+    after = mapped()
+    assert after['Vendor'].tolist()[0] == 'Ericsson'
+    assert [value.endswith(' - All') for value in after['Operator_Vendor']] == [False, True, True]
+    assert after['Serving_Site_ID'].tolist() == ['S1', 'S4', 'S5']
+    for column in ('Serving_Network', 'Serving_Host_Network', 'Serving_Site_ID'):
+        assert after[column].tolist() == before[column].tolist()
+
+
 def test_multivendor_mapping_without_a_network_column_belongs_to_its_operator(client, tmp_path):
     login(client)
     content = 'OP/ Vendor,Site ID,eNodeB ID,Cell ID,Longitude,Latitude\nHuawei,S1,40,4,-1.5,53.8\n'
