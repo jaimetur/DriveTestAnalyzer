@@ -1353,7 +1353,8 @@ def email_bodies(task_name: str, started: datetime, artifacts: list[dict[str, An
     text.append(f'{heading}:')
     parts.append(f'<p><strong>{heading}</strong></p><ol>')
     for item in ready:
-        # The title of each file (what it is, from which module) on its own line, its link and file below, then its content.
+        # The title of each file (what it is, from which module) on its own line, its file with its link and size below,
+        # then its content.
         link = links.get(item['file_name'])
         size = _size_text(item.get('size'))
         text += [f"- {item['title']}", f"    {item['file_name']} ({size})"] + ([f'    Download: {link}'] if link else [])
@@ -1362,7 +1363,7 @@ def email_bodies(task_name: str, started: datetime, artifacts: list[dict[str, An
         listed = ''.join(f'<li>{html.escape(line)}</li>' for line in lines)
         download = f'<a href="{html.escape(link, quote=True)}"><strong>Download</strong></a> · ' if link else ''
         parts.append(f"<li style=\"margin-bottom:12px\"><strong>{html.escape(item['title'])}</strong><br>"
-                     f"{download}{size} · <code>{html.escape(item['file_name'])}</code>"
+                     f"<code>{html.escape(item['file_name'])}</code> ({download}{size})"
                      f"{f'<ul>{listed}</ul>' if listed else ''}</li>")
     parts.append('</ol>')
     if failed:
