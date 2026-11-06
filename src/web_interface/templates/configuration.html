@@ -97,7 +97,7 @@
         </label>
         <label data-email-webhook>Power Automate Flow Address
           <input type="password" name="webhook_url" value="" autocomplete="new-password" spellcheck="false" placeholder="{% if email_delivery.webhook_configured %}Saved · leave empty to keep it{% else %}https://…powerplatform.com/… or https://…logic.azure.com/…{% endif %}">
-          <span class="table-help">The HTTP POST address of the trigger <strong>When a Teams webhook request is received</strong> of your flow. It is a secret: whoever has it sends emails from your mailbox. Stored in the application database, which configuration exports and backups include.</span>
+          <span class="table-help">The HTTP POST address of the trigger <strong>When a Teams webhook request is received</strong> of your flow. Keep it private: whoever has it sends emails from your mailbox. Stored in the application database, which configuration exports and backups include.</span>
         </label>
         {% if email_delivery.webhook_configured %}<label class="configuration-toggle" data-email-webhook><input type="checkbox" name="clear_webhook_url" value="true"><span><strong>Remove the saved flow address</strong></span></label>{% endif %}
         <label>Download Links Valid For (days)
