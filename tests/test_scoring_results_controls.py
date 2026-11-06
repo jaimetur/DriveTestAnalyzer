@@ -2312,7 +2312,10 @@ process.stdout.write(JSON.stringify({scopes: context.scopes, tooltip: context.to
     assert "resultScopeFilters = resultFilters && typeof resultFilters === 'object' ? resultFilters : {};" in script
     # Every chart and table title ends with its pills; the National & Areas card shows every area and has none.
     card = _function_source(script, 'makeExpandableChartCard')
-    assert "const scope = context === false ? null : appendResultScope(heading, context);" in card
+    assert "const scope = context === false ? null : appendResultScope(heading, context, {wholeCountry});" in card
+    # The Geographical Areas are calculated on the whole country: their pills never take the area filters.
+    assert "for (const source of wholeCountry && areaLevels.has(key) ? [context] : [context, resultScopeFilters]) {" in script
+    assert "group.context || {}, {wholeCountry: true}));" in script
     assert "makeAreaSummaryView(summary), false);" in script
     assert "if (kind === 'gap' || kind === 'gap-summary') appendResultScope(heading, context);" in script
     for line in (
