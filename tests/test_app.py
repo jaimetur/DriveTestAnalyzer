@@ -1361,7 +1361,8 @@ def test_config_page_persists_runtime_overrides(client, monkeypatch) -> None:
     assert 'href="/application-config"' in page.text
     assert 'data-configuration-timezone-picker' in page.text
     assert 'data-timezone="Europe/Madrid"' in page.text
-    assert page.text.count('data-configuration-card') == 7
+    # Runtime cards, and the three of Email Delivery (how emails are sent, SMTP server, sender and automatic emails).
+    assert page.text.count('data-configuration-card') == 8
     assert 'name="public_address" value="" placeholder="https://dta.example.com:8443"' in page.text
     assert 'name="max_background_tasks" value="1" min="1" max="32"' in page.text
     assert '<section class="configuration-card configuration-field-wide" data-configuration-card>' not in page.text
