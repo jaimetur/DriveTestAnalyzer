@@ -2642,7 +2642,8 @@ def materialize_calculated_dimensions(
         calculated = _calculated_dimension_column(result, definition.name, dimension_list)
         if calculated:
             result[definition.name] = result[calculated]
-            result.drop(columns=[calculated], inplace=True)
+            # (inplace is deprecated from pandas 3 and goes in pandas 4; the attrs go with the frame.)
+            result = result.drop(columns=[calculated])
     return result
 
 
@@ -6878,7 +6879,8 @@ def prepare_catalog_chart_preview_frame(
 def _value_tests(series: pd.Series) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Whether each value of a measure is populated (not missing, nor blank text), is a number and is zero. Text is
     tested once per distinct value (each value gives the same answers wherever it is)."""
-    if series.dtype == object and pd.api.types.infer_dtype(series, skipna=True) == "string":
+    # Text: object columns of strings, or the str dtype of pandas 3.
+    if isinstance(series.dtype, pd.StringDtype) or (series.dtype == object and pd.api.types.infer_dtype(series, skipna=True) == "string"):
         codes, uniques = pd.factorize(series)
         distinct = pd.Series(np.asarray(uniques, dtype=object), dtype=object)
         numeric = pd.to_numeric(distinct, errors="coerce")

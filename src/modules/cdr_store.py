@@ -1800,7 +1800,8 @@ def copy_values(raw: pd.DataFrame, wanted: list[str], types: dict[str, str]) -> 
             values[column] = ('real', raw[column].astype('float64').to_numpy())
         elif column_type == 'DOUBLE:I':
             # The reals, and the integers as integers, in one column of Python values.
-            numbers = raw[column].astype(object).to_numpy()
+            # (A copy: pandas 3 gives the array of a column read-only.)
+            numbers = raw[column].astype(object).to_numpy(copy=True)
             integers = raw[INT_PREFIX + column]
             present = integers.notna().to_numpy()
             numbers[present] = [int(number) for number in integers[present]]
@@ -1808,7 +1809,7 @@ def copy_values(raw: pd.DataFrame, wanted: list[str], types: dict[str, str]) -> 
             values[column] = ('object', numbers)
         elif column_type.startswith('MIXED:'):
             # The text, integers and reals of the column back in one column of Python values.
-            mixed = raw[column].astype(object).to_numpy()
+            mixed = raw[column].astype(object).to_numpy(copy=True)
             for prefix, part, cast in ((INT_PREFIX, 'I', int), (REAL_PREFIX, 'R', float)):
                 if part in column_type:
                     numbers = raw[prefix + column]
@@ -1817,7 +1818,7 @@ def copy_values(raw: pd.DataFrame, wanted: list[str], types: dict[str, str]) -> 
             mixed[pd.isna(mixed)] = None
             values[column] = ('object', mixed)
         else:
-            text_values = raw[column].astype(object).to_numpy()
+            text_values = raw[column].astype(object).to_numpy(copy=True)
             text_values[pd.isna(text_values)] = None
             values[column] = ('text', text_values)
     return values
@@ -2258,7 +2259,7 @@ def read_kind_frame(database_path: Any, kind: str, parts: list[dict[str, Any]]) 
         for name in text:
             if name in plain:
                 # As query_cdr types text: the strings, None for no value.
-                values = read[name].to_numpy(dtype=object)
+                values = read[name].to_numpy(dtype=object, copy=True)
                 values[pd.isna(values)] = None
                 columns[name] = values
             elif name in read.columns:

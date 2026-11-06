@@ -350,7 +350,9 @@ def test_the_points_lost_map_reads_each_cdr_type_from_the_copies_with_the_same_r
         for column in frame.columns:
             expected, actual = frame[column], by_type[kind][column]
             if isinstance(actual.dtype, pd.CategoricalDtype):
-                actual, expected = actual.astype(object).where(actual.notna(), None), expected.where(expected.notna(), None)
+                # (The values: the rows give text as object, or as the str dtype of pandas 3.)
+                actual = actual.astype(object).where(actual.notna(), None)
+                expected = expected.astype(object).where(expected.notna(), None)
             pd.testing.assert_series_equal(actual, expected, check_exact=True)
     options = saved_filters._engine_kwargs(repository, saved_filter, configuration, scoring.calculate_scoring)
     expected = scoring.calculate_points_loss(by_rows, saved_filter['levels'], configuration=configuration,

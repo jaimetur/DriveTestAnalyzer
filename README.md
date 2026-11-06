@@ -178,7 +178,7 @@ See [Product overview](help/overview.md) for a detailed tour of every module and
 
 ## Requirements
 
-- Python 3.12 or newer for source development.
+- Python 3.12 to 3.15 for source development, with pandas 3 (`requirements.txt` installs it; pandas 2 has no build for Python 3.15).
 - Docker Engine with Compose for the recommended service deployment.
 - Writable persistent configuration and data directories.
 

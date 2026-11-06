@@ -18912,7 +18912,8 @@ def _chart_builder_column_size(series: pd.Series | None) -> int:
     if series is None:
         return 0
     size = int(series.memory_usage(index=False, deep=False))
-    if series.dtype == object and len(series):
+    # Text is object or, from pandas 3, the str dtype.
+    if (series.dtype == object or isinstance(series.dtype, pd.StringDtype)) and len(series):
         sample = series.iloc[::max(1, len(series) // 200)]
         size += int(len(series) * sum(sys.getsizeof(value) for value in sample) / len(sample))
     return size

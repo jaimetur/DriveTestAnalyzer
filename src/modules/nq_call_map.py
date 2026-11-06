@@ -125,7 +125,8 @@ def _position(latitude: Any, longitude: Any) -> tuple[float, float] | None:
 def _seconds(values: Any) -> np.ndarray:
     """The moments of CDR times (``2026-09-07 13:59:56``) as seconds, NaN when a value is not a time."""
     moments = pd.to_datetime(pd.Series(values).astype(str).str.slice(0, 19).str.replace('T', ' '), errors='coerce', format='mixed')
-    return np.where(moments.isna(), np.nan, moments.astype('int64', errors='ignore').astype('float64') / 1e9)
+    # Seconds from the epoch whatever the resolution of the times (nanoseconds in pandas 2, microseconds from text in 3).
+    return (moments - pd.Timestamp('1970-01-01')).dt.total_seconds().to_numpy(dtype='float64')
 
 
 def _km(value: float | None) -> str:
