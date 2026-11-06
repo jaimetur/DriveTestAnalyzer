@@ -12,6 +12,9 @@ import time
 # (set before they are imported), or the processes of a run would contend for the CPUs with dozens of threads.
 for _variable in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMEXPR_NUM_THREADS', 'VECLIB_MAXIMUM_THREADS'):
     os.environ.setdefault(_variable, '1')
+# The scripts the tests run with Node format numbers in the locale of the environment: one locale for every machine
+# (12.35, as on the server), not the one of the desktop (12,35 with es_ES).
+os.environ['LC_ALL'] = 'en_US.UTF-8'
 
 # The tests never reach the data of the application installed on this machine, which storage-paths.conf points at: the
 # environment, which takes precedence, points every test process at storage of its own (set before the application is
