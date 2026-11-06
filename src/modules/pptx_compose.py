@@ -619,6 +619,11 @@ MINIMUM_FLOW_ROWS = 6
 # A table whose values would need a smaller font (hundredths of a point) continues on more slides.
 LEGIBLE_FONT = 600
 MAXIMUM_TABLE_SLIDES = 12
+# The name of a legend under a table (such as the quality classes of the Network Insights class bars): the table is
+# still the only content of its slide, and the legend stays under it when the table is fitted or continues on more
+# slides.
+TABLE_LEGEND = 'Table Legend'
+TABLE_LEGEND_GAP = Inches(0.08)
 
 
 def _scaled_size(size: int, factor: float) -> int:
@@ -726,9 +731,35 @@ def _cell_size(cell: Any) -> int:
     return max(sizes or [1800])
 
 
+def _table_legends(slide: Any) -> list[Any]:
+    """The legends under the table of ``slide`` (see TABLE_LEGEND), top to bottom."""
+    return sorted((shape for shape in content_shapes(slide) if shape.name == TABLE_LEGEND), key=lambda shape: shape.top)
+
+
+def _above_legends(slide: Any, frame: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    """``frame`` less the room the legends under the table of ``slide`` take at its bottom."""
+    legends = _table_legends(slide)
+    if not legends:
+        return frame
+    left, top, width, height = frame
+    room = sum(shape.height + TABLE_LEGEND_GAP for shape in legends)
+    return left, top, width, max(Inches(1), height - room)
+
+
+def _place_legends(slide: Any, frame: tuple[int, int, int, int]) -> None:
+    """The legends of ``slide`` under its tables (as _fit lays them out), at the left of ``frame``."""
+    tables = [shape for shape in content_shapes(slide) if shape.has_table]
+    cursor = max((shape.top + shape.height for shape in tables), default=frame[1])
+    for legend in _table_legends(slide):
+        legend.left, legend.top = int(frame[0]), int(cursor + TABLE_LEGEND_GAP)
+        legend.width = min(legend.width, int(frame[2]))
+        cursor = legend.top + legend.height
+
+
 def _only_table(slide: Any) -> tuple[Any, Any] | None:
-    """The shape and the table of a slide whose only content is a table without merged cells, else None."""
-    shapes = content_shapes(slide)
+    """The shape and the table of a slide whose only content is a table without merged cells (and the legends under
+    it, see TABLE_LEGEND), else None."""
+    shapes = [shape for shape in content_shapes(slide) if shape.name != TABLE_LEGEND]
     if len(shapes) != 1 or not shapes[0].has_table:
         return None
     table = shapes[0]._element.find(f'.//{{{A_NS}}}tbl')
@@ -765,6 +796,7 @@ def table_slides(slide: Any, frame: tuple[int, int, int, int], gap: int = Inches
     if found is None:
         return 1
     shape, table = found
+    frame = _above_legends(slide, frame)
     rows = table.findall(f'{{{A_NS}}}tr')
     sizes = _table_cells(table, shape.height // len(rows))
     body = len(rows) - 1
@@ -803,11 +835,14 @@ def split_table(composer: DeckComposer, slide: Any, slides: int) -> list[Any]:
 def fit_table(slide: Any, frame: tuple[int, int, int, int], gap: int = Inches(0.25)) -> float | None:
     """Show the only content of ``slide``, a table, as large as it fits in ``frame``: its rows in one to four tables
     side by side (each under the header) and its columns as wide as their text needs, sharing the width of the
-    frame. Returns the scale of its text, or None when the slide has other content or the table merges cells."""
+    frame (above its legends, which stay under it). Returns the scale of its text, or None when the slide has other
+    content or the table merges cells."""
     found = _only_table(slide)
     if found is None:
         return None
-    return _fit(slide, *found, frame, gap)
+    scale = _fit(slide, *found, _above_legends(slide, frame), gap)
+    _place_legends(slide, frame)
+    return scale
 
 
 def _fit(slide: Any, shape: Any, table: Any, frame: tuple[int, int, int, int], gap: int, flows: int = 4) -> float:

@@ -365,6 +365,40 @@ def test_a_table_too_long_for_a_legible_font_continues_on_more_slides():
     assert len(Presentation(BytesIO(content)).slides) == 2 + len(pages) + 1
 
 
+def test_a_table_with_a_legend_keeps_it_under_the_table_when_joined_fitted_and_continued():
+    from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
+
+    classes = lambda definition: [{'label': label, 'colour': colour, 'share': 20.0} for label, _lower, colour in definition]
+    columns = ['Operator → Campaign', 'NR band', 'Samples', 'Share of the group', 'Median SS-RSRP', 'Median SS-SINR', 'RSRP classes',
+               'SINR classes']
+    rows = [[f'VF · Q{index}', 'n78', '1,000', '10.0%', '-90.0 dBm', '7.0 dB', '', ''] for index in range(40)]
+    bars = [(classes(RSRP_CLASSES), classes(SINR_CLASSES), '#E60000')] * len(rows)
+
+    def build(presentation):
+        start = len(presentation.slides)
+        ni._bar_table_slides(presentation, 'RF Quality · NR quality per carrier', columns, rows, bars, 'Scope')
+        ni._tag_report_slides(presentation, start, 'rf_quality')
+
+    section = bundle_report_templates.SectionDeck('network_insights', 'Network Insights', [], decks=[(None, _deck(build))], order=['rf_quality'])
+    component = bundle_report_templates._components(bundle_report_templates._section_entries(section))[0]
+    assert len(component.slides) == 4
+    composer = pptx_compose.DeckComposer(TEMPLATE)
+    pages = bundle_report_templates._place_component(composer, component)
+    names, flows = [], []
+    for page in pages:
+        shapes = pptx_compose.content_shapes(page)
+        tables = [shape for shape in shapes if shape.has_table]
+        legends = [shape for shape in shapes if shape.name == pptx_compose.TABLE_LEGEND]
+        # One legend per slide, under its tables and inside the content area.
+        assert len(legends) == 1 and legends[0].top >= max(shape.top + shape.height for shape in tables)
+        assert legends[0].top + legends[0].height <= composer.height - Inches(0.3)
+        flows.append(len(tables))
+        names.extend(shape.table.cell(row, 0).text.replace('\u25A0', '').strip() for shape in tables for row in range(1, len(shape.table.rows)))
+    # The pages are joined and fitted as a table without a legend: every row once, in its order, in tables side by side.
+    assert names == [f'VF · Q{index}' for index in range(len(rows))]
+    assert max(flows) > 1
+
+
 def test_a_wide_table_of_few_rows_keeps_one_slide():
     places = ['London', 'Birmingham', 'Glasgow', 'Lowestoft to Rochester', 'Kingston upon Hull (Hull)', 'Plymouth to Oxford',
               'Newcastle upon Tyne', 'Bangor to Newcastle-under-Lyme', 'Blackburn to Liverpool', 'Luton to Lowestoft',

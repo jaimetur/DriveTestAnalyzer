@@ -10,6 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- **Network Insights — Legend of the RSRP and SINR classes:** in PowerPoint and Word (also in a Bundle Report Template), the RF Quality and NR quality per carrier tables have a legend under them with the colour of each class of their bars and its range (RSRP from Excellent ≥ -80 dBm to Very poor < -110 dBm, SINR from Excellent ≥ 20 dB to Bad < 0 dB), kept under the table when it is joined, fitted or continued on more slides.
 
 #### 🐛 Bug fixes:
 

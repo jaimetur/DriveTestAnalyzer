@@ -292,3 +292,31 @@ def test_bandwidth_views_and_nr_sites_by_duplex_mode_are_exported(tmp_path):
                if shape.has_text_frame and shape.is_placeholder]
     assert ['Spectrum · NR sites by duplex mode', scope_text(selection, environments=False)] in headers
     assert ['Spectrum · Bandwidth per band (Download tests)', measured] in headers
+
+
+def test_class_bars_have_a_legend_with_the_colour_and_range_of_each_class(tmp_path):
+    from src.modules.network_insights import RSRP_CLASSES, SINR_CLASSES
+    from src.modules.network_insights_export import class_bar_segments, class_ranges
+    from src.modules.pptx_compose import TABLE_LEGEND
+
+    assert [text for _label, text, _colour in class_ranges(RSRP_CLASSES)] == ['≥ -80', '-90 to -80', '-100 to -90', '-110 to -100', '< -110']
+    assert [text for _label, text, _colour in class_ranges(SINR_CLASSES)] == ['≥ 20', '13 to 20', '5 to 13', '0 to 5', '< 0']
+    classes = lambda definition: [{'label': label, 'colour': colour, 'share': 20.0} for label, _lower, colour in definition]
+    analysis = {'nr_bands': [{'column': 'VF · 26-Q3-SA', 'band': 'n78', 'samples': 48887, 'share': 97.4, 'rsrp_median': -90.5,
+                              'sinr_median': 7.2, 'rsrp_classes': classes(RSRP_CLASSES), 'sinr_classes': classes(SINR_CLASSES)}],
+                'group_label': 'Operator → Campaign', 'maps': {}, 'spectrum': {}}
+    output = tmp_path / 'network.pptx'
+    export_network_insights_powerpoint(output, analysis, {}, {}, _png, template=TEMPLATE, components={'rf_quality.nr_carriers'})
+    slide = next(slide for slide in Presentation(output).slides
+                 if any(shape.has_table and shape.table.cell(0, 1).text == 'NR band' for shape in slide.shapes))
+    table = next(shape for shape in slide.shapes if shape.has_table)
+    legend = next(shape for shape in slide.shapes if shape.name == TABLE_LEGEND)
+    # Under the table, a line for RSRP and one for SINR with the range of each class.
+    assert legend.top >= table.top + table.height
+    lines = [paragraph.text for paragraph in legend.text_frame.paragraphs]
+    assert lines[0].startswith('RSRP classes (dBm):') and 'Excellent ≥ -80' in lines[0] and 'Very poor < -110' in lines[0]
+    assert lines[1].startswith('SINR classes (dB):') and 'Good 13 to 20' in lines[1] and 'Bad < 0' in lines[1]
+    # Each class in the colour of its bars.
+    for paragraph, definition in zip(legend.text_frame.paragraphs, (RSRP_CLASSES, SINR_CLASSES)):
+        squares = [str(run.font.color.rgb) for run in paragraph.runs if '■' in run.text]
+        assert squares == [colour.lstrip('#').upper() for _count, colour in class_bar_segments(classes(definition))]

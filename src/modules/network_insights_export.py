@@ -2,6 +2,7 @@
 composed from it (see bundle_report_templates.module_document)."""
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable, Collection
 from io import BytesIO
@@ -18,7 +19,7 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 
 from src.modules.exports import MUTED, ORANGE, _add_textbox
-from src.modules.network_insights import BANDWIDTH_LADDER_TITLE
+from src.modules.network_insights import BANDWIDTH_LADDER_TITLE, RSRP_CLASSES, SINR_CLASSES
 from src.modules.network_insights_findings import VIEW_TITLES
 from src.modules.network_insights_findings_slides import add_band_share_slides, add_finding_slides, ladder_colours, palette
 from src.modules.scoring_themes import active_theme
@@ -735,6 +736,58 @@ CLASS_BAR_BLOCKS = 12
 CLASS_BAR_BLOCK = '\u2588'
 
 
+def _class_colour(scale: list[str], index: int, count: int, fallback: str) -> str:
+    """The colour of the class at ``index`` of ``count`` (the best first) in the ``scale`` of the active theme, or
+    ``fallback`` (the colour of the class) when the theme has no scale."""
+    return scale[round((count - 1 - index) / max(1, count - 1) * (len(scale) - 1))] if scale else fallback
+
+
+def class_ranges(classes: tuple[tuple[str, float, str], ...]) -> list[tuple[str, str, str]]:
+    """(label, range, colour) of each quality class, the best first: ``≥ -80`` for the best one, ``-90 to -80`` for
+    the next ones and ``< -110`` for the last one (its lower bound is open)."""
+    ranges = []
+    for index, (label, lower, colour) in enumerate(classes):
+        upper = classes[index - 1][1] if index else None
+        if math.isinf(lower):
+            text = f'< {upper:g}'
+        elif upper is None:
+            text = f'≥ {lower:g}'
+        else:
+            text = f'{lower:g} to {upper:g}'
+        ranges.append((label, text, colour))
+    return ranges
+
+
+# The legend under a table with class bars: a line for RSRP and one for SINR.
+CLASS_LEGEND_LINES = (('RSRP classes (dBm)', RSRP_CLASSES), ('SINR classes (dB)', SINR_CLASSES))
+CLASS_LEGEND_GAP, CLASS_LEGEND_HEIGHT = 0.08, 0.42
+
+
+def _add_class_legend(slide, left: float, top: float, width: float) -> None:
+    """The legend of the class bars under their table: for RSRP and SINR, each class in the colour of its bars (the
+    scale of the active theme) with its range. Named TABLE_LEGEND, so the composer keeps it under the table."""
+    from src.modules.pptx_compose import TABLE_LEGEND
+
+    box = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(CLASS_LEGEND_HEIGHT))
+    box.name = TABLE_LEGEND
+    frame = box.text_frame
+    frame.word_wrap = True
+    frame.margin_left = frame.margin_right = Inches(0.02)
+    frame.margin_top = frame.margin_bottom = Inches(0.02)
+    scale = palette()['scale']
+    for line, (title, classes) in enumerate(CLASS_LEGEND_LINES):
+        paragraph = frame.paragraphs[0] if line == 0 else frame.add_paragraph()
+        parts = [(f'{title}:', MUTED, True)]
+        for index, (label, text, colour) in enumerate(class_ranges(classes)):
+            parts += [('   ■ ', _class_colour(scale, index, len(classes), colour), False), (f'{label} {text}', MUTED, False)]
+        for text, colour, bold in parts:
+            run = paragraph.add_run()
+            run.text = text
+            run.font.size = Pt(9)
+            run.font.bold = bold
+            run.font.color.rgb = RGBColor.from_string(colour.lstrip('#').upper())
+
+
 def class_bar_segments(classes: list[dict[str, Any]], blocks: int = CLASS_BAR_BLOCKS) -> list[tuple[int, str]]:
     """Split a bar of ``blocks`` characters between the quality classes in proportion to their shares, the best
     class first, in the scale of the active theme.
@@ -742,9 +795,8 @@ def class_bar_segments(classes: list[dict[str, Any]], blocks: int = CLASS_BAR_BL
     The bar is written as coloured block characters inside the table cell, so it always stays in its row.
     """
     scale = palette()['scale']
-    shares = [(float(item.get('share') or 0),
-               scale[round((len(classes) - 1 - index) / max(1, len(classes) - 1) * (len(scale) - 1))] if scale
-               else str(item.get('colour') or '#999999')) for index, item in enumerate(classes)]
+    shares = [(float(item.get('share') or 0), _class_colour(scale, index, len(classes), str(item.get('colour') or '#999999')))
+              for index, item in enumerate(classes)]
     total = sum(share for share, _colour in shares)
     if total <= 0:
         return []
@@ -1035,6 +1087,8 @@ def _add_bar_table(slide, columns: list[str], rows: list[list[str]], bars: list[
             swatch.font.color.rgb = RGBColor.from_string(str(colour).lstrip('#').upper())
             if first is not None:
                 first._r.addprevious(swatch._r)
+    # What each colour of the bars stands for, under the table.
+    _add_class_legend(slide, left, top + row_height * (len(rows) + 1) + CLASS_LEGEND_GAP, width)
 
 def _visual_slides(presentation: Presentation, title: str, panels: list[tuple[str, BytesIO | None, str, Any]],
                    below: tuple[list[str], list[list[str]], list[Any]] | None = None, subtitle: str = '',
@@ -1082,11 +1136,13 @@ def _visual_slides(presentation: Presentation, title: str, panels: list[tuple[st
     columns, rows, bars = below
     row_height = 0.3
     table_top = top + 0.35 + image_height + 0.1
-    fit = max(1, int((top + height - table_top) / row_height) - 1)
+    # The legend of the class bars goes under each part of the table.
+    legend = CLASS_LEGEND_GAP + CLASS_LEGEND_HEIGHT
+    fit = max(1, int((top + height - table_top - legend) / row_height) - 1)
     first, rest = (rows[:fit], bars[:fit]), (rows[fit:], bars[fit:])
     if first[0]:
         _add_bar_table(slide, columns, first[0], first[1], left, table_top, width, row_height)
-    per_slide = max(1, int(height / row_height) - 1)
+    per_slide = max(1, int((height - legend) / row_height) - 1)
     pages = [(rest[0][index:index + per_slide], rest[1][index:index + per_slide]) for index in range(0, len(rest[0]), per_slide)]
     for page_number, (page_rows, page_bars) in enumerate(pages, start=2):
         continuation = _slide(presentation, f'{title} · {page_number}/{len(pages) + 1}', subtitle)
