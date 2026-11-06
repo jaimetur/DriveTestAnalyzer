@@ -12,7 +12,7 @@ from pptx.enum.chart import XL_CHART_TYPE, XL_DATA_LABEL_POSITION, XL_LEGEND_POS
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.text import MSO_ANCHOR
 from pptx.oxml.ns import qn
-from pptx.util import Inches
+from pptx.util import Inches, Pt
 
 from src.modules.scoring.scoring_exports import (
     _add_chart_hierarchy_grid, _charts, _cell, _format_chart, _format_stacked_segment_labels, _header_foreground,
@@ -1100,6 +1100,36 @@ def test_intro_slides_show_all_canonical_scope_filters_without_overlapping_campa
     assert report_structure.level(presentation.slides[1]) == 1
     counter = next(shape for shape in presentation.slides[1].shapes if shape.name.startswith(report_structure.COUNTER_PREFIX))
     assert counter.text == '01' and counter.top < presentation.slides[1].shapes.title.top
+
+
+def test_finished_decks_draw_the_empty_table_cells_at_the_size_of_their_rows():
+    from src.modules.reporting import report_structure
+    from src.modules.scoring.scoring_exports import _slide
+    from src.modules.scoring.scoring_summary_slides import add_location_versus_slides
+    rows = [{'location': city, 'gap': gap, 'voice_gap': gap / 2, 'data_gap': -gap, 'percent': 90 + gap, 'reference_percent': 90}
+            for city, gap in (('Leeds', -13.0), ('Bristol', -6.4), ('Cardiff', 1.1), ('London', 1.2))]
+    deck = Presentation(TEMPLATE)
+    add_location_versus_slides(deck, [{'operator': 'VF', 'label': 'VF', 'reference_label': 'EE', 'is_reference': False,
+                                       'level': 'City', 'context': {}, 'rows': rows}], subtitle='', new_slide=_slide)
+    slide = deck.slides[0]
+    table = next(shape for shape in slide.shapes if shape.name == 'Scoring Location Versus Table')
+    report_structure.finish(deck)
+    # The cells under the bars have no text: PowerPoint draws them at the size of their end of paragraph (18 pt when they
+    # have none), so they get the 9 pt of their row and the rows stay as tall as declared, under their bars.
+    for row in range(1, len(rows) + 1):
+        for column in (1, 2, 3):
+            paragraph = table.table.cell(row, column)._tc.txBody.p_lst[0]
+            assert not table.table.cell(row, column).text
+            assert paragraph.find(qn('a:endParaRPr')).get('sz') == '900'
+    # A row lower than its text (a spacer) gets half its height.
+    other = slide.shapes.add_table(2, 2, Inches(1), Inches(6), Inches(2), Inches(.4)).table
+    other.rows[0].height, other.rows[1].height = Inches(.3), Inches(.087)
+    run = other.cell(0, 0).text_frame.paragraphs[0].add_run()
+    run.text, run.font.size = 'Text', Pt(9)
+    report_structure.size_empty_table_paragraphs(deck)
+    sizes = [other.cell(1, column)._tc.txBody.p_lst[0].find(qn('a:endParaRPr')).get('sz') for column in range(2)]
+    assert sizes == ['313', '313']
+    assert other.cell(0, 1)._tc.txBody.p_lst[0].find(qn('a:endParaRPr')).get('sz') == '900'
 
 
 def test_intro_dimension_lines_keep_requested_order_independent_of_hierarchy_configuration():

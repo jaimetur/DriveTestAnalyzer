@@ -144,10 +144,53 @@ class Counter:
         return label([value or 1 for value in self.counters])
 
 
+def _run_sizes(element: Any) -> list[int]:
+    """The sizes (hundredths of a point) of the runs with text in an element of a slide."""
+    from pptx.oxml.ns import qn
+
+    sizes = []
+    for run in element.iter(qn('a:r')):
+        properties = run.find(qn('a:rPr'))
+        if run.findtext(qn('a:t')) and properties is not None and properties.get('sz'):
+            sizes.append(int(properties.get('sz')))
+    return sizes
+
+
+def size_empty_table_paragraphs(presentation: Any) -> None:
+    """Give every paragraph without text of a table cell the size of the text of its row (of its table when the row has
+    none), never more than half the height of the row. PowerPoint draws a paragraph without text at the size of its
+    end-of-paragraph properties, 18 pt when it has none, which makes its row taller than declared and moves away from
+    their rows the bars and labels placed over the empty cells of a table."""
+    from pptx.oxml.ns import qn
+
+    for slide in presentation.slides:
+        for table in slide.shapes._spTree.iter(qn('a:tbl')):
+            table_sizes = None
+            for row in table.findall(qn('a:tr')):
+                empty = []
+                for paragraph in row.iter(qn('a:p')):
+                    properties = paragraph.find(qn('a:endParaRPr'))
+                    if not any(text.text for text in paragraph.iter(qn('a:t'))) and (properties is None or not properties.get('sz')):
+                        empty.append(paragraph)
+                if not empty:
+                    continue
+                if table_sizes is None:
+                    table_sizes = _run_sizes(table)
+                # Half the height of the row (127 EMU a hundredth of a point), at least 1 pt.
+                size = min(min(_run_sizes(row) or table_sizes or [900]), max(100, int(row.get('h', '0')) // 127 // 2))
+                for paragraph in empty:
+                    properties = paragraph.find(qn('a:endParaRPr'))
+                    if properties is None:
+                        properties = paragraph.makeelement(qn('a:endParaRPr'), {})
+                        paragraph.append(properties)
+                    properties.set('sz', str(size))
+
+
 def finish(presentation: Any) -> None:
     """Write the counter of every transition, in order, and give the cover and the transitions their sizes and places.
-    The cover is the first slide when it is a cover layout and no transition. The slides of a dark theme turn their
-    content dark (theme_dark)."""
+    The cover is the first slide when it is a cover layout and no transition. The paragraphs without text of the
+    tables keep the size of their text (size_empty_table_paragraphs). The slides of a dark theme turn their content dark
+    (theme_dark)."""
     from src.modules.reporting.pptx_compose import is_cover
 
     width = presentation.slide_width
@@ -160,6 +203,7 @@ def finish(presentation: Any) -> None:
             continue
         _write_counter(slide, counter.next(current))
         _place(slide, 'transition', width)
+    size_empty_table_paragraphs(presentation)
     # The content of the slides of a dark theme (Midnight) on their dark background.
     from src.modules.reporting.theme_dark import darken_presentation
     darken_presentation(presentation)
