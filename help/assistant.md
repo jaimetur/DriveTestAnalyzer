@@ -1,9 +1,18 @@
 # AI Assistant
 
-Use the **AI Assistant** to ask the active workspace questions in your own words, in any language, and get the answer in the same chat: the scoring of an operator broken down by vendor, where it loses points against the leader, how many Non-Qualified Calls each operator has and why, which campaigns and methodologies there are, or how to do something in the tool. The assistant reads the workspace with the same calculations as its modules, answers with tables when they help, says how it calculated every figure and proposes the next questions to ask.
+Use the **AI Assistant** to ask the active workspace questions in your own words, in any language, and get the answer in the same chat. For example:
+
+- the scoring of an operator broken down by vendor, where it loses points against the leader, or a global commentary of the scoring of the campaigns, operators or vendors you name;
+- how many Non-Qualified Calls each operator has and why, or the list of their JOIN_IDs by any condition (in a Cluster and a Time-Window issue of at least 4 calls);
+- any count, average or distribution of the rows of the CDRs;
+- the radio coverage and quality of Network Insights;
+- a commentary on the charts of a PPT Designer Design;
+- which campaigns and methodologies there are, or how to do something in the tool.
+
+The assistant reads the workspace with the same calculations as its modules, answers with tables when they help, says how it calculated every figure and proposes the next questions to ask.
 
 > [!IMPORTANT]
-> **No customer name leaves the server.** Before a question, the workspace context or the result of a calculation is sent to the AI engine, every name of an operator, vendor, region, cluster, city, campaign, methodology or workspace is replaced by a code (`OP1`, `VN2`, `RG3`, `CL4`, `CT5`, `CP6`, `MT7`, `WS1`), also in the words of your question. The engine reasons on the codes; the tool puts the real names back in the answer you read. Only codes, figures, dates and the words of the question travel; never the rows of the CDRs, coordinates, call identifiers or user names. **What was sent**, below every answer, shows exactly what the engine received and what it replied.
+> **No customer name leaves the server.** Before a question, the workspace context or the result of a calculation is sent to the AI engine, every name of an operator, vendor, region, cluster, city, campaign, methodology, workspace or user is replaced by a code (`OP1`, `VN2`, `RG3`, `CL4`, `CT5`, `CP6`, `MT7`, `WS1`, `US1`), also in the words of your question and inside identifiers (`OP1_Voice`). The engine reasons on the codes; the tool puts the real names back in the answer you read. Only codes, figures, dates, the words of the question and the values a calculation needs (such as JOIN_IDs, KPI values or site IDs, at most 200 rows of a query) travel. Coordinates, subscriber identifiers (IMSI, IMEI, MSISDN, dialled number), IP addresses and the paths of the files never do: no table of the assistant holds them. A long list of an answer is shown by the tool itself, without passing through the engine. **What was sent**, below every answer, shows exactly what the engine received and what it replied.
 
 > [!NOTE]
 > **Module access.** The AI Assistant is in every Modules Profile and needs a workspace: each workspace has its own conversations and glossary. Super-admins choose who sees it in **Super Admin → Modules Profiles** and can rename it in **Super Admin → Interface Settings**. It answers only once a super-admin enables an AI engine (see [Engines](#engines)).
@@ -39,13 +48,18 @@ Ask as you would ask a colleague, for example:
 - *Where does Three lose most points against EE in the latest campaign?*
 - *Compare the NSA and SA campaigns of the last quarter for every operator.*
 - *How many Non-Qualified Calls of the latest campaign are there per operator and failure category?*
+- *List the JOIN_IDs of the NQ Calls in a Cluster of at least 4 calls and in a Time-Window issue of at least 4 calls.*
+- *What is the median DL throughput of each operator by environment in the latest campaign?*
+- *Comment globally on the scoring of 2026-Q3 against 2026-Q2 for Vodafone and EE, by Vendor.*
+- *Comment on the RSRP and SINR of each vendor in the latest campaign (Network Insights).*
+- *Analyse the first chart of the first PPT Design and give me your comments.*
 - *How do I create a Saved Filter that follows the latest campaign?*
 
 A quarter (2026-Q3) stands for the campaign of that quarter; when the quarter has an NSA and an SA campaign, the assistant answers for the NSA one and says that the SA one exists, or answers both. When a question can be read in ways that change the answer, it asks one short question back instead of guessing. Follow-up questions keep the context of the conversation (*and in SA?*).
 
 ## Read an answer
 
-Each answer starts with the direct answer and then the detail, with its tables. Below it:
+Each answer starts with the direct answer and then the detail, with its tables. Each table says how many rows it has and has **Download CSV**, which saves it as a CSV file that Excel opens. A long table, such as a list of JOIN_IDs, scrolls inside the answer with its header in sight. The tool fills a table of a query result itself, with every row of the result (up to 5,000), so the engine never copies, cuts or changes a list. Below the answer:
 
 - **Follow-up questions**: the next questions the assistant proposes; select one to ask it.
 - The engine, its model, how long the answer took and the tokens it used.
@@ -65,20 +79,27 @@ The assistant only reads; it changes nothing in the workspace. When asked to cha
 | --- | --- |
 | Workspace overview | The campaigns of each NR Mode, newest first, with their quarter, CDR types and methodology (Flex campaigns marked as such); the operators with their role in the Operator Maps (Focus or not); the vendors, regions and clusters; how many cities; the scoring methodologies with their environments and points; the Saved Filters. It is given with every question. |
 | Values | Every Operator, Vendor, Region, Cluster, City or Campaign of the CDRs. |
-| Scoring | The Scoring & GAP Analysis points of the operators for any campaigns (or Latest, Previous, Latest 2… campaigns), NR Mode (NSA, SA or NSA vs SA), split (Operator, Campaign, Vendor, Region, Cluster, City, Dataset Type) and filters, calculated exactly as a Saved Filter of the same selection: each campaign with the methodology that applies to it, the operators the Operator Maps exclude left out, the Scoring History used when it covers the selection. With the points per environment and category, the KPIs that lose most points and the GAP to the reference operator. |
+| Scoring | The Scoring & GAP Analysis points of the operators for any campaigns (or Latest, Previous, Latest 2… campaigns), NR Mode (NSA, SA or NSA vs SA), split (Operator, Campaign, Vendor, Region, Cluster, City, Dataset Type) and filters, calculated exactly as a Saved Filter of the same selection: each campaign with the methodology that applies to it, the operators the Operator Maps exclude left out, the Scoring History used when it covers the selection. With the points per environment and category, the KPIs that lose most points and the GAP to the reference operator. For a global commentary it also reads the **Summary** of the module for that selection: where each operator stands, its GAP by parts, its levers, the points at stake, the campaign comparisons and trends, and Where to act. |
 | Saved Filters | The Saved Filters of Scoring & GAP Analysis and the totals of a saved result, without calculating anything. |
 | Non-Qualified Calls | The number of Non-Qualified Calls grouped and filtered by campaign, operator, vendor, area, service, NR Mode, technology, environment, failure category, classification and phase, the status and root cause of the analysts and the DT Analyzer RCA. |
+| Query | One read-only SQL query (DuckDB) for any other question, over these tables: **nq_calls** (one row per Non-Qualified Call, as the list of the module shows it, with its follow-up, DT Analyzer RCA, scoring impact, priority, queue and its Hotspot, Time-Window and Cluster: their IDs `H-…`, `T-…`, `C-…` and how many calls each holds); **cdr_data**, **cdr_voice** and **cdr_speech** (every row of the CDRs, from their columnar copies); **cdrs** (the CDRs). It lists calls or tests, counts, averages, percentiles and distributions by any column, and joins the calls with the rows of their CDRs. Only one SELECT runs, on those tables only; it cannot change anything or read any file. It stops after 90 seconds and keeps up to 5,000 rows. |
+| Columns | The columns of each table of the query, with what each column of nq_calls holds, so the engine finds the fields it needs among the hundreds of the CDRs. |
+| Network Insights | The analysis of [Network Insights](network-insights.md) as its page shows it (the stored one when it was made before), for the campaigns, NR Mode, technology (LTE, NR or both), grouping (Operator, Vendor, Region…) and filters of the question: the RSRP and SINR of each group with their change against the previous campaign, the Key Findings with their headlines, and on request the spectrum, bandwidths, latency, NR carriers and serving cells. |
+| PPT Designer | The Designs of [PPT Designer](ppt-designer.md) in the order of their library, the slides of one with their charts, and the charts of up to four slides read as the [Auto comments](ppt-designer.md) read them: the value of every group of each chart with its samples, which direction is better and the comments the rules write. The Design is prepared as its viewer prepares it, with its saved selection and filters. |
 | Help | The passages of this Help that best answer a question about the tool. |
 | Calculator | Differences, shares and ratios of figures of the results. |
 
 > [!NOTE]
-> **About some operators.** To answer about some operators the assistant calculates the scoring of every operator and lists only theirs: some KPIs (the Ultra thresholds) are scored against the best operator of the calculation, so the points match those of Scoring & GAP Analysis with all the operators. The operators with the role **Exclude** in the Operator Maps are never named.
+> **About some operators.** To answer about some operators the assistant calculates the scoring of every operator and lists only theirs: some KPIs (the Ultra thresholds) are scored against the best operator of the calculation, so the points match those of Scoring & GAP Analysis with all the operators. The operators with the role **Exclude** in the Operator Maps are never named, and the tables of the query leave their calls and rows out. In those tables, the operator columns hold the names of the Operator Maps.
+
+> [!NOTE]
+> **The modules each user sees.** The assistant reads Network Insights and PPT Designer only for the users whose Modules Profile includes them. A CDR whose columnar copy is still being written is not in the CDR tables of the query yet, and its results say so.
 
 ## Privacy: the names sent as codes
 
-The names of the workspace — those of its Operator Maps (with their aliases), CDRs (operators, vendors, regions, clusters, cities and campaigns), methodologies and the workspace itself — and the names of well-known operators and vendors are replaced by codes everywhere: in the question, the workspace context, the glossary, the conversation so far and every result. Two-letter names (EE, O2, VF) are taken as names only in capitals, and names that are also common words (Three) only with a capital. The codes of a conversation never change: a name that appears later takes the next free code, so earlier answers keep meaning the same thing. Before every request the tool checks that no known name is left; if one were, nothing is sent and the chat says so.
+The names of the workspace — those of its Operator Maps (with their aliases), CDRs (operators, vendors, regions, clusters, cities and campaigns), methodologies and the workspace itself — the user names and full names of the users of the tool, and the names of well-known operators and vendors are replaced by codes everywhere: in the question, the workspace context, the glossary, the conversation so far and every result, also inside identifiers joined by underscores (a test name `Vodafone_Voice_MO` is sent as `OP1_Voice_MO`). Two-letter names (EE, O2, VF) are taken as names only in capitals, and names that are also common words (Three) only with a capital. The user names that are also words (generic accounts such as *super* or *demo*) are coded only as the values of user columns, such as the assignee of a call. The codes of a conversation never change: a name that appears later takes the next free code, so earlier answers keep meaning the same thing. Before every request the tool checks that no known name is left; if one were, nothing is sent and the chat says so.
 
-What still travels: the words of the question that are not names (a name the workspace does not have, or a misspelled one, travels as written), figures, dates, quarters, KPI and category names of the methodology and the instructions of the assistant. Which provider receives them, and under which terms, is chosen by the super-admins of the deployment (see [Engines](#engines)).
+What still travels: the words of the question that are not names (a name the workspace does not have, or a misspelled one, travels as written), figures, dates, quarters, KPI and category names of the methodology, the instructions of the assistant, and the values a query or a chart reads that are not names (JOIN_IDs, site and cell IDs, test names without the names of the workspace, KPI values). Which provider receives them, and under which terms, is chosen by the super-admins of the deployment (see [Engines](#engines)).
 
 ## The glossary of the workspace
 

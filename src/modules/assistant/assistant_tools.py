@@ -1,9 +1,10 @@
 """The tools of the AI Assistant: what it can read from the workspace to answer a question.
 
 Every tool only reads, through the functions the modules of the tool already use (the Scoring of a selection is
-calculated as a Saved Filter calculates it), and returns aggregated figures: never rows of the CDRs, coordinates or
-call identifiers. The names in their results are the real ones; ``assistant.py`` masks them (see assistant_privacy)
-before they are sent to the engine, and puts the real names back in the arguments the engine sends.
+calculated as a Saved Filter calculates it). The query tool (assistant_query) runs one read-only SELECT over the
+Non-Qualified Calls and the rows of the CDRs, without their coordinates or subscriber identifiers. The names in their
+results are the real ones; ``assistant.py`` masks them (see assistant_privacy) before they are sent to the engine, and
+puts the real names back in the arguments the engine sends.
 """
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ from typing import Any
 HELP_DIR = Path(__file__).resolve().parents[3] / 'help'
 SPLIT_LEVELS = ('Operator', 'Campaign', 'Vendor', 'Region', 'Cluster', 'City', 'Dataset Type')
 FILTER_FIELDS = ('Operator', 'Vendor', 'Region', 'Cluster', 'City')
-SCORING_DETAILS = ('environments', 'categories', 'kpis', 'gap')
+SCORING_DETAILS = ('environments', 'categories', 'kpis', 'gap', 'insights')
 CAMPAIGN_CHOICES = {
     'latest': '@latest-campaign', 'previous': '@previous-campaign', 'latest 2': '@latest-2-campaigns',
     'latest 3': '@latest-3-campaigns', 'latest 4': '@latest-4-campaigns', 'all': '@all-campaigns',
@@ -54,14 +55,16 @@ TOOLS: list[dict[str, str]] = [
                                      '"nr_mode": "NSA|SA|NSA vs SA", "split_by": ["Operator", "Campaign", "Vendor", "Region", '
                                      '"Cluster", "City", "Dataset Type"], "filters": {"Operator": ["OP1"], "Vendor": [], '
                                      '"Region": [], "Cluster": [], "City": []}, "only": {"Operator": ["OP1"]}, "detail": '
-                                     '["environments", "categories", "kpis", "gap"], "reference_operator": "OP3 (optional, the '
-                                     'GAP reference)"}',
+                                     '["environments", "categories", "kpis", "gap", "insights"], "reference_operator": "OP3 '
+                                     '(optional, the GAP reference)"}',
      'description': 'The Scoring & GAP Analysis points of the operators, calculated exactly as the module calculates a '
                     'Saved Filter: each campaign with the methodology that applies to it, the operators the Operator '
                     'Maps exclude left out. Operator is always part of the split. Returns per group the total points, '
                     'the maximum and available points, whether the coverage is complete and the samples; with detail '
                     'the points per environment and per category, the KPIs that lose most points (value, points, points '
-                    'lost) and the GAP to the reference operator. filters change what is calculated: an Operator filter '
+                    'lost) and the GAP to the reference operator; with insights the Summary of the module (where each '
+                    'operator stands, the GAP by parts, the levers, the points at stake, the campaign comparisons and '
+                    'trends, and Where to act), for a global commentary. filters change what is calculated: an Operator filter '
                     'changes the points, because some KPIs are scored against the best operator of the calculation, so '
                     'to answer about some operators use "only", which lists only their groups and keeps the points the '
                     'module shows. Vendor is the RAN vendor of the cells that served the test; '
@@ -75,6 +78,39 @@ TOOLS: list[dict[str, str]] = [
      'description': 'Counts of Non-Qualified Calls (the failed or not qualified tests of Data and Voice) grouped by '
                     'fields: ' + ', '.join(NQ_FIELDS) + '. status, root_* are the tracking of the analysts; dta_rca_* '
                     'the DT Analyzer RCA. Values of filters are matched whatever their case.'},
+    {'name': 'table_columns', 'arguments': '{"table": "nq_calls|cdr_data|cdr_voice|cdr_speech|cdrs (optional)", '
+                                           '"search": "throughput rsrp (optional words of the column names)"}',
+     'description': 'Without a table: the tables the query tool reads. With one: its columns and their types (those '
+                    'of nq_calls with what they hold); search keeps the columns whose name holds one of its words. '
+                    'The CDR tables have hundreds of columns: search for those you need before writing a query.'},
+    {'name': 'query', 'arguments': '{"sql": "SELECT join_id FROM nq_calls WHERE nq_cluster_calls >= 4 AND '
+                                   'time_window_calls >= 4 ORDER BY join_id", "max_rows": 50}',
+     'description': 'One read-only SELECT (DuckDB SQL, it may start with WITH) over the tables nq_calls (one row per '
+                    'Non-Qualified Call with its follow-up, RCA, impact, priority and its Hotspot, Time-Window and '
+                    'Cluster groups), cdr_data, cdr_voice and cdr_speech (every row of the CDRs) and cdrs (the CDRs). '
+                    'For any question the other tools do not answer: lists of calls or tests, counts, averages, '
+                    'percentiles, distributions, comparisons by any column, joins of nq_calls with the CDR rows '
+                    '(dataset_id, source_row_id). Names are codes in the tables too: compare with the codes you '
+                    'received (operator = \'OP1\'). Returns the columns, the number of rows (up to 5,000) and the '
+                    'first max_rows rows (at most 200), with a result_id.'},
+    {'name': 'network_insights', 'arguments': '{"campaigns": ["CP1"] or ["latest"|"previous"], "nr_mode": "NSA|SA", '
+                                              '"technology": "lte|nr|lte_nr", "group": ["operator", "campaign"] (or vendor, '
+                                              'region, cluster, city, environment), "operators": [], "vendors": [], '
+                                              '"regions": [], "cities": [], "environments": [], "parts": ["rf", "findings", '
+                                              '"spectrum", "bandwidth", "interactivity", "nr_bands", "serving"]}',
+     'description': 'The analysis of Network Insights as its page shows it, for its campaigns (one, or the latest and '
+                    'the previous one to compare them), NR Mode, technology and grouping (Operator, or Vendor to compare '
+                    'the vendors): rf gives the RSRP and SINR of each group (median, P10, P90, shares under the '
+                    'thresholds) and its change against the previous campaign; findings the six Key Findings of the Data '
+                    'tests with their headlines; the other parts spectrum, bandwidths, latency, NR carriers and serving '
+                    'cells. Default parts: rf and findings.'},
+    {'name': 'ppt_designs', 'arguments': '{"design": "id or name (optional)"}',
+     'description': 'Without a design: the Designs of PPT Designer in the order of their library. With one: its slides '
+                    'with their title and charts (title, KPI, chart type, CDR source).'},
+    {'name': 'ppt_design_charts', 'arguments': '{"design": "id or name", "slides": [3]}',
+     'description': 'The charts of up to 4 slides of a Design, prepared as its viewer prepares them, read as the Auto '
+                    'comments of PPT Designer read them: the value of every group of each chart with its samples, which '
+                    'direction is better, and the comments the rules write. To analyse or comment on charts of a Design.'},
     {'name': 'help_search', 'arguments': '{"query": "how to create a Saved Filter"}',
      'description': 'The passages of the Help of DriveTest Analyzer that best match a question about how the tool works.'},
     {'name': 'calculate', 'arguments': '{"expressions": ["921.81 - 863.11", "292182 / 382472 * 100"]}',
@@ -95,6 +131,20 @@ class ToolContext:
     progress: Callable[[str], None] = lambda _message: None
     cancelled: Callable[[], bool] = lambda: False
     cache: dict[str, Any] = field(default_factory=dict)
+    # What the modules give the tools (see assistant.module_services): Network Insights and PPT Designer.
+    services: dict[str, Callable[..., Any]] = field(default_factory=dict)
+    closers: list[Callable[[], None]] = field(default_factory=list)
+
+    def on_close(self, callback: Callable[[], None]) -> None:
+        """Something to close when the question is answered (the database of the query tool)."""
+        self.closers.append(callback)
+
+    def close(self) -> None:
+        while self.closers:
+            try:
+                self.closers.pop()()
+            except Exception:  # noqa: BLE001 - closing never fails an answer
+                pass
 
 
 def catalog_text() -> str:
@@ -103,8 +153,13 @@ def catalog_text() -> str:
 
 
 def run_tool(context: ToolContext, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    from src.modules.assistant import assistant_modules, assistant_query
+
     handlers = {'workspace_overview': workspace_overview, 'list_values': list_values, 'scoring': scoring,
-                'saved_filters': saved_filters, 'nq_calls': nq_calls, 'help_search': help_search, 'calculate': calculate}
+                'saved_filters': saved_filters, 'nq_calls': nq_calls, 'table_columns': assistant_query.table_columns,
+                'query': assistant_query.query, 'network_insights': assistant_modules.network_insights,
+                'ppt_designs': assistant_modules.ppt_designs, 'ppt_design_charts': assistant_modules.ppt_design_charts,
+                'help_search': help_search, 'calculate': calculate}
     handler = handlers.get(str(name))
     if handler is None:
         raise ToolError(f'Unknown tool {name}: use one of {", ".join(handlers)}.')
@@ -373,7 +428,12 @@ def scoring(context: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
             progress=lambda _value, message: context.progress(message))
     except ValueError as exc:
         raise ToolError(str(exc)) from exc
-    return summarize_scoring(result, selection, details, only)
+    summary = summarize_scoring(result, selection, details, only)
+    if 'insights' in details:
+        from src.modules.assistant.assistant_modules import scoring_insights
+        context.progress('Building the Summary of the scoring')
+        summary['insights'] = scoring_insights(context.repository, result, selection, only)
+    return summary
 
 
 _KEYS = ('campaign', 'operator', 'vendor', 'region', 'cluster', 'city', 'dataset_type')

@@ -121,7 +121,7 @@ Build read-only SQL in Assistance Mode or SQL Mode, inspect paginated results an
 
 ### AI Assistant
 
-Ask the active workspace questions in your own words, in any language, and get the answer in a chat: the scoring of the operators with any split and filter, the saved Scoring results, the Non-Qualified Calls, the campaigns and how the tool works. It uses the AI engines of Super Admin → AI Comment Writers (Kiro CLI or Claude); every name of an operator, vendor, area, campaign or methodology is sent to the engine as a code and put back in the answer, every figure comes from a calculation of the tool, and a glossary of the workspace in Workspace Config tells it what the data does not. See [AI Assistant Help](help/assistant.md).
+Ask the active workspace questions in your own words, in any language, and get the answer in a chat: the scoring of the operators with any split and filter and a global commentary of it, the saved Scoring results, the Non-Qualified Calls, any list or statistic of the NQ Calls and the rows of the CDRs (a read-only SQL query), the analyses of Network Insights, the charts of the PPT Designer Designs, the campaigns and how the tool works. It uses the AI engines of Super Admin → AI Comment Writers (Kiro CLI or Claude); every name of an operator, vendor, area, campaign, methodology or user is sent to the engine as a code and put back in the answer, coordinates and subscriber identifiers are never sent, every figure comes from a calculation of the tool, and a glossary of the workspace in Workspace Config tells it what the data does not. See [AI Assistant Help](help/assistant.md).
 
 ### Ticket Center
 

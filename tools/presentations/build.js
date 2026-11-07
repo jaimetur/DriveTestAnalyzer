@@ -840,7 +840,7 @@ async function assistant(pres) {
   }
   text(slide, 'The engine (Kiro CLI or Claude) sees codes and figures; the server puts the names back.', { x: 7.25, y: 3.55, w: 5.3, h: 0.4, fontSize: 10.5, color: K.grey });
   await panel(7.0, 4.15, 2.2, 'The tool calculates, the engine explains', 'TbShieldCheck', '0C9B5B');
-  for (const [index, [name, label]] of [['TbTrophy', 'Scoring as a Saved Filter'], ['TbPhoneX', 'Non-Qualified Calls'], ['TbBook2', 'Help'], ['TbCalculator', 'Calculator'],
+  for (const [index, [name, label]] of [['TbTrophy', 'Scoring & its Summary'], ['TbDatabaseSearch', 'NQ Calls & CDR rows'], ['TbAntenna', 'Network Insights'], ['TbPresentation', 'PPT Designer charts'],
     ['TbListDetails', 'How it was calculated'], ['TbEye', 'What was sent']].entries()) {
     const x = 7.25 + (index % 2) * 2.75; const y = 4.82 + Math.floor(index / 2) * 0.44;
     slide.addImage({ data: await icon(name, index < 4 ? accent : '0C9B5B'), x, y: y + 0.06, w: 0.26, h: 0.26, objectName: named('icon') });
@@ -854,9 +854,11 @@ async function assistant(pres) {
     text(slide, label, { x: x + 0.5, y: 6.52, w: 2.4, h: 0.42, fontSize: 11, bold: true, valign: 'middle' });
   }
   slide.addNotes('The AI Assistant answers questions about the workspace asked in natural language, in any language, in a chat: '
-    + 'the scoring of the operators with any split and filter, calculated as a Saved Filter of the same selection, the saved '
-    + 'results, the Non-Qualified Calls and how the tool works. Before anything reaches the AI engine (Kiro CLI or Claude), every '
-    + 'name of an operator, vendor, area, campaign or methodology is replaced by a code, and the server puts the real names back '
+    + 'the scoring of the operators with any split and filter, calculated as a Saved Filter of the same selection, with a global '
+    + 'commentary from its Summary, the saved results, any list or statistic of the Non-Qualified Calls and the rows of the CDRs, '
+    + 'the analyses of Network Insights, the charts of PPT Designer and how the tool works. Before anything reaches the AI engine '
+    + '(Kiro CLI or Claude), every name of an operator, vendor, area, campaign, methodology or user is replaced by a code, and the '
+    + 'server puts the real names back '
     + 'in the answer. Every figure must come from a calculation of the tool; each answer shows how it was calculated and what '
     + 'was sent, and a glossary of the workspace, fed by the suggestions of the users, teaches it what the data does not tell. '
     + 'The operators and figures of this slide are illustrative.');

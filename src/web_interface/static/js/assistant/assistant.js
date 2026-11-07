@@ -123,19 +123,54 @@
   // Figures (with a % or the * of a partial value) are aligned to the right.
   const NUMERIC = /^[−+-]?[\d.,\s]+\s?[%*]?$/;
 
+  // A table as a CSV file (with a BOM, so Excel reads its accents), named after its title.
+  function downloadTable(table) {
+    const quote = (value) => {
+      const text = String(value ?? '');
+      return /[",;\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const lines = [table.columns || [], ...(table.rows || [])].map((row) => row.map(quote).join(','));
+    const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type: 'text/csv;charset=utf-8'});
+    const link = element('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${(table.title || 'ai-assistant-table').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 80) || 'ai-assistant-table'}.csv`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
+
   function renderTable(table) {
     const box = element('figure', 'assistant-table-box');
-    if (table.title) box.append(element('figcaption', '', table.title));
-    const scroller = element('div', 'assistant-table-scroll');
-    const grid = element('table', 'assistant-table');
+    const rows = (table.rows || []).length;
+    const caption = element('figcaption', 'assistant-table-caption');
+    caption.append(element('span', 'assistant-table-title', table.title || ''));
+    const tools = element('span', 'assistant-table-tools');
+    tools.append(element('span', 'assistant-table-count', `${rows.toLocaleString()} ${rows === 1 ? 'row' : 'rows'}${table.truncated ? ' (first ones)' : ''}`));
+    const download = element('button', 'assistant-link', 'Download CSV');
+    download.type = 'button';
+    download.addEventListener('click', () => downloadTable(table));
+    tools.append(download);
+    caption.append(tools);
+    box.append(caption);
+    const scroller = element('div', `assistant-table-scroll${rows > 15 ? ' long' : ''}`);
+    // A query result (its rows given by the tool) keeps each value on one line, its headers aligned as their column.
+    const result = Boolean(table.result);
+    const grid = element('table', `assistant-table${result ? ' assistant-result-table' : ''}`);
+    const numericColumn = (index) => (table.rows || []).some((row) => String(row[index] ?? '').trim())
+      && (table.rows || []).every((row) => !String(row[index] ?? '').trim() || NUMERIC.test(String(row[index]).trim()));
     const head = element('thead');
     const headRow = element('tr');
-    (table.columns || []).forEach((column) => headRow.append(element('th', '', column)));
+    (table.columns || []).forEach((column, index) => headRow.append(element('th', result && numericColumn(index) ? 'numeric' : '', column)));
     head.append(headRow);
     const body = element('tbody');
     (table.rows || []).forEach((row) => {
       const line = element('tr');
-      row.forEach((cell) => line.append(element('td', NUMERIC.test(String(cell).trim()) ? 'numeric' : '', cell)));
+      row.forEach((cell) => {
+        const item = element('td', NUMERIC.test(String(cell).trim()) ? 'numeric' : '', cell);
+        if (result && String(cell).length > 40) item.title = String(cell);
+        line.append(item);
+      });
       body.append(line);
     });
     grid.append(head, body);

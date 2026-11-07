@@ -1,11 +1,13 @@
 """AI Assistant: questions about the workspace in natural language, answered in a chat.
 
 The engine (Kiro CLI or Claude, those of Super Admin → AI Comment Writers, with the key of the server or of the user)
-interprets the question and asks for the tools it needs (assistant_tools: the workspace, the Scoring, the Saved
-Filters, the Non-Qualified Calls, the Help and a calculator); the server runs them and the engine writes the answer.
-Nothing it receives names a customer: the names of operators, vendors, areas, campaigns and methodologies are codes
-(assistant_privacy), and the server puts the real names back in the answer. Every figure of an answer must come from
-the results of the tools; the page shows how each answer was calculated and exactly what was sent to the engine.
+interprets the question and asks for the tools it needs (assistant_tools: the workspace, the Scoring and its Summary,
+the Saved Filters, the Non-Qualified Calls, a read-only SQL query over the NQ Calls and the CDR rows, Network Insights,
+the charts of PPT Designer, the Help and a calculator); the server runs them and the engine writes the answer.
+Nothing it receives names a customer: the names of operators, vendors, areas, campaigns, methodologies and users are
+codes (assistant_privacy), and the server puts the real names back in the answer. Every figure of an answer must come
+from the results of the tools; a long result (a list of JOIN_IDs) is shown whole by the server, without the engine
+copying it. The page shows how each answer was calculated and exactly what was sent to the engine.
 
 The conversations of each user and the workspace glossary (terms the data does not tell, kept in Workspace
 Configuration and fed by the suggestions users send from the chat) are kept in the workspace database. The glossary
@@ -53,6 +55,9 @@ EXAMPLE_QUESTIONS = (
     'Break down the scoring of the latest campaign by Vendor for every operator.',
     'Where does the second operator lose most points against the leader in the latest campaign?',
     'How many Non-Qualified Calls of the latest campaign are there per operator and failure category?',
+    'List the JOIN_IDs of the NQ Calls in a Cluster of at least 4 calls and in a Time-Window issue of at least 4 calls.',
+    'Comment on the RSRP and SINR of each operator in the latest campaign (Network Insights).',
+    'Analyse the first chart of the first PPT Design and give me your comments.',
     'How do I create a Saved Filter that follows the latest campaign?',
 )
 
@@ -62,9 +67,10 @@ Analysis), their Non-Qualified Calls and their network. The users are radio and 
 
 Privacy. Every name of an operator, vendor, region, cluster, city, campaign, methodology or workspace reaches you as
 a code: OP (operators), VN (vendors), RG (regions), CL (clusters), CT (cities), CP (campaigns), MT (methodologies),
-WS (workspaces), followed by a number (OP1, VN2, CP3…). Use the codes exactly as you receive them, in the arguments of
-the tools and in your answer: the tool shows the user the real names. Never guess what a code stands for and never
-ask for the real names. Figures, dates and quarters (2026-Q3) are real.
+WS (workspaces), US (users), followed by a number (OP1, VN2, CP3…), also inside identifiers (OP1_Voice). Use the codes
+exactly as you receive them, in the arguments of the tools (also in SQL: operator = 'OP1') and in your answer: the
+tool shows the user the real names. Never guess what a code stands for and never ask for the real names. Figures,
+dates, quarters (2026-Q3) and identifiers such as JOIN_IDs are real.
 
 How to work:
 - Answer from the results of the tools only. Every figure of your answer must appear in a tool result; for a
@@ -76,6 +82,22 @@ How to work:
   NSA one and say the SA one exists (or answer both when that is short). "Latest campaign" is newest_rank 1.
 - To answer about some operators, split by Operator and use "only" in the scoring tool: an Operator filter changes the
   points the module shows.
+- For a global commentary of the scoring (the campaigns, operators or vendors to compare), call scoring with detail
+  ["insights", "environments", "categories", "gap"] (split_by Vendor to compare vendors, two campaigns to compare
+  campaigns): say where each operator stands, what makes its GAP to the leader and the reference, its levers, where
+  its points are lost and where to act.
+- For questions beyond the other tools — lists of calls or tests (JOIN_IDs), counts, averages, percentiles or
+  distributions by any column, failures over time, joins of the NQ Calls with the rows of their CDRs — use query
+  (DuckDB SQL) on nq_calls, cdr_data, cdr_voice, cdr_speech or cdrs. Call table_columns first when you do not know the
+  columns (search the CDR tables, they have hundreds). Aggregate in SQL; never estimate from some rows.
+- The Hotspots (H-…), Time-Window issues (T-…) and Clusters of NQ Calls (C-…) of the panel NQ Hotspots, Time-Window &
+  Clustered Issues are the columns hotspot_*, time_window_* and nq_cluster_* of nq_calls; the column cluster is an area.
+- For Network Insights (radio coverage and quality, bands, bandwidths, latency), call network_insights: rf and findings
+  by default, group by vendor to compare vendors, the latest and previous campaigns to see the change.
+- To analyse or comment on the charts of PPT Designer, call ppt_designs (the Designs, then the slides of one) and
+  ppt_design_charts for the slides you need. "The first Design" is the first one listed; "the first chart" is the first
+  chart of its first slide with charts. Comment on the facts as an analyst would: what stands out, who leads, the gaps,
+  the changes, with their figures.
 - Operators with the role exclude are left out by the tool: never mention them. Focus operators are the ones the users
   care about most: lead with them when they are in the answer.
 - When the question can be read in ways that change the answer (for example a word the glossary does not define), ask
@@ -86,6 +108,9 @@ How to work:
 The answer:
 - Write in the language of the question. Lead with the direct answer in one or two sentences, then the detail.
 - Put comparisons of several figures in "tables" (columns and rows of strings), never as Markdown tables in the text.
+- To show the rows of a query result (a list of JOIN_IDs, calls, tests), never copy them: add a table with its title,
+  "result" set to the result_id of the query (R1) and empty columns and rows; the tool shows every row of the result
+  (up to 5,000) and lets the user download it. Leave "result" empty in the tables you write yourself.
 - Say which campaigns, NR Mode and methodology the figures come from, and the caveats the results give (incomplete
   coverage, few samples, the operators left out). Keep the text short: about 200 words unless the user asks for more.
 - The text is Markdown: short paragraphs, bullets, **bold**; no headings above ###, no HTML.
@@ -94,7 +119,7 @@ The answer:
 Reply with one JSON object only, every field present:
 {"status": "tools" or "answer", "note": "what you do now, one short sentence in the language of the user",
  "tool_calls": [{"tool": "name", "arguments_json": "{...}"}], "answer": "Markdown text, empty while status is tools",
- "tables": [{"title": "", "columns": ["", ""], "rows": [["", ""]]}], "follow_ups": ["", ""]}
+ "tables": [{"title": "", "columns": ["", ""], "rows": [["", ""]], "result": ""}], "follow_ups": ["", ""]}
 
 Tools (arguments as a JSON object in arguments_json):
 ''' + catalog_text()
@@ -111,8 +136,9 @@ STEP_SCHEMA = {
         'tables': {'type': 'array', 'items': {
             'type': 'object', 'properties': {
                 'title': {'type': 'string'}, 'columns': {'type': 'array', 'items': {'type': 'string'}},
-                'rows': {'type': 'array', 'items': {'type': 'array', 'items': {'type': 'string'}}}},
-            'required': ['title', 'columns', 'rows'], 'additionalProperties': False}},
+                'rows': {'type': 'array', 'items': {'type': 'array', 'items': {'type': 'string'}}},
+                'result': {'type': 'string'}},
+            'required': ['title', 'columns', 'rows', 'result'], 'additionalProperties': False}},
         'follow_ups': {'type': 'array', 'items': {'type': 'string'}},
     },
     'required': ['status', 'note', 'tool_calls', 'answer', 'tables', 'follow_ups'],
@@ -599,15 +625,25 @@ def _trim_transcript(transcript: list[dict[str, str]]) -> None:
 
 def answer_question(*, engine: Engine, repository: Any, workspace_name: str, username: str, conversation_id: int,
                     question: str, question_id: int, progress: Callable[[str], None] = lambda _message: None,
-                    cancelled: Callable[[], bool] = lambda: False) -> dict[str, Any]:
+                    cancelled: Callable[[], bool] = lambda: False,
+                    services: dict[str, Callable[..., Any]] | None = None) -> dict[str, Any]:
     """Answer a question with the engine and the tools; the answer with the real names, its tables, follow-ups, the
-    trace of the tools it used and what was sent to the engine."""
+    trace of the tools it used and what was sent to the engine. ``services``: what the modules give the tools
+    (module_services)."""
+    context = ToolContext(repository=repository, workspace_name=workspace_name, username=username,
+                          progress=progress, cancelled=cancelled, services=dict(services or {}))
+    try:
+        return _answer(engine, context, conversation_id, question, question_id)
+    finally:
+        context.close()
+
+
+def _answer(engine: Engine, context: ToolContext, conversation_id: int, question: str, question_id: int) -> dict[str, Any]:
+    repository, username, progress, cancelled = context.repository, context.username, context.progress, context.cancelled
     started = time.monotonic()
     conversation = get_conversation(repository, conversation_id, username) or {}
-    pseudonyms = workspace_pseudonymizer(repository, workspace_name, _loads(conversation.get('pseudonyms_json'), {}))
+    pseudonyms = workspace_pseudonymizer(repository, context.workspace_name, _loads(conversation.get('pseudonyms_json'), {}))
     progress('Reading the workspace')
-    context = ToolContext(repository=repository, workspace_name=workspace_name, username=username,
-                          progress=progress, cancelled=cancelled)
     overview = workspace_overview(context)
     glossary = _glossary_text(repository)
     history = _history(repository, conversation_id, pseudonyms, question_id)
@@ -682,13 +718,14 @@ def answer_question(*, engine: Engine, repository: Any, workspace_name: str, use
             transcript.append({'role': 'user', 'content': 'Results of the tools (JSON):\n' + dumps(results)})
             continue
         answer = str(document.get('answer') or '').strip()
-        tables = _tables(document.get('tables'))
+        tables = _tables(document.get('tables'), context.cache.get('query_results') or {})
         if not answer and not tables:
             if step >= MAX_STEPS:
                 raise AssistantError(f'{engine.label} gave no answer.')
             transcript.append({'role': 'user', 'content': 'Your answer is empty: write it now in "answer".'})
             continue
-        problems = untraced_figures(answer, tables, allowed)
+        # The rows of a query result come from the tool itself: only the tables the engine wrote are checked.
+        problems = untraced_figures(answer, [table for table in tables if not table.get('result')], allowed)
         if problems and not repaired and step < MAX_STEPS:
             repaired = True
             progress('Checking the figures of the answer')
@@ -707,23 +744,51 @@ def answer_question(*, engine: Engine, repository: Any, workspace_name: str, use
     warning = (f'{len(final["problems"])} figure(s) of this answer could not be traced to the results of the tools: '
                + ', '.join(final['problems'][:8]) + '.') if final['problems'] else ''
     return {
-        'content': pseudonyms.unmask_text(final['answer']), 'tables': pseudonyms.unmask(final['tables']),
+        'content': pseudonyms.unmask_text(final['answer']), 'tables': [_shown_table(table, pseudonyms) for table in final['tables']],
         'follow_ups': pseudonyms.unmask(final['follow_ups']), 'trace': trace, 'warning': warning,
         'sent': sent, 'legend': pseudonyms.legend(), 'engine': engine.id, 'model': model,
         'duration_ms': round((time.monotonic() - started) * 1000), 'untraced': final['problems'], **tokens,
     }
 
 
-def _tables(value: Any) -> list[dict[str, Any]]:
+MAX_RESULT_TABLE_COLUMNS = 40
+
+
+def _cell(value: Any) -> str:
+    if value is None:
+        return ''
+    if isinstance(value, float):
+        return f'{value:g}' if abs(value) >= 1e15 or value == int(value) else str(round(value, 4))
+    return str(value)
+
+
+def _tables(value: Any, results: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """The tables of an answer: those the engine wrote, and those that show a query result (``result``: its id), whose
+    columns and rows the tool fills from the result itself (with the real values, up to 5,000 rows)."""
     tables = []
     for table in value if isinstance(value, list) else []:
         if not isinstance(table, dict):
             continue
+        title = str(table.get('title') or '')[:200]
+        result = (results or {}).get(str(table.get('result') or '').strip().upper())
+        if result is not None:
+            columns = [str(column) for column in result['columns']][:MAX_RESULT_TABLE_COLUMNS]
+            tables.append({'title': title, 'columns': columns, 'result': str(table['result']).strip().upper(),
+                           'rows': [[_cell(cell) for cell in row[:len(columns)]] for row in result['rows']],
+                           'truncated': bool(result.get('more'))})
+            continue
         columns = [str(column) for column in table.get('columns') or []][:12]
         rows = [[str(cell) for cell in row][:len(columns) or 12] for row in table.get('rows') or [] if isinstance(row, list)][:200]
         if columns or rows:
-            tables.append({'title': str(table.get('title') or '')[:200], 'columns': columns, 'rows': rows})
+            tables.append({'title': title, 'columns': columns, 'rows': rows})
     return tables[:6]
+
+
+def _shown_table(table: dict[str, Any], pseudonyms: Pseudonymizer) -> dict[str, Any]:
+    """A table with the real names: a query result already holds them (only its title has codes)."""
+    if table.get('result'):
+        return {**table, 'title': pseudonyms.unmask_text(table['title'])}
+    return pseudonyms.unmask(table)
 
 
 def _summary(name: str, result: dict[str, Any]) -> str:
@@ -734,6 +799,24 @@ def _summary(name: str, result: dict[str, Any]) -> str:
                 f'{result.get("cdrs", 0)} CDRs, from {result.get("calculated_from")})')
     if name == 'nq_calls':
         return f'{result.get("total_calls", 0)} calls in {result.get("groups", 0)} groups'
+    if name == 'query':
+        return (f'{result.get("result_id")}: {result.get("row_count", 0)} rows'
+                f'{" (more not kept)" if result.get("note", "").startswith("The query gives more") else ""} of '
+                f'{", ".join(str(column) for column in (result.get("columns") or [])[:8])}')
+    if name == 'table_columns':
+        return (f'{result.get("column_count", 0)} columns of {result["table"]}' if result.get('table') else
+                f'{len(result.get("tables") or [])} tables')
+    if name == 'network_insights':
+        selection = result.get('selection') or {}
+        return (f'{", ".join(selection.get("campaigns") or [])} ({selection.get("nr_mode")}, {result.get("technology")}, '
+                f'by {result.get("group_label")}; {result.get("cdrs", 0)} CDRs)')
+    if name == 'ppt_designs':
+        return (f'{result.get("name")}: {len(result.get("slides") or [])} slides' if result.get('design') else
+                f'{len(result.get("designs") or [])} Designs')
+    if name == 'ppt_design_charts':
+        slides = [item for item in result.get('slides') or [] if isinstance(item, dict)]
+        return (f'{result.get("name")}: slides {", ".join(str(item.get("slide")) for item in slides)} '
+                f'({sum(len(item.get("charts") or []) for item in slides)} charts)')
     if name == 'workspace_overview':
         return 'Campaigns, operators, vendors, areas, methodologies and Saved Filters of the workspace'
     if name == 'list_values':
@@ -772,8 +855,37 @@ def job_view(job: dict[str, Any]) -> dict[str, Any]:
     return {key: job.get(key) for key in ('id', 'status', 'steps', 'conversation_id', 'message_id', 'error', 'engine')}
 
 
+def module_services(core: Any, user: Any, repository: Any, cancelled: Callable[[], bool],
+                    progress: Callable[[str], None]) -> dict[str, Callable[..., Any]]:
+    """What the modules the user sees give the tools: the analyses of Network Insights and the Designs of PPT Designer
+    with the facts of their charts."""
+    services: dict[str, Callable[..., Any]] = {}
+    if user is None:
+        return services
+    sees = getattr(core, 'user_has_feature', lambda _user, _feature: True)
+    workspace = Path(repository.db_path).resolve()
+
+    def same_workspace() -> None:
+        # Network Insights reads the active workspace: the question must still be about it.
+        if not core.active_workspace or Path(core.repository.db_path).resolve() != workspace:
+            raise ValueError('Another workspace was opened while answering: open this workspace again and ask again.')
+
+    analysis = getattr(core, 'network_insights_analysis', None)
+    if analysis is not None and sees(user, 'network-insights'):
+        def network_insights(selection: dict[str, Any]) -> dict[str, Any]:
+            same_workspace()
+            return analysis(selection)
+        services['network_insights'] = network_insights
+    designs = getattr(core, 'design_reporting', None)
+    if designs is not None and hasattr(designs, 'chart_facts') and sees(user, 'ppt-designer'):
+        services['design_outline'] = lambda design=None: designs.outline(repository, design)
+        services['design_charts'] = lambda design, slides: designs.chart_facts(
+            repository, design, user, slides, cancelled=cancelled, progress=lambda _percent, detail: progress(str(detail)))
+    return services
+
+
 def start_question(core: Any, *, repository_factory: Callable[[], Any], workspace: Any, username: str, conversation_id: int,
-                   question: str, question_id: int, engine: Engine) -> dict[str, Any]:
+                   question: str, question_id: int, engine: Engine, user: Any = None) -> dict[str, Any]:
     """Answer a question in the background: the page follows its steps and reads its answer when done."""
     job = {'id': uuid.uuid4().hex, 'username': username, 'database': str(workspace.database_path), 'status': 'running',
            'steps': [], 'conversation_id': conversation_id, 'message_id': None, 'error': '', 'engine': engine.id,
@@ -794,9 +906,10 @@ def start_question(core: Any, *, repository_factory: Callable[[], Any], workspac
         details: dict[str, Any] = {'conversation_id': conversation_id, 'question_id': question_id,
                                    'engine': writers.ENGINE_LABELS.get(engine.id, engine.id)}
         try:
+            services = module_services(core, user, repository, job['cancel'].is_set, progress)
             answer = answer_question(engine=engine, repository=repository, workspace_name=workspace.name, username=username,
                                      conversation_id=conversation_id, question=question, question_id=question_id,
-                                     progress=progress, cancelled=job['cancel'].is_set)
+                                     progress=progress, cancelled=job['cancel'].is_set, services=services)
             message_id = add_message(repository, conversation_id, 'assistant', answer['content'],
                                      **{key: value for key, value in answer.items() if key != 'content'})
             job.update(status='done', message_id=message_id)
@@ -982,7 +1095,7 @@ def install_assistant_routes(core: Any) -> None:
         workspace_path = Path(workspace.database_path)
         job = start_question(core, repository_factory=lambda: core.Repository(workspace_path, core.repository.global_db_path),
                              workspace=workspace, username=user.username, conversation_id=conversation_id,
-                             question=question, question_id=question_id, engine=engine)
+                             question=question, question_id=question_id, engine=engine, user=user)
         return {'job': job_view(job), 'conversation_id': conversation_id, 'question_id': question_id,
                 'conversations': list_conversations(task_repository, user.username)}
 

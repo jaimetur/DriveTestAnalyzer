@@ -3374,6 +3374,24 @@ def install_network_insights_routes(core: Any) -> None:
     core.write_network_insights_summary = write_summary
     core.network_insights_summary_key = summary_key
 
+    def assistant_analysis(selection: dict[str, Any]) -> dict[str, Any]:
+        """The analysis of a selection as the page shows it (the stored one when it was made before), for the AI
+        Assistant: its selection, with the campaigns and CDRs it resolves, and its result."""
+        task_repository = bound_repository()
+        try:
+            request = with_auto_cdrs(task_repository, AnalysisRequest.model_validate(selection or {}))
+        except ValueError as exc:
+            raise ValueError(f'The selection is not valid: {exc}') from exc
+        if not any(request.datasets.get(kind) for kind in NETWORK_INSIGHTS_KINDS):
+            raise ValueError('No CDR of this NR Mode and campaigns is ready.')
+        try:
+            stored = stored_analysis(task_repository, request)
+        except HTTPException as exc:
+            raise ValueError(str(exc.detail)) from exc
+        return {'selection': request.model_dump(mode='json'), 'analysis': json.loads(stored)}
+
+    core.network_insights_analysis = assistant_analysis
+
     @app.post('/api/network-insights/export/{export_kind}')
     def network_insights_export(export_kind: str, request: AnalysisRequest, theme: str = Query(''), user=Depends(insights_user)):
         from datetime import datetime

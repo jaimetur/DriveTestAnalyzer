@@ -4,16 +4,19 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections import Counter
 
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules.assistant import assistant, assistant_tools
+from src.modules.assistant import assistant, assistant_query, assistant_tools
+from src.modules.nq import nq_prioritization
 from src.modules.ppt_designer import comment_writers as writers
 from src.modules.scoring import saved_filters, scoring_history
 from src.modules.assistant.assistant_privacy import Pseudonymizer, workspace_pseudonymizer
 from src.modules.core.repository import Repository
 from tests.scoring_fixtures import load_initial_scoring_configuration
+from tests.test_cdr_store import copy_everything
 from tests.test_scoring_history import _add_cdr
 
 
@@ -212,7 +215,7 @@ def test_users_ask_in_the_page_and_editors_keep_the_glossary(client, monkeypatch
     assert asked.status_code == 200, asked.text
     conversation_id = asked.json()['conversation_id']
     done = _wait(client, asked.json()['job']['id'])
-    assert done['status'] == 'done' and done['message']['content'] == 'The gap is 76.5 points.'
+    assert done['status'] == 'done' and done['message']['content'] == 'The gap is 76.5 points.', done.get('error')
     assert 'Looking it up' in done['steps']
     message_id = done['message']['id']
     opened = client.get(f'/api/assistant/conversations/{conversation_id}').json()
@@ -293,3 +296,177 @@ def test_the_glossary_travels_with_its_element_full_workspaces_and_backups(clien
     backup.write_bytes(output.getvalue())
     assert 'assistant_glossary' in core._backup_archive_components(backup)
     assert 'AI Assistant Glossary (from active workspace)' in client.get('/admin').text
+
+
+# -- ticket #93: lists of NQ Calls, general questions, PPT Designer, Network Insights and the Summary of the scoring -----
+
+def test_users_and_names_inside_identifiers_leave_as_codes():
+    names = Pseudonymizer()
+    names.add('operator', 'VF', ['Vodafone UK', 'Vodafone'])
+    names.add('vendor', 'Nokia')
+    assert names.add_user('EUSER01', 'User A') == 'US1' and names.add_user('super', 'Super Admin') == 'US2'
+    text = 'Vodafone_Voice_MO and EE_Nokia, assigned to EUSER01 (User A) by the super user of Super Admin'
+    masked = names.mask_text(text)
+    # A user name that is also a word (super) and the full name of a generic account stay words of the text.
+    assert masked == 'OP1_Voice_MO and EE_VN1, assigned to US1 (US1) by the super user of Super Admin'
+    assert names.unmask_text(masked) == 'VF_Voice_MO and EE_Nokia, assigned to EUSER01 (EUSER01) by the super user of Super Admin'
+    # ...but a value of a user column always takes its code, kept with the conversation.
+    kept = Pseudonymizer(json.loads(json.dumps(names.state())))
+    assert kept.mask_value('user', 'super') == 'US2' and kept.name_of('US2') == 'super'
+
+
+def test_the_query_tool_runs_one_select_over_its_own_tables_only():
+    import duckdb
+
+    connection = duckdb.connect()
+    assert assistant_query.check_sql(
+        connection, 'WITH q AS (SELECT * FROM nq_calls) SELECT count(*) FROM q JOIN cdrs USING (dataset_id)') == {'nq_calls', 'cdrs'}
+    refused = {
+        "COPY (SELECT 1) TO 'x.csv'": 'Only one SELECT', 'SELECT 1; SELECT 2': 'Only one SELECT', 'PRAGMA version': 'Only one SELECT',
+        "SELECT * FROM read_csv('/etc/hosts')": 'read_csv cannot be read', "SELECT * FROM '/etc/hosts'": 'There is no table',
+        'SELECT * FROM information_schema.tables': 'There is no table', 'SELECT * FROM duckdb_settings()': 'cannot be read',
+        "SELECT * FROM nq_calls WHERE join_id IN (SELECT * FROM glob('*'))": 'glob cannot be read',
+        'SELECT * FROM _nq_calls_rows': 'There is no table', 'DELETE FROM nq_calls': 'Only one SELECT',
+    }
+    for sql, error in refused.items():
+        with pytest.raises(assistant_tools.ToolError, match=error):
+            assistant_query.check_sql(connection, sql)
+    hidden = ['Test_Start_Latitude', 'Call_End_Longitude_B', 'IMSI_A', 'IMEI', 'MSISDN_B', 'Dialed_Number', 'Subscriber',
+              'Client_IP_IMS_A', 'DNS_Server_IPs', 'Source_IP', 'source_file']
+    shown = ['Operator', 'IP_Service_Access_Result', 'IP_Layer_Transferred_Bytes_DL', 'Wagon_Number', 'File_Name', 'RSRP']
+    assert [name for name in hidden + shown if assistant_query.hidden_column(name)] == hidden
+
+
+@pytest.fixture
+def nq_workspace(client, tmp_path, monkeypatch):
+    """A workspace with NSA and SA CDRs, their Non-Qualified Calls prioritized (with their groups) and their copies."""
+    from tests.test_nq_prioritization import prepare
+
+    monkeypatch.setattr(core, 'submit_background_task', lambda callback, *args: callback(*args))
+    prepared = prepare(client, tmp_path, nq_prioritization.DEFAULT_STRATEGY)
+    copy_everything()
+    return prepared
+
+
+class QueryEngine:
+    """An engine that lists the JOIN_IDs of the calls in a Cluster and a Time-Window issue and shows the whole list."""
+    id, label = 'claude', 'Claude'
+
+    def __init__(self, sql):
+        self.sql, self.received = sql, []
+
+    def step(self, system, transcript):
+        self.received.append(transcript[-1]['content'])
+        if len(self.received) == 1:
+            return {'status': 'tools', 'note': 'Listing', 'tool_calls': [
+                {'tool': 'query', 'arguments_json': json.dumps({'sql': self.sql, 'max_rows': 2})}],
+                'answer': '', 'tables': [], 'follow_ups': []}, {'model': 'fake'}
+        result = json.loads(self.received[1].split('\n', 1)[1])[0]['result']
+        return {'status': 'answer', 'note': '', 'tool_calls': [], 'follow_ups': [],
+                'answer': f'There are {result["row_count"]} calls.', 'tables': [
+                    {'title': 'Calls of OP1', 'columns': [], 'rows': [], 'result': result['result_id']}]}, {'model': 'fake'}
+
+
+def test_the_query_tool_lists_the_nq_calls_of_their_groups_and_reads_the_cdr_rows(nq_workspace):
+    from tests.test_nq_prioritization import priority_rows
+
+    context = assistant_tools.ToolContext(repository=core.repository, workspace_name='UK', username='super')
+    try:
+        expected = {str(row['join_id']): row for row in priority_rows().values()
+                    if row['repeat_key'] and (row['repeat_size'] or 0) >= 2 and row['consecutive_key'] and (row['consecutive_size'] or 0) >= 2}
+        assert expected, 'The workspace has calls in a Cluster and a Time-Window issue.'
+        sql = ('SELECT join_id, nq_cluster_id, nq_cluster_calls, time_window_id, time_window_calls, hotspot_id FROM nq_calls '
+               'WHERE nq_cluster_calls >= 2 AND time_window_calls >= 2 ORDER BY join_id')
+        found = assistant_query.query(context, {'sql': sql, 'max_rows': 3})
+        assert found['result_id'] == 'R1' and found['row_count'] == len(expected) and len(found['rows']) == min(3, len(expected))
+        stored = context.cache['query_results']['R1']['rows']
+        assert [row[0] for row in stored] == sorted(expected)
+        for join_id, cluster_id, cluster_calls, window_id, window_calls, _hotspot in stored:
+            row = expected[join_id]
+            assert (cluster_id, cluster_calls) == (nq_prioritization.group_id('C', row['repeat_key']), row['repeat_size'])
+            assert (window_id, window_calls) == (nq_prioritization.group_id('T', row['consecutive_key']), row['consecutive_size'])
+        # The rows of the CDRs: the operators as the Operator Maps name them, without coordinates.
+        frames = [rows for kinds in nq_workspace['frames'].values() for kind, rows in kinds.items() if kind == 'data']
+        counts = Counter(assistant_tools._canonical_operator(context, value) for rows in frames for value in rows['Operator'])
+        tests = assistant_query.query(context, {'sql': 'SELECT Operator, count(*) AS tests FROM cdr_data GROUP BY 1 ORDER BY 1'})
+        assert dict(tests['rows']) == dict(counts)
+        assert assistant_query.table_columns(context, {'table': 'cdr_data', 'search': 'latitude longitude'})['column_count'] == 0
+        assert assistant_query.table_columns(context, {'table': 'nq_calls', 'search': 'time_window'})['columns'][0] == {
+            'column': 'time_window_id', 'type': 'VARCHAR', 'description': assistant_query.NQ_COLUMNS[
+                [name for name, _type, _text in assistant_query.NQ_COLUMNS].index('time_window_id')][2]}
+    finally:
+        context.close()
+    # An answer shows the whole result, with its real values, without the engine copying it.
+    conversation = assistant.create_conversation(core.repository, 'super')
+    question = 'Which calls are in a Cluster and a Time-Window issue?'
+    question_id = assistant.add_message(core.repository, conversation, 'user', question)
+    engine = QueryEngine(sql)
+    answer = assistant.answer_question(engine=engine, repository=core.repository, workspace_name='UK', username='super',
+                                       conversation_id=conversation, question=question, question_id=question_id)
+    table = answer['tables'][0]
+    assert table['result'] == 'R1' and table['columns'][0] == 'join_id' and [row[0] for row in table['rows']] == sorted(expected)
+    assert answer['content'] == f'There are {len(expected)} calls.' and answer['warning'] == ''
+    assert len(json.loads(engine.received[1].split('\n', 1)[1])[0]['result']['rows']) == 2
+
+
+def test_the_summary_of_the_scoring_comments_globally_on_the_operators_asked(scored_repository):
+    repository, _ids = scored_repository
+    context = assistant_tools.ToolContext(repository=repository, workspace_name='UK', username='super')
+    result = assistant_tools.scoring(context, {'campaigns': ['latest'], 'split_by': ['Operator'], 'detail': ['insights'],
+                                               'only': {'Operator': ['Vodafone UK']}})
+    insights = result['insights']
+    assert {'standings', 'gap_parts', 'levers', 'points_at_stake', 'act_plans'} <= set(insights)
+    assert {entry['operator'] for item in insights['standings'] for entry in item['operators']} == {'Vodafone UK'}
+    assert {item['operator'] for item in insights['act_plans']} == {'Vodafone UK'}
+    assert all('color' not in item for item in insights['act_plans'])
+
+
+def _services(user='super', role='super-admin'):
+    from src.modules.core.auth import SessionUser
+
+    return assistant.module_services(core, SessionUser(username=user, role=role), core.repository, lambda: False, lambda _step: None)
+
+
+def test_the_assistant_reads_the_analysis_of_network_insights(nq_workspace):
+    services = _services()
+    assert set(services) == {'network_insights', 'design_outline', 'design_charts'}
+    context = assistant_tools.ToolContext(repository=core.repository, workspace_name='UK', username='super', services=services)
+    network = assistant_tools.run_tool(context, 'network_insights', {'campaigns': ['latest'], 'technology': 'lte',
+                                                                     'group': ['operator'], 'parts': ['rf', 'findings']})
+    assert network['selection']['campaigns'] and network['cdrs'] >= 1 and 'rf' in network and 'findings' in network
+    assert 'maps' not in json.dumps(network) and set(network['parts_available']) == {
+        'spectrum', 'bandwidth', 'interactivity', 'nr_bands', 'serving'}
+    with pytest.raises(assistant_tools.ToolError, match='group takes'):
+        assistant_tools.run_tool(context, 'network_insights', {'group': ['site']})
+
+
+def test_the_assistant_reads_the_charts_of_a_design_as_its_auto_comments(client):
+    from tests.test_design_comments import prepare_rates_design
+
+    body = prepare_rates_design(client)
+    slide = body['slides'][0]
+    generated = client.post('/api/ppt-designer/rates/comments/generate', json={
+        'token': body['token'], 'slide': slide['number'],
+        'charts': [{'index': chart['index'], 'hidden': [], 'shown': []} for chart in slide['charts']]}).json()
+    context = assistant_tools.ToolContext(repository=core.repository, workspace_name='UK', username='super', services=_services())
+    designs = assistant_tools.run_tool(context, 'ppt_designs', {})['designs']
+    assert 'Rates' in [design['name'] for design in designs]
+    outline = assistant_tools.run_tool(context, 'ppt_designs', {'design': 'rates'})
+    assert [(item['slide'], [chart['title'] for chart in item['charts']]) for item in outline['slides']] == [
+        (1, ['Rate CDF', 'Rate mean']), (2, ['Results'])]
+    read = assistant_tools.run_tool(context, 'ppt_design_charts', {'design': 'Rates', 'slides': [slide['number']]})
+    facts = read['slides'][0]
+    assert [chart['title'] for chart in facts['charts']] == ['Rate CDF', 'Rate mean']
+    assert facts['rules_comments'] == [item['text'] for item in generated['suggestions']]
+    assert read['focus_operators'] == ['A'] and {record['labels'].get('Operator') for chart in facts['charts']
+                                                 for record in chart['records']} == {'A', 'B'}
+    with pytest.raises(assistant_tools.ToolError, match='at most 4'):
+        assistant_tools.run_tool(context, 'ppt_design_charts', {'design': 'rates', 'slides': [1, 2, 3, 4, 5]})
+    with pytest.raises(assistant_tools.ToolError, match='There is no Design'):
+        assistant_tools.run_tool(context, 'ppt_designs', {'design': 'Missing'})
+    # A user whose Modules Profile has neither module gets neither tool.
+    core.user_has_feature, before = (lambda _user, feature: feature not in {'ppt-designer', 'network-insights'}), core.user_has_feature
+    try:
+        assert _services('demo', 'user-editor') == {}
+    finally:
+        core.user_has_feature = before

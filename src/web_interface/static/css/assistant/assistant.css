@@ -42,8 +42,15 @@
 .assistant-warning { margin: .6rem 0 0; padding: .45rem .7rem; border-radius: .5rem; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: .88rem; }
 
 .assistant-table-box { margin: .8rem 0 0; }
-.assistant-table-box figcaption { font-weight: 700; color: #155e75; margin-bottom: .35rem; font-size: .92rem; }
+.assistant-table-box figcaption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .2rem .8rem; font-weight: 700; color: #155e75; margin-bottom: .35rem; font-size: .92rem; }
+.assistant-table-tools { display: inline-flex; align-items: baseline; gap: .7rem; font-weight: 400; font-size: .8rem; color: #64748b; white-space: nowrap; }
 .assistant-table-scroll { overflow-x: auto; border-radius: .6rem; border: 1px solid #e2e8f0; }
+/* Long tables (a list of JOIN_IDs) scroll inside the answer, their header kept in sight. */
+.assistant-table-scroll.long { max-height: 26rem; overflow-y: auto; }
+.assistant-table-scroll.long th { position: sticky; top: 0; z-index: 1; }
+.assistant-result-table th:not(:first-child) { text-align: left; }
+.assistant-result-table th.numeric { text-align: right; }
+.assistant-result-table td { white-space: nowrap; max-width: 28rem; overflow: hidden; text-overflow: ellipsis; }
 .assistant-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .88rem; }
 .assistant-table th { background: #155e75; color: #fff; text-align: left; padding: .45rem .7rem; font-weight: 700; white-space: nowrap; }
 .assistant-table td { padding: .4rem .7rem; border-top: 1px solid #eef2f7; }

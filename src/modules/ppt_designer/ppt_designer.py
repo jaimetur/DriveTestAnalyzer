@@ -8474,6 +8474,110 @@ def install_design_routes(core):
     core.ppt_design_warm_up_now = warm_up_when_idle
     core.ppt_design_warmup_task = warmup_task
 
+    def find_design(task_repository, design: str) -> tuple[str, dict]:
+        """A Design by its id or its name (any case)."""
+        with lock:
+            designs = read_designs(task_repository)
+        text = str(design or '').strip().casefold()
+        key = next((item for item in designs if str(item).casefold() == text), None) or next(
+            (item for item, value in designs.items() if isinstance(value, dict) and str(value.get('name') or '').strip().casefold() == text),
+            None)
+        if key is None or not isinstance(designs.get(key), dict):
+            raise ValueError(f'There is no Design {design}.')
+        return key, designs[key]
+
+    def design_outline(task_repository, design: str | None = None) -> dict:
+        """The Designs of the library in its order, or the slides of one with their charts (title, KPI, chart type):
+        what the AI Assistant reads before the facts of some charts."""
+        if not design:
+            with lock:
+                designs = read_designs(task_repository)
+                order = read_design_order(task_repository)
+            positions = {item: index for index, item in enumerate(item for item in order if item in designs)}
+            listed = sorted((item for item, value in designs.items() if isinstance(value, dict)),
+                            key=lambda item: (positions.get(item, len(positions)), str(designs[item].get('name') or item).casefold()))
+            return {'designs': [{'design': item, 'name': str(designs[item].get('name') or item),
+                                 'template': str(designs[item].get('template') or ''), 'nr_mode': design_nr_mode(designs[item]),
+                                 'scope': str(designs[item].get('scope') or 'single')} for item in listed]}
+        key, stored = find_design(task_repository, design)
+        try:
+            entries = validate(DesignDefinition.model_validate(stored), task_repository)
+        except HTTPException as exc:
+            raise ValueError(str(exc.detail)) from exc
+        slides: dict[int, dict] = {}
+        for entry in entries:
+            slide = slides.setdefault(entry.slide, {'slide': entry.slide, 'title': entry.slide_title, 'charts': []})
+            if entry.structural_type:
+                slide['kind'] = entry.structural_type
+            elif entry.chart_type.casefold() not in ELEMENT_CHART_TYPES:
+                slide['charts'].append({'title': entry.chart_title or entry.slide_title, 'kpi': entry.kpi,
+                                        'chart_type': entry.chart_type, 'source': entry.cdr_source})
+        return {'design': key, 'name': str(stored.get('name') or key), 'template': str(stored.get('template') or ''),
+                'nr_mode': design_nr_mode(stored), 'slides': [slides[number] for number in sorted(slides)]}
+
+    def design_chart_facts(task_repository, design: str, user, slides=None, *, cancelled=None, progress=None) -> dict:
+        """The charts of slides of a Design (every content slide without ``slides``) read as its Auto comments read them:
+        the facts of each chart (the values of its groups with their samples, as the comments write them) and the
+        comments the rules write for its slide. The Design is prepared as its viewer prepares it: its saved selection,
+        filters and the campaigns it follows."""
+        key, stored = find_design(task_repository, design)
+        workspace = str(Path(task_repository.db_path).resolve())
+        try:
+            # With the CDRs of its NR Mode and Campaign filter, as the viewer prepares it.
+            definition = auto_cdr_definition(DesignDefinition.model_validate(stored), task_repository)
+            with design_work_gate:
+                preview = build_preview(definition, user, workspace=workspace, cancelled=cancelled, progress=progress)
+        except HTTPException as exc:
+            raise ValueError(f'The Design {stored.get("name") or key} cannot be prepared: {exc.detail}') from exc
+        with lock:
+            snapshot = snapshots.get(preview['token'])
+        if snapshot is None:
+            raise ValueError('The Design could not be prepared: try again.')
+        grouped = defaultdict(list)
+        for index, entry in enumerate(snapshot.entries):
+            grouped[entry.slide].append((index, entry))
+        wanted = {int(number) for number in slides or [] if str(number).strip().lstrip('-').isdigit()}
+        focus = focus_operators(task_repository)
+        read = []
+        for slide_number in sorted(grouped):
+            if wanted and slide_number not in wanted:
+                continue
+            header = grouped[slide_number][0][1]
+            if header.structural_type:
+                if wanted:
+                    read.append({'slide': slide_number, 'title': header.slide_title, 'kind': header.structural_type})
+                continue
+            charts, unread = [], []
+            for index, entry in grouped[slide_number]:
+                if entry.chart_type.casefold() in ELEMENT_CHART_TYPES or not entry.source_kind \
+                        or not design_datasets(snapshot.definition, entry.source_kind, task_repository):
+                    continue
+                if callable(cancelled) and cancelled():
+                    raise RuntimeError('Stopped.')
+                title = entry.chart_title or entry.slide_title
+                try:
+                    model = chart_model(preview['token'], index, user, expected_workspace=snapshot.workspace)
+                    if design_comments.needs_rebuild(model):
+                        model = chart_model(preview['token'], index, user, expected_workspace=snapshot.workspace, force=True)
+                except (HTTPException, ValueError) as exc:
+                    unread.append({'chart': title, 'reason': str(getattr(exc, 'detail', exc))})
+                    continue
+                if not model or model.get('type') not in design_comments.SUPPORTED_MODEL_TYPES:
+                    unread.append({'chart': title, 'reason': f'its chart type ({entry.chart_type}) has no facts to read'})
+                    continue
+                charts.append({'index': index, 'title': title, 'kpi': entry.kpi, 'model': model, 'hidden': [], 'shown': [],
+                               'subject': ' · '.join(value for value in (entry.dynamic_row_value, entry.dynamic_column_value) if value)})
+            brief = design_comments.slide_brief(charts, focus_operators=focus, layout=header.layout or '') if charts else None
+            read.append({'slide': slide_number, 'title': header.slide_title, 'subtitle': header.slide_subtitle,
+                         'charts': brief['charts'] if brief else [], 'rules_comments': brief['rules_comments'] if brief else [],
+                         **({'charts_not_read': unread} if unread else {})})
+        return {'design': key, 'name': str(stored.get('name') or key), 'template': str(stored.get('template') or ''),
+                'nr_mode': design_nr_mode(stored), 'focus_operators': focus, 'slides': read}
+
+    # The AI Assistant reads the Designs and the facts of their charts.
+    core.design_reporting.outline = design_outline
+    core.design_reporting.chart_facts = design_chart_facts
+
     core.ppt_design_tasks = design_task_payloads
     core.ppt_design_cancel_workspace_tasks = cancel_workspace_design_tasks
     core.ppt_design_clear_workspace_caches = clear_workspace_design_caches
