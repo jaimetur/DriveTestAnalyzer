@@ -469,6 +469,57 @@ def test_layer_3_maps_gives_a_grid_zoomed_out_and_the_points_of_the_area_zoomed_
     assert any(row['action'] == 'nq_l3_maps' for row in app_module.repository.list_logs())
 
 
+def test_the_map_of_a_site_places_it_and_records_it_in_app_events(client, tmp_path, monkeypatch) -> None:
+    import pandas as pd
+
+    from src.modules.network import serving_cells
+    from src.modules.nq import non_qualified_calls as nq
+    from src.modules.nq import nq_call_map
+
+    # The site of a request needs its ID; every value of it is text.
+    assert nq_call_map.map_site({'site_id': ' '}) is None and nq_call_map.map_site('76305') is None
+    assert nq_call_map.map_site({'site_id': 76305, 'network': 'Telefonica', 'radius_km': 2})['radius_km'] == '2'
+    # The NQ calls whose CDR gives the site: its ID, on its network when both give one.
+    calls = [{'site_id': '76305', 'host_network': 'Telefonica'}, {'site_id': '76305', 'host_network': 'Vodafone'},
+             {'site_id': '76305', 'host_network': ''}, {'site_id': '76306', 'host_network': 'Telefonica'}]
+    assert nq_call_map.site_calls_count(calls, '76305', 'telefonica') == 2 and nq_call_map.site_calls_count(calls, '76305') == 3
+    # Where the inventory places it: the median of its cells, those of its network when another network has the same ID.
+    cells = pd.DataFrame({'site_id': ['76305', '76305', '76305', '76305'], 'network': ['O2', 'O2', 'Vodafone', 'O2'],
+                          'network_family': ['Telefonica', 'Telefonica', 'Vodafone', 'Telefonica'],
+                          'host_network': ['Telefonica', 'Telefonica', 'Vodafone', ''],
+                          'latitude': [53.0, 53.2, 51.0, None], 'longitude': [-2.0, -2.2, 0.0, None]})
+    monkeypatch.setattr(nq_call_map, 'inventory_cells', lambda repository, families: (cells, []))
+    monkeypatch.setattr(serving_cells, 'serving_families', lambda operator, config: ('Telefonica', 'Vodafone'))
+    repository = app_module.repository
+    placed = nq_call_map.site_position(repository, ['O2 UK'], '76305', 'Telefonica')
+    assert (placed['family'], placed['latitude'], placed['longitude']) == ('Telefonica', 53.1, -2.1)
+    assert nq_call_map.site_position(repository, ['O2 UK'], '76305', 'Vodafone')['latitude'] == 51.0
+    # Without its network an ID of two networks cannot be told apart, and a site the inventory lacks has no place.
+    assert nq_call_map.site_position(repository, ['O2 UK'], '76305') is None
+    assert nq_call_map.site_position(repository, ['O2 UK'], '99999', 'Telefonica') is None
+
+    # NQ Maps reads the map of a site: where the inventory places it, with the NQ calls of its campaign.
+    monkeypatch.setattr(app_module, 'submit_background_task', lambda callback, *args: callback(*args))
+    client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    add_data_cdr(tmp_path, ['0xBB22'])
+    nq.sync_nq_calls(repository)
+    site = {'site_id': '76305', 'network': 'Telefonica', 'operator': 'O2 UK', 'campaign': 'UK_Q3_SA_2026', 'radius_km': 2,
+            'opened_from': 'Scoring & GAP Analysis · Sites to review'}
+    body = {'filters': {'campaign': ['UK_Q3_SA_2026']}, 'zoom': 14, 'bbox': [53.05, -2.2, 53.15, -2.0], 'layers': [], 'site': site}
+    opened = client.post('/api/non-qualified-calls/l3-maps', json=body)
+    assert opened.status_code == 200, opened.text
+    assert opened.json()['site_position']['latitude'] == 53.1 and opened.json()['calls_count'] == 1
+    moved = client.post('/api/non-qualified-calls/l3-maps', json={**body, 'with_calls': False}).json()
+    assert moved['site_position'] is None and moved['calls'] is None
+    # App Events records each read with the site, and the first one with whether the inventory places it.
+    events = [json.loads(row['details']) for row in repository.list_logs() if row['action'] == 'nq_l3_maps']
+    sites = [event for event in events if event['scope'] == 'map of a site']
+    assert len(sites) == 2 and all(event['site']['site_id'] == '76305' and event['site']['radius_km'] == '2' for event in sites)
+    assert all(event['site']['opened_from'] == 'Scoring & GAP Analysis · Sites to review' and event['nq_calls_of_the_site'] == 0
+               for event in sites)
+    assert sorted(event.get('site_in_inventory') for event in sites if 'site_in_inventory' in event) == [True]
+
+
 def test_layer_3_maps_reads_the_samples_of_the_area_from_a_copy_of_each_cdr(client, monkeypatch) -> None:
     import numpy as np
 

@@ -1866,6 +1866,64 @@ def area_sites(repository: Any, operators: Any, bbox: Any) -> dict[str, Any]:
     return {'sites': sites, 'families': list(families), 'snapshots': snapshots, 'truncated': len(sites) >= MAX_SITES}
 
 
+def map_site(value: Any) -> dict[str, str] | None:
+    """The site of the map of a site (Sites to review of Scoring & GAP Analysis) as a request gives it: its ID, network,
+    operator, campaign, radius and the page it was opened from, as text; None without a site ID."""
+    if not isinstance(value, dict) or not _text(value.get('site_id')):
+        return None
+    return {key: _text(value.get(key))[:200] for key in ('site_id', 'network', 'operator', 'campaign', 'radius_km', 'opened_from')}
+
+
+def _same_site(site_id: Any, network: Any, wanted_id: str, wanted_network: str) -> bool:
+    """Whether a site (an ID and a network) is the one wanted: the same ID, on its network when both give one."""
+    if _text(site_id).casefold() != wanted_id.casefold():
+        return False
+    network = _text(network)
+    return not network or not wanted_network or network.casefold() == wanted_network.casefold()
+
+
+def site_calls_count(calls: list[dict[str, Any]], site_id: str, network: str = '') -> int:
+    """How many of the NQ calls their CDR gives the site (its ID, on its network when both give one)."""
+    return sum(1 for call in calls if _same_site(call.get('site_id'), call.get('host_network'), site_id, network))
+
+
+def site_position(repository: Any, operators: Any, site_id: str, network: str = '') -> dict[str, Any] | None:
+    """Where the inventory places a site of the networks that serve ``operators`` (the median of its cells): the one of
+    ``network`` (its network, the family of its network or the network that hosts it) when several networks have a site
+    with that ID, else the only one; None when the inventory has none."""
+    from src.modules.network.serving_cells import load_serving_networks, serving_families
+
+    config = load_serving_networks(repository)
+    families = tuple(dict.fromkeys(family for operator in sorted({_text(value) for value in operators or []} - {''})
+                                   for family in serving_families(operator, config)))
+    cells, _snapshots = inventory_cells(repository, families)
+    if cells.empty or not _text(site_id):
+        return None
+    located = cells.loc[cells['latitude'].notna() & cells['longitude'].notna()]
+    located = located.loc[located['site_id'].astype(str).str.strip().str.casefold() == _text(site_id).casefold()]
+    if located.empty:
+        return None
+    wanted = _text(network).casefold()
+    names = [located[column].astype(str).str.strip().str.casefold() for column in ('network', 'network_family', 'host_network')
+             if column in located]
+    matched = False
+    if wanted and names:
+        mine = located.loc[pd.concat([name == wanted for name in names], axis=1).any(axis=1)]
+        if not mine.empty:
+            located, matched = mine, True
+    families = located['network_family'].astype(str) if 'network_family' in located else pd.Series('', index=located.index)
+    if families.nunique() > 1:
+        if not matched:
+            # The same ID on several networks, none of them that of the site: it cannot be told which.
+            return None
+        # (Its network names a site on more than one: the one with most cells.)
+        located = located.loc[families == families.value_counts().index[0]]
+    first = located.iloc[0]
+    return {'site_id': _text(first['site_id']), 'network': _text(first.get('network')), 'family': _text(first.get('network_family')),
+            'host_network': _text(first.get('host_network')), 'latitude': round(float(located['latitude'].median()), 6),
+            'longitude': round(float(located['longitude'].median()), 6)}
+
+
 def area_test_datasets(repository: Any, calls: list[dict[str, Any]]) -> list[int]:
     """The CDRs whose tests an area shows: every CDR with the latest calls of the campaigns and NR Modes of ``calls``."""
     from src.modules.nq import non_qualified_calls as nq

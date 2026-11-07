@@ -8818,7 +8818,25 @@
     'import-ericsson-rca-results': 'nq-rca-open', 'import-previous-nq-analyses': 'nq-analyses-open',
     'analysts-reviewers-to-asignees': 'nq-assign-analysts-open',
   };
+  // A link to a call (#call=<call key>) opens it, and one to the map of a site (#site-area=…, as Sites to review of Scoring &
+  // GAP Analysis opens it) opens that map; a call opened from that map closes it.
+  const openLinkFromHash = () => {
+    const hash = window.location.hash.slice(1);
+    const site = window.NqCallMap?.siteFromHash?.(hash);
+    const callKey = hash.startsWith('call=') ? decodeURIComponent(hash.slice(5)) : '';
+    if (!site && !callKey) return false;
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
+    const openCall = async (key) => { if (await leaveDetail()) openDetail(key, {keepTab: false}); };
+    if (callKey) {
+      openCall(callKey);
+      return true;
+    }
+    window.NqCallMap.openSiteArea({site: {...site, opened_from: 'Non-Qualified Calls (link)'}, api, campaignLabel, cdrTime, number,
+      module: 'non-qualified-calls', openCall: (key) => { document.querySelector('dialog.nq-site-area')?.close(); openCall(key); }});
+    return true;
+  };
   const openCenterFromHash = () => {
+    if (openLinkFromHash()) return;
     const opener = CENTER_HASHES[decodeURIComponent(window.location.hash.slice(1))];
     if (!opener) return;
     window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);

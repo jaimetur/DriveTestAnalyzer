@@ -1243,5 +1243,5 @@
   const refresh = () => listeners.forEach((listener) => listener());
   window.L3Layers = {prepare, draw, describe, createTree, createTimeline, drawHighlight, drawCursor, cursorOf, setCursor, legend, wayOf,
     bounds, state, refresh, changed, DOMAIN_COLOURS, drawMarker, markerIcon, toggle, categoryColour, routesOf, ROUTE_COLOUR,
-    onChange: (listener) => listeners.add(listener), LAYERS, SECTIONS, rangeColour, rangeIndex, setClasses};
+    onChange: (listener) => listeners.add(listener), offChange: (listener) => listeners.delete(listener), LAYERS, SECTIONS, rangeColour, rangeIndex, setClasses};
 })();

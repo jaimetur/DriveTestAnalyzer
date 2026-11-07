@@ -104,6 +104,20 @@ def test_definitions_keep_every_module_option_and_need_an_artifact():
     assert safe_file_name('Scoring: A/B ' + 'x' * 300 + '.pptx').endswith('.pptx')
 
 
+def test_sites_to_review_open_their_map_only_for_the_users_of_non_qualified_calls(client):
+    analyst_id = workspace_user('analyst', 'user-viewer')
+    login(client)
+    # The scripts and styles of the maps of Non-Qualified Calls, read the first time a site opens its map.
+    page = client.get('/scoring').text
+    assert 'data-scoring-nq-map' in page and 'js/nq/nq_call_map.js' in page and 'css/nq/non_qualified_calls.css' in page
+    # Without Non-Qualified Calls in their Modules Profile, the sites of Sites to review stay plain text.
+    assert client.post('/admin/modules-profiles', data={'name': 'Scoring only', 'description': 'Team', 'modules': ['workspace', 'scoring'],
+                                                       'member_ids': [analyst_id]}, follow_redirects=False).status_code == 303
+    session(client, 'analyst', 'user-viewer')
+    response = client.get('/scoring')
+    assert response.status_code == 200 and 'data-scoring-nq-map' not in response.text
+
+
 def test_modules_profiles_control_the_modules_of_each_user(client):
     analyst_id = workspace_user('analyst', 'user-viewer')
     login(client)

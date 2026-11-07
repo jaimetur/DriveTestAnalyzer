@@ -9746,6 +9746,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         sites: bool = False
         tests: bool = False
         with_calls: bool = True
+        # The map of a site (Sites to review of Scoring & GAP Analysis): its ID, network, operator, campaign, radius and the
+        # page it was opened from, for App Events and, with the calls, where the inventory places it.
+        site: dict[str, Any] | None = None
 
     @core.app.post('/api/non-qualified-calls/l3-maps')
     def nq_l3_maps_route(payload: L3MapsPayload, user=Depends(core.current_user)) -> JSONResponse:
@@ -9758,6 +9761,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         started = time.monotonic()
         area_box = payload.bbox if payload.bbox and len(payload.bbox) == 4 else None
+        site = nq_call_map.map_site(payload.site)
         try:
             calls = [] if payload.join_ids is not None else l3_map_calls(repository, payload.filters, user.username)
             join_ids = payload.join_ids if payload.join_ids is not None else [call['join_id'] for call in calls if call.get('l3_log')]
@@ -9771,8 +9775,13 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                 mapper = ValueMapper.from_settings(repository.chart_mapping_settings())
                 area['tests'] = nq_call_map.area_tests(repository, nq_call_map.area_test_datasets(repository, calls), area_box,
                                                        lambda value: mapper.map(field_kind('operator'), value))
+            # The map of a site, opened: where the inventory places the site.
+            area['site_position'] = (nq_call_map.site_position(repository, [site['operator']] if site['operator'] else
+                                                               [call.get('operator') for call in calls], site['site_id'], site['network'])
+                                     if site and payload.with_calls else None)
         except Exception as error:  # noqa: BLE001 - App Events keeps what failed for its troubleshooting.
-            log_action(repository, user, 'nq_l3_maps_failed', {'zoom': payload.zoom, 'error': f'{type(error).__name__}: {error}'[:500]})
+            log_action(repository, user, 'nq_l3_maps_failed', {'zoom': payload.zoom, **({'site': site} if site else {}),
+                                                               'error': f'{type(error).__name__}: {error}'[:500]})
             raise HTTPException(500, 'NQ Maps could not be read. App Events keeps the error.') from error
         area['calls'] = calls if payload.with_calls else None
         area['calls_count'] = len(calls)
@@ -9787,7 +9796,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                          'tests': nq_call_map.AREA_TESTS_ZOOM}
         area['basemap'] = {'url_template': nq_call_map.OSM_TILES, 'attribution': nq_call_map.OSM_ATTRIBUTION}
         log_action(repository, user, 'nq_l3_maps', {
-            'scope': 'calls around a call' if payload.join_ids is not None else 'filters of NQ Calls', 'calls': len(calls),
+            'scope': 'calls around a call' if payload.join_ids is not None else 'map of a site' if site else 'filters of NQ Calls',
+            # The map of a site: which one, the NQ calls its CDRs give it and, once opened, whether the inventory places it.
+            **({'site': site, 'nq_calls_of_the_site': nq_call_map.site_calls_count(calls, site['site_id'], site['network']),
+                **({'site_in_inventory': area['site_position'] is not None} if payload.with_calls else {})} if site else {}),
+            'calls': len(calls),
             'sessions': area['sessions'], 'mode': area['mode'], 'zoom': round(float(payload.zoom), 1), 'layers': payload.layers[:20],
             'grid': (area.get('grid') or {}).get('layer', ''), 'points': sum(len(item['points']) for item in area['ues'].values()),
             'cells': len((area.get('grid') or {}).get('cells') or []), 'truncated': area['truncated'],

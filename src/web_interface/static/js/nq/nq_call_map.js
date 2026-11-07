@@ -159,8 +159,8 @@
     return domainColour(failure);
   };
   // The lines of the legend of the NQ calls shown, coloured by ``choice``: one for each value they have (by site, with how
-  // many NQ calls each, the site of the call first).
-  const failureLegendBy = (choice, failures, {campaignText, ownSite = ''}) => {
+  // many NQ calls each, the site of the call first; ``ownText`` names that site).
+  const failureLegendBy = (choice, failures, {campaignText, ownSite = '', ownText = 'the site of this call'}) => {
     if (choice === 'domain') return domainLegend(failures);
     const lines = new Map();
     for (const failure of failures) {
@@ -178,7 +178,7 @@
     const sites = found.filter((line) => line.text !== 'No site')
       .sort((first, second) => second.own - first.own || second.count - first.count || first.text.localeCompare(second.text));
     const shown = sites.slice(0, MAX_SITE_LINES)
-      .map((line) => [`${line.text}${line.own ? ', the site of this call' : ''} · ${line.count}`, line.colour]);
+      .map((line) => [`${line.text}${line.own ? `, ${ownText}` : ''} · ${line.count}`, line.colour]);
     if (sites.length > MAX_SITE_LINES) shown.push([`${sites.length - MAX_SITE_LINES} more sites, each in a colour of its own`, '#ced4da']);
     found.filter((line) => line.text === 'No site').forEach((line) => shown.push([`No site · ${line.count}`, line.colour]));
     return shown;
@@ -243,6 +243,12 @@
   };
   const HINT = 'Drag to move · wheel or Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure · double-click to zoom in';
   const PANEL_HINT = 'Drag to move · Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure · double-click to enlarge';
+  // The map of a site (openSiteArea): the radius it opens with, its choices, and how far from the site its own NQ calls
+  // still count when the map fits them.
+  const SITE_RADII_KM = [0.5, 1, 2, 5, 10];
+  const SITE_RADIUS_KM = 1;
+  const SITE_FIT_KM = 10;
+  const siteTitle = (site) => `Site ${site.site_id}${site.network ? ` · ${site.network}` : ''}`;
 
   const node = (tag, text, className) => {
     const element = document.createElement(tag);
@@ -904,11 +910,13 @@
       }
       for (const failure of data.failures) {
         if (failure.latitude === null || !(inGroup(failure) || failure.same_place) || !shared.showsFailure(failure)) continue;
+        // (The map of a site: only the NQ calls of the site near it, not one placed far away by its CDR.)
+        if (data.site && !(failure.distance_km <= SITE_FIT_KM)) continue;
         const [x, y] = toWorld(failure.latitude, failure.longitude);
         [west, east, north, south] = [Math.min(west, x), Math.max(east, x), Math.min(north, y), Math.max(south, y)];
       }
-      // The whole way of the UE of its Layer3 Logs.
-      const l3Bounds = window.L3Layers?.bounds(shared.l3);
+      // The whole way of the UE of its Layer3 Logs (on the map of a site, the logs of every NQ call: not their extent).
+      const l3Bounds = data.site ? null : window.L3Layers?.bounds(shared.l3);
       if (l3Bounds) {
         const [x1, y1] = toWorld(l3Bounds.north, l3Bounds.west), [x2, y2] = toWorld(l3Bounds.south, l3Bounds.east);
         [west, east, north, south] = [Math.min(west, x1), Math.max(east, x2), Math.min(north, y1), Math.max(south, y2)];
@@ -1089,6 +1097,20 @@
       context.stroke();
       context.setLineDash([]);
       context.globalAlpha = 1;
+      // The map of a site: its ring where its tests were while the sites of the inventory do not show it (zoomed out, or
+      // a site the inventory lacks).
+      if (data.site && !(layers.sites !== false && data.sites.some((site) => site.focus))) {
+        context.beginPath();
+        context.arc(cx, cy, 10, 0, Math.PI * 2);
+        context.strokeStyle = COLOURS.call;
+        context.lineWidth = 2.5;
+        context.stroke();
+        context.beginPath();
+        context.arc(cx, cy, 3, 0, Math.PI * 2);
+        context.fillStyle = COLOURS.call;
+        context.fill();
+        label(context, data.site.site_id, cx, cy + 19, '#2d1520', 'center');
+      }
       // The shape of a group: a few pixels wider, so that the marks of the calls on its edge show inside it at any zoom (the
       // map turns the y axis of the plane of the shape downwards).
       const shape = (target, ring) => {
@@ -2157,7 +2179,8 @@
       legend.replaceChildren();
       renderSamples();
       if (!data) return;
-      fitButton.title = data.area ? 'Show every NQ call of the filters with Layer3 Logs' : FIT_TITLE;
+      fitButton.title = data.site ? 'Show the site, the radius around it and the NQ calls of the site'
+        : data.area ? 'Show every NQ call of the filters with Layer3 Logs' : FIT_TITLE;
       fitButton.setAttribute('aria-label', fitButton.title);
       const paths = visibleRings(data).some((ring) => ring.path && ring.path.length > 1);
       const layers = shownLayers(settings);
@@ -2204,7 +2227,12 @@
       }
       if (data.area) {
         // NQ Maps: its NQ calls as on the map of a call (without its groups), the route of each session and the sites
-        // of the area shown.
+        // of the area shown; the map of a site rings it, with the radius around it.
+        if (data.site) {
+          group('The site');
+          item('ring', `${siteTitle(data.site)}${data.site.found === false ? ' (where its tests were: it is not in the Network Inventory)' : ''}`, COLOURS.call);
+          item('line', `Radius ${distanceText(data.radius_km)}: the NQ calls of the table below`, COLOURS.radius, 'is-dashed');
+        }
         if (layers.failures) {
           group(`NQ calls · by ${AREA_FAILURE_COLOURS[settings.failureColour].toLowerCase()}`);
           shared.failureLegend().forEach(([text, colour, extra]) => item('star', text, colour, extra));
@@ -3355,13 +3383,19 @@
   // the sites, and the points of the layers on and the RSRP / SINR samples of the CDRs in the area shown from that of the
   // points, as on the map of a call (the server sends these zoom levels). ``filters`` gives the filters of the page; a
   // click on an NQ call opens it; a double-click opens the map larger, in ``expandDialog``.
+  // With ``site`` (openSiteArea) it is the map of a site, already as large as the larger map: the site ringed with a radius
+  // around it, its operator only until another choice, and below the map the table of the NQ calls of the site and of the
+  // radius (``tableHost``).
   const AREA_SETTINGS_KEY = 'nq-l3-maps-settings';
+  const SITE_AREA_SETTINGS_KEY = 'nq-site-area-settings';
   // Where the map of NQ Maps was left (its centre and zoom), shown again when the page opens.
   const AREA_VIEW_KEY = 'nq-maps-view';
   function mountArea({panel, expandDialog = null, api, toast, openCall, filters = () => ({}), campaignLabel = (value) => value,
-    cdrTime = (value) => String(value || '').replace('T', ' ').slice(0, 19), number = (value) => Number(value).toLocaleString('en-GB')}) {
+    cdrTime = (value) => String(value || '').replace('T', ' ').slice(0, 19), number = (value) => Number(value).toLocaleString('en-GB'),
+    site = null, tableHost = null}) {
+    const settingsKey = site ? SITE_AREA_SETTINGS_KEY : AREA_SETTINGS_KEY;
     let stored = {};
-    try { stored = JSON.parse(localStorage.getItem(AREA_SETTINGS_KEY) || '{}') || {}; } catch (_error) { stored = {}; }
+    try { stored = JSON.parse(localStorage.getItem(settingsKey) || '{}') || {}; } catch (_error) { stored = {}; }
     // Besides the Layer3 Logs, as on the map of a call (without its groups): the NQ calls, the sites and the route of
     // each session (shown until switched off), the RSRP / SINR samples of the CDRs (hidden until switched on), what colours
     // the NQ calls and the operators shown.
@@ -3369,40 +3403,61 @@
     const settings = {layers: {cdr: stored.layers?.cdr !== false, failures: stored.layers?.failures !== false, sites: stored.layers?.sites !== false,
       path: false, paths: false, route: stored.v >= 2 && stored.layers?.route === true},
     measures: storedMeasures(stored),
-    // By call type until another choice (the choices kept before Site came are left for it).
-    failureColour: stored.v >= 3 && AREA_FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'type',
-    // The Focus operators of the Operator Maps until another choice, as on the map of a call.
-    operators: stored.v >= 4 && stored.operators === 'all' ? 'all' : 'focus', radius_km: 0, failures: 'every'};
+    // By call type until another choice (the choices kept before Site came are left for it); the map of a site by site,
+    // its own in burgundy.
+    failureColour: stored.v >= 3 && AREA_FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : site ? 'site' : 'type',
+    // The Focus operators of the Operator Maps until another choice, as on the map of a call; on the map of a site, its
+    // operator.
+    operators: site ? (['own', 'focus', 'all'].includes(stored.operators) ? stored.operators : 'own')
+      : stored.v >= 4 && stored.operators === 'all' ? 'all' : 'focus',
+    radius_km: site ? (SITE_RADII_KM.includes(stored.radius_km) ? stored.radius_km : SITE_RADIUS_KM) : 0, failures: 'every'};
     const save = () => {
       try {
-        localStorage.setItem(AREA_SETTINGS_KEY, JSON.stringify({v: 4, layers: {cdr: settings.layers.cdr, failures: settings.layers.failures,
+        localStorage.setItem(settingsKey, JSON.stringify({v: 4, layers: {cdr: settings.layers.cdr, failures: settings.layers.failures,
           sites: settings.layers.sites, route: settings.layers.route}, measures: settings.measures, failureColour: settings.failureColour,
-        operators: settings.operators}));
+        operators: settings.operators, ...(site ? {radius_km: settings.radius_km} : {})}));
       } catch (_error) { /* A private window keeps them for the page. */ }
     };
     // ``calls``: the NQ calls of the filters, read again only when the filters change.
     const shared = {data: null, settings, selection: null, l3: null, calls: null, zoom: 6};
-    // The operators shown: every one, or the Focus operators of the Operator Maps (every one while the workspace has none).
+    // The operators shown: every one, or the Focus operators of the Operator Maps (every one while the workspace has none);
+    // on the map of a site also its operator alone (``own``).
     let focusNames = new Set(), focusLabels = [];
-    shared.operatorChoice = () => (settings.operators === 'focus' && focusNames.size ? 'focus' : 'all');
-    shared.operatorShown = (name) => shared.operatorChoice() === 'all' || focusNames.has(String(name || '').trim().toLowerCase());
+    const siteOperators = new Set((site?.operators || []).map((name) => String(name || '').trim().toLowerCase()).filter(Boolean));
+    shared.operatorChoice = () => (site && settings.operators === 'own' && siteOperators.size ? 'own'
+      : settings.operators === 'focus' && focusNames.size ? 'focus' : 'all');
+    shared.operatorShown = (name) => {
+      const choice = shared.operatorChoice(), value = String(name || '').trim().toLowerCase();
+      return choice === 'all' || (choice === 'own' ? siteOperators.has(value) : focusNames.has(value));
+    };
     // (As on the map of a call, not the Ping tests.)
     shared.showsFailure = (failure) => failure.kind !== 'ping' && shared.operatorShown(failure.operator);
     // The colour of an NQ call (AREA_FAILURE_COLOURS) and the lines of the legend that explain it: only what they show.
-    shared.failureColour = (failure) => failureColourBy(settings.failureColour, failure);
+    // (By site, the site of the map in burgundy.)
+    const ownSite = site ? `${site.network || ''}|${site.site_id}` : '';
+    const ownSiteOf = (failure) => (failure.same_place ? siteOf(failure)?.key || '' : '');
+    const ownSiteKey = () => siteOf((shared.data?.failures || []).find((failure) => failure.same_place))?.key || ownSite;
+    shared.failureColour = (failure) => failureColourBy(settings.failureColour, failure, ownSiteOf(failure));
     shared.failureLegend = () => failureLegendBy(settings.failureColour,
-      (shared.data?.failures || []).filter((failure) => failure.latitude !== null && shared.showsFailure(failure)), {campaignText});
+      (shared.data?.failures || []).filter((failure) => failure.latitude !== null && shared.showsFailure(failure)),
+      {campaignText, ownSite: ownSiteKey(), ownText: 'the site of the map'});
     const status = node('p', '', 'nq-map-status nq-l3-maps-status');
     status.setAttribute('role', 'status');
-    const toolbar = node('div', undefined, 'nq-map-toolbar nq-l3-maps-toolbar');
-    const card = node('div', undefined, 'nq-l3-maps-card');
-    const selected = node('section', undefined, 'nq-map-info nq-map-selected');
+    const toolbar = node('div', undefined, `nq-map-toolbar ${site ? 'nq-map-expand-toolbar' : 'nq-l3-maps-toolbar'}`);
+    const card = node('div', undefined, site ? 'nq-map-expand-card' : 'nq-l3-maps-card');
+    // The element chosen: below the map, or floating over it on the map of a site (as over the larger map).
+    const selected = site ? floatingPanel() : node('section', undefined, 'nq-map-info nq-map-selected');
     selected.hidden = true;
     // The signalling timeline of the NQ call chosen on the map (its Layer3 Logs), as on the map of a call.
     const timelineHost = node('div', undefined, 'nq-l3-timeline-host');
-    const wrap = node('div', undefined, 'nq-map-wrap');
-    wrap.append(card, timelineHost, selected);
-    panel.replaceChildren(toolbar, status, wrap, node('p', expandDialog ? PANEL_HINT : HINT, 'form-note nq-map-hint'));
+    const wrap = node('div', undefined, site ? 'nq-map-expand-wrap' : 'nq-map-wrap');
+    if (site) {
+      wrap.append(card, selected);
+      panel.replaceChildren(toolbar, status, wrap);
+    } else {
+      wrap.append(card, timelineHost, selected);
+      panel.replaceChildren(toolbar, status, wrap, node('p', expandDialog ? PANEL_HINT : HINT, 'form-note nq-map-hint'));
+    }
     const zooms = () => shared.l3?.zooms || {};
     let expandedView = null, expandedTimeline = null, floating = null;
     const views = () => [view, expandedView].filter(Boolean);
@@ -3518,6 +3573,8 @@
       // The timeline says what it needs while no call with a log is chosen.
       if (!shared.l3Focus) window.L3Layers?.refresh();
       views().forEach((item) => item.redraw());
+      // (On the map of a site, its row of the table too.)
+      if (site) renderTable();
     };
     const timelineEvents = {
       onHover: (point) => { shared.l3Hover = point; views().forEach((item) => item.redraw()); },
@@ -3536,7 +3593,7 @@
         ? 'The NQ call chosen has no Layer3 Logs (a hollow diamond): choose one with a log to see its signalling timeline here.'
         : 'Choose an NQ call with Layer3 Logs (a click on it, on a point of its log or on its route) to see its signalling timeline here.'),
     };
-    window.L3Layers?.createTimeline(timelineHost, () => shared.l3Focus || null, timelineEvents);
+    const timeline = window.L3Layers?.createTimeline(timelineHost, () => shared.l3Focus || null, timelineEvents) || null;
 
     // -- the RSRP / SINR samples of the CDRs and the layers above the map -----------------------------------------------
     // A layer of CDR Info (or the whole card) and a measure of its samples switched on or off: the area is read again when
@@ -3587,12 +3644,22 @@
       for (const host of [toolbar, expandedToolbar].filter(Boolean)) host.replaceChildren(...toolbarControls());
     };
     const toolbarControls = () => [
+        // The map of a site: the radius around it whose NQ calls the table lists (the map fits it).
+        ...(site ? [select('Radius', SITE_RADII_KM.map((value) => [String(value), distanceText(value)]), String(settings.radius_km), (value) => {
+          settings.radius_km = Number(value);
+          save();
+          if (shared.data) shared.data.radius_km = settings.radius_km;
+          placeFailures();
+          view.fit();
+          renderTable();
+        }, 'The area around the site whose NQ calls the table below lists, besides those of the site wherever they are')] : []),
         select('Colour NQ calls by', Object.entries(AREA_FAILURE_COLOURS), settings.failureColour, (value) => {
           settings.failureColour = value; save(); redrawAll();
         }, 'What the colour of the NQ calls tells, as on the map of a call: their call type, the domain of their root cause (the one decided, else that of the DT Analyzer RCA), their campaign, their operator or the site of their CDR'),
-        select('Operators', [...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
-          settings.operators = value; save(); redrawAll();
-        }, `The NQ calls and RSRP / SINR samples of every operator, or of the Focus operators of the Operator Maps${focusLabels.length ? ` (${focusLabels.join(', ')})` : ''}`),
+        select('Operators', [...(site && siteOperators.size ? [['own', `${site.operator_label || site.operators[0]} only`]] : []),
+          ...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
+          settings.operators = value; save(); redrawAll(); renderTable();
+        }, `The NQ calls and RSRP / SINR samples ${site ? 'of the operator of the site, ' : ''}of every operator, or of the Focus operators of the Operator Maps${focusLabels.length ? ` (${focusLabels.join(', ')})` : ''}`),
         basemapControl()];
 
     // -- reading the area shown -------------------------------------------------------------------------------------
@@ -3605,8 +3672,9 @@
         [...window.L3Layers.state.on].sort(), window.L3Layers.state.master, needs()]);
     };
     const statusText = (payload) => {
-      if (!payload.calls_count) return 'No NQ call matches the filters.';
-      const text = `${number(payload.calls_count)} NQ calls of the filters · ${number(payload.calls_with_log)} with Layer3 Logs (${number(payload.sessions)} sessions)`;
+      const scope = site ? site.scope_text || 'of every campaign' : 'of the filters';
+      if (!payload.calls_count) return site ? `No NQ call ${scope}.` : 'No NQ call matches the filters.';
+      const text = `${number(payload.calls_count)} NQ calls ${scope} · ${number(payload.calls_with_log)} with Layer3 Logs (${number(payload.sessions)} sessions)`;
       if (!payload.calls_with_log) return `${text} · Import them in Workspace (Layer3 Logs).`;
       const sites = payload.sites ? ` · ${number(payload.sites.sites.length)} sites${payload.sites.truncated ? ' (the nearest to the centre)' : ''}` : '';
       return text + sites + (payload.mode === 'grid' ? ` · zoom in: events from zoom ${payload.zooms.events}, sites from ${payload.zooms.sites}, `
@@ -3625,21 +3693,37 @@
           // The routes of the logs (their layer Route), the sites and the tests (for the samples and the route from the CDR).
           route: window.L3Layers.state.master && window.L3Layers.state.on.has('way'), sites: shownLayers(settings).sites !== false,
           tests: shownMeasures(settings).length > 0 || shownLayers(settings).route !== false,
-          with_calls: !shared.calls, ...(info ? {bbox: info.bbox} : {})};
+          with_calls: !shared.calls, ...(info ? {bbox: info.bbox} : {}),
+          // The map of a site: which one (App Events), and where the inventory places it with the NQ calls.
+          ...(site ? {site: {site_id: site.site_id, network: site.network || '', operator: site.operator_label || site.operators[0] || '',
+            campaign: (site.campaigns || []).join(', '), radius_km: settings.radius_km, opened_from: site.opened_from || ''}} : {})};
         const payload = await api('/api/non-qualified-calls/l3-maps', {method: 'POST', body: JSON.stringify(body), signal: controllerAbort.signal});
         if (request !== controllerAbort) return;
         if (payload.calls) shared.calls = payload.calls;
         payload.calls = shared.calls || [];
         operatorColours = payload.operator_colours || operatorColours;
-        if (!shared.data) {
-          shared.data = {area: true, centre: [54.5, -2.5], radius_km: 0, basemap: payload.basemap, call: {}, groups: {},
-            tests: {operators: [], rows: [], total: 0}, trace: [], sites: [], failures: [], rings: [], drive: {route: []}, classes: {}, notes: [],
-            diagnosis: []};
-        }
+        if (!shared.data) shared.data = emptyData(payload.basemap);
         shared.zoom = body.zoom;
         if (payload.calls !== shared.data.calls) {
           shared.data.calls = payload.calls;
           shared.data.failures = payload.calls.map((call) => ({...call, self: false, same_operator: false, same_place: false}));
+        }
+        // The map of a site: centred on the site where the inventory places it (else where its tests were, else where its
+        // NQ calls are), the first time.
+        let moved = false;
+        if (site && !siteLocated) {
+          const placed = payload.site_position;
+          const ownCalls = shared.data.failures.filter((failure) => matchesSite(failure) && failure.latitude !== null && failure.latitude !== undefined);
+          const centre = placed ? [placed.latitude, placed.longitude] : site.latitude !== null && site.latitude !== undefined
+            ? [site.latitude, site.longitude] : ownCalls.length
+              ? [ownCalls.reduce((sum, item) => sum + item.latitude, 0) / ownCalls.length, ownCalls.reduce((sum, item) => sum + item.longitude, 0) / ownCalls.length]
+              : null;
+          if (payload.calls_count !== undefined) siteLocated = true;
+          if (centre) {
+            moved = !shared.data.centre || shared.data.centre[0] !== centre[0] || shared.data.centre[1] !== centre[1];
+            shared.data.centre = centre;
+            shared.data.site = {...site, found: Boolean(placed)};
+          }
         }
         const focus = new Set((payload.focus_operators || []).map((name) => String(name).trim().toLowerCase()).filter(Boolean));
         if (focus.size !== focusNames.size || [...focus].some((name) => !focusNames.has(name))) {
@@ -3654,7 +3738,15 @@
         shared.l3 = window.L3Layers.prepare(payload);
         status.textContent = statusText(payload);
         if (expandDialog?.open) expandDialog.querySelector('[data-nq-map-expand-meta]').textContent = [status.textContent, HINT].join(' · ');
-        if (!fitted) {
+        placeFailures();
+        if (site) {
+          // The map of a site shows the site and its radius (never where NQ Maps was left).
+          if ((moved || !fitted) && shared.data.centre) {
+            fitted = true;
+            view.fit();
+          }
+          renderTable();
+        } else if (!fitted) {
           // The place the map was left, else the whole extent of the logs.
           let kept = null;
           try { kept = JSON.parse(localStorage.getItem(AREA_VIEW_KEY) || 'null'); } catch (_error) { kept = null; }
@@ -3679,9 +3771,148 @@
       pending = setTimeout(() => {
         if (!shared.data) return;
         load(info);
-        if (!fitted) return;
+        if (!fitted || site) return;
         try { localStorage.setItem(AREA_VIEW_KEY, JSON.stringify((expandedView || view).view())); } catch (_error) { /* A private window keeps it for the page. */ }
       }, 350);
+    };
+
+    // -- the map of a site: its NQ calls and those within the radius, in a table below the map ----------------------
+    const emptyData = (basemap = null) => ({area: true, centre: [54.5, -2.5], radius_km: settings.radius_km, basemap, call: {}, groups: {},
+      tests: {operators: [], rows: [], total: 0}, trace: [], sites: [], failures: [], rings: [], drive: {route: []}, classes: {}, notes: [],
+      diagnosis: []});
+    // Whether the CDR of an NQ call gives the site of the map (its ID, on the network of the site when it gives one).
+    const sameNetwork = (first, second) => !first || !second || String(first).trim().toLowerCase() === String(second).trim().toLowerCase();
+    const matchesSite = (call) => Boolean(site) && Boolean(call.site_id) && String(call.site_id).trim() === String(site.site_id).trim()
+      && sameNetwork(call.host_network, site.network);
+    // Each NQ call: of the site or not, of its operator or not, and how far from it; the site among those of the inventory.
+    const placeFailures = () => {
+      const data = shared.data;
+      if (!site || !data) return;
+      const centre = data.site ? data.centre : null;
+      for (const failure of data.failures) {
+        failure.same_place = matchesSite(failure);
+        failure.same_operator = siteOperators.has(String(failure.operator || '').trim().toLowerCase());
+        failure.distance_km = !centre || failure.latitude === null || failure.latitude === undefined ? null
+          : geodesic([centre[1], centre[0]], [failure.longitude, failure.latitude]).metres / 1000;
+      }
+      const candidates = data.sites.filter((entry) => String(entry.site_id).trim() === String(site.site_id).trim());
+      const own = candidates.find((entry) => [entry.network, entry.family, entry.host_network].some((name) => name && sameNetwork(name, site.network)))
+        || (candidates.length === 1 ? candidates[0] : null);
+      data.sites.forEach((entry) => {
+        entry.focus = entry === own;
+        if (entry.focus) entry.ends = [{role: 'end'}];
+      });
+    };
+    const textOf = (item) => [item.failure_classification, item.failure_category, item.failure_subcategory].filter(Boolean).join(' · ');
+    const rootText = (item) => [item.root_domain, item.root_category, item.root_cause].filter(Boolean).join(' · ')
+      || [item.dta_domain, item.dta_category, item.dta_cause].filter(Boolean).map((value, index) => (index ? value : `${value} (DT Analyzer RCA)`)).join(' · ');
+    // The NQ calls the table lists: those of the site (wherever they are) and those within the radius, of the operators
+    // shown; the site first, then the nearest.
+    const listedCalls = () => {
+      const data = shared.data;
+      if (!data?.site) return [];
+      return data.failures.filter((failure) => shared.showsFailure(failure)
+        && (failure.same_place || (failure.distance_km !== null && failure.distance_km <= data.radius_km)))
+        .sort((first, second) => Number(second.same_place) - Number(first.same_place)
+          || (first.distance_km ?? Infinity) - (second.distance_km ?? Infinity) || String(second.start_time).localeCompare(String(first.start_time)));
+    };
+    let tableSort = null;
+    const renderTable = () => {
+      if (!site || !tableHost) return;
+      const data = shared.data;
+      const calls = listedCalls();
+      const atSite = calls.filter((item) => item.same_place).length;
+      const head = node('header', undefined, 'nq-site-area-table-head');
+      const titles = node('div');
+      titles.append(node('h4', `NQ calls of ${siteTitle(site)} and within ${distanceText(data?.radius_km ?? settings.radius_km)}`),
+        node('p', data?.site ? `${number(calls.length)} NQ calls ${site.scope_text || 'of every campaign'} (${shared.operatorChoice() === 'own'
+          ? `${site.operator_label || site.operators[0]} only` : shared.operatorChoice() === 'focus' ? 'Focus operators only' : 'every operator'}): `
+          + `${number(atSite)} of the site, wherever they are, and ${number(calls.length - atSite)} of other sites or without a site within the radius`
+          : siteLocated ? 'Neither the Network Inventory, nor the tests of the site, nor its NQ calls give where the site is.'
+            : 'Reading the NQ calls of the site…', 'form-note'));
+      const copy = node('button', 'Copy the JOIN_IDs', 'nq-secondary-action');
+      copy.type = 'button';
+      copy.disabled = !calls.some((item) => item.join_id);
+      copy.title = 'Copy the JOIN_ID of every NQ call of the table, one per line';
+      copy.addEventListener('click', async () => {
+        const joinIds = [...new Set(calls.map((item) => item.join_id).filter(Boolean))];
+        try {
+          await navigator.clipboard.writeText(joinIds.join('\n'));
+          toast(`${number(joinIds.length)} JOIN_IDs copied.`);
+        } catch (_error) {
+          toast('The JOIN_IDs could not be copied: the browser did not allow it.', 'error');
+        }
+      });
+      head.append(titles, copy);
+      if (!data?.site) {
+        tableHost.replaceChildren(head);
+        return;
+      }
+      if (!calls.length) {
+        tableHost.replaceChildren(head, node('p', 'No NQ call of the operators shown at the site or within the radius.', 'nq-map-empty'));
+        return;
+      }
+      const columns = [['', null], ['JOIN_ID', (item) => item.join_id], ['Site', (item) => `${item.host_network || ''}|${item.site_id || ''}`],
+        ['Distance', (item) => item.distance_km ?? Infinity], ['Operator', (item) => item.operator], ['Call type', (item) => KIND_LABELS[item.kind] || item.service_label],
+        ['Campaign', (item) => campaignText(item.campaign, item.nr_mode)], ['Started', (item) => item.start_time], ['Result', (item) => item.result],
+        ['Failure', textOf], ['Status', (item) => item.status], ['Root cause', rootText], ['', null]];
+      if (tableSort) {
+        const [index, direction] = tableSort;
+        const value = columns[index][1];
+        calls.sort((first, second) => {
+          const [a, b] = [value(first), value(second)];
+          return (typeof a === 'number' && typeof b === 'number' ? a - b : String(a ?? '').localeCompare(String(b ?? ''), undefined, {numeric: true})) * direction;
+        });
+      }
+      const table = node('table', undefined, 'nq-map-table nq-site-area-table');
+      const header = table.createTHead().insertRow();
+      columns.forEach(([title, value], index) => {
+        const cell = node('th');
+        if (value) {
+          const sort = node('button', `${title}${tableSort?.[0] === index ? (tableSort[1] > 0 ? ' ▲' : ' ▼') : ''}`, 'nq-site-area-sort');
+          sort.type = 'button';
+          sort.title = `Sort by ${title}`;
+          sort.addEventListener('click', () => {
+            tableSort = tableSort?.[0] === index ? (tableSort[1] > 0 ? [index, -1] : null) : [index, 1];
+            renderTable();
+          });
+          cell.append(sort);
+        } else cell.textContent = title;
+        header.append(cell);
+      });
+      const body = table.createTBody();
+      for (const item of calls) {
+        const row = body.insertRow();
+        if (item.same_place) row.className = 'is-own';
+        if (shared.selection?.kind === 'failure' && shared.selection.item === item) row.classList.add('is-chosen');
+        const mark = node('span', undefined, `nq-map-mark is-star${item.l3_log ? '' : ' is-outlined'}`);
+        mark.style.setProperty('--mark', shared.failureColour(item));
+        mark.title = item.l3_log ? 'With Layer3 Logs' : 'Without Layer3 Logs';
+        const choose = node('button', item.join_id || '—', 'nq-link-action nq-site-area-join');
+        choose.type = 'button';
+        choose.title = item.latitude === null ? 'Its CDR gives no place: it is not on the map' : 'Show this NQ call on the map';
+        choose.disabled = item.latitude === null || item.latitude === undefined;
+        choose.addEventListener('click', () => {
+          views().forEach((entry) => entry.keepInView(item.latitude, item.longitude));
+          shared.select({kind: 'failure', item});
+        });
+        const siteCell = node('span', item.site_id ? `${item.site_id}${item.host_network ? ` · ${item.host_network}` : ''}` : '—');
+        if (item.same_place) siteCell.append(node('span', 'This site', 'nq-map-tag'));
+        const open = node('button', 'Open', 'nq-link-action');
+        open.type = 'button';
+        open.title = 'Open this call in Non-Qualified Calls';
+        open.addEventListener('click', () => openCall(item.call_key));
+        const cells = [mark, choose, siteCell, distanceText(item.distance_km) || '—', item.operator || '—',
+          KIND_LABELS[item.kind] || item.service_label || '—', campaignText(item.campaign, item.nr_mode) || '—', cdrTime(item.start_time) || '—',
+          item.result || '—', textOf(item) || '—', item.status || '—', rootText(item) || '—', open];
+        for (const content of cells) {
+          const cell = row.insertCell();
+          if (content instanceof Node) cell.append(content); else cell.textContent = content;
+        }
+      }
+      const tableWrap = node('div', undefined, 'nq-map-table-wrap nq-site-area-table-wrap');
+      tableWrap.append(table);
+      tableHost.replaceChildren(head, tableWrap);
     };
 
     // -- the larger map (a double-click on the map): the whole width of the window but 2 % on each side ---------------
@@ -3727,15 +3958,158 @@
         renderSelected();
       });
     }
-    const view = createView(card, shared, {onExpand: expandDialog ? openExpanded : null,
+    // The map of a site: where its tests were until the inventory places it (the first answer), with its radius.
+    let siteLocated = false;
+    if (site) {
+      shared.data = emptyData();
+      if (site.latitude !== null && site.latitude !== undefined && site.longitude !== null && site.longitude !== undefined) {
+        shared.data.centre = [site.latitude, site.longitude];
+        shared.data.site = {...site};
+      }
+    }
+    // (The map of a site is as large as the larger map: the wheel zooms, and a double-click zooms in.)
+    const view = createView(card, shared, {expanded: Boolean(site), onExpand: expandDialog ? openExpanded : null,
       onViewChange: (info) => { if (!expandedView) viewChanged(info); }});
-    window.L3Layers?.onChange(() => { if (shared.data && lastView) load(lastView); });
+    if (site) view.overlay(timelineHost);
+    const layersChanged = () => { if (shared.data && lastView) load(lastView); };
+    window.L3Layers?.onChange(layersChanged);
     renderToolbar();
+    renderTable();
     return {
-      // The NQ calls of the filters read again (a change of the filters): the map keeps its area.
-      load: () => { loadedKey = ''; shared.calls = null; load(lastView, {force: true}); },
+      // The NQ calls of the filters read again (a change of the filters): the map keeps its area. The map of a site reads
+      // them once it is shown, from the place of the site.
+      load: () => {
+        loadedKey = '';
+        shared.calls = null;
+        if (site && shared.data?.site && !lastView) {
+          fitted = true;
+          view.fit();
+          return;
+        }
+        load(lastView, {force: true});
+      },
+      // The map closed (the map of a site): its requests stopped, and its listeners and timeline removed.
+      destroy: () => {
+        clearTimeout(pending);
+        request?.abort();
+        focusRequest?.abort();
+        window.L3Layers?.offChange?.(layersChanged);
+        timeline?.destroy();
+        view.destroy();
+      },
+      title: () => (site ? `Site Area Map · ${siteTitle(site)}` : 'NQ Maps'),
+      details: () => ({section: site ? 'Site Area Map' : 'NQ Maps', context: site ? {site_id: site.site_id, network: site.network || '',
+        operator: site.operator_label || '', campaign: (site.campaigns || []).join(', '), radius_km: String(settings.radius_km),
+        failure_colour: settings.failureColour, operators: shared.operatorChoice()} : {}}),
     };
   }
 
-  window.NqCallMap = {mount, mountArea};
+  // -- the map of a site: a site of Sites to review (Scoring & GAP Analysis) on the larger map of NQ Maps --------------
+  // A dialog as the larger map of NQ Maps (its controls, cards and legend), centred on the site with a radius around it, and
+  // below the map the table of the NQ calls of the site and of the radius with their JOIN_IDs (mountArea with ``site``).
+  // ``site``: its ID and network, its operator (``operator_label``, and ``operators``: the names that stand for it), where
+  // its tests were (``latitude``, ``longitude``), the campaigns of its NQ calls (``campaigns``, every one without them) and how
+  // the map names them (``scope_text``, ``facts``), and the page it was opened from (``opened_from``, for App Events).
+  // ``openCall`` opens an NQ call; ``nqHref``, when given, opens the same map in Non-Qualified Calls; ``module`` is the
+  // module of its images in App Events.
+  let siteDialog = null, siteMap = null;
+  const siteApi = async (url, init = {}) => {
+    const response = await fetch(url, {credentials: 'same-origin', ...init,
+      headers: init.body ? {'Content-Type': 'application/json', ...(init.headers || {})} : init.headers});
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(typeof payload.detail === 'string' ? payload.detail : 'The request failed.');
+      error.status = response.status;
+      throw error;
+    }
+    return payload;
+  };
+  // Its messages inside the dialog, above the map (a message of the page would stay under the dialog).
+  const siteToast = (message, tone = 'done') => {
+    const element = node('div', message, `nq-toast is-${tone}`);
+    element.setAttribute('role', tone === 'error' ? 'alert' : 'status');
+    (siteDialog?.open ? siteDialog : document.body).append(element);
+    window.setTimeout(() => element.classList.add('is-leaving'), 3600);
+    window.setTimeout(() => element.remove(), 4000);
+  };
+  function openSiteArea({site, api = siteApi, openCall, campaignLabel = (value) => value, cdrTime, number, module = 'non-qualified-calls',
+    nqHref = '', nqTitle = 'Non-Qualified Calls'}) {
+    if (!siteDialog) {
+      siteDialog = node('dialog', undefined, 'nq-map-expand is-wide nq-site-area');
+      siteDialog.setAttribute('aria-labelledby', 'nq-site-area-title');
+      const header = node('header', undefined, 'nq-map-expand-header');
+      const titles = node('div');
+      const heading = node('h3', '', 'nq-site-area-title');
+      heading.id = 'nq-site-area-title';
+      titles.append(node('p', 'Map', 'eyebrow'), heading, node('p', '', 'form-note nq-site-area-meta'));
+      const actions = node('div', undefined, 'nq-site-area-actions');
+      const link = node('a', '', 'nq-secondary-action nq-site-area-link');
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.hidden = true;
+      const close = node('button', '×', 'nq-map-expand-close');
+      close.type = 'button';
+      close.title = 'Close';
+      close.setAttribute('aria-label', 'Close the map');
+      close.addEventListener('click', () => siteDialog.close());
+      actions.append(link, close);
+      header.append(titles, actions);
+      const content = node('div', undefined, 'nq-map-expand-content');
+      content.append(node('div', undefined, 'nq-site-area-map'), node('section', undefined, 'nq-site-area-calls'));
+      siteDialog.append(header, content);
+      document.body.append(siteDialog);
+      siteDialog.addEventListener('click', (event) => { if (event.target === siteDialog) siteDialog.close(); });
+      siteDialog.addEventListener('close', () => {
+        if (siteDialog.open) return;
+        siteMap?.destroy();
+        siteMap = null;
+        siteDialog.querySelector('.nq-site-area-map').replaceChildren();
+        siteDialog.querySelector('.nq-site-area-calls').replaceChildren();
+      });
+      // The map downloads as a PNG image or copies as a screenshot (with the element chosen), and so does the table.
+      window.attachImageButtons?.({
+        root: siteDialog, targets: '.nq-map-expand-wrap, .nq-site-area-calls', charts: '.nq-map-expand-wrap', tables: '.nq-site-area-calls',
+        exclude: '.nq-map-zoom, .nq-map-wheel-hint, .nq-map-tooltip, .nq-map-waiting, .nq-map-info-close, .nq-map-selected-content > button, .nq-site-area-table-head > button',
+        obstacles: '.nq-map-zoom, .nq-map-info-close, .nq-l3-panel.is-floating:not(.is-collapsed) > .nq-l3-head', cardOnEdge: false,
+        module, fallbackName: 'Site Area Map', title: () => siteMap?.title() || 'Site Area Map', details: () => siteMap?.details() || {},
+      });
+    }
+    siteMap?.destroy();
+    siteDialog.querySelector('.nq-site-area-title').textContent = `Site Area Map · ${siteTitle(site)}`;
+    siteDialog.querySelector('.nq-site-area-meta').textContent = [...(site.facts || []), HINT].filter(Boolean).join(' · ');
+    const link = siteDialog.querySelector('.nq-site-area-link');
+    link.hidden = !nqHref;
+    link.href = nqHref || '#';
+    link.textContent = `Open in ${nqTitle}`;
+    link.title = `Open this map in ${nqTitle}, where its NQ calls open beside it`;
+    const mapHost = siteDialog.querySelector('.nq-site-area-map'), tableHost = siteDialog.querySelector('.nq-site-area-calls');
+    if (!siteDialog.open) siteDialog.showModal();
+    siteMap = mountArea({panel: mapHost, api, toast: siteToast, campaignLabel, cdrTime, number, site, tableHost,
+      openCall: (callKey) => openCall(callKey), filters: () => (site.campaigns?.length ? {campaign: [...site.campaigns]} : {})});
+    siteMap.load();
+    return siteMap;
+  }
+
+  // What a link to the map of a site carries (``#site-area=``), and the site it gives back.
+  const SITE_LINK_FIELDS = ['site_id', 'network', 'operator_label', 'operators', 'latitude', 'longitude', 'campaigns', 'scope_text', 'facts'];
+  const siteAreaHash = (site) => `site-area=${encodeURIComponent(JSON.stringify(Object.fromEntries(SITE_LINK_FIELDS
+    .filter((key) => site[key] !== undefined && site[key] !== null && site[key] !== '').map((key) => [key, site[key]]))))}`;
+  const siteFromHash = (hash) => {
+    const match = String(hash || '').replace(/^#/, '').match(/^site-area=(.+)$/);
+    if (!match) return null;
+    try {
+      const site = JSON.parse(decodeURIComponent(match[1]));
+      if (!site || typeof site !== 'object' || !String(site.site_id || '').trim()) return null;
+      const numberOrNull = (value) => (value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value));
+      return {site_id: String(site.site_id).trim(), network: String(site.network || ''), operator_label: String(site.operator_label || ''),
+        operators: (Array.isArray(site.operators) ? site.operators : [site.operator_label]).map(String).filter(Boolean),
+        latitude: numberOrNull(site.latitude), longitude: numberOrNull(site.longitude),
+        campaigns: (Array.isArray(site.campaigns) ? site.campaigns : []).map(String).filter(Boolean),
+        scope_text: String(site.scope_text || ''), facts: (Array.isArray(site.facts) ? site.facts : []).map(String)};
+    } catch (_error) {
+      return null;
+    }
+  };
+
+  window.NqCallMap = {mount, mountArea, openSiteArea, siteAreaHash, siteFromHash};
 })();

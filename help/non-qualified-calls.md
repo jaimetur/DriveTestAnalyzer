@@ -30,6 +30,7 @@ dt-analyzer-rca
 | Know which calls to analyse first: the scoring points they lose, the repeated issues and the Voice and Data queues of the teams | [NQ Prioritization](#nq-prioritization) |
 | See the failures that repeat close in time, in distance or both | [NQ Hotspots, Time-Window & Clustered Issues](#nq-hotspots-time-window--clustered-issues) |
 | See every filtered call, its CDR and its Layer3 Logs on one map, from the whole country down to one call | [NQ Maps](#nq-maps) |
+| See the NQ calls of a site to review and of the sites around it, with their `JOIN_ID`s | [Map of a site](#map-of-a-site) |
 | Choose the strategy of the workspace: Dual Queue (Cities first), Dual Queue (Roads first), Dual Queue (Scoring Based), Vodafone Proposal or one of your own | [Strategies](#strategies) |
 | Choose which calls are prioritized, by service, NR Mode and operator, and the Priority they take | [Prioritization Rules](#prioritization-rules) |
 | Compare the NQ rate of campaigns and operators | [NQ Rate by Campaign and Operator](#nq-rate-by-campaign-and-operator) |
@@ -281,6 +282,20 @@ The **NQ Maps** panel, right below the NQ Hotspots, Time-Window & Clustered Issu
 The map of each call shows the same information focused on it: its own log, and, with **Logs of the NQ calls around** in its card **LOGS Info**, those of the NQ calls of its map (its groups and its area), faded below its own.
 
 App Events records each map read (`nq_l3_maps`, with what it read, the zoom, the layers, the grid, the points or cells, the routes, sites and samples and how long it took) or that could not be read (`nq_l3_maps_failed`).
+
+### Map of a site
+
+The **map of a site** shows the NQ calls of one site and of the sites around it. It opens from a site of **Sites to review** in [Scoring & GAP Analysis](scoring-gap-analysis.md#points-lost), in a floating panel over that page, or from a link to Non-Qualified Calls (its **Open in Non-Qualified Calls** button opens the same map here). It is the larger map of NQ Maps, with the same cards, legend, controls and navigation (the wheel zooms, a double-click zooms in), centred on the site:
+
+- The site is ringed, where the Network Inventory places it (else where its tests were), with a dashed circle of the **Radius** around it.
+- **Radius** (500 m to 10 km, 1 km the first time) chooses the area whose NQ calls the table below lists; the map fits it.
+- **Colour NQ calls by** opens with *Site*: the NQ calls whose CDR gives the site are burgundy.
+- **Operators** opens with the operator of the table only; *Focus operators only* or *Every operator* add the NQ calls of the other operators. Your browser keeps the radius and these choices for the next site.
+- Its NQ calls are those of the campaign of the table of the site (or of the campaigns of the scoring when the table has none); the line above the map says how many there are and how many have Layer3 Logs.
+
+Below the map, a table lists the NQ calls **of the site**, wherever they failed, and those of other sites (or without a site) **within the radius**, of the operators shown: the site first, then the nearest. For each one: its mark on the map, `JOIN_ID`, site (*This site* for those of the site), distance to the site, operator, call type, campaign, start, result, failure, status and root cause (the one decided, else that of the DT Analyzer RCA). A click on a column title sorts the table by it. A click on a `JOIN_ID` shows the call on the map with its panel and its **Signalling timeline**; **Open** opens the call (from Scoring & GAP Analysis in a tab of its own, so the map stays open; here the map closes and the call opens). **Copy the JOIN_IDs** copies the `JOIN_ID` of every call of the table, one per line. The map and the table download as images or copy as screenshots with their image buttons.
+
+App Events records each map of a site as a map read (`nq_l3_maps`, scope *map of a site*), with the site, its network, operator, campaigns, radius, the page it was opened from, how many NQ calls its CDRs give it and whether the Network Inventory places it. A link to a call (`/non-qualified-calls#call=<call key>`) opens that call.
 
 ## NQ Rate by Campaign and Operator
 

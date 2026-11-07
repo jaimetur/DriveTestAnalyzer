@@ -822,6 +822,10 @@
   .scoring-priority.is-high { color: color-mix(in srgb, var(--st-loss) 70%, #000); }
   .scoring-priority.is-medium { color: var(--st-loss); }
   .scoring-priority.is-low { color: #6b7a85; }
+  /* A site of Sites to review opens its map with the NQ calls of the site and of those around it. */
+  .scoring-site-link { min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; color: var(--st-accent, #0b5cad); font: inherit; font-weight: 800; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; cursor: pointer; }
+  .scoring-site-link:hover, .scoring-site-link:focus-visible { text-decoration-thickness: 2px; }
+  .scoring-site-link[aria-busy="true"] { cursor: progress; opacity: .6; }
   /* Operators without any site in the cell inventories: a warning, not a plain note. */
   .scoring-insight-note.scoring-sites-unidentified { margin: .2rem 0 .7rem; padding: .55rem .75rem; border: 1px solid #f2c48d; border-left: 4px solid #c2410c; border-radius: 8px; background: #fff4e5; color: #7c2d12; font-weight: 650; }
   /* The route that loses most: one card per chosen operator. */
@@ -2127,6 +2131,10 @@
     </form>
   </dialog>
   <script type="application/json" data-scoring-config>{{ {'main_cities': scoring_main_cities | default([], true), 'operator_groups': scoring_operator_groups | default([], true), 'aggregation_hierarchy': aggregation_levels | default(['Operator', 'Vendor', 'Region', 'Cluster', 'City', 'Campaign'], true), 'scoring_profiles': scoring_profiles | default([], true), 'active_profile_id': scoring_active_profile_id | default('', true)} | tojson }}</script>
+  {#- The map of a site of Sites to review: the scripts and styles of the maps of Non-Qualified Calls, read the first time
+      a site opens, only for the users of that module. -#}
+  {% if features['non-qualified-calls'] %}{% set nq_tab = module_tabs | selectattr('key', 'equalto', 'non-qualified-calls') | first %}
+  <script type="application/json" data-scoring-nq-map>{{ {'css': static_path('css/nq/non_qualified_calls.css') ~ '?v=' ~ asset_version('css/nq/non_qualified_calls.css'), 'layers': static_path('js/nq/l3_layers.js') ~ '?v=' ~ asset_version('js/nq/l3_layers.js'), 'map': static_path('js/nq/nq_call_map.js') ~ '?v=' ~ asset_version('js/nq/nq_call_map.js'), 'href': '/non-qualified-calls', 'title': nq_tab.title if nq_tab else 'Non-Qualified Calls'} | tojson }}</script>{% endif %}
 </section>
 {% endblock %}
 {% block extra_scripts %}

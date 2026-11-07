@@ -1,5 +1,5 @@
 /* Non-Qualified Calls: raspberry palette shared by the tab, header and every control. */
-.non-qualified-calls, .nq-drawer, .nq-options-dialog, .nq-toast {
+.non-qualified-calls, .nq-drawer, .nq-options-dialog, .nq-toast, .nq-site-area {
   --nq-color: #b0234f; --nq-dark: #7d1238; --nq-light: #e0507a; --nq-soft: #fcedf2; --nq-softer: #fff7fa;
   --nq-border: #f0c4d3; --nq-text: #3d1824; --nq-muted: #8a6b76;
 }
@@ -97,9 +97,9 @@
 /* Buttons */
 .non-qualified-calls .nq-primary-action, .nq-drawer .nq-primary-action, .nq-options-dialog .nq-primary-action { display: inline-flex; align-items: center; justify-content: center; min-height: 2.45rem; padding: .55rem 1.15rem; border: 1px solid var(--nq-dark); border-radius: 999px; background: linear-gradient(135deg, #7d1238, #c8365f); color: #fff; font-weight: 800; box-shadow: 0 8px 18px rgba(125, 18, 56, .24); }
 :is(.non-qualified-calls, .nq-drawer, .nq-options-dialog) .nq-primary-action:hover:not(:disabled) { background: linear-gradient(135deg, #620d2b, #a92a4f); }
-:is(.non-qualified-calls, .nq-drawer, .nq-options-dialog) .nq-secondary-action { display: inline-flex; align-items: center; min-height: 2.45rem; padding: .5rem 1rem; border: 1px solid var(--nq-border); border-radius: 999px; background: #fff; color: var(--nq-dark); font-weight: 780; box-shadow: none; }
+:is(.non-qualified-calls, .nq-drawer, .nq-options-dialog, .nq-site-area) .nq-secondary-action { display: inline-flex; align-items: center; min-height: 2.45rem; padding: .5rem 1rem; border: 1px solid var(--nq-border); border-radius: 999px; background: #fff; color: var(--nq-dark); font-weight: 780; box-shadow: none; }
 :is(.non-qualified-calls, .nq-drawer, .nq-options-dialog) .nq-secondary-action:hover:not(:disabled) { border-color: var(--nq-color); background: var(--nq-soft); }
-:is(.non-qualified-calls, .nq-drawer) .nq-link-action { min-height: 0; padding: .15rem .35rem; border: 0; border-radius: 6px; background: transparent; color: var(--nq-color); font-size: .8rem; font-weight: 800; box-shadow: none; }
+:is(.non-qualified-calls, .nq-drawer, .nq-site-area) .nq-link-action { min-height: 0; padding: .15rem .35rem; border: 0; border-radius: 6px; background: transparent; color: var(--nq-color); font-size: .8rem; font-weight: 800; box-shadow: none; }
 :is(.non-qualified-calls, .nq-drawer) .nq-link-action:hover:not(:disabled) { background: var(--nq-soft); }
 .nq-drawer .nq-link-action.is-danger, .non-qualified-calls .nq-link-action.is-danger { color: #a3263a; }
 
@@ -1469,7 +1469,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-columns-scope[hidden] { display: none; }
 /* The buttons the page hides (Save of a configuration the role cannot change, Save for the workspace, Default column
    order…) stay hidden despite their display. */
-:is(.non-qualified-calls, .nq-drawer, .nq-options-dialog) :is(.nq-primary-action, .nq-secondary-action, .nq-link-action)[hidden] { display: none; }
+:is(.non-qualified-calls, .nq-drawer, .nq-options-dialog, .nq-site-area) :is(.nq-primary-action, .nq-secondary-action, .nq-link-action)[hidden] { display: none; }
 /* NQ Prioritization: the panel and its rules. */
 .nq-priority { display: grid; gap: 1.1rem; }
 /* The queues, the steps, the Scoring Impact and the repeated issues, each in a subpanel as those of Lifecycle & Phases. */
@@ -1932,8 +1932,8 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-ruler .nq-map-canvas:not(.is-measuring) { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='%23fff' stroke-width='4' stroke-linecap='round'%3E%3Cpath d='M4 20 20 4M7 17l2 2M10 14l2 2M13 11l2 2M16 8l2 2'/%3E%3C/g%3E%3Cg fill='none' stroke='%237d1238' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 20 20 4M7 17l2 2M10 14l2 2M13 11l2 2M16 8l2 2'/%3E%3C/g%3E%3C/svg%3E") 3 21, crosshair; }
 .nq-map-zoom { position: absolute; top: 8px; right: 8px; z-index: 5; display: flex; align-items: center; gap: 3px; padding: 4px; border: 1px solid var(--nq-border); border-radius: 999px; background: rgba(255, 255, 255, .95); box-shadow: 0 5px 16px rgba(60, 4, 24, .18); opacity: 0; visibility: hidden; transition: opacity .18s ease, visibility 0s linear .18s; }
 .nq-map-card:hover .nq-map-zoom, .nq-map-card:focus-within .nq-map-zoom, .nq-map-zoom.is-shown { opacity: 1; visibility: visible; transition-delay: 0s; }
-.nq-drawer .nq-map-zoom-button, .nq-l3-maps-panel .nq-map-zoom-button { display: grid; place-items: center; width: 1.65rem; min-width: 1.65rem; height: 1.65rem; min-height: 1.65rem; padding: 0; border: 0; border-radius: 999px; background: var(--nq-color); color: #fff; font: 800 1rem/1 inherit; cursor: pointer; box-shadow: none; }
-.nq-drawer .nq-map-zoom-reset, .nq-l3-maps-panel .nq-map-zoom-reset { font-size: .62rem; }
+.nq-drawer .nq-map-zoom-button, .nq-l3-maps-panel .nq-map-zoom-button, .nq-site-area .nq-map-zoom-button { display: grid; place-items: center; width: 1.65rem; min-width: 1.65rem; height: 1.65rem; min-height: 1.65rem; padding: 0; border: 0; border-radius: 999px; background: var(--nq-color); color: #fff; font: 800 1rem/1 inherit; cursor: pointer; box-shadow: none; }
+.nq-drawer .nq-map-zoom-reset, .nq-l3-maps-panel .nq-map-zoom-reset, .nq-site-area .nq-map-zoom-reset { font-size: .62rem; }
 .nq-map-zoom-level { min-width: 2.8rem; color: var(--nq-dark); font-size: .68rem; font-weight: 800; text-align: center; }
 /* The cards over the top left of a map, side by side (an unfolded one below the other on a narrow map): CDR Info (in the colour of NQ
    Calls) and LOGS Info (l3_layers.js), as glass panels with a switch in their header, ending above the panels over the bottom of
@@ -1997,7 +1997,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-profile-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .7rem; }
 .nq-map-profile-head { cursor: pointer; }
 .nq-map-profile-head strong { color: #3d1824; font-size: .74rem; letter-spacing: .05em; text-transform: uppercase; }
-.nq-drawer .nq-map-profile-title, .nq-l3-maps-panel .nq-map-profile-title, .nq-map-profile-title { display: inline-flex; align-items: center; gap: .35rem; min-height: 0; padding: 0; border: 0; background: none; color: inherit; box-shadow: none; cursor: pointer; }
+.nq-drawer .nq-map-profile-title, .nq-l3-maps-panel .nq-map-profile-title, .nq-site-area .nq-map-profile-title, .nq-map-profile-title { display: inline-flex; align-items: center; gap: .35rem; min-height: 0; padding: 0; border: 0; background: none; color: inherit; box-shadow: none; cursor: pointer; }
 .nq-map-profile-span { color: #4f6b75; font-weight: 700; font-variant-numeric: tabular-nums; }
 .nq-map-profile-stats { display: flex; flex-wrap: wrap; gap: .2rem .4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .nq-map-profile-stats span { padding: 0 .45rem; border-radius: 999px; background: #f1f5f6; }
@@ -2108,7 +2108,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-area { grid-column: 1 / -1; }
 .nq-map-selected-content { display: grid; gap: .45rem; }
 .nq-map-selected-content > .nq-secondary-action { justify-self: start; }
-.nq-drawer .nq-map-info-close, .nq-l3-maps-panel .nq-map-info-close { display: grid; place-items: center; width: 1.6rem; min-width: 1.6rem; height: 1.6rem; min-height: 0; margin-left: auto; padding: 0; border: 1px solid var(--nq-border); border-radius: 50%; background: #fff; color: var(--nq-dark); font-size: 1rem; line-height: 1; box-shadow: none; }
+.nq-drawer .nq-map-info-close, .nq-l3-maps-panel .nq-map-info-close, .nq-site-area .nq-map-info-close { display: grid; place-items: center; width: 1.6rem; min-width: 1.6rem; height: 1.6rem; min-height: 0; margin-left: auto; padding: 0; border: 1px solid var(--nq-border); border-radius: 50%; background: #fff; color: var(--nq-dark); font-size: 1rem; line-height: 1; box-shadow: none; }
 .nq-map-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .2rem .75rem; margin: .45rem 0 0; }
 .nq-map-facts dt { color: var(--nq-muted); font-size: .74rem; font-weight: 800; }
 .nq-map-facts dd { margin: 0; color: var(--nq-text); font-size: .8rem; overflow-wrap: anywhere; }
@@ -2179,7 +2179,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-expand-header .eyebrow .nq-service { margin-left: .3rem; letter-spacing: .04em; vertical-align: 1px; }
 .nq-map-expand-header h3 { margin: .15rem 0 0; color: var(--nq-dark); font-size: 1.15rem; }
 .nq-map-expand-header .form-note { margin: .2rem 0 0; }
-.nq-drawer .nq-map-expand-close, .nq-l3-maps-panel .nq-map-expand-close { display: grid; place-items: center; width: 2.3rem; min-width: 2.3rem; height: 2.3rem; min-height: 2.3rem; padding: 0; border: 1px solid var(--nq-border); border-radius: 999px; background: #fff; color: var(--nq-dark); font-size: 1.4rem; line-height: 1; box-shadow: none; }
+.nq-drawer .nq-map-expand-close, .nq-l3-maps-panel .nq-map-expand-close, .nq-site-area .nq-map-expand-close { display: grid; place-items: center; width: 2.3rem; min-width: 2.3rem; height: 2.3rem; min-height: 2.3rem; padding: 0; border: 1px solid var(--nq-border); border-radius: 999px; background: #fff; color: var(--nq-dark); font-size: 1.4rem; line-height: 1; box-shadow: none; }
 .nq-map-expand-content { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding: .8rem 1rem 1rem; overflow-y: auto; }
 /* The larger map fills the dialog below its controls, at least 60 % of the window high: its legend scrolls below it. Its
    canvas takes the whole card (its height is not set, so a canvas in the flow would keep the height of its drawing). */
@@ -2194,6 +2194,29 @@ body:has(dialog.nq-map-expand[open]) { overflow: hidden; }
 @media (hover: none), (pointer: coarse) { .nq-map-zoom { opacity: 1; visibility: visible; } }
 /* NQ Maps larger: the whole width of the window but 2 % on each side. */
 .nq-map-expand.is-wide { width: 96vw; max-width: 96vw; height: 96vh; max-height: 96vh; height: 96dvh; max-height: 96dvh; }
+/* The map of a site (Sites to review of Scoring & GAP Analysis, or a link to Non-Qualified Calls): the larger map, and below it
+   the table of the NQ calls of the site and of the radius around it. */
+.nq-site-area .nq-map-expand-header { flex-wrap: wrap; }
+.nq-site-area .nq-map-expand-header > div:first-child { flex: 1 1 18rem; min-width: 0; }
+/* (On a narrow window they go below the title, on the right.) */
+.nq-site-area-actions { display: flex; align-items: center; gap: .6rem; margin-left: auto; }
+.nq-site-area-actions .nq-secondary-action { min-height: 2.3rem; padding: .35rem .95rem; text-decoration: none; white-space: nowrap; }
+.nq-site-area-map { display: flex; flex-direction: column; flex: 1 0 auto; }
+.nq-site-area .nq-map-status { margin: 0 0 .45rem; }
+.nq-site-area .nq-map-card { min-height: 62vh; }
+.nq-site-area-calls { margin-top: .9rem; }
+.nq-site-area-table-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: .35rem; }
+.nq-site-area-table-head h4 { margin: 0; color: var(--nq-dark); font-size: .95rem; }
+.nq-site-area-table-head .form-note { margin: .15rem 0 0; }
+.nq-site-area-table-head .nq-secondary-action { flex: none; min-height: 2.1rem; padding: .3rem .9rem; }
+.nq-site-area .nq-site-area-table-wrap { max-height: none; }
+.nq-site-area-table td:last-child { white-space: nowrap; }
+.nq-site-area-table tr.is-own td { background: var(--nq-softer); }
+.nq-site-area-table tr.is-chosen td { background: var(--nq-soft); box-shadow: inset 0 1px 0 var(--nq-border), inset 0 -1px 0 var(--nq-border); }
+.nq-site-area-table .nq-map-mark { display: inline-block; vertical-align: middle; }
+.nq-site-area .nq-site-area-sort { min-height: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; box-shadow: none; cursor: pointer; }
+.nq-site-area .nq-site-area-join { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .74rem; }
+.nq-site-area .nq-site-area-join:disabled { color: var(--nq-muted); cursor: default; }
 @media (max-width: 640px) {
   .nq-drawer .nq-drawer-map { padding: .3rem .6rem; }
   .nq-map-toolbar { flex-wrap: wrap; }

@@ -7283,6 +7283,8 @@
         if (content instanceof Node) cell.append(content);
         else if (content && typeof content === 'object') {
           cell.textContent = content.text ?? '';
+          // (An element in place of the text, with the class of its cell: the link of a site of Sites to review.)
+          if (content.node) cell.replaceChildren(content.node);
           if (content.colSpan) cell.colSpan = content.colSpan;
           if (content.rowSpan) cell.rowSpan = content.rowSpan;
           if (content.kpiType) {
@@ -8631,6 +8633,82 @@
       : 'The kind of each serving site: the network that owns it and, when another network hosts its RAN, "on" that network (Beacon, MORAN); NNS sites apart. In red, a share of the points lost well above the share of the tests.'));
   }
 
+  // The map of a site of Sites to review: the NQ calls of the site and of the sites around it, on the larger map of
+  // Non-Qualified Calls (nq_call_map.js openSiteArea) in a floating panel over the page, with the table of their JOIN_IDs.
+  // Its scripts and styles are read the first time a site opens. Only for the users of Non-Qualified Calls: for the
+  // others the site stays plain text.
+  const nqMapConfig = (() => {
+    try {
+      return JSON.parse(root.querySelector('[data-scoring-nq-map]')?.textContent || 'null');
+    } catch {
+      return null;
+    }
+  })();
+  let nqMapScripts = null;
+  function loadNqMapScripts() {
+    if (window.NqCallMap?.openSiteArea) return Promise.resolve();
+    if (!nqMapScripts) {
+      if (!document.querySelector('link[data-scoring-nq-map-style]')) {
+        const style = document.createElement('link');
+        style.rel = 'stylesheet';
+        style.href = nqMapConfig.css;
+        style.dataset.scoringNqMapStyle = '';
+        document.head.append(style);
+      }
+      const script = src => new Promise((resolve, reject) => {
+        const element = document.createElement('script');
+        element.src = src;
+        element.onload = resolve;
+        element.onerror = () => { element.remove(); reject(new Error('The map of the site could not be read. Reload the page and try again.')); };
+        document.head.append(element);
+      });
+      nqMapScripts = (window.L3Layers ? Promise.resolve() : script(nqMapConfig.layers)).then(() => script(nqMapConfig.map))
+        .catch(error => { nqMapScripts = null; throw error; });
+    }
+    return nqMapScripts;
+  }
+
+  async function openSiteMap(item, row, button, resultCampaigns) {
+    button.setAttribute('aria-busy', 'true');
+    try {
+      await loadNqMapScripts();
+    } catch (error) {
+      if (typeof showInfoDialog === 'function') showInfoDialog(error.message, {tone: 'error', title: 'The map could not be opened'});
+      else window.alert(error.message);
+      return;
+    } finally {
+      button.removeAttribute('aria-busy');
+    }
+    // Its NQ calls are those of the campaign of the table, else of the campaigns of the result (every campaign without them).
+    const campaigns = item.context?.campaign ? [item.context.campaign] : [...new Set((resultCampaigns || []).filter(Boolean))];
+    const campaignText = item.campaign || campaigns.map(campaignLabelOf).join(', ');
+    const site = {
+      site_id: String(row.site), network: row.network || '', operator_label: item.label || item.operator,
+      operators: [...new Set([item.operator, item.label].filter(Boolean))],
+      latitude: Number.isFinite(row.latitude) ? row.latitude : null, longitude: Number.isFinite(row.longitude) ? row.longitude : null,
+      campaigns, scope_text: campaigns.length ? `of ${campaignText}` : 'of every campaign',
+      facts: [item.label, campaignText, row.vendor, row.city, `${insightNumber(row.points, 1)} points lost`, `${row.priority} priority`].filter(Boolean),
+      opened_from: 'Scoring & GAP Analysis · Sites to review',
+    };
+    window.NqCallMap.openSiteArea({
+      site, module: 'scoring', campaignLabel: campaignLabelOf, nqTitle: nqMapConfig.title,
+      nqHref: `${nqMapConfig.href}#${window.NqCallMap.siteAreaHash(site)}`,
+      // A call opens in Non-Qualified Calls, in a tab of its own (the map stays open here).
+      openCall: callKey => window.open(`${nqMapConfig.href}#call=${encodeURIComponent(callKey)}`, '_blank', 'noopener'),
+    });
+  }
+
+  function siteMapLink(item, row, campaigns) {
+    if (!nqMapConfig || !row.site) return null;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'scoring-site-link';
+    button.textContent = row.site;
+    button.title = `Open Site ${row.site} on a map with its NQ calls and those of the sites around it`;
+    button.addEventListener('click', () => openSiteMap(item, row, button, campaigns));
+    return button;
+  }
+
   function renderSitesToReview(pane, payload, environment, pending) {
     const items = insightItems(payload, 'sites_to_review', environment);
     // The operators none of whose serving cells is in the cell inventories have no site to review: a note says so.
@@ -8668,7 +8746,7 @@
       wrapper.append(banner, insightTable(['Priority', 'Site', 'Network', 'Vendor', 'City or route', 'Points lost', 'Failed tests',
         ...item.earlier_campaigns.map(campaign => `${campaign} points`)], item.rows.map(row => [
         {text: row.priority, className: `scoring-priority is-${row.priority.toLowerCase()}`},
-        {text: row.site, className: 'scoring-insight-kpi'}, row.network || '—', row.vendor || '—', row.city || '—',
+        {text: row.site, node: siteMapLink(item, row, payload?.campaigns), className: 'scoring-insight-kpi'}, row.network || '—', row.vendor || '—', row.city || '—',
         gapBarCell(row.points, peak, {loss: true, total: true}),
         {text: row.failures ? insightNumber(row.failures, 0) : '—', className: 'scoring-insight-number'},
         ...row.history.map(entry => ({text: entry.points ? insightNumber(entry.points, 1) : '—', className: 'scoring-insight-number'})),
