@@ -1591,15 +1591,17 @@ def install_design_routes(core):
         """Prepare (in memory) the universe of the saved Design behind an export when it is not prepared yet."""
         with lock:
             saved = read_designs(task_repository).get(design_id)
-        if not isinstance(saved, dict):
+        # An export in another NR Mode than the saved Design (an SA Design in an NSA Bundle Report Template reads the
+        # NSA CDRs) has no saved universe to prepare: its own preparation follows.
+        if not isinstance(saved, dict) or design_nr_mode(saved) != design_nr_mode(definition):
             return
         universe = DesignDefinition.model_validate(runtime_design_definition(saved, task_repository))
         universe.datasets = {kind: list(ids) for kind, ids in definition.datasets.items()}
         universe.scope = definition.scope
         universe.date_from, universe.date_to = 'Oldest', 'Newest'
-        if restore_matching_preview_manifest(workspace, design_id, universe, materialize=False) is not None:
-            return
         try:
+            if restore_matching_preview_manifest(workspace, design_id, universe, materialize=False) is not None:
+                return
             with design_work_gate:
                 preview = build_preview(universe, user, workspace=workspace, cancelled=cancelled, progress=progress)
         except HTTPException:

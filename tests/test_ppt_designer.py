@@ -656,6 +656,28 @@ def test_design_ppt_job_vendor_comparison_survives_retry_without_manifest(client
     assert restored['status'] == 'queued'
 
 
+def test_an_sa_design_exported_in_another_nr_mode_reads_the_cdrs_of_that_nr_mode(client):
+    payload = setup_design(client)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and core.repository.get_dataset(1)['status'] != 'ready':
+        time.sleep(0.05)
+    assert core.repository.get_dataset(1)['status'] == 'ready'
+    design_id = 'sa-design-in-nsa-report'
+    assert client.put(f'/api/ppt-designer/{design_id}', json={**payload, 'nr_mode': 'SA'}).status_code == 200
+
+    # As a Bundle Report Template of NSA generates it: with the NSA CDRs (there is no SA one).
+    queued = client.post(f'/api/ppt-designer/{design_id}/export-ppt', json={'definition': {**payload, 'nr_mode': 'NSA'}})
+    assert queued.status_code == 202, queued.text
+    job_id = queued.json()['job_id']
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        job = next(item for item in client.get('/api/ppt-designer/ppt-jobs').json()['jobs'] if item['id'] == job_id)
+        if job['status'] in {'ready', 'failed'}:
+            break
+        time.sleep(0.05)
+    assert job['status'] == 'ready', job
+
+
 def test_design_library_ppt_scope_builds_its_automatic_dataset_universe(client):
     payload = setup_design(client)
     deadline = time.monotonic() + 15

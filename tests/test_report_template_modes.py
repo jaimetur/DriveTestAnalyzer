@@ -206,6 +206,42 @@ def test_bundle_report_templates_generate_every_design_with_their_nr_mode(tmp_pa
     assert queued == [('nsa-dash', 'SA')] and deck.decks == [('nsa-dash', b'pptx')]
 
 
+def test_bundle_report_templates_keep_the_designs_generated_when_another_one_fails(tmp_path):
+    from types import SimpleNamespace
+
+    import pytest
+
+    from src.modules.reporting.bundle_report_templates import (BundleReportTemplateError, SectionGenerator,
+                                                               normalize_definition)
+
+    output = tmp_path / 'deck.pptx'
+    output.write_bytes(b'pptx')
+    rows = {1: {'status': 'ready', 'output_path': str(output), 'progress': 100, 'last_error': ''},
+            2: {'status': 'failed', 'output_path': '', 'progress': 100, 'last_error': '400: No ready SA CDR.'}}
+    designs = {'nsa-dash': {'name': 'NSA one', 'nr_mode': 'NSA', 'template': 'Report', 'filters': {}},
+               'sa-dash': {'name': 'SA one', 'nr_mode': 'SA', 'template': 'Report', 'filters': {}}}
+    jobs = iter([1, 2])
+    tools = SimpleNamespace(list_designs=lambda _repository: designs,
+                            queue_export=lambda _key, _user, _definition, theme=None: next(jobs),
+                            job=lambda _repository, job_id: rows[job_id])
+
+    def generate(*keys):
+        definition = normalize_definition({'filters': {'nr_mode': 'NSA'}, 'sections': [
+            {'key': 'designs', 'enabled': True, 'items': [{'key': key, 'enabled': True} for key in keys],
+             'options': {'campaigns': []}}]})
+        section = next(item for item in definition['sections'] if item['key'] == 'designs')
+        return SectionGenerator(SimpleNamespace(design_reporting=tools), SimpleNamespace(list_main_cities=lambda: []), 'super',
+                                definition, tmp_path).designs(section)
+
+    deck = generate('nsa-dash', 'sa-dash')
+    # The Design that failed is named on the cover of the section; the one generated stays in the report.
+    assert deck.decks == [('nsa-dash', b'pptx')] and deck.lines == ['Skipped: SA one: 400: No ready SA CDR.']
+    rows[3] = rows[2]
+    jobs = iter([3])
+    with pytest.raises(BundleReportTemplateError, match='Skipped: SA one: 400: No ready SA CDR.'):
+        generate('sa-dash')
+
+
 def test_bundle_report_templates_give_the_parameters_of_a_design_the_values_of_their_common_filters(tmp_path):
     from types import SimpleNamespace
     from src.modules.reporting.bundle_report_templates import SectionGenerator, normalize_definition

@@ -1399,21 +1399,31 @@ class SectionGenerator:
                 definition.update(parameter_values=parameter_values, slide_comments={}, slide_comment_meta={})
             job_id = tools.queue_export(item['key'], self.user, definition, theme=self.definition.get('theme'))
             deadline = time.monotonic() + DESIGN_TIMEOUT_SECONDS
+            # A PPT Design that fails leaves the others in the section, which names it on its cover.
+            problem = ''
             while True:
                 row = tools.job(self.repository, job_id)
                 if row is None:
-                    raise BundleReportTemplateError('The PPT Designer job was deleted.')
+                    problem = 'The PPT Designer job was deleted.'
+                    break
                 if str(row['status']) == 'ready':
                     break
-                if str(row['status']) in {'failed', 'stopped'}:
-                    raise BundleReportTemplateError(str(row['last_error'] or f"The PPT Designer job {row['status']}."))
+                if str(row['status']) == 'stopped':
+                    raise BundleReportTemplateCancelled('The PPT Designer job stopped.')
+                if str(row['status']) == 'failed':
+                    problem = str(row['last_error'] or 'The PPT Designer job failed.')
+                    break
                 if time.monotonic() > deadline:
-                    raise BundleReportTemplateError('The PPT Designer job did not finish within three hours.')
+                    problem = 'The PPT Designer job did not finish within three hours.'
+                    break
                 self.progress(f"Generating the PPT Design {names.get(item['key'])} ({int(row['progress'] or 0)}%)")
                 time.sleep(2)
+            if problem:
+                deck.lines.append(f"Skipped: {names.get(item['key'])}: {problem}")
+                continue
             deck.decks.append((item['key'], Path(str(row['output_path'])).read_bytes()))
         if not deck.decks:
-            raise BundleReportTemplateError('None of the chosen PPT Designs was generated.')
+            raise BundleReportTemplateError(' '.join(deck.lines) or 'None of the chosen PPT Designs was generated.')
         return deck
 
     def scoring(self, section: dict[str, Any]) -> SectionDeck:
@@ -1870,6 +1880,8 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
             warnings.append(f"{titles[section['key']]}: {getattr(exc, 'detail', exc)}")
             continue
         deck.title = titles[section['key']]
+        # What a section left out (a PPT Design or a CDR that failed) is also listed with the sections that failed.
+        warnings.extend(f"{deck.title}: {line.removeprefix('Skipped: ')}" for line in deck.lines if line.startswith('Skipped: '))
         designs = deck.item_titles if section['key'] == 'designs' else None
         deck.lines = [*section_lines(section, designs, methodology_names), *deck.lines]
         decks.append(deck)
