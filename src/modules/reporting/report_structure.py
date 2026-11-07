@@ -253,12 +253,82 @@ def add_svg_fallbacks(presentation: Any) -> None:
                 blip.set(qn('r:embed'), part.relate_to(images[name], RELATIONSHIP_TYPE.IMAGE))
 
 
+CHART_URI = 'http://schemas.openxmlformats.org/drawingml/2006/chart'
+
+
+def _transform(element: Any) -> Any:
+    """The a:xfrm (p:xfrm of a graphic frame) that places a shape of a group, or None."""
+    from pptx.oxml.ns import qn
+
+    if element.tag == qn('p:graphicFrame'):
+        return element.find(qn('p:xfrm'))
+    properties = element.find(qn('p:grpSpPr' if element.tag == qn('p:grpSp') else 'p:spPr'))
+    return None if properties is None else properties.find(qn('a:xfrm'))
+
+
+def _is_chart(element: Any) -> bool:
+    from pptx.oxml.ns import qn
+
+    return element.tag == qn('p:graphicFrame') and any(data.get('uri') == CHART_URI for data in element.iter(qn('a:graphicData')))
+
+
+def _take_out_charts(group: Any) -> None:
+    """Put the charts of ``group`` (and the shapes under them) right before it, where the group shows them; the shapes
+    above them stay in the group, which keeps its place (an empty group goes)."""
+    from pptx.oxml.ns import qn
+
+    frame = group.find(qn('p:grpSpPr')).find(qn('a:xfrm'))
+    offset, size = frame.find(qn('a:off')), frame.find(qn('a:ext'))
+    child_offset, child_size = frame.find(qn('a:chOff')), frame.find(qn('a:chExt'))
+    scale_x = int(size.get('cx')) / int(child_size.get('cx')) if int(child_size.get('cx') or 0) else 1.0
+    scale_y = int(size.get('cy')) / int(child_size.get('cy')) if int(child_size.get('cy') or 0) else 1.0
+    children = [item for item in group if item.tag not in (qn('p:nvGrpSpPr'), qn('p:grpSpPr'))]
+    last_chart = max(index for index, child in enumerate(children) if _is_chart(child))
+    parent = group.getparent()
+    for child in children[:last_chart + 1]:
+        transform = _transform(child)
+        if transform is not None and transform.find(qn('a:off')) is not None and transform.find(qn('a:ext')) is not None:
+            place, extent = transform.find(qn('a:off')), transform.find(qn('a:ext'))
+            place.set('x', str(round(int(offset.get('x')) + (int(place.get('x')) - int(child_offset.get('x'))) * scale_x)))
+            place.set('y', str(round(int(offset.get('y')) + (int(place.get('y')) - int(child_offset.get('y'))) * scale_y)))
+            extent.set('cx', str(round(int(extent.get('cx')) * scale_x)))
+            extent.set('cy', str(round(int(extent.get('cy')) * scale_y)))
+        parent.insert(parent.index(group), child)
+    if len(children) == last_chart + 1:
+        parent.remove(group)
+
+
+def ungroup_charts(presentation: Any) -> None:
+    """Take the charts of the slides out of their groups: the iPhone and Mac previews place a chart of a group in the
+    units of the file instead of points, far outside its slide, and show the slide without it (the bars of the Scoring
+    charts). Each chart goes right before its group, where the group shows it, with the shapes of the group under it;
+    the shapes above it (keys, grids, labels) stay grouped. Groups that are rotated or flipped keep their charts."""
+    from pptx.oxml.ns import qn
+
+    for slide in presentation.slides:
+        kept: list[Any] = []
+        while True:
+            # A chart moves out of one group at a time, so a chart of a group in a group moves out of both.
+            group = next((group for group in slide.shapes._spTree.iter(qn('p:grpSp'))
+                          if not any(group is item for item in kept) and any(_is_chart(child) for child in group)), None)
+            if group is None:
+                break
+            frame = group.find(qn('p:grpSpPr')).find(qn('a:xfrm'))
+            if frame is None or frame.get('rot') not in (None, '0') or frame.get('flipH') in ('1', 'true') \
+                    or frame.get('flipV') in ('1', 'true') or any(frame.find(qn(f'a:{name}')) is None
+                                                                  for name in ('off', 'ext', 'chOff', 'chExt')):
+                kept.append(group)
+                continue
+            _take_out_charts(group)
+
+
 def finish(presentation: Any) -> None:
     """Write the counter of every transition, in order, and give the cover and the transitions their sizes and places.
     The cover is the first slide when it is a cover layout and no transition. The paragraphs without text of the
     tables keep the size of their text (size_empty_table_paragraphs). The slides of a dark theme turn their content dark
     (theme_dark). The shapes the modules draw lose the shadow of the theme (drop_theme_shadows) and the SVG pictures get
-    a PNG (add_svg_fallbacks), so the iPhone and Mac previews draw the slides as PowerPoint does."""
+    a PNG (add_svg_fallbacks) and the charts leave their groups (ungroup_charts), so the iPhone and Mac previews draw the
+    slides as PowerPoint does."""
     from src.modules.reporting.pptx_compose import is_cover
 
     width = presentation.slide_width
@@ -277,3 +347,4 @@ def finish(presentation: Any) -> None:
     darken_presentation(presentation)
     drop_theme_shadows(presentation)
     add_svg_fallbacks(presentation)
+    ungroup_charts(presentation)

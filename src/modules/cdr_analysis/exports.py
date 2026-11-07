@@ -105,12 +105,13 @@ def _add_full_bg(slide, color: str) -> None:
 
 
 def _add_panel(slide, left: float, top: float, width: float, height: float, fill: str = PANEL, line: str = LINE, radius: int = 18):
-    shape = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
+    # Square corners: the iPhone and Mac previews draw a rounded shape as a picture, and in a long report they put on a
+    # slide the pictures of shapes of the slides before it (the cards and cells of Selected Metric Cards over the charts).
+    shape = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
     shape.fill.solid()
     shape.fill.fore_color.rgb = _rgb(fill)
     shape.line.color.rgb = _rgb(line)
     shape.line.width = Pt(1)
-    shape.adjustments[0] = 0.08
     return shape
 
 
@@ -152,7 +153,7 @@ def _add_multiline_textbox(slide, left: float, top: float, width: float, line_he
 
 
 def _add_badge(slide, left: float, top: float, width: float, text: str, *, fill: str, color: str = "#FFFFFF") -> None:
-    badge = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(0.36))
+    badge = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(0.36))
     badge.fill.solid()
     badge.fill.fore_color.rgb = _rgb(fill)
     badge.line.fill.background()

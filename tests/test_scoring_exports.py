@@ -186,6 +186,14 @@ def _nested_shapes(shapes):
             yield from _nested_shapes(shape.shapes)
 
 
+def _group_chart(slide, group):
+    """The chart of a chart group: the finished deck puts it right before its group, out of it, as the iPhone draws a
+    chart of a group outside its slide."""
+    shapes = list(slide.shapes)
+    index = next(position for position, shape in enumerate(shapes) if shape.shape_id == group.shape_id)
+    return next(shape for shape in reversed(shapes[:index]) if shape.has_chart)
+
+
 def _charts_on_slide(slide):
     return [shape.chart for shape in _nested_shapes(slide.shapes) if shape.has_chart]
 
@@ -834,7 +842,7 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
                               if slide.shapes.title.text.split('\n')[0] == 'Best Network Scoring per Service')
     best_service_group = next(shape for shape in best_service_slide.shapes
                               if shape.name == 'Scoring Best Network Service Chart')
-    best_service_chart_shape = next(shape for shape in best_service_group.shapes if shape.has_chart)
+    best_service_chart_shape = _group_chart(best_service_slide, best_service_group)
     assert best_service_chart_shape.chart.category_axis.tick_label_position == XL_TICK_LABEL_POSITION.NEXT_TO_AXIS
     assert not any(shape.name == 'Scoring Chart Aggregation Grid' for shape in best_service_group.shapes)
     assert not any(shape.name == 'Scoring Chart Value Axis Tick' for shape in best_service_group.shapes)
@@ -901,7 +909,7 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
                                if slide.shapes.title.text.split('\n')[0] == 'Best Network Scoring per Category')
     flat_category_group = next(shape for shape in flat_category_slide.shapes
                                if shape.name == 'Scoring Stacked Operator Chart')
-    flat_category_chart_shape = next(shape for shape in flat_category_group.shapes if shape.has_chart)
+    flat_category_chart_shape = _group_chart(flat_category_slide, flat_category_group)
     assert flat_category_chart_shape.chart.category_axis.tick_label_position == XL_TICK_LABEL_POSITION.NEXT_TO_AXIS
     assert not any(shape.name == 'Scoring Chart Aggregation Grid' for shape in flat_category_group.shapes)
     assert not any(shape.name == 'Scoring Chart Value Axis Tick' for shape in flat_category_group.shapes)
@@ -931,7 +939,7 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
                             if title == 'Best Network Scoring per Category')
     flat_chart_group = next(shape for shape in flat_chart_slide.shapes
                             if shape.name == 'Scoring Stacked Operator Chart')
-    flat_chart_shape = next(shape for shape in flat_chart_group.shapes if shape.has_chart)
+    flat_chart_shape = _group_chart(flat_chart_slide, flat_chart_group)
     _assert_category_shade_bar(
         flat_chart_group, flat_chart_shape,
         list(dict.fromkeys(metric['category'] for metric in METRICS)),
@@ -1167,6 +1175,46 @@ def test_finished_decks_drop_the_theme_shadow_of_their_shapes_and_draw_the_svg_l
     assert {part.partname: len(part.rels) for part, _blip in pictures} == rels
 
 
+def test_finished_decks_take_the_charts_out_of_their_groups_where_the_groups_showed_them():
+    from pptx.enum.shapes import MSO_SHAPE
+    from src.modules.reporting import report_structure
+    from src.modules.scoring.scoring_exports import _slide
+    deck = Presentation(TEMPLATE)
+    slide = _slide(deck, 'Title', 'Subtitle')
+    data = CategoryChartData()
+    data.categories = ['A', 'B']
+    data.add_series('Points', (1, 2))
+    before = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(.2), Inches(1), Inches(1), Inches(1))
+    # A group drawn at half the size of its shapes (as the Bundle Report Templates scale them), with a chart and its key.
+    group = slide.shapes.add_group_shape()
+    chart = group.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(2), Inches(2), Inches(4), Inches(2), data)
+    key = group.shapes.add_textbox(Inches(2), Inches(4), Inches(4), Inches(.4))
+    key.text_frame.text = 'Service types'
+    group.left, group.top, group.width, group.height = Inches(1), Inches(1.5), Inches(2), Inches(1.2)
+    after = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(.2), Inches(5), Inches(1), Inches(1))
+    # A group of a chart alone goes; one without chart keeps its shapes, and so does one turned.
+    alone = slide.shapes.add_group_shape()
+    lonely = alone.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(8), Inches(5), Inches(2), Inches(1), data)
+    plain = slide.shapes.add_group_shape([slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(8), Inches(1), Inches(1), Inches(1))])
+    turned = slide.shapes.add_group_shape()
+    turned.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(8), Inches(3), Inches(2), Inches(2), data)
+    turned._element.grpSpPr.find(qn('a:xfrm')).set('rot', '5400000')
+    report_structure.finish(deck)
+    names = [shape.name for shape in slide.shapes]
+    # The chart is right before its group, where the group drew it; its key stays in the group, where it was.
+    assert names.index(before.name) < names.index(chart.name) == names.index(group.name) - 1 < names.index(after.name)
+    shapes = {shape.name: shape for shape in slide.shapes}
+    assert shapes[chart.name].has_chart and [shape.name for shape in shapes[group.name].shapes] == [key.name]
+    assert (shapes[chart.name].left, shapes[chart.name].top) == (Inches(1), Inches(1.5))
+    assert (shapes[chart.name].width, shapes[chart.name].height) == (Inches(2), Inches(1))
+    assert (shapes[group.name].left, shapes[group.name].top) == (Inches(1), Inches(1.5))
+    assert shapes[lonely.name].has_chart and alone.name not in names
+    assert plain.name in names and turned.name in names and any(shape.has_chart for shape in shapes[turned.name].shapes)
+    # Finishing again changes nothing.
+    report_structure.finish(deck)
+    assert [shape.name for shape in slide.shapes] == names
+
+
 def test_intro_dimension_lines_keep_requested_order_independent_of_hierarchy_configuration():
     fields = ['Campaign', 'City', 'Vendor', 'Operator', 'Region']
     job_fields = {
@@ -1308,7 +1356,7 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
         assert _legend_visible_series_names(page_chart) == page_operators
         service_group = next(shape for shape in page_slide.shapes
                              if shape.name == 'Scoring Best Network Service Chart')
-        service_chart_shape = next(shape for shape in service_group.shapes if shape.has_chart)
+        service_chart_shape = _group_chart(page_slide, service_group)
         _assert_chart_hierarchy_grid(page_slide, service_group, service_chart_shape)
         observed_service_paths.extend(tuple(path) for path in page_paths)
     assert set(observed_service_paths) == all_leaf_paths
@@ -1343,7 +1391,7 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
     for page_slide in chart_slides:
         page_chart_group = next(shape for shape in page_slide.shapes
                                 if shape.name == 'Scoring Chart With Category Key')
-        page_chart_shape = next(shape for shape in page_chart_group.shapes if shape.has_chart)
+        page_chart_shape = _group_chart(page_slide, page_chart_group)
         page_chart = page_chart_shape.chart
         page_paths = page_chart.plots[0].categories.flattened_labels
         page_operators = list(dict.fromkeys(path[0] for path in page_paths))
@@ -1363,7 +1411,7 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
         'Best Network Scoring per Category\nBest Network — Drive - City · National · All Operators · All Vendors'
     chart_group = next(shape for shape in chart_slide.shapes
                        if shape.name == 'Scoring Chart With Category Key')
-    chart_shape = next(shape for shape in chart_group.shapes if shape.has_chart)
+    chart_shape = _group_chart(chart_slide, chart_group)
     chart = chart_shape.chart
     assert chart.has_legend
     assert chart.legend.position == XL_LEGEND_POSITION.TOP
@@ -1428,7 +1476,7 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
     for page_slide in comparison_slides:
         page_group = next(shape for shape in page_slide.shapes
                           if shape.name == 'Scoring Hierarchy Category Comparison Chart')
-        page_chart_shape = next(shape for shape in page_group.shapes if shape.has_chart)
+        page_chart_shape = _group_chart(page_slide, page_group)
         page_chart = page_chart_shape.chart
         page_paths = page_chart.plots[0].categories.flattened_labels
         page_operators = list(dict.fromkeys(path[1] for path in page_paths))
