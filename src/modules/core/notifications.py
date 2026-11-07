@@ -12,7 +12,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Iterable
 
-from src.modules.core.email_delivery import email_delivery_settings, send_email
+from src.modules.core.email_delivery import email_delivery_settings, send_email, subject_line
 from src.modules.core.email_markdown import markdown_html
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix='email-notifications')
@@ -71,7 +71,7 @@ def deliver(repository: Any, *, kind: str, recipients: list[str], subject: str, 
     if not settings['configured'] or not recipients or (switch and not settings.get(switch)):
         return False
     copied = [address for address in dict.fromkeys(cc) if address and address not in recipients]
-    logged = {'kind': kind, 'subject': subject, 'recipients': recipients, 'cc': copied, 'transport': settings['transport'],
+    logged = {'kind': kind, 'subject': subject_line(subject), 'recipients': recipients, 'cc': copied, 'transport': settings['transport'],
               **(details or {})}
 
     def send() -> bool:

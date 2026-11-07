@@ -87,6 +87,8 @@ def test_email_delivery_sends_through_a_power_automate_flow(client, flow):
     assert 'notice=' in tested.headers['location'], tested.headers['location']
     message = flow[-1]
     assert message['url'] == FLOW and message['kind'] == 'test' and message['to'] == 'someone@example.com'
+    # Every email of the tool starts its subject with the prefix of the tool, once.
+    assert message['subject'] == 'DT Analyzer - Test email' and email_delivery.subject_line(message['subject']) == message['subject']
     assert message['reply_to'] == 'admin@example.com' and 'can deliver its emails' in message['html']
     # A flow sends no attachments, and a request too large for it is refused before it is sent.
     with pytest.raises(RuntimeError, match='attachments'):
@@ -162,7 +164,7 @@ def test_access_requests_are_emailed_and_the_requester_is_told_when_activated(cl
     message = flow[-1]
     assert message['kind'] == 'access_request' and message['to'] == 'jaime.tur@ericsson.com'
     assert message['cc'].split(';')[-1] == 'ana.garcia@example.com' and len(message['cc'].split(';')) == 5
-    assert message['reply_to'] == 'ana.garcia@example.com' and message['subject'].endswith('access request: EABCDEF')
+    assert message['reply_to'] == 'ana.garcia@example.com' and message['subject'] == 'DT Analyzer - Access request: EABCDEF'
     assert 'on behalf of <strong>Ana García</strong>' in message['html'] and 'Email: ana.garcia@example.com' in message['html']
     assert core.repository.get_user('EABCDEF').email == 'ana.garcia@example.com'
     assert logged('email_sent')[-1]['kind'] == 'access_request'
@@ -172,6 +174,7 @@ def test_access_requests_are_emailed_and_the_requester_is_told_when_activated(cl
     client.post('/admin/users/bulk', data={'user_ids': [user_id], 'action': 'activate'})
     granted = flow[-1]
     assert granted['kind'] == 'access_granted' and granted['to'] == 'ana.garcia@example.com'
+    assert granted['subject'] == 'DT Analyzer - Your access has been granted'
     assert 'https://tool.example:8443/login' in granted['html'] and 'EABCDEF' in granted['html']
     # Not again for a user that waits for nothing.
     count = len(flow)
@@ -196,6 +199,7 @@ def test_a_user_who_forgot_the_password_chooses_a_new_one_from_an_emailed_link(c
     assert client.post('/api/password-reset', json={'username': 'ependng'}).status_code == 429
     message = flow[-1]
     assert message['kind'] == 'password_reset' and message['to'] == 'pending@example.com'
+    assert message['subject'] == 'DT Analyzer - Choose a new password'
     link = re.search(r'href="(https://tool\.example:8443/login\?reset_token=[^"]+)"', message['html']).group(1)
     token = parse_qs(urlsplit(link.replace('&amp;', '&')).query)['reset_token'][0]
     page = client.get(f'/login?reset_token={token}').text
@@ -242,14 +246,14 @@ def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_t
     first = client.post('/api/tickets', data={'title': 'Export fails', 'description': 'It fails.', 'module': 'scoring', 'priority': 'P2',
                                               'ticket_type': 'bug'}).json()['id']
     # Its reporter gets the confirmation.
-    assert [(item['to'], item['subject']) for item in flow] == [('reporter@example.com', f'Ticket #{first} opened: Export fails')]
+    assert [(item['to'], item['subject']) for item in flow] == [('reporter@example.com', f'DT Analyzer - Ticket #{first} opened: Export fails')]
     assert f'https://tool.example:8443/tickets/{first}' in flow[-1]['html'] and 'It fails.' in flow[-1]['html']
     # Its own comments are not told to it.
     client.post(f'/api/tickets/{first}/comments', data={'body': 'More details.'})
     assert len(flow) == 1
     login(client, 'EOTHERS', 'secret123')
     client.post(f'/api/tickets/{first}/comments', data={'body': 'I see it too.'})
-    assert (flow[-1]['to'], flow[-1]['subject']) == ('reporter@example.com', f'Ticket #{first} new comment: Export fails')
+    assert (flow[-1]['to'], flow[-1]['subject']) == ('reporter@example.com', f'DT Analyzer - Ticket #{first} new comment: Export fails')
     assert 'Eothers User</strong> added a comment' in flow[-1]['html'] and 'I see it too.' in flow[-1]['html']
     # A ticket of another reporter that mentions it: its reporter is told of the new ticket and of its changes.
     second = client.post('/api/tickets', data={'title': 'Same as before', 'description': f'Like #{first}.', 'priority': 'P3',
@@ -293,6 +297,7 @@ def test_reporting_emails_give_download_links_of_the_files_kept_on_the_server(cl
         assert run['status'] == 'sent' and 'as links' in run['email_status'], run
         message = flow[-1]
         assert message['kind'] == 'report' and message['to'] == 'a@example.com;b@example.com'
+        assert message['subject'].startswith('DT Analyzer - Weekly check · ')
         assert 'onedrive' not in message and 'valid for 7 days' in message['html'] and 'Filter: everything' in message['html']
         links = re.findall(r'href="(https://tool\.example:8443/reporting/files/[^"]+)"', message['html'])
         assert len(links) == 1 and run['artifacts'][0]['file_name'] in message['html']

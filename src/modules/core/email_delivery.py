@@ -37,6 +37,8 @@ SMTP_TIMEOUT_SECONDS = 60
 WEBHOOK_TIMEOUT_SECONDS = 30
 # A Teams webhook request of a flow takes about 28 KB: a larger message is refused before it is sent.
 WEBHOOK_MAX_BYTES = 27_000
+# Every email of the tool starts its subject with it, so mail clients and rules can tell them apart.
+SUBJECT_PREFIX = 'DT Analyzer - '
 
 # Deployment defaults; values saved in Application Config take precedence.
 EMAIL_ENVIRONMENT_DEFAULTS = {
@@ -199,10 +201,16 @@ def read_link(repository: Any, token: str, kind: str) -> dict[str, Any] | None:
 
 
 # -- sending -----------------------------------------------------------------------------------------------------------
+def subject_line(subject: str) -> str:
+    """The subject an email of the tool is sent with: ``subject`` after the prefix of the tool (once)."""
+    subject = str(subject or '').strip()
+    return subject if subject.startswith(SUBJECT_PREFIX) else f'{SUBJECT_PREFIX}{subject}'
+
+
 def build_email(settings: dict[str, Any], recipients: list[str], subject: str, text: str, html: str,
                 attachments: list[tuple[str, Path]], *, cc: list[str] | None = None, reply_to: str = '') -> EmailMessage:
     message = EmailMessage()
-    message['Subject'] = subject
+    message['Subject'] = subject_line(subject)
     message['From'] = formataddr((settings.get('from_name') or '', settings['from_address']))
     message['To'] = ', '.join(recipients)
     if cc:
@@ -226,7 +234,7 @@ def webhook_payload(settings: dict[str, Any], recipients: list[str], subject: st
     payload: dict[str, Any] = {
         'kind': kind, 'to': ';'.join(recipients), 'cc': ';'.join(cc or []),
         # Replies go to whoever the message is for (a requester), else to the sender address of Email Delivery.
-        'reply_to': reply_to or settings.get('from_address') or '', 'subject': subject, 'html': html,
+        'reply_to': reply_to or settings.get('from_address') or '', 'subject': subject_line(subject), 'html': html,
     }
     return payload
 

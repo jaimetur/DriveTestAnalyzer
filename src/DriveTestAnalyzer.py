@@ -87,7 +87,7 @@ from src.modules.mapping.value_maps import ValueMapper, field_kind
 from src.modules.reporting.report_layouts import canonical_layout_name, selectable_layout_name
 from src.modules.cdr_analysis.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, calculated_dimension_editor_json, calculated_dimension_preview, calculated_dimension_reads, CALCULATED_FIELD_OPERATORS, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, preview_catalog_chart_data, render_catalog_chart_preview, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
 from src.modules.cdr_analysis.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
-from src.modules.core.email_delivery import DEFAULT_LINK_DAYS, DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_ADDRESS_PATTERN, EMAIL_SECURITY_MODES, EMAIL_TRANSPORTS, MAX_LINK_DAYS, email_delivery_settings, invalid_recipients, parse_recipients, read_link, save_email_delivery_settings, send_email, sign_link
+from src.modules.core.email_delivery import DEFAULT_LINK_DAYS, DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_ADDRESS_PATTERN, EMAIL_SECURITY_MODES, EMAIL_TRANSPORTS, MAX_LINK_DAYS, email_delivery_settings, invalid_recipients, parse_recipients, read_link, save_email_delivery_settings, send_email, sign_link, subject_line
 from src.modules.network.network_inventory import DEFAULT_NETWORK_BY_KIND, INVENTORY_DATASET_KINDS, MULTIVENDOR_MAPPING_KIND, SNAPSHOT_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, list_mapping_snapshots, mapping_operators, network_family, normalise_snapshot_date
 from src.modules.cdr.l3_dt_logs import KIND as L3_DT_LOGS_KIND, dataset_summary as l3_dataset_summary, forget_datasets as l3_forget_datasets
 from src.modules.cdr.l3_dt_logs import preview_frame as l3_preview_frame, source_columns as l3_source_columns
@@ -15179,7 +15179,7 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         'Thank you,',
         username,
     ])
-    subject = f"{__app_name__} access {'change ' if record else ''}request: {username}"
+    subject = f"Access {'change ' if record else ''}request: {username}"
     approvers_cc = [address for _, address in ACCESS_REQUEST_APPROVERS]
     # Sent on its own when Email Delivery is set up: to the administrator, copied to the approvers and the requester, whose
     # address the replies go to. Otherwise (or when it fails) the user sends it from its mail client.
@@ -15194,7 +15194,7 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
     return JSONResponse({
         'username': username, 'name': f'{first_name} {last_name}', 'role': role, 'existing': record is not None,
         'workspaces': workspaces, 'modules_profile': profile_text, 'email_sent': sent,
-        'email': {'to': __author_email__, 'cc': [*approvers_cc, *([email] if email else [])], 'subject': subject, 'body': body},
+        'email': {'to': __author_email__, 'cc': [*approvers_cc, *([email] if email else [])], 'subject': subject_line(subject), 'body': body},
     }, status_code=status.HTTP_201_CREATED)
 
 
@@ -15250,7 +15250,7 @@ def request_password_reset(request: Request, payload: PasswordResetPayload) -> J
                       seconds=PASSWORD_RESET_MINUTES * 60)
     link = f"{email_base_url(request)}/login?{urlencode({'reset_token': token})}"
     names = notifications.people_names(repository)
-    subject = f'{__app_name__}: choose a new password'
+    subject = 'Choose a new password'
     body = notifications.email_page(__app_name__, 'Choose a new password', [
         f'<p>Hello {html.escape(names.get(record.username.casefold(), record.username))},</p>',
         f'<p>A new password was asked for your user <strong>{html.escape(record.username)}</strong> of {html.escape(__app_name__)}. '
@@ -15299,7 +15299,7 @@ def notify_access_granted(before: Any, actor: str, base_url: str) -> None:
     state = user_account_state(updated)
     base = base_url.rstrip('/')
     names = notifications.people_names(repository)
-    subject = f'{__app_name__}: your access has been granted'
+    subject = 'Your access has been granted'
     body = notifications.email_page(__app_name__, 'Your access has been granted', [
         f"<p>Hello {html.escape(updated['first_name'] or updated['username'])},</p>",
         f"<p>{html.escape(names.get(actor.casefold(), actor))} has activated your user <strong>{html.escape(updated['username'])}</strong> "
@@ -23572,7 +23572,7 @@ def send_email_delivery_test(recipient: str = Form(''), user: SessionUser = Depe
     try:
         send_email(
             email_delivery_settings(repository, include_password=True), recipients,
-            f'{__app_name__} · Test email',
+            'Test email',
             f'This test email confirms that {__app_name__} can deliver its emails.',
             notifications.email_page(__app_name__, 'Test email', [
                 f'<p>This test email confirms that <strong>{html.escape(__app_name__)}</strong> can deliver its emails: the scheduled '

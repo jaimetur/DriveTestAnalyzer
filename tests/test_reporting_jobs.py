@@ -403,7 +403,7 @@ def test_reporting_job_runs_emails_and_travels_with_exports(client, monkeypatch,
         run = wait_for_run(client, run_id)
         assert run['status'] == 'sent', run
         message = FakeSMTP.sent[-1]
-        assert message['To'] == 'a@example.com, b@example.com'
+        assert message['To'] == 'a@example.com, b@example.com' and message['Subject'].startswith('DT Analyzer - Weekly check · ')
         body = message.get_body(('plain',)).get_content()
         assert 'Fake report' in body and 'Filter: everything' in body
         assert [part.get_filename() for part in message.iter_attachments()] == [run['artifacts'][0]['file_name']]

@@ -101,7 +101,7 @@ Select **New Reporting Job** (or ✎ Edit on a job) to unfold the **Job Editor**
 
 Enable **Send the artifacts by email** and enter the recipients separated by commas, semicolons or lines. Without email, a run only keeps its artifacts for download.
 
-The email subject is the job name with the run time. Its body lists every file under its title, which says what it is and from which module, with its content and filters (datasets, PPT Scope and filters, Scoring CDRs, Split by levels and filters, Network Insights selection) and every artifact that could not be generated with its reason.
+The email subject is `DT Analyzer - ` followed by the job name and the run time. Its body lists every file under its title, which says what it is and from which module, with its content and filters (datasets, PPT Scope and filters, Scoring CDRs, Split by levels and filters, Network Insights selection) and every artifact that could not be generated with its reason.
 
 Configure how the tool sends emails, through an SMTP server or a Power Automate flow, in **Config → Application Config → Email Delivery**; see [Application Config](app-config.md#email-delivery). When the **Public address of the server** of Application Runtime is set, the email gives a download link of each file with its size, which downloads it from the server without signing in for the days set in Email Delivery (60 by default), also for recipients who are not users of the tool, so reports of any size reach them:
 
