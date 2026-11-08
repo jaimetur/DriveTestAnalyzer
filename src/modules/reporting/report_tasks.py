@@ -1370,8 +1370,8 @@ def email_bodies(task_name: str, started: datetime, artifacts: list[dict[str, An
     text.append(f'{heading}:')
     parts.append(f'<p><strong>{heading}</strong></p>' + ('' if cards else '<ol>'))
     for item in ready:
-        # The format of each file and its title (what it is, from which module) on its own line, its file with its link
-        # and size below, then its content.
+        # The format of each file, its title (what it is, from which module) and its file, its download link and size,
+        # then its content.
         link = links.get(item['file_name'])
         size = _size_text(item.get('size'))
         file_format, colour = email_file_format(item['file_name'])
@@ -1379,21 +1379,25 @@ def email_bodies(task_name: str, started: datetime, artifacts: list[dict[str, An
             [f'    Download {file_format}: {link}'] if link else [])
         lines = item.get('details') or [] if details else []
         text.extend(f'    {line}' for line in lines)
-        listed = ''.join(f'<li>{html.escape(line)}</li>' for line in lines)
+        listed = f"<ul>{''.join(f'<li>{html.escape(line)}</li>' for line in lines)}</ul>" if lines else ''
         download = (f'<a href="{html.escape(link, quote=True)}"><strong>Download {html.escape(file_format)}</strong></a> · '
                     if link else '')
-        content = (f"<strong>{html.escape(item['title'])}</strong><br><code>{html.escape(item['file_name'])}</code> "
-                   f"({download}{size}){f'<ul>{listed}</ul>' if listed else ''}")
+        title = f"<strong>{html.escape(item['title'])}</strong><br><code>{html.escape(item['file_name'])}</code>"
         if cards:
-            # (A table, which every mail client colours, Outlook included.)
+            # The format on the heading of the card, with the download link and the size on its right; a table, which
+            # every mail client colours, Outlook included.
+            button = (f'<a href="{html.escape(link, quote=True)}" style="display:inline-block;background:#ffffff;color:{colour};'
+                      f'padding:2px 10px;border-radius:10px;font-weight:bold;text-decoration:none">Download</a> · ' if link else '')
             parts.append(f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:'
-                         f'collapse;margin:0 0 14px;border:1px solid {colour}"><tr><td style="background:{colour};color:#ffffff;'
-                         f'padding:6px 12px;font-size:15px;font-weight:bold">{html.escape(file_format)}</td></tr><tr><td '
-                         f'style="background:{EMAIL_FORMAT_TINTS.get(colour, "#F0F2F3")};padding:10px 12px">{content}</td></tr></table>')
+                         f'collapse;margin:0 0 14px;border:1px solid {colour}"><tr><td style="background:{colour};padding:6px 12px">'
+                         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="color:#ffffff;'
+                         f'font-size:15px;font-weight:bold">{html.escape(file_format)}</td><td align="right" style="color:#ffffff;'
+                         f'font-size:13px;white-space:nowrap">{button}{size}</td></tr></table></td></tr><tr><td style="background:'
+                         f'{EMAIL_FORMAT_TINTS.get(colour, "#F0F2F3")};padding:10px 12px">{title}{listed}</td></tr></table>')
             continue
         badge = (f'<span style="display:inline-block;padding:1px 8px;margin-right:6px;border-radius:10px;background:{colour};'
                  f'color:#ffffff;font-size:12px;font-weight:bold">{html.escape(file_format)}</span>')
-        parts.append(f'<li style="margin-bottom:12px">{badge}{content}</li>')
+        parts.append(f'<li style="margin-bottom:12px">{badge}{title} ({download}{size}){listed}</li>')
     parts.append('' if cards else '</ol>')
     if failed:
         text += ['', f'Not generated ({len(failed)}):'] + [f"- {item['title']}: {item.get('error') or 'failed'}" for item in failed]

@@ -356,20 +356,23 @@ def test_report_emails_name_the_format_of_each_file_so_the_powerpoint_and_word_v
     links = {item['file_name']: f"https://tool.example:8443/reporting/files/{item['file_name']}" for item in artifacts}
     text, markup = report_tasks.email_bodies('Weekly', datetime(2026, 11, 8, 9, 0), artifacts, 'DriveTest Analyzer', links=links,
                                              attached=False, link_days=7)
-    # Each file is a card under a heading of its format, in the colour of its application, and its link says what it
-    # downloads.
+    # Each file is a card under a heading of its format, in the colour of its application, with its download link and
+    # size on the heading.
     assert '[PowerPoint] Bundle Report Template · Weekly (PPT)' in text and '[Word] Bundle Report Template · Weekly (Word)' in text
     assert 'Download PowerPoint: https://tool.example:8443/reporting/files/Weekly report.pptx' in text
-    for name, colour, tint in (('PowerPoint', '#C43E1C', '#FBEDE8'), ('Word', '#185ABD', '#E8EFFA')):
-        assert (f'<td style="background:{colour};color:#ffffff;padding:6px 12px;font-size:15px;font-weight:bold">{name}</td></tr>'
-                f'<tr><td style="background:{tint};padding:10px 12px"><strong>Bundle Report Template · Weekly') in markup
-        assert f'<strong>Download {name}</strong></a> · 2.0 MB' in markup
-    assert markup.count('<table role="presentation"') == 2 and '<ol>' not in markup
+    for name, suffix, colour, tint in (('PowerPoint', 'pptx', '#C43E1C', '#FBEDE8'), ('Word', 'docx', '#185ABD', '#E8EFFA')):
+        heading = re.search(rf'<td style="background:{colour};padding:6px 12px"><table[^>]*><tr><td style="color:#ffffff;font-size:15px;'
+                            rf'font-weight:bold">{name}</td><td align="right"[^>]*>(.*?)</td></tr></table></td></tr><tr><td '
+                            rf'style="background:{tint};', markup)
+        assert heading and f'href="https://tool.example:8443/reporting/files/Weekly report.{suffix}"' in heading.group(1)
+        assert f'color:{colour};' in heading.group(1) and heading.group(1).endswith('>Download</a> · 2.0 MB')
+    assert markup.count('<table role="presentation"') == 4 and '<ol>' not in markup
     # An email that must be shorter lists the files with their format before each title.
     _text, short = report_tasks.email_bodies('Weekly', datetime(2026, 11, 8, 9, 0), artifacts, 'DriveTest Analyzer', links=links,
                                              attached=False, link_days=7, details=False, cards=False)
     assert '<table' not in short and 'NR Mode' not in short
     assert 'background:#185ABD;color:#ffffff;font-size:12px;font-weight:bold">Word</span><strong>Bundle Report' in short
+    assert '<strong>Download Word</strong></a> · 2.0 MB)' in short
     # Other files name their format too, an unknown one by its extension.
     assert report_tasks.email_file_format('table.xlsx') == ('Excel', '#107C41')
     assert report_tasks.email_file_format('layers.kmz')[0] == 'KMZ'
