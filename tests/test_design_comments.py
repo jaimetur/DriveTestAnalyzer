@@ -377,10 +377,3 @@ def test_auto_comments_fill_the_ppt_without_changing_the_design(client):
     assert any(row['action'] == 'auto_design_comments' for row in core.repository.list_logs())
 
 
-def test_reporting_jobs_keep_the_auto_comments_of_each_design():
-    from src.modules.reporting.report_tasks import normalize_definition
-
-    definition = normalize_definition({'name': 'Weekly', 'designs': [
-        {'design_id': 'd1', 'auto_comments': 'generated'}, {'design_id': 'd2'}, {'design_id': 'd3', 'auto_comments': 'every'},
-    ]})
-    assert [entry['auto_comments'] for entry in definition['designs']] == ['generated', 'off', 'off']

@@ -113,17 +113,8 @@ def test_designs_are_replaced_by_identity_or_name_and_the_others_kept(client, tm
     assert {'label': '', 'from': 'Coverage', 'to': 'Coverage v2'} in section['items']
     assert details['headline'] and details['headline'] in notice
 
-    # A Reporting Job that names the Design by its ID on the source finds the one it replaced.
+    # A report that names the Design by its ID on the source finds the one it replaced.
     assert brt.design_aliases(destination_repo) == {'d2': 'x9'}
-    from src.modules.reporting.report_tasks import import_tasks_document, list_tasks
-    document = {'format': 'drivetest-analyzer-reporting-jobs', 'version': 1, 'reporting_jobs': [{
-        'name': 'Weekly', 'enabled': False, 'schedule': {'mode': 'manual'}, 'created_by': 'super',
-        'definition': {'designs': [{'design_id': 'd2', 'label': 'Speed v2'}]},
-    }]}
-    import_tasks_document(destination_repo, json.dumps(document), 'super', parse_recipients=core.parse_recipients,
-                          invalid_recipients=core.invalid_recipients)
-    [job] = list_tasks(destination_repo)
-    assert job['definition']['designs'][0]['design_id'] == 'x9'
 
 
 def test_query_builder_queries_follow_their_renames_and_creators(client, tmp_path):
@@ -386,29 +377,38 @@ def test_designs_transferred_back_and_forth_keep_the_identity_of_their_template_
     assert _designs(first_repo)['d1']['template_uid'] == first_uid and _designs(second_repo)['d1']['template_uid'] == second_uid
 
 
-def test_reporting_jobs_and_excluded_calls_follow_their_renames(client, tmp_path):
+def test_report_schedules_and_excluded_calls_follow_their_renames(client, tmp_path):
     from src.modules.scoring import scoring_exclusions
-    from src.modules.reporting.report_tasks import list_tasks, save_task
+    from src.modules.reporting.report_tasks import list_tasks, rename_report_task, report_favourite_id, save_report_schedule
 
     source, source_repo = _workspace('Jobs source')
     destination, destination_repo = _workspace('Jobs destination')
-    job = save_task(source_repo, None, {'name': 'Weekly', 'definition': {'designs': [{'design_id': 'd1', 'label': 'X'}]},
-                                        'schedule': {'mode': 'manual'}, 'send_email': False, 'recipients': ''}, 'super',
-                    parse_recipients=core.parse_recipients, invalid_recipients=core.invalid_recipients)
+    report = brt.save_favourite(source_repo, None, 'Weekly', {}, 'super')
+    save_report_schedule(source_repo, report['id'], 'Weekly', {'schedule': {'mode': 'daily', 'time': '06:00'}}, 'super',
+                         parse_recipients=core.parse_recipients, invalid_recipients=core.invalid_recipients)
     excluded = scoring_exclusions.create_list(source_repo, name='Retests', calls=[{'join_id': 'J1'}], username='super')
-    for target in ('reporting-jobs', 'scoring-excluded-calls'):
+    # A schedule goes to the report of the same name: without it, it is left out and says so.
+    notice = _transfer('reporting-jobs', source, destination, tmp_path)
+    assert list_tasks(destination_repo) == [] and '1 schedule left out: this workspace has no report of its name' in notice
+    for target in ('bundle-report-template-favourites', 'reporting-jobs', 'scoring-excluded-calls'):
         _transfer(target, source, destination, tmp_path)
+    [here] = brt.list_favourites(destination_repo)
+    [schedule] = list_tasks(destination_repo)
+    assert report_favourite_id(schedule) == str(here['id']) and schedule['recurrence'] == 'Daily · 06:00'
 
-    # Renamed on the source, each one is renamed in the destination instead of being added again.
+    # Renamed on the source, each one is renamed in the destination instead of being added again: a schedule with its report.
+    brt.save_favourite(source_repo, report['id'], 'Weekly v2', report['definition'], 'super')
+    rename_report_task(source_repo, report['id'], 'Weekly v2')
     with source_repo.connection() as connection:
-        connection.execute('UPDATE report_tasks SET name = ? WHERE id = ?', ('Weekly v2', job['id']))
         connection.execute(f'UPDATE {scoring_exclusions.LISTS_TABLE} SET name = ? WHERE id = ?', ('Retests Q3', excluded['id']))
-    jobs_notice = _transfer('reporting-jobs', source, destination, tmp_path)
+    reports_notice = _transfer('bundle-report-template-favourites', source, destination, tmp_path)
+    _transfer('reporting-jobs', source, destination, tmp_path)
     lists_notice = _transfer('scoring-excluded-calls', source, destination, tmp_path)
     assert [task['name'] for task in list_tasks(destination_repo)] == ['Weekly v2']
+    assert [(item['id'], item['name']) for item in brt.list_favourites(destination_repo)] == [(here['id'], 'Weekly v2')]
     [stored] = scoring_exclusions.list_lists(destination_repo)
     assert stored['name'] == 'Retests Q3' and stored['uid'] == excluded['uid']
-    assert '"Weekly" renamed "Weekly v2"' in jobs_notice and '"Retests" renamed "Retests Q3"' in lists_notice
+    assert '"Weekly" renamed "Weekly v2"' in reports_notice and '"Retests" renamed "Retests Q3"' in lists_notice
 
 
 def test_workspaces_are_found_by_their_identity(client, tmp_path):
@@ -643,7 +643,7 @@ def test_the_preview_tells_what_an_import_would_do_and_only_the_chosen_packages_
         connection.execute('DELETE FROM saved_query_builder_queries WHERE id = ?', (rows[1]['id'],))
     preview = core.preview_import_archive(package, manifest, [workspace.id])
     queries, jobs = preview['packages']
-    assert (queries['index'], queries['label'], jobs['label']) == (0, 'Query Builder Queries', 'Reporting Jobs')
+    assert (queries['index'], queries['label'], jobs['label']) == (0, 'Query Builder Queries', 'Report Schedules')
     assert '1 new, 1 updated' in queries['message'] and queries['message'].startswith('Imports ')
     # The items it would add, then those it would update with what would change; only a package that would change
     # something comes checked.
@@ -654,11 +654,11 @@ def test_the_preview_tells_what_an_import_would_do_and_only_the_chosen_packages_
     # Nothing was imported by the preview.
     with repository.connection() as connection:
         assert connection.execute('SELECT query_sql FROM saved_query_builder_queries WHERE id = ?', (rows[0]['id'],)).fetchone()[0] == 'SELECT 42'
-    # Importing only the Reporting Jobs leaves the queries as they are.
+    # Importing only the Report Schedules leaves the queries as they are.
     notice = core._apply_import_archive(package, manifest, destination_workspace_ids=[workspace.id], importing_user='super',
                                         selected_packages=[1])
     [imported] = core.import_notice_details(notice)['packages']
-    assert 'Reporting Jobs' in imported and 'Query Builder' not in notice
+    assert 'Report Schedules' in imported and 'Query Builder' not in notice
     with repository.connection() as connection:
         assert connection.execute('SELECT query_sql FROM saved_query_builder_queries WHERE id = ?', (rows[0]['id'],)).fetchone()[0] == 'SELECT 42'
     try:
@@ -787,7 +787,7 @@ def test_favourites_filters_with_a_campaign_choice_are_compared_without_the_cdrs
     assert changes.updated == [('Latest 2 Campaigns - All Regions', ['CDRs: 1 added, 1 removed'])]
 
 
-def test_the_preview_predicts_each_element_as_its_import_saves_it(client, tmp_path, monkeypatch):
+def test_the_preview_predicts_each_element_as_its_import_saves_it(client, tmp_path):
     from src.modules.nq import non_qualified_calls
     from src.modules.core.import_changes import describe_changes, element_items, predict, settings_values
 
@@ -813,13 +813,18 @@ def test_the_preview_predicts_each_element_as_its_import_saves_it(client, tmp_pa
     assert non_qualified_calls.configuration_changes(before, non_qualified_calls.predicted_configuration(before, incoming)) == [
         'Statuses: +New status']
 
-    # Reporting Jobs: a definition points at the datasets of this workspace (by file name), as the import saves it.
-    monkeypatch.setattr(core.Repository, 'list_datasets', lambda self: [{'id': 5, 'file_name': 'drive.csv'}])
+    # Report Schedules: a definition points at the report of the same name of this workspace, as the import saves it, and
+    # a schedule of a report it does not have is left out.
+    from src.modules.reporting.report_tasks import report_definition
+
+    report = brt.save_favourite(core.repository, None, 'Daily', {}, 'super')
     job = {'name': 'Daily', 'uid': 'u-daily', 'created_by': 'super', 'send_email': False, 'recipients': [], 'enabled': True,
-           'schedule': {'mode': 'manual'}, 'definition': {'dataset_analysis': {'enabled': True, 'dataset_ids': [101]}}}
-    document = {'format': 'drivetest-analyzer-reporting-jobs', 'version': 1, 'dataset_names': {'101': 'drive.csv'}, 'reporting_jobs': [job]}
+           'schedule': {'mode': 'manual'}, 'definition': report_definition(101)}
+    gone = {**job, 'name': 'Gone', 'uid': 'u-gone', 'definition': report_definition(102)}
+    document = {'format': 'drivetest-analyzer-reporting-jobs', 'version': 2, 'favourite_names': {'101': 'Daily', '102': 'Gone'},
+                'reporting_jobs': [job, gone]}
     [predicted] = core._predicted_document('reporting-jobs', workspace, document)['reporting_jobs']
-    assert predicted['definition']['dataset_analysis']['dataset_ids'] == [5]
+    assert predicted['definition']['modules']['bundle_report_template']['options']['filters']['favourites'] == [str(report['id'])]
     here = {**job, 'definition': predicted['definition'], 'schedule': predicted['schedule']}
     changes = predict(element_items('reporting-jobs', {'reporting_jobs': [predicted]}), element_items('reporting-jobs', {'reporting_jobs': [here]}))
     assert (changes.updated, changes.unchanged) == ([], 1)

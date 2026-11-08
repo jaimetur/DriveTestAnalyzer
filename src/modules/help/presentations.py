@@ -203,7 +203,7 @@ def _read_manifest(folder: Path | None) -> dict[str, Any]:
 
 def render_slides(folder: Path, manifest: dict[str, Any]) -> None:
     """Every slide of the presentations of ``folder`` as ``<id>/slide-NN.png`` (the viewer) and ``<id>/thumb-NN.png``
-    (its list and the cards of the Help), converted by LibreOffice as the previews of the Bundle Report Templates."""
+    (its list and the cards of the Help), converted by LibreOffice as the previews of the reports of Reporting."""
     from src.modules.reporting.pptx_to_docx import document_pdf, pdf_page_images
 
     for presentation in manifest['presentations']:

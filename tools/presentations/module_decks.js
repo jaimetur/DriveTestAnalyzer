@@ -520,7 +520,7 @@ const VISUALS = {
     return out;
   },
   // A PPT Template and the PPT Designs that follow it: each keeps only what it changes, a change of the template reaches
-  // them all, and its parameters give a PPT per value in a Reporting Job.
+  // them all, and the Designs go in the reports of Reporting.
   inheritance(p) {
     const card = (x, y, w, h, fill = '#16213a', stroke = '#2a3a5c', radius = 14) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
     const text = (x, y, value, size = 15, fill = '#c9d4e6', weight = 600, anchor = 'start') => `<text x="${x}" y="${y}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}">${escape(value)}</text>`;
@@ -544,14 +544,9 @@ const VISUALS = {
       out += minis(x + 18, y + 70, 3, 0.95) + pill(x + 18, y + 120, change, colour);
       notes.forEach((label) => { out += text(x + 222, y + 30, label, 12, '#c9d4e6', 600, 'end'); });
     });
-    // A Reporting Job: One PPT per value of a parameter.
-    out += card(20, 424, 780, 116, '#0f1a30', '#2a3a5c', 16) + text(42, 456, 'REPORTING JOB', 12, '#9fb0cc', 800) + text(42, 482, 'One PPT per City', 20, '#ffffff', 800)
-      + text(42, 506, 'Each value of the parameter, its own PowerPoint', 14, '#9fb0cc', 500);
-    [['London', 0], ['Bristol', 1], ['Cardiff', 2], ['Belfast', 3]].forEach(([city, i]) => {
-      const x = 420 + i * 94;
-      out += `<rect x="${x}" y="446" width="80" height="74" rx="10" fill="#ffffff"/><rect x="${x}" y="496" width="80" height="24" rx="0" fill="#d35230"/>`
-        + `<path d="M${x} 506 v4 a10 10 0 0 0 10 10 h60 a10 10 0 0 0 10 -10 v-4" fill="#d35230"/>` + text(x + 40, 513, 'PPT', 13, '#ffffff', 800, 'middle') + text(x + 40, 478, city, 13, '#1b2234', 800, 'middle');
-    });
+    // A report: its PPT Designs are a section of it.
+    out += card(20, 424, 780, 116, '#0f1a30', '#2a3a5c', 16) + text(42, 456, 'REPORT', 12, '#9fb0cc', 800) + text(42, 482, 'A section of your reports', 20, '#ffffff', 800)
+      + text(42, 506, 'Each Design with the filters of the report, in PowerPoint and Word', 14, '#9fb0cc', 500);
     return out;
   },
   // Jobs and their status.

@@ -268,17 +268,6 @@ def test_bundle_report_templates_give_the_parameters_of_a_design_the_values_of_t
         assert (queued[-1]['parameter_values'], queued[-1]['slide_comments']) == (values, comments)
 
 
-def test_reporting_jobs_keep_the_nr_mode_of_each_design_entry():
-    from src.modules.reporting.report_tasks import normalize_definition
-
-    definition = normalize_definition({'designs': [
-        {'design_id': 'd1', 'nr_mode': 'sa', 'auto_cdrs': True}, {'design_id': 'd2', 'auto_cdrs': True}]})
-    # Empty: the Design's own NR Mode, as the entries saved before.
-    assert [entry['nr_mode'] for entry in definition['designs']] == ['SA', '']
-
-
-# NSA & SA in one Design (ticket #11, phases 2 and 3).
-
 def entry_of(**fields):
     from dataclasses import replace
 

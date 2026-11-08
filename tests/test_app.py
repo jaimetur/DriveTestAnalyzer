@@ -2474,7 +2474,7 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
         ('scoring-excluded-calls', 'Benchmark'), ('scoring-export-panels', 'Benchmark'),
         ('network-insights-favourites', 'Network Insights'),
         ('nq-call-tracking', 'Non-Qualified Calls'), ('nq-calls-configuration', 'Non-Qualified Calls'),
-        ('bundle-report-template-favourites', 'Reporting'), ('reporting-jobs', 'Reporting'),
+        ('reporting-jobs', 'Reporting'), ('bundle-report-template-favourites', 'Reporting'),
         ('query-builder-queries', 'Builders'),
         ('assistant-glossary', 'AI Assistant'),
     ]
@@ -2520,7 +2520,7 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert 'Mappings &amp; Reference Data (from active workspace)</option>' in admin_response.text
     assert admin_response.text.index('Main Cities (from active workspace)</option>') < admin_response.text.index('Mappings &amp; Reference Data (from active workspace)</option>')
     assert 'Scoring &amp; GAP Analysis Methodologies (from active workspace)' in admin_response.text
-    assert 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Bundle Report Template Favourites + Scoring &amp; GAP Favourites Filters + Scoring &amp; GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Reporting Jobs + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)' in admin_response.text
+    assert 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Reports + Scoring &amp; GAP Favourites Filters + Scoring &amp; GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Report Schedules + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)' in admin_response.text
     # The backups, in the Database Management of Super Admin.
     backups_page = client.get('/super-admin').text
     assert backups_page.index('Main Cities (workspace city selection)') < backups_page.index('Mappings &amp; Reference Data (Operator and Vendor aliases, order and theme colors')
@@ -4134,7 +4134,7 @@ def test_admin_export_and_transfer_are_limited_to_templates_and_accessible_works
     assert 'PPT Templates (from active workspace)</option>' in panel.text
     assert 'Main Cities (from active workspace)</option>' in panel.text
     # Admins export the favourites of the active workspace too.
-    for label in ('Network Insights Favourites', 'Bundle Report Template Favourites', 'Scoring &amp; GAP Favourites Filters',
+    for label in ('Network Insights Favourites', 'Reports', 'Scoring &amp; GAP Favourites Filters',
                   'Scoring &amp; GAP Report Templates'):
         assert f'{label} (from active workspace)</option>' in panel.text, label
     assert client.get('/admin/import-export/export?export_target=bundle-report-template-favourites').status_code == 200
@@ -11048,7 +11048,7 @@ def test_module_tabs_take_order_title_icon_and_colour_from_interface_settings(cl
     form = {'title__reporting': 'Scheduled Reporting', 'short_title__reporting': ''}
     assert client.post('/admin/interface-settings', data={'show_module_stage_labels': 'true', **form}, follow_redirects=False).status_code == 303
     home = client.get('/api/documents/help').json()['content']
-    assert '[Scheduled Reporting](reporting.md)' in home and 'Reporting Jobs' in home
+    assert '[Scheduled Reporting](reporting.md)' in home and 'Reporting a bug' in home
     reporting = client.get('/api/documents/help/reporting.md').json()['content']
     assert reporting.startswith('# Scheduled Reporting') and 'Use **Scheduled Reporting**' in reporting
     index = client.get('/api/documents/help-index').json()
@@ -11103,11 +11103,11 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
     page = client.get('/scoring').text
     menus = dict(re.findall(r'<nav class="module-sections-menu[^"]*" popover="manual" data-module-sections-for="([^"]+)"[^>]*>(.*?)</nav>', page, re.S))
     for key in ('readme', 'changelog', 'help', 'app-logs', 'admin', 'super-admin', 'workspace', 'datasets-analysis', 'ppt-designer',
-                'scoring', 'network-insights', 'reporting'):
+                'scoring', 'network-insights'):
         assert key in menus, key
         assert f'data-module-sections="{key}"' in page, key
     # Each entry has its icon, and the menu the colour of its module.
-    assert menus['scoring'].count('class="menu-item-icon"') == 11
+    assert menus['scoring'].count('class="menu-item-icon"') == 12
     # Excluded Calls, after Scoring & GAP Results and before Favourites Filters as on the page.
     assert menus['scoring'].index('href="/scoring#section-scoring-gap-results"') \
         < menus['scoring'].index('href="/scoring#section-excluded-calls"') < menus['scoring'].index('href="/scoring#section-favourites-filters"')
@@ -11227,11 +11227,9 @@ def test_every_single_select_opens_the_application_list_below_its_field():
     assert ('.panel:has(.multiselect-menu:not([hidden]), .searchable-select-menu:not([hidden]), '
             'details[open] > .workspace-user-picker-menu) { position: relative; z-index: 25; }') in stylesheet
     assert 'position: sticky; top: calc(var(--module-tabs-offset, 0px) + 8px); z-index: 26;' in stylesheet
-    # data-menu-fit opens a list as wide as its longest option (the Favourite Bundle Report Templates).
+    # data-menu-fit opens a list as wide as its longest option.
     assert "if (select.closest('[data-menu-fit]')) menu.classList.add('is-fit');" in component
     assert '.native-select-menu.is-fit { max-width: calc(100vw - 1rem); }' in stylesheet
-    page = (root / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    assert 'aria-label="Favourite Bundle Report Template" data-menu-fit>' in page
     # The lists of the multiple choices are as wide as their values and open towards the left near the screen edge.
     assert 'left: 0; right: auto; box-sizing: border-box; width: max-content; min-width: 100%; max-width: min(36rem, calc(100vw - 1rem));' in stylesheet
     assert ':is(.multiselect-menu, .searchable-select-menu, .workspace-user-picker-menu).aligns-right { left: auto; right: 0; }' in stylesheet

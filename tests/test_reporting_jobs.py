@@ -9,20 +9,19 @@ from pathlib import Path
 import pytest
 
 import src.DriveTestAnalyzer as core
-from src.modules.reporting import report_tasks
+from src.modules.core.app_event_details import app_event_origin
+from src.modules.reporting import bundle_report_templates, report_tasks
 from src.modules.reporting.report_tasks import (
     next_run_after, normalize_definition, normalize_schedule, recurrence_label, register_report_artifact_provider,
     safe_file_name,
 )
 from src.modules.scoring.scoring_reports import default_report_configuration
 
-# The Reporting Jobs every workspace starts with (assets/reporting-jobs).
-STARTER_JOBS = {json.loads(path.read_text(encoding='utf-8'))['name']
-                for path in (core.PROJECT_ROOT / 'assets' / 'reporting-jobs').glob('*.json')}
-
 TZ = timezone(timedelta(hours=2))
-# Every Scoring artifact is configured with the report editor.
+# A Scoring artifact designed in a job, as the jobs saved before the reports owned their schedules have them.
 SCORING_ENTRY = {'nr_mode': 'NSA', 'report': default_report_configuration()}
+PNG = b'\x89PNG\r\n\x1a\nfake'
+RECIPIENTS = {'parse_recipients': core.parse_recipients, 'invalid_recipients': core.invalid_recipients}
 
 
 def login(client, username='super', password='super123'):
@@ -65,42 +64,21 @@ def test_schedules_compute_the_next_execution():
         normalize_schedule({'mode': 'daily', 'time': '25:00'})
 
 
-def test_definitions_keep_every_module_option_and_need_an_artifact():
-    with pytest.raises(ValueError):
-        normalize_definition({})
-    definition = normalize_definition({
-        'designs': [{'design_id': 'd1', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only',
-                        'datasets': {'data': [3, '4']}, 'date_from': '2026-01-01',
-                        'filters': {'Operator': ['EE', ''], 'RAT': []}}],
-        'scoring': [{'nr_mode': 'sa', 'label': 'Weekly', 'report': default_report_configuration(
-            context_filters={'Vendor': ['Huawei']}, aggregation_levels=['Operator', 'Campaign'], main_cities=True)}],
-    })
-    # An entry saved when CDRs were chosen by hand keeps them until it is migrated (see migrate_auto_cdrs).
-    assert definition['designs'] == [{
-        'design_id': 'd1', 'label': '', 'nr_mode': '', 'scope': 'multivendor', 'vendor_comparison': 'vendor_only', 'auto_cdrs': False,
-        'datasets': {'data': [3, 4]}, 'cdr_selection': '', 'date_from': '2026-01-01', 'date_to': '', 'filters': {'Operator': ['EE']},
-        'auto_comments': 'off', 'auto_comments_engine': '', 'parameter_values': {}, 'each_value': '',
-    }]
-    # The entries of the editor choose their CDRs by Campaign: they carry no CDRs.
-    automatic = normalize_definition({
-        'designs': [{'design_id': 'd1', 'auto_cdrs': True, 'datasets': {'data': [3]}, 'cdr_selection': 'newest',
-                        'filters': {'Campaign': ['@latest-2-campaigns']}}],
-        'scoring': [{**SCORING_ENTRY, 'auto_cdrs': True, 'campaigns': ['@latest-campaign'], 'dataset_ids': [1]}],
-        'network_insights': [{'auto_cdrs': True, 'selection': {'datasets': {'data': [1]}, 'campaigns': ['2026-Q2']}}],
-    })
-    assert (automatic['designs'][0]['datasets'], automatic['designs'][0]['cdr_selection']) == ({}, '')
-    assert automatic['designs'][0]['filters'] == {'Campaign': ['@latest-2-campaigns']}
-    assert (automatic['scoring'][0]['dataset_ids'], automatic['scoring'][0]['campaigns']) == ([], ['@latest-campaign'])
-    assert automatic['network_insights'][0]['selection']['datasets'] == {}
-    assert automatic['network_insights'][0]['selection']['campaigns'] == ['2026-Q2']
-    scoring = definition['scoring'][0]
-    scenario = scoring['report']['scenarios'][0]
-    assert (scoring['nr_mode'], scenario['aggregation_levels'], scenario['context_filters'], scenario['main_cities']) == (
-        'SA', ['Operator', 'Campaign'], {'Vendor': ['Huawei']}, True)
-    # Filters and aggregation belong to the report scenarios only.
-    assert not {'aggregation_levels', 'context_filters', 'main_cities'} & set(scoring)
-    with pytest.raises(ValueError, match='Configure the report content'):
-        normalize_definition({'scoring': [{'nr_mode': 'NSA'}]})
+def test_definitions_only_keep_the_report_they_generate():
+    # A schedule generates its report: without one, or with artifacts designed in a job (removed with the Job Editor),
+    # there is nothing to generate.
+    for raw in ({}, {'scoring': [SCORING_ENTRY], 'designs': [{'design_id': 'd1'}], 'dataset_analysis': {'enabled': True}}):
+        with pytest.raises(ValueError, match='Choose the report to generate.'):
+            normalize_definition(raw)
+    definition = normalize_definition({**report_tasks.report_definition(7, ['word', 'excel']), 'scoring': [SCORING_ENTRY]})
+    assert definition == {'modules': {'bundle_report_template': {'enabled': True, 'formats': ['word'], 'options': {'filters': {'favourites': ['7']}}}},
+                          'theme': 'ericsson'}
+    assert report_tasks.report_favourite_id({'definition': definition}) == '7'
+    assert report_tasks.report_definition('7')['modules']['bundle_report_template']['formats'] == ['powerpoint']
+    # Every report at once, or several, is no schedule of one report.
+    every = {'modules': {'bundle_report_template': {'enabled': True, 'formats': ['word'], 'options': {}}}}
+    several = {'modules': {'bundle_report_template': {'enabled': True, 'options': {'filters': {'favourites': ['7', '8']}}}}}
+    assert report_tasks.report_favourite_id({'definition': every}) == report_tasks.report_favourite_id({'definition': several}) == ''
     assert safe_file_name('Scoring: A/B ' + 'x' * 300 + '.pptx').endswith('.pptx')
 
 
@@ -245,6 +223,73 @@ def wait_until(condition, timeout=30):
     raise AssertionError('The condition was not met in time.')
 
 
+def module_job(name, *modules):
+    """A schedule of the fake modules a test registers, as a report registers its own."""
+    return report_tasks.save_task(core.repository, None, {
+        'name': name, 'definition': {'modules': {key: {'enabled': True} for key in modules}}, 'schedule': {'mode': 'manual'},
+    }, 'super', **RECIPIENTS)
+
+
+def start_run(task, username='super'):
+    """Generate a schedule now, as Generate does for a report."""
+    return core.start_report_run(core.repository, task, 'manual', username)
+
+
+def report(client, name, schedule=None):
+    """A report saved from its page, with its schedule when given."""
+    response = client.post('/api/reporting/bundle-report-template/favourites', json={
+        'name': name, 'definition': bundle_report_templates.normalize_definition({}),
+        **({'schedule': schedule} if schedule is not None else {})})
+    assert response.status_code == 200, response.text
+    return response.json()['favourite']
+
+
+def generate(client, favourite_id, refresh=False):
+    """Generate a report from its page; returns its run."""
+    response = client.post(f'/api/reporting/bundle-report-template/favourites/{favourite_id}/generate', json={'refresh': refresh})
+    assert response.status_code == 200, response.text
+    return response.json()['run_id']
+
+
+def fake_reports(monkeypatch):
+    """Reports generated at once: one file per format and the preview of the run, as the provider writes them; returns
+    who generated each one, with its options."""
+    generated = []
+
+    def generate_report(config, folder, stamp, user):
+        generated.append({'user': user.username, 'reuse': config['reuse'], 'formats': config['formats']})
+        formats, artifacts = {}, []
+        for export_format, suffix in (('powerpoint', 'pptx'), ('word', 'docx')):
+            if export_format in config['formats']:
+                path = folder / f'{stamp} - Fake report.{suffix}'
+                path.write_bytes(b'PK report')
+                artifacts.append({'module': 'bundle_report_template', 'title': 'Fake report', 'format': export_format, 'file_name': path.name,
+                                  'size': path.stat().st_size, 'status': 'ready', 'details': ['Filter: everything']})
+                formats[export_format] = {'file_name': path.name, 'previews': 1, 'navigation': []}
+        preview = folder / bundle_report_templates.RUN_REPORT_FOLDER
+        preview.mkdir()
+        (preview / 'preview-pptx-0.png').write_bytes(PNG)
+        (preview / 'report.json').write_text(json.dumps({'title': 'Fake report', 'formats': formats, 'outline': [], 'warnings': [],
+                                                         'reused': [], 'document_reused': False}), encoding='utf-8')
+        return artifacts
+
+    monkeypatch.setitem(report_tasks.ARTIFACT_PROVIDERS['bundle_report_template'], 'generate', generate_report)
+    return generated
+
+
+def make_due(task):
+    with core.repository.connection() as connection:
+        connection.execute('UPDATE report_tasks SET next_run_at = ? WHERE id = ?',
+                           ((datetime.now().astimezone() - timedelta(minutes=1)).isoformat(), task['id']))
+
+
+def workspace_database(path):
+    """The database of a workspace of its own, without the application."""
+    repository = core.Repository(path)
+    repository.initialize()
+    return repository
+
+
 def two_step_job(client, first, second):
     """A job of two fake modules: ``first`` and ``second`` generate its artifacts (in this order)."""
     def provider(label, behaviour):
@@ -257,12 +302,7 @@ def two_step_job(client, first, second):
 
     register_report_artifact_provider('fake_first', 'First fake', 'datasets-analysis', provider('First', first))
     register_report_artifact_provider('fake_second', 'Second fake', 'datasets-analysis', provider('Second', second))
-    created = client.post('/api/reporting/tasks', json={
-        'name': 'Two steps', 'definition': {'modules': {'fake_first': {'enabled': True}, 'fake_second': {'enabled': True}}},
-        'schedule': {'mode': 'manual'},
-    })
-    assert created.status_code == 200, created.text
-    return created.json()['task']
+    return module_job('Two steps', 'fake_first', 'fake_second')
 
 
 def run_row(run_id):
@@ -286,7 +326,7 @@ def test_reporting_runs_stop_rerun_and_delete_from_the_run_history(client):
 
     try:
         task = two_step_job(client, first, second)
-        run_id = client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id']
+        run_id = start_run(task)
         wait_until(lambda: calls['second'] == 1)
         # A running run stops after the step it is on, keeping what it generated, without its email.
         response = client.post('/api/reporting/runs/stop', json={'ids': [run_id]})
@@ -313,9 +353,10 @@ def test_reporting_runs_stop_rerun_and_delete_from_the_run_history(client):
         result = client.post('/api/reporting/runs/delete', json={'ids': [run_id, queued, active]}).json()
         assert result == {'deleted': [run_id, queued], 'skipped': [active]}
         assert run_row(run_id) is None and run_row(active)['status'] == 'queued'
-        # Only editors stop, rerun or delete runs.
-        session(client, 'reader', 'user-viewer')
-        assert client.post('/api/reporting/runs/stop', json={'ids': [active]}).status_code == 403
+        # Only editors rerun or delete runs, and stop those of other users.
+        workspace_user('reader', 'user-viewer')
+        login(client, 'reader', 'reader123')
+        assert client.post('/api/reporting/runs/stop', json={'ids': [active]}).json()['skipped'] == [active]
         assert client.post('/api/reporting/runs/rerun', json={'ids': [active]}).status_code == 403
         assert client.post('/api/reporting/runs/delete', json={'ids': [active]}).status_code == 403
         login(client)
@@ -342,7 +383,7 @@ def test_reporting_runs_interrupted_by_a_restart_go_on_from_their_step(client):
 
     try:
         task = two_step_job(client, first, second)
-        run_id = client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id']
+        run_id = start_run(task)
         wait_until(lambda: calls['second'] == 1)
         # What a restart leaves: the run running, after its first step, with what the second one began to write.
         interrupted = run_row(run_id)
@@ -380,306 +421,6 @@ def test_reporting_runs_interrupted_by_a_restart_go_on_from_their_step(client):
         release.set()
         report_tasks.ARTIFACT_PROVIDERS.pop('fake_first', None)
         report_tasks.ARTIFACT_PROVIDERS.pop('fake_second', None)
-
-
-def test_reporting_job_runs_emails_and_travels_with_exports(client, monkeypatch, tmp_path):
-    import smtplib
-
-    monkeypatch.setattr(smtplib, 'SMTP', FakeSMTP)
-    FakeSMTP.sent = []
-
-    def generate(config, folder, stamp, user):
-        path = folder / f'{stamp} - Fake report.pptx'
-        path.write_bytes(b'fake')
-        return [{'module': 'fake', 'title': 'Fake report', 'file_name': path.name, 'size': 4, 'status': 'ready',
-                 'details': ['Filter: everything']}]
-
-    register_report_artifact_provider('fake', 'Fake module', 'datasets-analysis', generate)
-    try:
-        login(client)
-        core.save_email_delivery_settings(core.repository, {
-            'host': 'smtp.example.com', 'port': 587, 'security': 'starttls', 'from_address': 'reports@example.com',
-            'max_attachments_mb': 10,
-        }, keep_password=False)
-        options = client.get('/api/reporting/options').json()
-        assert any(provider['key'] == 'fake' for provider in options['providers'])
-        payload = {
-            'name': 'Weekly check', 'definition': {'modules': {'fake': {'enabled': True}}},
-            'send_email': True, 'recipients': 'a@example.com; b@example.com',
-            'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}, 'enabled': True,
-        }
-        created = client.post('/api/reporting/tasks', json=payload)
-        assert created.status_code == 200, created.text
-        task = created.json()['task']
-        assert task['recipients'] == ['a@example.com', 'b@example.com'] and task['next_run_at']
-        assert client.post('/api/reporting/tasks', json={**payload, 'recipients': 'bad'}).status_code == 400
-        run_id = client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id']
-        run = wait_for_run(client, run_id)
-        assert run['status'] == 'sent', run
-        message = FakeSMTP.sent[-1]
-        assert message['To'] == 'a@example.com, b@example.com' and message['Subject'].startswith('DT Analyzer - Weekly check · ')
-        body = message.get_body(('plain',)).get_content()
-        assert 'Fake report' in body and 'Filter: everything' in body
-        assert [part.get_filename() for part in message.iter_attachments()] == [run['artifacts'][0]['file_name']]
-        assert client.get(f'/api/reporting/runs/{run_id}/download').status_code == 200
-        state = client.get('/api/reporting/state').json()
-        assert next(item for item in state['tasks'] if item['id'] == task['id'])['last_run']['id'] == run_id
-        # Duplicates are disabled copies.
-        copy = client.post(f"/api/reporting/tasks/{task['id']}/duplicate").json()['task']
-        assert copy['name'] == 'Weekly check (copy)' and not copy['enabled'] and copy['next_run_at'] is None
-        # Due jobs run once per schedule check.
-        with core.repository.connection() as connection:
-            connection.execute("UPDATE report_tasks SET next_run_at = ? WHERE id = ?",
-                               ((datetime.now().astimezone() - timedelta(minutes=1)).isoformat(), task['id']))
-        due = core.run_due_report_tasks()
-        assert len(due) == 1 and core.run_due_report_tasks() == []
-        wait_for_run(client, due[0])
-        # Reporting Jobs travel with workspace packages.
-        document = json.loads(report_tasks.export_tasks_document(core.repository))
-        # The starter Reporting Jobs of every workspace travel too.
-        assert {item['name'] for item in document['reporting_jobs']} == {'Weekly check', 'Weekly check (copy)', *STARTER_JOBS}
-        assert core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(document).encode(), 'super') == 2 + len(STARTER_JOBS)
-        assert len(client.get('/api/reporting/state').json()['tasks']) == 2 + len(STARTER_JOBS)
-        assert client.delete(f"/api/reporting/tasks/{copy['id']}").status_code == 200
-    finally:
-        report_tasks.ARTIFACT_PROVIDERS.pop('fake', None)
-
-
-
-def test_ppt_design_entries_give_the_parameters_their_values_and_make_a_ppt_for_each_value(client, monkeypatch, tmp_path):
-    from types import SimpleNamespace
-
-    login(client)
-    stored = {'name': 'Cities report', 'template': 'Cities', 'nr_mode': 'NSA', 'parameter_values': {'p-city': ['London']},
-              'slide_comments': {'s1': [{'text': 'Saved comment'}]}}
-    parameters = [{'id': 'p-city', 'name': 'Chosen Cities', 'type': 'values', 'field': 'City', 'default': None},
-                  {'id': 'p-limit', 'name': 'Threshold', 'type': 'number', 'default': 2}]
-    queued = []
-
-    def queue_export(design_id, user, definition=None, **_options):
-        queued.append(definition)
-        path = tmp_path / f'job-{len(queued)}.pptx'
-        path.write_bytes(b'ppt')
-        return len(queued)
-
-    monkeypatch.setattr(core, 'design_reporting', SimpleNamespace(
-        list_designs=lambda _repository: {'d1': stored}, parameters=lambda _repository, _raw: parameters,
-        queue_export=queue_export, stop_job=lambda *_args: None, serialize_job=lambda _row: {'template': 'Cities'},
-        job=lambda _repository, job_id: {'status': 'ready', 'output_path': str(tmp_path / f'job-{job_id}.pptx'), 'progress': 100, 'last_error': ''},
-    ))
-    entry = {'design_id': 'd1', 'auto_cdrs': True, 'filters': {'Campaign': ['@latest-campaign']}, 'label': 'Cities',
-             'parameter_values': {'p-city': ['Leeds', 'Cardiff'], 'p-limit': 3}, 'each_value': 'p-city'}
-    created = client.post('/api/reporting/tasks', json={'name': 'Each city', 'definition': {'designs': [entry]}, 'enabled': False,
-                                                         'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}})
-    assert created.status_code == 200, created.text
-    task = created.json()['task']
-    assert task['definition']['designs'][0]['parameter_values'] == {'p-city': ['Leeds', 'Cardiff'], 'p-limit': 3}
-    run = wait_for_run(client, client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id'])
-    # One PPT for each city, named after it, with the other values of the entry and without the comments of London.
-    assert [item['parameter_values'] for item in queued] == [{'p-city': ['Leeds'], 'p-limit': 3}, {'p-city': ['Cardiff'], 'p-limit': 3}]
-    assert all(item['slide_comments'] == {} for item in queued)
-    assert [artifact['title'] for artifact in run['artifacts']] == ['PPT Design · Cities – Leeds', 'PPT Design · Cities – Cardiff']
-    # Without values of its own the entry generates the PPT Design with its own values and comments.
-    queued.clear()
-    plain = client.post('/api/reporting/tasks', json={'name': 'Plain', 'definition': {'designs': [{**entry, 'parameter_values': {}, 'each_value': ''}]},
-                                                       'enabled': False, 'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}}).json()['task']
-    wait_for_run(client, client.post(f"/api/reporting/tasks/{plain['id']}/run").json()['run_id'])
-    assert queued[0]['parameter_values'] == {'p-city': ['London']} and queued[0]['slide_comments'] == stored['slide_comments']
-    options = client.get('/api/reporting/options').json()
-    assert next(item for item in options['designs'] if item['id'] == 'd1')['parameters'] == parameters
-
-
-def test_reporting_jobs_travel_with_every_field_of_their_scoring_artifacts(client):
-    login(client)
-    area = {'enabled': True, 'time_split': 'Quarterly', 'breakdown': 'Cluster', 'cities': ['Leeds', 'Glasgow'],
-            'main_cities': True, 'campaigns': ['Latest 2 campaigns']}
-    report = default_report_configuration()
-    report['scenarios'][0]['area_summary'] = area
-    # Patterns (VF*, Not Lebara) travel as such in the Operator filters; Focus operators saved before are left out.
-    report['scenarios'][0]['context_filters'] = {'Operator': ['Not Lebara']}
-    entry = {**SCORING_ENTRY, 'label': 'Every field', 'auto_cdrs': True, 'campaigns': ['Latest campaign'],
-             'formats': ['powerpoint', 'word'], 'baseline_operator': 'VF', 'compared_operators': ['EE', 'O2', 'VF*'], 'report': report}
-    created = client.post('/api/reporting/tasks', json={'name': 'Every field', 'definition': {'scoring': [entry]},
-                                                         'schedule': {'mode': 'manual'}})
-    assert created.status_code == 200, created.text
-    task = created.json()['task']
-    document = report_tasks.export_tasks_document(core.repository)
-    assert client.delete(f"/api/reporting/tasks/{task['id']}").status_code == 200
-    core._restore_workspace_reporting_jobs(core.active_workspace, document, 'super')
-    [imported] = [item for item in report_tasks.list_tasks(core.repository) if item['name'] == 'Every field']
-    assert imported['definition'] == task['definition']
-    [scoring] = imported['definition']['scoring']
-    assert 'compared_operators' not in scoring and scoring['baseline_operator'] == 'VF'
-    assert scoring['report']['scenarios'][0]['area_summary'] == area
-    assert scoring['report']['scenarios'][0]['context_filters'] == {'Operator': ['Not Lebara']}
-
-def test_scoring_entries_choose_the_cdrs_of_their_campaigns_at_each_run(client, monkeypatch):
-    definition = normalize_definition({'scoring': [
-        {**SCORING_ENTRY, 'cdr_selection': 'all_complete'}, SCORING_ENTRY, {**SCORING_ENTRY, 'cdr_selection': 'other'}]})
-    assert [entry['cdr_selection'] for entry in definition['scoring']] == ['all_complete', 'newest', 'newest']
-    calls = []
-    # Each campaign with Data, Voice and Speech CDRs is scored; the CDRs are chosen when the job runs.
-    monkeypatch.setattr(report_tasks, 'complete_campaign_cdrs',
-                        lambda repository, nr_mode, campaigns: calls.append((nr_mode, list(campaigns))) or ([11, 12, 13], []))
-
-    def build(repository, base, report, username):
-        calls.append(base['dataset_ids'])
-        return b'pptx', 'Scoring.pptx', {'dataset_ids': base['dataset_ids']}
-
-    monkeypatch.setattr(core, 'build_scoring_report_document', build)
-    login(client)
-    # A job saved with every complete set of CDRs scores every complete campaign.
-    payload = {'name': 'Every complete set', 'schedule': {'mode': 'manual'},
-               'definition': {'scoring': [{**SCORING_ENTRY, 'cdr_selection': 'all_complete'}]}}
-    created = client.post('/api/reporting/tasks', json=payload)
-    assert created.status_code == 200, created.text
-    run = wait_for_run(client, client.post(f"/api/reporting/tasks/{created.json()['task']['id']}/run").json()['run_id'])
-    assert calls == [('NSA', []), [11, 12, 13]], run
-    # The editor opens such jobs with the campaigns of their former choice: every campaign, or the newest one.
-    newest = client.post('/api/reporting/tasks', json={**payload, 'name': 'Newest set', 'definition': {'scoring': [SCORING_ENTRY]}})
-    tasks = {task['name']: task for task in client.get('/api/reporting/state').json()['tasks']}
-    assert tasks['Every complete set']['definition']['scoring'][0] | {'report': None} == tasks['Every complete set']['definition']['scoring'][0] | {
-        'auto_cdrs': True, 'campaigns': [], 'dataset_ids': [], 'report': None}
-    assert tasks['Newest set']['definition']['scoring'][0]['campaigns'] == ['@latest-campaign']
-    assert newest.status_code == 200
-    # The CDR Analysis artifact keeps showing the CDRs each automatic choice selects now, per NR Mode.
-    def every_complete_set(repository, nr_mode):
-        if nr_mode == 'SA':
-            raise ValueError('There is no complete set of Data, Voice and Speech CDRs in SA NR Mode.')
-        return [11, 12, 13]
-
-    monkeypatch.setattr(core, 'select_all_complete_cdrs', every_complete_set)
-    preview = client.get('/api/reporting/options').json()['automatic_cdrs']
-    assert preview == {'NSA': {'newest': [], 'all_complete': [11, 12, 13]}, 'SA': {'newest': [], 'all_complete': []}}
-
-
-def test_cdr_analysis_chooses_its_cdrs_by_nr_mode_and_campaigns(client, monkeypatch):
-    asked = []
-
-    def chosen_cdrs(repository, nr_mode, campaigns=None, kinds=None):
-        asked.append((nr_mode, list(campaigns or [])))
-        return {'data': [21], 'voice': [22], 'speech': [23]} if nr_mode == 'NSA' else {'data': [31], 'voice': [], 'speech': []}
-
-    used = []
-
-    def write_summary(dataset_ids, export_kind, destination, username, **kwargs):
-        used.append(list(dataset_ids))
-        Path(destination).write_bytes(b'pptx')
-        return destination, [], []
-
-    monkeypatch.setattr(report_tasks, 'resolve_cdrs', chosen_cdrs)
-    monkeypatch.setattr(core, 'write_dataset_summary', write_summary)
-    login(client)
-    # A job saved with every complete set of CDRs chooses every campaign of NSA; a new one its NR Mode and Campaigns.
-    for definition in ({'enabled': True, 'cdr_selection': 'all_complete'},
-                       {'enabled': True, 'auto_cdrs': True, 'nr_mode': 'SA', 'campaigns': ['@latest-campaign']}):
-        created = client.post('/api/reporting/tasks', json={'name': f"CDR Analysis {len(used)}", 'schedule': {'mode': 'manual'},
-                                                             'definition': {'dataset_analysis': definition}})
-        assert created.status_code == 200, created.text
-        run = wait_for_run(client, client.post(f"/api/reporting/tasks/{created.json()['task']['id']}/run").json()['run_id'])
-        assert run['status'] in {'completed', 'partial'}, run
-    assert ('NSA', []) in asked and ('SA', ['@latest-campaign']) in asked
-    assert used == [[21, 22, 23], [31]]
-
-
-def test_imported_reporting_jobs_keep_an_owner_that_exists_here(client):
-    login(client)
-    workspace_user('editor', 'user-editor')
-    definition = {'scoring': [SCORING_ENTRY]}
-    document = {
-        'format': 'drivetest-analyzer-reporting-jobs', 'version': 1, 'dataset_names': {},
-        'reporting_jobs': [
-            {'name': 'Owned by editor', 'definition': definition, 'schedule': {'mode': 'manual'}, 'created_by': 'editor'},
-            {'name': 'Owner from elsewhere', 'definition': definition, 'schedule': {'mode': 'manual'}, 'created_by': 'nobody-here'},
-            {'name': 'Older export', 'definition': definition, 'schedule': {'mode': 'manual'}},
-        ],
-    }
-    # A job imported by an earlier version keeps the placeholder owner until it is imported again.
-    with core.repository.connection() as connection:
-        report_tasks.ensure_report_task_tables(core.repository)
-        connection.execute(
-            "INSERT INTO report_tasks (name, definition_json, send_email, recipients_json, schedule_json, enabled, "
-            "created_by, created_at, updated_at) VALUES ('Older export', ?, 0, '[]', '{\"mode\": \"manual\"}', 1, 'import', '', '')",
-            (json.dumps(definition),),
-        )
-
-    assert core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(document).encode(), 'super') == 3
-
-    owners = {task['name']: task['created_by'] for task in report_tasks.list_tasks(core.repository)}
-    # The starter jobs, created by the application, belong to the default super-admin once the workspace opens.
-    assert owners == {'Owned by editor': 'editor', 'Owner from elsewhere': 'super', 'Older export': 'super',
-                      **{name: 'super' for name in STARTER_JOBS}}
-    exported = json.loads(report_tasks.export_tasks_document(core.repository))
-    assert {item['name']: item['created_by'] for item in exported['reporting_jobs']} == owners
-
-
-def test_reporting_jobs_only_include_modules_of_their_author(client):
-    editor_id = workspace_user('editor', 'user-editor')
-    login(client, 'editor', 'editor123')
-    profile_id = core.repository.save_modules_profile(None, 'No Scoring', '', [key for key in core.FEATURE_KEYS if key != 'scoring'])
-    core.repository.set_users_modules_profile([editor_id], profile_id)
-    core.invalidate_module_access_cache()
-    payload = {'name': 'Scoring only', 'definition': {'scoring': [SCORING_ENTRY]}, 'schedule': {'mode': 'manual'}}
-    response = client.post('/api/reporting/tasks', json=payload)
-    assert response.status_code == 403
-    assert 'Scoring' in response.json()['detail']
-    assert client.get('/api/reporting/options').json()['allowed_modules']['scoring'] is False
-
-
-def test_network_insights_entries_keep_their_own_selection_and_read_single_selections():
-    definition = normalize_definition({'network_insights': [
-        {'label': 'NSA LTE', 'formats': ['word'], 'selection': {'nr_mode': 'NSA', 'technology': 'lte', 'operators': ['EE']}},
-        {'formats': ['powerpoint'], 'selection': {'nr_mode': 'sa', 'technology': 'nr', 'nr_coverage_threshold': -118}},
-    ]})
-    first, second = definition['network_insights']
-    assert (first['label'], first['formats'], first['selection']['operators']) == ('NSA LTE', ['word'], ['EE'])
-    assert (second['selection']['nr_mode'], second['selection']['technology'], second['selection']['nr_coverage_threshold']) == ('SA', 'nr', -118)
-    assert report_tasks.network_entry_name(second) == 'SA NR'
-    labels = report_tasks.artifact_labels(definition)
-    assert 'Network Insights · NSA LTE (Word)' in labels and 'Network Insights · SA NR (PPT)' in labels
-    # Jobs saved with one Network Insights selection keep it as one entry.
-    legacy = normalize_definition({'network_insights': {'enabled': True, 'formats': ['word'], 'selection': {
-        'technology': 'nr', 'coverage_threshold': -112, 'datasets': {'data': [5]}}}})
-    assert len(legacy['network_insights']) == 1
-    assert legacy['network_insights'][0]['selection']['nr_coverage_threshold'] == -112
-    assert report_tasks._remap_dataset_ids(legacy, {5: 9})['network_insights'][0]['selection']['datasets'] == {'data': [9]}
-    with pytest.raises(ValueError):
-        normalize_definition({'network_insights': {'enabled': False, 'selection': {}}})
-    # Network Insights analyses one campaign: an entry with automatic CDRs keeps Latest campaign without one and the
-    # newest one of several; CDRs chosen by hand without campaigns keep every campaign of them.
-    def campaigns(selection, auto_cdrs=True):
-        entry = normalize_definition({'network_insights': [{'auto_cdrs': auto_cdrs, 'selection': selection}]})['network_insights'][0]
-        return entry['selection']['campaigns']
-    assert campaigns({}) == campaigns({'campaigns': ['@latest-3-campaigns']}) == ['@latest-campaign']
-    assert campaigns({'campaigns': ['2026-Q1', '2026-Q3', '2026-Q2']}) == ['2026-Q3']
-    assert campaigns({'campaigns': ['@previous-campaign']}) == ['@previous-campaign']
-    assert campaigns({'datasets': {'data': [5]}}, auto_cdrs=False) == []
-
-
-def test_every_artifact_with_cdrs_offers_the_two_automatic_choices():
-    definition = normalize_definition({
-        'dataset_analysis': {'enabled': True, 'cdr_selection': 'newest'},
-        'network_insights': [{'cdr_selection': 'all_complete', 'selection': {'nr_mode': 'SA'}}, {'selection': {}}],
-        'designs': [{'design_id': 'd1', 'cdr_selection': 'newest'}, {'design_id': 'd2', 'all_datasets': True},
-                       {'design_id': 'd3', 'datasets': {'data': [5]}}],
-    })
-    assert definition['dataset_analysis']['cdr_selection'] == 'newest'
-    # Jobs saved with every ready CDR use every complete set; a Design without one uses its CDRs.
-    assert [entry['cdr_selection'] for entry in definition['network_insights']] == ['all_complete', 'all_complete']
-    assert [entry['cdr_selection'] for entry in definition['designs']] == ['newest', 'all_complete', '']
-    assert normalize_definition({'dataset_analysis': {'enabled': True}})['dataset_analysis']['cdr_selection'] == 'all_complete'
-
-
-def test_reporting_runs_appear_in_background_tasks(client):
-    login(client)
-    task = client.post('/api/reporting/tasks', json={
-        'name': 'Background check', 'definition': {'scoring': [SCORING_ENTRY]}, 'schedule': {'mode': 'manual'},
-    }).json()['task']
-    report_tasks.create_run(core.repository, report_tasks.get_task(core.repository, task['id']), 'manual', 'super')
-    groups = client.get('/api/background-tasks').json()
-    labels = [item['label'] for group in (groups.get('workspaces') or groups.get('groups') or []) for item in group['tasks']] \
-        if isinstance(groups, dict) else []
-    assert any(label == 'Reporting Job: Background check' for label in labels) or 'Reporting Job: Background check' in json.dumps(groups)
 
 
 def test_workspace_access_by_workspace_group_and_user(client):
@@ -742,16 +483,6 @@ def test_users_table_sets_profile_workspace_groups_and_names(client):
     assert next(profile for profile in core.repository.list_modules_profiles() if analyst_id in profile['member_ids'])['id'] == profile_id
 
 
-def test_cdr_analysis_artifact_keeps_metrics_filters_and_single_choices():
-    definition = report_tasks.normalize_definition({'dataset_analysis': {
-        'enabled': True, 'formats': ['powerpoint'], 'metrics': {'data': ['Mean_Data_Rate'], 'voice': [], 'other': ['x']},
-        'filters': {'operators': ['EE'], 'clusters': [], 'unknown': ['x']},
-        'aggregation': 'vendor', 'cdf_grouping': 'nonsense',
-    }})['dataset_analysis']
-    assert definition['metrics'] == {'data': ['Mean_Data_Rate']} and definition['filters'] == {'operators': ['EE']}
-    assert definition['aggregation'] == 'vendor' and definition['cdf_grouping'] == 'operator'
-
-
 def test_reporting_options_list_cdr_analysis_metrics_per_cdr_type(client):
     login(client)
     options = client.get('/api/reporting/options').json()
@@ -760,54 +491,9 @@ def test_reporting_options_list_cdr_analysis_metrics_per_cdr_type(client):
     assert options['cdr_aggregations']['all'] == 'Auto' and options['cdr_cdf_groupings']['all'] == 'Single CDF'
 
 
-def test_network_insights_grouping_keeps_operator_unless_vendor():
-    entries = lambda group: report_tasks.normalize_definition(
-        {'network_insights': [{'enabled': True, 'formats': ['powerpoint'], 'selection': {'group': group}}]})['network_insights']
-    assert entries(['campaign'])[0]['selection']['group'] == ['operator', 'campaign']
-    assert entries(['vendor', 'campaign'])[0]['selection']['group'] == ['vendor', 'campaign']
-
-
-def test_reporting_options_list_filter_values_per_cdr(client):
-    login(client)
-    options = client.get('/api/reporting/options').json()
-    assert isinstance(options['values_by_dataset'], dict)
-    for values in options['values_by_dataset'].values():
-        assert set(values) == {'Operator', 'Operator_Vendor', 'Vendor', 'Region', 'Cluster', 'City', 'Campaign'}
-
-
 def test_reporting_state_names_its_workspace_for_editor_drafts(client):
     login(client)
     assert client.get('/api/reporting/state').json()['workspace_id'] == core.active_workspace.id
-
-
-def test_module_artifacts_always_include_a_document_with_their_excel():
-    from src.modules.reporting import report_tasks
-
-    register_report_artifact_provider('document_and_excel_test', 'Document Test', 'reporting', lambda *_args: [],
-                                      formats=('powerpoint', 'word', 'excel'))
-    try:
-        only_excel = normalize_definition({'modules': {'document_and_excel_test': {'enabled': True, 'formats': ['excel']}}})
-        assert only_excel['modules']['document_and_excel_test']['formats'] == ['powerpoint', 'excel']
-        word_and_excel = normalize_definition({'modules': {'document_and_excel_test': {'enabled': True, 'formats': ['word', 'excel']}}})
-        assert word_and_excel['modules']['document_and_excel_test']['formats'] == ['word', 'excel']
-    finally:
-        report_tasks.ARTIFACT_PROVIDERS.pop('document_and_excel_test', None)
-
-
-def test_job_artifacts_are_grouped_by_module_with_their_entries():
-    from src.modules.reporting import report_tasks
-
-    groups = report_tasks.artifact_groups({
-        'dataset_analysis': {'enabled': True, 'formats': ['powerpoint', 'word']},
-        'network_insights': [{'nr_mode': 'NSA', 'technology': 'lte', 'formats': ['powerpoint']},
-                             {'nr_mode': 'SA', 'technology': 'lte_nr', 'formats': ['word']}],
-        'designs': [{'design_id': 'd1', 'label': 'Main Cities'}],
-        'scoring': [], 'modules': {},
-    })
-    assert [group['module'] for group in groups] == ['CDR Analysis', 'Network Insights', 'PPT Designer']
-    assert groups[0]['items'] == ['(PPT/Word)']
-    assert len(groups[1]['items']) == 2 and groups[1]['items'][1].endswith('(Word)')
-    assert groups[2]['items'] == ['Main Cities (PPT)']
 
 
 def test_cdr_analysis_word_keeps_the_powerpoint_of_the_same_run(tmp_path, monkeypatch):
@@ -826,480 +512,6 @@ def test_cdr_analysis_word_keeps_the_powerpoint_of_the_same_run(tmp_path, monkey
     assert sorted(path.name for path in tmp_path.iterdir()) == sorted([powerpoint.name, word.name])
 
 
-def test_the_non_qualified_calls_artifact_keeps_campaign_choices_until_each_run():
-    root = Path(__file__).parents[1]
-    script = (root / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
-    module = (root / 'src/modules/nq/non_qualified_calls.py').read_text(encoding='utf-8')
-
-    # Its Campaign filter offers the automatic choices first, each alone, and keeps a saved one when NR Mode changes.
-    assert "const presets = key === 'campaign' ? campaignPresets : [];" in script
-    assert "...(presets.length ? {exclusive: presets} : {})," in script
-    assert "chosen = chosen.filter((value) => allowed.has(String(value)) || presets.some(([preset]) => preset === value));" in script
-    # Each run resolves the choice among the campaigns of the calls of its NR Modes (none when it stands for none).
-    assert 'filters = resolve_report_campaigns(repository, filters)' in module
-    assert "chosen = [value for group in preset_campaign_groups(campaign_groups(campaigns), presets[:1]) for value in group]" in module
-    assert "return {**filters, 'campaign': chosen or [NO_PREVIOUS_CAMPAIGN]}" in module
-
-
-def test_a_job_can_start_from_a_favourite_bundle_report_template():
-    definition = report_tasks.normalize_definition({'modules': {'bundle_report_template': {
-        'enabled': True, 'formats': ['powerpoint', 'word'], 'options': {'filters': {'favourites': ['7']}}}}})
-    # The jobs table names the favourite the job generates (every one when it chooses none) with what it includes.
-    contents = [{'title': 'Scoring & GAP Analysis', 'items': ['Summary', 'GAP Analysis']}]
-    groups = report_tasks.artifact_groups(definition, {}, {'7': 'Weekly NetCheck'}, {'7': contents})
-    assert groups == [{'module': 'Bundle Report Template', 'items': ['Weekly NetCheck (PPT/Word)'], 'contents': [contents], 'missing': [False]}]
-    assert report_tasks.based_on_favourite(definition)
-    assert report_tasks.artifact_labels(definition, {}, {'7': 'Weekly NetCheck'}) == ['Bundle Report Template · Weekly NetCheck (PPT/Word)']
-    every = report_tasks.normalize_definition({'modules': {'bundle_report_template': {'enabled': True, 'formats': ['powerpoint']}}})
-    assert report_tasks.artifact_groups(every)[0]['items'] == ['Every favourite (PPT)']
-    assert not report_tasks.based_on_favourite(every)
-    assert not report_tasks.based_on_favourite({**definition, 'scoring': [SCORING_ENTRY]})
-    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    assert 'name="rj-source" value="favourite" checked' in page and 'name="rj-source" value="editor"' in page
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
-    # From a favourite, the job generates only its Bundle Report Template; one that does opens as such in the editor.
-    assert 'function favouriteDefinition(base)' in script and 'function favouriteOf(definition)' in script
-    assert "if (jobSource() === 'favourite' && !$('rj-favourite')?.value)" in script
-    # Based On tells a job of a favourite from one with artifacts chosen in the editor.
-    assert '<th>Artifacts</th><th>Based On</th><th>Recurrence</th><th>Next Run</th>' in page and 'colspan="9"' in page
-    assert "fromFavourite ? 'Bundle Report Template' : 'Manual Artifacts'" in script and 'function favouriteContents(sections)' in script
-    # The header of the panel counts the jobs of each kind.
-    assert all(f'id="rj-count-{kind}"' in page for kind in ('total', 'favourite', 'manual'))
-    assert "$('rj-count-manual').textContent = `Manual Artifacts: ${state.tasks.length - favourites}`;" in script
-
-
-def test_jobs_are_labelled_with_the_area_and_nr_modes_of_their_artifacts(client):
-    # As the Favourites Filters of Scoring & GAP Analysis: a job of a favourite takes its common filters (every favourite
-    # when it chooses none), with the only Region, Cluster, City, Operator or Vendor filtered, or All.
-    favourites = {'7': {'nr_mode': 'NSA', 'regions': [], 'cities': ['London'], 'main_cities': False},
-                  '8': {'nr_mode': 'SA', 'regions': ['Vendor A', 'VMO2 North'], 'cities': [], 'main_cities': False},
-                  '9': {'nr_mode': 'NSA', 'regions': [], 'cities': [], 'main_cities': False}}
-    london = {'modules': {'bundle_report_template': {'enabled': True, 'options': {'filters': {'favourites': ['7']}}}}}
-    assert report_tasks.job_scope(london, favourites) == {
-        'scopes': [{'dimension': 'city', 'text': 'London', 'title': 'City: London'}], 'nr_modes': ['NSA']}
-    every = report_tasks.job_scope({'modules': {'bundle_report_template': {'enabled': True, 'options': {}}}}, favourites)
-    assert [scope['text'] for scope in every['scopes']] == ['London', 'Vendor A, VMO2 North', 'Nationwide']
-    assert every['nr_modes'] == ['NSA', 'SA']
-    # Manual artifacts: each Network Insights entry, Design, Scoring scenario (Main Cities a City) and module gives its
-    # area once (whatever the case), the operators or vendors it filters after every area, and the NR Modes of the job
-    # (NSA vs SA too).
-    manual = {'network_insights': [{'selection': {'nr_mode': 'SA', 'cities': ['London']}}],
-              'designs': [{'filters': {'Campaign': ['@latest-campaign']}}],
-              'scoring': [{'nr_mode': 'NSA+SA', 'report': {'scenarios': [
-                  {'context_filters': {}}, {'context_filters': {'City': ['LONDON']}}, {'context_filters': {}, 'main_cities': True},
-                  {'context_filters': {'City': ['Leeds'], 'Operator': ['EE']}}]}}],
-              'modules': {'non_qualified_calls': {'enabled': True, 'options': {'filters': {'nr_mode': ['NSA'], 'region': ['Vendor B']}}}}}
-    result = report_tasks.job_scope(manual)
-    assert [(scope['dimension'], scope['text']) for scope in result['scopes']] == [
-        ('city', 'London'), ('all', 'Nationwide'), ('city', 'Main Cities'), ('city', 'Leeds'), ('region', 'Vendor B'),
-        ('operator', 'EE')]
-    # A favourite that filters an area and an operator (every operator but Three) shows both, the area first.
-    both = report_tasks.job_scope(london, {'7': {'nr_mode': 'SA', 'cities': ['London'], 'operators': ['-Three']}})
-    assert [(scope['dimension'], scope['text']) for scope in both['scopes']] == [('city', 'London'), ('operator', '-Three')]
-    nationwide = report_tasks.job_scope(london, {'7': {'nr_mode': 'SA', 'operators': ['-Three']}})
-    assert [scope['text'] for scope in nationwide['scopes']] == ['Nationwide', '-Three']
-    assert result['nr_modes'] == ['NSA', 'SA', 'NSA+SA']
-    # The jobs table receives them with each job and shows them on top of its name.
-    login(client)
-    client.post('/api/reporting/tasks', json={'name': 'Labelled', 'schedule': {'mode': 'manual'},
-                                              'definition': {'scoring': [SCORING_ENTRY]}}).raise_for_status()
-    task = next(item for item in client.get('/api/reporting/state').json()['tasks'] if item['name'] == 'Labelled')
-    assert task['nr_modes'] == ['NSA'] and task['scopes'][0]['dimension'] == 'all'
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
-    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/reporting/report_jobs.css').read_text(encoding='utf-8')
-    assert 'const tabs = scopeTabs(task);' in script and "label.dataset.nrMode = mode === 'NSA+SA' ? 'nsa-vs-sa' : mode.toLowerCase();" in script
-    # The NR Modes on the line of the modules, after a separator.
-    assert "if (modes.length && line.childElementCount) line.append(node('span', undefined, 'rj-task-separator'));" in script
-    assert '.report-jobs .rj-task-scope[data-dimension="city"] { border-color: #b06d00; background: #b06d00; }' in styles
-
-
-def test_jobs_name_their_modules_abbreviated_and_move_or_delete_several_at_once(client):
-    # The modules a job generates artifacts of: its own and the sections of the favourites it generates (every favourite
-    # when it chooses none), in the order of the sections, CDR Analysis last.
-    favourites = {'7': ['network_insights', 'scoring'], '8': ['designs']}
-    favourite = {'modules': {'bundle_report_template': {'enabled': True, 'options': {'filters': {'favourites': ['7']}}}}}
-    assert report_tasks.job_modules(favourite, favourites) == ['scoring', 'network_insights']
-    every = {'modules': {'bundle_report_template': {'enabled': True, 'options': {}}}}
-    assert report_tasks.job_modules(every, favourites) == ['scoring', 'network_insights', 'designs']
-    manual = {'dataset_analysis': {'enabled': True}, 'designs': [{'design_id': 'a'}], 'scoring': [SCORING_ENTRY],
-              'modules': {'non_qualified_calls': {'enabled': True}}}
-    assert report_tasks.job_modules(manual) == ['scoring', 'non_qualified_calls', 'designs', 'dataset_analysis']
-    login(client)
-    client.post('/api/reporting/tasks', json={'name': 'Modules', 'schedule': {'mode': 'manual'},
-                                              'definition': {'scoring': [SCORING_ENTRY]}}).raise_for_status()
-    task = next(item for item in client.get('/api/reporting/state').json()['tasks'] if item['name'] == 'Modules')
-    assert task['modules'] == ['scoring']
-    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
-    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/reporting/report_jobs.css').read_text(encoding='utf-8')
-    # On the first line of the name, always on one line: the box of the job and its modules abbreviated.
-    assert "const MODULE_TAGS = {scoring: 'SCO', network_insights: 'NI', non_qualified_calls: 'NQ', designs: 'PPT', dataset_analysis: 'CDR'};" in script
-    assert '.report-jobs .rj-task-modules { display: flex; flex-wrap: nowrap;' in styles
-    assert '#rj-tasks th:nth-child(1), #rj-tasks td:nth-child(1) { width: 18rem;' in styles
-    # The box that selects a job sits on top of the tab on the left of its name, by which it is dragged.
-    assert "if (state.can_edit) nameCell.append(dragHandle(), taskCheck(task));" in script
-    assert '.report-jobs .rj-drag-handle { position: absolute; top: .55rem; bottom: .55rem;' in styles
-    assert '.report-jobs .rj-task-check-box { position: absolute; z-index: 1; top: .55rem;' in styles
-    # The area labels stay on one line too (the column widens for them), and the campaigns of the job follow on a line of
-    # their own: each choice once, after the modules that make it when they choose differently.
-    assert 'text-overflow: ellipsis; white-space: nowrap; }' in styles.split('.report-jobs .rj-task-scope, .report-jobs .rj-task-mode {', 1)[1].split('\n', 1)[0]
-    campaigns = {'7': [('scoring', ['@latest-2-campaigns']), ('network_insights', ['@latest-campaign']),
-                       ('non_qualified_calls', []), ('designs', ['@latest-2-campaigns'])]}
-    assert report_tasks.job_campaigns(favourite, campaigns) == [
-        {'campaigns': 'Latest 2 campaigns', 'modules': ['scoring', 'designs']},
-        {'campaigns': 'Latest campaign', 'modules': ['network_insights']},
-        {'campaigns': 'All campaigns', 'modules': ['non_qualified_calls']}]
-    assert report_tasks.job_campaigns({'scoring': [{'campaigns': ['@all-campaigns']}, {'campaigns': []}],
-                                       'designs': [{'filters': {'Campaign': ['UK_Q2_2026', 'UK_Q3_2026']}}]}) == [
-        {'campaigns': 'All campaigns', 'modules': ['scoring']}, {'campaigns': '26-Q2, 26-Q3', 'modules': ['designs']}]
-    assert task['campaigns'] == [{'campaigns': 'Latest campaign', 'modules': ['scoring']}]
-    assert "const modules = choices.length > 1 ? choice.modules.map((key) => MODULE_TAGS[key] || key.slice(0, 3).toUpperCase()).join(' · ') : '';" in script
-    # The actions in a light toolbar of icon buttons (an icon of its own for each, in the colour of its action), and the
-    # times of Next Run and Last Run below their dates, leave the room to Artifacts.
-    assert '.reporting-jobs-table .table-actions.rj-task-actions { display: inline-flex; flex-wrap: nowrap;' in styles
-    assert 'width: 1.75rem; min-width: 1.75rem; height: 1.75rem; min-height: 0; padding: 0; border: 0; border-radius: 7px; background: transparent;' in styles
-    assert all(f'.report-jobs #rj-tasks .rj-task-actions {selector} {{ --rj-icon: url("data:image/svg+xml,' in styles for selector in (
-        '[aria-label="Run now"]', '[aria-label="Edit"]', '[aria-label="Duplicate (disabled copy)"]',
-        '[aria-label="Delete the job and its runs"]'))
-    # The runs of the Run History share the toolbar and the download of the jobs, with icons of their own for Rerun, Stop and
-    # Delete.
-    assert "const actions = node('div', undefined, 'table-actions rj-task-actions');" in script
-    assert '.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .rj-download { --rj-icon: url("data:image/svg+xml,' in styles
-    assert all(f'.report-jobs #rj-runs .rj-task-actions {selector} {{ --rj-action:' in styles
-               for selector in ('.rj-rerun', '.rj-run-delete'))
-    assert '.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .rj-stop { --rj-action:' in styles
-    assert "const lastCell = timeCell(last ? last.started_at || last.created_at : '');" in script
-    assert "task.enabled ? timeCell(task.next_run_at) : node('td', 'Disabled')" in script
-    assert '.report-jobs #rj-tasks th:nth-child(2) { width: 38%; }' in styles
-    # Select all, Move Up, Move Down and Delete, as on the Favourites Filters, in a bar that stays at the top.
-    assert '<input type="checkbox" id="rj-select-all"> Select all' in page
-    assert 'data-rj-move="up"' in page and 'data-rj-move="down"' in page and 'id="rj-delete-selected"' in page
-    assert 'function movedTaskOrder(order, step) {' in script and 'void saveOrder();' in script
-    assert '.report-jobs .rj-sticky-head { position: sticky;' in styles and '.report-jobs .rj-sticky-head.is-stuck::before {' in styles
-    assert '.report-jobs details.collapsible-panel:has(> .collapsible-panel-body > .rj-sticky-head) { overflow: clip; }' in styles
-    # The checked jobs are deleted together after one confirmation that names them, none of them while one belongs to
-    # another user.
-    assert "await api('/api/reporting/tasks/delete', {method: 'POST', body: JSON.stringify({ids: targets.map((task) => task.id)})});" in script
-    assert "const refused = targets.filter((task) => !(window.canDeleteShared?.(task.created_by) ?? true));" in script
-    assert "syncBulkButton(deleteCheckedTasks, 'Delete', checked, (task) => window.canDeleteShared?.(task.created_by) ?? true, deletingCheckedTasks);" in script
-    assert "button.textContent = on ? `${label} (${items.length})` : label;" in script
-
-
-def test_reporting_tables_filter_by_column_show_ten_rows_and_keep_their_bar_and_header_in_view():
-    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
-    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/reporting/report_jobs.css').read_text(encoding='utf-8')
-    helper = (core.PROJECT_ROOT / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
-    # Every column of the Reporting Jobs and of the Run History but Actions filters as in Excel, Artifacts by module and
-    # the dates by year, month and day, whatever their time.
-    assert "head: head.tHead, rowSelector: kind === 'tasks' ? 'tr[data-task-id]' : 'tr[data-run-id]', menuClass: 'rj-column-filter-menu'," in script
-    assert "artifactsCell.dataset.filterValues = JSON.stringify([...byModule.keys()]);" in script
-    assert "valuesFor(row, index).some((value) => accepted.has(value))" in helper
-    assert script.count('.dataset.filterDate = dayKey(') == 2
-    assert "options.append(dateTree([...dates].sort(), selected));" in helper
-    assert "new Set([...options.querySelectorAll('input:checked:not([data-filter-group])')].filter((input) => !searchedOut(input)).map((input) => input.value));" in helper
-    # The filters are kept in the browser for each workspace and user, by the name of their column.
-    assert "persistKey: `drivetest-analyzer:reporting:column-filters:${kind}:${filtersScope}`," in script
-    assert 'data-workspace-id="{{ active_workspace.id if active_workspace else \'\' }}"' in page
-    assert "const values = kept?.[labels[index]];" in helper and "saveFilters(); apply(); closeMenu();" in helper
-    # The menu counts the rows the values checked or found leave as you type (a search takes only the values found, as in
-    # Excel), the bar counts the rows shown while filters are on, and an arrow floats while rows are hidden below.
-    assert "count.textContent = `${shown} of ${candidates.length} row${candidates.length === 1 ? '' : 's'}`;" in helper
-    assert "const accepted = chosen();" in helper
-    assert "count.textContent = `Showing ${all.filter((row) => !row.hidden).length} of ${all.length} ${noun}`;" in script
-    assert "filteredTables[kind].more.hidden = wrapper.scrollTop + wrapper.clientHeight >= wrapper.scrollHeight - 2;" in script
-    assert page.count('class="rj-more-rows"') == 2 and page.count('class="rj-filter-count"') == 2
-    assert '.report-jobs .rj-more-rows { position: sticky; bottom: 1.1rem;' in styles
-    # Dates missing are listed as (Blank), last, lined up with the years.
-    assert "if (!value) cell.dataset.filterValue = '';" in script
-    assert "(dates.size ? [...others.filter(Boolean), ...others.filter((value) => !value)] : others).forEach((value) => {" in helper
-    # Select all, Move Up and Move Down act on the rows shown; the rows the filters hide are unchecked.
-    assert "if (selectAllTasks.checked) visibleTaskIds().forEach((id) => checkedTaskIds.add(id));" in script
-    assert "if (selectAllRuns.checked) visibleRunIds().forEach((id) => checkedRunIds.add(id));" in script
-    assert "const shown = new Set(visibleTaskIds());" in script.split('function movedTaskOrder(order, step) {', 1)[1]
-    # Up to 10 rows each; while the page scrolls, the bar of each table and its header stay at the top in one block held by
-    # the browser (no position follows the scroll), the header taking the widths of the columns of the table.
-    assert 'const VISIBLE_ROWS = 10;' in script
-    assert page.count('<div class="rj-sticky-head" id="rj-') == 2 and 'id="rj-tasks-head"' in page and 'id="rj-runs-head"' in page
-    assert "[table, ...copy.rows[0].cells].forEach((element) => headWidths.observe(element));" in script
-    assert '.report-jobs :is(#rj-tasks, #rj-runs) > thead th { position: static; visibility: hidden; }' in styles
-    assert '--rj-head-offset' not in script + styles and '.rj-runs-bulk { position: static; }' not in styles
-    # Actions, without a filter, is centred on the height of the other headers.
-    assert '.report-jobs .reporting-jobs-table.excel-filter-table thead th:last-child { padding: .55rem .6rem; vertical-align: middle; }' in styles
-
-def test_reporting_page_keeps_its_scroll_position_when_reloaded():
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
-    assert "const SCROLL_KEY = 'drivetest-analyzer:/reporting:scroll';" in script
-    assert "['reload', 'back_forward'].includes(navigation)" in script
-    # An editor reopened by the reload does not move the page to it.
-    assert "if (!followingScroll) editor.scrollIntoView({behavior: 'smooth', block: 'start'});" in script
-
-
-def test_imported_reporting_jobs_find_their_favourites_by_name(client):
-    from src.modules.reporting import bundle_report_templates
-    login(client)
-    weekly = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
-    monthly = bundle_report_templates.save_favourite(core.repository, None, 'Monthly', {'sections': [{'key': 'scoring', 'enabled': False}]}, 'super')
-    report = {'enabled': True, 'formats': ['word'], 'options': {'filters': {'favourites': [str(monthly['id'])]}}}
-    client.post('/api/reporting/tasks', json={'name': 'Monthly job', 'schedule': {'mode': 'manual'},
-                                              'definition': {'modules': {'bundle_report_template': report}}}).raise_for_status()
-    exported = json.loads(report_tasks.export_tasks_document(core.repository))
-    assert exported['favourite_names'] == {str(monthly['id']): 'Monthly'}
-    # In another workspace the favourites have other IDs: the job takes the one of the same name.
-    with core.repository.connection() as connection:
-        connection.execute(f'DELETE FROM {bundle_report_templates.BUNDLE_REPORT_TEMPLATES_TABLE}')
-    bundle_report_templates.save_favourite(core.repository, None, 'Other', {}, 'super')
-    here = bundle_report_templates.save_favourite(core.repository, None, 'monthly', {}, 'super')
-    assert here['id'] not in {weekly['id'], monthly['id']}
-    assert core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super') >= 1
-    job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
-    assert job['definition']['modules']['bundle_report_template']['options']['filters']['favourites'] == [str(here['id'])]
-    state = client.get('/api/reporting/state').json()
-    listed = next(task for task in state['tasks'] if task['name'] == 'Monthly job')
-    assert listed['based_on'] == 'favourite'
-    assert listed['artifact_groups'][-1]['items'] == ['monthly (Word)']
-    assert listed['artifact_groups'][-1]['contents'][0][0]['title'] == 'Scoring & GAP Analysis'
-    # A favourite the destination does not have is kept by name (never every favourite) and found once it is there;
-    # documents without names keep the IDs.
-    exported['favourite_names'] = {str(monthly['id']): 'Missing'}
-    core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super')
-    job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
-    assert job['definition']['modules']['bundle_report_template']['options']['filters']['favourites'] == ['Missing']
-    missing = report_tasks.export_tasks_document(core.repository)
-    found = bundle_report_templates.save_favourite(core.repository, None, 'Missing', {}, 'super')
-    core._restore_workspace_reporting_jobs(core.active_workspace, missing, 'super')
-    job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
-    assert job['definition']['modules']['bundle_report_template']['options']['filters']['favourites'] == [str(found['id'])]
-    del exported['favourite_names']
-    core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super')
-    job = next(task for task in report_tasks.list_tasks(core.repository) if task['name'] == 'Monthly job')
-    assert job['definition']['modules']['bundle_report_template']['options']['filters']['favourites'] == [str(monthly['id'])]
-
-
-def test_deleting_a_favourite_disables_the_jobs_based_on_it(client):
-    from src.modules.reporting import bundle_report_templates
-    login(client)
-    weekly = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
-    other = bundle_report_templates.save_favourite(core.repository, None, 'Other', {}, 'super')
-    report = lambda *ids: {'enabled': True, 'formats': ['word'], 'options': {'filters': {'favourites': [str(value) for value in ids]}}}
-    based = client.post('/api/reporting/tasks', json={'name': 'Weekly', 'schedule': {'mode': 'daily', 'time': '08:00'},
-                                                      'definition': {'modules': {'bundle_report_template': report(weekly['id'])}}}).json()['task']
-    both = client.post('/api/reporting/tasks', json={'name': 'Both', 'schedule': {'mode': 'manual'},
-                                                     'definition': {'modules': {'bundle_report_template': report(weekly['id'], other['id'])}}}).json()['task']
-    jobs = client.get(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}/jobs").json()
-    assert jobs == {'based_on': ['Weekly'], 'others': ['Both']}
-    response = client.delete(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}")
-    assert response.status_code == 200 and response.json()['disabled_jobs'] == ['Weekly']
-    tasks = {task['id']: task for task in client.get('/api/reporting/state').json()['tasks']}
-    # The job based on it is disabled and both name it as no longer existing (never every favourite).
-    assert tasks[based['id']]['enabled'] is False and tasks[based['id']]['next_run_at'] is None
-    assert tasks[both['id']]['enabled'] is True
-    assert tasks[based['id']]['definition']['modules']['bundle_report_template']['options']['filters']['favourites'] == ['Weekly']
-    group = tasks[based['id']]['artifact_groups'][-1]
-    assert group['items'] == ['Weekly (Word)'] and group['missing'] == [True]
-    assert tasks[both['id']]['artifact_groups'][-1]['missing'] == [True, False]
-    actions = [row['action'] for row in core.repository.list_logs(limit=20)] if hasattr(core.repository, 'list_logs') else []
-    if actions:
-        assert 'bundle_report_template_favourite_deleted' in actions and 'disable_reporting_job' in actions
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
-    assert "'The associated Bundle Report Template no longer exists.'" in script
-
-
-def test_renaming_a_favourite_renames_the_jobs_based_on_it(client):
-    from src.modules.reporting import bundle_report_templates
-    login(client)
-    weekly = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
-    bundle_report_templates.save_favourite(core.repository, None, 'Taken', {}, 'super')
-    report = {'enabled': True, 'formats': ['word'], 'options': {'filters': {'favourites': [str(weekly['id'])]}}}
-    ids = [client.post('/api/reporting/tasks', json={'name': name, 'schedule': {'mode': 'manual'},
-                                                     'definition': {'modules': {'bundle_report_template': report}}}).json()['task']['id']
-           for name in ('Weekly', 'My weekly job')]
-    # A job that also generates other artifacts keeps its name.
-    other = client.post('/api/reporting/tasks', json={'name': 'Everything', 'schedule': {'mode': 'manual'}, 'definition': {
-        'modules': {'bundle_report_template': report}, 'scoring': [SCORING_ENTRY]}}).json()['task']['id']
-    assert client.post(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}/rename", json={'name': 'Taken'}).status_code == 400
-    response = client.post(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}/rename", json={'name': 'Weekly NetCheck'})
-    assert response.status_code == 200, response.text
-    assert response.json()['favourite']['name'] == 'Weekly NetCheck'
-    assert response.json()['renamed_jobs'] == ['Weekly NetCheck', 'Weekly NetCheck']
-    # Every job based on it takes the new name, also one that was given another name; all of them name the new favourite.
-    tasks = {task['id']: task for task in client.get('/api/reporting/state').json()['tasks']}
-    assert [tasks[task_id]['name'] for task_id in ids] == ['Weekly NetCheck', 'Weekly NetCheck']
-    assert tasks[other]['name'] == 'Everything'
-    assert tasks[ids[1]]['artifact_groups'][-1]['items'] == ['Weekly NetCheck (Word)']
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
-    assert 'const named = (await jobsOf(selected)).based_on;' in script
-    assert bundle_report_templates.get_favourite(core.repository, weekly['id'])['definition'] == weekly['definition']
-    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    assert 'id="brt-rename"' in page
-
-
-def test_reporting_jobs_keep_the_order_they_are_dragged_to(client):
-    login(client)
-    names = [task['name'] for task in report_tasks.list_tasks(core.repository)]
-    created = [client.post('/api/reporting/tasks', json={'name': name, 'schedule': {'mode': 'manual'},
-                                                         'definition': {'scoring': [SCORING_ENTRY]}}).json()['task']['id']
-               for name in ('Zulu', 'Alpha')]
-    # New jobs go to the end, in the order they are created.
-    assert [task['name'] for task in report_tasks.list_tasks(core.repository)] == [*names, 'Zulu', 'Alpha']
-    response = client.post('/api/reporting/tasks/order', json={'ids': [created[1], created[0]]})
-    assert response.status_code == 200
-    order = [task['name'] for task in report_tasks.list_tasks(core.repository)]
-    assert order == ['Alpha', 'Zulu', *names]
-    # A copy follows its job.
-    client.post(f'/api/reporting/tasks/{created[1]}/duplicate').raise_for_status()
-    assert [task['name'] for task in report_tasks.list_tasks(core.repository)][:3] == ['Alpha', 'Alpha (copy)', 'Zulu']
-    # The order travels with the jobs: an import puts them in their order, before the jobs only this workspace has.
-    exported = json.loads(report_tasks.export_tasks_document(core.repository))
-    assert [item['position'] for item in exported['reporting_jobs']] == list(range(1, len(exported['reporting_jobs']) + 1))
-    client.post('/api/reporting/tasks/order', json={'ids': list(reversed([task['id'] for task in report_tasks.list_tasks(core.repository)]))})
-    client.post('/api/reporting/tasks', json={'name': 'Only here', 'schedule': {'mode': 'manual'}, 'definition': {'scoring': [SCORING_ENTRY]}})
-    core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(exported).encode(), 'super')
-    assert [task['name'] for task in report_tasks.list_tasks(core.repository)] == [item['name'] for item in exported['reporting_jobs']] + ['Only here']
-    actions = [str(row['action']) for row in core.repository.list_logs(limit=50)] if hasattr(core.repository, 'list_logs') else []
-    if actions:
-        assert 'reorder_reporting_jobs' in actions
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
-    assert "api('/api/reporting/tasks/order', {method: 'POST', body: JSON.stringify({ids})})" in script
-
-
-def test_jobs_saved_before_the_order_keep_their_alphabetical_order(tmp_path):
-    import sqlite3
-
-    class Repository:
-        def __init__(self, path):
-            self.path = path
-
-        def connection(self):
-            connection = sqlite3.connect(self.path)
-            connection.row_factory = sqlite3.Row
-            return _Committing(connection)
-
-    class _Committing:
-        def __init__(self, connection):
-            self.inner = connection
-
-        def __enter__(self):
-            return self.inner
-
-        def __exit__(self, kind, *_args):
-            if kind is None:
-                self.inner.commit()
-            self.inner.close()
-
-    path = tmp_path / 'old.db'
-    with sqlite3.connect(path) as connection:
-        connection.execute("CREATE TABLE report_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, definition_json TEXT NOT NULL DEFAULT '{}', "
-                           "send_email INTEGER NOT NULL DEFAULT 1, recipients_json TEXT NOT NULL DEFAULT '[]', schedule_json TEXT NOT NULL DEFAULT '{}', "
-                           "enabled INTEGER NOT NULL DEFAULT 1, next_run_at TEXT, last_run_id INTEGER, created_by TEXT NOT NULL, created_at TEXT NOT NULL, "
-                           "updated_at TEXT NOT NULL)")
-        for name in ('Charlie', 'alpha', 'Bravo'):
-            connection.execute("INSERT INTO report_tasks (name, created_by, created_at, updated_at) VALUES (?, 'super', '', '')", (name,))
-    repository = Repository(path)
-    assert [task['name'] for task in report_tasks.list_tasks(repository)] == ['alpha', 'Bravo', 'Charlie']
-    assert [task['position'] for task in report_tasks.list_tasks(repository)] == [1, 2, 3]
-
-
-def test_jobs_saved_before_store_one_theme(tmp_path):
-    # Jobs saved when each artifact had its own theme (or none) store the default theme of the job, once, and those saved
-    # when Bundle Report Templates had a former name their current artifact key.
-    from src.modules.core.repository import Repository
-    from src.modules.scoring.scoring_themes import DEFAULT_THEME
-
-    repository = Repository(tmp_path / 'workspace.db')
-    with repository.connection() as connection:
-        connection.executescript(report_tasks.SCHEMA)
-        for name, definition in (
-                ('Legacy', {'network_insights': [{'formats': ['powerpoint'], 'theme': 'umlaut'}],
-                            'scoring': [{'report': {'scenarios': [], 'theme': 'netcheck'}}]}),
-                ('Chosen', {'theme': 'midnight', 'network_insights': [{'formats': ['powerpoint']}]}),
-                ('Former', {'theme': 'paper', 'modules': {'complete_report': {'enabled': True, 'formats': ['word']}}})):
-            connection.execute(f'INSERT INTO {report_tasks.REPORT_TASKS_TABLE} (name, definition_json, created_by, created_at, updated_at) '
-                               "VALUES (?, ?, 'super', '2026-10-18', '2026-10-18')", (name, json.dumps(definition)))
-    report_tasks.ensure_report_task_tables(repository)
-    with repository.connection() as connection:
-        stored = {row['name']: json.loads(row['definition_json']) for row in connection.execute(
-            f'SELECT name, definition_json FROM {report_tasks.REPORT_TASKS_TABLE}')}
-    assert stored['Legacy']['theme'] == DEFAULT_THEME == 'ericsson'
-    assert 'theme' not in stored['Legacy']['network_insights'][0] and 'theme' not in stored['Legacy']['scoring'][0]['report']
-    assert stored['Chosen']['theme'] == 'midnight'
-    assert stored['Former']['modules'] == {'bundle_report_template': {'enabled': True, 'formats': ['word']}}
-
-
-def test_nsa_vs_sa_scoring_entries_show_each_nr_mode_as_chosen(client, monkeypatch):
-    definition = normalize_definition({'scoring': [
-        {**SCORING_ENTRY, 'nr_mode': 'NSA+SA', 'nr_layout': 'grouped', 'nr_charts': 'separate',
-         'report': {**default_report_configuration(), 'nr_layout': 'interleaved'}},
-        {**SCORING_ENTRY, 'nr_layout': 'other'}]})
-    nsa_vs_sa, nsa = definition['scoring']
-    assert (nsa_vs_sa['nr_layout'], nsa_vs_sa['nr_charts']) == ('grouped', 'separate')
-    # Each panel: NSA then SA and NSA & SA in the same chart by default; the entry chooses them, not its report.
-    assert (nsa['nr_layout'], nsa['nr_charts']) == ('interleaved', 'same') and 'nr_layout' not in nsa_vs_sa['report']
-    reports = []
-    monkeypatch.setattr(report_tasks, 'complete_campaign_cdrs', lambda *_args: ([11, 12, 13], []))
-
-    def build(repository, base, report, username):
-        reports.append((base['nr_mode'], report))
-        return b'pptx', 'Scoring.pptx', {'dataset_ids': base['dataset_ids'], 'nr_mode': base['nr_mode']}
-
-    monkeypatch.setattr(core, 'build_scoring_report_document', build)
-    login(client)
-    payload = {'name': 'NSA vs SA views', 'schedule': {'mode': 'manual'}, 'definition': {'scoring': [
-        {**SCORING_ENTRY, 'nr_mode': 'NSA+SA', 'auto_cdrs': True, 'nr_layout': 'grouped', 'nr_charts': 'separate'},
-        {**SCORING_ENTRY, 'auto_cdrs': True}]}}
-    created = client.post('/api/reporting/tasks', json=payload)
-    assert created.status_code == 200, created.text
-    wait_for_run(client, client.post(f"/api/reporting/tasks/{created.json()['task']['id']}/run").json()['run_id'])
-    (mode, report), (_mode, single) = reports
-    assert mode == 'NSA+SA' and (report['nr_layout'], report['nr_charts']) == ('grouped', 'separate')
-    assert 'nr_layout' not in single
-    options = client.get('/api/reporting/options').json()
-    assert options['nr_layouts'] == [['interleaved', 'Each panel: NSA then SA'], ['grouped', 'All NSA, then all SA']]
-    # The editor offers both choices while NR Mode is NSA vs SA.
-    script = (Path(__file__).resolve().parents[1] / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
-    assert "const syncNrViews = () => { nrViews.hidden = nrMode.value !== 'NSA+SA'; };" in script
-    assert 'nr_layout: nrLayout.value, nr_charts: nrCharts.value,' in script
-
-
-def test_the_jobs_table_enables_and_disables_a_job_with_its_switch(client):
-    login(client)
-    task = client.post('/api/reporting/tasks', json={'name': 'Switched', 'schedule': {'mode': 'daily', 'time': '08:00'},
-                                                     'definition': {'scoring': [SCORING_ENTRY]}}).json()['task']
-    assert task['enabled'] is True and task['next_run_at']
-    response = client.post(f"/api/reporting/tasks/{task['id']}/enabled", json={'enabled': False})
-    assert response.status_code == 200 and response.json()['task']['enabled'] is False
-    assert response.json()['task']['next_run_at'] is None
-    assert client.post(f"/api/reporting/tasks/{task['id']}/enabled", json={'enabled': True}).json()['task']['enabled'] is True
-    actions = [row['action'] for row in core.repository.list_logs(limit=10)] if hasattr(core.repository, 'list_logs') else []
-    if actions:
-        assert 'disable_reporting_job' in actions and 'enable_reporting_job' in actions
-    # The table shows the switch in its own column, before the actions (which no longer have ⏸ / ⏵).
-    page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    assert '<th>Status</th><th>Enable/Disable</th><th>Actions</th>' in page
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
-    assert "const switchLabel = node('label', undefined, 'rj-enabled-switch rj-table-switch');" in script
-    assert 'lastCell, statusCell, cellWith(switchLabel), cellWith(actions),' in script
-    assert "'Disable the schedule'" not in script and "emptyRow(body, 'No Reporting Jobs yet.', 10);" in script
-
-
-def test_checked_jobs_and_runs_run_stop_download_and_delete_from_a_toolbar(client):
-    login(client)
-    page = client.get('/reporting').text
-    for button in ('data-rj-move="up"', 'id="rj-run-selected"', 'id="rj-stop-tasks-selected"', 'id="rj-download-selected"',
-                   'id="rj-delete-selected"', 'id="rj-rerun-selected"', 'id="rj-stop-selected"', 'id="rj-download-runs-selected"',
-                   'id="rj-delete-runs-selected"'):
-        assert button in page
-    assert page.count('class="bulk-toolbar" role="toolbar"') == 2
-    script = (Path(__file__).parents[1] / 'src/web_interface/static/js/reporting/report_jobs.js').read_text(encoding='utf-8')
-    # Each button acts only when every checked job or run has that button on in its row.
-    assert 'const on = !busy && items.length > 0 && items.every(test);' in script
-    assert "syncBulkButton(stopCheckedTasks, 'Stop', checked, (task) => taskStoppableRuns(task).length > 0, deletingCheckedTasks);" in script
-    assert "syncBulkButton(downloadCheckedRuns, 'Download', checked, runDownloadable, actingOnCheckedRuns);" in script
-    assert "actionButton('■', 'Stop its queued or running run', () => stopRuns(taskStoppableRuns(task)), 'icon-action rj-stop')" in script
-    styles = (Path(__file__).parents[1] / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
-    assert all(f'.bulk-toolbar .bulk-action-{name} {{' in styles for name in ('up', 'down', 'run', 'stop', 'download', 'rerun', 'newer', 'delete'))
-
-
 def test_several_runs_download_in_one_zip_with_a_folder_each(client):
     def generate(config, folder, stamp, user):
         path = folder / f'{stamp} - Fake report.pptx'
@@ -1309,11 +521,8 @@ def test_several_runs_download_in_one_zip_with_a_folder_each(client):
     register_report_artifact_provider('fake', 'Fake module', 'datasets-analysis', generate)
     try:
         login(client)
-        task = client.post('/api/reporting/tasks', json={
-            'name': 'Zip check', 'definition': {'modules': {'fake': {'enabled': True}}},
-            'schedule': {'mode': 'manual'}, 'enabled': True,
-        }).json()['task']
-        runs = [wait_for_run(client, client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id']) for _ in range(2)]
+        task = module_job('Zip check', 'fake')
+        runs = [wait_for_run(client, start_run(task)) for _ in range(2)]
         response = client.get('/api/reporting/runs/download', params=[('ids', run['id']) for run in runs])
         assert response.status_code == 200 and 'Reporting - 2 runs.zip' in response.headers['content-disposition']
         with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
@@ -1349,11 +558,7 @@ def test_a_long_step_moves_the_progress_of_its_run(client):
     register_report_artifact_provider('slow', 'Slow module', 'datasets-analysis', generate)
     try:
         login(client)
-        task = client.post('/api/reporting/tasks', json={
-            'name': 'Progress check', 'definition': {'modules': {'slow': {'enabled': True}}},
-            'schedule': {'mode': 'manual'}, 'enabled': True,
-        }).json()['task']
-        run_id = client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id']
+        run_id = start_run(module_job('Progress check', 'slow'))
         # Halfway through its only step, the run is at 45% and says what the step is doing.
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline and (run_row(run_id)['progress'] or 0) < 45:
@@ -1367,3 +572,519 @@ def test_a_long_step_moves_the_progress_of_its_run(client):
     finally:
         release.set()
         report_tasks.ARTIFACT_PROVIDERS.pop('slow', None)
+
+
+def test_a_report_schedule_emails_its_runs_and_runs_when_due(client, monkeypatch):
+    import smtplib
+
+    monkeypatch.setattr(smtplib, 'SMTP', FakeSMTP)
+    FakeSMTP.sent = []
+    generated = fake_reports(monkeypatch)
+    login(client)
+    core.save_email_delivery_settings(core.repository, {
+        'host': 'smtp.example.com', 'port': 587, 'security': 'starttls', 'from_address': 'reports@example.com',
+        'max_attachments_mb': 10,
+    }, keep_password=False)
+    favourite = report(client, 'Weekly check', schedule={'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}, 'formats': ['powerpoint'],
+                                                         'send_email': True, 'recipients': 'a@example.com; b@example.com'})
+    task = report_tasks.report_task(core.repository, favourite['id'])
+    assert task['recipients'] == ['a@example.com', 'b@example.com'] and task['next_run_at']
+    run_id = generate(client, favourite['id'])
+    run = wait_for_run(client, run_id)
+    assert run['status'] == 'sent', run
+    message = FakeSMTP.sent[-1]
+    assert message['To'] == 'a@example.com, b@example.com' and message['Subject'].startswith('DT Analyzer - Weekly check · ')
+    body = message.get_body(('plain',)).get_content()
+    assert 'Fake report' in body and 'Filter: everything' in body
+    assert [part.get_filename() for part in message.iter_attachments()] == [run['artifacts'][0]['file_name']]
+    assert client.get(f'/api/reporting/runs/{run_id}/download').status_code == 200
+    state = client.get('/api/reporting/state').json()
+    assert next(item for item in state['reports'] if item['id'] == favourite['id'])['last_run']['id'] == run_id
+    # Due schedules run once per schedule check.
+    make_due(task)
+    due = core.run_due_report_tasks()
+    assert len(due) == 1 and core.run_due_report_tasks() == []
+    assert wait_for_run(client, due[0])['trigger'] == 'schedule' and len(generated) == 2
+
+
+def test_imported_report_schedules_keep_an_owner_that_exists_here(client):
+    login(client)
+    workspace_user('editor', 'user-editor')
+    names = ('Owned by editor', 'Owner from elsewhere', 'Older export')
+    ids = {name: bundle_report_templates.save_favourite(core.repository, None, name, {}, 'super')['id'] for name in names}
+    document = {
+        'format': 'drivetest-analyzer-reporting-jobs', 'version': 2, 'favourite_names': {str(index): name for index, name in enumerate(names, 101)},
+        'reporting_jobs': [
+            {'name': 'Owned by editor', 'definition': report_tasks.report_definition(101), 'schedule': {'mode': 'manual'}, 'created_by': 'editor'},
+            {'name': 'Owner from elsewhere', 'definition': report_tasks.report_definition(102), 'schedule': {'mode': 'manual'}, 'created_by': 'nobody-here'},
+            {'name': 'Older export', 'definition': report_tasks.report_definition(103), 'schedule': {'mode': 'manual'}},
+        ],
+    }
+    # A schedule imported by an earlier version keeps the placeholder owner until it is imported again.
+    report_tasks.save_report_schedule(core.repository, ids['Older export'], 'Older export', {}, 'import', **RECIPIENTS)
+
+    assert core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(document).encode(), 'super') == 3
+
+    owners = {task['name']: task['created_by'] for task in report_tasks.list_tasks(core.repository)}
+    assert owners == {'Owned by editor': 'editor', 'Owner from elsewhere': 'super', 'Older export': 'super'}
+    exported = json.loads(report_tasks.export_tasks_document(core.repository))
+    assert {item['name']: item['created_by'] for item in exported['reporting_jobs']} == owners
+
+
+def test_a_report_is_generated_only_with_the_modules_of_who_generates_it(client):
+    editor_id = workspace_user('editor', 'user-editor')
+    login(client, 'editor', 'editor123')
+    profile_id = core.repository.save_modules_profile(None, 'No Scoring', '', [key for key in core.FEATURE_KEYS if key != 'scoring'])
+    core.repository.set_users_modules_profile([editor_id], profile_id)
+    core.invalidate_module_access_cache()
+    definition = bundle_report_templates.normalize_definition({})
+    for section in definition['sections']:
+        section['enabled'] = section['key'] == 'scoring'
+    favourite = bundle_report_templates.save_favourite(core.repository, None, 'Scoring only', definition, 'super')
+    response = client.post(f"/api/reporting/bundle-report-template/favourites/{favourite['id']}/generate", json={})
+    assert response.status_code == 400 and 'your account can use' in response.json()['detail']
+    assert report_tasks.report_task(core.repository, favourite['id']) is None
+
+
+def test_reporting_runs_appear_in_background_tasks(client):
+    login(client)
+    favourite = bundle_report_templates.save_favourite(core.repository, None, 'Background check', {}, 'super')
+    task = report_tasks.save_report_schedule(core.repository, favourite['id'], favourite['name'], {}, 'super', **RECIPIENTS)
+    report_tasks.create_run(core.repository, task, 'manual', 'super')
+    assert 'Report: Background check' in json.dumps(client.get('/api/background-tasks').json())
+
+
+def test_reporting_options_list_the_filter_values_of_the_cdrs(client):
+    login(client)
+    options = client.get('/api/reporting/options').json()
+    assert set(options['values']) == {'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Region', 'Cluster', 'City', 'Campaign'}
+    assert set(options['campaigns']) == {'NSA', 'SA', report_tasks.NSA_VS_SA} and options['catalogues_pending'] is False
+    assert options['email_configured'] is False and options['timezone']
+
+
+def test_reports_are_labelled_with_their_area_operators_nr_mode_and_campaigns(client):
+    # As the Favourites Filters of Scoring & GAP Analysis: the Region, Cluster or City filtered (Nationwide when none), then
+    # the Operator or Vendor; the checked modules in their order, the NR Mode and each choice of campaigns once.
+    nationwide = bundle_report_templates.report_labels({})
+    assert nationwide['scopes'] == [{'dimension': 'all', 'text': 'Nationwide', 'title': 'No Region, Cluster or City is filtered'}]
+    assert nationwide['nr_mode'] == 'NSA' and nationwide['modules'] == ['scoring', 'network_insights', 'non_qualified_calls', 'dataset_analysis']
+    definition = bundle_report_templates.normalize_definition({'filters': {
+        'nr_mode': 'SA', 'regions': ['Vendor A', 'VMO2 North'], 'main_cities': True, 'cities': ['Leeds'], 'operators': ['-Three']}})
+    for section in definition['sections']:
+        section['enabled'] = section['key'] in {'scoring', 'network_insights', 'non_qualified_calls'}
+        section['options']['campaigns'] = {'scoring': ['@latest-2-campaigns'], 'network_insights': ['@latest-campaign']}.get(section['key'], [])
+    labels = bundle_report_templates.report_labels(definition)
+    assert [(scope['dimension'], scope['text']) for scope in labels['scopes']] == [
+        ('region', 'Vendor A, VMO2 North'), ('city', 'Main Cities, Leeds'), ('operator', '-Three')]
+    assert (labels['modules'], labels['nr_mode']) == (['scoring', 'network_insights', 'non_qualified_calls'], 'SA')
+    assert labels['campaigns'] == [{'campaigns': 'Latest 2 campaigns', 'modules': ['scoring']}, {'campaigns': 'Latest campaign', 'modules': ['network_insights']},
+                                   {'campaigns': 'All campaigns', 'modules': ['non_qualified_calls']}]
+    # The card of the report receives them with the report, and shows them with the colours of their dimension.
+    login(client)
+    saved = bundle_report_templates.save_favourite(core.repository, None, 'Labelled', definition, 'super')
+    listed = next(item for item in client.get('/api/reporting/state').json()['reports'] if item['id'] == saved['id'])
+    assert listed['labels'] == labels
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
+    styles = (core.PROJECT_ROOT / 'src/web_interface/static/css/reporting/report_jobs.css').read_text(encoding='utf-8')
+    assert "const tag = node('span', scope.text, `rp-scope rp-scope-${scope.dimension}`);" in script
+    assert all(f'.rp-scope-{dimension} {{' in styles for dimension in ('all', 'region', 'cluster', 'city', 'operator', 'vendor'))
+
+
+def test_history_filters_its_runs_by_column_and_acts_on_the_checked_ones(client):
+    login(client)
+    page = client.get('/reporting').text
+    assert 'id="rp-tab-reports"' in page and 'id="rp-tab-history"' in page
+    for button in ('id="rp-rerun-selected"', 'id="rp-stop-selected"', 'id="rp-download-selected"', 'id="rp-delete-selected"'):
+        assert button in page
+    assert page.count('class="bulk-toolbar" role="toolbar"') == 1
+    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/reporting_history.js').read_text(encoding='utf-8')
+    # Each button acts only when every checked run allows it, and tells how many it acts on.
+    assert 'const ok = chosen.length > 0 && chosen.every(test);' in script
+    assert "set('rp-stop-selected', 'Stop', (run) => STOPPABLE.includes(run.status));" in script
+    assert "set('rp-download-selected', 'Download', downloadable);" in script
+    assert 'button.textContent = ok ? `${label} (${chosen.length})` : label;' in script
+    # Every column but Actions filters as in Excel, kept in the browser for each workspace and user; the bar counts the rows
+    # shown, and the rows the filters hide are unchecked.
+    assert 'persistKey: `drivetest-analyzer:reporting:history-filters:${filtersScope}`,' in script
+    assert 'count.textContent = `Showing ${all.filter((row) => !row.hidden).length} of ${all.length} runs`;' in script
+    assert 'checked.delete(Number(row.dataset.runId));' in script
+    # Select all acts on the rows shown.
+    assert "rows().filter((row) => !row.hidden).forEach((row) => {" in script
+
+
+def test_jobs_become_the_schedules_of_their_reports_once(tmp_path, monkeypatch):
+    repository = workspace_database(tmp_path / 'workspace.db')
+    weekly = bundle_report_templates.save_favourite(repository, None, 'Weekly', {}, 'super')
+    monthly = bundle_report_templates.save_favourite(repository, None, 'Monthly', {}, 'super')
+
+    def report_job(favourite_id, formats, key='bundle_report_template'):
+        return {'modules': {key: {'enabled': True, 'formats': formats, 'options': {'filters': {'favourites': [str(favourite_id)]}}}}}
+
+    weekday = {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}
+    jobs = [('My weekly job', report_job(weekly['id'], ['word'], 'complete_report'), {'mode': 'manual'}),
+            ('Monthly by hand', report_job(monthly['id'], ['word']), {'mode': 'manual'}),
+            ('Monthly on Mondays', report_job(monthly['id'], ['powerpoint']), weekday),
+            ('Designed', {'scoring': [SCORING_ENTRY]}, weekday),
+            ('Every report', {'modules': {'bundle_report_template': {'enabled': True, 'formats': ['word'], 'options': {}}}}, {'mode': 'manual'}),
+            ('Report gone', report_job(999, ['word']), weekday)]
+    ids, folders = {}, {}
+    with repository.connection() as connection:
+        connection.executescript(report_tasks.SCHEMA)
+        for position, (name, definition, schedule) in enumerate(jobs, 1):
+            ids[name] = connection.execute(
+                f"INSERT INTO {report_tasks.REPORT_TASKS_TABLE} (name, definition_json, send_email, schedule_json, created_by, created_at, updated_at, "
+                "position) VALUES (?, ?, 0, ?, 'editor', '2026-10-01', '2026-10-01', ?)",
+                (name, json.dumps(definition), json.dumps(schedule), position)).lastrowid
+            folders[name] = tmp_path / 'output' / 'reports' / 'reporting-jobs' / name
+            folders[name].mkdir(parents=True)
+            connection.execute(f"INSERT INTO {report_tasks.REPORT_TASK_RUNS_TABLE} (task_id, task_name, trigger, status, requested_by, created_at, output_dir) "
+                               "VALUES (?, ?, 'manual', 'completed', 'editor', '2026-10-02', ?)", (ids[name], name, str(folders[name])))
+    monkeypatch.setattr(report_tasks, '_LEGACY_JOBS_STORED', set())
+    report_tasks.ensure_report_task_tables(repository)
+
+    tasks = {task['name']: task for task in report_tasks.list_tasks(repository)}
+    # A job that generates one report becomes its schedule, named after it, with its formats (a former key of the artifact too).
+    assert set(tasks) == {'Weekly', 'Monthly'}
+    assert tasks['Weekly']['id'] == ids['My weekly job'] and report_tasks.report_favourite_id(tasks['Weekly']) == str(weekly['id'])
+    assert tasks['Weekly']['definition']['modules'] == report_tasks.report_definition(weekly['id'], ['word'])['modules']
+    # Of the jobs of one report the scheduled one stays, and the runs of the others stay in History with it.
+    assert tasks['Monthly']['id'] == ids['Monthly on Mondays'] and tasks['Monthly']['schedule'] == weekday
+    assert tasks['Monthly']['definition']['modules'] == report_tasks.report_definition(monthly['id'], ['powerpoint'])['modules']
+    assert report_tasks.report_task(repository, monthly['id'])['id'] == ids['Monthly on Mondays']
+    assert {run['task_name']: run['task_id'] for run in report_tasks.list_runs(repository)} == {
+        'My weekly job': ids['My weekly job'], 'Monthly by hand': ids['Monthly on Mondays'], 'Monthly on Mondays': ids['Monthly on Mondays']}
+    # The jobs of artifacts designed in the job, of every report or of a report that no longer exists go with their runs and folders.
+    assert sorted(name for name, folder in folders.items() if folder.exists()) == ['Monthly by hand', 'Monthly on Mondays', 'My weekly job']
+    # App Events tells what changed.
+    events = [row for row in repository.list_logs(limit=10) if row['action'] == 'reporting_jobs_became_report_schedules']
+    assert [row['username'] for row in events] == ['system']
+    event = json.loads(events[0]['details'])
+    assert event['kept'] == [{'id': ids['My weekly job'], 'report': 'Weekly'}, {'id': ids['Monthly on Mondays'], 'report': 'Monthly'}]
+    assert event['merged'] == [{'id': ids['Monthly by hand'], 'name': 'Monthly by hand', 'into': ids['Monthly on Mondays']}]
+    assert [item['name'] for item in event['deleted']] == ['Designed', 'Every report', 'Report gone']
+    assert app_event_origin('reporting_jobs_became_report_schedules', event) == 'server:startup'
+    # Another process finds the schedules of the reports as they are: nothing changes, and nothing is told.
+    monkeypatch.setattr(report_tasks, '_LEGACY_JOBS_STORED', set())
+    report_tasks.ensure_report_task_tables(repository)
+    assert {task['name']: task['id'] for task in report_tasks.list_tasks(repository)} == {name: task['id'] for name, task in tasks.items()}
+    assert len([row for row in repository.list_logs(limit=10) if row['action'] == 'reporting_jobs_became_report_schedules']) == 1
+
+
+def test_each_report_has_one_schedule_renamed_and_deleted_with_it(tmp_path):
+    repository = workspace_database(tmp_path / 'workspace.db')
+    weekly = bundle_report_templates.save_favourite(repository, None, 'Weekly', {}, 'super')
+    other = bundle_report_templates.save_favourite(repository, None, 'Other', {}, 'super')
+    assert report_tasks.report_task(repository, weekly['id']) is None
+    task = report_tasks.save_report_schedule(repository, weekly['id'], 'Weekly', {
+        'schedule': {'mode': 'weekly', 'time': '07:30', 'weekdays': [0]}, 'formats': ['word', 'excel'],
+        'send_email': True, 'recipients': 'a@example.com; b@example.com'}, 'editor', **RECIPIENTS)
+    assert (task['name'], task['created_by'], task['recurrence'], task['recipients']) == (
+        'Weekly', 'editor', 'Weekly · Mon · 07:30', ['a@example.com', 'b@example.com'])
+    assert task['enabled'] and task['next_run_at']
+    # It generates its report, in the formats chosen among those of a report.
+    assert task['definition']['modules'] == report_tasks.report_definition(weekly['id'], ['word'])['modules']
+    assert report_tasks.report_favourite_id(task) == str(weekly['id'])
+    assert report_tasks.report_task(repository, weekly['id'])['id'] == task['id']
+    # A report has one schedule: saving it again changes it and keeps its owner; by default, by hand and in both formats.
+    again = report_tasks.save_report_schedule(repository, weekly['id'], 'Weekly', {'enabled': False}, 'super', **RECIPIENTS)
+    assert (again['id'], again['created_by'], again['enabled'], again['next_run_at'], again['schedule']['mode'], again['send_email']) == (
+        task['id'], 'editor', False, None, 'manual', False)
+    assert again['definition']['modules']['bundle_report_template']['formats'] == ['powerpoint', 'word']
+    assert list(report_tasks.report_tasks_by_favourite(repository)) == [str(weekly['id'])]
+    # What is wrong is refused, and the report stays without a schedule.
+    with pytest.raises(ValueError, match='Enter a name for the report.'):
+        report_tasks.save_report_schedule(repository, other['id'], ' ', {}, 'super', **RECIPIENTS)
+    for wrong in ({'schedule': {'mode': 'monthly', 'day_of_month': 40}}, {'send_email': True, 'recipients': ''}, {'send_email': True, 'recipients': 'bad'},
+                  {'schedule': {'mode': 'once', 'date': '2020-01-01', 'time': '08:00'}}):
+        with pytest.raises(ValueError):
+            report_tasks.save_report_schedule(repository, other['id'], 'Other', wrong, 'super', **RECIPIENTS)
+    assert report_tasks.report_task(repository, other['id']) is None
+    # A renamed report renames its schedule; its runs keep the name they had.
+    run_id = report_tasks.create_run(repository, again, 'manual', 'super')
+    report_tasks.rename_report_task(repository, weekly['id'], 'Weekly v2')
+    report_tasks.rename_report_task(repository, other['id'], 'Other v2')
+    assert report_tasks.report_task(repository, weekly['id'])['name'] == 'Weekly v2'
+    assert report_tasks.get_run(repository, run_id)['task_name'] == 'Weekly'
+    assert report_tasks.report_task(repository, other['id']) is None
+    # A deleted report takes its schedule and its runs, and gives the folders of the runs to remove.
+    report_tasks.update_run(repository, run_id, output_dir=str(tmp_path / 'run'))
+    assert report_tasks.delete_report_task(repository, weekly['id']) == [str(tmp_path / 'run')]
+    assert report_tasks.report_task(repository, weekly['id']) is None and report_tasks.get_run(repository, run_id) is None
+    assert report_tasks.delete_report_task(repository, other['id']) == []
+    # What no longer exists says so.
+    with pytest.raises(ValueError, match='The schedule of the report no longer exists.'):
+        report_tasks.delete_task(repository, task['id'])
+    with pytest.raises(ValueError, match='The schedule of the report no longer exists.'):
+        report_tasks.save_task(repository, task['id'], {'name': 'Weekly', 'definition': report_tasks.report_definition(weekly['id'])}, 'super', **RECIPIENTS)
+
+
+def test_report_schedules_travel_to_the_report_of_the_same_name(tmp_path):
+    source = workspace_database(tmp_path / 'source.db')
+    destination = workspace_database(tmp_path / 'destination.db')
+    weekly = bundle_report_templates.save_favourite(source, None, 'Weekly', {}, 'super')
+    only_source = bundle_report_templates.save_favourite(source, None, 'Only here', {}, 'super')
+    report_tasks.save_report_schedule(source, weekly['id'], 'Weekly', {
+        'schedule': {'mode': 'daily', 'time': '06:00'}, 'formats': ['word'], 'send_email': True, 'recipients': 'team@example.com'}, 'editor', **RECIPIENTS)
+    report_tasks.save_report_schedule(source, only_source['id'], 'Only here', {'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': [2]}}, 'super', **RECIPIENTS)
+    document = json.loads(report_tasks.export_tasks_document(source))
+    # Each schedule names its report; the reports travel as an element of their own.
+    assert (document['format'], document['version']) == ('drivetest-analyzer-reporting-jobs', 2)
+    assert document['favourite_names'] == {str(weekly['id']): 'Weekly', str(only_source['id']): 'Only here'}
+    assert [item['name'] for item in document['reporting_jobs']] == ['Weekly', 'Only here'] and all(item['uid'] for item in document['reporting_jobs'])
+    assert 'favourites' not in document and 'complete_reports' not in document
+    # Documents of before also carry jobs of artifacts designed in the job.
+    document['reporting_jobs'].append({'name': 'Designed', 'definition': {'scoring': [SCORING_ENTRY]}, 'schedule': {'mode': 'manual'}})
+    # The destination has the report of that name (whatever its case) with another ID, and a schedule for it.
+    bundle_report_templates.save_favourite(destination, None, 'Monthly', {}, 'super')
+    here = bundle_report_templates.save_favourite(destination, None, 'weekly', {}, 'super')
+    assert here['id'] != weekly['id']
+    previous = report_tasks.save_report_schedule(destination, here['id'], 'weekly', {}, 'super', **RECIPIENTS)
+    summary = []
+    assert report_tasks.import_tasks_document(destination, json.dumps(document), 'importer', **RECIPIENTS,
+                                              user_exists=lambda name: name == 'editor', summary=summary) == 1
+    # It replaces the schedule of that report, keeping the owner it had when that user is here, and the others are left out.
+    assert summary == ['2 schedules left out: this workspace has no report of their names, or they generated artifacts designed in the job.']
+    [task] = report_tasks.list_tasks(destination)
+    assert (task['id'], task['name'], task['created_by']) == (previous['id'], 'weekly', 'editor')
+    assert report_tasks.report_favourite_id(task) == str(here['id'])
+    assert (task['recurrence'], task['send_email'], task['recipients']) == ('Daily · 06:00', True, ['team@example.com'])
+    assert task['definition']['modules']['bundle_report_template']['formats'] == ['word']
+    # And back: the schedule of the report there is replaced and the other one stays.
+    summary = []
+    assert report_tasks.import_tasks_document(source, report_tasks.export_tasks_document(destination), 'importer', **RECIPIENTS, summary=summary) == 1
+    assert summary == []
+    schedules = report_tasks.report_tasks_by_favourite(source)
+    assert set(schedules) == {str(weekly['id']), str(only_source['id'])}
+    assert schedules[str(weekly['id'])]['created_by'] == 'importer' and schedules[str(weekly['id'])]['recurrence'] == 'Daily · 06:00'
+    assert schedules[str(only_source['id'])]['recurrence'] == 'Weekly · Wed · 08:00'
+    with pytest.raises(ValueError, match='not a DriveTest Analyzer Report Schedules export'):
+        report_tasks.import_tasks_document(source, json.dumps({'format': 'other'}), 'importer', **RECIPIENTS)
+
+
+def test_saving_a_report_saves_its_schedule_and_a_wrong_one_saves_nothing(client):
+    login(client)
+    url = '/api/reporting/bundle-report-template/favourites'
+    definition = bundle_report_templates.normalize_definition({})
+    # A wrong schedule, or email without valid recipients, is refused before the report is saved.
+    for schedule, message in (({'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': []}}, 'Choose at least one weekday.'),
+                              ({'schedule': {'mode': 'daily', 'time': '25:00'}}, 'Enter the time as HH:MM.'),
+                              ({'send_email': True, 'recipients': ''}, 'Add at least one email recipient or turn email off.'),
+                              ({'send_email': True, 'recipients': 'bad'}, 'Invalid email recipients: bad.')):
+        response = client.post(url, json={'name': 'Refused', 'definition': definition, 'schedule': schedule})
+        assert response.status_code == 400 and response.json()['detail'] == message
+    assert bundle_report_templates.list_favourites(core.repository) == []
+    # Without a schedule it starts without one.
+    assert report_tasks.report_task(core.repository, report(client, 'Plain')['id']) is None
+    response = client.post(url, json={'name': 'Weekly', 'definition': definition, 'schedule': {
+        'enabled': True, 'schedule': {'mode': 'weekly', 'time': '07:30', 'weekdays': [0, 4]}, 'formats': ['word'],
+        'send_email': True, 'recipients': 'a@example.com; b@example.com'}})
+    assert response.status_code == 200, response.text
+    favourite = response.json()['favourite']
+    task = report_tasks.report_task(core.repository, favourite['id'])
+    assert (task['name'], task['recurrence'], task['recipients'], task['created_by']) == (
+        'Weekly', 'Weekly · Mon, Fri · 07:30', ['a@example.com', 'b@example.com'], 'super')
+    assert task['definition']['modules']['bundle_report_template']['formats'] == ['word'] and task['next_run_at']
+    saved = next(json.loads(row['details']) for row in core.repository.list_logs(limit=20) if row['action'] == 'bundle_report_template_favourite_saved')
+    assert saved['created'] is True and saved['schedule']['recurrence'] == 'Weekly · Mon, Fri · 07:30'
+    # Saved without one, the report keeps its schedule; turned off, it is only generated with Generate and keeps when it runs.
+    assert client.put(f"{url}/{favourite['id']}", json={'name': 'Weekly', 'definition': definition}).status_code == 200
+    assert report_tasks.report_task(core.repository, favourite['id'])['next_run_at'] == task['next_run_at']
+    response = client.put(f"{url}/{favourite['id']}", json={'name': 'Weekly', 'definition': definition, 'schedule': {
+        'enabled': False, 'schedule': {'mode': 'weekly', 'time': '07:30', 'weekdays': [0, 4]}}})
+    assert response.status_code == 200, response.text
+    paused = report_tasks.report_task(core.repository, favourite['id'])
+    assert (paused['id'], paused['enabled'], paused['next_run_at'], paused['schedule']['mode'], paused['send_email']) == (task['id'], False, None, 'weekly', False)
+    assert len(report_tasks.list_tasks(core.repository)) == 1
+    # Only editors save reports and their schedules.
+    workspace_user('reader', 'user-viewer')
+    login(client, 'reader', 'reader123')
+    assert client.put(f"{url}/{favourite['id']}", json={'name': 'Weekly', 'definition': definition, 'schedule': {'enabled': True}}).status_code == 403
+
+
+def test_a_single_execution_in_the_past_is_refused_before_the_report_is_saved(client):
+    login(client)
+    response = client.post('/api/reporting/bundle-report-template/favourites', json={
+        'name': 'Refused', 'definition': bundle_report_templates.normalize_definition({}),
+        'schedule': {'schedule': {'mode': 'once', 'date': '2020-01-01', 'time': '08:00'}}})
+    assert response.status_code == 400 and response.json()['detail'] == 'The single execution must be in the future.'
+    assert bundle_report_templates.list_favourites(core.repository) == []
+
+
+def test_generate_runs_a_report_as_who_asks_and_history_opens_its_preview(client, monkeypatch):
+    generated = fake_reports(monkeypatch)
+    login(client)
+    weekly = report(client, 'Weekly')
+    other = report(client, 'Other', schedule={'schedule': {'mode': 'daily', 'time': '06:00'}, 'formats': ['powerpoint']})
+    workspace_user('writer', 'user-editor')
+    login(client, 'writer', 'writer123')
+    # A report without a schedule gets one, generated only with Generate, which belongs to who generates it.
+    run_id = generate(client, weekly['id'], refresh=True)
+    task = report_tasks.report_task(core.repository, weekly['id'])
+    assert (task['schedule']['mode'], task['created_by'], task['next_run_at']) == ('manual', 'writer', None)
+    assert task['definition']['modules']['bundle_report_template']['formats'] == ['powerpoint', 'word']
+    run = wait_for_run(client, run_id)
+    assert (run['status'], run['trigger'], run['requested_by'], run['report_id'], run['has_preview']) == ('completed', 'manual', 'writer', weekly['id'], True)
+    # Generated as who asks, every section again with refresh.
+    assert generated[-1] == {'user': 'writer', 'reuse': False, 'formats': ['powerpoint', 'word']}
+    # So is a report that has a schedule of another user, in the formats of its schedule; the schedule itself runs as its owner.
+    other_task = report_tasks.report_task(core.repository, other['id'])
+    wait_for_run(client, generate(client, other['id']))
+    assert generated[-1] == {'user': 'writer', 'reuse': True, 'formats': ['powerpoint']}
+    assert other_task['created_by'] == 'super'
+    make_due(other_task)
+    [due] = core.run_due_report_tasks()
+    assert wait_for_run(client, due)['trigger'] == 'schedule' and generated[-1]['user'] == 'super'
+
+    # The state of the page: each report with its labels, its schedule and its last run, and the runs of History.
+    state = client.get('/api/reporting/state').json()
+    assert set(state) == {'reports', 'runs', 'can_edit', 'workspace_id'} and state['can_edit'] is True and state['workspace_id'] == core.active_workspace.id
+    reports = {item['name']: item for item in state['reports']}
+    assert set(reports['Weekly']) == {'id', 'name', 'created_by', 'updated_at', 'labels', 'schedule', 'last_run'}
+    assert reports['Weekly']['last_run']['id'] == run_id and reports['Weekly']['created_by'] == 'super' and reports['Weekly']['labels']['nr_mode'] == 'NSA'
+    assert reports['Other']['last_run']['id'] == due
+    schedule = reports['Other']['schedule']
+    assert {key: schedule[key] for key in ('enabled', 'schedule', 'recurrence', 'formats', 'send_email', 'recipients', 'owner')} == {
+        'enabled': True, 'schedule': {'mode': 'daily', 'time': '06:00'}, 'recurrence': 'Daily · 06:00', 'formats': ['powerpoint'],
+        'send_email': False, 'recipients': [], 'owner': 'super'}
+    assert schedule['next_run_at']
+    listed = next(item for item in state['runs'] if item['id'] == run_id)
+    assert listed['artifacts_size'] == sum(item['size'] for item in listed['artifacts']) > 0 and all(item['available'] for item in listed['artifacts'])
+    # A report without a schedule yet shows the one it would have.
+    plain = bundle_report_templates.save_favourite(core.repository, None, 'Plain', {}, 'super')
+    listed_plain = next(item for item in client.get('/api/reporting/state').json()['reports'] if item['id'] == plain['id'])
+    assert listed_plain['last_run'] is None and listed_plain['schedule'] == {
+        'enabled': True, 'schedule': {'mode': 'manual', 'time': '08:00'}, 'recurrence': 'Manual only', 'next_run_at': None,
+        'formats': ['powerpoint', 'word'], 'send_email': False, 'recipients': [], 'owner': ''}
+
+    # The preview of a run: what its folder keeps, with the download of each format.
+    opened = client.get(f'/api/reporting/runs/{run_id}/report').json()
+    assert (opened['run']['id'], opened['run']['status'], opened['run']['task_name']) == (run_id, 'completed', 'Weekly')
+    assert opened['report']['title'] == 'Fake report' and opened['report']['downloads'] == {
+        'powerpoint': f'/api/reporting/runs/{run_id}/artifacts/0', 'word': f'/api/reporting/runs/{run_id}/artifacts/1'}
+    assert client.get(opened['report']['downloads']['word']).content == b'PK report'
+    assert client.get(f'/api/reporting/runs/{run_id}/preview/powerpoint/0').content == PNG
+    # Opened large with no PDF to render it from, a page shows its preview; a page or a format that has none is not found.
+    assert client.get(f'/api/reporting/runs/{run_id}/preview/powerpoint/0?large=true').content == PNG
+    assert client.get(f'/api/reporting/runs/{run_id}/preview/powerpoint/1').status_code == 404
+    assert client.get(f'/api/reporting/runs/{run_id}/preview/pdf/0').status_code == 404
+    # A run that has not finished, or whose report.json is gone or unreadable, opens without a preview.
+    queued = report_tasks.create_run(core.repository, task, 'manual', 'writer')
+    assert client.get(f'/api/reporting/runs/{queued}/report').json()['report'] is None
+    assert client.get(f'/api/reporting/runs/{queued}/preview/powerpoint/0').status_code == 404
+    report_json = Path(run['output_dir']) / bundle_report_templates.RUN_REPORT_FOLDER / 'report.json'
+    report_json.write_text('not json', encoding='utf-8')
+    assert client.get(f'/api/reporting/runs/{run_id}/report').json()['report'] is None
+    report_json.unlink()
+    assert client.get(f'/api/reporting/runs/{run_id}/report').json()['report'] is None
+    assert next(item for item in client.get('/api/reporting/state').json()['runs'] if item['id'] == run_id)['has_preview'] is False
+    assert client.get('/api/reporting/runs/999999/report').status_code == 404
+    assert client.post('/api/reporting/bundle-report-template/favourites/999999/generate', json={}).status_code == 404
+    requested = next(json.loads(row['details']) for row in core.repository.list_logs(limit=50)
+                     if row['action'] == 'bundle_report_template_requested' and json.loads(row['details'])['run_id'] == run_id)
+    assert requested['id'] == weekly['id'] and requested['refresh'] is True
+    assert app_event_origin('bundle_report_template_requested', requested) == 'module:reporting'
+
+
+def test_each_user_marks_their_own_reports_with_the_star(client):
+    login(client)
+    one = bundle_report_templates.save_favourite(core.repository, None, 'One', {}, 'super')
+    other = bundle_report_templates.save_favourite(core.repository, None, 'Other', {}, 'super')
+    starred = lambda: {item['name'] for item in client.get('/api/reporting/state').json()['reports'] if item['starred']}  # noqa: E731
+    assert starred() == set()
+    url = f"/api/reporting/bundle-report-template/favourites/{one['id']}/star"
+    assert client.post(url, json={'starred': True}).json() == {'id': one['id'], 'starred': True}
+    assert starred() == {'One'}
+    assert 'bundle_report_template_starred' in {row['action'] for row in core.repository.list_logs(limit=20)}
+    # A user who is no editor marks them too, and only for themself.
+    workspace_user('reader', 'user-viewer')
+    login(client, 'reader', 'reader123')
+    assert starred() == set()
+    assert client.post(f"/api/reporting/bundle-report-template/favourites/{other['id']}/star", json={'starred': True}).status_code == 200
+    assert starred() == {'Other'}
+    login(client)
+    assert starred() == {'One'}
+    assert client.post(url, json={'starred': False}).status_code == 200
+    assert starred() == set()
+    # A report that no longer exists has no star to give.
+    missing = client.post('/api/reporting/bundle-report-template/favourites/9999/star', json={'starred': True})
+    assert missing.status_code == 404 and missing.json()['detail'] == 'The report no longer exists.'
+
+
+def test_reports_are_read_online_in_the_slide_viewer_of_the_presentations(client):
+    login(client)
+    assert 'js/help/presentation_viewer.js' in client.get('/reporting').text
+    root = Path(__file__).resolve().parents[1] / 'src/web_interface/static/js'
+    viewer = (root / 'help/presentation_viewer.js').read_text(encoding='utf-8')
+    assert 'window.PresentationViewer = {enhance, open: openViewer};' in viewer
+    script = (root / 'reporting/bundle_report_template.js').read_text(encoding='utf-8')
+    assert 'window.PresentationViewer.open(reportPresentation(job, available[0], available), index);' in script
+    assert '`/api/reporting/runs/${job.id}/preview/${format}/' in script
+
+
+def test_a_run_is_stopped_by_who_asked_for_it_or_an_editor(client):
+    login(client)
+    favourite = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
+    task = report_tasks.save_report_schedule(core.repository, favourite['id'], 'Weekly', {}, 'super', **RECIPIENTS)
+    workspace_user('asker', 'user-viewer')
+    workspace_user('other', 'user-viewer')
+    mine = report_tasks.create_run(core.repository, task, 'manual', 'asker')
+    theirs = report_tasks.create_run(core.repository, task, 'manual', 'asker')
+    # Another user who is no editor leaves it as it is.
+    login(client, 'other', 'other123')
+    assert client.post('/api/reporting/runs/stop', json={'ids': [mine]}).json() == {'stopped': [], 'stopping': [], 'skipped': [mine]}
+    assert run_row(mine)['status'] == 'queued'
+    # Only editors change the other things of a run.
+    refused = client.post('/api/reporting/runs/delete', json={'ids': [mine]})
+    assert refused.status_code == 403 and refused.json()['detail'] == 'Editor access is required to change reports and their runs.'
+    # Who asked for it stops it, without being an editor.
+    login(client, 'asker', 'asker123')
+    assert client.post('/api/reporting/runs/stop', json={'ids': [mine]}).json() == {'stopped': [mine], 'stopping': [], 'skipped': []}
+    assert run_row(mine)['status'] == 'stopped' and run_row(mine)['message'] == 'Stopped by asker before it started'
+    # Editors stop any run.
+    login(client)
+    assert client.post('/api/reporting/runs/stop', json={'ids': [theirs]}).json()['stopped'] == [theirs]
+    stops = {json.loads(row['details'])['run_id']: row['username'] for row in core.repository.list_logs(limit=50) if row['action'] == 'stop_reporting_job_run'}
+    assert stops == {mine: 'asker', theirs: 'super'}
+
+
+def test_deleting_a_report_deletes_its_schedule_and_its_runs(client, monkeypatch):
+    fake_reports(monkeypatch)
+    login(client)
+    weekly = report(client, 'Weekly', schedule={'schedule': {'mode': 'daily', 'time': '08:00'}})
+    other = report(client, 'Other')
+    run = wait_for_run(client, generate(client, weekly['id']))
+    other_run = wait_for_run(client, generate(client, other['id']))
+    folder = Path(run['output_dir'])
+    assert folder.is_dir() and Path(other_run['output_dir']).is_dir()
+    response = client.delete(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}")
+    assert response.status_code == 200 and [item['name'] for item in response.json()['favourites']] == ['Other']
+    assert report_tasks.report_task(core.repository, weekly['id']) is None and run_row(run['id']) is None and not folder.exists()
+    # The other report keeps them.
+    assert report_tasks.report_task(core.repository, other['id']) is not None and run_row(other_run['id']) is not None
+    assert Path(other_run['output_dir']).is_dir()
+    deleted = next(json.loads(row['details']) for row in core.repository.list_logs(limit=20) if row['action'] == 'bundle_report_template_favourite_deleted')
+    assert deleted == {'id': weekly['id'], 'name': 'Weekly', 'runs_deleted': 1}
+    assert client.delete(f"/api/reporting/bundle-report-template/favourites/{weekly['id']}").status_code == 404
+
+
+def test_renaming_a_report_renames_its_schedule(client):
+    login(client)
+    weekly = report(client, 'Weekly', schedule={'schedule': {'mode': 'daily', 'time': '08:00'}})
+    report(client, 'Taken')
+    run_id = report_tasks.create_run(core.repository, report_tasks.report_task(core.repository, weekly['id']), 'manual', 'super')
+    url = f"/api/reporting/bundle-report-template/favourites/{weekly['id']}"
+    refused = client.post(f'{url}/rename', json={'name': 'Taken'})
+    assert refused.status_code == 400 and refused.json()['detail'] == 'A report named "Taken" already exists.'
+    assert client.post(f'{url}/rename', json={'name': ' '}).json()['detail'] == 'Enter a name for the report.'
+    response = client.post(f'{url}/rename', json={'name': 'Weekly NetCheck'})
+    assert response.status_code == 200 and response.json()['favourite']['name'] == 'Weekly NetCheck'
+    # Its schedule takes the new name, and its runs keep the one they had.
+    assert report_tasks.report_task(core.repository, weekly['id'])['name'] == 'Weekly NetCheck'
+    assert run_row(run_id)['task_name'] == 'Weekly'
+    assert bundle_report_templates.get_favourite(core.repository, weekly['id'])['definition'] == weekly['definition']
+    renamed = next(json.loads(row['details']) for row in core.repository.list_logs(limit=20) if row['action'] == 'bundle_report_template_favourite_renamed')
+    assert (renamed['old_name'], renamed['name']) == ('Weekly', 'Weekly NetCheck')
+    # Saved with another name too.
+    assert client.put(url, json={'name': 'Weekly v3', 'definition': weekly['definition']}).status_code == 200
+    assert report_tasks.report_task(core.repository, weekly['id'])['name'] == 'Weekly v3'
+    assert client.post('/api/reporting/bundle-report-template/favourites/999999/rename', json={'name': 'Gone'}).status_code == 404

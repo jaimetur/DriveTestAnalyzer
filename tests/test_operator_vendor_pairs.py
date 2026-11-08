@@ -107,8 +107,7 @@ def test_every_operator_vendor_filter_is_paired():
     assert 'data-operator-vendor-pair="{{ field | lower }}"' in scoring
     designs = (WEB / 'static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
     assert "values.dataset.operatorVendorPair = 'vendor_operator'" in designs
-    for script in ('reporting/report_jobs.js', 'scoring/scoring_report_editor.js'):
-        assert 'operatorVendorPairs.mirrorValues(' in (WEB / 'static/js' / script).read_text(encoding='utf-8')
+    assert 'operatorVendorPairs.mirrorValues(' in (WEB / 'static/js/scoring/scoring_report_editor.js').read_text(encoding='utf-8')
 
 
 @pytest.mark.skipif(not shutil.which('node'), reason='Node.js is required')

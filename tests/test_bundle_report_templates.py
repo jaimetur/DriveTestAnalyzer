@@ -5,6 +5,7 @@ from collections import Counter
 from io import BytesIO
 from pathlib import Path
 
+import pytest
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE
@@ -28,6 +29,23 @@ def login(client, username='super', password='super123'):
     client.cookies.clear()
     response = client.post('/login', data={'username': username, 'password': password}, follow_redirects=False)
     assert response.status_code == 303
+
+
+def _generated(client, definition, name='Report', refresh=False):
+    """A report saved (again) with ``definition`` and generated from the page: its run, once it ends, and what its preview
+    shows."""
+    existing = next((item['id'] for item in bundle_report_templates.list_favourites(core.repository) if item['name'] == name), None)
+    favourite = bundle_report_templates.save_favourite(core.repository, existing, name, definition, 'super')
+    response = client.post(f"/api/reporting/bundle-report-template/favourites/{favourite['id']}/generate", json={'refresh': refresh})
+    assert response.status_code == 200, response.text
+    run_id = response.json()['run_id']
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        opened = client.get(f'/api/reporting/runs/{run_id}/report').json()
+        if opened['run']['status'] not in report_tasks.RUN_ACTIVE_STATUSES:
+            return run_id, opened
+        time.sleep(0.1)
+    raise AssertionError('The report was not generated.')
 
 
 def _deck(build) -> bytes:
@@ -160,24 +178,20 @@ def test_the_cdr_analysis_section_analyses_the_cdrs_of_each_chosen_type(client, 
     for item in cdr['items']:
         item['enabled'] = item['key'] != 'speech'
         item['components'] = {key: key in {'summary', 'visuals'} for key in item['components']}
-    job_id = client.post('/api/reporting/bundle-report-template/jobs', json={'definition': definition, 'name': 'CDRs'}).json()['job']['id']
-    for _attempt in range(100):
-        job = client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}').json()['job']
-        if job['status'] in {'ready', 'failed'}:
-            break
-        time.sleep(0.1)
-    assert job['status'] == 'ready', job
+    _run_id, opened = _generated(client, definition, 'CDRs')
+    assert opened['run']['status'] == 'completed', opened
+    outline = opened['report']['outline']
     # The CDRs of the NR Mode of the report and the Campaigns of the section, of the checked CDR types (Voice has none),
     # analysed with the common filters and the options of the section.
     assert chosen[-1] == ('SA', ['@latest-campaign'], ['data', 'voice'])
     assert analysed == [([dataset_id], {'filters': {'operator': ['EE']}, 'metrics': {'data': ['score']}, 'aggregation': 'operator',
                                         'cdf_grouping': 'operator'})]
-    titles = [item['title'] for item in job['outline']]
+    titles = [item['title'] for item in outline]
     # The cover of each CDR is named after it, and only the checked parts of its analysis follow it.
     assert titles[1:3] == ['CDR Analysis', 'cdr_data']
     assert 'CDR Summary' in titles and 'Visual Analytics · score' in titles
     assert 'Selected Metric Cards' not in titles and 'Processed Metrics' not in titles
-    assert {item['section'] for item in job['outline'][1:-1]} == {'dataset_analysis'}
+    assert {item['section'] for item in outline[1:-1]} == {'dataset_analysis'}
 
 
 def test_reports_saved_before_the_scoring_trends_keep_their_trend_after_the_locations():
@@ -621,8 +635,7 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
     assert renamed.status_code == 200 and renamed.json()['favourite']['name'] == 'Monthly report'
     actions = [row['action'] for row in core.repository.list_logs(limit=20)]
     assert 'bundle_report_template_favourite_saved' in actions
-    # The favourites travel as the Bundle Report Template Favourites element (not with the Reporting Jobs), and are added or
-    # replaced by name.
+    # The reports travel as the Reports element (not with their schedules), and are added or replaced by name.
     assert 'complete_reports' not in json.loads(report_tasks.export_tasks_document(core.repository))
     document = json.loads(bundle_report_templates.export_favourites_document(core.repository))
     assert document['format'] == bundle_report_templates.FAVOURITES_FORMAT
@@ -635,12 +648,6 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
     assert next(section for section in restored[0]['definition']['sections']
                 if section['key'] == 'designs')['items'][0]['label'] == 'Weekly Design'
     assert 'bundle_report_template_favourite_deleted' in [row['action'] for row in core.repository.list_logs(limit=20)]
-    # Reporting Jobs documents that carried them still bring them.
-    bundle_report_templates.delete_favourite(core.repository, restored[0]['id'])
-    jobs = {'format': 'drivetest-analyzer-reporting-jobs', 'version': 1, 'reporting_jobs': [],
-            'complete_reports': document['favourites']}
-    core._restore_workspace_reporting_jobs(core.active_workspace, json.dumps(jobs).encode(), 'super')
-    assert [item['name'] for item in bundle_report_templates.list_favourites(core.repository)] == ['Monthly report']
     # Documents exported when they were called Complete Reports or Reporting Jobs Templates still import.
     for former in bundle_report_templates.LEGACY_FAVOURITES_FORMATS:
         assert bundle_report_templates.import_favourites_document(core.repository, json.dumps({**document, 'format': former}), 'super') == 1
@@ -653,7 +660,7 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
         core._archive_workspace_bundle_report_template_favourites(archive, core.active_workspace, 'workspaces/Default')
     assert zipfile.ZipFile(BytesIO(output.getvalue())).namelist() == [f'workspaces/Default/{core.BRT_FAVOURITES_ARCHIVE_NAME}']
     page = client.get('/admin').text
-    assert 'Bundle Report Template Favourites (from active workspace)' in page and 'Scoring &amp; GAP Favourites Filters (from active workspace)' in page
+    assert 'Reports (from active workspace)' in page and 'Scoring &amp; GAP Favourites Filters (from active workspace)' in page
 
 
 def test_word_pages_do_not_repeat_the_title_of_components_that_share_it():
@@ -742,7 +749,7 @@ def test_long_decks_are_converted_by_several_libreoffice_runs_at_once(monkeypatc
     assert pptx_to_docx.libreoffice_workers() == 2
 
 
-def test_a_report_being_generated_can_be_cancelled_and_tells_its_processing_time(client, monkeypatch):
+def test_a_report_being_generated_can_be_stopped_and_tells_its_processing_time(client, monkeypatch):
     login(client)
     started = __import__('threading').Event()
     release = __import__('threading').Event()
@@ -751,37 +758,39 @@ def test_a_report_being_generated_can_be_cancelled_and_tells_its_processing_time
         started.set()
         release.wait(5)
         progress(50, 'Composing the PowerPoint')
-        raise AssertionError('A cancelled report goes no further.')
+        raise AssertionError('A stopped report goes no further.')
 
     monkeypatch.setattr(bundle_report_templates, 'build_report', slow_build)
-    definition = bundle_report_templates.normalize_definition({})
-    job = client.post('/api/reporting/bundle-report-template/jobs', json={'definition': definition}).json()['job']
-    assert job['elapsed_seconds'] >= 0
+    favourite = bundle_report_templates.save_favourite(core.repository, None, 'Slow', bundle_report_templates.normalize_definition({}), 'super')
+    run_id = client.post(f"/api/reporting/bundle-report-template/favourites/{favourite['id']}/generate", json={}).json()['run_id']
     assert started.wait(5)
-    cancelled = client.post(f"/api/reporting/bundle-report-template/jobs/{job['id']}/cancel").json()['job']
-    assert cancelled['status'] == 'cancelled'
+    assert client.post('/api/reporting/runs/stop', json={'ids': [run_id]}).json()['stopping'] == [run_id]
     release.set()
-    time.sleep(0.3)
-    # The generation stops at its next step and does not change the job any more.
-    assert client.get(f"/api/reporting/bundle-report-template/jobs/{job['id']}").json()['job']['status'] == 'cancelled'
-    assert 'bundle_report_template_cancelled' in [row['action'] for row in core.repository.list_logs(limit=20)]
+    # The generation stops at its next step: nothing of the report is kept and no email is sent.
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and report_tasks.get_run(core.repository, run_id)['status'] != 'stopped':
+        time.sleep(0.05)
+    run = report_tasks.get_run(core.repository, run_id)
+    assert run['status'] == 'stopped' and run['email_status'] == '' and not [item for item in run['artifacts'] if item['status'] == 'ready']
+    assert 'stop_reporting_job_run' in [row['action'] for row in core.repository.list_logs(limit=20)]
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    # While it runs, the dialog offers Cancel and Hide (it keeps being generated) and shows its processing time.
-    assert all(f'id="{name}"' in page for name in ('brt-dialog-cancel', 'brt-dialog-hide', 'brt-dialog-done', 'brt-dialog-elapsed', 'brt-open-last'))
+    # While it runs, the dialog offers Stop and Hide (it keeps being generated) and shows its processing time.
+    assert all(f'id="{name}"' in page for name in ('brt-dialog-cancel', 'brt-dialog-hide', 'brt-dialog-done', 'brt-dialog-elapsed'))
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
     assert "title: 'Report Ready'" in script and 'Processed in ${duration(job.elapsed_seconds)}' in script
+    assert "await api('/api/reporting/runs/stop', {method: 'POST', body: JSON.stringify({ids: [job.id]})});" in script
     # Every page tells when a report hidden in Reporting is ready.
     app_script = (core.PROJECT_ROOT / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
-    assert "(function watchBundleReportTemplate()" in app_script and '/reporting?bundle_report_template_job=' in app_script
+    assert "(function watchReportRun()" in app_script and '/reporting?report_run=' in app_script
 
 
 def test_one_action_generates_both_formats_and_the_preview_chooses_one():
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    assert page.count('data-brt-export') == 1 and 'data-brt-export="powerpoint"' not in page
     assert 'data-brt-format="powerpoint"' in page and 'data-brt-format="word"' in page
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
+    assert script.count('/favourites/${report.id}/generate`') == 1
     # Switching the format shows what is already generated: its pages, its sections and its download.
-    assert "download.href = `/api/reporting/bundle-report-template/jobs/${job.id}/download/${previewFormat}`" in script
+    assert "download.href = job.downloads?.[previewFormat] || '#';" in script
     assert "dialog.classList.toggle('is-word', previewFormat === 'word')" in script
     assert 'function switchFormat(format)' in script
 
@@ -791,9 +800,11 @@ def test_a_report_without_sections_is_refused_and_the_table_is_listed(client):
     definition = bundle_report_templates.normalize_definition({})
     for section in definition['sections']:
         section['enabled'] = False
-    response = client.post('/api/reporting/bundle-report-template/jobs', json={'definition': definition})
+    favourite = bundle_report_templates.save_favourite(core.repository, None, 'Empty', definition, 'super')
+    response = client.post(f"/api/reporting/bundle-report-template/favourites/{favourite['id']}/generate", json={})
     assert response.status_code == 400
-    page = client.get('/admin')
+    assert report_tasks.list_runs(core.repository) == []
+    page = client.get('/super-admin')
     assert page.status_code == 200
     assert 'Bundle Report Templates' in page.text
 
@@ -826,56 +837,37 @@ def test_a_report_job_generates_the_chosen_sections_and_previews_them(client, mo
             item['enabled'] = item['key'] == 'snapshot'
             if 'components' in item:
                 item['components'] = {key: key == 'snapshot' for key in item['components']}
-    response = client.post('/api/reporting/bundle-report-template/jobs', json={'definition': definition, 'name': 'Snapshot'})
-    assert response.status_code == 200, response.text
-    job_id = response.json()['job']['id']
-    import time
-    for _attempt in range(100):
-        job = client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}').json()['job']
-        if job['status'] in {'ready', 'failed'}:
-            break
-        time.sleep(0.1)
-    assert job['status'] == 'ready', job
-    assert [item['title'] for item in job['outline']][:3] == ['Snapshot', 'Network Insights', 'Network Snapshot']
+    run_id, opened = _generated(client, definition, 'Snapshot')
+    assert opened['run']['status'] == 'completed', opened
+    report = opened['report']
+    assert report['title'] == 'Snapshot' and [item['title'] for item in report['outline']][:3] == ['Snapshot', 'Network Insights', 'Network Snapshot']
     # Both formats are ready with their previews: the slides of the PowerPoint and the pages of the Word document.
-    assert {name: item['previews'] for name, item in job['formats'].items()} == {'powerpoint': 2, 'word': 2}
-    assert job['formats']['word']['navigation'][0]['title'] == 'Network Insights'
-    assert job['formats']['powerpoint']['file_name'].endswith('.pptx') and job['formats']['word']['file_name'].endswith('.docx')
+    assert {name: item['previews'] for name, item in report['formats'].items()} == {'powerpoint': 2, 'word': 2}
+    assert report['formats']['word']['navigation'][0]['title'] == 'Network Insights'
+    assert report['formats']['powerpoint']['file_name'].endswith('.pptx') and report['formats']['word']['file_name'].endswith('.docx')
     for export_format in ('powerpoint', 'word'):
-        assert client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}/preview/{export_format}/1').content == PNG
-    # Opened on the whole screen, a page is rendered large from the preview PDF, once (the first one is ready).
+        assert client.get(f'/api/reporting/runs/{run_id}/preview/{export_format}/1').content == PNG
+    # Opened on the whole screen, a page is rendered large from the preview PDF, once.
     for _attempt in range(2):
-        assert client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}/preview/word/1?large=true').content == PNG
-    assert rendered == [(bundle_report_templates.PREVIEW_DPI['pptx'], None), (bundle_report_templates.LARGE_PREVIEW_DPI['pptx'], [0]),
-                        (bundle_report_templates.PREVIEW_DPI['docx'], None), (bundle_report_templates.LARGE_PREVIEW_DPI['docx'], [0]),
+        assert client.get(f'/api/reporting/runs/{run_id}/preview/word/1?large=true').content == PNG
+    assert rendered == [(bundle_report_templates.PREVIEW_DPI['pptx'], None), (bundle_report_templates.PREVIEW_DPI['docx'], None),
                         (bundle_report_templates.LARGE_PREVIEW_DPI['docx'], [1])]
-    assert client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}/preview/pdf/1').status_code == 404
+    assert client.get(f'/api/reporting/runs/{run_id}/preview/pdf/1').status_code == 404
+    # The files are the artifacts of the run, listed in History, and each format of the preview downloads its own.
+    run = report_tasks.get_run(core.repository, run_id)
+    assert [(item['title'], item['format'], item['status']) for item in run['artifacts']] == [('Snapshot', 'powerpoint', 'ready'), ('Snapshot', 'word', 'ready')]
     for export_format in ('powerpoint', 'word'):
-        download = client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}/download/{export_format}')
+        download = client.get(report['downloads'][export_format])
         assert download.status_code == 200 and download.content[:2] == b'PK'
     assert download.headers['content-disposition'].endswith('.docx')
     actions = [row['action'] for row in core.repository.list_logs(limit=20)]
-    assert {'bundle_report_template_requested', 'bundle_report_template_generated', 'bundle_report_template_downloaded'} <= set(actions)
-    # The workspace keeps it as the last report of the user, in output/reports/bundle-reports: Open last report opens it
-    # whenever there is one, also after a restart, and its documents are kept until a newer one replaces it.
-    assert client.get('/api/reporting/bundle-report-template/options').json()['last_report']['id'] == job_id
-    with bundle_report_templates._jobs_lock:
-        folder = bundle_report_templates._jobs.pop(job_id)['folder']
-    assert folder.parent.name == 'bundle-reports'
-    __import__('os').utime(folder, (0, 0))
-    kept = {str(record['folder']) for record in bundle_report_templates._last_report_records(core.repository).values()}
-    bundle_report_templates._forget_old_jobs(folder.parent, kept)
-    assert folder.is_dir()
-    reopened = client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}').json()['job']
-    assert reopened['status'] == 'ready' and reopened['formats'] == job['formats'] and reopened['title'] == job['title']
-    assert client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}/download/word').status_code == 200
-    assert client.get('/api/reporting/bundle-report-template/options').json()['last_report']['id'] == job_id
-    script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
-    assert "$('brt-open-last').hidden = pending || !lastReport || dialog.open;" in script
-    assert 'lastReport = brtOptions.last_report' in script
+    assert {'bundle_report_template_requested', 'reporting_job_run', 'download_reporting_job_artifact'} <= set(actions)
+    # What it generated stays in the folder of the run, without the working folder of the report.
+    assert not list(Path(run['output_dir']).glob('.bundle-report-template-*'))
+    assert (Path(run['output_dir']) / bundle_report_templates.RUN_REPORT_FOLDER / 'report.json').is_file()
 
 
-def test_favourites_are_an_artifact_of_reporting_jobs(client, monkeypatch, tmp_path):
+def test_a_report_is_the_artifact_of_its_schedule(client, monkeypatch, tmp_path):
     login(client)
 
     def network_summary(selection, export_kind, destination, components=None, compose=True, theme=None):
@@ -883,6 +875,7 @@ def test_favourites_are_an_artifact_of_reporting_jobs(client, monkeypatch, tmp_p
         return {}
 
     monkeypatch.setattr(core, 'write_network_insights_summary', network_summary)
+    monkeypatch.setattr('src.modules.reporting.pptx_to_docx.document_pdf', lambda content, suffix: None)
     definition = bundle_report_templates.normalize_definition({})
     for section in definition['sections']:
         section['enabled'] = section['key'] == 'network_insights'
@@ -892,9 +885,16 @@ def test_favourites_are_an_artifact_of_reporting_jobs(client, monkeypatch, tmp_p
     artifacts = provider['generate']({'formats': ['powerpoint'], 'options': {'filters': {'favourites': [str(favourite['id'])]}}},
                                      tmp_path, '20261017_120000', core.SessionUser(username='super', role='super-admin'))
     assert [item['status'] for item in artifacts] == ['ready'], artifacts
-    assert artifacts[0]['title'] == 'Bundle Report Template · Weekly (PPT)'
+    assert (artifacts[0]['title'], artifacts[0]['format']) == ('Weekly', 'powerpoint')
     assert (tmp_path / artifacts[0]['file_name']).read_bytes()[:2] == b'PK'
     assert not list(tmp_path.glob('.bundle-report-template-*'))
+    # The run of one report keeps what its preview shows.
+    shown = json.loads((tmp_path / bundle_report_templates.RUN_REPORT_FOLDER / 'report.json').read_text(encoding='utf-8'))
+    assert shown['report_id'] == favourite['id'] and shown['formats']['powerpoint']['file_name'] == artifacts[0]['file_name']
+    # The schedule of a report that no longer exists says so.
+    with pytest.raises(bundle_report_templates.BundleReportTemplateError, match='The report no longer exists.'):
+        provider['generate']({'formats': ['powerpoint'], 'options': {'filters': {'favourites': ['999999']}}}, tmp_path, '20261017_120000',
+                             core.SessionUser(username='super', role='super-admin'))
 
 
 def test_imported_favourites_find_their_designs_by_name_only_when_their_id_is_unknown(client):
@@ -949,10 +949,9 @@ def test_favourites_keep_their_designs_checked_and_ordered_in_another_workspace(
     items = bundle_report_templates.list_favourites(core.repository)[0]['definition']['sections'][0]['items']
     assert [item['key'] for item in items if item['enabled']] == [target[4], target[0]]
     assert len({item['key'] for item in items}) == 6
-    # Saving with the name of a favourite overwrites it once the user confirms it, on the page.
+    # The page refuses the name of another report before saving, and each Design travels with its NR Mode.
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
-    assert "title: 'Overwrite Favourite'" in script
-    assert "existing ? `/api/reporting/bundle-report-template/favourites/${existing.id}`" in script
+    assert "status(`A report named ${clash.name} already exists: choose another name.`, 'error');" in script
     assert "nr_mode: catalogueItem.nr_mode || ''" in script
 
 
@@ -977,7 +976,6 @@ def test_a_stored_scheduled_reporting_title_becomes_reporting_once(client):
     core.repository.set_application_state(MODULE_LABELS_STATE_KEY, json.dumps({'reporting': {'title': 'Scheduled Reporting'}}))
     assert migrate_reporting_title(core.repository) is False
     assert load_module_labels(core.repository)['reporting']['title'] == 'Scheduled Reporting'
-
 
 
 def test_covers_fill_word_pages_of_their_own():
@@ -1103,8 +1101,6 @@ def test_slides_with_pictures_pillow_cannot_read_are_copied():
 
 
 def test_a_second_export_reuses_the_sections_whose_data_has_not_changed(client, monkeypatch):
-    import time
-
     login(client)
     calls = []
 
@@ -1122,19 +1118,14 @@ def test_a_second_export_reuses_the_sections_whose_data_has_not_changed(client, 
         section['options']['campaigns'] = ['2026-Q3']
 
     def export(**extra):
-        job_id = client.post('/api/reporting/bundle-report-template/jobs', json={'definition': definition, **extra}).json()['job']['id']
-        for _attempt in range(100):
-            job = client.get(f'/api/reporting/bundle-report-template/jobs/{job_id}').json()['job']
-            if job['status'] in {'ready', 'failed'}:
-                return job
-            time.sleep(0.1)
-        return job
+        _run_id, opened = _generated(client, definition, **extra)
+        assert opened['run']['status'] == 'completed', opened
+        return opened['report']
 
     composed = []
     original_compose = bundle_report_templates.compose_powerpoint
     monkeypatch.setattr(bundle_report_templates, 'compose_powerpoint', lambda *args, **kwargs: composed.append(1) or original_compose(*args, **kwargs))
     first, second = export(), export()
-    assert first['status'] == second['status'] == 'ready'
     assert first['reused'] == [] and second['reused'] == ['Network Insights'] and calls == [['2026-Q3']]
     # The same sections, titles and filters reuse the document composed (and, for Word, packed) the first time.
     assert first['document_reused'] is False and second['document_reused'] is True and len(composed) == 1
@@ -1195,8 +1186,8 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
     from src.modules.scoring.scoring_reports import load_report_state
 
     configurations = [item['name'] for item in load_report_state(core.repository)['configurations']]
-    # The message names one item or several (``1 Bundle Report Template Favourite``, ``2 … Favourites``).
-    for target, label in (('bundle-report-template-favourites', 'Bundle Report Template Favourite'),
+    # The message names one item or several (``1 Report``, ``2 Reports``).
+    for target, label in (('bundle-report-template-favourites', 'Imported 1 Report into'),
                           ('scoring-favourites-filters', 'Scoring & GAP Favourites Filter'),
                           ('scoring-report-templates', 'Scoring & GAP Report Template')):
         exported = client.get(f'/admin/import-export/export?export_target={target}')

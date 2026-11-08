@@ -571,7 +571,7 @@ async function reporting(pres) {
   }
   shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 4.05, y: 1.9, w: 3.05, h: 2.98, rectRadius: 0.14, fill: { color: K.black }, line: { color: K.black, width: 0 } });
   slide.addImage({ data: await icon('TbStack2', K.blue), x: 4.3, y: 2.12, w: 0.48, h: 0.48, objectName: named('icon') });
-  text(slide, 'Bundle Report Template', { x: 4.3, y: 2.7, w: 2.7, h: 0.4, fontSize: 16, bold: true, color: K.white });
+  text(slide, 'Report', { x: 4.3, y: 2.7, w: 2.7, h: 0.4, fontSize: 16, bold: true, color: K.white });
   text(slide, 'One PowerPoint or Word with the sections you choose, in your order', { x: 4.3, y: 3.1, w: 2.65, h: 0.65, fontSize: 11.5, color: K.grey2 });
   for (const [index, key] of sources.entries()) {
     const x = 4.3 + index * 0.53;
@@ -582,14 +582,14 @@ async function reporting(pres) {
   shape(slide, pres.shapes.LINE, { x: 7.15, y: 3.39, w: 0.36, h: 0, line: { color: K.grey2, width: 1.5, endArrowType: 'triangle' } });
   shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 7.55, y: 1.9, w: 2.6, h: 2.98, rectRadius: 0.14, fill: { color: K.tint }, line: { color: K.tint, width: 0 } });
   slide.addImage({ data: await icon('TbCalendarRepeat', M.reporting.color), x: 7.8, y: 2.12, w: 0.48, h: 0.48, objectName: named('icon') });
-  text(slide, 'Reporting Jobs', { x: 7.8, y: 2.7, w: 2.25, h: 0.4, fontSize: 16, bold: true });
+  text(slide, 'Schedule and email', { x: 7.8, y: 2.7, w: 2.25, h: 0.4, fontSize: 16, bold: true });
   const modes = ['On demand', 'Daily', 'Weekly', 'Monthly'];
   for (const [index, label] of modes.entries()) {
     const x = 7.8 + (index % 2) * 1.1; const y = 3.2 + Math.floor(index / 2) * 0.45;
     shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x, y, w: 1.0, h: 0.34, rectRadius: 0.17, fill: { color: K.white }, line: { color: 'C9B6D9', width: 1 } });
     text(slide, label, { x, y, w: 1.0, h: 0.34, fontSize: 10.5, color: M.reporting.color, bold: true, align: 'center', valign: 'middle' });
   }
-  text(slide, 'Run History with Stop and Rerun', { x: 7.8, y: 4.2, w: 2.25, h: 0.5, fontSize: 10.5, color: K.grey });
+  text(slide, 'History with Stop and Rerun', { x: 7.8, y: 4.2, w: 2.25, h: 0.5, fontSize: 10.5, color: K.grey });
   shape(slide, pres.shapes.LINE, { x: 10.2, y: 3.39, w: 0.32, h: 0, line: { color: K.grey2, width: 1.5, endArrowType: 'triangle' } });
   const outputs = [['TbFileTypePpt', 'PowerPoint', 'D35230'], ['TbFileTypeDocx', 'Word', '2B579A'], ['TbMail', 'Email to recipients', K.deep]];
   for (const [index, [name, label, color]] of outputs.entries()) {
@@ -619,9 +619,9 @@ async function reporting(pres) {
     }
     text(slide, name, { x: x - 0.05, y: 6.1, w: 1.32, h: 0.3, fontSize: 11, color: K.ink, align: 'center' });
   }
-  slide.addNotes('A Bundle Report Template composes one PowerPoint or Word document from the sections of PPT Designer, Scoring, '
-    + 'Network Insights, NQ Calls and CDR Analysis. Reporting Jobs run it, or any artifact, on demand or on a schedule and '
-    + 'email it; the Run History stops, reruns and resumes runs. Seven themes take the same report from the operator brand to '
+  slide.addNotes('A report composes one PowerPoint or Word document from the sections of PPT Designer, Scoring, '
+    + 'Network Insights, NQ Calls and CDR Analysis. It is generated on demand or on its schedule and '
+    + 'emailed; History stops, reruns and resumes runs. Seven themes take the same report from the operator brand to '
     + 'the boardroom.');
 }
 

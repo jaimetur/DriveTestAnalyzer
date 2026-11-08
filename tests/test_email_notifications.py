@@ -312,8 +312,8 @@ def test_the_users_chosen_in_email_delivery_are_also_told_of_their_own_ticket_ch
 
 
 def test_reporting_emails_give_download_links_of_the_files_kept_on_the_server(client, flow):
-    from tests.test_reporting_jobs import wait_for_run
-    from src.modules.reporting.report_tasks import register_report_artifact_provider
+    from tests.test_reporting_jobs import RECIPIENTS, start_run, wait_for_run
+    from src.modules.reporting.report_tasks import register_report_artifact_provider, save_task
 
     def generate(config, folder, stamp, user):
         path = folder / f'{stamp} - Big report.pptx'
@@ -325,11 +325,11 @@ def test_reporting_emails_give_download_links_of_the_files_kept_on_the_server(cl
     try:
         use_flow()
         login(client)
-        task = client.post('/api/reporting/tasks', json={
+        task = save_task(core.repository, None, {
             'name': 'Weekly check', 'definition': {'modules': {'fake': {'enabled': True}}}, 'send_email': True,
             'recipients': 'a@example.com; b@example.com', 'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}, 'enabled': False,
-        }).json()['task']
-        run = wait_for_run(client, client.post(f"/api/reporting/tasks/{task['id']}/run").json()['run_id'])
+        }, 'super', **RECIPIENTS)
+        run = wait_for_run(client, start_run(task))
         assert run['status'] == 'sent' and 'as links' in run['email_status'], run
         message = flow[-1]
         assert message['kind'] == 'report' and message['to'] == 'a@example.com;b@example.com'

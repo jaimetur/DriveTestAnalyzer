@@ -6762,10 +6762,10 @@ function importPackageContents(payload) {
     'auto-calculated-fields': 'Auto-calculated Fields',
     'query-builder-queries': 'Query Builder Queries', 'network-insights-favourites': 'Network Insights Favourites',
     'assistant-glossary': 'AI Assistant Glossary',
-    'bundle-report-template-favourites': 'Bundle Report Template Favourites', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
+    'bundle-report-template-favourites': 'Reports', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
     'scoring-report-templates': 'Scoring & GAP Report Templates', 'scoring-export-panels': 'Scoring Export Panels',
     'scoring-excluded-calls': 'Scoring Excluded Calls',
-    'reporting-jobs': 'Reporting Jobs',
+    'reporting-jobs': 'Report Schedules',
     'nq-call-tracking': 'NQ Call Tracking', 'nq-calls-configuration': 'NQ Calls Configuration', 'app-events': 'App Events',
   };
   const targets = Array.isArray(payload.targets) && payload.targets.length ? payload.targets : [payload.kind];
@@ -7692,8 +7692,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         network_insights_favourites: 'Network Insights Favourites',
         'assistant-glossary': 'AI Assistant Glossary',
         assistant_glossary: 'AI Assistant Glossary',
-        'bundle-report-template-favourites': 'Bundle Report Template Favourites',
-        bundle_report_template_favourites: 'Bundle Report Template Favourites',
+        'bundle-report-template-favourites': 'Reports',
+        bundle_report_template_favourites: 'Reports',
         'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
         scoring_favourites_filters: 'Scoring & GAP Favourites Filters',
         'scoring-report-templates': 'Scoring & GAP Report Templates',
@@ -7702,8 +7702,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         scoring_export_panels: 'Scoring Export Panels',
         'scoring-excluded-calls': 'Scoring Excluded Calls',
         scoring_excluded_calls: 'Scoring Excluded Calls',
-        'reporting-jobs': 'Reporting Jobs',
-        reporting_jobs: 'Reporting Jobs',
+        'reporting-jobs': 'Report Schedules',
+        reporting_jobs: 'Report Schedules',
         'nq-call-tracking': 'NQ Call Tracking',
         nq_call_tracking: 'NQ Call Tracking',
         'nq-calls-configuration': 'NQ Calls Configuration',
@@ -9216,7 +9216,7 @@ async function confirmChartMappingEffects(forms) {
     `<strong>${escapeChartText(label)}</strong> merges ${values.length} names of the CDRs (${values.map(escapeChartText).join(', ')})${campaigns?.length ? ` in ${campaigns.map(escapeChartText).join(', ')}` : ''}: every filter, table, chart and report adds them up as one.`,
   ));
   effects.moved.filter((item) => item.filters).forEach(({value, from, to, filters}) => items.push(
-    `<strong>${escapeChartText(value)}</strong> leaves ${escapeChartText(from)}${to ? ` for ${escapeChartText(to)}` : ''}: ${filters} saved ${filters === 1 ? 'filter or Reporting Job uses' : 'filters or Reporting Jobs use'} ${escapeChartText(from)} and will no longer include it.`,
+    `<strong>${escapeChartText(value)}</strong> leaves ${escapeChartText(from)}${to ? ` for ${escapeChartText(to)}` : ''}: ${filters} saved ${filters === 1 ? 'filter uses' : 'filters use'} ${escapeChartText(from)} and will no longer include it.`,
   ));
   effects.underscores.forEach((label) => items.push(
     `<strong>${escapeChartText(label)}</strong> contains <code>_</code>, which also separates Operator and Vendor in values such as VF_Ericsson; a label such as ${escapeChartText(label.replace(/_/g, '-'))} avoids ambiguous values.`,
@@ -12982,42 +12982,38 @@ document.addEventListener('change', async (event) => {
   document.querySelectorAll('select[data-user-select]').forEach(enhance);
 })();
 
-// A report of a Bundle Report Template generated in the background (its dialog hidden in Reporting) tells on every page when it is ready,
-// with a dialog that opens its preview in Reporting; Reporting follows it itself (bundle_report_template.js).
-(function watchBundleReportTemplate() {
+// A report of Reporting generated in the background (its dialog hidden) tells on every page when it is ready, with a
+// dialog that opens its preview in Reporting; Reporting follows it itself (bundle_report_template.js).
+(function watchReportRun() {
   const key = 'drivetest.bundleReportTemplate.job';
   let stored = null;
   try { stored = JSON.parse(localStorage.getItem(key) || 'null'); } catch {}
   if (!stored?.id || stored.notified || document.getElementById('brt-dialog')) return;
   const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
-  const duration = (seconds = 0) => (seconds >= 60 ? `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, '0')} s` : `${seconds} s`);
   const forget = () => { try { localStorage.removeItem(key); } catch {} };
   const check = async () => {
-    let job;
+    let payload;
     try {
-      const response = await fetch(`/api/reporting/bundle-report-template/jobs/${encodeURIComponent(stored.id)}`, {headers: {Accept: 'application/json'}});
+      const response = await fetch(`/api/reporting/runs/${encodeURIComponent(stored.id)}/report`, {headers: {Accept: 'application/json'}});
       if ([401, 403, 404].includes(response.status)) { forget(); return; }
       if (!response.ok) { window.setTimeout(check, 10000); return; }
-      job = (await response.json()).job;
+      payload = await response.json();
     } catch {
       window.setTimeout(check, 10000);
       return;
     }
-    if (['queued', 'running'].includes(job.status)) { window.setTimeout(check, 4000); return; }
-    if (job.status === 'ready') {
-      const open = await showConfirmDialog('', {title: 'Report Ready', copyHtml: `<p><strong>${escape(job.title)}</strong> is ready in PowerPoint and Word (processed in ${duration(job.elapsed_seconds)}).</p><p>Open its preview in Reporting to check it and download it?</p>`,
+    const {run, report} = payload;
+    if (['queued', 'running', 'stopping'].includes(run.status)) { window.setTimeout(check, 4000); return; }
+    if (['sent', 'completed', 'partial'].includes(run.status)) {
+      const open = await showConfirmDialog('', {title: 'Report Ready', copyHtml: `<p><strong>${escape(report?.title || run.task_name)}</strong> is ready.</p><p>Open its preview in Reporting to check it and download it?</p>`,
         confirmLabel: 'Open preview', cancelLabel: 'Later'});
-      // Later, Reporting offers to open it (Open last report).
-      if (open) {
-        forget();
-        window.location.href = `/reporting?bundle_report_template_job=${encodeURIComponent(job.id)}`;
-      } else {
-        try { localStorage.setItem(key, JSON.stringify({...stored, notified: true})); } catch {}
-      }
+      forget();
+      // Later, History keeps it with its preview.
+      if (open) window.location.href = `/reporting?report_run=${encodeURIComponent(run.id)}#history`;
       return;
     }
     forget();
-    if (job.status === 'failed') showInfoDialog(job.error || job.message || 'The report could not be generated.', {title: 'Report Failed', tone: 'error'});
+    if (run.status === 'failed') showInfoDialog(run.error || run.message || 'The report could not be generated.', {title: 'Report Failed', tone: 'error'});
   };
   window.setTimeout(check, 1500);
 })();

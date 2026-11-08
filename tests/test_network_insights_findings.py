@@ -181,9 +181,8 @@ def test_each_user_keeps_a_network_insights_theme(client) -> None:
     assert changes[0] == {'theme': 'paper', 'previous': 'ericsson'}
 
 
-def test_bundle_report_templates_and_reporting_jobs_give_network_insights_their_one_theme() -> None:
+def test_bundle_report_templates_give_network_insights_their_one_theme() -> None:
     from src.modules.reporting import bundle_report_templates
-    from src.modules.reporting.report_tasks import _network_entry
 
     # The theme belongs to the whole report (Ericsson by default), not to its Network Insights section.
     assert 'theme' not in bundle_report_templates.default_options('network_insights')
@@ -196,8 +195,6 @@ def test_bundle_report_templates_and_reporting_jobs_give_network_insights_their_
     assert definition['theme'] == 'vodafone' and 'theme' not in network['options']
     # Reports saved before the Key Findings have them right after the Overview.
     assert [item['key'] for item in network['items']][:3] == ['overview', 'findings', 'spectrum']
-    # A Network Insights artifact of a Reporting Job takes the theme of the job.
-    assert 'theme' not in _network_entry({'theme': 'midnight', 'selection': {}})
 
 
 def test_a_headline_names_only_the_values_the_tests_have() -> None:

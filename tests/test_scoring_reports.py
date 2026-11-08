@@ -181,16 +181,6 @@ def test_split_environments_and_kpi_values():
     assert 'Value' in headers and 'Value / Score' in headers
 
 
-def test_reporting_job_scoring_entry_keeps_its_report():
-    from src.modules.reporting.report_tasks import normalize_definition
-    report = default_report_configuration()
-    definition = normalize_definition({'scoring': [{'nr_mode': 'NSA', 'report': report}]})
-    assert definition['scoring'][0]['report']['scenarios'][0]['name'] == 'National'
-    # The report content is required: there is no implicit default report.
-    with pytest.raises(ValueError, match='Configure the report content'):
-        normalize_definition({'scoring': [{'nr_mode': 'NSA'}]})
-
-
 def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_api, monkeypatch):
     from types import ModuleType
 

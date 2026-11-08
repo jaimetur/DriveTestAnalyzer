@@ -100,7 +100,7 @@ module.exports = {
       tiles: [
         { mini: 'sliders', title: 'NQ Analysis Configuration', text: 'Fields, statuses, teams, Status Rules, the catalog and the DT Analyzer RCA Rules.' },
         { mini: 'import', title: 'Previous NQ Analyses', text: 'The analyses of the previous tool, imported without losing anything.' },
-        { mini: 'docs', title: 'Exports', text: 'Excel, PowerPoint, Word and Reporting Jobs.' },
+        { mini: 'docs', title: 'Exports', text: 'Excel, PowerPoint, Word and the reports of Reporting.' },
         { mini: 'transfer', title: 'Portable', text: 'The follow-up and configuration travel in exports, transfers and backups.' },
       ],
       notes: 'Admins configure the fields, statuses, teams, rules and catalog. The analyses of the previous tool can be imported, the calls exported to Excel, PowerPoint and Word, and the follow-up moved to other workspaces.' },

@@ -105,7 +105,7 @@ full-presentation
 - [CDR Analysis](datasets-analysis.md) — interactive single-dataset analysis and exports.
 - [PPT Designer](ppt-designer.md) — saved Designs, synchronized filters and slide layouts.
 - [Non-Qualified Calls](non-qualified-calls.md) — the NQ Analysis Center: summary, NQ rate by campaign and operator, lifecycle and phases, root cause analysis and sources, drill-down and shared follow-up (status set by rules or by hand, team, assignee, root category and cause recommended from the DT Analyzer RCA, NetCheck, the Ericsson RCA and previous decisions, fields by section and comments) of every call and test that did not complete, across Daily and Final CDRs.
-- [Reporting](reporting.md) — bundle reports with parts of several modules (Bundle Report Templates), and scheduled Reporting Jobs that email CDR Analysis, Network Insights, Design and Scoring artifacts.
+- [Reporting](reporting.md) — reports with parts of several modules, generated on demand or on their schedule and emailed, and the History of every report generated.
 - [Chart Builder](chart-builder.md) — temporary ad-hoc chart construction.
 - [Query Builder](query-builder.md) — guided query design, SQL editing, execution and saved queries.
 - [AI Assistant](assistant.md) — a chat that answers questions about the workspace in natural language with the calculations of its modules, the names of operators, vendors, areas and campaigns sent to the AI engine as codes, every figure traced to its calculation, and a glossary of the workspace fed from the chat.

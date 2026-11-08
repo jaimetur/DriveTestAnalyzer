@@ -1,6 +1,7 @@
-/* Reporting: the Bundle Report Templates panel. Its common filters, its five sections with their sub-modules, charts and
-   tables (checked and ordered by dragging), the options of each section, the favourites and the export dialog that
-   previews every page before the download. */
+/* Reporting: the Reports tab. The reports as cards (what each includes, its schedule and its last run), the editor of a
+   report in steps (its cover, common filters, five sections with their sub-modules, charts and tables, checked and
+   ordered by dragging, and its schedule), and the dialog that follows a report being generated and previews every
+   page of a run before the download. */
 (() => {
   'use strict';
 
@@ -34,9 +35,8 @@
   let filterPickers = {};
   let favourites = [];
   let pollTimer = null;
+  // The run shown in the preview dialog (see jobFromRun).
   let currentJob = null;
-  // The last report generated from the panel, kept in the workspace: Open last report opens it whenever there is one.
-  let lastReport = null;
 
   const status = (message, tone = '') => {
     const element = $('brt-status');
@@ -596,8 +596,13 @@
     };
   }
 
+  // The report being edited is kept in this browser, so a reload opens it again with its changes.
   function changed() {
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({definition: collect(), favourite: $('brt-favourite').value, name: $('brt-name').value})); } catch {}
+    if (root.hidden || !definition) return;
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({id: editingId, name: $('brt-name').value, definition: collect(),
+        schedule: collectSchedule(), step}));
+    } catch {}
   }
 
   function render() {
@@ -620,137 +625,386 @@
     renderSections();
   }
 
-  // -- favourites ----------------------------------------------------------------------------------
-  function renderFavourites(selected = '') {
-    const select = $('brt-favourite');
-    select.replaceChildren(node('option', 'New Bundle Report Template'));
-    select.firstElementChild.value = '';
-    favourites.forEach((item) => {
-      const option = node('option', item.name);
-      option.value = String(item.id);
-      select.append(option);
-    });
-    select.value = selected && favourites.some((item) => String(item.id) === String(selected)) ? String(selected) : '';
-    lockFavouriteActions(favourites.find((item) => String(item.id) === select.value));
-    $('brt-save').disabled = !brtOptions.can_edit;
-  }
-  // Only admins and super-admins, or the user who created it, delete a favourite.
-  function lockFavouriteActions(favourite) {
-    const deletable = !favourite || (window.canDeleteShared?.(favourite.created_by) ?? true);
-    $('brt-rename').disabled = !favourite || !brtOptions.can_edit;
-    $('brt-delete').disabled = $('brt-rename').disabled || !deletable;
-    $('brt-delete').title = deletable ? 'Delete the chosen favourite' : window.sharedDeleteRefusal('favourite Bundle Report Template');
-  }
-  // The Reporting Jobs follow the favourites they generate.
-  const favouritesChanged = () => document.dispatchEvent(new CustomEvent('bundle-report-template:favourites-changed'));
+  // -- reports ----------------------------------------------------------------------------------------
+  // Each report is a card with what it includes, its schedule and its last run (the state History loads, see
+  // reporting_history.js). Its editor opens beside the list on a wide screen and over the page on a phone, in four steps.
+  const page = document.getElementById('report-jobs');
+  let pageState = {reports: [], runs: [], can_edit: false};
+  let editingId = null;
+  // The chip chosen stays in this browser.
+  const LIST_FILTER_KEY = 'reporting:reports-filter';
+  let listFilter = (() => { try { return localStorage.getItem(LIST_FILTER_KEY) || 'all'; } catch { return 'all'; } })();
+  const canEdit = () => Boolean(brtOptions?.can_edit);
   const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
-  // The jobs that generate a favourite: those based on it and the others.
-  const jobsOf = async (favourite) => {
-    try { return await api(`/api/reporting/bundle-report-template/favourites/${favourite.id}/jobs`); } catch { return {based_on: [], others: []}; }
+  const MODULE_TAGS = {scoring: ['SCO', 'Scoring & GAP Analysis'], network_insights: ['NI', 'Network Insights'],
+    non_qualified_calls: ['NQ', 'Non-Qualified Calls'], designs: ['PPT', 'PPT Designer'], dataset_analysis: ['CDR', 'CDR Analysis']};
+  const RUN_LABELS = {queued: 'Queued', running: 'Running', stopping: 'Stopping', sent: 'Sent', completed: 'Ready', partial: 'Partial',
+    failed: 'Failed', stopped: 'Stopped'};
+  const ACTIVE_RUNS = ['queued', 'running', 'stopping'];
+  const localTime = (value) => {
+    const parsed = new Date(value || '');
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'});
   };
+  const scheduled = (report) => Boolean(report.schedule.enabled && report.schedule.schedule?.mode !== 'manual');
+  const reportSchedule = (report) => (!report ? 'Only with Generate'
+    : scheduled(report) ? report.schedule.recurrence
+      : report.schedule.schedule?.mode !== 'manual' ? `Paused · ${report.schedule.recurrence}` : 'Only with Generate');
 
-  $('brt-favourite').addEventListener('change', () => {
-    const favourite = favourites.find((item) => String(item.id) === $('brt-favourite').value);
-    definition = clone(favourite ? favourite.definition : brtOptions.defaults);
-    $('brt-name').value = favourite ? favourite.name : '';
-    lockFavouriteActions(favourite);
-    render();
-    changed();
-    status(favourite ? `${favourite.name} loaded.` : '');
+  // The labels of a report (also above its runs in History), one row each: its modules; the area it filters, its NR Mode
+  // and the Operator or Vendor it filters; and its campaigns.
+  function labelsOf(labels) {
+    const box = node('div', undefined, 'rp-labels');
+    const row = (className) => { const line = node('div', undefined, `rp-label-row ${className}`); box.append(line); return line; };
+    const modules = row('rp-label-modules');
+    (labels?.modules || []).forEach((key) => {
+      const [short, title] = MODULE_TAGS[key] || [key, key];
+      const tag = node('span', short, `rp-module rp-module-${key}`);
+      tag.title = title;
+      modules.append(tag);
+    });
+    const scopes = row('rp-label-scopes');
+    const scopeTag = (scope) => {
+      const tag = node('span', scope.text, `rp-scope rp-scope-${scope.dimension}`);
+      tag.title = scope.title;
+      scopes.append(tag);
+    };
+    const parties = ['operator', 'vendor'];
+    (labels?.scopes || []).filter((scope) => !parties.includes(scope.dimension)).forEach(scopeTag);
+    if (labels?.nr_mode) scopes.append(node('span', labels.nr_mode, `rp-mode rp-mode-${String(labels.nr_mode).toLowerCase()}`));
+    (labels?.scopes || []).filter((scope) => parties.includes(scope.dimension)).forEach(scopeTag);
+    const campaigns = row('rp-label-campaigns');
+    (labels?.campaigns || []).forEach((choice) => {
+      const tag = node('span', choice.campaigns, 'rp-campaigns');
+      tag.title = `Campaigns of ${choice.modules.map((key) => (MODULE_TAGS[key] || [key, key])[1]).join(', ')}`;
+      campaigns.append(tag);
+    });
+    box.querySelectorAll('.rp-label-row:empty').forEach((line) => line.remove());
+    return box;
+  }
+  window.reportingLabels = labelsOf;
+
+  function menuButton(label, title, handler, className = '') {
+    const button = node('button', label, `rp-menu-item ${className}`.trim());
+    button.type = 'button';
+    button.title = title;
+    button.addEventListener('click', (event) => { event.currentTarget.closest('details')?.removeAttribute('open'); handler(); });
+    return button;
+  }
+
+  function reportCard(report) {
+    const card = node('li', undefined, 'rp-card');
+    card.dataset.reportId = report.id;
+    card.classList.toggle('is-selected', report.id === editingId);
+    const head = node('div', undefined, 'rp-card-head');
+    const name = node(canEdit() ? 'button' : 'span', report.name, 'rp-card-name');
+    if (canEdit()) {
+      name.type = 'button';
+      name.title = 'Edit this report';
+      name.addEventListener('click', () => { void openEditor(report.id); });
+    }
+    const star = node('button', report.starred ? '★' : '☆', `rp-star${report.starred ? ' is-starred' : ''}`);
+    star.type = 'button';
+    star.title = report.starred ? 'Take it away from your favourites' : 'Add it to your favourites';
+    star.setAttribute('aria-label', `${star.title}: ${report.name}`);
+    star.setAttribute('aria-pressed', String(Boolean(report.starred)));
+    star.addEventListener('click', () => { void toggleStar(report); });
+    head.append(name, star);
+    const schedule = node('p', undefined, `rp-card-schedule${scheduled(report) ? ' is-scheduled' : ''}`);
+    schedule.append(node('span', undefined, 'rp-dot'), node('span', reportSchedule(report)));
+    if (scheduled(report) && report.schedule.next_run_at) schedule.append(node('span', ` · next ${localTime(report.schedule.next_run_at)}`, 'rp-next'));
+    if (report.schedule.send_email) schedule.append(node('span', ` · emailed to ${report.schedule.recipients.length}`, 'rp-next'));
+    const last = report.last_run ? (pageState.runs.find((run) => run.id === report.last_run.id) || report.last_run) : null;
+    const pending = Boolean(last && ACTIVE_RUNS.includes(last.status));
+    const result = node('p', undefined, 'rp-card-result');
+    if (last) {
+      result.append(node('span', RUN_LABELS[last.status] || last.status, `rj-status rj-status-${last.status}`));
+      result.append(pending ? ` ${last.progress || 0}% · ${last.message || ''}` : ` ${localTime(last.finished_at || last.started_at || last.created_at)}`);
+    } else {
+      result.append(node('span', 'Not generated yet', 'form-note'));
+    }
+    const actions = node('div', undefined, 'rp-card-actions');
+    const generate = node('button', pending ? 'Follow' : 'Generate', 'rp-primary');
+    generate.type = 'button';
+    generate.title = pending ? 'Follow the report being generated' : 'Generate the report now, in the formats of its schedule';
+    generate.addEventListener('click', () => (pending ? window.openReportRun(last.id) : generateReport(report)));
+    actions.append(generate);
+    if (last && !pending && last.has_preview) {
+      const preview = node('button', 'Preview', 'rp-secondary');
+      preview.type = 'button';
+      preview.title = 'Open the preview of the last report generated';
+      preview.addEventListener('click', () => window.openReportRun(last.id));
+      actions.append(preview);
+    }
+    if (canEdit()) {
+      const edit = node('button', 'Edit', 'rp-secondary');
+      edit.type = 'button';
+      edit.addEventListener('click', () => { void openEditor(report.id); });
+      const more = node('details', undefined, 'rp-more');
+      const summary = node('summary', '⋯');
+      summary.title = 'More actions';
+      summary.setAttribute('aria-label', `More actions on ${report.name}`);
+      const menu = node('div', undefined, 'rp-menu');
+      menu.append(menuButton('Duplicate', 'Save a copy of this report, without its schedule', () => duplicateReport(report)),
+        menuButton('Rename', 'Rename this report (its runs keep their name)', () => renameReport(report)));
+      const deletable = window.canDeleteShared?.(report.created_by) ?? true;
+      const remove = menuButton('Delete', deletable ? 'Delete this report with its schedule and its runs in History' : window.sharedDeleteRefusal?.('report') || '',
+        () => deleteReport(report), 'rp-danger');
+      remove.disabled = !deletable;
+      menu.append(remove);
+      more.append(summary, menu);
+      actions.append(edit, more);
+    }
+    card.append(head, labelsOf(report.labels), schedule, result, actions);
+    return card;
+  }
+
+  function renderList() {
+    const query = $('rp-search').value.trim().toLocaleLowerCase();
+    const shown = pageState.reports.filter((report) => (!query || report.name.toLocaleLowerCase().includes(query))
+      && (listFilter === 'all' || (listFilter === 'starred' ? report.starred
+        : listFilter === 'scheduled' ? scheduled(report) : report.labels.nr_mode === listFilter)));
+    $('rp-count-reports').textContent = pageState.reports.length ? String(pageState.reports.length) : '';
+    $('rp-new').hidden = !canEdit();
+    const list = $('rp-list');
+    if (!shown.length) {
+      const text = listFilter === 'starred' && !query ? 'No favourites yet: mark the reports you want at hand with their star.'
+        : pageState.reports.length ? 'No report matches the search.'
+        : canEdit() ? 'No report yet: + New report designs the first one.' : 'No report yet.';
+      list.replaceChildren(node('li', text, 'form-note rp-empty'));
+      return;
+    }
+    // (A menu stays open while the state of the page refreshes the cards.)
+    const openMenu = list.querySelector('details.rp-more[open]')?.closest('.rp-card')?.dataset.reportId;
+    list.replaceChildren(...shown.map(reportCard));
+    if (openMenu) {
+      const menu = list.querySelector(`.rp-card[data-report-id="${CSS.escape(openMenu)}"] details.rp-more`);
+      if (menu) menu.open = true;
+    }
+  }
+  // One ⋯ menu open at a time; a click elsewhere or Escape closes it.
+  const closeMenus = (except = null) => document.querySelectorAll('details.rp-more[open]').forEach((menu) => { if (menu !== except) menu.open = false; });
+  $('rp-list').addEventListener('toggle', (event) => { if (event.target.matches?.('details.rp-more') && event.target.open) closeMenus(event.target); }, true);
+  document.addEventListener('click', (event) => { if (!event.target.closest?.('details.rp-more')) closeMenus(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMenus(); });
+  document.addEventListener('reporting:state', (event) => {
+    pageState = event.detail;
+    // (A report saved or renamed elsewhere comes with its definition from the options.)
+    renderList();
   });
-  $('brt-name').addEventListener('input', changed);
+  $('rp-search').addEventListener('input', renderList);
+  const chips = [...document.querySelectorAll('[data-rp-filter]')];
+  if (!chips.some((chip) => chip.dataset.rpFilter === listFilter)) listFilter = 'all';
+  const showChip = () => chips.forEach((chip) => chip.setAttribute('aria-pressed', String(chip.dataset.rpFilter === listFilter)));
+  showChip();
+  chips.forEach((chip) => chip.addEventListener('click', () => {
+    listFilter = chip.dataset.rpFilter;
+    try { localStorage.setItem(LIST_FILTER_KEY, listFilter); } catch {}
+    showChip();
+    renderList();
+  }));
+  // The star of a report is of each user, and shows at once.
+  async function toggleStar(report) {
+    const starred = !report.starred;
+    report.starred = starred;
+    renderList();
+    try {
+      await api(`/api/reporting/bundle-report-template/favourites/${report.id}/star`, {method: 'POST', body: JSON.stringify({starred})});
+    } catch (error) {
+      report.starred = !starred;
+      renderList();
+      status(error.message, 'error');
+    }
+  }
+  const refreshPage = () => document.dispatchEvent(new CustomEvent('reporting:refresh'));
+  async function reloadReports() {
+    brtOptions = {...brtOptions, favourites: (await api('/api/reporting/bundle-report-template/options')).favourites};
+    favourites = brtOptions.favourites || [];
+  }
+
+  // -- the editor, in steps ----------------------------------------------------------------------------------
+  const STEPS = ['cover', 'filters', 'modules', 'schedule'];
+  let step = 'cover';
+  function showStep(name) {
+    step = STEPS.includes(name) ? name : 'cover';
+    root.querySelectorAll('[data-rp-panel]').forEach((panel) => { panel.hidden = panel.dataset.rpPanel !== step; });
+    root.querySelectorAll('[data-rp-step]').forEach((button) => {
+      if (button.dataset.rpStep === step) button.setAttribute('aria-current', 'step'); else button.removeAttribute('aria-current');
+    });
+    const index = STEPS.indexOf(step);
+    $('rp-step-back').disabled = index === 0;
+    $('rp-step-next').hidden = index === STEPS.length - 1;
+    root.querySelector('.rp-editor-body').scrollTop = 0;
+    changed();
+  }
+  root.querySelectorAll('[data-rp-step]').forEach((button) => button.addEventListener('click', () => showStep(button.dataset.rpStep)));
+  $('rp-step-back').addEventListener('click', () => showStep(STEPS[Math.max(0, STEPS.indexOf(step) - 1)]));
+  $('rp-step-next').addEventListener('click', () => showStep(STEPS[Math.min(STEPS.length - 1, STEPS.indexOf(step) + 1)]));
+
+  // The schedule of the report: whether it is generated on its own and when, its formats and whom it is emailed to.
+  const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  $('rp-weekdays').replaceChildren(...WEEKDAYS.map((label, index) => {
+    const item = node('label', undefined, 'rp-weekday');
+    const box = node('input');
+    box.type = 'checkbox';
+    box.value = String(index);
+    item.append(box, node('span', label));
+    return item;
+  }));
+  function fillSchedule(saved) {
+    const schedule = saved?.schedule || {mode: 'manual', time: '08:00'};
+    $('rp-enabled').checked = saved ? saved.enabled !== false : true;
+    $('rp-mode').value = schedule.mode || 'manual';
+    $('rp-time').value = schedule.time || '08:00';
+    $('rp-date').value = schedule.date || '';
+    $('rp-day').value = schedule.day_of_month || 1;
+    $('rp-weekdays').querySelectorAll('input').forEach((box) => { box.checked = (schedule.weekdays || [0]).includes(Number(box.value)); });
+    const formats = saved?.formats || ['powerpoint', 'word'];
+    $('rp-format-powerpoint').checked = formats.includes('powerpoint');
+    $('rp-format-word').checked = formats.includes('word');
+    $('rp-send-email').checked = Boolean(saved?.send_email);
+    $('rp-recipients').value = (saved?.recipients || []).join(', ');
+    syncSchedule();
+  }
+  function collectSchedule() {
+    const mode = $('rp-mode').value;
+    const schedule = {mode, time: $('rp-time').value || '08:00'};
+    if (mode === 'once') schedule.date = $('rp-date').value;
+    if (mode === 'weekly') schedule.weekdays = [...$('rp-weekdays').querySelectorAll('input:checked')].map((box) => Number(box.value));
+    if (mode === 'monthly') schedule.day_of_month = Number($('rp-day').value) || 1;
+    const formats = ['powerpoint', 'word'].filter((format) => $(`rp-format-${format}`).checked);
+    return {enabled: $('rp-enabled').checked, schedule, formats: formats.length ? formats : ['powerpoint'],
+      send_email: $('rp-send-email').checked, recipients: $('rp-recipients').value.split(/[,;\s]+/).map((value) => value.trim()).filter(Boolean)};
+  }
+  function syncSchedule() {
+    const mode = $('rp-mode').value;
+    root.querySelectorAll('[data-rp-schedule]').forEach((field) => { field.hidden = !field.dataset.rpSchedule.split(' ').includes(mode); });
+    root.querySelector('[data-rp-email]').hidden = !$('rp-send-email').checked;
+    const report = pageState.reports.find((item) => item.id === editingId);
+    $('rp-next-run').textContent = mode === 'manual' ? 'Only when Generate is pressed: choose a recurrence to generate it on its own.'
+      : !$('rp-enabled').checked ? 'Paused: it keeps its schedule but is only generated with Generate.'
+        : report?.schedule?.next_run_at && report.schedule.schedule?.mode === mode ? `Next on ${localTime(report.schedule.next_run_at)}.` : 'On the schedule below, once saved.';
+    $('rp-timezone').textContent = options?.timezone ? `Times are those of the server (${options.timezone}).` : '';
+    if (!options?.email_configured && $('rp-send-email').checked) $('rp-timezone').textContent += ' Email Delivery is not configured yet: the files are kept in History until it is.';
+  }
+  root.querySelector('[data-rp-panel="schedule"]').addEventListener('input', () => { syncSchedule(); changed(); });
+  root.querySelector('[data-rp-panel="schedule"]').addEventListener('change', () => { syncSchedule(); changed(); });
+
+  async function openEditor(reportId, draft = null) {
+    if (!brtOptions || !options) { status('The report editor is still loading.', 'error'); return; }
+    const report = reportId == null ? null : favourites.find((item) => item.id === reportId);
+    editingId = report ? report.id : null;
+    definition = clone(draft?.definition ? mergeDefaults(draft.definition) : report ? report.definition : brtOptions.defaults);
+    $('brt-name').value = draft?.name ?? (report ? report.name : '');
+    $('rp-editor-title').textContent = report ? report.name : 'New report';
+    $('rp-editor-kind').textContent = report ? 'Edit report' : 'New report';
+    render();
+    fillSchedule(draft?.schedule || pageState.reports.find((item) => item.id === editingId)?.schedule || null);
+    root.hidden = false;
+    page.classList.add('is-editing');
+    document.documentElement.classList.toggle('rp-sheet-open', window.matchMedia('(max-width: 900px)').matches);
+    showStep(draft?.step || 'cover');
+    renderList();
+    if (!window.matchMedia('(max-width: 900px)').matches) root.scrollIntoView({block: 'nearest'});
+  }
+  function closeEditor() {
+    root.hidden = true;
+    editingId = null;
+    page.classList.remove('is-editing');
+    document.documentElement.classList.remove('rp-sheet-open');
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    renderList();
+  }
+  $('rp-new').addEventListener('click', () => { void openEditor(null); });
+  $('rp-editor-close').addEventListener('click', closeEditor);
+
+  // Save keeps the report and its schedule; a name another report has is refused.
+  async function saveReport() {
+    const name = $('brt-name').value.trim();
+    if (!name) { status('Enter a name for the report.', 'error'); showStep('cover'); $('brt-name').focus(); return null; }
+    const clash = favourites.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase() && item.id !== editingId);
+    if (clash) { status(`A report named ${clash.name} already exists: choose another name.`, 'error'); showStep('cover'); return null; }
+    const schedule = collectSchedule();
+    if (schedule.send_email && !schedule.recipients.length) { status('Add at least one email recipient or turn email off.', 'error'); showStep('schedule'); return null; }
+    try {
+      const result = await api(editingId ? `/api/reporting/bundle-report-template/favourites/${editingId}` : '/api/reporting/bundle-report-template/favourites', {
+        method: editingId ? 'PUT' : 'POST', body: JSON.stringify({name, definition: collect(), schedule}),
+      });
+      favourites = result.favourites;
+      brtOptions.favourites = favourites;
+      status(`${result.favourite.name} saved.`, 'done');
+      refreshPage();
+      return result.favourite;
+    } catch (error) {
+      status(error.message, 'error');
+      return null;
+    }
+  }
+  $('brt-save').addEventListener('click', async () => { if (await saveReport()) closeEditor(); });
+  $('rp-generate-edited').addEventListener('click', async () => {
+    const saved = await saveReport();
+    if (!saved) return;
+    closeEditor();
+    generateReport(saved);
+  });
+
+  async function duplicateReport(report) {
+    const source = favourites.find((item) => item.id === report.id);
+    if (!source) return;
+    const taken = new Set(favourites.map((item) => item.name.toLocaleLowerCase()));
+    let name = `${source.name} (copy)`;
+    for (let copy = 2; taken.has(name.toLocaleLowerCase()); copy += 1) name = `${source.name} (copy ${copy})`;
+    try {
+      const result = await api('/api/reporting/bundle-report-template/favourites', {method: 'POST', body: JSON.stringify({name: name.slice(0, 120), definition: source.definition})});
+      favourites = result.favourites;
+      brtOptions.favourites = favourites;
+      status(`${result.favourite.name} saved.`, 'done');
+      refreshPage();
+    } catch (error) { status(error.message, 'error'); }
+  }
+  async function renameReport(report) {
+    const answer = typeof showTextInputDialog === 'function'
+      ? await showTextInputDialog('New name', {title: 'Rename Report', value: report.name, maxLength: 120, confirmLabel: 'Rename', cancelLabel: 'Cancel',
+        note: 'Its schedule takes the new name; the runs in History keep the one they had.'})
+      : window.prompt('New name of the report', report.name);
+    const name = String(answer ?? '').trim();
+    if (!name || name === report.name) return;
+    try {
+      const result = await api(`/api/reporting/bundle-report-template/favourites/${report.id}/rename`, {method: 'POST', body: JSON.stringify({name})});
+      favourites = result.favourites;
+      brtOptions.favourites = favourites;
+      status(`${report.name} renamed to ${result.favourite.name}.`, 'done');
+      refreshPage();
+    } catch (error) { status(error.message, 'error'); }
+  }
+  async function deleteReport(report) {
+    const runs = pageState.runs.filter((run) => run.report_id === report.id).length;
+    const copy = `<p>Delete the report <strong>${escapeHtml(report.name)}</strong>${scheduled(report) ? ' and its schedule' : ''}?</p>`
+      + (runs ? `<p>Its ${runs} run${runs === 1 ? '' : 's'} in History and their files are deleted too. This cannot be undone.</p>` : '<p>This cannot be undone.</p>');
+    const confirmed = typeof window.showConfirmDialog === 'function'
+      ? Boolean(await window.showConfirmDialog('', {title: 'Delete Report', copyHtml: copy, confirmLabel: 'Delete', cancelLabel: 'Cancel'}))
+      : window.confirm(`Delete the report ${report.name}?`);
+    if (!confirmed) return;
+    try {
+      const result = await api(`/api/reporting/bundle-report-template/favourites/${report.id}`, {method: 'DELETE'});
+      favourites = result.favourites;
+      brtOptions.favourites = favourites;
+      if (editingId === report.id) closeEditor();
+      status(`${report.name} deleted.`, 'done');
+      refreshPage();
+    } catch (error) { status(error.message, 'error'); }
+  }
+
+  $('brt-name').addEventListener('input', () => { $('rp-editor-title').textContent = $('brt-name').value.trim() || 'New report'; changed(); });
   $('brt-title').addEventListener('input', changed);
   $('brt-subtitle').addEventListener('input', changed);
   $('brt-theme').addEventListener('change', () => { definition.theme = $('brt-theme').value; changed(); });
   $('brt-chart-pictures').addEventListener('change', () => { definition.chart_pictures = $('brt-chart-pictures').checked; changed(); });
 
-  $('brt-save').addEventListener('click', async () => {
-    const name = $('brt-name').value.trim();
-    if (!name) { status('Enter a name for the favourite.', 'error'); $('brt-name').focus(); return; }
-    // A name that a favourite already has overwrites it once the user confirms; another name saves a new favourite.
-    const existing = favourites.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase());
-    if (existing) {
-      const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
-      const confirmed = typeof window.showConfirmDialog === 'function'
-        ? Boolean(await window.showConfirmDialog('', {title: 'Overwrite Favourite',
-          copyHtml: `<p>A favourite Bundle Report Template named <strong>${escape(existing.name)}</strong> already exists. Overwrite it with this report?</p>`,
-          confirmLabel: 'Overwrite', cancelLabel: 'Cancel'}))
-        : window.confirm(`A favourite Bundle Report Template named ${existing.name} already exists. Overwrite it with this report?`);
-      if (!confirmed) return;
-    }
-    try {
-      const result = await api(existing ? `/api/reporting/bundle-report-template/favourites/${existing.id}` : '/api/reporting/bundle-report-template/favourites', {
-        method: existing ? 'PUT' : 'POST', body: JSON.stringify({name, definition: collect()}),
-      });
-      favourites = result.favourites;
-      renderFavourites(result.favourite.id);
-      changed();
-      status(`${result.favourite.name} saved as a favourite.`, 'done');
-      favouritesChanged();
-    } catch (error) {
-      status(error.message, 'error');
-    }
-  });
 
-  // Renaming keeps what the favourite saved (not the changes of the panel); every job based on it takes the new name.
-  $('brt-rename').addEventListener('click', async () => {
-    const selected = favourites.find((item) => String(item.id) === $('brt-favourite').value);
-    if (!selected) return;
-    const named = (await jobsOf(selected)).based_on;
-    const note = named.length ? `The Reporting Job${named.length === 1 ? '' : 's'} based on it will take the new name: ${named.join(', ')}.` : '';
-    const answer = typeof showTextInputDialog === 'function'
-      ? await showTextInputDialog('New name', {title: 'Rename Favourite', value: selected.name, maxLength: 120, confirmLabel: 'Rename', cancelLabel: 'Cancel', note})
-      : window.prompt('New name of the favourite Bundle Report Template', selected.name);
-    const name = String(answer ?? '').trim();
-    if (!name || name === selected.name) return;
-    try {
-      const result = await api(`/api/reporting/bundle-report-template/favourites/${selected.id}/rename`, {method: 'POST', body: JSON.stringify({name})});
-      favourites = result.favourites;
-      renderFavourites(result.favourite.id);
-      $('brt-name').value = result.favourite.name;
-      changed();
-      const jobs = result.renamed_jobs || [];
-      status(`${selected.name} renamed to ${result.favourite.name}.${jobs.length ? ` Reporting Jobs renamed: ${jobs.length}.` : ''}`, 'done');
-      favouritesChanged();
-    } catch (error) {
-      status(error.message, 'error');
-    }
-  });
-
-  $('brt-delete').addEventListener('click', async () => {
-    const selected = favourites.find((item) => String(item.id) === $('brt-favourite').value);
-    if (!selected) return;
-    // The jobs based on it are disabled and the others that generate it no longer find it.
-    const jobs = await jobsOf(selected);
-    const list = (names) => `<ul>${names.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul>`;
-    const copy = `<p>Delete the favourite Bundle Report Template <strong>${escapeHtml(selected.name)}</strong>?</p>`
-      + (jobs.based_on.length ? `<p>These Reporting Jobs based on it will be disabled:</p>${list(jobs.based_on)}` : '')
-      + (jobs.others.length ? `<p>These Reporting Jobs also generate it and will tell that it no longer exists:</p>${list(jobs.others)}` : '');
-    const confirmed = typeof window.showConfirmDialog === 'function'
-      ? Boolean(await window.showConfirmDialog('', {title: 'Delete Favourite', copyHtml: copy, confirmLabel: 'Delete', cancelLabel: 'Cancel'}))
-      : window.confirm(`Delete the favourite Bundle Report Template ${selected.name}?`);
-    if (!confirmed) return;
-    try {
-      const result = await api(`/api/reporting/bundle-report-template/favourites/${selected.id}`, {method: 'DELETE'});
-      favourites = result.favourites;
-      renderFavourites('');
-      $('brt-name').value = '';
-      changed();
-      const disabled = result.disabled_jobs || [];
-      status(`${selected.name} deleted.${disabled.length ? ` Reporting Jobs disabled: ${disabled.join(', ')}.` : ''}`, 'done');
-      favouritesChanged();
-    } catch (error) {
-      status(error.message, 'error');
-    }
-  });
-
-  // -- export dialog --------------------------------------------------------------------------------
+  // -- generating a report, and viewing it -----------------------------------------------------------------
+  // The dialog follows a report being generated; ready, it opens in the slide viewer of the presentations.
   const dialog = $('brt-dialog');
   const formatLabel = (format) => (format === 'word' ? 'Word' : 'PowerPoint');
-  // The format shown in the preview: each report generated opens in PowerPoint. Both are generated before the preview
-  // opens, so switching between them is immediate.
-  let previewFormat = 'powerpoint';
-  const shownFormat = (job) => job.formats?.[previewFormat] || {previews: 0, navigation: [], file_name: ''};
 
   function stopPolling() {
     if (pollTimer) window.clearTimeout(pollTimer);
@@ -758,268 +1012,75 @@
   }
 
   function showJob(job) {
-    const wasReady = currentJob?.id === job.id && currentJob?.status === 'ready';
     currentJob = job;
     jobSeenAt = Date.now();
-    const ready = job.status === 'ready';
-    if (ready) lastReport = job;
+    if (job.status === 'ready') {
+      if (dialog.open) dialog.close();
+      openReportViewer(job);
+      return;
+    }
     const failed = job.status === 'failed';
     const pending = isPending(job);
     $('brt-dialog-title').textContent = job.title || 'Drive Test Analyzer Report';
-    $('brt-dialog-format').textContent = ready ? formatLabel(previewFormat) : 'PowerPoint and Word';
-    $('brt-dialog-progress').hidden = ready;
+    $('brt-dialog-format').textContent = pending ? 'Generating the report' : 'Report';
     const bar = $('brt-progress-bar');
     bar.style.width = `${Math.max(3, job.progress || 0)}%`;
     bar.parentElement.setAttribute('aria-valuenow', String(job.progress || 0));
     $('brt-dialog-message').textContent = failed ? job.error || job.message : job.message || '';
     $('brt-dialog-message').dataset.tone = failed ? 'error' : '';
-    // While it runs the report can be cancelled or hidden; finished, the dialog closes.
+    // While it runs the report can be stopped or hidden; finished, the dialog closes.
     $('brt-dialog-cancel').hidden = !pending;
     $('brt-dialog-hide').hidden = !pending;
     $('brt-dialog-done').hidden = pending;
-    $('brt-dialog-close').setAttribute('aria-label', pending ? 'Hide the progress' : 'Close the preview');
+    $('brt-dialog-close').setAttribute('aria-label', pending ? 'Hide the progress' : 'Close');
     updateElapsed();
-    updateGenerateButton();
-    if (wasReady) return;
-    const warnings = $('brt-warnings');
-    warnings.replaceChildren(...(job.warnings || []).map((warning) => node('li', warning)));
-    warnings.hidden = !(job.warnings || []).length;
-    $('brt-format-switch').hidden = !ready;
-    // Ready, the dialog takes almost the whole screen: the sections and pages on the left, the chosen page on the right.
-    dialog.classList.toggle('is-previewing', ready);
-    if (ready) showFormat(0);
-    else $('brt-download').hidden = true;
   }
 
-  // The chosen format of a ready report: its summary, download, sections and pages, from ``index`` (a slide or page).
-  function showFormat(index) {
-    const job = currentJob;
-    const shown = shownFormat(job);
-    const pages = shown.previews || 0;
-    const unit = previewFormat === 'word' ? 'page' : 'slide';
-    const count = pages || job.outline.length;
-    const reused = (job.reused || []).length ? ` Reused from an earlier export (their data has not changed): ${job.reused.join(', ')}`
-      + `${job.document_reused ? ', and the documents composed from them' : ''}.` : '';
-    $('brt-dialog-summary').hidden = false;
-    $('brt-dialog-summary').textContent = `${count} ${unit}${count === 1 ? '' : 's'} · Processed in ${duration(job.elapsed_seconds)} · Choose a section or ${unit} on the left to check it before downloading.${reused}${pages ? '' : ' The preview needs LibreOffice: the list shows the title of each slide.'}`;
-    $('brt-dialog-format').textContent = formatLabel(previewFormat);
-    const download = $('brt-download');
-    download.hidden = false;
-    download.href = `/api/reporting/bundle-report-template/jobs/${job.id}/download/${previewFormat}`;
-    download.textContent = `Download ${formatLabel(previewFormat)}`;
-    $('brt-format-switch').querySelectorAll('[data-brt-format]').forEach((button) => {
-      const current = button.dataset.brtFormat === previewFormat;
-      button.classList.toggle('is-current', current);
-      button.setAttribute('aria-pressed', String(current));
-    });
-    // Word shows portrait pages; PowerPoint landscape slides.
-    dialog.classList.toggle('is-word', previewFormat === 'word');
-    $('brt-preview').hidden = false;
-    renderNavigation(job);
-    stage.classList.toggle('is-empty', !pages);
-    if (pages) showPage(index);
-    else viewerImage.removeAttribute('src');
-  }
-
-  // Switching the format keeps the section shown: its first page (or slide) in the other format.
-  function switchFormat(format) {
-    if (format === previewFormat || currentJob?.status !== 'ready') return;
-    const group = (shownFormat(currentJob).navigation || []).find((item) => item.pages.some((page) => page.index === viewerIndex));
-    previewFormat = format;
-    const target = group && (shownFormat(currentJob).navigation || []).find((item) => item.title === group.title);
-    showFormat(target?.pages[0]?.index || 0);
-  }
-
-  // The sections of the report with their pages (or slides): selecting one shows it.
-  function renderNavigation(job) {
-    const nav = $('brt-preview-nav');
-    const shown = shownFormat(job);
+  // A report in the slide viewer: its sections with their slides or pages, its formats, its warnings and its download.
+  function reportPresentation(job, format, available) {
+    const shown = job.formats?.[format] || {previews: 0, navigation: []};
     const groups = (shown.navigation || []).length ? shown.navigation
-      : [{title: 'Pages', pages: Array.from({length: shown.previews || job.outline.length}, (_value, index) => ({index, title: job.outline[index]?.title || `Page ${index + 1}`}))}];
-    nav.replaceChildren(...groups.map((group) => {
-      const section = node('section', undefined, 'brt-nav-section');
-      const heading = node('button', group.title, 'brt-nav-heading');
-      heading.type = 'button';
-      heading.title = `Go to ${group.title}`;
-      heading.addEventListener('click', () => { if (group.pages.length) showPage(group.pages[0].index); });
-      const list = node('ol', undefined, 'brt-nav-pages');
-      group.pages.forEach((page) => {
-        const item = node('li');
-        const button = node('button', undefined, 'brt-nav-page');
-        button.type = 'button';
-        button.dataset.page = String(page.index);
-        button.append(node('span', String(page.index + 1), 'brt-nav-number'), node('span', page.title, 'brt-nav-title'));
-        button.title = page.title;
-        button.disabled = !shown.previews;
-        button.addEventListener('click', () => showPage(page.index));
-        item.append(button);
-        list.append(item);
-      });
-      section.append(heading, list);
-      return section;
-    }));
-  }
-
-  // -- the chosen page, zoomed with the wheel, a rectangle or the buttons, as the Scoring charts ---------------------
-  const stage = $('brt-viewer-stage');
-  const viewerImage = $('brt-viewer-image');
-  let viewerIndex = 0;
-  // Each page shown has its token: images of a page left in the meantime are ignored when they arrive.
-  let pageToken = 0;
-  let view = {scale: 1, fit: 1, x: 0, y: 0};
-  const prefetched = new Map();
-
-  function renderView() {
-    viewerImage.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
-    stage.classList.toggle('is-zoomed', view.scale > view.fit * 1.001);
-  }
-  // The page keeps covering the stage once larger than it, and stays centred while smaller.
-  function clampView() {
-    const width = viewerImage.naturalWidth * view.scale, height = viewerImage.naturalHeight * view.scale;
-    view.x = width <= stage.clientWidth ? (stage.clientWidth - width) / 2 : Math.min(0, Math.max(stage.clientWidth - width, view.x));
-    view.y = height <= stage.clientHeight ? (stage.clientHeight - height) / 2 : Math.min(0, Math.max(stage.clientHeight - height, view.y));
-  }
-  // A slide fills the width of the stage; a Word page its height (both fit whole).
-  function fitView() {
-    if (!viewerImage.naturalWidth || !stage.clientWidth) return;
-    view.fit = Math.min(stage.clientWidth / viewerImage.naturalWidth, stage.clientHeight / viewerImage.naturalHeight);
-    view.scale = view.fit;
-    clampView();
-    renderView();
-  }
-  function zoomView(factor, centerX = stage.clientWidth / 2, centerY = stage.clientHeight / 2) {
-    const next = Math.min(view.fit * 12, Math.max(view.fit, view.scale * factor));
-    view.x = centerX - (centerX - view.x) * next / view.scale;
-    view.y = centerY - (centerY - view.y) * next / view.scale;
-    view.scale = next;
-    clampView();
-    renderView();
-  }
-  const pageUrl = (index, large = true) => `/api/reporting/bundle-report-template/jobs/${currentJob.id}/preview/${previewFormat}/${index}${large ? '?large=true' : ''}`;
-  function showPage(index) {
-    const total = shownFormat(currentJob || {}).previews || 0;
-    if (!total) return;
-    viewerIndex = Math.max(0, Math.min(total - 1, index));
-    const unit = previewFormat === 'word' ? 'Page' : 'Slide';
-    $('brt-page-label').textContent = `${unit} ${viewerIndex + 1} / ${total}`;
-    viewerImage.alt = `${unit} ${viewerIndex + 1}`;
-    // The page shows at once from its preview image, then sharper once its large rendering arrives (keeping the zoom).
-    const token = ++pageToken;
-    let sharp = false;
-    viewerImage.onload = () => { if (token === pageToken && !sharp) { stage.classList.remove('is-loading'); fitView(); } };
-    viewerImage.src = pageUrl(viewerIndex, false);
-    const large = new Image();
-    large.onload = () => {
-      if (token !== pageToken) return;
-      const zoom = view.fit && viewerImage.naturalWidth ? view.scale / view.fit : 1;
-      sharp = true;
-      viewerImage.onload = () => {
-        if (token !== pageToken) return;
-        stage.classList.remove('is-loading');
-        fitView();
-        if (zoom > 1.001) zoomView(zoom);
-      };
-      viewerImage.src = large.src;
-    };
-    large.src = pageUrl(viewerIndex);
-    document.querySelectorAll('.brt-nav-page').forEach((button) => {
-      const current = Number(button.dataset.page) === viewerIndex;
-      button.classList.toggle('is-current', current);
-      if (current) {
-        button.setAttribute('aria-current', 'page');
-        button.scrollIntoView({block: 'nearest'});
-      } else {
-        button.removeAttribute('aria-current');
-      }
+      : [{title: 'Pages', pages: Array.from({length: shown.previews || 0}, (_value, index) => ({index, title: job.outline[index]?.title || `Page ${index + 1}`}))}];
+    // (A section is listed once, with the pages that have a preview.)
+    const merged = new Map();
+    groups.forEach((group) => {
+      const pages = group.pages.filter((page) => page.index < (shown.previews || 0));
+      if (pages.length) merged.set(group.title, [...(merged.get(group.title) || []), ...pages]);
     });
-    // The next page is fetched ahead, so moving through the report does not wait for it.
-    const next = viewerIndex + 1;
-    if (next < total && !prefetched.has(`${currentJob.id}:${previewFormat}:${next}`)) {
-      const image = new Image();
-      image.src = pageUrl(next);
-      prefetched.set(`${currentJob.id}:${previewFormat}:${next}`, image);
-    }
+    const sections = [...merged].map(([title, pages]) => ({title, slides: pages.map((page) => page.title), pages}));
+    const pageOf = sections.flatMap((section) => section.pages.map((page) => page.index));
+    const reused = (job.reused || []).length ? [`Reused from an earlier export (their data has not changed): ${job.reused.join(', ')}${job.document_reused ? ', and the documents composed from them' : ''}.`] : [];
+    return {
+      id: `report-run-${job.id}-${format}`, title: job.title, kicker: formatLabel(format), unit: format === 'word' ? 'page' : 'slide',
+      sections, download: shown.file_name, downloadLabel: formatLabel(format), notes: [...(job.warnings || []), ...reused],
+      urls: {
+        slide: (index, thumb = false) => `/api/reporting/runs/${job.id}/preview/${format}/${pageOf[index] ?? index}${thumb ? '' : '?large=true'}`,
+        file: job.downloads?.[format] || '#',
+      },
+      link: (index = 0) => `${window.location.origin}/reporting?report_run=${job.id}${index > 0 ? `&slide=${index + 1}` : ''}`,
+      formats: available.length > 1 ? available.map((key) => ({
+        label: formatLabel(key), current: key === format,
+        // The other format opens at the same section.
+        select: (index) => {
+          let first = 0;
+          const section = sections.find((item) => { first += item.slides.length; return index < first; });
+          const other = reportPresentation(job, key, available);
+          const position = section ? other.sections.findIndex((item) => item.title === section.title) : -1;
+          const target = position < 0 ? 0 : other.sections.slice(0, position).reduce((total, item) => total + item.slides.length, 0);
+          window.PresentationViewer.open(other, target);
+        },
+      })) : [],
+    };
   }
-  const local = (event) => {
-    const bounds = stage.getBoundingClientRect();
-    return {x: event.clientX - bounds.left, y: event.clientY - bounds.top};
-  };
-  stage.addEventListener('wheel', (event) => {
-    if (!viewerImage.naturalWidth) return;
-    event.preventDefault();
-    const point = local(event);
-    zoomView(Math.exp(-event.deltaY * 0.0015), point.x, point.y);
-  }, {passive: false});
-  let drag = null;
-  stage.addEventListener('pointerdown', (event) => {
-    if ((event.button !== 0 && event.button !== 1) || !viewerImage.naturalWidth) return;
-    event.preventDefault();
-    const start = local(event);
-    const pan = event.button === 1 || event.shiftKey;
-    const rectangle = pan ? null : node('div', undefined, 'brt-viewer-rect');
-    if (rectangle) stage.append(rectangle);
-    drag = {start, pan, rectangle, x: view.x, y: view.y};
-    try { stage.setPointerCapture(event.pointerId); } catch {}
-    stage.classList.toggle('is-panning', pan);
-  });
-  stage.addEventListener('pointermove', (event) => {
-    if (!drag) return;
-    const point = local(event);
-    if (drag.pan) {
-      view.x = drag.x + point.x - drag.start.x;
-      view.y = drag.y + point.y - drag.start.y;
-      clampView();
-      renderView();
+  function openReportViewer(job, index = 0) {
+    const available = ['powerpoint', 'word'].filter((format) => job.formats?.[format]?.previews);
+    if (!available.length || !window.PresentationViewer?.open) {
+      if (!dialog.open) dialog.showModal();
+      showJob({...job, status: 'failed', error: 'This report has no preview, which needs LibreOffice: download its files in History.'});
       return;
     }
-    Object.assign(drag.rectangle.style, {
-      left: `${Math.min(drag.start.x, point.x)}px`, top: `${Math.min(drag.start.y, point.y)}px`,
-      width: `${Math.abs(point.x - drag.start.x)}px`, height: `${Math.abs(point.y - drag.start.y)}px`,
-    });
-  });
-  const endDrag = (event) => {
-    if (!drag) return;
-    const {start, pan, rectangle} = drag;
-    drag = null;
-    stage.classList.remove('is-panning');
-    if (pan || !rectangle) return;
-    rectangle.remove();
-    if (!event) return;
-    const point = local(event);
-    const width = Math.abs(point.x - start.x), height = Math.abs(point.y - start.y);
-    // A click (or a tiny rectangle) does not zoom.
-    if (width < 8 || height < 8) return;
-    const factor = Math.min(stage.clientWidth / width, stage.clientHeight / height);
-    const centerX = (start.x + point.x) / 2, centerY = (start.y + point.y) / 2;
-    const next = Math.min(view.fit * 12, view.scale * factor);
-    view.x = stage.clientWidth / 2 - (centerX - view.x) * next / view.scale;
-    view.y = stage.clientHeight / 2 - (centerY - view.y) * next / view.scale;
-    view.scale = next;
-    clampView();
-    renderView();
-  };
-  stage.addEventListener('pointerup', endDrag);
-  stage.addEventListener('pointercancel', () => endDrag(null));
-  stage.addEventListener('dblclick', fitView);
-  dialog.addEventListener('keydown', (event) => {
-    if (!dialog.classList.contains('is-previewing') || event.target.closest?.('input, select, textarea')) return;
-    if (event.key === 'ArrowLeft') showPage(viewerIndex - 1);
-    else if (event.key === 'ArrowRight') showPage(viewerIndex + 1);
-    else if (event.key === '+' || event.key === '=') zoomView(1.4);
-    else if (event.key === '-') zoomView(1 / 1.4);
-    else if (event.key === '0') fitView();
-    else return;
-    event.preventDefault();
-  });
-  dialog.querySelectorAll('[data-brt-viewer]').forEach((button) => button.addEventListener('click', () => {
-    const action = button.dataset.brtViewer;
-    if (action === 'previous') showPage(viewerIndex - 1);
-    else if (action === 'next') showPage(viewerIndex + 1);
-    else if (action === 'zoom-in') zoomView(1.4);
-    else if (action === 'zoom-out') zoomView(1 / 1.4);
-    else fitView();
-  }));
-  window.addEventListener('resize', () => { if (dialog.open && dialog.classList.contains('is-previewing')) fitView(); });
+    window.PresentationViewer.open(reportPresentation(job, available[0], available), index);
+  }
 
   // The report keeps being generated when its dialog is hidden: a dialog tells when it is ready, here or (see app.js)
   // on any other page, where the job is remembered in this browser.
@@ -1039,22 +1100,11 @@
     if (isPending(job) && !elapsedTimer) elapsedTimer = window.setInterval(() => { updateElapsed(); updateGenerateButton(); }, 1000);
     if (!isPending(job) && elapsedTimer) { window.clearInterval(elapsedTimer); elapsedTimer = null; }
   }
-  // While a report is generated in the background, Generate shows its progress and opens its dialog.
-  function updateGenerateButton() {
-    const button = root.querySelector('[data-brt-export]');
-    const label = button?.querySelector('span');
-    if (!label) return;
-    const pending = isPending(currentJob) && Boolean(currentJob.id);
-    label.textContent = pending ? `Generating · ${currentJob.progress || 0}% · ${clock(elapsedNow(currentJob))}` : 'Generate';
-    button.classList.toggle('is-generating', pending);
-    if (currentJob?.status === 'ready') lastReport = currentJob;
-    $('brt-open-last').hidden = pending || !lastReport || dialog.open;
-  }
+  // (The cards of the reports show the progress of a report being generated, from the state of the page.)
+  function updateGenerateButton() {}
   function openPreview() {
-    if (!dialog.open) dialog.showModal();
     const job = currentJob;
-    currentJob = null;
-    $('brt-preview').hidden = true;
+    if (job.status !== 'ready' && !dialog.open) dialog.showModal();
     showJob(job);
     if (job.status === 'ready') forgetJob();
   }
@@ -1066,7 +1116,7 @@
     if (job.status === 'ready') {
       const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
       const open = typeof window.showConfirmDialog === 'function'
-        ? Boolean(await window.showConfirmDialog('', {title: 'Report Ready', copyHtml: `<p><strong>${escape(job.title)}</strong> is ready in PowerPoint and Word (processed in ${duration(job.elapsed_seconds)}).</p><p>Open its preview to check it and download it?</p>`,
+        ? Boolean(await window.showConfirmDialog('', {title: 'Report Ready', copyHtml: `<p><strong>${escape(job.title)}</strong> is ready (processed in ${duration(job.elapsed_seconds)}).</p><p>Open its preview to check it and download it?</p>`,
           confirmLabel: 'Open preview', cancelLabel: 'Later'}))
         : window.confirm(`${job.title} is ready. Open its preview?`);
       forgetJob();
@@ -1081,156 +1131,151 @@
     }
   }
 
-  async function poll(jobId) {
+  // A run as the dialog shows it: generating (running), ready with its preview, or failed (also stopped).
+  function jobFromRun({run, report}) {
+    const pending = ['queued', 'running', 'stopping'].includes(run.status);
+    const done = ['sent', 'completed', 'partial'].includes(run.status);
+    const started = Date.parse(run.started_at || run.created_at || '');
+    const ended = run.finished_at ? Date.parse(run.finished_at) : Date.now();
+    return {
+      id: run.id, status: pending ? 'running' : done && report ? 'ready' : 'failed', progress: run.progress || 0,
+      message: run.message || (pending ? 'Waiting to start' : ''),
+      error: run.error || (done && !report ? 'This run has no preview: download its files in History.' : run.status === 'stopped' ? run.message : ''),
+      title: report?.title || run.task_name, formats: report?.formats || {}, outline: report?.outline || [],
+      warnings: report?.warnings || [], reused: report?.reused || [], document_reused: Boolean(report?.document_reused),
+      downloads: report?.downloads || {}, elapsed_seconds: Number.isNaN(started) ? 0 : Math.max(0, Math.round((ended - started) / 1000)),
+    };
+  }
+
+  async function poll(runId) {
     try {
-      const result = await api(`/api/reporting/bundle-report-template/jobs/${jobId}`);
-      if (currentJob && currentJob.id && currentJob.id !== jobId) return;
-      const before = currentJob?.status;
-      if (!dialog.open && result.job.status === 'ready') currentJob = result.job;
-      else showJob(result.job);
-      if (isPending(result.job)) pollTimer = window.setTimeout(() => poll(jobId), 1500);
-      else if (before !== result.job.status || !dialog.open) { currentJob = result.job; updateElapsed(); await finished(result.job); }
+      const job = jobFromRun(await api(`/api/reporting/runs/${runId}/report`));
+      if (currentJob && currentJob.id && currentJob.id !== runId) return;
+      // Followed in its dialog it opens by itself when it is ready; hidden, a dialog tells when it is.
+      const followed = dialog.open;
+      if (followed) showJob(job);
+      else { currentJob = job; jobSeenAt = Date.now(); }
+      if (isPending(job)) { pollTimer = window.setTimeout(() => poll(runId), 1500); return; }
+      updateElapsed();
+      refreshPage();
+      if (followed) forgetJob();
+      else await finished(job);
     } catch (error) {
-      if (/no longer available/i.test(error.message)) { forgetJob(); currentJob = null; updateGenerateButton(); return; }
+      if (/no longer exists/i.test(error.message)) { forgetJob(); currentJob = null; return; }
       $('brt-dialog-message').textContent = error.message;
-      pollTimer = window.setTimeout(() => poll(jobId), 5000);
+      pollTimer = window.setTimeout(() => poll(runId), 5000);
     }
   }
 
-  // The report is generated in PowerPoint and in Word, with both previews, before the preview opens.
-  async function exportReport() {
+  // Generate: a run of the report (in the formats of its schedule), followed in the dialog and listed in History.
+  async function generateReport(report) {
     if (isPending(currentJob) && currentJob.id) { openPreview(); return; }
     stopPolling();
-    previewFormat = 'powerpoint';
-    $('brt-preview').hidden = true;
-    $('brt-preview-nav').replaceChildren();
-    viewerImage.removeAttribute('src');
-    stage.classList.remove('is-empty', 'is-loading');
-    showJob({id: '', status: 'queued', progress: 0, message: 'Starting…', title: $('brt-title').value.trim() || $('brt-name').value.trim() || 'Drive Test Analyzer Report',
-      warnings: [], formats: {}, outline: []});
+    showJob({id: '', status: 'queued', progress: 0, message: 'Starting…', title: report.name, warnings: [], formats: {}, outline: []});
     if (!dialog.open) dialog.showModal();
     try {
-      const result = await api('/api/reporting/bundle-report-template/jobs', {method: 'POST', body: JSON.stringify({
-        definition: collect(), name: $('brt-name').value.trim(), refresh: !$('brt-reuse').checked,
-      })});
-      showJob(result.job);
-      rememberJob(result.job);
-      pollTimer = window.setTimeout(() => poll(result.job.id), 1000);
+      const result = await api(`/api/reporting/bundle-report-template/favourites/${report.id}/generate`, {method: 'POST',
+        body: JSON.stringify({refresh: !$('brt-reuse').checked})});
+      currentJob = {...currentJob, id: result.run_id};
+      rememberJob({id: result.run_id, title: report.name});
+      refreshPage();
+      pollTimer = window.setTimeout(() => poll(result.run_id), 1000);
     } catch (error) {
-      showJob({id: '', status: 'failed', progress: 0, message: error.message, error: error.message, title: 'Drive Test Analyzer Report',
+      showJob({id: '', status: 'failed', progress: 0, message: error.message, error: error.message, title: report.name,
         warnings: [], formats: {}, outline: []});
     }
   }
-
-  root.querySelectorAll('[data-brt-export]').forEach((button) => button.addEventListener('click', () => {
-    // While a report is generated, Generate opens its progress again, with Cancel and Hide (also before the panel and
-    // the progress of a report followed after a reload have arrived).
-    if (isPending(currentJob) && currentJob.id) { openPreview(); return; }
-    if (!currentJob && resumingJob) {
+  // Preview (or Follow) of a run in History or on a card: at a slide of a link, the slide viewer of a report ready.
+  window.openReportRun = async (runId, index = 0) => {
+    stopPolling();
+    try {
+      const job = jobFromRun(await api(`/api/reporting/runs/${runId}/report`));
+      currentJob = job;
       jobSeenAt = Date.now();
-      currentJob = {id: resumingJob.id, status: 'running', progress: 0, message: 'Following the report being generated…',
-        title: resumingJob.title || 'Drive Test Analyzer Report', warnings: [], formats: {}, outline: []};
-      openPreview();
-      return;
+      if (job.status === 'ready') { openReportViewer(job, index); return; }
+      if (!dialog.open) dialog.showModal();
+      showJob(job);
+      if (isPending(job)) pollTimer = window.setTimeout(() => poll(job.id), 1500);
+    } catch (error) {
+      status(error.message, 'error');
     }
-    if (!definition) { status('The Bundle Report Template is still loading.', 'error'); return; }
-    void exportReport();
-  }));
-  $('brt-format-switch').querySelectorAll('[data-brt-format]').forEach((button) => button.addEventListener('click', () => switchFormat(button.dataset.brtFormat)));
-  // Hide keeps the report being generated; Cancel stops it; once it has finished, the dialog closes.
+  };
+
+  // Hide keeps the report being generated; Stop stops it after the step it is on; once it has finished, the dialog closes.
   const hideDialog = () => { dialog.close(); updateGenerateButton(); };
   async function cancelJob() {
     const job = currentJob;
     stopPolling();
     forgetJob();
     if (job?.id) {
-      try { showJob((await api(`/api/reporting/bundle-report-template/jobs/${job.id}/cancel`, {method: 'POST'})).job); } catch {}
+      try { await api('/api/reporting/runs/stop', {method: 'POST', body: JSON.stringify({ids: [job.id]})}); } catch (error) { status(error.message, 'error'); }
     }
     currentJob = null;
     dialog.close();
-    updateGenerateButton();
-    status('The report was cancelled.');
+    refreshPage();
+    status('The report stops after the step it is on.');
   }
   $('brt-dialog-close').addEventListener('click', () => (isPending(currentJob) ? hideDialog() : dialog.close()));
   $('brt-dialog-hide').addEventListener('click', hideDialog);
   $('brt-dialog-cancel').addEventListener('click', () => { void cancelJob(); });
   $('brt-dialog-done').addEventListener('click', () => dialog.close());
-  $('brt-open-last').addEventListener('click', () => {
-    if (!lastReport || (isPending(currentJob) && currentJob.id)) return;
-    currentJob = lastReport;
-    openPreview();
-  });
   // Escape hides a report being generated, as Hide does.
   dialog.addEventListener('cancel', (event) => { if (isPending(currentJob)) { event.preventDefault(); hideDialog(); } });
-  dialog.addEventListener('close', updateGenerateButton);
 
-  // A report generated before this page opened (in the background, or from another page): its dialog follows it.
-  let resumingJob = null;
+  // A report generated before this page opened (Hide, or told on another page): its dialog follows it, and a link of
+  // another page (?report_run=) opens its preview.
   async function resumeJob() {
-    const asked = new URLSearchParams(window.location.search).get('bundle_report_template_job');
+    const asked = new URLSearchParams(window.location.search).get('report_run');
     if (asked) {
       // Opened once: reloading the page does not open it again.
       const url = new URL(window.location.href);
-      url.searchParams.delete('bundle_report_template_job');
+      const slide = Math.max(0, (Number.parseInt(url.searchParams.get('slide') || '1', 10) || 1) - 1);
+      url.searchParams.delete('report_run');
+      url.searchParams.delete('slide');
       window.history.replaceState(window.history.state, '', url);
+      void window.openReportRun(Number(asked), slide);
+      forgetJob();
+      return;
     }
     let stored = null;
     try { stored = JSON.parse(localStorage.getItem(JOB_KEY) || 'null'); } catch {}
-    const jobId = asked || stored?.id;
-    if (!jobId) return;
-    // Generate tells at once that a report is being generated, before its progress arrives.
-    const label = root.querySelector('[data-brt-export] span');
-    if (label && !asked && !stored?.notified && !currentJob) {
-      label.textContent = 'Generating…';
-      resumingJob = {id: jobId, title: stored?.title};
-    }
+    if (!stored?.id || stored.notified) { if (stored?.notified) forgetJob(); return; }
     try {
-      const {job} = await api(`/api/reporting/bundle-report-template/jobs/${jobId}`);
-      resumingJob = null;
-      // Its progress opened meanwhile from Generate: the dialog shows what arrived.
-      const opened = dialog.open && currentJob?.id === job.id;
+      const job = jobFromRun(await api(`/api/reporting/runs/${stored.id}/report`));
       currentJob = job;
       jobSeenAt = Date.now();
-      if (opened) { showJob(job); if (isPending(job)) pollTimer = window.setTimeout(() => poll(job.id), 1500); else await finished(job); return; }
-      if (asked && job.status === 'ready') { openPreview(); return; }
-      // Told on another page and left for later: Open last report opens it.
-      if (stored?.notified && !asked) { forgetJob(); updateGenerateButton(); return; }
-      if (isPending(job)) { updateElapsed(); updateGenerateButton(); pollTimer = window.setTimeout(() => poll(job.id), 1500); return; }
+      if (isPending(job)) { updateElapsed(); pollTimer = window.setTimeout(() => poll(job.id), 1500); return; }
       await finished(job);
     } catch (error) {
-      // A report no longer kept is forgotten; a busy or unreachable server is asked again.
-      if (/no longer available/i.test(error?.message || '')) { forgetJob(); updateGenerateButton(); }
+      if (/no longer exists/i.test(error?.message || '')) forgetJob();
       else window.setTimeout(resumeJob, 5000);
     }
   }
 
   // -- start -------------------------------------------------------------------------------------------
   async function load() {
-    // The favourites come with the Bundle Report Template options and show at once; the filter values of every CDR (the
-    // Reporting options) arrive after them and complete the panel.
+    // The reports come with their options and show at once (their cards with the state of the page); the filter values
+    // of every CDR (the Reporting options) arrive after them and complete the editor.
     const optionsRequest = api('/api/reporting/options');
     optionsRequest.catch(() => {});
     let draft = null;
-    // A draft saved when Bundle Report Templates had a former name is restored too.
-    const formerDraftKeys = ['reporting:bundle-reports-template:draft', 'reporting:reporting-jobs-template:draft', 'reporting:complete-report:draft'];
-    try { draft = JSON.parse([DRAFT_KEY, ...formerDraftKeys].map((key) => localStorage.getItem(key)).find(Boolean) || 'null'); } catch {}
+    try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch {}
     try {
       brtOptions = await api('/api/reporting/bundle-report-template/options');
       favourites = brtOptions.favourites || [];
-      if (!lastReport && brtOptions.last_report) { lastReport = brtOptions.last_report; updateGenerateButton(); }
-      renderFavourites(draft?.favourite || '');
-      $('brt-name').value = draft?.name || '';
-      $('brt-favourite').disabled = true;
+      renderList();
       options = await optionsRequest;
     } catch (error) {
       status(error.message, 'error');
-      $('brt-filters').replaceChildren(node('p', error.message, 'form-note'));
       return;
     }
-    $('brt-favourite').disabled = false;
-    definition = clone(draft?.definition && draft.definition.sections ? mergeDefaults(draft.definition) : brtOptions.defaults);
-    render();
     if (options.catalogues_pending) status('The filter values of some CDRs are being prepared in the background; reload the page in a few minutes to see all of them.', 'info');
+    // The report being edited before a reload opens again with its changes (a report deleted meanwhile, as a new one).
+    // (Drafts of the panel of before, without steps, are left.)
+    if (draft?.definition && draft.step && canEdit()) {
+      const exists = draft.id == null || favourites.some((item) => item.id === draft.id);
+      await openEditor(exists ? draft.id : null, draft);
+    }
   }
 
   // A draft saved by an earlier version gets the sections and options it lacks (a section added later, such as CDR

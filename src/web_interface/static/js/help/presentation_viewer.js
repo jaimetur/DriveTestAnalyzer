@@ -3,7 +3,9 @@
    Bundle Report Template: its sections and slides on the left, the chosen slide on the right (the wheel and the arrow keys
    go through the slides; Ctrl/Cmd+wheel, a rectangle or the buttons zoom it), the slides gone through below it, and its
    PowerPoint to download. Slideshow plays it full screen, slide after slide with a transition, as the presentation mode
-   of PPT Designer. */
+   of PPT Designer. PresentationViewer.open also shows other documents in it, such as a report generated in Reporting: a
+   presentation with its own addresses (urls: {slide(index, thumb), file}), its link (link(index)), its unit ('page'), its
+   kicker, the name of its format (downloadLabel), its warnings (notes) and the formats to switch to (formats). */
 (function () {
   // The server tells where the presentations it generated are, whether it is generating them and, when it cannot, why.
   let manifest = null;
@@ -33,21 +35,22 @@
   const versioned = (url) => (version ? `${url}?v=${encodeURIComponent(version)}` : url);
   // (A slide of the full presentation is the picture of that slide in the presentation its section names.)
   const slideUrl = (presentation, index, thumb = false) => {
+    if (presentation.urls) return presentation.urls.slide(index, thumb);
     const slide = slidesOf(presentation)[index] || {};
     const [folder, number] = slide.source ? [slide.source, slide.position] : [presentation.id, index];
     return versioned(`${base}/${folder}/${thumb ? 'thumb' : 'slide'}-${pad(number + 1)}.png`);
   };
-  const fileUrl = (presentation) => versioned(`${base}/${presentation.file}`);
+  const fileUrl = (presentation) => presentation.urls?.file || versioned(`${base}/${presentation.file}`);
   // Every slide with its number (from 0) and section, and the presentation it comes from with its number there.
   const slidesOf = (presentation) => {
     let index = 0;
     return presentation.sections.flatMap((section) => section.slides.map((title, position) => (
       {index: index++, title, section: section.title, source: section.presentation, position})));
   };
-  const count = (total) => `${total} slide${total === 1 ? '' : 's'}`;
+  const count = (total, unit = 'slide') => `${total} ${unit}${total === 1 ? '' : 's'}`;
   // The link Copy link gives: the short one of a presentation (at a slide other than the first), which opens it in the
   // slide viewer of Product Presentations, at the public address of the server when it has one.
-  const shareOf = (presentation, index = 0) => (
+  const shareOf = (presentation, index = 0) => (presentation.link ? presentation.link(index) :
     `${linkBase || window.location.origin}/presentations/${encodeURIComponent(presentation.id)}${index > 0 ? `?slide=${index + 1}` : ''}`);
   // The address of this page while a presentation is open (at a slide other than the first), which opens it again.
   const linkOf = (presentation, index = 0) => {
@@ -226,8 +229,10 @@
     dialog.innerHTML = `
       <header class="presentation-dialog-head">
         <div><p class="eyebrow" data-presentation-count>Presentation</p><h2 id="presentation-dialog-title"></h2></div>
+        <div class="presentation-formats" data-presentation-formats role="group" aria-label="Format" hidden></div>
         <button type="button" class="presentation-dialog-close" data-presentation-close aria-label="Close the presentation">×</button>
       </header>
+      <ul class="presentation-notes" data-presentation-notes hidden></ul>
       <div class="presentation-preview">
         <nav class="presentation-nav" aria-label="Sections and slides of the presentation"></nav>
         <section class="presentation-view" aria-label="Slide">
@@ -284,7 +289,8 @@
       title: dialog.querySelector('#presentation-dialog-title'), count: dialog.querySelector('[data-presentation-count]'),
       nav: dialog.querySelector('.presentation-nav'), label: dialog.querySelector('.presentation-page-label'),
       stage: dialog.querySelector('.presentation-stage'), image: dialog.querySelector('.presentation-stage img'),
-      download: dialog.querySelector('.presentation-download'),
+      download: dialog.querySelector('.presentation-download'), downloadFormat: dialog.querySelector('.presentation-download-format'),
+      formats: dialog.querySelector('[data-presentation-formats]'), notes: dialog.querySelector('[data-presentation-notes]'),
       showOpen: dialog.querySelector('[data-presentation-show-open]'), settings: dialog.querySelector('[data-presentation-show-settings]'),
       layer: dialog.querySelector('[data-presentation-show-layer]'), back: dialog.querySelector('.presentation-show-back'),
       front: dialog.querySelector('.presentation-show-front'), progress: dialog.querySelector('.presentation-show-progress span'),
@@ -338,8 +344,9 @@
     const slides = slidesOf(current);
     viewerIndex = Math.max(0, Math.min(slides.length - 1, index));
     const slide = slides[viewerIndex];
-    elements.label.textContent = `Slide ${viewerIndex + 1} / ${slides.length}`;
-    elements.image.alt = `Slide ${viewerIndex + 1}: ${slide.title}`;
+    const unit = current.unit === 'page' ? 'Page' : 'Slide';
+    elements.label.textContent = `${unit} ${viewerIndex + 1} / ${slides.length}`;
+    elements.image.alt = `${unit} ${viewerIndex + 1}: ${slide.title}`;
     elements.stage.classList.add('is-loading');
     elements.image.onload = () => { elements.stage.classList.remove('is-loading'); fitView(); };
     elements.image.src = slideUrl(current, viewerIndex);
@@ -356,7 +363,7 @@
     // The next slide is fetched ahead, so moving through the presentation does not wait for it.
     if (viewerIndex + 1 < slides.length) new Image().src = slideUrl(current, viewerIndex + 1);
     // While it is open, the address of the page is the direct link of the slide shown (with the anchor of the page).
-    window.history.replaceState(window.history.state, '', `${linkOf(current, viewerIndex)}${window.location.hash}`);
+    if (!current.urls) window.history.replaceState(window.history.state, '', `${linkOf(current, viewerIndex)}${window.location.hash}`);
   }
 
   function renderNavigation() {
@@ -549,9 +556,25 @@
     current = presentation;
     const total = slidesOf(presentation).length;
     elements.title.textContent = presentation.title;
-    elements.count.textContent = `Presentation · ${count(total)}`;
+    elements.count.textContent = `${presentation.kicker || 'Presentation'} · ${count(total, presentation.unit)}`;
+    dialog.classList.toggle('has-pages', presentation.unit === 'page');
     elements.download.href = fileUrl(presentation);
     elements.download.download = presentation.download;
+    const format = presentation.downloadLabel || 'PowerPoint';
+    elements.downloadFormat.textContent = format;
+    elements.download.title = `Download ${format}`;
+    elements.download.setAttribute('aria-label', `Download ${format}`);
+    elements.formats.hidden = !presentation.formats?.length;
+    elements.formats.replaceChildren(...(presentation.formats || []).map((item) => {
+      const button = node('button', item.label);
+      button.type = 'button';
+      button.setAttribute('aria-pressed', String(Boolean(item.current)));
+      button.title = `Show the ${item.label} version`;
+      button.addEventListener('click', () => { if (!item.current) item.select(viewerIndex); });
+      return button;
+    }));
+    elements.notes.hidden = !presentation.notes?.length;
+    elements.notes.replaceChildren(...(presentation.notes || []).map((note) => node('li', note)));
     renderNavigation();
     if (!dialog.open) dialog.showModal();
     showSlide(index);
@@ -715,5 +738,5 @@
     window.addEventListener('resize', () => { if (dialog.open) fitView(); });
   }
 
-  window.PresentationViewer = {enhance};
+  window.PresentationViewer = {enhance, open: openViewer};
 }());

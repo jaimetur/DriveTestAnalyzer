@@ -29,13 +29,13 @@ Persisted values are stored in the application database and take precedence over
 - **Chromium Executable** optionally selects an executable browser for Canvas rendering. Leave it empty to use the deployment setting or automatic detection.
 - **Ignore event time filtering** ignores date and template conditions based on `Event_Start_Time` or `Event_End_Time`.
 - **Maximum simultaneous tasks** sets the background task limit from 1 to 32: the datasets of a workspace are processed in parallel up to this limit (the mappings of an upload first, which its CDRs wait for), while its combined tables, Auto-calculated Fields and Scoring jobs run one at a time. The effective limit reserves one logical CPU for interactive requests (with 8 CPUs, up to 7 tasks).
-- **Public address of the server** (`https://name[:port]`, without a path) is the address of the links of the presentations that **Copy link** gives and of their previews, whatever address each user opened the application with (see [Product Presentations](presentations.md)), and of the links of the emails of the tool (see [Email Delivery](#email-delivery)). Give the name of the server rather than its IP: WhatsApp on Android opens no link with an IP. Leave it empty to use the address each user opened the application with; the emails of the scheduled Reporting Jobs, which no user opens, then have no download links.
+- **Public address of the server** (`https://name[:port]`, without a path) is the address of the links of the presentations that **Copy link** gives and of their previews, whatever address each user opened the application with (see [Product Presentations](presentations.md)), and of the links of the emails of the tool (see [Email Delivery](#email-delivery)). Give the name of the server rather than its IP: WhatsApp on Android opens no link with an IP. Leave it empty to use the address each user opened the application with; the emails of the reports generated on their schedule, which no user opens, then have no download links.
 
 Select **Save Configuration** to persist the values. Saving restarts the shared Canvas renderer so later charts use the selected renderer and browser.
 
 ## Email Delivery
 
-The **Email Delivery** panel sets how the tool sends its emails: the artifacts of [Reporting](reporting.md#email-delivery) jobs, the [access requests](super-admin.md#access-requests) of the login page and the activation of their users, the links to [choose a new password](super-admin.md#forgotten-passwords), and the [Ticket Center](ticket-center.md#email-updates) updates. It is available to the same roles as the rest of Application Config.
+The **Email Delivery** panel sets how the tool sends its emails: the reports of [Reporting](reporting.md#email-delivery), the [access requests](super-admin.md#access-requests) of the login page and the activation of their users, the links to [choose a new password](super-admin.md#forgotten-passwords), and the [Ticket Center](ticket-center.md#email-updates) updates. It is available to the same roles as the rest of Application Config.
 
 **Send Through** chooses one of two ways:
 
@@ -45,7 +45,7 @@ The **Email Delivery** panel sets how the tool sends its emails: the artifacts o
 | Field | Meaning |
 | --- | --- |
 | Power Automate Flow Address | The **HTTP POST URL** of the trigger of the flow (see below). It is a secret: whoever has it sends emails from the mailbox of the flow. Leave it empty to keep the saved one |
-| Download Links Valid For (days) | How long the download link of each file of a report email works, without signing in (60 by default, up to 90). The files stay on the server, in the Run History, while their run is kept |
+| Download Links Valid For (days) | How long the download link of each file of a report email works, without signing in (60 by default, up to 90). The files stay on the server, in the History of **Reporting**, while their run is kept |
 | SMTP Server, Port, Encryption | Mail server and port, for example `smtp.example.com` and `587`; STARTTLS (usually port 587), SSL/TLS (usually 465) or none |
 | Username, Password | Optional SMTP authentication. Leave the password empty to keep the saved one, or the `SMTP_PASSWORD` deployment value |
 | Attachment Size Limit (MB) | Through SMTP, a report whose files exceed this total is emailed with their download links instead of attached (without the Public address of the server, it fails) |

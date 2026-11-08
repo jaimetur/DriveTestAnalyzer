@@ -46,7 +46,7 @@
         <h2 id="app-reset-title">Reset the whole application?</h2>
         <p class="app-reset-lede">DriveTest Analyzer starts again from zero, as a <strong>new deployment</strong>. Nothing can be recovered afterwards.</p>
         <ul class="app-reset-list">
-          <li><strong>Every workspace</strong> ({{ workspaces|length }}) with its CDRs, datasets, PPT Designs, Reporting Jobs, Scoring jobs, Non-Qualified Calls follow-up and generated reports.</li>
+          <li><strong>Every workspace</strong> ({{ workspaces|length }}) with its CDRs, datasets, PPT Designs, reports of Reporting and their schedules, Scoring jobs, Non-Qualified Calls follow-up and generated reports.</li>
           <li><strong>Every database</strong>: the application database with its users, Modules Profiles, Workspace Groups and settings, and each workspace database.</li>
           <li><strong>The whole config and data folders</strong>, scheduled backups and transfer packages included:
             <span class="app-reset-paths">{% for root in app_reset_roots %}<code>{{ root }}</code>{% endfor %}</span>
@@ -564,7 +564,7 @@
       <span class="collapse-chip">Collapse</span>
     </summary>
     <form class="comment-writers-form" action="/super-admin/comment-writers" method="post" autocomplete="off">
-      <p class="table-help">Users choose among the writers enabled here when they generate comments; Reporting Jobs keep their own choice. Without an LLM writer, or when one fails, the rules write the comments. Each writer takes the API key of this server or that of each user (saved in the user menu, API keys; Reporting Jobs use that of their owner). Keys stay on this server, in its configuration folder: never in its database, exports, transfers or backups.</p>
+      <p class="table-help">Users choose among the writers enabled here when they generate comments. Without an LLM writer, or when one fails, the rules write the comments. Each writer takes the API key of this server or that of each user (saved in the user menu, API keys). Keys stay on this server, in its configuration folder: never in its database, exports, transfers or backups.</p>
       <div class="presentations-workspaces comment-writers-providers" role="group" aria-label="Writers users can choose">
         <label class="presentations-workspace"><input type="checkbox" name="enabled" value="kiro_cli" {% if 'kiro_cli' in writers.enabled %}checked{% endif %}><span>Kiro CLI</span></label>
         <label class="presentations-workspace"><input type="checkbox" name="enabled" value="kiro_brief" {% if 'kiro_brief' in writers.enabled %}checked{% endif %}><span>Kiro Brief</span></label>
@@ -892,7 +892,7 @@
       <div class="confirm-icon info-icon" aria-hidden="true">⇩</div>
       <p class="eyebrow">Full Environment export</p>
       <h3 id="full-environment-workspace-title">Select workspaces</h3>
-      <p>Application Config is always included. Each selected workspace includes its database, input files, PPT definitions, PPT Templates, Main Cities, Mappings &amp; Reference Data, Scoring &amp; GAP Analysis Methodologies (KPI methodology profiles and GAP KPI priorities), Scoring Export Panels, Scoring Excluded Calls, Auto-calculated Fields, Query Builder Queries, Reporting Jobs and NQ Call Tracking.</p>
+      <p>Application Config is always included. Each selected workspace includes its database, input files, PPT definitions, PPT Templates, Main Cities, Mappings &amp; Reference Data, Scoring &amp; GAP Analysis Methodologies (KPI methodology profiles and GAP KPI priorities), Scoring Export Panels, Scoring Excluded Calls, Auto-calculated Fields, Query Builder Queries, Reports, Report Schedules and NQ Call Tracking.</p>
       <div class="full-environment-workspace-toolbar">
         <button type="button" class="ghost-link" data-full-environment-select-all>Select all</button>
         <button type="button" class="ghost-link" data-full-environment-select-none>Select none</button>
@@ -1624,7 +1624,7 @@
       const response = await fetch('/api/admin/backup-files/inspect', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({backup_path: restorePath.value, backup_file: restoreFile.value})});
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || 'Unable to inspect the backup.');
-      const labels = {app_database: 'Application database', users_access: 'Users & Access', ticket_center: 'Ticket Center', workspace_database: 'Workspace Database', designs: 'PPT Designs', report_templates: 'PPT Templates', main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Methodologies', auto_calculated_fields: 'Auto-calculated Fields', query_builder_queries: 'Query Builder Queries', network_insights_favourites: 'Network Insights Favourites', assistant_glossary: 'AI Assistant Glossary', bundle_report_template_favourites: 'Bundle Report Template Favourites', scoring_favourites_filters: 'Scoring & GAP Favourites Filters', scoring_report_templates: 'Scoring & GAP Report Templates', scoring_export_panels: 'Scoring Export Panels', scoring_excluded_calls: 'Scoring Excluded Calls', reporting_jobs: 'Reporting Jobs', nq_call_tracking: 'NQ Call Tracking', nq_calls_configuration: 'NQ Calls Configuration', app_events: 'App Events', input: 'Input', output: 'Output'};
+      const labels = {app_database: 'Application database', users_access: 'Users & Access', ticket_center: 'Ticket Center', workspace_database: 'Workspace Database', designs: 'PPT Designs', report_templates: 'PPT Templates', main_cities: 'Main Cities', mappings_reference_data: 'Mappings & Reference Data', scoring_configuration: 'Scoring & GAP Analysis Methodologies', auto_calculated_fields: 'Auto-calculated Fields', query_builder_queries: 'Query Builder Queries', network_insights_favourites: 'Network Insights Favourites', assistant_glossary: 'AI Assistant Glossary', bundle_report_template_favourites: 'Reports', scoring_favourites_filters: 'Scoring & GAP Favourites Filters', scoring_report_templates: 'Scoring & GAP Report Templates', scoring_export_panels: 'Scoring Export Panels', scoring_excluded_calls: 'Scoring Excluded Calls', reporting_jobs: 'Report Schedules', nq_call_tracking: 'NQ Call Tracking', nq_calls_configuration: 'NQ Calls Configuration', app_events: 'App Events', input: 'Input', output: 'Output'};
       const componentGroups = [
         ['Configuration Content', ['app_database', 'users_access', 'ticket_center']],
         ['Workspace Content', ['workspace_database', 'designs', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'reporting_jobs', 'nq_call_tracking', 'nq_calls_configuration', 'assistant_glossary', 'app_events', 'output', 'input']],

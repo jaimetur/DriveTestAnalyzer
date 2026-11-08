@@ -102,7 +102,7 @@ Single-select and multi-select controls share a compact searchable style.
 
 ### Operator patterns
 
-Every **Operator** filter (Scoring & GAP Analysis, CDR Analysis, PPT Designer, Network Insights, Non-Qualified Calls, the common filters of the Bundle Report Templates, the artifacts of the Reporting Jobs and the scenarios of the Scoring report editor and its saved configurations) takes patterns besides the operators listed: type one in the filter of the list and press Enter (or **＋ Add pattern**, which tells how many operators it takes now). A pattern is saved as such, travels with what keeps it (Saved Filters, favourites, Reporting Jobs, Designs, exports, transfers and backups) and is resolved each time the filter is used, so it also takes the operators that appear later:
+Every **Operator** filter (Scoring & GAP Analysis, CDR Analysis, PPT Designer, Network Insights, Non-Qualified Calls, the common filters of the reports of [Reporting](reporting.md) and the scenarios of the Scoring report editor and its saved configurations) takes patterns besides the operators listed: type one in the filter of the list and press Enter (or **＋ Add pattern**, which tells how many operators it takes now). A pattern is saved as such, travels with what keeps it (Saved Filters, favourites, reports, Designs, exports, transfers and backups) and is resolved each time the filter is used, so it also takes the operators that appear later:
 
 - `*` stands for any characters, whatever the case: `VF*` takes VF, VF SA, VF VoNR, VF SM… and `*O2*` every operator with O2 in its name;
 - `-` or `NOT` (followed by a space) before a value leaves it out: `-Lebara` or `NOT Lebara` is every operator but Lebara, `NOT Leb*` every operator but those that start with Leb, and several exclusions leave out each one;
@@ -180,7 +180,8 @@ The interface targets compact screens around the iPhone 13 base viewport (`390 �
 - Panels use reduced side margins and never widen the page: wide content scrolls inside its own container.
 - Forms stack vertically, filters go two per row and action buttons are as wide as their text, sharing a row.
 - The workspaces of Workspace Management, PPT Designer and the Super Admin tables of Modules Profiles, Workspace Groups and interface settings change to cards, each value under the name of its column, shown one card per page.
-- The Datasets of Workspace Management (all their tables, with their campaign bands), the Super Admin tables of users and of the Database Viewer, Datasets Management, the Reporting Jobs and their Run History, the App Events of Application Logs and the Non-Qualified Calls stay tables, scrolled sideways, so a row is found at a glance; the App Events take at most 70% of the screen, with their pages right below them.
+- In [Reporting](reporting.md), the report editor takes the whole screen and each run of History is a card.
+- The Datasets of Workspace Management (all their tables, with their campaign bands), the Super Admin tables of users and of the Database Viewer, Datasets Management, the App Events of Application Logs and the Non-Qualified Calls stay tables, scrolled sideways, so a row is found at a glance; the App Events take at most 70% of the screen, with their pages right below them.
 - Every pager of the application, on phones and on larger screens, has the same look: a white pill with round arrow buttons (first, previous, next, last) and the page between them.
 - Chart navigation appears below the chart and before Interactive Preview.
 - Wide data tables scroll inside their own containers rather than widening the page; in the Non-Qualified Calls tables their first column stays in view.

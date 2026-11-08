@@ -42,7 +42,7 @@ After login, the application opens **Help Home** by default.
 - Compare RSRP/SINR, map weak-coverage and high-interference areas, and review observed sites, spectrum and network deployment in Network Insights.
 - Explore template-driven Designs with synchronized adaptive filters in PPT Designer.
 - Create temporary ad-hoc charts in Chart Builder.
-- Generate NSA/SA PowerPoint reports from PPT Designs, and bundle and scheduled reports in Reporting.
+- Generate NSA/SA PowerPoint reports from PPT Designs, and reports of several modules, on demand or on a schedule, in Reporting.
 - Create workspace-owned Auto-calculated Fields and apply them asynchronously to the applicable CDR tables.
 - Edit workspace-owned Report Templates with validation, assistance and chart previews.
 - Configure application-wide runtime overrides in Application Config, or manage workspace-owned Report Templates and chart mappings in Workspace Config.
@@ -86,7 +86,7 @@ See [PPT Designer Help](help/ppt-designer.md) for the operational workflow and [
 
 ### Reporting
 
-Reporting schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, PPTs and Scoring PPTs, each configured with the options of its own module, run them once or daily, weekly or monthly and email the artifacts with a description of each one and its filters. Email delivery, through an SMTP server or a Power Automate flow, with a download link of each file, is configured in Application Config → Email Delivery. Reporting is available to the users whose Modules Profile includes it (Super Admin → Modules Profiles).
+Reporting keeps **reports**, each one PowerPoint and Word document with the chosen parts of Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, PPT Designer and CDR Analysis. **Generate** builds a report now, and its schedule generates it once or daily, weekly or monthly and emails its files with a description of each one and its filters; **History** lists every report generated with its files and preview. Email delivery, through an SMTP server or a Power Automate flow, with a download link of each file, is configured in Application Config → Email Delivery. Reporting is available to the users whose Modules Profile includes it (Super Admin → Modules Profiles).
 
 ### Scoring & GAP Analysis
 
@@ -332,7 +332,7 @@ CONTAINER_NAME=drivetest-analyzer
                     ├── designs/          # PPT Designer PowerPoint jobs
                     ├── cdr-analysis/        # CDR Analysis exports
                     ├── network-insights/    # Network Insights exports
-                    └── reporting-jobs/      # Reporting Job runs and their artifacts
+                    └── reporting-jobs/      # Runs of the reports of Reporting and their files
 ```
 
 In this example `<deployment-root>` is `/volume1/docker/data/drivetest-analyzer`; the Compose files and `.env` live in a separate stack folder such as `/volume1/docker/stacks/drivetest-analyzer`.
@@ -384,8 +384,7 @@ DriveTestAnalyzer/
 ├── assets/ppt-designs/                     # Designs added to every workspace
 ├── assets/scoring-report-configurations/     # Scoring report configurations added to every workspace
 ├── assets/query-builder-queries/             # Query Builder queries added to every workspace
-├── assets/reporting-jobs/                    # Reporting Jobs added to every workspace
-├── assets/bundle-report-template-favourites/ # Favourite Bundle Report Templates added to every workspace
+├── assets/bundle-report-template-favourites/ # Reports of Reporting added to every workspace
 ├── assets/scoring-favourites-filters/        # Scoring & GAP Favourites Filters added to every workspace
 ├── assets/labels-operators/                  # Operators of the 50 main countries for new workspaces
 ├── assets/labels-vendors/                    # Vendor Maps of a new workspace

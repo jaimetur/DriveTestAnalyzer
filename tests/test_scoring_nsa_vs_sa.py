@@ -220,14 +220,8 @@ def test_the_saved_selection_keeps_nsa_vs_sa(tmp_path):
     assert loaded['nr_mode'] == NSA_VS_SA and not warnings and len(loaded['dataset_ids']) == 6
 
 
-def test_reporting_jobs_and_bundle_report_templates_keep_nsa_vs_sa():
-    from src.modules.reporting import bundle_report_templates, report_tasks
-    from src.modules.scoring.scoring_reports import default_report_configuration
-    definition = report_tasks.normalize_definition({'scoring': [
-        {'nr_mode': 'NSA+SA', 'report': default_report_configuration()},
-        {'nr_mode': 'LTE', 'report': default_report_configuration()}]})
-    assert [entry['nr_mode'] for entry in definition['scoring']] == [NSA_VS_SA, 'NSA']
-    assert report_tasks.scoring_entry_name({'nr_mode': NSA_VS_SA}) == 'NSA vs SA'
+def test_bundle_report_templates_keep_nsa_vs_sa():
+    from src.modules.reporting import bundle_report_templates
     template = bundle_report_templates.normalize_definition({'filters': {'nr_mode': 'SA'}, 'sections': [
         {'key': 'scoring', 'options': {'nsa_vs_sa': True}}]})
     [scoring] = [section for section in template['sections'] if section['key'] == 'scoring']

@@ -427,8 +427,6 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                                 ('import-ericsson-rca-results', 'Import Ericsson RCA Results', 'upload'),
                                 ('import-previous-nq-analyses', 'Import Previous NQ Analyses', 'upload'),
                                 ('analysts-reviewers-to-asignees', 'Analysts / Reviewers → Asignees', 'user-plus')])],
-    'reporting': [('Bundle Report Templates', 'Bundle Report Templates', 'presentation'), ('Reporting Jobs', 'Reporting Jobs', 'jobs'),
-                  ('Run History', 'Run History', 'log')],
     # The tabs of the header of Ticket Center, in their order.
     'ticket-center': [('New Ticket', 'New Ticket', 'ticket'), ('All Tickets', 'All Tickets', 'table'), ('Dashboard', 'Dashboard', 'summary'),
                       ('Statistics', 'Statistics', 'chart'), ('Time Spent', 'Time Spent', 'gauge')],

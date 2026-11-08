@@ -39,7 +39,7 @@ To present the tool to an audience, every presentation of DriveTest Analyzer is 
 2. Upload Data, Voice or Speech CDRs from **Workspace**.
 3. Confirm the detected input type (and, for CDRs, the NR Mode) and wait for processing to finish.
 4. Optionally map Vodafone and Three vendor information.
-5. Create or open a saved **PPT Designer** to analyse a complete template interactively, reuse prepared selections and generate its PowerPoint. Use **CDR Analysis**, **Chart Builder** or **Query Builder** for focused exploration. Use **Reporting** to schedule jobs that email CDR Analysis, Network Insights, Design, Scoring and Non-Qualified Calls artifacts.
+5. Create or open a saved **PPT Designer** to analyse a complete template interactively, reuse prepared selections and generate its PowerPoint. Use **CDR Analysis**, **Chart Builder** or **Query Builder** for focused exploration. Use **Reporting** to build reports with the parts you choose of every module, generate them on demand or on their schedule and email them.
 6. Follow PPT preparation and generation in the floating task cards and **PPT Generation Jobs**.
 7. Use **Scoring & GAP Analysis** for saved NetCheck scores and GAP reference operator comparisons across selected CDRs and Split by levels; CDR processing also queues default Operator scoring when compatible companion CDRs are available. See [Scoring & GAP Analysis](scoring-gap-analysis.md).
 8. Use **Network Insights** to compare RSRP and SINR, map weak-coverage and high-interference areas and review sites, spectrum and network deployment. See [Network Insights](network-insights.md).
@@ -212,7 +212,7 @@ Non-Qualified Calls follows Scoring & GAP Analysis in the main tabs. It lists ev
 
 ## Reporting
 
-**Reporting** builds bundle reports from **Bundle Report Templates**, one PowerPoint or Word document with the chosen parts of PPT Designer, Scoring & GAP Analysis, Network Insights, Non-Qualified Calls and CDR Analysis, under common filters and with the Campaigns of each section, previewed before the download and saved as favourites, and schedules **Reporting Jobs** that collect a Summary CDR Analysis, a Summary Network Insights, PPTs and Scoring PPTs, each with its own filters, run once or on a daily, weekly or monthly schedule and email the artifacts with a description of each one. It is available to every user whose Modules Profile includes it (Super Admin → Modules Profiles), and it can also include the Non-Qualified Calls Executive Summary and Progress Status. See [Reporting](reporting.md).
+**Reporting** keeps **reports**, each one PowerPoint and Word document with the chosen parts of Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, PPT Designer and CDR Analysis, under common filters and with the Campaigns of each section. Its **Reports** tab lists them as cards: **Generate** builds a report now, and its schedule generates it on its own once or on a daily, weekly or monthly schedule and emails its files with a description of each one. Its **History** tab lists every report generated, with its files and its page-by-page preview. It is available to every user whose Modules Profile includes it (Super Admin → Modules Profiles). See [Reporting](reporting.md).
 
 ## Chart Builder
 
@@ -323,7 +323,7 @@ The complete authoring specification, examples and supported chart catalogue are
 | Role | Typical permissions |
 | --- | --- |
 | `user-viewer` | Explore the permitted workspace features, datasets and App Logs, and generate jobs (PPTs with any filters, Scoring calculations, Network Insights analyses and exports, queries and reports). Cannot change the workspace: no uploading, deleting, reprocessing, stopping, mapping or clearing datasets, editing NR Modes, recreating combined tables, saving, renaming or deleting Designs, saved queries or Scoring jobs, and no access to Application Config or Workspace Config. |
-| `user-editor` | Use permitted workspace features and App Logs; edit Application Config and Workspace Config when a workspace is open; delete only the Designs, templates, Saved Filters, methodologies, report configurations, Reporting Jobs and favourites they created (see [Deleting shared items](super-admin.md#deleting-shared-items)). |
+| `user-editor` | Use permitted workspace features and App Logs; edit Application Config and Workspace Config when a workspace is open; delete only the Designs, templates, Saved Filters, methodologies, report configurations, reports and favourites they created (see [Deleting shared items](super-admin.md#deleting-shared-items)). |
 | `admin` | Edit Application Config and Workspace Config, upload datasets, and in Admin export and transfer accessible workspaces and manage datasets (no import, no Super Admin). |
 | `super-admin` | Everything an admin does, import packages, and in Super Admin the users and their access, Interface Settings, databases and backups; full-environment portability and incoming transfer approval. |
 

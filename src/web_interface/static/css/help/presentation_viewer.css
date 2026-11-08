@@ -24,6 +24,12 @@
 .presentation-dialog[open] > .presentation-preview { flex: 1 1 auto; }
 .presentation-dialog::backdrop { background: rgba(10, 25, 40, .55); }
 .presentation-dialog-head { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: 1rem 1.2rem .8rem; background: linear-gradient(135deg, var(--brand-3), var(--brand)); color: #fff; }
+/* The formats of a document (a report of Reporting) and what it warns of. */
+.presentation-formats { display: inline-flex; flex: none; gap: .2rem; margin-left: auto; padding: .2rem; border-radius: 999px; background: rgba(255, 255, 255, .18); }
+.presentation-formats button { padding: .3rem .9rem; border: 0; border-radius: 999px; background: transparent; box-shadow: none; color: #fff; font: inherit; font-size: .86rem; font-weight: 800; cursor: pointer; }
+.presentation-formats button[aria-pressed="true"] { background: #fff; color: var(--brand-3); }
+.presentation-dialog.has-pages .presentation-nav-thumb { aspect-ratio: 3 / 4; object-fit: contain; }
+.presentation-notes { margin: 0; padding: .45rem 1.2rem .45rem 2.2rem; background: #fff4d1; color: #7a5600; font-size: .86rem; }
 .presentation-dialog-head .eyebrow { margin: 0; color: rgba(255, 255, 255, .85); }
 .presentation-dialog-head h2 { margin: .1rem 0 0; font-size: 1.25rem; }
 .presentation-dialog-close { width: 2.2rem; height: 2.2rem; padding: 0; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .18); color: inherit; font-size: 1.4rem; line-height: 1; cursor: pointer; }

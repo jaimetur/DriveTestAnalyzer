@@ -413,36 +413,6 @@ def core_runtime_definition():
     raise AssertionError('The PPT Designer routes are not registered.')
 
 
-def test_reporting_jobs_saved_with_cdrs_choose_them_by_their_campaigns(workspace):
-    from src.modules.scoring.scoring_reports import default_report_configuration
-
-    add = workspace['add']
-    client = workspace['client']
-    q1 = add(name='UK_Q1_2026_Voice.csv', kind='voice', campaign='UK_Q1_2026')
-    q2 = add(name='UK_Q2_2026_Data.csv', kind='data', campaign='UK_Q2_2026')
-    definition = {
-        'designs': [{'design_id': 'd1', 'datasets': {'voice': [q1]}, 'filters': {'Operator': ['EE']}}],
-        'network_insights': [{'cdr_selection': 'newest', 'selection': {'datasets': {'data': [q2]}}}],
-        'scoring': [{'nr_mode': 'NSA', 'dataset_ids': [q1, q2], 'report': default_report_configuration()}],
-        'modules': {'non_qualified_calls': {'enabled': True, 'formats': ['powerpoint'], 'options': {'filters': {'datasets': [str(q1)]}}}},
-    }
-    created = client.post('/api/reporting/tasks', json={'name': 'Legacy CDRs', 'schedule': {'mode': 'manual'}, 'definition': definition})
-    assert created.status_code == 200, created.text
-    task = next(task for task in client.get('/api/reporting/state').json()['tasks'] if task['name'] == 'Legacy CDRs')
-    migrated = task['definition']
-    assert migrated['designs'][0]['filters'] == {'Operator': ['EE'], 'Campaign': ['UK_Q1_2026']}
-    assert (migrated['designs'][0]['datasets'], migrated['designs'][0]['auto_cdrs']) == ({}, True)
-    # Network Insights filters its samples by the campaign as the Campaign Maps show it.
-    assert migrated['network_insights'][0]['selection']['campaigns'] == ['26-Q2']
-    assert migrated['network_insights'][0]['selection']['datasets'] == {}
-    assert migrated['scoring'][0]['campaigns'] == ['UK_Q1_2026', 'UK_Q2_2026']
-    assert migrated['scoring'][0]['dataset_ids'] == []
-    assert migrated['modules']['non_qualified_calls']['options']['filters'] == {'nr_mode': ['NSA'], 'campaign': ['UK_Q1_2026']}
-    # The editor previews the CDRs an entry uses now.
-    preview = client.post('/api/reporting/auto-cdrs', json={'nr_mode': 'NSA', 'campaigns': ['UK_Q2_2026']}).json()
-    assert preview['cdrs'] == {'data': ['UK_Q2_2026_Data.csv'], 'voice': [], 'speech': []}
-
-
 def test_a_saved_filter_keeps_its_campaign_choice_and_follows_it(workspace):
     from src.modules.scoring import saved_filters
     add = workspace['add']

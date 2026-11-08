@@ -46,7 +46,7 @@ module.exports = {
       tiles: [
         { mini: 'table', title: 'Preview Dataset', text: 'The stored fields of the CDR in pages of 100 rows.' },
         { mini: 'docs', title: 'PowerPoint and Word', text: 'One dialog exports the analysis to both documents.' },
-        { mini: 'calendar', title: 'Reporting', text: 'The same analysis as a Reporting Job artifact or a section of a Bundle Report Template.' },
+        { mini: 'calendar', title: 'Reporting', text: 'The same analysis as a section of a report.' },
       ],
       notes: 'Preview Dataset shows the stored rows; Export PowerPoint and Export Word open one dialog. Reporting includes the same analysis in its jobs and bundle reports.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'One CDR, answered fast',

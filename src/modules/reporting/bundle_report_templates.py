@@ -23,12 +23,11 @@ import shutil
 from contextlib import nullcontext
 import sqlite3
 import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from threading import Lock, Thread
+from threading import Lock
 from typing import Any, Callable
 
 from src.modules.reporting import pptx_compose as compose, report_structure
@@ -39,7 +38,6 @@ from src.modules.cdr.cdr_auto_selection import (
 )
 from src.modules.cdr.column_names import compact_campaign_value, format_campaign
 from src.modules.cdr.nr_mode import NSA_VS_SA, SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL, nr_mode_label
-from src.modules.core.output_layout import BUNDLE_REPORTS_FOLDER, module_output_dir
 from src.modules.scoring.scoring_area_summary import normalize_trend_campaigns
 from src.modules.scoring.scoring_export_panels import EXPORT_PANELS, load_export_panels, normalize_export_panels
 from src.modules.scoring.scoring_methodologies import BY_CAMPAIGN
@@ -127,14 +125,6 @@ WORD_RENDER_DPI = 170
 # Preview pages: slides about 1070 pixels wide, Word pages about 830; opened large, slides 2400 and Word pages 1650.
 PREVIEW_DPI = {'pptx': 80, 'docx': 100}
 LARGE_PREVIEW_DPI = {'pptx': 180, 'docx': 200}
-JOBS_KEPT = 30
-JOB_FILES_KEPT_HOURS = 24
-# The last report each user generated from the panel, kept in the workspace state (see remember_last_report).
-LAST_REPORT_KEY = 'bundle_report_template_last_report:'
-# The key it had while Bundle Report Templates were briefly called Bundle Reports Templates (the current one prevails).
-FORMER_LAST_REPORT_KEYS = ('bundle_reports_template_last_report:',)
-LAST_REPORT_FIELDS = {'id': '', 'title': '', 'created_at': '', 'finished_at': '', 'started': 0.0, 'ended': 0.0, 'formats': {},
-                      'warnings': [], 'outline': [], 'reused': [], 'document_reused': False, 'username': '', 'workspace_id': ''}
 
 
 def _panels() -> dict[str, tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...]]:
@@ -635,6 +625,43 @@ def favourite_contents(definition: Any, design_names: dict[str, str] | None = No
     return contents
 
 
+# The Region, Cluster or City and the Operator or Vendor a report filters, as the labels of its card.
+AREA_FILTERS = (('Region', 'regions'), ('Cluster', 'clusters'), ('City', 'cities'))
+PARTY_FILTERS = (('Operator', 'operators'), ('Vendor', 'vendors'))
+
+
+def _campaigns_label(values: Any) -> str:
+    """A choice of campaigns as a label: its automatic choice (Latest 2 campaigns) or its campaigns, All campaigns when
+    it chooses none."""
+    labels = ['All campaigns' if value == ALL_CAMPAIGNS else CAMPAIGN_PRESET_LABELS.get(value) or compact_campaign_value(value)
+              for value in _strings(values)]
+    return ', '.join(dict.fromkeys(labels)) or 'All campaigns'
+
+
+def report_labels(definition: Any) -> dict[str, Any]:
+    """What a report includes, for its card and its runs: 'modules', the keys of its checked sections in order;
+    'nr_mode'; 'scopes', the Region, Cluster or City it filters (Nationwide when none) and the Operator or Vendor
+    ({'dimension', 'text', 'title'}, in the colours of the Favourites Filters of Scoring & GAP Analysis); and
+    'campaigns', each choice of campaigns once with the sections that make it ({'campaigns', 'modules'})."""
+    definition = normalize_definition(definition)
+    filters, sections = definition['filters'], enabled_sections(definition)
+    scopes = []
+    areas = [(field, [*(['Main Cities'] if key == 'cities' and filters.get('main_cities') else []), *filters.get(key, [])])
+             for field, key in AREA_FILTERS]
+    areas = [(field, values) for field, values in areas if values]
+    for field, values in areas or [('', [])]:
+        scopes.append({'dimension': field.lower(), 'text': ', '.join(values), 'title': f"{field}: {', '.join(values)}"} if field
+                      else {'dimension': 'all', 'text': 'Nationwide', 'title': 'No Region, Cluster or City is filtered'})
+    for field, key in PARTY_FILTERS:
+        if values := filters.get(key):
+            scopes.append({'dimension': field.lower(), 'text': ', '.join(values), 'title': f"{field}: {', '.join(values)}"})
+    campaigns: dict[str, list[str]] = {}
+    for section in sections:
+        campaigns.setdefault(_campaigns_label(section['options'].get('campaigns')), []).append(section['key'])
+    return {'modules': [section['key'] for section in sections], 'nr_mode': filters['nr_mode'], 'scopes': scopes,
+            'campaigns': [{'campaigns': label, 'modules': modules} for label, modules in campaigns.items()]}
+
+
 def _favourite(row: sqlite3.Row) -> dict[str, Any]:
     try:
         definition = json.loads(row['definition_json'] or '{}')
@@ -662,18 +689,18 @@ def save_favourite(repository: Any, favourite_id: int | None, name: str, definit
     """Create (``favourite_id`` None) or update a favourite; names are unique, ignoring case."""
     name = ' '.join(str(name or '').split())[:120]
     if not name:
-        raise ValueError('Enter a name for the favourite Bundle Report Template.')
+        raise ValueError('Enter a name for the report.')
     normalized = normalize_definition(definition)
     now = datetime.now().isoformat(timespec='seconds')
     ensure_tables(repository)
     with repository.connection() as connection:
         clash = connection.execute(f'SELECT id FROM {BUNDLE_REPORT_TEMPLATES_TABLE} WHERE name = ? COLLATE NOCASE', (name,)).fetchone()
         if clash and (favourite_id is None or int(clash['id']) != int(favourite_id)):
-            raise ValueError(f'A favourite Bundle Report Template named "{name}" already exists.')
+            raise ValueError(f'A report named "{name}" already exists.')
         if favourite_id is None:
             count = connection.execute(f'SELECT COUNT(*) FROM {BUNDLE_REPORT_TEMPLATES_TABLE}').fetchone()[0]
             if count >= MAX_FAVOURITES:
-                raise ValueError(f'A workspace keeps up to {MAX_FAVOURITES} favourite Bundle Report Templates.')
+                raise ValueError(f'A workspace keeps up to {MAX_FAVOURITES} reports.')
             cursor = connection.execute(
                 f'INSERT INTO {BUNDLE_REPORT_TEMPLATES_TABLE} (name, definition_json, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
                 (name, json.dumps(normalized, ensure_ascii=False), username, now, now))
@@ -683,8 +710,28 @@ def save_favourite(repository: Any, favourite_id: int | None, name: str, definit
                 f'UPDATE {BUNDLE_REPORT_TEMPLATES_TABLE} SET name = ?, definition_json = ?, updated_at = ? WHERE id = ?',
                 (name, json.dumps(normalized, ensure_ascii=False), now, int(favourite_id))).rowcount
             if not updated:
-                raise LookupError('The favourite Bundle Report Template no longer exists.')
+                raise LookupError('The report no longer exists.')
     return get_favourite(repository, int(favourite_id))
+
+
+def _report_stars_key(username: str) -> str:
+    return f'report_stars:{username}'
+
+
+def report_stars(repository: Any, username: str) -> set[int]:
+    """The reports a user marked with the star in this workspace (kept for each user in the state of the workspace,
+    like their theme: a personal mark, in the backups and transfers of the workspace but not in the exports of the reports)."""
+    try:
+        stored = json.loads(repository.get_workspace_state(_report_stars_key(username)) or '[]')
+    except (TypeError, ValueError):
+        return set()
+    return {int(value) for value in stored if str(value).isdigit()} if isinstance(stored, list) else set()
+
+
+def set_report_star(repository: Any, username: str, favourite_id: int, starred: bool) -> None:
+    stars = report_stars(repository, username)
+    (stars.add if starred else stars.discard)(int(favourite_id))
+    repository.set_workspace_state(_report_stars_key(username), json.dumps(sorted(stars)))
 
 
 def delete_favourite(repository: Any, favourite_id: int) -> dict[str, Any] | None:
@@ -794,10 +841,10 @@ def import_entries(repository: Any, entries: Any, username: str,
     add the others. ``designs`` are those of this workspace (see workspace_designs), so a PPT Design of another
     workspace is found by its name and NR Mode. ``creator(creator in the document, creator here)`` decides who each
     one belongs to (without it a new one belongs to ``username`` and a replaced one keeps its creator). A renamed
-    favourite renames the jobs based on it, as a rename here does; ``summary`` receives the renamed favourites. The
+    favourite renames its schedule, as a rename here does; ``summary`` receives the renamed favourites. The
     favourites of a document of before (``designs_of_report_mode``) keep generating only the PPT Designs of the NR Mode
     of the report, as they did (uncheck_other_mode_designs)."""
-    from src.modules.reporting.report_tasks import rename_favourite_jobs
+    from src.modules.reporting.report_tasks import rename_report_task
     from src.modules.core.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, ItemMatcher, identities, set_identities
 
     if not isinstance(entries, list):
@@ -825,7 +872,7 @@ def import_entries(repository: Any, entries: Any, username: str,
         target, name = matcher.match(entry.get('uid'), ' '.join(str(entry['name']).split())[:120])
         saved = save_favourite(repository, target, name, definition, username)
         if target is not None and local_names.get(target) != name:
-            rename_favourite_jobs(repository, target, local_names[target], name)
+            rename_report_task(repository, target, name)
         owner = creator(entry.get('created_by'), local_creators.get(target, '')) if creator else ''
         if owner and owner != saved['created_by']:
             with repository.connection() as connection:
@@ -850,7 +897,6 @@ class SectionDeck:
     order: list[str] = field(default_factory=list)
     item_titles: dict[str, str] = field(default_factory=dict)
     generated_at: str = ''
-
 
 
 @dataclass
@@ -1598,6 +1644,8 @@ DOCUMENT_CACHE_FOLDER = 'documents'
 DOCUMENT_CACHE_VERSION = 7
 # The composed PowerPoint with the pictures of its charts for the iPhone preview, beside the composed document.
 CHART_PICTURES_FILE = 'document-chart-pictures.pptx'
+# In the folder of a run: the preview of its report and what the viewer shows (report.json).
+RUN_REPORT_FOLDER = '.report'
 _section_locks: dict[str, Lock] = {}
 _section_locks_guard = Lock()
 # The version and the code of the application (see code_identity), read once per process.
@@ -1970,79 +2018,6 @@ def definition_summary(definition: dict[str, Any]) -> dict[str, Any]:
         'chart_pictures': definition.get('chart_pictures') is True}
 
 
-# -- jobs and routes ------------------------------------------------------------------------
-_jobs: dict[str, dict[str, Any]] = {}
-_jobs_lock = Lock()
-
-
-def _public(job: dict[str, Any]) -> dict[str, Any]:
-    # The processing time so far (or until it finished), in seconds.
-    elapsed = round((job.get('ended') or time.time()) - job.get('started', time.time()))
-    return {**{key: job[key] for key in ('id', 'status', 'progress', 'message', 'formats', 'warnings', 'outline', 'created_at',
-                                         'finished_at', 'title', 'error', 'reused', 'document_reused')},
-            'elapsed_seconds': max(0, elapsed)}
-
-
-def remember_last_report(repository: Any, job: dict[str, Any]) -> None:
-    """Keep a ready report as the last one its user generated in the workspace, to open and download it again (also
-    after a restart); its documents are kept until a newer one replaces it."""
-    record = {key: job.get(key, default) for key, default in LAST_REPORT_FIELDS.items()}
-    record['folder'] = Path(job['folder']).name
-    repository.set_workspace_state(LAST_REPORT_KEY + str(job['username']), json.dumps(record, ensure_ascii=False, default=str))
-
-
-def _last_report_records(repository: Any) -> dict[str, dict[str, Any]]:
-    """The last report of each user of the workspace, by user name."""
-    records = {}
-    with repository.connection() as connection:
-        for prefix in (*FORMER_LAST_REPORT_KEYS, LAST_REPORT_KEY):
-            for key, value in connection.execute('SELECT key, value FROM workspace_state WHERE substr(key, 1, ?) = ?',
-                                                 (len(prefix), prefix)).fetchall():
-                try:
-                    record = json.loads(value or 'null')
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(record, dict) and record.get('id') and str(record.get('folder') or '').strip():
-                    records[str(key)[len(prefix):]] = record
-    return records
-
-
-def last_report_job(repository: Any, username: str, root: Path) -> dict[str, Any] | None:
-    """The last report a user generated in the workspace, as a ready job, while its documents are there."""
-    record = _last_report_records(repository).get(username)
-    if not record:
-        return None
-    folder = root / Path(str(record['folder'])).name
-    formats = record.get('formats') if isinstance(record.get('formats'), dict) else {}
-    paths = {key: str(folder / str(item['file_name'])) for key, item in formats.items()
-             if isinstance(item, dict) and str(item.get('file_name') or '').strip()}
-    if not paths or not all(Path(path).is_file() for path in paths.values()):
-        return None
-    return {**{key: record.get(key, default) for key, default in LAST_REPORT_FIELDS.items()}, 'status': 'ready', 'progress': 100,
-            'message': 'Ready', 'error': '', 'paths': paths, 'folder': folder, 'cancelled': False}
-
-
-def _forget_old_jobs(root: Path, kept: set[str] = frozenset()) -> None:
-    """Forget the oldest finished jobs and the documents of the old ones; ``kept`` names the folders of the last report
-    of each user of the workspace, and the newest ready job of each user and workspace keeps its documents too."""
-    with _jobs_lock:
-        finished = sorted((job for job in _jobs.values() if job['status'] in {'ready', 'failed', 'cancelled'}),
-                          key=lambda job: job['created_at'])
-        newest = {}
-        for job in sorted((job for job in finished if job['status'] == 'ready'), key=lambda job: job.get('ended') or 0):
-            newest[(job['username'], job['workspace_id'])] = job['id']
-        for job in finished[:-JOBS_KEPT] if len(finished) > JOBS_KEPT else []:
-            _jobs.pop(job['id'], None)
-            if job['id'] not in newest.values() and Path(job['folder']).name not in kept:
-                shutil.rmtree(job['folder'], ignore_errors=True)
-    if root.is_dir():
-        limit = time.time() - JOB_FILES_KEPT_HOURS * 3600
-        active = {str(job['folder']) for job in _jobs.values()}
-        for folder in root.iterdir():
-            if folder.is_dir() and str(folder) not in active and folder.name not in kept and folder.stat().st_mtime < limit:
-                shutil.rmtree(folder, ignore_errors=True)
-
-
 def install_bundle_report_template_routes(core: Any) -> None:
     from fastapi import Depends, HTTPException
     from fastapi.responses import FileResponse, Response
@@ -2053,13 +2028,16 @@ def install_bundle_report_template_routes(core: Any) -> None:
     class FavouritePayload(BaseModel):
         name: str = ''
         definition: dict[str, Any] = Field(default_factory=dict)
+        # Its schedule: {'enabled', 'schedule', 'formats', 'send_email', 'recipients'} (None leaves it as it is).
+        schedule: dict[str, Any] | None = None
 
     class RenamePayload(BaseModel):
         name: str = ''
 
-    class JobPayload(BaseModel):
-        definition: dict[str, Any] = Field(default_factory=dict)
-        name: str = ''
+    class StarPayload(BaseModel):
+        starred: bool = True
+
+    class GeneratePayload(BaseModel):
         # Generate every section again instead of using those of earlier exports whose data has not changed.
         refresh: bool = False
 
@@ -2124,268 +2102,182 @@ def install_bundle_report_template_routes(core: Any) -> None:
             'nr_layouts': list(NR_LAYOUT_LABELS.items()), 'nr_charts': list(NR_CHARTS_LABELS.items()),
             'area_summary_breakdowns': list(AREA_SUMMARY_BREAKDOWNS), 'area_summary_time_splits': list(AREA_SUMMARY_TIME_SPLITS),
             'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
-            # Open last report opens it, also after a restart.
-            'last_report': (lambda job: _public(job) if job else None)(last_report_job(repository, user.username, output_root())),
         }
 
-    @app.post('/api/reporting/bundle-report-template/favourites')
-    def bundle_report_template_favourite_create(payload: FavouritePayload, user=Depends(editor_user)):
-        repository = repository_for(user)
+    def checked_schedule(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+        """A schedule as saved, or HTTP 400 with what is wrong (checked before the report is saved)."""
+        from src.modules.reporting.report_tasks import next_run_after, normalize_schedule, now_local
+        if raw is None:
+            return None
         try:
-            favourite = save_favourite(repository, None, payload.name, payload.definition, user.username)
+            schedule = normalize_schedule(raw.get('schedule'))
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        log(repository, user, 'bundle_report_template_favourite_saved', {'id': favourite['id'], 'name': favourite['name'], 'created': True,
-                                                                 **definition_summary(favourite['definition'])})
-        return {'favourite': favourite, 'favourites': list_favourites(repository)}
+        if raw.get('enabled', True) and schedule['mode'] == 'once' and next_run_after(schedule, now_local()) is None:
+            raise HTTPException(400, 'The single execution must be in the future.')
+        recipients = core.parse_recipients(raw.get('recipients'))
+        if raw.get('send_email') and not recipients:
+            raise HTTPException(400, 'Add at least one email recipient or turn email off.')
+        if raw.get('send_email') and (invalid := core.invalid_recipients(recipients)):
+            raise HTTPException(400, f"Invalid email recipients: {', '.join(invalid)}.")
+        return {**raw, 'schedule': schedule, 'recipients': recipients}
 
-    @app.put('/api/reporting/bundle-report-template/favourites/{favourite_id}')
-    def bundle_report_template_favourite_update(favourite_id: int, payload: FavouritePayload, user=Depends(editor_user)):
-        repository = repository_for(user)
+    def save_report(repository, user, favourite_id: int | None, payload: FavouritePayload) -> dict[str, Any]:
+        from src.modules.reporting.report_tasks import save_report_schedule
+        schedule = checked_schedule(payload.schedule)
         try:
             favourite = save_favourite(repository, favourite_id, payload.name, payload.definition, user.username)
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        log(repository, user, 'bundle_report_template_favourite_saved', {'id': favourite['id'], 'name': favourite['name'], 'created': False,
-                                                                 **definition_summary(favourite['definition'])})
+        from src.modules.reporting.report_tasks import rename_report_task
+        # A renamed report renames its schedule.
+        rename_report_task(repository, favourite['id'], favourite['name'])
+        saved_schedule = None
+        if schedule is not None:
+            try:
+                task = save_report_schedule(repository, favourite['id'], favourite['name'], schedule, user.username,
+                                            parse_recipients=core.parse_recipients, invalid_recipients=core.invalid_recipients)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            saved_schedule = {'enabled': task['enabled'], 'recurrence': task['recurrence'], 'next_run_at': task['next_run_at'],
+                              'formats': task['definition']['modules']['bundle_report_template']['formats'],
+                              'send_email': task['send_email'], 'recipients': task['recipients']}
+        log(repository, user, 'bundle_report_template_favourite_saved', {
+            'id': favourite['id'], 'name': favourite['name'], 'created': favourite_id is None,
+            **definition_summary(favourite['definition']), **({'schedule': saved_schedule} if saved_schedule else {})})
         return {'favourite': favourite, 'favourites': list_favourites(repository)}
 
-    @app.get('/api/reporting/bundle-report-template/favourites/{favourite_id}/jobs')
-    def bundle_report_template_favourite_jobs(favourite_id: int, user=Depends(reporting_user)):
-        """The Reporting Jobs that generate a favourite, to tell what deleting or renaming it changes."""
-        from src.modules.reporting.report_tasks import favourite_jobs
-        return favourite_jobs(repository_for(user), favourite_id)
+    @app.post('/api/reporting/bundle-report-template/favourites')
+    def bundle_report_template_favourite_create(payload: FavouritePayload, user=Depends(editor_user)):
+        return save_report(repository_for(user), user, None, payload)
+
+    @app.put('/api/reporting/bundle-report-template/favourites/{favourite_id}')
+    def bundle_report_template_favourite_update(favourite_id: int, payload: FavouritePayload, user=Depends(editor_user)):
+        return save_report(repository_for(user), user, favourite_id, payload)
 
     @app.post('/api/reporting/bundle-report-template/favourites/{favourite_id}/rename')
     def bundle_report_template_favourite_rename(favourite_id: int, payload: RenamePayload, user=Depends(editor_user)):
-        from src.modules.reporting.report_tasks import rename_favourite_jobs
+        from src.modules.reporting.report_tasks import rename_report_task
         repository = repository_for(user)
         favourite = get_favourite(repository, favourite_id)
         if favourite is None:
-            raise HTTPException(404, 'The favourite Bundle Report Template no longer exists.')
+            raise HTTPException(404, 'The report no longer exists.')
         try:
             renamed = save_favourite(repository, favourite_id, payload.name, favourite['definition'], user.username)
         except LookupError as exc:
             raise HTTPException(404, str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        # The jobs based on it that took its name take the new one.
-        jobs = rename_favourite_jobs(repository, favourite_id, favourite['name'], renamed['name'])
+        # Its schedule takes the new name (its runs keep the one they had).
+        rename_report_task(repository, favourite_id, renamed['name'])
         log(repository, user, 'bundle_report_template_favourite_renamed', {'id': favourite_id, 'old_name': favourite['name'],
-                                                                   'name': renamed['name'], 'renamed_jobs': jobs})
-        for job in jobs:
-            log(repository, user, 'save_reporting_job', {'task_id': job['id'], 'name': job['name'], 'old_name': job['old_name'],
-                                                         'reason': 'favourite Bundle Report Template renamed'})
-        return {'favourite': renamed, 'favourites': list_favourites(repository), 'renamed_jobs': [job['name'] for job in jobs]}
+                                                                           'name': renamed['name']})
+        return {'favourite': renamed, 'favourites': list_favourites(repository)}
 
     @app.delete('/api/reporting/bundle-report-template/favourites/{favourite_id}')
     def bundle_report_template_favourite_delete(favourite_id: int, user=Depends(editor_user)):
         from src.modules.core.deletion_rights import can_delete, deletion_refusal
-        from src.modules.reporting.report_tasks import forget_favourite
+        from src.modules.reporting.report_tasks import delete_report_task
         repository = repository_for(user)
         existing = get_favourite(repository, favourite_id)
         if existing is not None and not can_delete(user, existing.get('created_by')):
-            raise HTTPException(403, deletion_refusal('favourite Bundle Report Template'))
+            raise HTTPException(403, deletion_refusal('report'))
         favourite = delete_favourite(repository, favourite_id)
         if favourite is None:
-            raise HTTPException(404, 'The favourite Bundle Report Template no longer exists.')
-        # The jobs based on it are disabled; every job that generated it names it as no longer existing.
-        jobs = forget_favourite(repository, favourite_id, favourite['name'])
-        log(repository, user, 'bundle_report_template_favourite_deleted', {'id': favourite_id, 'name': favourite['name'], 'jobs': jobs})
-        for job in jobs:
-            if job['disabled']:
-                log(repository, user, 'disable_reporting_job', {'task_id': job['id'], 'name': job['name'],
-                                                                'reason': f'favourite Bundle Report Template "{favourite["name"]}" deleted'})
-        return {'favourites': list_favourites(repository), 'disabled_jobs': [job['name'] for job in jobs if job['disabled']]}
+            raise HTTPException(404, 'The report no longer exists.')
+        # Its schedule and its runs in History go with it.
+        folders = delete_report_task(repository, favourite_id)
+        core.remove_report_run_folders(folders)
+        log(repository, user, 'bundle_report_template_favourite_deleted', {'id': favourite_id, 'name': favourite['name'],
+                                                                           'runs_deleted': len(folders)})
+        return {'favourites': list_favourites(repository)}
 
-    def output_root() -> Path:
-        return module_output_dir(core.settings.output_dir, BUNDLE_REPORTS_FOLDER)
-
-    def run_job(job: dict[str, Any], repository, user, definition: dict[str, Any], titles: dict[str, str], reuse: bool = True) -> None:
-        def progress(percent: int, message: str) -> None:
-            with _jobs_lock:
-                if job.get('cancelled'):
-                    raise BundleReportTemplateCancelled('Cancelled.')
-                job.update(progress=max(job['progress'], min(99, percent)), message=message)
-
-        try:
-            with _jobs_lock:
-                job.update(status='running', progress=2, message='Starting')
-            # Both formats and their previews are ready before the preview opens, so switching between them is
-            # immediate. The PowerPoint preview is rendered while the Word pages are packed.
-            cache_root = section_cache_root(repository)
-            from concurrent.futures import ThreadPoolExecutor
-            from src.modules.reporting.pptx_to_docx import document_pdf, pdf_page_images
-
-            def preview(export_format: str, content: bytes, key: str | None, reused: bool) -> tuple[bytes | None, list[bytes]]:
-                suffix = FORMAT_SUFFIXES[export_format]
-                # A document an earlier export composed has its preview too.
-                kept = cached_preview(cache_root, key, suffix) if reused else None
-                if kept is not None:
-                    return kept
-                pdf = document_pdf(content, suffix)
-                pages = pdf_page_images(pdf, PREVIEW_DPI[suffix]) if pdf else []
-                store_preview(cache_root, key, suffix, pdf, pages)
-                return pdf, pages
-
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                previews: dict[str, Any] = {}
-
-                def powerpoint_ready(content: bytes, key: str | None, reused: bool) -> None:
-                    previews['powerpoint'] = pool.submit(preview, 'powerpoint', content, key, reused)
-
-                result = build_report(core, repository, user, definition, 'word', job['folder'], name=job['title'],
-                                      section_titles=titles, progress=progress, cache_root=cache_root, reuse=reuse,
-                                      on_powerpoint=powerpoint_ready)
-                stem = compose_file_stem(job['title'])
-                formats: dict[str, dict[str, Any]] = {}
-                paths: dict[str, str] = {}
-                for export_format, content, navigation, percent in (('powerpoint', result.powerpoint, result.slides_navigation, 94),
-                                                                    ('word', result.word, result.navigation, 97)):
-                    suffix = FORMAT_SUFFIXES[export_format]
-                    path = job['folder'] / f'{stem}.{suffix}'
-                    path.write_bytes(content)
-                    progress(percent, f'Preparing the {FORMAT_LABELS[export_format]} preview')
-                    future = previews.get(export_format)
-                    pdf, pages = future.result() if future is not None else preview(
-                        export_format, content, result.document_key, result.document_reused)
-                    if pdf:
-                        # Kept to render a page large when it is opened in the preview; the first one is ready at once.
-                        (job['folder'] / f'preview-{suffix}.pdf').write_bytes(pdf)
-                        for image in pdf_page_images(pdf, LARGE_PREVIEW_DPI[suffix], [0]):
-                            (job['folder'] / f'preview-large-{suffix}-0.png').write_bytes(image)
-                    for index, image in enumerate(pages):
-                        (job['folder'] / f'preview-{suffix}-{index}.png').write_bytes(image)
-                    formats[export_format] = {'file_name': path.name, 'previews': len(pages), 'navigation': navigation}
-                    paths[export_format] = str(path)
-            with _jobs_lock:
-                if job.get('cancelled'):
-                    raise BundleReportTemplateCancelled('Cancelled.')
-                job.update(status='ready', progress=100, message='Ready', formats=formats, paths=paths, ended=time.time(),
-                           warnings=result.warnings, outline=result.outline,
-                           reused=[titles.get(key, SECTION_TITLES[key]) for key in result.reused],
-                           document_reused=result.document_reused,
-                           finished_at=datetime.now().isoformat(timespec='seconds'))
-            try:
-                remember_last_report(repository, job)
-            except sqlite3.Error as exc:  # The report stays ready; only reopening it after a restart is lost.
-                log(repository, user, 'bundle_report_template_last_report_not_kept', {'job': job['id'], 'error': str(exc)})
-            log(repository, user, 'bundle_report_template_generated', {
-                'job': job['id'], 'title': job['title'], 'file_names': [item['file_name'] for item in formats.values()],
-                'slides': len(result.outline), 'pages': formats['word']['previews'], 'warnings': result.warnings,
-                'reused_sections': result.reused, 'seconds': _public(job)['elapsed_seconds']})
-        except BundleReportTemplateCancelled:
-            # The cancellation is recorded when the user asks for it; what was generated is left out.
-            return
-        except Exception as exc:  # noqa: BLE001 - every failure is reported to the dialog and to App Events.
-            if job.get('cancelled'):
-                return
-            message = str(getattr(exc, 'detail', exc)) or exc.__class__.__name__
-            with _jobs_lock:
-                job.update(status='failed', message=message, error=message, ended=time.time(),
-                           finished_at=datetime.now().isoformat(timespec='seconds'))
-            log(repository, user, 'bundle_report_template_failed', {'job': job['id'], 'title': job['title'], 'error': message})
-
-    @app.post('/api/reporting/bundle-report-template/jobs')
-    def bundle_report_template_job_create(payload: JobPayload, user=Depends(reporting_user)):
+    @app.post('/api/reporting/bundle-report-template/favourites/{favourite_id}/star')
+    def bundle_report_template_star(favourite_id: int, payload: StarPayload, user=Depends(reporting_user)):
+        """Mark a report with the star of this user, or take it away."""
         repository = repository_for(user)
-        definition = normalize_definition(payload.definition)
-        sections = [section for section in enabled_sections(definition) if core.user_has_feature(user, SECTION_FEATURES[section['key']])]
-        if not sections:
-            raise HTTPException(400, 'Check at least one section with a sub-module to include in the report.')
-        root = output_root()
-        root.mkdir(parents=True, exist_ok=True)
-        _forget_old_jobs(root, {str(record['folder']) for record in _last_report_records(repository).values()})
+        favourite = get_favourite(repository, favourite_id)
+        if favourite is None:
+            raise HTTPException(404, 'The report no longer exists.')
+        set_report_star(repository, user.username, favourite_id, payload.starred)
+        log(repository, user, 'bundle_report_template_starred', {'id': favourite_id, 'name': favourite['name'], 'starred': payload.starred})
+        return {'id': favourite_id, 'starred': payload.starred}
+
+    @app.post('/api/reporting/bundle-report-template/favourites/{favourite_id}/generate')
+    def bundle_report_template_generate(favourite_id: int, payload: GeneratePayload, user=Depends(reporting_user)):
+        """Generate a report now: a run of its schedule (one is made, generated by hand only, when it has none), which
+        History lists with its progress, files and preview."""
+        from src.modules.reporting.report_tasks import report_task, save_report_schedule
+        repository = repository_for(user)
+        favourite = get_favourite(repository, favourite_id)
+        if favourite is None:
+            raise HTTPException(404, 'The report no longer exists.')
+        if not [section for section in enabled_sections(favourite['definition'])
+                if core.user_has_feature(user, SECTION_FEATURES[section['key']])]:
+            raise HTTPException(400, 'Check at least one section with a sub-module that your account can use.')
+        task = report_task(repository, favourite_id) or save_report_schedule(
+            repository, favourite_id, favourite['name'], {'enabled': True}, user.username,
+            parse_recipients=core.parse_recipients, invalid_recipients=core.invalid_recipients)
         forget_old_sections(section_cache_root(repository))
-        job_id = uuid.uuid4().hex
-        folder = root / f"{datetime.now():%Y%m%d_%H%M%S} - {job_id[:8]}"
-        folder.mkdir(parents=True, exist_ok=True)
-        title = report_title(definition, payload.name.strip())
-        job = {'id': job_id, 'status': 'queued', 'progress': 0, 'message': 'Queued', 'formats': {}, 'paths': {},
-               'warnings': [], 'outline': [], 'created_at': datetime.now().isoformat(timespec='seconds'),
-               'finished_at': '', 'title': title, 'error': '', 'reused': [], 'document_reused': False, 'folder': folder,
-               'username': user.username, 'workspace_id': core.active_workspace.id, 'started': time.time(), 'ended': None,
-               'cancelled': False}
-        with _jobs_lock:
-            _jobs[job_id] = job
-        log(repository, user, 'bundle_report_template_requested', {'job': job_id, 'title': title, 'formats': list(FORMATS),
-                                                           'favourite': payload.name.strip(), 'refresh': payload.refresh,
-                                                           **definition_summary(definition)})
-        Thread(target=run_job, args=(job, repository, user, definition, section_titles(), not payload.refresh), daemon=True,
-               name=f'bundle-report-template-{job_id[:8]}').start()
-        return {'job': _public(job)}
+        run_id = core.start_report_run(repository, task, 'manual', user.username, control={'reuse': not payload.refresh})
+        log(repository, user, 'bundle_report_template_requested', {'id': favourite_id, 'title': favourite['name'], 'run_id': run_id,
+                                                                   'refresh': payload.refresh, **definition_summary(favourite['definition'])})
+        return {'run_id': run_id}
 
-    def job_or_404(job_id: str, user) -> dict[str, Any]:
-        with _jobs_lock:
-            job = _jobs.get(job_id)
-        if job is None:
-            # The last report of the user in the workspace, kept after the application restarted.
-            last = last_report_job(repository_for(user), user.username, output_root())
-            if last and last['id'] == job_id:
-                with _jobs_lock:
-                    job = _jobs.setdefault(job_id, last)
-        if job is None or (job['username'] != user.username and user.role != 'super-admin'):
-            raise HTTPException(404, 'The report is no longer available; generate it again.')
-        return job
+    def run_folder(user, run_id: int) -> tuple[dict[str, Any], Path | None]:
+        from src.modules.reporting.report_tasks import get_run
+        run = get_run(repository_for(user), run_id)
+        if run is None:
+            raise HTTPException(404, 'The run no longer exists.')
+        folder = Path(run['output_dir']) / RUN_REPORT_FOLDER if run['output_dir'] else None
+        return run, folder
 
-    @app.post('/api/reporting/bundle-report-template/jobs/{job_id}/cancel')
-    def bundle_report_template_job_cancel(job_id: str, user=Depends(reporting_user)):
-        """Cancel a generation: it stops at its next step and what it generated is left out."""
-        job = job_or_404(job_id, user)
-        with _jobs_lock:
-            if job['status'] in {'queued', 'running'}:
-                job.update(cancelled=True, status='cancelled', message='Cancelled', ended=time.time(),
-                           finished_at=datetime.now().isoformat(timespec='seconds'))
-            public = _public(job)
-        if public['status'] == 'cancelled':
-            log(repository_for(user), user, 'bundle_report_template_cancelled', {'job': job_id, 'title': job['title'],
-                                                                          'seconds': public['elapsed_seconds']})
-        return {'job': public}
-
-    @app.get('/api/reporting/bundle-report-template/jobs/{job_id}')
-    def bundle_report_template_job(job_id: str, user=Depends(reporting_user)):
-        job = job_or_404(job_id, user)
-        with _jobs_lock:
-            return {'job': _public(job)}
+    @app.get('/api/reporting/runs/{run_id}/report')
+    def run_report(run_id: int, user=Depends(reporting_user)):
+        """A run with what its preview shows (None until its report is ready)."""
+        run, folder = run_folder(user, run_id)
+        report = None
+        if folder is not None and (folder / 'report.json').is_file():
+            try:
+                report = json.loads((folder / 'report.json').read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                report = None
+        public = {key: run[key] for key in ('id', 'task_id', 'task_name', 'trigger', 'status', 'progress', 'message', 'requested_by',
+                                            'created_at', 'started_at', 'finished_at', 'error', 'email_status')}
+        if report is not None:
+            # The download of each format: the file of the run in that format.
+            suffixes = {suffix: export_format for export_format, suffix in FORMAT_SUFFIXES.items()}
+            report['downloads'] = {suffixes[str(item.get('file_name') or '').rsplit('.', 1)[-1].lower()]: f'/api/reporting/runs/{run_id}/artifacts/{index}'
+                                   for index, item in enumerate(run['artifacts'])
+                                   if item.get('status') == 'ready' and str(item.get('file_name') or '').rsplit('.', 1)[-1].lower() in suffixes}
+        return {'run': public, 'report': report}
 
     def format_or_404(export_format: str) -> str:
         if export_format not in FORMATS:
             raise HTTPException(404, 'Choose PowerPoint or Word.')
         return FORMAT_SUFFIXES[export_format]
 
-    @app.get('/api/reporting/bundle-report-template/jobs/{job_id}/preview/{export_format}/{index}')
-    def bundle_report_template_preview(job_id: str, export_format: str, index: int, large: bool = False, user=Depends(reporting_user)):
-        """A page of the preview of a format; ``large`` renders it at a higher resolution (once) to show it whole."""
-        job = job_or_404(job_id, user)
+    @app.get('/api/reporting/runs/{run_id}/preview/{export_format}/{index}')
+    def run_report_preview(run_id: int, export_format: str, index: int, large: bool = False, user=Depends(reporting_user)):
+        """A page of the preview of a format of a run; ``large`` renders it at a higher resolution (once) to show it whole."""
+        _run, folder = run_folder(user, run_id)
         suffix = format_or_404(export_format)
-        path = job['folder'] / f"preview-{'large-' if large else ''}{suffix}-{int(index)}.png"
-        pdf = job['folder'] / f'preview-{suffix}.pdf'
+        if folder is None:
+            raise HTTPException(404, 'This page has no preview.')
+        path = folder / f"preview-{'large-' if large else ''}{suffix}-{int(index)}.png"
+        pdf = folder / f'preview-{suffix}.pdf'
         if large and not path.is_file() and pdf.is_file():
             from src.modules.reporting.pptx_to_docx import pdf_page_images
             images = pdf_page_images(pdf.read_bytes(), LARGE_PREVIEW_DPI[suffix], [int(index)])
             if images:
                 path.write_bytes(images[0])
         if large and not path.is_file():
-            path = job['folder'] / f'preview-{suffix}-{int(index)}.png'
+            path = folder / f'preview-{suffix}-{int(index)}.png'
         if not path.is_file():
             raise HTTPException(404, 'This page has no preview.')
         return Response(path.read_bytes(), media_type='image/png', headers={'Cache-Control': 'private, max-age=3600'})
-
-    @app.get('/api/reporting/bundle-report-template/jobs/{job_id}/download/{export_format}')
-    def bundle_report_template_download(job_id: str, export_format: str, user=Depends(reporting_user)):
-        job = job_or_404(job_id, user)
-        format_or_404(export_format)
-        path = job['paths'].get(export_format) if job['status'] == 'ready' else None
-        if not path or not Path(path).is_file():
-            raise HTTPException(409, 'The report is not ready.')
-        repository = repository_for(user)
-        log(repository, user, 'bundle_report_template_downloaded', {'job': job_id, 'title': job['title'], 'format': export_format,
-                                                            'file_name': Path(path).name})
-        media = ('application/vnd.openxmlformats-officedocument.wordprocessingml.document' if export_format == 'word'
-                 else 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
-        return FileResponse(path, media_type=media, filename=Path(path).name)
 
     _register_reporting_artifact(core)
 
@@ -2412,53 +2304,97 @@ def _register_reporting_artifact(core: Any) -> None:
         return {'favourites': [[str(item['id']), item['name']] for item in list_favourites(repository_of(user))]}
 
     def generate(config: dict[str, Any], folder: Path, stamp: str, user) -> list[dict[str, Any]]:
+        from concurrent.futures import ThreadPoolExecutor
+        from src.modules.reporting.pptx_to_docx import document_pdf, pdf_page_images
         from src.modules.reporting.report_tasks import artifact_path, check_run_stopped, report_step_progress
 
         repository = repository_of(user)
         chosen = {str(value) for value in ((config.get('options') or {}).get('filters') or {}).get('favourites') or []}
         favourites = [item for item in list_favourites(repository) if not chosen or str(item['id']) in chosen]
         if not favourites:
-            raise BundleReportTemplateError('The associated Bundle Report Template no longer exists.' if chosen
-                                      else 'There is no favourite Bundle Report Template to generate.')
+            raise BundleReportTemplateError('The report no longer exists.' if chosen else 'There is no report to generate.')
         artifacts = []
-        # The theme of a Reporting Job generating them replaces the theme of each favourite.
-        theme = str(config.get('theme') or '').strip()
+        cache_root = section_cache_root(repository)
+        formats = [value for value in config.get('formats') or ['powerpoint'] if value in FORMATS] or ['powerpoint']
+        # The run of one report keeps its preview, which History opens (see run_report).
+        with_preview = len(favourites) == 1
+
+        def preview(export_format: str, content: bytes, key: str | None, reused: bool) -> tuple[bytes | None, list[bytes]]:
+            suffix = FORMAT_SUFFIXES[export_format]
+            # A document an earlier export composed has its preview too.
+            kept = cached_preview(cache_root, key, suffix) if reused else None
+            if kept is not None:
+                return kept
+            pdf = document_pdf(content, suffix)
+            pages = pdf_page_images(pdf, PREVIEW_DPI[suffix]) if pdf else []
+            store_preview(cache_root, key, suffix, pdf, pages)
+            return pdf, pages
+
         for position, favourite in enumerate(favourites):
-            if theme:
-                favourite = {**favourite, 'definition': normalize_definition({**favourite['definition'], 'theme': theme})}
             work = folder / f".bundle-report-template-{favourite['id']}"
             work.mkdir(parents=True, exist_ok=True)
-            formats = [value for value in config.get('formats') or ['powerpoint'] if value in FORMATS] or ['powerpoint']
             try:
-                # (A Reporting Job run stopped by a user stops at the next step of the report, and the run shows how far the
-                # report has got and what it is doing.)
+                # (A run stopped by a user stops at the next step of the report, and the run shows how far the report has
+                # got and what it is doing.)
                 def progress(percent: int, message: str, position: int = position) -> None:
                     check_run_stopped()
                     report_step_progress((position + percent / 100) * 100 / len(favourites), message)
 
-                result = build_report(core, repository, user, favourite['definition'], 'word' if 'word' in formats else 'powerpoint',
-                                      work, name=favourite['name'], progress=progress,
-                                      cache_root=section_cache_root(repository))
-                for export_format in formats:
-                    suffix = '.docx' if export_format == 'word' else '.pptx'
-                    destination = artifact_path(folder, stamp, BUNDLE_REPORT_FILE_PREFIX, favourite['name'], suffix)
-                    destination.write_bytes(result.word if export_format == 'word' and result.word else result.powerpoint)
-                    label = 'Word' if export_format == 'word' else 'PPT'
-                    details = [*filter_lines(favourite['definition']),
-                               'Sections: ' + ', '.join(SECTION_TITLES[section['key']] for section in enabled_sections(favourite['definition'])),
-                               # The sections taken from those generated before (same version, options and data).
-                               *(['Reused from an earlier export: ' + ', '.join(SECTION_TITLES.get(key, key) for key in result.reused)]
-                                 if result.reused else []),
-                               *[f'Skipped: {warning}' for warning in result.warnings]]
-                    artifacts.append({'module': 'bundle_report_template', 'title': f"Bundle Report Template · {favourite['name']} ({label})",
-                                      'file_name': destination.name, 'size': destination.stat().st_size, 'status': 'ready',
-                                      'details': details})
-            except Exception as exc:  # noqa: BLE001 - one favourite that fails leaves the others.
-                artifacts.append({'module': 'bundle_report_template', 'title': f"Bundle Report Template · {favourite['name']}", 'file_name': '',
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    previews: dict[str, Any] = {}
+
+                    def powerpoint_ready(content: bytes, key: str | None, reused: bool) -> None:
+                        # The PowerPoint preview is rendered while the Word pages are packed.
+                        previews['powerpoint'] = pool.submit(preview, 'powerpoint', content, key, reused)
+
+                    result = build_report(core, repository, user, favourite['definition'], 'word' if 'word' in formats else 'powerpoint',
+                                          work, name=favourite['name'], progress=progress, cache_root=cache_root,
+                                          reuse=config.get('reuse', True) is not False,
+                                          on_powerpoint=powerpoint_ready if with_preview and 'powerpoint' in formats else None)
+                    files: dict[str, Path] = {}
+                    for export_format in formats:
+                        suffix = '.docx' if export_format == 'word' else '.pptx'
+                        destination = artifact_path(folder, stamp, BUNDLE_REPORT_FILE_PREFIX, favourite['name'], suffix)
+                        destination.write_bytes(result.word if export_format == 'word' and result.word else result.powerpoint)
+                        files[export_format] = destination
+                        details = [*filter_lines(favourite['definition']),
+                                   'Sections: ' + ', '.join(SECTION_TITLES[section['key']] for section in enabled_sections(favourite['definition'])),
+                                   # The sections taken from those generated before (same version, options and data).
+                                   *(['Reused from an earlier export: ' + ', '.join(SECTION_TITLES.get(key, key) for key in result.reused)]
+                                     if result.reused else []),
+                                   *[f'Skipped: {warning}' for warning in result.warnings]]
+                        artifacts.append({'module': 'bundle_report_template', 'title': favourite['name'], 'format': export_format,
+                                          'file_name': destination.name, 'size': destination.stat().st_size, 'status': 'ready',
+                                          'details': details})
+                    if with_preview:
+                        progress(97, 'Preparing the preview')
+                        target = folder / RUN_REPORT_FOLDER
+                        target.mkdir(parents=True, exist_ok=True)
+                        shown: dict[str, Any] = {}
+                        for export_format, destination in files.items():
+                            suffix = FORMAT_SUFFIXES[export_format]
+                            content = result.word if export_format == 'word' and result.word else result.powerpoint
+                            future = previews.get(export_format)
+                            pdf, pages = future.result() if future is not None else preview(
+                                export_format, content, result.document_key, result.document_reused)
+                            if pdf:
+                                # Kept to render a page large when it is opened in the preview.
+                                (target / f'preview-{suffix}.pdf').write_bytes(pdf)
+                            for index, image in enumerate(pages):
+                                (target / f'preview-{suffix}-{index}.png').write_bytes(image)
+                            shown[export_format] = {'file_name': destination.name, 'previews': len(pages),
+                                                    'navigation': result.navigation if export_format == 'word' else result.slides_navigation}
+                        (target / 'report.json').write_text(json.dumps({
+                            'title': report_title(favourite['definition'], favourite['name']), 'report_id': favourite['id'],
+                            'formats': shown, 'outline': result.outline, 'warnings': result.warnings,
+                            'reused': [SECTION_TITLES.get(key, key) for key in result.reused], 'document_reused': result.document_reused,
+                        }, ensure_ascii=False, default=str), encoding='utf-8')
+            except Exception as exc:  # noqa: BLE001 - one report that fails leaves the others (a stop is no Exception).
+                artifacts.append({'module': 'bundle_report_template', 'title': favourite['name'], 'file_name': '',
                                   'size': 0, 'status': 'failed', 'error': str(getattr(exc, 'detail', exc))})
             finally:
                 shutil.rmtree(work, ignore_errors=True)
         return artifacts
 
-    register_report_artifact_provider('bundle_report_template', 'Bundle Report Template', 'reporting', generate, formats=FORMATS,
-                                      filters=(('favourites', 'Favourite Bundle Report Templates'),), values=values)
+    register_report_artifact_provider('bundle_report_template', 'Report', 'reporting', generate, formats=FORMATS,
+                                      filters=(('favourites', 'Reports'),), values=values)

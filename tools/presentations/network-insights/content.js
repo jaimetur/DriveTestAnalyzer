@@ -42,7 +42,7 @@ module.exports = {
     { id: 'share', type: 'tiles', section: 'Results', footer: 'Exports', kicker: 'Export', title: 'Share what it found', columns: 3,
       tiles: [
         { mini: 'docs', title: 'PowerPoint and Word', text: 'Every section in the order of the page, LTE and NR apart.' },
-        { mini: 'calendar', title: 'Reporting', text: 'An artifact of its own and a section of the Bundle Report Templates.' },
+        { mini: 'calendar', title: 'Reporting', text: 'A section of the reports of Reporting.' },
         { mini: 'csv', title: 'CSV', text: 'Complete site and cell inventories and the deployment counts.' },
       ],
       notes: 'The analysis exports to PowerPoint and Word, travels as a Reporting artifact and exports its inventories and deployment counts as CSV.' },

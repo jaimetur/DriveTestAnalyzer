@@ -21,11 +21,8 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   ``configuration``);
 - ``assets/query-builder-queries/*.json``: saved Query Builder queries (``name``, ``description`` and
   ``query_sql`` on the ``selected_data``, ``selected_voice`` and ``selected_speech`` views);
-- ``assets/reporting-jobs/*.json``: Reporting Jobs, which name their PPT Designs (``design``: ``name``) and carry the report of each Scoring entry (``report``) or name a shipped Scoring report
-  configuration (``report_configuration``) and name the favourite Bundle Report Templates they generate; their CDR
-  Analysis, Network Insights and module artifacts are kept as they are, and they keep the order of their ``position``;
-- ``assets/bundle-report-template-favourites/*.json``: favourite Bundle Report Templates (``name`` and
-  ``definition``, as their export carries them), which find the shipped PPT Designs by their name;
+- ``assets/bundle-report-template-favourites/*.json``: the reports of Reporting (``name`` and ``definition``, as
+  their export carries them), which find the shipped PPT Designs by their name; they start without a schedule;
 - ``assets/scoring-favourites-filters/*.json``: Scoring & GAP Favourites Filters (an entry of their export without its
   CDRs), each with a Campaign choice (Latest campaign…) whose CDRs it takes once the workspace has them.
 
@@ -314,57 +311,6 @@ def _seed_queries(repository: Any, username: str) -> int:
     return added
 
 
-def _seed_reporting_jobs(repository: Any, username: str) -> int:
-    from src.modules.reporting import report_tasks
-    from src.modules.reporting.bundle_report_templates import list_favourites
-
-    stored = repository.get_workspace_state(DESIGNS_STATE_KEY)
-    designs = json.loads(stored) if stored else {}
-    design_ids = {str(item.get('name') or '').casefold(): key
-                     for key, item in (designs.items() if isinstance(designs, dict) else []) if isinstance(item, dict)}
-    configurations = {name.casefold(): configuration for name, configuration in _shipped_report_configurations().items()}
-    favourite_ids = {item['name'].casefold(): str(item['id']) for item in list_favourites(repository)}
-    existing = {task['name'].casefold() for task in report_tasks.list_tasks(repository)}
-    shipped = [json.loads(path.read_text(encoding='utf-8')) for path in _json_files(ASSETS / 'reporting-jobs')]
-    # In the order of the jobs table they come from (``position``).
-    shipped.sort(key=lambda item: (not isinstance(item.get('position'), int), item.get('position') if isinstance(item.get('position'), int) else 0))
-    added = 0
-    for item in shipped:
-        name = str(item.get('name') or '').strip()
-        if not name or name.casefold() in existing:
-            continue
-        definition = dict(item.get('definition') or {})
-        entries = []
-        for entry in definition.get('designs') or []:
-            target = entry.get('design') or {}
-            design_id = design_ids.get(str(target.get('name') or '').casefold())
-            if design_id:
-                entries.append({**{key: value for key, value in entry.items() if key != 'design'}, 'design_id': design_id})
-        definition['designs'] = entries
-        scoring = []
-        for entry in definition.get('scoring') or []:
-            if isinstance(entry.get('report'), dict) and entry['report'].get('scenarios'):
-                # The report of the entry itself.
-                scoring.append({key: value for key, value in entry.items() if key != 'report_configuration'})
-                continue
-            configuration = configurations.get(str(entry.get('report_configuration') or '').casefold())
-            if configuration:
-                scoring.append({**{key: value for key, value in entry.items() if key != 'report_configuration'},
-                                'report': {**configuration, 'name': entry['report_configuration']}})
-        definition['scoring'] = scoring
-        # The favourite Bundle Report Templates it generates, named in the asset, are those of this workspace.
-        definition = report_tasks._remap_favourites(definition, {}, favourite_ids)
-        modules = definition.get('modules') if isinstance(definition.get('modules'), dict) else {}
-        if not (entries or scoring or (definition.get('dataset_analysis') or {}).get('enabled') or definition.get('network_insights')
-                or any(isinstance(config, dict) and config.get('enabled') for config in modules.values())):
-            continue
-        report_tasks.save_task(repository, None, {**item, 'definition': definition}, username,
-                               parse_recipients=lambda value: [str(address) for address in value or []],
-                               invalid_recipients=lambda _addresses: [])
-        added += 1
-    return added
-
-
 def _shipped_entries(folder: str, existing: set[str]) -> list[dict[str, Any]]:
     """The shipped items of a folder whose name the workspace does not have yet."""
     entries = []
@@ -421,10 +367,8 @@ def seed_starter_content(repository: Any, username: str = 'system') -> dict[str,
         'query_builder_queries': _seed_queries(repository, username),
         'favourites_filters': _seed_favourites_filters(repository),
     }
-    # After the PPT Designs and the report configurations, which the favourite Bundle Report Templates and the Reporting
-    # Jobs name; the Reporting Jobs also name the favourite Bundle Report Templates they generate.
+    # After the PPT Designs and the report configurations, which the reports name.
     added['bundle_report_template_favourites'] = _seed_bundle_report_template_favourites(repository, username)
-    added['reporting_jobs'] = _seed_reporting_jobs(repository, username)
     # The later examples came with the templates and PPT Designs above.
     repository.set_workspace_state(LATER_EXAMPLES_STATE_KEY, json.dumps(sorted(LATER_EXAMPLES)))
     repository.set_workspace_state(STATE_KEY, '1')

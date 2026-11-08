@@ -1,4 +1,4 @@
-/* Reporting: scheduled Reporting Jobs. */
+/* Reporting: the reports, their editor and History. */
 .report-jobs-hero { background: linear-gradient(135deg, #1f5f3a, #4fb37a); color: #fff; }
 .report-jobs-hero .eyebrow, .report-jobs-hero .lede { color: rgba(255, 255, 255, .88); }
 .report-jobs-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; margin-bottom: .8rem; }
@@ -7,9 +7,7 @@
 .reporting-jobs-table { width: 100%; border-collapse: collapse; }
 .reporting-jobs-table th, .reporting-jobs-table td { padding: .55rem .6rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 .reporting-jobs-table th { position: sticky; top: 0; background: #2f6e4b; color: #fff; font-size: .82rem; }
-.reporting-jobs-table tr.rj-disabled td:not(:last-child) { opacity: .6; }
 .reporting-jobs-table small { color: var(--muted); }
-.rj-artifacts { margin: 0; padding-left: 1rem; display: grid; gap: .15rem; font-size: .86rem; }
 .rj-status { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .78rem; font-weight: 800; background: #e9eef2; color: #3d4b55; }
 .rj-status-sent, .rj-status-completed { background: #d9f2e3; color: #1f6b44; }
 .rj-status-partial { background: #fff1c7; color: #7a5300; }
@@ -19,104 +17,22 @@
 .rj-status-stopping { background: #ffead8; color: #8a4511; }
 .rj-status-stopped { background: #ece7f6; color: #55407f; }
 .rj-error { color: #a12b1d; }
-.rj-download { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .report-jobs-form { display: grid; gap: 1rem; }
 .report-jobs-form h3 { margin: .4rem 0 0; color: #1f5f3a; }
-.rj-name input { max-width: 36rem; }
-.rj-card { display: grid; gap: .8rem; padding: 1rem; border: 1px solid rgba(31, 95, 58, .22); border-radius: 14px; background: rgba(240, 249, 243, .7); }
-.rj-card-toggle, .rj-card-head { display: grid; grid-template-columns: auto 1fr; column-gap: .6rem; align-items: center; }
-.rj-card-head { grid-template-columns: 1fr; }
-.rj-card-toggle small, .rj-card-head small { grid-column: 1 / -1; color: var(--muted); font-weight: 500; }
-.rj-card-toggle input { width: 1.1rem; height: 1.1rem; }
-.rj-card-body { display: grid; gap: .8rem; }
-.rj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr)); gap: .7rem; align-items: end; }
-.rj-wide { grid-column: 1 / -1; }
-.rj-inline { display: flex; flex-wrap: wrap; gap: .4rem 1rem; align-items: center; }
-.rj-inline-label { font-weight: 700; }
-.rj-check { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600; }
-.rj-formats { display: flex; flex-wrap: wrap; gap: 1rem; }
-.rj-filters { display: flex; flex-wrap: wrap; gap: .5rem; }
-.rj-dataset-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: .25rem .8rem; max-height: 14rem; overflow: auto; padding: .4rem 0; }
-.rj-dataset-list.is-disabled { opacity: .5; }
-.rj-entries { display: grid; gap: .7rem; }
-.rj-entry { display: grid; gap: .6rem; padding: .8rem; border: 1px dashed rgba(31, 95, 58, .35); border-radius: 12px; background: #fff; }
-.rj-custom { padding-top: .4rem; border-top: 1px solid var(--line); }
 .rj-multi { min-width: 12rem; }
 @media (max-width: 760px) {
   .reporting-jobs-table { font-size: .82rem; }
-  .rj-grid { grid-template-columns: 1fr; }
 }
 .report-jobs [hidden] { display: none !important; }
-.report-jobs label.rj-check, .report-jobs .rj-card-toggle { display: flex; flex-direction: row; align-items: center; gap: .45rem; }
-.report-jobs .rj-card-toggle { flex-wrap: wrap; }
-.report-jobs .rj-card-toggle small { flex-basis: 100%; }
-.report-jobs label.rj-check input, .report-jobs .rj-card-toggle input { flex: 0 0 auto; width: 1.05rem; height: 1.05rem; margin: 0; }
-.report-jobs .rj-dataset-list label.rj-check { align-items: flex-start; font-weight: 500; font-size: .86rem; }
 .report-jobs .rj-multi { position: relative; }
 .report-jobs .rj-multi > summary { display: flex; justify-content: space-between; gap: .6rem; padding: .5rem .7rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; cursor: pointer; list-style: none; font-weight: 600; }
 .report-jobs .rj-multi > summary::-webkit-details-marker { display: none; }
 .report-jobs .rj-multi .workspace-user-picker-menu { position: absolute; z-index: 20; min-width: 100%; max-height: min(32rem, 70vh); overflow: auto; padding: .5rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(18, 32, 43, .16); }
 .report-jobs .rj-multi .workspace-user-picker-menu label { display: flex; gap: .45rem; align-items: center; padding: .15rem 0; }
-.report-jobs .rj-secondary { justify-self: start; padding: .5rem 1rem; border: 1px solid rgba(31, 95, 58, .45); border-radius: 999px; background: #fff; color: #1f5f3a; font: inherit; font-weight: 700; cursor: pointer; }
-.report-jobs .rj-secondary:hover { background: #e3f3e9; }
 .report-jobs .reporting-jobs-table { table-layout: auto; min-width: 60rem; }
 .report-jobs .reporting-jobs-table td, .report-jobs .reporting-jobs-table th { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
-.report-jobs #rj-tasks th:nth-child(1) { width: 14%; }
-.report-jobs #rj-tasks th:nth-child(2) { width: 38%; }
-.report-jobs #rj-tasks th:nth-child(3) { width: 8%; }
-.report-jobs #rj-tasks th:nth-child(4), .report-jobs #rj-tasks th:nth-child(6) { width: 9%; }
-.report-jobs #rj-tasks th:nth-child(5), .report-jobs #rj-tasks th:nth-child(7) { width: 6%; }
 .report-jobs .reporting-jobs-table .table-actions { display: flex; flex-wrap: wrap; gap: .3rem; }
-.rj-kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .8rem; }
-.rj-kind-group { display: grid; gap: .25rem; align-content: start; }
-.report-jobs .rj-kind-group label.rj-check { align-items: flex-start; font-weight: 500; font-size: .86rem; }
 .report-jobs .table-actions .icon-action { width: 2rem; min-width: 2rem; height: 2rem; padding: 0; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: .95rem; line-height: 1; }
-.report-jobs .table-actions a.rj-download { background: #2f6e4b; color: #fff; border: 0; font-weight: 800; }
-.report-jobs .table-actions a.rj-download:hover { background: #1f5f3a; }
-.report-jobs #rj-runs th:nth-child(1) { width: 6%; }
-.report-jobs #rj-runs th:nth-child(2) { width: 20%; }
-.report-jobs #rj-runs th:nth-child(3), .report-jobs #rj-runs th:nth-child(4) { width: 8%; }
-.report-jobs #rj-runs th:nth-child(5) { width: 16%; }
-.report-jobs #rj-runs th:nth-child(6) { width: 9%; }
-.report-jobs #rj-runs th:nth-child(7) { width: 17%; }
-.report-jobs #rj-runs th:nth-child(8) { width: 5%; }
-.report-jobs #rj-runs th:nth-child(9) { width: 11%; }
-/* The box that selects a run (for editors), before its number. */
-.report-jobs #rj-runs td.rj-run-id { white-space: nowrap; }
-.report-jobs .rj-run-check { display: inline-flex; align-items: center; margin: 0 .4rem 0 0; vertical-align: -.12rem; cursor: pointer; }
-.report-jobs .rj-run-check input { width: 1rem; height: 1rem; margin: 0; cursor: pointer; }
-.report-jobs #rj-runs td.rj-size { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.report-jobs #rj-runs small { display: block; margin-top: .2rem; }
-/* Every field of an artifact entry on one row on wide screens. */
-.report-jobs .rj-one-row { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(0, 1fr); align-items: end; }
-.report-jobs .rj-one-row > label[hidden] { display: none; }
-.report-jobs .rj-one-row > .icon-action { justify-self: end; align-self: end; margin-bottom: .35rem; }
-/* NSA vs SA: how a Scoring artifact shows each NR Mode, while its NR Mode is NSA vs SA. */
-.report-jobs .rj-nr-views { grid-auto-columns: minmax(0, 18rem); }
-.report-jobs .rj-one-row > label { min-width: 0; font-size: .86rem; }
-@media (max-width: 1100px) { .report-jobs .rj-one-row { grid-auto-flow: row; grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr)); } }
-/* CDRs in one card per type with Select All/None, as in Network Insights. */
-.report-jobs .rj-dataset-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .8rem; margin-top: .4rem; }
-.report-jobs .rj-dataset-groups.is-disabled { opacity: .5; }
-.report-jobs .rj-dataset-group { display: grid; gap: .3rem; align-content: start; padding: .7rem .8rem; border: 1px solid rgba(31, 95, 58, .25); border-radius: 12px; background: #eef8f1; }
-.report-jobs .rj-dataset-head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-bottom: .2rem; }
-.report-jobs .rj-dataset-head h4 { margin: 0; color: #1f5f3a; font-size: .92rem; }
-.report-jobs .rj-dataset-head h4 span { color: #4f7c62; font-weight: 600; }
-.report-jobs .rj-dataset-toggle { flex: 0 0 auto; padding: .2rem .7rem; border: 1px solid rgba(31, 95, 58, .35); border-radius: 999px; background: #fff; color: #1f5f3a; font: inherit; font-size: .76rem; font-weight: 700; box-shadow: none; cursor: pointer; }
-.report-jobs .rj-dataset-toggle:hover:not(:disabled) { background: #e3f3e9; }
-.report-jobs .rj-dataset-toggle:disabled { opacity: .5; cursor: default; }
-.report-jobs .rj-dataset-group label.rj-check { align-items: flex-start; font-weight: 500; font-size: .86rem; }
-/* Collapsible artifact cards and entries. */
-.report-jobs .rj-card[data-rj-section] { position: relative; }
-.report-jobs .rj-card[data-rj-section] > .rj-collapse { position: absolute; top: .8rem; right: .9rem; }
-.report-jobs .rj-card[data-rj-section] > .rj-card-toggle { padding-right: 7rem; }
-.report-jobs .rj-card.is-collapsed > :not(.rj-card-toggle):not(.rj-collapse) { display: none !important; }
-.report-jobs .rj-entry-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; }
-.report-jobs .rj-entry-title { color: #1f5f3a; font-size: .92rem; }
-.report-jobs .rj-entry.is-collapsed > :not(.rj-entry-head) { display: none !important; }
-.report-jobs .rj-collapse { flex: 0 0 auto; cursor: pointer; font: inherit; font-size: .78rem; font-weight: 700; }
-/* Filter dropdowns: one per column, left-aligned options and a single open menu. */
-.report-jobs .rj-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 13.5rem), 1fr)); gap: .55rem; align-items: start; }
 .report-jobs .rj-multi { min-width: 0; }
 .report-jobs .rj-multi > summary { align-items: center; min-height: 2.6rem; box-sizing: border-box; border-color: rgba(31, 95, 58, .3); color: #1d3b2b; }
 .report-jobs .rj-multi[open] > summary { border-color: #2f6e4b; box-shadow: 0 0 0 3px rgba(79, 179, 122, .18); }
@@ -131,299 +47,20 @@
 .report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-option span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-preset { margin-bottom: .2rem; border: 1px solid rgba(31, 95, 58, .25); background: #f1f9f4; color: #1f5f3a; }
 .report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-option:has(input:disabled) { opacity: .45; cursor: default; }
-
-/* Saved jobs and their runs: every action on one row, in a light toolbar of icon buttons (each icon drawn in the colour of
-   its action, which tints its button on hover; the label stays for screen readers and tooltips), and the dates of Next
-   Run and Last Run above their times, so Artifacts takes the room. */
-.reporting-jobs-table .table-actions.rj-task-actions { display: inline-flex; flex-wrap: nowrap; gap: .15rem; padding: .2rem; border: 1px solid #dbe3e8; border-radius: 10px; background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, .06); white-space: nowrap; }
-.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action { --rj-action: #475467; --rj-action-tint: #eef2f6; display: inline-grid; place-items: center; box-sizing: border-box; width: 1.75rem; min-width: 1.75rem; height: 1.75rem; min-height: 0; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--rj-action); box-shadow: none; font-size: 0 !important; line-height: 0; text-decoration: none; transform: none; transition: background-color .15s ease, color .15s ease; }
-.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action:hover:not(:disabled), .report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action:focus-visible { background: var(--rj-action-tint); color: var(--rj-action); box-shadow: none; transform: none; }
-.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action:focus-visible { outline: 2px solid color-mix(in srgb, var(--rj-action) 45%, transparent); outline-offset: 1px; }
-.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action:disabled { opacity: .35; cursor: not-allowed; }
-.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .icon-action::before { content: ''; width: 1rem; height: 1rem; background: currentColor; -webkit-mask: var(--rj-icon) center / contain no-repeat; mask: var(--rj-icon) center / contain no-repeat; }
-.report-jobs #rj-tasks .rj-task-actions [aria-label="Run now"] { --rj-action: #1f7a4d; --rj-action-tint: #e3f3e9; }
-.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .rj-download { --rj-action: #1f5f9e; --rj-action-tint: #e3f0fc; }
-.report-jobs #rj-tasks .rj-task-actions [aria-label="Delete the job and its runs"] { --rj-action: #b42318; --rj-action-tint: #fdecec; }
-.report-jobs #rj-tasks .rj-task-actions [aria-label="Run now"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 4.6v10.8l8.6-5.4z' fill='black'/%3E%3C/svg%3E"); }
-.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .rj-download { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 3.5v9M6.2 8.9 10 12.7l3.8-3.8M4.5 16.2h11'/%3E%3C/svg%3E"); }
-.report-jobs #rj-runs .rj-task-actions .rj-rerun { --rj-action: #1f7a4d; --rj-action-tint: #e3f3e9; --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15.6 10.2a5.6 5.6 0 1 1-1.7-4.1'/%3E%3Cpath d='M15.4 3.6v3.6h-3.6'/%3E%3C/svg%3E"); }
-.report-jobs :is(#rj-tasks, #rj-runs) .rj-task-actions .rj-stop { --rj-action: #b54708; --rj-action-tint: #fef0e6; --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5.4' y='5.4' width='9.2' height='9.2' rx='2' fill='black'/%3E%3C/svg%3E"); }
-.report-jobs #rj-runs .rj-task-actions .rj-run-delete { --rj-action: #b42318; --rj-action-tint: #fdecec; --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5.6 5.6 8.8 8.8M14.4 5.6l-8.8 8.8' stroke-width='2.5'/%3E%3C/svg%3E"); }
-.report-jobs #rj-tasks .rj-task-actions [aria-label="Edit"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.8 4.2a1.8 1.8 0 0 1 2.6 0l.4.4a1.8 1.8 0 0 1 0 2.6l-8.4 8.4-3.6.9.9-3.6z'/%3E%3Cpath d='m11.4 5.6 3 3'/%3E%3C/svg%3E"); }
-.report-jobs #rj-tasks .rj-task-actions [aria-label="Duplicate (disabled copy)"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='7.2' y='7.2' width='9.3' height='9.3' rx='2'/%3E%3Cpath d='M12.8 4.3H5.4a1.1 1.1 0 0 0-1.1 1.1v7.4'/%3E%3C/svg%3E"); }
-.report-jobs #rj-tasks .rj-task-actions [aria-label="Delete the job and its runs"] { --rj-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5.6 5.6 8.8 8.8M14.4 5.6l-8.8 8.8' stroke-width='2.5'/%3E%3C/svg%3E"); }
-.report-jobs #rj-tasks .rj-time-cell > span { display: block; white-space: nowrap; }
-/* (Recurrence and Email wrap between words, never inside one, when Artifacts takes the room.) */
-.report-jobs #rj-tasks td:nth-child(4), .report-jobs #rj-tasks td:nth-child(6) { overflow-wrap: normal; }
-/* Network Insights: its seven filters share one row on wide screens. */
-.report-jobs .rj-filters.rj-filters-one-row { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)); }
-/* Saved jobs: narrow Name and Email columns so Last Run and Status keep one line. */
-#rj-tasks th:nth-child(1), #rj-tasks td:nth-child(1) { width: 18rem; overflow-wrap: anywhere; }
-/* (The artifacts keep a readable width on narrow screens, where the table scrolls sideways.) */
-#rj-tasks td:nth-child(2) > .rj-artifacts { min-width: 15rem; }
-#rj-tasks th:nth-child(6), #rj-tasks td:nth-child(6) { width: 5.5rem; }
-#rj-tasks th:nth-child(7), #rj-tasks td:nth-child(7) { white-space: nowrap; }
-#rj-tasks th:nth-child(8), #rj-tasks td:nth-child(8) { width: 1%; white-space: nowrap; }
-#rj-tasks .rj-status { white-space: nowrap; }
 /* Reporting palette in the artifact panels: green checkboxes, highlighted row titles and more room between rows. */
 .report-jobs input[type="checkbox"], .report-jobs input[type="radio"] { accent-color: #2f8a57; }
-.report-jobs .rj-card-body, .report-jobs .rj-entry { gap: 1.1rem; }
-.report-jobs .rj-card-body > strong, .report-jobs .rj-entry > strong, .report-jobs .rj-inline-label {
-  color: #1f6b43; font-weight: 800; letter-spacing: .01em;
-}
-.report-jobs .rj-card-body > strong, .report-jobs .rj-entry > strong { margin-bottom: -.55rem; }
-.report-jobs .rj-inline { row-gap: .55rem; }
-/* The artifact checkbox reads as the title of its panel; its output formats are compact chips below it. */
-.report-jobs .rj-card > .rj-card-toggle > strong { color: #174d31; font-size: 1.12rem; font-weight: 850; }
-.report-jobs .rj-card > .rj-card-toggle > input { width: 1.35rem; height: 1.35rem; }
-.report-jobs .rj-formats { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
-/* Every row of choices (formats, aggregation, CDF comparison, grouping, levels…) uses the same chips. */
-.report-jobs label.rj-format-chip, .report-jobs .rj-inline label.rj-check { gap: .35rem; padding: .22rem .7rem .22rem .5rem; border: 1px solid rgba(47, 138, 87, .35); border-radius: 999px; background: #fff; font-size: .86rem; font-weight: 650; cursor: pointer; }
-.report-jobs label.rj-format-chip:has(input:checked), .report-jobs .rj-inline label.rj-check:has(input:checked) { border-color: #2f8a57; background: #e8f5ed; color: #174d31; }
-.report-jobs label.rj-format-chip:has(input:disabled), .report-jobs .rj-inline label.rj-check:has(input:disabled) { opacity: .7; cursor: default; }
-.report-jobs label.rj-format-chip input, .report-jobs .rj-inline label.rj-check input { width: .9rem; height: .9rem; }
-.report-jobs label.rj-format-chip, .report-jobs .rj-inline label.rj-check { width: fit-content; justify-self: start; align-self: center; }
 .report-jobs .rj-multi .rj-multi-toggle { width: 100%; margin: .1rem 0 .25rem; padding: .42rem .55rem; border: 0; border-radius: 7px; background: #e3f3e9; color: #1f6b43; font-size: .76rem; font-weight: 750; text-align: left; box-shadow: none; cursor: pointer; }
 .report-jobs .rj-multi .rj-multi-toggle:hover { background: #d0ebdb; color: #174d31; }
 .report-jobs .rj-multi-field { display: grid; gap: .3rem; min-width: 0; }
 .report-jobs .rj-multi-label { color: #1f6b43; font-size: .82rem; font-weight: 800; }
-/* Job header: the name and a visible Enabled switch, before the schedule, the delivery and the artifacts. */
-.report-jobs .rj-job-head { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem 1.5rem; }
-.report-jobs .rj-job-head .rj-name { flex: 1 1 22rem; }
-.report-jobs label.rj-enabled-switch { display: flex; flex-direction: row; align-items: center; gap: .7rem; padding: .55rem .9rem; border: 1px solid rgba(47, 138, 87, .35); border-radius: 14px; background: #fff; cursor: pointer; }
-.report-jobs .rj-enabled-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.report-jobs .rj-switch { position: relative; flex: 0 0 auto; width: 2.8rem; height: 1.55rem; border-radius: 999px; background: #c9d3cd; transition: background .15s ease; }
-.report-jobs .rj-switch::after { content: ''; position: absolute; top: .18rem; left: .2rem; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); transition: transform .15s ease; }
-.report-jobs .rj-enabled-switch input:checked + .rj-switch { background: #2f8a57; }
-.report-jobs .rj-enabled-switch input:checked + .rj-switch::after { transform: translateX(1.22rem); }
-.report-jobs .rj-enabled-switch input:focus-visible + .rj-switch { outline: 3px solid rgba(47, 138, 87, .35); outline-offset: 2px; }
-.report-jobs .rj-enabled-text { display: grid; gap: .1rem; }
-/* The Enable/Disable switch of each job in the Reporting Jobs table. */
-.report-jobs label.rj-table-switch { gap: .5rem; padding: .2rem 0; border: 0; background: transparent; white-space: nowrap; }
-.report-jobs .rj-table-switch-text { color: var(--muted); font-size: .84rem; font-weight: 700; }
-.report-jobs .rj-table-switch input:checked ~ .rj-table-switch-text { color: #1f6b44; }
-.report-jobs .rj-table-switch:has(input:disabled) { cursor: default; opacity: .7; }
-.report-jobs .rj-enabled-text strong { color: #174d31; font-size: 1rem; }
-.report-jobs .rj-enabled-text small { color: var(--muted); font-weight: 500; }
-.report-jobs .rj-enabled-switch:has(input:not(:checked)) .rj-enabled-text strong { color: #8a3b2e; }
-/* Weekly schedule: the seven days share one row beside the recurrence and time. */
-.report-jobs #rj-schedule-weekdays { grid-column: span 3; flex-wrap: nowrap; align-self: end; padding-bottom: .55rem; overflow-x: auto; }
-@media (max-width: 900px) { .report-jobs #rj-schedule-weekdays { grid-column: 1 / -1; flex-wrap: wrap; } }
-/* The job editor unfolds inside the saved jobs panel, below the table. */
-.report-jobs .rj-editor-subpanel { margin-top: 1.1rem; padding: 1.1rem 1.2rem 1.2rem; border: 1px solid rgba(47, 138, 87, .35); border-left: 5px solid #2f8a57; border-radius: 16px; background: #f6fbf8; box-shadow: 0 10px 26px rgba(23, 77, 49, .08); transform-origin: top; }
-.report-jobs .rj-editor-subpanel .rj-editor-head { margin-bottom: .8rem; }
-.report-jobs .rj-editor-subpanel .rj-editor-head .eyebrow { margin: 0 0 .15rem; }
-.report-jobs .rj-editor-subpanel .rj-editor-head h3 { margin: 0; color: #174d31; font-size: 1.25rem; }
-.report-jobs .rj-editor-subpanel.is-opening { animation: rj-editor-unfold .22s ease-out; }
-.report-jobs .rj-editor-subpanel.is-closing { animation: rj-editor-fold .18s ease-in forwards; }
 @keyframes rj-editor-unfold { from { opacity: 0; transform: scaleY(.96) translateY(-6px); } to { opacity: 1; transform: none; } }
 @keyframes rj-editor-fold { from { opacity: 1; transform: none; } to { opacity: 0; transform: scaleY(.96) translateY(-6px); } }
-@media (prefers-reduced-motion: reduce) { .report-jobs .rj-editor-subpanel.is-opening, .report-jobs .rj-editor-subpanel.is-closing { animation-duration: .01s; } }
-.reporting-jobs-table tr.rj-editing td { background: #e3f3e9; }
-.reporting-jobs-table tr.rj-editing td:first-child { box-shadow: inset 4px 0 0 #2f8a57; font-weight: 700; }
-/* Close button in the editor's top-right corner, like Cancel. */
-.report-jobs .rj-editor-subpanel { position: relative; }
-/* Close leaves the editor (an exit icon and its name), unlike the round × that remove items. */
-.report-jobs .rj-editor-close { position: absolute; top: .8rem; right: .8rem; display: inline-flex; align-items: center; gap: .35rem; min-height: 0; padding: .45rem .9rem .45rem .75rem; border: 0; border-radius: 999px; background: #d64545; color: #fff; font-size: .82rem; font-weight: 700; line-height: 1; box-shadow: 0 4px 10px rgba(214, 69, 69, .3); cursor: pointer; }
-.report-jobs .rj-editor-close svg { width: 1rem; height: 1rem; flex: none; }
-.report-jobs .rj-editor-close:hover { background: #b83232; }
-.report-jobs .rj-editor-close:focus-visible { outline: 3px solid rgba(214, 69, 69, .35); outline-offset: 2px; }
-/* The editor row of the jobs table: no table styling around the sub-panel. */
-.reporting-jobs-table tr.rj-editor-row > td.rj-editor-cell { padding: .3rem 0 1rem; border: 0; background: transparent; white-space: normal; font-weight: 400; vertical-align: top; }
-.reporting-jobs-table tr.rj-editor-row:hover > td { background: transparent; }
-.reporting-jobs-table tr.rj-editor-row .rj-editor-subpanel { margin-top: 0; }
-/* Job Editor actions: Cancel (red) and Save share the same height. */
-.report-jobs #rj-form .form-actions { display: flex; align-items: stretch; justify-content: flex-end; gap: .7rem; }
-.report-jobs #rj-form .form-actions > button { display: inline-flex; align-items: center; justify-content: center; min-height: 3rem; padding: .7rem 1.6rem; box-sizing: border-box; font-size: 1rem; font-weight: 800; line-height: 1.2; }
-.report-jobs #rj-form #rj-cancel { border: 1px solid #b83232; background: #d64545; color: #fff; box-shadow: 0 6px 14px rgba(214, 69, 69, .25); }
-.report-jobs #rj-form #rj-cancel:hover { background: #b83232; }
-
-/* Job Editor artifacts: each artifact is a white card in the colour of its module (as its tab), with a tinted
-   header band, so it is clear where one artifact ends and the next begins. */
-.report-jobs .rj-card[data-rj-module] { --rj-accent: #1f5f3a; --rj-tint: rgba(31, 95, 58, .07); }
-.report-jobs .rj-card[data-rj-module="dataset_analysis"] { --rj-accent: #0c4c8c; --rj-tint: rgba(12, 76, 140, .07); }
-.report-jobs .rj-card[data-rj-module="network_insights"] { --rj-accent: #4338ca; --rj-tint: rgba(67, 56, 202, .07); }
-.report-jobs .rj-card[data-rj-module="designs"] { --rj-accent: #5b3f99; --rj-tint: rgba(91, 63, 153, .07); }
-.report-jobs .rj-card[data-rj-module="scoring"] { --rj-accent: #176e77; --rj-tint: rgba(23, 110, 119, .08); }
-.report-jobs .rj-card[data-rj-module="non_qualified_calls"] { --rj-accent: #a3204c; --rj-tint: rgba(163, 32, 76, .07); }
-.report-jobs .rj-card[data-rj-module] {
-  margin-top: .4rem; padding: 0; overflow: visible; gap: 0;
-  border: 1px solid color-mix(in srgb, var(--rj-accent) 28%, transparent); border-left: 6px solid var(--rj-accent);
-  border-radius: 14px; background: #fff; box-shadow: 0 8px 22px rgba(18, 31, 43, .07);
-}
-.report-jobs .rj-card[data-rj-module] > .rj-card-toggle {
-  padding: .85rem 7rem .85rem 1rem; border-radius: 8px 13px 0 0; background: var(--rj-tint);
-  border-bottom: 1px solid color-mix(in srgb, var(--rj-accent) 18%, transparent);
-}
-.report-jobs .rj-card[data-rj-module].is-collapsed > .rj-card-toggle { border-bottom: 0; border-radius: 8px 13px 13px 8px; }
-.report-jobs .rj-card[data-rj-module] > .rj-card-toggle > strong { color: var(--rj-accent); }
-.report-jobs .rj-card[data-rj-module] > .rj-card-toggle input { accent-color: var(--rj-accent); }
-.report-jobs .rj-card[data-rj-module] > .rj-card-body { padding: 1rem; }
-.report-jobs .rj-card[data-rj-module] .rj-entry {
-  border: 1px solid color-mix(in srgb, var(--rj-accent) 25%, transparent); border-left: 4px solid color-mix(in srgb, var(--rj-accent) 70%, white);
-  border-radius: 10px; background: #fcfdfe;
-}
-.report-jobs .rj-card[data-rj-module] .rj-entry-title { color: var(--rj-accent); }
-.report-jobs .rj-card[data-rj-module] .rj-card-body > strong, .report-jobs .rj-card[data-rj-module] .rj-entry > strong { color: var(--rj-accent); }
-.report-jobs .rj-card[data-rj-module] .rj-secondary { border-color: color-mix(in srgb, var(--rj-accent) 45%, transparent); color: var(--rj-accent); }
-.report-jobs .rj-card[data-rj-module] .rj-secondary:hover { background: var(--rj-tint); }
-/* Configure report… and Use default of the Scoring report content. */
-.report-jobs .rj-card[data-rj-module] .rj-scoring-report .ghost-link {
-  padding: .45rem .9rem; border: 1px solid color-mix(in srgb, var(--rj-accent) 45%, transparent);
-  background: #fff; color: var(--rj-accent); font-weight: 700;
-}
-.report-jobs .rj-card[data-rj-module] .rj-scoring-report .ghost-link:hover { background: var(--rj-tint); }
-.report-jobs .rj-scoring-report .rj-report-missing { color: #b3261e; font-weight: 700; }
-.report-jobs .rj-card[data-rj-module] input[type="checkbox"] { accent-color: var(--rj-accent); }
-.report-jobs .rj-card[data-rj-module] .rj-inline-label, .report-jobs .rj-card[data-rj-module] .rj-formats > strong { color: var(--rj-accent); }
-.report-jobs .rj-card[data-rj-module] label.rj-format-chip:has(input:checked),
-.report-jobs .rj-card[data-rj-module] .rj-inline label.rj-check:has(input:checked) {
-  border-color: color-mix(in srgb, var(--rj-accent) 60%, white); background: var(--rj-tint); color: var(--rj-accent);
-}
-/* Artifact tabs: one tab per artifact type in its module colour, on top of the panel of the selected
-   artifact (the only one shown). The selected tab has the panel's border and header background and
-   covers the panel's top border, so both read as one piece; the others stay lower and muted. */
-/* The negative bottom margin cancels the form's row gap, so the tabs sit on the panel. */
-.report-jobs .rj-artifact-tabs { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: .25rem; margin: .3rem 0 -1rem; padding: 0 .6rem 0 0; }
-.report-jobs .rj-artifact-tab {
-  --rj-accent: #1f5f3a; display: inline-flex; align-items: center; gap: .45rem; margin-bottom: 0; padding: .45rem .95rem;
-  border: 1px solid color-mix(in srgb, var(--rj-accent) 22%, transparent); border-bottom: 0; border-radius: 10px 10px 0 0;
-  background: color-mix(in srgb, var(--rj-accent) 4%, #f4f6f8); color: color-mix(in srgb, var(--rj-accent) 75%, #6b7785);
-  font: inherit; font-weight: 800; cursor: pointer;
-}
-.report-jobs .rj-artifact-tab:hover { background: color-mix(in srgb, var(--rj-accent) 10%, white); color: var(--rj-accent); }
-.report-jobs .rj-artifact-tab[aria-selected="true"] {
-  margin-bottom: -1px; padding: .62rem 1.15rem .6rem; border-color: color-mix(in srgb, var(--rj-accent) 28%, transparent);
-  border-top: 3px solid var(--rj-accent); background: color-mix(in srgb, var(--rj-accent) 7%, white); color: var(--rj-accent);
-}
-/* Module artifacts (such as Non-Qualified Calls) sit inside #rj-providers, below the other panels. */
-.report-jobs :is(.rj-artifact-tabs ~ .rj-card, .rj-artifact-tabs ~ #rj-providers > .rj-card)[data-rj-module] { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 14px; }
-.report-jobs :is(.rj-artifact-tabs ~ .rj-card, .rj-artifact-tabs ~ #rj-providers > .rj-card)[data-rj-module] > .rj-card-toggle { border-top-left-radius: 0; }
-.report-jobs .rj-artifact-tab .rj-tab-state { display: inline-grid; place-items: center; width: 1.1rem; height: 1.1rem; border-radius: 50%; border: 2px solid currentColor; font-size: .7rem; line-height: 1; opacity: .55; }
-.report-jobs .rj-artifact-tab.is-included .rj-tab-state { opacity: 1; background: currentColor; }
-.report-jobs .rj-artifact-tab.is-included .rj-tab-state::after { content: '✓'; color: #fff; }
-.report-jobs .rj-artifact-tab[data-module="dataset_analysis"] { --rj-accent: #0c4c8c; }
-.report-jobs .rj-artifact-tab[data-module="network_insights"] { --rj-accent: #4338ca; }
-.report-jobs .rj-artifact-tab[data-module="designs"] { --rj-accent: #5b3f99; }
-.report-jobs .rj-artifact-tab[data-module="scoring"] { --rj-accent: #176e77; }
-.report-jobs .rj-artifact-tab[data-module="non_qualified_calls"] { --rj-accent: #a3204c; }
-.report-jobs .rj-card[data-rj-module].is-tab-hidden { display: none !important; }
-.report-jobs .rj-card[data-rj-module] .rj-filters label { color: color-mix(in srgb, var(--rj-accent) 80%, #17232d); }
-.report-jobs .rj-artifact-tab .rj-tab-icon { display: inline-block; width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
-.report-jobs .rj-artifact-module { font-weight: 700; }
-.report-jobs .rj-artifact-entries { margin: .1rem 0 .2rem; padding-left: 1.1rem; list-style: circle; display: grid; gap: .1rem; }
-/* What a favourite Bundle Report Template includes, below its name. */
-.report-jobs .rj-artifact-contents { margin: .15rem 0 .25rem; padding-left: 1.1rem; list-style: square; display: grid; gap: .1rem; color: var(--muted); font-size: .82rem; }
-.report-jobs .rj-artifact-section { color: var(--text); font-weight: 600; }
-.report-jobs .rj-artifact-missing { margin: .15rem 0 .1rem; color: #b42318; font-size: .82rem; font-weight: 700; }
-/* Jobs ordered by dragging their handle. */
-/* The tab on the left of the name of a job (for editors), as on the cards of the Favourites Filters of Scoring & GAP
-   Analysis: its box on top selects the job, the rest of the tab drags it (or moves it with the up and down arrow keys). */
-.report-jobs #rj-tasks td.rj-task-name-cell.is-editable { position: relative; padding-left: 2.15rem; }
-.report-jobs .rj-drag-handle { position: absolute; top: .55rem; bottom: .55rem; left: .4rem; width: 1.35rem; min-width: 0; height: auto; min-height: 0; margin: 0; padding: 0; border: 1px solid #a9bccb; border-radius: 9px; background: #d7e3ec url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 14'%3E%3Cg fill='%233f5466'%3E%3Ccircle cx='1.5' cy='2' r='1'/%3E%3Ccircle cx='4.5' cy='2' r='1'/%3E%3Ccircle cx='1.5' cy='7' r='1'/%3E%3Ccircle cx='4.5' cy='7' r='1'/%3E%3Ccircle cx='1.5' cy='12' r='1'/%3E%3Ccircle cx='4.5' cy='12' r='1'/%3E%3C/g%3E%3C/svg%3E") center calc(50% + .95rem) / .45rem auto no-repeat; box-shadow: none; color: transparent; font-size: 0 !important; cursor: grab; user-select: none; touch-action: none; transform: none; }
-.report-jobs .rj-drag-handle:hover, .report-jobs .rj-drag-handle:focus-visible { background-color: #c4d5e2; border-color: #7f98ab; box-shadow: none; transform: none; outline: none; }
-.report-jobs .rj-drag-handle:active, .report-jobs #rj-tasks tr.rj-dragging .rj-drag-handle { cursor: grabbing; }
-.report-jobs .rj-task-check-box { position: absolute; z-index: 1; top: .55rem; left: .4rem; display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 1.35rem; height: 1.9rem; margin: 0; border: 1px solid #a9bccb; border-bottom-color: #c4d5e2; border-radius: 9px 9px 0 0; background: #fff; cursor: pointer; }
-.report-jobs .rj-task-check-box:hover { background: #e6f3f1; }
-.report-jobs .rj-task-check-box:has(input:checked) { border-color: #2f8a57; background: #dff1ee; }
-.report-jobs #rj-tasks tr.rj-dragging { opacity: .45; outline: 2px dashed #2f8a57; outline-offset: -2px; }
-/* Select all and the buttons that act on the checked jobs (Move Up, Move Down, Run, Stop, Download and Delete), as on the
-   Favourites Filters of Scoring & GAP Analysis. The bar and the header of its table form a block that stays at the top,
-   under the bar of the sections, while the page is scrolled (the Run History has the same block). */
-.report-jobs .rj-sticky-head { position: sticky; top: calc(var(--module-tabs-offset, 0px) + var(--section-top-offset, 0px)); z-index: 4; display: flex; flex-wrap: wrap; align-items: center; column-gap: 1rem; background: #fbf9f4; }
 /* (While filters are on, how many rows they show, on the right of the bar.) */
 .report-jobs .rj-filter-count { margin: 0 0 .6rem auto; padding: .28rem .7rem; border: 1px solid rgba(31, 95, 58, .25); border-radius: 999px; background: #e3f3e9; color: #1f5f3a; font-size: .78rem; font-weight: 800; white-space: nowrap; }
 .report-jobs .rj-filter-count[hidden] { display: none; }
-.report-jobs .rj-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: 0 0 .6rem; padding: .4rem 0; background: #fbf9f4; }
-.report-jobs .rj-bulk[hidden] { display: none; }
-.report-jobs .rj-runs-bulk .form-note { margin: 0; }
-.report-jobs .rj-runs-bulk [data-tone="error"] { color: #b42318; font-weight: 700; }
-.report-jobs .rj-runs-bulk [data-tone="done"] { color: #1f6b44; font-weight: 700; }
-/* Held at the top, a solid band as wide as the panel covers the page from the top of the window (below the tabs of the
-   modules) down to the header, so the rows scroll under it and the bar of the sections stays on top. */
-.report-jobs .rj-sticky-head.is-stuck::before { content: ''; position: absolute; top: calc(-1 * var(--section-top-offset, 0px)); right: -1.55rem; bottom: 0; left: -1.55rem; z-index: -1; background: #fbf9f4; box-shadow: 0 1px 0 #d8dee3, 0 10px 18px rgba(18, 31, 43, .12); pointer-events: none; }
-/* (Its panel clips as before without being a scroll container, which would keep the block from staying at the top.) */
-.report-jobs details.collapsible-panel:has(> .collapsible-panel-body > .rj-sticky-head) { overflow: clip; }
-/* The header in the block takes the widths of the columns of its table (report_jobs.js) and follows it sideways; the copy
-   kept in the table for those widths is hidden above its rows (also on phones, where the table scrolls sideways). */
-.report-jobs .rj-head-wrap { flex: 1 0 100%; overflow: hidden; }
-.report-jobs .reporting-jobs-table.rj-head-table { table-layout: fixed; min-width: 0; }
-.report-jobs :is(#rj-tasks, #rj-runs) { margin-top: calc(-1 * var(--rj-head-height, 0px)); }
-.report-jobs :is(#rj-tasks, #rj-runs) > thead th { position: static; visibility: hidden; }
-.report-jobs .rj-select-all { display: inline-flex; align-items: center; gap: .35rem; margin: 0; color: #46606d; font-size: .78rem; font-weight: 800; cursor: pointer; }
-.report-jobs .rj-select-all input, .report-jobs .rj-task-check { width: 1rem; height: 1rem; margin: 0; cursor: pointer; }
-/* (Between the modules and the NR Modes of a job.) */
-.report-jobs .rj-task-separator { flex: 0 0 auto; width: 2px; height: 1.05rem; margin: 0 .3rem; border-radius: 1px; background: #7b8794; }
-/* The jobs just moved with Move Up or Move Down light up in amber for a moment where they land. */
-@keyframes rj-moved { 0%, 40% { box-shadow: inset 0 0 0 3px #f59e0b; background-color: #fff4dc; } }
-.report-jobs #rj-tasks tr.rj-moved > td { animation: rj-moved 1.6s ease-out; }
-/* The first line of the name of a job: its box and its modules, abbreviated in the colours of their artifact panels,
-   always on one line. */
-.report-jobs .rj-task-modules { display: flex; flex-wrap: nowrap; align-items: center; gap: .22rem; margin: 0 0 .3rem; white-space: nowrap; }
-.report-jobs .rj-task-modules .rj-task-mode { padding: .05rem .38rem; border-radius: 5px; font-size: .66rem; }
-.report-jobs .rj-task-module { --rj-accent: #1f5f3a; flex: 0 0 auto; padding: .05rem .34rem; border: 1px solid color-mix(in srgb, var(--rj-accent) 55%, white); border-radius: 5px; background: color-mix(in srgb, var(--rj-accent) 10%, white); color: var(--rj-accent); font-size: .66rem; font-weight: 850; line-height: 1.25; letter-spacing: .03em; }
-.report-jobs .rj-task-module[data-module="scoring"] { --rj-accent: #176e77; }
-.report-jobs .rj-task-module[data-module="network_insights"] { --rj-accent: #4338ca; }
-.report-jobs .rj-task-module[data-module="non_qualified_calls"] { --rj-accent: #a3204c; }
-.report-jobs .rj-task-module[data-module="designs"] { --rj-accent: #5b3f99; }
-.report-jobs .rj-task-module[data-module="dataset_analysis"] { --rj-accent: #0c4c8c; }
-/* The labels on top of the name of a job (scopeTabs in report_jobs.js), in the colours of those of the Favourites Filters of
-   Scoring & GAP Analysis: the area of each artifact in the colour of its field, and the NR Modes outlined. */
-.report-jobs .rj-task-tabs { display: flex; flex-wrap: wrap; gap: .25rem; margin: 0 0 .35rem; }
-/* (Each on one line: the column widens for the longest, up to a limit beyond which the end of its values shows on hover.) */
-.report-jobs .rj-task-scope, .report-jobs .rj-task-mode { box-sizing: border-box; max-width: 22rem; padding: .1rem .5rem; border: 1px solid; border-radius: 6px; font-size: .72rem; font-weight: 850; line-height: 1.25; letter-spacing: .01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.report-jobs .rj-task-scope { color: #fff; }
-.report-jobs .rj-task-scope[data-dimension="all"] { border-color: #34495e; background: #34495e; }
-.report-jobs .rj-task-scope[data-dimension="region"] { border-color: #c2185b; background: #c2185b; }
-.report-jobs .rj-task-scope[data-dimension="cluster"] { border-color: #4d7c0f; background: #4d7c0f; }
-.report-jobs .rj-task-scope[data-dimension="city"] { border-color: #b06d00; background: #b06d00; }
-.report-jobs .rj-task-scope[data-dimension="operator"] { border-color: #2458a6; background: #2458a6; }
-.report-jobs .rj-task-scope[data-dimension="vendor"] { border-color: #6941a5; background: #6941a5; }
-/* The campaigns of the job, on a line of their own below them, outlined in slate. */
-.report-jobs .rj-task-campaigns { display: flex; flex-wrap: wrap; gap: .25rem; margin: 0 0 .35rem; }
-.report-jobs .rj-task-campaign { box-sizing: border-box; max-width: 22rem; padding: .1rem .5rem; border: 1px solid #94a3b8; border-radius: 6px; background: #f1f5f9; color: #334155; font-size: .72rem; font-weight: 750; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The name of the job, below its labels (in the Reporting Jobs table and the Run History), in bold so that it stands out. */
-.report-jobs .rj-task-name { display: block; margin-top: .15rem; color: var(--text); font-size: 1.02rem; font-weight: 800; line-height: 1.3; letter-spacing: -.005em; }
-.report-jobs .rj-task-mode { flex: 0 0 auto; border-color: #1d4ed8; background: #fff; color: #1d4ed8; letter-spacing: .02em; white-space: nowrap; }
-.report-jobs .rj-task-mode[data-nr-mode="sa"] { border-color: #be185d; color: #be185d; }
-.report-jobs .rj-task-mode[data-nr-mode="nsa-vs-sa"] { border-color: #6d3fb0; color: #4b5563; }
-.report-jobs .rj-task-mode [data-nr-mode="nsa"] { color: #1d4ed8; }
-.report-jobs .rj-task-mode [data-nr-mode="sa"] { color: #be185d; }
-.report-jobs .rj-based-on { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .78rem; font-weight: 700; background: #e3edf9; color: #1f4f8a; white-space: nowrap; }
-.report-jobs .rj-based-on-favourite { background: #e3f3e9; color: #1f6b44; }
-/* Jobs counted in the header of their panel, Bundle Report Template and Manual Artifacts in the colours of Based On. */
-.report-jobs .rj-summary-badges { flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
-.report-jobs .rj-count { padding: .38rem .7rem; font-size: .82rem; font-weight: 800; line-height: 1.1; white-space: nowrap; }
-.report-jobs .rj-count-total { background: linear-gradient(135deg, #1f5f3a, #3f9a66); border-color: #1f5f3a; color: #fff; }
-.report-jobs .rj-count-favourite { background: #e3f3e9; border-color: rgba(31, 107, 68, .35); color: #1f6b44; }
-.report-jobs .rj-count-manual { background: #e3edf9; border-color: rgba(31, 79, 138, .35); color: #1f4f8a; }
-.report-jobs .rj-format { font-weight: 800; }
-.report-jobs .rj-format-ppt { color: #c4461f; }
-.report-jobs .rj-format-word { color: #2b5797; }
-.report-jobs .rj-format-excel { color: #1d7044; }
-.report-jobs a.rj-format { text-decoration: none; }
-.report-jobs a.rj-format:hover, .report-jobs a.rj-format:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
 .report-jobs .rj-duration { color: #5b6377; font-weight: 600; white-space: nowrap; }
-/* The campaigns of an entry choose its CDRs; the CDRs used now are listed below them. */
-.rj-campaign-picker{display:grid;gap:.35rem;min-width:0}
-.rj-campaign-values{max-width:min(26rem,100%)}
-/* Campaigns beside NR Mode looks like the other fields of its row: the same label and the same box as a select. */
-.report-jobs .rj-one-row .rj-campaign-field{min-width:0;max-width:none}
-.report-jobs .rj-one-row .rj-campaign-field .rj-multi-field{gap:.45rem}
-.report-jobs .rj-one-row .rj-campaign-field .rj-multi-label{color:var(--muted);font-size:.86rem;font-weight:400}
-.report-jobs .rj-one-row .rj-campaign-field .rj-multi{min-width:0}
-.report-jobs .rj-one-row .rj-campaign-field .rj-multi > summary{min-height:2.95rem;padding:.85rem 1rem;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.9);color:var(--text);font-size:.86rem;font-weight:400}
-.report-jobs .rj-one-row .rj-campaign-field .rj-multi-caption{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.report-jobs .rj-one-row .rj-campaign-slot{min-width:0}
-/* CDR Analysis: NR Mode and Campaigns alone in their row. */
-.report-jobs .rj-da-scope{max-width:36rem}
-.report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-exclusive span{font-style:italic;font-weight:800}
-.report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-exclusive-last{margin-bottom:.3rem;border-bottom:1px solid var(--line);border-radius:7px 7px 0 0;padding-bottom:.5rem}
-.rj-auto-cdrs{display:grid;gap:.45rem;margin:.2rem 0 0;padding:.65rem .75rem;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.55)}
-.rj-auto-cdrs-caption,.rj-auto-cdrs-left{margin:0;font-size:.74rem}
-.rj-auto-cdrs-left{color:#795b20;font-weight:700}
-.rj-filters > .rj-campaign-picker{grid-column:1/-1}
-.rj-campaign-picker .rj-campaign-values .rj-multi{min-width:14rem}
+.report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-exclusive span {font-style:italic;font-weight:800}
+.report-jobs .rj-multi .workspace-user-picker-menu label.rj-multi-exclusive-last {margin-bottom:.3rem;border-bottom:1px solid var(--line);border-radius:7px 7px 0 0;padding-bottom:.5rem}
 /* Bundle Report Template: common filters, sections with their sub-modules (ordered by dragging) and the preview dialog. */
 .bundle-report-template-panel .brt-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: .7rem 1rem; }
 .bundle-report-template-panel .brt-field { display: grid; gap: .3rem; min-width: 0; color: var(--muted); font-size: .86rem; }
@@ -459,11 +96,9 @@
 .bundle-report-template-panel label.brt-campaigns-field { color: #8a5a00; font-weight: 800; }
 .bundle-report-template-panel label.brt-campaigns-field select { border-color: #e0a526; background-color: #fff6dc; color: #4a3500; font-weight: 700; box-shadow: inset 4px 0 0 #e0a526; }
 .bundle-report-template-panel label.brt-campaigns-field select:hover { background-color: #ffeec0; }
-/* Without favourite Bundle Report Templates, the tip of the Job Editor stands out in blue. */
-.report-jobs .rj-favourite-tip { margin: .2rem 0 .6rem; padding: .8rem 1rem; border: 1px solid #8fbbe3; border-left: 6px solid #2f7fc1; border-radius: 12px; background: #eaf3fc; color: #17426b; font-size: .92rem; font-weight: 600; line-height: 1.45; }
-/* The Theme of a Bundle Report Template and of a Reporting Job stands out in violet. */
-.bundle-report-template-panel .brt-theme-field, .report-jobs .rj-job-theme label { color: #5b2fa6; font-weight: 800; }
-.bundle-report-template-panel .brt-theme-field select, .report-jobs .rj-job-theme select { border-color: #9b7ad8 !important; background-color: #f4eeff !important; color: #3d1d78 !important; font-weight: 700; box-shadow: inset 4px 0 0 #9b7ad8; }
+/* The Theme of a report stands out in violet. */
+.bundle-report-template-panel .brt-theme-field { color: #5b2fa6; font-weight: 800; }
+.bundle-report-template-panel .brt-theme-field select { border-color: #9b7ad8 !important; background-color: #f4eeff !important; color: #3d1d78 !important; font-weight: 700; box-shadow: inset 4px 0 0 #9b7ad8; }
 /* Under the fields of the cover. */
 .bundle-report-template-panel .brt-chart-pictures { color: var(--text); }
 .bundle-report-template-panel .rj-multi-caption { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -531,13 +166,6 @@
 .brt-dialog-head { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: 1rem 1.2rem .8rem; background: linear-gradient(135deg, #1f5f3a, #4fb37a); color: #fff; }
 .brt-dialog-head .eyebrow { color: rgba(255, 255, 255, .85); margin: 0; }
 .brt-dialog-head h2 { margin: .1rem 0 0; font-size: 1.25rem; }
-/* PowerPoint or Word: both are generated before the preview opens, so switching is immediate. */
-.brt-format-switch { display: inline-flex; align-self: center; gap: .2rem; margin-left: auto; padding: .2rem; border-radius: 999px; background: rgba(255, 255, 255, .16); }
-.brt-format-switch[hidden] { display: none; }
-.brt-format-switch button { padding: .38rem .95rem; border: 0; border-radius: 999px; background: transparent; color: #fff; font-size: .86rem; font-weight: 800; cursor: pointer; }
-.brt-format-switch button:hover { background: rgba(255, 255, 255, .18); }
-.brt-format-switch button.is-current { background: #fff; color: #1f5f3a; }
-.brt-format-switch button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .brt-dialog-close { width: 2.2rem; height: 2.2rem; padding: 0; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .18); color: inherit; font-size: 1.4rem; line-height: 1; cursor: pointer; }
 .brt-dialog-progress { display: grid; gap: .4rem; padding: 1rem 1.2rem 0; }
 .brt-progress { height: .55rem; border-radius: 999px; background: #e3eee7; overflow: hidden; }
@@ -548,11 +176,7 @@
 .brt-elapsed { font-variant-numeric: tabular-nums; font-weight: 700; }
 .brt-dialog-actions .brt-cancel { color: #b42318; }
 .bundle-report-template-panel [data-brt-export].is-generating { font-variant-numeric: tabular-nums; }
-.brt-warnings { margin: .8rem 1.2rem 0; padding: .6rem .8rem .6rem 1.8rem; border-radius: 10px; background: #fff6dc; color: #6c4a00; font-size: .86rem; }
-.brt-dialog-summary { margin: .8rem 1.2rem 0; }
 .brt-dialog-actions { display: flex; justify-content: flex-end; gap: .6rem; padding: .8rem 1.2rem; border-top: 1px solid var(--line); background: #fff; }
-.brt-download { display: inline-flex; align-items: center; padding: .6rem 1.2rem; border-radius: 999px; background: #2e8c58; color: #fff; font-weight: 800; text-decoration: none; }
-.brt-download:hover, .brt-download:focus-visible { background: #1f5f3a; }
 @media (max-width: 640px) {
   .bundle-report-template-panel .brt-export-actions { margin-left: 0; width: 100%; }
   .bundle-report-template-panel .brt-export-actions .document-export-action { flex: 1 1 0; }
@@ -565,56 +189,8 @@
 .brt-scope { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 14rem) minmax(20rem, 1fr); gap: .7rem; align-items: end; padding-bottom: .7rem; border-bottom: 1px dashed rgba(31, 95, 58, .3); }
 @media (max-width: 900px) { .brt-scope { grid-template-columns: minmax(0, 1fr); } }
 .bundle-report-template-panel .brt-reuse { margin-right: .3rem; font-size: .86rem; color: var(--muted); }
-/* Ready, the preview takes almost the whole screen: the sections and pages on the left, the chosen page on the right
-   with its zoom (wheel, rectangle and buttons). */
-.brt-dialog.is-previewing { width: 98vw; height: 96vh; max-width: none; max-height: none; }
-.brt-dialog[open] > .brt-preview { flex: 1 1 auto; }
-.brt-preview { display: grid; grid-template-columns: minmax(14rem, 19rem) minmax(0, 1fr); min-height: 0; margin-top: .6rem; border-top: 1px solid var(--line); }
-.brt-preview[hidden] { display: none; }
-.brt-preview-nav { overflow: auto; min-height: 0; padding: .6rem .5rem .8rem .8rem; border-right: 1px solid var(--line); background: #f6f9f7; }
-.brt-nav-section { display: grid; gap: .15rem; margin-bottom: .7rem; }
-.brt-nav-heading { justify-self: stretch; padding: .35rem .5rem; border: 0; border-radius: 8px; background: transparent; color: #1f5f3a; font: inherit; font-weight: 800; font-size: .86rem; text-align: left; cursor: pointer; }
-.brt-nav-heading:hover, .brt-nav-heading:focus-visible { background: #e3f3e9; }
-.brt-nav-pages { display: grid; gap: .1rem; margin: 0; padding: 0; list-style: none; }
-.brt-nav-page { display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); align-items: baseline; gap: .3rem; width: 100%; padding: .3rem .5rem; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: .8rem; text-align: left; cursor: pointer; }
-.brt-nav-page:hover:not(:disabled), .brt-nav-page:focus-visible { background: #eaf4ee; }
-.brt-nav-page.is-current { background: #2e8c58; color: #fff; }
-.brt-nav-page:disabled { cursor: default; opacity: .7; }
-.brt-nav-number { color: #6b8a78; font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
-.brt-nav-page.is-current .brt-nav-number { color: rgba(255, 255, 255, .85); }
-.brt-nav-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brt-preview-view { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; }
-.brt-preview-tools { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; padding: .45rem .8rem; border-bottom: 1px solid var(--line); background: #fff; }
-.brt-preview-tools button { min-width: 2.1rem; height: 2.1rem; padding: 0 .55rem; border: 1px solid rgba(31, 95, 58, .3); border-radius: 999px; background: #fff; color: #1f5f3a; font: inherit; font-size: 1.1rem; font-weight: 800; line-height: 1; cursor: pointer; }
-.brt-preview-tools button:hover, .brt-preview-tools button:focus-visible { background: #e3f3e9; }
-.brt-page-label { min-width: 7.5rem; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
-.brt-viewer-separator { width: 1px; height: 1.4rem; margin: 0 .25rem; background: var(--line); }
-.brt-viewer-hint { margin-left: auto; color: var(--muted); font-size: .76rem; }
-.brt-viewer-stage { position: relative; overflow: hidden; min-height: 0; cursor: crosshair; background: #dfe7e2; touch-action: none; user-select: none; }
-.brt-viewer-stage.is-panning { cursor: grabbing; }
-.brt-viewer-stage.is-loading::after { content: 'Loading the page…'; position: absolute; inset: 0; display: grid; place-items: center; color: #1f5f3a; font-weight: 700; background: rgba(223, 231, 226, .7); }
-.brt-viewer-stage.is-empty::after { content: 'The preview needs LibreOffice: the list on the left shows the title of each slide.'; position: absolute; inset: 0; display: grid; place-items: center; padding: 1rem; color: var(--muted); text-align: center; }
-.brt-viewer-stage img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; background: #fff; box-shadow: 0 6px 24px rgba(18, 32, 43, .25); }
-.brt-viewer-stage img:not([src]) { display: none; }
-.brt-viewer-rect { position: absolute; border: 2px dashed #1f8a52; background: rgba(46, 140, 88, .15); pointer-events: none; }
-@media (max-width: 760px) {
-  .brt-dialog.is-previewing { width: 100vw; height: 100vh; border-radius: 0; }
-  .brt-preview { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 30vh) minmax(0, 1fr); }
-  .brt-preview-nav { border-right: 0; border-bottom: 1px solid var(--line); }
-  .brt-viewer-hint { display: none; }
-}
-
-/* Start from: a favourite Bundle Report Template (the job generates it) or the artifacts designed in the editor. */
-.rj-source { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .6rem; margin-bottom: .8rem; }
-.report-jobs-form .rj-source-option { display: flex; align-items: flex-start; gap: .6rem; padding: .75rem .9rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; cursor: pointer; }
-.report-jobs-form .rj-source-option:has(input:checked) { border-color: #2e8c58; background: #f1faf4; box-shadow: 0 0 0 2px rgba(46, 140, 88, .15); }
-.report-jobs-form .rj-source-option input { flex: 0 0 auto; width: auto; margin: .2rem 0 0; accent-color: #2e8c58; }
-.report-jobs-form .rj-source-option span { display: grid; gap: .15rem; min-width: 0; }
-.report-jobs-form .rj-source-option small { color: var(--muted); font-weight: 500; }
-.rj-favourite-card { display: grid; gap: .6rem; }
-.rj-favourite-card[hidden], [data-rj-source][hidden] { display: none !important; }
-.rj-card[data-rj-source-hidden] { display: none !important; }
-/* Excel-style column filters of the Reporting Jobs and the Run History: white on the green header, the columns filtered
+[data-rj-source][hidden] { display: none !important; }
+/* Excel-style column filters of History: white on the green header, the columns filtered
    underlined, and their menus in the greens of Reporting. */
 .report-jobs .reporting-jobs-table .excel-column-filter-trigger { color: #fff; }
 .report-jobs .reporting-jobs-table .excel-column-filter-trigger:hover, .report-jobs .reporting-jobs-table .excel-column-filter-trigger:focus-visible { background: rgba(255, 255, 255, .14); color: #fff; box-shadow: inset 0 -3px rgba(255, 255, 255, .7); }
@@ -634,11 +210,193 @@
 .rj-column-filter-menu .excel-column-filter-extras { border-color: rgba(31, 95, 58, .16); }
 .rj-column-filter-menu .excel-column-filter-options label.is-blank span { color: #5b7464; }
 .rj-column-filter-menu .excel-column-filter-footer button:last-child { border-color: rgba(31, 95, 58, .45); background: linear-gradient(135deg, #1f5f3a, #4fb37a); color: #fff; }
-/* A floating arrow at the bottom of a table with rows hidden below its scroll, held in the window while the table is in it. */
-.report-jobs .rj-more-rows { position: sticky; bottom: 1.1rem; z-index: 3; display: grid; place-items: center; width: 2.6rem; height: 2.6rem; min-height: 0; margin: -3.4rem auto .8rem; padding: 0; border: 2px solid #fff; border-radius: 999px; background: #2f6e4b; color: #fff; box-shadow: 0 8px 20px rgba(18, 52, 33, .3); animation: rj-more-rows 1.6s ease-in-out infinite; }
-.report-jobs .rj-more-rows:hover:not(:disabled), .report-jobs .rj-more-rows:focus-visible { background: #1f5a3a; color: #fff; }
-.report-jobs .rj-more-rows::before { content: ''; width: 1.15rem; height: 1.15rem; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 3.5v12M4.5 10.5 10 16l5.5-5.5'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 3.5v12M4.5 10.5 10 16l5.5-5.5'/%3E%3C/svg%3E") center / contain no-repeat; }
-.report-jobs .rj-more-rows[hidden] { display: none; }
 @keyframes rj-more-rows { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
-@media (prefers-reduced-motion: reduce) { .report-jobs .rj-more-rows { animation: none; } }
 .rj-column-filter-menu .excel-column-filter-count { color: #2f6e4b; }
+
+/* -- Reports and History (one tab at a time) ------------------------------------------------------------------- */
+.report-jobs { --rp-accent: #2e8c58; --rp-accent-dark: #1f5f3a; --rp-tint: #e8f5ed; --rp-line: #d9e3dc; --rp-muted: #5d6b62; }
+.rp-tabs { display: flex; gap: .4rem; padding: .35rem; border-radius: 999px;
+  background: var(--rp-tint); width: fit-content; max-width: 100%; box-shadow: 0 1px 0 rgba(31, 95, 58, .12); }
+.rp-tabs button { display: inline-flex; align-items: center; gap: .45rem; padding: .5rem 1.15rem; border: 0; border-radius: 999px; background: transparent;
+  color: var(--rp-accent-dark); font: inherit; font-weight: 700; cursor: pointer; }
+.rp-tabs button[aria-selected="true"] { background: var(--rp-accent); color: #fff; }
+.rp-tabs button:focus-visible { outline: 2px solid var(--rp-accent-dark); outline-offset: 2px; }
+.rp-tab-count:not(:empty) { min-width: 1.4rem; padding: 0 .4rem; border-radius: 999px; background: rgba(255, 255, 255, .85); color: var(--rp-accent-dark);
+  font-size: .78rem; text-align: center; }
+.rp-tabs button[aria-selected="false"] .rp-tab-count { background: #fff; }
+.rp-view { display: grid; gap: .8rem; }
+.rp-primary, .rp-secondary { padding: .5rem 1rem; border-radius: 999px; font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.rp-primary { border: 1px solid var(--rp-accent); background: var(--rp-accent); color: #fff; }
+.rp-primary:hover:not(:disabled) { background: var(--rp-accent-dark); }
+.rp-secondary { border: 1px solid rgba(31, 95, 58, .45); background: #fff; color: var(--rp-accent-dark); }
+.rp-secondary:hover:not(:disabled) { background: var(--rp-tint); }
+.rp-primary:disabled, .rp-secondary:disabled { opacity: .55; cursor: default; }
+.rp-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; }
+.rp-search { flex: 1 1 14rem; max-width: 24rem; }
+.rp-search input { width: 100%; box-sizing: border-box; }
+.rp-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.rp-chip { padding: .3rem .8rem; border: 1px solid var(--rp-line); border-radius: 999px; background: #fff; color: var(--rp-muted); font: inherit; font-size: .86rem; cursor: pointer; }
+.rp-chip[aria-pressed="true"] { border-color: var(--rp-accent); background: var(--rp-tint); color: var(--rp-accent-dark); font-weight: 700; }
+.rp-toolbar #rp-new { margin-left: auto; }
+
+/* The list of reports, and beside it (on a wide screen) the editor of the one chosen. */
+.rp-split { display: grid; gap: 1rem; align-items: start; }
+.report-jobs.is-editing .rp-split { grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr); }
+.rp-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); gap: .75rem; margin: 0; padding: 0; list-style: none; }
+.report-jobs.is-editing .rp-list { grid-template-columns: 1fr; position: sticky; top: calc(var(--sticky-header-offset, 0px) + 3.6rem);
+  max-height: calc(100vh - var(--sticky-header-offset, 0px) - 5rem); overflow: auto; padding-right: .2rem; }
+.rp-card { display: grid; gap: .5rem; align-content: start; padding: .85rem .95rem; border: 1px solid var(--rp-line); border-radius: 12px; background: #fff; min-width: 0; }
+.rp-card.is-selected { border-color: var(--rp-accent); box-shadow: inset 4px 0 0 var(--rp-accent); }
+.rp-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.rp-star { flex: none; width: 1.8rem; height: 1.8rem; margin: -.25rem -.3rem 0 0; padding: 0; border: 0; border-radius: 999px; background: none; box-shadow: none;
+  color: #9aa79f; font-size: 1.25rem; line-height: 1; cursor: pointer; }
+.rp-star:hover { background: #fff4d1; color: #d99a00; }
+.rp-star.is-starred { color: #e6a800; }
+.rp-star:focus-visible { outline: 2px solid var(--rp-accent-dark); outline-offset: 1px; }
+.rp-chip-star[aria-pressed="true"] { border-color: #d9a400; background: #fff4d1; color: #7a5600; }
+.rp-card-name { padding: 0; border: 0; background: none; color: var(--text, #17201b); font: inherit; font-weight: 700; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+span.rp-card-name { cursor: default; }
+button.rp-card-name:hover { color: var(--rp-accent-dark); text-decoration: underline; }
+/* One row of modules, one of areas, NR Mode and Operators or Vendors, one of campaigns. */
+.rp-labels { display: grid; gap: .3rem; }
+.rp-label-row { display: flex; flex-wrap: wrap; gap: .3rem; }
+.rp-label-row > span { padding: .05rem .45rem; border-radius: 5px; font-size: .74rem; font-weight: 700; line-height: 1.5; }
+.rp-module { color: #fff; }
+.rp-module-scoring { background: #176e77; }
+.rp-module-network_insights { background: #4338ca; }
+.rp-module-non_qualified_calls { background: #a3204c; }
+.rp-module-designs { background: #5b3f99; }
+.rp-module-dataset_analysis { background: #0c4c8c; }
+/* NSA in amber and SA in blue, as in PPT Designer. */
+.rp-mode { border: 1px solid #6b7a70; color: #4a564e; }
+.rp-mode-nsa { border-color: #d9a400; background: #fff4d1; color: #7a5600; }
+.rp-mode-sa { border-color: #5b9bd5; background: #e3f0fc; color: #1f5f99; }
+.rp-scope { background: #eef2f6; color: #344054; }
+.rp-scope-all { background: #e8f5ed; color: #1f5f3a; }
+.rp-scope-region { background: #fbe4ef; color: #9d174d; }
+.rp-scope-cluster { background: #fdf0d8; color: #8a5300; }
+.rp-scope-city { background: #e0f2fe; color: #075985; }
+.rp-scope-operator { background: #e3ecff; color: #234d9a; }
+.rp-scope-vendor { background: #efe7fb; color: #55407f; }
+.rp-campaigns { background: #f4f6f5; color: #4a564e; font-weight: 600 !important; }
+.rp-card-schedule, .rp-card-result { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin: 0; color: var(--rp-muted); font-size: .86rem; }
+.rp-card-schedule.is-scheduled { color: var(--text, #17201b); }
+.rp-dot { width: .5rem; height: .5rem; border-radius: 50%; background: #c6d0c9; flex: none; }
+.is-scheduled .rp-dot { background: var(--rp-accent); }
+.rp-card-result .rj-status { font-size: .74rem; }
+.rp-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.rp-card-actions .rp-primary, .rp-card-actions .rp-secondary { padding: .35rem .85rem; font-size: .88rem; }
+.rp-more { position: relative; }
+.rp-more > summary { display: grid; place-items: center; width: 2rem; height: 2rem; border: 1px solid var(--rp-line); border-radius: 999px; color: var(--rp-muted);
+  font-weight: 700; list-style: none; cursor: pointer; }
+.rp-more > summary::-webkit-details-marker { display: none; }
+.rp-menu { position: absolute; right: 0; z-index: 20; display: grid; min-width: 9rem; margin-top: .3rem; padding: .3rem; border: 1px solid var(--rp-line); border-radius: 10px;
+  background: #fff; box-shadow: 0 12px 28px rgba(18, 32, 43, .16); }
+.rp-menu-item { padding: .45rem .7rem; border: 0; border-radius: 7px; background: none; box-shadow: none; color: var(--text, #17201b); font: inherit; font-weight: 600; text-align: left; white-space: nowrap; cursor: pointer; }
+.rp-menu-item:hover:not(:disabled) { background: var(--rp-tint); color: var(--rp-accent-dark); }
+.rp-menu-item.rp-danger, .rp-menu-item.rp-danger:hover:not(:disabled) { color: #b42318; }
+.rp-menu-item.rp-danger:hover:not(:disabled) { background: #fdecec; }
+.rp-menu-item:disabled { opacity: .5; cursor: default; }
+.rp-empty { padding: 1rem; }
+
+/* The editor: a header with Save, its steps, the step shown and its buttons. */
+.rp-editor { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--rp-line); border-radius: 14px; background: #fff; overflow: hidden; }
+.rp-editor[hidden] { display: none; }
+.rp-editor-head { display: flex; align-items: center; gap: .7rem; padding: .75rem 1rem; border-bottom: 1px solid var(--rp-line); background: #fbfdfb; }
+.rp-editor-title { flex: 1; min-width: 0; }
+.rp-editor-title h3 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-editor-title .eyebrow { margin: 0; }
+.rp-icon { display: grid; place-items: center; width: 2.2rem; height: 2.2rem; flex: none; border: 1px solid var(--rp-line); border-radius: 999px; background: #fff;
+  color: var(--rp-accent-dark); font-size: 1.1rem; cursor: pointer; }
+.rp-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .3rem; padding: .6rem 1rem 0; }
+.rp-steps button { padding: .5rem .2rem .35rem; border: 0; border-top: 3px solid var(--rp-line); background: none; color: var(--rp-muted); font: inherit; font-weight: 700;
+  font-size: .86rem; cursor: pointer; }
+.rp-steps button[aria-current="step"] { border-top-color: var(--rp-accent); color: var(--text, #17201b); }
+.rp-editor-body { flex: 1; min-height: 0; padding: 1rem; overflow: auto; }
+.rp-step { display: grid; gap: .8rem; }
+.rp-editor-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; padding: .7rem 1rem; border-top: 1px solid var(--rp-line); background: #fbfdfb; }
+.rp-editor-foot #rp-step-back { margin-right: auto; }
+
+/* The schedule step. */
+.rp-switch-row { display: flex; align-items: flex-start; gap: .7rem; cursor: pointer; }
+.rp-switch-row input { position: absolute; opacity: 0; pointer-events: none; }
+.rp-switch { position: relative; width: 2.4rem; height: 1.35rem; flex: none; margin-top: .1rem; border-radius: 999px; background: #c6d0c9; transition: background .15s; }
+.rp-switch::after { content: ''; position: absolute; top: .17rem; left: .17rem; width: 1rem; height: 1rem; border-radius: 50%; background: #fff; transition: transform .15s; }
+.rp-switch-row input:checked + .rp-switch { background: var(--rp-accent); }
+.rp-switch-row input:checked + .rp-switch::after { transform: translateX(1.05rem); }
+.rp-switch-row input:focus-visible + .rp-switch { outline: 2px solid var(--rp-accent-dark); outline-offset: 2px; }
+.rp-switch-row span:last-child { display: grid; gap: .1rem; }
+.rp-switch-row small { color: var(--rp-muted); }
+.rp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .7rem 1rem; align-items: end; }
+.rp-grid label, .rp-recipients { display: grid; gap: .3rem; color: var(--rp-muted); font-size: .86rem; }
+.rp-grid [hidden] { display: none !important; }
+.rp-weekdays { display: flex; flex-wrap: wrap; gap: .35rem; grid-column: 1 / -1; }
+.rp-weekday { position: relative; cursor: pointer; }
+.rp-weekday input { position: absolute; opacity: 0; }
+.rp-weekday span { display: inline-block; padding: .35rem .7rem; border: 1px solid var(--rp-line); border-radius: 999px; font-weight: 700; font-size: .86rem; color: var(--rp-muted); }
+.rp-weekday input:checked + span { border-color: var(--rp-accent); background: var(--rp-tint); color: var(--rp-accent-dark); }
+.rp-weekday input:focus-visible + span { outline: 2px solid var(--rp-accent-dark); outline-offset: 2px; }
+.rp-formats { display: flex; flex-wrap: wrap; gap: .8rem; margin: 0; padding: .6rem .8rem; border: 1px solid var(--rp-line); border-radius: 10px; }
+.rp-formats legend { padding: 0 .3rem; color: var(--rp-muted); font-size: .86rem; }
+.rp-recipients textarea { width: 100%; box-sizing: border-box; }
+
+/* History: the runs under the heading of their day; each file in the colour of its format. */
+.rp-history-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; }
+.rp-select-all { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600; }
+.rp-runs-wrap { max-height: none; }
+.rp-runs tr.rp-day th { position: static; padding: .7rem .6rem .3rem; border-bottom: 0; background: none; color: var(--rp-muted); font-size: .8rem;
+  text-transform: uppercase; letter-spacing: .05em; text-align: left; }
+.rp-run-report { display: grid; gap: .3rem; min-width: 12rem; }
+.rp-run-name { font-weight: 700; overflow-wrap: anywhere; }
+.rp-files { display: grid; gap: .25rem; min-width: 10.5rem; margin: 0; padding: 0; list-style: none; }
+.rp-file { display: inline-flex; align-items: center; justify-content: space-between; gap: .6rem; min-width: 9rem; padding: .2rem .55rem; border-radius: 7px; text-decoration: none; font-size: .84rem; }
+.rp-file strong { font-weight: 700; white-space: nowrap; }
+.rp-file-size { color: #5d6b62; font-variant-numeric: tabular-nums; }
+.rp-file-pptx { background: #fbede8; color: #c43e1c; }
+.rp-file-docx { background: #e8effa; color: #185abd; }
+.rp-file-xlsx { background: #e6f3ec; color: #107c41; }
+.rp-file-other { background: #f0f2f3; color: #5b6770; }
+.rp-file:hover { filter: brightness(.96); text-decoration: underline; }
+.rp-progress { display: block; height: .35rem; margin: .3rem 0 .2rem; border-radius: 999px; background: #e3e8e5; overflow: hidden; }
+.rp-progress i { display: block; height: 100%; background: #234d9a; }
+.rp-run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+.rp-preview-action { padding: .25rem .7rem; border: 1px solid rgba(31, 95, 58, .45); border-radius: 999px; background: #fff; color: var(--rp-accent-dark); font: inherit;
+  font-size: .84rem; font-weight: 700; cursor: pointer; }
+.rp-preview-action:hover { background: var(--rp-tint); }
+.rp-run-actions .icon-action { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; padding: 0; border: 1px solid var(--rp-line); border-radius: 999px;
+  background: #fff; color: #475467; text-decoration: none; font-weight: 700; cursor: pointer; }
+.rp-run-actions .rj-rerun { color: #1f7a4d; }
+.rp-run-actions .rj-stop { color: #b54708; }
+.rp-run-actions .rj-run-delete { color: #b42318; }
+.rp-run-actions .rp-download { color: #1f5f9e; }
+
+/* On a phone: one column, the editor over the page with its buttons at the bottom, and each run a card. */
+@media (max-width: 900px) {
+  .report-jobs.is-editing .rp-split { grid-template-columns: 1fr; }
+  .report-jobs.is-editing .rp-list { position: static; max-height: none; overflow: visible; }
+  .rp-editor:not([hidden]) { position: fixed; inset: 0; z-index: 60; border: 0; border-radius: 0;
+    padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  html.rp-sheet-open, html.rp-sheet-open body { overflow: hidden; }
+  /* (A blurred panel would hold the editor inside it instead of over the page.) */
+html.rp-sheet-open #rp-reports { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .rp-editor-foot { position: sticky; bottom: 0; }
+  .rp-editor-foot .rp-secondary, .rp-editor-foot .rp-primary { flex: 1 1 auto; }
+  .rp-tabs { position: sticky; top: var(--sticky-header-offset, 0px); z-index: 6; width: 100%; box-sizing: border-box; }
+  .rp-tabs button { flex: 1; justify-content: center; }
+  .rp-toolbar #rp-new { margin-left: 0; }
+  .rp-runs-wrap { overflow: visible; }
+  .rp-runs { min-width: 0 !important; width: 100% !important; }
+  .rp-runs, .rp-runs tbody, .rp-runs tr, .rp-runs td { display: block; width: auto; }
+  .rp-runs thead { display: none; }
+  .rp-runs tr[data-run-id] { display: grid; grid-template-columns: 1fr auto; gap: .35rem .6rem; margin-bottom: .6rem; padding: .7rem .8rem;
+    border: 1px solid var(--rp-line); border-radius: 12px; background: #fff; }
+  .rp-runs tr[data-run-id] td { padding: 0; border: 0; }
+  .rp-runs td.rj-run-id { grid-column: 2; grid-row: 1; justify-self: end; color: var(--rp-muted); font-size: .8rem; }
+  .rp-runs td.rp-run-report { grid-column: 1; grid-row: 1; min-width: 0; }
+  .rp-runs td:not(.rj-run-id):not(.rp-run-report) { grid-column: 1 / -1; }
+  .rp-runs td[data-label="Trigger"], .rp-runs td[data-label="Started"], .rp-runs td[data-label="Email"] { color: var(--rp-muted); font-size: .84rem; }
+  .rp-runs td[data-label="Size"] { display: none; }
+  .rp-runs tr.rp-day th { display: block; }
+  .rp-files { min-width: 0; }
+  .rp-file { min-width: 0; width: 100%; box-sizing: border-box; }
+}

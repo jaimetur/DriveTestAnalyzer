@@ -49,7 +49,7 @@ dt-analyzer-rca
 | Import the analyses of the previous tool | [Previous NQ Analyses](#previous-nq-analyses) |
 | Give the calls of each analyst to their user account and link the analysts and reviewers to it | [Analysts / Reviewers → Asignees](#analysts-reviewers-asignees) |
 | Export the calls to Excel, PowerPoint or Word | [Exports](#exports) |
-| Send the reports on a schedule | [Reporting Jobs](#reporting-jobs) |
+| Send the reports on a schedule | [Scheduled reports](#scheduled-reports) |
 | Copy the follow-up to another workspace or server | [Storage and portability](#storage-and-portability) |
 | Solve a problem | [Troubleshooting](#troubleshooting) |
 
@@ -309,7 +309,7 @@ The **NQ Rate by Campaign and Operator** panel, below the NQ Prioritization, is 
 > [!NOTE]
 > Only the **NR Mode**, **Campaign**, **Service**, **Operator** and **CDR** filters apply: the other filters describe Non-Qualified Calls only, so changing them does not recalculate the panel, and its counts are reused until the CDRs are indexed again.
 
-The PowerPoint and Word exports and the Reporting artifact show it after the Executive Summary as one heat map with a column per service (and **All services**, their total) under each operator and the overall NQ rate of the selection at its top right (*Overall 0.9% · 992 NQ calls of 104,304 calls*), on one slide, or on two when the operators or campaigns are many (each slide with half of the operators or of the campaigns).
+The PowerPoint and Word exports and the reports of [Reporting](reporting.md) show it after the Executive Summary as one heat map with a column per service (and **All services**, their total) under each operator and the overall NQ rate of the selection at its top right (*Overall 0.9% · 992 NQ calls of 104,304 calls*), on one slide, or on two when the operators or campaigns are many (each slide with half of the operators or of the campaigns).
 
 ## Failures by Type, Technology & Serving Cell
 
@@ -320,7 +320,7 @@ The **Failures by Type, Technology & Serving Cell** panel, below the NQ Rate, sh
 - **Serving Vendor and host network**: per operator, the calls and Non-Qualified Calls on the cells of each Vendor and host network that served them, with their shares and NQ rate; a share of the Non-Qualified Calls well above the share of the calls is red.
 - **Sites with the most Non-Qualified Calls**: per operator, the serving sites (with 5 calls or more) with the most Non-Qualified Calls (up to 25), with their host network, Vendor, city or route, calls and NQ rate.
 
-The shares and rates divide by every call (qualified or not) of the CDRs, Service, Campaign, Operator and NR Mode filters, as the NQ Rate does. The serving cell comes from the [Vendor Mapping](workspace-management.md#vendor-mapping) of the CDRs (`Vendor`, `Serving_Host_Network`, `Serving_Site_ID`); the CDRs indexed before this version are indexed again in the background to add it. A click on a cell shows only those calls in the other panels; a second click removes the filter. The PowerPoint and Word exports and the Reporting artifact show its tables after the NQ Rate.
+The shares and rates divide by every call (qualified or not) of the CDRs, Service, Campaign, Operator and NR Mode filters, as the NQ Rate does. The serving cell comes from the [Vendor Mapping](workspace-management.md#vendor-mapping) of the CDRs (`Vendor`, `Serving_Host_Network`, `Serving_Site_ID`); the CDRs indexed before this version are indexed again in the background to add it. A click on a cell shows only those calls in the other panels; a second click removes the filter. The PowerPoint and Word exports and the reports of [Reporting](reporting.md) show its tables after the NQ Rate.
 
 ## Root Cause Sources
 
@@ -360,9 +360,9 @@ Each tab shows:
 A click on a bar, on the name of a group, on the name or a slice of a donut, on a domain of a Technology bar, or on an eNB/gNB row shows only those calls (for example the NSA calls of RF), and a second click removes the filter. The domains, categories and causes filter the calls of the chosen source (for example the calls the Ericsson RCA puts in Poor Coverage LTE).
 
 > [!TIP]
-> **Show Not classified**, below the indicators, is unchecked by default for every source: the bars, donuts and technology bars count only the calls the source gives a root cause, their shares and totals being of those calls. Check it to add the Not classified calls. **Export PPT** and **Export Word** follow this checkbox, and the Reporting artifact leaves them out.
+> **Show Not classified**, below the indicators, is unchecked by default for every source: the bars, donuts and technology bars count only the calls the source gives a root cause, their shares and totals being of those calls. Check it to add the Not classified calls. **Export PPT** and **Export Word** follow this checkbox, and the reports of [Reporting](reporting.md) have an option of their own, unchecked by default.
 
-**Export PPT** and **Export Word** include the Root Cause Analysis of every source, each with its tables: the source in bold in their titles (*Root Cause Analysis · **NetCheck RCA***, ***Ericsson RCA***, ***DT Analyzer RCA*** or ***Analysts***) and what each slide shows in its subtitle: the Root Domains by Call Type and NSA vs SA donuts under one legend, the Root Domains by Technology bars (every technology, thinner when they are many) and the eNB / gNB with Most Non-Qualified Calls (only the first ones that fit), after the NQ Rate by Campaign and Operator and the Root Cause Sources, and before the Lifecycle & Phases and the Progress View. The Non-Qualified Calls artifact of the Reporting Jobs includes them too, and its **Root Cause Analysis** option decides whether the analysts count the calls without a root cause with their suggested one.
+**Export PPT** and **Export Word** include the Root Cause Analysis of every source, each with its tables: the source in bold in their titles (*Root Cause Analysis · **NetCheck RCA***, ***Ericsson RCA***, ***DT Analyzer RCA*** or ***Analysts***) and what each slide shows in its subtitle: the Root Domains by Call Type and NSA vs SA donuts under one legend, the Root Domains by Technology bars (every technology, thinner when they are many) and the eNB / gNB with Most Non-Qualified Calls (only the first ones that fit), after the NQ Rate by Campaign and Operator and the Root Cause Sources, and before the Lifecycle & Phases and the Progress View. The Non-Qualified Calls section of the reports of [Reporting](reporting.md) includes them too, and its **Root Cause Analysis** option decides whether the analysts count the calls without a root cause with their suggested one.
 
 ## Lifecycle & Phases
 
@@ -377,11 +377,11 @@ The **Lifecycle & Phases** panel follows the filtered calls through their follow
 - **Stalled Open Calls**: the open calls without changes for the longest, with their status, Operator, Campaign, City and days without change; click one to open it.
 
 > [!TIP]
-> **Show Empty Status**, above the phase cards, is unchecked by default. Check it to add the calls without a value (**Empty**) and give the shares of every call; **Export PPT** and **Export Word** follow it, and the Reporting artifact leaves them out.
+> **Show Empty Status**, above the phase cards, is unchecked by default. Check it to add the calls without a value (**Empty**) and give the shares of every call; **Export PPT** and **Export Word** follow it, and the reports of [Reporting](reporting.md) have an option of their own, unchecked by default.
 
 **Status Rules** (for every user; only admins and super-admins change them) opens the rules from the panel.
 
-The PowerPoint, Word and Reporting artifact show the Lifecycle & Phases as the page does, each slide saying what it shows in its subtitle: the indicators and the **NQ Call Status Pipeline** (the Open frame around the phase statuses and the rules of each status), the **Phases** in one row (a field with more than 12 values on a slide of its own, its values in columns), the **Time in Each Status and Most Frequent Moves**, and the **Stalled Open Calls** that fit.
+The PowerPoint and Word exports and the reports of [Reporting](reporting.md) show the Lifecycle & Phases as the page does, each slide saying what it shows in its subtitle: the indicators and the **NQ Call Status Pipeline** (the Open frame around the phase statuses and the rules of each status), the **Phases** in one row (a field with more than 12 values on a slide of its own, its values in columns), the **Time in Each Status and Most Frequent Moves**, and the **Stalled Open Calls** that fit.
 
 ## Progress View
 
@@ -445,7 +445,7 @@ The columns of the table, those of the Excel export and their order make a **lay
 | **Mine** | Only you. The first time it is a copy of the workspace layout. | You, whatever your role: dragging a column header, **Columns** and **Default column order**. |
 | **Workspace** | Every user who has not chosen Mine. | Admins and super-admins: **Save for the workspace**, shown with Mine, makes their layout (columns, Excel and column order) that of the workspace once they confirm. |
 
-A change made while the workspace layout is shown makes it your own layout (when you already had one, you confirm that it is replaced). Switching keeps both, and your choice is kept with the workspace, so every browser shows you the same layout. **Export Excel** exports the fields and CDR columns of the layout you see, the fields in the catalog order (the Excel of the Reporting Jobs, those of the workspace layout). A field added to the catalog after you saved your layout follows the workspace layout until you choose it in **Columns**. The column order each browser kept before the layouts becomes your own layout the first time you open the page, so the table looks the same.
+A change made while the workspace layout is shown makes it your own layout (when you already had one, you confirm that it is replaced). Switching keeps both, and your choice is kept with the workspace, so every browser shows you the same layout. **Export Excel** exports the fields and CDR columns of the layout you see, the fields in the catalog order. A field added to the catalog after you saved your layout follows the workspace layout until you choose it in **Columns**. The column order each browser kept before the layouts becomes your own layout the first time you open the page, so the table looks the same.
 
 ### Bulk changes
 
@@ -1014,7 +1014,7 @@ The workbook tells how each value was decided (a rule of the tool, reviewed in t
 
 ## Exports
 
-**Export Excel**, in the NQ Calls panel, downloads every call that matches the filters, not only the current page. **Export PPT** and **Export Word**, on the right of the indexing badge and **Reindex** in the Filters panel, download the Executive Summary (its indicators and every breakdown on one slide), the NQ Prioritization (the calls to analyse next in each queue, the steps of the strategy, Scoring Impact by KPI and the repeated issues, in the order of the page, each table on its slides), the Progress Status and the Root Cause Analysis of the filtered calls with the look of the page (indicator cards, breakdowns, donuts, timeline, age and workload, root domains, categories and causes, root domains by call type, and the detail tables), with the report selection on the cover (and the period chosen in the Progress View): the same document as the [Reporting](reporting.md) artifact. Both formats are composed as the Non-Qualified Calls section of a [Bundle Report Template](reporting.md#bundle-report-templates): small charts and tables share a slide, and Word holds them on portrait pages after the cover and a **Contents** page, exactly as in PowerPoint, a view that does not fit whole in what is left of a page starting the next one (rendered with LibreOffice; without it, one page per slide). A progress dialog stays open while it is prepared.
+**Export Excel**, in the NQ Calls panel, downloads every call that matches the filters, not only the current page. **Export PPT** and **Export Word**, on the right of the indexing badge and **Reindex** in the Filters panel, download the Executive Summary (its indicators and every breakdown on one slide), the NQ Prioritization (the calls to analyse next in each queue, the steps of the strategy, Scoring Impact by KPI and the repeated issues, in the order of the page, each table on its slides), the Progress Status and the Root Cause Analysis of the filtered calls with the look of the page (indicator cards, breakdowns, donuts, timeline, age and workload, root domains, categories and causes, root domains by call type, and the detail tables), with the report selection on the cover (and the period chosen in the Progress View): the same document as the Non-Qualified Calls section of a report of [Reporting](reporting.md). Both formats are composed as [that section](reporting.md#how-a-report-is-composed): small charts and tables share a slide, and Word holds them on portrait pages after the cover and a **Contents** page, exactly as in PowerPoint, a view that does not fit whole in what is left of a page starting the next one (rendered with LibreOffice; without it, one page per slide). A progress dialog stays open while it is prepared.
 
 ### Excel workbook
 
@@ -1026,9 +1026,9 @@ Its **NQ Calls** sheet has two header rows coloured like the meeting workbook: t
 
 The other sheets are **Speech Samples** with the follow-up of each Non-Qualified sample of the Speech calls (when there are any), **Comments** with every comment and its author, edits and deletion, and **History** with every follow-up and field change. Each of their rows starts with the `JOIN_ID` of its call, as the NQ Calls sheet does, and the comments and changes of each call come together, in the order of the NQ Calls sheet (a Speech sample with its call) and then by date.
 
-## Reporting Jobs
+## Scheduled reports
 
-Reporting Jobs include a **Non-Qualified Calls** artifact with the Executive Summary, the NQ Prioritization, the NQ Rate by Campaign and Operator, the Root Cause Sources, the Root Cause Analysis of each source, the Lifecycle & Phases and the Progress Status of the calls in PowerPoint, Word and/or Excel (the Excel export of the page). Each job chooses its own filters (the same as the Filters panel, including **CDR Version**), the period of the progress timeline, whether to include only open calls and whether the Root Cause Analysis of the analysts counts the suggested root causes. See [Reporting](reporting.md).
+The reports of [Reporting](reporting.md), generated on demand or on their schedule and emailed, include a **Non-Qualified Calls** section with the panels checked in it, such as the Executive Summary, the NQ Prioritization, the NQ Rate by Campaign and Operator, the Root Cause Sources, the Root Cause Analysis of each source, the Lifecycle & Phases and the Progress Status of the calls, in PowerPoint and/or Word. Each report chooses its Campaigns and common filters (NR Mode, Operator, Vendor, Region, Cluster and City), the period of the progress timeline, whether to include only open calls and whether the Root Cause Analysis of the analysts counts the suggested root causes.
 
 ## Storage and portability
 

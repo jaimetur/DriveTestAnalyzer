@@ -10,7 +10,7 @@ from src.modules.core.deletion_rights import (
 )
 from src.modules.ppt_designer.ppt_designer import STATE_KEY as DESIGNS_STATE_KEY
 from src.modules.scoring.scoring_reports import (
-    REPORT_CONFIGURATIONS_FORMAT, REPORT_CONFIGURATIONS_VERSION, default_report_configuration, default_scenario,
+    REPORT_CONFIGURATIONS_FORMAT, REPORT_CONFIGURATIONS_VERSION, default_scenario,
 )
 from tests.test_non_qualified_calls import login, workspace_user
 
@@ -174,40 +174,38 @@ def test_scoring_methodologies_are_deleted_by_their_creator_or_an_admin(client):
     assert client.put('/api/workspace-config/scoring-profiles', json=trimmed).status_code == 200
 
 
-def test_favourites_and_reporting_jobs_are_deleted_by_their_creator_or_an_admin(client):
+def test_reports_and_their_schedules_are_deleted_by_their_creator_or_an_admin(client):
+    from src.modules.reporting.report_tasks import report_task
+
     team()
+    url = '/api/reporting/bundle-report-template/favourites'
     login(client, 'alice', 'alice123')
     definition = client.get('/api/reporting/bundle-report-template/options').json()['defaults']
-    favourite = client.post('/api/reporting/bundle-report-template/favourites', json={'name': 'Alice bundle', 'definition': definition})
+    schedule = {'schedule': {'mode': 'daily', 'time': '08:00'}}
+    favourite = client.post(url, json={'name': 'Alice report', 'definition': definition, 'schedule': schedule})
     assert favourite.status_code == 200, favourite.text
     favourite_id = favourite.json()['favourite']['id']
-    job = client.post('/api/reporting/tasks', json={
-        'name': 'Alice job', 'schedule': {'mode': 'manual'},
-        'definition': {'scoring': [{'nr_mode': 'NSA', 'report': default_report_configuration()}]}})
-    assert job.status_code == 200, job.text
-    job_id = job.json()['task']['id']
+    repository = workspace_repository()
+    assert report_task(repository, favourite_id)['created_by'] == 'alice'
 
     login(client, 'bob', 'bob123')
-    refused = client.delete(f'/api/reporting/bundle-report-template/favourites/{favourite_id}')
+    refused = client.delete(f'{url}/{favourite_id}')
     assert refused.status_code == 403 and REFUSAL in refused.json()['detail']
-    refused = client.delete(f'/api/reporting/tasks/{job_id}')
-    assert refused.status_code == 403 and REFUSAL in refused.json()['detail']
-
-    # Deleting several at once deletes none of them while one belongs to another user.
-    own = client.post('/api/reporting/tasks', json={
-        'name': 'Bob job', 'schedule': {'mode': 'manual'},
-        'definition': {'scoring': [{'nr_mode': 'NSA', 'report': default_report_configuration()}]}}).json()['task']['id']
-    refused = client.post('/api/reporting/tasks/delete', json={'ids': [own, job_id]})
-    assert refused.status_code == 403 and 'Alice job' in refused.json()['detail']
-    names = lambda: {task['name'] for task in client.get('/api/reporting/state').json()['tasks']}
-    assert {'Alice job', 'Bob job'} <= names()
-    assert client.post('/api/reporting/tasks/delete', json={'ids': [own]}).json() == {'deleted': [own]}
+    assert report_task(repository, favourite_id) is not None
+    own = client.post(url, json={'name': 'Bob report', 'definition': definition, 'schedule': schedule}).json()['favourite']['id']
+    names = lambda: {report['name'] for report in client.get('/api/reporting/state').json()['reports']}
+    assert {'Alice report', 'Bob report'} <= names()
+    assert client.delete(f'{url}/{own}').status_code == 200
+    assert report_task(repository, own) is None
 
     login(client, 'alice', 'alice123')
-    assert client.delete(f'/api/reporting/bundle-report-template/favourites/{favourite_id}').status_code == 200
+    assert client.delete(f'{url}/{favourite_id}').status_code == 200
+    assert report_task(repository, favourite_id) is None
+    login(client, 'bob', 'bob123')
+    others = client.post(url, json={'name': 'Bob report', 'definition': definition, 'schedule': schedule}).json()['favourite']['id']
     login(client, 'boss', 'boss123')
-    assert client.post('/api/reporting/tasks/delete', json={'ids': [job_id]}).json() == {'deleted': [job_id]}
-    assert not {'Alice job', 'Bob job'} & names()
+    assert client.delete(f'{url}/{others}').status_code == 200
+    assert not {'Alice report', 'Bob report'} & names()
 
 
 def test_designs_are_deleted_by_their_creator_or_an_admin(client):

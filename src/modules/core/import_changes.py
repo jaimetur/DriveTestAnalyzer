@@ -537,11 +537,11 @@ ELEMENT_NAMES = {
     'auto-calculated-fields': ('auto-calculated field', 'auto-calculated fields', ''),
     'query-builder-queries': ('Query Builder query', 'Query Builder queries', ''),
     'network-insights-favourites': ('Network Insights Favourite', 'Network Insights Favourites', ''),
-    'bundle-report-template-favourites': ('Bundle Report Template Favourite', 'Bundle Report Template Favourites', ''),
+    'bundle-report-template-favourites': ('Report', 'Reports', ''),
     'scoring-favourites-filters': ('Scoring & GAP Favourites Filter', 'Scoring & GAP Favourites Filters', ''),
     'scoring-report-templates': ('Scoring & GAP Report Template', 'Scoring & GAP Report Templates', ''),
     'scoring-excluded-calls': ('list of Scoring Excluded Calls', 'lists of Scoring Excluded Calls', ''),
-    'reporting-jobs': ('Reporting Job', 'Reporting Jobs', ''),
+    'reporting-jobs': ('Report Schedule', 'Report Schedules', ''),
     'nq-call-tracking': ('Non-Qualified Call', 'Non-Qualified Calls', 'the follow-up of '),
     'assistant-glossary': ('AI Assistant Glossary term', 'AI Assistant Glossary terms', ''),
 }
