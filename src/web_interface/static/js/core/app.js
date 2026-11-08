@@ -6788,7 +6788,7 @@ function selectAutoCalculatedFieldWorkspaces(workspaces, kind = 'auto-calculated
   const overlay = document.createElement('div'); overlay.className = 'confirm-overlay incoming-transfer-confirm';
   const panel = document.createElement('section'); panel.className = 'confirm-panel auto-calculated-field-workspace-dialog';
   panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true');
-  const title = document.createElement('h3'); title.textContent = 'Select destination workspaces';
+  const title = document.createElement('h3'); title.textContent = kind === 'request-source' ? 'Select workspaces to send' : 'Select destination workspaces';
   const copy = document.createElement('p'); copy.textContent = kind === 'ppt-templates'
     ? 'Templates will be imported into every selected workspace. The original workspace is preselected when it exists. Matching template names will be overwritten.'
     : kind === 'designs'
@@ -6797,6 +6797,12 @@ function selectAutoCalculatedFieldWorkspaces(workspaces, kind = 'auto-calculated
         ? 'The complete Operator/Vendor mapping and color configuration will replace aliases, order and theme colors in every selected workspace. Stored CDR values will remain unchanged.'
       : kind === 'bundle'
         ? 'Workspace elements in the selection will be imported into every selected workspace. Full Workspace packages keep their own workspace identity.'
+      : kind === 'request-source'
+        // The workspaces of this server another server asked for.
+        ? 'The requesting server receives every selected workspace. The workspaces named in the request are preselected when this server has them.'
+      : kind === 'request-destination'
+        // The workspaces of this server the elements requested from another server go into.
+        ? 'The workspace elements requested are imported into every selected workspace; the active workspace is preselected. The preview of the received package shows what would change before anything is imported.'
         : 'The original workspace is preselected when present. The complete Auto-calculated Fields collection in every selected workspace will be replaced.';
   const toolbar = document.createElement('div'); toolbar.className = 'full-environment-workspace-toolbar';
   const selectAll = document.createElement('button'); selectAll.type = 'button'; selectAll.className = 'ghost-link'; selectAll.textContent = 'Select all';
@@ -7040,7 +7046,9 @@ function selectFullEnvironmentWorkspaces() {
   });
 }
 
-function selectTransferDestination() {
+// Asks for the other server of a transfer: the destination the selected content is sent to ('send'), or the source
+// it is requested from ('request'), which creates the package for this server to download.
+function selectTransferDestination(mode = 'send') {
   const overlay = document.querySelector('[data-server-transfer-overlay]');
   if (!(overlay instanceof HTMLElement)) return Promise.resolve(null);
   const url = overlay.querySelector('[data-server-transfer-url]');
@@ -7048,6 +7056,15 @@ function selectTransferDestination() {
   const error = overlay.querySelector('[data-server-transfer-error]');
   const accept = overlay.querySelector('[data-server-transfer-connect]');
   const cancel = overlay.querySelector('[data-server-transfer-cancel]');
+  const title = overlay.querySelector('[data-server-transfer-title]');
+  const copy = overlay.querySelector('[data-server-transfer-copy]');
+  const requesting = mode === 'request';
+  if (title instanceof HTMLElement) title.textContent = requesting ? 'Source server' : 'Destination server';
+  if (copy instanceof HTMLElement) {
+    copy.textContent = requesting
+      ? 'A super-admin of the source server will be asked to accept this request; that server then creates the package and this server downloads it, so the source server needs no access to this one. Use HTTPS, or HTTP only on a trusted private network.'
+      : 'The destination super-admin will be asked to accept this transfer before the export package is created and sent. Use HTTPS, or HTTP only on a trusted private network.';
+  }
   const destinationStorageKey = 'drivetest-analyzer:transfer-destination';
   try {
     const saved = JSON.parse(window.localStorage.getItem(destinationStorageKey) || 'null');
@@ -7074,7 +7091,7 @@ function selectTransferDestination() {
       const destinationPort = port instanceof HTMLInputElement ? port.value.trim() : '';
       if (!destinationUrl) {
         if (error instanceof HTMLElement) {
-          error.textContent = 'Enter the destination server URL or IP address.';
+          error.textContent = `Enter the ${requesting ? 'source' : 'destination'} server URL or IP address.`;
           error.hidden = false;
         }
         url?.focus();
@@ -7185,8 +7202,21 @@ function followServerTransfer(initialState) {
   let state = {...initialState};
   if (!state.cancel_url && state.job_id) state.cancel_url = `/admin/import-export/transfers/jobs/${encodeURIComponent(state.job_id)}/cancel`;
   let dialogShown = false;
+  // A transfer request asks the other server for its content and downloads the package it creates.
+  const dialogTitle = () => (state.direction === 'request' ? 'Transfer request' : 'Server transfer');
   const progressCopy = (transfer) => {
     const progress = transfer.progress ? ` — ${transfer.progress}%` : '';
+    if (transfer.direction === 'request') {
+      const requestCopies = {
+        queued: 'Preparing the connection to the source server.',
+        connecting: 'Connecting to the source server and registering the transfer request.',
+        awaiting_acceptance: 'Waiting for a super-admin on the source server to accept the request.',
+        remote_exporting: `The source server accepted the request and is creating the package${transfer.remote_phase ? `: ${transfer.remote_phase}` : ''}${progress}.`,
+        downloading: `Downloading the package from the source server${transfer.phase ? ` (${transfer.phase})` : ''}${progress}.`,
+        cancelling: 'Cancelling the transfer request.',
+      };
+      return requestCopies[transfer.status] || 'The transfer request is in progress.';
+    }
     const copies = {
       queued: 'Preparing the connection to the destination server.',
       connecting: 'Connecting to the destination server and creating the transfer request.',
@@ -7208,8 +7238,9 @@ function followServerTransfer(initialState) {
     closeDialog();
   };
   const showDialog = (status) => {
-    showLoadingOverlay('Server transfer', 'The server transfer is in progress.');
-    setLoadingTransferCopy('The server transfer is in progress.');
+    const inProgress = state.direction === 'request' ? 'The transfer request is in progress.' : 'The server transfer is in progress.';
+    showLoadingOverlay(dialogTitle(), inProgress);
+    setLoadingTransferCopy(inProgress);
     dialogShown = true;
     if (loadingHide instanceof HTMLButtonElement) {
       loadingHide.hidden = false;
@@ -7235,7 +7266,7 @@ function followServerTransfer(initialState) {
     || (state.hidden_status !== 'remote_importing' && status === 'remote_importing');
   const poll = async () => {
     // Another operation may have closed or taken over the shared dialog.
-    if (dialogShown && (loadingOverlay?.hidden || loadingTitle?.textContent !== 'Server transfer')) dialogShown = false;
+    if (dialogShown && (loadingOverlay?.hidden || loadingTitle?.textContent !== dialogTitle())) dialogShown = false;
     const stored = readActiveServerTransfer();
     if (stored?.job_id && stored.job_id !== state.job_id) { closeDialog(); return; }
     if (stored?.job_id === state.job_id) state = {...state, ...stored};
@@ -7254,6 +7285,10 @@ function followServerTransfer(initialState) {
       return;
     }
     const transfer = await response.json().catch(() => ({}));
+    if (transfer.direction && transfer.direction !== state.direction) {
+      state = {...state, direction: transfer.direction};
+      storeActiveServerTransfer(state);
+    }
     if (!response.ok) {
       finish();
       showInfoDialog(transfer.detail || 'The transfer status could not be read.', {title: 'Server Transfer Error', tone: 'error'});
@@ -7261,6 +7296,11 @@ function followServerTransfer(initialState) {
     }
     if (transfer.status === 'ready') {
       finish();
+      if (transfer.direction === 'request') {
+        // The package arrived: its preview opens to choose what to import, as for any received transfer.
+        window.dispatchEvent(new CustomEvent('drivetest-analyzer:review-incoming-transfer', {detail: {offerId: transfer.offer_id || ''}}));
+        return;
+      }
       showImportSummary(transfer.notice || 'The destination server received and imported the package successfully.', transfer.notice_details, {title: 'Server Transfer Complete', tone: 'info'});
       return;
     }
@@ -7372,6 +7412,62 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       });
     }
   });
+  // Request the selected content from another server: that server creates the package once a super-admin there
+  // accepts, and this server downloads it and reviews it as a received transfer (every connection goes from here).
+  const requestButton = form.querySelector('[data-server-transfer-request]');
+  requestButton?.addEventListener('click', async () => {
+    if (!(form instanceof HTMLFormElement)) return;
+    const targets = selectedExportTargets(new FormData(form));
+    if (!targets.length) {
+      showInfoDialog('Choose the content to request first.', {title: 'Request from other server', tone: 'error'});
+      return;
+    }
+    const source = await selectTransferDestination('request');
+    if (!source) return;
+    const requestData = new FormData();
+    targets.forEach((target) => requestData.append('export_target', target));
+    requestData.set('source_url', source.destinationUrl);
+    if (source.destinationPort) requestData.set('source_port', source.destinationPort);
+    // Workspace elements are received into the workspaces chosen here; the active workspace is preselected.
+    const applicationTargets = new Set(['config', 'config-with-templates', 'users-access', 'ticket-center', 'full-environment']);
+    if (targets.some((target) => !applicationTargets.has(target) && !target.startsWith('workspace:'))) {
+      let workspaces = [];
+      try {
+        const response = await fetch('/admin/import-export/transfers/offers', {credentials: 'same-origin', headers: {Accept: 'application/json'}, cache: 'no-store'});
+        const payload = await response.json().catch(() => ({}));
+        workspaces = response.ok && Array.isArray(payload.destination_workspaces) ? payload.destination_workspaces : [];
+      } catch (_error) {
+        workspaces = [];
+      }
+      const activeWorkspaceId = form.querySelector('[data-export-target-select]')?.dataset.activeWorkspaceId || '';
+      const selection = await selectAutoCalculatedFieldWorkspaces(workspaces, 'request-destination', activeWorkspaceId ? [activeWorkspaceId] : []);
+      if (!selection) return;
+      selection.forEach((workspaceId) => requestData.append('workspace_ids', workspaceId));
+    }
+    showLoadingOverlay('Contacting source server', 'Registering the transfer request on the source server.');
+    try {
+      const response = await fetch('/admin/import-export/transfers/requests', {
+        method: 'POST',
+        body: requestData,
+        credentials: 'same-origin',
+        headers: {Accept: 'application/json'},
+      });
+      const responseType = response.headers.get('content-type') || '';
+      if (response.redirected || !responseType.includes('application/json')) {
+        throw new Error('Your session expired or the server restarted. Reload the page, log in again and retry the request.');
+      }
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.status_url) throw new Error(payload.detail || 'The transfer request could not be started.');
+      hideLoadingOverlay();
+      followServerTransfer({job_id: payload.job_id, status_url: payload.status_url, cancel_url: payload.cancel_url || '', direction: 'request'});
+    } catch (error) {
+      hideLoadingOverlay();
+      showInfoDialog(error instanceof Error ? error.message : 'The transfer request could not be started.', {
+        title: 'Transfer Request Error',
+        tone: 'error',
+      });
+    }
+  });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -7452,7 +7548,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
   let pollingOffers = false;
   let incomingOfferTimer = 0;
   let pendingOfferReminder = null;
-  const showPendingOfferReminder = (offer) => {
+  const showPendingOfferReminder = (text) => {
     if (!pendingOfferReminder) {
       pendingOfferReminder = document.createElement('button');
       pendingOfferReminder.type = 'button';
@@ -7460,7 +7556,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       pendingOfferReminder.addEventListener('click', () => { void pollIncomingTransferOffers(); });
       document.body.append(pendingOfferReminder);
     }
-    pendingOfferReminder.textContent = `Incoming transfer pending from ${offer.source || 'another server'} — review now`;
+    pendingOfferReminder.textContent = text;
     pendingOfferReminder.hidden = false;
   };
   const hidePendingOfferReminder = () => { if (pendingOfferReminder) pendingOfferReminder.hidden = true; };
@@ -7630,6 +7726,78 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
     };
     void poll();
   };
+  // The request of another server for content of this one: a super-admin accepts it, choosing the workspaces to send
+  // when it names Full Workspaces or a Full Environment and the folders of a Full Workspace, or rejects it. On
+  // acceptance this server creates the package and the requesting server downloads it; nothing changes here.
+  const reviewTransferRequest = async (transferRequest, payload, escapeHtml, describeTransferItem) => {
+    const targets = Array.isArray(transferRequest.targets) ? transferRequest.targets.map(String) : [];
+    const applicationTargets = ['config', 'config-with-templates', 'users-access', 'ticket-center', 'full-environment', 'workspace'];
+    const targetLabels = [...new Set(targets.map((target) => (target === 'workspace' ? 'Full Workspace' : describeTransferItem(target))))];
+    const elementTargets = targets.filter((target) => !applicationTargets.includes(target));
+    const workspaceNames = Array.isArray(transferRequest.workspaces) ? transferRequest.workspaces : [];
+    const requester = transferRequest.requester || 'Another server';
+    const requesterAddress = transferRequest.requester_address ? ` (${transferRequest.requester_address})` : '';
+    const needsWorkspaces = Boolean(transferRequest.requires_source_workspaces);
+    const fullWorkspace = targets.includes('workspace');
+    const activeName = payload.active_workspace?.name || '';
+    const listHtml = (labels) => `<ul class="incoming-transfer-contents">${labels.map((label) => `<li>${escapeHtml(label)}</li>`).join('')}</ul>`;
+    confirmOverlay?.classList.add('incoming-transfer-confirm', 'incoming-transfer-offer');
+    let accepted = false;
+    try {
+      const copyHtml = [
+        `<p><strong>${escapeHtml(requester)}</strong>${escapeHtml(requesterAddress)} asks this server to send it:</p>`,
+        listHtml(targetLabels),
+        workspaceNames.length ? `<p>Workspaces named in the request: <strong>${workspaceNames.map(escapeHtml).join(', ')}</strong></p>` : '',
+        elementTargets.length ? `<p>${activeName
+          ? `The workspace elements are taken from the active workspace, <strong>${escapeHtml(activeName)}</strong>.`
+          : 'Open the workspace to take the workspace elements from before accepting.'}</p>` : '',
+        needsWorkspaces ? '<p>Next, choose the workspaces of this server to send.</p>' : '',
+        fullWorkspace
+          ? '<label class="confirm-option"><input type="checkbox" checked data-export-include-outputs><span>Output folder: generated designs and reports</span></label>'
+            + '<label class="confirm-option"><input type="checkbox" checked data-export-include-input><span>Input folder: original CDR files, needed to reprocess datasets</span></label>'
+          : '',
+        '<p class="incoming-transfer-effect">On acceptance this server creates the package and the requesting server downloads it and reviews it before importing anything; nothing changes on this server.</p>',
+      ].join('');
+      accepted = await showConfirmDialog(
+        `${requester}${requesterAddress} asks this server to send ${targetLabels.join(', ')}.`,
+        {title: 'Transfer request', confirmLabel: 'Accept request', cancelLabel: 'Reject', copyHtml},
+      );
+    } finally {
+      confirmOverlay?.classList.remove('incoming-transfer-confirm', 'incoming-transfer-offer');
+    }
+    const included = (selector) => !(confirmCopy?.querySelector(selector) instanceof HTMLInputElement) || confirmCopy.querySelector(selector).checked;
+    const decisionBody = {
+      workspace_ids: [],
+      include_generated_outputs: included('[data-export-include-outputs]'),
+      include_input_files: included('[data-export-include-input]'),
+    };
+    if (accepted && needsWorkspaces) {
+      const matchingIds = (payload.destination_workspaces || []).filter((workspace) =>
+        workspaceNames.some((name) => String(name).toLowerCase() === workspace.name.toLowerCase())
+      ).map((workspace) => workspace.id);
+      const selection = await selectAutoCalculatedFieldWorkspaces(payload.destination_workspaces, 'request-source', matchingIds);
+      if (!selection) accepted = false;
+      else decisionBody.workspace_ids = selection;
+    }
+    const decision = await fetch(`/admin/import-export/transfers/requests/${encodeURIComponent(transferRequest.id)}/${accepted ? 'accept' : 'reject'}`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
+      body: JSON.stringify(decisionBody),
+    });
+    if (!decision.ok) {
+      const error = await decision.json().catch(() => ({}));
+      showInfoDialog(error.detail || 'The decision on the transfer request could not be saved.', {title: 'Transfer Request Error', tone: 'error'});
+      return;
+    }
+    hidePendingOfferReminder();
+    if (accepted) {
+      showInfoDialog(
+        `The request was accepted. The package is created in the background and ${requester} downloads it; the System tasks card follows it.`,
+        {title: 'Transfer request accepted', tone: 'info'},
+      );
+    }
+  };
   const pollIncomingTransferOffers = async (preferredOfferId = '') => {
     if (reviewingOffer || pollingOffers) return;
     pollingOffers = true;
@@ -7657,10 +7825,16 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       if (review && !activeImport) followIncomingTransfer(String(review.id), {block: false});
       const offers = Array.isArray(payload.offers) ? payload.offers : [];
       const offer = offers.find((candidate) => String(candidate?.id || '') === String(preferredOfferId)) || offers[0] || null;
-      if (!offer) { hidePendingOfferReminder(); return; }
+      // The requests of other servers for content of this one wait for a super-admin too (after the offers).
+      const requests = Array.isArray(payload.requests) ? payload.requests : [];
+      const transferRequest = offer ? null
+        : requests.find((candidate) => String(candidate?.id || '') === String(preferredOfferId)) || requests[0] || null;
+      if (!offer && !transferRequest) { hidePendingOfferReminder(); return; }
       // Keep a visible, durable reminder even if a browser blocks or delays
       // the confirmation dialog while this tab is in the background.
-      showPendingOfferReminder(offer);
+      showPendingOfferReminder(offer
+        ? `Incoming transfer pending from ${offer.source || 'another server'} — review now`
+        : `Transfer request pending from ${transferRequest.requester || 'another server'} — review now`);
       reviewingOffer = true;
       const transferContentLabels = {
         config: 'Application Config',
@@ -7715,6 +7889,10 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       // (An element without a label here is named from its key, each word with its capital.)
       const describeTransferItem = (item) => transferContentLabels[String(item)]
         || String(item).replaceAll('-', ' ').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+      if (transferRequest) {
+        await reviewTransferRequest(transferRequest, payload, escapeHtml, describeTransferItem);
+        return;
+      }
       const targetLabels = [...new Set((Array.isArray(offer.targets) && offer.targets.length ? offer.targets : [offer.kind]).map(describeTransferItem))];
       // Workspace parts already listed as their own target are not repeated.
       const componentLabels = [...new Set((Array.isArray(offer.workspace_components) ? offer.workspace_components : []).map(describeTransferItem))]

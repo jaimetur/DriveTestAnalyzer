@@ -278,6 +278,8 @@ Server transfers use a persisted offer and resumable package reception:
 
 An import that ends without recording its result is reported as failed to both servers. Incomplete transfer files are cleaned up, except the file of a package still being received. Complete packages that were not imported appear in the Admin recovery table.
 
+A transfer request runs the other way round, for a server that cannot be reached from outside: the requesting server registers its request on the source (`/api/import-export/transfers/requests`, with a secret per request), polls its status while a source super-admin accepts it and an export job creates the package there, downloads the package (`Range` requests resume an interrupted download) and confirms its reception, upon which the source deletes the package. The received package is recorded as a received transfer, with its preview and import; a request not accepted within 15 minutes, or whose package is not downloaded within 24 hours, expires.
+
 ## Performance and scale
 
 - SQLite uses WAL mode, a busy timeout and normal synchronous mode.

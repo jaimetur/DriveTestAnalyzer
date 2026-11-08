@@ -302,6 +302,7 @@ The complete authoring specification, examples and supported chart catalogue are
 - Inspect an import before overwriting configuration or workspaces.
 - Design, template, Operator Mapping and Auto-calculated Field packages select the source workspace automatically when a workspace with the same name exists; additional accessible workspaces can also be selected.
 - Transfer authorised content directly to another server.
+- Request content from another server, which creates the package for this server to download: for a server that cannot be reached from outside.
 - Follow package creation, transmission, reception and import progress.
 - Recover or delete complete, unimported transfer packages.
 

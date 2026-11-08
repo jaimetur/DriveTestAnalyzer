@@ -243,6 +243,9 @@ EXPORT_PACKAGE_TTL = timedelta(hours=24)
 TRANSFER_OFFER_TTL = timedelta(minutes=15)
 TRANSFER_PROGRESS_SAVE_SECONDS = 10.0
 TRANSFER_SOURCE_PROGRESS_SECONDS = 5.0
+# A transfer request (a server asking another one for its content, which it downloads once a super-admin of that
+# server accepts, see start_transfer_request_job): the statuses of the request on the source while it is open.
+TRANSFER_REQUEST_OPEN_STATUSES = frozenset({'pending', 'accepted', 'exporting', 'available'})
 DEFAULT_SLIDES_TEMPLATES_DIR = settings.slides_templates_dir
 application_config_dir = settings.database_path.parent
 application_data_dir = settings.data_dir
@@ -7170,6 +7173,11 @@ WORKSPACE_ELEMENT_EXPORT_TARGETS = frozenset({
     'network-insights-favourites', 'bundle-report-template-favourites', 'scoring-favourites-filters', 'scoring-report-templates', 'scoring-export-panels', 'scoring-excluded-calls', 'assistant-glossary',
     'assistant-glossary',
 })
+# The content a server can request from another one (receive_transfer_request): the workspace elements, the application
+# packages and the workspaces, which the source super-admin chooses among their own when accepting the request.
+TRANSFER_REQUEST_KINDS = WORKSPACE_ELEMENT_EXPORT_TARGETS | frozenset({
+    'config', 'config-with-templates', 'users-access', 'ticket-center', 'workspace', 'full-environment',
+})
 # The module of each Workspace Content element (Export / Transfer and backups), where the content is managed or used
 # (PPT Templates with the PPT Designer that use them): the subgroups of Workspace Content start with Workspace Config
 # (the Config pages and the Workspace module together) and follow the menu (App Logs, then the main modules in tab order).
@@ -10866,6 +10874,25 @@ def _cleanup_expired_export_packages() -> None:
             if job.get('status') not in {'ready', 'failed', 'cancelled'}:
                 active_paths.add(Path(str(job['path'])))
         for offer in TRANSFER_OFFERS.values():
+            if offer.get('direction') == 'request':
+                # A transfer request of another server: its approval expires like that of an offer, and the package
+                # created for it waits here until the requester downloads it, for a day at most.
+                if offer.get('status') in TRANSFER_REQUEST_OPEN_STATUSES - {'pending'} and offer.get('path'):
+                    active_paths.add(Path(str(offer['path'])))
+                if offer.get('status') == 'pending' and float(offer.get('created_at', 0)) < offer_cutoff:
+                    offer.update({'status': 'expired', 'phase': 'approval expired',
+                                  'error': 'The transfer request expired before it was accepted.', 'finished_at': now})
+                    _save_transfer_offer(offer)
+                elif (
+                    offer.get('status') in TRANSFER_REQUEST_OPEN_STATUSES - {'pending'}
+                    and float(offer.get('accepted_at') or offer.get('created_at') or 0) < cutoff
+                ):
+                    offer.update({'status': 'expired', 'phase': 'package not downloaded',
+                                  'error': 'The requesting server did not download the package within 24 hours.', 'finished_at': now})
+                    _save_transfer_offer(offer)
+                    if offer.get('path'):
+                        Path(str(offer['path'])).unlink(missing_ok=True)
+                continue
             if offer.get('status') in {'receiving', 'received', 'importing', 'recovered'} and offer.get('path'):
                 active_paths.add(Path(str(offer['path'])))
             if offer.get('status') == 'pending' and float(offer.get('created_at', 0)) < offer_cutoff:
@@ -10885,7 +10912,7 @@ def _cleanup_expired_export_packages() -> None:
             TRANSFER_JOBS.pop(job_id, None)
         for offer_id in [
             offer_id for offer_id, offer in TRANSFER_OFFERS.items()
-            if offer.get('status') in {'ready', 'failed', 'rejected', 'expired', 'cancelled'} and float(offer.get('finished_at', 0)) < cutoff
+            if offer.get('status') in {'ready', 'sent', 'failed', 'rejected', 'expired', 'cancelled'} and float(offer.get('finished_at', 0)) < cutoff
         ]:
             TRANSFER_OFFERS.pop(offer_id, None)
             repository.delete_transfer_offer(offer_id)
@@ -13677,8 +13704,9 @@ def _transfer_unsent_files(
     return unsent
 
 
-def _raise_for_destination_response(response: Any, fallback: str) -> None:
-    """Raise the destination server's own explanation of a rejected request."""
+def _raise_for_destination_response(response: Any, fallback: str, own_prefixes: tuple[str, ...] = ('The destination server',)) -> None:
+    """Raise the other server's own explanation of a rejected request (``own_prefixes`` start the explanations that
+    already name that server)."""
     status_code = int(getattr(response, 'status_code', 200) or 200)
     if status_code < 400:
         return
@@ -13688,8 +13716,13 @@ def _raise_for_destination_response(response: Any, fallback: str) -> None:
         detail = ''
     if not detail:
         raise ValueError(f'{fallback} (HTTP {status_code}).')
-    # The explanation names the destination, so a rejection there is never taken for one of this server.
-    raise ValueError(detail if detail.startswith('The destination server') else f'{fallback}: {detail}')
+    # The explanation names the other server, so a rejection there is never taken for one of this server.
+    raise ValueError(detail if detail.startswith(own_prefixes) else f'{fallback}: {detail}')
+
+
+def _raise_for_source_response(response: Any, fallback: str) -> None:
+    """Raise the source server's own explanation of a rejected transfer request."""
+    _raise_for_destination_response(response, fallback, own_prefixes=('The source server', 'The requesting server'))
 
 
 def _run_transfer_job(job_id: str) -> None:
@@ -14013,6 +14046,338 @@ def transfer_job_payload(job_id: str, user: SessionUser) -> dict[str, Any] | Non
         payload = {key: value for key, value in job.items() if key not in {'owner', 'path'}}
     payload['progress'] = round(float(payload.get('progress') or 0), 1)
     return payload
+
+
+def _transfer_request_targets(targets: list[str]) -> tuple[list[str], list[str]]:
+    """What a transfer request asks the source for: its targets, with every Full Workspace as the generic ``workspace``
+    kind (the source super-admin chooses which of their workspaces to send), and the names of the workspaces chosen
+    here, for the source to preselect its workspaces of the same name."""
+    requested: list[str] = []
+    workspace_names: list[str] = []
+    for target in targets:
+        if target.startswith('workspace:'):
+            workspace = workspace_registry.get(target.removeprefix('workspace:'))
+            if workspace:
+                workspace_names.append(workspace.name)
+            target = 'workspace'
+        if target not in requested:
+            requested.append(target)
+    return requested, workspace_names
+
+
+def _transfer_request_content_label(targets: Iterable[str]) -> str:
+    """The content of a transfer request, as its targets name it (a Full Workspace without naming the workspace)."""
+    return ' + '.join('Full Workspace' if target == 'workspace' else _transfer_content_label(target) for target in targets)
+
+
+def start_transfer_request_job(
+    source_url: str, source_port: int | None, target: str | Iterable[str], destination_workspace_ids: Iterable[str] | None,
+    user: SessionUser,
+) -> dict[str, Any]:
+    """Ask another server for content: once a super-admin there accepts, that server creates the package and this one
+    downloads it and reviews it as a received transfer (_run_transfer_request_job). Every connection goes from this
+    server to the source, so a server that cannot be reached from outside still receives transfers."""
+    targets = normalize_export_targets(target)
+    for selected_target in targets:
+        require_import_export_permission(
+            user,
+            'workspace' if selected_target.startswith('workspace:') else 'config' if selected_target == 'config-with-templates' else selected_target,
+        )
+    source = normalize_transfer_destination(source_url, source_port)
+    _cleanup_expired_export_packages()
+    requested_targets, workspace_names = _transfer_request_targets(targets)
+    destinations = list(dict.fromkeys(str(value) for value in destination_workspace_ids or () if str(value)))
+    if any(selected_target in WORKSPACE_ELEMENT_EXPORT_TARGETS for selected_target in targets):
+        if not destinations:
+            if not active_workspace:
+                raise ValueError('Open the workspace to receive the workspace elements into first.')
+            destinations = [active_workspace.id]
+        if any(workspace_registry.get(workspace_id) is None for workspace_id in destinations):
+            raise ValueError('One or more destination workspaces no longer exist.')
+    else:
+        destinations = []
+    package_dir = export_package_dir()
+    package_dir.mkdir(parents=True, exist_ok=True)
+    job_id = uuid4().hex
+    offer_id = uuid4().hex
+    job = {
+        'id': job_id,
+        'owner': user.username,
+        'direction': 'request',
+        # The server the content is requested from; the dialog follows it as it follows a destination.
+        'destination': source,
+        'target': targets[0] if len(targets) == 1 else 'bundle',
+        'targets': targets,
+        'requested_targets': requested_targets,
+        'workspace_names': workspace_names,
+        'workspace_ids': destinations or None,
+        'offer_id': offer_id,
+        'path': str(package_dir / f'incoming-transfer-{offer_id}-{job_id}.upload'),
+        'status': 'queued',
+        'created_at': datetime.now(timezone.utc).timestamp(),
+    }
+    with TRANSFER_LOCK:
+        TRANSFER_JOBS[job_id] = job
+    repository.try_add_log(user.username, 'outgoing_transfer_request_queued', json.dumps({
+        'job_id': job_id, 'source': source, 'targets': targets, 'workspace_ids': destinations,
+    }))
+    Thread(
+        target=_run_transfer_request_job,
+        args=(job_id,),
+        name=f'transfer-request-{job_id[:8]}',
+        daemon=True,
+    ).start()
+    return job
+
+
+def _cancel_remote_transfer_request(source: str, request_id: str, headers: dict[str, str], reason: str = '') -> None:
+    """Close the request on the source server, telling it why when this server failed."""
+    with httpx.Client(timeout=5.0, trust_env=transfer_uses_environment_proxy(source)) as client:
+        client.request(
+            'DELETE',
+            _transfer_api_url(source, f'/api/import-export/transfers/requests/{request_id}'),
+            headers=headers,
+            json={'reason': reason} if reason else None,
+        )
+
+
+def _download_transfer_request_package(
+    client: Any, source: str, request_id: str, headers: dict[str, str], package_path: Path, expected_size: int,
+    job: dict[str, Any], stop_if_cancelled: Callable[[], None],
+) -> None:
+    """Download the package the source created, going on from the bytes already received when the connection drops."""
+    url = _transfer_api_url(source, f'/api/import-export/transfers/requests/{request_id}/package')
+    received = 0
+    package_path.unlink(missing_ok=True)
+    for attempt in range(3):
+        stop_if_cancelled()
+        request_headers = {**headers, 'Accept': 'application/zip'}
+        if received:
+            request_headers['Range'] = f'bytes={received}-'
+        try:
+            with client.stream('GET', url, headers=request_headers, timeout=httpx.Timeout(30.0, read=3600.0)) as response:
+                status_code = int(getattr(response, 'status_code', 200) or 200)
+                if status_code >= 500:
+                    response.raise_for_status()
+                if status_code not in {200, 206}:
+                    try:
+                        response.read()
+                        detail = str(response.json().get('detail') or '').strip()
+                    except (AttributeError, TypeError, ValueError, httpx.HTTPError):
+                        detail = ''
+                    raise ValueError(detail or f'The source server could not send the package (HTTP {status_code}).')
+                resumed = status_code == 206 and received > 0
+                with package_path.open('ab' if resumed else 'wb') as output:
+                    if not resumed:
+                        received = 0
+                    for chunk in response.iter_bytes(4 * 1024 * 1024):
+                        stop_if_cancelled()
+                        output.write(chunk)
+                        received += len(chunk)
+                        with TRANSFER_LOCK:
+                            job['bytes_received'] = received
+                            if expected_size:
+                                job['progress'] = round(min(100.0, received * 100.0 / expected_size), 1)
+            if expected_size and received < expected_size:
+                raise httpx.ReadError('The package download ended before the whole package arrived.')
+            return
+        except (httpx.TransportError, httpx.TimeoutException, httpx.HTTPStatusError):
+            if attempt == 2:
+                raise
+            with TRANSFER_LOCK:
+                job['phase'] = f'retrying download ({attempt + 2}/3)'
+            sleep(2 ** attempt)
+
+
+def _run_transfer_request_job(job_id: str) -> None:
+    with TRANSFER_LOCK:
+        job = TRANSFER_JOBS.get(job_id)
+        if not job:
+            return
+        job.update(status='connecting', started_at=datetime.now(timezone.utc).timestamp())
+        source = str(job['destination'])
+        targets = [str(target) for target in job.get('targets') or []]
+        requested_targets = [str(target) for target in job.get('requested_targets') or targets]
+        workspace_names = [str(name) for name in job.get('workspace_names') or []]
+        destinations = [str(value) for value in job.get('workspace_ids') or []]
+        offer_id = str(job['offer_id'])
+        package_path = Path(str(job['path']))
+        owner = str(job['owner'])
+    request_secret = secrets.token_urlsafe(32)
+    request_id = ''
+    headers = {'X-Dashboard-Transfer-Secret': request_secret, 'Accept': 'application/json'}
+    source_label = urlsplit(source).hostname or source
+
+    def cancellation_requested() -> bool:
+        with TRANSFER_LOCK:
+            # The request is stopped from its dialog (the job) or, while the package is received, from the System tasks
+            # card of any super-admin (the record of the package being received).
+            return bool(job.get('cancel_requested')) or bool((TRANSFER_OFFERS.get(offer_id) or {}).get('cancel_requested'))
+
+    def stop_if_cancelled() -> None:
+        if cancellation_requested():
+            raise InterruptedError('The transfer request was cancelled.')
+
+    def close_received_package(status: str, error: str) -> None:
+        # The record of the package being received, once the download had started.
+        with TRANSFER_LOCK:
+            offer = TRANSFER_OFFERS.get(offer_id)
+            if offer and offer.get('status') == 'receiving':
+                offer.update({'status': status, 'phase': status, 'error': error, 'finished_at': datetime.now(timezone.utc).timestamp()})
+                _save_transfer_offer(offer)
+        package_path.unlink(missing_ok=True)
+
+    try:
+        with httpx.Client(
+            timeout=httpx.Timeout(65.0, connect=5.0),
+            follow_redirects=False,
+            trust_env=transfer_uses_environment_proxy(source),
+        ) as client:
+            request_payload = {
+                'requester': __app_name__,
+                'archive_version': ARCHIVE_VERSION,
+                'targets': requested_targets,
+                'content': _transfer_request_content_label(requested_targets),
+                'workspaces': workspace_names,
+            }
+            # Retry a transient first connection, as an offer does; the request endpoint is idempotent for this secret.
+            for attempt in range(3):
+                try:
+                    response = client.post(
+                        _transfer_api_url(source, '/api/import-export/transfers/requests'),
+                        headers=headers,
+                        json=request_payload,
+                    )
+                    if getattr(response, 'status_code', 200) >= 500:
+                        response.raise_for_status()
+                    break
+                except (httpx.TransportError, httpx.TimeoutException, httpx.HTTPStatusError):
+                    stop_if_cancelled()
+                    if attempt == 2:
+                        raise
+                    with TRANSFER_LOCK:
+                        job['phase'] = f'retrying source connection ({attempt + 2}/3)'
+                    sleep(1 << attempt)
+            _raise_for_source_response(response, 'The source server rejected the transfer request')
+            request_id = str(response.json().get('request_id') or '')
+            if not request_id:
+                raise ValueError('The source server did not register the transfer request.')
+            if cancellation_requested():
+                _cancel_remote_transfer_request(source, request_id, headers)
+                stop_if_cancelled()
+            with TRANSFER_LOCK:
+                job.update({'status': 'awaiting_acceptance', 'remote_request_id': request_id, 'phase': ''})
+
+            # A super-admin of the source has an hour to accept; the package then takes as long as its export there.
+            remote: dict[str, Any] = {}
+            acceptance_deadline = monotonic() + 3600
+            export_deadline: float | None = None
+            while True:
+                if cancellation_requested():
+                    _cancel_remote_transfer_request(source, request_id, headers)
+                    stop_if_cancelled()
+                response = client.get(
+                    _transfer_api_url(source, f'/api/import-export/transfers/requests/{request_id}'),
+                    headers=headers,
+                )
+                _raise_for_source_response(response, 'The source server could not report the request status')
+                remote = response.json()
+                remote_status = str(remote.get('status') or '')
+                if remote_status == 'available':
+                    break
+                if remote_status in {'rejected', 'failed', 'expired', 'cancelled', 'sent'}:
+                    raise ValueError(remote.get('error') or 'The source server rejected the transfer request.')
+                if remote_status in {'accepted', 'exporting'}:
+                    if export_deadline is None:
+                        export_deadline = monotonic() + 86400
+                    with TRANSFER_LOCK:
+                        job.update({'status': 'remote_exporting', 'remote_phase': remote.get('phase') or '',
+                                    'progress': float(remote.get('progress') or 0)})
+                    if monotonic() > export_deadline:
+                        raise TimeoutError('The source server did not finish creating the package within 24 hours.')
+                elif monotonic() > acceptance_deadline:
+                    raise TimeoutError('The source server did not accept the transfer request within one hour.')
+                sleep(2)
+
+            expected_size = int(remote.get('size') or 0)
+            kind = str(remote.get('kind') or '')
+            filename = str(remote.get('filename') or 'transfer.zip')
+            now = datetime.now(timezone.utc).timestamp()
+            with TRANSFER_LOCK:
+                job.update({'status': 'downloading', 'size': expected_size, 'bytes_received': 0, 'progress': 0.0, 'phase': '',
+                            'filename': filename})
+                # The package being received is recorded as one a source sends: the cleanup and the recovery of
+                # packages leave its file alone, and its preview and import follow as for any received transfer.
+                TRANSFER_OFFERS[offer_id] = {
+                    'id': offer_id,
+                    'source': f'{remote.get("source") or "DriveTest Analyzer server"} ({source_label})',
+                    'source_address': source_label,
+                    'kind': kind,
+                    'targets': targets,
+                    'content': str(remote.get('content') or _transfer_request_content_label(requested_targets))[:160],
+                    'workspaces': [str(name)[:160] for name in remote.get('workspaces') or []] if isinstance(remote.get('workspaces'), list) else [],
+                    'status': 'receiving', 'phase': 'receiving package', 'progress': 0.0,
+                    'size': expected_size, 'bytes_received': 0, 'path': str(package_path),
+                    'requested': True, 'request_job_id': job_id,
+                    'accepted_by': owner, 'accepted_at': now, 'created_at': now,
+                    'destination_workspace_ids': destinations,
+                }
+                _save_transfer_offer(TRANSFER_OFFERS[offer_id])
+                ACTIVE_TRANSFER_RECEIVES[offer_id] = job_id
+            try:
+                _download_transfer_request_package(client, source, request_id, headers, package_path, expected_size, job, stop_if_cancelled)
+            finally:
+                ACTIVE_TRANSFER_RECEIVES.pop(offer_id, None)
+            manifest = read_import_manifest(package_path)
+            if kind and str(manifest.get('kind') or '') != kind:
+                raise ValueError('The received package type does not match the requested content.')
+            with TRANSFER_LOCK:
+                offer = TRANSFER_OFFERS.get(offer_id)
+                if not offer or offer.get('status') != 'receiving':
+                    raise InterruptedError('The transfer request was cancelled.')
+                # The package waits for a super-admin to import the packages chosen in its preview, or to reject it.
+                offer.update({
+                    'kind': str(manifest.get('kind') or kind), 'manifest': manifest, 'path': str(package_path),
+                    'size': package_path.stat().st_size,
+                    'status': 'review', 'phase': 'preparing the preview', 'progress': 100.0,
+                })
+                _save_transfer_offer(offer)
+            _start_transfer_preview(offer_id)
+            try:
+                client.post(_transfer_api_url(source, f'/api/import-export/transfers/requests/{request_id}/received'), headers=headers)
+            except httpx.HTTPError:
+                pass  # The source deletes a package whose reception is not confirmed when the request expires.
+            with TRANSFER_LOCK:
+                job.update({'status': 'ready', 'progress': 100.0, 'finished_at': datetime.now(timezone.utc).timestamp(),
+                            'notice': f'Package received from {source_label}. Choose what to import in its preview.'})
+            repository.try_add_log(owner, 'outgoing_transfer_request_completed', json.dumps({
+                'job_id': job_id, 'source': source, 'targets': targets, 'offer_id': offer_id, 'executed_by': 'system',
+            }))
+    except InterruptedError as exc:
+        if request_id:
+            try:
+                _cancel_remote_transfer_request(source, request_id, headers)
+            except (httpx.HTTPError, OSError):
+                pass
+        close_received_package('cancelled', str(exc))
+        with TRANSFER_LOCK:
+            job.update({'status': 'cancelled', 'error': str(exc), 'finished_at': datetime.now(timezone.utc).timestamp()})
+        repository.try_add_log(owner, 'outgoing_transfer_request_stopped', json.dumps({
+            'job_id': job_id, 'source': source, 'targets': targets, 'executed_by': 'system',
+        }))
+    except Exception as exc:
+        error = transfer_connection_error(source) if isinstance(exc, httpx.ConnectError) else str(exc)
+        if request_id:
+            try:
+                _cancel_remote_transfer_request(source, request_id, headers, reason=error)
+            except (httpx.HTTPError, OSError):
+                pass
+        close_received_package('failed', error)
+        with TRANSFER_LOCK:
+            job.update({'status': 'failed', 'error': error, 'finished_at': datetime.now(timezone.utc).timestamp()})
+        repository.try_add_log(owner, 'outgoing_transfer_request_failed', json.dumps({
+            'job_id': job_id, 'source': source, 'targets': targets, 'error': error, 'executed_by': 'system',
+        }))
 
 
 def require_import_export_permission(user: SessionUser, target: str) -> None:
@@ -16209,9 +16574,34 @@ def _global_background_tasks(user: SessionUser, accessible_ids: set[str]) -> lis
     for job in transfer_jobs:
         if job.get('status') in {'ready', 'failed', 'cancelled'} or job.get('owner') != user.username:
             continue
-        append_job(job, 'transfer', f'Transferring {str(job.get("target") or "package").replace("-", " ").title()}')
+        content = str(job.get("target") or "package").replace("-", " ").title()
+        append_job(job, 'transfer', f'Requesting {content}' if job.get('direction') == 'request' else f'Transferring {content}')
     if user.role == 'super-admin':
         for offer in incoming_transfers:
+            if offer.get('direction') == 'request':
+                # The request of another server for content of this one: its approval, then the package created for it.
+                requester = offer.get('requester') or 'another server'
+                if offer.get('status') == 'pending':
+                    tasks.append({
+                        'id': f'incoming-transfer-review:{offer.get("id")}',
+                        'workspace_id': '__server__',
+                        'label': f'Transfer request: {offer.get("content") or "package"}',
+                        'detail': f'Approval required, requested by {requester}',
+                        **_background_task_timing(offer),
+                        'status': 'queued',
+                        'progress': 0,
+                        'review_transfer_offer_id': str(offer.get('id') or ''),
+                    })
+                elif offer.get('status') in TRANSFER_REQUEST_OPEN_STATUSES:
+                    tasks.append({
+                        'id': f'transfer-request:{offer.get("id")}',
+                        'workspace_id': '__server__',
+                        'label': f'Package requested by {requester}: {offer.get("content") or "package"}',
+                        'detail': str(offer.get('phase') or 'creating package').capitalize(),
+                        **_background_task_timing(offer),
+                        'progress': max(0, min(100, round(float(offer.get('progress') or 0), 1))),
+                    })
+                continue
             if offer.get('status') == 'pending':
                 tasks.append({
                     'id': f'incoming-transfer-review:{offer.get("id")}',
@@ -24712,6 +25102,234 @@ async def receive_transfer_package(offer_id: str, request: Request) -> JSONRespo
         raise HTTPException(status_code=503, detail='The package transfer was interrupted; the source may retry.') from exc
 
 
+# -- transfer requests: another server asks this one for its content and downloads the package ---------------------
+# (A server that cannot be reached from outside, such as a laptop whose network closes every incoming connection,
+# receives transfers this way: every connection of a request goes from the requester to this server, see
+# start_transfer_request_job.)
+
+
+def _transfer_request_or_404(request_id: str, secret: str) -> dict[str, Any]:
+    """The transfer request of the requester holding its secret (call with TRANSFER_LOCK held)."""
+    _refresh_persisted_transfer_offers()
+    record = TRANSFER_OFFERS.get(request_id)
+    if not record or record.get('direction') != 'request' or not _transfer_offer_secret_matches(record, secret):
+        raise HTTPException(status_code=404, detail='The transfer request does not exist.')
+    return record
+
+
+def _refresh_transfer_request_export(record: dict[str, Any]) -> None:
+    """Carry the state of the export job of an accepted request into the request (call with TRANSFER_LOCK held)."""
+    if record.get('status') not in {'accepted', 'exporting'}:
+        return
+    with EXPORT_JOBS_LOCK:
+        job = dict(EXPORT_JOBS.get(str(record.get('export_job_id') or '')) or {})
+    now = datetime.now(timezone.utc).timestamp()
+    if not job:
+        # The export jobs live in the process: a restart of this server lost the one creating the package.
+        record.update({'status': 'failed', 'phase': 'interrupted', 'finished_at': now,
+                       'error': 'The source server stopped before the package was created. Request the transfer again if needed.'})
+    elif job.get('status') == 'ready':
+        record.update({'status': 'available', 'phase': 'package ready for download', 'progress': 100.0,
+                       'size': int(job.get('size') or 0), 'filename': str(job.get('filename') or record.get('filename') or 'transfer.zip'),
+                       'path': str(job.get('path') or record.get('path') or '')})
+    elif job.get('status') in {'failed', 'cancelled'}:
+        record.update({'status': 'failed', 'phase': 'package not created', 'finished_at': now,
+                       'error': f'The source server could not create the package: {job.get("error") or "the export stopped"}'})
+    else:
+        record.update({'status': 'exporting', 'phase': str(job.get('phase') or 'creating package'),
+                       'progress': round(float(job.get('progress') or 0), 1)})
+    _save_transfer_offer(record)
+
+
+@app.post('/api/import-export/transfers/requests')
+async def receive_transfer_request(request: Request) -> JSONResponse:
+    _cleanup_expired_export_packages()
+    secret = request.headers.get('X-Dashboard-Transfer-Secret', '')
+    if len(secret) < 32:
+        raise HTTPException(status_code=401, detail='A valid transfer secret is required.')
+    try:
+        payload = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=400, detail='The transfer request is not valid JSON.') from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail='The transfer request is invalid.')
+    if payload.get('archive_version') != ARCHIVE_VERSION:
+        raise HTTPException(status_code=409, detail='The requesting server uses an incompatible export package version.')
+    raw_targets = payload.get('targets') if isinstance(payload.get('targets'), list) else []
+    targets = list(dict.fromkeys(current_archive_name(str(target)) for target in raw_targets if str(target)))
+    if not targets or any(target not in TRANSFER_REQUEST_KINDS for target in targets):
+        raise HTTPException(status_code=400, detail='The requested content is not supported by this server.')
+    requester_address = request.client.host if request.client else 'unknown'
+    requester = str(payload.get('requester') or 'DriveTest Analyzer server')[:160]
+    content = str(payload.get('content') or _transfer_request_content_label(targets))[:160]
+    workspaces = [str(value)[:160] for value in payload.get('workspaces', []) if value] if isinstance(payload.get('workspaces'), list) else []
+    secret_hash = hashlib.sha256(secret.encode('utf-8')).hexdigest()
+    now = datetime.now(timezone.utc).timestamp()
+    with TRANSFER_LOCK:
+        _refresh_persisted_transfer_offers()
+        requests = [record for record in TRANSFER_OFFERS.values() if record.get('direction') == 'request']
+        # The requester retries a lost first contact: the same secret gets its request back.
+        existing = next((
+            record for record in requests
+            if record.get('secret_hash') == secret_hash and record.get('requester_address') == requester_address
+            and record.get('status') in TRANSFER_REQUEST_OPEN_STATUSES
+        ), None)
+        if existing:
+            return JSONResponse({'request_id': existing['id'], 'status': existing['status']})
+        # A repeated request of the same content from the same server replaces the one still waiting for approval.
+        reusable = next((
+            record for record in sorted(requests, key=lambda item: float(item.get('created_at') or 0), reverse=True)
+            if record.get('status') == 'pending' and record.get('requester_address') == requester_address
+            and record.get('requester') == requester and list(record.get('targets') or []) == targets
+            and list(record.get('workspaces') or []) == workspaces
+        ), None)
+        if reusable:
+            reusable.update({'secret_hash': secret_hash, 'created_at': now, 'content': content})
+            _save_transfer_offer(reusable)
+            return JSONResponse({'request_id': reusable['id'], 'status': 'pending', 'reused': True})
+        request_id = uuid4().hex
+        record = {
+            'id': request_id,
+            'direction': 'request',
+            'requester': requester,
+            'requester_address': requester_address,
+            'targets': targets,
+            'content': content,
+            'workspaces': workspaces,
+            # Full Workspaces and a Full Environment are chosen among the workspaces of this server when accepting.
+            'requires_source_workspaces': any(target in {'workspace', 'full-environment'} for target in targets),
+            'secret_hash': secret_hash,
+            'status': 'pending',
+            'phase': 'awaiting approval',
+            'progress': 0.0,
+            'created_at': now,
+        }
+        TRANSFER_OFFERS[request_id] = record
+        _save_transfer_offer(record)
+    repository.try_add_log('system', 'incoming_transfer_request_received', json.dumps({
+        'request_id': request_id, 'source': requester, 'source_address': requester_address, 'content': content,
+        'workspaces': workspaces, 'executed_by': 'system',
+    }))
+    return JSONResponse({'request_id': request_id, 'status': 'pending'})
+
+
+@app.get('/api/import-export/transfers/requests/{request_id}')
+def get_transfer_request_status(request_id: str, request: Request) -> JSONResponse:
+    secret = request.headers.get('X-Dashboard-Transfer-Secret', '')
+    with TRANSFER_LOCK:
+        record = _transfer_request_or_404(request_id, secret)
+        _refresh_transfer_request_export(record)
+        payload = {
+            key: record.get(key) for key in ('status', 'phase', 'progress', 'size', 'filename', 'kind', 'content', 'workspaces', 'error')
+            if record.get(key) is not None
+        }
+    payload['source'] = __app_name__
+    return JSONResponse(payload)
+
+
+@app.get('/api/import-export/transfers/requests/{request_id}/package')
+def download_transfer_request_package(request_id: str, request: Request) -> StreamingResponse:
+    """Serve the package created for an accepted request, from the byte the requester asks for (``Range``)."""
+    secret = request.headers.get('X-Dashboard-Transfer-Secret', '')
+    with TRANSFER_LOCK:
+        record = _transfer_request_or_404(request_id, secret)
+        _refresh_transfer_request_export(record)
+        if record.get('status') != 'available':
+            if record.get('status') in TRANSFER_REQUEST_OPEN_STATUSES:
+                raise HTTPException(status_code=409, detail='The source server has not finished creating the package yet.')
+            raise HTTPException(status_code=409, detail=str(record.get('error') or 'The requested package is no longer available.'))
+        path = Path(str(record.get('path') or ''))
+        filename = str(record.get('filename') or 'transfer.zip')
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail='The source server no longer holds the requested package.')
+    size = path.stat().st_size
+    start = 0
+    range_header = request.headers.get('Range', '')
+    if range_header.startswith('bytes='):
+        try:
+            start = int(range_header.removeprefix('bytes=').split('-', 1)[0] or 0)
+        except ValueError:
+            start = 0
+        if start >= size:
+            raise HTTPException(status_code=416, detail='The requested range is beyond the package.', headers={'Content-Range': f'bytes */{size}'})
+
+    def package_chunks() -> Iterable[bytes]:
+        with path.open('rb') as package_file:
+            package_file.seek(start)
+            while chunk := package_file.read(4 * 1024 * 1024):
+                yield chunk
+
+    headers = {
+        'Content-Length': str(size - start), 'Accept-Ranges': 'bytes', 'X-Export-Filename': filename,
+        'Content-Disposition': f'attachment; filename="{filename}"',
+    }
+    if start:
+        headers['Content-Range'] = f'bytes {start}-{size - 1}/{size}'
+    return StreamingResponse(package_chunks(), status_code=206 if start else 200, media_type='application/zip', headers=headers)
+
+
+@app.post('/api/import-export/transfers/requests/{request_id}/received')
+def confirm_transfer_request_received(request_id: str, request: Request) -> JSONResponse:
+    """The requester has the whole package: it is deleted here."""
+    secret = request.headers.get('X-Dashboard-Transfer-Secret', '')
+    with TRANSFER_LOCK:
+        record = _transfer_request_or_404(request_id, secret)
+        _refresh_transfer_request_export(record)
+        if record.get('status') != 'available':
+            raise HTTPException(status_code=409, detail='The requested package was not available to be received.')
+        record.update({'status': 'sent', 'phase': 'package received by the requesting server', 'progress': 100.0,
+                       'finished_at': datetime.now(timezone.utc).timestamp()})
+        _save_transfer_offer(record)
+        path = Path(str(record.get('path') or ''))
+        export_job_id = str(record.get('export_job_id') or '')
+    with EXPORT_JOBS_LOCK:
+        EXPORT_JOBS.pop(export_job_id, None)
+    if path.name:
+        path.unlink(missing_ok=True)
+    repository.try_add_log('system', 'incoming_transfer_request_completed', json.dumps({
+        'request_id': request_id, 'source': record.get('requester'), 'source_address': record.get('requester_address'),
+        'content': record.get('content'), 'workspaces': record.get('workspaces'), 'executed_by': 'system',
+    }))
+    return JSONResponse({'status': 'sent'})
+
+
+@app.delete('/api/import-export/transfers/requests/{request_id}')
+async def cancel_transfer_request(request_id: str, request: Request) -> JSONResponse:
+    secret = request.headers.get('X-Dashboard-Transfer-Secret', '')
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+    # A requester that failed sends its reason; without one, the requester's user cancelled.
+    reason = str(body.get('reason') or '').strip()[:2000] if isinstance(body, dict) else ''
+    error = f'The requesting server could not complete the transfer: {reason}' if reason else 'The requesting server cancelled the transfer request.'
+    with TRANSFER_LOCK:
+        record = _transfer_request_or_404(request_id, secret)
+        if record.get('status') not in TRANSFER_REQUEST_OPEN_STATUSES:
+            return JSONResponse({'cancelled': True})
+        record.update({'status': 'failed' if reason else 'cancelled', 'phase': 'stopped by the requesting server', 'error': error,
+                       'finished_at': datetime.now(timezone.utc).timestamp()})
+        _save_transfer_offer(record)
+        path = Path(str(record.get('path') or ''))
+        export_job_id = str(record.get('export_job_id') or '')
+    exporting = False
+    with EXPORT_JOBS_LOCK:
+        job = EXPORT_JOBS.get(export_job_id)
+        if job and job.get('status') in {'queued', 'processing'}:
+            # The export deletes its own files when it stops.
+            job['cancel_requested'] = True
+            exporting = True
+        elif job:
+            EXPORT_JOBS.pop(export_job_id, None)
+    if path.name and not exporting:
+        path.unlink(missing_ok=True)
+    repository.try_add_log('system', 'incoming_transfer_request_stopped', json.dumps({
+        'request_id': request_id, 'source': record.get('requester'), 'content': record.get('content'), 'error': error,
+        'executed_by': 'system',
+    }))
+    return JSONResponse({'cancelled': True})
+
+
 # -- admin notices: after signing in and while signed in -------------------------------------------
 # Under /api, outside Admin: the App Events of the dialog run in the module of the page it is shown on.
 @app.get('/api/admin-notices')
@@ -24775,7 +25393,13 @@ def list_pending_transfer_offers(user: SessionUser = Depends(super_admin_user)) 
         offers = [
             {key: offer.get(key) for key in ('id', 'source', 'source_address', 'kind', 'targets', 'components', 'workspace_components', 'content', 'workspaces', 'created_at', 'requires_destination_workspaces', 'unsent_folder_warnings')}
             for offer in TRANSFER_OFFERS.values()
-            if offer.get('status') == 'pending'
+            if offer.get('status') == 'pending' and offer.get('direction') != 'request'
+        ]
+        # The requests of other servers for content of this one, waiting for a super-admin to accept them.
+        requests = [
+            {key: record.get(key) for key in ('id', 'requester', 'requester_address', 'targets', 'content', 'workspaces', 'requires_source_workspaces', 'created_at')}
+            for record in TRANSFER_OFFERS.values()
+            if record.get('direction') == 'request' and record.get('status') == 'pending'
         ]
         # Every open page learns about a running import, so it can keep the
         # application out of use while the received data replaces the current data.
@@ -24796,6 +25420,9 @@ def list_pending_transfer_offers(user: SessionUser = Depends(super_admin_user)) 
 
     return JSONResponse({
         'offers': sorted(offers, key=lambda offer: float(offer.get('created_at') or 0)),
+        'requests': sorted(requests, key=lambda record: float(record.get('created_at') or 0)),
+        # Workspace elements requested by another server come from the active workspace, as an export does.
+        'active_workspace': {'id': active_workspace.id, 'name': active_workspace.name} if active_workspace else None,
         'active_imports': active_imports,
         'reviews': reviews,
         # The access requests and tickets the super-admin has not been told about ride on this poll.
@@ -24987,6 +25614,126 @@ def reject_transfer_offer(offer_id: str, user: SessionUser = Depends(super_admin
     except sqlite3.Error:
         pass
     return JSONResponse({'rejected': True})
+
+
+class TransferRequestDecision(BaseModel):
+    workspace_ids: list[str] = Field(default_factory=list)
+    include_generated_outputs: bool = True
+    include_input_files: bool = True
+
+
+@app.post('/admin/import-export/transfers/requests/{request_id}/accept')
+def accept_transfer_request(
+    request_id: str, payload: TransferRequestDecision, user: SessionUser = Depends(super_admin_user),
+) -> JSONResponse:
+    """Accept the request of another server: the package is created as an export job, which that server downloads."""
+    _cleanup_expired_export_packages()
+    with TRANSFER_LOCK:
+        _refresh_persisted_transfer_offers()
+        record = TRANSFER_OFFERS.get(request_id)
+        if not record or record.get('direction') != 'request':
+            raise HTTPException(status_code=404, detail='The pending transfer request no longer exists.')
+        if record.get('status') != 'pending':
+            if record.get('status') in TRANSFER_REQUEST_OPEN_STATUSES or record.get('status') == 'sent':
+                return JSONResponse({'accepted': True})
+            raise HTTPException(status_code=409, detail='This transfer request can no longer be accepted.')
+        requested = [str(target) for target in record.get('targets') or []]
+    chosen = list(dict.fromkeys(str(value) for value in payload.workspace_ids if str(value)))
+    available = {workspace.id: workspace for workspace in workspace_registry.list()}
+    if any(workspace_id not in available for workspace_id in chosen):
+        raise HTTPException(status_code=400, detail='One or more selected workspaces no longer exist.')
+    targets: list[str] = []
+    environment_workspace_ids: list[str] | None = None
+    for target in requested:
+        if target == 'workspace':
+            if not chosen:
+                raise HTTPException(status_code=400, detail='Select at least one workspace to send.')
+            targets.extend(f'workspace:{workspace_id}' for workspace_id in chosen)
+        elif target == 'full-environment':
+            if not chosen:
+                raise HTTPException(status_code=400, detail='Select at least one workspace of the Full Environment to send.')
+            targets.append(target)
+            environment_workspace_ids = chosen
+        else:
+            if target in WORKSPACE_ELEMENT_EXPORT_TARGETS and not active_workspace:
+                raise HTTPException(status_code=400, detail='Open the workspace to send the workspace elements from first.')
+            targets.append(target)
+    try:
+        targets = require_export_targets_permission(user, targets)
+        job = start_export_job(
+            targets, environment_workspace_ids if targets == ['full-environment'] else None,
+            include_generated_outputs=payload.include_generated_outputs, include_input_files=payload.include_input_files,
+            owner=user.username,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    target = targets[0]
+    kind = 'bundle' if len(targets) > 1 else 'full-environment' if target == 'full-environment' else 'workspace' if target.startswith('workspace:') else 'config' if target in {'config', 'config-with-templates'} else target
+    if chosen:
+        sent_workspaces = [available[workspace_id].name for workspace_id in chosen]
+    elif active_workspace and any(selected_target in WORKSPACE_ELEMENT_EXPORT_TARGETS for selected_target in targets):
+        sent_workspaces = [active_workspace.name]
+    else:
+        sent_workspaces = []
+    with TRANSFER_LOCK:
+        record = TRANSFER_OFFERS.get(request_id) or record
+        record.update({
+            'status': 'accepted', 'phase': 'creating package', 'progress': 0.0,
+            'accepted_by': user.username, 'accepted_at': datetime.now(timezone.utc).timestamp(),
+            'export_job_id': job['id'], 'export_targets': targets, 'path': str(job['path']),
+            'kind': kind, 'filename': str(job.get('filename') or ''), 'workspaces': sent_workspaces,
+        })
+        _save_transfer_offer(record)
+    repository.try_add_log(user.username, 'accept_transfer_request', json.dumps({
+        'request_id': request_id, 'source': record.get('requester'), 'source_address': record.get('requester_address'),
+        'content': record.get('content'), 'targets': targets, 'workspaces': sent_workspaces,
+        'include_generated_outputs': payload.include_generated_outputs, 'include_input_files': payload.include_input_files,
+    }))
+    return JSONResponse({'accepted': True})
+
+
+@app.post('/admin/import-export/transfers/requests/{request_id}/reject')
+def reject_transfer_request(request_id: str, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
+    _cleanup_expired_export_packages()
+    with TRANSFER_LOCK:
+        _refresh_persisted_transfer_offers()
+        record = TRANSFER_OFFERS.get(request_id)
+        if not record or record.get('direction') != 'request' or record.get('status') != 'pending':
+            raise HTTPException(status_code=404, detail='The pending transfer request no longer exists.')
+        record.update({'status': 'rejected', 'phase': 'rejected', 'error': 'The source super-admin rejected the transfer request.',
+                       'finished_at': datetime.now(timezone.utc).timestamp()})
+        _save_transfer_offer(record)
+    repository.try_add_log(user.username, 'reject_transfer_request', json.dumps({
+        'request_id': request_id, 'source': record.get('requester'), 'source_address': record.get('requester_address'),
+        'content': record.get('content'),
+    }))
+    return JSONResponse({'rejected': True})
+
+
+@app.post('/admin/import-export/transfers/requests')
+def create_admin_transfer_request_job(
+    source_url: str = Form(...),
+    source_port: int | None = Form(None),
+    export_target: list[str] = Form(...),
+    workspace_ids: list[str] | None = Form(None),
+    user: SessionUser = Depends(super_admin_user),
+) -> JSONResponse:
+    """Request content from another server (the received package is reviewed as an incoming transfer, by a super-admin)."""
+    try:
+        job = start_transfer_request_job(source_url, source_port, export_target, workspace_ids, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except sqlite3.Error as exc:
+        raise HTTPException(status_code=503, detail=f'The transfer state database could not be prepared: {exc}') from exc
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f'The transfer working directory could not be prepared: {exc}') from exc
+    return JSONResponse({
+        'job_id': job['id'],
+        'status': job['status'],
+        'direction': 'request',
+        'status_url': f"/admin/import-export/transfers/jobs/{job['id']}",
+        'cancel_url': f"/admin/import-export/transfers/jobs/{job['id']}/cancel",
+    })
 
 
 @app.post('/admin/import-export/transfers/jobs')

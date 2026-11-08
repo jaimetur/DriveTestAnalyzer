@@ -3617,6 +3617,163 @@ def test_outgoing_server_transfer_waits_for_acceptance_and_streams_package(clien
     assert state['client_kwargs']['trust_env'] is True
 
 
+def test_transfer_request_is_served_to_the_requesting_server_once_accepted(client) -> None:
+    import src.DriveTestAnalyzer as app_module
+
+    secret = 'transfer-request-test-secret-that-is-long-enough'
+    headers = {'X-Dashboard-Transfer-Secret': secret}
+    payload = {'requester': 'Requesting server', 'archive_version': 1, 'targets': ['config'], 'content': 'Config', 'workspaces': []}
+    created = client.post('/api/import-export/transfers/requests', headers=headers, json=payload)
+    assert created.status_code == 200 and created.json()['status'] == 'pending'
+    request_id = created.json()['request_id']
+    # A retried first contact gets the same request back; another secret knows nothing of it.
+    assert client.post('/api/import-export/transfers/requests', headers=headers, json=payload).json()['request_id'] == request_id
+    assert client.get(f'/api/import-export/transfers/requests/{request_id}/package', headers=headers).status_code == 409
+    other_headers = {'X-Dashboard-Transfer-Secret': 'second-transfer-request-secret-that-is-long-enough'}
+    assert client.get(f'/api/import-export/transfers/requests/{request_id}', headers=other_headers).status_code == 404
+
+    login_super(client)
+    pending = client.get('/admin/import-export/transfers/offers').json()
+    assert pending['offers'] == []
+    assert [item['id'] for item in pending['requests']] == [request_id]
+    assert pending['requests'][0]['requester'] == 'Requesting server' and pending['requests'][0]['targets'] == ['config']
+    assert client.post(f'/admin/import-export/transfers/requests/{request_id}/accept', json={}).status_code == 200
+    status = {}
+    for _ in range(BACKGROUND_POLLS):
+        status = client.get(f'/api/import-export/transfers/requests/{request_id}', headers=headers).json()
+        if status['status'] in {'available', 'failed'}:
+            break
+        time.sleep(0.01)
+    assert status['status'] == 'available', status
+    assert status['kind'] == 'config' and status['size'] > 0 and status['filename'].endswith('.zip')
+    package = client.get(f'/api/import-export/transfers/requests/{request_id}/package', headers=headers)
+    assert package.status_code == 200
+    assert len(package.content) == status['size'] == int(package.headers['content-length'])
+    assert app_module.read_import_manifest(package.content)['kind'] == 'config'
+    # An interrupted download goes on from the bytes already received.
+    resumed = client.get(f'/api/import-export/transfers/requests/{request_id}/package', headers={**headers, 'Range': 'bytes=10-'})
+    assert resumed.status_code == 206
+    assert resumed.content == package.content[10:]
+    assert resumed.headers['content-range'] == f"bytes 10-{status['size'] - 1}/{status['size']}"
+    package_path = app_module.Path(app_module.TRANSFER_OFFERS[request_id]['path'])
+    assert package_path.is_file()
+    received = client.post(f'/api/import-export/transfers/requests/{request_id}/received', headers=headers)
+    assert received.status_code == 200 and received.json()['status'] == 'sent'
+    assert not package_path.exists()
+    assert client.get(f'/api/import-export/transfers/requests/{request_id}', headers=headers).json()['status'] == 'sent'
+    assert client.get('/admin/import-export/transfers/offers').json()['requests'] == []
+    actions = {row['action'] for row in app_module.repository.list_logs(limit=50)}
+    assert {'incoming_transfer_request_received', 'accept_transfer_request', 'incoming_transfer_request_completed'} <= actions
+
+    # A rejected request tells the requesting server why.
+    second = client.post('/api/import-export/transfers/requests', headers=other_headers, json={**payload, 'targets': ['users-access'], 'content': 'Users & Access'})
+    second_id = second.json()['request_id']
+    assert client.post(f'/admin/import-export/transfers/requests/{second_id}/reject').status_code == 200
+    rejected = client.get(f'/api/import-export/transfers/requests/{second_id}', headers=other_headers).json()
+    assert rejected['status'] == 'rejected' and 'rejected the transfer request' in rejected['error']
+
+
+def test_transfer_request_job_downloads_the_package_and_reviews_it(client, monkeypatch) -> None:
+    import src.DriveTestAnalyzer as app_module
+
+    login_super(client)
+    package = client.get('/admin/import-export/export?export_target=config').content
+    state = {'status_polls': 0, 'received': False, 'ranges': [], 'request_payload': None}
+
+    class FakeResponse:
+        def __init__(self, payload, status_code=200):
+            self.payload = payload
+            self.status_code = status_code
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    class FakeStream:
+        status_code = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def iter_bytes(self, size):
+            for start in range(0, len(package), size):
+                yield package[start:start + size]
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def post(self, url, *args, **kwargs):
+            if url.endswith('/received'):
+                state['received'] = True
+                return FakeResponse({'status': 'sent'})
+            state['request_payload'] = kwargs.get('json')
+            return FakeResponse({'request_id': 'remote-request', 'status': 'pending'})
+
+        def get(self, url, *args, **kwargs):
+            state['status_polls'] += 1
+            if state['status_polls'] == 1:
+                return FakeResponse({'status': 'pending', 'phase': 'awaiting approval'})
+            if state['status_polls'] == 2:
+                return FakeResponse({'status': 'exporting', 'phase': 'application database', 'progress': 40.0})
+            return FakeResponse({'status': 'available', 'size': len(package), 'kind': 'config', 'filename': 'config.zip',
+                                 'content': 'Config', 'workspaces': [], 'source': 'Source server'})
+
+        def stream(self, method, url, headers=None, **kwargs):
+            state['ranges'].append((headers or {}).get('Range'))
+            return FakeStream()
+
+        def request(self, *args, **kwargs):
+            return FakeResponse({'cancelled': True})
+
+    monkeypatch.setattr(app_module.httpx, 'Client', FakeClient)
+    monkeypatch.setattr(app_module, 'sleep', lambda _seconds: None)
+    user = app_module.SessionUser(username='super', role='super-admin')
+    job = app_module.start_transfer_request_job('http://source.example', 8080, 'config', None, user)
+    payload = {}
+    for _ in range(BACKGROUND_POLLS):
+        payload = app_module.transfer_job_payload(job['id'], user)
+        if payload['status'] in {'ready', 'failed', 'cancelled'}:
+            break
+        time.sleep(0.01)
+    assert payload['status'] == 'ready', payload
+    assert payload['direction'] == 'request' and payload['destination'] == 'http://source.example:8080'
+    assert state['request_payload']['targets'] == ['config'] and state['request_payload']['archive_version'] == 1
+    assert state['ranges'] == [None] and state['received']
+    offer_id = payload['offer_id']
+    # The received package waits for its preview to be confirmed, as a transfer a source sent does.
+    review = {}
+    for _ in range(BACKGROUND_POLLS):
+        review = client.get(f'/admin/import-export/transfers/offers/{offer_id}').json()
+        if review.get('preview'):
+            break
+        time.sleep(0.01)
+    assert review['status'] == 'review' and review['source'] == 'Source server (source.example)', review
+    assert [item['id'] for item in client.get('/admin/import-export/transfers/offers').json()['reviews']] == [offer_id]
+    assert client.post(f'/admin/import-export/transfers/offers/{offer_id}/preview/import', json={'packages': [0]}).status_code == 200
+    result = {}
+    for _ in range(BACKGROUND_POLLS):
+        with app_module.TRANSFER_LOCK:
+            result = dict(app_module.TRANSFER_OFFERS.get(offer_id) or {})
+        if result.get('status') in {'ready', 'failed'}:
+            break
+        time.sleep(0.01)
+    assert result['status'] == 'ready' and 'Configuration imported successfully' in result['notice'], result
+    actions = {row['action'] for row in app_module.repository.list_logs(limit=50)}
+    assert {'outgoing_transfer_request_queued', 'outgoing_transfer_request_completed', 'import_previewed_transfer'} <= actions
+
+
 def test_transfer_owner_can_request_job_cancellation(client) -> None:
     import src.DriveTestAnalyzer as app_module
 

@@ -120,6 +120,18 @@ The transfer runs as a background task on both servers, shown in the red **Syste
 
 Literal private IP destinations such as `192.168.1.17` are contacted directly, bypassing proxy variables inherited by Docker. The receiving application must listen on `0.0.0.0` rather than only `127.0.0.1`, and its host firewall must allow inbound TCP traffic on the selected port. When the destination is the Docker host itself, use `host.docker.internal`; a different computer on the LAN should use that computer's LAN IP.
 
+### Request from other server
+
+A server that cannot be reached from outside (a laptop whose network closes every incoming connection, a computer behind a NAT without port forwarding) receives transfers the other way round: it asks the other server for the content, and every connection goes from the requesting server to the source. Only super-admins request content, as the received package is reviewed like an incoming transfer.
+
+1. Choose **Content to export/transfer** as for an export: workspace elements, Application Config, Users & Access, Ticket Center, Full Workspaces or a Full Environment. A Full Workspace names the workspace to the source; the source super-admin chooses which of their workspaces to send.
+2. Press **Request from other server**, enter the source URL/IP and port and select **Connect and request approval**. When the selection has workspace elements, choose the workspaces of this server to receive them into (the active workspace is preselected).
+3. A super-admin of the source sees the request on any page, as an incoming transfer: what is requested and by which server, the workspaces named in the request, and that the workspace elements come from the active workspace of the source. **Accept request** opens the choice of the workspaces to send when the request names Full Workspaces or a Full Environment (those of the same name preselected), and the folders of a Full Workspace are chosen in the request dialog; **Reject** tells the requesting server. A request not accepted within 15 minutes expires.
+4. The source creates the package as an export job, followed in its **System tasks** card, and the requesting server downloads it as soon as it is ready (the download resumes after a connection cut). The source deletes the package once received, or after 24 hours.
+5. On the requesting server the dialog follows the approval, the creation of the package on the source and the download, and can be hidden meanwhile; when the package has arrived, its preview opens as for a received transfer, and nothing is imported until a super-admin chooses **Import selected** or **Reject transfer**.
+
+Both servers record the request in their App Events (the request received, accepted or rejected and the package sent on the source; the request made, completed, stopped or failed on the requesting server).
+
 For super-admins, complete unimported packages appear in **Recovered transfer packages** with content, workspaces, creation time, size, Import and Delete actions. Incomplete remnants are removed automatically; a package still being received is never removed, so Admin pages can be opened or reloaded during a transfer.
 
 ## Datasets Management

@@ -363,7 +363,7 @@ _SERVER_ACTIONS = {
                    'generate_presentations', 'generate_presentations_failed', 'email_sent', 'email_failed'},
 }
 _SERVER_ACTION_PREFIXES = (('scheduled_database_backup_', 'scheduler'),)
-_REMOTE_ACTION_PREFIXES = ('incoming_server_transfer_', 'incoming_transfer_import_')
+_REMOTE_ACTION_PREFIXES = ('incoming_server_transfer_', 'incoming_transfer_import_', 'incoming_transfer_request_')
 _PUBLIC_ACTIONS = {'access_request': 'access-request', 'access_change_request': 'access-request', 'login': 'sign-in',
                    'logout': 'sign-in', 'password_reset_requested': 'sign-in', 'password_reset': 'sign-in',
                    'download_reporting_file_link': 'page'}
@@ -389,6 +389,7 @@ _MODULE_ACTIONS = (
                'save_scheduled_backup_settings', 'start_manual_database_', 'create_backup_directory', 'import_package_',
                'export_package_', 'download_export_package', 'accept_server_transfer', 'reject_server_transfer',
                'outgoing_server_transfer_', 'stop_outgoing_server_transfer', 'delete_recovered_transfer_package',
+               'accept_transfer_request', 'reject_transfer_request', 'outgoing_transfer_request_',
                'import_recovered_transfer_package', 'reset_application', 'admin_notices_seen', 'create_report_template',
                'save_report_template', 'delete_report_template', 'rename_report_template', 'duplicate_report_template',
                'import_report_template', 'export_report_template', 'activate_report_template', 'change_report_template_type',
