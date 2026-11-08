@@ -1333,11 +1333,28 @@ def _size_text(size: Any) -> str:
     return f'{size / 1024 / 1024:.1f} MB' if size >= 1024 * 1024 else f'{max(size, 1) / 1024:.0f} KB'
 
 
+# The format of each file of a report email, named and coloured as its application, so that the PowerPoint and the Word
+# version of the same report do not look like the same file twice.
+EMAIL_FILE_FORMATS = {
+    '.pptx': ('PowerPoint', '#C43E1C'), '.docx': ('Word', '#185ABD'), '.xlsx': ('Excel', '#107C41'),
+    '.csv': ('CSV', '#107C41'), '.pdf': ('PDF', '#B30B00'), '.zip': ('ZIP', '#5B6770'), '.json': ('JSON', '#5B6770'),
+}
+# The light tint of each colour, for the card of the file.
+EMAIL_FORMAT_TINTS = {'#C43E1C': '#FBEDE8', '#185ABD': '#E8EFFA', '#107C41': '#E6F3EC', '#B30B00': '#FBE9E7', '#5B6770': '#F0F2F3'}
+
+
+def email_file_format(file_name: str) -> tuple[str, str]:
+    """The name and colour of the format of a file of a report email (its extension when it is not a known one)."""
+    suffix = Path(str(file_name or '')).suffix.casefold()
+    return EMAIL_FILE_FORMATS.get(suffix, (suffix.lstrip('.').upper() or 'File', '#5B6770'))
+
+
 def email_bodies(task_name: str, started: datetime, artifacts: list[dict[str, Any]], app_name: str, *,
                  links: dict[str, str] | None = None, attached: bool = True, link_days: int = 0,
-                 details: bool = True) -> tuple[str, str]:
+                 details: bool = True, cards: bool = True) -> tuple[str, str]:
     """Plain-text and HTML bodies listing each artifact, its content and its filters: attached, or with its download link
-    (valid ``link_days``)."""
+    (valid ``link_days``). With ``cards``, each file is a card under a heading of its format, in the colour of its
+    application; without them (an email that must be shorter), a list with the format before each title."""
     links = links or {}
     ready = [item for item in artifacts if item.get('status') == 'ready']
     failed = [item for item in artifacts if item.get('status') != 'ready']
@@ -1351,21 +1368,33 @@ def email_bodies(task_name: str, started: datetime, artifacts: list[dict[str, An
         text += [note, '']
         parts.append(f'<p>{html.escape(note)}</p>')
     text.append(f'{heading}:')
-    parts.append(f'<p><strong>{heading}</strong></p><ol>')
+    parts.append(f'<p><strong>{heading}</strong></p>' + ('' if cards else '<ol>'))
     for item in ready:
-        # The title of each file (what it is, from which module) on its own line, its file with its link and size below,
-        # then its content.
+        # The format of each file and its title (what it is, from which module) on its own line, its file with its link
+        # and size below, then its content.
         link = links.get(item['file_name'])
         size = _size_text(item.get('size'))
-        text += [f"- {item['title']}", f"    {item['file_name']} ({size})"] + ([f'    Download: {link}'] if link else [])
+        file_format, colour = email_file_format(item['file_name'])
+        text += ['', f"[{file_format}] {item['title']}", f"    {item['file_name']} ({size})"] + (
+            [f'    Download {file_format}: {link}'] if link else [])
         lines = item.get('details') or [] if details else []
         text.extend(f'    {line}' for line in lines)
         listed = ''.join(f'<li>{html.escape(line)}</li>' for line in lines)
-        download = f'<a href="{html.escape(link, quote=True)}"><strong>Download</strong></a> · ' if link else ''
-        parts.append(f"<li style=\"margin-bottom:12px\"><strong>{html.escape(item['title'])}</strong><br>"
-                     f"<code>{html.escape(item['file_name'])}</code> ({download}{size})"
-                     f"{f'<ul>{listed}</ul>' if listed else ''}</li>")
-    parts.append('</ol>')
+        download = (f'<a href="{html.escape(link, quote=True)}"><strong>Download {html.escape(file_format)}</strong></a> · '
+                    if link else '')
+        content = (f"<strong>{html.escape(item['title'])}</strong><br><code>{html.escape(item['file_name'])}</code> "
+                   f"({download}{size}){f'<ul>{listed}</ul>' if listed else ''}")
+        if cards:
+            # (A table, which every mail client colours, Outlook included.)
+            parts.append(f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:'
+                         f'collapse;margin:0 0 14px;border:1px solid {colour}"><tr><td style="background:{colour};color:#ffffff;'
+                         f'padding:6px 12px;font-size:15px;font-weight:bold">{html.escape(file_format)}</td></tr><tr><td '
+                         f'style="background:{EMAIL_FORMAT_TINTS.get(colour, "#F0F2F3")};padding:10px 12px">{content}</td></tr></table>')
+            continue
+        badge = (f'<span style="display:inline-block;padding:1px 8px;margin-right:6px;border-radius:10px;background:{colour};'
+                 f'color:#ffffff;font-size:12px;font-weight:bold">{html.escape(file_format)}</span>')
+        parts.append(f'<li style="margin-bottom:12px">{badge}{content}</li>')
+    parts.append('' if cards else '</ol>')
     if failed:
         text += ['', f'Not generated ({len(failed)}):'] + [f"- {item['title']}: {item.get('error') or 'failed'}" for item in failed]
         parts.append(f'<p><strong>Not generated ({len(failed)})</strong></p><ul>' + ''.join(
@@ -1517,11 +1546,12 @@ def install_report_task_routes(core: Any) -> None:
             raise RuntimeError('Set the Public address of the server in Application Runtime: a Power Automate flow sends links '
                                'to the files, not attachments.')
         subject = email_subject(task['name'], started)
-        for details in (True, False):
+        for details, cards in ((True, True), (False, True), (False, False)):
             text, body = email_bodies(task['name'], started, artifacts, core.__app_name__, links=links, attached=attach,
-                                      link_days=settings['link_days'], details=details)
-            # (A flow request takes about 28 KB: without the filters of each file when they do not fit.)
-            if not webhook or not details or len(json.dumps(webhook_payload(
+                                      link_days=settings['link_days'], details=details, cards=cards)
+            # (A flow request takes about 28 KB: without the filters of each file when they do not fit, then without the
+            # cards.)
+            if not webhook or not cards or len(json.dumps(webhook_payload(
                     settings, task['recipients'], subject, body, kind='report'), ensure_ascii=False).encode()) <= WEBHOOK_MAX_BYTES:
                 break
         core.send_email(settings, task['recipients'], subject, text, body,
