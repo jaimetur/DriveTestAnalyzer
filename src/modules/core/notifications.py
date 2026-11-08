@@ -12,7 +12,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Iterable
 
-from src.modules.core.email_delivery import email_delivery_settings, send_email, subject_line
+from src.modules.core.email_delivery import OWN_TICKET_CHANGES_KEY, email_delivery_settings, send_email, subject_line
 from src.modules.core.email_markdown import markdown_html
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix='email-notifications')
@@ -211,7 +211,11 @@ def notify_ticket(repository: Any, app_name: str, ticket_id: int, actor: str, ev
         ticket = ticket or get_ticket(repository, ticket_id)
         if not ticket:
             return
-        owners = ticket_recipients(repository, ticket, actor, include_actor=event == 'created')
+        # Nobody is told of their own changes, except the users Email Delivery names (the reporter of a new ticket always
+        # gets its confirmation).
+        told_of_own = {str(name).casefold() for name in settings.get(OWN_TICKET_CHANGES_KEY) or []}
+        owners = ticket_recipients(repository, ticket, actor,
+                                   include_actor=event == 'created' or str(actor).casefold() in told_of_own)
         emails = repository.user_emails(owners)
         if not emails:
             return

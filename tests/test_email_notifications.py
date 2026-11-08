@@ -275,6 +275,42 @@ def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_t
     assert len(flow) == count
 
 
+def test_the_users_chosen_in_email_delivery_are_also_told_of_their_own_ticket_changes(client, flow):
+    use_flow(notify_tickets=True)
+    profile = next(item['id'] for item in core.repository.list_modules_profiles() if item['name'] == 'All Modules')
+    for username, email in (('EOWNER', 'owner@example.com'), ('EREPORT', 'reporter@example.com')):
+        user_id = core.repository.create_user(username, 'secret123', 'user-editor', first_name=username.title(), last_name='User',
+                                              email=email)
+        core.repository.set_users_modules_profile([user_id], profile)
+    core.invalidate_module_access_cache()
+    # Nobody is chosen by default.
+    assert core.email_delivery_settings(core.repository)['own_ticket_changes_users'] == []
+    login(client)
+    form = {'transport': 'webhook', 'webhook_url': '', 'port': '587', 'from_address': 'admin@example.com', 'max_attachments_mb': '20',
+            'link_days': '7', 'notify_tickets': 'true'}
+    saved = client.post('/application-config/email-delivery', data={**form, 'own_ticket_changes_users': ['EOWNER']}, follow_redirects=False)
+    assert saved.status_code == 303 and 'error' not in saved.headers['location']
+    assert core.email_delivery_settings(core.repository)['own_ticket_changes_users'] == ['EOWNER']
+    assert logged('save_email_delivery')[-1]['changes']['own_ticket_changes_users'] == [[], ['EOWNER']]
+    page = client.get('/application-config').text
+    assert 'Users Told Of Their Own Changes' in page
+    assert '<option value="EOWNER" selected>Eowner User (EOWNER)</option>' in page and '<option value="EREPORT" >' in page
+    # The chosen user gets the emails of the changes it makes to its own tickets; the others still do not.
+    told = {}
+    for username in ('EOWNER', 'EREPORT'):
+        login(client, username, 'secret123')
+        ticket = client.post('/api/tickets', data={'title': f'Ticket of {username}', 'description': 'It fails.', 'priority': 'P3',
+                                                   'ticket_type': 'bug'}).json()['id']
+        count = len(flow)
+        client.post(f'/api/tickets/{ticket}/comments', data={'body': 'More details.'})
+        told[username] = [(item['to'], item['subject']) for item in flow[count:]]
+    assert told == {'EOWNER': [('owner@example.com', f'DT Analyzer - Ticket #{ticket - 1} new comment: Ticket of EOWNER')], 'EREPORT': []}
+    # A form that chooses nobody takes it back.
+    login(client)
+    client.post('/application-config/email-delivery', data=form)
+    assert core.email_delivery_settings(core.repository)['own_ticket_changes_users'] == []
+
+
 def test_reporting_emails_give_download_links_of_the_files_kept_on_the_server(client, flow):
     from tests.test_reporting_jobs import wait_for_run
     from src.modules.reporting.report_tasks import register_report_artifact_provider

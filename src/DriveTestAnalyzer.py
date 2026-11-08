@@ -87,7 +87,7 @@ from src.modules.mapping.value_maps import ValueMapper, field_kind
 from src.modules.reporting.report_layouts import canonical_layout_name, selectable_layout_name
 from src.modules.cdr_analysis.cdr_reporting import entry_dynamic_fields, DYNAMIC_LAYOUTS, CATALOG_HEADERS, FORMAT_HEADER, CHART_TYPES, STRUCTURAL_SLIDE_TYPES, TEMPLATE_NAMES, CatalogEntry, _legend_dimensions, assign_cdr_vendors, calculated_dimensions_json, calculated_dimension_editor_json, calculated_dimension_preview, calculated_dimension_reads, CALCULATED_FIELD_OPERATORS, catalog_chart_payload, catalog_kpi_fields, catalogue_csv, convert_catalog_csv, cover_catalog_entries, ensure_vendor_group, materialize_calculated_dimensions, normalise_operator_aliases, parse_axis_range, parse_calculated_dimensions, parse_catalog_csv, parse_catalog_filters, parse_catalog_grouping, parse_label_format, parse_label_position, parse_legend_position, parse_template_boolean, prepare_catalog_chart_preview_frame, preview_catalog_chart_data, render_catalog_chart_preview, report_chart_renderer_name, reset_canvas_chart_renderer, split_calculated_dimension_aliases
 from src.modules.cdr_analysis.exports import POWERPOINT_EXPORT_VERSION, export_dataset_summary_powerpoint, export_powerpoint_report
-from src.modules.core.email_delivery import DEFAULT_LINK_DAYS, DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_ADDRESS_PATTERN, EMAIL_SECURITY_MODES, EMAIL_TRANSPORTS, MAX_LINK_DAYS, email_delivery_settings, invalid_recipients, parse_recipients, read_link, save_email_delivery_settings, send_email, sign_link, subject_line
+from src.modules.core.email_delivery import DEFAULT_LINK_DAYS, DEFAULT_MAX_ATTACHMENTS_MB, EMAIL_ADDRESS_PATTERN, EMAIL_SECURITY_MODES, EMAIL_TRANSPORTS, MAX_LINK_DAYS, OWN_TICKET_CHANGES_KEY, email_delivery_settings, invalid_recipients, parse_recipients, read_link, save_email_delivery_settings, send_email, sign_link, subject_line
 from src.modules.network.network_inventory import DEFAULT_NETWORK_BY_KIND, INVENTORY_DATASET_KINDS, MULTIVENDOR_MAPPING_KIND, SNAPSHOT_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, list_mapping_snapshots, mapping_operators, network_family, normalise_snapshot_date
 from src.modules.cdr.l3_dt_logs import KIND as L3_DT_LOGS_KIND, dataset_summary as l3_dataset_summary, forget_datasets as l3_forget_datasets
 from src.modules.cdr.l3_dt_logs import preview_frame as l3_preview_frame, source_columns as l3_source_columns
@@ -23510,6 +23510,18 @@ def export_report(
     return FileResponse(destination, filename=download_name, media_type=media_type)
 
 
+def email_delivery_users() -> list[dict[str, Any]]:
+    """The accounts Email Delivery can name as told of their own ticket changes, by name, with those chosen."""
+    chosen = {name.casefold() for name in email_delivery_settings(repository)[OWN_TICKET_CHANGES_KEY]}
+    people = []
+    for row in repository.list_users():
+        username = str(row['username'])
+        name = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip()
+        people.append({'username': username, 'label': f'{name} ({username})' if name else username,
+                       'selected': username.casefold() in chosen})
+    return sorted(people, key=lambda person: person['label'].casefold())
+
+
 @app.get('/application-config', response_class=HTMLResponse)
 def configuration_panel(request: Request, user: SessionUser = Depends(config_editor_user)) -> HTMLResponse:
     return render_template(request, 'configuration.html', {
@@ -23517,6 +23529,7 @@ def configuration_panel(request: Request, user: SessionUser = Depends(config_edi
         'configuration': runtime_configuration(),
         'timezone_options': sorted(available_timezones()),
         'email_delivery': email_delivery_settings(repository),
+        'email_users': email_delivery_users(),
         'email_security_modes': EMAIL_SECURITY_MODES,
         'email_transports': EMAIL_TRANSPORTS, 'email_max_link_days': MAX_LINK_DAYS,
         'notice': request.query_params.get('notice'),
@@ -23532,6 +23545,7 @@ def save_email_delivery_configuration(
     link_days: int = Form(DEFAULT_LINK_DAYS),
     notify_access_requests: bool = Form(False),
     notify_tickets: bool = Form(False),
+    own_ticket_changes_users: list[str] = Form([]),
     host: str = Form(''),
     port: int = Form(587),
     security: str = Form('starttls'),
@@ -23544,12 +23558,14 @@ def save_email_delivery_configuration(
     user: SessionUser = Depends(config_editor_user),
 ) -> RedirectResponse:
     logged = ('transport', 'host', 'port', 'security', 'username', 'from_address', 'from_name', 'max_attachments_mb',
-              'password_configured', 'webhook_configured', 'link_days', 'notify_access_requests', 'notify_tickets')
+              'password_configured', 'webhook_configured', 'link_days', 'notify_access_requests', 'notify_tickets',
+              OWN_TICKET_CHANGES_KEY)
     before = {key: email_delivery_settings(repository).get(key) for key in logged}
     try:
         saved = save_email_delivery_settings(repository, {
             'transport': transport, 'webhook_url': webhook_url, 'link_days': link_days,
             'notify_access_requests': notify_access_requests, 'notify_tickets': notify_tickets,
+            OWN_TICKET_CHANGES_KEY: own_ticket_changes_users,
             'host': host, 'port': port, 'security': security, 'username': username, 'password': password,
             'from_address': from_address, 'from_name': from_name, 'max_attachments_mb': max_attachments_mb,
         }, keep_password=not password and not clear_password, keep_webhook_url=not webhook_url.strip() and not clear_webhook_url)

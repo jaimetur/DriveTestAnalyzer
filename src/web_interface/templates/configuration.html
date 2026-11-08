@@ -149,6 +149,12 @@
           <input type="checkbox" name="notify_tickets" value="true" {% if email_delivery.notify_tickets %}checked{% endif %}>
           <span><strong>Ticket Center</strong><small>The reporter of a ticket gets its confirmation and every change others make to it, or to a ticket that mentions it as #&lt;number&gt;.</small></span>
         </label>
+        <label>Users Told Of Their Own Changes
+          <select name="own_ticket_changes_users" multiple size="1" data-multiselect-empty-label="Nobody" aria-label="Users told of their own changes">
+            {% for person in email_users %}<option value="{{ person.username }}" {% if person.selected %}selected{% endif %}>{{ person.label }}</option>{% endfor %}
+          </select>
+          <span class="table-help">Nobody else is emailed the changes they make to their own tickets: these users are, for example when someone else works on their tickets with their user.</span>
+        </label>
       </section>
       <div class="form-actions configuration-field-wide">
         <button type="submit">Save Email Delivery</button>

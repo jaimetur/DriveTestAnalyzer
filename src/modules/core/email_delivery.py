@@ -49,6 +49,8 @@ EMAIL_ENVIRONMENT_DEFAULTS = {
 }
 # Saved switches (no deployment default): which emails the tool sends on its own.
 EMAIL_SWITCHES = {'notify_access_requests': True, 'notify_tickets': True}
+# The users (by username) whose own changes to their tickets are also emailed to them; nobody's by default.
+OWN_TICKET_CHANGES_KEY = 'own_ticket_changes_users'
 # The values that are secrets: never shown, kept when the form leaves them empty.
 EMAIL_SECRETS = ('password', 'webhook_url')
 
@@ -76,6 +78,12 @@ def _switch(value: Any, default: bool) -> bool:
     if value is None or value == '':
         return default
     return str(value).strip().casefold() in {'1', 'true', 'yes', 'on'}
+
+
+def _usernames(value: Any) -> list[str]:
+    items = value if isinstance(value, (list, tuple)) else re.split(r'[,;\s]+', str(value or ''))
+    names = {str(item).strip().casefold(): str(item).strip() for item in items if str(item).strip()}
+    return sorted(names.values(), key=str.casefold)
 
 
 def _stored(repository: Any) -> dict[str, Any]:
@@ -110,6 +118,7 @@ def email_delivery_settings(repository: Any, *, include_password: bool = False) 
         'webhook_configured': bool(str(values.get('webhook_url') or '').strip()),
         'link_days': min(MAX_LINK_DAYS, max(1, _int(values.get('link_days'), DEFAULT_LINK_DAYS))),
         **{key: _switch(stored.get(key), default) for key, default in EMAIL_SWITCHES.items()},
+        OWN_TICKET_CHANGES_KEY: _usernames(stored.get(OWN_TICKET_CHANGES_KEY)),
     }
     settings['configured'] = (settings['webhook_configured'] if settings['transport'] == 'webhook'
                               else bool(settings['host'] and settings['from_address']))
@@ -154,6 +163,8 @@ def save_email_delivery_settings(repository: Any, values: dict[str, Any], *, kee
         # (A switch the values leave out keeps its saved state.)
         **{key: _switch(values[key], False) if key in values else _switch(previous.get(key), default)
            for key, default in EMAIL_SWITCHES.items()},
+        OWN_TICKET_CHANGES_KEY: _usernames(values[OWN_TICKET_CHANGES_KEY] if OWN_TICKET_CHANGES_KEY in values
+                                           else previous.get(OWN_TICKET_CHANGES_KEY)),
     }
     repository.set_application_state(EMAIL_DELIVERY_STATE_KEY, json.dumps(stored, sort_keys=True))
     return email_delivery_settings(repository)
