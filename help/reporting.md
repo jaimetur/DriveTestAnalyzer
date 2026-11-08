@@ -51,7 +51,7 @@ Report names are unique in the workspace, and a workspace keeps up to 100 report
 
 ## The report editor
 
-**+ New report**, **Edit** or the name of a report opens the editor beside the list on a wide screen, and over the whole page on a phone (900 px wide or less). Its header has **←**, which closes it without saving, the name of the report and **Save**, which saves the report with its schedule (a name another report has is refused); its footer has **Back** and **Next**, which go through its four steps, and **Save and generate**, which saves the report and [generates](#generate-and-preview) it at once. The report being edited is kept in the browser while you work, so reloading the page reopens it on the same step with its changes (a report deleted meanwhile, as a new one).
+**+ New report**, **Edit** or the name of a report opens the editor beside the list on a wide screen, and over the whole page on a phone (900 px wide or less). Its header has the name of the report; its footer has **Back** and **Next**, which go through its four steps; **Close**, which closes it (with changes not saved it asks first, as does opening another report); **Save and generate**, which saves the report and [generates](#generate-and-preview) it at once; and **Save**, which saves the report with its schedule and leaves the editor open (a name another report has is refused). Opening another report while the editor is open keeps the step shown. The report being edited is kept in the browser while you work, so reloading the page reopens it on the same step with its changes (a report deleted meanwhile, as a new one).
 
 | Step | What it chooses |
 | --- | --- |

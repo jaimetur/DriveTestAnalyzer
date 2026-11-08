@@ -601,7 +601,7 @@
     if (root.hidden || !definition) return;
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({id: editingId, name: $('brt-name').value, definition: collect(),
-        schedule: collectSchedule(), step}));
+        schedule: collectSchedule(), step, baseline: savedSnapshot}));
     } catch {}
   }
 
@@ -889,9 +889,27 @@
   root.querySelector('[data-rp-panel="schedule"]').addEventListener('input', () => { syncSchedule(); changed(); });
   root.querySelector('[data-rp-panel="schedule"]').addEventListener('change', () => { syncSchedule(); changed(); });
 
+  // What the editor holds, to tell whether it has changes to save.
+  let savedSnapshot = '';
+  const editorSnapshot = () => JSON.stringify({name: $('brt-name').value.trim(), definition: collect(), schedule: collectSchedule()});
+  const editorDirty = () => !root.hidden && editorSnapshot() !== savedSnapshot;
+  // Leaving a report with changes not saved (Close, or opening another one) asks first.
+  async function confirmDiscard() {
+    if (!editorDirty()) return true;
+    const name = $('brt-name').value.trim() || 'the new report';
+    return typeof window.showConfirmDialog === 'function'
+      ? Boolean(await window.showConfirmDialog('', {title: 'Unsaved Changes', copyHtml: `<p>The changes to <strong>${escapeHtml(name)}</strong> are not saved. Discard them?</p>`,
+        confirmLabel: 'Discard changes', cancelLabel: 'Keep editing'}))
+      : window.confirm(`The changes to ${name} are not saved. Discard them?`);
+  }
+
   async function openEditor(reportId, draft = null) {
     if (!brtOptions || !options) { status('The report editor is still loading.', 'error'); return; }
     const report = reportId == null ? null : favourites.find((item) => item.id === reportId);
+    const wasOpen = !root.hidden;
+    // (The report already open stays as it is.)
+    if (wasOpen && !draft && (report ? report.id : null) === editingId) return;
+    if (!draft && !await confirmDiscard()) return;
     editingId = report ? report.id : null;
     definition = clone(draft?.definition ? mergeDefaults(draft.definition) : report ? report.definition : brtOptions.defaults);
     $('brt-name').value = draft?.name ?? (report ? report.name : '');
@@ -901,8 +919,10 @@
     fillSchedule(draft?.schedule || pageState.reports.find((item) => item.id === editingId)?.schedule || null);
     root.hidden = false;
     page.classList.add('is-editing');
-    document.documentElement.classList.toggle('rp-sheet-open', window.matchMedia('(max-width: 900px)').matches);
-    showStep(draft?.step || 'cover');
+    // A draft keeps what was saved, so its changes still count as not saved after a reload.
+    savedSnapshot = draft?.baseline ?? editorSnapshot();
+    // Going from one report to another keeps the step that was open.
+    showStep(draft?.step || (wasOpen ? step : 'cover'));
     renderList();
     if (!window.matchMedia('(max-width: 900px)').matches) root.scrollIntoView({block: 'nearest'});
   }
@@ -910,12 +930,11 @@
     root.hidden = true;
     editingId = null;
     page.classList.remove('is-editing');
-    document.documentElement.classList.remove('rp-sheet-open');
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     renderList();
   }
   $('rp-new').addEventListener('click', () => { void openEditor(null); });
-  $('rp-editor-close').addEventListener('click', closeEditor);
+  $('rp-editor-close').addEventListener('click', async () => { if (await confirmDiscard()) closeEditor(); });
 
   // Save keeps the report and its schedule; a name another report has is refused.
   async function saveReport() {
@@ -931,6 +950,12 @@
       });
       favourites = result.favourites;
       brtOptions.favourites = favourites;
+      // The editor stays open, now on the report saved.
+      editingId = result.favourite.id;
+      $('rp-editor-title').textContent = result.favourite.name;
+      $('rp-editor-kind').textContent = 'Edit report';
+      savedSnapshot = editorSnapshot();
+      changed();
       status(`${result.favourite.name} saved.`, 'done');
       refreshPage();
       return result.favourite;
@@ -939,12 +964,10 @@
       return null;
     }
   }
-  $('brt-save').addEventListener('click', async () => { if (await saveReport()) closeEditor(); });
+  $('brt-save').addEventListener('click', () => { void saveReport(); });
   $('rp-generate-edited').addEventListener('click', async () => {
     const saved = await saveReport();
-    if (!saved) return;
-    closeEditor();
-    generateReport(saved);
+    if (saved) generateReport(saved);
   });
 
   async function duplicateReport(report) {
@@ -972,6 +995,12 @@
       const result = await api(`/api/reporting/bundle-report-template/favourites/${report.id}/rename`, {method: 'POST', body: JSON.stringify({name})});
       favourites = result.favourites;
       brtOptions.favourites = favourites;
+      if (editingId === report.id) {
+        const unsaved = editorDirty();
+        $('brt-name').value = result.favourite.name;
+        $('rp-editor-title').textContent = result.favourite.name;
+        if (!unsaved) savedSnapshot = editorSnapshot();
+      }
       status(`${report.name} renamed to ${result.favourite.name}.`, 'done');
       refreshPage();
     } catch (error) { status(error.message, 'error'); }

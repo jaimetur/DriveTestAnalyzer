@@ -777,7 +777,7 @@ def test_a_report_being_generated_can_be_stopped_and_tells_its_processing_time(c
     # While it runs, the dialog offers Stop and Hide (it keeps being generated) and shows its processing time.
     assert all(f'id="{name}"' in page for name in ('brt-dialog-cancel', 'brt-dialog-hide', 'brt-dialog-done', 'brt-dialog-elapsed'))
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
-    assert "title: 'Report Ready'" in script and 'Processed in ${duration(job.elapsed_seconds)}' in script
+    assert "title: 'Report Ready'" in script and 'processed in ${duration(job.elapsed_seconds)}' in script
     assert "await api('/api/reporting/runs/stop', {method: 'POST', body: JSON.stringify({ids: [job.id]})});" in script
     # Every page tells when a report hidden in Reporting is ready.
     app_script = (core.PROJECT_ROOT / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
@@ -786,13 +786,27 @@ def test_a_report_being_generated_can_be_stopped_and_tells_its_processing_time(c
 
 def test_one_action_generates_both_formats_and_the_preview_chooses_one():
     page = (core.PROJECT_ROOT / 'src/web_interface/templates/report_jobs.html').read_text(encoding='utf-8')
-    assert 'data-brt-format="powerpoint"' in page and 'data-brt-format="word"' in page
+    assert 'js/help/presentation_viewer.js' in page
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
     assert script.count('/favourites/${report.id}/generate`') == 1
-    # Switching the format shows what is already generated: its pages, its sections and its download.
-    assert "download.href = job.downloads?.[previewFormat] || '#';" in script
-    assert "dialog.classList.toggle('is-word', previewFormat === 'word')" in script
-    assert 'function switchFormat(format)' in script
+    # The slide viewer switches between the formats generated: their pages, their sections and their download.
+    assert "formats: available.length > 1 ?" in script and 'window.PresentationViewer.open(other, target);' in script
+    assert "file: job.downloads?.[format] || '#'," in script
+    viewer = (core.PROJECT_ROOT / 'src/web_interface/static/js/help/presentation_viewer.js').read_text(encoding='utf-8')
+    assert 'data-presentation-formats' in viewer and 'item.select(viewerIndex)' in viewer
+
+
+def test_the_report_editor_keeps_its_step_stays_open_after_saving_and_asks_before_losing_changes():
+    root = core.PROJECT_ROOT / 'src/web_interface'
+    page = (root / 'templates/report_jobs.html').read_text(encoding='utf-8')
+    footer = page[page.index('<footer class="rp-editor-foot">'):page.index('</footer>', page.index('<footer class="rp-editor-foot">'))]
+    assert all(f'id="{name}"' in footer for name in ('rp-step-back', 'rp-step-next', 'rp-editor-close', 'rp-generate-edited', 'brt-save'))
+    script = (root / 'static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
+    # Another report opens on the step shown; Save leaves the editor open; Close and another report ask with changes.
+    assert "showStep(draft?.step || (wasOpen ? step : 'cover'));" in script
+    assert "$('brt-save').addEventListener('click', () => { void saveReport(); });" in script
+    assert "$('rp-editor-close').addEventListener('click', async () => { if (await confirmDiscard()) closeEditor(); });" in script
+    assert "if (!draft && !await confirmDiscard()) return;" in script
 
 
 def test_a_report_without_sections_is_refused_and_the_table_is_listed(client):

@@ -33,9 +33,7 @@
 
       <section class="rp-editor" id="bundle-report-template" hidden aria-labelledby="rp-editor-title">
         <header class="rp-editor-head">
-          <button type="button" class="rp-icon" id="rp-editor-close" title="Close without saving" aria-label="Close the editor without saving">←</button>
           <div class="rp-editor-title"><p class="eyebrow" id="rp-editor-kind">Edit report</p><h3 id="rp-editor-title">New report</h3></div>
-          <button type="button" class="rp-primary" id="brt-save">Save</button>
         </header>
         <nav class="rp-steps" id="rp-steps" aria-label="Steps of the report">
           <button type="button" data-rp-step="cover" aria-current="step">Cover</button>
@@ -92,8 +90,10 @@
         </div>
         <footer class="rp-editor-foot">
           <button type="button" class="rp-secondary" id="rp-step-back">Back</button>
+          <button type="button" class="rp-secondary" id="rp-step-next">Next</button>
+          <button type="button" class="rp-secondary" id="rp-editor-close" title="Close the editor; with changes not saved, it asks first">Close</button>
           <button type="button" class="rp-secondary" id="rp-generate-edited" title="Save the report and generate it now">Save and generate</button>
-          <button type="button" class="rp-primary" id="rp-step-next">Next</button>
+          <button type="button" class="rp-primary" id="brt-save" title="Save the report and its schedule; the editor stays open">Save</button>
         </footer>
       </section>
     </div>

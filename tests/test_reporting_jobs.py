@@ -939,7 +939,7 @@ def test_generate_runs_a_report_as_who_asks_and_history_opens_its_preview(client
     state = client.get('/api/reporting/state').json()
     assert set(state) == {'reports', 'runs', 'can_edit', 'workspace_id'} and state['can_edit'] is True and state['workspace_id'] == core.active_workspace.id
     reports = {item['name']: item for item in state['reports']}
-    assert set(reports['Weekly']) == {'id', 'name', 'created_by', 'updated_at', 'labels', 'schedule', 'last_run'}
+    assert set(reports['Weekly']) == {'id', 'name', 'created_by', 'updated_at', 'labels', 'starred', 'schedule', 'last_run'}
     assert reports['Weekly']['last_run']['id'] == run_id and reports['Weekly']['created_by'] == 'super' and reports['Weekly']['labels']['nr_mode'] == 'NSA'
     assert reports['Other']['last_run']['id'] == due
     schedule = reports['Other']['schedule']

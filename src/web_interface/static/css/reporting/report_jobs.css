@@ -315,7 +315,7 @@ button.rp-card-name:hover { color: var(--rp-accent-dark); text-decoration: under
 .rp-editor-body { flex: 1; min-height: 0; padding: 1rem; overflow: auto; }
 .rp-step { display: grid; gap: .8rem; }
 .rp-editor-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; padding: .7rem 1rem; border-top: 1px solid var(--rp-line); background: #fbfdfb; }
-.rp-editor-foot #rp-step-back { margin-right: auto; }
+.rp-editor-foot #rp-editor-close { margin-left: auto; }
 
 /* The schedule step. */
 .rp-switch-row { display: flex; align-items: flex-start; gap: .7rem; cursor: pointer; }
@@ -376,9 +376,9 @@ button.rp-card-name:hover { color: var(--rp-accent-dark); text-decoration: under
   .report-jobs.is-editing .rp-list { position: static; max-height: none; overflow: visible; }
   .rp-editor:not([hidden]) { position: fixed; inset: 0; z-index: 60; border: 0; border-radius: 0;
     padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
-  html.rp-sheet-open, html.rp-sheet-open body { overflow: hidden; }
+  html:has(.report-jobs.is-editing), html:has(.report-jobs.is-editing) body { overflow: hidden; }
   /* (A blurred panel would hold the editor inside it instead of over the page.) */
-html.rp-sheet-open #rp-reports { backdrop-filter: none; -webkit-backdrop-filter: none; }
+.report-jobs.is-editing #rp-reports { backdrop-filter: none; -webkit-backdrop-filter: none; }
   .rp-editor-foot { position: sticky; bottom: 0; }
   .rp-editor-foot .rp-secondary, .rp-editor-foot .rp-primary { flex: 1 1 auto; }
   .rp-tabs { position: sticky; top: var(--sticky-header-offset, 0px); z-index: 6; width: 100%; box-sizing: border-box; }
