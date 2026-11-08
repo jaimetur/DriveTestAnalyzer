@@ -590,6 +590,7 @@
       title: $('brt-title').value.trim(),
       subtitle: $('brt-subtitle').value.trim(),
       theme: reportTheme(),
+      chart_pictures: $('brt-chart-pictures').checked,
       filters: collectFilters(),
       sections: [...$('brt-sections').children].map((card) => card.collect()),
     };
@@ -613,6 +614,7 @@
     }));
     theme.value = definition.theme || scoringTheme || defaultTheme();
     if (!theme.value && theme.options.length) theme.selectedIndex = 0;
+    $('brt-chart-pictures').checked = definition.chart_pictures === true;
     filterPickers = {};
     renderFilters();
     renderSections();
@@ -660,6 +662,7 @@
   $('brt-title').addEventListener('input', changed);
   $('brt-subtitle').addEventListener('input', changed);
   $('brt-theme').addEventListener('change', () => { definition.theme = $('brt-theme').value; changed(); });
+  $('brt-chart-pictures').addEventListener('change', () => { definition.chart_pictures = $('brt-chart-pictures').checked; changed(); });
 
   $('brt-save').addEventListener('click', async () => {
     const name = $('brt-name').value.trim();

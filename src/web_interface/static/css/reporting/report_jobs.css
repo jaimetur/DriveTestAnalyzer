@@ -464,6 +464,8 @@
 /* The Theme of a Bundle Report Template and of a Reporting Job stands out in violet. */
 .bundle-report-template-panel .brt-theme-field, .report-jobs .rj-job-theme label { color: #5b2fa6; font-weight: 800; }
 .bundle-report-template-panel .brt-theme-field select, .report-jobs .rj-job-theme select { border-color: #9b7ad8 !important; background-color: #f4eeff !important; color: #3d1d78 !important; font-weight: 700; box-shadow: inset 4px 0 0 #9b7ad8; }
+/* Under the fields of the cover. */
+.bundle-report-template-panel .brt-chart-pictures { color: var(--text); }
 .bundle-report-template-panel .rj-multi-caption { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bundle-report-template-panel .rj-multi .workspace-user-picker-menu { position: absolute; z-index: 30; min-width: 100%; max-height: min(32rem, 70vh); overflow: auto; padding: .5rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(18, 32, 43, .16); }
 .bundle-report-template-panel .rj-multi .workspace-user-picker-menu label { display: flex; gap: .45rem; align-items: center; padding: .15rem 0; font-size: .86rem; color: var(--text); }

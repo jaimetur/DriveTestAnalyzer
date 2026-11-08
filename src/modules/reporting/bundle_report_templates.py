@@ -367,6 +367,8 @@ def normalize_definition(raw: Any) -> dict[str, Any]:
     legacy_theme = (raw_sections.get('scoring', {}).get('options') or {}).get('theme') \
         if isinstance(raw_sections.get('scoring', {}).get('options'), dict) else None
     definition['theme'] = normalize_theme(raw.get('theme') or legacy_theme or DEFAULT_THEME)
+    # The PowerPoint keeps a picture of each chart that the iPhone, iPad and Mac preview draws wrongly (chart_pictures).
+    definition['chart_pictures'] = raw.get('chart_pictures') is True
     return definition
 
 
@@ -1594,6 +1596,8 @@ SECTION_CACHE_HOURS = 24
 # The composed documents (PowerPoint, the packed Word and their previews), inside the section cache.
 DOCUMENT_CACHE_FOLDER = 'documents'
 DOCUMENT_CACHE_VERSION = 7
+# The composed PowerPoint with the pictures of its charts for the iPhone preview, beside the composed document.
+CHART_PICTURES_FILE = 'document-chart-pictures.pptx'
 _section_locks: dict[str, Lock] = {}
 _section_locks_guard = Lock()
 # The version and the code of the application (see code_identity), read once per process.
@@ -1929,8 +1933,31 @@ def build_report(core: Any, repository: Any, user: Any, definition: dict[str, An
                 if key:
                     _store_document(cache_root, key, powerpoint, outline, powerpoint_navigation(outline, titles), covers,
                                     word, navigation)
+    if definition['chart_pictures']:
+        powerpoint = _with_chart_pictures(powerpoint, cache_root, key, document is not None, progress, warnings)
     return BuildResult(powerpoint, word, warnings, outline, navigation, slides_navigation, reused, document_key=key,
                        document_reused=reused_document)
+
+
+def _with_chart_pictures(powerpoint: bytes, cache_root: Path | None, key: str | None, reused: bool,
+                         progress: Callable[[int, str], None], warnings: list[str]) -> bytes:
+    """The PowerPoint with a picture of each chart that the iPhone, iPad and Mac preview draws wrongly, which only
+    that preview shows (chart_pictures); kept with the composed document, so an export that reuses the document reuses
+    its pictures. The Word version and the previews are made from the PowerPoint without them."""
+    from src.modules.reporting.chart_pictures import add_chart_pictures
+
+    kept = document_folder(cache_root, key) / CHART_PICTURES_FILE if cache_root is not None and key else None
+    if kept is not None and reused and kept.is_file():
+        progress(92, 'Using the charts drawn for the iPhone preview')
+        return kept.read_bytes()
+    progress(92, 'Looking for the charts the iPhone preview draws wrongly')
+    content, drawn, needed = add_chart_pictures(powerpoint, lambda message: progress(92, message))
+    if needed and not drawn:
+        warnings.append('LibreOffice is not available: the charts have no pictures for the iPhone preview.')
+        return powerpoint
+    if kept is not None and kept.parent.is_dir():
+        kept.write_bytes(content)
+    return content
 
 
 def definition_summary(definition: dict[str, Any]) -> dict[str, Any]:
@@ -1939,7 +1966,8 @@ def definition_summary(definition: dict[str, Any]) -> dict[str, Any]:
         'key': section['key'], 'items': [item['key'] for item in section['items']],
         'components': {item['key']: [name for name, chosen in item.get('components', {}).items() if chosen] for item in section['items']
                        if 'components' in item},
-        'options': section['options']} for section in enabled_sections(definition)]}
+        'options': section['options']} for section in enabled_sections(definition)],
+        'chart_pictures': definition.get('chart_pictures') is True}
 
 
 # -- jobs and routes ------------------------------------------------------------------------
