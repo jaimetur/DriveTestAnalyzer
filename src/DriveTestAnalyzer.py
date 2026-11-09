@@ -646,7 +646,7 @@ PAGE_TITLES = {'/login': 'Sign in', '/chart-builder': 'Chart Builder', '/query-b
                '/documents/view/readme': 'Readme', '/documents/view/changelog': 'Changelog',
                '/documents/view/help/presentations.md': 'Presentations'}
 # The main modules whose short title says too little in a browser tab: they show their title.
-PAGE_TITLE_FULL_MODULES = {'datasets-analysis', 'assistant'}
+PAGE_TITLE_FULL_MODULES = {'datasets-analysis', 'ppt-designer', 'network-insights', 'assistant'}
 
 
 def page_title(path: str, labels: dict[str, dict[str, Any]]) -> str:

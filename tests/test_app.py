@@ -11284,8 +11284,8 @@ def test_module_tabs_take_order_title_icon_and_colour_from_interface_settings(cl
 def test_browser_tab_title_names_the_module_of_the_page(client) -> None:
     assert '<title>DT Analyzer - Sign in</title>' in client.get('/login').text
     login_super(client)
-    titles = {'/workspace': 'Workspace', '/datasets-analysis': 'CDR Analysis', '/ppt-designer': 'Designer', '/scoring': 'Scoring',
-              '/network-insights': 'Network', '/non-qualified-calls': 'NQ Calls', '/reporting': 'Reporting',
+    titles = {'/workspace': 'Workspace', '/datasets-analysis': 'CDR Analysis', '/ppt-designer': 'PPT Designer', '/scoring': 'Scoring',
+              '/network-insights': 'Network Insights', '/non-qualified-calls': 'NQ Calls', '/reporting': 'Reporting',
               '/chart-builder': 'Chart Builder', '/query-builder': 'Query Builder', '/assistant': 'AI Assistant', '/tickets': 'Tickets',
               '/app-logs': 'App Logs', '/workspace-config': 'Workspace Config', '/application-config': 'Application Config',
               '/admin': 'Admin', '/super-admin': 'Super Admin', '/documents/view/readme': 'Readme',
@@ -11293,7 +11293,8 @@ def test_browser_tab_title_names_the_module_of_the_page(client) -> None:
               '/documents/view/help/presentations.md': 'Presentations'}
     for path, name in titles.items():
         assert f'<title>DT Analyzer - {name}</title>' in client.get(path).text, path
-    # A module renamed in Interface Settings shows its Short title, or its title without one or in CDR Analysis and AI Assistant.
+    # A module renamed in Interface Settings shows its Short title, or its title without one or in CDR Analysis, PPT Designer,
+    # Network Insights and AI Assistant.
     form = {'show_module_stage_labels': 'true', 'title__scoring': 'Drive Scoring', 'short_title__scoring': 'Drive & Score',
             'title__reporting': 'My Reports', 'short_title__reporting': '',
             'title__assistant': 'My Helper', 'short_title__assistant': 'Helper'}
