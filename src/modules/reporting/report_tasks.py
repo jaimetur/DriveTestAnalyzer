@@ -810,6 +810,86 @@ def import_tasks_document(
 
 
 # ---------------------------------------------------------------------------
+# The schedule of each report in its Report Definition (Import / Export / Transfer and backups)
+# ---------------------------------------------------------------------------
+def _report_formats(formats: Any) -> list[str]:
+    chosen = [value for value in formats if value in REPORT_FORMATS] if isinstance(formats, list) else []
+    return chosen or ['powerpoint']
+
+
+def schedule_entries(task_repository: Any) -> dict[str, dict[str, Any]]:
+    """The schedule of each report as its Report Definition carries it, by the favourite ID of the report: when it is
+    generated (``recurrence``), its formats, whether it is generated on its own (``enabled``), its email, its owner and
+    its identity (the reports without one carry none)."""
+    from src.modules.core.transfer_identities import REPORTING_JOBS, portable_identities
+
+    tasks = report_tasks_by_favourite(task_repository)
+    uids = portable_identities(task_repository, REPORTING_JOBS, [str(task['id']) for task in tasks.values()])
+    return {favourite_id: {
+        'recurrence': task['schedule'],
+        'formats': _report_formats(((task['definition'].get('modules') or {}).get('bundle_report_template') or {}).get('formats')),
+        'enabled': bool(task['enabled']), 'send_email': bool(task['send_email']), 'recipients': list(task['recipients'] or []),
+        'created_by': task['created_by'], 'uid': uids[str(task['id'])],
+    } for favourite_id, task in tasks.items()}
+
+
+def imported_schedule_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """The schedule a Report Definition carries as its import saves it (a past single execution becomes manual), for the
+    preview of an import."""
+    recurrence = dict(entry.get('recurrence') or {})
+    try:
+        recurrence = normalize_schedule(recurrence)
+        if recurrence['mode'] == 'once' and next_run_after(recurrence, now_local()) is None:
+            recurrence['mode'] = 'manual'
+    except ValueError:  # The import refuses it then; the preview shows it as the package has it.
+        pass
+    return {**entry, 'recurrence': recurrence, 'formats': _report_formats(entry.get('formats'))}
+
+
+def schedules_document(saved: list[tuple[dict[str, Any], int]]) -> dict[str, Any] | None:
+    """The schedules of the Report Definitions of a document, as a Report Schedules document that gives each one to the
+    report it was saved as here (``saved``: each entry with the ID of its report), for import_tasks_document; ``None``
+    when they carry none."""
+    jobs = [{'name': str(entry.get('name') or ''), 'definition': report_definition(favourite_id, entry['schedule'].get('formats')),
+             'schedule': entry['schedule'].get('recurrence') or {}, 'enabled': bool(entry['schedule'].get('enabled', True)),
+             'send_email': bool(entry['schedule'].get('send_email')), 'recipients': entry['schedule'].get('recipients') or [],
+             'created_by': str(entry['schedule'].get('created_by') or ''), 'uid': str(entry['schedule'].get('uid') or '')}
+            for entry, favourite_id in saved if isinstance(entry.get('schedule'), dict)]
+    return {'format': 'drivetest-analyzer-reporting-jobs', 'version': 2, 'favourite_names': {}, 'reporting_jobs': jobs} if jobs else None
+
+
+def _recurrence_text(recurrence: Any) -> str:
+    """When a schedule generates its report, as the preview of an import tells it (``Weekly · Mon · 08:00``)."""
+    recurrence = recurrence if isinstance(recurrence, dict) else {}
+    if recurrence.get('mode') not in SCHEDULE_MODES or recurrence.get('mode') == 'manual':
+        return 'Only with Generate'
+    try:
+        return recurrence_label(recurrence)
+    except (IndexError, TypeError):  # Not a schedule the import saves: told as the package has it.
+        return json.dumps(recurrence, ensure_ascii=False, sort_keys=True)
+
+
+def schedule_changes(before: Any, after: Any) -> list[str]:
+    """What changes in the schedule of a report, as the preview of an import tells it (its identity is no change)."""
+    from src.modules.core.import_changes import describe_changes
+
+    def values(entry: Any) -> dict[str, Any]:
+        entry = entry if isinstance(entry, dict) else {}
+        return {'recurrence': _recurrence_text(entry['recurrence']) if entry.get('recurrence') else None,
+                'formats': [{'powerpoint': 'PowerPoint', 'word': 'Word'}.get(value, value) for value in entry.get('formats') or []] or None,
+                **{key: entry.get(key) for key in ('enabled', 'send_email', 'recipients', 'created_by') if key in entry}}
+
+    old, new = values(before), values(after)
+    if not isinstance(after, dict):
+        return []
+    if not isinstance(before, dict):
+        return [f'Schedule: {new["recurrence"] or "Only with Generate"}']
+    labels = {'recurrence': 'Recurrence', 'formats': 'Formats', 'enabled': 'Generate on its own', 'send_email': 'Email it',
+              'recipients': 'Recipients', 'created_by': 'Owner'}
+    return [f'Schedule · {change}' for change in describe_changes(old, new, labels)]
+
+
+# ---------------------------------------------------------------------------
 # The schedule of each report
 # ---------------------------------------------------------------------------
 def report_definition(favourite_id: int | str, formats: list[str] | None = None) -> dict[str, Any]:

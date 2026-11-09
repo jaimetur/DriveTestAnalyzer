@@ -660,7 +660,7 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
         core._archive_workspace_bundle_report_template_favourites(archive, core.active_workspace, 'workspaces/Default')
     assert zipfile.ZipFile(BytesIO(output.getvalue())).namelist() == [f'workspaces/Default/{core.BRT_FAVOURITES_ARCHIVE_NAME}']
     page = client.get('/admin').text
-    assert 'Reports (from active workspace)' in page and 'Scoring &amp; GAP Favourites Filters (from active workspace)' in page
+    assert 'Report Definitions (from active workspace)' in page and 'Scoring &amp; GAP Favourites Filters (from active workspace)' in page
 
 
 def test_word_pages_do_not_repeat_the_title_of_components_that_share_it():
@@ -1204,7 +1204,7 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
 
     configurations = [item['name'] for item in load_report_state(core.repository)['configurations']]
     # The message names one item or several (``1 Report``, ``2 Reports``).
-    for target, label in (('bundle-report-template-favourites', 'Imported 1 Report into'),
+    for target, label in (('bundle-report-template-favourites', 'Imported 1 Report Definition into'),
                           ('scoring-favourites-filters', 'Scoring & GAP Favourites Filter'),
                           ('scoring-report-templates', 'Scoring & GAP Report Template')):
         exported = client.get(f'/admin/import-export/export?export_target={target}')

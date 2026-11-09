@@ -1055,6 +1055,48 @@ def test_the_stars_of_the_reports_travel_with_them(client, tmp_path):
     assert bundle_report_templates.report_star_users(core.repository) == {one['id']: ['keeper', 'reader', 'super'], other['id']: ['keeper', 'reader', 'super']}
 
 
+def test_each_report_definition_carries_its_schedule_and_email(client):
+    from src.modules.core.import_changes import ELEMENT_LABELS, element_items, predict
+
+    login(client)
+    kind = 'bundle-report-template-favourites'
+    weekly = bundle_report_templates.save_favourite(core.repository, None, 'Weekly', {}, 'super')
+    plain = bundle_report_templates.save_favourite(core.repository, None, 'Plain', {}, 'super')
+    report_tasks.save_report_schedule(core.repository, weekly['id'], 'Weekly', {
+        'schedule': {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}, 'formats': ['word'],
+        'send_email': True, 'recipients': ['team@example.com']}, 'super', **RECIPIENTS)
+    # Each report carries its schedule and email (a report without a schedule carries none).
+    document = json.loads(core._bundle_report_template_favourites_payload(core.active_workspace))
+    schedules = {item['name']: item.get('schedule') for item in document['favourites']}
+    assert schedules['Plain'] is None and schedules['Weekly']['uid']
+    assert {key: value for key, value in schedules['Weekly'].items() if key != 'uid'} == {
+        'recurrence': {'mode': 'weekly', 'time': '08:00', 'weekdays': [0]}, 'formats': ['word'], 'enabled': True,
+        'send_email': True, 'recipients': ['team@example.com'], 'created_by': 'super'}
+    # Here its schedule changed, and the other report got one.
+    report_tasks.save_report_schedule(core.repository, weekly['id'], 'Weekly', {'schedule': {'mode': 'daily', 'time': '06:00'}},
+                                      'super', **RECIPIENTS)
+    report_tasks.save_report_schedule(core.repository, plain['id'], 'Plain', {'schedule': {'mode': 'daily', 'time': '07:00'}},
+                                      'super', **RECIPIENTS)
+    # The preview tells what would change in the schedule of each report, as its editor names it.
+    before = json.loads(core._bundle_report_template_favourites_payload(core.active_workspace))
+    predicted = core._predicted_document(kind, core.active_workspace, document)
+    changes = predict(element_items(kind, predicted), element_items(kind, before), ELEMENT_LABELS[kind])
+    assert (changes.updated, changes.unchanged) == ([('Weekly', [
+        'Schedule · Recurrence: Daily · 06:00 → Weekly · Mon · 08:00', 'Schedule · Formats: \u2212PowerPoint',
+        'Schedule · Email it: No → Yes', 'Schedule · Recipients: +team@example.com'])], 1)
+    # The import gives each report the schedule it carries; a report without one keeps its own.
+    assert core._restore_workspace_bundle_report_template_favourites(core.active_workspace, json.dumps(document).encode(), 'super') == 2
+    tasks = report_tasks.report_tasks_by_favourite(core.repository)
+    assert (tasks[str(weekly['id'])]['recurrence'], tasks[str(weekly['id'])]['send_email'], tasks[str(weekly['id'])]['recipients']) == (
+        'Weekly · Mon · 08:00', True, ['team@example.com'])
+    assert tasks[str(weekly['id'])]['definition']['modules']['bundle_report_template']['formats'] == ['word']
+    assert tasks[str(plain['id'])]['recurrence'] == 'Daily · 07:00'
+    # Report Schedules are no longer an element of their own: neither offered nor written in new packages and backups.
+    assert 'Report Schedules (from active workspace)' not in client.get('/admin').text
+    assert 'reporting_jobs' not in core.full_workspace_archive_components()
+    assert 'reporting_jobs' not in [value for value, _label, _element in core.BACKUP_WORKSPACE_CONTENT]
+
+
 def test_reports_are_read_online_in_the_slide_viewer_of_the_presentations(client):
     login(client)
     assert 'js/help/presentation_viewer.js' in client.get('/reporting').text

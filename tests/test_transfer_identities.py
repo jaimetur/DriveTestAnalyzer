@@ -173,7 +173,7 @@ def test_the_preview_of_reports_tells_only_what_would_really_change(client, tmp_
         core.build_export_archive_file('bundle-report-template-favourites', package, [source.id])
         return core.preview_import_archive(package, core.read_import_manifest(package), [destination.id], 'super')['packages'][0]
 
-    assert preview()['message'] == 'Imports 1 Report into 1 workspace: 1 new.'
+    assert preview()['message'] == 'Imports 1 Report Definition into 1 workspace: 1 new.'
     _transfer('bundle-report-template-favourites', source, destination, tmp_path)
     [stored] = brt.list_favourites(destination_repo)
     designs = next(section for section in stored['definition']['sections'] if section['key'] == 'designs')
@@ -181,7 +181,7 @@ def test_the_preview_of_reports_tells_only_what_would_really_change(client, tmp_
 
     # Imported, it would stay the same although the package names its PPT Designs by the IDs of the source.
     again = preview()
-    assert (again['message'], again['changed'], again['sections']) == ('Imports 1 Report into 1 workspace: 1 unchanged.', False, [])
+    assert (again['message'], again['changed'], again['sections']) == ('Imports 1 Report Definition into 1 workspace: 1 unchanged.', False, [])
     assert 'Reporting module' in again['about']
 
     # Only what the report changes is told, as its editor names it.
@@ -200,10 +200,10 @@ def test_the_preview_of_reports_tells_only_what_would_really_change(client, tmp_
                 'Scoring & GAP Analysis · Campaigns: +Latest 2 campaigns, −All campaigns',
                 'Scoring & GAP Analysis · Summary: Included → Left out', 'PPT Designs: +Speed, −Coverage']
     changed = preview()
-    assert changed['message'] == 'Imports 1 Report into 1 workspace: 1 updated.' and changed['changed']
+    assert changed['message'] == 'Imports 1 Report Definition into 1 workspace: 1 updated.' and changed['changed']
     [section] = changed['sections']
     [item] = section['items']
-    assert section['title'] == f'Updates Reports of "{destination.name}"'
+    assert section['title'] == f'Updates Report Definitions of "{destination.name}"'
     assert (item['name'], sorted(item['changes'])) == ('Weekly', sorted(expected))
     assert item['about'].startswith('Includes ') and 'London' in item['about']
 

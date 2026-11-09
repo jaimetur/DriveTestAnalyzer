@@ -7238,7 +7238,7 @@ BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
     ('query_builder_queries', 'Query Builder Queries (one JSON file with all saved queries)', 'query-builder-queries'),
     ('network_insights_favourites', 'Network Insights Favourites (one JSON file with the favourite Analysis Selections)',
      'network-insights-favourites'),
-    ('bundle_report_template_favourites', 'Reports (one JSON file with the reports of Reporting)',
+    ('bundle_report_template_favourites', 'Report Definitions (one JSON file with what each report of Reporting includes, with its schedule and email)',
      'bundle-report-template-favourites'),
     ('scoring_favourites_filters', 'Scoring & GAP Favourites Filters (one JSON file with the Favourites Filters, without their results)',
      'scoring-favourites-filters'),
@@ -7248,7 +7248,6 @@ BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
                               'each one)', 'scoring-export-panels'),
     ('scoring_excluded_calls', 'Scoring Excluded Calls (one JSON file with the lists of calls left out of the scorings)',
      'scoring-excluded-calls'),
-    ('reporting_jobs', 'Report Schedules (one JSON file with the schedule and email of each report of Reporting)', 'reporting-jobs'),
     ('nq_call_tracking', 'NQ Call Tracking (one JSON file with the Non-Qualified Calls statuses, teams, follow-up, comments '
                          'and history)', 'nq-call-tracking'),
     ('nq_calls_configuration', 'NQ Calls Configuration (one JSON file with the Non-Qualified Calls Analysis Center '
@@ -7387,7 +7386,7 @@ def full_workspace_archive_components(*, include_input_files: bool = True, inclu
         components.append('input')
     if include_generated_outputs:
         components.append('output')
-    return [*components, 'designs', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'reporting_jobs', 'nq_call_tracking', 'assistant_glossary']
+    return [*components, 'designs', 'report_templates', 'main_cities', 'mappings_reference_data', 'scoring_configuration', 'auto_calculated_fields', 'query_builder_queries', 'network_insights_favourites', 'bundle_report_template_favourites', 'scoring_favourites_filters', 'scoring_report_templates', 'scoring_export_panels', 'scoring_excluded_calls', 'nq_call_tracking', 'assistant_glossary']
 
 
 def archive_workspace_components_for_target(
@@ -7853,6 +7852,9 @@ def create_recurring_database_backup(
         and (allowed_workspace_ids is None or workspace.id in allowed_workspace_ids)
     ]
     components = set(config['components'])
+    if 'reporting_jobs' in components:
+        # The Report Definitions carry the schedules of the reports (a selection saved before still backs them up).
+        components = (components - {'reporting_jobs'}) | {'bundle_report_template_favourites'}
     if level == 'light':
         components -= LIGHT_BACKUP_EXCLUDED_COMPONENTS
     workspace_manifest_components = [
@@ -8013,7 +8015,7 @@ def create_recurring_database_backup(
                     report_progress(f'Exporting AI Assistant Glossary for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_assistant_glossary(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'bundle_report_template_favourites' in components:
-                    report_progress(f'Exporting Reports for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
+                    report_progress(f'Exporting Report Definitions for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_bundle_report_template_favourites(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'scoring_favourites_filters' in components:
                     report_progress(f'Exporting Scoring & GAP Favourites Filters for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
@@ -8901,9 +8903,9 @@ def restore_database_backup(
                                if f'{prefix}{archive_name}' in names), '')
                 if member in names:
                     if progress_callback:
-                        progress_callback(f'Restoring Reports for {workspace_name}', completed_steps, total_steps)
+                        progress_callback(f'Restoring Report Definitions for {workspace_name}', completed_steps, total_steps)
                     _restore_workspace_bundle_report_template_favourites(workspace, archive.read(member), importing_user)
-                    advance(f'Reports restored for {workspace_name}')
+                    advance(f'Report Definitions restored for {workspace_name}')
             if 'scoring_favourites_filters' in selected:
                 member = f'{prefix}{FAVOURITES_FILTERS_ARCHIVE_NAME}'
                 if member in names:
@@ -9964,19 +9966,25 @@ def _restore_workspace_bundle_report_template_favourites(
     workspace: Workspace, payload: bytes, importing_user: str, summary: list[str] | None = None,
 ) -> int:
     """Replace (found by their identity, then by their name) or add the favourite Bundle Report Templates of a package
-    in a workspace, each belonging to its creator when that user is active here (otherwise to ``importing_user``)."""
+    in a workspace, each belonging to its creator when that user is active here (otherwise to ``importing_user``), with
+    the schedule each one carries (see _restore_workspace_reporting_jobs)."""
     from src.modules.reporting.bundle_report_templates import import_favourites_document
+    from src.modules.reporting.report_tasks import import_tasks_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
     renamed: list[str] = []
     try:
-        count = import_favourites_document(task_repository, payload, importing_user, summary=renamed,
-                                           creator=lambda package, local: transfer_creator(package, local, importing_user))
+        count = import_favourites_document(
+            task_repository, payload, importing_user, summary=renamed,
+            creator=lambda package, local: transfer_creator(package, local, importing_user),
+            import_schedules=lambda schedules: import_tasks_document(
+                task_repository, schedules, importing_user, parse_recipients=parse_recipients,
+                invalid_recipients=invalid_recipients, user_exists=active_user_exists))
         if summary is not None and renamed:
-            summary.append(summary_section(f'Reports of "{workspace.name}"', renamed))
+            summary.append(summary_section(f'Report Definitions of "{workspace.name}"', renamed))
         return count
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        raise ValueError(f'Reports for "{workspace.name}" are invalid: {exc}') from exc
+        raise ValueError(f'Report Definitions for "{workspace.name}" are invalid: {exc}') from exc
 
 
 FAVOURITES_FILTERS_ARCHIVE_NAME = 'scoring-favourites-filters/scoring-favourites-filters.json'
@@ -10256,7 +10264,6 @@ def _archive_workspace(
     _archive_workspace_scoring_report_templates(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_scoring_export_panels(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_scoring_excluded_calls(archive, workspace, archive_prefix, progress_callback)
-    _archive_workspace_reporting_jobs(archive, workspace, archive_prefix, progress_callback)
     _archive_workspace_nq_call_tracking(archive, workspace, archive_prefix, progress_callback)
     if include_input_files:
         phase(f'adding its Input files ({format_workspace_size(_tree_size(workspace.input_dir))})')
@@ -10559,7 +10566,7 @@ def _build_single_export_archive_file(
             source_workspace_id = next(iter(workspace_ids or ()), active_workspace.id if active_workspace else '')
             source_workspace = workspace_registry.get(source_workspace_id) if source_workspace_id else None
             label, archive_name, write = {
-                'bundle-report-template-favourites': ('Reports', BRT_FAVOURITES_ARCHIVE_NAME,
+                'bundle-report-template-favourites': ('Report Definitions', BRT_FAVOURITES_ARCHIVE_NAME,
                                                _archive_workspace_bundle_report_template_favourites),
                 'scoring-favourites-filters': ('Scoring & GAP Favourites Filters', FAVOURITES_FILTERS_ARCHIVE_NAME, _archive_workspace_favourites_filters),
                 'scoring-report-templates': ('Scoring & GAP Report Templates', SCORING_REPORT_TEMPLATES_ARCHIVE_NAME,
@@ -11006,7 +11013,7 @@ def _recovered_transfer_details(manifest: dict[str, Any]) -> tuple[str, list[str
                        'scoring-excluded-calls'}:
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
-        return ({'bundle-report-template-favourites': 'Reports', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
+        return ({'bundle-report-template-favourites': 'Report Definitions', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
                  'scoring-report-templates': 'Scoring & GAP Report Templates', 'scoring-export-panels': 'Scoring Export Panels',
                  'scoring-excluded-calls': 'Scoring Excluded Calls'}[kind],
                 [name] if name else [])
@@ -12562,6 +12569,9 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
             def creators(values: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
                 if 'created_by' in values:
                     values['created_by'] = imported_creator(values['created_by'], previous.get('created_by'), importing_user, active_user_exists)
+                if kind == 'bundle-report-template-favourites' and isinstance(values.get('schedule'), dict):
+                    owner = str(values['schedule'].get('created_by') or '').strip()
+                    values['schedule'] = {**values['schedule'], 'created_by': owner if owner and active_user_exists(owner) else importing_user}
                 return kept_postal_codes(values, previous) if kind == 'scoring-favourites-filters' else values
             changes = {workspace.id: predict(element_items(kind, _predicted_document(kind, workspace, package, includes_designs)),
                                              element_items(kind, before[workspace.id]), ELEMENT_LABELS.get(kind), creators,
@@ -12662,8 +12672,10 @@ def _bundle_designs_unchanged(archive: zipfile.ZipFile, entry: dict[str, Any], d
 
 # What the packages whose name does not say where their items live are, in their box of the preview.
 PREVIEW_PACKAGE_ABOUT = {
-    'bundle-report-template-favourites': 'The reports of the {reporting} module (its Reports tab).',
-    'reporting-jobs': 'The schedule and email of each report of the {reporting} module.',
+    'bundle-report-template-favourites': 'What each report of the {reporting} module includes (its Reports tab), with its schedule, its email and '
+                                         'its stars; not the generated reports.',
+    'reporting-jobs': 'The schedule and email of each report of the {reporting} module, in a package of an earlier version '
+                      '(the Report Definitions carry them now).',
 }
 
 
@@ -13097,7 +13109,7 @@ def _apply_import_archive(
                        'scoring-excluded-calls'}:
             favourites = kind == 'bundle-report-template-favourites'
             label, archive_name = {
-                'bundle-report-template-favourites': ('Reports', BRT_FAVOURITES_ARCHIVE_NAME),
+                'bundle-report-template-favourites': ('Report Definitions', BRT_FAVOURITES_ARCHIVE_NAME),
                 'scoring-favourites-filters': ('Scoring & GAP Favourites Filters', FAVOURITES_FILTERS_ARCHIVE_NAME),
                 'scoring-report-templates': ('Scoring & GAP Report Templates', SCORING_REPORT_TEMPLATES_ARCHIVE_NAME),
                 'scoring-export-panels': ('Scoring Export Panels', SCORING_EXPORT_PANELS_ARCHIVE_NAME),
@@ -13475,7 +13487,7 @@ def _transfer_content_label(target: str | Iterable[str]) -> str:
         'query-builder-queries': 'Query Builder Queries',
         'network-insights-favourites': 'Network Insights Favourites',
         'assistant-glossary': 'AI Assistant Glossary',
-        'bundle-report-template-favourites': 'Reports',
+        'bundle-report-template-favourites': 'Report Definitions',
         'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
         'scoring-report-templates': 'Scoring & GAP Report Templates',
         'scoring-export-panels': 'Scoring Export Panels',
@@ -14682,17 +14694,16 @@ def render_admin_template(
         {'value': 'auto-calculated-fields', 'label': 'Auto-calculated Fields (from active workspace)', 'disabled': not active_workspace},
         {'value': 'query-builder-queries', 'label': 'Query Builder Queries (from active workspace)', 'disabled': not active_workspace},
         {'value': 'network-insights-favourites', 'label': 'Network Insights Favourites (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'bundle-report-template-favourites', 'label': 'Reports (from active workspace)', 'disabled': not active_workspace},
+        {'value': 'bundle-report-template-favourites', 'label': 'Report Definitions (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-favourites-filters', 'label': 'Scoring & GAP Favourites Filters (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-report-templates', 'label': 'Scoring & GAP Report Templates (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-export-panels', 'label': 'Scoring Export Panels (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-excluded-calls', 'label': 'Scoring Excluded Calls (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'reporting-jobs', 'label': 'Report Schedules (from active workspace)', 'disabled': not active_workspace},
         {'value': 'nq-call-tracking', 'label': 'NQ Call Tracking (from active workspace)', 'disabled': not active_workspace},
         {'value': 'nq-calls-configuration', 'label': 'NQ Calls Configuration (from active workspace)', 'disabled': not active_workspace},
         {'value': 'app-events', 'label': 'App Events (from active workspace)', 'disabled': not active_workspace},
         {'value': 'assistant-glossary', 'label': 'AI Assistant Glossary (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'full-environment', 'label': 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Reports + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Report Schedules + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)',
+        {'value': 'full-environment', 'label': 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Report Definitions + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)',
          'tag': 'Whole application and workspace databases', 'tag_class': 'user-choice-tag-database'},
         *[
             {'value': f'workspace:{workspace.id}', 'label': f'Full Workspace: {workspace.name}', 'tag': 'Whole workspace database',

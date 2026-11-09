@@ -2520,7 +2520,7 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert 'Mappings &amp; Reference Data (from active workspace)</option>' in admin_response.text
     assert admin_response.text.index('Main Cities (from active workspace)</option>') < admin_response.text.index('Mappings &amp; Reference Data (from active workspace)</option>')
     assert 'Scoring &amp; GAP Analysis Methodologies (from active workspace)' in admin_response.text
-    assert 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Reports + Scoring &amp; GAP Favourites Filters + Scoring &amp; GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + Report Schedules + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)' in admin_response.text
+    assert 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Report Definitions + Scoring &amp; GAP Favourites Filters + Scoring &amp; GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)' in admin_response.text
     # The backups, in the Database Management of Super Admin.
     backups_page = client.get('/super-admin').text
     assert backups_page.index('Main Cities (workspace city selection)') < backups_page.index('Mappings &amp; Reference Data (Operator and Vendor aliases, order and theme colors')
@@ -4348,7 +4348,7 @@ def test_admin_export_and_transfer_are_limited_to_templates_and_accessible_works
     assert 'PPT Templates (from active workspace)</option>' in panel.text
     assert 'Main Cities (from active workspace)</option>' in panel.text
     # Admins export the favourites of the active workspace too.
-    for label in ('Network Insights Favourites', 'Reports', 'Scoring &amp; GAP Favourites Filters',
+    for label in ('Network Insights Favourites', 'Report Definitions', 'Scoring &amp; GAP Favourites Filters',
                   'Scoring &amp; GAP Report Templates'):
         assert f'{label} (from active workspace)</option>' in panel.text, label
     assert client.get('/admin/import-export/export?export_target=bundle-report-template-favourites').status_code == 200

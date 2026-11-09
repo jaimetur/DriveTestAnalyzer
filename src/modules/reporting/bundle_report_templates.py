@@ -923,18 +923,22 @@ LEGACY_FAVOURITES_FORMATS = ('drivetest-analyzer-complete-report-favourites', 'd
 
 def export_entries(repository: Any) -> list[dict[str, Any]]:
     """The favourites as their documents carry them: each PPT Design with its current name and NR Mode, which find it
-    in another workspace, and the users who starred it."""
+    in another workspace, the users who starred it and its schedule, when it has one (see report_tasks.schedule_entries)."""
     from src.modules.core.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, portable_identities
+    from src.modules.reporting.report_tasks import schedule_entries
 
     designs = workspace_designs(repository)
     favourites = list_favourites(repository)
     # Each favourite with its identity, so the destination finds it again after a rename (see transfer_identities).
     uids = portable_identities(repository, BUNDLE_REPORT_TEMPLATE_FAVOURITES, [str(item['id']) for item in favourites])
-    stars = report_star_users(repository)
+    stars, schedules = report_star_users(repository), schedule_entries(repository)
     entries = []
     for item in favourites:
-        entries.append({'name': item['name'], 'definition': _named_designs(item['definition'], designs),
-                        'created_by': item['created_by'], 'uid': uids[str(item['id'])], 'starred_by': stars.get(item['id'], [])})
+        entry = {'name': item['name'], 'definition': _named_designs(item['definition'], designs),
+                 'created_by': item['created_by'], 'uid': uids[str(item['id'])], 'starred_by': stars.get(item['id'], [])}
+        if str(item['id']) in schedules:
+            entry['schedule'] = schedules[str(item['id'])]
+        entries.append(entry)
     return entries
 
 
@@ -1004,15 +1008,24 @@ def export_favourites_document(repository: Any) -> bytes:
 
 
 def import_favourites_document(repository: Any, content: bytes | str, username: str,
-                               creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None) -> int:
+                               creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None,
+                               import_schedules: Callable[[bytes], Any] | None = None) -> int:
     """Replace (found by their identity, then by their name) or add the favourite Bundle Report Templates of a portable
-    document; returns how many it had (see import_entries)."""
+    document; returns how many it had (see import_entries). ``import_schedules(Report Schedules document)`` then gives
+    each report the schedule it carries (report_tasks.import_tasks_document); the reports without one keep theirs."""
+    from src.modules.reporting.report_tasks import schedules_document
+
     document = json.loads(content)
     if not isinstance(document, dict) or document.get('format') not in {FAVOURITES_FORMAT, *LEGACY_FAVOURITES_FORMATS}:
-        raise ValueError('The file is not a DriveTest Analyzer Bundle Report Template Favourites export.')
-    return import_entries(repository, document.get('favourites') or [], username, workspace_designs(repository),
-                          creator=creator, summary=summary, designs_of_report_mode=int(document.get('version') or 1) < 2,
-                          star_users=document.get('star_users'))
+        raise ValueError('The file is not a DriveTest Analyzer Report Definitions export.')
+    saved: list[tuple[dict[str, Any], int]] = []
+    imported = import_entries(repository, document.get('favourites') or [], username, workspace_designs(repository),
+                              creator=creator, summary=summary, designs_of_report_mode=int(document.get('version') or 1) < 2,
+                              star_users=document.get('star_users'), saved_entries=saved)
+    schedules = schedules_document(saved)
+    if import_schedules is not None and schedules is not None:
+        import_schedules(json.dumps(schedules, ensure_ascii=False).encode('utf-8'))
+    return imported
 
 
 def _imported_definition(raw: Any, designs: dict[str, tuple[str, str]], aliases: dict[str, str],
@@ -1035,6 +1048,7 @@ def predicted_favourites_document(repository: Any, document: dict[str, Any]) -> 
     """A portable document with its favourites as the import would save them in a workspace and its export would then
     give them, so the preview of the import compares what would really stay."""
     from src.modules.core.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, ItemMatcher, identities
+    from src.modules.reporting.report_tasks import imported_schedule_entry
 
     designs, aliases = workspace_designs(repository), design_aliases(repository)
     designs_of_report_mode = int(document.get('version') or 1) < 2
@@ -1052,6 +1066,8 @@ def predicted_favourites_document(repository: Any, document: dict[str, Any]) -> 
             kept = [user for user in stars.get(target, []) if not carried or user not in governed]
             entry = {**entry, 'definition': _named_designs(_imported_definition(entry.get('definition'), designs, aliases, designs_of_report_mode), designs),
                      'starred_by': sorted({*kept, *_star_owners(repository, entry.get('starred_by'))}, key=str.casefold)}
+            if isinstance(entry.get('schedule'), dict):
+                entry['schedule'] = imported_schedule_entry(entry['schedule'])
         predicted.append(entry)
     return {**document, 'favourites': predicted}
 
@@ -1059,7 +1075,8 @@ def predicted_favourites_document(repository: Any, document: dict[str, Any]) -> 
 def import_entries(repository: Any, entries: Any, username: str,
                    designs: dict[str, tuple[str, str]] | None = None, *,
                    creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None,
-                   designs_of_report_mode: bool = False, star_users: Any = None) -> int:
+                   designs_of_report_mode: bool = False, star_users: Any = None,
+                   saved_entries: list[tuple[dict[str, Any], int]] | None = None) -> int:
     """Replace the favourites of a document that the workspace has (found by their identity, then by their name) and
     add the others. ``designs`` are those of this workspace (see workspace_designs), so a PPT Design of another
     workspace is found by its name and NR Mode. ``creator(creator in the document, creator here)`` decides who each
@@ -1068,7 +1085,8 @@ def import_entries(repository: Any, entries: Any, username: str,
     favourites of a document of before (``designs_of_report_mode``) keep generating only the PPT Designs of the NR Mode
     of the report, as they did (uncheck_other_mode_designs). Each user whose stars the workspace of the document keeps
     (``star_users``) and who exists here has, on each favourite of the document, the star they have there: added, or
-    taken away. The stars of the other users stay, and a document without ``star_users`` only adds stars."""
+    taken away. The stars of the other users stay, and a document without ``star_users`` only adds stars.
+    ``saved_entries`` receives each entry with the ID of the favourite it was saved as."""
     from src.modules.reporting.report_tasks import rename_report_task
     from src.modules.core.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, ItemMatcher, identities, set_identities
 
@@ -1099,6 +1117,8 @@ def import_entries(repository: Any, entries: Any, username: str,
             with repository.connection() as connection:
                 connection.execute(f'UPDATE {BUNDLE_REPORT_TEMPLATES_TABLE} SET created_by = ? WHERE id = ?', (owner, saved['id']))
         imported_uids[str(saved['id'])] = str(entry.get('uid') or '')
+        if saved_entries is not None:
+            saved_entries.append((entry, saved['id']))
         if isinstance(entry.get('starred_by'), list):
             carried.add(saved['id'])
             for owner in _star_owners(repository, entry.get('starred_by')):

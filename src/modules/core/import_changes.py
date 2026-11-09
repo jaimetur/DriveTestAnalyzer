@@ -409,6 +409,12 @@ def _report_definition_changes(before: Any, after: Any) -> list[str]:
     return definition_changes(before, after)
 
 
+def _report_schedule_changes(before: Any, after: Any) -> list[str]:
+    from src.modules.reporting.report_tasks import schedule_changes
+
+    return schedule_changes(before, after)
+
+
 def report_configuration_items(document: Any) -> list[Item]:
     """The Scoring & GAP Report Templates of a document (of this or an earlier version)."""
     from src.modules.scoring.scoring_reports import unwrap_report_configurations_document
@@ -563,7 +569,7 @@ ELEMENT_NAMES = {
     'auto-calculated-fields': ('auto-calculated field', 'auto-calculated fields', ''),
     'query-builder-queries': ('Query Builder query', 'Query Builder queries', ''),
     'network-insights-favourites': ('Network Insights Favourite', 'Network Insights Favourites', ''),
-    'bundle-report-template-favourites': ('Report', 'Reports', ''),
+    'bundle-report-template-favourites': ('Report Definition', 'Report Definitions', ''),
     'scoring-favourites-filters': ('Scoring & GAP Favourites Filter', 'Scoring & GAP Favourites Filters', ''),
     'scoring-report-templates': ('Scoring & GAP Report Template', 'Scoring & GAP Report Templates', ''),
     'scoring-excluded-calls': ('list of Scoring Excluded Calls', 'lists of Scoring Excluded Calls', ''),
@@ -583,7 +589,8 @@ SETTINGS_ELEMENTS = {
 ELEMENT_LABELS = {
     'ppt-templates': {'content': 'Content'},
     'scoring-excluded-calls': {'calls': 'Calls'},
-    'bundle-report-template-favourites': {'definition': _report_definition_changes, 'starred_by': 'Stars'},
+    'bundle-report-template-favourites': {'definition': _report_definition_changes, 'starred_by': 'Stars',
+                                          'schedule': _report_schedule_changes},
 }
 
 
