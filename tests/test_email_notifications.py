@@ -95,7 +95,9 @@ def test_email_delivery_sends_through_a_power_automate_flow(client, flow):
     assert message['message'] == {'subject': 'DT Analyzer - Test email', 'body': {'contentType': 'HTML'},
                                   'toRecipients': [{'emailAddress': {'address': 'someone@example.com'}}], 'ccRecipients': [],
                                   'replyTo': [{'emailAddress': {'address': 'admin@example.com'}}]}
-    assert (message['find_previous_url'], message['delete_sent_copy']) == ('', False)
+    # It answers no email: the request of the flow that finds the email it answers finds none.
+    assert parse_qs(urlsplit(message['find_previous_url']).query)['$filter'] == ['isDraft eq true and isDraft eq false']
+    assert message['delete_sent_copy'] is False
     client.post('/application-config/email-delivery/test', data={'recipient': 'Admin@Example.com'})
     assert (flow[-1]['to'], flow[-1]['delete_sent_copy']) == ('Admin@Example.com', True)
     # A flow sends no attachments, and a request too large for it is refused before it is sent.

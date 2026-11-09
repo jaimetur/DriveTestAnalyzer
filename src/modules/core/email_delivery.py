@@ -247,10 +247,12 @@ def graph_recipients(addresses: list[str]) -> list[dict[str, Any]]:
     return [{'emailAddress': {'address': address}} for address in addresses if address]
 
 
-def previous_email_url(subject: str) -> str:
+def previous_email_url(subject: str | None) -> str:
     """The Microsoft Graph request that finds, in the mailbox of the flow, an email sent before with ``subject`` (sent or
-    received, never a draft)."""
-    condition = "subject eq '{}' and isDraft eq false".format(subject.replace("'", "''"))
+    received, never a draft); without a subject, a request that finds none, so the email starts a conversation (the flow
+    always looks, which spares it a condition)."""
+    condition = ("subject eq '{}' and isDraft eq false".format(subject.replace("'", "''")) if subject is not None
+                 else 'isDraft eq true and isDraft eq false')
     return f"{GRAPH_MESSAGES_URL}?$filter={quote(condition, safe='')}&$select=id&$top=1"
 
 
@@ -260,8 +262,8 @@ def webhook_payload(settings: dict[str, Any], recipients: list[str], subject: st
     semicolons, as Outlook takes them), and for a flow that sends it with Send an HTTP request (Microsoft Graph) the
     ``message`` without its HTML (``html``, carried once: a flow request takes about 28 KB).
 
-    That flow answers the email sent before with the same subject when ``find_previous_url`` is given (a ``thread``, such
-    as the emails of a ticket), so Outlook keeps them in one conversation, and writes a new one otherwise. When the mailbox
+    That flow answers the email that ``find_previous_url`` finds: the one sent before with the same subject for a
+    ``thread`` (the emails of a ticket), so Outlook keeps them in one conversation, and none otherwise. When the mailbox
     of the flow (the sender address) also receives the email, ``delete_sent_copy`` asks the flow to delete its copy in Sent
     Items, so the email shows once."""
     subject, cc = subject_line(subject), list(cc or [])
@@ -273,7 +275,7 @@ def webhook_payload(settings: dict[str, Any], recipients: list[str], subject: st
         'kind': kind, 'to': ';'.join(recipients), 'cc': ';'.join(cc), 'reply_to': reply_to, 'subject': subject, 'html': html,
         'message': {'subject': subject, 'body': {'contentType': 'HTML'}, 'toRecipients': graph_recipients(recipients),
                     'ccRecipients': graph_recipients(cc), 'replyTo': graph_recipients([reply_to])},
-        'find_previous_url': previous_email_url(subject) if thread else '',
+        'find_previous_url': previous_email_url(subject if thread else None),
         'delete_sent_copy': received_by_sender,
     }
 
