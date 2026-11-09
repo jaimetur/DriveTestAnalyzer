@@ -11984,6 +11984,12 @@ def import_config_archive(staging_root: Path, manifest: dict[str, Any], *, keep_
         relative_path = path.relative_to(config_payload)
         if relative_path in {Path('application.db'), Path(workspace_registry.registry_path.name)}:
             continue
+        # Opening the staged database leaves its write-ahead log and shared
+        # memory beside it. Copied over those of the database in use, they
+        # would give it a foreign log and truncate the memory its connections
+        # have mapped, which kills the server process with a bus error.
+        if path.name.endswith(('-wal', '-shm')):
+            continue
         # PPT Templates are workspace database records. Configuration ZIPs
         # created by older versions may still carry a CSV compatibility tree;
         # never restore that obsolete runtime directory.

@@ -3012,6 +3012,37 @@ def test_config_import_replaces_global_users_and_preserves_user_ids(client) -> N
     ] == expected_users
 
 
+def test_config_import_copies_nothing_over_the_sidecars_of_the_database_in_use(client, tmp_path: Path, monkeypatch) -> None:
+    import src.DriveTestAnalyzer as app_module
+
+    config_dir = app_module.application_config_dir
+    payload = tmp_path / 'staging' / 'config'
+    payload.mkdir(parents=True)
+    source = sqlite3.connect(config_dir / 'application.db')
+    staged = sqlite3.connect(payload / 'application.db')
+    source.backup(staged)
+    staged.execute('PRAGMA journal_mode=WAL')
+    source.close()
+    staged.close()
+    (payload / 'other-setting.json').write_text('{"kept": true}', encoding='utf-8')
+
+    copied: list[str] = []
+    real_copy = shutil.copy2
+
+    def recording_copy(from_path, to_path, **kwargs):
+        copied.append(Path(to_path).name)
+        return real_copy(from_path, to_path, **kwargs)
+
+    monkeypatch.setattr(app_module.shutil, 'copy2', recording_copy)
+    app_module.import_config_archive(tmp_path / 'staging', {})
+
+    # The check of the staged database is what leaves these beside it.
+    assert (payload / 'application.db-wal').exists() and (payload / 'application.db-shm').exists()
+    assert not [name for name in copied if name.endswith(('-wal', '-shm'))]
+    assert 'other-setting.json' in copied
+    assert (config_dir / 'other-setting.json').read_text(encoding='utf-8') == '{"kept": true}'
+
+
 def test_config_import_from_another_server_translates_workspace_ids_and_keeps_server_settings(client, tmp_path: Path) -> None:
     import src.DriveTestAnalyzer as app_module
 
