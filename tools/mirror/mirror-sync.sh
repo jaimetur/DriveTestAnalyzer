@@ -44,22 +44,26 @@ usage() {
 Usage: tools/mirror/mirror-sync.sh <command> [options]
 
   install --host user@host --repo /checkout/on/the/mirror --storage /storage/on/the/mirror
-          [--code-only] [--label "the development Mac"] [--port 7278] [--interval 600]
-          [--runner launcher|agent] [--replace-mirror-checkout] [--replace-mirror-data]
+          [--code-only] [--follow saves|commits] [--label "the development Mac"] [--port 7278]
+          [--interval 600] [--runner launcher|agent] [--replace-mirror-checkout] [--replace-mirror-data]
                  Set the mirror up: the SSH key of this Mac, rsync 3 and Python 3.15 on the mirror, its checkout,
                  its Python environment, what runs its application (the macOS launcher when the mirror has it,
                  else a launchd agent), the first synchronization, and the agents of this Mac that keep it
                  synchronized. --code-only: the mirror is a server of its own that always runs the code of this
                  checkout; its data is its own and the data of this Mac is never sent to it.
+                 --follow commits: the mirror runs the commit this checkout is on, and what is saved here
+                 without a commit stays here; --follow saves (the default): it runs every saved change.
                  --replace-mirror-checkout overwrites changes of its own the checkout of the mirror holds;
                  --replace-mirror-data sets the data the mirror already holds aside (kept beside it, renamed) and
                  takes the data of this Mac.
   key            Show the public key the mirror must authorize (install creates it).
-  code           Synchronize the checkout now (the mirror application restarts when Python sources changed).
+  code           Synchronize the checkout now: its saved changes, or its commit for a mirror that follows the
+                 commits (the mirror application restarts when Python sources changed).
   data           Synchronize the configuration and data folders now (the mirror application restarts for a few
                  seconds when a database changed). Refused for a code-only mirror.
   all            code, then data (code alone for a code-only mirror).
-  watch          Synchronize the checkout whenever a file changes (what the watch agent runs).
+  watch          Synchronize the checkout whenever a file changes, or whenever its commit does (what the watch
+                 agent runs).
   status         The last synchronizations, the agents of this Mac and the mirror application.
   restart-mirror Restart the mirror application.
   uninstall [--mirror]
@@ -101,6 +105,7 @@ load_config() {
   MIRROR_LABEL="${MIRROR_LABEL:-the development Mac}"
   DATA_INTERVAL_SECONDS="${DATA_INTERVAL_SECONDS:-600}"
   MIRROR_DATA="${MIRROR_DATA:-on}"
+  MIRROR_FOLLOW="${MIRROR_FOLLOW:-saves}"
   RESTART_SETTLE_SECONDS="${RESTART_SETTLE_SECONDS:-5}"
   REMOTE_RSYNC="${REMOTE_RSYNC:-}"
   SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30 -o IdentitiesOnly=yes -i "$KEY_FILE")
@@ -199,12 +204,77 @@ sync_code() {
   log "Checkout synchronized ($(count_lines "$changes") changes)."
 }
 
-sync_code_without_restart() {
-  sync_code no-restart
+# What the mirror runs to put its working tree at a commit, on its standard shell whatever its login shell is: it
+# prints the files that differ from the commit it was at (or what makes it restart, when it has no record).
+checkout_script() {
+  local commit="$1"
+  cat <<EOF
+cd $(printf '%q' "$MIRROR_REPO") || exit 1
+previous="\$(cat .git/mirror-deployed-commit 2>/dev/null || true)"
+git cat-file -e "$commit^{commit}" || exit 1
+git reset -q --hard "$commit" || exit 1
+if [ -n "\$previous" ] && git cat-file -e "\$previous^{commit}" 2>/dev/null; then
+  git diff --name-only "\$previous" "$commit"
+else
+  echo requirements.txt
+  echo src/main.py
+fi
+echo "$commit" > .git/mirror-deployed-commit
+EOF
 }
 
-sync_code_deferred() {
-  sync_code defer
+# For a mirror that follows the commits: the Git history, then the working tree of the mirror put at the commit
+# this checkout is on, so what is saved here without a commit stays here. Nothing is sent while the commit is the
+# same. The index stays the one of each Mac, and the record of the commit the mirror runs is its own.
+# $1: restart (at once, the default), defer (once the changes settle) or no-restart (install).
+sync_commits() {
+  local restart="${1:-restart}" head previous changes
+  head="$(git -C "$LOCAL_REPO" rev-parse --verify -q HEAD)" || { log "This checkout has no commit to follow."; return 1; }
+  previous="$(cat "$STATE_DIR/deployed-commit" 2>/dev/null || true)"
+  if [ "$head" = "$previous" ]; then
+    [ "$restart" != "restart" ] || log "The mirror already runs commit ${head:0:9}."
+    return 0
+  fi
+  log "Sending commit ${head:0:9} to $MIRROR_SSH:$MIRROR_REPO"
+  rsync_run --exclude='/index' --exclude='*.lock' --exclude='/mirror-deployed-commit' "$LOCAL_REPO/.git/" "$MIRROR_SSH:$MIRROR_REPO/.git/" > /dev/null \
+    || { log "The Git history could not be sent."; return 1; }
+  changes="$(remote "/bin/sh -c $(printf '%q' "$(checkout_script "$head")")")" || { log "The mirror could not be put at commit ${head:0:9}."; return 1; }
+  echo "$head" > "$STATE_DIR/deployed-commit"
+  date '+%Y-%m-%d %H:%M:%S' > "$STATE_DIR/last-code-sync"
+  if [ "$restart" != "no-restart" ] && grep -q -x 'requirements\.txt' <<< "$changes"; then
+    log "requirements.txt changed: installing the dependencies on the mirror"
+    remote_tool deps || log "The dependencies could not be installed on the mirror."
+  fi
+  if [ "$restart" != "no-restart" ] && grep -q -x -E 'src/.*\.py|requirements\.txt|storage-paths\.conf' <<< "$changes"; then
+    if [ "$restart" = "defer" ]; then
+      log "Python sources changed: the mirror application restarts once the changes settle (${RESTART_SETTLE_SECONDS} s)"
+      schedule_restart
+    else
+      restart_mirror_app || return 1
+    fi
+  fi
+  log "The mirror runs commit ${head:0:9} ($(count_lines "$changes") files changed)."
+}
+
+# The saved changes of the checkout, or its commit, as the mirror follows them.
+sync_checkout() {
+  if [ "$MIRROR_FOLLOW" = "commits" ]; then
+    sync_commits "$1"
+  else
+    sync_code "$1"
+  fi
+}
+
+sync_checkout_now() {
+  sync_checkout restart
+}
+
+sync_checkout_deferred() {
+  sync_checkout defer
+}
+
+sync_checkout_without_restart() {
+  sync_checkout no-restart
 }
 
 list_databases() {
@@ -292,12 +362,15 @@ sync_data() {
 watch_code() {
   local fswatch
   fswatch="$(find_tool fswatch /opt/homebrew/bin /usr/local/bin)" || die "fswatch is not installed (brew install fswatch)."
-  with_lock sync_code_deferred || log "The checkout synchronization failed; it is tried again at the next change."
+  local watched="$LOCAL_REPO"
+  # A commit, a branch change or a merge moves the files of the Git folder; saved changes do not.
+  [ "$MIRROR_FOLLOW" = "commits" ] && watched="$LOCAL_REPO/.git"
+  with_lock sync_checkout_deferred || log "The checkout synchronization failed; it is tried again at the next change."
   "$fswatch" -o -l 1 \
     -e '/\.venv/' -e '/\.drivetest-analyzer-venv/' -e '/\.drivetest-analyzer-runtime/' -e '__pycache__' -e '/\.pytest_cache/' \
     -e '/\.ruff_cache/' -e '/\.mypy_cache/' -e '\.DS_Store$' -e '/node_modules/' -e '/\.git/objects/' -e '/\.git/.*\.lock$' -e '\.pyc$' \
-    "$LOCAL_REPO" | while read -r _events; do
-    with_lock sync_code_deferred || log "The checkout synchronization failed; it is tried again at the next change."
+    "$watched" | while read -r _events; do
+    with_lock sync_checkout_deferred || log "The checkout synchronization failed; it is tried again at the next change."
   done
 }
 
@@ -364,7 +437,7 @@ remote_rsync_path() {
 }
 
 install_mirror() {
-  local host="" repo="" storage="" label="the development Mac" port=7278 interval=600 runner="" replace_checkout=0 replace_data=0 data=on
+  local host="" repo="" storage="" label="the development Mac" port=7278 interval=600 runner="" replace_checkout=0 replace_data=0 data=on follow=saves
   while [ $# -gt 0 ]; do
     case "$1" in
       --host) host="$2"; shift 2 ;;
@@ -375,12 +448,14 @@ install_mirror() {
       --interval) interval="$2"; shift 2 ;;
       --runner) runner="$2"; shift 2 ;;
       --code-only) data=off; shift ;;
+      --follow) follow="$2"; shift 2 ;;
       --replace-mirror-checkout) replace_checkout=1; shift ;;
       --replace-mirror-data) replace_data=1; shift ;;
       *) die "Unknown option $1 (see 'tools/mirror/mirror-sync.sh' without arguments)." ;;
     esac
   done
   case "$runner" in ""|launcher|agent) ;; *) die "--runner takes launcher or agent." ;; esac
+  case "$follow" in saves|commits) ;; *) die "--follow takes saves or commits." ;; esac
   [ -n "$host" ] && [ -n "$repo" ] && [ -n "$storage" ] || die "install needs --host, --repo and --storage."
   [ "$data" = "on" ] || [ "$replace_data" -eq 0 ] || die "--code-only leaves the data of the mirror alone: it cannot go with --replace-mirror-data."
   ensure_key
@@ -395,6 +470,7 @@ MIRROR_PORT=$port
 MIRROR_LABEL="$label"
 DATA_INTERVAL_SECONDS=$interval
 MIRROR_DATA="$data"
+MIRROR_FOLLOW="$follow"
 EOF
   load_config
   remote true 2>/dev/null || die "The mirror does not accept the key of this Mac yet. Add this public key to ~/.ssh/authorized_keys of $host (Remote Login on), then run install again:
@@ -423,7 +499,9 @@ Commit or discard them there, or run install with --replace-mirror-checkout to o
   else
     remote "mkdir -p $(printf '%q' "$repo")" || die "The checkout folder could not be created on the mirror."
   fi
-  with_lock sync_code_without_restart || die "The first synchronization of the checkout failed."
+  # The mirror is put at the commit, or given the saved changes, again: it may have followed the other until now.
+  rm -f "$STATE_DIR/deployed-commit"
+  with_lock sync_checkout_without_restart || die "The first synchronization of the checkout failed."
   local install_options=()
   [ -n "$runner" ] && install_options+=(--runner "$runner")
   [ "$replace_data" -eq 1 ] && install_options+=(--replace-data)
@@ -439,6 +517,11 @@ Commit or discard them there, or run install with --replace-mirror-checkout to o
 show_status() {
   local agent host
   echo "Mirror: $MIRROR_SSH, checkout $MIRROR_REPO, storage $MIRROR_STORAGE, port $MIRROR_PORT"
+  if [ "$MIRROR_FOLLOW" = "commits" ]; then
+    echo "Follows: the commits of this checkout (the mirror runs $(cut -c1-9 "$STATE_DIR/deployed-commit" 2>/dev/null || echo none); this checkout is on $(git -C "$LOCAL_REPO" rev-parse --short=9 HEAD 2>/dev/null))"
+  else
+    echo "Follows: every saved change of this checkout"
+  fi
   echo "Last checkout synchronization: $(cat "$STATE_DIR/last-code-sync" 2>/dev/null || echo never)"
   if [ "$MIRROR_DATA" = "on" ]; then
     echo "Last data synchronization:     $(cat "$STATE_DIR/last-data-sync" 2>/dev/null || echo never)"
@@ -474,9 +557,9 @@ command="${1:-}"
 case "$command" in
   install) install_mirror "$@" ;;
   key) show_key ;;
-  code) load_config; with_lock sync_code ;;
+  code) load_config; with_lock sync_checkout_now ;;
   data) load_config; with_lock sync_data ;;
-  all) load_config; with_lock sync_code || exit 1; [ "$MIRROR_DATA" = "on" ] || exit 0; with_lock sync_data ;;
+  all) load_config; with_lock sync_checkout_now || exit 1; [ "$MIRROR_DATA" = "on" ] || exit 0; with_lock sync_data ;;
   watch) load_config; watch_code ;;
   status) load_config; show_status ;;
   restart-mirror) load_config; remote_tool restart ;;

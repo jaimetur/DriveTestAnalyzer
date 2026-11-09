@@ -7,11 +7,16 @@
 - **Code only** (`install --code-only`): the second Mac is a server of its own, with its own data, backups, report schedules and emails, that always runs the code of the development checkout. It is the mode for a Mac that is the place to work with the data, reachable from every device, while the development Mac only develops: the data of the development Mac is never sent (`data` is refused), nothing of the storage of the second Mac is touched, and its application is an ordinary server, not in mirror mode.
 - **Code and data** (the default): the second Mac is a copy to look at the development environment from any device. It also receives the configuration and data folders of the development Mac and serves them in mirror mode; what is changed on it is overwritten.
 
+Either mode follows the checkout in one of two ways:
+
+- **Every saved change** (`--follow saves`, the default): the mirror runs the working tree of the development Mac, uncommitted changes included, to look at a change while it is being made.
+- **The commits** (`--follow commits`): the mirror runs the commit the checkout is on; what is saved without a commit stays on the development Mac, and a commit (or a change of branch, a merge) reaches the mirror within a second or two. It is the way for a server one works on: unfinished code, and the database upgrades it carries, never reach its data.
+
 ## What is kept in step
 
 | What | When | How |
 | --- | --- | --- |
-| The checkout, `.git` included (without the Python environments `.venv*`, the caches, `node_modules`, the runtime files of the macOS launcher and the editor and assistant settings of each Mac) | within a second or two of a change (`fswatch`) | `rsync --delete` over SSH. Templates, scripts and styles are served as soon as they arrive. When Python sources or `storage-paths.conf` changed, the mirror application restarts once the changes have settled for 5 seconds (`RESTART_SETTLE_SECONDS` in `mirror.conf`), so a burst of saves restarts it once, and only if the synchronized code imports: a save that leaves the code broken keeps the server running the code it had. When `requirements.txt` changed, its dependencies are installed first. |
+| The checkout, `.git` included (without the Python environments `.venv*`, the caches, `node_modules`, the runtime files of the macOS launcher and the editor and assistant settings of each Mac) | within a second or two of a change, or of a commit (`fswatch`) | `rsync --delete` over SSH of the working tree or, for a mirror that follows the commits, of the Git history, after which the mirror puts its working tree at the commit (`git reset --hard`). Templates, scripts and styles are served as soon as they arrive. When Python sources or `storage-paths.conf` changed, the mirror application restarts once the changes have settled for 5 seconds (`RESTART_SETTLE_SECONDS` in `mirror.conf`), so a burst of saves restarts it once, and only if the synchronized code imports: a save that leaves the code broken keeps the server running the code it had. When `requirements.txt` changed, its dependencies are installed first. |
 | The configuration and data folders (`~/DriveTestAnalyzer/config` and `data`), not for a code-only mirror | every 10 minutes (`--interval`), or `data` by hand | Files go straight into the folders of the mirror while its application runs. Each SQLite database whose files changed is copied as an online backup (`sqlite3 .backup`, consistent while the application keeps writing) and compared with the previous one: only a database whose content changed is sent to `.mirror-incoming/` of the mirror and put in place as an APFS clone (an instant, whatever its size) while the mirror application is stopped for a few seconds, so a development Mac that only reads its databases never restarts the mirror; databases deleted on the development Mac are deleted on the mirror. |
 
 Left out: `scheduled-backups/`, `transfer-packages/`, the workspace trash, the caches (`.cache/` of the workspaces, `.map-tiles-cache/`), the upload sessions and stop requests, `config/tools/` (the AI tools installed for one Mac) and `config/ai-credentials.json` (the AI credentials of the users). The mirror makes its own caches.
@@ -40,7 +45,7 @@ tools/mirror/mirror-sync.sh key
 prints the public key of the mirror (`~/.ssh/drivetest-analyzer-mirror`, created the first time, without a passphrase so that the agents can use it). Add it to `~/.ssh/authorized_keys` of the user of the mirror Mac, then, for a server of its own that follows the code:
 
 ```bash
-tools/mirror/mirror-sync.sh install --host user@192.168.1.17 --repo /Users/user/PycharmProjects/DriveTestAnalyzer --storage /Users/user/DriveTestAnalyzer --code-only
+tools/mirror/mirror-sync.sh install --host user@192.168.1.17 --repo /Users/user/PycharmProjects/DriveTestAnalyzer --storage /Users/user/DriveTestAnalyzer --code-only --follow commits
 ```
 
 or, for a copy of the code and the data:
@@ -71,7 +76,8 @@ The settings stay in `~/.config/drivetest-analyzer/mirror.conf` on the developme
 
 ## Limits
 
-- The mirror runs the working tree of the development Mac, saved but uncommitted changes included, and so do the database upgrades that code carries: a code-only mirror applies them to its own data. Keep its scheduled backups on, and stop the watch agent (`uninstall`) before an experiment its data should not see.
+- A mirror that follows every saved change runs the working tree of the development Mac, uncommitted changes included, and so do the database upgrades that code carries: a code-only mirror applies them to its own data. Install a server one works on with `--follow commits`, keep its scheduled backups on, and stop the watch agent (`uninstall`) before a commit its data should not see.
+- A mirror that changes from saved changes to commits keeps the untracked files the earlier synchronizations brought (new files never committed): remove them from its checkout by hand.
 - A restart of the mirror application ends what it was doing in the background (a CDR being processed, a PowerPoint being generated), which is left as interrupted and can be run again.
 - One direction. A data mirror is a copy to look at the development environment from any device: anything done on it (a ticket, a template, a report) lasts until the next synchronization. To work on the second Mac, install it with `--code-only`, which leaves its data alone.
 - The data reaches a data mirror a few minutes after the development Mac (the interval), the checkout within seconds. A synchronization that finds the mirror off is tried again at the next change or interval.
