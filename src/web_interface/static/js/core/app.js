@@ -6780,7 +6780,8 @@ function importPackageContents(payload) {
   ].join('\n');
 }
 
-function selectAutoCalculatedFieldWorkspaces(workspaces, kind = 'auto-calculated-fields', selectedIds = []) {
+// (`options.signal` closes it from outside, as if cancelled.)
+function selectAutoCalculatedFieldWorkspaces(workspaces, kind = 'auto-calculated-fields', selectedIds = [], options = {}) {
   if (!Array.isArray(workspaces) || !workspaces.length) {
     showInfoDialog('There are no destination workspaces available.', {title: 'Auto-calculated Fields', tone: 'error'});
     return Promise.resolve(null);
@@ -6820,7 +6821,15 @@ function selectAutoCalculatedFieldWorkspaces(workspaces, kind = 'auto-calculated
   panel.append(title, copy, toolbar, list, error, actions); overlay.append(panel); document.body.append(overlay);
   document.body.classList.add('loading-active');
   return new Promise((resolve) => {
-    const close = (value) => { overlay.remove(); document.body.classList.remove('loading-active'); resolve(value); };
+    const close = (value) => {
+      options.signal?.removeEventListener('abort', dismiss);
+      overlay.remove();
+      document.body.classList.remove('loading-active');
+      resolve(value);
+    };
+    const dismiss = () => close(null);
+    options.signal?.addEventListener('abort', dismiss, {once: true});
+    if (options.signal?.aborted) dismiss();
     selectAll.addEventListener('click', () => { list.querySelectorAll('input').forEach((input) => { input.checked = true; }); error.hidden = true; });
     selectNone.addEventListener('click', () => { list.querySelectorAll('input').forEach((input) => { input.checked = false; }); });
     cancel.addEventListener('click', () => close(null));
@@ -7181,6 +7190,121 @@ async function resolveOutdatedExportWorkspaces(formData, operation) {
   return true;
 }
 
+// The dialogs of a transfer that every open page shows (an incoming transfer or a transfer request to accept or reject,
+// the preview of a received transfer, the window with the result of a transfer) close at once in the other tabs of the
+// browser when one tab handles them, and those tabs do not show them again; other browsers close them by the state the
+// server keeps (a decision taken, a result seen), which their polls check. Each dialog is named by its kind and id:
+// offer:<id>, request:<id>, preview:<id>, result:<id> (a received transfer) and job-result:<id> (a transfer of this user).
+const transferDialogs = (() => {
+  const CHANNEL = 'drivetest-analyzer:transfer-dialogs';
+  // The dialogs open on this page, with when they opened (a poll sent before that says nothing about them).
+  const open = new Map();
+  // The dialogs another tab handled, or the server says were handled: this page does not show them again.
+  const handledElsewhere = new Set();
+  let channel = null;
+  try { channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(CHANNEL) : null; } catch (_error) { channel = null; }
+  const receive = (message) => {
+    const key = String(message?.key || '');
+    if (!key) return;
+    // A tab that took a decision on and closed before saving it: the dialog can be shown again.
+    if (message.type === 'released') {
+      handledElsewhere.delete(key);
+      return;
+    }
+    handledElsewhere.add(key);
+    open.get(key)?.controller.abort();
+  };
+  channel?.addEventListener('message', (event) => receive(event.data));
+  // Without BroadcastChannel, a value written and removed at once tells the other tabs through their storage event.
+  window.addEventListener('storage', (event) => {
+    if (event.key !== CHANNEL || !event.newValue) return;
+    try { receive(JSON.parse(event.newValue)); } catch (_error) { /* Not a message of this page. */ }
+  });
+  const send = (type, key) => {
+    if (channel) {
+      try {
+        channel.postMessage({type, key});
+        return;
+      } catch (_error) { /* Sent through the storage event below. */ }
+    }
+    try {
+      window.localStorage.setItem(CHANNEL, JSON.stringify({type, key, at: Date.now()}));
+      window.localStorage.removeItem(CHANNEL);
+    } catch (_error) { /* The other tabs close it at their next poll. */ }
+  };
+  return {
+    // The signal that closes the dialog `key` when another tab or the server says it was handled.
+    open(key) {
+      const controller = new AbortController();
+      open.set(key, {controller, at: performance.now()});
+      if (handledElsewhere.has(key)) controller.abort();
+      return controller.signal;
+    },
+    // The dialog was closed on this page.
+    close(key, signal) {
+      if (open.get(key)?.controller.signal === signal) open.delete(key);
+    },
+    handledElsewhere: (key) => handledElsewhere.has(key),
+    // Handled on this page: the other tabs close it and do not show it again.
+    handled: (key) => send('handled', key),
+    // A decision taken on this page that could not be saved: the other tabs may show the dialog again.
+    released: (key) => send('released', key),
+    // The server says the dialog was handled (in another browser): it closes on this page.
+    dismiss(key) {
+      handledElsewhere.add(key);
+      open.get(key)?.controller.abort();
+    },
+    // The open dialogs of a kind (`offer:`…) opened before `before` (a performance.now() time).
+    openKeys: (prefix, before = Infinity) => [...open].filter(([key, entry]) => key.startsWith(prefix) && entry.at < before).map(([key]) => key),
+  };
+})();
+
+// Shows the window with the result of a finished transfer (`show` opens it with the options given) until the user closes
+// it in any tab or browser: closing it records it on the server (`seenUrl`, in App Events) and closes it at once in the
+// other tabs of the browser; the other browsers close it when `statusUrl` says it was seen.
+function showTransferResult(key, {statusUrl, seenUrl, title}, show) {
+  if (transferDialogs.handledElsewhere(key)) return;
+  const signal = transferDialogs.open(key);
+  let watch = 0;
+  const check = async () => {
+    window.clearTimeout(watch);
+    if (signal.aborted) return;
+    if (!document.hidden) {
+      try {
+        const response = await fetch(statusUrl, {credentials: 'same-origin', headers: {Accept: 'application/json'}, cache: 'no-store'});
+        const status = response.ok ? await response.json().catch(() => ({})) : {};
+        if (status.result_seen) {
+          transferDialogs.dismiss(key);
+          return;
+        }
+      } catch (_error) { /* Checked again below. */ }
+    }
+    if (!signal.aborted) watch = window.setTimeout(check, 5000);
+  };
+  const stop = () => {
+    window.clearTimeout(watch);
+    window.removeEventListener('focus', check);
+    document.removeEventListener('visibilitychange', check);
+    transferDialogs.close(key, signal);
+  };
+  signal.addEventListener('abort', stop, {once: true});
+  show({
+    signal,
+    onClose: () => {
+      stop();
+      transferDialogs.handled(key);
+      void fetch(seenUrl, {
+        method: 'POST', credentials: 'same-origin',
+        headers: {Accept: 'application/json', 'Content-Type': 'application/json'}, body: JSON.stringify({title}),
+      }).catch(() => {});
+    },
+  });
+  if (signal.aborted) return;
+  window.addEventListener('focus', check);
+  document.addEventListener('visibilitychange', check);
+  watch = window.setTimeout(check, 5000);
+}
+
 const ACTIVE_SERVER_TRANSFER_KEY = 'drivetest-analyzer:active-transfer';
 
 function readActiveServerTransfer() {
@@ -7294,6 +7418,13 @@ function followServerTransfer(initialState) {
       showInfoDialog(transfer.detail || 'The transfer status could not be read.', {title: 'Server Transfer Error', tone: 'error'});
       return;
     }
+    // The result is shown until it is closed in any tab or browser (not again once closed).
+    const showResult = (title, open) => {
+      if (transfer.result_seen) return;
+      showTransferResult(`job-result:${state.job_id}`, {
+        statusUrl: state.status_url, seenUrl: `/admin/import-export/transfers/jobs/${encodeURIComponent(state.job_id)}/result-seen`, title,
+      }, (options) => open({title, ...options}));
+    };
     if (transfer.status === 'ready') {
       finish();
       if (transfer.direction === 'request') {
@@ -7301,17 +7432,21 @@ function followServerTransfer(initialState) {
         window.dispatchEvent(new CustomEvent('drivetest-analyzer:review-incoming-transfer', {detail: {offerId: transfer.offer_id || ''}}));
         return;
       }
-      showImportSummary(transfer.notice || 'The destination server received and imported the package successfully.', transfer.notice_details, {title: 'Server Transfer Complete', tone: 'info'});
+      showResult('Server Transfer Complete', (options) => showImportSummary(
+        transfer.notice || 'The destination server received and imported the package successfully.', transfer.notice_details, {...options, tone: 'info'},
+      ));
       return;
     }
     if (transfer.status === 'failed') {
       finish();
-      showInfoDialog(transfer.error || 'The destination server could not complete the transfer.', {title: 'Server Transfer Error', tone: 'error'});
+      showResult('Server Transfer Error', (options) => showInfoDialog(
+        transfer.error || 'The destination server could not complete the transfer.', {...options, tone: 'error'},
+      ));
       return;
     }
     if (transfer.status === 'cancelled') {
       finish();
-      if (transfer.error) showInfoDialog(transfer.error, {title: 'Server Transfer Cancelled', tone: 'info'});
+      if (transfer.error) showResult('Server Transfer Cancelled', (options) => showInfoDialog(transfer.error, {...options, tone: 'info'}));
       return;
     }
     if (dialogWanted(transfer.status)) {
@@ -7546,6 +7681,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
   if (document.body.dataset.authenticatedRole !== 'super-admin') return;
   let reviewingOffer = false;
   let pollingOffers = false;
+  // The dialog of an offer or a request answered on this page whose decision is not saved yet (a workspace choice).
+  let takingDecision = '';
   let incomingOfferTimer = 0;
   let pendingOfferReminder = null;
   const showPendingOfferReminder = (text) => {
@@ -7650,26 +7787,54 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         showInfoDialog(offer.detail || 'The transfer status could not be read.', {title: 'Incoming Transfer Error', tone: 'error'});
         return;
       }
+      // The result is shown until it is closed in any tab or browser (not again once closed).
+      const showResult = (title, open) => {
+        if (offer.result_seen) return;
+        showTransferResult(`result:${offerId}`, {
+          statusUrl: `/admin/import-export/transfers/offers/${encodeURIComponent(offerId)}`,
+          seenUrl: `/admin/import-export/transfers/offers/${encodeURIComponent(offerId)}/result-seen`, title,
+        }, (options) => open({title, ...options}));
+      };
       if (offer.status === 'ready') {
         finish();
-        showImportSummary(offer.notice || 'The incoming transfer was imported successfully.', offer.notice_details, {title: 'Incoming Transfer Complete', tone: 'info'});
+        showResult('Incoming Transfer Complete', (options) => showImportSummary(
+          offer.notice || 'The incoming transfer was imported successfully.', offer.notice_details, {...options, tone: 'info'},
+        ));
         return;
       }
       if (['failed', 'rejected', 'expired', 'cancelled'].includes(offer.status)) {
         finish();
-        showInfoDialog(offer.error || 'The incoming transfer could not be completed.', {title: 'Incoming Transfer Error', tone: 'error'});
+        showResult('Incoming Transfer Error', (options) => showInfoDialog(
+          offer.error || 'The incoming transfer could not be completed.', {...options, tone: 'error'},
+        ));
+        return;
+      }
+      const previewKey = `preview:${offerId}`;
+      if (offer.status === 'review' && offer.preview && !reviewing && transferDialogs.handledElsewhere(previewKey)) {
+        // Decided in another tab: the transfer goes on as it was decided there.
+        closeDialog();
+        window.setTimeout(() => { void poll(); }, 1200);
         return;
       }
       if (offer.status === 'review' && offer.preview && !reviewing) {
         // The package arrived: nothing is imported until the packages to import are chosen in its preview.
         reviewing = true;
         closeDialog();
+        const signal = transferDialogs.open(previewKey);
         const chosen = await showImportPreview(offer.preview, {
           // (The packages are listed below, so the title does not repeat them.)
           eyebrow: 'Incoming transfer preview', title: 'Incoming server transfer',
           intro: `${offer.source || 'The source server'} sent this package. Choose what to import, or reject the transfer.`,
-          confirmLabel: 'Import selected', cancelLabel: 'Reject transfer', reject: true,
+          confirmLabel: 'Import selected', cancelLabel: 'Reject transfer', reject: true, signal,
         });
+        transferDialogs.close(previewKey, signal);
+        if (signal.aborted) {
+          // Decided in another tab or browser: the transfer goes on as it was decided there.
+          reviewing = false;
+          window.setTimeout(() => { void poll(); }, 300);
+          return;
+        }
+        transferDialogs.handled(previewKey);
         const decision = await fetch(`/admin/import-export/transfers/offers/${encodeURIComponent(offerId)}/preview/${chosen ? 'import' : 'reject'}`, {
           method: 'POST', credentials: 'same-origin',
           headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
@@ -7678,6 +7843,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         const result = decision ? await decision.json().catch(() => ({})) : {};
         // (Another page may have answered first: the transfer then goes on as it was decided there.)
         if (decision && !decision.ok && decision.status !== 409) showInfoDialog(result.detail || 'The decision could not be saved.', {title: 'Incoming server transfer', tone: 'error'});
+        if (!decision || (!decision.ok && decision.status !== 409)) transferDialogs.released(previewKey);
         reviewing = false;
         window.setTimeout(() => { void poll(); }, 300);
         return;
@@ -7741,6 +7907,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
     const fullWorkspace = targets.includes('workspace');
     const activeName = payload.active_workspace?.name || '';
     const listHtml = (labels) => `<ul class="incoming-transfer-contents">${labels.map((label) => `<li>${escapeHtml(label)}</li>`).join('')}</ul>`;
+    const dialogKey = `request:${transferRequest.id}`;
+    const signal = transferDialogs.open(dialogKey);
     confirmOverlay?.classList.add('incoming-transfer-confirm', 'incoming-transfer-offer');
     let accepted = false;
     try {
@@ -7760,48 +7928,98 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       ].join('');
       accepted = await showConfirmDialog(
         `${requester}${requesterAddress} asks this server to send ${targetLabels.join(', ')}.`,
-        {title: 'Transfer request', confirmLabel: 'Accept request', cancelLabel: 'Reject', copyHtml},
+        {title: 'Transfer request', confirmLabel: 'Accept request', cancelLabel: 'Reject', copyHtml, signal},
       );
     } finally {
       confirmOverlay?.classList.remove('incoming-transfer-confirm', 'incoming-transfer-offer');
     }
-    const included = (selector) => !(confirmCopy?.querySelector(selector) instanceof HTMLInputElement) || confirmCopy.querySelector(selector).checked;
-    const decisionBody = {
-      workspace_ids: [],
-      include_generated_outputs: included('[data-export-include-outputs]'),
-      include_input_files: included('[data-export-include-input]'),
-    };
-    if (accepted && needsWorkspaces) {
-      const matchingIds = (payload.destination_workspaces || []).filter((workspace) =>
-        workspaceNames.some((name) => String(name).toLowerCase() === workspace.name.toLowerCase())
-      ).map((workspace) => workspace.id);
-      const selection = await selectAutoCalculatedFieldWorkspaces(payload.destination_workspaces, 'request-source', matchingIds);
-      if (!selection) accepted = false;
-      else decisionBody.workspace_ids = selection;
-    }
-    const decision = await fetch(`/admin/import-export/transfers/requests/${encodeURIComponent(transferRequest.id)}/${accepted ? 'accept' : 'reject'}`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
-      body: JSON.stringify(decisionBody),
-    });
-    if (!decision.ok) {
-      const error = await decision.json().catch(() => ({}));
-      showInfoDialog(error.detail || 'The decision on the transfer request could not be saved.', {title: 'Transfer Request Error', tone: 'error'});
+    // Accepted or rejected in another tab or browser.
+    if (signal.aborted) {
+      transferDialogs.close(dialogKey, signal);
+      hidePendingOfferReminder();
       return;
     }
-    hidePendingOfferReminder();
-    if (accepted) {
-      showInfoDialog(
-        `The request was accepted. The package is created in the background and ${requester} downloads it; the System tasks card follows it.`,
-        {title: 'Transfer request accepted', tone: 'info'},
-      );
+    // Answered here: the other tabs close it while the decision is completed and saved.
+    transferDialogs.handled(dialogKey);
+    takingDecision = dialogKey;
+    let saved = false;
+    try {
+      const included = (selector) => !(confirmCopy?.querySelector(selector) instanceof HTMLInputElement) || confirmCopy.querySelector(selector).checked;
+      const decisionBody = {
+        workspace_ids: [],
+        include_generated_outputs: included('[data-export-include-outputs]'),
+        include_input_files: included('[data-export-include-input]'),
+      };
+      if (accepted && needsWorkspaces) {
+        const matchingIds = (payload.destination_workspaces || []).filter((workspace) =>
+          workspaceNames.some((name) => String(name).toLowerCase() === workspace.name.toLowerCase())
+        ).map((workspace) => workspace.id);
+        const selection = await selectAutoCalculatedFieldWorkspaces(payload.destination_workspaces, 'request-source', matchingIds, {signal});
+        // (The request is no longer pending: cancelled by the other server, or answered in another browser.)
+        if (signal.aborted) return;
+        if (!selection) accepted = false;
+        else decisionBody.workspace_ids = selection;
+      }
+      const decision = await fetch(`/admin/import-export/transfers/requests/${encodeURIComponent(transferRequest.id)}/${accepted ? 'accept' : 'reject'}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
+        body: JSON.stringify(decisionBody),
+      });
+      if (!decision.ok) {
+        const error = await decision.json().catch(() => ({}));
+        showInfoDialog(error.detail || 'The decision on the transfer request could not be saved.', {title: 'Transfer Request Error', tone: 'error'});
+        return;
+      }
+      saved = true;
+      hidePendingOfferReminder();
+      if (accepted) {
+        showInfoDialog(
+          `The request was accepted. The package is created in the background and ${requester} downloads it; the System tasks card follows it.`,
+          {title: 'Transfer request accepted', tone: 'info'},
+        );
+      }
+    } finally {
+      transferDialogs.close(dialogKey, signal);
+      takingDecision = '';
+      if (!saved && !signal.aborted) transferDialogs.released(dialogKey);
+    }
+  };
+  // The dialogs open on this page that the server no longer has waiting (answered in another browser, or cancelled by
+  // the other server) close: an offer or a request no longer pending, a preview no longer waiting for its confirmation.
+  // Only the dialogs opened before the poll was sent (`sentAt`) are judged by its answer.
+  const dismissHandledTransferDialogs = (payload, sentAt) => {
+    const waiting = (list) => new Set((Array.isArray(list) ? list : []).map((item) => String(item?.id || '')));
+    [['offer:', waiting(payload.offers)], ['request:', waiting(payload.requests)], ['preview:', waiting(payload.reviews)]].forEach(([prefix, ids]) => {
+      transferDialogs.openKeys(prefix, sentAt).forEach((key) => {
+        if (!ids.has(key.slice(prefix.length))) transferDialogs.dismiss(key);
+      });
+    });
+  };
+  // While a dialog of an offer or a request is open on this page, the poll only checks whether it is still waiting.
+  let checkingOpenDecision = false;
+  const checkOpenDecision = async () => {
+    if (checkingOpenDecision) return;
+    checkingOpenDecision = true;
+    try {
+      const sentAt = performance.now();
+      const response = await fetch('/admin/import-export/transfers/offers', {credentials: 'same-origin', headers: {Accept: 'application/json'}, cache: 'no-store'});
+      if (response.ok) dismissHandledTransferDialogs(await response.json(), sentAt);
+    } catch (_error) {
+      // Checked again by the next poll.
+    } finally {
+      checkingOpenDecision = false;
     }
   };
   const pollIncomingTransferOffers = async (preferredOfferId = '') => {
-    if (reviewingOffer || pollingOffers) return;
+    if (reviewingOffer) {
+      await checkOpenDecision();
+      return;
+    }
+    if (pollingOffers) return;
     pollingOffers = true;
     try {
+      const sentAt = performance.now();
       const response = await fetch('/admin/import-export/transfers/offers', {
         credentials: 'same-origin',
         headers: {Accept: 'application/json'},
@@ -7814,6 +8032,7 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       }
       if (!response.ok) return;
       const payload = await response.json().catch(() => ({}));
+      dismissHandledTransferDialogs(payload, sentAt);
       // The access requests and tickets the super-admin has not been told about ride on this poll.
       window.dispatchEvent(new CustomEvent('drivetest-analyzer:admin-notices', {detail: payload.admin_notices || null}));
       // A running import keeps every open page out of use, not only the page that accepted it.
@@ -7823,10 +8042,13 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       // A received transfer waits for a super-admin to confirm its preview, on whichever page is open.
       const review = (Array.isArray(payload.reviews) ? payload.reviews : []).find((item) => item?.id);
       if (review && !activeImport) followIncomingTransfer(String(review.id), {block: false});
-      const offers = Array.isArray(payload.offers) ? payload.offers : [];
+      // (Those answered in another tab are not shown again.)
+      const offers = (Array.isArray(payload.offers) ? payload.offers : [])
+        .filter((candidate) => !transferDialogs.handledElsewhere(`offer:${candidate?.id}`));
       const offer = offers.find((candidate) => String(candidate?.id || '') === String(preferredOfferId)) || offers[0] || null;
       // The requests of other servers for content of this one wait for a super-admin too (after the offers).
-      const requests = Array.isArray(payload.requests) ? payload.requests : [];
+      const requests = (Array.isArray(payload.requests) ? payload.requests : [])
+        .filter((candidate) => !transferDialogs.handledElsewhere(`request:${candidate?.id}`));
       const transferRequest = offer ? null
         : requests.find((candidate) => String(candidate?.id || '') === String(preferredOfferId)) || requests[0] || null;
       if (!offer && !transferRequest) { hidePendingOfferReminder(); return; }
@@ -7836,6 +8058,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         ? `Incoming transfer pending from ${offer.source || 'another server'} — review now`
         : `Transfer request pending from ${transferRequest.requester || 'another server'} — review now`);
       reviewingOffer = true;
+      // The poll goes on while the dialog is open, to close it when it is answered in another browser.
+      scheduleIncomingOfferPoll();
       const transferContentLabels = {
         config: 'Application Config',
         'config-with-templates': 'Application Config and PPT Templates',
@@ -7900,6 +8124,8 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
       const listHtml = (labels) => `<ul class="incoming-transfer-contents">${labels.map((label) => `<li>${escapeHtml(label)}</li>`).join('')}</ul>`;
       const workspaceNames = Array.isArray(offer.workspaces) ? offer.workspaces : [];
       const sourceAddress = offer.source_address ? ` (${offer.source_address})` : '';
+      const dialogKey = `offer:${offer.id}`;
+      const signal = transferDialogs.open(dialogKey);
       confirmOverlay?.classList.add('incoming-transfer-confirm', 'incoming-transfer-offer');
       let accepted = false;
       try {
@@ -7924,44 +8150,64 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
         ].join('');
         accepted = await showConfirmDialog(
           `${offer.source}${sourceAddress} wants to transfer ${targetLabels.join(', ')} to this server.`,
-          {title: 'Incoming server transfer', confirmLabel: 'Accept transfer', cancelLabel: 'Reject', copyHtml},
+          {title: 'Incoming server transfer', confirmLabel: 'Accept transfer', cancelLabel: 'Reject', copyHtml, signal},
         );
       } finally {
         confirmOverlay?.classList.remove('incoming-transfer-confirm', 'incoming-transfer-offer');
       }
-      let destinationWorkspaceIds = [];
-      if (accepted && (offer.requires_destination_workspaces || ['auto-calculated-fields', 'ppt-templates', 'designs', 'mappings-reference-data'].includes(offer.kind))) {
-        const matchingIds = (payload.destination_workspaces || []).filter((workspace) =>
-          (offer.workspaces || []).some((name) => String(name).toLowerCase() === workspace.name.toLowerCase())
-        ).map((workspace) => workspace.id);
-        const selection = await selectAutoCalculatedFieldWorkspaces(payload.destination_workspaces, offer.kind, matchingIds);
-        if (!selection) accepted = false;
-        else destinationWorkspaceIds = selection;
+      // Accepted or rejected in another tab or browser.
+      if (signal.aborted) {
+        transferDialogs.close(dialogKey, signal);
+        hidePendingOfferReminder();
+        return;
       }
-      const action = accepted ? 'accept' : 'reject';
-      const decision = await fetch(`/admin/import-export/transfers/offers/${encodeURIComponent(offer.id)}/${action}`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
-        body: JSON.stringify({workspace_ids: destinationWorkspaceIds}),
-      });
-      if (!decision.ok) {
-        const error = await decision.json().catch(() => ({}));
-        showInfoDialog(error.detail || 'The transfer decision could not be saved.', {title: 'Incoming Transfer Error'});
-      } else if (accepted) {
-        hidePendingOfferReminder();
-        if (offer.kind === 'auto-calculated-fields') {
-          hideLoadingOverlay();
-          showInfoDialog(
-            'The transfer was accepted. Reception, import and materialization will continue in the background for the selected workspaces.',
-            {title: 'Auto-calculated Fields transfer accepted'},
-          );
-          followIncomingTransfer(String(offer.id), {block: false, hidden: true});
-        } else {
-          followIncomingTransfer(String(offer.id), {block: true});
+      // Answered here: the other tabs close it while the decision is completed and saved.
+      transferDialogs.handled(dialogKey);
+      takingDecision = dialogKey;
+      let saved = false;
+      try {
+        let destinationWorkspaceIds = [];
+        if (accepted && (offer.requires_destination_workspaces || ['auto-calculated-fields', 'ppt-templates', 'designs', 'mappings-reference-data'].includes(offer.kind))) {
+          const matchingIds = (payload.destination_workspaces || []).filter((workspace) =>
+            (offer.workspaces || []).some((name) => String(name).toLowerCase() === workspace.name.toLowerCase())
+          ).map((workspace) => workspace.id);
+          const selection = await selectAutoCalculatedFieldWorkspaces(payload.destination_workspaces, offer.kind, matchingIds, {signal});
+          // (The offer is no longer pending: cancelled by the other server, or answered in another browser.)
+          if (signal.aborted) return;
+          if (!selection) accepted = false;
+          else destinationWorkspaceIds = selection;
         }
-      } else {
-        hidePendingOfferReminder();
+        const action = accepted ? 'accept' : 'reject';
+        const decision = await fetch(`/admin/import-export/transfers/offers/${encodeURIComponent(offer.id)}/${action}`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
+          body: JSON.stringify({workspace_ids: destinationWorkspaceIds}),
+        });
+        if (!decision.ok) {
+          const error = await decision.json().catch(() => ({}));
+          showInfoDialog(error.detail || 'The transfer decision could not be saved.', {title: 'Incoming Transfer Error'});
+        } else if (accepted) {
+          saved = true;
+          hidePendingOfferReminder();
+          if (offer.kind === 'auto-calculated-fields') {
+            hideLoadingOverlay();
+            showInfoDialog(
+              'The transfer was accepted. Reception, import and materialization will continue in the background for the selected workspaces.',
+              {title: 'Auto-calculated Fields transfer accepted'},
+            );
+            followIncomingTransfer(String(offer.id), {block: false, hidden: true});
+          } else {
+            followIncomingTransfer(String(offer.id), {block: true});
+          }
+        } else {
+          saved = true;
+          hidePendingOfferReminder();
+        }
+      } finally {
+        transferDialogs.close(dialogKey, signal);
+        takingDecision = '';
+        if (!saved && !signal.aborted) transferDialogs.released(dialogKey);
       }
     } catch (_error) {
       // A transient polling failure should not interrupt the Admin page.
@@ -8026,7 +8272,11 @@ document.querySelectorAll('[data-export-package-form]').forEach((form) => {
   window.addEventListener('focus', () => scheduleIncomingOfferPoll(0));
   window.addEventListener('online', () => scheduleIncomingOfferPoll(0));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleIncomingOfferPoll(0); });
-  window.addEventListener('pagehide', () => window.clearTimeout(incomingOfferTimer));
+  window.addEventListener('pagehide', () => {
+    window.clearTimeout(incomingOfferTimer);
+    // Closed before the decision taken here was saved: the other tabs may show its dialog again.
+    if (takingDecision) transferDialogs.released(takingDecision);
+  });
   const resumedIncomingTransfer = readIncomingTransfer();
   if (resumedIncomingTransfer?.offer_id) followIncomingTransfer(String(resumedIncomingTransfer.offer_id));
   scheduleIncomingOfferPoll(0);
@@ -8268,12 +8518,14 @@ function showConfirmDialog(message, options = {}) {
       if (confirmOption) confirmOption.hidden = true;
       if (confirmOptionInput) confirmOptionInput.checked = false;
       if (confirmOptionLabel) confirmOptionLabel.title = '';
+      options.signal?.removeEventListener('abort', handleCancel);
       resolve(hasAlternatives ? accepted : (hasOption ? {accepted, optionChecked} : accepted));
     };
 
     const handleAccept = () => close(hasAlternatives ? 'confirm' : true);
     const handleSecondary = () => close('secondary');
     const handleTertiary = () => close('tertiary');
+    // (`options.signal` closes it from outside, as if cancelled: answered in another tab.)
     const handleCancel = () => close(hasAlternatives ? null : false);
     const handleBackdrop = (event) => {
       if (event.target === confirmOverlay) {
@@ -8294,7 +8546,9 @@ function showConfirmDialog(message, options = {}) {
     confirmTertiary?.addEventListener('click', handleTertiary);
     confirmOverlay.addEventListener('click', handleBackdrop);
     window.addEventListener('keydown', handleKeydown);
-    confirmAccept.focus();
+    options.signal?.addEventListener('abort', handleCancel, {once: true});
+    if (options.signal?.aborted) handleCancel();
+    else confirmAccept.focus();
   });
 }
 
@@ -8642,7 +8896,16 @@ function showImportPreview(preview, options = {}) {
   };
   sync();
   return new Promise((resolve) => {
-    const close = (value) => { overlay.remove(); document.body.classList.remove('loading-active'); resolve(value); };
+    const close = (value) => {
+      options.signal?.removeEventListener('abort', dismiss);
+      overlay.remove();
+      document.body.classList.remove('loading-active');
+      resolve(value);
+    };
+    // Closed from outside (decided in another tab), as if cancelled.
+    const dismiss = () => close(null);
+    options.signal?.addEventListener('abort', dismiss, {once: true});
+    if (options.signal?.aborted) dismiss();
     boxes.forEach((box) => box.addEventListener('change', sync));
     selectAll.addEventListener('click', () => { boxes.forEach((box) => { box.checked = true; }); sync(); });
     selectNone.addEventListener('click', () => { boxes.forEach((box) => { box.checked = false; }); sync(); });
@@ -8685,23 +8948,39 @@ function showInfoDialog(message, options = {}) {
   infoOverlay.classList.toggle('info-wide', Boolean(options.wide));
   infoOverlay.hidden = false;
   document.body.classList.add('loading-active');
+  // (Which message the shared dialog shows, to tell whether this one is still shown.)
+  const shown = (showInfoDialog.shown = (showInfoDialog.shown || 0) + 1);
+  let dismissed = false;
   const close = () => {
     infoOverlay.hidden = true;
     delete infoOverlay.dataset.tone;
     infoOverlay.classList.remove('info-wide');
     if (infoContent) { infoContent.replaceChildren(); infoContent.hidden = true; }
     document.body.classList.remove('loading-active');
+    stopListening();
+    if (!dismissed) options.onClose?.();
+  };
+  const stopListening = () => {
     infoClose.removeEventListener('click', close);
     infoOverlay.removeEventListener('click', handleBackdrop);
     window.removeEventListener('keydown', handleKeydown);
-    options.onClose?.();
+    options.signal?.removeEventListener('abort', dismiss);
+  };
+  // `options.signal` closes it from outside (closed in another tab), without `onClose`; a message shown over it since
+  // stays open.
+  const dismiss = () => {
+    dismissed = true;
+    if (shown === showInfoDialog.shown) close();
+    else stopListening();
   };
   const handleBackdrop = (event) => { if (event.target === infoOverlay) close(); };
   const handleKeydown = (event) => { if (event.key === 'Escape') close(); };
   infoClose.addEventListener('click', close);
   infoOverlay.addEventListener('click', handleBackdrop);
   window.addEventListener('keydown', handleKeydown);
-  infoClose.focus();
+  options.signal?.addEventListener('abort', dismiss, {once: true});
+  if (options.signal?.aborted) dismiss();
+  else infoClose.focus();
 }
 
 (() => {

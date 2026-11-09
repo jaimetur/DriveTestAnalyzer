@@ -14099,9 +14099,29 @@ def transfer_job_payload(job_id: str, user: SessionUser) -> dict[str, Any] | Non
         job = TRANSFER_JOBS.get(job_id)
         if not job or job.get('owner') != user.username:
             return None
-        payload = {key: value for key, value in job.items() if key not in {'owner', 'path'}}
+        payload = {key: value for key, value in job.items() if key not in {'owner', 'path', 'result_seen_by'}}
+        # Whether the window with its result was already closed, in any tab or browser.
+        payload['result_seen'] = transfer_result_seen(job, user.username)
     payload['progress'] = round(float(payload.get('progress') or 0), 1)
     return payload
+
+
+# The states in which a transfer has finished: the window with its result is shown until it is closed (ticket #105).
+FINISHED_TRANSFER_STATUSES = frozenset({'ready', 'failed', 'rejected', 'expired', 'cancelled'})
+
+
+def transfer_result_seen(record: dict[str, Any], username: str) -> bool:
+    """Whether ``username`` closed the window with the result of a transfer (an incoming one or a job of theirs)."""
+    seen = record.get('result_seen_by')
+    return isinstance(seen, dict) and username in seen
+
+
+def transfer_result_headline(record: dict[str, Any]) -> str:
+    """The result of a finished transfer in one line, as App Events records it."""
+    details = record.get('notice_details') if isinstance(record.get('notice_details'), dict) else {}
+    text = str(details.get('headline') or record.get('notice') or record.get('error') or '').strip()
+    line = text.splitlines()[0] if text else ''
+    return line if len(line) <= 300 else line[:299] + '…'
 
 
 def _transfer_request_targets(targets: list[str]) -> tuple[list[str], list[str]]:
@@ -25510,11 +25530,53 @@ def get_admin_transfer_offer(offer_id: str, user: SessionUser = Depends(super_ad
     with TRANSFER_LOCK:
         offer = TRANSFER_OFFERS.get(offer_id) or offer
         return JSONResponse({
-            key: offer.get(key)
-            for key in ('id', 'source', 'kind', 'content', 'status', 'phase', 'progress', 'size', 'bytes_received', 'notice', 'notice_details',
-                        'preview', 'error')
-            if offer.get(key) is not None
+            **{key: offer.get(key)
+               for key in ('id', 'source', 'kind', 'content', 'status', 'phase', 'progress', 'size', 'bytes_received', 'notice',
+                           'notice_details', 'preview', 'error')
+               if offer.get(key) is not None},
+            # Whether this super-admin already closed the window with its result, in any tab or browser.
+            'result_seen': transfer_result_seen(offer, user.username),
         })
+
+
+class TransferResultSeenPayload(BaseModel):
+    # The title of the result window closed (Incoming Transfer Complete, Server Transfer Error…), for App Events.
+    title: str = ''
+
+
+def _record_transfer_result_seen(record: dict[str, Any], username: str) -> bool:
+    """Mark the result of a finished transfer as seen by ``username`` (call with TRANSFER_LOCK held); False when it
+    already was."""
+    if record.get('status') not in FINISHED_TRANSFER_STATUSES:
+        raise HTTPException(status_code=409, detail='This transfer has not finished yet.')
+    seen = record.get('result_seen_by') if isinstance(record.get('result_seen_by'), dict) else {}
+    if username in seen:
+        return False
+    record['result_seen_by'] = {**seen, username: datetime.now(timezone.utc).timestamp()}
+    return True
+
+
+@app.post('/admin/import-export/transfers/offers/{offer_id}/result-seen')
+def mark_transfer_offer_result_seen(
+    offer_id: str, payload: TransferResultSeenPayload, user: SessionUser = Depends(super_admin_user),
+) -> JSONResponse:
+    """Record that the super-admin closed the window with the result of a received transfer: it then closes in their
+    other tabs and browsers, and no page shows it to them again."""
+    with TRANSFER_LOCK:
+        _refresh_persisted_transfer_offers()
+        offer = TRANSFER_OFFERS.get(offer_id)
+        if not offer:
+            raise HTTPException(status_code=404, detail='The transfer offer no longer exists.')
+        recorded = _record_transfer_result_seen(offer, user.username)
+        if recorded:
+            _save_transfer_offer(offer)
+    if recorded:
+        repository.try_add_log(user.username, 'transfer_result_seen', json.dumps({
+            'offer_id': offer_id, 'transfer': 'transfer request' if offer.get('requested') else 'incoming transfer',
+            'window': payload.title.strip()[:120], 'source': offer.get('source'), 'content': offer.get('content'),
+            'status': offer.get('status'), 'result': transfer_result_headline(offer),
+        }, ensure_ascii=False))
+    return JSONResponse({'result_seen': True})
 
 
 @app.get('/admin/import-export/transfers/recoveries')
@@ -25871,6 +25933,25 @@ def cancel_admin_transfer_job(job_id: str, user: SessionUser = Depends(admin_use
         job.update({'cancel_requested': True, 'status': 'cancelling', 'phase': 'cancellation requested'})
     repository.try_add_log(user.username, 'stop_outgoing_server_transfer', json.dumps({'job_id': job_id}))
     return JSONResponse({'status': 'cancelling'})
+
+
+@app.post('/admin/import-export/transfers/jobs/{job_id}/result-seen')
+def mark_transfer_job_result_seen(job_id: str, payload: TransferResultSeenPayload, user: SessionUser = Depends(admin_user)) -> JSONResponse:
+    """Record that the user closed the window with the result of their transfer to another server: it then closes in
+    their other tabs and browsers, and no page shows it to them again."""
+    with TRANSFER_LOCK:
+        job = TRANSFER_JOBS.get(job_id)
+        if not job or job.get('owner') != user.username:
+            raise HTTPException(status_code=404, detail='The transfer job no longer exists.')
+        recorded = _record_transfer_result_seen(job, user.username)
+        # (A transfer request keeps the server it asked in ``destination`` too.)
+        request = job.get('direction') == 'request'
+        details = {'job_id': job_id, 'transfer': 'transfer request' if request else 'outgoing transfer',
+                   'window': payload.title.strip()[:120], 'source' if request else 'destination': job.get('destination'),
+                   'targets': job.get('targets'), 'status': job.get('status'), 'result': transfer_result_headline(job)}
+    if recorded:
+        repository.try_add_log(user.username, 'transfer_result_seen', json.dumps(details, ensure_ascii=False, default=str))
+    return JSONResponse({'result_seen': True})
 
 
 @app.get('/admin/import-export/export')
