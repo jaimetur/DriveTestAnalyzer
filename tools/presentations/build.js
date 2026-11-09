@@ -1,6 +1,7 @@
 // The presentations of DriveTest Analyzer shown in the Help, in Ericsson style: the overview deck (which closes with the
-// one-slider), the one-slider and the roadmap, the status of the adaptation to other benchmarking providers, the deck of
-// every main module and of the DT Analyzer RCA in a design of their own, and the full presentation that joins them. The
+// one-slider), the architecture of the solution and of the DT Analyzer RCA, the one-slider and the roadmap, the status of
+// the adaptation to other benchmarking providers, the deck of every main module and of the DT Analyzer RCA in a design of
+// their own, and the full presentation that joins them. The
 // server generates them, with the live figures of the workspaces chosen in Super Admin (src/modules/help/presentations.py);
 // none is kept in the repository. `node build.js <folder>` writes them, with the figures below, into <folder>, and
 // `python tools/presentations/render.py <folder>` renders their slides as the server does; `node build.js --ids` lists
@@ -1003,6 +1004,232 @@ async function enterprise(pres) {
     + `day, week and month. The Ticket Center collects bugs, improvements and requests, and the Help has ${STATS.chapters} chapters.`);
 }
 
+// ------------------------------------------------------------------------------------------------------- architecture
+// The architecture of the solution (in the Overview and the Architecture presentation) and that of the DT Analyzer RCA (in
+// the Architecture presentation; the DT Analyzer RCA deck has its own on its dark background), laid out in the pixels of
+// their 1920 × 1080 picture: 144 to the inch and 2 to the point.
+const px = (value) => value / 144;
+const WIRE = '8C8C8C';
+const RCA_COLOR = '7C3AED';
+
+// A horizontal or vertical arrow from (x1, y1) to (x2, y2): pptxgenjs draws a line from its top left corner, so one that
+// goes left or up has its head at its start; `both` gives it a head at each end and `head: false` none.
+function wire(slide, pres, x1, y1, x2, y2, { both = false, head = true, color = WIRE, dash = false } = {}) {
+  const line = { color, width: 1.5, ...(dash ? { dashType: 'dash' } : {}) };
+  if (head) line[x2 < x1 || y2 < y1 ? 'beginArrowType' : 'endArrowType'] = 'triangle';
+  if (head && both) Object.assign(line, { beginArrowType: 'triangle', endArrowType: 'triangle' });
+  shape(slide, pres.shapes.LINE, { x: px(Math.min(x1, x2)), y: px(Math.min(y1, y2)), w: px(Math.abs(x2 - x1)), h: px(Math.abs(y2 - y1)), line });
+}
+
+// A rounded box, a title with its description below and an icon on a circle, in pixels.
+function pxBox(slide, pres, x, y, w, h, { fill = K.tint, line = '', width = 0, dash = false, radius = 16 } = {}) {
+  shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: px(x), y: px(y), w: px(w), h: px(h), rectRadius: px(radius), fill: { color: fill },
+    line: { color: line || fill, width, ...(dash ? { dashType: 'dash' } : {}) } });
+}
+function pxTitled(slide, x, y, w, h, title, desc, { size = 10.5, color = K.black, descColor = K.grey } = {}) {
+  text(slide, [{ text: title, options: { bold: true, fontSize: size, color, breakLine: true } },
+    { text: desc, options: { fontSize: 8.25, color: descColor, paraSpaceBefore: 2 } }], { x: px(x), y: px(y), w: px(w), h: px(h), valign: 'top' });
+}
+const pxBadge = (slide, pres, name, x, y, d, color) => badge(slide, pres, name, px(x), px(y), px(d), color);
+const pxLabel = (slide, value, x, y, w, color = K.grey) => text(slide, value, { x: px(x), y: px(y), w: px(w), h: px(28), fontSize: 10, bold: true, color, charSpacing: 1, valign: 'middle' });
+const pxNote = (slide, value, x, y, w, h, options = {}) => text(slide, value, { x: px(x), y: px(y), w: px(w), h: px(h), fontSize: 7.5, italic: true, color: K.grey, valign: 'top', ...options });
+
+// A grey card with its icon on the left (or at the top) and its title and description beside it.
+async function pxCard(slide, pres, x, y, w, h, name, color, title, desc, { top = false, fill = K.tint, line = '', dash = false } = {}) {
+  pxBox(slide, pres, x, y, w, h, { fill, line, width: line ? 1.25 : 0, dash });
+  await pxBadge(slide, pres, name, x + 16, top ? y + 16 : y + (h - 52) / 2, 52, color);
+  pxTitled(slide, x + 82, y + 12, w - 96, h - 20, title, desc);
+}
+// A white box of the server: its icon and title on one line, its description below.
+async function serverBox(slide, pres, x, y, w, h, name, color, title, desc, { fill = K.white, line = K.line, dash = false, d = 44 } = {}) {
+  pxBox(slide, pres, x, y, w, h, { fill, line, width: dash ? 1.25 : 1, dash, radius: 14 });
+  await pxBadge(slide, pres, name, x + 16, y + 14, d, color);
+  text(slide, title, { x: px(x + d + 26), y: px(y + 14), w: px(w - d - 38), h: px(d), fontSize: 10.5, bold: true, color: K.black, valign: 'middle' });
+  text(slide, desc, { x: px(x + 16), y: px(y + d + 26), w: px(w - 32), h: px(h - d - 34), fontSize: 8.25, color: K.grey, valign: 'top' });
+}
+
+async function solutionArchitecture(pres, sectionTitle = 'Platform') {
+  const slide = pres.addSlide({ masterName: 'CONTENT', sectionTitle });
+  heading(slide, 'Solution architecture, ', 'end to end', 'What the teams upload, how the server processes and stores it, the services it calls and what it delivers');
+  pxLabel(slide, 'INPUTS', 86, 232, 380);
+  pxLabel(slide, 'OUTPUTS', 1520, 232, 314);
+  // The server, under its wires and boxes.
+  pxBox(slide, pres, 620, 236, 820, 580, { fill: 'F4F9FE', line: K.blue, width: 1.5, radius: 22 });
+  slide.addImage({ data: await icon('TbBrandDocker', K.blue), x: px(640), y: px(252), w: px(38), h: px(38), objectName: named('icon') });
+  text(slide, [{ text: 'DriveTest Analyzer server', options: { bold: true, fontSize: 12, color: K.black, breakLine: true } },
+    { text: 'AWS · Docker (AMD64 & ARM64) · web app and background workers · persistent volumes', options: { fontSize: 8.25, color: K.grey } }],
+  { x: px(688), y: px(248), w: px(740), h: px(56), valign: 'top' });
+  // What comes in, uploaded in the browser.
+  const inputs = [
+    ['TbFileAnalytics', K.deep, 'CDRs', 'Data, Voice & Speech, NSA & SA, Daily & Final, by campaign'],
+    ['TbBuildingBroadcastTower', '0C9B5B', 'Network Inventories', 'Cells of every operator: tables or KMZ/KML'],
+    ['TbArrowsShuffle', 'E07800', 'Multivendor Mapping', 'The Vendor of every cell'],
+    ['TbPolygon', '8C60A8', 'Geospatial', 'Regions, Clusters & Vendor areas: GeoJSON or shapefile'],
+    ['TbTimeline', '0E7490', 'Layer3 Logs', 'Parsed drive-test logs of each campaign, CSV or ZIP'],
+    ['TbReportSearch', '9A7B14', 'Ericsson RCA results', 'Output of the Ericsson RCA script, by JOIN_ID'],
+  ];
+  for (const index of inputs.keys()) wire(slide, pres, 466, 324 + index * 108, 494, 324 + index * 108, { head: false });
+  wire(slide, pres, 494, 324, 494, 864, { head: false });
+  wire(slide, pres, 494, 465, 642, 465);
+  pxNote(slide, 'Uploaded in the browser, resumable, in the background', 500, 380, 116, 80);
+  for (const [index, [name, color, title, desc]] of inputs.entries()) await pxCard(slide, pres, 86, 276 + index * 108, 380, 96, name, color, title, desc);
+  // Inside the server: what processes, stores and analyses the data, and what works around it.
+  wire(slide, pres, 854, 465, 888, 465);
+  wire(slide, pres, 1100, 465, 1134, 465);
+  wire(slide, pres, 995, 600, 995, 628, { both: true });
+  wire(slide, pres, 1278, 600, 1278, 626);
+  await serverBox(slide, pres, 644, 330, 210, 270, 'TbSettingsAutomation', '2E96F2', 'Processing',
+    'Dataset worker: campaign, NR Mode, Operator, Vendor, Region & Cluster, Auto-calculated fields');
+  await serverBox(slide, pres, 890, 330, 210, 270, 'TbDatabase', K.deep, 'Data store',
+    'One SQLite database per workspace; the CDR rows in a Parquet copy read with DuckDB');
+  pxBox(slide, pres, 1136, 330, 284, 270, { fill: K.white, line: K.line, width: 1, radius: 14 });
+  await pxBadge(slide, pres, 'TbLayoutGrid', 1152, 344, 44, '004E8F');
+  text(slide, 'Analysis modules', { x: px(1206), y: px(344), w: px(200), h: px(44), fontSize: 10.5, bold: true, color: K.black, valign: 'middle' });
+  const modules = [['CDR Analysis', M.cdr.color], ['PPT Designer', M.dash.color], ['Scoring & GAP', M.scoring.color], ['Network Insights', M.ni.color],
+    ['NQ Calls', M.nq.color], ['DT Analyzer RCA', RCA_COLOR, true], ['Builders', M.builders.color], ['AI Assistant', M.assistant.color]];
+  for (const [index, [label, color, part]] of modules.entries()) {
+    const x = 1154 + (part ? 22 : 0);
+    const y = 404 + index * 24.5;
+    shape(slide, pres.shapes.OVAL, { x: px(x), y: px(y + 6), w: px(12), h: px(12), fill: { color }, line: { color, width: 0 } });
+    text(slide, `${part ? '↳ ' : ''}${label}`, { x: px(x + 22), y: px(y), w: px(240), h: px(24), fontSize: 8.5, bold: true, valign: 'middle' });
+  }
+  await serverBox(slide, pres, 644, 628, 210, 164, 'TbUserShield', '004E8F', 'Platform', 'Users & roles, App Events, Ticket Center, backups & transfers');
+  await serverBox(slide, pres, 890, 628, 210, 164, 'TbClockPlay', '2E96F2', 'Workers', 'Background jobs: NQ index & RCA, Points Lost Maps, Prioritization');
+  await serverBox(slide, pres, 1136, 628, 284, 164, 'TbReportAnalytics', M.reporting.color, 'Reporting', 'Scheduler, report worker and document composer');
+  // What goes out: the web app, the reports and the emails.
+  wire(slide, pres, 1440, 356, 1518, 356, { both: true });
+  wire(slide, pres, 1420, 532, 1518, 532);
+  wire(slide, pres, 1420, 708, 1518, 708);
+  pxNote(slide, 'HTTPS', 1446, 318, 70, 24, { align: 'center' });
+  const outputs = [
+    ['TbBrowser', K.blue, 'Web app', 'Every module in the browser, by role: Super Admin, Admin, Editor, Viewer'],
+    ['TbPresentation', 'E07800', 'Reports & exports', 'PowerPoint, Word and Excel, on demand or on schedule'],
+    ['TbMail', '0C9B5B', 'Emails', 'Report links, tickets and access requests, sent through a Power Automate flow or SMTP'],
+  ];
+  for (const [index, [name, color, title, desc]] of outputs.entries()) await pxCard(slide, pres, 1520, 276 + index * 176, 314, 160, name, color, title, desc, { top: true });
+  // The services outside the server, dashed.
+  wire(slide, pres, 750, 818, 750, 854, { both: true });
+  wire(slide, pres, 1030, 854, 1030, 818);
+  wire(slide, pres, 1310, 818, 1310, 854, { both: true });
+  const services = [
+    ['TbSparkles', '0E7490', 'AI engine', 'Claude or Kiro · customer names sent as codes'],
+    ['TbMap2', '0C9B5B', 'Map services', 'OSM & Esri tiles, AWS Terrain, geoBoundaries, GeoNames'],
+    ['TbServer2', K.deep, 'Other servers', 'DT Analyzer servers: transfers and requests of content'],
+  ];
+  for (const [index, [name, color, title, desc]] of services.entries()) {
+    await serverBox(slide, pres, 620 + index * 280, 856, 260, 132, name, color, title, desc, { line: K.grey2, dash: true, d: 42 });
+  }
+  shape(slide, pres.shapes.LINE, { x: px(1660), y: px(1016), w: px(34), h: 0, line: { color: K.grey2, width: 1.25, dashType: 'dash' } });
+  pxNote(slide, 'Outside the server', 1702, 1006, 140, 22);
+  slide.addNotes('The teams upload in the browser the CDRs of every campaign, the Network Inventories, the Multivendor Mapping, '
+    + 'the Geospatial polygons, the Layer3 Logs and the results of the Ericsson RCA script. On the server, a Docker container on '
+    + 'AWS, the dataset worker processes each upload (campaign, NR Mode, Operator, Vendor, Region, Cluster and the Auto-calculated '
+    + 'fields) into the store of its workspace: a SQLite database, with the rows of the CDRs in a Parquet copy that every module '
+    + 'reads with DuckDB. The analysis modules, the DT Analyzer RCA of the NQ calls among them, read that store; background '
+    + 'workers index the NQ calls and draw the Points Lost Maps, and Reporting composes the PowerPoint and Word reports on demand '
+    + 'or on schedule and sends their links by email through a Power Automate flow or SMTP. Outside the server, the AI engine '
+    + 'receives the names of the customers only as codes, the maps come from map services, and other DT Analyzer servers exchange '
+    + 'workspaces and configurations through transfers.');
+}
+
+async function rcaArchitecture(pres, sectionTitle = 'DT Analyzer RCA') {
+  const slide = pres.addSlide({ masterName: 'CONTENT', sectionTitle });
+  heading(slide, 'DT Analyzer RCA, ', 'from the CDR to the Selected Cause', 'Where it takes its data, how it decides, when it runs and where its results go');
+  pxLabel(slide, 'INPUTS', 86, 232, 450);
+  pxLabel(slide, 'OTHER RCA SOURCES OF THE CALL', 1076, 232, 758);
+  // What it reads: the CDR through the NQ index, the rest straight into the engine.
+  const inputs = [
+    ['TbFileAnalytics', K.deep, 'Processed CDRs', 'NetCheck, Umlaut…: every field read through the field profile'],
+    ['TbBuildingBroadcastTower', '0C9B5B', 'Network Inventory', 'ISD, nearest site, PCI collisions, cells out of service'],
+    ['TbTimeline', '0E7490', 'Layer3 Logs', 'The session of the call by its JOIN_ID: radio, RRC, handovers, SIP'],
+    ['TbListNumbers', RCA_COLOR, 'Rules of the workspace', '77 default rules: order, conditions, thresholds, editable'],
+    ['TbHierarchy2', 'E07800', 'Root Cause Catalog', 'Nine root domains with their categories and causes'],
+  ];
+  wire(slide, pres, 536, 336, 614, 336);
+  for (const index of [1, 2, 3, 4]) wire(slide, pres, 536, 328 + index * 118, 576, 328 + index * 118, { head: false });
+  wire(slide, pres, 576, 446, 576, 800, { head: false });
+  wire(slide, pres, 576, 556, 614, 556);
+  for (const [index, [name, color, title, desc]] of inputs.entries()) await pxCard(slide, pres, 86, 276 + index * 118, 450, 104, name, color, title, desc);
+  // The NQ index, the engine and its results.
+  wire(slide, pres, 806, 396, 806, 434);
+  wire(slide, pres, 806, 676, 806, 714);
+  await pxCard(slide, pres, 616, 276, 380, 120, 'TbListSearch', '4D4D4D', 'NQ index', 'Every NQ call of each CDR and the values the rules read',
+    { fill: K.white, line: K.line });
+  pxBox(slide, pres, 616, 436, 380, 240, { fill: RCA_COLOR, radius: 18 });
+  shape(slide, pres.shapes.OVAL, { x: px(644), y: px(460), w: px(48), h: px(48), fill: { color: K.white, transparency: 80 }, line: { color: K.white, width: 0, transparency: 100 } });
+  slide.addImage({ data: await icon('TbBinaryTree2', K.white), x: px(653), y: px(469), w: px(30), h: px(30), objectName: named('icon') });
+  text(slide, 'RULES ENGINE', { x: px(706), y: px(470), w: px(270), h: px(28), fontSize: 8, bold: true, color: 'EDE4FC', charSpacing: 1.5, valign: 'middle' });
+  text(slide, 'DT Analyzer RCA', { x: px(644), y: px(522), w: px(340), h: px(48), fontSize: 17, bold: true, color: K.white, valign: 'middle' });
+  text(slide, 'The first enabled rule of the service of the call whose conditions hold decides', { x: px(644), y: px(578), w: px(330), h: px(80),
+    fontSize: 9.5, color: 'F3ECFE', valign: 'top' });
+  shape(slide, pres.shapes.CAN, { x: px(616), y: px(716), w: px(380), h: px(130), fill: { color: K.white }, line: { color: RCA_COLOR, width: 1.5 } });
+  text(slide, [{ text: 'DT Analyzer RCA Results', options: { bold: true, fontSize: 11, color: K.black, breakLine: true } },
+    { text: 'Domain · Category · Cause · rule · evidence', options: { fontSize: 8.25, color: K.grey, paraSpaceBefore: 3 } }],
+  { x: px(616), y: px(762), w: px(380), h: px(70), align: 'center', valign: 'top' });
+  // The other sources and the recommendation, which the engine feeds and learns from.
+  const sources = [
+    [K.deep, 'Provider RCA', 'NetCheck classification, category and subcategory', false],
+    ['9A7B14', 'Ericsson RCA', 'Script outside the tool: CSV or Excel imported by JOIN_ID', true],
+    ['0C9B5B', 'Analysts', 'Their earlier decisions and the comments of the call', false],
+  ];
+  for (const [index, [color, title, desc, outside]] of sources.entries()) {
+    const x = 1076 + index * 259;
+    if (outside) pxBox(slide, pres, x, 276, 240, 134, { fill: K.white, line: color, width: 1.25, dash: true, radius: 14 });
+    // (Its colour only at the top: a band under the grey card, so that no edge of it shows below.)
+    else { pxBox(slide, pres, x, 276, 240, 40, { fill: color, radius: 14 }); pxBox(slide, pres, x, 282, 240, 128, { radius: 14 }); }
+    pxTitled(slide, x + 18, 292, 204, 110, title, desc);
+    wire(slide, pres, x + 120, 410, x + 120, 438);
+  }
+  wire(slide, pres, 996, 520, 1074, 520);
+  wire(slide, pres, 1076, 630, 998, 630, { color: RCA_COLOR, dash: true });
+  pxNote(slide, 'result', 1000, 486, 72, 24, { align: 'center' });
+  pxNote(slide, 'learns (optional)', 1000, 640, 72, 44, { align: 'center', color: RCA_COLOR });
+  pxBox(slide, pres, 1076, 440, 758, 280, { fill: 'F5F0FD', line: RCA_COLOR, width: 1.25, radius: 18 });
+  text(slide, 'RECOMMENDATION', { x: px(1106), y: px(462), w: px(400), h: px(26), fontSize: 8, bold: true, color: RCA_COLOR, charSpacing: 1.5, valign: 'middle' });
+  text(slide, 'Selected Cause', { x: px(1106), y: px(488), w: px(700), h: px(48), fontSize: 18, bold: true, color: K.black, valign: 'middle' });
+  text(slide, 'The category and cause most sources agree on, by their weight; the analyst confirms or changes it.', { x: px(1106), y: px(540), w: px(700), h: px(56),
+    fontSize: 9.5, color: K.grey, valign: 'top' });
+  const weights = [[['DT Analyzer RCA · 2', 192, true], ['Provider RCA · 3', 163], ['Earlier decisions · 3', 188]], [['Ericsson RCA · 2', 166], ['Comments · 1', 141]]];
+  for (const [row, chips] of weights.entries()) {
+    let x = 1108;
+    for (const [label, w, own] of chips) {
+      shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: px(x), y: px(608 + row * 46), w: px(w), h: px(36), rectRadius: px(10),
+        fill: { color: own ? RCA_COLOR : K.white }, line: { color: own ? RCA_COLOR : K.line, width: 0.75 } });
+      text(slide, label, { x: px(x), y: px(608 + row * 46), w: px(w), h: px(36), fontSize: 8.5, bold: true, color: own ? K.white : K.ink, align: 'center', valign: 'middle' });
+      x += w + 12;
+    }
+  }
+  // Where its results go.
+  const outputs = [[M.nq.color, 'NQ Calls', 'RCA tab of the call, Root Cause Analysis, Failure Map'], [M.reporting.color, 'Exports', 'Excel, PowerPoint, Word and Reporting'],
+    [M.assistant.color, 'AI Assistant', 'Answers on the causes of the NQ calls']];
+  for (const [index, [color, title, desc]] of outputs.entries()) {
+    const x = 1076 + index * 259;
+    wire(slide, pres, x + 120, 720, x + 120, 748);
+    pxBox(slide, pres, x, 750, 240, 40, { fill: color, radius: 14 });
+    pxBox(slide, pres, x, 756, 240, 114, { radius: 14 });
+    pxTitled(slide, x + 18, 766, 204, 100, title, desc);
+  }
+  // When it runs.
+  pxBox(slide, pres, 86, 906, 1748, 56, { radius: 14 });
+  text(slide, 'WHEN IT RUNS', { x: px(106), y: px(906), w: px(150), h: px(56), fontSize: 8, bold: true, color: K.grey, charSpacing: 1, valign: 'middle' });
+  const runs = [['CDRs indexed or Reindex', 266, 221], ['Rules or Root Cause Catalog changed', 500, 316], ['Network Inventory changed', 829, 232],
+    ['Layer3 Logs imported or deleted: the calls of their campaign', 1074, 477]];
+  for (const [label, x, w] of runs) {
+    shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: px(x), y: px(917), w: px(w), h: px(34), rectRadius: px(9), fill: { color: K.white }, line: { color: K.line, width: 0.75 } });
+    text(slide, label, { x: px(x), y: px(917), w: px(w), h: px(34), fontSize: 8.5, color: K.ink, align: 'center', valign: 'middle' });
+  }
+  slide.addNotes('The DT Analyzer RCA reads every Non-Qualified Call through the NQ index, which keeps, for each processed CDR, the '
+    + 'values its rules read through the field profile of the CDR type. The Network Inventory adds the network around the call '
+    + '(the inter-site distance, the nearest site, PCI collisions and cells out of service) and, when its campaign has them, the '
+    + 'Layer3 Logs add its session. The rules of the workspace, 77 by default, are tried in order and the first enabled rule of '
+    + 'the service of the call whose conditions hold gives its root domain, Root Category and Root Cause on the Root Cause Catalog, '
+    + 'with the evidence. Its result joins the RCA of the provider, the Ericsson RCA imported by JOIN_ID and the earlier decisions '
+    + 'and comments of the analysts in the recommendation of the Selected Cause, weighted, and when Learn from the decisions of '
+    + 'the analysts is on it learns from them. It runs when CDRs are indexed, when the rules, the Root Cause Catalog or the Network '
+    + 'Inventory change, and for the calls of a campaign whose Layer3 Logs are imported or deleted; the NQ Calls page, the exports, '
+    + 'Reporting and the AI Assistant show its results.');
+}
+
 // The road of the roadmap through its milestones (inches of the slide); art.roadmapRoad draws it.
 const ROAD = [[-0.4, 4.75], [1.5, 4.5], [3.0, 4.65], [4.5, 4.45], [6.0, 4.35], [7.6, 4.5], [9.2, 4.45], [10.7, 4.2], [11.75, 3.3],
   [12.45, 2.35], [12.75, 2.1]];
@@ -1273,7 +1500,7 @@ async function writeImageDeck(deck, id, subject) {
 
 // The presentations in the order the Help lists them: the decks of the main modules with the DT Analyzer RCA after that
 // of Non-Qualified Calls, and the full presentation last.
-const IDS = ['overview', 'one-slider', 'roadmap', 'benchmarking-providers',
+const IDS = ['overview', 'architecture', 'one-slider', 'roadmap', 'benchmarking-providers',
   ...MODULE_DECK_IDS.flatMap((id) => (id === 'non-qualified-calls' ? [id, 'dt-analyzer-rca'] : [id])), 'full-presentation'];
 // The parts of the full presentation, in the order of the cards of the Help: the Overview, the Benchmarking Providers
 // Roadmap, the deck of every main module (Network Insights after CDR Analysis), the DT Analyzer RCA and the Roadmap one
@@ -1289,16 +1516,19 @@ const FULL_PARTS = ['overview', 'benchmarking-providers', ...FULL_MODULE_IDS, 'd
 function presentationsOf(decks) {
   const presentations = [
     { id: 'overview', title: 'DriveTest Analyzer — Overview', file: 'overview.pptx', download: 'DriveTest Analyzer - Overview.pptx',
-      description: 'The tool, the teams it serves and its platform, a slide per module in the order of the tool and its roadmap, closing with the one-slider.',
+      description: 'The tool, the teams it serves, its architecture and its platform, a slide per module in the order of the tool and its roadmap, closing with the one-slider.',
       sections: [
         { title: 'Introduction', slides: ['DriveTest Analyzer', 'One platform, from CDRs to decisions'] },
         { title: 'Teams', slides: ['Built for every team'] },
-        { title: 'Platform', slides: ['Enterprise-ready'] },
+        { title: 'Platform', slides: ['Solution architecture', 'Enterprise-ready'] },
         { title: 'Modules', slides: [`${MODULE_WORD} modules, one shared workspace`, 'CDR Analysis', 'PPT Designer', 'Scoring & GAP Analysis — who wins',
           'Scoring & GAP Analysis — where to win the points back', 'Network Insights', 'NQ Calls', 'Reporting', 'Builders', 'AI Assistant', 'Ticket Center'] },
         { title: 'Roadmap', slides: ['Roadmap'] },
         { title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] },
       ] },
+    { id: 'architecture', title: 'DriveTest Analyzer — Architecture', file: 'architecture.pptx', download: 'DriveTest Analyzer - Architecture.pptx',
+      description: 'How the solution is built, from the inputs the teams upload to what it delivers, and how the DT Analyzer RCA finds the root cause of every Non-Qualified Call.',
+      sections: [{ title: 'Solution', slides: ['Solution architecture'] }, { title: 'DT Analyzer RCA', slides: ['DT Analyzer RCA architecture'] }] },
     { id: 'one-slider', title: 'DriveTest Analyzer — One-slider', file: 'one-slider.pptx', download: 'DriveTest Analyzer - One-slider.pptx',
       description: 'The most important of the tool in a single slide: figures, modules, teams, platform and what comes next.',
       sections: [{ title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] }] },
@@ -1314,7 +1544,7 @@ function presentationsOf(decks) {
         description: decks[id].description, sections: imageSections(decks[id]) },
       ...(id === 'non-qualified-calls' ? [{ id: 'dt-analyzer-rca', title: decks['dt-analyzer-rca'].title, file: 'dt-analyzer-rca.pptx',
         drawn: true, download: 'DriveTest Analyzer - DT Analyzer RCA.pptx',
-        description: 'How the DT Analyzer RCA finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives.',
+        description: 'How the DT Analyzer RCA finds the root cause of every Non-Qualified Call: its architecture, what it reads, its rules, the lack of resources, the network around the call and the evidence it gives.',
         sections: imageSections(decks['dt-analyzer-rca']) }] : []),
     ]),
   ];
@@ -1341,6 +1571,7 @@ async function overviewSlides(deck, files, sectionTitle = '') {
   section('Teams');
   await teams(pres);
   section('Platform');
+  await solutionArchitecture(pres);
   await enterprise(pres);
   section('Modules');
   await modules(pres);
@@ -1396,6 +1627,17 @@ async function main() {
   await deck.writeFile({ fileName: deckFile });
   await applyTheme(deckFile, THEME);
 
+  const architecture = new pptxgen();
+  architecture.author = 'DriveTest Analyzer'; architecture.title = 'DriveTest Analyzer — Architecture'; architecture.subject = 'DriveTest Analyzer architecture';
+  defineLayouts(architecture, logos);
+  architecture.addSection({ title: 'Solution' });
+  await solutionArchitecture(architecture, 'Solution');
+  architecture.addSection({ title: 'DT Analyzer RCA' });
+  await rcaArchitecture(architecture, 'DT Analyzer RCA');
+  const architectureFile = path.join(OUT, 'architecture.pptx');
+  await architecture.writeFile({ fileName: architectureFile });
+  await applyTheme(architectureFile, THEME);
+
   const single = new pptxgen();
   single.author = 'DriveTest Analyzer'; single.title = 'DriveTest Analyzer — One-slider'; single.subject = 'DriveTest Analyzer at a glance';
   defineLayouts(single, logos);
@@ -1433,7 +1675,7 @@ async function main() {
   await applyTheme(fullFile, THEME);
   fs.writeFileSync(path.join(OUT, 'presentations.json'), `${JSON.stringify({ presentations: PRESENTATIONS, figures: FIGURES }, null, 2)}\n`);
   fs.rmSync(work, { recursive: true, force: true });
-  console.log(deckFile); console.log(singleFile); console.log(planFile); console.log(providersFile); console.log(dtaFile);
+  console.log(deckFile); console.log(architectureFile); console.log(singleFile); console.log(planFile); console.log(providersFile); console.log(dtaFile);
   moduleFiles.forEach((file) => console.log(file)); console.log(fullFile);
 }
 

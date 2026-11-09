@@ -738,7 +738,7 @@ The calls are calculated when they are indexed, and again whenever its rules, th
 
 ### Presentation
 
-The DT Analyzer RCA is also a presentation, **DT Analyzer RCA**: what it reads, how its rules decide, the lack of resources, the network around the call (coverage holes, overshooting, PCI collisions and cells out of service), handovers and service, the result and evidence of each call and how to change the rules. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; it is also in [Product Presentations](presentations.md).
+The DT Analyzer RCA is also a presentation, **DT Analyzer RCA**: its architecture (from the CDR to the Selected Cause), what it reads, how its rules decide, the lack of resources, the network around the call (coverage holes, overshooting, PCI collisions and cells out of service), handovers and service, the result and evidence of each call and how to change the rules. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; it is also in [Product Presentations](presentations.md).
 
 ```presentations
 dt-analyzer-rca

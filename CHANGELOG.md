@@ -40,6 +40,7 @@
 - **Import / Export / Transfer — Transfer dialogs closed in every tab (ticket #105):** the dialogs of a transfer that every open page of a super-admin shows (an incoming transfer or a transfer request to accept or reject, the preview of a received package and the window with its result) no longer stay open in the other tabs once handled in one of them: they close at once in the other tabs of the browser and within a few seconds in other browsers, and no page shows them again, also after a reload. The window with the result, also that of a transfer to another server, is closed once per user: closing it on any page or device closes it on the others and is recorded in App Events (`transfer_result_seen`).
 
 #### 📚 Documentation:
+- **Help — Architecture presentation (ticket #106):** a new presentation, **Architecture**, shows on two slides the architecture of the solution (the inputs the teams upload, the server that processes, stores and analyses them, the web app, reports and emails it delivers and the services outside it) and that of the DT Analyzer RCA, from the CDR to the Selected Cause (what it reads, its rules engine and results, the other RCA sources of the recommendation with their weights, where its results go and when it runs). The architecture of the solution is also in the Overview, before Enterprise-ready, and that of the DT Analyzer RCA, on its dark background, is the third slide of its own presentation.
 
 ---
 

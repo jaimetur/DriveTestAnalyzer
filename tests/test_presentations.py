@@ -231,7 +231,7 @@ def node_json(script: str):
 def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
     help_folder = Path(__file__).resolve().parents[1] / 'help'
     ids = presentations.expected_ids()
-    assert ids == ['overview', 'one-slider', 'roadmap', 'benchmarking-providers', 'workspace', 'workspace-config', 'cdr-analysis', 'ppt-designer',
+    assert ids == ['overview', 'architecture', 'one-slider', 'roadmap', 'benchmarking-providers', 'workspace', 'workspace-config', 'cdr-analysis', 'ppt-designer',
                    'scoring-gap-analysis', 'network-insights', 'non-qualified-calls', 'dt-analyzer-rca', 'reporting', 'builders',
                    'assistant', 'ticket-center', 'administration', 'full-presentation']
     chapters = {'workspace-management': 'workspace\nworkspace-config', 'workspace-config': 'workspace-config',
@@ -247,7 +247,7 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
         assert 0 <= block < tasks, chapter
     # Every slide of a deck drawn from its content.js has its title, section (one after the other) and notes.
     decks = node_json("const { DECKS } = require('./module_decks.js'); console.log(JSON.stringify(DECKS.map((id) => [id, require(`./${id}/content.js`)])));")
-    assert [deck_id for deck_id, _deck in decks] == [item for item in ids[4:-1] if item != 'dt-analyzer-rca']
+    assert [deck_id for deck_id, _deck in decks] == [item for item in ids[5:-1] if item != 'dt-analyzer-rca']
     for deck_id, deck in decks:
         assert deck['name'] and deck['description'] and deck['slides'], deck_id
         assert all(slide['id'] and slide['title'] and slide['notes'] and slide['section'] for slide in deck['slides']), deck_id
@@ -260,16 +260,16 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
     assert {'templates'} <= {slide['id'] for slide in by_id['ppt-designer']['slides']}
     assert {'groups', 'map', 'map-findings'} <= {slide['id'] for slide in by_id['non-qualified-calls']['slides']}
     # The DT Analyzer RCA keeps its slides.html, and the benchmarking providers deck its pictures.
-    for name, count in (('dt-analyzer-rca', 13), ('benchmarking-providers', 24)):
+    for name, count in (('dt-analyzer-rca', 14), ('benchmarking-providers', 24)):
         slides = json.loads((GENERATOR_FOLDER / name / 'slides.json').read_text(encoding='utf-8'))['slides']
         assert len(slides) == count and all(slide['title'] and slide['notes'] for slide in slides), name
     assert (GENERATOR_FOLDER / 'dt-analyzer-rca' / 'slides.html').is_file()
     assert all((GENERATOR_FOLDER / 'benchmarking-providers' / slide['image']).is_file()
                for slide in json.loads((GENERATOR_FOLDER / 'benchmarking-providers' / 'slides.json').read_text(encoding='utf-8'))['slides'])
-    # Help Home and Product Presentations show every presentation: those of the tool (the Benchmarking Providers Roadmap
-    # after the Overview), then those of the modules (Network Insights after CDR Analysis) and the full presentation, each
-    # in their own section; Product Overview points to Product Presentations.
-    general = ['overview', 'benchmarking-providers', 'one-slider', 'roadmap']
+    # Help Home and Product Presentations show every presentation: those of the tool (the Architecture and the Benchmarking
+    # Providers Roadmap after the Overview), then those of the modules (Network Insights after CDR Analysis) and the full
+    # presentation, each in their own section; Product Overview points to Product Presentations.
+    general = ['overview', 'architecture', 'benchmarking-providers', 'one-slider', 'roadmap']
     modules_order = ['workspace', 'workspace-config', 'cdr-analysis', 'network-insights', 'ppt-designer', 'scoring-gap-analysis',
                      'non-qualified-calls', 'dt-analyzer-rca', 'reporting', 'builders', 'assistant', 'ticket-center', 'administration']
     assert sorted(general + modules_order + ['full-presentation']) == sorted(ids)
@@ -307,8 +307,11 @@ def test_the_server_generates_every_presentation_with_the_pictures_of_their_slid
             count = sum(len(section['slides']) for section in item['sections'])
             assert len(list((current / item['id']).glob('slide-*.png'))) == len(list((current / item['id']).glob('thumb-*.png'))) == count, item['id']
     # LibreOffice renders only the decks of native slides: build.js writes the pictures of the others, as large.
-    assert len(rendered) == 3 and [item['id'] for item in manifest['presentations'] if not item.get('drawn')] == ['overview', 'one-slider', 'roadmap', 'full-presentation']
+    assert len(rendered) == 4 and [item['id'] for item in manifest['presentations'] if not item.get('drawn')] == ['overview', 'architecture', 'one-slider', 'roadmap', 'full-presentation']
     assert Image.open(current / 'workspace-config' / 'slide-01.png').size == (1920, 1080)
+    # The architecture of the solution and of the DT Analyzer RCA: the solution one also in the Platform section of the Overview.
+    assert [slide for section in by_id['architecture']['sections'] for slide in section['slides']] == ['Solution architecture', 'DT Analyzer RCA architecture']
+    assert next(section for section in by_id['overview']['sections'] if section['title'] == 'Platform')['slides'] == ['Solution architecture', 'Enterprise-ready']
     assert Image.open(current / 'workspace-config' / 'thumb-01.png').size == (600, 338)
     # The decks drawn by module_decks.js have their slides by section, as in their content.js.
     assert [slide for section in by_id['dt-analyzer-rca']['sections'] for slide in section['slides']] == [

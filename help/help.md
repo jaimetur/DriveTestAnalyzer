@@ -15,7 +15,8 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 
 Present DriveTest Analyzer with its presentations:
 
-- **Overview**, the complete deck: the tool, the teams it serves and its platform, a slide for each module in the order of their tabs (two for Scoring & GAP Analysis) and the roadmap, closing with the one-slider.
+- **Overview**, the complete deck: the tool, the teams it serves, its architecture and its platform, a slide for each module in the order of their tabs (two for Scoring & GAP Analysis) and the roadmap, closing with the one-slider.
+- **Architecture**, on two slides: the architecture of the solution, from the inputs the teams upload (CDRs, Network Inventories, Multivendor Mapping, Geospatial, Layer3 Logs and the Ericsson RCA results) through the server that processes, stores and analyses them to the web app, the reports and the emails, with the services outside the server (AI engine, map services and other DT Analyzer servers); and that of the DT Analyzer RCA, from the CDR to the Selected Cause: what it reads, its rules engine and results, the other RCA sources of the recommendation with their weights, where its results go and when it runs.
 - **Benchmarking Providers Roadmap**, in the design of its own deck: how the tool is being adapted to Umlaut and P3 CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud (see [Benchmarking Providers](benchmarking-providers.md)).
 - **One-slider**, on a single slide: the most important of the tool, with its figures, modules, teams, platform and what comes next.
 - **Roadmap**, on a single slide: what the tool brings today, such as the AI Assistant, the columnar store on DuckDB, Tableau connected to the workspace, slide comments written by GenAI and the Layer3 Logs, and what comes next, such as the Germany pilot, Umlaut and P3 CDRs, the Active Tests community, Network Insights improvements, automatic emails, TEMS logs and health monitoring.
@@ -24,6 +25,7 @@ Select a presentation to open it in the slide viewer (its slides on the left and
 
 ```presentations
 overview
+architecture
 benchmarking-providers
 one-slider
 roadmap
@@ -31,7 +33,7 @@ roadmap
 
 ### Module presentations
 
-Each main module also has a presentation of its own, in a design of its own, at the start of its chapter: [Workspace Management](workspace-management.md), with **Workspace Config** after it (everything to set up in a new workspace: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)), [CDR Analysis](datasets-analysis.md), [Network Insights](network-insights.md), [PPT Designer](ppt-designer.md), [Scoring & GAP Analysis](scoring-gap-analysis.md), [Non-Qualified Calls](non-qualified-calls.md) with the **DT Analyzer RCA** beside it (how it finds the root cause of every Non-Qualified Call: what it reads, its rules, the lack of resources, the network around the call and the evidence it gives), [Reporting](reporting.md), [Builders](chart-builder.md), [AI Assistant](assistant.md) and [Ticket Center](ticket-center.md), and **Administration** after them (Admin and Super Admin: users and access, the databases, backups, packages and transfers, the configuration of the application at every level and App Events; see [Super Admin](super-admin.md)). They open in the same slide viewer and download as PowerPoint.
+Each main module also has a presentation of its own, in a design of its own, at the start of its chapter: [Workspace Management](workspace-management.md), with **Workspace Config** after it (everything to set up in a new workspace: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)), [CDR Analysis](datasets-analysis.md), [Network Insights](network-insights.md), [PPT Designer](ppt-designer.md), [Scoring & GAP Analysis](scoring-gap-analysis.md), [Non-Qualified Calls](non-qualified-calls.md) with the **DT Analyzer RCA** beside it (how it finds the root cause of every Non-Qualified Call: its architecture, what it reads, its rules, the lack of resources, the network around the call and the evidence it gives), [Reporting](reporting.md), [Builders](chart-builder.md), [AI Assistant](assistant.md) and [Ticket Center](ticket-center.md), and **Administration** after them (Admin and Super Admin: users and access, the databases, backups, packages and transfers, the configuration of the application at every level and App Events; see [Super Admin](super-admin.md)). They open in the same slide viewer and download as PowerPoint.
 
 ```presentations
 workspace

@@ -61,6 +61,38 @@
   .rule code { font-family: Menlo, Consolas, monospace; font-size: 21px; color: #fff; background: rgba(180, 107, 232, .18); padding: 2px 10px; border-radius: 8px; }
   .icon { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; }
   .icon svg { width: 36px; height: 36px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  /* The architecture (slide 3): its cards, the engine, its results and the wires between them, placed on the slide. */
+  .arch .wires { position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none; }
+  .arch .card { position: absolute; z-index: 2; padding: 0; border-radius: 22px; }
+  .arch .bdash { border: 2px dashed #9a7b14; }
+  .arch .icon { width: 56px; height: 56px; border-radius: 16px; flex: none; }
+  .arch .bnode { display: flex; gap: 20px; align-items: center; padding: 14px 22px; }
+  .arch .bnode h3 { font-size: 26px; }
+  .arch .bnode p { font-size: 19px; margin-top: 4px; line-height: 1.3; }
+  .arch .mini { padding: 16px 18px; }
+  .arch .mini h3 { font-size: 23px; margin-top: 8px; }
+  .arch .mini p { font-size: 17px; margin-top: 4px; line-height: 1.28; }
+  .arch .engine { position: absolute; z-index: 2; border-radius: 26px; padding: 26px 30px; background: radial-gradient(circle at 25% 15%, #c99bf0, #7c3aed 60%, #3b1d78);
+    box-shadow: 0 0 80px rgba(124, 58, 237, .45), 0 0 0 10px rgba(124, 58, 237, .16); }
+  .arch .engine .icon { margin-bottom: 14px; }
+  .arch .engine .ek { position: absolute; left: 100px; top: 40px; font-size: 18px; letter-spacing: 3px; text-transform: uppercase; color: #f3e8ff; font-weight: 700; margin: 0; }
+  .arch .engine h3 { font-size: 36px; font-weight: 800; margin-top: 4px; line-height: 1.1; }
+  .arch .engine p { font-size: 21px; margin-top: 10px; line-height: 1.35; color: #f3e8ff; }
+  .arch .cyl { position: absolute; z-index: 2; }
+  .arch .cyl svg { position: absolute; left: 0; top: 0; }
+  .arch .cyl-text { position: absolute; left: 0; right: 0; top: 50px; text-align: center; }
+  .arch .cyl-text h3 { font-size: 24px; font-weight: 800; }
+  .arch .cyl-text p { font-size: 18px; color: var(--soft); margin-top: 6px; }
+  .arch .reco { padding: 26px 32px; border: 2px solid #7d4cc4; background: linear-gradient(180deg, #2a1d45, #1c1630); }
+  .arch .reco h3 { font-size: 40px; margin-top: 6px; }
+  .arch .reco p { font-size: 21px; margin-top: 8px; line-height: 1.42; }
+  .arch .reco .kicker { color: var(--dta); }
+  .arch .reco .result { gap: 10px; margin-top: 16px; }
+  .arch .reco .result span { font-size: 18px; padding: 7px 14px; border-radius: 11px; background: rgba(255, 255, 255, .08); }
+  .arch .wlabel { position: absolute; z-index: 3; font-size: 14px; color: var(--soft); text-align: center; line-height: 1.2; }
+  .arch .runs { position: absolute; z-index: 2; display: flex; align-items: center; gap: 14px; padding: 0 22px; border-radius: 14px; background: rgba(31, 181, 207, .10); border: 1px solid #1f6f80; font-size: 19px; }
+  .arch .runs b { color: var(--l3); letter-spacing: 2px; font-size: 17px; margin-right: 6px; }
+  .arch .runs span { padding: 5px 12px; border-radius: 9px; background: rgba(255, 255, 255, .07); color: #e6f7fa; }
 </style>
 </head>
 <body>
@@ -138,6 +170,19 @@
   <div class="foot"><span><b>DT Analyzer RCA</b> · Sources</span><span>02</span></div>
 </section>
 
+<!-- 2b · Architecture -->
+<section class="slide arch" id="s2b">
+  <p class="kicker">Architecture</p>
+  <h2>From the CDR to the Selected Cause</h2>
+  <p class="lead" style="font-size:28px;margin-top:14px">Where the DT Analyzer RCA takes its data, how it decides, when it runs and where its results go.</p>
+  <svg class="wires" width="1920" height="1080"><defs>
+    <marker id="bh" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 z" fill="#b46be8"/></marker>
+    <marker id="bh2" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L12,6 L0,12 z" fill="#e7cdfb"/></marker>
+  </defs><line x1="562" y1="489" x2="600" y2="489" stroke="#3a4d75" stroke-width="4"/><line x1="562" y1="609" x2="600" y2="609" stroke="#3a4d75" stroke-width="4"/><line x1="562" y1="729" x2="600" y2="729" stroke="#3a4d75" stroke-width="4"/><line x1="562" y1="849" x2="600" y2="849" stroke="#3a4d75" stroke-width="4"/><polyline points="562,369 640,369" fill="none" stroke="#7d8aa3" stroke-width="3.5" opacity="0.85" marker-end="url(#bh)"/><line x1="600" y1="489" x2="600" y2="849" stroke="#3a4d75" stroke-width="4"/><polyline points="600,640 640,640" fill="none" stroke="#7d8aa3" stroke-width="3.5" opacity="0.85" marker-end="url(#bh)"/><polyline points="830,436 830,504" fill="none" stroke="#b46be8" stroke-width="3.5" opacity="0.85" marker-end="url(#bh)"/><polyline points="830,756 830,794" fill="none" stroke="#b46be8" stroke-width="3.5" opacity="0.85" marker-end="url(#bh)"/><polyline points="1195,464 1195,480" fill="none" stroke="#7d8aa3" stroke-width="3.5" opacity="0.85" marker-end="url(#bh)"/><polyline points="1444,464 1444,480" fill="none" stroke="#7d8aa3" stroke-width="3.5" opacity="0.85" marker-end="url(#bh)"/><polyline points="1693,464 1693,480" fill="none" stroke="#7d8aa3" stroke-width="3.5" opacity="0.85" marker-end="url(#bh)"/><polyline points="1020,590 1078,590" fill="none" stroke="#b46be8" stroke-width="3.5" opacity="0.85" marker-end="url(#bh)"/><polyline points="1080,690 1022,690" fill="none" stroke="#e7cdfb" stroke-width="3.5" stroke-dasharray="10 9" opacity="0.7" marker-end="url(#bh2)"/><polyline points="1195,770 1195,794" fill="none" stroke="#7d8aa3" stroke-width="3.5" opacity="0.85" marker-end="url(#bh)"/><polyline points="1444,770 1444,794" fill="none" stroke="#7d8aa3" stroke-width="3.5" opacity="0.85" marker-end="url(#bh)"/><polyline points="1693,770 1693,794" fill="none" stroke="#7d8aa3" stroke-width="3.5" opacity="0.85" marker-end="url(#bh)"/></svg>
+  <div class="card bnode" style="left:112px;top:316px;width:450px;height:106px;"><div class="icon" style="background:#475569"><svg stroke="#fff" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" color="#fff" style="color:#fff" height="34" width="34" xmlns="http://www.w3.org/2000/svg"><path d="M14 3v4a1 1 0 0 0 1 1h4"></path><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"></path><path d="M9 17l0 -5"></path><path d="M12 17l0 -1"></path><path d="M15 17l0 -3"></path></svg></div><div><h3>Processed CDRs</h3><p>NetCheck, Umlaut…: every field read through the field profile</p></div></div><div class="card bnode" style="left:112px;top:436px;width:450px;height:106px;"><div class="icon" style="background:#2e8b57"><svg stroke="#fff" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" color="#fff" style="color:#fff" height="34" width="34" xmlns="http://www.w3.org/2000/svg"><path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"></path><path d="M16.616 13.924a5 5 0 1 0 -9.23 0"></path><path d="M20.307 15.469a9 9 0 1 0 -16.615 0"></path><path d="M9 21l3 -9l3 9"></path><path d="M10 19h4"></path></svg></div><div><h3>Network Inventory</h3><p>ISD, nearest site, PCI collisions, cells out of service</p></div></div><div class="card bnode" style="left:112px;top:556px;width:450px;height:106px;"><div class="icon" style="background:#1fb5cf"><svg stroke="#fff" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" color="#fff" style="color:#fff" height="34" width="34" xmlns="http://www.w3.org/2000/svg"><path d="M4 16l6 -7l5 5l5 -6"></path><path d="M14 14a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"></path><path d="M9 9a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"></path><path d="M3 16a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"></path><path d="M19 8a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"></path></svg></div><div><h3>Layer3 Logs</h3><p>The session of the call by its JOIN_ID: radio, RRC, handovers, SIP</p></div></div><div class="card bnode" style="left:112px;top:676px;width:450px;height:106px;"><div class="icon" style="background:#7c3aed"><svg stroke="#fff" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" color="#fff" style="color:#fff" height="34" width="34" xmlns="http://www.w3.org/2000/svg"><path d="M11 6h9"></path><path d="M11 12h9"></path><path d="M12 18h8"></path><path d="M4 16a2 2 0 1 1 4 0c0 .591 -.5 1 -1 1.5l-3 2.5h4"></path><path d="M6 10v-6l-2 2"></path></svg></div><div><h3>Rules of the workspace</h3><p>77 default rules: order, conditions, thresholds, editable</p></div></div><div class="card bnode" style="left:112px;top:796px;width:450px;height:106px;"><div class="icon" style="background:#9a7b14"><svg stroke="#fff" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" color="#fff" style="color:#fff" height="34" width="34" xmlns="http://www.w3.org/2000/svg"><path d="M10 3h4v4h-4l0 -4"></path><path d="M3 17h4v4h-4l0 -4"></path><path d="M17 17h4v4h-4l0 -4"></path><path d="M7 17l5 -4l5 4"></path><path d="M12 7l0 6"></path></svg></div><div><h3>Root Cause Catalog</h3><p>Nine root domains with their categories and causes</p></div></div><div class="card bnode" style="left:640px;top:316px;width:380px;height:120px;"><div class="icon" style="background:#475569"><svg stroke="#fff" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" color="#fff" style="color:#fff" height="34" width="34" xmlns="http://www.w3.org/2000/svg"><path d="M11 15a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"></path><path d="M18.5 18.5l2.5 2.5"></path><path d="M4 6h16"></path><path d="M4 12h4"></path><path d="M4 18h4"></path></svg></div><div><h3>NQ index</h3><p>Every NQ call of each CDR and the values the rules read</p></div></div><div class="engine" style="left:640px;top:506px;width:380px;height:250px;"><div class="icon" style="background:rgba(255,255,255,.18)"><svg stroke="#fff" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" color="#fff" style="color:#fff" height="36" width="36" xmlns="http://www.w3.org/2000/svg"><path d="M14 6a2 2 0 1 0 -4 0a2 2 0 0 0 4 0"></path><path d="M7 14a2 2 0 1 0 -4 0a2 2 0 0 0 4 0"></path><path d="M21 14a2 2 0 1 0 -4 0a2 2 0 0 0 4 0"></path><path d="M14 18a2 2 0 1 0 -4 0a2 2 0 0 0 4 0"></path><path d="M12 8v8"></path><path d="M6.316 12.496l4.368 -4.992"></path><path d="M17.684 12.496l-4.366 -4.99"></path></svg></div><p class="ek">Rules engine</p><h3>DT Analyzer RCA</h3><p>The first enabled rule of the service of the call whose conditions hold decides</p></div><div class="cyl" style="left:640px;top:796px;width:380px;height:130px;"><svg width="380" height="130" viewBox="0 0 380 130"><path d="M2 22 Q2 2 190 2 Q378 2 378 22 L378 108 Q378 128 190 128 Q2 128 2 108 Z" fill="#1a2742" stroke="#7d4cc4" stroke-width="3"/><path d="M2 22 Q2 42 190 42 Q378 42 378 22" fill="none" stroke="#7d4cc4" stroke-width="3"/></svg><div class="cyl-text"><h3>DT Analyzer RCA Results</h3><p>Domain · Category · Cause · rule · evidence</p></div></div><p class="kicker" style="position:absolute;left:1080px;top:290px;width:728px;font-size:18px;letter-spacing:3px">Other RCA sources of the call</p><div class="card mini" style="left:1080px;top:326px;width:230px;height:138px;border-top:6px solid #0b6fbf"><h3>Provider RCA</h3><p>NetCheck classification, category and subcategory</p></div><div class="card mini bdash" style="left:1329px;top:326px;width:230px;height:138px;border-top:6px dashed #9a7b14"><h3>Ericsson RCA</h3><p>Script outside the tool: CSV or Excel imported by JOIN_ID</p></div><div class="card mini" style="left:1578px;top:326px;width:230px;height:138px;border-top:6px solid #2e8b57"><h3>Analysts</h3><p>Their earlier decisions and the comments of the call</p></div><div class="wlabel" style="left:1022px;top:548px;width:60px;">result</div><div class="wlabel" style="left:1020px;top:700px;width:60px;">learns<br>(optional)</div><div class="card reco" style="left:1080px;top:482px;width:728px;height:288px;"><p class="kicker" style="font-size:18px;letter-spacing:3px">Recommendation</p><h3>Selected Cause</h3><p>The category and cause most sources agree on, by their weight; the analyst confirms or changes it.</p><div class="result"><span style="background:#7c3aed">DT Analyzer RCA · 2</span><span>Provider RCA · 3</span><span>Earlier decisions · 3</span><span>Ericsson RCA · 2</span><span>Comments · 1</span></div></div><div class="card mini" style="left:1080px;top:796px;width:230px;height:130px;border-top:6px solid #b0234f"><h3>NQ Calls</h3><p>RCA tab of the call, Root Cause Analysis, Failure Map</p></div><div class="card mini" style="left:1329px;top:796px;width:230px;height:130px;border-top:6px solid #2e8c58"><h3>Exports</h3><p>Excel, PowerPoint, Word and Reporting</p></div><div class="card mini" style="left:1578px;top:796px;width:230px;height:130px;border-top:6px solid #0e7490"><h3>AI Assistant</h3><p>Answers on the causes of the NQ calls</p></div><div class="runs" style="left:112px;top:950px;width:1696px;height:52px;"><b>WHEN IT RUNS</b><span>CDRs indexed or Reindex</span><span>Rules or Root Cause Catalog changed</span><span>Network Inventory changed</span><span>Layer3 Logs imported or deleted: the calls of their campaign</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Architecture</span><span>03</span></div>
+</section>
+
 <!-- 3 · What it reads -->
 <section class="slide" id="s3">
   <p class="kicker">Inputs</p>
@@ -148,7 +193,7 @@
     <div class="card input-node" style="left:0px;top:0.0px;height:146.5px;width:560px"><div class="icon" style="background:#475569"><svg viewBox="0 0 24 24"><path d="M6 3h12v18H6z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></div><div><h3>Call</h3><p>Result, test, technology, direction, environment</p></div></div><div class="card input-node" style="left:0px;top:164.5px;height:146.5px;width:560px"><div class="icon" style="background:#b4434f"><svg viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg></div><div><h3>Failure</h3><p>Description, signalling events, phase, side, its radio</p></div></div><div class="card input-node" style="left:0px;top:329.0px;height:146.5px;width:560px"><div class="icon" style="background:var(--rf)"><svg viewBox="0 0 24 24"><path d="M4 20V14M9 20V10M14 20V6M19 20V3"/></svg></div><div><h3>LTE radio</h3><p>RSRP, RSRQ, SINR, power, BLER, resource blocks</p></div></div><div class="card input-node" style="left:0px;top:493.5px;height:146.5px;width:560px"><div class="icon" style="background:#5b8fd6"><svg viewBox="0 0 24 24"><path d="M2 9a15 15 0 0 1 20 0M5 13a10 10 0 0 1 14 0M8.5 16.5a5 5 0 0 1 7 0M12 20h.01"/></svg></div><div><h3>NR radio</h3><p>RSRP, RSRQ, SINR, power, BLER, resource blocks</p></div></div><div class="card input-node" style="left:1136px;top:0.0px;height:146.5px;width:560px"><div class="icon" style="background:#6b7fa8"><svg viewBox="0 0 24 24"><path d="M7 7h10v10H7z"/><path d="M3 12h4M17 12h4"/></svg></div><div><h3>B side</h3><p>The RSRP and SINR of the other side of a Voice call</p></div></div><div class="card input-node" style="left:1136px;top:164.5px;height:146.5px;width:560px"><div class="icon" style="background:var(--ran)"><svg viewBox="0 0 24 24"><path d="M4 7h13l-3-3M20 17H7l3 3"/></svg></div><div><h3>Mobility</h3><p>Technologies, handovers and their types, ping-pongs</p></div></div><div class="card input-node" style="left:1136px;top:329.0px;height:146.5px;width:560px;border-color:#7d4cc4"><div class="icon" style="background:var(--dta2)"><svg viewBox="0 0 24 24"><path d="M12 2v20M5 7l7-5 7 5M7 22l5-9 5 9"/></svg></div><div><h3>Network Inventory</h3><p>Serving and nearest sites against their ISD, PCI, outages</p></div></div><div class="card input-node" style="left:1136px;top:493.5px;height:146.5px;width:560px"><div class="icon" style="background:var(--protocol)"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></div><div><h3>KPIs</h3><p>Throughput, access, DNS, TCP, loss, latency, MOS</p></div></div>
     <div class="inputs-core"><svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg><span>Every Non-Qualified Call</span></div>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · What it reads</span><span>03</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · What it reads</span><span>04</span></div>
 </section>
 
 <!-- 3b · What the Layer3 Logs add -->
@@ -191,7 +236,7 @@
   <div class="card" style="margin-top:20px;padding:20px 30px;border-color:var(--l3);background:linear-gradient(180deg,#123544,#0f2532)">
     <p style="margin:0;font-size:22px;color:#d9f6fb"><b style="color:#fff">12 rules read the log first</b>, before the radio of the CDR; the rules of rejects, authentication, TAU, IMS, handover, radio link and inter-RAT read it too. Its evidence quotes the log, and a log imported or deleted calculates again the calls of its campaign.</p>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Layer3 Logs</span><span>04</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Layer3 Logs</span><span>05</span></div>
 </section>
 
 <!-- 4 · How it decides -->
@@ -222,7 +267,7 @@
       <p style="font-size:22px;margin-top:26px;color:var(--muted)">Services, all or any of the conditions, thresholds, category and cause: all editable.</p>
     </div>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · How it decides</span><span>05</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · How it decides</span><span>06</span></div>
 </section>
 
 <!-- 5 · Lack of resources -->
@@ -254,7 +299,7 @@
     <div style="flex:1;height:22px;border-radius:12px;background:linear-gradient(90deg,#d9534f 0,#d9534f 25%,#2a3a5c 25%,#2a3a5c 100%);position:relative"></div>
     <span style="font-size:24px;color:var(--soft)">resource blocks used: <b style="color:#ff8a80">&lt; 25 %</b> loaded cell · <b style="color:#9fe0b5">≈ 66 %</b> a completed test</span>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Lack of resources</span><span>06</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Lack of resources</span><span>07</span></div>
 </section>
 
 <!-- 6 · ISD -->
@@ -293,7 +338,7 @@
     </div>
   </div>
   <p style="font-size:24px;color:var(--muted);margin-top:26px">No neighbour lists nor Timing Advance needed: the positions of the sites are enough. A site with no other site of its network within 40 km has no ISD.</p>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Inter-site distance</span><span>07</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Inter-site distance</span><span>08</span></div>
 </section>
 
 <!-- 7 · Network around the call -->
@@ -319,7 +364,7 @@
       <div class="criterion"><h3>Cells out of service</h3><p>Cells of its sites are locked, halted or disabled, and its radio suffered: RSRP below −105 dBm or SINR below 3 dB.</p><div class="result"><span style="background:var(--operational)">Operational</span><span>Operational</span><span>Cell/Site Outage</span></div></div>
     </div>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Network Inventory</span><span>08</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Network Inventory</span><span>09</span></div>
 </section>
 
 <!-- 8 · Radio, mobility, service -->
@@ -369,7 +414,7 @@
     </div>
   </div>
   <p style="font-size:24px;color:var(--muted);margin-top:30px">Good radio means measured and taken by no radio rule: without radio values, neither the Cutoff tests nor the Voice failures get a cause.</p>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Radio, mobility and service</span><span>09</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Radio, mobility and service</span><span>10</span></div>
 </section>
 
 <!-- 9 · Evidence -->
@@ -391,7 +436,7 @@
     <div class="card" style="padding:26px 30px"><h3 style="font-size:28px">RCA tab of the call</h3><p style="font-size:22px">Its card, with the rule and evidence</p></div>
     <div class="card" style="padding:26px 30px"><h3 style="font-size:28px">Exports</h3><p style="font-size:22px">Excel, PowerPoint, Word, Reporting</p></div>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Evidence</span><span>10</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Evidence</span><span>11</span></div>
 </section>
 
 <!-- 10 · Learning -->
@@ -416,7 +461,7 @@
       <div class="card" style="padding:28px 34px"><h3 style="font-size:32px">Always up to date</h3><p>after every decision and every indexing of the CDRs</p></div>
     </div>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Learning</span><span>11</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Learning</span><span>12</span></div>
 </section>
 
 <!-- 11 · Yours to tune -->
@@ -439,7 +484,7 @@
       <div class="card" style="padding:30px 34px"><h3 style="font-size:32px">Every change recorded</h3><p>App Events tells what changed; the calls are calculated again at once.</p></div>
     </div>
   </div>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Configuration</span><span>12</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Configuration</span><span>13</span></div>
 </section>
 
 <!-- 12 · Values it gives -->
@@ -458,7 +503,7 @@
     <div class="card" style="padding:28px 32px;border-top:8px solid var(--operational)"><h3 style="font-size:32px">Operational</h3><p style="font-size:22px">Cell/Site Outage · Unclear for the calls no rule explains</p></div>
   </div>
   <p style="font-size:24px;color:var(--muted);margin-top:30px">Every rule, with its conditions and result, is in the Help: Non-Qualified Calls → DT Analyzer RCA → Default rules.</p>
-  <div class="foot"><span><b>DT Analyzer RCA</b> · Root domains</span><span>13</span></div>
+  <div class="foot"><span><b>DT Analyzer RCA</b> · Root domains</span><span>14</span></div>
 </section>
 
 <script>
