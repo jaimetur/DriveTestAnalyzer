@@ -4,7 +4,7 @@
 
 ## Two modes
 
-- **Code only** (`install --code-only`): the second Mac is a server of its own, with its own data, backups, report schedules and emails, that always runs the code of the development checkout. It is the mode for a Mac that is the place to work with the data, reachable from every device, while the development Mac only develops: the data of the development Mac is never sent (`data` is refused), nothing of the storage of the second Mac is touched, and its application is an ordinary server, not in mirror mode.
+- **Code only** (`install --code-only`): the second Mac is a server of its own, with its own data, backups, report schedules and emails, that always runs the code of the development checkout. It is the mode for a Mac that is the place to work with the data, reachable from every device, while the development Mac only develops: the data of the development Mac is never sent (`data` is refused), nothing of the storage of the second Mac is touched, and its application is an ordinary server, not in mirror mode. With `--address <url>`, the address the second Mac is reached at, the application of the development Mac says on every page that it is a development copy and links to that address (a `development-copy-of` file in its configuration folder, read without a restart; `DRIVETEST_ANALYZER_DEVELOPMENT_COPY_OF` where the server takes environment variables).
 - **Code and data** (the default): the second Mac is a copy to look at the development environment from any device. It also receives the configuration and data folders of the development Mac and serves them in mirror mode; what is changed on it is overwritten.
 
 Either mode follows the checkout in one of two ways:
@@ -68,6 +68,7 @@ The settings stay in `~/.config/drivetest-analyzer/mirror.conf` on the developme
 | `tools/mirror/mirror-sync.sh code` | Synchronize the checkout now. |
 | `tools/mirror/mirror-sync.sh data` | Synchronize the configuration and data folders now (without waiting for the interval). |
 | `tools/mirror/mirror-sync.sh all` | Both. |
+| `tools/mirror/mirror-sync.sh address [url]` | Set, change or (without a url) remove the address of a code-only mirror that the application of the development Mac names on every page. |
 | `tools/mirror/mirror-sync.sh restart-mirror` | Restart the mirror application. |
 | `tools/mirror/mirror-sync.sh uninstall [--mirror]` | Remove the agents of the development Mac; with `--mirror`, the mirror also stops being one (its `mirror-of` file or its agent goes). The checkout and the data of the mirror stay. |
 | `tools/mirror/mirror-remote.sh status` (on the mirror) | The launcher or agent, the application and the storage of the mirror. |

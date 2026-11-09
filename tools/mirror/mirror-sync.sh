@@ -46,6 +46,7 @@ Usage: tools/mirror/mirror-sync.sh <command> [options]
   install --host user@host --repo /checkout/on/the/mirror --storage /storage/on/the/mirror
           [--code-only] [--follow saves|commits] [--label "the development Mac"] [--port 7278]
           [--interval 600] [--runner launcher|agent] [--replace-mirror-checkout] [--replace-mirror-data]
+          [--address https://the.mirror.example]
                  Set the mirror up: the SSH key of this Mac, rsync 3 and Python 3.15 on the mirror, its checkout,
                  its Python environment, what runs its application (the macOS launcher when the mirror has it,
                  else a launchd agent), the first synchronization, and the agents of this Mac that keep it
@@ -53,6 +54,8 @@ Usage: tools/mirror/mirror-sync.sh <command> [options]
                  checkout; its data is its own and the data of this Mac is never sent to it.
                  --follow commits: the mirror runs the commit this checkout is on, and what is saved here
                  without a commit stays here; --follow saves (the default): it runs every saved change.
+                 --address, for a code-only mirror: the address it is reached at; the application of this Mac
+                 then says on every page that it is a development copy and links to that address.
                  --replace-mirror-checkout overwrites changes of its own the checkout of the mirror holds;
                  --replace-mirror-data sets the data the mirror already holds aside (kept beside it, renamed) and
                  takes the data of this Mac.
@@ -64,6 +67,8 @@ Usage: tools/mirror/mirror-sync.sh <command> [options]
   all            code, then data (code alone for a code-only mirror).
   watch          Synchronize the checkout whenever a file changes, or whenever its commit does (what the watch
                  agent runs).
+  address [url]  Set, change or (without a url) remove the address of a code-only mirror that the application of
+                 this Mac names on every page.
   status         The last synchronizations, the agents of this Mac and the mirror application.
   restart-mirror Restart the mirror application.
   uninstall [--mirror]
@@ -106,6 +111,7 @@ load_config() {
   DATA_INTERVAL_SECONDS="${DATA_INTERVAL_SECONDS:-600}"
   MIRROR_DATA="${MIRROR_DATA:-on}"
   MIRROR_FOLLOW="${MIRROR_FOLLOW:-saves}"
+  MIRROR_ADDRESS="${MIRROR_ADDRESS:-}"
   RESTART_SETTLE_SECONDS="${RESTART_SETTLE_SECONDS:-5}"
   REMOTE_RSYNC="${REMOTE_RSYNC:-}"
   SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30 -o IdentitiesOnly=yes -i "$KEY_FILE")
@@ -374,6 +380,31 @@ watch_code() {
   done
 }
 
+# A code-only mirror is the server with the data in use, and this Mac a development copy: given the address the
+# mirror is reached at, the application of this Mac says so on every page, with a link (the development-copy-of
+# file of its configuration folder, which it reads without a restart).
+mark_development_copy() {
+  local address="$1" marker="$LOCAL_STORAGE/config/development-copy-of"
+  if [ -n "$address" ] && [ "$MIRROR_DATA" = "off" ]; then
+    mkdir -p "$LOCAL_STORAGE/config"
+    printf '%s\n' "$address" > "$marker"
+    log "The application of this Mac says it is a development copy of $address."
+  elif [ -f "$marker" ]; then
+    rm -f "$marker"
+    log "The application of this Mac no longer says it is a development copy."
+  fi
+}
+
+set_address() {
+  local address="${1:-}"
+  [ "$MIRROR_DATA" = "off" ] || die "Only a code-only mirror is the server with the data in use: this Mac is no development copy of a data mirror."
+  grep -v '^MIRROR_ADDRESS=' "$CONFIG_FILE" > "$CONFIG_FILE.new"
+  printf 'MIRROR_ADDRESS="%s"\n' "$address" >> "$CONFIG_FILE.new"
+  mv "$CONFIG_FILE.new" "$CONFIG_FILE"
+  MIRROR_ADDRESS="$address"
+  mark_development_copy "$address"
+}
+
 ensure_key() {
   if [ ! -f "$KEY_FILE" ]; then
     ssh-keygen -q -t ed25519 -N '' -C "drivetest-analyzer-mirror@$(hostname -s)" -f "$KEY_FILE" || die "The SSH key could not be created."
@@ -437,7 +468,7 @@ remote_rsync_path() {
 }
 
 install_mirror() {
-  local host="" repo="" storage="" label="the development Mac" port=7278 interval=600 runner="" replace_checkout=0 replace_data=0 data=on follow=saves
+  local host="" repo="" storage="" label="the development Mac" port=7278 interval=600 runner="" replace_checkout=0 replace_data=0 data=on follow=saves address=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --host) host="$2"; shift 2 ;;
@@ -449,6 +480,7 @@ install_mirror() {
       --runner) runner="$2"; shift 2 ;;
       --code-only) data=off; shift ;;
       --follow) follow="$2"; shift 2 ;;
+      --address) address="$2"; shift 2 ;;
       --replace-mirror-checkout) replace_checkout=1; shift ;;
       --replace-mirror-data) replace_data=1; shift ;;
       *) die "Unknown option $1 (see 'tools/mirror/mirror-sync.sh' without arguments)." ;;
@@ -458,6 +490,7 @@ install_mirror() {
   case "$follow" in saves|commits) ;; *) die "--follow takes saves or commits." ;; esac
   [ -n "$host" ] && [ -n "$repo" ] && [ -n "$storage" ] || die "install needs --host, --repo and --storage."
   [ "$data" = "on" ] || [ "$replace_data" -eq 0 ] || die "--code-only leaves the data of the mirror alone: it cannot go with --replace-mirror-data."
+  [ "$data" = "off" ] || [ -z "$address" ] || die "--address is for a code-only mirror, the server with the data in use."
   ensure_key
   mkdir -p "$(dirname "$CONFIG_FILE")" "$STATE_DIR"
   cat > "$CONFIG_FILE" <<EOF
@@ -471,6 +504,7 @@ MIRROR_LABEL="$label"
 DATA_INTERVAL_SECONDS=$interval
 MIRROR_DATA="$data"
 MIRROR_FOLLOW="$follow"
+MIRROR_ADDRESS="$address"
 EOF
   load_config
   remote true 2>/dev/null || die "The mirror does not accept the key of this Mac yet. Add this public key to ~/.ssh/authorized_keys of $host (Remote Login on), then run install again:
@@ -511,6 +545,7 @@ Commit or discard them there, or run install with --replace-mirror-checkout to o
     with_lock sync_data || die "The first synchronization of the data failed."
   fi
   install_agents
+  mark_development_copy "$MIRROR_ADDRESS"
   show_status
 }
 
@@ -535,6 +570,7 @@ show_status() {
       echo "Agent $agent: not loaded"
     fi
   done
+  [ -z "$MIRROR_ADDRESS" ] || echo "This Mac: a development copy, its application names $MIRROR_ADDRESS as the server with the data in use"
   host="${MIRROR_SSH#*@}"
   echo "Mirror application: $(curl -s -m 5 "http://$host:$MIRROR_PORT/healthz" || echo 'not answering')"
 }
@@ -545,6 +581,11 @@ uninstall_mirror() {
     launchctl bootout "gui/$(id -u)/$agent" 2>/dev/null || true
     rm -f "$AGENTS_DIR/$agent.plist"
   done
+  # The application of this Mac stops saying it is a development copy.
+  (
+    [ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
+    rm -f "${LOCAL_STORAGE:-$HOME/DriveTestAnalyzer}/config/development-copy-of"
+  )
   log "The agents of this Mac are removed."
   if [ "${1:-}" = "--mirror" ]; then
     load_config
@@ -561,6 +602,7 @@ case "$command" in
   data) load_config; with_lock sync_data ;;
   all) load_config; with_lock sync_checkout_now || exit 1; [ "$MIRROR_DATA" = "on" ] || exit 0; with_lock sync_data ;;
   watch) load_config; watch_code ;;
+  address) load_config; set_address "$@" ;;
   status) load_config; show_status ;;
   restart-mirror) load_config; remote_tool restart ;;
   uninstall) uninstall_mirror "$@" ;;

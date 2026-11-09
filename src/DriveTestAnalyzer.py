@@ -64,7 +64,7 @@ from starlette.requests import ClientDisconnect
 
 DEFAULT_TRANSFER_PORT = 7278
 
-from src.config import PROJECT_ROOT, mirror_of, settings
+from src.config import PROJECT_ROOT, development_copy_of, mirror_of, settings
 from src.modules.cdr_analysis.analytics import build_analysis, shared_frame_attrs
 from src.modules.core.app_event_details import app_event_origin, app_event_origin_parts, changed_values, describe_app_event
 from src.modules.core.background_scheduler import BackgroundTaskScheduler
@@ -15284,6 +15284,8 @@ def healthz() -> dict[str, str]:
     health = {'status': 'ok', 'version': __version__}
     if mirror_of():
         health['mirror_of'] = mirror_of()
+    if development_copy_of():
+        health['development_copy_of'] = development_copy_of()
     return health
 
 
@@ -18958,6 +18960,7 @@ templates.env.globals['user_choices'] = user_choices
 # Whether the tool can send emails (the Forgot your password? of the login page).
 templates.env.globals['email_delivery_ready'] = lambda: bool(email_delivery_settings(repository)['configured'])
 templates.env.globals['mirror_of'] = mirror_of
+templates.env.globals['development_copy_of'] = development_copy_of
 
 
 def ticket_people() -> dict[str, dict[str, str]]:

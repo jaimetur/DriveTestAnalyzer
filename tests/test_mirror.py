@@ -59,3 +59,27 @@ def test_mirror_of_file_names_the_mirror_without_an_environment_variable(tmp_pat
         assert config.mirror_of() == 'the office server'
     finally:
         object.__setattr__(config.settings, 'config_dir', configured_dir)
+
+
+def test_development_copy_names_the_server_with_the_data_in_use(client, monkeypatch) -> None:
+    """A development copy works as any server and says on every page where the data in use is."""
+    from src import config
+
+    monkeypatch.delenv('DRIVETEST_ANALYZER_DEVELOPMENT_COPY_OF', raising=False)
+    assert 'development-notice' not in client.get('/login').text
+    assert 'development_copy_of' not in client.get('/healthz').json()
+    # Named by a file of the configuration folder, read without a restart (the macOS launcher passes no variables).
+    (config.settings.config_dir / 'development-copy-of').write_text('https://dta.example.com\n', encoding='utf-8')
+    page = client.get('/login').text
+    assert '<strong>Development copy.</strong> The data in use is on <a href="https://dta.example.com">https://dta.example.com</a>' in page
+    assert client.get('/healthz').json()['development_copy_of'] == 'https://dta.example.com'
+    # It keeps its schedules and is no mirror.
+    assert len(app_module.SCHEDULER_THREADS) == 2
+    assert 'mirror-notice' not in page
+    assert client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False).status_code == 303
+    assert 'development-notice' in client.get('/documents/view/help').text
+    # A name that is not an address is shown as it is, without a link.
+    monkeypatch.setenv('DRIVETEST_ANALYZER_DEVELOPMENT_COPY_OF', 'the office server')
+    page = client.get('/login').text
+    assert 'The data in use is on the office server:' in page
+    assert '<a href="the office server"' not in page

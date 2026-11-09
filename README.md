@@ -240,6 +240,7 @@ Local storage roots can be set in [`storage-paths.conf`](storage-paths.conf). En
 | `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER` | Report and preview renderer. Defaults to `canvas`; set `pil` to use the legacy server-side painter. |
 | `DRIVETEST_ANALYZER_DESIGN_FRAME_CACHE_SNAPSHOTS` | Recently used PPT snapshots that keep chart data frames in memory. Defaults to `3`; lower it on servers with little RAM. |
 | `DRIVETEST_ANALYZER_MIRROR_OF` | Set on a mirror of another installation (see [`tools/mirror/README.md`](tools/mirror/README.md)): it runs no backup or report schedules, sends no emails and says on every page that it is a synchronized copy. |
+| `DRIVETEST_ANALYZER_DEVELOPMENT_COPY_OF` | Set on a development copy to the address (or a name) of the server that holds the data in use: every page says so, with a link. |
 | `TZ` | Container timezone, for example `Europe/Madrid`. |
 | `HOST_CONFIG_DIR` | Host path mounted as persistent configuration. |
 | `HOST_DATA_DIR` | Host path mounted as persistent data. |

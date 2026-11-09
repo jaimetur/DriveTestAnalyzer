@@ -53,23 +53,38 @@ def project_path(env_var: str, default: str) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
+def _named_by(variable: str, filename: str) -> str:
+    """What the deployment says of this server: an environment variable or, for a server started without them (the
+    macOS launcher), a file of the configuration folder, read at each call so that it needs no restart."""
+    value = str(os.getenv(variable) or '')
+    if not value:
+        marker = settings.config_dir / filename
+        try:
+            value = marker.read_text(encoding='utf-8') if marker.is_file() else ''
+        except OSError:
+            value = ''
+    return ' '.join(value.split())
+
+
 def mirror_of() -> str:
     """The installation this server is a synchronized copy of; '' on an ordinary server.
 
-    Named by ``DRIVETEST_ANALYZER_MIRROR_OF`` or, for a server started without environment variables (the macOS
-    launcher), by a ``mirror-of`` file in the configuration folder. A mirror (kept with ``tools/mirror``) keeps no
-    schedules of its own and sends no emails: the recurring backups and the Reporting schedules run on the
-    installation it is synchronized from, and what is changed on the mirror is overwritten by the next
-    synchronization, which every page of the mirror says.
+    Named by ``DRIVETEST_ANALYZER_MIRROR_OF`` or by a ``mirror-of`` file in the configuration folder. A mirror (kept
+    with ``tools/mirror``) keeps no schedules of its own and sends no emails: the recurring backups and the
+    Reporting schedules run on the installation it is synchronized from, and what is changed on the mirror is
+    overwritten by the next synchronization, which every page of the mirror says.
     """
-    label = str(os.getenv('DRIVETEST_ANALYZER_MIRROR_OF') or '')
-    if not label:
-        marker = settings.config_dir / 'mirror-of'
-        try:
-            label = marker.read_text(encoding='utf-8') if marker.is_file() else ''
-        except OSError:
-            label = ''
-    return ' '.join(label.split())
+    return _named_by('DRIVETEST_ANALYZER_MIRROR_OF', 'mirror-of')
+
+
+def development_copy_of() -> str:
+    """The server that holds the data in use (its address, or a name) when this one is a development copy; else ''.
+
+    Named by ``DRIVETEST_ANALYZER_DEVELOPMENT_COPY_OF`` or by a ``development-copy-of`` file in the configuration
+    folder. A development copy works as any server; every page says that the data in use is on the other server,
+    with a link when it is named by its address, and that what is changed here stays here.
+    """
+    return _named_by('DRIVETEST_ANALYZER_DEVELOPMENT_COPY_OF', 'development-copy-of')
 
 
 # The PowerPoint master of every report and export (its covers and transitions in the Vodafone-Three red).
