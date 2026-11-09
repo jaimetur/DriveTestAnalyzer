@@ -2474,7 +2474,8 @@ def test_workspace_content_of_exports_and_backups_is_grouped_by_module_in_menu_o
         ('scoring-excluded-calls', 'Benchmark'), ('scoring-export-panels', 'Benchmark'),
         ('network-insights-favourites', 'Network Insights'),
         ('nq-call-tracking', 'Non-Qualified Calls'), ('nq-calls-configuration', 'Non-Qualified Calls'),
-        ('reporting-jobs', 'Reporting'), ('bundle-report-template-favourites', 'Reporting'),
+        # The Report Definitions carry the schedules of the reports (Report Schedules only import, from earlier packages).
+        ('bundle-report-template-favourites', 'Reporting'),
         ('query-builder-queries', 'Builders'),
         ('assistant-glossary', 'AI Assistant'),
     ]
