@@ -80,7 +80,7 @@ def text_block(text: str, *, base_url: str = '', tickets: dict[int, str] | None 
 
 def deliver(repository: Any, *, kind: str, recipients: list[str], subject: str, html_body: str, cc: Iterable[str] = (),
             reply_to: str = '', actor: str = '', details: dict[str, Any] | None = None, background: bool = True,
-            switch: str = '') -> bool:
+            switch: str = '', thread: bool = False) -> bool:
     """Send one email when Email Delivery is configured (and its ``switch`` is on), recording it in App Events.
 
     In the background it returns whether it was queued; otherwise whether it was sent."""
@@ -93,7 +93,8 @@ def deliver(repository: Any, *, kind: str, recipients: list[str], subject: str, 
 
     def send() -> bool:
         try:
-            send_email(settings, recipients, subject, html_to_text(html_body), html_body, cc=copied, reply_to=reply_to, kind=kind)
+            send_email(settings, recipients, subject, html_to_text(html_body), html_body, cc=copied, reply_to=reply_to, kind=kind,
+                       thread=thread)
         except Exception as exc:  # The error is recorded as it is: the action that sent it already succeeded.
             repository.try_add_log(actor or 'system', 'email_failed', json.dumps({**logged, 'error': str(exc)}, ensure_ascii=False))
             return False
@@ -271,7 +272,7 @@ def notify_ticket(repository: Any, app_name: str, ticket_id: int, actor: str, ev
                                          references=references)
             deliver(repository, kind='ticket', recipients=[address], subject=subject, html_body=body, actor=actor,
                     details={'ticket_id': int(ticket['id']), 'event': event, 'user': username.upper(),
-                             'about_ticket': own_ticket}, switch='notify_tickets')
+                             'about_ticket': own_ticket}, switch='notify_tickets', thread=True)
     except Exception as exc:  # Never let an email break the change it tells of.
         repository.try_add_log(actor or 'system', 'email_failed', json.dumps({
             'kind': 'ticket', 'ticket_id': ticket_id, 'event': event, 'error': str(exc)}, ensure_ascii=False))

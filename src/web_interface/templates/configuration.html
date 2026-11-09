@@ -136,7 +136,7 @@
         <div class="configuration-card-head"><p class="eyebrow">Sender</p><h3>Sender And Automatic Emails</h3></div>
         <label>Sender Address
           <input type="email" name="from_address" value="{{ email_delivery.from_address }}" placeholder="reports@example.com">
-          <span class="table-help" data-email-webhook>With a flow, the address of its mailbox: replies that go to nobody else go there.</span>
+          <span class="table-help" data-email-webhook>With a flow, the address of its mailbox: replies that go to nobody else go there, and an email it also receives keeps no copy in its Sent Items.</span>
         </label>
         <label data-email-smtp>Sender Name
           <input type="text" name="from_name" value="{{ email_delivery.from_name }}">
