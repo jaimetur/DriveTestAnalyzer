@@ -34,7 +34,11 @@
   let definition = null;
   let filterPickers = {};
   let favourites = [];
-  let pollTimer = null;
+  // The runs followed until they finish (run id -> its timer and the report it generates): several reports can be
+  // requested one after another, and the server generates them in turn.
+  const watched = new Map();
+  // The reports whose Generate is being requested (a second click waits for the first).
+  const requesting = new Set();
   // The run shown in the preview dialog (see jobFromRun).
   let currentJob = null;
 
@@ -1098,9 +1102,16 @@
   const dialog = $('brt-dialog');
   const formatLabel = (format) => (format === 'word' ? 'Word' : 'PowerPoint');
 
-  function stopPolling() {
-    if (pollTimer) window.clearTimeout(pollTimer);
-    pollTimer = null;
+  // Read a run again after ``delay`` (each run followed on its own, so following one never stops following another).
+  function watch(runId, delay, reportId) {
+    const entry = watched.get(runId) || {reportId};
+    window.clearTimeout(entry.timer);
+    entry.timer = window.setTimeout(() => { void poll(runId); }, delay);
+    watched.set(runId, entry);
+  }
+  function unwatch(runId) {
+    window.clearTimeout(watched.get(runId)?.timer);
+    watched.delete(runId);
   }
 
   function showJob(job) {
@@ -1181,8 +1192,16 @@
   let jobSeenAt = 0;
   let elapsedTimer = null;
   const isPending = (job) => ['queued', 'running'].includes(job?.status);
-  const rememberJob = (job) => { try { localStorage.setItem(JOB_KEY, JSON.stringify({id: job.id, title: job.title})); } catch {} };
-  const forgetJob = () => { try { localStorage.removeItem(JOB_KEY); } catch {} };
+  // Every report requested in this browser and not told yet ([{id, title}]; a single one as stored before, too).
+  const storedJobs = () => {
+    try {
+      const value = JSON.parse(localStorage.getItem(JOB_KEY) || 'null');
+      return (Array.isArray(value) ? value : value ? [value] : []).filter((job) => job?.id && !job.notified);
+    } catch { return []; }
+  };
+  const storeJobs = (jobs) => { try { if (jobs.length) localStorage.setItem(JOB_KEY, JSON.stringify(jobs)); else localStorage.removeItem(JOB_KEY); } catch {} };
+  const rememberJob = (job) => storeJobs([...storedJobs().filter((item) => item.id !== job.id), {id: job.id, title: job.title}]);
+  const forgetJob = (runId) => storeJobs(storedJobs().filter((item) => item.id !== runId));
   const elapsedNow = (job) => (job?.elapsed_seconds || 0) + (isPending(job) ? Math.round((Date.now() - jobSeenAt) / 1000) : 0);
   const clock = (seconds) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   const duration = (seconds = 0) => (seconds >= 60 ? `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, '0')} s` : `${seconds} s`);
@@ -1195,32 +1214,29 @@
   }
   // (The cards of the reports show the progress of a report being generated, from the state of the page.)
   function updateGenerateButton() {}
-  function openPreview() {
-    const job = currentJob;
+  function openPreview(job) {
     if (job.status !== 'ready' && !dialog.open) dialog.showModal();
     showJob(job);
-    if (job.status === 'ready') forgetJob();
+    if (job.status === 'ready') forgetJob(job.id);
   }
+  // A report that finished out of its dialog is told, one after another when several finish together.
+  let notices = Promise.resolve();
+  const notify = (job) => { notices = notices.then(() => finished(job)).catch(() => {}); return notices; };
   async function finished(job) {
-    if (dialog.open) {
-      if (job.status !== 'queued' && job.status !== 'running') forgetJob();
-      return;
-    }
+    forgetJob(job.id);
+    if (dialog.open && currentJob?.id === job.id) return;
     if (job.status === 'ready') {
       const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
       const open = typeof window.showConfirmDialog === 'function'
         ? Boolean(await window.showConfirmDialog('', {title: 'Report Ready', copyHtml: `<p><strong>${escape(job.title)}</strong> is ready (processed in ${duration(job.elapsed_seconds)}).</p><p>Open its preview to check it and download it?</p>`,
           confirmLabel: 'Open preview', cancelLabel: 'Later'}))
         : window.confirm(`${job.title} is ready. Open its preview?`);
-      forgetJob();
-      if (open) openPreview();
+      if (open) openPreview(job);
       else updateGenerateButton();
     } else if (job.status === 'failed') {
-      forgetJob();
-      if (typeof window.showInfoDialog === 'function') window.showInfoDialog(job.error || job.message, {title: 'Report Failed', tone: 'error'});
-      else status(job.error || job.message, 'error');
-    } else {
-      forgetJob();
+      if (typeof window.showInfoDialog === 'function') {
+        await new Promise((resolve) => window.showInfoDialog(job.error || job.message, {title: `Report Failed: ${job.title}`, tone: 'error', onClose: resolve}));
+      } else status(job.error || job.message, 'error');
     }
   }
 
@@ -1243,44 +1259,59 @@
   async function poll(runId) {
     try {
       const job = jobFromRun(await api(`/api/reporting/runs/${runId}/report`));
-      if (currentJob && currentJob.id && currentJob.id !== runId) return;
       // Followed in its dialog it opens by itself when it is ready; hidden, a dialog tells when it is.
-      const followed = dialog.open;
+      const followed = dialog.open && currentJob?.id === runId;
       if (followed) showJob(job);
-      else { currentJob = job; jobSeenAt = Date.now(); }
-      if (isPending(job)) { pollTimer = window.setTimeout(() => poll(runId), 1500); return; }
-      updateElapsed();
+      else if (currentJob?.id === runId) { currentJob = job; jobSeenAt = Date.now(); }
+      if (isPending(job)) { watch(runId, 1500); return; }
+      unwatch(runId);
+      if (currentJob?.id === runId) updateElapsed();
       refreshPage();
-      if (followed) forgetJob();
-      else await finished(job);
+      if (followed) forgetJob(runId);
+      else await notify(job);
     } catch (error) {
-      if (/no longer exists/i.test(error.message)) { forgetJob(); currentJob = null; return; }
-      $('brt-dialog-message').textContent = error.message;
-      pollTimer = window.setTimeout(() => poll(runId), 5000);
+      if (/no longer exists/i.test(error.message)) {
+        unwatch(runId);
+        forgetJob(runId);
+        if (currentJob?.id === runId) currentJob = null;
+        return;
+      }
+      if (dialog.open && currentJob?.id === runId) $('brt-dialog-message').textContent = error.message;
+      watch(runId, 5000);
     }
   }
 
-  // Generate: a run of the report (in the formats of its schedule), followed in the dialog and listed in History.
+  // Generate: a run of the report (in the formats of its schedule), followed in the dialog and listed in History. While
+  // other reports requested here are being generated it is queued after them, without a dialog: its card says Queued,
+  // and a dialog tells when it is ready, as for a report whose dialog was hidden.
   async function generateReport(report) {
-    if (isPending(currentJob) && currentJob.id) { openPreview(); return; }
-    stopPolling();
-    showJob({id: '', status: 'queued', progress: 0, message: 'Starting…', title: report.name, warnings: [], formats: {}, outline: []});
-    if (!dialog.open) dialog.showModal();
+    const following = [...watched].find(([, entry]) => entry.reportId === report.id);
+    if (following) { void window.openReportRun(following[0]); return; }
+    if (requesting.has(report.id)) return;
+    const queued = watched.size > 0 || requesting.size > 0;
+    requesting.add(report.id);
+    if (!queued) {
+      showJob({id: '', status: 'queued', progress: 0, message: 'Starting…', title: report.name, warnings: [], formats: {}, outline: []});
+      if (!dialog.open) dialog.showModal();
+    }
     try {
       const result = await api(`/api/reporting/bundle-report-template/favourites/${report.id}/generate`, {method: 'POST',
         body: JSON.stringify({refresh: !$('brt-reuse').checked})});
-      currentJob = {...currentJob, id: result.run_id};
+      if (!queued) currentJob = {...currentJob, id: result.run_id};
       rememberJob({id: result.run_id, title: report.name});
+      watch(result.run_id, 1000, report.id);
       refreshPage();
-      pollTimer = window.setTimeout(() => poll(result.run_id), 1000);
+      if (queued) status(`${report.name} is queued: it is generated after the reports requested before it, and a dialog tells when it is ready.`);
     } catch (error) {
-      showJob({id: '', status: 'failed', progress: 0, message: error.message, error: error.message, title: report.name,
+      if (queued) status(error.message, 'error');
+      else showJob({id: '', status: 'failed', progress: 0, message: error.message, error: error.message, title: report.name,
         warnings: [], formats: {}, outline: []});
+    } finally {
+      requesting.delete(report.id);
     }
   }
   // Preview (or Follow) of a run in History or on a card: at a slide of a link, the slide viewer of a report ready.
   window.openReportRun = async (runId, index = 0, format = '') => {
-    stopPolling();
     try {
       const job = jobFromRun(await api(`/api/reporting/runs/${runId}/report`));
       currentJob = job;
@@ -1288,7 +1319,7 @@
       if (job.status === 'ready') { openReportViewer(job, index, format); return; }
       if (!dialog.open) dialog.showModal();
       showJob(job);
-      if (isPending(job)) pollTimer = window.setTimeout(() => poll(job.id), 1500);
+      if (isPending(job)) watch(job.id, 1500);
     } catch (error) {
       status(error.message, 'error');
     }
@@ -1298,9 +1329,9 @@
   const hideDialog = () => { dialog.close(); updateGenerateButton(); };
   async function cancelJob() {
     const job = currentJob;
-    stopPolling();
-    forgetJob();
     if (job?.id) {
+      unwatch(job.id);
+      forgetJob(job.id);
       try { await api('/api/reporting/runs/stop', {method: 'POST', body: JSON.stringify({ids: [job.id]})}); } catch (error) { status(error.message, 'error'); }
     }
     currentJob = null;
@@ -1315,10 +1346,20 @@
   // Escape hides a report being generated, as Hide does.
   dialog.addEventListener('cancel', (event) => { if (isPending(currentJob)) { event.preventDefault(); hideDialog(); } });
 
-  // A report generated before this page opened (Hide, or told on another page): its dialog follows it, and a link of
-  // another page (?report_run=) opens its preview.
-  async function resumeJob() {
-    const asked = new URLSearchParams(window.location.search).get('report_run');
+  // The reports generated before this page opened (Hide, or told on another page) are followed again, each told when it
+  // finishes, and a link of another page (?report_run=) opens its preview.
+  async function resumeJob(stored) {
+    try {
+      const job = jobFromRun(await api(`/api/reporting/runs/${stored.id}/report`));
+      if (isPending(job)) { watch(job.id, 1500); return; }
+      await notify(job);
+    } catch (error) {
+      if (/no longer exists/i.test(error?.message || '')) forgetJob(stored.id);
+      else window.setTimeout(() => { void resumeJob(stored); }, 5000);
+    }
+  }
+  function resumeJobs() {
+    const asked = Number(new URLSearchParams(window.location.search).get('report_run')) || null;
     if (asked) {
       // Opened once: reloading the page does not open it again.
       const url = new URL(window.location.href);
@@ -1326,23 +1367,14 @@
       const format = url.searchParams.get('format') || '';
       ['report_run', 'slide', 'format'].forEach((key) => url.searchParams.delete(key));
       window.history.replaceState(window.history.state, '', url);
-      void window.openReportRun(Number(asked), slide, format);
-      forgetJob();
-      return;
+      void window.openReportRun(asked, slide, format);
+      forgetJob(asked);
     }
-    let stored = null;
-    try { stored = JSON.parse(localStorage.getItem(JOB_KEY) || 'null'); } catch {}
-    if (!stored?.id || stored.notified) { if (stored?.notified) forgetJob(); return; }
     try {
-      const job = jobFromRun(await api(`/api/reporting/runs/${stored.id}/report`));
-      currentJob = job;
-      jobSeenAt = Date.now();
-      if (isPending(job)) { updateElapsed(); pollTimer = window.setTimeout(() => poll(job.id), 1500); return; }
-      await finished(job);
-    } catch (error) {
-      if (/no longer exists/i.test(error?.message || '')) forgetJob();
-      else window.setTimeout(resumeJob, 5000);
-    }
+      // (Told before, as stored by an earlier version.)
+      if (JSON.parse(localStorage.getItem(JOB_KEY) || 'null')?.notified) storeJobs([]);
+    } catch {}
+    storedJobs().filter((stored) => stored.id !== asked).forEach((stored) => { void resumeJob(stored); });
   }
 
   // -- start -------------------------------------------------------------------------------------------
@@ -1386,8 +1418,8 @@
     return {...defaults, ...saved, filters: {...defaults.filters, ...(saved.filters || {})}, sections};
   }
 
-  // A report being generated is followed at once, without waiting for the panel (a busy server answers its options
+  // The reports being generated are followed at once, without waiting for the panel (a busy server answers its options
   // late).
-  void resumeJob();
+  resumeJobs();
   void load();
 })();

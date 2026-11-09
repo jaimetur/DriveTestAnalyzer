@@ -13443,38 +13443,58 @@ document.addEventListener('change', async (event) => {
   document.querySelectorAll('select[data-user-select]').forEach(enhance);
 })();
 
-// A report of Reporting generated in the background (its dialog hidden) tells on every page when it is ready, with a
-// dialog that opens its preview in Reporting; Reporting follows it itself (bundle_report_template.js).
-(function watchReportRun() {
+// The reports of Reporting generated in the background (their dialog hidden, or queued after another) tell on every
+// page when they are ready, one dialog after another, each opening its preview in Reporting; Reporting follows them
+// itself (bundle_report_template.js).
+(function watchReportRuns() {
   const key = 'drivetest.bundleReportTemplate.job';
-  let stored = null;
-  try { stored = JSON.parse(localStorage.getItem(key) || 'null'); } catch {}
-  if (!stored?.id || stored.notified || document.getElementById('brt-dialog')) return;
+  // [{id, title}] (a single one as stored before, too).
+  const stored = () => {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || 'null');
+      return (Array.isArray(value) ? value : value ? [value] : []).filter((job) => job?.id && !job.notified);
+    } catch { return []; }
+  };
+  if (!stored().length || document.getElementById('brt-dialog')) return;
   const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
-  const forget = () => { try { localStorage.removeItem(key); } catch {} };
-  const check = async () => {
+  const forget = (id) => {
+    const left = stored().filter((job) => job.id !== id);
+    try { if (left.length) localStorage.setItem(key, JSON.stringify(left)); else localStorage.removeItem(key); } catch {}
+  };
+  let leaving = false;
+  let notices = Promise.resolve();
+  const tell = (run, report) => {
+    notices = notices.then(async () => {
+      if (leaving) return;
+      if (['sent', 'completed', 'partial'].includes(run.status)) {
+        const open = await showConfirmDialog('', {title: 'Report Ready', copyHtml: `<p><strong>${escape(report?.title || run.task_name)}</strong> is ready.</p><p>Open its preview in Reporting to check it and download it?</p>`,
+          confirmLabel: 'Open preview', cancelLabel: 'Later'});
+        forget(run.id);
+        // Later, History keeps it with its preview; the other reports are told in Reporting.
+        if (open) { leaving = true; window.location.href = `/reporting?report_run=${encodeURIComponent(run.id)}#history`; }
+        return;
+      }
+      forget(run.id);
+      if (run.status === 'failed') {
+        await new Promise((resolve) => showInfoDialog(run.error || run.message || 'The report could not be generated.',
+          {title: `Report Failed: ${run.task_name}`, tone: 'error', onClose: resolve}));
+      }
+    }).catch(() => {});
+  };
+  const check = async (id) => {
     let payload;
     try {
-      const response = await fetch(`/api/reporting/runs/${encodeURIComponent(stored.id)}/report`, {headers: {Accept: 'application/json'}});
-      if ([401, 403, 404].includes(response.status)) { forget(); return; }
-      if (!response.ok) { window.setTimeout(check, 10000); return; }
+      const response = await fetch(`/api/reporting/runs/${encodeURIComponent(id)}/report`, {headers: {Accept: 'application/json'}});
+      if ([401, 403, 404].includes(response.status)) { forget(id); return; }
+      if (!response.ok) { window.setTimeout(() => check(id), 10000); return; }
       payload = await response.json();
     } catch {
-      window.setTimeout(check, 10000);
+      window.setTimeout(() => check(id), 10000);
       return;
     }
     const {run, report} = payload;
-    if (['queued', 'running', 'stopping'].includes(run.status)) { window.setTimeout(check, 4000); return; }
-    if (['sent', 'completed', 'partial'].includes(run.status)) {
-      const open = await showConfirmDialog('', {title: 'Report Ready', copyHtml: `<p><strong>${escape(report?.title || run.task_name)}</strong> is ready.</p><p>Open its preview in Reporting to check it and download it?</p>`,
-        confirmLabel: 'Open preview', cancelLabel: 'Later'});
-      forget();
-      // Later, History keeps it with its preview.
-      if (open) window.location.href = `/reporting?report_run=${encodeURIComponent(run.id)}#history`;
-      return;
-    }
-    forget();
-    if (run.status === 'failed') showInfoDialog(run.error || run.message || 'The report could not be generated.', {title: 'Report Failed', tone: 'error'});
+    if (['queued', 'running', 'stopping'].includes(run.status)) { window.setTimeout(() => check(id), 4000); return; }
+    tell(run, report);
   };
-  window.setTimeout(check, 1500);
+  stored().forEach((job, index) => window.setTimeout(() => check(job.id), 1500 + index * 300));
 })();

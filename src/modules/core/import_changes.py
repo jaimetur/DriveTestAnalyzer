@@ -583,7 +583,7 @@ SETTINGS_ELEMENTS = {
 ELEMENT_LABELS = {
     'ppt-templates': {'content': 'Content'},
     'scoring-excluded-calls': {'calls': 'Calls'},
-    'bundle-report-template-favourites': {'definition': _report_definition_changes},
+    'bundle-report-template-favourites': {'definition': _report_definition_changes, 'starred_by': 'Stars'},
 }
 
 

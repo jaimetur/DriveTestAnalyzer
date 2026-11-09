@@ -1010,6 +1010,39 @@ def test_each_user_marks_their_own_reports_with_the_star(client):
     assert missing.status_code == 404 and missing.json()['detail'] == 'The report no longer exists.'
 
 
+def test_the_stars_of_the_reports_travel_with_them(client, tmp_path):
+    from src.modules.core.import_changes import ELEMENT_LABELS, element_items, predict
+
+    login(client)
+    workspace_user('reader', 'user-viewer')
+    one = bundle_report_templates.save_favourite(core.repository, None, 'One', {}, 'super')
+    other = bundle_report_templates.save_favourite(core.repository, None, 'Other', {}, 'super')
+    bundle_report_templates.set_report_star(core.repository, 'super', one['id'], True)
+    bundle_report_templates.set_report_star(core.repository, 'reader', one['id'], True)
+    bundle_report_templates.set_report_star(core.repository, 'reader', other['id'], True)
+    # Each report of an export names who starred it.
+    document = json.loads(bundle_report_templates.export_favourites_document(core.repository))
+    assert {item['name']: item['starred_by'] for item in document['favourites']} == {'One': ['reader', 'super'], 'Other': ['reader']}
+    # The preview tells the stars the import adds (a user this server lacks has none), never one it would take away.
+    bundle_report_templates.set_report_star(core.repository, 'reader', one['id'], False)
+    bundle_report_templates.set_report_star(core.repository, 'super', other['id'], True)
+    incoming = {**document, 'favourites': [{**item, 'starred_by': [*item['starred_by'], 'nobody']} for item in document['favourites']]}
+    before = json.loads(bundle_report_templates.export_favourites_document(core.repository))
+    predicted = core._predicted_document('bundle-report-template-favourites', core.active_workspace, incoming)
+    assert {item['name']: item['starred_by'] for item in predicted['favourites']} == {'One': ['reader', 'super'], 'Other': ['reader', 'super']}
+    changes = predict(element_items('bundle-report-template-favourites', predicted), element_items('bundle-report-template-favourites', before),
+                      ELEMENT_LABELS['bundle-report-template-favourites'])
+    assert (changes.updated, changes.unchanged) == ([('One', ['Stars: +reader'])], 1)
+    # The import (as a transfer, a restore or an Import ZIP) gives them; the stars of the workspace stay.
+    assert core._restore_workspace_bundle_report_template_favourites(core.active_workspace, json.dumps(incoming).encode(), 'super') == 2
+    assert bundle_report_templates.report_star_users(core.repository) == {one['id']: ['reader', 'super'], other['id']: ['reader', 'super']}
+    assert bundle_report_templates.report_stars(core.repository, 'nobody') == set()
+    # Documents without stars (exported before) leave them as they are.
+    legacy = {**document, 'favourites': [{key: value for key, value in item.items() if key != 'starred_by'} for item in document['favourites']]}
+    assert bundle_report_templates.import_favourites_document(core.repository, json.dumps(legacy), 'super') == 2
+    assert bundle_report_templates.report_star_users(core.repository) == {one['id']: ['reader', 'super'], other['id']: ['reader', 'super']}
+
+
 def test_reports_are_read_online_in_the_slide_viewer_of_the_presentations(client):
     login(client)
     assert 'js/help/presentation_viewer.js' in client.get('/reporting').text
