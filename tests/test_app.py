@@ -8363,7 +8363,7 @@ def test_workspace_maps_unassigned_cdr_vendors_from_available_multivendor_mappin
     assert 'value="2" selected' in workspace.text
     assert 'data-loading-label="Mapping Vendors to CDR samples"' not in workspace.text
     assert 'Vendor mapping rule' in workspace.text
-    assert 'The same Vendor at both cells:' in workspace.text and '_Mixed (non-Ericsson)' in workspace.text
+    assert 'The same Vendor at all its cells:' in workspace.text and '_Mixed (non-Ericsson)' in workspace.text
     assert 'Serving Networks</a>' in workspace.text and ('serves (for example EE), or left out of the Operators of the Multivendor '
                                                          'Mappings: <code>&lt;Operator&gt; - All</code>') in workspace.text
     live_status = client.get('/api/datasets/status').json()['datasets']

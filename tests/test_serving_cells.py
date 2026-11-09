@@ -88,6 +88,20 @@ def test_serving_networks_defaults_csv_and_snapshot_preference():
     assert sc.cdr_reference_date(pd.DataFrame({'x': [1]}), '20260623 Final Data CDR.xlsx') == date(2026, 6, 23)
 
 
+def test_serving_endpoints_place_the_cells_a_sample_changed_to_along_its_way():
+    frame = pd.DataFrame({'Cell_ID_A': ['[1]->[2]->[3]->[2]->[1]', '[4]', '[5]->[6]'], 'Call_Start_Longitude_A': [0.0] * 3, 'Call_Start_Latitude_A': [50.0] * 3,
+                          'Call_End_Longitude_A': [4.0] * 3, 'Call_End_Latitude_A': [54.0] * 3})
+    endpoints = sc.serving_endpoints(frame, 'voice')
+    middle = endpoints.loc[endpoints['end'] == 'middle']
+    # Each one once, and neither the first nor the last cell again.
+    assert middle['row'].tolist() == [0, 0] and middle['cell'].tolist() == ['2', '3']
+    assert middle['longitude'].tolist() == [1.0, 2.0] and middle['latitude'].tolist() == [51.0, 52.0]
+    assert endpoints.loc[endpoints['end'] != 'middle', 'cell'].tolist() == ['1', '4', '5', '1', '4', '6']
+    # A sample with one position is placed there.
+    alone = sc.serving_endpoints(frame.drop(columns=['Call_End_Longitude_A', 'Call_End_Latitude_A']), 'voice')
+    assert alone.loc[alone['end'] == 'middle', 'longitude'].tolist() == [0.0, 0.0]
+
+
 def test_samples_take_the_vendor_of_their_serving_cell_from_the_closest_snapshot(client, tmp_path):
     login(client)
     older = _inventory(tmp_path, 'Multivendor_Mapping_VFUK.csv', _cells('Huawei'), '2026-08-20')

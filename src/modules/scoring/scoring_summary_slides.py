@@ -795,15 +795,18 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
             _text(slide, 'The scoring is split by Vendor: each Vendor is scored on its own tests, so its points lost compare directly '
                          'with the other Vendors. Share of tests: the tests of the operator it served. Total: the average of the '
                          'Vendors weighted by their tests.' if any(item.get('by_vendor') for item in group) else
-                         'Each call or test belongs to the network that hosts its first and last serving cells and to their RAN '
+                         'Each call or test belongs to the network that hosts all its serving cells and to their RAN '
                          'Vendor, MIX when they differ (Not identified: no serving cell in the inventories). Per 1,000 tests: from 100.'
                          + (' Split by Vendor: each Vendor counts in proportion to its tests (Total: their average weighted by tests).'
                             if any(item.get('vendors_together') for item in group) else
                             ' In red, a share of the points lost well above the share of the tests.') if hosted else
-                         'Each call or test belongs to the class of its first and last serving cells, MIX when they differ (Not '
+                         'Each call or test belongs to the class of all its serving cells, MIX when they differ (Not '
                          'identified: no serving cell in the inventories). Per 1,000 tests: the points lost per 1,000 calls and '
                          'tests it served (from 100). In red, a share of the points lost well above the share of the tests.'
                          if any(item.get('has_counts') for item in group) else
+                         'Each test belongs to the Vendor of its serving cells, Mixed when they differ (Not identified: no serving '
+                         'cell in the inventories). In red, a share of the points lost well above the share of the tests.'
+                         if column == 'Vendor' else
                          'Each test belongs to the serving cell of its start (Not identified: no serving cell in the inventories). '
                          'In red, a share of the points lost well above the share of the tests.', .45, CONTENT_BOTTOM - .22,
                   12.4, .25, size=8, color=MUTED)

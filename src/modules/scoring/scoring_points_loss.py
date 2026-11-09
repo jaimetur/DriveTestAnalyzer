@@ -13,12 +13,12 @@ kept too (``City|Area``), to show the losses of a City alone on the map.
 Workspaces with a Clusters or Region Mapping dataset also map the Cluster and Region losses on
 its polygons.
 
-Besides the areas, the losses are shared among who serves the tests: the RAN Vendor of the cell that served each
+Besides the areas, the losses are shared among who serves the tests: the RAN Vendor of the cells that served each
 test (``Vendor``), the kind of its site (``Site Type``: the network that owns the site and, when another network hosts
 it, the host, NNS sites apart) and the site itself (``Site``), and, on the Connecting Roads routes, among stretches of
 about 20 km (``Stretch``), so each owner sees where its points go. For the multivendor analysis, the RAN Vendor with
 the network that hosts it (``RAN Vendor``: VF_Hosted_Ericsson…) and the site type (``Site Class``: Legacy, eMOCN
-scenario or NNS of each network) of both ends of each test, MIX when they differ, share them too.
+scenario or NNS of each network) of all the cells of each test, MIX when they differ, share them too.
 """
 from __future__ import annotations
 

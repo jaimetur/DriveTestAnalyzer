@@ -319,6 +319,33 @@ def test_mapping_classifies_the_ran_vendor_and_the_site_type_of_both_ends(client
     assert [value or '' for value in mapped['Serving_Site_Class']] == ['VF_eMOCN_S1', 'MIX', 'VF_Legacy', '3UK_NNS', '']
 
 
+def test_mapping_classifies_a_line_by_all_its_serving_cells(client, tmp_path):
+    # Ticket #85: a line of the CDR can have several serving cells: its start cell, the cells it changed to and its final cell.
+    login(client)
+    content = ('Network,Host Network,OP/ Vendor,Site ID,eNodeB ID,Cell ID,Longitude,Latitude,eMOCNScenario\n'
+               'Vodafone,Vodafone,Ericsson,S1,10,1,-1.5,53.8,S1\n'
+               'Vodafone,Vodafone,Ericsson,S2,12,1,-1.5,53.8,S1\n'
+               'Vodafone,Telefonica,Nokia,S3,11,1,-1.5,53.8,\n'
+               'H3G,H3G,Samsung,S4,20,2,-1.5,53.8,NNS\n')
+    mapping = _upload(client, 'VF3_All_Vendor_2026_Week41.csv', content, 'multivendor_mapping')
+    ericsson, ericsson_too, nokia, samsung = str(10 * 256 + 1), str(12 * 256 + 1), str(11 * 256 + 1), str(20 * 256 + 2)
+    not_found, neither = str(90 * 256 + 9), str(91 * 256 + 9)
+    cells = [f'{ericsson}->{ericsson_too}->{ericsson}', f'{ericsson}->{nokia}->{ericsson}', f'{nokia}->{samsung}->{nokia}',
+             f'{ericsson}->{not_found}->{ericsson}', f'{not_found}->{ericsson}->{neither}', f'{not_found}->{neither}->{not_found}']
+    cdr_id = _cdr(tmp_path, {'Operator': ['Vodafone UK'] * len(cells), 'Cell_ID_A': cells, 'Session_ID_A': list(range(len(cells)))})
+    assert client.post('/workspace/map-mappings', data={
+        'cdr_dataset_ids': str(cdr_id), 'vendor_source': 'inventory', 'multivendor_mapping_dataset_ids': str(mapping['id']),
+    }, follow_redirects=False).status_code == 303
+    wait_for_background_dataset_work()
+    mapped = core.repository.load_dataset_rows(cdr_id, ['Vendor', 'Serving_RAN_Vendor', 'Serving_Site_Class', 'Serving_Site_ID'], {})
+    # The same at all its cells, else mixed: a cell it changed to counts as much as its ends, a cell not found too.
+    assert mapped['Vendor'].tolist() == ['Ericsson', 'Ericsson (Mixed)', 'Mixed (non-Ericsson)', 'Ericsson (Mixed)', 'Ericsson (Mixed)', 'Unknown']
+    assert [value or '' for value in mapped['Serving_RAN_Vendor']] == ['VF_Hosted_Ericsson', 'MIX', 'MIX', 'MIX', 'MIX', '']
+    assert [value or '' for value in mapped['Serving_Site_Class']] == ['VF_eMOCN_S1', 'MIX', 'MIX', 'MIX', 'MIX', '']
+    # The serving site still describes the cell of its start.
+    assert [value or '' for value in mapped['Serving_Site_ID']] == ['S1', 'S1', 'S3', 'S1', '', '']
+
+
 def test_multivendor_mapping_without_a_network_column_belongs_to_its_operator(client, tmp_path):
     login(client)
     content = 'OP/ Vendor,Site ID,eNodeB ID,Cell ID,Longitude,Latitude\nHuawei,S1,40,4,-1.5,53.8\n'

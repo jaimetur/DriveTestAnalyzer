@@ -15,7 +15,7 @@ COORDINATE_COLUMNS = {
     'speech': (('Recording_Longitude', 'Recording_Latitude'),),
 }
 # Where a sample ends, when the CDR records it: Vendor polygons compare its start and end like the
-# first and last cells of the Network Inventory rule.
+# serving cells of the Network Inventory rule.
 END_COORDINATE_COLUMNS = {
     'voice': (('Call_End_Longitude_A', 'Call_End_Latitude_A'),),
 }

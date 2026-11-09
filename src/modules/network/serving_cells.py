@@ -1,7 +1,8 @@
 """Serving-cell Vendor mapping: the Vendor of each CDR sample from the inventory cells that served it.
 
-A sample's first and last serving cells are looked up among the cells of the networks allowed to serve its
-Operator (its own network and, for example, the eMOCN partner network or the host network of an MVNO), in the
+Every serving cell of a sample (a line of the CDR: its start cell, the cells it changed to and its final cell) is
+looked up among the cells of the networks allowed to serve its Operator (its own network and, for example, the
+eMOCN partner network or the host network of an MVNO), in the
 inventory snapshots selected for the CDR. When a cell is in several snapshots, the snapshot whose date is closest
 to the CDR's measurements wins (the newest on a tie), so a CDR measured before a vendor swap keeps the vendor it
 measured. A cell farther than the maximum serving distance from the sample is ignored: global cell identities are
@@ -12,11 +13,11 @@ complete the cells the Multivendor Mappings do not have. Every source gives ever
 Multivendor Mappings only the Operators chosen for them receive a Vendor: the others keep their name, as an Operator that
 no source serves (O2, whose inventory covers only the cells Vodafone hosts for it).
 
-Besides ``Operator_Vendor`` and ``Vendor`` (same rule as before: the same Vendor at both ends, Ericsson
-(Mixed) or Mixed (non-Ericsson)), each sample receives the owner network, host network, site, eMOCN scenario and
-distance of the cell that served its start, and the date of the snapshot it came from; and, from both ends as the
-Vendor (the same at both, else MIX), its RAN Vendor with the network that hosts it (``Serving_RAN_Vendor``:
-VF_Hosted_Ericsson, VMO2_Hosted_Nokia…) and its site type (``Serving_Site_Class``: 3UK_Legacy, VF_eMOCN_S1, VF_NNS…).
+Besides ``Operator_Vendor`` and ``Vendor`` (the same Vendor at all its cells, else Ericsson (Mixed) or Mixed
+(non-Ericsson)), each sample receives the owner network, host network, site, eMOCN scenario and distance of the cell
+that served its start, and the date of the snapshot it came from; and, from all its cells as the Vendor (the same at
+all, else MIX), its RAN Vendor with the network that hosts it (``Serving_RAN_Vendor``: VF_Hosted_Ericsson,
+VMO2_Hosted_Nokia…) and its site type (``Serving_Site_Class``: 3UK_Legacy, VF_eMOCN_S1, VF_NNS…).
 """
 
 from __future__ import annotations
@@ -44,8 +45,8 @@ from src.modules.network.network_inventory import (
 
 SERVING_NETWORKS_STATE_KEY = 'network_serving_networks'
 # Raise when the mapping rule changes, so the CDRs mapped before show that they need mapping again (3: the RAN Vendor
-# and the site type of the samples, ticket #85).
-SERVING_ENGINE_VERSION = 3
+# and the site type of the samples, ticket #85; 4: the cells a sample changed to count too, not only the first and last).
+SERVING_ENGINE_VERSION = 4
 DEFAULT_MAX_DISTANCE_KM = 30.0
 # The networks whose cells serve the subscribers of each network family, in order of preference: Vodafone and
 # Three share their RAN through eMOCN, and Lebara subscribers use the Vodafone network.
@@ -61,7 +62,7 @@ SERVING_FIELDS = ('Serving_Network', 'Serving_Host_Network', 'Serving_Site_ID', 
                   'Serving_Distance_km', 'Serving_Inventory_Snapshot', 'Serving_RAN_Vendor', 'Serving_Site_Class')
 # The short name of each network in the RAN Vendor and site type classes (VF_Hosted_Ericsson, 3UK_eMOCN_S1, VMO2_Legacy).
 NETWORK_CLASS_LABELS = {'vodafone': 'VF', 'three': '3UK', 'o2': 'VMO2', 'ee': 'EE'}
-# A sample whose first and last serving cells are of different classes.
+# A sample whose serving cells are of different classes.
 CLASS_MIX = 'MIX'
 
 
@@ -264,7 +265,8 @@ def _candidate_cells(repository: Any, dataset_ids: list[int], families: list[str
 
 
 def serving_endpoints(frame: pd.DataFrame, dataset_kind: str, profile: CdrFieldProfile = NETCHECK_PROFILE) -> pd.DataFrame:
-    """The first and last serving cell of every sample, with the position where each was measured."""
+    """Every serving cell of every sample with the position where it was measured: the ``first`` and ``last`` and, as
+    ``middle``, once each, the other cells it changed to, placed along the way from its start to its end."""
     cell_column = _first_existing(frame, profile.cell_columns)
     if not cell_column:
         raise ValueError('The selected CDR must contain a Cell ID field. Supported names include Cell_ID_A, Cell_IDs_A, Cell_ID, Global CI, GCID, GCI, CGI or ECI.')
@@ -279,7 +281,20 @@ def serving_endpoints(frame: pd.DataFrame, dataset_kind: str, profile: CdrFieldP
                           'longitude': start_lon.to_numpy(), 'latitude': start_lat.to_numpy()})
     last = pd.DataFrame({'row': positions, 'end': 'last', 'cell': cells.map(lambda items: items[-1] if items else '').to_numpy(),
                          'longitude': end_lon.to_numpy(), 'latitude': end_lat.to_numpy()})
-    endpoints = pd.concat([first, last], ignore_index=True)
+    parts = [first, last]
+    between = [(row, cell, index / (len(items) - 1)) for row, items in enumerate(cells) if len(items) > 2
+               for index, cell in enumerate(items[1:-1], start=1) if cell not in (items[0], items[-1])]
+    if between:
+        rows, names, fractions = zip(*between, strict=True)
+        rows, fractions = np.asarray(rows, dtype=int), np.asarray(fractions, dtype=float)
+        from_lon = start_lon.where(start_lon.notna(), end_lon).to_numpy()[rows]
+        from_lat = start_lat.where(start_lat.notna(), end_lat).to_numpy()[rows]
+        parts.append(pd.DataFrame({
+            'row': rows, 'end': 'middle', 'cell': list(names),
+            'longitude': from_lon + fractions * (end_lon.to_numpy()[rows] - from_lon),
+            'latitude': from_lat + fractions * (end_lat.to_numpy()[rows] - from_lat),
+        }).drop_duplicates(['row', 'cell']))
+    endpoints = pd.concat(parts, ignore_index=True)
     return endpoints.loc[endpoints['cell'].astype(str).str.fullmatch(r'\d+')].reset_index(drop=True)
 
 
@@ -288,11 +303,11 @@ def match_serving_cells(
     snapshot_dates: dict[int, str], config: dict[str, Any] | None, max_distance_km: float,
     excluded: Iterable[tuple[str, int]] = (), complements: Iterable[int] = (),
 ) -> pd.DataFrame:
-    """The inventory cell chosen for every sample end: an allowed network (own first), the preferred snapshot,
-    then the nearest cell; cells beyond ``max_distance_km`` of a located sample are never chosen, nor those of a
+    """The inventory cell chosen for every serving cell of a sample: an allowed network (own first), the preferred
+    snapshot, then the nearest cell; cells beyond ``max_distance_km`` of a located sample are never chosen, nor those of a
     snapshot that does not apply to the Operator (``excluded``: its Operator and dataset ID pairs). A snapshot of
     ``complements`` gives a cell only when no other has it, in any allowed network."""
-    columns = ['row', 'end', 'vendor', 'network', 'host_network', 'site_id', 'emocn', 'distance_km', 'snapshot_date']
+    columns = ['row', 'end', 'cell', 'vendor', 'network', 'host_network', 'site_id', 'emocn', 'distance_km', 'snapshot_date']
     if endpoints.empty or candidates.empty:
         return pd.DataFrame(columns=columns)
     operator_families = []
@@ -318,7 +333,7 @@ def match_serving_cells(
     matched['sort_distance'] = matched['distance_km'].fillna(np.inf)
     matched['complement'] = matched['dataset_id'].isin(set(complements))
     matched = matched.sort_values(['row', 'end', 'complement', 'family_rank', 'snapshot_rank', 'sort_distance'], kind='stable')
-    return matched.drop_duplicates(['row', 'end'])[columns].reset_index(drop=True)
+    return matched.drop_duplicates(['row', 'end', 'cell'])[columns].reset_index(drop=True)
 
 
 def serving_input_columns(columns: Iterable[str], dataset_kind: str, profile: CdrFieldProfile = NETCHECK_PROFILE) -> list[str]:
@@ -365,17 +380,23 @@ def assign_serving_vendors(
                                   complements=complement_snapshots(snapshots))
     first = matches.loc[matches['end'] == 'first'].set_index('row')
     last = matches.loc[matches['end'] == 'last'].set_index('row')
+    # The cells a sample changed to, those without a match too: like an end without a cell, they keep it from one Vendor.
+    middle = endpoints.loc[endpoints['end'] == 'middle', ['row', 'cell']].merge(
+        matches.loc[matches['end'] == 'middle'], on=['row', 'cell'], how='left')
     first_vendor = first['vendor'].reindex(range(len(result)))
     last_vendor = last['vendor'].reindex(range(len(result)))
+    between: dict[int, list[str | None]] = {}
+    for row, vendor in zip(middle['row'], middle['vendor'], strict=True):
+        between.setdefault(int(row), []).append(_text(vendor))
     mapped_operators = {operator for operator, values in families.items()
                         if set(values) & available and (not mappings or identity(operator) in chosen)}
     # Like the Vendor polygons, a sample none of whose cells is in the snapshots is Unknown: an Operator whose
     # inventory covers only part of its network (O2's cells hosted by Vodafone) would otherwise look Mixed.
     assigned = [
-        (f'{_vendor_prefix(operator)}_{VENDOR_UNKNOWN}' if _text(start) is None and _text(end) is None
-         else _vendor_from_ends(_vendor_prefix(operator), _text(start), _text(end))) if operator in mapped_operators
+        (f'{_vendor_prefix(operator)}_{VENDOR_UNKNOWN}' if _text(start) is None and _text(end) is None and not any(between.get(row, ()))
+         else _vendor_from_ends(_vendor_prefix(operator), _text(start), _text(end), between.get(row, ()))) if operator in mapped_operators
         else _normalise_operator(operator)
-        for operator, start, end in zip(operators, first_vendor, last_vendor, strict=True)
+        for row, (operator, start, end) in enumerate(zip(operators, first_vendor, last_vendor, strict=True))
     ]
     # The cell that served the start of the sample (its end when the start is unknown) describes it.
     serving = first.combine_first(last).reindex(range(len(result)))
@@ -386,11 +407,13 @@ def assign_serving_vendors(
     result['Serving_eMOCN_Scenario'] = serving['emocn'].fillna('').to_numpy()
     result['Serving_Distance_km'] = serving['distance_km'].round(3).to_numpy()
     result['Serving_Inventory_Snapshot'] = serving['snapshot_date'].fillna('').to_numpy()
-    # The RAN Vendor (only for the Operators that receive a Vendor) and the site type of both ends of the sample.
-    first_ran, first_site = _end_classes(first, len(result))
-    last_ran, last_site = _end_classes(last, len(result))
-    result['Serving_RAN_Vendor'] = np.where(operators.isin(mapped_operators).to_numpy(), classes_from_ends(first_ran, last_ran), '')
-    result['Serving_Site_Class'] = classes_from_ends(first_site, last_site)
+    # The RAN Vendor (only for the Operators that receive a Vendor) and the site type of all the cells of the sample.
+    first_ran, first_site = _cell_classes(first.reindex(range(len(result))))
+    last_ran, last_site = _cell_classes(last.reindex(range(len(result))))
+    middle_ran, middle_site = _cell_classes(middle)
+    result['Serving_RAN_Vendor'] = np.where(operators.isin(mapped_operators).to_numpy(),
+                                            classes_from_cells(first_ran, last_ran, middle['row'], middle_ran), '')
+    result['Serving_Site_Class'] = classes_from_cells(first_site, last_site, middle['row'], middle_site)
     return _with_vendor_columns(result, operator_column, assigned)
 
 
@@ -421,10 +444,10 @@ def site_class(network: object, scenario: object) -> str:
     return f'{label}_NNS' if code.casefold() == 'nns' else f'{label}_eMOCN_{code}'
 
 
-def _end_classes(end: pd.DataFrame, rows: int) -> tuple[pd.Series, pd.Series]:
-    """The RAN Vendor and the site type (see ran_vendor_class and site_class) of the cell at one end of every sample,
-    empty where no cell matched."""
-    cells = end.reindex(range(rows)).reindex(columns=['vendor', 'network', 'host_network', 'emocn'])
+def _cell_classes(matched: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """The RAN Vendor and the site type (see ran_vendor_class and site_class) of each matched cell, empty where a row
+    has no cell."""
+    cells = matched.reindex(columns=['vendor', 'network', 'host_network', 'emocn'])
     cells = cells.fillna('').astype(str).apply(lambda column: column.str.strip())
     labels = {value: network_class_label(value) for value in pd.unique(pd.concat([cells['network'], cells['host_network']]))}
     host, network, vendor, code = cells['host_network'].map(labels), cells['network'].map(labels), cells['vendor'], cells['emocn']
@@ -434,12 +457,16 @@ def _end_classes(end: pd.DataFrame, rows: int) -> tuple[pd.Series, pd.Series]:
     return ran, site
 
 
-def classes_from_ends(first: Iterable[str], last: Iterable[str]) -> np.ndarray:
-    """The class of every sample from those of its first and last serving cells, as the Vendor: the same class at
-    both ends, else MIX (one end without a cell included); empty when neither end has a cell."""
+def classes_from_cells(first: Iterable[str], last: Iterable[str], rows: Iterable[int] = (), between: Iterable[str] = ()) -> np.ndarray:
+    """The class of every sample from those of its serving cells, as the Vendor: the same class at all of them, else MIX
+    (one end without a cell included); empty when none has a cell. ``between``: the class of each cell a sample changed
+    to, of the sample at the same place of ``rows``."""
     first_values, last_values = np.asarray(list(first), dtype=object), np.asarray(list(last), dtype=object)
-    return np.where((first_values == '') & (last_values == ''), '',
-                    np.where(first_values == last_values, first_values, CLASS_MIX)).astype(object)
+    classes = np.where((first_values == '') & (last_values == ''), '',
+                       np.where(first_values == last_values, first_values, CLASS_MIX)).astype(object)
+    samples = np.asarray(list(rows), dtype=int)
+    classes[samples[np.asarray(list(between), dtype=object) != classes[samples]]] = CLASS_MIX
+    return classes
 
 
 def _text(value: object) -> str | None:

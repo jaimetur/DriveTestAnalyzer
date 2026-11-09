@@ -224,7 +224,7 @@ def test_points_lost_per_ran_vendor_and_site_type_count_the_calls_and_tests():
     headers = [cell.text for cell in tables[0].rows[0].cells]
     assert headers[:6] == ['RAN Vendor', 'Points lost', 'Share of points', 'Tests', 'Share of tests', 'Per 1,000 tests']
     texts = [shape.text_frame.text for slide in deck.slides for shape in slide.shapes if shape.has_text_frame]
-    assert any('first and last serving cells, MIX when they differ' in text for text in texts)
+    assert any('all its serving cells, MIX when they differ' in text for text in texts)
 
 
 def test_points_lost_per_ran_vendor_puts_the_vendors_of_an_operator_together_by_host_network():

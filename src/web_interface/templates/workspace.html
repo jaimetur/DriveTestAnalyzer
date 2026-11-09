@@ -991,12 +991,12 @@
         <summary>Vendor mapping rule</summary>
         <ol>
           <li>The <strong>Cell inventories</strong> (the selected Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) are snapshots of the networks on their Snapshot date. Each cell has the vendor of its <code>Host Network</code>.</li>
-          <li>Each sample takes the first and last cells of <code>Cell_ID_A</code> (ECI <code>eNodeB ID × 256 + Cell ID</code> or NCI <code>gNodeB ID × 16384 + Cell ID</code>) and finds them among the networks that serve its Operator (<a href="/workspace-config#serving-networks">Serving Networks</a>), in the snapshot closest to the CDR date and within 30 km of the sample. Beside a Multivendor Mapping, the other sources (VFUK and 3UK too) only complete the cells it does not have, and only the Operators of the Multivendor Mappings receive a Vendor; the others still get their serving cell (network, host network, site).</li>
+          <li>Each sample takes all the cells of <code>Cell_ID_A</code>, the first one, those it changed to and the last one (ECI <code>eNodeB ID × 256 + Cell ID</code> or NCI <code>gNodeB ID × 16384 + Cell ID</code>), and finds them among the networks that serve its Operator (<a href="/workspace-config#serving-networks">Serving Networks</a>), in the snapshot closest to the CDR date and within 30 km of the sample. Beside a Multivendor Mapping, the other sources (VFUK and 3UK too) only complete the cells it does not have, and only the Operators of the Multivendor Mappings receive a Vendor; the others still get their serving cell (network, host network, site).</li>
         </ol>
         <p>Result, with <code>&lt;Operator&gt;</code> as <code>Vodafone</code>, <code>3</code> or the Operator's own name:</p>
         <ul>
-          <li>The same Vendor at both cells: <code>&lt;Operator&gt;_&lt;Vendor&gt;</code>.</li>
-          <li>Ericsson at one of them: <code>&lt;Operator&gt;_Ericsson (Mixed)</code>; any other mix: <code>&lt;Operator&gt;_Mixed (non-Ericsson)</code>.</li>
+          <li>The same Vendor at all its cells: <code>&lt;Operator&gt;_&lt;Vendor&gt;</code>.</li>
+          <li>Ericsson at one of them, with another Vendor or a cell not found at another: <code>&lt;Operator&gt;_Ericsson (Mixed)</code>; any other mix: <code>&lt;Operator&gt;_Mixed (non-Ericsson)</code>.</li>
           <li>No cell found: <code>&lt;Operator&gt;_Unknown</code>; an Operator no snapshot serves (for example EE), or left out of the Operators of the Multivendor Mappings: <code>&lt;Operator&gt; - All</code>.</li>
         </ul>
         <p>It fills <code>Vendor</code>, <code>Operator_Vendor</code>, <code>Vendor_Operator</code> and the <code>Serving_*</code> columns of the serving cell. CDRs marked <em>Vendor mapping outdated</em> were mapped with other inventories, Serving Networks or rules, and are selected when the dialog opens.</p>

@@ -1959,7 +1959,7 @@ def normalise_operator_aliases(frame: pd.DataFrame, mappings: dict[str, str] | N
     return result
 
 
-# Vendor identities of samples whose first and last cells have different
+# Vendor identities of samples whose serving cells have different
 # or missing vendors.
 VENDOR_ERICSSON_MIXED = "Ericsson (Mixed)"
 VENDOR_NON_ERICSSON_MIXED = "Mixed (non-Ericsson)"
@@ -2026,11 +2026,13 @@ def _vendor_prefix(operator: object) -> str:
     return str(operator or "").strip() if family is not None else normalized_operator
 
 
-def _vendor_from_ends(prefix: str, first: str | None, last: str | None) -> str:
-    """The same non-empty Vendor at both ends, Ericsson (Mixed) with Ericsson at one end, else Mixed (non-Ericsson)."""
-    if first and first == last:
+def _vendor_from_ends(prefix: str, first: str | None, last: str | None, between: Iterable[str | None] = ()) -> str:
+    """The same non-empty Vendor at both ends and at the cells ``between`` them, Ericsson (Mixed) with Ericsson at any of
+    them, else Mixed (non-Ericsson)."""
+    vendors = {first, last, *between}
+    if first and len(vendors) == 1:
         return f"{prefix}_{first}"
-    if "Ericsson" in {first, last}:
+    if "Ericsson" in vendors:
         return f"{prefix}_{VENDOR_ERICSSON_MIXED}"
     return f"{prefix}_{VENDOR_NON_ERICSSON_MIXED}"
 

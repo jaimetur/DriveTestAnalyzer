@@ -144,7 +144,7 @@ Vendor mapping is performed explicitly in Workspace and stored on the CDR before
 
 ### CDR lookup key
 
-The mapping logic takes the first and last usable Global Cell ID from available fields such as:
+A line of the CDR can have several serving cells. The mapping logic takes all the usable Global Cell IDs of a sample (its first cell, the cells it changed to and its last cell) from available fields such as:
 
 - `Cell_ID_A`
 - `Cell_IDs_A`
@@ -169,21 +169,21 @@ The 3UK Network Inventory uses `Cid__ECI` or `CId___ECI` as the materialised `GC
 
 ### Resolution rules
 
-Every selected source (Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) is normalised into the **Inventory Cells** table, or the **Multivendor Mapping Cells** table for a Multivendor Mapping: each cell with its technology, owner `Network` (the inventory's Operator when it has no Network column: Vodafone for VFUK, 3 for 3UK), `Host Network`, vendor, site, identity and position. The first and last cells of each sample are looked up there:
+Every selected source (Multivendor Mappings and Network Inventories, Cell Configuration KMZ packages included) is normalised into the **Inventory Cells** table, or the **Multivendor Mapping Cells** table for a Multivendor Mapping: each cell with its technology, owner `Network` (the inventory's Operator when it has no Network column: Vodafone for VFUK, 3 for 3UK), `Host Network`, vendor, site, identity and position. All the cells of each sample are looked up there:
 
 - only among the cells of the networks that can serve the sample's Operator, its own network first (Workspace Config → Serving Networks; by default Vodafone and Three serve each other through eMOCN, Lebara is served by both and every other Operator by its own network);
 - only among the Multivendor Mappings that apply to the sample's Operator (the Operators of each one) and the other selected sources;
 - in the snapshot whose date is closest to the CDR's measurements (the median start time of its samples, else the date in its file name), the newest on a tie; beside a Multivendor Mapping, every other source (VFUK and 3UK too), whatever its date, only completes the cells the mappings do not have, in any network that can serve the Operator;
-- ignoring cells farther from the sample's position than the maximum serving distance (30 km by default), since a global cell identity only identifies a cell within its Operator.
+- ignoring cells farther from the sample's position than the maximum serving distance (30 km by default), since a global cell identity only identifies a cell within its Operator; a cell the sample changed to is placed along the way from its start to its end.
 
-Vodafone UK (`Vodafone_`), Three UK (`3_`) and every other Operator (its own name as prefix, for example `Vodafone VoNR_`, `VF_SA_` or `O2 (UK)_`) resolve the first and last cell with the same rule, stored in `Operator_Vendor`:
+Vodafone UK (`Vodafone_`), Three UK (`3_`) and every other Operator (its own name as prefix, for example `Vodafone VoNR_`, `VF_SA_` or `O2 (UK)_`) resolve all the cells of a sample with the same rule, stored in `Operator_Vendor`:
 
-- Same first/last vendor → `<Operator>_<Vendor>`.
-- Ericsson at either end and a different or missing vendor at the other → `<Operator>_Ericsson (Mixed)`.
+- The same vendor at all its cells → `<Operator>_<Vendor>`.
+- Ericsson at one cell and a different or missing vendor (a cell not found in the snapshots) at another → `<Operator>_Ericsson (Mixed)`.
 - Any other different or missing combination → `<Operator>_Mixed (non-Ericsson)`.
-- No endpoint found in the snapshots → `<Operator>_Unknown`.
+- No cell found in the snapshots → `<Operator>_Unknown`.
 
-Operators that no selected snapshot serves (EE without its own inventory) store `<Operator> - All`. `Vendor` keeps the vendor alone (`Ericsson`, `Ericsson (Mixed)`, `Mixed (non-Ericsson)`) and `Vendor_Operator`, derived when the CDRs are read, the same identity as `<Vendor>_<Operator>`. The cell that served the start of each sample fills `Serving_Network`, `Serving_Host_Network`, `Serving_Site_ID`, `Serving_eMOCN_Scenario`, `Serving_Distance_km` and `Serving_Inventory_Snapshot`; its first and last cells fill `Serving_RAN_Vendor` (the RAN Vendor with its host network, such as `VF_Hosted_Ericsson`) and `Serving_Site_Class` (the site type, such as `3UK_Legacy`, `VF_eMOCN_S1` or `VF_NNS`), `MIX` when they differ.
+Operators that no selected snapshot serves (EE without its own inventory) store `<Operator> - All`. `Vendor` keeps the vendor alone (`Ericsson`, `Ericsson (Mixed)`, `Mixed (non-Ericsson)`) and `Vendor_Operator`, derived when the CDRs are read, the same identity as `<Vendor>_<Operator>`. The cell that served the start of each sample fills `Serving_Network`, `Serving_Host_Network`, `Serving_Site_ID`, `Serving_eMOCN_Scenario`, `Serving_Distance_km` and `Serving_Inventory_Snapshot`; all its cells fill `Serving_RAN_Vendor` (the RAN Vendor with its host network, such as `VF_Hosted_Ericsson`) and `Serving_Site_Class` (the site type, such as `3UK_Legacy`, `VF_eMOCN_S1` or `VF_NNS`), `MIX` when they differ.
 
 ### Remapping
 
