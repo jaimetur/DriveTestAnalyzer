@@ -22,10 +22,21 @@ MENTION = re.compile(r'(?<![\w&/#])#([1-9][0-9]{0,8})(?!\w)')
 QUOTED_CHARACTERS = 3000
 # The HTML of that text with its formats: a Power Automate flow request takes about 28 KB in all.
 TEXT_HTML_LIMIT = 14_000
-TICKET_EVENTS = {
-    'created': 'opened', 'updated': 'updated', 'managed': 'updated', 'commented': 'new comment',
-    'comment_edited': 'comment edited', 'comment_deleted': 'comment deleted', 'attachments_added': 'attachments added',
-    'attachment_deleted': 'attachment deleted', 'deleted': 'deleted',
+# What happened to a ticket, as the title of its email says it (the subject stays the same, so that every email of a
+# ticket is one conversation in the mail client), each in its colour.
+TICKET_ACTIONS = {
+    'created': 'New Ticket', 'updated': 'Ticket Updated', 'managed': 'Ticket Updated', 'commented': 'New Comment',
+    'comment_edited': 'Comment Edited', 'comment_deleted': 'Comment Deleted', 'attachments_added': 'New Attachments',
+    'attachment_deleted': 'Attachment Deleted', 'deleted': 'Ticket Deleted',
+}
+# A change of status says the new one (Reopened when a done or rejected ticket opens again).
+STATUS_ACTIONS = {'new': 'Back to New', 'in_progress': 'In Progress', 'waiting_info': 'Waiting for Info', 'resolved': 'Resolved',
+                  'closed': 'Closed', 'rejected': 'Rejected'}
+ACTION_COLOURS = {
+    'New Ticket': '#1E61A3', 'New Comment': '#0F766E', 'Ticket Updated': '#B45309', 'Comment Edited': '#B45309',
+    'New Attachments': '#B45309', 'In Progress': '#2563EB', 'Waiting for Info': '#B45309', 'Back to New': '#2563EB',
+    'Resolved': '#15803D', 'Closed': '#4B5563', 'Reopened': '#C2410C', 'Rejected': '#B42318', 'Comment Deleted': '#B42318',
+    'Attachment Deleted': '#B42318', 'Ticket Deleted': '#B42318',
 }
 
 
@@ -40,12 +51,18 @@ def html_to_text(markup: str) -> str:
     return re.sub(r'\n{3,}', '\n\n', text).strip() + '\n'
 
 
-def email_page(app_name: str, title: str, parts: Iterable[str], *, link: tuple[str, str] | None = None) -> str:
-    """The HTML of an email of the tool: a title, its paragraphs, a button to open the page it is about and a footer."""
+def email_page(app_name: str, title: str, parts: Iterable[str], *, link: tuple[str, str] | None = None,
+               action: str = '') -> str:
+    """The HTML of an email of the tool: a title, its paragraphs, a button to open the page it is about and a footer.
+    ``action`` (what happened, such as New Comment) leads the title, larger and in its colour."""
     button = (f'<p style="margin:20px 0"><a href="{html.escape(link[1], quote=True)}" style="background:#1E61A3;color:#ffffff;'
               f'padding:9px 16px;border-radius:6px;text-decoration:none;font-weight:bold">{html.escape(link[0])}</a></p>') if link else ''
+    heading = (f'<p style="font-size:21px;line-height:1.3;font-weight:bold;margin:0 0 12px"><span style="color:'
+               f'{ACTION_COLOURS.get(action, "#1E61A3")}">{html.escape(action)}</span><span style="color:#9ca3af"> · </span>'
+               f'{html.escape(title)}</p>') if action else (
+        f'<p style="font-size:17px;font-weight:bold;margin:0 0 12px">{html.escape(title)}</p>')
     return ('<html><body style="font-family:Arial,sans-serif;font-size:14px;color:#1f2933;line-height:1.45">'
-            f'<p style="font-size:17px;font-weight:bold;margin:0 0 12px">{html.escape(title)}</p>'
+            + heading
             + ''.join(parts) + button +
             f'<p style="color:#6b7280;font-size:12px;margin-top:24px">Sent automatically by {html.escape(app_name)}.</p>'
             '</body></html>')
@@ -154,8 +171,9 @@ def ticket_email(app_name: str, ticket: dict[str, Any], event: str, actor_name: 
     from src.modules.ticket_center.ticket_center import FIELD_LABELS, PRIORITIES, STATUSES, TICKET_TYPES
 
     number, title = int(ticket['id']), str(ticket['title'])
-    phrase = TICKET_EVENTS.get(event, 'updated')
-    subject = f'Ticket #{number} {phrase}: {title}'
+    # One subject for every email of a ticket (its mail client keeps them in one conversation); the title says what happened.
+    subject = f'Ticket #{number}: {title}'
+    action = ticket_action(event, changes)
     did = {
         'created': 'opened this ticket', 'updated': 'edited this ticket', 'managed': 'changed this ticket',
         'commented': 'added a comment', 'comment_edited': 'edited a comment', 'comment_deleted': 'deleted a comment',
@@ -193,7 +211,20 @@ def ticket_email(app_name: str, ticket: dict[str, Any], event: str, actor_name: 
     if listed:
         parts.append('<ul>' + ''.join(f'<li>{html.escape(name)}</li>' for name in listed) + '</ul>')
     link = None if event == 'deleted' or not base_url else (f'Open ticket #{number}', f'{base_url}/tickets/{number}')
-    return subject, email_page(app_name, f'Ticket #{number}: {title}', parts, link=link)
+    return subject, email_page(app_name, f'Ticket #{number}: {title}', parts, link=link, action=action)
+
+
+def ticket_action(event: str, changes: dict[str, Any] | None = None) -> str:
+    """What happened to a ticket, as the title of its email says it: a change of status by its new status."""
+    from src.modules.ticket_center.ticket_center import DONE_STATUSES, OPEN_STATUSES
+
+    status = (changes or {}).get('status')
+    if event in {'updated', 'managed'} and isinstance(status, (list, tuple)) and len(status) == 2 and status[0] != status[1]:
+        before, after = (str(value or '') for value in status)
+        if after in OPEN_STATUSES and before in {*DONE_STATUSES, 'rejected'}:
+            return 'Reopened'
+        return STATUS_ACTIONS.get(after, 'Ticket Updated')
+    return TICKET_ACTIONS.get(event, 'Ticket Updated')
 
 
 def notify_ticket(repository: Any, app_name: str, ticket_id: int, actor: str, event: str, base_url: str, *,

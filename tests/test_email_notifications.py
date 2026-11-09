@@ -246,14 +246,17 @@ def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_t
     first = client.post('/api/tickets', data={'title': 'Export fails', 'description': 'It fails.', 'module': 'scoring', 'priority': 'P2',
                                               'ticket_type': 'bug'}).json()['id']
     # Its reporter gets the confirmation.
-    assert [(item['to'], item['subject']) for item in flow] == [('reporter@example.com', f'DT Analyzer - Ticket #{first} opened: Export fails')]
+    # Every email of a ticket has the same subject (one conversation in the mail client); its title says what happened.
+    assert [(item['to'], item['subject']) for item in flow] == [('reporter@example.com', f'DT Analyzer - Ticket #{first}: Export fails')]
+    assert f'<span style="color:#1E61A3">New Ticket</span><span style="color:#9ca3af"> · </span>Ticket #{first}: Export fails</p>' in flow[-1]['html']
     assert f'https://tool.example:8443/tickets/{first}' in flow[-1]['html'] and 'It fails.' in flow[-1]['html']
     # Its own comments are not told to it.
     client.post(f'/api/tickets/{first}/comments', data={'body': 'More details.'})
     assert len(flow) == 1
     login(client, 'EOTHERS', 'secret123')
     client.post(f'/api/tickets/{first}/comments', data={'body': 'I see it too.'})
-    assert (flow[-1]['to'], flow[-1]['subject']) == ('reporter@example.com', f'DT Analyzer - Ticket #{first} new comment: Export fails')
+    assert (flow[-1]['to'], flow[-1]['subject']) == ('reporter@example.com', f'DT Analyzer - Ticket #{first}: Export fails')
+    assert '<span style="color:#0F766E">New Comment</span>' in flow[-1]['html']
     assert 'Eothers User</strong> added a comment' in flow[-1]['html'] and 'I see it too.' in flow[-1]['html']
     # A ticket of another reporter that mentions it: its reporter is told of the new ticket and of its changes.
     second = client.post('/api/tickets', data={'title': 'Same as before', 'description': f'Like #{first}.', 'priority': 'P3',
@@ -267,6 +270,11 @@ def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_t
     client.post(f'/api/tickets/{second}/manage', data={'status': 'in_progress'})
     assert {item['to'] for item in flow[count:]} == {'others@example.com', 'reporter@example.com'}
     assert all('In Progress' in item['html'] for item in flow[count:])
+    assert all('<span style="color:#2563EB">In Progress</span>' in item['html'] for item in flow[count:])
+    assert {item['subject'] for item in flow[count:]} == {f'DT Analyzer - Ticket #{second}: Same as before'}
+    count = len(flow)
+    client.post(f'/api/tickets/{second}/manage', data={'status': 'resolved'})
+    assert all('<span style="color:#15803D">Resolved</span>' in item['html'] for item in flow[count:]) and flow[count:]
     assert logged('email_sent')[-1]['kind'] == 'ticket'
     # Without the switch, nothing is sent.
     use_flow(notify_tickets=False)
@@ -304,7 +312,7 @@ def test_the_users_chosen_in_email_delivery_are_also_told_of_their_own_ticket_ch
         count = len(flow)
         client.post(f'/api/tickets/{ticket}/comments', data={'body': 'More details.'})
         told[username] = [(item['to'], item['subject']) for item in flow[count:]]
-    assert told == {'EOWNER': [('owner@example.com', f'DT Analyzer - Ticket #{ticket - 1} new comment: Ticket of EOWNER')], 'EREPORT': []}
+    assert told == {'EOWNER': [('owner@example.com', f'DT Analyzer - Ticket #{ticket - 1}: Ticket of EOWNER')], 'EREPORT': []}
     # A form that chooses nobody takes it back.
     login(client)
     client.post('/application-config/email-delivery', data=form)
