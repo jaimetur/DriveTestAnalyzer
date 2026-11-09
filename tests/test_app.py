@@ -3583,6 +3583,32 @@ def test_persisted_pending_transfer_offer_expires_after_approval_window(client, 
         app_module.TRANSFER_OFFERS.pop(offer_id, None)
 
 
+def test_cleanup_of_transfer_packages_skips_a_package_deleted_meanwhile(client, tmp_path: Path, monkeypatch) -> None:
+    import os
+    import src.DriveTestAnalyzer as app_module
+
+    class FolderLosingAPackage(type(tmp_path)):
+        # Lists a package that another thread deletes before the cleanup reads its date.
+        def iterdir(self):
+            yield self / 'incoming-transfer-deleted-meanwhile.upload'
+            yield from super().iterdir()
+
+    folder = FolderLosingAPackage(tmp_path / 'transfer-packages')
+    folder.mkdir()
+    expired = folder / 'expired-export.zip'
+    expired.write_bytes(b'old')
+    old = time.time() - app_module.EXPORT_PACKAGE_TTL.total_seconds() - 60
+    os.utime(expired, (old, old))
+    recent = folder / 'recent-export.zip'
+    recent.write_bytes(b'new')
+    monkeypatch.setattr(app_module, 'export_package_dir', lambda: folder)
+
+    app_module._cleanup_expired_export_packages()
+
+    assert not expired.exists()
+    assert recent.exists()
+
+
 def test_outgoing_server_transfer_waits_for_acceptance_and_streams_package(client, monkeypatch) -> None:
     import src.DriveTestAnalyzer as app_module
 

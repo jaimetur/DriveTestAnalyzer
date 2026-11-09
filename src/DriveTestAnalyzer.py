@@ -10943,7 +10943,13 @@ def _cleanup_expired_export_packages() -> None:
             repository.delete_transfer_offer(offer_id)
             _transfer_offer_state_path(offer_id).unlink(missing_ok=True)
     for path in package_dir.iterdir():
-        if path in active_paths or path.stat().st_mtime >= cutoff:
+        if path in active_paths:
+            continue
+        try:
+            if path.stat().st_mtime >= cutoff:
+                continue
+        except FileNotFoundError:
+            # Deleted since the folder was listed (an imported transfer, a sent package or another cleanup).
             continue
         if path.is_file():
             path.unlink(missing_ok=True)
