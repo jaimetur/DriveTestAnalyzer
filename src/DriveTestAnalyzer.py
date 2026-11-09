@@ -12174,16 +12174,19 @@ def import_notice_details(notice: Any) -> dict[str, Any] | None:
 
 
 def changes_section(title: str, updated: Iterable[tuple[str, list[str]]],
-                    details: list[list[dict[str, str]]] | None = None) -> ImportSummaryLine:
+                    details: list[list[dict[str, str]]] | None = None, about: dict[str, str] | None = None) -> ImportSummaryLine:
     """A line of the completion message that tells what changed in the updated items of an element:
     ``title: item (change; change); item (change).``, with each value before and after of the items told in ``details``
-    (unfolded from their row in the summary)."""
+    (unfolded from their row in the summary) and what each item is, in ``about`` by its name (only in the summary)."""
     updated = [(str(name), [str(change) for change in changes]) for name, changes in updated]
     line = ImportSummaryLine(f'{title}: ' + '; '.join(f'{name} ({"; ".join(changes)})' for name, changes in updated) + '.')
     items = [{'name': name, 'changes': changes} for name, changes in updated]
     for item, told in zip(items, details or []):
         if told:
             item['details'] = told
+    for item in items:
+        if (about or {}).get(item['name']):
+            item['about'] = about[item['name']]
     line.section = {'title': title, 'kind': 'updated', 'items': items}
     return line
 
@@ -12338,7 +12341,8 @@ def _element_notice(kind: str, destinations: list[Workspace], changes: dict[str,
     singular, plural, prefix = ELEMENT_NAMES[kind]
     if changes is None:
         return f'Imported {prefix}{counted(count, singular, plural)} into {workspaces}.', []
-    lines = [changes_section(f'Updated {plural} of "{workspace.name}"', changes[workspace.id].updated, changes[workspace.id].details)
+    lines = [changes_section(f'Updated {plural} of "{workspace.name}"', changes[workspace.id].updated, changes[workspace.id].details,
+                             changes[workspace.id].about)
              for workspace in destinations if changes[workspace.id].updated]
     detail = breakdown(total)
     return f'Imported {prefix}{counted(total.count, singular, plural)} into {workspaces}' + (f': {detail}.' if detail else '.'), lines
@@ -12383,11 +12387,16 @@ def _preview_element_document(kind: str, manifest: dict[str, Any], archive: zipf
 
 def _predicted_document(kind: str, workspace: Workspace, package: Any, includes_designs: bool = False) -> Any:
     """The export document of an element package as its import saves it in a workspace (the Reporting Jobs pointing at
-    its datasets, favourites and PPT Designs; the PPT Templates a PPT Design of the workspace uses keeping their content
-    unless the PPT Designs come too; the PPT Designs referring to the PPT Templates of the workspace by the identity they
-    have there), for the preview of the import."""
+    its datasets, favourites and PPT Designs; the Reports at its PPT Designs; the PPT Templates a PPT Design of the
+    workspace uses keeping their content unless the PPT Designs come too; the PPT Designs referring to the PPT Templates
+    of the workspace by the identity they have there), for the preview of the import."""
     if kind == 'ppt-templates' and not includes_designs and isinstance(package, list):
         return _kept_report_template_rows(workspace, package)
+    if kind == 'bundle-report-template-favourites' and isinstance(package, dict):
+        from src.modules.reporting.bundle_report_templates import predicted_favourites_document
+
+        return predicted_favourites_document(
+            Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path), package)
     if kind == 'designs' and isinstance(package, dict) and isinstance(package.get('designs', package.get('dashboards')), dict):
         from src.modules.ppt_designer.ppt_naming import renamed_design
         from src.modules.reporting.report_template_modes import migrate_designs_state
@@ -12637,6 +12646,13 @@ def _bundle_designs_unchanged(archive: zipfile.ZipFile, entry: dict[str, Any], d
         shutil.rmtree(nested_root, ignore_errors=True)
 
 
+# What the packages whose name does not say where their items live are, in their box of the preview.
+PREVIEW_PACKAGE_ABOUT = {
+    'bundle-report-template-favourites': 'The reports of the {reporting} module (its Reports tab).',
+    'reporting-jobs': 'The schedule and email of each report of the {reporting} module.',
+}
+
+
 def preview_import_archive(package_path: Path, manifest: dict[str, Any], destination_workspace_ids: Iterable[str] = (),
                            importing_user: str = 'import') -> dict[str, Any]:
     """What importing a package would do in each of its packages (one for a package that is not a bundle), without
@@ -12688,6 +12704,9 @@ def preview_import_archive(package_path: Path, manifest: dict[str, Any], destina
             except Exception as exc:  # noqa: BLE001
                 item.update(message='', sections=[], changed=True, error=f'Its preview could not be prepared: {exc}')
             entries.append(item)
+    for item in entries:
+        if item['kind'] in PREVIEW_PACKAGE_ABOUT:
+            item['about'] = PREVIEW_PACKAGE_ABOUT[item['kind']].format(reporting=app_event_module_titles().get('reporting', 'Reporting'))
     return {'headline': f'{len(entries)} package{"s" if len(entries) != 1 else ""} to import', 'packages': entries}
 
 

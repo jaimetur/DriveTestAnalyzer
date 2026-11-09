@@ -8514,6 +8514,8 @@ function importSummaryContent(details) {
       updated.forEach((item) => {
         const row = element('tr');
         const what = element('td', 'import-summary-changes');
+        // What the item is, when its name may not say it (what a Report includes).
+        if (item.about) what.append(element('div', 'import-summary-about', item.about));
         item.changes.forEach((change) => what.append(element('div', '', change)));
         // The items told in detail (the follow-up of a Non-Qualified Call) unfold each value before and after.
         if (Array.isArray(item.details) && item.details.length) {
@@ -8599,7 +8601,9 @@ function showImportPreview(preview, options = {}) {
     const text = element('span', 'import-preview-package-text');
     const message = element('span', 'import-preview-package-message');
     message.append(...importCountsNodes(item.message || ''));
-    text.append(element('strong', '', item.label || item.kind || 'Package'), message);
+    text.append(element('strong', '', item.label || item.kind || 'Package'));
+    if (item.about) text.append(element('span', 'import-preview-package-about', item.about));
+    text.append(message);
     if (item.error) text.append(element('span', 'import-preview-package-error', item.error));
     head.append(box, text);
     card.append(head);

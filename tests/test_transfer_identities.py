@@ -157,6 +157,71 @@ def test_favourites_follow_their_renames_and_creators(client, tmp_path):
     assert stored['name'] == 'Monthly pack v2' and stored['created_by'] == 'admin'
 
 
+def test_the_preview_of_reports_tells_only_what_would_really_change(client, tmp_path):
+    source, source_repo = _workspace('Reports preview source')
+    destination, destination_repo = _workspace('Reports preview destination')
+    # The same PPT Designs have another ID on each server.
+    design = {'nr_mode': 'NSA', 'template': 'T'}
+    source_repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps({'s1': {**design, 'name': 'Coverage'}, 's2': {**design, 'name': 'Speed'}}))
+    destination_repo.set_workspace_state(core.DESIGN_STATE_KEY, json.dumps({'d1': {**design, 'name': 'Coverage'}, 'd2': {**design, 'name': 'Speed'}}))
+    report = brt.save_favourite(source_repo, None, 'Weekly', {'sections': [{'key': 'designs', 'enabled': True, 'items': [
+        {'key': 's1', 'label': 'Coverage', 'enabled': True, 'nr_mode': 'NSA'},
+        {'key': 's2', 'label': 'Speed', 'enabled': False, 'nr_mode': 'NSA'}]}]}, 'super')
+    package = tmp_path / 'reports.zip'
+
+    def preview() -> dict:
+        core.build_export_archive_file('bundle-report-template-favourites', package, [source.id])
+        return core.preview_import_archive(package, core.read_import_manifest(package), [destination.id], 'super')['packages'][0]
+
+    assert preview()['message'] == 'Imports 1 Report into 1 workspace: 1 new.'
+    _transfer('bundle-report-template-favourites', source, destination, tmp_path)
+    [stored] = brt.list_favourites(destination_repo)
+    designs = next(section for section in stored['definition']['sections'] if section['key'] == 'designs')
+    assert [item['key'] for item in designs['items']] == ['d1', 'd2']
+
+    # Imported, it would stay the same although the package names its PPT Designs by the IDs of the source.
+    again = preview()
+    assert (again['message'], again['changed'], again['sections']) == ('Imports 1 Report into 1 workspace: 1 unchanged.', False, [])
+    assert 'Reporting module' in again['about']
+
+    # Only what the report changes is told, as its editor names it.
+    definition = json.loads(json.dumps(report['definition']))
+    definition['filters']['regions'] = ['London']
+    definition['theme'] = 'midnight'
+    for section in definition['sections']:
+        if section['key'] == 'scoring':
+            section['options']['campaigns'] = ['@latest-2-campaigns']
+            section['items'][0]['enabled'] = False
+        elif section['key'] == 'designs':
+            section['items'][0]['enabled'] = False
+            section['items'][1]['enabled'] = True
+    brt.save_favourite(source_repo, report['id'], 'Weekly', definition, 'super')
+    expected = ['Theme: NetCheck → Midnight', 'Filters · Regions: +London',
+                'Scoring & GAP Analysis · Campaigns: +Latest 2 campaigns, −All campaigns',
+                'Scoring & GAP Analysis · Summary: Included → Left out', 'PPT Designs: +Speed, −Coverage']
+    changed = preview()
+    assert changed['message'] == 'Imports 1 Report into 1 workspace: 1 updated.' and changed['changed']
+    [section] = changed['sections']
+    [item] = section['items']
+    assert section['title'] == f'Updates Reports of "{destination.name}"'
+    assert (item['name'], sorted(item['changes'])) == ('Weekly', sorted(expected))
+    assert item['about'].startswith('Includes ') and 'London' in item['about']
+
+    # The import tells the same, and then nothing is left to change.
+    notice = _transfer('bundle-report-template-favourites', source, destination, tmp_path)
+    [section] = core.import_notice_details(notice)['sections']
+    assert sorted(section['items'][0]['changes']) == sorted(expected)
+    assert preview()['sections'] == []
+
+    # A PPT Design that is only listed, or that was renamed, changes nothing in the report.
+    before = brt.normalize_definition(definition)
+    after = json.loads(json.dumps(before))
+    for section in after['sections']:
+        if section['key'] == 'designs':
+            section['items'] = [{**item, 'label': 'Speed v2'} for item in section['items'] if item['enabled']]
+    assert brt.definition_changes(before, after) == []
+
+
 def test_favourites_filters_take_the_order_of_the_package_when_only_it_changes(client, tmp_path):
     source, source_repo = _workspace('Filters source')
     destination, destination_repo = _workspace('Filters destination')

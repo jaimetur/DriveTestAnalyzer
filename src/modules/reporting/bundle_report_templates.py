@@ -42,7 +42,7 @@ from src.modules.scoring.scoring_area_summary import normalize_trend_campaigns
 from src.modules.scoring.scoring_export_panels import EXPORT_PANELS, load_export_panels, normalize_export_panels
 from src.modules.scoring.scoring_methodologies import BY_CAMPAIGN
 from src.modules.scoring.scoring_reports import NR_CHARTS, NR_CHARTS_LABELS, NR_LAYOUT_LABELS, NR_LAYOUTS
-from src.modules.scoring.scoring_themes import DEFAULT_THEME, normalize_theme
+from src.modules.scoring.scoring_themes import DEFAULT_THEME, THEMES, normalize_theme
 from src.modules.reporting.slide_titles import fit_slide_title
 
 BUNDLE_REPORT_TEMPLATES_TABLE = 'bundle_report_templates'
@@ -630,12 +630,17 @@ AREA_FILTERS = (('Region', 'regions'), ('Cluster', 'clusters'), ('City', 'cities
 PARTY_FILTERS = (('Operator', 'operators'), ('Vendor', 'vendors'))
 
 
-def _campaigns_label(values: Any) -> str:
-    """A choice of campaigns as a label: its automatic choice (Latest 2 campaigns) or its campaigns, All campaigns when
+def _campaign_labels(values: Any) -> list[str]:
+    """A choice of campaigns as labels: its automatic choice (Latest 2 campaigns) or its campaigns, All campaigns when
     it chooses none."""
     labels = ['All campaigns' if value == ALL_CAMPAIGNS else CAMPAIGN_PRESET_LABELS.get(value) or compact_campaign_value(value)
               for value in _strings(values)]
-    return ', '.join(dict.fromkeys(labels)) or 'All campaigns'
+    return list(dict.fromkeys(labels)) or ['All campaigns']
+
+
+def _campaigns_label(values: Any) -> str:
+    """A choice of campaigns as a label."""
+    return ', '.join(_campaign_labels(values))
 
 
 def report_labels(definition: Any) -> dict[str, Any]:
@@ -660,6 +665,136 @@ def report_labels(definition: Any) -> dict[str, Any]:
         campaigns.setdefault(_campaigns_label(section['options'].get('campaigns')), []).append(section['key'])
     return {'modules': [section['key'] for section in sections], 'nr_mode': filters['nr_mode'], 'scopes': scopes,
             'campaigns': [{'campaigns': label, 'modules': modules} for label, modules in campaigns.items()]}
+
+
+def report_summary(definition: Any) -> str:
+    """What a report includes, in one line (what an import tells of the report it changes): the labels of its card."""
+    labels = report_labels(definition)
+    modules = ', '.join(SECTION_TITLES[key] for key in labels['modules']) or 'no module'
+    return ' · '.join([f'Includes {modules}', labels['nr_mode'], *(scope['text'] for scope in labels['scopes']),
+                       *(choice['campaigns'] for choice in labels['campaigns'])])
+
+
+# The values of a report as the changes an import tells name them, as its editor does.
+DEFINITION_LABELS = {
+    **FILTER_LABELS, 'nr_mode': 'NR Mode', 'main_cities': 'Main Cities', 'chart_pictures': 'Chart Pictures',
+    'scorings': 'Scorings', 'kpi_values': 'Show KPI values', 'gap_values': 'Show GAP values',
+    'all_operators': 'Export All Operators in Focus panels', 'nsa_vs_sa': 'Compare NSA vs SA', 'nr_layout': 'NSA vs SA',
+    'nr_charts': 'NSA & SA charts', 'baseline_operator': 'GAP reference', 'geographical_areas': 'Geographical Areas',
+    'trends': 'Scoring Trends', 'breakdown': 'Breakdown', 'time_split': 'Time split', 'group': 'Split by',
+    'coverage_threshold': 'LTE coverage below (dBm)', 'interference_threshold': 'LTE interference below (dB)',
+    'nr_coverage_threshold': 'NR coverage below (dBm)', 'nr_interference_threshold': 'NR interference below (dB)',
+    'overshoot_km': 'Overshooting beyond (km)', 'grid_metres': 'Map grid (m)', 'granularity': 'Progress periods',
+    'open_only': 'Open calls only', 'include_suggestions': 'Count suggested root causes',
+    'show_not_classified': 'Show Not classified calls', 'show_empty': 'Show calls without a value in the phases',
+    'aggregation': 'Global Comparison', 'cdf_grouping': 'Global CDF Comparison',
+}
+
+
+def _told_options(section: str, options: dict[str, Any]) -> dict[str, Any]:
+    """The options of a section with their values as its editor names them."""
+    told = {**options, 'campaigns': _campaign_labels(options.get('campaigns'))}
+    if section == 'scoring':
+        area = options['area_summary']
+        environments = {COMBINED_ENVIRONMENT: 'All Environments'}
+        baseline = options['baseline_operator']
+        del told['area_summary']
+        told.update({
+            'scorings': [label for key, label in SCORINGS if key in options['scorings']],
+            'environments': [environments.get(name, name) for name in options['environments']],
+            'nr_layout': NR_LAYOUT_LABELS.get(options['nr_layout'], options['nr_layout']),
+            'nr_charts': NR_CHARTS_LABELS.get(options['nr_charts'], options['nr_charts']),
+            'baseline_operator': SAME_OPERATOR_NSA_LABEL if baseline == SAME_OPERATOR_NSA else baseline,
+            'methodology': 'By campaign' if options['methodology'] == BY_CAMPAIGN else options['methodology'],
+            'geographical_areas': {key: area[key] for key in ('breakdown', 'cities', 'main_cities')},
+            'trends': {'campaigns': _campaign_labels(area.get('campaigns')), 'time_split': area['time_split']},
+        })
+    elif section == 'network_insights':
+        told.update({'technology': NI_TECHNOLOGIES.get(options['technology'], options['technology']),
+                     'group': [NI_GROUPINGS.get(key, key) for key in options['group']]})
+    elif section == 'non_qualified_calls':
+        told['granularity'] = NQ_GRANULARITIES.get(options['granularity'], options['granularity'])
+    elif section == 'dataset_analysis':
+        kinds, aggregations, cdf_groupings = _cdr_analysis_choices()
+        told.update({'metrics': {kinds.get(key, key): values for key, values in options['metrics'].items()},
+                     'aggregation': aggregations.get(options['aggregation'], options['aggregation']),
+                     'cdf_grouping': cdf_groupings.get(options['cdf_grouping'], options['cdf_grouping'])})
+    return told
+
+
+def _value_changes(prefix: str, before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    """What differs between some values of a report, those inside another value under its name."""
+    from src.modules.core.import_changes import describe_changes, field_label
+
+    changes = []
+    for key in dict.fromkeys([*before, *after]):
+        old, new = before.get(key), after.get(key)
+        if isinstance(old, dict) or isinstance(new, dict):
+            changes += _value_changes(f'{prefix}{field_label(key, DEFINITION_LABELS)} · ', old or {}, new or {})
+        else:
+            changes += [f'{prefix}{change}' for change in describe_changes({key: old}, {key: new}, DEFINITION_LABELS)]
+    return changes
+
+
+def _included(enabled: bool) -> str:
+    return 'Included' if enabled else 'Left out'
+
+
+def _order_changed(before: list[str], after: list[str]) -> bool:
+    """Whether the keys both lists have come in another order."""
+    return [key for key in before if key in after] != [key for key in after if key in before]
+
+
+def _design_changes(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> list[str]:
+    """The PPT Designs a report generates that differ. Only those it checks count: the others are just listed in its
+    editor, and what names one (its name, its NR Mode) belongs to the PPT Design, not to the report."""
+    def checked(items: list[dict[str, Any]]) -> dict[str, str]:
+        return {item['key']: item.get('label') or item['key'] for item in items if item['enabled']}
+
+    was, now = checked(before), checked(after)
+    parts = [*(f'+{name}' for key, name in now.items() if key not in was), *(f'−{name}' for key, name in was.items() if key not in now)]
+    return [*([f"PPT Designs: {', '.join(parts)}"] if parts else []),
+            *(['PPT Designs: new order'] if _order_changed(list(was), list(now)) else [])]
+
+
+def _submodule_changes(section: str, before: list[dict[str, Any]], after: list[dict[str, Any]]) -> list[str]:
+    """The sub-modules and components of a section that differ, and their order."""
+    title = SECTION_TITLES[section]
+    catalogue = {key: (name, dict(components)) for key, name, components in _panels()[section]}
+    previous = {item['key']: item for item in before}
+    changes = [f'{title}: new order'] if _order_changed([item['key'] for item in before if item['enabled']],
+                                                        [item['key'] for item in after if item['enabled']]) else []
+    for item in after:
+        was = previous.get(item['key'])
+        name, components = catalogue[item['key']]
+        if was is None:
+            continue
+        if was['enabled'] != item['enabled']:
+            changes.append(f"{title} · {name}: {_included(was['enabled'])} → {_included(item['enabled'])}")
+        changes += [f'{title} · {name} · {components.get(key, key)}: {_included(was["components"].get(key, True))} → {_included(value)}'
+                    for key, value in item['components'].items() if was['components'].get(key, True) != value]
+    return changes
+
+
+def definition_changes(before: Any, after: Any) -> list[str]:
+    """What differs between two definitions of a report, as its editor names it (what an import tells of a report it
+    changes): its cover, its common filters and each section with its Campaigns, options, sub-modules and components."""
+    old, new = normalize_definition(before), normalize_definition(after)
+    cover = lambda definition: {key: THEMES.get(value, {}).get('label', value) if key == 'theme' else value  # noqa: E731
+                                for key, value in definition.items() if key not in {'filters', 'sections'}}
+    changes = [*_value_changes('', cover(old), cover(new)), *_value_changes('Filters · ', old['filters'], new['filters'])]
+    if _order_changed([section['key'] for section in old['sections'] if section['enabled']],
+                      [section['key'] for section in new['sections'] if section['enabled']]):
+        changes.append('Modules: new order')
+    previous = {section['key']: section for section in old['sections']}
+    for section in new['sections']:
+        key, title, was = section['key'], SECTION_TITLES[section['key']], previous[section['key']]
+        if was['enabled'] != section['enabled']:
+            changes.append(f"{title}: {_included(was['enabled'])} → {_included(section['enabled'])}")
+        changes += _value_changes(f'{title} · ', _told_options(key, was['options']), _told_options(key, section['options']))
+        changes += (_design_changes(was['items'], section['items']) if key == 'designs'
+                    else _submodule_changes(key, was['items'], section['items']))
+    return changes
 
 
 def _favourite(row: sqlite3.Row) -> dict[str, Any]:
@@ -759,15 +894,19 @@ def export_entries(repository: Any) -> list[dict[str, Any]]:
     uids = portable_identities(repository, BUNDLE_REPORT_TEMPLATE_FAVOURITES, [str(item['id']) for item in favourites])
     entries = []
     for item in favourites:
-        definition = item['definition']
-        for section in definition['sections']:
-            if section['key'] == 'designs':
-                for design in section['items']:
-                    if design['key'] in designs:
-                        design['label'], design['nr_mode'] = designs[design['key']]
-        entries.append({'name': item['name'], 'definition': definition, 'created_by': item['created_by'],
-                        'uid': uids[str(item['id'])]})
+        entries.append({'name': item['name'], 'definition': _named_designs(item['definition'], designs),
+                        'created_by': item['created_by'], 'uid': uids[str(item['id'])]})
     return entries
+
+
+def _named_designs(definition: dict[str, Any], designs: dict[str, tuple[str, str]]) -> dict[str, Any]:
+    """A definition with each PPT Design of the workspace under its current name and NR Mode, as its export carries it."""
+    for section in definition['sections']:
+        if section['key'] == 'designs':
+            for design in section['items']:
+                if design['key'] in designs:
+                    design['label'], design['nr_mode'] = designs[design['key']]
+    return definition
 
 
 def workspace_designs(repository: Any) -> dict[str, tuple[str, str]]:
@@ -833,6 +972,33 @@ def import_favourites_document(repository: Any, content: bytes | str, username: 
                           creator=creator, summary=summary, designs_of_report_mode=int(document.get('version') or 1) < 2)
 
 
+def _imported_definition(raw: Any, designs: dict[str, tuple[str, str]], aliases: dict[str, str],
+                         designs_of_report_mode: bool) -> dict[str, Any]:
+    """The definition of a favourite of a document as an import saves it in a workspace, its PPT Designs those of the
+    workspace (see import_entries)."""
+    definition = normalize_definition(raw)
+    for section in definition['sections']:
+        if section['key'] == 'designs':
+            for item in section['items']:
+                if item['key'] not in designs and item['key'] in aliases:
+                    item['key'] = aliases[item['key']]
+            match_designs(section['items'], designs, definition['filters']['nr_mode'])
+    if designs_of_report_mode:
+        uncheck_other_mode_designs(definition, {key: mode for key, (_name, mode) in designs.items()})
+    return definition
+
+
+def predicted_favourites_document(repository: Any, document: dict[str, Any]) -> dict[str, Any]:
+    """A portable document with its favourites as the import would save them in a workspace and its export would then
+    give them, so the preview of the import compares what would really stay."""
+    designs, aliases = workspace_designs(repository), design_aliases(repository)
+    designs_of_report_mode = int(document.get('version') or 1) < 2
+    entries = document.get('favourites')
+    return {**document, 'favourites': [
+        {**entry, 'definition': _named_designs(_imported_definition(entry.get('definition'), designs, aliases, designs_of_report_mode), designs)}
+        if isinstance(entry, dict) else entry for entry in (entries if isinstance(entries, list) else [])]}
+
+
 def import_entries(repository: Any, entries: Any, username: str,
                    designs: dict[str, tuple[str, str]] | None = None, *,
                    creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None,
@@ -860,15 +1026,7 @@ def import_entries(repository: Any, entries: Any, username: str,
     for entry in entries:
         if not isinstance(entry, dict) or not str(entry.get('name') or '').strip():
             continue
-        definition = normalize_definition(entry.get('definition'))
-        for section in definition['sections']:
-            if section['key'] == 'designs':
-                for item in section['items']:
-                    if item['key'] not in (designs or {}) and item['key'] in aliases:
-                        item['key'] = aliases[item['key']]
-                match_designs(section['items'], designs or {}, definition['filters']['nr_mode'])
-        if designs_of_report_mode:
-            uncheck_other_mode_designs(definition, {key: mode for key, (_name, mode) in (designs or {}).items()})
+        definition = _imported_definition(entry.get('definition'), designs or {}, aliases, designs_of_report_mode)
         target, name = matcher.match(entry.get('uid'), ' '.join(str(entry['name']).split())[:120])
         saved = save_favourite(repository, target, name, definition, username)
         if target is not None and local_names.get(target) != name:

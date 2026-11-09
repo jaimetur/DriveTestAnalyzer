@@ -54,6 +54,8 @@ class Item:
     uid: str = ''
     match: str = ''
     key: str = ''
+    # What the item is, told beside its changes (what a Report includes).
+    about: str = ''
 
     def __post_init__(self) -> None:
         self.match = self.match or ' '.join(str(self.name).split()).casefold()
@@ -62,12 +64,13 @@ class Item:
 @dataclass
 class Changes:
     """What an import did to the items of the package: the names of the new ones, the name and changes of the updated
-    ones (with, for the elements told in detail, each value before and after, in ``details`` beside them) and how many were
-    left as they were."""
+    ones (with, for the elements told in detail, each value before and after, in ``details`` beside them; and what an
+    updated item is, by its name, in ``about``, when told) and how many were left as they were."""
     new: list[str] = field(default_factory=list)
     updated: list[tuple[str, list[str]]] = field(default_factory=list)
     unchanged: int = 0
     details: list[list[dict[str, str]]] = field(default_factory=list)
+    about: dict[str, str] = field(default_factory=dict)
 
     @property
     def count(self) -> int:
@@ -78,12 +81,15 @@ class Changes:
         self.updated += other.updated
         self.unchanged += other.unchanged
         self.details += other.details
+        self.about.update(other.about)
         return self
 
-    def update(self, name: str, described: list[str], details: list[dict[str, str]] | None = None) -> None:
-        """An updated item with its changes (and its details, when told)."""
+    def update(self, name: str, described: list[str], details: list[dict[str, str]] | None = None, about: str = '') -> None:
+        """An updated item with its changes (and its details and what it is, when told)."""
         self.updated.append((name, described))
         self.details.append(details or [])
+        if about:
+            self.about[name] = about
 
 
 def field_label(key: str, labels: dict[str, str] | None = None) -> str:
@@ -148,14 +154,18 @@ def list_change(label: str, old: list[Any], new: list[Any]) -> str:
     return f'{label}: {", ".join(part for part in parts if part)}'
 
 
-def describe_changes(before: dict[str, Any], after: dict[str, Any], labels: dict[str, str] | None = None) -> list[str]:
-    """The values of an item that differ after the import, each as ``Label`` or ``Label: before → after``."""
+def describe_changes(before: dict[str, Any], after: dict[str, Any], labels: dict[str, Any] | None = None) -> list[str]:
+    """The values of an item that differ after the import, each as ``Label`` or ``Label: before → after``. A value whose
+    label is a function is told by it, from its values before and after (none when the difference changes nothing)."""
     changes = []
     for key in dict.fromkeys([*before, *after]):
         if key in IGNORED_FIELDS:
             continue
         old, new = before.get(key), after.get(key)
         if _canonical(old if old is not None else '') == _canonical(new if new is not None else ''):
+            continue
+        if callable((labels or {}).get(key)):
+            changes += labels[key](old, new)
             continue
         label = field_label(key, labels)
         old_text, new_text = _short(old), _short(new)
@@ -246,7 +256,7 @@ def compare(package: list[Item], before: list[Item], after: list[Item], labels: 
         described = describe_changes(before[previous[position]].values, item.values, labels)
         if described:
             changes.update(item.name, described, describe_details(before[previous[position]].values, item.values, labels)
-                           if detailed and len(changes.updated) < DETAILED_ITEMS else None)
+                           if detailed and len(changes.updated) < DETAILED_ITEMS else None, item.about)
         else:
             changes.unchanged += 1
     return changes
@@ -269,7 +279,7 @@ def predict(package: list[Item], before: list[Item], labels: dict[str, str] | No
         described = describe_changes(previous, values, labels)
         if described:
             changes.update(item.name, described, describe_details(previous, values, labels)
-                           if detailed and len(changes.updated) < DETAILED_ITEMS else None)
+                           if detailed and len(changes.updated) < DETAILED_ITEMS else None, item.about)
         else:
             changes.unchanged += 1
     return changes
@@ -381,6 +391,22 @@ def methodology_items(document: Any) -> list[Item]:
     return [Item(name=str(profile.get('name') or ''), key=str(profile['id']), uid=str(identities.get(profile['id']) or profile['id']),
                  values={**profile, 'created_by': str(creators.get(profile['id']) or '')})
             for profile in (collection or {}).get('profiles') or [] if isinstance(profile, dict) and profile.get('id')]
+
+
+def report_items(document: Any) -> list[Item]:
+    """The Reports of a document, each with what it includes."""
+    from src.modules.reporting.bundle_report_templates import report_summary
+
+    items = named_items(_documents(document, 'favourites'))
+    for item in items:
+        item.about = report_summary(item.values.get('definition'))
+    return items
+
+
+def _report_definition_changes(before: Any, after: Any) -> list[str]:
+    from src.modules.reporting.bundle_report_templates import definition_changes
+
+    return definition_changes(before, after)
 
 
 def report_configuration_items(document: Any) -> list[Item]:
@@ -518,7 +544,7 @@ ELEMENT_ITEMS = {
     'auto-calculated-fields': auto_calculated_field_items,
     'query-builder-queries': lambda document: named_items(_documents(document, 'queries')),
     'network-insights-favourites': lambda document: named_items(_documents(document, 'favourites')),
-    'bundle-report-template-favourites': lambda document: named_items(_documents(document, 'favourites')),
+    'bundle-report-template-favourites': report_items,
     'scoring-favourites-filters': favourites_filter_items,
     'scoring-report-templates': report_configuration_items,
     'scoring-excluded-calls': lambda document: named_items(_documents(document, 'lists')),
@@ -553,10 +579,11 @@ SETTINGS_ELEMENTS = {
     'scoring-export-panels': ('the Scoring Export Panels', 'Scoring Export Panels', {}),
     'nq-calls-configuration': ('the NQ Calls Configuration', 'NQ Calls Configuration', {}),
 }
-# The labels of the values of the items of some elements.
+# The labels of the values of the items of some elements (a function tells the changes of its value).
 ELEMENT_LABELS = {
     'ppt-templates': {'content': 'Content'},
     'scoring-excluded-calls': {'calls': 'Calls'},
+    'bundle-report-template-favourites': {'definition': _report_definition_changes},
 }
 
 
