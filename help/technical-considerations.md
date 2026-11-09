@@ -253,6 +253,8 @@ The Design jobs UI supports stop, retry, relaunch and deletion. A completed job 
 
 PowerPoint generations continue after leaving the page or signing out. A process restart marks interrupted in-process jobs as failed and retryable because the current worker model runs inside the application process.
 
+A mirror of another installation (`DRIVETEST_ANALYZER_MIRROR_OF`, see [Deployment Configuration](configuration.md#runtime-settings)) starts neither the recurring backups nor the Reporting schedules and refuses to send emails: they belong to the installation it is synchronized from, which would otherwise make them twice. Its idle tasks (caches, the presentations of the Help) run as on any server.
+
 The Reporting Jobs of a workspace of an earlier version become the schedules of their reports the first time the application starts with v0.12.0 (App Event `reporting_jobs_became_report_schedules`, see [Reporting](reporting.md#schedule-and-email)). A workspace of an earlier version also drops, when it opens, the `generated_jobs` table of the PowerPoint reports and Chart Sets made by a former reports module (App Event `retired_report_jobs_dropped`, with the jobs it held); the documents of those jobs stay in `output/reports/reports-old/` and `output/reports/reports-charts-old/`, and packages and backups that still hold that table import and restore as usual.
 
 ## Import, export and server transfer

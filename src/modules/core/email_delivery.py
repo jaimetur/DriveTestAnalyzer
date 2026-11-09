@@ -23,6 +23,8 @@ from email.utils import formataddr, make_msgid
 from pathlib import Path
 from typing import Any
 
+from src.config import mirror_of
+
 EMAIL_DELIVERY_STATE_KEY = 'email_delivery_v1'
 # The key that signs the links of the emails, created once per deployment.
 EMAIL_LINK_SECRET_STATE_KEY = 'email_link_secret_v1'
@@ -272,6 +274,9 @@ def send_email(settings: dict[str, Any], recipients: list[str], subject: str, te
                attachments: list[tuple[str, Path]] | None = None, *, cc: list[str] | None = None, reply_to: str = '',
                kind: str = 'message') -> None:
     """Send one message through the configured SMTP server or Power Automate flow; raises on failure."""
+    if mirror_of():
+        raise RuntimeError(f'This server is a mirror of {mirror_of()}: it sends no emails, the installation it is '
+                           'synchronized from sends them.')
     if not settings.get('configured'):
         raise RuntimeError('Email delivery is not configured. Set the SMTP server or the Power Automate flow in Application Config.')
     if not recipients:

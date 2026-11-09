@@ -214,6 +214,8 @@
         </div>
       </nav>
       {% endif %}
+      {# A mirror (DRIVETEST_ANALYZER_MIRROR_OF, tools/mirror) says so on every page, the login page too. #}
+      {% if mirror_of() and not embedded_template_editor and not embedded_preview %}<div class="alert alert-warning mirror-notice" role="status"><strong>Mirror of {{ mirror_of() }}.</strong> This server is a synchronized copy of it: what is changed here is overwritten by the next synchronization, and its backups, report schedules and emails are made there.</div>{% endif %}
       {% if workspace_materializing %}<div class="alert alert-warning workspace-materializing-notice" role="status"><strong>Updating the Auto-calculated Fields of {{ active_workspace.name }}.</strong> Analyses and exports may be slower or fail until it finishes; try again in a few minutes.</div>{% endif %}
       {% block content %}{% endblock %}
     </main>

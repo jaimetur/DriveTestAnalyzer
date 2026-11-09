@@ -53,6 +53,16 @@ def project_path(env_var: str, default: str) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
+def mirror_of() -> str:
+    """The installation this server is a synchronized copy of (``DRIVETEST_ANALYZER_MIRROR_OF``); '' on an ordinary server.
+
+    A mirror (kept with ``tools/mirror``) keeps no schedules of its own and sends no emails: the recurring backups
+    and the Reporting schedules run on the installation it is synchronized from, and what is changed on the mirror
+    is overwritten by the next synchronization, which every page of the mirror says.
+    """
+    return ' '.join(str(os.getenv('DRIVETEST_ANALYZER_MIRROR_OF') or '').split())
+
+
 # The PowerPoint master of every report and export (its covers and transitions in the Vodafone-Three red).
 POWERPOINT_TEMPLATE = "Template_VodafoneThree.pptx"
 

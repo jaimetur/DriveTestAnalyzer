@@ -64,7 +64,7 @@ from starlette.requests import ClientDisconnect
 
 DEFAULT_TRANSFER_PORT = 7278
 
-from src.config import PROJECT_ROOT, settings
+from src.config import PROJECT_ROOT, mirror_of, settings
 from src.modules.cdr_analysis.analytics import build_analysis, shared_frame_attrs
 from src.modules.core.app_event_details import app_event_origin, app_event_origin_parts, changed_values, describe_app_event
 from src.modules.core.background_scheduler import BackgroundTaskScheduler
@@ -3436,6 +3436,10 @@ def _prepare_active_workspace(started_at: float) -> None:
     ).start()
 
 
+# The threads of the recurring backups and of the Reporting schedules, started at startup (none on a mirror).
+SCHEDULER_THREADS: list[Thread] = []
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     startup_started_at = monotonic()
@@ -3490,23 +3494,22 @@ async def lifespan(_: FastAPI):
     # minutes on installations with large reporting-row stores.
     export_package_dir().mkdir(parents=True, exist_ok=True)
     backup_scheduler_stop = Event()
-    backup_scheduler_thread = Thread(
-        target=recurring_backup_scheduler_loop, args=(backup_scheduler_stop,),
-        name='recurring-backup-scheduler', daemon=True,
-    )
-    backup_scheduler_thread.start()
+    report_scheduler_stop = Event()
+    # A mirror of another installation (DRIVETEST_ANALYZER_MIRROR_OF, see tools/mirror) keeps no schedules: the
+    # recurring backups and the Reporting schedules run on the installation it is synchronized from, and would be
+    # made twice (the emails sent twice) if the mirror ran them on its copy of the data.
+    SCHEDULER_THREADS[:] = [] if mirror_of() else [
+        Thread(target=recurring_backup_scheduler_loop, args=(backup_scheduler_stop,), name='recurring-backup-scheduler', daemon=True),
+        Thread(target=report_task_scheduler_loop, args=(report_scheduler_stop,), name='reporting-jobs-scheduler', daemon=True),
+    ]
+    for scheduler_thread in SCHEDULER_THREADS:
+        scheduler_thread.start()
     idle_task_stop = Event()
     idle_task_thread = Thread(
         target=idle_task_loop, args=(idle_task_stop,),
         name='idle-tasks', daemon=True,
     )
     idle_task_thread.start()
-    report_scheduler_stop = Event()
-    report_scheduler_thread = Thread(
-        target=report_task_scheduler_loop, args=(report_scheduler_stop,),
-        name='reporting-jobs-scheduler', daemon=True,
-    )
-    report_scheduler_thread.start()
     try:
         _interrupt_stale_transfer_offers()
     except sqlite3.Error:
@@ -3528,7 +3531,8 @@ async def lifespan(_: FastAPI):
     backup_scheduler_stop.set()
     idle_task_stop.set()
     report_scheduler_stop.set()
-    backup_scheduler_thread.join(timeout=1)
+    for scheduler_thread in SCHEDULER_THREADS:
+        scheduler_thread.join(timeout=1)
     idle_task_thread.join(timeout=1)
     BACKGROUND_TASK_SCHEDULER.shutdown(wait=False, cancel_futures=True)
     with ACTIVE_DATASET_WORKERS_LOCK:
@@ -15256,7 +15260,10 @@ def build_datasets_analysis_payload(
 
 @app.get('/healthz')
 def healthz() -> dict[str, str]:
-    return {'status': 'ok', 'version': __version__}
+    health = {'status': 'ok', 'version': __version__}
+    if mirror_of():
+        health['mirror_of'] = mirror_of()
+    return health
 
 
 @app.get('/', response_class=HTMLResponse)
@@ -18929,6 +18936,7 @@ def user_choices(usernames: Iterable[str] | None = None) -> list[dict[str, Any]]
 templates.env.globals['user_choices'] = user_choices
 # Whether the tool can send emails (the Forgot your password? of the login page).
 templates.env.globals['email_delivery_ready'] = lambda: bool(email_delivery_settings(repository)['configured'])
+templates.env.globals['mirror_of'] = mirror_of
 
 
 def ticket_people() -> dict[str, dict[str, str]]:
