@@ -293,7 +293,14 @@ _DESCRIBERS: dict[str, Callable[[Any], str]] = {
         f"{value_text(details['changes']['email'][0]) or 'none'} → {value_text(details['changes']['email'][1]) or 'none'}"]),
     'password_reset_requested': lambda details: f"Link to choose a new password emailed to {details.get('email')}.",
     'password_reset': lambda details: 'Password changed with the link of a password reset email.',
-    'download_reporting_file_link': lambda details: f"{details.get('file')} of a report downloaded from the link of its email.",
+    'download_reporting_file_link': lambda details: (
+        f"{details.get('file')} of a report{' (run ' + str(details['run_id']) + ')' if details.get('run_id') else ''} downloaded "
+        'from the link of its email.'),
+    'view_reporting_file_link': lambda details: (
+        f"{details.get('file')} of the report {details.get('name')} (run {details.get('run_id')}) viewed online from the link of its "
+        'email.'),
+    'report_email_link_denied': lambda details: (
+        f"Link of a report email to {details.get('file')} refused: no access to the workspace of the report."),
     'operator_mapping_assign': _mapping_assign('Operator'),
     'operator_name_comments': _name_comments,
     'vendor_mapping_assign': _mapping_assign('Vendor'),

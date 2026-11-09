@@ -4,7 +4,7 @@ Center for the reporters of the tickets, and the download links of the Reporting
 import json
 import re
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 
@@ -311,15 +311,22 @@ def test_the_users_chosen_in_email_delivery_are_also_told_of_their_own_ticket_ch
     assert core.email_delivery_settings(core.repository)['own_ticket_changes_users'] == []
 
 
-def test_reporting_emails_give_download_links_of_the_files_kept_on_the_server(client, flow):
+def test_reporting_emails_give_links_to_view_online_or_download_the_files_kept_on_the_server_after_signing_in(client, flow):
     from tests.test_reporting_jobs import RECIPIENTS, start_run, wait_for_run
     from src.modules.reporting.report_tasks import register_report_artifact_provider, save_task
 
     def generate(config, folder, stamp, user):
         path = folder / f'{stamp} - Big report.pptx'
         path.write_bytes(b'big report')
+        # The PowerPoint of a report with its preview opens online too.
+        (folder / '.report').mkdir(exist_ok=True)
+        (folder / '.report' / 'report.json').write_text(json.dumps({'title': 'Big report', 'formats': {
+            'powerpoint': {'file_name': path.name, 'previews': 1, 'navigation': []}}}), encoding='utf-8')
+        other = folder / f'{stamp} - Big table.xlsx'
+        other.write_bytes(b'big table')
         return [{'module': 'fake', 'title': 'Big report', 'file_name': path.name, 'size': 10, 'status': 'ready',
-                 'details': ['Filter: everything']}]
+                 'details': ['Filter: everything']},
+                {'module': 'fake', 'title': 'Big table', 'file_name': other.name, 'size': 9, 'status': 'ready', 'details': []}]
 
     register_report_artifact_provider('fake', 'Fake module', 'datasets-analysis', generate)
     try:
@@ -335,17 +342,68 @@ def test_reporting_emails_give_download_links_of_the_files_kept_on_the_server(cl
         assert message['kind'] == 'report' and message['to'] == 'a@example.com;b@example.com'
         assert message['subject'].startswith('DT Analyzer - Weekly check · ')
         assert 'onedrive' not in message and 'valid for 7 days' in message['html'] and 'Filter: everything' in message['html']
+        assert 'Sign in to DriveTest Analyzer to view each file online or download it' in message['html']
         links = re.findall(r'href="(https://tool\.example:8443/reporting/files/[^"]+)"', message['html'])
-        assert len(links) == 1 and run['artifacts'][0]['file_name'] in message['html']
-        # The link downloads the file from the server without signing in, while it is valid.
+        views = re.findall(r'href="(https://tool\.example:8443/reporting/view/[^"]+)"[^>]*>View Online<', message['html'])
+        assert len(links) == 2 and run['artifacts'][0]['file_name'] in message['html']
+        # Only the file with a preview opens online, with the same signed link as its download, before Download.
+        assert len(views) == 1 and urlsplit(views[0]).path.rsplit('/', 1)[1] == urlsplit(links[0]).path.rsplit('/', 1)[1]
+        assert message['html'].index(views[0]) < message['html'].index(links[0])
+        report_file, table_file = (item['file_name'] for item in run['artifacts'])
+        # Without signing in, a link asks to sign in first and the sign-in page returns to it: the download then starts
+        # from a page that says so.
+        path, view = urlsplit(links[0]).path, urlsplit(views[0]).path
         client.cookies.clear()
-        path = urlsplit(links[0]).path
+        asked = client.get(path, follow_redirects=False)
+        assert asked.status_code == 303 and asked.headers['location'] == '/login?' + urlencode({'next': f'{path}?after_sign_in=1'})
+        assert client.get(view, follow_redirects=False).headers['location'] == '/login?' + urlencode({'next': view})
+        assert not logged('download_reporting_file_link')
+        signed = client.post('/login', data={'username': 'super', 'password': 'super123', 'next': f'{path}?after_sign_in=1'},
+                             follow_redirects=False)
+        assert signed.headers['location'] == f'{path}?after_sign_in=1'
+        page = client.get(signed.headers['location'])
+        assert page.status_code == 200 and f'Downloading {report_file}' in page.text and f'url={path}"' in page.text
         downloaded = client.get(path)
         assert downloaded.status_code == 200 and downloaded.content == b'big report'
-        assert logged('download_reporting_file_link')[-1]['file'] == run['artifacts'][0]['file_name']
+        event = logged('download_reporting_file_link')[-1]
+        assert (event['file'], event['run_id'], event['workspace_id'], event['report_owner']) == (
+            report_file, run['id'], core.active_workspace.id, 'super')
+        assert [row['username'] for row in core.repository.list_logs() if row['action'] == 'download_reporting_file_link'] == ['super']
         assert client.get(path[:-3] + 'abc').status_code == 410
+        # View Online opens the report of the run in the viewer of Reporting, in the format of the file.
+        opened = client.get(view, follow_redirects=False)
+        assert opened.status_code == 303 and opened.headers['location'] == '/reporting?' + urlencode({'report_run': run['id'],
+                                                                                                         'format': 'powerpoint'})
+        event = logged('view_reporting_file_link')[-1]
+        assert (event['file'], event['run_id'], event['format'], event['name']) == (report_file, run['id'], 'powerpoint', 'Weekly check')
+        # A file without a preview does not open online.
+        table_link = urlsplit(links[1]).path.replace('/reporting/files/', '/reporting/view/')
+        assert table_file in message['html'] and client.get(table_link, follow_redirects=False).status_code == 404
+        # A user without access to the workspace of the report opens neither link.
+        core.repository.create_user('ENOACCS', 'secret123', 'user-editor', email='noaccess@example.com')
+        login(client, 'ENOACCS', 'secret123')
+        assert client.get(path).status_code == 403 and client.get(view, follow_redirects=False).status_code == 403
+        assert logged('report_email_link_denied')[-1] == {'file': report_file, 'workspace_id': core.active_workspace.id,
+                                                          'reason': 'workspace_access'}
     finally:
         report_tasks.ARTIFACT_PROVIDERS.pop('fake', None)
+
+
+def test_the_recipients_of_a_report_can_be_chosen_among_the_users_of_the_tool_with_an_email_address(client):
+    core.repository.create_user('EWITHMAIL', 'secret123', 'user-editor', email='with.mail@example.com')
+    core.repository.create_user('ENOMAIL', 'secret123', 'user-editor')
+    core.repository.create_user('EINACTV', 'secret123', 'user-editor', active=False, email='inactive@example.com')
+    member = next(row for row in core.repository.list_users() if row['username'] == 'EWITHMAIL')
+    login(client)
+    users = {person['username']: person for person in client.get('/api/reporting/recipients').json()['users']}
+    # Only the active users with an email address, saying who could not open the links of the email.
+    assert 'EWITHMAIL' in users and 'ENOMAIL' not in users and 'EINACTV' not in users
+    assert users['EWITHMAIL'] == {'username': 'EWITHMAIL', 'name': 'EWITHMAIL', 'email': 'with.mail@example.com', 'can_open': False}
+    core.repository.set_user_workspace_access(int(member['id']), [core.active_workspace.id])
+    assert {person['username']: person for person in client.get('/api/reporting/recipients').json()['users']}['EWITHMAIL']['can_open']
+    # The editor of a report says how to separate the addresses and offers Add users.
+    page = client.get('/reporting').text
+    assert 'Separate several addresses with commas, semicolons, spaces or new lines.' in page and 'id="rp-add-users"' in page
 
 
 def test_report_emails_name_the_format_of_each_file_so_the_powerpoint_and_word_versions_are_told_apart():
@@ -354,22 +412,27 @@ def test_report_emails_name_the_format_of_each_file_so_the_powerpoint_and_word_v
     artifacts = [{'status': 'ready', 'title': f'Bundle Report Template · Weekly ({label})', 'file_name': f'Weekly report.{suffix}',
                   'size': 2 * 1024 * 1024, 'details': ['NR Mode: NSA']} for label, suffix in (('PPT', 'pptx'), ('Word', 'docx'))]
     links = {item['file_name']: f"https://tool.example:8443/reporting/files/{item['file_name']}" for item in artifacts}
+    views = {'Weekly report.pptx': 'https://tool.example:8443/reporting/view/Weekly report.pptx'}
     text, markup = report_tasks.email_bodies('Weekly', datetime(2026, 11, 8, 9, 0), artifacts, 'DriveTest Analyzer', links=links,
-                                             attached=False, link_days=7)
+                                             attached=False, link_days=7, views=views)
     # Each file is a card under a heading of its format, in the colour of its application, with its download link and
     # size on the heading.
     assert '[PowerPoint] Bundle Report Template · Weekly (PPT)' in text and '[Word] Bundle Report Template · Weekly (Word)' in text
     assert 'Download PowerPoint: https://tool.example:8443/reporting/files/Weekly report.pptx' in text
+    assert 'View online: https://tool.example:8443/reporting/view/Weekly report.pptx' in text and text.count('View online') == 1
     for name, suffix, colour, tint in (('PowerPoint', 'pptx', '#C43E1C', '#FBEDE8'), ('Word', 'docx', '#185ABD', '#E8EFFA')):
         heading = re.search(rf'<td style="background:{colour};padding:6px 12px"><table[^>]*><tr><td style="color:#ffffff;font-size:15px;'
                             rf'font-weight:bold">{name}</td><td align="right"[^>]*>(.*?)</td></tr></table></td></tr><tr><td '
                             rf'style="background:{tint};', markup)
         assert heading and f'href="https://tool.example:8443/reporting/files/Weekly report.{suffix}"' in heading.group(1)
         assert f'color:{colour};' in heading.group(1) and heading.group(1).endswith('>Download</a> · 2.0 MB')
+        # View Online, before Download, for the file whose report opens online.
+        assert ('>View Online</a> <a href="https://tool.example:8443/reporting/files/' in heading.group(1)) == (suffix == 'pptx')
     assert markup.count('<table role="presentation"') == 4 and '<ol>' not in markup
     # An email that must be shorter lists the files with their format before each title.
     _text, short = report_tasks.email_bodies('Weekly', datetime(2026, 11, 8, 9, 0), artifacts, 'DriveTest Analyzer', links=links,
-                                             attached=False, link_days=7, details=False, cards=False)
+                                             attached=False, link_days=7, details=False, cards=False, views=views)
+    assert '<strong>View online</strong></a> · <a href="https://tool.example:8443/reporting/files/Weekly report.pptx">' in short
     assert '<table' not in short and 'NR Mode' not in short
     assert 'background:#185ABD;color:#ffffff;font-size:12px;font-weight:bold">Word</span><strong>Bundle Report' in short
     assert '<strong>Download Word</strong></a> · 2.0 MB)' in short

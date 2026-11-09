@@ -1017,7 +1017,9 @@ def test_reports_are_read_online_in_the_slide_viewer_of_the_presentations(client
     viewer = (root / 'help/presentation_viewer.js').read_text(encoding='utf-8')
     assert 'window.PresentationViewer = {enhance, open: openViewer};' in viewer
     script = (root / 'reporting/bundle_report_template.js').read_text(encoding='utf-8')
-    assert 'window.PresentationViewer.open(reportPresentation(job, available[0], available), index);' in script
+    # (In the format a link asks for, when the report has its preview, else the first one.)
+    assert 'window.PresentationViewer.open(reportPresentation(job, available.includes(format) ? format : available[0], available), index);' in script
+    assert "const format = url.searchParams.get('format') || '';" in script
     assert '`/api/reporting/runs/${job.id}/preview/${format}/' in script
 
 

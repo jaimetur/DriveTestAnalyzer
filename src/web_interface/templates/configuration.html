@@ -100,9 +100,9 @@
           <span class="table-help">The HTTP POST address of the trigger <strong>When a Teams webhook request is received</strong> of your flow. Keep it private: whoever has it sends emails from your mailbox. Stored in the application database, which configuration exports and backups include.</span>
         </label>
         {% if email_delivery.webhook_configured %}<label class="configuration-toggle" data-email-webhook><input type="checkbox" name="clear_webhook_url" value="true"><span><strong>Remove the saved flow address</strong></span></label>{% endif %}
-        <label>Download Links Valid For (days)
+        <label>Report Links Valid For (days)
           <input type="number" name="link_days" value="{{ email_delivery.link_days }}" min="1" max="{{ email_max_link_days }}" step="1" required>
-          <span class="table-help">The link of each file of a report email downloads it from this server, without signing in, until then (while its run is kept in the Run History). The links of the emails (tickets, sign-in, password resets, report downloads) use the <a href="#application-runtime">Public address of the server</a>{% if not configuration.public_address %}, not set yet: report emails need it for their links{% endif %}.</span>
+          <span class="table-help">The <strong>View Online</strong> and <strong>Download</strong> links of each file of a report email work until then (while its run is kept in the History of Reporting), for users who sign in with access to the workspace of the report. The links of the emails (tickets, sign-in, password resets, reports) use the <a href="#application-runtime">Public address of the server</a>{% if not configuration.public_address %}, not set yet: report emails need it for their links{% endif %}.</span>
         </label>
       </section>
       <section class="configuration-card" data-configuration-card data-email-smtp>

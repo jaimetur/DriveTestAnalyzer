@@ -889,6 +889,69 @@
   root.querySelector('[data-rp-panel="schedule"]').addEventListener('input', () => { syncSchedule(); changed(); });
   root.querySelector('[data-rp-panel="schedule"]').addEventListener('change', () => { syncSchedule(); changed(); });
 
+  // Add users: the users of the tool with an email address. Checking one adds its address to Recipients at once and
+  // unchecking it takes it out (Select all / None act on the users shown by the filter); Close ends.
+  const recipientList = () => $('rp-recipients').value.split(/[,;\s]+/).map((value) => value.trim()).filter(Boolean);
+  const hasRecipient = (email) => recipientList().some((value) => value.toLowerCase() === email.toLowerCase());
+  function setRecipients(add = [], remove = []) {
+    const removed = new Set(remove.map((email) => email.toLowerCase()));
+    const kept = recipientList().filter((value) => !removed.has(value.toLowerCase()));
+    add.forEach((email) => { if (!kept.some((value) => value.toLowerCase() === email.toLowerCase())) kept.push(email); });
+    $('rp-recipients').value = kept.join(', ');
+    // (The schedule step then sees a change to save.)
+    $('rp-recipients').dispatchEvent(new Event('input', {bubbles: true}));
+  }
+  let recipientUsers = [];
+  const shownUsers = () => {
+    // (The text typed, in the name, the user or the email.)
+    const query = $('rp-users-search').value.trim().toLowerCase().replace(/\s+/g, ' ');
+    return recipientUsers.filter((person) => !query || [person.name, person.username, person.email].some((value) => value.toLowerCase().includes(query)));
+  };
+  function renderRecipientUsers() {
+    const list = $('rp-users-list');
+    const shown = shownUsers();
+    list.replaceChildren(...shown.map((person) => {
+      const row = node('label', undefined, 'rp-user');
+      const box = node('input');
+      box.type = 'checkbox';
+      box.checked = hasRecipient(person.email);
+      box.addEventListener('change', () => { setRecipients(box.checked ? [person.email] : [], box.checked ? [] : [person.email]); renderCount(); });
+      const text = node('span', undefined, 'rp-user-text');
+      text.append(node('strong', person.name), node('small', `${person.email} · ${person.username}`));
+      if (!person.can_open) {
+        const warning = node('span', 'Cannot open the links', 'rp-user-warning');
+        warning.title = 'Without Reporting in their Modules Profile or access to this workspace, they cannot view or download the files of the email.';
+        text.append(warning);
+      }
+      row.append(box, text);
+      return row;
+    }));
+    if (!shown.length) list.append(node('p', recipientUsers.length ? 'No user matches the filter.' : 'No user of the tool has an email address.', 'form-note'));
+    renderCount();
+  }
+  function renderCount() {
+    const chosen = recipientUsers.filter((person) => hasRecipient(person.email)).length;
+    $('rp-users-count').textContent = recipientUsers.length ? `${chosen} of ${recipientUsers.length} users in the recipients.` : '';
+  }
+  $('rp-add-users').addEventListener('click', async () => {
+    const dialogBox = $('rp-users-dialog');
+    $('rp-users-search').value = '';
+    $('rp-users-list').replaceChildren(node('p', 'Loading the users…', 'form-note'));
+    $('rp-users-count').textContent = '';
+    if (!dialogBox.open) dialogBox.showModal();
+    try {
+      recipientUsers = (await api('/api/reporting/recipients')).users || [];
+      renderRecipientUsers();
+      $('rp-users-search').focus();
+    } catch (error) {
+      $('rp-users-list').replaceChildren(node('p', error.message, 'form-note'));
+    }
+  });
+  $('rp-users-search').addEventListener('input', renderRecipientUsers);
+  $('rp-users-all').addEventListener('click', () => { setRecipients(shownUsers().map((person) => person.email)); renderRecipientUsers(); });
+  $('rp-users-none').addEventListener('click', () => { setRecipients([], shownUsers().map((person) => person.email)); renderRecipientUsers(); });
+  ['rp-users-close', 'rp-users-done'].forEach((id) => $(id).addEventListener('click', () => $('rp-users-dialog').close()));
+
   // What the editor holds, to tell whether it has changes to save.
   let savedSnapshot = '';
   const editorSnapshot = () => JSON.stringify({name: $('brt-name').value.trim(), definition: collect(), schedule: collectSchedule()});
@@ -1086,7 +1149,7 @@
         slide: (index, thumb = false) => `/api/reporting/runs/${job.id}/preview/${format}/${pageOf[index] ?? index}${thumb ? '' : '?large=true'}`,
         file: job.downloads?.[format] || '#',
       },
-      link: (index = 0) => `${window.location.origin}/reporting?report_run=${job.id}${index > 0 ? `&slide=${index + 1}` : ''}`,
+      link: (index = 0) => `${window.location.origin}/reporting?report_run=${job.id}${format === available[0] ? '' : `&format=${format}`}${index > 0 ? `&slide=${index + 1}` : ''}`,
       formats: available.length > 1 ? available.map((key) => ({
         label: formatLabel(key), current: key === format,
         // The other format opens at the same section.
@@ -1101,14 +1164,15 @@
       })) : [],
     };
   }
-  function openReportViewer(job, index = 0) {
-    const available = ['powerpoint', 'word'].filter((format) => job.formats?.[format]?.previews);
+  // ``format`` opens that format of the report when it has a preview (a link of its email or of the viewer).
+  function openReportViewer(job, index = 0, format = '') {
+    const available = ['powerpoint', 'word'].filter((key) => job.formats?.[key]?.previews);
     if (!available.length || !window.PresentationViewer?.open) {
       if (!dialog.open) dialog.showModal();
       showJob({...job, status: 'failed', error: 'This report has no preview, which needs LibreOffice: download its files in History.'});
       return;
     }
-    window.PresentationViewer.open(reportPresentation(job, available[0], available), index);
+    window.PresentationViewer.open(reportPresentation(job, available.includes(format) ? format : available[0], available), index);
   }
 
   // The report keeps being generated when its dialog is hidden: a dialog tells when it is ready, here or (see app.js)
@@ -1215,13 +1279,13 @@
     }
   }
   // Preview (or Follow) of a run in History or on a card: at a slide of a link, the slide viewer of a report ready.
-  window.openReportRun = async (runId, index = 0) => {
+  window.openReportRun = async (runId, index = 0, format = '') => {
     stopPolling();
     try {
       const job = jobFromRun(await api(`/api/reporting/runs/${runId}/report`));
       currentJob = job;
       jobSeenAt = Date.now();
-      if (job.status === 'ready') { openReportViewer(job, index); return; }
+      if (job.status === 'ready') { openReportViewer(job, index, format); return; }
       if (!dialog.open) dialog.showModal();
       showJob(job);
       if (isPending(job)) pollTimer = window.setTimeout(() => poll(job.id), 1500);
@@ -1259,10 +1323,10 @@
       // Opened once: reloading the page does not open it again.
       const url = new URL(window.location.href);
       const slide = Math.max(0, (Number.parseInt(url.searchParams.get('slide') || '1', 10) || 1) - 1);
-      url.searchParams.delete('report_run');
-      url.searchParams.delete('slide');
+      const format = url.searchParams.get('format') || '';
+      ['report_run', 'slide', 'format'].forEach((key) => url.searchParams.delete(key));
       window.history.replaceState(window.history.state, '', url);
-      void window.openReportRun(Number(asked), slide);
+      void window.openReportRun(Number(asked), slide, format);
       forgetJob();
       return;
     }

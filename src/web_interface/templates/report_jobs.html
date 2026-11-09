@@ -83,9 +83,16 @@
             <label class="rp-switch-row">
               <input type="checkbox" id="rp-send-email">
               <span class="rp-switch" aria-hidden="true"></span>
-              <span><strong>Email it</strong><small>Each generation emails its files as download links, to these addresses.</small></span>
+              <span><strong>Email it</strong><small>Each generation emails these addresses the links to view its files online or download them.</small></span>
             </label>
-            <label class="rp-recipients" data-rp-email>Recipients<textarea id="rp-recipients" rows="2" placeholder="name@example.com, team@example.com"></textarea></label>
+            <div class="rp-recipients" data-rp-email>
+              <div class="rp-recipients-head">
+                <label for="rp-recipients">Recipients</label>
+                <button type="button" class="rp-secondary rp-add-users" id="rp-add-users" title="Add the email addresses of users of the tool">Add users</button>
+              </div>
+              <textarea id="rp-recipients" rows="2" placeholder="name@example.com, team@example.com" aria-describedby="rp-recipients-note"></textarea>
+              <small id="rp-recipients-note">Separate several addresses with commas, semicolons, spaces or new lines. The links of the email ask each recipient to sign in to the tool.</small>
+            </div>
           </section>
         </div>
         <footer class="rp-editor-foot">
@@ -119,6 +126,26 @@
       </table>
     </div>
   </section>
+
+  <dialog class="brt-dialog rp-users-dialog" id="rp-users-dialog" aria-labelledby="rp-users-title">
+    <header class="brt-dialog-head">
+      <div><p class="eyebrow">Recipients</p><h2 id="rp-users-title">Add users</h2></div>
+      <button type="button" class="brt-dialog-close" id="rp-users-close" aria-label="Close">×</button>
+    </header>
+    <div class="rp-users-body">
+      <p class="form-note">Check the users whose email address goes to the recipients; unchecking one takes it out.</p>
+      <div class="rp-users-tools">
+        <input type="search" id="rp-users-search" placeholder="Filter by name, user or email…" aria-label="Filter the users">
+        <button type="button" class="rp-secondary" id="rp-users-all">Select all</button>
+        <button type="button" class="rp-secondary" id="rp-users-none">None</button>
+      </div>
+      <p class="form-note" id="rp-users-count" role="status"></p>
+      <div class="rp-users-list" id="rp-users-list" role="group" aria-label="Users"></div>
+    </div>
+    <footer class="brt-dialog-actions">
+      <button type="button" class="rp-secondary" id="rp-users-done">Close</button>
+    </footer>
+  </dialog>
 
   <dialog class="brt-dialog" id="brt-dialog" aria-labelledby="brt-dialog-title">
     <header class="brt-dialog-head">

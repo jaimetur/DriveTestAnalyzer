@@ -339,6 +339,24 @@ button.rp-card-name:hover { color: var(--rp-accent-dark); text-decoration: under
 .rp-formats { display: flex; flex-wrap: wrap; gap: .8rem; margin: 0; padding: .6rem .8rem; border: 1px solid var(--rp-line); border-radius: 10px; }
 .rp-formats legend { padding: 0 .3rem; color: var(--rp-muted); font-size: .86rem; }
 .rp-recipients textarea { width: 100%; box-sizing: border-box; }
+.rp-recipients-head { display: flex; justify-content: space-between; align-items: center; gap: .6rem; }
+.rp-recipients .rp-add-users { padding: .25rem .8rem; font-size: .84rem; }
+/* Add users: the users of the tool with an email address, checked when their address is among the recipients. */
+.rp-users-dialog { width: min(560px, calc(100vw - 2rem)); }
+.rp-users-body { display: grid; gap: .6rem; min-height: 0; padding: 1rem 1.2rem; overflow: hidden; }
+.rp-users-dialog[open] > .rp-users-body { flex: 1 1 auto; }
+.rp-users-body .form-note { margin: 0; }
+.rp-users-tools { display: flex; flex-wrap: wrap; gap: .5rem; }
+.rp-users-tools input { flex: 1 1 12rem; min-width: 0; }
+.rp-users-tools .rp-secondary { padding: .3rem .85rem; font-size: .86rem; }
+.rp-users-list { display: grid; gap: .1rem; max-height: min(26rem, calc(100vh - 20rem)); overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; padding: .3rem; }
+.rp-user { display: flex; align-items: flex-start; gap: .6rem; padding: .45rem .55rem; border-radius: 9px; cursor: pointer; }
+.rp-user:hover { background: var(--rp-tint); }
+.rp-user input { width: auto; margin: .2rem 0 0; flex: none; }
+.rp-user-text { display: grid; gap: .05rem; min-width: 0; }
+.rp-user-text strong { color: var(--text); }
+.rp-user-text small { color: var(--rp-muted); overflow-wrap: anywhere; }
+.rp-user-warning { justify-self: start; margin-top: .15rem; padding: .05rem .45rem; border-radius: 6px; background: #fdf1e3; color: #8a4b0f; font-size: .74rem; font-weight: 700; }
 
 /* History: the runs under the heading of their day; each file in the colour of its format. */
 .rp-history-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; }
