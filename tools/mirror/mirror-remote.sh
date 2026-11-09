@@ -30,6 +30,30 @@ load_config() {
   : "${MIRROR_STORAGE:?}" "${MIRROR_PORT:?}" "${MIRROR_LABEL:?}"
   MIRROR_RUNNER="${MIRROR_RUNNER:-agent}"
   MIRROR_LAUNCHER="${MIRROR_LAUNCHER:-}"
+  MIRROR_DATA="${MIRROR_DATA:-on}"
+}
+
+# The synchronized code must at least import before it replaces the running server: a save that leaves the code
+# broken on the development Mac must not take the application down here. Imported against empty scratch storage
+# folders, never the real ones.
+code_imports() {
+  local scratch result
+  scratch="$(mktemp -d)" || return 0
+  (cd "$REPO" && APP_CONFIG_DIR="$scratch/config" APP_DATA_DIR="$scratch/data" "$REPO/.venv/bin/python" -c 'import src.DriveTestAnalyzer') > "$scratch/import.log" 2>&1
+  result=$?
+  if [ "$result" -ne 0 ]; then
+    log "The synchronized code does not import; the application keeps running the code it had:"
+    tail -4 "$scratch/import.log" >&2
+  fi
+  rm -rf "${scratch:?}"
+  return $result
+}
+
+restart_app() {
+  load_config
+  code_imports || exit 1
+  stop_app
+  start_app
 }
 
 python_is_recent() {
@@ -214,6 +238,8 @@ xml_escape() {
 }
 
 write_plist() {
+  local mirror_mode=""
+  [ "$MIRROR_DATA" = "on" ] && mirror_mode="<key>DRIVETEST_ANALYZER_MIRROR_OF</key><string>$(xml_escape "$MIRROR_LABEL")</string>"
   mkdir -p "$(dirname "$PLIST")" "$(dirname "$APP_LOG")"
   agent_loaded && launchctl bootout "gui/$USER_ID/$AGENT" 2>/dev/null
   cat > "$PLIST" <<EOF
@@ -233,7 +259,7 @@ write_plist() {
     <key>APP_CONFIG_DIR</key><string>$(xml_escape "$MIRROR_STORAGE")/config</string>
     <key>APP_DATA_DIR</key><string>$(xml_escape "$MIRROR_STORAGE")/data</string>
     <key>DRIVETEST_ANALYZER_BIND_PORT</key><string>$MIRROR_PORT</string>
-    <key>DRIVETEST_ANALYZER_MIRROR_OF</key><string>$(xml_escape "$MIRROR_LABEL")</string>
+    $mirror_mode
     <key>DRIVETEST_ANALYZER_DESIGN_WARMUP</key><string>0</string>
   </dict>
   <key>KeepAlive</key><true/>
@@ -246,17 +272,20 @@ write_plist() {
 EOF
 }
 
-# install <storage> <port> <label> [--runner launcher|agent] [--replace-data]: the environment, the storage folders
-# and what runs the application (not started: the first synchronization starts it once the databases are applied).
-# With the launcher, the application reads its storage from storage-paths.conf of the checkout and its mirror
-# mode from the mirror-of file of the configuration folder, which the synchronization leaves alone.
+# install <storage> <port> <label> [--runner launcher|agent] [--replace-data] [--code-only]: the environment, the
+# storage folders and what runs the application (not started: the first synchronization starts it once the
+# databases are applied). With the launcher, the application reads its storage from storage-paths.conf of the
+# checkout and its mirror mode from the mirror-of file of the configuration folder, which the synchronization
+# leaves alone. --code-only: this Mac keeps its own data and is an ordinary server (its backups, its report
+# schedules, its emails) that runs the synchronized code; nothing of its storage is touched.
 install_app() {
-  local storage="${1:-}" port="${2:-}" label="${3:-}" runner="" replace=0 launcher=""
+  local storage="${1:-}" port="${2:-}" label="${3:-}" runner="" replace=0 launcher="" data=on
   shift 3 2>/dev/null || true
   while [ $# -gt 0 ]; do
     case "$1" in
       --runner) runner="$2"; shift 2 ;;
       --replace-data) replace=1; shift ;;
+      --code-only) data=off; shift ;;
       *) die "Unknown install option $1." ;;
     esac
   done
@@ -272,10 +301,27 @@ install_app() {
     esac
   fi
   mkdir -p "$(dirname "$CONFIG_FILE")"
-  printf 'MIRROR_STORAGE=%q\nMIRROR_PORT=%q\nMIRROR_LABEL=%q\nMIRROR_RUNNER=%q\nMIRROR_LAUNCHER=%q\n' \
-    "$storage" "$port" "$label" "$runner" "$launcher" > "$CONFIG_FILE"
+  printf 'MIRROR_STORAGE=%q\nMIRROR_PORT=%q\nMIRROR_LABEL=%q\nMIRROR_RUNNER=%q\nMIRROR_LAUNCHER=%q\nMIRROR_DATA=%q\n' \
+    "$storage" "$port" "$label" "$runner" "$launcher" "$data" > "$CONFIG_FILE"
   load_config
   ensure_venv
+  if [ "$data" = "off" ]; then
+    # What an earlier data mirror left: its mode and the database snapshots it received.
+    rm -f "$storage/config/mirror-of" "$storage/.mirror-storage"
+    rm -rf "${storage:?}/.mirror-incoming"
+    if [ "$runner" = "launcher" ]; then
+      if agent_loaded; then launchctl bootout "gui/$USER_ID/$AGENT" 2>/dev/null; fi
+      rm -f "$PLIST"
+    else
+      quit_other_servers
+      write_plist
+    fi
+    code_imports || die "The application was left as it was."
+    stop_app
+    start_app
+    log "This Mac keeps its own data in $storage and runs the code of the development checkout."
+    return 0
+  fi
   quit_other_servers
   if [ -d "$storage" ] && [ -n "$(ls -A "$storage" 2>/dev/null)" ] && [ ! -f "$storage/.mirror-storage" ]; then
     [ "$replace" -eq 1 ] || die "$storage already holds data of its own. Run install with --replace-mirror-data to set it aside (kept beside it, renamed) and take the data of the development Mac."
@@ -311,6 +357,7 @@ install_app() {
 # instant, whatever their size) while the application is stopped; databases it no longer has go.
 apply_databases() {
   load_config
+  [ "$MIRROR_DATA" = "on" ] || die "This Mac keeps its own data (code-only): no databases are applied to it."
   local incoming="$MIRROR_STORAGE/.mirror-incoming" snapshot live relative applied=0 removed=0
   [ -d "$incoming" ] || die "There are no databases to apply ($incoming is missing)."
   stop_app
@@ -345,6 +392,7 @@ show_status() {
     if launcher_running; then echo "Launcher: running ($MIRROR_LAUNCHER)"; else echo "Launcher: not running ($MIRROR_LAUNCHER)"; fi
   elif agent_loaded; then echo "Agent $AGENT: loaded"; else echo "Agent $AGENT: not loaded"; fi
   echo "Application: $(curl -s -m 5 "http://127.0.0.1:$MIRROR_PORT/healthz" || echo 'not answering')"
+  if [ "$MIRROR_DATA" = "on" ]; then echo "Data: mirrored from the development Mac"; else echo "Data: its own (code-only)"; fi
   echo "Storage: $(du -sh "$MIRROR_STORAGE" 2>/dev/null | cut -f1) in $MIRROR_STORAGE"
   echo "Checkout: $(cd "$REPO" && git rev-parse --abbrev-ref HEAD 2>/dev/null) $(cd "$REPO" && git rev-parse --short HEAD 2>/dev/null)"
 }
@@ -369,10 +417,10 @@ case "$command" in
   install) install_app "$@" ;;
   deps) install_dependencies ;;
   apply) apply_databases ;;
-  restart) load_config; stop_app; start_app ;;
+  restart) restart_app ;;
   stop) load_config; stop_app ;;
   start) load_config; start_app ;;
   status) show_status ;;
   uninstall) uninstall_app ;;
-  *) echo "Usage: mirror-remote.sh install <storage> <port> <label> [--runner launcher|agent] [--replace-data] | deps | apply | restart | stop | start | status | uninstall" >&2; exit 1 ;;
+  *) echo "Usage: mirror-remote.sh install <storage> <port> <label> [--runner launcher|agent] [--replace-data] [--code-only] | deps | apply | restart | stop | start | status | uninstall" >&2; exit 1 ;;
 esac

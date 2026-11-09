@@ -212,9 +212,9 @@ The script compiles the universal native executable into `macos-launcher/DriveTe
 
 When opened from `/Applications`, the launcher asks for the project folder once and remembers it in Application Support. Keep the project folder available: the launcher runs its source code and stores its PID and log in `.drivetest-analyzer-runtime/`.
 
-### Mirror on another Mac
+### A second Mac that follows the checkout
 
-A development Mac that no other device can reach (a managed laptop whose network closes every incoming connection) can keep a second Mac of the network as a mirror with `tools/mirror/mirror-sync.sh`: its checkout is synchronized over SSH within seconds of a change and its configuration and data folders every few minutes, the SQLite databases as consistent online backups, and the mirror serves them in mirror mode (`DRIVETEST_ANALYZER_MIRROR_OF`: no backup or report schedules, no emails, a notice on every page). Every connection goes from the development Mac to the mirror. See [`tools/mirror/README.md`](tools/mirror/README.md).
+A development Mac that no other device can reach (a managed laptop whose network closes every incoming connection) can keep a second Mac of the network in step with `tools/mirror/mirror-sync.sh`; every connection goes from the development Mac to it over SSH. Its checkout is synchronized within a second or two of a change, and its application restarts when Python sources change. With `--code-only` the second Mac is a server of its own, with its data, backups, report schedules and emails, that always runs the development code; without it, the second Mac also receives the configuration and data folders every few minutes, the SQLite databases as consistent online backups, and serves them in mirror mode (`DRIVETEST_ANALYZER_MIRROR_OF`: no backup or report schedules, no emails, a notice on every page). See [`tools/mirror/README.md`](tools/mirror/README.md).
 
 Run tests with:
 

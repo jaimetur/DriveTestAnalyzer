@@ -44,19 +44,21 @@ usage() {
 Usage: tools/mirror/mirror-sync.sh <command> [options]
 
   install --host user@host --repo /checkout/on/the/mirror --storage /storage/on/the/mirror
-          [--label "the development Mac"] [--port 7278] [--interval 600] [--runner launcher|agent]
-          [--replace-mirror-checkout] [--replace-mirror-data]
+          [--code-only] [--label "the development Mac"] [--port 7278] [--interval 600]
+          [--runner launcher|agent] [--replace-mirror-checkout] [--replace-mirror-data]
                  Set the mirror up: the SSH key of this Mac, rsync 3 and Python 3.15 on the mirror, its checkout,
                  its Python environment, what runs its application (the macOS launcher when the mirror has it,
-                 else a launchd agent), the first synchronization, and the two agents of this Mac that keep it
-                 synchronized. --replace-mirror-checkout overwrites changes of its own the checkout of the mirror
-                 holds; --replace-mirror-data sets the data the mirror already holds aside (kept beside it,
-                 renamed) and takes the data of this Mac.
+                 else a launchd agent), the first synchronization, and the agents of this Mac that keep it
+                 synchronized. --code-only: the mirror is a server of its own that always runs the code of this
+                 checkout; its data is its own and the data of this Mac is never sent to it.
+                 --replace-mirror-checkout overwrites changes of its own the checkout of the mirror holds;
+                 --replace-mirror-data sets the data the mirror already holds aside (kept beside it, renamed) and
+                 takes the data of this Mac.
   key            Show the public key the mirror must authorize (install creates it).
   code           Synchronize the checkout now (the mirror application restarts when Python sources changed).
   data           Synchronize the configuration and data folders now (the mirror application restarts for a few
-                 seconds when a database changed).
-  all            code, then data.
+                 seconds when a database changed). Refused for a code-only mirror.
+  all            code, then data (code alone for a code-only mirror).
   watch          Synchronize the checkout whenever a file changes (what the watch agent runs).
   status         The last synchronizations, the agents of this Mac and the mirror application.
   restart-mirror Restart the mirror application.
@@ -98,6 +100,8 @@ load_config() {
   MIRROR_PORT="${MIRROR_PORT:-7278}"
   MIRROR_LABEL="${MIRROR_LABEL:-the development Mac}"
   DATA_INTERVAL_SECONDS="${DATA_INTERVAL_SECONDS:-600}"
+  MIRROR_DATA="${MIRROR_DATA:-on}"
+  RESTART_SETTLE_SECONDS="${RESTART_SETTLE_SECONDS:-5}"
   REMOTE_RSYNC="${REMOTE_RSYNC:-}"
   SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30 -o IdentitiesOnly=yes -i "$KEY_FILE")
   RSYNC="$(find_tool rsync /opt/homebrew/bin /usr/local/bin)" || die "rsync is not installed."
@@ -153,26 +157,54 @@ count_lines() {
   printf '%s' "$1" | grep -c . || true
 }
 
+# The mirror application keeps the Python sources it had loaded until it restarts; the mirror only restarts it
+# when the synchronized code imports, so a save that leaves the code broken does not take the server down.
+restart_mirror_app() {
+  log "Restarting the mirror application with the new Python sources"
+  remote_tool restart || { log "The mirror application was not restarted: the synchronized code does not import, or the mirror did not answer."; return 1; }
+}
+
+# The watch agent restarts the mirror application once the Python changes settle, so a burst of saves restarts
+# it once: a newer change takes the token, and the restart of the older one gives up.
+schedule_restart() {
+  local token="$$-$(date +%s)-$RANDOM"
+  echo "$token" > "$STATE_DIR/restart-token"
+  (
+    sleep "$RESTART_SETTLE_SECONDS"
+    [ "$(cat "$STATE_DIR/restart-token" 2>/dev/null)" = "$token" ] || exit 0
+    with_lock restart_mirror_app
+  ) &
+}
+
 # The checkout, Git history included: the mirror holds the same branch, commits and uncommitted changes.
+# $1: restart (at once, the default), defer (once the changes settle) or no-restart (install).
 sync_code() {
   local restart="${1:-restart}" changes
   log "Synchronizing the checkout with $MIRROR_SSH:$MIRROR_REPO"
   changes="$(rsync_run "${CODE_EXCLUDES[@]}" "$LOCAL_REPO/" "$MIRROR_SSH:$MIRROR_REPO/")" || { log "The checkout synchronization failed."; return 1; }
   date '+%Y-%m-%d %H:%M:%S' > "$STATE_DIR/last-code-sync"
   # (Not at install, which makes the environment of the mirror after its first synchronization.)
-  if [ "$restart" = "restart" ] && grep -q -E '^[^ ]+ requirements\.txt$' <<< "$changes"; then
+  if [ "$restart" != "no-restart" ] && grep -q -E '^[^ ]+ requirements\.txt$' <<< "$changes"; then
     log "requirements.txt changed: installing the dependencies on the mirror"
     remote_tool deps || log "The dependencies could not be installed on the mirror."
   fi
-  if [ "$restart" = "restart" ] && grep -q -E '^[^ ]+ (src/.*\.py|requirements\.txt|storage-paths\.conf)$|^\*deleting +src/.*\.py$' <<< "$changes"; then
-    log "Python sources changed: restarting the mirror application"
-    remote_tool restart || { log "The mirror application could not be restarted."; return 1; }
+  if [ "$restart" != "no-restart" ] && grep -q -E '^[^ ]+ (src/.*\.py|requirements\.txt|storage-paths\.conf)$|^\*deleting +src/.*\.py$' <<< "$changes"; then
+    if [ "$restart" = "defer" ]; then
+      log "Python sources changed: the mirror application restarts once the changes settle (${RESTART_SETTLE_SECONDS} s)"
+      schedule_restart
+    else
+      restart_mirror_app || return 1
+    fi
   fi
   log "Checkout synchronized ($(count_lines "$changes") changes)."
 }
 
 sync_code_without_restart() {
   sync_code no-restart
+}
+
+sync_code_deferred() {
+  sync_code defer
 }
 
 list_databases() {
@@ -236,6 +268,7 @@ snapshot_databases() {
 # running), the databases as snapshots applied by the mirror while its application is stopped for a moment.
 sync_data() {
   local changes files=0
+  [ "$MIRROR_DATA" = "on" ] || die "This mirror follows the checkout only: its data is its own, and the data of this Mac is never sent to it (install without --code-only mirrors the data too)."
   [ -d "$LOCAL_STORAGE/config" ] && [ -d "$LOCAL_STORAGE/data" ] || die "$LOCAL_STORAGE has no config and data folders."
   log "Synchronizing the configuration and data folders with $MIRROR_SSH:$MIRROR_STORAGE"
   changes="$(rsync_run "${DATABASE_EXCLUDES[@]}" "${CONFIG_EXCLUDES[@]}" "$LOCAL_STORAGE/config/" "$MIRROR_SSH:$MIRROR_STORAGE/config/")" \
@@ -259,12 +292,12 @@ sync_data() {
 watch_code() {
   local fswatch
   fswatch="$(find_tool fswatch /opt/homebrew/bin /usr/local/bin)" || die "fswatch is not installed (brew install fswatch)."
-  with_lock sync_code || log "The checkout synchronization failed; it is tried again at the next change."
-  "$fswatch" -o -l 2 \
+  with_lock sync_code_deferred || log "The checkout synchronization failed; it is tried again at the next change."
+  "$fswatch" -o -l 1 \
     -e '/\.venv/' -e '/\.drivetest-analyzer-venv/' -e '/\.drivetest-analyzer-runtime/' -e '__pycache__' -e '/\.pytest_cache/' \
     -e '/\.ruff_cache/' -e '/\.mypy_cache/' -e '\.DS_Store$' -e '/node_modules/' -e '/\.git/objects/' -e '/\.git/.*\.lock$' -e '\.pyc$' \
     "$LOCAL_REPO" | while read -r _events; do
-    with_lock sync_code || log "The checkout synchronization failed; it is tried again at the next change."
+    with_lock sync_code_deferred || log "The checkout synchronization failed; it is tried again at the next change."
   done
 }
 
@@ -316,7 +349,14 @@ EOF
 install_agents() {
   mkdir -p "$AGENTS_DIR" "$HOME/Library/Logs"
   write_agent "$AGENT_WATCH" watch ""
-  write_agent "$AGENT_DATA" data "$DATA_INTERVAL_SECONDS"
+  if [ "$MIRROR_DATA" = "on" ]; then
+    write_agent "$AGENT_DATA" data "$DATA_INTERVAL_SECONDS"
+  else
+    # A code-only mirror has no data agent, and keeps none of the database snapshots of an earlier data mirror.
+    launchctl bootout "gui/$(id -u)/$AGENT_DATA" 2>/dev/null || true
+    rm -f "$AGENTS_DIR/$AGENT_DATA.plist" "$STATE_DIR/db-manifest" "$STATE_DIR/last-data-sync"
+    rm -rf "${STATE_DIR:?}/snapshots"
+  fi
 }
 
 remote_rsync_path() {
@@ -324,7 +364,7 @@ remote_rsync_path() {
 }
 
 install_mirror() {
-  local host="" repo="" storage="" label="the development Mac" port=7278 interval=600 runner="" replace_checkout=0 replace_data=0
+  local host="" repo="" storage="" label="the development Mac" port=7278 interval=600 runner="" replace_checkout=0 replace_data=0 data=on
   while [ $# -gt 0 ]; do
     case "$1" in
       --host) host="$2"; shift 2 ;;
@@ -334,6 +374,7 @@ install_mirror() {
       --port) port="$2"; shift 2 ;;
       --interval) interval="$2"; shift 2 ;;
       --runner) runner="$2"; shift 2 ;;
+      --code-only) data=off; shift ;;
       --replace-mirror-checkout) replace_checkout=1; shift ;;
       --replace-mirror-data) replace_data=1; shift ;;
       *) die "Unknown option $1 (see 'tools/mirror/mirror-sync.sh' without arguments)." ;;
@@ -341,6 +382,7 @@ install_mirror() {
   done
   case "$runner" in ""|launcher|agent) ;; *) die "--runner takes launcher or agent." ;; esac
   [ -n "$host" ] && [ -n "$repo" ] && [ -n "$storage" ] || die "install needs --host, --repo and --storage."
+  [ "$data" = "on" ] || [ "$replace_data" -eq 0 ] || die "--code-only leaves the data of the mirror alone: it cannot go with --replace-mirror-data."
   ensure_key
   mkdir -p "$(dirname "$CONFIG_FILE")" "$STATE_DIR"
   cat > "$CONFIG_FILE" <<EOF
@@ -352,6 +394,7 @@ LOCAL_STORAGE="$HOME/DriveTestAnalyzer"
 MIRROR_PORT=$port
 MIRROR_LABEL="$label"
 DATA_INTERVAL_SECONDS=$interval
+MIRROR_DATA="$data"
 EOF
   load_config
   remote true 2>/dev/null || die "The mirror does not accept the key of this Mac yet. Add this public key to ~/.ssh/authorized_keys of $host (Remote Login on), then run install again:
@@ -366,7 +409,10 @@ $(cat "$KEY_FILE.pub")"
   [ -n "$remote_rsync" ] || die "rsync 3 was not found on the mirror after installing it."
   printf 'REMOTE_RSYNC="%s"\n' "$remote_rsync" >> "$CONFIG_FILE"
   REMOTE_RSYNC="$remote_rsync"
-  if remote "[ -d $(printf '%q' "$repo")/.git ]"; then
+  # A checkout this tool already mirrors holds the uncommitted changes of this Mac, not changes of its own.
+  if remote '[ -f "$HOME/.config/drivetest-analyzer/mirror-app.conf" ]'; then
+    :
+  elif remote "[ -d $(printf '%q' "$repo")/.git ]"; then
     local own_changes
     own_changes="$(remote "cd $(printf '%q' "$repo") && git status --porcelain --untracked-files=no | head -5")"
     if [ -n "$own_changes" ] && [ "$replace_checkout" -eq 0 ]; then
@@ -381,8 +427,11 @@ Commit or discard them there, or run install with --replace-mirror-checkout to o
   local install_options=()
   [ -n "$runner" ] && install_options+=(--runner "$runner")
   [ "$replace_data" -eq 1 ] && install_options+=(--replace-data)
+  [ "$data" = "off" ] && install_options+=(--code-only)
   remote_tool install "$storage" "$port" "$label" ${install_options[@]+"${install_options[@]}"} || die "The mirror application could not be installed."
-  with_lock sync_data || die "The first synchronization of the data failed."
+  if [ "$data" = "on" ]; then
+    with_lock sync_data || die "The first synchronization of the data failed."
+  fi
   install_agents
   show_status
 }
@@ -391,8 +440,12 @@ show_status() {
   local agent host
   echo "Mirror: $MIRROR_SSH, checkout $MIRROR_REPO, storage $MIRROR_STORAGE, port $MIRROR_PORT"
   echo "Last checkout synchronization: $(cat "$STATE_DIR/last-code-sync" 2>/dev/null || echo never)"
-  echo "Last data synchronization:     $(cat "$STATE_DIR/last-data-sync" 2>/dev/null || echo never)"
-  for agent in "$AGENT_WATCH" "$AGENT_DATA"; do
+  if [ "$MIRROR_DATA" = "on" ]; then
+    echo "Last data synchronization:     $(cat "$STATE_DIR/last-data-sync" 2>/dev/null || echo never)"
+  else
+    echo "Data: the mirror keeps its own (code-only); the data of this Mac is not sent"
+  fi
+  for agent in "$AGENT_WATCH" $([ "$MIRROR_DATA" = "on" ] && echo "$AGENT_DATA"); do
     if launchctl print "gui/$(id -u)/$agent" > /dev/null 2>&1; then
       echo "Agent $agent: loaded"
     else
@@ -423,7 +476,7 @@ case "$command" in
   key) show_key ;;
   code) load_config; with_lock sync_code ;;
   data) load_config; with_lock sync_data ;;
-  all) load_config; with_lock sync_code && with_lock sync_data ;;
+  all) load_config; with_lock sync_code || exit 1; [ "$MIRROR_DATA" = "on" ] || exit 0; with_lock sync_data ;;
   watch) load_config; watch_code ;;
   status) load_config; show_status ;;
   restart-mirror) load_config; remote_tool restart ;;
