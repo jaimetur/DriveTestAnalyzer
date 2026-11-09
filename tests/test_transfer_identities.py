@@ -196,7 +196,7 @@ def test_the_preview_of_reports_tells_only_what_would_really_change(client, tmp_
             section['items'][0]['enabled'] = False
             section['items'][1]['enabled'] = True
     brt.save_favourite(source_repo, report['id'], 'Weekly', definition, 'super')
-    expected = ['Theme: NetCheck → Midnight', 'Filters · Regions: +London',
+    expected = [f"Theme: {brt.THEMES[brt.DEFAULT_THEME]['label']} → Midnight", 'Filters · Regions: +London',
                 'Scoring & GAP Analysis · Campaigns: +Latest 2 campaigns, −All campaigns',
                 'Scoring & GAP Analysis · Summary: Included → Left out', 'PPT Designs: +Speed, −Coverage']
     changed = preview()
