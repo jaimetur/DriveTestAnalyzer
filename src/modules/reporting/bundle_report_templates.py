@@ -873,16 +873,21 @@ def set_report_star(repository: Any, username: str, favourite_id: int, starred: 
     repository.set_workspace_state(_report_stars_key(username), json.dumps(sorted(stars)))
 
 
-def report_star_users(repository: Any) -> dict[int, list[str]]:
-    """Who starred each report of this workspace: its ID with the usernames."""
+def _star_records(repository: Any) -> dict[str, set[int]]:
+    """The stars this workspace keeps: each user who ever starred a report here, with the reports starred now (none
+    when the user took every star away)."""
     prefix = _report_stars_key('')
     with repository.connection() as connection:
         rows = connection.execute('SELECT key, value FROM workspace_state WHERE substr(key, 1, ?) = ?',
                                   (len(prefix), prefix)).fetchall()
+    return {str(row['key'])[len(prefix):]: _star_ids(row['value']) for row in rows if str(row['key'])[len(prefix):]}
+
+
+def report_star_users(repository: Any) -> dict[int, list[str]]:
+    """Who starred each report of this workspace: its ID with the usernames."""
     users: dict[int, list[str]] = {}
-    for row in rows:
-        username = str(row['key'])[len(prefix):]
-        for favourite_id in _star_ids(row['value']):
+    for username, favourite_ids in _star_records(repository).items():
+        for favourite_id in favourite_ids:
             users.setdefault(favourite_id, []).append(username)
     return {key: sorted(names, key=str.casefold) for key, names in users.items()}
 
@@ -991,8 +996,11 @@ def export_favourites_document(repository: Any) -> bytes:
     """The favourite Bundle Report Templates of a workspace as a portable document (the Bundle Report Template Favourites element
     of Import / Export / Transfer, workspace transfers and backups)."""
     # Version 2: every PPT Design of a favourite reads the NR Mode of the report (see uncheck_other_mode_designs).
-    return json.dumps({'format': FAVOURITES_FORMAT, 'version': 2, 'favourites': export_entries(repository)},
-                      ensure_ascii=False, indent=2).encode('utf-8')
+    # ``star_users``: the users whose stars the workspace keeps, so the destination also takes away the stars they
+    # took away here (see import_entries).
+    return json.dumps({'format': FAVOURITES_FORMAT, 'version': 2,
+                       'star_users': sorted(_star_records(repository), key=str.casefold),
+                       'favourites': export_entries(repository)}, ensure_ascii=False, indent=2).encode('utf-8')
 
 
 def import_favourites_document(repository: Any, content: bytes | str, username: str,
@@ -1003,7 +1011,8 @@ def import_favourites_document(repository: Any, content: bytes | str, username: 
     if not isinstance(document, dict) or document.get('format') not in {FAVOURITES_FORMAT, *LEGACY_FAVOURITES_FORMATS}:
         raise ValueError('The file is not a DriveTest Analyzer Bundle Report Template Favourites export.')
     return import_entries(repository, document.get('favourites') or [], username, workspace_designs(repository),
-                          creator=creator, summary=summary, designs_of_report_mode=int(document.get('version') or 1) < 2)
+                          creator=creator, summary=summary, designs_of_report_mode=int(document.get('version') or 1) < 2,
+                          star_users=document.get('star_users'))
 
 
 def _imported_definition(raw: Any, designs: dict[str, tuple[str, str]], aliases: dict[str, str],
@@ -1030,15 +1039,19 @@ def predicted_favourites_document(repository: Any, document: dict[str, Any]) -> 
     designs, aliases = workspace_designs(repository), design_aliases(repository)
     designs_of_report_mode = int(document.get('version') or 1) < 2
     entries = document.get('favourites')
-    # The stars of each report: those it has here and those of the document (see import_entries).
+    # The stars of each report: those of the document, and those it has here of the users the document does not
+    # tell of (see import_entries).
     local_uids, stars = identities(repository, BUNDLE_REPORT_TEMPLATE_FAVOURITES), report_star_users(repository)
+    governed = set(_star_owners(repository, document.get('star_users')))
     matcher = ItemMatcher([(item['id'], item['name'], local_uids.get(str(item['id']), '')) for item in list_favourites(repository)])
     predicted = []
     for entry in entries if isinstance(entries, list) else []:
         if isinstance(entry, dict):
             target, _name = matcher.match(entry.get('uid'), ' '.join(str(entry.get('name') or '').split())[:120])
+            carried = isinstance(entry.get('starred_by'), list)
+            kept = [user for user in stars.get(target, []) if not carried or user not in governed]
             entry = {**entry, 'definition': _named_designs(_imported_definition(entry.get('definition'), designs, aliases, designs_of_report_mode), designs),
-                     'starred_by': sorted({*stars.get(target, []), *_star_owners(repository, entry.get('starred_by'))}, key=str.casefold)}
+                     'starred_by': sorted({*kept, *_star_owners(repository, entry.get('starred_by'))}, key=str.casefold)}
         predicted.append(entry)
     return {**document, 'favourites': predicted}
 
@@ -1046,15 +1059,16 @@ def predicted_favourites_document(repository: Any, document: dict[str, Any]) -> 
 def import_entries(repository: Any, entries: Any, username: str,
                    designs: dict[str, tuple[str, str]] | None = None, *,
                    creator: Callable[[Any, str], str] | None = None, summary: list[str] | None = None,
-                   designs_of_report_mode: bool = False) -> int:
+                   designs_of_report_mode: bool = False, star_users: Any = None) -> int:
     """Replace the favourites of a document that the workspace has (found by their identity, then by their name) and
     add the others. ``designs`` are those of this workspace (see workspace_designs), so a PPT Design of another
     workspace is found by its name and NR Mode. ``creator(creator in the document, creator here)`` decides who each
     one belongs to (without it a new one belongs to ``username`` and a replaced one keeps its creator). A renamed
     favourite renames its schedule, as a rename here does; ``summary`` receives the renamed favourites. The
     favourites of a document of before (``designs_of_report_mode``) keep generating only the PPT Designs of the NR Mode
-    of the report, as they did (uncheck_other_mode_designs). Each user of the document who starred a favourite and
-    exists here gets its star; no star of the workspace is taken away."""
+    of the report, as they did (uncheck_other_mode_designs). Each user whose stars the workspace of the document keeps
+    (``star_users``) and who exists here has, on each favourite of the document, the star they have there: added, or
+    taken away. The stars of the other users stay, and a document without ``star_users`` only adds stars."""
     from src.modules.reporting.report_tasks import rename_report_task
     from src.modules.core.transfer_identities import BUNDLE_REPORT_TEMPLATE_FAVOURITES, ItemMatcher, identities, set_identities
 
@@ -1067,6 +1081,9 @@ def import_entries(repository: Any, entries: Any, username: str,
     matcher = ItemMatcher([(item['id'], item['name'], local_uids.get(str(item['id']), '')) for item in existing])
     aliases = design_aliases(repository)
     imported_uids: dict[str, str] = {}
+    # The favourites of the document that tell who starred them, and the stars of each user there.
+    governed = set(_star_owners(repository, star_users))
+    carried: set[int] = set()
     starred: dict[str, set[int]] = {}
     imported = 0
     for entry in entries:
@@ -1082,13 +1099,17 @@ def import_entries(repository: Any, entries: Any, username: str,
             with repository.connection() as connection:
                 connection.execute(f'UPDATE {BUNDLE_REPORT_TEMPLATES_TABLE} SET created_by = ? WHERE id = ?', (owner, saved['id']))
         imported_uids[str(saved['id'])] = str(entry.get('uid') or '')
-        for owner in _star_owners(repository, entry.get('starred_by')):
-            starred.setdefault(owner, set()).add(saved['id'])
+        if isinstance(entry.get('starred_by'), list):
+            carried.add(saved['id'])
+            for owner in _star_owners(repository, entry.get('starred_by')):
+                starred.setdefault(owner, set()).add(saved['id'])
         imported += 1
     set_identities(repository, BUNDLE_REPORT_TEMPLATE_FAVOURITES, imported_uids)
-    for owner, favourite_ids in starred.items():
-        if not favourite_ids <= report_stars(repository, owner):
-            repository.set_workspace_state(_report_stars_key(owner), json.dumps(sorted(report_stars(repository, owner) | favourite_ids)))
+    for owner in sorted({*starred, *governed}, key=str.casefold):
+        current = report_stars(repository, owner)
+        stars = (current - carried if owner in governed else current) | starred.get(owner, set())
+        if stars != current:
+            repository.set_workspace_state(_report_stars_key(owner), json.dumps(sorted(stars)))
     if summary is not None:
         summary.extend(matcher.summary())
     return imported
