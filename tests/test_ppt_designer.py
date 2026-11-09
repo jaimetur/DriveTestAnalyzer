@@ -381,8 +381,8 @@ def test_design_export_uses_the_admin_import_archive_format(client):
         document = json.loads(archive.read(manifest['archive_path']))
     assert document['format'] == 'drivetest-analyzer-designs'
     # The Design travels as saved: its CDRs follow its NR Mode and Campaign, they are not part of it. Who created
-    # it is kept apart from the definition (the save answers with it, as the list does).
-    stored = {key: value for key, value in saved.json()['definition'].items() if key != 'created_by'}
+    # it, and whether the user changes it, are kept apart from the definition (the save answers with them, as the list does).
+    stored = {key: value for key, value in saved.json()['definition'].items() if key not in {'created_by', 'can_change'}}
     assert document['designs'] == {design_id: stored}
     assert 'datasets' not in document['designs'][design_id]
     assert document['designs'][design_id]['auto_cdrs'] is True
@@ -405,20 +405,26 @@ def test_design_library_shows_who_created_and_last_changed_each_design(client):
     core.repository.set_user_workspace_access(int(account['id']), [core.active_workspace.id])
     core.SESSIONS['design-editor'] = core.SessionUser(username='design-editor', role='user-editor')
     client.cookies.set(core.SESSION_COOKIE, 'design-editor')
-    # Saved as it is, or moved in the library, nothing changes.
-    assert client.put('/api/ppt-designer/design-a', json={**payload, 'name': 'Alpha'}).json()['updated_by'] == 'super'
+    # A user-editor changes nothing of a Design of super (ticket #103), and moving it in the library changes nothing.
+    assert listed()['can_change'] is False
+    assert client.put('/api/ppt-designer/design-a', json={**payload, 'name': 'Alpha'}).status_code == 403
+    assert client.patch('/api/ppt-designer/design-a/name', json={'name': 'Alpha 2'}).status_code == 403
     assert client.post('/api/ppt-designer/order', json={'ids': ['design-a']}).status_code == 200
     assert listed()['updated_by'] == 'super'
-    # Each change names who made it and its creator stays.
+    # Saved as it is by another super-admin, nothing changes; each change names who made it and its creator stays.
+    core.repository.create_user('design-chief', 'test-password', 'super-admin')
+    core.SESSIONS['design-chief'] = core.SessionUser(username='design-chief', role='super-admin')
+    client.cookies.set(core.SESSION_COOKIE, 'design-chief')
+    assert client.put('/api/ppt-designer/design-a', json={**payload, 'name': 'Alpha'}).json()['updated_by'] == 'super'
     renamed = client.patch('/api/ppt-designer/design-a/name', json={'name': 'Alpha 2'})
-    assert renamed.json()['updated_by'] == 'design-editor'
-    assert listed()['created_by'] == 'super' and listed()['updated_by'] == 'design-editor'
+    assert renamed.json()['updated_by'] == 'design-chief'
+    assert listed()['created_by'] == 'super' and listed()['updated_by'] == 'design-chief'
     core.SESSIONS['design-admin'] = core.SessionUser(username='super', role='super-admin')
     client.cookies.set(core.SESSION_COOKIE, 'design-admin')
     comments = {'slide_comments': {'1': ['A comment']}}
     assert client.patch('/api/ppt-designer/design-a/comments', json=comments).status_code == 200
     assert listed()['updated_by'] == 'super'
-    client.cookies.set(core.SESSION_COOKIE, 'design-editor')
+    client.cookies.set(core.SESSION_COOKIE, 'design-chief')
     assert client.patch('/api/ppt-designer/design-a/comments', json=comments).status_code == 200
     assert listed()['updated_by'] == 'super'
     client.cookies.set(core.SESSION_COOKIE, 'design-admin')
@@ -1399,7 +1405,7 @@ def test_designs_lifecycle_and_layout(client):
     assert "return [key, saved?.length ? {values: saved, all: false} : {values: [], all: true}];" in dialog_script
     assert "options = (await api('/filter-options/batch', 'POST', {definition: exportUniverse(), fields: [...extraFilters.keys()]})).options || {};" in dialog_script
     assert "for (const [field, values] of Object.entries(universeChoice.extra_filters || {})) withPptSelection(exportDefinition, field, values);" in dialog_script
-    assert "saveFiltersButton.disabled = busy || (!universeChanged() && !Object.keys(changedFilterFields()).length);" in dialog_script
+    assert "saveFiltersButton.disabled = busy || locked || (!universeChanged() && !Object.keys(changedFilterFields()).length);" in dialog_script
     # An opened selector menu is fixed below its field and may overflow the dialog.
     assert "menu.style.top = `${shellBounds.bottom + gap - origin.top}px`;" in dialog_script
     assert 'id="ds-ppt-date-from"' in page.text
@@ -1774,7 +1780,7 @@ def test_designs_lifecycle_and_layout(client):
     assert "title: 'Unapplied PPT filters'" in design_script
     assert "confirmLabel: 'Apply Filters and Continue'" in design_script
     assert "secondaryLabel: 'Discard and Continue'" in design_script
-    assert "tertiaryLabel: 'Save and Continue'" in design_script
+    assert "tertiaryLabel: designChangeable(activeId) ? 'Save and Continue' : undefined," in design_script
     assert "await prepare();\n      return 'applied';" in design_script
     assert "if (hasUnsavedFilterChanges()) await save();" in design_script
     assert "return 'saved';" in design_script
@@ -2734,9 +2740,9 @@ def test_design_state_migrates_from_legacy_storage(client):
     result = client.get('/api/ppt-designer')
     assert result.status_code == 200
     assert result.json()['legacy']['name'] == 'Comparison'
-    # Listed with who created it (nobody known here: only admins and super-admins delete it) and its place in the
-    # library (none until its editors order it).
-    listed = {key: {**definition, 'created_by': '', 'updated_by': '', 'updated_at': '', 'position': None}
+    # Listed with who created it (nobody known here: it belongs to super, so only super-admins change and delete it), its
+    # place in the library (none until its editors order it) and that the user changes it.
+    listed = {key: {**definition, 'created_by': '', 'updated_by': '', 'updated_at': '', 'position': None, 'can_change': True}
               for key, definition in json.loads(core.repository.get_workspace_state('ppt_designs_v2')).items()}
     assert listed == result.json()
 
@@ -2764,7 +2770,7 @@ def test_design_migrates_all_saved_definitions_to_current_default_filters(client
     assert 'datasets' not in migrated and migrated['auto_cdrs'] is True
     assert core.repository.get_workspace_state('ppt_design_default_filters_v6') == '1'
     assert {**json.loads(core.repository.get_workspace_state('ppt_designs_v2'))['legacy'],
-            'created_by': '', 'updated_by': '', 'updated_at': '', 'position': None} == migrated
+            'created_by': '', 'updated_by': '', 'updated_at': '', 'position': None, 'can_change': True} == migrated
 
 
 def test_design_custom_fields_and_snapshot_filters(client):

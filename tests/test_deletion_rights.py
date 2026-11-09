@@ -6,7 +6,7 @@ import src.DriveTestAnalyzer as core
 from src.modules.scoring import saved_filters
 from src.modules.core.deletion_rights import (
     PPT_DESIGNER, SCORING_METHODOLOGIES, SCORING_REPORT_CONFIGURATIONS, UNKNOWN_CREATOR_OWNER, assign_unknown_creators,
-    can_delete, creator_of, creators, record_creator,
+    can_change_owned, can_delete, creator_of, creators, record_creator,
 )
 from src.modules.ppt_designer.ppt_designer import STATE_KEY as DESIGNS_STATE_KEY
 from src.modules.scoring.scoring_reports import (
@@ -225,7 +225,10 @@ def test_designs_are_deleted_by_their_creator_or_an_admin(client):
     login(client, 'alice', 'alice123')
     assert client.delete('/api/ppt-designer/alice-design').status_code == 200
     assert creator_of(repository, PPT_DESIGNER, 'alice-design') == ''
+    # Without a known creator it belongs to super: an admin no longer deletes it, a super-admin does.
     login(client, 'boss', 'boss123')
+    assert client.delete('/api/ppt-designer/old-design').status_code == 403
+    login(client)
     assert client.delete('/api/ppt-designer/old-design').status_code == 200
 
 
@@ -243,7 +246,7 @@ def test_ppt_templates_are_deleted_by_their_creator_or_an_admin(client):
     login(client, 'bob', 'bob123')
     # PPT Templates are managed from PPT Designer, where the refusal returns with its reason.
     page = client.get('/ppt-designer').text
-    assert 'title="Only admins and super-admins, or the user who created it, can delete this PPT Template"' in page
+    assert 'title="Only admins and super-admins, or the user who created it, can change or delete this PPT Template."' in page
     refused = client.post(delete_url, follow_redirects=False)
     assert refused.status_code == 303
     assert refused.headers['location'].startswith('/ppt-designer?ppt_templates=1&catalogue_error=')
@@ -306,3 +309,65 @@ def test_items_without_a_known_creator_are_assigned_to_the_default_super_admin(c
     # Every shipped report configuration and methodology now has a creator; a second pass changes nothing.
     assert all(creators(repository, SCORING_REPORT_CONFIGURATIONS).values())
     assert assign_unknown_creators(repository) == {}
+
+
+def test_designs_and_templates_of_an_admin_are_changed_only_by_their_creator_or_a_super_admin(client):
+    team()
+    workspace_user('chief', 'admin')
+    repository = workspace_repository()
+    designs = {key: {'name': key, 'template': 'T'} for key in ('boss-design', 'alice-design')}
+    repository.set_workspace_state(DESIGNS_STATE_KEY, json.dumps(designs))
+    record_creator(repository, PPT_DESIGNER, 'boss-design', 'boss')
+    record_creator(repository, PPT_DESIGNER, 'alice-design', 'alice')
+    admin, other_admin = SimpleNamespace(role='admin', username='boss'), SimpleNamespace(role='admin', username='chief')
+    assert can_change_owned(admin, 'boss', core.repository) and not can_change_owned(other_admin, 'boss', core.repository)
+    assert can_change_owned(other_admin, 'alice', core.repository)
+    assert not can_change_owned(other_admin, 'super', core.repository) and not can_change_owned(other_admin, '', core.repository)
+    # An account no longer in the deployment protects nothing.
+    assert can_change_owned(other_admin, 'gone', core.repository)
+    assert can_change_owned(SimpleNamespace(role='super-admin', username='super'), 'boss', core.repository)
+    with core.repository.connection() as connection:
+        connection.execute('DELETE FROM audit_logs')
+
+    # Another admin sees why, and every change of the Design of an admin is refused (and recorded).
+    login(client, 'chief', 'chief123')
+    listed = client.get('/api/ppt-designer').json()
+    assert listed['boss-design']['can_change'] is False and listed['alice-design']['can_change'] is True
+    assert listed['boss-design']['change_refusal'] == 'Only boss, who created it, and super-admins can change or delete this Design.'
+    renamed = client.patch('/api/ppt-designer/boss-design/name', json={'name': 'Taken'})
+    assert renamed.status_code == 403 and renamed.json()['detail'] == 'Only boss, who created it, and super-admins can change this Design.'
+    assert client.patch('/api/ppt-designer/boss-design/comments', json={'slide_comments': {'1': ['Mine']}}).status_code == 403
+    assert client.delete('/api/ppt-designer/boss-design').status_code == 403
+    refused = [json.loads(row['details']) for row in core.repository.list_logs(limit=None) if row['action'] == 'ppt_designer_change_refused']
+    assert {(item['id'], item['action'], item['created_by']) for item in refused} >= {
+        ('boss-design', 'change', 'boss'), ('boss-design', 'delete', 'boss')}
+    # The Design of a user-editor is still changed by any admin.
+    assert client.patch('/api/ppt-designer/alice-design/name', json={'name': 'Alice renamed'}).status_code == 200
+
+    # A user-editor no longer renames the Design of another user.
+    login(client, 'bob', 'bob123')
+    assert client.patch('/api/ppt-designer/alice-design/name', json={'name': 'Bob renamed'}).status_code == 403
+
+    # Its creator and a super-admin change it.
+    login(client, 'boss', 'boss123')
+    assert client.patch('/api/ppt-designer/boss-design/name', json={'name': 'Boss renamed'}).status_code == 200
+    login(client)
+    assert client.get('/api/ppt-designer').json()['boss-design']['can_change'] is True
+    assert client.delete('/api/ppt-designer/boss-design').status_code == 200
+
+    # The PPT Templates follow the same rule.
+    login(client, 'boss', 'boss123')
+    assert client.post('/ppt-designer/templates/new', follow_redirects=False).status_code == 303
+    identifier = quote(next(item['identifier'] for item in core.report_catalogue_options() if item['name'] == 'New Template'))
+    login(client, 'chief', 'chief123')
+    page = client.get('/ppt-designer').text
+    assert 'title="Only boss, who created it, and super-admins can change or delete this PPT Template."' in page
+    refused = client.post(f'/ppt-designer/templates/{identifier}/rename', data={'catalogue_name': 'Taken'},
+                          headers={'Accept': 'application/json'})
+    assert refused.status_code == 403 and refused.json()['error'] == 'Only boss, who created it, and super-admins can change this PPT Template.'
+    deleted = client.post(f'/ppt-designer/templates/{identifier}/delete', follow_redirects=False)
+    assert deleted.status_code == 303 and 'catalogue_error=' in deleted.headers['location']
+    assert any(item['name'] == 'New Template' for item in core.report_catalogue_options())
+    login(client)
+    assert client.post(f'/ppt-designer/templates/{identifier}/rename', data={'catalogue_name': 'Renamed by super'},
+                       headers={'Accept': 'application/json'}).status_code == 200

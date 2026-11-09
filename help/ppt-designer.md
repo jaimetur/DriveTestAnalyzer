@@ -74,17 +74,21 @@ An existing or imported Design **RF Quality (RSRP & SINR)** can use the workspac
 | Action | Effect |
 | --- | --- |
 | **View PPT** | Open the interactive slide viewer |
-| **Edit Design** (pencil icon) | Open the slide viewer in the [Designer](#designer), once the Design is prepared (users who can change Designs) |
+| **Edit Design** (pencil icon) | Open the slide viewer in the [Designer](#designer), once the Design is prepared (users who can change the Design or its template, see [Who changes a Design](#who-changes-a-design)) |
 | **Generate PPT** (PPT icon) | Open the export selection dialog |
 | **Duplicate** | Create an independent definition |
 | **Export Design** | Download a versioned ZIP accepted by Admin Import |
-| **Delete** | Remove the definition after confirmation; only admins, super-admins and the user who created the Design delete it |
+| **Delete** | Remove the definition after confirmation; only the users who change the Design delete it (see [Who changes a Design](#who-changes-a-design)) |
 
 **Close** leaves the active definition without deleting it. Deleting a Design does not delete its CDRs, template or generated PPT jobs.
 
 The library lists the Designs in the order of the workspace. Users who can change Designs drag a Design by the tab on the left of its name (or press the up and down arrow keys on the tab) to move it, and the new order is saved at once for every user of the workspace, without changing any Design. Until a Design is first moved the library is sorted by NR Mode (NSA, NSA & SA, SA) and then by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order); Designs created, duplicated or imported later go to the end. App Events record each new order (`reorder_designs`, with the names in the order before and after), and exports, transfers and backups of the Designs carry it (see [Import / Export / Transfer](administrator-config.md)).
 
 **Created by** and **Last Updated by** name the user who created each Design and the last one who changed it, and **Last Updated** shows the date and time of that change (a dash when no date is recorded, as in a starter Design of a new workspace that nobody has changed). A change is one to its name, NR Mode or template, its Scope and filters, its slides in the Designer or its comments, or a template renamed or deleted that changes it; opening a Design, generating its PPT or moving it in the library is not. A Design changed before these columns existed shows the last change its App Events recorded, or its creator when they recorded none. Exports, transfers and backups carry both names, given the same way (see [Matching and creators](administrator-config.md#matching-and-creators)).
+
+### Who changes a Design
+
+A Design is changed (its name, NR Mode and template, its Scope and filters with **Save Filters**, its slides in the [Designer](#designer) and the comments saved in it) and deleted only by the user who created it and by super-admins. Admins also change and delete the Designs created by user-editors, but not those of another admin or super-admin, nor the starter Designs, which belong to `super`; a user-editor changes only the Designs they created, and a user-viewer none. For the other users those controls are disabled, with a tooltip that names who changes the Design: they still open it, apply other filters, generate its PPT, export it and duplicate it as a Design of their own. [PPT Templates](#ppt-templates) follow the same rule. App Events record each refused change as `ppt_designer_change_refused`, with the Design or template, the action, its creator and the reason.
 
 ### Change name, NR Mode or template
 
@@ -484,9 +488,12 @@ Pictures are kept in the table **PPT Images** and travel with the PPT Designs an
 
 | Role | Slides of a Design (This Design) | Slides of a template (Template scope, parameters) |
 | --- | --- | --- |
-| **admin**, **super-admin** | Any Design | Any template |
+| **super-admin** | Any Design | Any template |
+| **admin** | The Designs they created and those of user-editors | The templates they created and those of user-editors |
 | **user-editor** | The Designs they created | The templates they created; **Save Design as** for a variant of another one |
 | **user-viewer** | — | — |
+
+The Designs and templates of another admin or super-admin (and the starter ones, which belong to `super`) are changed only by their creator and super-admins (see [Who changes a Design](#who-changes-a-design)).
 
 App Events record `design_slides_saved` (what changed: slides and charts of the template, differences of the Design), `report_template_saved_from_designer`, `report_template_slide_ids_assigned`, `design_detached`, `report_template_saved_from_design`, `design_draft_discarded` and `design_image_uploaded`.
 
@@ -599,7 +606,7 @@ Templates belong to the active workspace and are stored in that workspace databa
 
 The library keeps the templates of the workspace, one of them the default. A template has no NR Mode of its own: it serves the CDRs of any NR Mode, and each Design (or report of [Reporting](reporting.md)) chooses the NR Mode it reads. Its slide titles, subtitles and chart titles name that NR Mode where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone), so one template gives the NSA, the SA and the [NSA & SA](#nsa--sa-in-one-design) decks. PPT Designer also write the selection of each Design where they name it (`{Campaigns}`, `{Operators}`, `{Cities}`…, see [Fields in titles and text boxes](#fields-in-titles-and-text-boxes)). Every row has the **NR Mode** field (that of its CDR): a chart keeps one NR Mode with the filter `NR Mode IN (SA)` (its title's `{NR Mode}` then names that one), and NR Mode can split or label its series in Rows Split, Columns Split, Legend and the Dynamic Rows/Columns Field. Template names are unique in the workspace.
 
-PPT Templates belong to PPT Designer, not to Config: their actions use the addresses of PPT Designer (`/ppt-designer/templates/…`; the former `/workspace-config/report-templates/…` ones lead there), need PPT Designer in the user's Modules Profile and are recorded in App Events under PPT Designer, and they follow its rights. Admins and super-admins change and delete any template; a user-editor changes (saves, renames, overwrites on import, receives copied slides or charts into) and deletes only the templates they created, as with Designs, and customizes the others from the [Designer](#designer) of their own Designs; a user-viewer sees and exports them. The slides of a template (with their charts, and its parameters) are edited from any Design that follows it, and kept in the template's CSV (its `Format` column).
+PPT Templates belong to PPT Designer, not to Config: their actions use the addresses of PPT Designer (`/ppt-designer/templates/…`; the former `/workspace-config/report-templates/…` ones lead there), need PPT Designer in the user's Modules Profile and are recorded in App Events under PPT Designer, and they follow its rights. A template is changed (saved, renamed, overwritten on import, given copied slides or charts, edited in the [Designer](#designer) or from Chart Builder) and deleted as a Design (see [Who changes a Design](#who-changes-a-design)): by the user who created it and super-admins, and by admins too when a user-editor created it. The other users customize it from the [Designer](#designer) of their own Designs; for them its name, **Delete** and **Edit PPT Template** are disabled, with a tooltip that says why. A user-viewer sees and exports them. The slides of a template (with their charts, and its parameters) are edited from any Design that follows it, and kept in the template's CSV (its `Format` column).
 
 The library lists the templates in the order of the workspace: drag a template by the tab on the left of its name (or press the up and down arrow keys on the tab) to move it, and the new order is saved at once for every user of the workspace and followed by the **Template** of a new Design. Until a template is first moved the library is sorted by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order); templates created, duplicated or imported later go to the end. App Events record each new order (`reorder_report_templates`, with the order before and after), and exports, transfers and backups carry it (see [Import / Export / Transfer](administrator-config.md)). Its columns show the creation and last update times and **Last Updated by**, the user who last imported, edited, renamed, duplicated or promoted the template.
 
@@ -622,7 +629,7 @@ Available actions:
 
 Renaming saves when you leave the name field or press Enter; the field keeps its previous name and shows an error if the save fails. Each template has an identity that never changes, and each Design refers to its template by it, so a renamed template stays the template of its Designs (whose names, when they repeat the template name, follow it too); a duplicate gets its own identity. Duplicate creates `- Copy`.
 
-One template is the default within a workspace. Reporting initially selects that default but does not change it when a user chooses another template for one job. A default template cannot be deleted until another template becomes default. Only admins, super-admins and the user who created a template (with New Template, Import CSV or Duplicate; one brought by Admin Import / Transfer belongs to its creator on the source server when that user is active here, otherwise to whoever imports it) delete it; for the other users **Delete** is disabled and its tooltip says why. New workspaces start without templates.
+One template is the default within a workspace. Reporting initially selects that default but does not change it when a user chooses another template for one job. A default template cannot be deleted until another template becomes default. Only the users who change a template delete it (see [Who changes a Design](#who-changes-a-design)): it belongs to the user who created it (with New Template, Import CSV, Duplicate or **Save as template**; one brought by Admin Import / Transfer belongs to its creator on the source server when that user is active here, otherwise to whoever imports it); for the other users **Delete** is disabled and its tooltip says why. New workspaces start without templates.
 
 The row Export action downloads that individual CSV; portable ZIP export is available under Import / Export / Transfer.
 

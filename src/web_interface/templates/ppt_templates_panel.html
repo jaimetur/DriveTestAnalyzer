@@ -1,6 +1,6 @@
 {# PPT Templates of the workspace, opened from the PPT Templates button of the PPT Designs library (ppt_designer.html):
    order (by the tab on the left of each name), import, rename, set the default, duplicate, delete, export, create, and
-   edit one in the viewer and its Designer. #}
+   edit one in the viewer and its Designer. Only who changes a template (catalogue.can_change) renames and deletes it. #}
 <div class="ds-templates-head">
   <div><p class="eyebrow">PPT Templates Library</p><h2 id="ds-templates-title">PPT Templates</h2></div>
   <span class="pill ds-total-badge">Total Templates: {{ workspace_catalogues | length }}</span>
@@ -24,7 +24,7 @@
         <td class="catalogue-name-cell">
           <button type="button" class="catalogue-drag-handle" data-catalogue-drag-handle aria-label="Move template {{ catalogue.name }}" title="Drag to order the PPT Templates (or press the up and down arrow keys)">⠿</button>
           <form class="catalogue-rename-form" action="/ppt-designer/templates/{{ catalogue.identifier | urlencode }}/rename" method="post" autocomplete="off">
-            <input type="text" name="catalogue_name" value="{{ catalogue.name }}" aria-label="Name for {{ catalogue.name }}" maxlength="80" required autocomplete="off" data-no-persist data-catalogue-auto-rename>
+            <input type="text" name="catalogue_name" value="{{ catalogue.name }}" aria-label="Name for {{ catalogue.name }}" maxlength="80" required autocomplete="off" data-no-persist data-catalogue-auto-rename{% if not catalogue.can_change %} disabled title="{{ catalogue.change_refusal }}"{% endif %}>
           </form>
         </td>
         {% set created_parts = (catalogue.created_at or '').replace('T', ' ').split() %}
@@ -38,7 +38,7 @@
             {% if catalogue.active %}<button type="button" class="catalogue-set-default-button icon-action" aria-label="Set default" title="Set default" disabled>★</button>{% else %}<form action="/ppt-designer/templates/{{ catalogue.identifier | urlencode }}/activate" method="post"><button type="submit" class="catalogue-set-default-button icon-action" aria-label="Set default" title="Set default">★</button></form>{% endif %}
             <button type="button" class="catalogue-edit-button icon-action" aria-label="Edit template {{ catalogue.name }}" data-edit-template="{{ catalogue.name }}" title="Edit template: open it in the viewer and its Designer">✎</button>
             <form action="/ppt-designer/templates/{{ catalogue.identifier | urlencode }}/duplicate" method="post"><button type="submit" class="catalogue-duplicate-button icon-action" aria-label="Duplicate template" title="Duplicate template">⧉</button></form>
-            {% if catalogue.active %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="The default template cannot be deleted">×</button>{% elif user.role not in ['admin', 'super-admin'] and (not catalogue.created_by or catalogue.created_by | lower != user.username | lower) %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="Only admins and super-admins, or the user who created it, can delete this PPT Template">×</button>{% else %}<form action="/ppt-designer/templates/{{ catalogue.identifier | urlencode }}/delete" method="post" data-confirm="Delete template {{ catalogue.name }}? This cannot be undone."><button type="submit" class="danger-button icon-action" aria-label="Delete template" title="Delete template">×</button></form>{% endif %}
+            {% if catalogue.active %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="The default template cannot be deleted">×</button>{% elif not catalogue.can_change %}<button type="button" class="danger-button icon-action" aria-label="Delete template" disabled title="{{ catalogue.change_refusal }}">×</button>{% else %}<form action="/ppt-designer/templates/{{ catalogue.identifier | urlencode }}/delete" method="post" data-confirm="Delete template {{ catalogue.name }}? This cannot be undone."><button type="submit" class="danger-button icon-action" aria-label="Delete template" title="Delete template">×</button></form>{% endif %}
             <a class="catalogue-export-button icon-action" aria-label="Export template" title="Export template" href="/ppt-designer/templates/{{ catalogue.identifier | urlencode }}/export">⬇</a>
           </div>
         </td>

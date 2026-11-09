@@ -174,6 +174,11 @@
   // With NSA & SA, the campaigns of the SA CDRs: the Campaign filter chooses the NSA ones.
   const SA_CAMPAIGN_FIELD = 'SA Campaign';
   const templateRows = () => Array.isArray(config.templates) ? config.templates : [];
+  // Who changes a PPT Design or a PPT Template, as the server says for each one: the user who created it and super-admins,
+  // admins too when a user-editor created it. (A Design just saved by the user is theirs to change.)
+  const designChangeable = id => !id || designs[id]?.can_change !== false;
+  const templateChangeable = name => templateRows().find(row => row.name === name)?.can_change !== false;
+  const LOCKED_DESIGN_TITLE = 'You cannot change the slides of this Design or of its template';
   // The Campaign filter chooses the CDRs of a Design (see cdr_auto_selection): Latest campaign and Latest 2
   // campaigns follow the newest campaigns of its NR Mode. A new Design compares its newest two campaigns, or
   // shows the newest one in Multivendor Operator_Vendor, as its newest CDRs did.
@@ -353,7 +358,9 @@
       hidden_filters: selection.hidden_filters, date_from: selection.date_from || 'Oldest', date_to: selection.date_to || 'Newest',
     }));
   };
-  const hasUnsavedFilterChanges = () => Boolean(definition) && filterStateFingerprint(definition) !== filterStateFingerprint(savedDesignDefinition());
+  // A Design the user cannot change keeps the filters it has: theirs are applied, never offered to be saved.
+  const hasUnsavedFilterChanges = () => Boolean(definition) && designChangeable(activeId)
+    && filterStateFingerprint(definition) !== filterStateFingerprint(savedDesignDefinition());
   const hasUnappliedFilterChanges = () => Boolean(definition)
     && filterStateFingerprint(definition) !== filterStateFingerprint(appliedDefinition());
   // The Scope and dates belong to the filters: there is no separate Dataset Universe any longer.
@@ -379,6 +386,7 @@
   const updateFilterActionState = () => {
     syncViewerScope();
     $('ds-save').disabled = !hasUnsavedFilterChanges() || filterActionBusy;
+    $('ds-save').title = designChangeable(activeId) ? 'Save and apply the current PPT filters' : designs[activeId]?.change_refusal || '';
     $('ds-apply-filters').disabled = !hasUnappliedFilterChanges() || filterActionBusy;
     syncPreparationRefresh();
   };
@@ -586,7 +594,7 @@
         title: 'Unapplied PPT filters',
         confirmLabel: 'Apply Filters and Continue',
         secondaryLabel: 'Discard and Continue',
-        tertiaryLabel: 'Save and Continue',
+        tertiaryLabel: designChangeable(activeId) ? 'Save and Continue' : undefined,
         cancelLabel: 'Cancel',
         wideActions: true,
       },
@@ -884,7 +892,10 @@
     };
     const updateSaveState = () => {
       const busy = savingDesignPart || geographyLoading;
-      saveFiltersButton.disabled = busy || (!universeChanged() && !Object.keys(changedFilterFields()).length);
+      // Saved in the Design: only for who changes it.
+      const locked = !designChangeable(designId);
+      saveFiltersButton.disabled = busy || locked || (!universeChanged() && !Object.keys(changedFilterFields()).length);
+      saveFiltersButton.title = locked ? designs[designId]?.change_refusal || '' : 'Save the selected Scope, dates and filters in the Design';
     };
     const saveDesignPart = async part => {
       savingDesignPart = true; updateSaveState();
@@ -1390,6 +1401,10 @@
         library(); status(`Renamed Design to “${result.name}”.`);
       });
       nameEditor.append(nameInput, nameSave); nameCell.append(nameEditor);
+      // Its name, NR Mode and template change only for who changes the Design (its creator and super-admins; admins too
+      // when a user-editor created it).
+      const locked = item.can_change === false;
+      if (locked) { nameInput.disabled = true; nameInput.title = item.change_refusal || item.name; }
       // The NR Mode of the CDRs the Design reads; its template serves any NR Mode.
       const technologyCell = node('td'); technologyCell.dataset.label = 'NR Mode';
       const technologySelect = document.createElement('select'); technologySelect.className = 'ds-design-definition-select ds-design-nr-mode-select';
@@ -1403,7 +1418,9 @@
       const blankDesign = item.template === BLANK_TEMPLATE;
       templateSelect.replaceChildren(...(blankDesign ? [option(BLANK_TEMPLATE, BLANK_TEMPLATE)] : []), ...choices.map(row => option(row.name, row.name)));
       templateSelect.value = blankDesign ? BLANK_TEMPLATE : (choices.find(row => row.name === item.template) || choices[0])?.name || '';
-      templateSelect.disabled = !choices.length;
+      templateSelect.disabled = !choices.length || locked;
+      technologySelect.disabled = locked;
+      if (locked) technologySelect.title = templateSelect.title = item.change_refusal || '';
       technologySelect.addEventListener('change', () => {
         void safe(() => updateDesignTemplate(id, item, technologySelect.value, templateSelect.value || item.template))();
       });
@@ -1461,6 +1478,8 @@
       if (config.can_manage) {
         const edit = action('Edit Design', '', () => openViewer({edit: true}), 'ds-design-edit');
         edit.title = 'Edit Design: open it in the Designer, to edit its slides and charts';
+        // The Designer changes the slides of the Design or of its template: nothing to open when the user changes neither.
+        if (locked && (item.own_slides || !templateChangeable(item.template))) { edit.disabled = true; edit.title = LOCKED_DESIGN_TITLE; }
       }
       const ppt = action('Generate PPT', '', () => queueDesignPptExport(id, item, {chooseScope: true}), 'ds-design-ppt');
       ppt.dataset.designPptId = id;
@@ -1471,10 +1490,10 @@
       action('Export Design', '', () => exportDesign(id, item), 'ds-design-export');
       if (config.can_manage) {
         const remove = action('Delete Design', '×', async () => { await deleteDesign(id); }, 'danger-button');
-        // Only admins, super-admins and the user who created it delete it.
-        if (!(window.canDeleteShared?.(item.created_by) ?? true)) {
+        // Only who changes it deletes it.
+        if (locked) {
           remove.disabled = true;
-          remove.title = window.sharedDeleteRefusal('Design');
+          remove.title = item.change_refusal || '';
         }
       }
       const cell = node('td'); cell.dataset.label = 'Actions'; cell.append(actions); row.append(cell); body.append(row);
@@ -1699,15 +1718,26 @@
   const viewerDefinition = () => pptDesignViewer?.definition || definition;
   const syncPptDesignViewerControls = () => {
     const snapshot = Boolean(pptDesignViewer);
-    for (const id of ['ds-floating-filters', 'ds-viewer-refresh', 'ds-viewer-export-ppt', 'ds-edit']) {
+    // The comments are saved in the Design, and Edit PPT Template changes its template: only for who changes them.
+    const locked = !designChangeable(activeId), reason = designs[activeId]?.change_refusal || '';
+    const templateLocked = Boolean(definition?.template) && !templateChangeable(definition.template);
+    for (const id of ['ds-floating-filters', 'ds-viewer-refresh', 'ds-viewer-export-ppt']) {
       const control = $(id);
       if (control) control.disabled = snapshot;
     }
-    $('ds-comment-input').disabled = snapshot;
-    $('ds-comment-add').disabled = snapshot;
-    $('ds-comment-generate').disabled = snapshot;
-    $('ds-comment-generate-all').disabled = snapshot;
-    for (const control of ['ds-comment-menu-toggle', 'ds-comment-kiro-brief', 'ds-comment-kiro-import']) $(control).disabled = snapshot;
+    if ($('ds-edit')) {
+      $('ds-edit').disabled = snapshot || templateLocked;
+      $('ds-edit').title = templateLocked ? templateRows().find(row => row.name === definition.template)?.change_refusal || '' : 'Edit PPT Template';
+    }
+    $('ds-comment-input').disabled = snapshot || locked;
+    $('ds-comment-input').title = locked ? reason : '';
+    $('ds-comment-add').disabled = snapshot || locked;
+    $('ds-comment-generate').disabled = snapshot || locked;
+    $('ds-comment-generate-all').disabled = snapshot || locked;
+    for (const control of ['ds-comment-menu-toggle', 'ds-comment-kiro-brief']) $(control).disabled = snapshot;
+    $('ds-comment-kiro-import').disabled = snapshot || locked;
+    const tools = document.querySelector('.ds-comment-tools');
+    if (tools) tools.title = locked ? reason : '';
     if (snapshot) closeCommentMenu();
   };
   async function openDesignPptViewer(job) {
@@ -2724,6 +2754,7 @@
     activeId = id; designFiltersOpen = showFilters; rememberFiltersOpen(showFilters); $('ds-viewer-export-ppt').dataset.designPptId = id; definition = runtimeDesignDefinition(designs[id], id); savedDefinition = definitionFingerprint(savedRuntimeDesignDefinition(designs[id])); dirty = false; prepared = null; appliedFilterState = ''; appliedSelectionState = ''; appliedDesignDefinition = null; applyingDesignDefinition = null; facetOptions = {}; availableFields = []; facetOptionRequests.clear(); slideIndex = 0; setViewEnabled(false); rememberOpen(id);
     document.dispatchEvent(new CustomEvent('ds:design-opened', {detail: {id}}));
     resetViewerForDesign();
+    syncPptDesignViewerControls();
     // A PPT Template open as a Design leaves the name of a new PPT Design in the field.
     if (designs[id]?.template_preview) syncNewDesignNameFromTemplate(); else $('ds-name').value = definition.name;
     setNrMode(designNrMode(definition), definition.template);
@@ -4085,7 +4116,12 @@
     $('ds-chart-expanded-filters').hidden = historical;
     $('ds-chart-expanded-filters').disabled = false;
     $('ds-chart-expanded-auto-fields') && ($('ds-chart-expanded-auto-fields').disabled = false);
-    if ($('ds-chart-expanded-edit')) $('ds-chart-expanded-edit').disabled = !Number.isInteger(chart.focus_row);
+    if ($('ds-chart-expanded-edit')) {
+      // Edit PPT Template changes the template: only for who changes it.
+      const templateLocked = Boolean(definition?.template) && !templateChangeable(definition.template);
+      $('ds-chart-expanded-edit').disabled = !Number.isInteger(chart.focus_row) || templateLocked;
+      $('ds-chart-expanded-edit').title = templateLocked ? templateRows().find(row => row.name === definition.template)?.change_refusal || '' : 'Edit PPT Template';
+    }
     $('ds-chart-expanded-data').title = historical && !chart.data_url ? 'Filtered dataset is unavailable for this earlier PowerPoint Job' : 'View dataset';
     $('ds-chart-expanded-filters').title = 'PPT Filters';
     expandedZoom.reset(); expandedZoom.hidden = true;
@@ -4221,7 +4257,8 @@
       const item = node('li', undefined, `ds-comment${generated.has(comment) ? ' is-generated' : ''}`);
       if (generated.has(comment)) item.title = `Generated${meta.generated_at ? ` on ${String(meta.generated_at).slice(0, 10)}` : ''}${meta.engine && meta.engine !== 'rules' ? ` with ${meta.engine}` : ''}`;
       const editor = document.createElement('input'); editor.type = 'text'; editor.value = comment; editor.maxLength = 500; editor.setAttribute('aria-label', `Comment ${index + 1}`);
-      editor.disabled = Boolean(pptDesignViewer);
+      // The comments are saved in the Design: only who changes it edits them.
+      editor.disabled = Boolean(pptDesignViewer) || !designChangeable(activeId);
       let savedComment = comment;
       const saveEdit = safe(async () => {
         const value = editor.value.trim();
@@ -4234,7 +4271,7 @@
       editor.addEventListener('change', saveEdit);
       editor.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); editor.blur(); } });
       const remove = node('button', '×', 'ds-comment-remove'); remove.type = 'button'; remove.title = 'Remove comment'; remove.setAttribute('aria-label', 'Remove comment');
-      remove.disabled = Boolean(pptDesignViewer);
+      remove.disabled = Boolean(pptDesignViewer) || !designChangeable(activeId);
       remove.onclick = safe(async () => { viewer.slide_comments[currentSlideCommentKey()].splice(index, 1); await persistComments(); renderComments(); });
       item.append(editor, remove); list.append(item);
     });

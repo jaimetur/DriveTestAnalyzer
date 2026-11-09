@@ -30,7 +30,7 @@ from src.modules.cdr.column_names import campaign_sort_key, column_identity, com
 from src.modules.ppt_designer import ppt_design_cache
 from src.modules.reporting import report_structure
 from src.modules.core.deletion_rights import (
-    PPT_DESIGNER, can_delete, creator_of, creators, deletion_refusal, forget_creator, record_creator,
+    PPT_DESIGNER, can_change_owned, change_refusal, creator_of, creators, forget_creator, record_creator,
 )
 from src.modules.scoring.scoring_themes import THEMES, canvas_chart_style, load_user_theme, normalize_theme, save_user_theme, themes_payload, use_theme
 from src.modules.reporting.theme_titles import style_title
@@ -2696,8 +2696,7 @@ def install_design_routes(core):
         return core.render_template(request, 'ppt_designer.html', {
             'user': user, 'design_datasets': {kind: [row for row in ready if row.get('dataset_kind') == kind] for kind in KINDS},
             # Any template serves the CDRs of any NR Mode.
-            'design_templates': [{'name': row['name'], 'identifier': row['identifier'], 'active': row['active']}
-                                    for row in core.report_catalogue_options()],
+            'design_templates': design_template_rows(user),
             'design_workspace_id': core.active_workspace.id,
             'calculated_dimensions': core.calculated_dimensions_json(core.load_workspace_calculated_dimensions()),
             'design_filter_fields': ADAPTATIVE_FILTER_FIELDS,
@@ -2713,18 +2712,31 @@ def install_design_routes(core):
             'canvas_chart_styles': {key: canvas_chart_style(key) for key in THEMES},
             'design_viewer_tokens': {key: design_viewer_tokens(key) for key in THEMES},
             'design_blank_template': design_slides.BLANK_PPT_TEMPLATE,
-            **templates_library_context(),
+            **templates_library_context(user),
             'catalogue_notice': request.query_params.get('catalogue_notice') or None,
             'catalogue_error': request.query_params.get('catalogue_error') or None,
         })
 
-    def templates_library_context() -> dict:
-        """PPT Templates (the button of the library): the templates of the workspace, in the order of the library."""
+    def template_rights(user, created_by) -> dict:
+        """Whether the user changes and deletes a PPT Template (can_change_owned), and why not."""
+        if user.role in {'user-editor', 'admin', 'super-admin'} and can_change_owned(user, created_by, core.repository):
+            return {'can_change': True}
+        return {'can_change': False, 'change_refusal': change_refusal('PPT Template', created_by, core.repository, 'change or delete')}
+
+    def design_template_rows(user) -> list[dict]:
+        """The templates a PPT Design can choose, with whether the user changes each one (Edit PPT Template)."""
+        return [{'name': row['name'], 'identifier': row['identifier'], 'active': row['active'],
+                 **template_rights(user, row.get('created_by'))} for row in core.report_catalogue_options()]
+
+    def templates_library_context(user) -> dict:
+        """PPT Templates (the button of the library): the templates of the workspace, in the order of the library, with
+        whether the user changes each one."""
         catalogues = core.report_catalogue_options()
         return {
             'workspace_catalogues': sorted((
                 {**catalogue, 'created_at': core.format_local_timestamp(catalogue.get('created_at')),
-                 'updated_at': core.format_local_timestamp(catalogue.get('updated_at'))}
+                 'updated_at': core.format_local_timestamp(catalogue.get('updated_at')),
+                 **template_rights(user, catalogue.get('created_by'))}
                 for catalogue in catalogues
             ), key=core.report_template_library_key),
             'template_names': [str(catalogue['name']) for catalogue in catalogues],
@@ -2735,11 +2747,10 @@ def install_design_routes(core):
         """PPT Templates as they are now (a template saved from the Designer meanwhile included): the list of the dialog
         and the templates a new PPT Design can choose."""
         workspace_key()
-        context = {'user': user, **templates_library_context(), 'catalogue_notice': None, 'catalogue_error': None}
+        context = {'user': user, **templates_library_context(user), 'catalogue_notice': None, 'catalogue_error': None}
         return {
             'html': core.templates.get_template('ppt_templates_panel.html').render(context),
-            'templates': [{'name': row['name'], 'identifier': row['identifier'], 'active': row['active']}
-                          for row in core.report_catalogue_options()],
+            'templates': design_template_rows(user),
         }
 
     @app.get('/api/ppt-designer/theme')
@@ -2775,12 +2786,20 @@ def install_design_routes(core):
         if isinstance(preview, dict):
             designs = {**designs, preview_id: {**preview, 'template_preview': True}}
             known = {**known, preview_id: user.username}
-        # Each Design with who created it (only they, admins and super-admins delete it), who last changed it and its
-        # place in the library (none until its editors order it).
+
+        def rights(design_id) -> dict:
+            # Whether the user changes and deletes it (can_change_owned), and why not.
+            creator = known.get(str(design_id).casefold(), '')
+            if user.role in {'user-editor', 'admin', 'super-admin'} and can_change_owned(user, creator, task_repository):
+                return {'can_change': True}
+            return {'can_change': False, 'change_refusal': change_refusal('Design', creator, task_repository, 'change or delete')}
+
+        # Each Design with who created it (only they and super-admins change it when they are admins; admins too when
+        # they are user-editors), who last changed it and its place in the library (none until its editors order it).
         return JSONResponse(
                 {design_id: {**definition, 'created_by': known.get(str(design_id).casefold(), ''),
                              **design_update_fields(updates.get(str(design_id).casefold()), known.get(str(design_id).casefold(), '')),
-                             'position': positions.get(design_id)}
+                             'position': positions.get(design_id), **rights(design_id)}
                  if isinstance(definition, dict) else definition for design_id, definition in designs.items()},
             headers={'Cache-Control': 'no-store, max-age=0, must-revalidate'},
         )
@@ -3611,6 +3630,8 @@ def install_design_routes(core):
             if not preview:
                 ensure_unique_design_name(designs, design_id, definition.name)
             created = design_id not in designs
+            if not created and not preview:
+                ensure_design_changeable(user, design_id, task_repository)
             previous = designs.get(design_id)
             definition.name = definition.name.strip()
             saved_definition = migrate_auto_cdrs(normalize_design_filters(definition.model_dump(mode='json')), task_repository)
@@ -3635,8 +3656,9 @@ def install_design_routes(core):
             task_repository.add_log(user.username, 'save_template_preview' if preview else 'save_design', json.dumps({
                 'id': design_id, 'name': definition.name, 'nr_mode': definition.nr_mode, 'template': definition.template,
             }))
-        # As the list gives it, with who created it: the page compares it with the Design it has open.
-        return {'id': design_id, 'definition': {**saved_definition, 'created_by': creator}, **update_fields}
+        # As the list gives it, with who created it (and that the user changes it): the page compares it with the Design
+        # it has open.
+        return {'id': design_id, 'definition': {**saved_definition, 'created_by': creator, 'can_change': True}, **update_fields}
 
     @app.patch('/api/ppt-designer/{design_id}/name')
     def rename_design(design_id: str, payload: DesignName, user=Depends(design_editor_user)):
@@ -3648,6 +3670,7 @@ def install_design_routes(core):
             designs = read_designs(task_repository)
             if design_id not in designs:
                 raise HTTPException(404, 'Design not found.')
+            ensure_design_changeable(user, design_id, task_repository)
             ensure_unique_design_name(designs, design_id, name)
             designs[design_id]['name'] = name
             task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
@@ -3673,6 +3696,7 @@ def install_design_routes(core):
             current = designs.get(design_id)
             if current is None:
                 raise HTTPException(404, 'Design not found.')
+            ensure_design_changeable(user, design_id, task_repository)
             updated = dict(current)
             previous_nr_mode, previous_template = design_nr_mode(current), str(current.get('template') or '')
             nr_mode_changed = previous_nr_mode != payload.nr_mode
@@ -3705,7 +3729,8 @@ def install_design_routes(core):
                 **({'dropped_slide_overrides': dropped_overrides, 'detached_before': bool(current.get('own_slides'))}
                    if payload.template != previous_template and (any(dropped_overrides.values()) or current.get('own_slides')) else {}),
             }))
-        return {'id': design_id, 'definition': {**saved_definition, 'created_by': creator}, 'invalidated': True, **update_fields}
+        return {'id': design_id, 'definition': {**saved_definition, 'created_by': creator, 'can_change': True},
+                'invalidated': True, **update_fields}
 
     @app.delete('/api/ppt-designer/{design_id}')
     def delete_design(design_id: str, user=Depends(design_editor_user)):
@@ -3714,8 +3739,7 @@ def install_design_routes(core):
             designs = read_designs(task_repository)
             if design_id not in designs:
                 raise HTTPException(404, 'Design not found.')
-            if not can_delete(user, creator_of(task_repository, PPT_DESIGNER, design_id)):
-                raise HTTPException(403, deletion_refusal('Design'))
+            ensure_design_changeable(user, design_id, task_repository, 'delete')
             del designs[design_id]
             task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
             forget_creator(task_repository, PPT_DESIGNER, design_id)
@@ -3745,18 +3769,45 @@ def install_design_routes(core):
     def template_row_of(template_name, task_repository):
         return next((row for row in task_repository.list_report_templates() if str(row['name']) == str(template_name)), None)
 
+    def design_creator(user, design_id, task_repository) -> str:
+        # The PPT Template a user has open as a Design (PPT Templates → Edit) is theirs.
+        if is_template_preview(design_id):
+            return user.username if design_id == template_preview_id(user.username) else ''
+        return creator_of(task_repository, PPT_DESIGNER, design_id)
+
+    def can_change_design(user, design_id, task_repository) -> bool:
+        """Whether the user changes (its filters, name, NR Mode, template, slides and comments) or deletes a Design:
+        the user who created it and super-admins; admins too when a user-editor created it; a user-viewer never."""
+        return user.role in {'user-editor', 'admin', 'super-admin'} and can_change_owned(
+            user, design_creator(user, design_id, task_repository), task_repository)
+
+    def refused(user, label: str, created_by: str, action: str, task_repository, **item) -> HTTPException:
+        """The 403 of a change of a Design or PPT Template the user cannot make, kept in App Events."""
+        reason = change_refusal(label, created_by, task_repository, action)
+        task_repository.try_add_log(user.username, 'ppt_designer_change_refused', json.dumps({
+            'kind': label, **item, 'action': action, 'created_by': created_by, 'role': user.role, 'reason': reason,
+        }, ensure_ascii=False))
+        return HTTPException(403, reason)
+
+    def ensure_design_changeable(user, design_id, task_repository, action: str = 'change') -> None:
+        if not can_change_design(user, design_id, task_repository):
+            name = str((read_designs(task_repository).get(design_id) or {}).get('name') or '')
+            raise refused(user, 'Design', design_creator(user, design_id, task_repository), action, task_repository,
+                          id=design_id, name=name)
+
     def can_edit_design_slides(user, design_id, task_repository) -> bool:
-        """Admins and super-admins edit the slides of any Design, a user-editor only those they created, a user-viewer none."""
-        return user.role in {'user-editor', 'admin', 'super-admin'} and can_delete(
-            user, creator_of(task_repository, PPT_DESIGNER, design_id))
+        """The slides of a Design follow the rule of the Design (can_change_design)."""
+        return can_change_design(user, design_id, task_repository)
 
     def can_edit_template_slides(user, template_row) -> bool:
         """The same rule for a PPT Template, by its creator."""
-        return template_row is not None and user.role in {'user-editor', 'admin', 'super-admin'} and can_delete(
-            user, template_row['created_by'])
+        return template_row is not None and user.role in {'user-editor', 'admin', 'super-admin'} and can_change_owned(
+            user, template_row['created_by'], core.repository)
 
-    def designer_refusal(label: str) -> str:
-        return f'Only admins and super-admins, or the user who created it, can change the slides of this {label}.'
+    def template_refused(user, template_row, task_repository) -> HTTPException:
+        """The 403 of a change of the slides of a PPT Template the user cannot make."""
+        creator, name = ('', '') if template_row is None else (str(template_row['created_by'] or ''), str(template_row['name']))
+        return refused(user, 'PPT Template', creator, 'change the slides of', task_repository, template=name)
 
     def checked_slide_set(slide_set, label='template') -> dict:
         """A slide set sent by the Designer, checked as its template CSV would be (the same messages), with its
@@ -4112,7 +4163,7 @@ def install_design_routes(core):
             if definition.own_slides:
                 raise HTTPException(400, 'This Design is detached from its template.')
             if not can_edit_template_slides(user, template_row):
-                raise HTTPException(403, designer_refusal('PPT Template'))
+                raise template_refused(user, template_row, task_repository)
             if request.template_updated_at and str(template_row['updated_at'] or '') != request.template_updated_at:
                 raise HTTPException(409, f'The template "{definition.template}" changed since the Designer opened it: '
                                          'reload the Designer and apply your changes again.')
@@ -4142,8 +4193,7 @@ def install_design_routes(core):
             if template is None:
                 raise HTTPException(400, 'The selected template is no longer available.')
         if request.slide_set is not None or request.overrides is not None or request.keep_template_changes:
-            if not can_edit_design_slides(user, design_id, task_repository):
-                raise HTTPException(403, designer_refusal('Design'))
+            ensure_design_changeable(user, design_id, task_repository, 'change the slides of')
             _base, before, _report = design_slides_state(definition, task_repository, template)
             if definition.own_slides:
                 own = checked_slide_set(request.slide_set, 'Design') if request.slide_set is not None else definition.own_slides
@@ -4184,8 +4234,7 @@ def install_design_routes(core):
         definition = stored_design(design_id, task_repository)
         if definition.own_slides:
             raise HTTPException(400, 'This Design is already detached from its template.')
-        if not can_edit_design_slides(user, design_id, task_repository):
-            raise HTTPException(403, designer_refusal('Design'))
+        ensure_design_changeable(user, design_id, task_repository, 'change the slides of')
         _template, resolved, _report = design_slides_state(definition, task_repository)
         own = design_slides.template_slides_of(resolved)
         definition = DesignDefinition.model_validate(
@@ -4338,8 +4387,7 @@ def install_design_routes(core):
         """Add to Design: the chart becomes part of this Design only (a difference of it from its template)."""
         workspace_key()
         task_repository = bound_repository()
-        if not can_edit_design_slides(user, design_id, task_repository):
-            raise HTTPException(403, designer_refusal('Design'))
+        ensure_design_changeable(user, design_id, task_repository, 'change the slides of')
         definition = stored_design(design_id, task_repository)
         template = None if definition.own_slides else template_with_ids(definition.template, task_repository, user.username)[0]
         _base, resolved, _report = design_slides_state(definition, task_repository, template)
@@ -4366,7 +4414,7 @@ def install_design_routes(core):
         if template is None:
             raise HTTPException(404, f'The PPT Template "{template_name}" is no longer in the workspace.')
         if not can_edit_template_slides(user, row):
-            raise HTTPException(403, designer_refusal('PPT Template'))
+            raise template_refused(user, row, task_repository)
         slide_set = copy.deepcopy(template)
         element = added_element(payload)
         title = place_added_element(slide_set, element, payload, 'PPT Template')
@@ -4452,6 +4500,7 @@ def install_design_routes(core):
             designs = read_designs_and_previews(task_repository)
             if design_id not in designs:
                 raise HTTPException(404, 'Design not found.')
+            ensure_design_changeable(user, design_id, task_repository)
             comments = {
                 str(slide): [str(comment).strip() for comment in values if str(comment).strip()][:50]
                 for slide, values in payload.slide_comments.items()
@@ -4694,6 +4743,7 @@ def install_design_routes(core):
         task_repository = bound_repository()
         if design_id not in read_designs(task_repository):
             raise HTTPException(404, 'Design not found.')
+        ensure_design_changeable(user, design_id, task_repository)
         snapshot = comment_snapshot(payload.token, user)
         total = sum(1 for slide in snapshot.payload.get('slides', []) if not slide.get('structural_type')
                     and (not payload.slides or slide.get('number') in {item.number for item in payload.slides}))
@@ -4794,6 +4844,8 @@ def install_design_routes(core):
             raise HTTPException(400, 'Choose which comments the imported ones replace.')
         uploads = [(upload.filename or '', await upload.read()) for upload in files]
         task_repository = bound_repository()
+        if design_id in read_designs(task_repository):
+            ensure_design_changeable(user, design_id, task_repository)
         try:
             comments_document, facts_document = comment_writers.read_kiro_import(uploads)
             written, problems = comment_writers.check_kiro_comments(comments_document, facts_document)
@@ -7927,7 +7979,7 @@ def install_design_routes(core):
         if template is None:
             raise HTTPException(404, 'The Report Template used by this chart is no longer available.')
         if not can_edit_template_slides(user, template):
-            raise HTTPException(403, designer_refusal('PPT Template'))
+            raise template_refused(user, template, task_repository)
         # The template as written (its titles may name the NR Mode with tokens, which the Design shows resolved).
         try:
             entries = core.load_template_catalogue(bytes(template['content']), task_repository=task_repository)

@@ -5,10 +5,14 @@ Scoring report editor, Reporting Jobs and Bundle Report Template favourites).
 The items whose table has no creator of their own keep it in the workspace settings, by kind. Those created before it
 was kept, or by the application (``system``), belong to the super-admin every deployment starts with
 (UNKNOWN_CREATOR_OWNER, see assign_unknown_creators), so only admins and super-admins delete them.
+
+PPT Designs and PPT Templates go further (can_change_owned): one created by an admin or a super-admin is changed and
+deleted only by the user who created it and by super-admins, never by another admin.
 """
 from __future__ import annotations
 
 import json
+import sqlite3
 from typing import Any
 
 from src.modules.core.repository import DEFAULT_ACCOUNT_USERNAMES
@@ -24,20 +28,63 @@ AUTO_CALCULATED_FIELDS = 'auto-calculated-fields'
 # with (``super``), whether or not the account still exists.
 UNKNOWN_CREATOR_OWNER = DEFAULT_ACCOUNT_USERNAMES[0]
 UNKNOWN_CREATORS = frozenset({'', 'system'})
+# The PPT Designs and PPT Templates of these roles are changed only by the user who created them and by super-admins.
+PROTECTED_CREATOR_ROLES = frozenset({'admin', 'super-admin'})
+
+
+def _is_creator(user: Any, created_by: Any) -> bool:
+    creator = str(created_by or '').strip()
+    return bool(creator) and creator.casefold() == str(getattr(user, 'username', '') or '').casefold()
 
 
 def can_delete(user: Any, created_by: Any) -> bool:
     """Whether the user deletes an item created by ``created_by``."""
-    if getattr(user, 'role', '') in DELETION_ROLES:
-        return True
-    creator = str(created_by or '').strip()
-    return bool(creator) and creator.casefold() == str(getattr(user, 'username', '') or '').casefold()
+    return getattr(user, 'role', '') in DELETION_ROLES or _is_creator(user, created_by)
 
 
 def deletion_refusal(label: str, names: list[str] | None = None) -> str:
     """Why a user cannot delete one item (``label``) or several (``names``)."""
     detail = f' ({", ".join(names)})' if names else ''
     return f'Only admins and super-admins, or the user who created it, can delete this {label}{detail}.'
+
+
+def owner_of(created_by: Any) -> str:
+    """Who an item belongs to: its creator, or UNKNOWN_CREATOR_OWNER when it has none or the application created it."""
+    creator = str(created_by or '').strip()
+    return UNKNOWN_CREATOR_OWNER if _unknown(creator) else creator
+
+
+def creator_role(repository: Any, created_by: Any) -> str:
+    """The role of the account an item belongs to (owner_of); '' when that account is no longer in the deployment, except
+    UNKNOWN_CREATOR_OWNER, which is always the super-admin every deployment starts with."""
+    owner = owner_of(created_by)
+    try:
+        record = repository.get_user(owner)
+    except (sqlite3.Error, AttributeError):
+        record = None
+    if record is not None:
+        return str(record.role or '')
+    return 'super-admin' if owner.casefold() == UNKNOWN_CREATOR_OWNER else ''
+
+
+def can_change_owned(user: Any, created_by: Any, repository: Any) -> bool:
+    """Whether the user changes (or deletes) a PPT Design or PPT Template created by ``created_by``: its creator and
+    super-admins always; admins also those of user-editors and of accounts no longer in the deployment, never those of
+    another admin or super-admin (nor those without a known creator, see owner_of); the other roles only their own."""
+    role = getattr(user, 'role', '')
+    if role == 'super-admin' or _is_creator(user, created_by):
+        return True
+    return role == 'admin' and creator_role(repository, created_by) not in PROTECTED_CREATOR_ROLES
+
+
+def change_refusal(label: str, created_by: Any, repository: Any, action: str = 'change') -> str:
+    """Why a user cannot ``action`` (change, delete…) a PPT Design or PPT Template (``label``) created by ``created_by``."""
+    role = creator_role(repository, created_by)
+    if role == 'super-admin':
+        return f'Only super-admins can {action} this {label}.'
+    if role in PROTECTED_CREATOR_ROLES:
+        return f'Only {owner_of(created_by)}, who created it, and super-admins can {action} this {label}.'
+    return f'Only admins and super-admins, or the user who created it, can {action} this {label}.'
 
 
 def _key(item_id: Any) -> str:

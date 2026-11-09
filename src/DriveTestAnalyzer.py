@@ -27121,13 +27121,24 @@ def _named_catalogue(catalogue_id: str) -> dict[str, Any] | None:
     return next((item for item in report_catalogue_options() if item['identifier'] == catalogue_id), None)
 
 
+def report_template_refusal(user: SessionUser, template_name: str, created_by: Any, action: str = 'change') -> str:
+    """Why the user cannot change (or delete) a PPT Template, kept in App Events."""
+    from src.modules.core.deletion_rights import change_refusal
+    reason = change_refusal('PPT Template', created_by, repository, action)
+    repository.try_add_log(user.username, 'ppt_designer_change_refused', json.dumps({
+        'kind': 'PPT Template', 'template': str(template_name), 'action': action, 'created_by': str(created_by or ''),
+        'role': user.role, 'reason': reason,
+    }, ensure_ascii=False))
+    return reason
+
+
 def ensure_report_template_editable(user: SessionUser, template_name: str) -> None:
-    """Admins and super-admins change any PPT Template, a user-editor only those they created (as PPT Designs): raises
-    PermissionError otherwise."""
-    from src.modules.core.deletion_rights import can_delete
+    """A PPT Template is changed as a PPT Design (can_change_owned): by the user who created it and super-admins; by admins
+    too when a user-editor created it. Raises PermissionError otherwise."""
+    from src.modules.core.deletion_rights import can_change_owned
     row = next((row for row in repository.list_report_templates() if str(row['name']) == str(template_name)), None)
-    if row is not None and not can_delete(user, row['created_by']):
-        raise PermissionError('Only admins and super-admins, or the user who created it, can change this PPT Template.')
+    if row is not None and not can_change_owned(user, row['created_by'], repository):
+        raise PermissionError(report_template_refusal(user, template_name, row['created_by']))
 
 
 @app.post('/ppt-designer/templates/{catalogue_id}/rename', response_class=HTMLResponse)
@@ -27230,12 +27241,13 @@ def delete_report_catalogue(
     catalogue_id: str,
     user: SessionUser = Depends(ppt_template_editor_user),
 ) -> HTMLResponse:
-    from src.modules.core.deletion_rights import can_delete, deletion_refusal
+    from src.modules.core.deletion_rights import can_change_owned
     catalogue = _named_catalogue(catalogue_id)
     if not catalogue:
         return ppt_templates_redirect(request, catalogue_error='Report Template not found.')
-    if not can_delete(user, catalogue.get('created_by')):
-        return ppt_templates_redirect(request, catalogue_error=deletion_refusal('PPT Template'))
+    if not can_change_owned(user, catalogue.get('created_by'), repository):
+        return ppt_templates_redirect(request, catalogue_error=report_template_refusal(
+            user, catalogue['name'], catalogue.get('created_by'), 'delete'))
     if catalogue['active']:
         return ppt_templates_redirect(request, catalogue_error='The default template cannot be deleted.')
     # The PPT Designs that follow it keep the slides they show as their own (detached): none of them breaks.

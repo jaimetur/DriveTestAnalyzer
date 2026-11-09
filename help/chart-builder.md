@@ -58,7 +58,7 @@ The embedded viewer provides the same Canvas rendering, semantic hover details, 
 
 ## Add to PPT Design or Template
 
-**Add to PPT Design or Template…** lists the PPT Designs and the PPT Templates whose slides you can edit (admins and super-admins any, a user-editor those they created) and their slides with their free places: the chart goes, with its format and its One chart per (a KPI Card as a KPI card), to a free place of the slide chosen, or to a new slide at the end. In a **PPT Design** it becomes part of that Design only (one of its differences from its template, see [Designer](ppt-designer.md#designer)); in a **PPT Template** every PPT Design that follows the template shows it. Either way it reads the CDRs each Design chooses, not those chosen here. App Events record it as `design_chart_added` or `template_chart_added`.
+**Add to PPT Design or Template…** lists the PPT Designs and the PPT Templates whose slides you can edit (see [Who changes a Design](ppt-designer.md#who-changes-a-design)) and their slides with their free places: the chart goes, with its format and its One chart per (a KPI Card as a KPI card), to a free place of the slide chosen, or to a new slide at the end. In a **PPT Design** it becomes part of that Design only (one of its differences from its template, see [Designer](ppt-designer.md#designer)); in a **PPT Template** every PPT Design that follows the template shows it. Either way it reads the CDRs each Design chooses, not those chosen here. App Events record it as `design_chart_added` or `template_chart_added`.
 
 ## Example
 
