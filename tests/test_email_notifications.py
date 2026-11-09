@@ -38,6 +38,8 @@ def flow(monkeypatch):
 
     monkeypatch.setattr(email_delivery.urllib.request, 'urlopen', urlopen)
     monkeypatch.setattr(notifications, 'submit', lambda task: task())
+    # Each change of a ticket emailed at once (the changes made one after another wait for each other otherwise).
+    monkeypatch.setattr(notifications, 'TICKET_EMAIL_WAIT_SECONDS', 0)
     return received
 
 
@@ -90,11 +92,6 @@ def test_email_delivery_sends_through_a_power_automate_flow(client, flow):
     # Every email of the tool starts its subject with the prefix of the tool, once.
     assert message['subject'] == 'DT Analyzer - Test email' and email_delivery.subject_line(message['subject']) == message['subject']
     assert message['reply_to'] == 'admin@example.com' and 'can deliver its emails' in message['html']
-    # It starts a conversation; when the mailbox of the flow (the sender address) receives it too, the flow deletes its
-    # copy in Sent Items, so the email shows once.
-    assert (message['thread'], message['previous_folder'], message['delete_sent_copy']) == (False, 'SentItems', False)
-    client.post('/application-config/email-delivery/test', data={'recipient': 'Admin@Example.com'})
-    assert (flow[-1]['to'], flow[-1]['previous_folder'], flow[-1]['delete_sent_copy']) == ('Admin@Example.com', 'Inbox', True)
     # A flow sends no attachments, and a request too large for it is refused before it is sent.
     with pytest.raises(RuntimeError, match='attachments'):
         email_delivery.send_email(core.email_delivery_settings(core.repository, include_password=True), ['a@example.com'], 'S', 'T', 'H',
@@ -239,6 +236,40 @@ def test_the_texts_of_a_ticket_email_read_with_their_formats_as_on_the_page_of_t
     assert len(long) < notifications.TEXT_HTML_LIMIT and '- **0**<br>- **1**<br>' in long
 
 
+def test_the_changes_of_a_ticket_made_one_after_another_reach_each_recipient_in_one_email(client, flow, monkeypatch):
+    use_flow(notify_tickets=True)
+    monkeypatch.setattr(notifications, 'TICKET_EMAIL_WAIT_SECONDS', 60)
+    user_id = core.repository.create_user('EREPORT', 'secret123', 'user-editor', first_name='Ereport', last_name='User',
+                                          email='reporter@example.com')
+    profile = next(item['id'] for item in core.repository.list_modules_profiles() if item['name'] == 'All Modules')
+    core.repository.set_users_modules_profile([user_id], profile)
+    core.invalidate_module_access_cache()
+    login(client, 'EREPORT', 'secret123')
+    number = client.post('/api/tickets', data={'title': 'Export fails', 'description': 'It fails.', 'module': 'scoring',
+                                               'priority': 'P2', 'ticket_type': 'bug'}).json()['id']
+    login(client)
+    client.post(f'/api/tickets/{number}/manage', data={'status': 'in_progress'})
+    client.post(f'/api/tickets/{number}/comments', data={'body': 'Looking at it.'})
+    client.post(f'/api/tickets/{number}/manage', data={'status': 'resolved'})
+    # Nothing goes while more changes may come; then one email tells all of them, in the order they were made.
+    assert flow == []
+    notifications.flush_ticket_emails()
+    assert [(item['to'], item['subject']) for item in flow] == [('reporter@example.com', f'DT Analyzer - Ticket #{number}: Export fails')]
+    page = flow[0]['html']
+    assert ('<span style="color:#1E61A3">New Ticket</span><span style="color:#9ca3af">, </span><span style="color:#2563EB">In Progress'
+            '</span><span style="color:#9ca3af">, </span><span style="color:#0F766E">New Comment</span><span style="color:#9ca3af">, '
+            f'</span><span style="color:#15803D">Resolved</span><span style="color:#9ca3af"> · </span>Ticket #{number}: Export fails</p>') in page
+    assert page.index('It fails.') < page.index('Looking at it.') < page.rindex('Resolved')
+    assert 'Status: Resolved' in page and page.count('border-left:3px solid') == 4
+    assert logged('email_sent')[-1]['events'] == ['created', 'managed', 'commented', 'managed']
+    # Changes that would not fit one flow request go in one email each.
+    monkeypatch.setattr(notifications, 'TICKET_DIGEST_HTML_LIMIT', 100)
+    client.post(f'/api/tickets/{number}/comments', data={'body': 'One more.'})
+    client.post(f'/api/tickets/{number}/comments', data={'body': 'And another.'})
+    notifications.flush_ticket_emails()
+    assert ['One more.' in item['html'] for item in flow[1:]] == [True, False] and 'And another.' in flow[-1]['html']
+
+
 def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_tickets_that_mention_it(client, flow):
     use_flow(notify_tickets=True)
     for username, email in (('EREPORT', 'reporter@example.com'), ('EOTHERS', 'others@example.com')):
@@ -255,9 +286,6 @@ def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_t
     assert [(item['to'], item['subject']) for item in flow] == [('reporter@example.com', f'DT Analyzer - Ticket #{first}: Export fails')]
     assert f'<span style="color:#1E61A3">New Ticket</span><span style="color:#9ca3af"> · </span>Ticket #{first}: Export fails</p>' in flow[-1]['html']
     assert f'https://tool.example:8443/tickets/{first}' in flow[-1]['html'] and 'It fails.' in flow[-1]['html']
-    # The flow answers the email before with that subject (Outlook keeps emails in one conversation when each answers the
-    # one before), in the Sent Items of its mailbox when that mailbox does not receive it.
-    assert (flow[-1]['thread'], flow[-1]['previous_folder'], flow[-1]['delete_sent_copy']) == (True, 'SentItems', False)
     # Its own comments are not told to it.
     client.post(f'/api/tickets/{first}/comments', data={'body': 'More details.'})
     assert len(flow) == 1

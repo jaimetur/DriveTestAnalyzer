@@ -241,25 +241,15 @@ def build_email(settings: dict[str, Any], recipients: list[str], subject: str, t
 
 
 def webhook_payload(settings: dict[str, Any], recipients: list[str], subject: str, html: str, *, cc: list[str] | None = None,
-                    reply_to: str = '', kind: str = 'message', thread: bool = False) -> dict[str, Any]:
+                    reply_to: str = '', kind: str = 'message') -> dict[str, Any]:
     """The JSON the Power Automate flow receives: the fields of its Send an email (V2) action (recipients separated by
-    semicolons, as Outlook takes them), and what a flow that keeps the emails of a ticket in one conversation needs.
-
-    Outlook keeps emails in one conversation when each answers the one before, not when they share a subject: for a
-    ``thread`` (the emails of a ticket) that flow answers (Reply to email) the last email with this subject in
-    ``previous_folder`` of its mailbox, where the email before is (its Sent Items, or its Inbox when that mailbox received
-    it). When the mailbox of the flow (the sender address) also receives the email, ``delete_sent_copy`` asks the flow to
-    delete its copy in Sent Items, so the email shows once."""
-    subject, cc = subject_line(subject), list(cc or [])
-    sender = str(settings.get('from_address') or '').strip().casefold()
-    received_by_sender = bool(sender) and sender in {address.strip().casefold() for address in [*recipients, *cc]}
-    return {
-        'kind': kind, 'to': ';'.join(recipients), 'cc': ';'.join(cc),
+    semicolons, as Outlook takes them)."""
+    payload: dict[str, Any] = {
+        'kind': kind, 'to': ';'.join(recipients), 'cc': ';'.join(cc or []),
         # Replies go to whoever the message is for (a requester), else to the sender address of Email Delivery.
-        'reply_to': reply_to or settings.get('from_address') or '', 'subject': subject, 'html': html,
-        'thread': thread, 'previous_folder': 'Inbox' if received_by_sender else 'SentItems',
-        'delete_sent_copy': received_by_sender,
+        'reply_to': reply_to or settings.get('from_address') or '', 'subject': subject_line(subject), 'html': html,
     }
+    return payload
 
 
 def post_webhook(url: str, payload: dict[str, Any]) -> None:
@@ -282,9 +272,8 @@ def post_webhook(url: str, payload: dict[str, Any]) -> None:
 
 def send_email(settings: dict[str, Any], recipients: list[str], subject: str, text: str, html: str,
                attachments: list[tuple[str, Path]] | None = None, *, cc: list[str] | None = None, reply_to: str = '',
-               kind: str = 'message', thread: bool = False) -> None:
-    """Send one message through the configured SMTP server or Power Automate flow; raises on failure. A ``thread`` (the
-    emails of a ticket) answers, through the flow, the email before with the same subject."""
+               kind: str = 'message') -> None:
+    """Send one message through the configured SMTP server or Power Automate flow; raises on failure."""
     if mirror_of():
         raise RuntimeError(f'This server is a mirror of {mirror_of()}: it sends no emails, the installation it is '
                            'synchronized from sends them.')
@@ -297,7 +286,7 @@ def send_email(settings: dict[str, Any], recipients: list[str], subject: str, te
         if attachments:
             raise RuntimeError('A Power Automate flow sends no attachments: the email gives links to the files instead.')
         post_webhook(str(settings.get('webhook_url') or ''), webhook_payload(
-            settings, recipients, subject, html, cc=cc, reply_to=reply_to, kind=kind, thread=thread))
+            settings, recipients, subject, html, cc=cc, reply_to=reply_to, kind=kind))
         return
     total_bytes = sum(path.stat().st_size for _name, path in attachments)
     limit_bytes = int(settings.get('max_attachments_mb') or DEFAULT_MAX_ATTACHMENTS_MB) * 1024 * 1024

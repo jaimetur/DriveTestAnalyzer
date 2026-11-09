@@ -3545,6 +3545,8 @@ async def lifespan(_: FastAPI):
     preparation_thread.join(timeout=STARTUP_GRACE_SECONDS)
     yield
     APP_SHUTTING_DOWN.set()
+    # The emails of Ticket Center still waiting for more changes go now, not lost with the process.
+    notifications.flush_ticket_emails()
     with QUERY_BUILDER_EXECUTIONS_LOCK:
         for cancellation in QUERY_BUILDER_EXECUTIONS.values():
             cancellation.set()
