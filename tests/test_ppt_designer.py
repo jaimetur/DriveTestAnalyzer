@@ -1350,7 +1350,8 @@ def test_designs_lifecycle_and_layout(client):
     assert 'id="ds-ppt-chart-viewer"' not in page.text
     assert page.text.count('id="ds-chart-expanded-overlay"') == 1
     assert page.text.index('<th>Status</th>') < page.text.index('<th>Actions</th>')
-    assert 'colspan="7" class="form-note">Loading Designs' in page.text
+    assert '<th>Last Updated by</th><th>Last Updated</th><th>Status</th>' in page.text
+    assert 'colspan="8" class="form-note">Loading Designs' in page.text
     assert 'id="ds-hidden-values-toggle"' in page.text
     assert 'id="ds-library"' not in page.text
     assert 'id="ds-save"' in page.text

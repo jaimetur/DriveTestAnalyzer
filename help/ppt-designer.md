@@ -74,8 +74,8 @@ An existing or imported Design **RF Quality (RSRP & SINR)** can use the workspac
 | Action | Effect |
 | --- | --- |
 | **View PPT** | Open the interactive slide viewer |
-| **Edit Design** | Open the slide viewer in the [Designer](#designer), once the Design is prepared (users who can change Designs) |
-| **Generate PPT** | Open the export selection dialog |
+| **Edit Design** (pencil icon) | Open the slide viewer in the [Designer](#designer), once the Design is prepared (users who can change Designs) |
+| **Generate PPT** (PPT icon) | Open the export selection dialog |
 | **Duplicate** | Create an independent definition |
 | **Export Design** | Download a versioned ZIP accepted by Admin Import |
 | **Delete** | Remove the definition after confirmation; only admins, super-admins and the user who created the Design delete it |
@@ -84,7 +84,7 @@ An existing or imported Design **RF Quality (RSRP & SINR)** can use the workspac
 
 The library lists the Designs in the order of the workspace. Users who can change Designs drag a Design by the tab on the left of its name (or press the up and down arrow keys on the tab) to move it, and the new order is saved at once for every user of the workspace, without changing any Design. Until a Design is first moved the library is sorted by NR Mode (NSA, NSA & SA, SA) and then by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order); Designs created, duplicated or imported later go to the end. App Events record each new order (`reorder_designs`, with the names in the order before and after), and exports, transfers and backups of the Designs carry it (see [Import / Export / Transfer](administrator-config.md)).
 
-**Created by** and **Last Updated by** name the user who created each Design and the last one who changed it; pointing at that name shows when. A change is one to its name, NR Mode or template, its Scope and filters, its slides in the Designer or its comments, or a template renamed or deleted that changes it; opening a Design, generating its PPT or moving it in the library is not. A Design changed before these columns existed shows the last change its App Events recorded, or its creator when they recorded none. Exports, transfers and backups carry both names, given the same way (see [Matching and creators](administrator-config.md#matching-and-creators)).
+**Created by** and **Last Updated by** name the user who created each Design and the last one who changed it, and **Last Updated** shows the date and time of that change (a dash when no date is recorded, as in a starter Design of a new workspace that nobody has changed). A change is one to its name, NR Mode or template, its Scope and filters, its slides in the Designer or its comments, or a template renamed or deleted that changes it; opening a Design, generating its PPT or moving it in the library is not. A Design changed before these columns existed shows the last change its App Events recorded, or its creator when they recorded none. Exports, transfers and backups carry both names, given the same way (see [Matching and creators](administrator-config.md#matching-and-creators)).
 
 ### Change name, NR Mode or template
 

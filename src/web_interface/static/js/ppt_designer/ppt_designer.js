@@ -1357,7 +1357,7 @@
       || compareText(sortName(left.name), sortName(right.name))
       || compareText(String(left.name).toLowerCase(), String(right.name).toLowerCase())
     ));
-    if (!rows.length) { const row = node('tr'), cell = node('td', 'No Designs have been created yet.', 'form-note'); cell.colSpan = 7; row.append(cell); body.append(row); return; }
+    if (!rows.length) { const row = node('tr'), cell = node('td', 'No Designs have been created yet.', 'form-note'); cell.colSpan = 8; row.append(cell); body.append(row); return; }
     for (const [id, item] of rows) {
       const row = node('tr'); if (id === activeId) row.classList.add('ds-design-active');
       row.dataset.designId = id;
@@ -1412,14 +1412,14 @@
       });
       technologyCell.append(technologySelect); templateCell.append(templateSelect);
       row.append(nameCell, technologyCell, templateCell);
-      // Who created the Design and who last changed it (when, on hover).
-      const authorCell = (label, name, title = '') => {
+      // Who created the Design, who last changed it and when.
+      const authorCell = (label, name) => {
         const cell = node('td', name || '—', 'ds-design-author'); cell.dataset.label = label;
-        if (title) cell.title = title;
         return cell;
       };
       const update = designUpdates.get(id);
-      row.append(authorCell('Created by', item.created_by), authorCell('Last Updated by', update?.by, update?.at ? `Last updated on ${update.at}` : ''));
+      const updatedCell = node('td', update?.at || '—', 'ds-design-updated'); updatedCell.dataset.label = 'Last Updated';
+      row.append(authorCell('Created by', item.created_by), authorCell('Last Updated by', update?.by), updatedCell);
       const statusCell = node('td'); statusCell.dataset.label = 'Status';
       const designStatus = designStatuses.get(id) || {state: 'checking', label: 'Checking Cache'};
       const statusBadge = node('span', designStatus.label, `ds-design-status ds-design-status-${designStatus.state}`);
@@ -1459,14 +1459,10 @@
       view.dataset.designViewId = id;
       view.disabled = false;
       if (config.can_manage) {
-        const edit = action('Edit Design', 'Edit Design', () => openViewer({edit: true}), 'ds-design-edit');
-        edit.classList.remove('icon-action');
-        primaryActionLabel(edit, 'Edit', 'Design');
-        edit.title = 'Open this Design in the Designer, to edit its slides and charts';
+        const edit = action('Edit Design', '', () => openViewer({edit: true}), 'ds-design-edit');
+        edit.title = 'Edit Design: open it in the Designer, to edit its slides and charts';
       }
       const ppt = action('Generate PPT', '', () => queueDesignPptExport(id, item, {chooseScope: true}), 'ds-design-ppt');
-      ppt.classList.remove('icon-action');
-      primaryActionLabel(ppt, 'Generate', 'PPT');
       ppt.dataset.designPptId = id;
       // Same rule as the periodic status sync: pre-caching never blocks exports.
       ppt.disabled = !designCanExport(id);

@@ -5830,7 +5830,9 @@ def test_design_library_open_close_and_view_actions_include_labels() -> None:
     styles = (root / 'css' / 'ppt_designer' / 'ppt_designer.css').read_text(encoding='utf-8')
 
     assert "action('View PPT', 'View PPT'" in script
-    assert "action('Edit Design', 'Edit Design'" in script
+    # Edit Design and Generate PPT show only their icon, which leaves more room for the name of the Design.
+    assert "action('Edit Design', ''" in script and "action('Generate PPT', ''" in script
+    assert 'primaryActionLabel(edit' not in script and 'primaryActionLabel(ppt' not in script
     # The filters open in the viewer of the Design (PPT Filters), never in the table of the Designs.
     assert "'Open Filters'" not in script and "'Close Filters'" not in script
     assert "if (!$('ds-viewer').hidden) openFloatingFilters();" in script
