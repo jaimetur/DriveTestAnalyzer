@@ -36,7 +36,7 @@ STATUS_ACTIONS = {'new': 'Back to New', 'in_progress': 'In Progress', 'waiting_i
                   'closed': 'Closed', 'rejected': 'Rejected'}
 # The changes of a ticket made one after another reach each recipient in one email: it goes once no change came for
 # this long, and never later than the most after the first one (0 sends each change at once).
-TICKET_EMAIL_WAIT_SECONDS = 120
+TICKET_EMAIL_WAIT_SECONDS = 60
 TICKET_EMAIL_MAX_WAIT_SECONDS = 600
 # Above this HTML, the changes waiting go in one email each (a Power Automate flow request takes about 28 KB).
 TICKET_DIGEST_HTML_LIMIT = 22_000
