@@ -779,9 +779,12 @@ def test_a_report_being_generated_can_be_stopped_and_tells_its_processing_time(c
     script = (core.PROJECT_ROOT / 'src/web_interface/static/js/reporting/bundle_report_template.js').read_text(encoding='utf-8')
     assert "title: 'Report Ready'" in script and 'processed in ${duration(job.elapsed_seconds)}' in script
     assert "await api('/api/reporting/runs/stop', {method: 'POST', body: JSON.stringify({ids: [job.id]})});" in script
-    # Every page tells when a report hidden in Reporting is ready.
+    # Every page tells, one after another, when the reports hidden or queued in Reporting are ready.
     app_script = (core.PROJECT_ROOT / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
-    assert "(function watchReportRun()" in app_script and '/reporting?report_run=' in app_script
+    assert "(function watchReportRuns()" in app_script and '/reporting?report_run=' in app_script
+    assert 'stored().forEach((job, index) => window.setTimeout(() => check(job.id)' in app_script
+    # Generate on another report while one is generated queues it instead of reopening the first one.
+    assert 'const queued = watched.size > 0 || requesting.size > 0;' in script and 'isPending(currentJob) && currentJob.id' not in script
 
 
 def test_one_action_generates_both_formats_and_the_preview_chooses_one():
