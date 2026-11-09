@@ -22,7 +22,6 @@ from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 from src.config import mirror_of
 
@@ -42,8 +41,6 @@ WEBHOOK_TIMEOUT_SECONDS = 30
 WEBHOOK_MAX_BYTES = 27_000
 # Every email of the tool starts its subject with it, so mail clients and rules can tell them apart.
 SUBJECT_PREFIX = 'DT Analyzer - '
-# The messages of the mailbox of a flow, in Microsoft Graph (its action Send an HTTP request of Office 365 Outlook).
-GRAPH_MESSAGES_URL = 'https://graph.microsoft.com/v1.0/me/messages'
 
 # Deployment defaults; values saved in Application Config take precedence.
 EMAIL_ENVIRONMENT_DEFAULTS = {
@@ -243,39 +240,24 @@ def build_email(settings: dict[str, Any], recipients: list[str], subject: str, t
     return message
 
 
-def graph_recipients(addresses: list[str]) -> list[dict[str, Any]]:
-    return [{'emailAddress': {'address': address}} for address in addresses if address]
-
-
-def previous_email_url(subject: str | None) -> str:
-    """The Microsoft Graph request that finds, in the mailbox of the flow, an email sent before with ``subject`` (sent or
-    received, never a draft); without a subject, a request that finds none, so the email starts a conversation (the flow
-    always looks, which spares it a condition)."""
-    condition = ("subject eq '{}' and isDraft eq false".format(subject.replace("'", "''")) if subject is not None
-                 else 'isDraft eq true and isDraft eq false')
-    return f"{GRAPH_MESSAGES_URL}?$filter={quote(condition, safe='')}&$select=id&$top=1"
-
-
 def webhook_payload(settings: dict[str, Any], recipients: list[str], subject: str, html: str, *, cc: list[str] | None = None,
                     reply_to: str = '', kind: str = 'message', thread: bool = False) -> dict[str, Any]:
-    """The JSON the Power Automate flow receives: the fields of a Send an email (V2) action (recipients separated by
-    semicolons, as Outlook takes them), and for a flow that sends it with Send an HTTP request (Microsoft Graph) the
-    ``message`` without its HTML (``html``, carried once: a flow request takes about 28 KB).
+    """The JSON the Power Automate flow receives: the fields of its Send an email (V2) action (recipients separated by
+    semicolons, as Outlook takes them), and what a flow that keeps the emails of a ticket in one conversation needs.
 
-    That flow answers the email that ``find_previous_url`` finds: the one sent before with the same subject for a
-    ``thread`` (the emails of a ticket), so Outlook keeps them in one conversation, and none otherwise. When the mailbox
-    of the flow (the sender address) also receives the email, ``delete_sent_copy`` asks the flow to delete its copy in Sent
-    Items, so the email shows once."""
+    Outlook keeps emails in one conversation when each answers the one before, not when they share a subject: for a
+    ``thread`` (the emails of a ticket) that flow answers (Reply to email) the last email with this subject in
+    ``previous_folder`` of its mailbox, where the email before is (its Sent Items, or its Inbox when that mailbox received
+    it). When the mailbox of the flow (the sender address) also receives the email, ``delete_sent_copy`` asks the flow to
+    delete its copy in Sent Items, so the email shows once."""
     subject, cc = subject_line(subject), list(cc or [])
-    # Replies go to whoever the message is for (a requester), else to the sender address of Email Delivery.
-    reply_to = reply_to or settings.get('from_address') or ''
     sender = str(settings.get('from_address') or '').strip().casefold()
     received_by_sender = bool(sender) and sender in {address.strip().casefold() for address in [*recipients, *cc]}
     return {
-        'kind': kind, 'to': ';'.join(recipients), 'cc': ';'.join(cc), 'reply_to': reply_to, 'subject': subject, 'html': html,
-        'message': {'subject': subject, 'body': {'contentType': 'HTML'}, 'toRecipients': graph_recipients(recipients),
-                    'ccRecipients': graph_recipients(cc), 'replyTo': graph_recipients([reply_to])},
-        'find_previous_url': previous_email_url(subject if thread else None),
+        'kind': kind, 'to': ';'.join(recipients), 'cc': ';'.join(cc),
+        # Replies go to whoever the message is for (a requester), else to the sender address of Email Delivery.
+        'reply_to': reply_to or settings.get('from_address') or '', 'subject': subject, 'html': html,
+        'thread': thread, 'previous_folder': 'Inbox' if received_by_sender else 'SentItems',
         'delete_sent_copy': received_by_sender,
     }
 
@@ -302,7 +284,7 @@ def send_email(settings: dict[str, Any], recipients: list[str], subject: str, te
                attachments: list[tuple[str, Path]] | None = None, *, cc: list[str] | None = None, reply_to: str = '',
                kind: str = 'message', thread: bool = False) -> None:
     """Send one message through the configured SMTP server or Power Automate flow; raises on failure. A ``thread`` (the
-    emails of a ticket) answers, through the flow, the email sent before with the same subject."""
+    emails of a ticket) answers, through the flow, the email before with the same subject."""
     if mirror_of():
         raise RuntimeError(f'This server is a mirror of {mirror_of()}: it sends no emails, the installation it is '
                            'synchronized from sends them.')

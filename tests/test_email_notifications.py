@@ -90,16 +90,11 @@ def test_email_delivery_sends_through_a_power_automate_flow(client, flow):
     # Every email of the tool starts its subject with the prefix of the tool, once.
     assert message['subject'] == 'DT Analyzer - Test email' and email_delivery.subject_line(message['subject']) == message['subject']
     assert message['reply_to'] == 'admin@example.com' and 'can deliver its emails' in message['html']
-    # A flow that sends it with Microsoft Graph gets the message without its HTML (carried once); it keeps no copy in Sent
-    # Items when the mailbox of the flow (the sender address) receives it too, so the email shows once.
-    assert message['message'] == {'subject': 'DT Analyzer - Test email', 'body': {'contentType': 'HTML'},
-                                  'toRecipients': [{'emailAddress': {'address': 'someone@example.com'}}], 'ccRecipients': [],
-                                  'replyTo': [{'emailAddress': {'address': 'admin@example.com'}}]}
-    # It answers no email: the request of the flow that finds the email it answers finds none.
-    assert parse_qs(urlsplit(message['find_previous_url']).query)['$filter'] == ['isDraft eq true and isDraft eq false']
-    assert message['delete_sent_copy'] is False
+    # It starts a conversation; when the mailbox of the flow (the sender address) receives it too, the flow deletes its
+    # copy in Sent Items, so the email shows once.
+    assert (message['thread'], message['previous_folder'], message['delete_sent_copy']) == (False, 'SentItems', False)
     client.post('/application-config/email-delivery/test', data={'recipient': 'Admin@Example.com'})
-    assert (flow[-1]['to'], flow[-1]['delete_sent_copy']) == ('Admin@Example.com', True)
+    assert (flow[-1]['to'], flow[-1]['previous_folder'], flow[-1]['delete_sent_copy']) == ('Admin@Example.com', 'Inbox', True)
     # A flow sends no attachments, and a request too large for it is refused before it is sent.
     with pytest.raises(RuntimeError, match='attachments'):
         email_delivery.send_email(core.email_delivery_settings(core.repository, include_password=True), ['a@example.com'], 'S', 'T', 'H',
@@ -260,13 +255,9 @@ def test_the_reporter_of_a_ticket_is_told_of_the_changes_of_others_also_in_the_t
     assert [(item['to'], item['subject']) for item in flow] == [('reporter@example.com', f'DT Analyzer - Ticket #{first}: Export fails')]
     assert f'<span style="color:#1E61A3">New Ticket</span><span style="color:#9ca3af"> · </span>Ticket #{first}: Export fails</p>' in flow[-1]['html']
     assert f'https://tool.example:8443/tickets/{first}' in flow[-1]['html'] and 'It fails.' in flow[-1]['html']
-    # The flow answers the email sent before with that subject, which it finds in its mailbox (Outlook groups emails by
-    # the conversation they answer, not by their subject); a quote in the title is doubled in the query.
-    lookup = urlsplit(flow[-1]['find_previous_url'])
-    assert (lookup.scheme, lookup.netloc, lookup.path) == ('https', 'graph.microsoft.com', '/v1.0/me/messages')
-    assert parse_qs(lookup.query) == {'$filter': [f"subject eq 'DT Analyzer - Ticket #{first}: Export fails' and isDraft eq false"],
-                                      '$select': ['id'], '$top': ['1']}
-    assert "subject eq 'It''s #2'" in parse_qs(urlsplit(email_delivery.previous_email_url("It's #2")).query)['$filter'][0]
+    # The flow answers the email before with that subject (Outlook keeps emails in one conversation when each answers the
+    # one before), in the Sent Items of its mailbox when that mailbox does not receive it.
+    assert (flow[-1]['thread'], flow[-1]['previous_folder'], flow[-1]['delete_sent_copy']) == (True, 'SentItems', False)
     # Its own comments are not told to it.
     client.post(f'/api/tickets/{first}/comments', data={'body': 'More details.'})
     assert len(flow) == 1
