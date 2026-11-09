@@ -66,7 +66,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ link_preview.title if link_preview else app_name }}</title>
+  <title>{{ link_preview.title if link_preview else page_title }}</title>
   {% if link_preview %}
   <!-- What the link of a presentation shows where it is shared. -->
   <meta name="description" content="{{ link_preview.description }}">

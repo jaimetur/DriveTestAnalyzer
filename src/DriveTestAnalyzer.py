@@ -638,6 +638,22 @@ def app_event_module_titles() -> dict[str, str]:
             **RETIRED_MODULES}
 
 
+# The browser tab of a page: a name shorter than the application's, so that the module fits in a narrow tab.
+PAGE_TITLE_NAME = 'DT Analyzer'
+# The pages named on their own instead of by their module.
+PAGE_TITLES = {'/login': 'Sign in', '/chart-builder': 'Chart Builder', '/query-builder': 'Query Builder',
+               '/workspace-config': 'Workspace Config', '/application-config': 'Application Config',
+               '/documents/view/readme': 'Readme', '/documents/view/changelog': 'Changelog'}
+
+
+def page_title(path: str, labels: dict[str, dict[str, Any]]) -> str:
+    """The title of the browser tab of a page: its own name or that of its module, the main ones by the short title of
+    Interface Settings."""
+    module = module_for_path(path)
+    name = PAGE_TITLES.get(path) or labels.get(module, {}).get('short_title') or dict(ADMINISTRATIVE_MODULES).get(module)
+    return f'{PAGE_TITLE_NAME} - {name}' if name else __app_name__
+
+
 def _module_access_snapshot() -> dict[str, Any]:
     """The modules of every account, cached for a few seconds."""
     global _module_access_cache
@@ -6363,6 +6379,7 @@ def render_template(request: Request, template_name: str, context: dict[str, Any
     payload = {
         'request': request,
         'app_name': __app_name__,
+        'page_title': page_title(request.url.path, module_settings),
         'app_version': __version__,
         'app_release_date': __release_date__,
         'app_author': __author__,

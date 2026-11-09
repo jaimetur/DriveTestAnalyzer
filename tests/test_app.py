@@ -11224,6 +11224,25 @@ def test_module_tabs_take_order_title_icon_and_colour_from_interface_settings(cl
     assert settings['network-insights']['title'] == 'Network Insights' and settings['network-insights']['tab_color'] == '#4F46E5'
 
 
+def test_browser_tab_title_names_the_module_of_the_page(client) -> None:
+    assert '<title>DT Analyzer - Sign in</title>' in client.get('/login').text
+    login_super(client)
+    titles = {'/workspace': 'Workspace', '/datasets-analysis': 'Analysis', '/ppt-designer': 'Designer', '/scoring': 'Scoring',
+              '/network-insights': 'Network', '/non-qualified-calls': 'NQ Calls', '/reporting': 'Reporting',
+              '/chart-builder': 'Chart Builder', '/query-builder': 'Query Builder', '/assistant': 'Assistant', '/tickets': 'Tickets',
+              '/app-logs': 'App Logs', '/workspace-config': 'Workspace Config', '/application-config': 'Application Config',
+              '/admin': 'Admin', '/super-admin': 'Super Admin', '/documents/view/readme': 'Readme',
+              '/documents/view/changelog': 'Changelog', '/documents/view/help': 'Help', '/documents/view/help/overview.md': 'Help'}
+    for path, name in titles.items():
+        assert f'<title>DT Analyzer - {name}</title>' in client.get(path).text, path
+    # A module renamed in Interface Settings shows its Short title, or its title without one.
+    form = {'show_module_stage_labels': 'true', 'title__scoring': 'Drive Scoring', 'short_title__scoring': 'Drive & Score',
+            'title__reporting': 'My Reports', 'short_title__reporting': ''}
+    assert client.post('/admin/interface-settings', data=form, follow_redirects=False).status_code == 303
+    assert '<title>DT Analyzer - Drive &amp; Score</title>' in client.get('/scoring').text
+    assert '<title>DT Analyzer - My Reports</title>' in client.get('/reporting').text
+
+
 def test_periodic_page_polls_do_not_count_as_application_activity(client) -> None:
     import src.DriveTestAnalyzer as app_module
 

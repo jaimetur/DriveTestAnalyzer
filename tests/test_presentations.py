@@ -440,7 +440,7 @@ def test_the_link_of_a_presentation_shows_its_title_and_the_picture_of_its_slide
     # A slide beyond the last is the last; an unknown presentation shows the page as always.
     assert 'Slide 3 of 3: Campaigns.' in client.get('/documents/view/help/help.md?presentation=workspace&slide=9').text
     plain = client.get('/documents/view/help/help.md?presentation=missing').text
-    assert 'og:image' not in plain and '<title>DriveTest Analyzer</title>' in plain
+    assert 'og:image' not in plain and '<title>DT Analyzer - Help</title>' in plain
     assert client.get('/presentations/preview/missing/1.jpg').status_code == 404
     assert 'og:image' not in client.get('/documents/view/changelog?presentation=workspace').text
 
