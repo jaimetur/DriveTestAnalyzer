@@ -643,14 +643,18 @@ PAGE_TITLE_NAME = 'DT Analyzer'
 # The pages named on their own instead of by their module.
 PAGE_TITLES = {'/login': 'Sign in', '/chart-builder': 'Chart Builder', '/query-builder': 'Query Builder',
                '/workspace-config': 'Workspace Config', '/application-config': 'Application Config',
-               '/documents/view/readme': 'Readme', '/documents/view/changelog': 'Changelog'}
+               '/documents/view/readme': 'Readme', '/documents/view/changelog': 'Changelog',
+               '/documents/view/help/presentations.md': 'Presentations'}
+# The main modules whose short title says too little in a browser tab: they show their title.
+PAGE_TITLE_FULL_MODULES = {'datasets-analysis', 'assistant'}
 
 
 def page_title(path: str, labels: dict[str, dict[str, Any]]) -> str:
     """The title of the browser tab of a page: its own name or that of its module, the main ones by the short title of
     Interface Settings."""
     module = module_for_path(path)
-    name = PAGE_TITLES.get(path) or labels.get(module, {}).get('short_title') or dict(ADMINISTRATIVE_MODULES).get(module)
+    label = labels.get(module, {}).get('title' if module in PAGE_TITLE_FULL_MODULES else 'short_title')
+    name = PAGE_TITLES.get(path) or label or dict(ADMINISTRATIVE_MODULES).get(module)
     return f'{PAGE_TITLE_NAME} - {name}' if name else __app_name__
 
 

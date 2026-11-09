@@ -423,7 +423,7 @@ def test_the_link_of_a_presentation_shows_its_title_and_the_picture_of_its_slide
     assert 'Slide 3 of 3: Campaigns. Every presentation in one.' in page and '/presentations/preview/full-presentation/3.jpg' in page
     # The link of Product Presentations shows the cover of the Full Presentation; the other chapters show none.
     chapter = client.get('/documents/view/help/presentations.md').text
-    assert '<meta property="og:title" content="Product Presentations">' in chapter and '<title>Product Presentations</title>' in chapter
+    assert '<meta property="og:title" content="Product Presentations">' in chapter and '<title>DT Analyzer - Presentations</title>' in chapter
     assert f'content="{presentations.HELP_CHAPTER_PREVIEW["description"]}"' in chapter
     assert '<meta property="og:image" content="http://testserver/presentations/preview/full-presentation/1.jpg?v=abc">' in chapter
     assert 'og:image' not in client.get('/documents/view/help/overview.md').text

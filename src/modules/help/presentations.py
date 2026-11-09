@@ -462,7 +462,8 @@ def link_preview(request: Any, chapter: str = '') -> dict[str, Any] | None:
     base = link_base(request)
     version = manifest.get('key') or manifest.get('generated_at') or ''
     return {'title': title, 'description': description, 'url': share_link(base, item['id'] if asked else '', index),
-            'width': PREVIEW_SIZE[0], 'height': PREVIEW_SIZE[1],
+            # The link of one presentation names the browser tab; Product Presentations has the title of any other page.
+            'opens_presentation': bool(asked), 'width': PREVIEW_SIZE[0], 'height': PREVIEW_SIZE[1],
             'image': f"{base}/presentations/preview/{item['id']}/{index + 1}.jpg" + (f'?v={version}' if version else '')}
 
 
