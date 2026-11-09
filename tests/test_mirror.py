@@ -41,3 +41,21 @@ def test_mirror_keeps_no_schedules_and_sends_no_emails(tmp_path, monkeypatch, cl
             {'configured': True, 'transport': 'webhook', 'webhook_url': 'https://flow.example/trigger'},
             ['someone@example.com'], 'Subject', 'text', '<p>html</p>',
         )
+
+
+def test_mirror_of_file_names_the_mirror_without_an_environment_variable(tmp_path, monkeypatch) -> None:
+    """A server started without environment variables (the macOS launcher) is a mirror by a file of its configuration folder."""
+    from src import config
+
+    monkeypatch.delenv('DRIVETEST_ANALYZER_MIRROR_OF', raising=False)
+    configured_dir = config.settings.config_dir
+    object.__setattr__(config.settings, 'config_dir', tmp_path)
+    try:
+        assert config.mirror_of() == ''
+        (tmp_path / 'mirror-of').write_text('  the development\n Mac \n', encoding='utf-8')
+        assert config.mirror_of() == 'the development Mac'
+        # The environment variable, when set, names the mirror.
+        monkeypatch.setenv('DRIVETEST_ANALYZER_MIRROR_OF', 'the office server')
+        assert config.mirror_of() == 'the office server'
+    finally:
+        object.__setattr__(config.settings, 'config_dir', configured_dir)

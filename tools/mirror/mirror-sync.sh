@@ -3,7 +3,7 @@
 # the checkout as soon as a file changes, the configuration and data folders every few minutes (the SQLite
 # databases as consistent online backups). Every connection goes from this Mac to the mirror over SSH; nothing
 # has to reach this Mac, so it works from a computer whose network closes every incoming connection.
-set -uo pipefail
+set -u
 
 TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_REPO="$(cd "$TOOL_DIR/../.." && pwd)"
@@ -16,17 +16,20 @@ AGENT_WATCH="com.drivetestanalyzer.mirror-watch"
 AGENT_DATA="com.drivetestanalyzer.mirror-data"
 
 # What the checkout synchronization leaves out: the Python environments and caches of each Mac, the runtime files
-# of the macOS launcher, the storage folders a checkout without storage-paths.conf would hold, and Git lock files.
+# of the macOS launcher, the settings its editor and its assistant keep for one Mac (the tracked launch.json
+# travels), the storage folders a checkout without storage-paths.conf would hold, and Git lock files.
 CODE_EXCLUDES=(
   --exclude='/.venv*/' --exclude='/.drivetest-analyzer-venv/' --exclude='/.drivetest-analyzer-runtime/'
+  --exclude='/.idea/' --include='/.claude/launch.json' --exclude='/.claude/*'
   --exclude='/config/' --exclude='/data/' --exclude='/env/'
   --exclude='__pycache__/' --exclude='.pytest_cache/' --exclude='.ruff_cache/' --exclude='.mypy_cache/'
   --exclude='*.pyc' --exclude='.DS_Store' --exclude='node_modules/' --exclude='/.git/*.lock' --exclude='/.git/index.lock'
 )
 # The databases travel as snapshots (see snapshot_databases), never as the files the application writes.
 DATABASE_EXCLUDES=(--exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm' --exclude='*.db-journal' --exclude='.DS_Store')
-# The configuration folder: the AI tools installed for this Mac and the AI credentials of its users stay here.
-CONFIG_EXCLUDES=(--exclude='/tools/' --exclude='/ai-credentials.json')
+# The configuration folder: the AI tools installed for this Mac and the AI credentials of its users stay here, and
+# the mirror-of file that puts the mirror application in mirror mode stays there.
+CONFIG_EXCLUDES=(--exclude='/tools/' --exclude='/ai-credentials.json' --exclude='/mirror-of')
 # The data folder: the scheduled backups, the transfer packages, the trash and the caches each Mac makes itself.
 DATA_EXCLUDES=(
   --exclude='/scheduled-backups/' --exclude='/transfer-packages/' --exclude='/.workspace-trash/' --exclude='/.map-tiles-cache/'
@@ -41,13 +44,14 @@ usage() {
 Usage: tools/mirror/mirror-sync.sh <command> [options]
 
   install --host user@host --repo /checkout/on/the/mirror --storage /storage/on/the/mirror
-          [--label "the development Mac"] [--port 7278] [--interval 600]
+          [--label "the development Mac"] [--port 7278] [--interval 600] [--runner launcher|agent]
           [--replace-mirror-checkout] [--replace-mirror-data]
-                 Set the mirror up: the SSH key of this Mac, rsync 3 on the mirror, its checkout, its Python
-                 environment, the agent of its application, the first synchronization, and the two agents of
-                 this Mac that keep it synchronized. --replace-mirror-checkout overwrites changes of its own the
-                 checkout of the mirror holds; --replace-mirror-data sets the data the mirror already holds aside
-                 (kept beside it, renamed) and takes the data of this Mac.
+                 Set the mirror up: the SSH key of this Mac, rsync 3 and Python 3.15 on the mirror, its checkout,
+                 its Python environment, what runs its application (the macOS launcher when the mirror has it,
+                 else a launchd agent), the first synchronization, and the two agents of this Mac that keep it
+                 synchronized. --replace-mirror-checkout overwrites changes of its own the checkout of the mirror
+                 holds; --replace-mirror-data sets the data the mirror already holds aside (kept beside it,
+                 renamed) and takes the data of this Mac.
   key            Show the public key the mirror must authorize (install creates it).
   code           Synchronize the checkout now (the mirror application restarts when Python sources changed).
   data           Synchronize the configuration and data folders now (the mirror application restarts for a few
@@ -97,7 +101,10 @@ load_config() {
   REMOTE_RSYNC="${REMOTE_RSYNC:-}"
   SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=30 -o IdentitiesOnly=yes -i "$KEY_FILE")
   RSYNC="$(find_tool rsync /opt/homebrew/bin /usr/local/bin)" || die "rsync is not installed."
-  "$RSYNC" --version 2>/dev/null | head -1 | grep -q 'version 3\.' || die "rsync 3 is needed on this Mac (brew install rsync); $RSYNC is older."
+  case "$("$RSYNC" --version 2>/dev/null)" in
+    *"version 3."*) ;;
+    *) die "rsync 3 is needed on this Mac (brew install rsync); $RSYNC is older." ;;
+  esac
   mkdir -p "$STATE_DIR"
 }
 
@@ -117,7 +124,8 @@ remote_tool() {
 rsync_run() {
   local rsync_path=()
   [ -n "$REMOTE_RSYNC" ] && rsync_path=(--rsync-path="$REMOTE_RSYNC")
-  RSYNC_RSH="ssh ${SSH_OPTS[*]}" "$RSYNC" -az --delete --itemize-changes --out-format='%i %n' "${rsync_path[@]}" "$@"
+  # ${array[@]+…}: bash 3.2 of macOS takes an empty array as an unset variable under set -u.
+  RSYNC_RSH="ssh ${SSH_OPTS[*]}" "$RSYNC" -az --delete --itemize-changes --out-format='%i %n' ${rsync_path[@]+"${rsync_path[@]}"} "$@"
 }
 
 # One synchronization at a time: the watch agent and the data agent may want to run together.
@@ -151,11 +159,12 @@ sync_code() {
   log "Synchronizing the checkout with $MIRROR_SSH:$MIRROR_REPO"
   changes="$(rsync_run "${CODE_EXCLUDES[@]}" "$LOCAL_REPO/" "$MIRROR_SSH:$MIRROR_REPO/")" || { log "The checkout synchronization failed."; return 1; }
   date '+%Y-%m-%d %H:%M:%S' > "$STATE_DIR/last-code-sync"
-  if printf '%s\n' "$changes" | grep -q -E '^[^ ]+ requirements\.txt$'; then
+  # (Not at install, which makes the environment of the mirror after its first synchronization.)
+  if [ "$restart" = "restart" ] && grep -q -E '^[^ ]+ requirements\.txt$' <<< "$changes"; then
     log "requirements.txt changed: installing the dependencies on the mirror"
     remote_tool deps || log "The dependencies could not be installed on the mirror."
   fi
-  if [ "$restart" = "restart" ] && printf '%s\n' "$changes" | grep -q -E '^[^ ]+ (src/.*\.py|requirements\.txt|storage-paths\.conf)$|^\*deleting +src/.*\.py$'; then
+  if [ "$restart" = "restart" ] && grep -q -E '^[^ ]+ (src/.*\.py|requirements\.txt|storage-paths\.conf)$|^\*deleting +src/.*\.py$' <<< "$changes"; then
     log "Python sources changed: restarting the mirror application"
     remote_tool restart || { log "The mirror application could not be restarted."; return 1; }
   fi
@@ -175,27 +184,37 @@ list_databases() {
 # snapshot was made or removed, 1 when nothing changed.
 snapshot_databases() {
   local snapshots="$STATE_DIR/snapshots" manifest="$STATE_DIR/db-manifest" next_manifest="$STATE_DIR/db-manifest.next"
-  local changed=1 database relative fingerprint snapshot
+  local changed=1 database relative fingerprint wal_state fresh snapshot
   mkdir -p "$snapshots"
   touch "$manifest"
   : > "$next_manifest"
   while IFS= read -r database; do
     [ -n "$database" ] || continue
     relative="${database#"$LOCAL_STORAGE"/}"
-    # The main file keeps its time until a WAL checkpoint, so the write-ahead log counts too.
-    fingerprint="$(stat -f '%z %m' "$database") $(stat -f '%z %m' "$database-wal" 2>/dev/null || echo none)"
+    # The main file keeps its time until a WAL checkpoint, so a write-ahead log with pages counts too; an empty
+    # one, which a connection that only reads leaves while it is open, does not.
+    wal_state="$(stat -f '%z %m' "$database-wal" 2>/dev/null || echo none)"
+    case "$wal_state" in "0 "*) wal_state=none ;; esac
+    fingerprint="$(stat -f '%z %m' "$database") $wal_state"
     if grep -qxF "$relative|$fingerprint" "$manifest" && [ -f "$snapshots/$relative" ]; then
       printf '%s|%s\n' "$relative" "$fingerprint" >> "$next_manifest"
       continue
     fi
     mkdir -p "$(dirname "$snapshots/$relative")"
-    rm -f "$snapshots/$relative" "$snapshots/$relative-wal" "$snapshots/$relative-shm" "$snapshots/$relative-journal"
-    if sqlite3 "$database" ".backup '$snapshots/$relative'"; then
+    fresh="$snapshots/$relative.new"
+    rm -f "$fresh" "$fresh-wal" "$fresh-shm" "$fresh-journal"
+    if sqlite3 "$database" ".backup '$fresh'"; then
       printf '%s|%s\n' "$relative" "$fingerprint" >> "$next_manifest"
-      changed=0
-      log "Snapshot of $relative"
+      if [ -f "$snapshots/$relative" ] && cmp -s "$fresh" "$snapshots/$relative"; then
+        # Only the files of the database moved (a checkpoint): its content is the one the mirror already has.
+        rm -f "$fresh"
+      else
+        mv -f "$fresh" "$snapshots/$relative"
+        changed=0
+        log "Snapshot of $relative"
+      fi
     else
-      rm -f "$snapshots/$relative"
+      rm -f "$fresh"
       log "The snapshot of $relative failed; it is tried again at the next synchronization."
     fi
   done <<< "$(list_databases)"
@@ -305,7 +324,7 @@ remote_rsync_path() {
 }
 
 install_mirror() {
-  local host="" repo="" storage="" label="the development Mac" port=7278 interval=600 replace_checkout=0 replace_data=0
+  local host="" repo="" storage="" label="the development Mac" port=7278 interval=600 runner="" replace_checkout=0 replace_data=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --host) host="$2"; shift 2 ;;
@@ -314,11 +333,13 @@ install_mirror() {
       --label) label="$2"; shift 2 ;;
       --port) port="$2"; shift 2 ;;
       --interval) interval="$2"; shift 2 ;;
+      --runner) runner="$2"; shift 2 ;;
       --replace-mirror-checkout) replace_checkout=1; shift ;;
       --replace-mirror-data) replace_data=1; shift ;;
       *) die "Unknown option $1 (see 'tools/mirror/mirror-sync.sh' without arguments)." ;;
     esac
   done
+  case "$runner" in ""|launcher|agent) ;; *) die "--runner takes launcher or agent." ;; esac
   [ -n "$host" ] && [ -n "$repo" ] && [ -n "$storage" ] || die "install needs --host, --repo and --storage."
   ensure_key
   mkdir -p "$(dirname "$CONFIG_FILE")" "$STATE_DIR"
@@ -357,11 +378,10 @@ Commit or discard them there, or run install with --replace-mirror-checkout to o
     remote "mkdir -p $(printf '%q' "$repo")" || die "The checkout folder could not be created on the mirror."
   fi
   with_lock sync_code_without_restart || die "The first synchronization of the checkout failed."
-  if [ "$replace_data" -eq 1 ]; then
-    remote_tool install "$storage" "$port" "$label" --replace-data || die "The mirror application could not be installed."
-  else
-    remote_tool install "$storage" "$port" "$label" || die "The mirror application could not be installed."
-  fi
+  local install_options=()
+  [ -n "$runner" ] && install_options+=(--runner "$runner")
+  [ "$replace_data" -eq 1 ] && install_options+=(--replace-data)
+  remote_tool install "$storage" "$port" "$label" ${install_options[@]+"${install_options[@]}"} || die "The mirror application could not be installed."
   with_lock sync_data || die "The first synchronization of the data failed."
   install_agents
   show_status

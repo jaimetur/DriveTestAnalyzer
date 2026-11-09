@@ -54,13 +54,22 @@ def project_path(env_var: str, default: str) -> Path:
 
 
 def mirror_of() -> str:
-    """The installation this server is a synchronized copy of (``DRIVETEST_ANALYZER_MIRROR_OF``); '' on an ordinary server.
+    """The installation this server is a synchronized copy of; '' on an ordinary server.
 
-    A mirror (kept with ``tools/mirror``) keeps no schedules of its own and sends no emails: the recurring backups
-    and the Reporting schedules run on the installation it is synchronized from, and what is changed on the mirror
-    is overwritten by the next synchronization, which every page of the mirror says.
+    Named by ``DRIVETEST_ANALYZER_MIRROR_OF`` or, for a server started without environment variables (the macOS
+    launcher), by a ``mirror-of`` file in the configuration folder. A mirror (kept with ``tools/mirror``) keeps no
+    schedules of its own and sends no emails: the recurring backups and the Reporting schedules run on the
+    installation it is synchronized from, and what is changed on the mirror is overwritten by the next
+    synchronization, which every page of the mirror says.
     """
-    return ' '.join(str(os.getenv('DRIVETEST_ANALYZER_MIRROR_OF') or '').split())
+    label = str(os.getenv('DRIVETEST_ANALYZER_MIRROR_OF') or '')
+    if not label:
+        marker = settings.config_dir / 'mirror-of'
+        try:
+            label = marker.read_text(encoding='utf-8') if marker.is_file() else ''
+        except OSError:
+            label = ''
+    return ' '.join(label.split())
 
 
 # The PowerPoint master of every report and export (its covers and transitions in the Vodafone-Three red).
