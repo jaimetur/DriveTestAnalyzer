@@ -5906,13 +5906,13 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
   .background-task-pin-button { display: none; }
   .background-task-minimize-button { top: .4rem; right: .45rem; width: 1.9rem; height: 1.9rem; font-size: 1.35rem; }
   /* Every module in the bar at the bottom. When they do not fit in one row, every page shows one row that scrolls
-     sideways (fading at the side where more modules wait) with Menu fixed at its end, and a handle on top: only the
-     handle (a tap, or a swipe up on it) shows every module in rows of six with Menu last, and a tap or a swipe down on it
+     sideways (fading at the side where more modules wait) with Menu fixed at its end, and a handle on top: a swipe up on
+     the bar, or a tap on the handle, shows every module in rows of six with Menu last, and a swipe down (or a tap)
      returns to one row (app.js). */
   .mobile-bottom-nav-items { display: contents; }
   :root.has-bottom-nav-expandable { --bottom-nav: calc(4.6rem + env(safe-area-inset-bottom, 0px)); }
   :root.has-bottom-nav-expandable.has-bottom-nav-expanded { --bottom-nav: calc(var(--bottom-nav-rows, 2) * 3.75rem + .85rem + env(safe-area-inset-bottom, 0px)); }
-  :root.has-bottom-nav-expandable .mobile-bottom-nav:not(:empty) { display: flex; padding-top: .85rem; }
+  :root.has-bottom-nav-expandable .mobile-bottom-nav:not(:empty) { display: flex; padding-top: .85rem; touch-action: pan-x; }
   :root.has-bottom-nav-expandable .mobile-bottom-nav-items { display: grid; flex: 1 1 auto; grid-auto-flow: column; grid-auto-columns: 20%; min-width: 0;
     overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; }
   :root.has-bottom-nav-expandable .mobile-bottom-nav-items::-webkit-scrollbar { display: none; }

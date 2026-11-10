@@ -288,12 +288,13 @@
   {#- Small screens (app.css): every main module the user can open, in the order of their tabs, with the icon, the short
       title and the colour of its tab, then Config (the configuration pages of the role, when it has them), App Logs,
       Help, Changelog, Readme, Presentations and Roadmap, and the menu last. When they do not fit in one row, every page
-      shows one row that scrolls sideways with the menu fixed at its end, and its handle shows them all in rows of six. Drawn here so that the page shows it from its first
+      shows one row that scrolls sideways with the menu fixed at its end, and a swipe up on the bar (or a tap on its
+      handle) shows them all in rows of six. Drawn here so that the page shows it from its first
       moment; app.js opens the lists of Builders and Config and the menu, and shows the rows. -#}
   {%- set path = request.url.path -%}
   <nav class="mobile-bottom-nav" data-mobile-bottom-nav aria-label="Modules">{% if bottom_nav.count %}
     {%- if bottom_nav.cells > 6 %}
-    <button type="button" class="mobile-bottom-nav-handle" data-bottom-nav-handle aria-expanded="false" aria-label="Show every module" title="Tap or swipe up for every module, down for one row"></button>
+    <button type="button" class="mobile-bottom-nav-handle" data-bottom-nav-handle aria-expanded="false" aria-label="Show every module" title="Swipe up for every module, down for one row"></button>
     {%- endif %}
     <div class="mobile-bottom-nav-items" data-bottom-nav-items>
     {%- for tab in module_tabs if features[tab.key] and (active_workspace if tab.key == 'builders' else (not tab.needs_workspace or active_workspace)) %}
