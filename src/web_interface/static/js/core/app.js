@@ -6717,6 +6717,77 @@ function setupMobileMenu() {
       setOpen(menu.hidden);
       if (menu.hidden) menuButton().focus();
     });
+    // When the modules do not fit in one row (base.html), the row scrolls sideways with Menu fixed at its end; a swipe up
+    // on the bar, or a tap on its handle, shows every module in rows, and a swipe down returns to one row. The browser
+    // remembers it (base.html applies it before the page shows).
+    const root = document.documentElement;
+    const items = bottomNav.querySelector('[data-bottom-nav-items]');
+    const handle = bottomNav.querySelector('[data-bottom-nav-handle]');
+    if (items && handle) {
+      const expanded = () => root.classList.contains('has-bottom-nav-expanded');
+      // The side where more modules wait fades (app.css).
+      const edges = () => {
+        const row = !expanded();
+        items.classList.toggle('has-more-before', row && items.scrollLeft > 2);
+        items.classList.toggle('has-more-after', row && items.scrollLeft + items.clientWidth < items.scrollWidth - 2);
+      };
+      // In one row, the module open is in sight.
+      const showOpen = () => {
+        const open = items.querySelector('.is-active');
+        if (!open || expanded()) return;
+        items.scrollLeft = Math.max(0, open.offsetLeft - items.offsetLeft - (items.clientWidth - open.offsetWidth) / 2);
+      };
+      const setExpanded = (value, remember = true) => {
+        root.classList.toggle('has-bottom-nav-expanded', value);
+        handle.setAttribute('aria-expanded', String(value));
+        handle.setAttribute('aria-label', value ? 'Show the modules in one row' : 'Show every module');
+        if (remember) {
+          try {
+            window.localStorage.setItem('drivetest-analyzer:bottom-nav', value ? 'expanded' : 'row');
+          } catch (_error) {
+            // Optional: the next page shows one row.
+          }
+        }
+        showOpen();
+        edges();
+      };
+      setExpanded(expanded(), false);
+      items.addEventListener('scroll', edges, {passive: true});
+      window.addEventListener('resize', edges);
+      handle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        closeSheets();
+        setExpanded(!expanded());
+      });
+      // A vertical swipe on the bar (the bar lets only sideways scrolls through, app.css): up shows every module, down one
+      // row. The tap that ends a swipe opens nothing.
+      let start = null;
+      let swipedAt = 0;
+      bottomNav.addEventListener('touchstart', (event) => {
+        const touch = event.touches.length === 1 ? event.touches[0] : null;
+        start = touch ? {x: touch.clientX, y: touch.clientY} : null;
+      }, {passive: true});
+      bottomNav.addEventListener('touchcancel', () => { start = null; }, {passive: true});
+      bottomNav.addEventListener('touchend', (event) => {
+        const touch = event.changedTouches[0];
+        if (!start || !touch) return;
+        const dx = touch.clientX - start.x;
+        const dy = touch.clientY - start.y;
+        start = null;
+        if (Math.abs(dy) < 28 || Math.abs(dy) < Math.abs(dx) * 1.2) return;
+        swipedAt = Date.now();
+        if ((dy < 0) !== expanded()) {
+          closeSheets();
+          setExpanded(dy < 0);
+        }
+      }, {passive: true});
+      bottomNav.addEventListener('click', (event) => {
+        if (Date.now() - swipedAt < 450) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }, true);
+    }
   }
   toggle.addEventListener('click', () => setOpen(true));
   close.addEventListener('click', () => {

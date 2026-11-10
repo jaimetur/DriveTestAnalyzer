@@ -5905,12 +5905,33 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
   .background-task-panel-header { touch-action: auto; }
   .background-task-pin-button { display: none; }
   .background-task-minimize-button { top: .4rem; right: .45rem; width: 1.9rem; height: 1.9rem; font-size: 1.35rem; }
-  /* Every module in the bar at the bottom: two rows of six when they do not fit in one, the menu last in the second. */
-  :root.has-bottom-nav-rows-2 { --bottom-nav: calc(7.8rem + env(safe-area-inset-bottom, 0px)); }
-  .mobile-bottom-nav[data-rows="2"]:not(:empty) { grid-auto-flow: row; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); row-gap: .15rem; }
-  .mobile-bottom-nav[data-rows="2"] .mobile-bottom-nav-menu { grid-column: 6; }
-  .mobile-bottom-nav[data-rows="2"] :is(a, button) { gap: .14rem; font-size: .68rem; }
-  .mobile-bottom-nav[data-rows="2"] :is(a, button) svg { width: 1.55rem; height: 1.55rem; }
+  /* Every module in the bar at the bottom. When they do not fit in one row, the row scrolls sideways (fading at the side
+     where more modules wait) with Menu fixed at its end, and a handle on top: a swipe up on the bar, or a tap on the
+     handle, shows every module in rows of six with Menu last, and a swipe down returns to one row (app.js; the browser
+     remembers it and base.html applies it from the first moment). */
+  .mobile-bottom-nav-items { display: contents; }
+  :root.has-bottom-nav-expandable { --bottom-nav: calc(4.35rem + env(safe-area-inset-bottom, 0px)); }
+  :root.has-bottom-nav-expandable.has-bottom-nav-expanded { --bottom-nav: calc(var(--bottom-nav-rows, 2) * 3.75rem + .6rem + env(safe-area-inset-bottom, 0px)); }
+  :root.has-bottom-nav-expandable .mobile-bottom-nav:not(:empty) { display: flex; padding-top: .6rem; touch-action: pan-x; }
+  :root.has-bottom-nav-expandable .mobile-bottom-nav-items { display: grid; flex: 1 1 auto; grid-auto-flow: column; grid-auto-columns: 20%; min-width: 0;
+    overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  :root.has-bottom-nav-expandable .mobile-bottom-nav-items::-webkit-scrollbar { display: none; }
+  :root.has-bottom-nav-expandable .mobile-bottom-nav-items > * { scroll-snap-align: start; }
+  .mobile-bottom-nav-items.has-more-after { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 1.6rem), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 1.6rem), transparent); }
+  .mobile-bottom-nav-items.has-more-before { -webkit-mask-image: linear-gradient(90deg, transparent, #000 1.6rem); mask-image: linear-gradient(90deg, transparent, #000 1.6rem); }
+  .mobile-bottom-nav-items.has-more-before.has-more-after { -webkit-mask-image: linear-gradient(90deg, transparent, #000 1.6rem, #000 calc(100% - 1.6rem), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 1.6rem, #000 calc(100% - 1.6rem), transparent); }
+  :root.has-bottom-nav-expandable .mobile-bottom-nav-menu { position: relative; flex: 0 0 16.6667%; }
+  :root.has-bottom-nav-expandable:not(.has-bottom-nav-expanded) .mobile-bottom-nav-menu::before { content: ""; position: absolute; top: 18%; bottom: 18%; left: 0; width: 1px; background: var(--line-strong); }
+  :root.has-bottom-nav-expandable .mobile-bottom-nav-handle { position: absolute; top: 0; left: 50%; display: block; width: 4.5rem; height: .65rem; min-height: 0; margin: 0 0 0 -2.25rem;
+    padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  :root.has-bottom-nav-expandable .mobile-bottom-nav-handle::before { content: ""; position: absolute; top: .2rem; left: 50%; width: 2.3rem; height: 4px; margin-left: -1.15rem;
+    border-radius: 4px; background: #c3ccd5; }
+  :root.has-bottom-nav-expanded .mobile-bottom-nav:not(:empty) { display: grid; grid-auto-flow: row; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); row-gap: .15rem; }
+  :root.has-bottom-nav-expanded .mobile-bottom-nav-items { display: contents; }
+  :root.has-bottom-nav-expanded .mobile-bottom-nav-menu { grid-column: 6; }
+  :root.has-bottom-nav-expanded .mobile-bottom-nav :is(a, button) { gap: .14rem; font-size: .68rem; }
+  :root.has-bottom-nav-expanded .mobile-bottom-nav :is(a, button) svg { width: 1.55rem; height: 1.55rem; }
 }
 
 /* Phones: the rows of the tables that turn into cards (app.js) are compact cards as those of Reporting: the name in bold

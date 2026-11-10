@@ -69,7 +69,7 @@
 {%- for tab in module_tabs if features[tab.key] and (active_workspace if tab.key == 'builders' else (not tab.needs_workspace or active_workspace)) %}{% set bottom_nav.count = bottom_nav.count + 1 %}{% endfor -%}
 {%- endif %}
 <!DOCTYPE html>
-<html lang="en"{% if bottom_nav.count %} class="has-bottom-nav{% if bottom_nav.count + 2 > 6 %} has-bottom-nav-rows-2{% endif %}"{% endif %}>
+<html lang="en"{% if bottom_nav.count %} class="has-bottom-nav{% if bottom_nav.count + 2 > 6 %} has-bottom-nav-expandable{% endif %}" style="--bottom-nav-rows: {{ (bottom_nav.count + 2 + 5) // 6 }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -114,6 +114,15 @@
         window.pageReopened = Boolean(mark && mark.path === window.location.pathname && Date.now() - mark.at < 15000 && !window.location.hash);
       } catch (_error) {
         // Optional: without the session storage the module opens at its top.
+      }
+      // The bar at the bottom of a phone in one row or with every module, as it was left (app.js), from the first moment.
+      try {
+        const root = document.documentElement;
+        if (root.classList.contains('has-bottom-nav-expandable') && window.localStorage.getItem('drivetest-analyzer:bottom-nav') === 'expanded') {
+          root.classList.add('has-bottom-nav-expanded');
+        }
+      } catch (_error) {
+        // Optional: the bar shows one row.
       }
     })();
   </script>
@@ -284,10 +293,15 @@
   {% if user and not embedded_template_editor and not embedded_preview %}
   {#- Small screens (app.css): every main module the user can open, in the order of their tabs, with the icon, the short
       title and the colour of its tab, then Config (the configuration pages of the role) or, without them, Help, and the
-      menu last; two rows of six when they do not fit in one. Drawn here so that the page shows it from its first
-      moment; app.js opens the lists of Builders and Config and the menu. -#}
+      menu last. When they do not fit in one row, the row scrolls sideways with the menu fixed at its end, and a swipe up
+      on the bar (or its handle) shows them all in rows of six. Drawn here so that the page shows it from its first
+      moment; app.js opens the lists of Builders and Config and the menu, and shows the rows. -#}
   {%- set path = request.url.path -%}
-  <nav class="mobile-bottom-nav" data-mobile-bottom-nav aria-label="Modules"{% if bottom_nav.count %} data-rows="{{ 2 if bottom_nav.count + 2 > 6 else 1 }}"{% endif %}>{% if bottom_nav.count %}
+  <nav class="mobile-bottom-nav" data-mobile-bottom-nav aria-label="Modules">{% if bottom_nav.count %}
+    {%- if bottom_nav.count + 2 > 6 %}
+    <button type="button" class="mobile-bottom-nav-handle" data-bottom-nav-handle aria-expanded="false" aria-label="Show every module" title="Swipe up for every module, down for one row"></button>
+    {%- endif %}
+    <div class="mobile-bottom-nav-items" data-bottom-nav-items>
     {%- for tab in module_tabs if features[tab.key] and (active_workspace if tab.key == 'builders' else (not tab.needs_workspace or active_workspace)) %}
     {%- set open = path in ['/chart-builder', '/query-builder'] if tab.key == 'builders' else (path == tab.href or path.startswith(tab.href ~ '/')) %}
     {%- set content %}{% if tab.icon_path %}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">{{ tab.icon_path | safe }}</svg>{% endif %}<span>{{ tab.short_title }}</span>{% endset %}
@@ -303,6 +317,7 @@
     {%- set open = path.startswith('/documents/view/help') %}
     <a href="/documents/view/help" class="{% if open %}is-active{% endif %}" style="--tab-accent: {{ administrative_icons['help'].color }}" title="Help"{% if open %} aria-current="page"{% endif %}>{{ tab_icon('help', '') }}<span>Help</span></a>
     {%- endif %}
+    </div>
     <button type="button" class="mobile-bottom-nav-menu" title="Every module and section" aria-haspopup="dialog" aria-controls="mobile-menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>Menu</span></button>
   {% endif %}</nav>{% endif %}
   <button type="button" class="back-to-top" data-back-to-top title="Back to the top of the page" aria-label="Back to the top of the page" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="back-to-top-lead" d="m5 12 7-7 7 7"/><path class="back-to-top-trail" d="m5 19 7-7 7 7"/></svg></button>
