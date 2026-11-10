@@ -33,7 +33,7 @@ def request_access(client, username='eabcdef', password='secret1', first_name='A
     group = group or core.repository.save_workspace_group(None, 'UK', '', [core.active_workspace.id])
     profile = next(item['id'] for item in core.repository.list_modules_profiles() if item['name'] == 'All Modules')
     response = client.post('/api/access-requests', json={
-        'username': username, 'first_name': first_name, 'last_name': last_name, 'email': f'{username.lower()}@example.com',
+        'username': username, 'first_name': first_name, 'last_name': last_name, 'email': f'{username.lower()}@ericsson.com',
         'password': password, 'password_confirmation': password, 'workspace_group_ids': [group], 'modules_profile_id': profile,
     })
     assert response.status_code == 201, response.text

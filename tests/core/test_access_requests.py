@@ -43,12 +43,13 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     nq_calls = options['modules_profiles'][2]
     assert nq_calls['modules'] == ['Workspace', 'Non-Qualified Calls', 'Reporting', 'Builders', 'AI Assistant', 'Ticket Center']
     assert nq_calls['module_tabs'][0]['title'] == 'Workspace' and nq_calls['module_tabs'][0]['color'] and nq_calls['module_tabs'][0]['icon']
-    request = {'username': 'eabcdef', 'first_name': ' Ana ', 'last_name': 'García', 'email': 'ana.garcia@example.com', 'password': 'secret1',
+    request = {'username': 'eabcdef', 'first_name': ' Ana ', 'last_name': 'García', 'email': 'ana.garcia@ericsson.com', 'password': 'secret1',
                'password_confirmation': 'secret1', 'workspace_group_ids': [uk], 'modules_profile_id': nq_calls['id']}
     # Only with the names, an Ericsson signum, matching passwords, and workspaces and modules of the lists.
     for change, message in (({'first_name': ''}, 'first name'), ({'last_name': ' '}, 'last name'),
                             ({'username': 'xabcdef'}, 'signum'), ({'username': 'eabc12f'}, 'signum'),
                             ({'email': ''}, 'email address'), ({'email': 'ana@'}, 'valid email address'),
+                            ({'email': 'ana.garcia@gmail.com'}, 'Ericsson email address'), ({'email': 'ana@notericsson.com'}, 'Ericsson'),
                             ({'username': 'eabcdefg'}, 'signum'), ({'password_confirmation': 'other'}, 'do not match'),
                             ({'workspace_group_ids': []}, 'workspace'), ({'workspace_group_ids': [uk + 99]}, 'workspace'),
                             ({'modules_profile_id': 999}, 'modules profile')):
@@ -63,7 +64,7 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     # Copied to the approvers (any of them approves the request before the administrator activates the user) and to the
     # requester. Without Email Delivery it is not sent by the tool: the user sends it from its mail client.
     assert result['email']['cc'] == ['kleber.gomes@ericsson.com', 'angelo.reis@ericsson.com', 'mohammadreza.rajabi@ericsson.com',
-                                     'alfonso.j.alvarez@ericsson.com', 'ana.garcia@example.com']
+                                     'alfonso.j.alvarez@ericsson.com', 'ana.garcia@ericsson.com']
     assert result['email_sent'] is False
     body = result['email']['body']
     assert body.startswith('Hello Jaime, Kleber, Angelo, Mohammadreza and Alfonso,')
@@ -71,12 +72,12 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     assert ('APPROVAL NEEDED\nKleber, Angelo, Mohammadreza or Alfonso: please review the request and approve it by replying to all.\n'
             '========================================\n\nJaime: once one of them has approved it, please activate my user in Super Admin › Users.') in body
     assert 'User: EABCDEF' in body and 'Name: Ana García' in body and f'Workspaces: UK ({core.active_workspace.name})' in body
-    assert 'Email: ana.garcia@example.com' in body
+    assert 'Email: ana.garcia@ericsson.com' in body
     record = core.repository.get_user('eabcdef')
     assert (record.username, record.role, record.active) == ('EABCDEF', 'user-editor', False)
     user_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'EABCDEF')
     assert (core.repository.get_user_by_id(user_id)['first_name'], core.repository.get_user_by_id(user_id)['last_name']) == ('Ana', 'García')
-    assert core.repository.get_user_by_id(user_id)['email'] == 'ana.garcia@example.com'
+    assert core.repository.get_user_by_id(user_id)['email'] == 'ana.garcia@ericsson.com'
     assert [group['name'] for group in core.repository.list_workspace_groups() if user_id in group['member_ids']] == ['UK']
     assert user_id in profiles()['Non-Qualified Calls']['member_ids']
     # The user signs in only once an administrator activates it.
@@ -110,6 +111,13 @@ def test_access_request_of_an_existing_user_changes_its_access_until_it_is_activ
     response = client.post('/api/access-requests', json=request)
     assert response.status_code == 403 and 'current password' in response.json()['detail']
     assert client.post('/api/access-requests', json={**request, 'username': 'eadmins', 'password': 'secret1'}).status_code == 403
+    # Only with an address of Ericsson: the one given, or the one the user has when none is given.
+    response = client.post('/api/access-requests', json={**request, 'password': 'secret1', 'email': 'eva@gmail.com'})
+    assert response.status_code == 400 and 'Ericsson email address' in response.json()['detail']
+    core.repository.set_user_email('EFGHIJK', 'eva@gmail.com')
+    response = client.post('/api/access-requests', json={**request, 'password': 'secret1'})
+    assert response.status_code == 400 and 'EFGHIJK has another one' in response.json()['detail']
+    core.repository.set_user_email('EFGHIJK', '')
     response = client.post('/api/access-requests', json={**request, 'password': 'secret1'})
     assert response.status_code == 201, response.text
     result = response.json()

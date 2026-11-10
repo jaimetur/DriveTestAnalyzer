@@ -15720,6 +15720,16 @@ def access_request_user(username: str) -> JSONResponse:
                         headers={'Cache-Control': 'no-store'})
 
 
+# Access requests take only addresses of Ericsson (of the domain or one of its subdomains): the tool is for its people.
+ACCESS_REQUEST_EMAIL_DOMAIN = 'ericsson.com'
+ACCESS_REQUEST_EMAIL_MESSAGE = f'Enter your Ericsson email address (name.surname@{ACCESS_REQUEST_EMAIL_DOMAIN}).'
+
+
+def is_access_request_address(address: str) -> bool:
+    domain = str(address or '').rsplit('@', 1)[-1].strip().casefold()
+    return domain == ACCESS_REQUEST_EMAIL_DOMAIN or domain.endswith(f'.{ACCESS_REQUEST_EMAIL_DOMAIN}')
+
+
 @app.post('/api/access-requests', status_code=status.HTTP_201_CREATED)
 def create_access_request(request: Request, payload: AccessRequestPayload) -> JSONResponse:
     """Create the requested user, inactive until an administrator activates it: an editor in the chosen Workspace Groups
@@ -15737,6 +15747,8 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
     email = payload.email.strip()
     if email and not EMAIL_ADDRESS_PATTERN.match(email):
         raise HTTPException(status_code=400, detail='Enter a valid email address.')
+    if email and not is_access_request_address(email):
+        raise HTTPException(status_code=400, detail=ACCESS_REQUEST_EMAIL_MESSAGE)
     if not payload.password:
         raise HTTPException(status_code=400, detail='Choose a password.')
     options = access_request_options()
@@ -15770,6 +15782,9 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
             SIGN_IN_ATTEMPTS.failed(record.username)
             raise HTTPException(status_code=403, detail=f'The password is not the current password of {record.username}.')
         SIGN_IN_ATTEMPTS.succeeded(record.username)
+        # The request keeps the address of the user unless it gives another one: it must be of Ericsson too.
+        if not email and record.email and not is_access_request_address(record.email):
+            raise HTTPException(status_code=400, detail=f'{ACCESS_REQUEST_EMAIL_MESSAGE[:-1]}: {record.username} has another one.')
         username, role = record.username, record.role
         user_id = next(int(row['id']) for row in repository.list_users() if str(row['username']).casefold() == username.casefold())
         member_of = {int(group['id']) for group in repository.list_workspace_groups() if user_id in group['member_ids']}

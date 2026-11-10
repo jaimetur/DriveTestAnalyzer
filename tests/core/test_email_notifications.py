@@ -156,7 +156,7 @@ def test_access_requests_are_emailed_and_the_requester_is_told_when_activated(cl
     uk = core.repository.save_workspace_group(None, 'UK', '', [core.active_workspace.id])
     profile = next(item for item in core.repository.list_modules_profiles() if item['name'] == 'All Modules')
     assert 'data-password-reset-open' in client.get('/login').text
-    request = {'username': 'eabcdef', 'first_name': 'Ana', 'last_name': 'García', 'email': 'ana.garcia@example.com',
+    request = {'username': 'eabcdef', 'first_name': 'Ana', 'last_name': 'García', 'email': 'ana.garcia@ericsson.com',
                'password': 'secret1', 'password_confirmation': 'secret1', 'workspace_group_ids': [uk], 'modules_profile_id': profile['id']}
     assert client.post('/api/access-requests', json={**request, 'email': ''}).json()['detail'] == 'Enter your email address.'
     assert client.post('/api/access-requests', json={**request, 'email': 'nope'}).json()['detail'] == 'Enter a valid email address.'
@@ -165,22 +165,22 @@ def test_access_requests_are_emailed_and_the_requester_is_told_when_activated(cl
     assert response.json()['email_sent'] is True
     message = flow[-1]
     assert message['kind'] == 'access_request' and message['to'] == 'jaime.tur@ericsson.com'
-    assert message['cc'].split(';')[-1] == 'ana.garcia@example.com' and len(message['cc'].split(';')) == 5
-    assert message['reply_to'] == 'ana.garcia@example.com' and message['subject'] == 'DT Analyzer - Access request: EABCDEF'
-    assert 'on behalf of <strong>Ana García</strong>' in message['html'] and 'mailto:ana.garcia@example.com' in message['html']
+    assert message['cc'].split(';')[-1] == 'ana.garcia@ericsson.com' and len(message['cc'].split(';')) == 5
+    assert message['reply_to'] == 'ana.garcia@ericsson.com' and message['subject'] == 'DT Analyzer - Access request: EABCDEF'
+    assert 'on behalf of <strong>Ana García</strong>' in message['html'] and 'mailto:ana.garcia@ericsson.com' in message['html']
     # In sections, not the text of the mail application (whose line breaks a mail client ignores): the approval in a box,
     # the details in a table and a button to Super Admin at the Public address.
     assert 'Approval needed' in message['html'] and 'pre-wrap' not in message['html']
     assert 'href="https://tool.example:8443/super-admin"' in message['html']
     assert 'User EABCDEF' in notifications.html_to_text(message['html'])
-    assert core.repository.get_user('EABCDEF').email == 'ana.garcia@example.com'
+    assert core.repository.get_user('EABCDEF').email == 'ana.garcia@ericsson.com'
     assert logged('email_sent')[-1]['kind'] == 'access_request'
     # Once a super-admin activates the user, the requester is told.
     login(client)
     user_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'EABCDEF')
     client.post('/admin/users/bulk', data={'user_ids': [user_id], 'action': 'activate'})
     granted = flow[-1]
-    assert granted['kind'] == 'access_granted' and granted['to'] == 'ana.garcia@example.com'
+    assert granted['kind'] == 'access_granted' and granted['to'] == 'ana.garcia@ericsson.com'
     # Copied to everyone the request went to: the administrator and the approvers.
     assert granted['cc'].split(';') == [message['to'], *message['cc'].split(';')[:-1]]
     assert granted['subject'] == 'DT Analyzer - Your access has been granted'
@@ -191,7 +191,7 @@ def test_access_requests_are_emailed_and_the_requester_is_told_when_activated(cl
     assert len(flow) == count
     # Without the switch, the requester sends it from its mail client.
     use_flow(notify_access_requests=False)
-    other = client.post('/api/access-requests', json={**request, 'username': 'eghijkl', 'email': 'luis@example.com'})
+    other = client.post('/api/access-requests', json={**request, 'username': 'eghijkl', 'email': 'luis@ericsson.com'})
     assert other.json()['email_sent'] is False and len(flow) == count
 
 

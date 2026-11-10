@@ -435,6 +435,8 @@
     const address = String(data.get('email') || '').trim();
     if (!existing && !address) { showError('Enter your email address.'); return; }
     if (address && !/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(address)) { showError('Enter a valid email address.'); return; }
+    // Only addresses of Ericsson (the server refuses the others too).
+    if (address && !/@(?:[^@\s.]+\.)*ericsson\.com$/i.test(address)) { showError('Enter your Ericsson email address (name.surname@ericsson.com).'); return; }
     if (!/^[Ee][A-Za-z]{6}$/.test(username)) { showError('The username must be your Ericsson signum: 7 letters starting with E.'); return; }
     if (!data.get('password')) { showError('Choose a password.'); return; }
     if (!existing && data.get('password') !== data.get('password_confirmation')) { showError('The passwords do not match.'); return; }
