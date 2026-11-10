@@ -150,8 +150,9 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .module-tab-label-mobile { display: none; }
 .module-tabs-primary .module-tab, .module-tabs-secondary .module-tab { display: inline-flex; align-items: center; gap: .45rem; }
 .module-tab-icon { flex: 0 0 auto; width: 1.15em; height: 1.15em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-/* Tab rows never overlap: they keep their content width, switch the main
-   tabs to their short names and then drop the icons as the window narrows. */
+/* Tab rows never overlap: they keep their content width and switch the main
+   tabs to their short names as the window narrows; they keep their icons (the
+   colour of each module) and wrap when they do not fit. */
 .module-tabs-primary, .module-tabs-secondary { flex-shrink: 0; }
 @media (max-width: 1800px) {
   .module-tabs-primary, .module-tabs-secondary { gap: .35rem; }
@@ -159,7 +160,6 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
   .module-tabs-primary .module-tab-label-desktop { display: none; }
   .module-tabs-primary .module-tab-label-mobile { display: inline; }
 }
-@media (max-width: 1400px) { .module-tab-icon { display: none; } }
 .module-tabs-secondary > a[href="/documents/view/readme"],
 .module-tabs-secondary > a[href="/documents/view/changelog"] { display: none; }
 .module-tab:hover { background: rgba(11, 122, 117, 0.08); color: #075d59; }
@@ -5977,3 +5977,9 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 .create-dialog-table tbody td :is(input:not([type="checkbox"], [type="radio"]), select) { box-sizing: border-box; width: 100%; min-width: 0; }
 /* (The access of a new workspace in its dialog: its name in the colour of the dialog.) */
 .create-dialog-panel .workspace-create-access { color: inherit; }
+/* Medium windows: the workspace switcher of the application bar stands in its row, before the user, instead of in the
+   middle of the bar, where it covered the name of the tool and its version. */
+@media (min-width: 901px) and (max-width: 1360px) {
+  .topbar { flex-wrap: wrap; row-gap: .5rem; }
+  .topnav-workspace-switcher { position: relative; top: auto; left: auto; transform: none; }
+}
