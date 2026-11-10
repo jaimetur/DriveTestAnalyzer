@@ -2008,3 +2008,15 @@
 .ppt-designer .ds-design-card-menu .ds-design-card-menu-item { min-height: 0; padding: .55rem .75rem; border: 0; border-radius: 7px; background: none; box-shadow: none; color: #1f2937; font: inherit; font-size: .9rem; font-weight: 600; text-align: left; white-space: nowrap; }
 .ppt-designer .ds-design-card-menu .ds-design-card-menu-item:hover:not(:disabled) { background: #f1ebfb; color: #4f376a; }
 .ppt-designer .ds-design-card-menu .ds-design-card-menu-item.is-danger { color: #b42318; }
+/* Phones: the Charts Panel shows its selection as small chips and its filters two per row. */
+@media (max-width: 640px) {
+  .ppt-designer .ds-ppt-charts-panel > summary .pill { padding: .1rem .5rem; border-radius: 6px; font-size: .72rem; line-height: 1.35; box-shadow: none; }
+  .ppt-designer .ds-ppt-charts-panel > summary .summary-inline-actions { gap: .3rem; }
+  .ppt-designer .ds-ppt-chart-filters { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem .6rem; }
+  .ppt-designer .ds-ppt-chart-filters label { display: grid; gap: .15rem; min-width: 0; font-size: .72rem; }
+  .ppt-designer .ds-ppt-chart-filters select { width: 100%; min-width: 0; height: 2.15rem; min-height: 0; padding-top: .2rem; padding-bottom: .2rem; font-size: .82rem; }
+  .ppt-designer .ds-ppt-chart-set-controls label { font-size: .72rem; }
+  .ppt-designer .ds-ppt-chart-set-controls { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .ppt-designer .ds-ppt-chart-set-controls > label { flex: 1 1 100%; }
+  .ppt-designer .ds-ppt-chart-set-controls > button { flex: 0 0 auto; width: auto; min-height: 0; padding: .35rem .85rem; font-size: .8rem; }
+}

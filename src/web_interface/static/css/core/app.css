@@ -5899,29 +5899,56 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
   .mobile-bottom-nav[data-rows="2"] :is(a, button) svg { width: 1.55rem; height: 1.55rem; }
 }
 
-/* Phones: the rows of the tables that turn into cards (app.js) look like the cards of Reporting: no lines inside, the
-   name on top in bold, the other values two per row under the names of their columns, the actions at the bottom, and
-   several cards on each page. */
+/* Phones: the rows of the tables that turn into cards (app.js) are compact cards as those of Reporting: the name in bold
+   on top with its state beside it, small chips (NR Mode, scope, slides, charts, filters), who made it and when in one
+   small line, the other values two per row under the names of their columns, the progress only while it is not done
+   and the actions at the bottom; several cards on each page. */
 @media (max-width: 640px) {
   table.is-phone-card-list.is-phone-card-list { display: block; width: 100%; min-width: 0 !important; }
   table.is-phone-card-list.is-phone-card-list thead { display: none; }
-  table.is-phone-card-list.is-phone-card-list tbody { display: grid; gap: .65rem; }
-  table.is-phone-card-list.is-phone-card-list tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem .8rem; padding: .8rem .9rem;
+  table.is-phone-card-list.is-phone-card-list tbody { display: grid; gap: .55rem; }
+  table.is-phone-card-list.is-phone-card-list tbody tr { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .7rem; padding: .7rem .8rem;
     overflow: visible; border: 1px solid var(--line-strong); border-radius: 12px; background: #fff; box-shadow: 0 1px 2px rgba(18, 32, 43, .05); }
   table.is-phone-card-list.is-phone-card-list tbody tr.mobile-card-page-hidden { display: none !important; }
   /* The row marked in the table (the open workspace, the chosen PPT job) is the card marked, as the chosen report. */
   table.is-phone-card-list.is-phone-card-list tbody tr:is(.active-workspace-row, .is-selected) { border-color: var(--brand, #0b7a75); box-shadow: inset 4px 0 0 var(--brand, #0b7a75); }
-  table.is-phone-card-list.is-phone-card-list tbody :is(td, th) { display: block; width: auto !important; min-width: 0 !important; max-width: none !important; padding: 0;
-    border: 0; background: none !important; text-align: left; font-size: .86rem; white-space: normal; overflow-wrap: anywhere; }
-  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-label]:not([data-card-title], [data-card-actions])::before { content: attr(data-label); display: block;
-    margin-bottom: .12rem; color: #7b8994; font-size: .62rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
-  table.is-phone-card-list.is-phone-card-list tbody :is(td, th):is([data-card-title], [data-card-actions], [colspan])::before { display: none; }
-  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-title] { order: -1; grid-column: 1 / -1; color: var(--text, #17201b); font-size: 1rem; font-weight: 800; }
-  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-actions] { order: 99; grid-column: 1 / -1; padding-top: .3rem; }
-  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[colspan] { grid-column: 1 / -1; }
-  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-actions] > * { justify-content: flex-start; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th) { display: block; flex: 1 1 calc(50% - .35rem); order: 3; width: auto !important; min-width: 0 !important;
+    max-width: none !important; height: auto !important; padding: 0; border: 0; background: none !important; color: var(--text, #17201b); font-size: .84rem;
+    line-height: 1.35; text-align: left !important; white-space: normal; overflow-wrap: anywhere; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-label]:not([data-card-role])::before { content: attr(data-label); display: block;
+    margin-bottom: .08rem; color: #7b8994; font-size: .6rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th):is([data-card-role], [colspan])::before { display: none; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[colspan] { flex-basis: 100%; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-hidden] { display: none !important; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="title"] { flex: 1 1 60%; order: 0; font-size: .95rem; font-weight: 800; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="status"] { flex: 0 0 auto; order: 0; margin-left: auto; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="chip"] { flex: 0 0 auto; order: 1; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="chip"]:not(:has(button, span, select, input)) { padding: .05rem .45rem; border-radius: 5px;
+    background: #eef2f6 !important; color: #344054; font-size: .74rem; font-weight: 700; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="chip"]:is([data-label="Slides"], [data-label="Charts"])::after { content: " " attr(data-label); text-transform: lowercase; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="chip"] :is(button, .ds-nr-mode-badge) { min-height: 0; font-size: .72rem; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="chip"] button { width: 1.65rem !important; height: 1.65rem !important; min-width: 0; padding: 0; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="meta"] { flex: 0 0 auto; order: 2; color: #6b7280; font-size: .76rem; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="meta"] ~ [data-card-role="meta"]::before { content: "· "; display: inline; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="meta"][data-label="ID"]::before { content: "#"; display: inline; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="progress"] { flex: 1 1 100%; order: 2; font-size: .76rem; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="actions"] { flex: 1 1 100%; order: 9; padding-top: .2rem; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-role="actions"] > * { justify-content: flex-start; flex-wrap: wrap; gap: .35rem; }
+  /* (A wide control, a list of names or the access of a workspace, takes the width of the card.) */
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th):is([data-label="Access"], :has(textarea, .workspace-user-picker)) { flex-basis: 100%; }
 }
 /* Phones: a dialog takes the screen; the bars at the bottom give way to it while it is open. */
 @media (max-width: 640px), (orientation: landscape) and (max-width: 1024px) and (max-height: 600px) {
   :root.has-bottom-nav body:has(:is(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-preview-overlay:not([hidden]))) :is(.mobile-bottom-nav, .mobile-bottom-nav-sheet, .section-bar, .section-bar-sheet, .nq-view-dock, .back-to-top, .unassigned-values-card) { visibility: hidden; }
+}
+/* Phones: Select Workspace takes little room, its counts as small pills and the workspace to open with Open and Close
+   in one row. */
+@media (max-width: 640px) {
+  .shell main .workspace-switcher-panel .workspace-panel-meta { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .3rem; }
+  .shell main .workspace-switcher-panel .workspace-panel-meta .pill { min-height: 0; padding: .15rem .55rem; font-size: .74rem; box-shadow: none; }
+  .shell main .workspace-switcher-panel .workspace-select-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: .4rem; }
+  .shell main .workspace-switcher-panel .workspace-select-form label { min-width: 0; gap: .2rem; font-size: .76rem; }
+  .shell main .workspace-switcher-panel .workspace-select-form select { width: 100%; min-width: 0; height: 2.4rem; min-height: 0; }
+  .shell main .workspace-switcher-panel .workspace-select-form button { width: auto; min-height: 2.4rem; margin: 0; padding: .4rem .75rem; font-size: .8rem; }
+  .shell main .workspace-switcher-panel .workspace-management > summary { min-height: 0; padding: .55rem .8rem; font-size: .9rem; }
 }
