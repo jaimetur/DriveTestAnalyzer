@@ -6759,28 +6759,37 @@ function setupMobileMenu() {
         closeSheets();
         setExpanded(!expanded());
       });
-      // A vertical swipe on the bar (the bar lets only sideways scrolls through, app.css): up shows every module, down one
-      // row. The tap that ends a swipe opens nothing.
-      let start = null;
+      // A vertical swipe on the bar: up shows every module, down one row, as soon as the finger has moved enough. A swipe
+      // that starts upwards or downwards never scrolls the page (iOS ignores the touch-action of the bar, app.css), one
+      // that starts sideways scrolls the row; the tap that ends a swipe opens nothing.
+      let gesture = null;
       let swipedAt = 0;
       bottomNav.addEventListener('touchstart', (event) => {
         const touch = event.touches.length === 1 ? event.touches[0] : null;
-        start = touch ? {x: touch.clientX, y: touch.clientY} : null;
+        gesture = touch ? {x: touch.clientX, y: touch.clientY, axis: '', done: false} : null;
       }, {passive: true});
-      bottomNav.addEventListener('touchcancel', () => { start = null; }, {passive: true});
-      bottomNav.addEventListener('touchend', (event) => {
-        const touch = event.changedTouches[0];
-        if (!start || !touch) return;
-        const dx = touch.clientX - start.x;
-        const dy = touch.clientY - start.y;
-        start = null;
-        if (Math.abs(dy) < 28 || Math.abs(dy) < Math.abs(dx) * 1.2) return;
+      bottomNav.addEventListener('touchmove', (event) => {
+        const touch = event.touches.length === 1 ? event.touches[0] : null;
+        if (!gesture || !touch) return;
+        const dx = touch.clientX - gesture.x;
+        const dy = touch.clientY - gesture.y;
+        if (!gesture.axis && Math.max(Math.abs(dx), Math.abs(dy)) > 6) gesture.axis = Math.abs(dy) > Math.abs(dx) ? 'y' : 'x';
+        if (gesture.axis !== 'y') return;
+        if (event.cancelable) event.preventDefault();
+        if (gesture.done || Math.abs(dy) < 22) return;
+        gesture.done = true;
         swipedAt = Date.now();
         if ((dy < 0) !== expanded()) {
           closeSheets();
           setExpanded(dy < 0);
         }
-      }, {passive: true});
+      }, {passive: false});
+      const endGesture = () => {
+        if (gesture?.axis === 'y') swipedAt = Date.now();
+        gesture = null;
+      };
+      bottomNav.addEventListener('touchend', endGesture, {passive: true});
+      bottomNav.addEventListener('touchcancel', endGesture, {passive: true});
       bottomNav.addEventListener('click', (event) => {
         if (Date.now() - swipedAt < 450) {
           event.preventDefault();
