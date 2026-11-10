@@ -48,10 +48,12 @@ Designs use the same template schema and renderer as Reporting. Detailed templat
 
 ### Create a definition
 
+**Create PPT Design**, above the list of the Designs, opens a dialog with the fields of the new Design:
+
 1. Enter its **PPT Name** (**My New PPT Design** is offered).
 2. Select the **NR Mode** of the CDRs it reads (**NSA**, **SA** or **NSA & SA** for both, see [NSA & SA in one Design](#nsa-sa-in-one-design)) and a **PPT Template**. When the NR Mode leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), their tests are left out of the Design, and its CDRs used and the viewer, beside its Campaign and Scope, name them (*Out of scope: SA · Three*). Any template serves every NR Mode: its titles name the NR Mode of the Design where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone).
    The button beside **PPT Template** opens the **gallery** of the templates of the workspace: a card for each one with its first slides in small, as it lays them out (the picture of each chart type in its place, the covers and transitions in colour), how many slides and charts it has and **Default** on the default one, and **None — blank PPT** first; a click on a card chooses that template (**Esc** or **×** leaves the choice as it was).
-3. Click **Create PPT Design**. The saved definition opens in PPT Scope & Filters; with **None — blank PPT** as its PPT Template, it opens in its [Designer](#designer) instead, with only its cover, where its slides are added (it follows no template; **More → Save as template…** makes one of it). **Import PPT Design** imports a standalone JSON definition of a Design; the ZIP that **Export Design** downloads is imported through Admin Import (see [Portability and maintenance](#portability-and-maintenance)).
+3. Click **Create** (**Cancel**, **×** or Escape close the dialog without creating it). The saved definition opens in PPT Scope & Filters; with **None — blank PPT** as its PPT Template, it opens in its [Designer](#designer) instead, with only its cover, where its slides are added (it follows no template; **More → Save as template…** makes one of it). **Import PPT Design** imports a standalone JSON definition of a Design; the ZIP that **Export Design** downloads is imported through Admin Import (see [Portability and maintenance](#portability-and-maintenance)).
 
 Names are unique in the workspace, whatever the NR Mode each Design reads: an NSA and an SA Design of the same template need names of their own (for example **NSA - NetCheck CDR Report** and **SA - NetCheck CDR Report**). The library sorts NSA first, then by name.
 
@@ -92,7 +94,7 @@ A Design is changed (its name, NR Mode and template, its Scope and filters with 
 
 ### Change name, NR Mode or template
 
-Edit the name in the table (column **PPT Name**) and confirm with the green check. NR Mode and **PPT Template** have their own selectors, independent of each other: the NR Mode chooses the CDRs the Design reads and keeps its template, and any template serves every NR Mode. A Design created blank shows **None — blank PPT**: choosing a template makes it follow that template, and its own slides are replaced by those of the template after a warning.
+Edit the name in the table (column **PPT Name**) and confirm with the green check (on a phone, in **⋯ → Edit details** of its card). NR Mode and **PPT Template** have their own selectors, independent of each other: the NR Mode chooses the CDRs the Design reads and keeps its template, and any template serves every NR Mode. A Design created blank shows **None — blank PPT**: choosing a template makes it follow that template, and its own slides are replaced by those of the template after a warning.
 
 > [!WARNING]
 > **Changing NR Mode or Template invalidates the prepared charts.** The application rebuilds them. An NR Mode change keeps the campaigns of an NR Mode the Design still reads (NSA to NSA & SA keeps the Campaign as Campaign (NSA)) and sets the others to the newest campaigns of the new mode (the campaigns of the other mode do not apply); the titles of the template name the new NR Mode. A template-only change keeps the Campaign.
@@ -583,7 +585,7 @@ Excel-style header filters search job columns. The filter snapshot groups CDRs b
 
 Each filter offers only selections from jobs matching the other active filters. Choices describe complete exported selections. A job with seven cities contributes one City choice containing those seven cities; All Cities/All Regions appears only for jobs exported with those selections.
 
-The job selector identifies its local date/time, NR Mode, Design, Scope and recorded geography. Long lists expose their full values on hover. Polling loads the newest matching completed job.
+The job selector identifies its local date/time, NR Mode, Design, Scope and recorded geography. Long lists expose their full values on hover. Polling loads the newest matching completed job; each chart is read and drawn when it comes near the screen, so opening the page reads none of them.
 
 ### Live Design versus saved snapshot
 

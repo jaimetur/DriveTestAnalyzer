@@ -1346,14 +1346,85 @@
     openFloatingFilters({fromLibrary: true});
   };
   const parkFilterPanel = () => { $('ds-filter-parking').append($('ds-filter-home')); };
+  // Phones: each Design is a card, as the reports of Reporting are: its name (which opens it) and state, its NR Mode and
+  // PPT Template, who changed it and when, View PPT and Generate PPT, and the rest in its menu (⋯): Edit Design, Edit
+  // details (its name, NR Mode and PPT Template), Duplicate, Export and Delete. The buttons and controls are those its row
+  // of the table makes, so they do the same and stay up to date the same way.
+  function designCard({id, item, locked, update, nameEditor, technologySelect, templateSelect, statusBadge, actions, openViewer}) {
+    const card = node('li', undefined, 'ds-design-card');
+    card.dataset.designId = id;
+    if (id === activeId) card.classList.add('is-active');
+    const head = node('div', undefined, 'ds-design-card-head');
+    const name = node('button', item.name, 'ds-design-card-name');
+    name.type = 'button';
+    name.title = `View PPT: ${item.name}`;
+    name.onclick = safe(() => openViewer());
+    head.append(name, statusBadge);
+    const mode = designNrMode(item);
+    const labels = node('div', undefined, 'ds-design-card-labels');
+    labels.append(
+      node('span', mode === NSA_AND_SA ? 'NSA & SA' : mode, `ds-design-card-mode is-${mode === NSA_AND_SA ? 'both' : String(mode).toLowerCase()}`),
+      node('span', item.template || '—', 'ds-design-card-template'),
+    );
+    const changes = [update?.at ? `Updated ${update.at}${update.by ? ` by ${update.by}` : ''}` : '', item.created_by ? `Created by ${item.created_by}` : ''];
+    const meta = node('p', changes.filter(Boolean).join(' · ') || '—', 'ds-design-card-meta');
+    const details = node('div', undefined, 'ds-design-card-details');
+    details.hidden = true;
+    const field = (label, control) => { const host = node('label', label); host.append(control); return host; };
+    details.append(field('PPT Name', nameEditor), field('NR Mode', technologySelect), field('PPT Template', templateSelect));
+    const buttons = node('div', undefined, 'ds-design-card-actions');
+    const take = (selector, className, label) => {
+      const button = actions.querySelector(selector);
+      if (!button) return null;
+      button.className = className;
+      button.textContent = label;
+      return button;
+    };
+    const view = take('.ds-design-view', 'ds-design-card-primary', 'View PPT');
+    const ppt = take('.ds-design-ppt', 'ds-design-card-secondary', 'Generate PPT');
+    buttons.append(...[view, ppt].filter(Boolean));
+    const more = node('details', undefined, 'ds-design-card-more');
+    const summary = node('summary', '⋯');
+    summary.title = 'More actions';
+    summary.setAttribute('aria-label', `More actions for ${item.name}`);
+    const menu = node('div', undefined, 'ds-design-card-menu');
+    const edit = take('.ds-design-edit', 'ds-design-card-menu-item', 'Edit Design');
+    let editDetails = null;
+    if (config.can_manage && !locked) {
+      editDetails = node('button', 'Edit details', 'ds-design-card-menu-item');
+      editDetails.type = 'button';
+      editDetails.onclick = () => { details.hidden = !details.hidden; editDetails.textContent = details.hidden ? 'Edit details' : 'Hide details'; };
+    }
+    const duplicate = take('.ds-design-duplicate', 'ds-design-card-menu-item', 'Duplicate');
+    const exported = take('.ds-design-export', 'ds-design-card-menu-item', 'Export Design');
+    const remove = take('.danger-button', 'ds-design-card-menu-item is-danger', 'Delete');
+    menu.append(...[edit, editDetails, duplicate, exported, remove].filter(Boolean));
+    menu.addEventListener('click', event => { if (event.target.closest('button')) more.open = false; });
+    more.append(summary, menu);
+    if (menu.children.length) buttons.append(more);
+    card.append(head, labels, meta, details, buttons);
+    return card;
+  }
+  // (The menu of a card closes when the screen is touched elsewhere.)
+  document.addEventListener('pointerdown', event => {
+    document.querySelectorAll('.ds-design-card-more[open]').forEach(more => { if (!more.contains(event.target)) more.open = false; });
+  });
+  const designCardsQuery = window.matchMedia('(max-width: 640px)');
+  designCardsQuery.addEventListener?.('change', () => library());
   function library() {
     rememberLibrary();
     parkFilterPanel();
-    $('ds-create').disabled = !$('ds-template').options.length;
+    $('ds-create').disabled = !$('ds-new-template').options.length;
     // A PPT Template open as a Design (PPT Templates → Edit) is never listed.
     const listed = Object.entries(designs).filter(([, item]) => !item.template_preview);
     $('ds-count').textContent = `Total Designs: ${listed.length}`;
     const body = $('ds-designs-body'); body.replaceChildren();
+    // Phones: the Designs as cards (designCard), larger screens: the table.
+    const asCards = window.matchMedia('(max-width: 640px)').matches;
+    const cardList = $('ds-design-cards');
+    cardList.replaceChildren();
+    cardList.hidden = !asCards;
+    body.closest('.ds-designs-table-wrap').classList.toggle('is-shown-as-cards', asCards);
     // In the order its editors dragged them to; the others after them by NR Mode (NSA before SA), then Design name,
     // with the same rule as the Report Templates table: an NSA/SA marker in the name is ignored and names compare
     // case-insensitively by character code.
@@ -1369,7 +1440,11 @@
       || compareText(sortName(left.name), sortName(right.name))
       || compareText(String(left.name).toLowerCase(), String(right.name).toLowerCase())
     ));
-    if (!rows.length) { const row = node('tr'), cell = node('td', 'No Designs have been created yet.', 'form-note'); cell.colSpan = 8; row.append(cell); body.append(row); return; }
+    if (!rows.length) {
+      const row = node('tr'), cell = node('td', 'No Designs have been created yet.', 'form-note'); cell.colSpan = 8; row.append(cell); body.append(row);
+      if (asCards) cardList.append(node('li', 'No Designs have been created yet.', 'form-note'));
+      return;
+    }
     for (const [id, item] of rows) {
       const row = node('tr'); if (id === activeId) row.classList.add('ds-design-active');
       row.dataset.designId = id;
@@ -1487,7 +1562,7 @@
       // Same rule as the periodic status sync: pre-caching never blocks exports.
       ppt.disabled = !designCanExport(id);
       // user-viewer generates PPTs and explores filters but cannot change stored Designs.
-      if (config.can_manage) action('Duplicate Design', '⧉', async () => { if (await confirmDiscard()) await duplicateDesign(id); });
+      if (config.can_manage) action('Duplicate Design', '⧉', async () => { if (await confirmDiscard()) await duplicateDesign(id); }, 'ds-design-duplicate');
       action('Export Design', '', () => exportDesign(id, item), 'ds-design-export');
       if (config.can_manage) {
         const remove = action('Delete Design', '×', async () => { await deleteDesign(id); }, 'danger-button');
@@ -1497,7 +1572,9 @@
           remove.title = item.change_refusal || '';
         }
       }
-      const cell = node('td'); cell.dataset.label = 'Actions'; cell.append(actions); row.append(cell); body.append(row);
+      const cell = node('td'); cell.dataset.label = 'Actions'; cell.append(actions); row.append(cell);
+      if (asCards) cardList.append(designCard({id, item, locked, update, nameEditor, technologySelect, templateSelect, statusBadge, actions, openViewer}));
+      else body.append(row);
     }
     if (config.can_manage) window.bindRowOrdering?.(body, {
       key: 'designId', handle: '.ds-design-drag-handle', title: 'Design Order Not Saved',
@@ -1664,7 +1741,9 @@
         canvas.setAttribute('role', 'img');
         canvas.setAttribute('aria-label', chart.title || 'PPT chart');
         preview.append(canvas);
-        fetch(chart.payload_url, {cache: 'no-store', credentials: 'same-origin'})
+        // Each chart is read and drawn once it comes near the screen (the panel is at the end of the page and a PPT has
+        // many charts): opening the page reads none of them.
+        whenNearScreen(preview, () => fetch(chart.payload_url, {cache: 'no-store', credentials: 'same-origin'})
           .then(async response => {
             const model = await response.json();
             if (!response.ok) throw new Error(model.detail || 'Unable to load chart model.');
@@ -1673,7 +1752,7 @@
           })
           .catch(() => {
             if (designPptChartsJobId === thumbnailJobId && preview.isConnected) preview.replaceChildren(cachedImage(chart));
-          });
+          }));
       } else preview.append(cachedImage(chart));
       card.append(head, preview);
       card.addEventListener('click', safe(() => showDesignPptChart(index)));
@@ -1685,6 +1764,16 @@
       return card;
     });
     $('ds-ppt-charts-body').replaceChildren(...cards);
+  };
+  // Runs draw() once the element comes near the screen (at once without IntersectionObserver).
+  const whenNearScreen = (element, draw) => {
+    if (!('IntersectionObserver' in window)) { draw(); return; }
+    const observer = new IntersectionObserver(entries => {
+      if (!entries.some(entry => entry.isIntersecting)) return;
+      observer.disconnect();
+      draw();
+    }, {rootMargin: '600px 0px'});
+    observer.observe(element);
   };
   const loadDesignPptCharts = async (jobId, scrollIntoView = false) => {
     const job = designPptJobs.find(item => String(item.id) === String(jobId));
@@ -2058,12 +2147,10 @@
     if (designStatusRefreshing || preparing || (openingTimes?.prepared === undefined && performance.now() - (openingTimes?.started ?? -Infinity) < 30000)) return;
     designStatusRefreshing = true;
     try {
-      const statusDefinitions = Object.fromEntries(Object.entries(designs).map(
-        ([id, item]) => [id, runtimeDesignDefinition(item, id)],
-      ));
-      // The open Design is reported so its universes are pre-cached first.
+      // The open Design is reported so its universes are pre-cached first. (The server reads the Designs it keeps: they
+      // are not sent, which every few seconds took it longer than the states themselves.)
       const statusPath = activeId ? `/statuses?active_design_id=${encodeURIComponent(activeId)}` : '/statuses';
-      const payload = await api(statusPath, 'POST', statusDefinitions);
+      const payload = await api(statusPath);
       for (const [id, value] of Object.entries(payload || {})) {
         const activePrepared = id === activeId && Boolean(prepared?.slides?.length) && !designNeedsRefresh();
         // The open Design's data is prepared; its charts may still be pending.
@@ -2852,28 +2939,31 @@
     card.addEventListener('click', () => chooseFromGallery(value));
     return card;
   }
+  // The gallery chooses the PPT Template of the open Design or, from Create PPT Design, that of the new one.
+  let galleryTarget = 'ds-template';
   function chooseFromGallery(value) {
     overlay('ds-template-gallery-overlay', false);
-    const select = $('ds-template');
+    const select = $(galleryTarget);
     if (select.value === value) return;
     select.value = value;
     select.dispatchEvent(new Event('change', {bubbles: true}));
   }
-  async function openTemplateGallery() {
+  async function openTemplateGallery(target = 'ds-template') {
+    galleryTarget = typeof target === 'string' ? target : 'ds-template';
     const list = $('ds-template-gallery-list');
     list.replaceChildren(node('p', 'Loading the PPT Templates…', 'form-note'));
     overlay('ds-template-gallery-overlay', true);
     let templates = [];
     try { templates = (await api('/templates-gallery')).templates || []; }
     catch (error) { list.replaceChildren(node('p', error.message, 'form-note')); return; }
-    const current = $('ds-template').value;
+    const current = $(galleryTarget).value;
     const cards = templates.map(template => galleryCard({
       value: template.identifier, name: template.name, active: template.active, chosen: current === template.identifier,
       detail: `${template.slides} slide${template.slides === 1 ? '' : 's'} · ${template.charts} chart${template.charts === 1 ? '' : 's'}`,
       slides: template.preview.map(gallerySlide), more: Math.max(0, template.slides - template.preview.length),
     }));
     // A new PPT Design can also start blank, with its cover only.
-    if (!definition) {
+    if (!definition || galleryTarget === 'ds-new-template') {
       cards.unshift(galleryCard({value: BLANK_TEMPLATE, name: BLANK_TEMPLATE, chosen: current === BLANK_TEMPLATE,
         detail: 'Its cover only: its slides are its own and it follows no template',
         slides: [gallerySlide({kind: 'title', title: 'Cover'}), node('span', '+', 'ds-template-gallery-slide is-new')]}));
@@ -2887,18 +2977,44 @@
   $('ds-template-gallery-overlay').addEventListener('keydown', event => {
     if (event.key === 'Escape') { event.stopPropagation(); overlay('ds-template-gallery-overlay', false); }
   });
+  // Create PPT Design asks in its own dialog for the name, NR Mode and PPT Template of the new Design (the active PPT
+  // Template of the workspace at first, or blank); the fields of the open Design are left as they are.
+  const newDesignTemplateOptions = () => {
+    const select = $('ds-new-template'), rows = templateRows(), current = select.value;
+    select.replaceChildren(option(BLANK_TEMPLATE, BLANK_TEMPLATE), ...rows.map(row => option(row.identifier, row.name)));
+    select.value = current && [...select.options].some(item => item.value === current)
+      ? current : (rows.find(row => row.active) || rows[0])?.identifier || BLANK_TEMPLATE;
+  };
+  const closeCreateDesign = () => { if (!$('ds-create-overlay').hidden) overlay('ds-create-overlay', false); };
+  bind('ds-create-open', () => {
+    newDesignTemplateOptions();
+    $('ds-new-name').value = nextName(NEW_DESIGN_NAME);
+    $('ds-create').disabled = !$('ds-new-template').options.length;
+    overlay('ds-create-overlay', true);
+    $('ds-new-name').focus();
+    $('ds-new-name').select();
+  });
+  bind('ds-create-cancel', closeCreateDesign);
+  bind('ds-create-close', closeCreateDesign);
+  bind('ds-new-template-gallery', () => openTemplateGallery('ds-new-template'));
+  $('ds-create-overlay').addEventListener('click', event => { if (event.target === event.currentTarget) closeCreateDesign(); });
+  $('ds-create-overlay').addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.stopPropagation(); closeCreateDesign(); }
+  });
+  $('ds-new-name').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); $('ds-create').click(); } });
   bind('ds-create', async () => {
     if (!await confirmDiscard(['name', 'template', 'nr_mode'])) return;
-    const nrMode = $('ds-nr-mode').value;
-    const blank = $('ds-template').value === BLANK_TEMPLATE;
-    const selected = blank ? {name: BLANK_TEMPLATE} : templateRows().find(row => row.identifier === $('ds-template').value);
+    const nrMode = $('ds-new-nr-mode').value;
+    const blank = $('ds-new-template').value === BLANK_TEMPLATE;
+    const selected = blank ? {name: BLANK_TEMPLATE} : templateRows().find(row => row.identifier === $('ds-new-template').value);
     if (!selected) throw new Error('Choose a template.');
-    const name = $('ds-name').value.trim() || nextName(NEW_DESIGN_NAME);
-    $('ds-name').value = name;
+    const name = $('ds-new-name').value.trim() || nextName(NEW_DESIGN_NAME);
+    $('ds-new-name').value = name;
     const item = {name,template:selected.name,nr_mode:nrMode,scope:'single',auto_cdrs:true,filters:{Campaign: defaultCampaignFilter('single')},sa_campaigns:normalizeDesignNrMode(nrMode) === NSA_AND_SA ? defaultCampaignFilter('single') : [],custom_fields:[],date_from:'Oldest',date_to:'Newest'};
     status(`Creating “${item.name}”…`); $('ds-create').disabled = true;
     try {
       const id = designId(), result = await api(`/${id}`,'PUT',item); designs[id] = result.definition; noteDesignUpdate(id, result);
+      closeCreateDesign();
       if (!blank) { await openDesignFilters(id); return; }
       // Blank, it opens in its Designer, where its slides are added.
       library();
@@ -2907,7 +3023,7 @@
       overlay('ds-viewer', true);
       await loading;
     }
-    finally { $('ds-create').disabled = !$('ds-template').options.length; }
+    finally { $('ds-create').disabled = !$('ds-new-template').options.length; }
   });
   bind('ds-save', save);
   // PPT Templates (the button of the library): the templates of the workspace in a dialog. Edit opens one in the viewer
@@ -5261,8 +5377,20 @@
     if (designs[last]) await openDesign(last);
     if (restorePageState) restoreScroll(); else resetScroll();
   })();
-  window.setInterval(refreshDesignStatuses, 2000);
-  window.setInterval(refreshDesignPptJobs, 2000);
+  // The states of the Designs and the PPT jobs are read every 2 seconds while a Design is prepared or a PPT generated,
+  // otherwise every 15 seconds (what is done in the page reads them at once), and not while the page is hidden.
+  const SETTLED_DESIGN_STATES = new Set(['ready', 'data-needed', 'failed']);
+  const SETTLED_JOB_STATES = new Set(['ready', 'completed', 'failed', 'cancelled', 'canceled', 'error', 'stopped']);
+  const designWorkRunning = () => Boolean(preparing) || designPreparationTokens.size > 0
+    || [...designStatuses.values()].some(value => value?.state && !SETTLED_DESIGN_STATES.has(value.state))
+    || designPptJobs.some(job => !SETTLED_JOB_STATES.has(String(job.status || '').toLowerCase()));
+  let designStatesReadAt = performance.now();
+  window.setInterval(() => {
+    if (document.hidden || (!designWorkRunning() && performance.now() - designStatesReadAt < 15000)) return;
+    designStatesReadAt = performance.now();
+    void refreshDesignStatuses();
+    void refreshDesignPptJobs();
+  }, 2000);
   window.addEventListener('drivetest-analyzer:refresh-background-tasks', () => { void refreshDesignStatuses(); void refreshDesignPptJobs(); });
   window.addEventListener('focus', () => { void refreshDesignStatuses(); void refreshDesignPptJobs(); });
 })();

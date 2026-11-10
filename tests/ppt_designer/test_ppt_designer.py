@@ -1889,8 +1889,8 @@ def test_designs_lifecycle_and_layout(client):
     assert "view.dataset.designViewId = id;" in design_script
     assert 'button.disabled = false;' in design_script
     assert "const setViewEnabled = enabled => { $('ds-view').disabled = !definition; syncDesignViewActions(); syncDesignPptActions(); };" in design_script
-    assert "const payload = await api(statusPath, 'POST', statusDefinitions);" in design_script
-    assert "window.setInterval(refreshDesignStatuses, 2000);" in design_script
+    assert 'const payload = await api(statusPath);' in design_script
+    assert "if (document.hidden || (!designWorkRunning() && performance.now() - designStatesReadAt < 15000)) return;" in design_script
     assert "const designName = String(task.design_name || '');" in app_script
     assert "? `PPT Design “${designName}”: ${String(task.label || 'Background task')}`" in app_script
     assert 'completedByWorkspace.forEach((entries) =>' in app_script

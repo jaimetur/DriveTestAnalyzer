@@ -561,7 +561,7 @@ function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
   const selector = [
     'table.catalogue-workspace-table',
     'table.report-jobs-table', 'table.workspace-library-table', 'table.recovered-transfer-table',
-    'table.operator-mappings-table', 'table.ds-designs-table',
+    'table.operator-mappings-table',
     '.report-charts-grid',
   ].join(', ');
   const compactViewport = window.matchMedia('(max-width: 640px)');

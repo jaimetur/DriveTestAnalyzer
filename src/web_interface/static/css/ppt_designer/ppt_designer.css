@@ -1891,8 +1891,8 @@
 #ds-viewer.ds-template-preview :is(#ds-viewer-export-ppt, #ds-generate-ppt) { display: none !important; }
 
 /* Create PPT Design and Import PPT Design with their icons. */
-.ppt-designer :is(#ds-create, #ds-import) { display: inline-flex; align-items: center; gap: .5rem; }
-.ppt-designer :is(#ds-create, #ds-import) svg { flex: none; width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ppt-designer :is(#ds-create-open, #ds-create, #ds-import) { display: inline-flex; align-items: center; gap: .5rem; }
+.ppt-designer :is(#ds-create-open, #ds-create, #ds-import) svg { flex: none; width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* The image of the whole slide: beside the slide chooser, above the slide (as the image buttons of the charts look). */
 .ds-slide-image-actions { display: inline-flex; align-items: center; gap: 6px; }
@@ -1968,3 +1968,43 @@
 .ds-template-gallery-box .ds-cb-picture svg { display: block; width: 100%; height: 100%; }
 .ds-template-gallery-kind { color: #8a7fa0; font-size: .5rem; font-weight: 800; }
 .ds-template-gallery-more { justify-self: end; color: var(--ds-color); font-size: .74rem; font-weight: 800; }
+
+/* The fields of the open Design, which its saving reads (Create PPT Design has its own, in a dialog). */
+.ds-management[hidden] { display: none !important; }
+/* Create PPT Design: the name, NR Mode and PPT Template of the new Design in a dialog. */
+.ppt-designer .ds-create-dialog { width: min(780px, 94vw) !important; max-width: none !important; padding: 18px 22px 20px !important; }
+.ds-create-dialog header { margin: 0 2.4rem 1rem 0; }
+.ds-create-dialog header h2 { margin: .1rem 0 0; }
+.ds-create-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: 1.2rem; }
+.ppt-designer .ds-create-actions .secondary-button { border-color: rgba(91, 63, 153, .3); background: #fff; color: #5b3f99; }
+/* Phones: the Designs as cards, as the reports of Reporting (ppt_designer.js), in place of the table. */
+.ds-design-cards { display: grid; gap: .65rem; margin: .4rem 0 0; padding: 0; list-style: none; }
+.ds-design-cards[hidden], .ds-designs-table-wrap.is-shown-as-cards { display: none !important; }
+.ds-design-card { display: grid; gap: .45rem; min-width: 0; padding: .8rem .9rem; border: 1px solid rgba(91, 63, 153, .18); border-radius: 12px; background: #fff; }
+.ds-design-card.is-active { border-color: #7751b9; box-shadow: inset 4px 0 0 #7751b9; }
+.ds-design-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+.ppt-designer .ds-design-card-name { min-width: 0; min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; color: #1f1633; font: inherit; font-size: .98rem; font-weight: 800; line-height: 1.3; text-align: left; overflow-wrap: anywhere; }
+.ds-design-card-head .ds-design-status { flex: 0 0 auto; width: auto; min-width: 0; padding: .1rem .55rem; font-size: .7rem; }
+.ds-design-card-labels { display: flex; flex-wrap: wrap; gap: .3rem; }
+.ds-design-card-labels > span { min-width: 0; padding: .05rem .45rem; border-radius: 5px; font-size: .74rem; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
+.ds-design-card-mode { border: 1px solid #6b7a70; color: #4a564e; }
+.ds-design-card-mode.is-nsa { border-color: #d9a400; background: #fff4d1; color: #7a5600; }
+.ds-design-card-mode.is-sa { border-color: #5b9bd5; background: #e3f0fc; color: #1f5f99; }
+.ds-design-card-mode.is-both { border-color: #8b6fc7; background: #f1ebfb; color: #4f376a; }
+.ds-design-card-template { background: #f1ebfb; color: #4f376a; }
+.ds-design-card-meta { margin: 0; color: #6b7280; font-size: .8rem; }
+.ds-design-card-details { display: grid; gap: .5rem; padding: .6rem; border-radius: 10px; background: #f8f5fc; }
+.ds-design-card-details[hidden] { display: none; }
+.ds-design-card-details label { display: grid; gap: .25rem; color: #4f376a; font-size: .76rem; font-weight: 700; }
+.ds-design-card-actions { display: flex; align-items: center; gap: .4rem; }
+.ppt-designer .ds-design-card-actions :is(.ds-design-card-primary, .ds-design-card-secondary) { min-height: 0; padding: .45rem .95rem; border-radius: 999px; font: inherit; font-size: .86rem; font-weight: 800; box-shadow: none; }
+.ppt-designer .ds-design-card-actions .ds-design-card-primary { border: 1px solid #167957; background: linear-gradient(145deg, #167957, #29ae7d); color: #fff; }
+.ppt-designer .ds-design-card-actions .ds-design-card-secondary { border: 1px solid rgba(184, 91, 32, .45); background: #fff7ee; color: #9f4c17; }
+.ds-design-card-more { position: relative; margin-left: auto; }
+.ds-design-card-more > summary { display: grid; place-items: center; width: 2.1rem; height: 2.1rem; border: 1px solid rgba(91, 63, 153, .25); border-radius: 999px; color: #5b3f99; font-weight: 800; list-style: none; cursor: pointer; }
+.ds-design-card-more > summary::-webkit-details-marker { display: none; }
+.ds-design-card-more[open] > summary { background: #f1ebfb; }
+.ds-design-card-menu { position: absolute; top: calc(100% + .3rem); right: 0; z-index: 30; display: grid; min-width: 11rem; padding: .3rem; border: 1px solid rgba(91, 63, 153, .2); border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(18, 32, 43, .18); }
+.ppt-designer .ds-design-card-menu .ds-design-card-menu-item { min-height: 0; padding: .55rem .75rem; border: 0; border-radius: 7px; background: none; box-shadow: none; color: #1f2937; font: inherit; font-size: .9rem; font-weight: 600; text-align: left; white-space: nowrap; }
+.ppt-designer .ds-design-card-menu .ds-design-card-menu-item:hover:not(:disabled) { background: #f1ebfb; color: #4f376a; }
+.ppt-designer .ds-design-card-menu .ds-design-card-menu-item.is-danger { color: #b42318; }
