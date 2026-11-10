@@ -9694,7 +9694,7 @@ function keepOneOperatorIncluded(select) {
 
 document.addEventListener('submit', (event) => {
   const form = event.target instanceof HTMLFormElement ? event.target : null;
-  const panel = form?.matches('form.operator-mapping-create') ? form.closest('[data-panel-state-key="admin:operator-mappings"]') : null;
+  const panel = form?.matches('form.operator-mapping-create') ? inPlaceOf(form).closest('[data-panel-state-key="admin:operator-mappings"]') : null;
   if (!panel || form.querySelector('.mapping-role-select')?.value !== 'exclude') return;
   if (!everyOperatorExcluded([...operatorLabelRoles(panel), 'exclude'])) return;
   event.preventDefault();
@@ -13816,4 +13816,78 @@ document.addEventListener('change', async (event) => {
     tell(run, report);
   };
   stored().forEach((job, index) => window.setTimeout(() => check(job.id), 1500 + index * 300));
+})();
+
+// Creation forms (data-create-dialog="<title>"; data-create-label the text of their button): a button in their place
+// opens them in a floating dialog, instead of their fields taking room all the time. The form keeps its fields, its
+// submission and its own scripts (inPlaceOf answers for the place it was taken from). A creation row of a table goes in
+// a table of its own, each field under the name of its column, and its button before the table.
+function inPlaceOf(element) {
+  return element?.closest?.('[data-create-dialog-overlay]')?.createDialogButton || element;
+}
+(() => {
+  document.querySelectorAll('[data-create-dialog]').forEach((source) => {
+    const title = source.dataset.createDialog;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'create-dialog-open';
+    button.setAttribute('aria-haspopup', 'dialog');
+    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+    button.append(document.createTextNode(source.dataset.createLabel || title));
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay create-dialog-overlay';
+    overlay.hidden = true;
+    overlay.dataset.createDialogOverlay = '';
+    overlay.createDialogButton = button;
+    const panel = document.createElement('section');
+    panel.className = 'confirm-panel create-dialog-panel';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-label', title);
+    panel.tabIndex = -1;
+    // (The styles of the page its form comes from, such as those of its pickers of workspaces and users.)
+    const context = source.closest('.admin-stack') ? 'admin' : source.closest('.workspace-switcher-panel') ? 'workspace' : '';
+    if (context) panel.classList.add(`create-dialog-from-${context}`);
+    const head = document.createElement('header');
+    head.className = 'create-dialog-head';
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'create-dialog-close';
+    closeButton.setAttribute('aria-label', 'Close without creating');
+    closeButton.textContent = '×';
+    head.append(heading, closeButton);
+    panel.append(head);
+    if (source.matches('tr')) {
+      const table = source.closest('table');
+      // (The names of the columns, without the arrows of their sorting or filters.)
+      const headers = [...(table?.tHead?.rows[0]?.cells || [])].map((cell) => cell.textContent.replace(/[↕↑↓▾▼▴▲]/g, '').trim());
+      [...source.cells].forEach((cell, index) => { if (!cell.dataset.label && headers[index]) cell.dataset.label = headers[index]; });
+      const holder = document.createElement('table');
+      holder.className = `${table?.className || ''} create-dialog-table`;
+      const body = document.createElement('tbody');
+      holder.append(body);
+      (table?.closest('.table-wrap, .data-table-wrap') || table)?.before(button);
+      body.append(source);
+      panel.append(holder);
+    } else {
+      source.before(button);
+      panel.append(source);
+    }
+    overlay.append(panel);
+    document.body.append(overlay);
+    const close = () => {
+      if (overlay.hidden) return;
+      overlay.hidden = true;
+      button.focus();
+    };
+    button.addEventListener('click', () => {
+      overlay.hidden = false;
+      (panel.querySelector('input:not([type="hidden"]):not([type="color"]), select, textarea') || panel).focus();
+    });
+    closeButton.addEventListener('click', close);
+    overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
+    overlay.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } });
+  });
 })();

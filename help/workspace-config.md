@@ -61,7 +61,7 @@ Choose the label of each name in its list: one of the Operator labels of subpane
 
 **2 · Operator labels** lists one row per label with its **Order**, **Colour**, **Label**, **Role**, **NR Modes**, **Possible names in the CDRs** and **Actions**. The possible names are how the label can be written in the CDRs of the different campaigns, shown as chips: highlighted with the number of CDRs when the current CDRs have them, grey when they are names of other campaigns, and ordered from the name in most CDRs (alphabetically when they tie). Hovering a chip, a CDRs count or a **Merges N** badge shows its CDRs or names at once; clicking it keeps them in a floating panel until it is closed (×, Esc or a click outside). **×** removes a name and **Add a name** with **+** adds one; a name of another label moves to this one at once. Under the label, **Merges N** tells that it adds up N names of the current CDRs that coincide in the same campaign and NR Mode. The label also stands for the name written like itself, so it need not be added. Saving a label asks for the same confirmation as subpanel 1.
 
-Use **Add label** to create a label with its colour, role, NR Modes and possible names (one per line; comma and semicolon separators are accepted too). Change a label's name, role, NR Modes, possible names or colour and press **Save Labels**, below the table, to save every changed label at once (Enter in a label saves that one). **Move up** and **Move down** set its position in Operator charts and in Subscriber dimensions; the first and last rows cannot move beyond the table. **Delete** removes the label after confirmation, and its names are shown as they are until they get another label.
+Use **New Operator label** (or **New Vendor label**) to create a label in a dialog with its colour, role, NR Modes and possible names, and **Add label** (one per line; comma and semicolon separators are accepted too). Change a label's name, role, NR Modes, possible names or colour and press **Save Labels**, below the table, to save every changed label at once (Enter in a label saves that one). **Move up** and **Move down** set its position in Operator charts and in Subscriber dimensions; the first and last rows cannot move beyond the table. **Delete** removes the label after confirmation, and its names are shown as they are until they get another label.
 
 The **Role** beside each label is **Include** (yellow, the default: the operator is analysed as usual), **Focus** (green) or **Exclude** (red), recorded in App Events when it changes; a note above the labels explains each one:
 
@@ -324,7 +324,7 @@ The **AI Assistant Glossary** panel, the last of the page, holds what the [AI As
 
 - **Suggestions from the chat** lists the terms users suggest below the answers of the assistant, with who suggested them and when: **Accept** adds one to the glossary as it is or corrected, **Dismiss** removes it.
 - **Terms** lists the glossary, each term with its meaning, who changed it last and when: **Save** keeps a change and **×** deletes the term once you confirm.
-- **Add Term** adds a term with its meaning.
+- **New term** opens a dialog where **Add Term** adds a term with its meaning.
 
 Every change is registered in App Events. The terms travel as the **AI Assistant Glossary** element of Admin's Import / Export / Transfer (an imported term replaces the one with the same identity, or else the same term, and nothing is deleted), with Full Workspace transfers and with backups; suggestions not accepted stay in their workspace.
 
