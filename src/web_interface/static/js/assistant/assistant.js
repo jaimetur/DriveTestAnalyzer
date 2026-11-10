@@ -154,20 +154,22 @@
     caption.append(tools);
     box.append(caption);
     const scroller = element('div', `assistant-table-scroll${rows > 15 ? ' long' : ''}`);
-    // A query result (its rows given by the tool) keeps each value on one line, its headers aligned as their column.
+    // A query result (its rows given by the tool) keeps each value on one line. A column and its header are aligned
+    // together: to the right when every value of the column is a figure, to the left otherwise.
     const result = Boolean(table.result);
     const grid = element('table', `assistant-table${result ? ' assistant-result-table' : ''}`);
     const numericColumn = (index) => (table.rows || []).some((row) => String(row[index] ?? '').trim())
       && (table.rows || []).every((row) => !String(row[index] ?? '').trim() || NUMERIC.test(String(row[index]).trim()));
+    const numeric = (table.columns || []).map((_column, index) => numericColumn(index));
     const head = element('thead');
     const headRow = element('tr');
-    (table.columns || []).forEach((column, index) => headRow.append(element('th', result && numericColumn(index) ? 'numeric' : '', column)));
+    (table.columns || []).forEach((column, index) => headRow.append(element('th', numeric[index] ? 'numeric' : '', column)));
     head.append(headRow);
     const body = element('tbody');
     (table.rows || []).forEach((row) => {
       const line = element('tr');
-      row.forEach((cell) => {
-        const item = element('td', NUMERIC.test(String(cell).trim()) ? 'numeric' : '', cell);
+      row.forEach((cell, index) => {
+        const item = element('td', numeric[index] ? 'numeric' : '', cell);
         if (result && String(cell).length > 40) item.title = String(cell);
         line.append(item);
       });
@@ -382,9 +384,64 @@
     return button;
   }
 
-  function scrollToEnd() {
-    elements.messages.scrollTop = elements.messages.scrollHeight;
+  // -- scrolling ----------------------------------------------------------------------------------------------------
+  // The chat follows its last line only while the user is there: scrolled up to read the history, it stays where it
+  // is while an answer is prepared, and a floating arrow takes it back to the last line. On phones the page scrolls.
+  const PHONE = window.matchMedia('(max-width: 600px)');
+  const jump = document.getElementById('assistant-jump');
+  const pageScrolls = () => PHONE.matches;
+
+  function distanceToEnd() {
+    if (pageScrolls()) return elements.messages.getBoundingClientRect().bottom - window.innerHeight;
+    return elements.messages.scrollHeight - elements.messages.scrollTop - elements.messages.clientHeight;
   }
+
+  function updateJump() {
+    if (!jump) return;
+    const away = !elements.welcome.isConnected && distanceToEnd() > 120;
+    jump.hidden = !away;
+    if (!away) jump.classList.remove('has-new');
+  }
+
+  // ``force``: the user asked or opened a conversation, so the chat goes to its end whatever it showed.
+  function scrollToEnd(force = true) {
+    if (!force && !state.stick) {
+      if (jump) jump.classList.add('has-new');
+      updateJump();
+      return;
+    }
+    state.stick = true;
+    if (pageScrolls()) elements.messages.lastElementChild?.scrollIntoView({block: 'end'});
+    else elements.messages.scrollTop = elements.messages.scrollHeight;
+    updateJump();
+  }
+
+  // On phones the arrow floats over the page (a panel of the chat would hold a fixed button inside it).
+  const placeJump = () => {
+    const target = pageScrolls() ? document.body : document.querySelector('.assistant-messages-wrap');
+    if (jump && target && jump.parentElement !== target) target.append(jump);
+    updateJump();
+  };
+  PHONE.addEventListener?.('change', placeJump);
+  placeJump();
+
+  state.stick = true;
+  elements.messages.addEventListener('scroll', () => {
+    if (pageScrolls()) return;
+    state.stick = distanceToEnd() < 48;
+    updateJump();
+  }, {passive: true});
+  window.addEventListener('scroll', () => {
+    if (!pageScrolls()) return;
+    state.stick = distanceToEnd() < 48;
+    updateJump();
+  }, {passive: true});
+  jump?.addEventListener('click', () => {
+    state.stick = true;
+    jump.classList.remove('has-new');
+    if (pageScrolls()) elements.messages.lastElementChild?.scrollIntoView({block: 'end', behavior: 'smooth'});
+    else elements.messages.scrollTo({top: elements.messages.scrollHeight, behavior: 'smooth'});
+  });
 
   // -- asking -------------------------------------------------------------------------------------------------------
 
@@ -400,7 +457,7 @@
     const list = elements.messages.querySelector('.assistant-pending .assistant-steps');
     if (!list) return;
     list.replaceChildren(...(steps || []).map((step, index, all) => element('li', index === all.length - 1 ? 'current' : '', step)));
-    scrollToEnd();
+    scrollToEnd(false);
   }
 
   function stopPolling() {
@@ -431,7 +488,7 @@
         stopPolling();
         setBusy(false);
         setStatus(current.status === 'done' ? '' : current.error, current.status === 'failed');
-        scrollToEnd();
+        scrollToEnd(false);
         refreshConversations().catch(() => {});
       } catch (error) {
         failedChecks += 1;

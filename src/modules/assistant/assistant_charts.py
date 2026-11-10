@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections.abc import Callable
 from typing import Any
 
 SCORING_VIEWS = ('points', 'environments', 'categories', 'gap', 'trend', 'kpis')
@@ -721,8 +722,10 @@ def clean_specs(value: Any) -> list[dict[str, Any]]:
     return specs[:MAX_CHARTS]
 
 
-def build_chart(spec: dict[str, Any], cache: dict[str, Any], tables: list[dict[str, Any]], colours: Colours) -> dict[str, Any]:
-    """The model of one chart of an answer (its names real: ``spec`` and ``tables`` are given unmasked)."""
+def build_chart(spec: dict[str, Any], cache: dict[str, Any], tables: list[dict[str, Any]], colours: Colours,
+                relabel: Callable[[Any], Any] = lambda document: document) -> dict[str, Any]:
+    """The model of one chart of an answer (its names real: ``spec`` and ``tables`` are given as the page shows them;
+    ``relabel`` writes the campaigns of the data of the tools as the page shows them)."""
     match = SOURCE.match(spec.get('source') or '')
     if not match:
         raise ChartError(f'source "{spec.get("source")}" is not S1, G1, R1, T1 or P1.')
@@ -759,6 +762,8 @@ def build_chart(spec: dict[str, Any], cache: dict[str, Any], tables: list[dict[s
         table = tables[number - 1]
         model = table_chart([str(column) for column in table.get('columns') or []], [list(row) for row in table.get('rows') or []],
                             spec, title or str(table.get('title') or ''), colours)
+    if kind in {'S', 'R'}:
+        model = relabel(model)
     model = apply_styles(model, spec)
     size = len(json.dumps(model, ensure_ascii=False, default=str))
     if size > MAX_MODEL_CHARS:
@@ -772,13 +777,14 @@ def build_chart(spec: dict[str, Any], cache: dict[str, Any], tables: list[dict[s
 
 
 def build_charts(specs: list[dict[str, Any]], cache: dict[str, Any], tables: list[dict[str, Any]],
-                 operators: dict[str, tuple[str, int]]) -> tuple[list[dict[str, Any]], list[str]]:
+                 operators: dict[str, tuple[str, int]],
+                 relabel: Callable[[Any], Any] = lambda document: document) -> tuple[list[dict[str, Any]], list[str]]:
     """The charts of an answer and the problems of those that cannot be drawn."""
     colours = Colours(operators)
     charts, problems = [], []
     for spec in specs:
         try:
-            charts.append(build_chart(spec, cache, tables, colours))
+            charts.append(build_chart(spec, cache, tables, colours, relabel))
         except ChartError as exc:
             problems.append(f'{spec.get("source")}: {exc}')
     return charts, problems

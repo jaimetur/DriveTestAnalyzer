@@ -75,6 +75,8 @@ tool shows the user the real names. Never guess what a code stands for and never
 dates, quarters (2026-Q3) and identifiers such as JOIN_IDs are real.
 
 How to work:
+- The page shows every campaign code with its label of the Campaign Maps of the workspace (26-Q3-NSA): write the
+  code alone, never its raw name or quarter beside it; the rows of the query results are shown with those labels too.
 - Answer from the results of the tools only. Every figure of your answer must appear in a tool result; for a
   difference, a share or a ratio call the calculate tool first. Never estimate or invent a figure.
 - Plan the fewest tool calls; call several tools in the same step when they do not depend on each other.
@@ -724,7 +726,7 @@ def _answer(engine: Engine, context: ToolContext, conversation_id: int, question
         calls = [call for call in document.get('tool_calls') or [] if isinstance(call, dict)]
         if document.get('status') == 'tools' and calls and step < MAX_STEPS:
             if document.get('note'):
-                progress(pseudonyms.unmask_text(document['note']))
+                progress(pseudonyms.show_text(document['note']))
             results = []
             for call in calls[:MAX_TOOL_CALLS_PER_STEP]:
                 if cancelled():
@@ -773,9 +775,10 @@ def _answer(engine: Engine, context: ToolContext, conversation_id: int, question
                   'out, and reply with the whole answer again.')})
             continue
         shown_tables = [_shown_table(table, pseudonyms) for table in tables]
+        # The charts as the page shows them: their campaigns by the label of the Campaign Maps, as their tables.
         charts, chart_problems = charts_module.build_charts(
-            [pseudonyms.unmask(spec) for spec in specs], context.cache, shown_tables,
-            charts_module.operator_colours(_operator_groups(context)))
+            [pseudonyms.show(spec) for spec in specs], context.cache, shown_tables,
+            charts_module.operator_colours(_operator_groups(context)), relabel=pseudonyms.relabel)
         if chart_problems and not charts_repaired and step < MAX_STEPS:
             charts_repaired = True
             progress('Checking the charts of the answer')
@@ -796,9 +799,9 @@ def _answer(engine: Engine, context: ToolContext, conversation_id: int, question
         warning = ' '.join(part for part in (warning, f'{len(final["chart_problems"])} chart(s) could not be drawn: '
                                              + '; '.join(final['chart_problems'][:4]) + '.') if part)
     return {
-        'content': pseudonyms.unmask_text(final['answer']), 'tables': [_shown_table(table, pseudonyms) for table in final['tables']],
+        'content': pseudonyms.show_text(final['answer']), 'tables': [_shown_table(table, pseudonyms) for table in final['tables']],
         'charts': final['charts'],
-        'follow_ups': pseudonyms.unmask(final['follow_ups']), 'trace': trace, 'warning': warning,
+        'follow_ups': pseudonyms.show(final['follow_ups']), 'trace': trace, 'warning': warning,
         'sent': sent, 'legend': pseudonyms.legend(), 'engine': engine.id, 'model': model,
         'duration_ms': round((time.monotonic() - started) * 1000), 'untraced': final['problems'], **tokens,
     }
@@ -838,10 +841,11 @@ def _tables(value: Any, results: dict[str, dict[str, Any]] | None = None) -> lis
 
 
 def _shown_table(table: dict[str, Any], pseudonyms: Pseudonymizer) -> dict[str, Any]:
-    """A table with the real names: a query result already holds them (only its title has codes)."""
+    """A table as the page shows it, with the real names and the campaigns by their label of the Campaign Maps: a query
+    result already holds the names (only its title has codes)."""
     if table.get('result'):
-        return {**table, 'title': pseudonyms.unmask_text(table['title'])}
-    return pseudonyms.unmask(table)
+        return {**table, 'title': pseudonyms.show_text(table['title']), 'rows': pseudonyms.relabel(table['rows'])}
+    return pseudonyms.show(table)
 
 
 def _summary(name: str, result: dict[str, Any]) -> str:

@@ -24,6 +24,8 @@ KINDS: dict[str, str] = {
 KIND_LABELS = {'operator': 'Operator', 'vendor': 'Vendor', 'region': 'Region', 'cluster': 'Cluster', 'city': 'City',
                'campaign': 'Campaign', 'methodology': 'Methodology', 'workspace': 'Workspace', 'user': 'User'}
 # A code stands alone or inside an identifier joined by underscores (OP1_Voice), never inside a word or a number.
+# A quarter (2026-Q3) is sent as it is: a label of the Campaign Maps written so is never another spelling of a campaign.
+QUARTER = re.compile(r'\d{4}[-_ ]?Q[1-4]', re.IGNORECASE)
 CODE = re.compile(r'(?<![A-Za-z0-9])(' + '|'.join(KINDS.values()) + r')(\d{1,5})(?![A-Za-z0-9])')
 # Operators and vendors of mobile networks that are masked even when the workspace has no data of them, so a question
 # or a glossary entry that names one sends no name either.
@@ -109,6 +111,10 @@ class Pseudonymizer:
         self.quiet: dict[str, str] = {str(term): str(code) for term, code in (state.get('quiet') or {}).items()
                                       if str(code) in self.codes}
         self._pattern: re.Pattern[str] | None = None
+        # code -> how the page shows its name (a campaign: its label of the Campaign Maps); never kept with the
+        # conversation, as the map can change.
+        self.labels: dict[str, str] = {}
+        self._label_pattern: re.Pattern[str] | None = None
 
     # -- building ---------------------------------------------------------------------------------------------------
 
@@ -148,6 +154,17 @@ class Pseudonymizer:
                 self.terms[key] = code
                 self.quiet.pop(key, None)
                 self._pattern = None
+        return code
+
+    def add_campaign(self, name: str, label: str) -> str | None:
+        """A campaign of the CDRs: its code, shown with its label of the Campaign Maps (another spelling of it too, unless
+        the label is a quarter, which is sent as it is)."""
+        label = str(label or '').strip()
+        aliases = [label] if label and label.casefold() != str(name).strip().casefold() and not QUARTER.fullmatch(label) else []
+        code = self.add('campaign', name, aliases)
+        if code and label:
+            self.labels[code] = label
+            self._label_pattern = None
         return code
 
     def add_user(self, username: str, full_name: str = '') -> str | None:
@@ -239,6 +256,48 @@ class Pseudonymizer:
             return [self.unmask(value) for value in document]
         return document
 
+    # -- what the page shows -----------------------------------------------------------------------------------------
+
+    def show_text(self, text: Any) -> str:
+        """The text as the page shows it: every code replaced by the name it stands for, a campaign by its label of the
+        Campaign Maps, and the campaigns written by their name (a value of the data) by their label too."""
+        value = '' if text is None else str(text)
+        shown = CODE.sub(lambda match: self.labels.get(code := f'{match.group(1)}{match.group(2)}')
+                         or (self.codes.get(code) or {}).get('name') or match.group(0), value)
+        return self.relabel_text(shown)
+
+    def show(self, document: Any) -> Any:
+        if isinstance(document, str):
+            return self.show_text(document)
+        if isinstance(document, dict):
+            return {key if _field_key(key) else self.show_text(key): self.show(value) for key, value in document.items()}
+        if isinstance(document, (list, tuple)):
+            return [self.show(value) for value in document]
+        return document
+
+    def relabel_text(self, text: Any) -> str:
+        """A value of the data with its campaigns written by their label of the Campaign Maps (EE - UK_Q2_2026 reads
+        EE - 26-Q2), also inside identifiers joined by underscores."""
+        value = '' if text is None else str(text)
+        names = {self.codes[code]['name'].casefold(): label for code, label in self.labels.items()
+                 if code in self.codes and label != self.codes[code]['name']}
+        if not value or not names:
+            return value
+        if self._label_pattern is None:
+            self._label_pattern = re.compile(r'(?<![^\W_])(' + '|'.join(re.escape(name) for name in sorted(names, key=len, reverse=True))
+                                             + r')(?![^\W_])', re.IGNORECASE)
+        return self._label_pattern.sub(lambda match: names.get(match.group(1).casefold(), match.group(1)), value)
+
+    def relabel(self, document: Any) -> Any:
+        """A document of the data (a query result, a chart) with the campaigns by their label: its values, not its keys."""
+        if isinstance(document, str):
+            return self.relabel_text(document)
+        if isinstance(document, dict):
+            return {key: self.relabel(value) for key, value in document.items()}
+        if isinstance(document, (list, tuple)):
+            return [self.relabel(value) for value in document]
+        return document
+
     def leaks(self, text: str) -> list[str]:
         """The known names a text still holds (none, once masked): the check before anything is sent."""
         pattern = self._regex()
@@ -281,12 +340,20 @@ def workspace_pseudonymizer(repository: Any, workspace_name: str = '', state: di
         catalogues = repository.cdr_catalogues_by_dataset(dataset_ids)
     except Exception:  # noqa: BLE001 - no CDR catalogue yet
         catalogues = {}
-    fields = (('operators', 'operator'), ('regions', 'region'), ('clusters', 'cluster'), ('cities', 'city'),
-              ('campaigns', 'campaign'))
+    fields = (('operators', 'operator'), ('regions', 'region'), ('clusters', 'cluster'), ('cities', 'city'))
+    from src.modules.cdr.column_names import format_campaign
+    from src.modules.mapping.campaign_maps import load_campaign_map
+    try:
+        campaign_map = load_campaign_map(repository)
+    except Exception:  # noqa: BLE001 - a repository without the workspace state: the default map
+        campaign_map = None
     for catalogue in catalogues.values():
         for field, kind in fields:
             for value in catalogue.get(field) or []:
                 pseudonyms.add(kind, value)
+        # The campaigns are shown as the Campaign Maps name them (every chart, table and legend of the tool does).
+        for value in catalogue.get('campaigns') or []:
+            pseudonyms.add_campaign(value, format_campaign(value, campaign_map) if campaign_map else '')
     # The vendors as the scoring names them: without the operator of a fallback value (EE - All is no vendor).
     from src.modules.scoring.scoring_vendors import scoring_vendor_names, scoring_vendor_operators
     operators = scoring_vendor_operators(catalogues, groups if isinstance(groups, list) else [])

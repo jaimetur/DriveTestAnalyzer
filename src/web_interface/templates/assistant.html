@@ -28,6 +28,7 @@
           <button type="button" class="assistant-icon-button danger" id="assistant-delete" title="Delete this conversation" hidden>Delete</button>
         </div>
       </header>
+      <div class="assistant-messages-wrap">
       <div class="assistant-messages" id="assistant-messages" aria-live="polite">
         <div class="assistant-welcome" id="assistant-welcome">
           <p class="assistant-welcome-title">What do you want to know about <strong>{{ assistant_config.workspace }}</strong>?</p>
@@ -35,6 +36,8 @@
             {% for example in assistant_config.examples %}<button type="button" class="assistant-chip" data-example="{{ example }}">{{ example }}</button>{% endfor %}
           </div>
         </div>
+      </div>
+      <button type="button" class="assistant-jump" id="assistant-jump" title="Go to the last line of the conversation" aria-label="Go to the last line of the conversation" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m5 12 7 7 7-7"/></svg></button>
       </div>
       <form class="assistant-composer" id="assistant-composer" autocomplete="off">
         <textarea id="assistant-question" rows="2" maxlength="{{ assistant_config.max_question_length }}" placeholder="Ask a question about this workspace… (Enter sends, Shift+Enter adds a line)" aria-label="Question"></textarea>

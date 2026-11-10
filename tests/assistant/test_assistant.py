@@ -596,6 +596,11 @@ def test_the_scoring_charts_follow_the_views_of_the_module():
     assert gap['type'] == 'hbar' and gap['cells'] == [[-75.34]] and gap['title'] == 'GAP to EE'
     kpis = charts.scoring_chart({**stored, 'only': {'Operator': ['VF']}}, 'kpis', '', '', colours)
     assert kpis['row_keys'] == [['Call Success'], ['Video'], ['Browsing']] and kpis['cells'] == [[40.0], [25.0], [10.0]]
+    # The campaigns of the data are shown as the page shows them (the Campaign Maps), before the styles name them.
+    spec = {'source': 'S1', 'view': 'trend', 'title': '', 'type': '', 'styles': [{'series': '', 'colour': '', 'width': 6, 'dash': ''}]}
+    built, problems = charts.build_charts([spec], {'scoring_results': {'S1': stored}}, [], {},
+                                          relabel=lambda document: json.loads(json.dumps(document).replace('UK_Q2_NSA_2026', '26-Q2-NSA')))
+    assert problems == [] and built[0]['model']['x_keys'][0] == ['26-Q2-NSA'] and built[0]['model']['series'][0]['width'] == 6
     with pytest.raises(charts.ChartError, match='two or more campaigns'):
         charts.scoring_chart({**stored, 'result': {'totals': result['totals'][:2]}}, 'trend', '', '', colours)
 
@@ -675,3 +680,26 @@ def test_a_chart_of_an_earlier_answer_is_drawn_again_with_another_style(named_re
     assert chart['source'] == 'P2' and [item['width'] for item in chart['model']['series']] == [4, 7]
     assert chart['style'] == {'styles': [{'series': 'Q3', 'colour': '', 'width': 7, 'dash': ''}]}
     assert answer['warning'] == '' and answer['trace'] == []
+
+
+def test_the_campaigns_are_shown_with_their_label_of_the_campaign_maps(named_repository):
+    from src.modules.cdr.column_names import format_campaign
+    from src.modules.mapping.campaign_maps import load_campaign_map, save_campaign_map
+
+    repository = named_repository
+    save_campaign_map(repository, {**load_campaign_map(repository), 'exceptions': [
+        {'label': 'Summer 2026', 'sources': ['2026-Q3']}]})
+    assert format_campaign('2026-Q3', load_campaign_map(repository)) == 'Summer 2026'
+    names = workspace_pseudonymizer(repository, 'UK')
+    code = names.mask_text('2026-Q3')
+    # The label is another spelling of the campaign; the tools still receive the name of the data.
+    assert names.mask_text('the campaign Summer 2026') == f'the campaign {code}' and names.unmask_text(code) == '2026-Q3'
+    assert names.show_text(f'{code} leads') == 'Summer 2026 leads'
+    # The values of the data are shown with the label too, also inside a series named by the query.
+    table = assistant._shown_table({'title': f'Calls of {code}', 'columns': ['series', 'campaign', 'calls'], 'result': 'R1',
+                                    'rows': [['EE - 2026-Q3', '2026-Q3', '3']]}, names)
+    assert table['title'] == 'Calls of Summer 2026' and table['rows'] == [['EE - Summer 2026', 'Summer 2026', '3']]
+    # A quarter written in a label is sent as it is, never taken for the campaign.
+    other = Pseudonymizer()
+    other.add_campaign('UK_Q4_2026', '2026-Q4')
+    assert other.mask_text('UK_Q4_2026 in 2026-Q4') == 'CP1 in 2026-Q4' and other.show_text('CP1') == '2026-Q4'
