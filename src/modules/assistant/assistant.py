@@ -924,9 +924,11 @@ def start_question(core: Any, *, repository_factory: Callable[[], Any], workspac
             stopped = job['cancel'].is_set()
             reason = 'Stopped before the answer.' if stopped else (str(exc) if isinstance(exc, AssistantError) else
                                                                    f'The question could not be answered: {exc}')
+            # The job ends whatever happens next: one left as running would refuse the next questions of the user.
+            job.update(status='stopped' if stopped else 'failed', error=reason)
             message_id = add_message(repository, conversation_id, 'assistant', '', status='stopped' if stopped else 'failed',
                                      warning=reason, engine=engine.id)
-            job.update(status='stopped' if stopped else 'failed', error=reason, message_id=message_id)
+            job.update(message_id=message_id)
             repository.try_add_log(username, 'assistant_stopped' if stopped else 'assistant_failed', json.dumps({
                 **details, 'message_id': message_id, 'error': reason, 'error_type': type(exc).__name__,
                 'steps': list(job['steps']),

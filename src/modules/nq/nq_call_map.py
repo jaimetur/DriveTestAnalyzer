@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+import uuid
 from collections import Counter, OrderedDict
 from threading import Lock
 from typing import Any, Callable
@@ -1970,7 +1971,9 @@ def _area_tests_file(repository: Any, dataset_id: int) -> Any:
         'failed': entry['failed'], **{name: entry[name] for name in ('lte_rsrp', 'lte_sinr', 'nr_rsrp', 'nr_sinr')},
         'test': np.asarray(entry['tests'], dtype=object)[entry['test']], 'start': entry['start'],
     })
-    partial = target.with_suffix('.partial')
+    # (A hidden file of its own for each build: two requests may write the tests of a CDR at once, and the cleanup above
+    # leaves it alone.)
+    partial = target.with_name(f'.{target.stem}.{uuid.uuid4().hex}.partial')
     with duckdb.connect() as duck:
         duck.register('tests', frame)
         duck.execute(f"COPY (SELECT * FROM tests) TO '{str(partial).replace(chr(39), chr(39) * 2)}' (FORMAT parquet)")

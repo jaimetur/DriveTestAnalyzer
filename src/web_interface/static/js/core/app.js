@@ -10569,9 +10569,9 @@ document.addEventListener('click', (event) => {
     if (text !== undefined) node.textContent = text;
     return node;
   };
-  // On a short screen (a laptop, see the Laptop screens of app.css) it starts minimized, so as not to cover the page, until it
-  // is opened.
-  const SHORT_SCREEN = '(min-width: 641px) and (max-height: 860px)';
+  // On a short screen (a laptop, see the Laptop screens of app.css) and on a phone it starts minimized, so as not to cover
+  // the page, until it is opened.
+  const SHORT_SCREEN = '(max-width: 640px), (min-width: 641px) and (max-height: 860px)';
   const collapsed = () => {
     try {
       const kept = window.sessionStorage.getItem(COLLAPSED_KEY);

@@ -41,7 +41,7 @@ Mappings, logs and generic datasets are excluded from the CDR Analysis selector.
 
 ## Analysis workflow
 
-1. Select a processed dataset.
+1. Select a processed dataset: **Input Type** (All CDR Types, CDR-Data, CDR-Voice or CDR-Speech) narrows the **Dataset** list.
 2. Choose one or more metrics; every available metric is selected by default.
 3. Apply the available categorical/date filters.
 4. Choose an aggregation where offered.
@@ -57,7 +57,7 @@ Controls adapt to the selected dataset.
 - **Metrics** lists only measurements: the service KPIs first (POLQA LQ, LQ, Mean Data Rate, call setup time, delays, RTT, throughput, jitter and packet loss), then the radio and service measurements of the CDR (RSRP, RSRQ, SINR, CQI, MCS, BLER, transmit power and throughput averages). Identifiers, phone numbers, IMEI/IMSI/MSISDN, software versions, timestamps, durations, transferred bytes, bands, PCI/ARFCN, quarters, speeds and minimum or maximum columns are not offered. Every available metric is selected by default.
 - Filters follow the order Source Sheet, Operator, **Operator_Vendor** (`<Operator>_<Vendor>`), **Vendor_Operator** (`<Vendor>_<Operator>`), **Vendor** (the vendor alone), Market, Region, **Cluster**, City, Test Name and the remaining dimensions; dimensions without values in the CDR are disabled. **Operator_Vendor**, **Vendor_Operator** and **Vendor** stay in sync: selecting values in Operator_Vendor or Vendor_Operator selects the same identities in the other and their Vendors in Vendor, and selecting Vendors selects every Operator_Vendor and Vendor_Operator value of those Vendors. Every filter lists the values found in the rows of the open CDR.
 - **Open Dataset** shows the analysis at once. The last metrics and filters applied with **Update Analysis** to each CDR are shared by every user of the workspace and restored in every session, each CDR with its own (opening another CDR and coming back keeps them); **Reset** clears them and shows the default analysis. A filter applied with every value selected (**All values**) stays open: values that appear later in the CDR, for example after a mapping change, are selected too.
-- Date ranges appear only when a usable date field exists.
+- **Date From** and **Date To** limit the analysis to a date range; they are disabled while **Ignore event time filtering** is on in [Application Config](app-config.md).
 - Technical identifiers and coordinates are not offered as KPIs.
 - Filter choices are retained for the requested analysis, not written back to source data.
 
@@ -121,7 +121,7 @@ Word exports contain the same report as PowerPoint, one landscape page per slide
 
 **Theme**, at the start of the floating section bar of the page (always in sight while reading it), colours the page (its charts, chart and metric cards, statistic tiles, table headers and alternate rows, labels and accents) and the PowerPoint and Word exports with the themes of [Scoring & GAP Analysis](scoring-gap-analysis.md) (**Ericsson** by default, **NetCheck**, **Umlaut**, **Vodafone**, **Midnight**, **Paper** and **Heatmap**): the CDF curves and the bars without an Operator or Vendor colour, the chart cards, the metric cards, the table headers and alternate rows, and the titles and subtitles of the content slides in the title style of the theme (the title slide and the closing slide keep the template look); **Midnight** gives the content slides a night-blue background with the logos in white and every table, card and chart on them dark. Each user keeps one theme per workspace for every themed module (choosing it here chooses it in Scoring & GAP Analysis, Network Insights and PPT Designer too); changing it recolours the page at once, and it is kept for the next visit and the exports, and is recorded in the App Events log.
 
-Analysis filters do not overwrite stored dataset rows. Analysis filters do not overwrite stored dataset rows. For a complete template-driven report, use PPT Designer.
+Analysis filters do not overwrite stored dataset rows. For a complete template-driven report, use PPT Designer.
 
 ## Example investigation
 

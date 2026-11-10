@@ -23,8 +23,11 @@ _TEST_STORAGE = Path(tempfile.mkdtemp(prefix='drivetest-analyzer-tests-'))
 os.environ['APP_CONFIG_DIR'] = str(_TEST_STORAGE / 'config')
 os.environ['APP_DATA_DIR'] = str(_TEST_STORAGE / 'data')
 atexit.register(shutil.rmtree, _TEST_STORAGE, True)
-# The tests draw the Points Lost Map in their own process (tests/test_saved_filters.py draws one apart).
+# The tests draw the Points Lost Map in their own process (tests/scoring/test_saved_filters.py draws one apart).
 os.environ['DTA_POINTS_LOSS_IN_PROCESS'] = '1'
+# The tests process their datasets in their own process too: a worker of its own takes most of a second to start for
+# each dataset (tests/core/test_app.py processes one in its worker, and stops one).
+os.environ['DTA_DATASET_WORKER_IN_PROCESS'] = '1'
 
 import pytest
 from fastapi.testclient import TestClient
@@ -36,7 +39,7 @@ from src.modules.help import presentations
 from src.modules.mapping.workspace_countries import set_workspace_country
 
 
-# The tests that need the columnar copy of their CDRs make it themselves (tests/test_cdr_store.py): the other tests
+# The tests that need the columnar copy of their CDRs make it themselves (tests/cdr/test_cdr_store.py): the other tests
 # do not copy every CDR they process.
 cdr_store.AUTOMATIC = False
 
@@ -80,11 +83,18 @@ def pytest_configure_node(node) -> None:
     node.workerinput['test_durations'] = cache.get(TEST_DURATIONS_KEY, {}) if cache is not None else {}
 
 
+def _test_key(nodeid: str) -> str:
+    """A test whatever the folder of its file: a file moved to another folder keeps the duration measured for it."""
+    path, separator, name = nodeid.partition('::')
+    return f"{path.rsplit('/', 1)[-1]}{separator}{name}"
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     # (A run in one process, -n 0, keeps the order of the files.)
     durations = getattr(config, 'workerinput', {}).get('test_durations')
     if durations:
-        items.sort(key=lambda item: -durations.get(item.nodeid, 0.0))
+        by_test = {_test_key(nodeid): duration for nodeid, duration in durations.items()}
+        items.sort(key=lambda item: -durations.get(item.nodeid, by_test.get(_test_key(item.nodeid), 0.0)))
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
@@ -233,6 +243,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client_workspace_tem
 
         cookies.set = replace_cookie
         yield test_client
+    # The next test of this process starts without the workspace of this one: a test without a workspace reads the
+    # labels and maps the application ships, not those this test saved.
+    app_module.active_workspace = None
 
 
 def remove_starter_favourites(repository) -> None:

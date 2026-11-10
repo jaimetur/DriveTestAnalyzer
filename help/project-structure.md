@@ -59,6 +59,7 @@ DriveTestAnalyzer/
 │   ├── ppt-designs/
 │   ├── ppt-templates/
 │   ├── query-builder-queries/
+│   ├── scoring-favourites-filters/
 │   ├── scoring-methodologies/
 │   └── scoring-report-configurations/
 ├── docker/
@@ -72,14 +73,16 @@ DriveTestAnalyzer/
 ├── pyproject.toml
 ├── requirements.txt
 ├── README.md
-└── CHANGELOG.md
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+└── CODE_OF_CONDUCT.md
 ```
 
 Runtime `config/` and `data/` directories use project-local defaults but are excluded from source control and Docker build context.
 
 ## Python application layer
 
-- `src/main.py`: shared source, PyCharm and Docker launcher using `APP_HOST`, `APP_PORT` and the timestamped Uvicorn logging configuration.
+- `src/main.py`: shared source, PyCharm and Docker launcher using `APP_HOST`, `APP_PORT` (or `DRIVETEST_ANALYZER_BIND_PORT`, set by the Compose files to `7278`), `DRIVETEST_ANALYZER_RELOAD` and the timestamped Uvicorn logging configuration.
 - `src/DriveTestAnalyzer.py`: FastAPI application, page/API routes, workspace activation, shared background-task orchestration and Admin portability.
 - `src/config.py`: environment and `storage-paths.conf` resolution.
 - `src/branding.py`: product identifiers of exports, backups and environment variables, and compatibility with those written under the former Dashboard Analytic name.
@@ -120,7 +123,7 @@ Runtime `config/` and `data/` directories use project-local defaults but are exc
 
 ## Browser layer
 
-- `src/web_interface/templates/`: Jinja pages for Workspace, CDR Analysis, PPT Designer, Chart Builder, Admin, App Logs and document viewing.
+- `src/web_interface/templates/`: Jinja pages of the application: the shared `base.html` layout, login, Workspace, CDR Analysis, PPT Designer, Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, Reporting (`report_jobs.html`), Chart Builder, Query Builder, AI Assistant, Ticket Center, App Logs, Application Config and Workspace Config (`configuration.html`, `workspace_configuration.html`), Admin and Super Admin (`admin.html`) and document viewing (`doc_view.html`), with the panels shared by several of them in their own templates.
 - `src/web_interface/static/js/`: the scripts of the pages, in one folder per module (`core` holds the shared UI behaviour of every page, the common chart drawing, rich texts and image buttons; `workspace`, `ppt_designer`, `scoring`, `network_insights`, `nq`, `reporting`, `builders`, `ticket_center`, `assistant` and `help` those of each module). `reporting` holds `bundle_report_template.js` (the Reports tab, the report editor and the dialog that follows and previews a report), `reporting_history.js` (the tabs of the page and History) and `reporting_pickers.js` (the pickers of the report editor).
 - `src/web_interface/static/css/`: the styles, in the same folders: `core` for the application and rich texts, and one folder per module for its own styles.
 - `src/web_interface/static/markdown_renderer.js`: in-app README, Changelog and Help rendering, including cross-document heading anchors.
@@ -140,15 +143,17 @@ APP_DATA_DIR/
 │   ├── workspace-registry.db
 │   └── <workspace>/
 │       ├── <workspace>.db
+│       ├── .cdr-store/
 │       ├── .cache/
 │       │   ├── bundle-reports/
 │       │   ├── network-insights/
+│       │   ├── nq-calls/
 │       │   ├── ppt-designer/
 │       │   └── scoring/
 │       ├── input/
 │       └── output/
 │           └── reports/
-│               ├── designs/
+│               ├── ppt-designs/
 │               ├── cdr-analysis/
 │               ├── network-insights/
 │               └── reporting-jobs/
@@ -166,8 +171,9 @@ Directories are created when their corresponding feature first needs them, so an
 
 `APP_CONFIG_DIR/application.db` owns:
 
-- users, roles and workspace access lists;
-- global application state;
+- users, roles and workspace access lists, Modules Profiles and Workspace Groups;
+- global application state (Application Config, Interface Settings);
+- the tickets of Ticket Center;
 - server-transfer offers.
 
 ### Workspace registry
@@ -221,6 +227,7 @@ Workspaces, backups and transfer packages created with the former layout (module
 - `CHANGELOG.md`: versioned release history.
 - `help/help.md`: in-app Help index.
 - `help/presentations.md`: every presentation of the tool, of the modules and the Full Presentation.
+- `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md`: contribution and conduct guidelines.
 - `help/overview.md`: product and module tour.
 - `help/technical-considerations.md`: data interpretation, persistence, caching and job semantics.
 - Other Help chapters: focused operational and deployment guides.
@@ -229,12 +236,14 @@ The Help navigation order and labels are curated in `src/DriveTestAnalyzer.py`. 
 
 ## Tests, tooling and delivery
 
-- `tests/test_app.py`: routes, shared UI, Admin, documentation and integration behaviour.
-- `tests/test_ppt_designer.py`: PPT definitions, filtering, caching, rendering and PPT jobs.
-- `tests/test_cdr_reporting.py`: template, filter and chart contracts.
-- Other test modules cover analytics, exports, Query Builder, workspaces and workspace template isolation.
-- `tests/conftest.py`: points every test process at storage of its own before the application is imported (no test reaches the local installation), and the `client` fixture. Each test process prepares a new workspace once (its databases and starter content) and every test opens the application on a copy of it, as it reopens a workspace. Dataset sources are parsed by isolated background workers, so after upload, retry, reprocess and mapping requests the fixture waits for those workers and the combined CDR rebuilds they start; `wait_for_background_dataset_work()` does the same for work queued by other requests.
+- `tests/`: the tests, in one folder per package of `src/modules` (`core`, `cdr`, `cdr_analysis`, `mapping`, `network`, `network_insights`, `scoring`, `nq`, `ppt_designer`, `reporting`, `builders`, `assistant`, `ticket_center` and `help`) plus `tools` (the release helper), `support` (the synthetic CDRs and Scoring results the tests share) and `fixtures` (their data files).
+- `tests/core/test_app.py`: routes, shared UI, Admin, documentation and integration behaviour.
+- `tests/ppt_designer/test_ppt_designer.py`: PPT definitions, filtering, caching, rendering and PPT jobs.
+- `tests/cdr_analysis/test_cdr_reporting.py`: template, filter and chart contracts.
+- `tests/conftest.py`: points every test process at storage of its own before the application is imported (no test reaches the local installation), and the `client` fixture. Each test process prepares a new workspace once (its databases and starter content) and every test opens the application on a copy of it, as it reopens a workspace. Dataset sources are parsed in the background, so after upload, retry, reprocess and mapping requests the fixture waits for those workers and the combined CDR rebuilds they start; `wait_for_background_dataset_work()` does the same for work queued by other requests.
 - `tools/presentations/`: the generator of the presentations of the Help, in Ericsson style (Node.js: `build.js`, `art.js`, and `package.json` with its `package-lock.json`). It keeps only the sources of the presentations: the server generates them, and none is kept in the repository. `benchmarking-providers/` keeps the deck of the adaptation to other benchmarking providers in its own design: a picture of each slide and `slides.json` with their order, section, title and speaker notes, which `build.js` turns into its PowerPoint. The folder of each main module (`workspace/`, `cdr-analysis/`… `ticket-center/`) keeps the `content.js` of its deck, and `dt-analyzer-rca/` the `slides.html` and `slides.json` of the DT Analyzer RCA deck: when the presentations are generated, `module_decks.js` draws each of them into `slides.html` (from its `content.js`), takes the pictures of its slides with a headless Chromium browser, writes its `slides.json` into the work folder of the generation and, run by hand, warns of any text past the footer, out of its box or under the logo. `build.js` also joins the slides of the others into the full presentation, whose sections name the presentation of their slides: the Help shows their pictures, so it is not rendered. The server runs `build.js` with the figures of `src/modules/help/presentations.py`; by hand, `npm install` and `node build.js <folder>` there write them into `<folder>` with the figures written in `build.js` (`node module_decks.js <folder> [id…]` draws only the decks named), and `python tools/presentations/render.py <folder>`, from the project root, renders with LibreOffice, as the previews of the reports of **Reporting**, the slides of the decks of native slides (Overview, Architecture, one-slider and roadmap): `build.js` writes the pictures of the decks of their own design itself.
+- `tools/mirror/`: `mirror-sync.sh` and `mirror-remote.sh`, which keep a second Mac in step with the development checkout (see `tools/mirror/README.md`).
+- `macos-launcher/` and `macos-installer/`: the native `DriveTest Analyzer.app` launcher (`DriveTestAnalyzerLauncher.m` and `launch-server.zsh`) and the script that compiles, signs and packs it into an installer (`build-installer.zsh`).
 - `tools/build_postal_layer.py`: builds a layer of `assets/map-areas/postal` from the GeoNames postal code file of a country.
 - `tools/CreateUpdateRelease.py`: release helper that updates `src/version.py`, the `pyproject.toml` project version and the current `CHANGELOG.md` release, and can create and push a release branch.
 - `pyproject.toml`: package metadata and runtime dependencies (kept in sync with `requirements.txt`) plus the pytest configuration.
@@ -247,7 +256,7 @@ Run the complete suite from the repository root:
 python -m pytest -q
 ```
 
-It runs in parallel, one process per CPU (`pytest-xdist`, set in `pyproject.toml`), the slowest tests first as the last run measured them (kept in the pytest cache, see `tests/conftest.py`); `-n 0` runs it in one process, for `-s` or a debugger.
+It runs in parallel, one process per CPU (`pytest-xdist`, set in `pyproject.toml`), the slowest tests first as the last run measured them (kept in the pytest cache, see `tests/conftest.py`); `-n 0` runs it in one process, for `-s` or a debugger, and a folder (`python -m pytest -q tests/scoring`) runs the tests of one module. The tests process their datasets in their own process instead of a worker for each one (one test keeps the worker), and share the synthetic Scoring results of a run between their processes (`tests/support/shared_results.py`). The tests that drive programs outside the application (a browser and LibreOffice, for minutes) are marked `external` and left out of the suite: `-m external` runs them, and `-m "external or not external"` every test, as the Unit Tests workflow does.
 
 Keep databases, uploaded customer files, generated output, cache files and secrets out of source control.
 

@@ -1,0 +1,997 @@
+from __future__ import annotations
+
+import re
+
+import csv
+from copy import deepcopy
+from io import BytesIO
+from io import StringIO
+import json
+from pathlib import Path
+import sqlite3
+import time
+from types import ModuleType
+
+import pandas as pd
+import pytest
+from pptx import Presentation
+
+import src.DriveTestAnalyzer as app_module
+from src.modules.scoring import saved_filters
+from src.modules.core.repository import Repository, local_now_iso
+from tests.support.scoring_fixtures import scoring_configuration
+from src.modules.scoring.scoring_config import load_aggregation_hierarchy
+
+
+def _login(client) -> None:
+    response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
+    assert response.status_code == 303
+
+
+def _mark_scoring_result_as_legacy(repository: Repository, job_id: int) -> None:
+    result = saved_filters.get_saved_filter(repository, job_id, include_result=True)['result']
+    result.pop('gap_direction', None)
+    with sqlite3.connect(repository.db_path) as connection:
+        connection.execute(
+            'UPDATE saved_filters SET result_json = ? WHERE id = ?',
+            (json.dumps(result, ensure_ascii=False), job_id),
+        )
+
+
+def _add_ready_cdr(
+    repository: Repository,
+    tmp_path: Path,
+    *,
+    name: str,
+    nr_mode: str = 'NSA',
+    kind: str = 'data',
+    campaign: str = '2026-Q2',
+) -> int:
+    source = tmp_path / name
+    source.write_text('test source', encoding='utf-8')
+    dataset_id, _created = repository.add_dataset(name, str(source), 'admin')
+    rows = pd.DataFrame({
+        'Operator': ['EE', 'O2'],
+        'Region': ['North', 'North'],
+        'City': ['Leeds', 'Leeds'],
+        'Vendor': ['Nokia', 'Nokia'],
+        'Vendor_Only': ['Nokia', 'Nokia'],
+        'Dataset_Kind': [kind, kind],
+        'Environment': ['City', 'City'],
+        'Campaign': [campaign, campaign],
+        'score': [4.2, 3.6],
+    })
+    repository.replace_dataset_rows(dataset_id, rows)
+    repository.update_dataset_profile(
+        dataset_id,
+        status='ready', progress=100, dataset_kind=kind, nr_mode=nr_mode,
+        row_count=len(rows), column_count=len(rows.columns), processed_at=local_now_iso(),
+    )
+    repository.replace_cdr_catalogue(
+        dataset_id, vendors=['Nokia'], vendors_only=['Nokia'], regions=['North'], cities=['Leeds'], campaigns=[campaign],
+    )
+    return dataset_id
+
+
+@pytest.fixture()
+def scoring_api(client, tmp_path, monkeypatch):
+    _login(client)
+    workspace = app_module.active_workspace
+    repository = Repository(
+        workspace.database_path,
+        global_db_path=app_module.repository.db_path,
+        workspace_registry_db_path=app_module.workspace_registry.registry_path,
+    )
+    repository.initialize()
+    repository.replace_scoring_configuration(scoring_configuration())
+
+    calls = []
+    engine = ModuleType('src.modules.scoring.scoring')
+    engine.METHOD_VERSION = 'scoring-api-test-v1'
+    engine.required_input_columns = lambda kind, levels: [*levels, 'score']
+
+    def calculate_scoring(frames, levels, *, baseline_operator, configuration=None):
+        calls.append({'frames': frames, 'levels': levels, 'baseline_operator': baseline_operator})
+        scoring = [{
+            'campaign': '2026-Q2', 'region': 'North', 'city': 'Leeds', 'vendor': 'Nokia',
+            'dataset_type': 'data', 'environment': 'City', 'operator': operator,
+            'kpi': 'Download Throughput', 'category': 'Data', 'value': 4.2,
+            'score': 4.2, 'weighted_points': 4.2, 'max_points': 5.0, 'sample_count': 1,
+        } for operator in ('EE', 'O2', 'Three UK', 'Vodafone UK')]
+        charts = [{
+            'campaign': '2026-Q2', 'region': 'North', 'city': 'Leeds', 'vendor': 'Nokia',
+            'dataset_type': 'data', 'environment': 'City', 'operator': 'EE',
+            'category': 'Overall', 'weighted_points': 4.2, 'max_points': 5.0, 'complete': True,
+        }]
+        gap = [{'operator': 'O2', 'baseline_operator': baseline_operator, 'gap_points': 0.6}]
+        return {'scoring': scoring, 'charts': charts, 'gap': gap, 'warnings': []}
+
+    engine.calculate_scoring = calculate_scoring
+    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
+    submitted = []
+
+    def record_submission(task_repository, callback, *args, **kwargs):
+        submitted.append((task_repository, callback, args, kwargs))
+        return None
+
+    monkeypatch.setattr(app_module, '_submit_workspace_job', record_submission)
+    dataset_id = _add_ready_cdr(repository, tmp_path, name='UK_Q2_2026_NSA_Data.csv')
+    voice_id = _add_ready_cdr(repository, tmp_path, name='UK_Q2_2026_NSA_Voice.csv', kind='voice')
+    speech_id = _add_ready_cdr(repository, tmp_path, name='UK_Q2_2026_NSA_Speech.csv', kind='speech')
+    return {
+        'client': client,
+        'repository': repository,
+        'calls': calls,
+        'submitted': submitted,
+        'dataset_id': dataset_id,
+        'complete_dataset_ids': [dataset_id, voice_id, speech_id],
+        'add_ready_cdr': lambda **kwargs: _add_ready_cdr(repository, tmp_path, **kwargs),
+        'tmp_path': tmp_path,
+    }
+
+
+def test_scoring_page_requires_login_and_renders_workspace_controls(client, scoring_api):
+    client.get('/logout', follow_redirects=False)
+    assert client.get('/scoring', follow_redirects=False).status_code == 303
+    _login(client)
+    page = client.get('/scoring')
+
+    assert page.status_code == 200
+    assert 'Scoring &amp; GAP Analysis' in page.text
+    assert 'href="/scoring"' in page.text
+    assert 'data-scoring-workspace' in page.text
+    assert 'UK_Q2_2026_NSA_Data.csv' in page.text
+    assert 'value="EE"' in page.text and 'value="O2"' in page.text
+    assert '2026-Q2' in page.text
+    assert 'Operator is required' in page.text
+    assert 'data-calculate-scoring' in page.text
+    assert 'data-recalculate-scoring' in page.text
+    assert re.search(r'data-result-tab="scoring"><svg [^>]*>.*?</svg><span>Scoring Tables</span></button>', page.text, re.S)
+    assert re.search(r'data-result-tab="charts"><svg [^>]*>.*?</svg><span>Scoring Charts</span></button>', page.text, re.S)
+    assert 'GAP Analysis' in page.text
+    assert 'data-result-tab="best-network"' not in page.text
+
+
+def test_scoring_page_exposes_profile_choices_and_active_profile(scoring_api, monkeypatch):
+    captured = {}
+    original_render = app_module.render_template
+
+    def capture_context(request, template_name, context):
+        captured.update(context)
+        return original_render(request, template_name, context)
+
+    monkeypatch.setattr(app_module, 'render_template', capture_context)
+    page = scoring_api['client'].get('/scoring')
+
+    assert page.status_code == 200
+    profiles = captured['scoring_profiles']
+    # Every methodology of the workspace (the shipped ones, NetCheck 2026 first), with the active one.
+    stored = scoring_api['repository'].get_scoring_profiles()['profiles']
+    assert profiles == [{'id': profile['id'], 'name': profile['name']} for profile in stored]
+    assert profiles[0] == {'id': 'netcheck-2026', 'name': 'NetCheck 2026'} and {'id': 'netcheck-2026-q3', 'name': 'NetCheck 2026-Q3'} in profiles
+    assert captured['scoring_active_profile_id'] == 'netcheck-2026'
+    assert captured['aggregation_levels'] == load_aggregation_hierarchy(scoring_api['repository'])
+
+
+def test_scoring_baseline_options_follow_mapping_without_scanning_cdr_rows(scoring_api, monkeypatch):
+    repository = scoring_api['repository']
+    repository.replace_operator_mapping_groups([
+        {'canonical': 'O2', 'aliases': ['O2 UK'], 'color': '#112233'},
+        {'canonical': 'EE', 'aliases': ['EE UK'], 'color': '#445566'},
+    ])
+
+    def fail_if_cdr_rows_are_scanned(*_args, **_kwargs):
+        raise AssertionError('Opening Scoring must not query dataset rows.')
+
+    monkeypatch.setattr(Repository, 'list_distinct_dataset_row_values', fail_if_cdr_rows_are_scanned)
+    page = scoring_api['client'].get('/scoring')
+
+    assert page.status_code == 200
+    baseline_select = page.text.split('<select data-baseline-operator', 1)[1].split('</select>', 1)[0]
+    assert baseline_select.index('value="O2"') < baseline_select.index('value="EE"')
+    assert 'value="O2" data-operator-color="#112233"' in baseline_select
+    assert 'value="EE" data-operator-color="#445566"' in baseline_select
+
+
+def test_scoring_selection_defaults_use_catalogue_metadata_without_reading_cdr_rows(scoring_api, monkeypatch):
+    def fail_if_cdr_rows_are_read(*_args, **_kwargs):
+        raise AssertionError('Loading the saved scoring selection must not read CDR rows.')
+
+    monkeypatch.setattr(Repository, 'list_distinct_dataset_row_values', fail_if_cdr_rows_are_read)
+    monkeypatch.setattr(Repository, 'dataset_row_count', fail_if_cdr_rows_are_read)
+    monkeypatch.setattr(Repository, 'list_dataset_row_columns', fail_if_cdr_rows_are_read)
+
+    response = scoring_api['client'].get('/api/scoring/selection')
+
+    assert response.status_code == 200
+    assert response.json() == {
+        'selection': {
+            # The newest campaign with Data, Voice and Speech CDRs chooses the CDRs.
+            'dataset_ids': scoring_api['complete_dataset_ids'],
+            'auto_cdrs': True,
+            'aggregation_levels': ['Operator', 'Campaign'],
+            'nr_mode': 'NSA',
+            'baseline_operator': 'EE',
+            'scoring_profile_id': 'by-campaign',
+            'context_filters': {
+                # Latest campaign: the newest campaign with Data, Voice and Speech CDRs (2026-Q2).
+                'Region': [], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': ['@latest-campaign'],
+            },
+            # The Geographical Areas & Scoring Trends are always included: each Region and London, All available campaigns.
+            'area_summary': {'enabled': True, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'],
+                             'main_cities': False, 'campaigns': ['@all-campaigns']},
+        },
+        'warnings': [],
+        'persisted': False,
+    }
+
+
+def test_scoring_selection_persists_for_workspace_and_rejects_delayed_tab_updates(scoring_api):
+    client = scoring_api['client']
+    common_selection = {
+        'dataset_ids': scoring_api['complete_dataset_ids'],
+        'auto_cdrs': True,
+        'aggregation_levels': ['Operator', 'Region'],
+        'nr_mode': 'NSA',
+        'baseline_operator': 'O2',
+        'scoring_profile_id': 'netcheck-2026',
+        'context_filters': {'Region': ['North'], 'City': [], 'Operator': [], 'Vendor': [], 'Campaign': []},
+        'area_summary': {'enabled': True, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'],
+                         'main_cities': False, 'campaigns': ['@all-campaigns']},
+    }
+    saved = client.put('/api/scoring/selection', json={
+        'selection': common_selection, 'client_id': 'tab-a', 'client_revision': 1,
+    })
+
+    assert saved.status_code == 200
+    assert saved.json()['accepted'] is True
+    assert saved.json()['selection'] == common_selection
+    assert client.get('/api/scoring/selection').json()['persisted'] is True
+
+    newer_selection = {**common_selection, 'baseline_operator': 'EE'}
+    newer = client.put('/api/scoring/selection', json={
+        'selection': newer_selection, 'client_id': 'tab-a', 'client_revision': 2,
+    })
+    delayed = client.put('/api/scoring/selection', json={
+        'selection': common_selection, 'client_id': 'tab-a', 'client_revision': 1,
+    })
+
+    assert newer.status_code == 200 and newer.json()['accepted'] is True
+    assert delayed.status_code == 200 and delayed.json()['accepted'] is False
+    assert delayed.json()['selection'] == newer_selection
+    assert client.get('/api/scoring/selection').json()['selection'] == newer_selection
+
+    other_tab = client.put('/api/scoring/selection', json={
+        'selection': common_selection, 'client_id': 'tab-b', 'client_revision': 1,
+    })
+    assert other_tab.status_code == 200 and other_tab.json()['accepted'] is True
+    assert client.get('/api/scoring/selection').json()['selection'] == common_selection
+
+    # The CDRs follow the NR Mode and Campaign: without CDRs of their own, they are chosen again.
+    chosen_again = client.put('/api/scoring/selection', json={'selection': {**common_selection, 'dataset_ids': []}})
+    assert chosen_again.json()['selection']['dataset_ids'] == scoring_api['complete_dataset_ids']
+    # An opened Saved Filter keeps its own CDRs (here none).
+    empty_selection = {**common_selection, 'dataset_ids': [], 'auto_cdrs': False}
+    cleared = client.put('/api/scoring/selection', json={'selection': empty_selection})
+    assert cleared.status_code == 200 and cleared.json()['accepted'] is True
+    assert client.get('/api/scoring/selection').json()['selection']['dataset_ids'] == []
+
+
+def test_scoring_selection_recovers_from_deleted_cdr_and_methodology(scoring_api):
+    client = scoring_api['client']
+    repository = scoring_api['repository']
+    # The CDRs of an opened Saved Filter, one of them deleted later.
+    selection = {
+        'dataset_ids': scoring_api['complete_dataset_ids'],
+        'auto_cdrs': False,
+        'aggregation_levels': ['Operator', 'Region'],
+        'nr_mode': 'NSA',
+        'baseline_operator': 'EE',
+        'scoring_profile_id': 'netcheck-2026',
+        'context_filters': {'Region': ['North']},
+    }
+    saved = client.put('/api/scoring/selection', json={'selection': selection})
+    assert saved.status_code == 200
+
+    stale_dataset_id = scoring_api['complete_dataset_ids'][1]
+    repository.delete_dataset(stale_dataset_id)
+    configuration = repository.get_scoring_configuration()
+    repository.replace_scoring_profiles({
+        'active_profile_id': 'alternate-method',
+        'profiles': [{
+            'id': 'alternate-method', 'name': 'Alternate Method', 'configuration': configuration,
+        }],
+    })
+
+    recovered = client.get('/api/scoring/selection')
+
+    assert recovered.status_code == 200
+    assert recovered.json()['selection']['dataset_ids'] == [
+        scoring_api['complete_dataset_ids'][0], scoring_api['complete_dataset_ids'][2],
+    ]
+    assert recovered.json()['selection']['scoring_profile_id'] == 'alternate-method'
+    assert recovered.json()['selection']['aggregation_levels'] == ['Operator', 'Region']
+    assert any('CDR datasets' in warning for warning in recovered.json()['warnings'])
+    assert any('methodology' in warning for warning in recovered.json()['warnings'])
+
+
+def test_scoring_selection_survives_workspace_database_backup_restore(scoring_api, tmp_path):
+    client = scoring_api['client']
+    repository = scoring_api['repository']
+    workspace = app_module.active_workspace
+    selection = {
+        'dataset_ids': scoring_api['complete_dataset_ids'],
+        'aggregation_levels': ['Operator', 'Region'],
+        'nr_mode': 'NSA',
+        'baseline_operator': 'EE',
+        'scoring_profile_id': 'netcheck-2026',
+        'context_filters': {'Region': ['North']},
+    }
+    saved = client.put('/api/scoring/selection', json={'selection': selection})
+    assert saved.status_code == 200
+    persisted_selection = saved.json()['selection']
+
+    archive_path = app_module.create_recurring_database_backup({
+        'components': ['workspace_database'],
+        'backup_path': str(tmp_path / 'backups'),
+        'max_backups': 5,
+        'workspace_ids': [workspace.id],
+    })
+    changed = {**persisted_selection, 'baseline_operator': 'O2'}
+    assert client.put('/api/scoring/selection', json={'selection': changed}).status_code == 200
+
+    app_module.restore_database_backup(archive_path, ['workspace_database'])
+
+    assert client.get('/api/scoring/selection').json()['selection'] == persisted_selection
+    assert repository.get_workspace_state('scoring_calculation_selection_v1')
+
+
+def test_scoring_api_validates_auth_mode_and_missing_jobs(client, scoring_api):
+    assert client.get('/api/scoring/saved-filters').status_code == 200
+    assert client.get('/api/scoring/saved-filters/999999').status_code == 404
+    assert client.get('/scoring/saved-filters/999999/export/scoring').status_code == 404
+
+    sa_id = _add_ready_cdr(
+        scoring_api['repository'], scoring_api['tmp_path'], name='UK_Q2_2026_SA_Data.csv', nr_mode='SA',
+    )
+    response = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': [scoring_api['dataset_id'], sa_id],
+        'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
+    })
+    assert response.status_code == 400
+    assert 'does not match the selected NSA NR Mode' in response.json()['detail']
+
+    client.get('/logout', follow_redirects=False)
+    assert client.get('/scoring', follow_redirects=False).status_code == 303
+    assert client.get('/api/scoring/saved-filters').status_code == 401
+
+
+def test_scoring_configuration_api_round_trips_complete_validated_document(scoring_api):
+    client = scoring_api['client']
+    repository = scoring_api['repository']
+    original = repository.get_scoring_configuration()
+
+    fetched = client.get('/api/workspace-config/scoring-configuration')
+    assert fetched.status_code == 200
+    assert fetched.json() == original
+    assert 'configuration' not in fetched.json()
+
+    updated = deepcopy(original)
+    updated['metrics'] = list(reversed(updated['metrics']))
+    updated['gap_priority'] = list(reversed(updated['gap_priority']))
+    saved = client.put('/api/workspace-config/scoring-configuration', json=updated)
+    assert saved.status_code == 200, saved.text
+    assert saved.json() == repository.get_scoring_configuration()
+    assert saved.json()['gap_priority'] == updated['gap_priority']
+    assert [metric['code'] for metric in saved.json()['metrics']] == [
+        metric['code'] for metric in updated['metrics']
+    ]
+
+    invalid = deepcopy(updated)
+    invalid['gap_priority'].append(invalid['gap_priority'][0])
+    rejected = client.put('/api/workspace-config/scoring-configuration', json=invalid)
+    assert rejected.status_code == 400
+    assert repository.get_scoring_configuration() == saved.json()
+
+
+def test_scoring_profiles_api_edits_inactive_profile_and_switches_active(scoring_api):
+    client = scoring_api['client']
+    repository = scoring_api['repository']
+    active_configuration = repository.get_scoring_configuration()
+    profiles = client.get('/api/workspace-config/scoring-profiles').json()
+    second_configuration = deepcopy(active_configuration)
+    second_configuration['version'] = 'Custom 2024'
+    profiles['profiles'].append({
+        'id': 'custom-2024',
+        'name': 'Custom 2024',
+        'configuration': second_configuration,
+    })
+
+    saved = client.put('/api/workspace-config/scoring-profiles', json=profiles)
+    assert saved.status_code == 200, saved.text
+    assert client.get('/api/workspace-config/scoring-configuration').json() == active_configuration
+
+    inactive_edit = deepcopy(saved.json())
+    added = lambda payload: next(profile for profile in payload['profiles'] if profile['id'] == 'custom-2024')
+    added(inactive_edit)['configuration']['metrics'][0]['contexts']['DriveCity']['max_points'] = 81
+    edited = client.put('/api/workspace-config/scoring-profiles', json=inactive_edit)
+    assert edited.status_code == 200, edited.text
+    assert client.get('/api/workspace-config/scoring-configuration').json() == active_configuration
+
+    selected = edited.json()
+    selected['active_profile_id'] = 'custom-2024'
+    switched = client.put('/api/workspace-config/scoring-profiles', json=selected)
+    assert switched.status_code == 200
+    assert client.get('/api/workspace-config/scoring-configuration').json() == added(selected)['configuration']
+
+
+def test_scoring_job_can_select_inactive_profile_without_changing_workspace_default(scoring_api):
+    client = scoring_api['client']
+    repository = scoring_api['repository']
+    active_id = repository.get_scoring_profiles()['active_profile_id']
+    active_configuration = deepcopy(repository.get_scoring_configuration())
+    profiles = repository.get_scoring_profiles()
+    inactive = deepcopy(profiles['profiles'][0])
+    inactive.update({'id': 'custom-2024', 'name': 'Custom 2024'})
+    # Chosen by hand only: it applies to no campaigns of its own.
+    inactive.pop('campaigns', None)
+    inactive['configuration']['version'] = 'Custom 2024'
+    assert client.put('/api/scoring/aggregation-hierarchy', json={'levels': ['Region', 'Operator', 'Vendor', 'City', 'Campaign']}).status_code == 200
+    inactive['configuration']['metrics'][0]['contexts']['DriveCity']['max_points'] = 88
+    profiles['profiles'].append(inactive)
+    repository.replace_scoring_profiles(profiles)
+
+    response = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': scoring_api['complete_dataset_ids'],
+        'nr_mode': 'NSA',
+        'aggregation_levels': ['Region', 'City'],
+        'scoring_profile_id': 'custom-2024',
+    })
+
+    assert response.status_code == 200, response.text
+    job = response.json()['saved_filter']
+    assert job['scoring_profile_id'] == 'custom-2024'
+    assert job['scoring_profile_name'] == 'Custom 2024'
+    assert job['configuration']['metrics'][0]['contexts']['DriveCity']['max_points'] == 88
+    assert job['aggregation_hierarchy'] == ['Region', 'Cluster', 'Operator', 'Vendor', 'City', 'Campaign']
+    assert job['aggregation_levels'] == ['Region', 'Operator', 'City']
+    assert repository.get_scoring_profiles()['active_profile_id'] == active_id
+    assert repository.get_scoring_configuration() == active_configuration
+
+    defaulted = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': scoring_api['complete_dataset_ids'],
+        'nr_mode': 'NSA',
+        'aggregation_levels': ['Operator'],
+        'scoring_profile_id': '',
+    })
+    assert defaulted.status_code == 200, defaulted.text
+    assert defaulted.json()['saved_filter']['scoring_profile_id'] == active_id
+
+    unknown = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': scoring_api['complete_dataset_ids'],
+        'nr_mode': 'NSA',
+        'aggregation_levels': ['Operator'],
+        'scoring_profile_id': 'missing-profile',
+    })
+    assert unknown.status_code == 400
+    assert 'was not found' in unknown.json()['detail']
+
+
+def test_scoring_exports_accept_expanded_and_summary_table_modes(scoring_api):
+    client = scoring_api['client']
+    repository = scoring_api['repository']
+    response = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': scoring_api['complete_dataset_ids'],
+        'nr_mode': 'NSA',
+        'aggregation_levels': ['Operator'],
+    })
+    assert response.status_code == 200, response.text
+    job = saved_filters.calculate_saved_filter(repository, response.json()['saved_filter']['id'])
+    assert job['status'] == 'completed'
+
+    legacy_csv = client.get(f"/scoring/saved-filters/{job['id']}/export/scoring")
+    city_raw_csv = client.get(f"/scoring/saved-filters/{job['id']}/export/scoring?environment=DriveCity")
+    summary_csv = client.get(f"/scoring/saved-filters/{job['id']}/export/scoring?table_mode=summary")
+    city_summary_csv = client.get(
+        f"/scoring/saved-filters/{job['id']}/export/scoring?table_mode=summary&environment=DriveCity",
+    )
+    summary_ppt = client.get(f"/scoring/saved-filters/{job['id']}/export/ppt?table_mode=summary&gap_layout=adjacent")
+    city_ppt = client.get(f"/scoring/saved-filters/{job['id']}/export/ppt?environment=DriveCity")
+    invalid_environment = client.get(f"/scoring/saved-filters/{job['id']}/export/ppt?environment=Unknown")
+    invalid_mode = client.get(f"/scoring/saved-filters/{job['id']}/export/gap?table_mode=compact")
+    invalid_gap_layout = client.get(f"/scoring/saved-filters/{job['id']}/export/ppt?gap_layout=side")
+    summary_word = client.get(f"/scoring/saved-filters/{job['id']}/export/word?table_mode=summary")
+    assert summary_word.status_code == 200
+    assert summary_word.headers['content-disposition'].endswith('.docx')
+    from docx import Document as WordDocument
+    word_document = WordDocument(BytesIO(summary_word.content))
+    # With LibreOffice each slide is a page image; without it the slides are rebuilt as headings and tables.
+    assert word_document.inline_shapes or (
+        word_document.tables and any(paragraph.style.name == 'Heading 1' for paragraph in word_document.paragraphs)
+    )
+
+    assert legacy_csv.status_code == 200
+    assert city_raw_csv.status_code == 200
+    raw_city_rows = list(csv.DictReader(StringIO(city_raw_csv.content.decode('utf-8-sig'))))
+    assert raw_city_rows and {row['environment'] for row in raw_city_rows} == {'City'}
+    assert summary_csv.status_code == 200
+    assert summary_csv.headers['content-type'].startswith('text/csv')
+    assert city_summary_csv.status_code == 200
+    city_summary_rows = list(csv.DictReader(StringIO(city_summary_csv.content.decode('utf-8-sig'))))
+    assert city_summary_rows and {row['environment'] for row in city_summary_rows} == {'DriveCity'}
+    assert summary_ppt.status_code == 200
+    assert summary_ppt.headers['content-type'].startswith('application/vnd.openxmlformats-officedocument.presentationml.presentation')
+    assert city_ppt.status_code == 200
+    assert invalid_environment.status_code == 400
+    assert invalid_mode.status_code == 400
+    assert invalid_gap_layout.status_code == 400
+
+
+def test_workspace_config_renders_kpi_and_gap_priority_panels(scoring_api):
+    page = scoring_api['client'].get('/workspace-config')
+
+    assert page.status_code == 200
+    assert '<h2>Scoring &amp; GAP Analysis Setup</h2>' in page.text
+    assert '<h2>Methodology KPIs Priorities for GAP analysis</h2>' in page.text
+    assert 'Scoring Methodology' in page.text
+    assert 'data-scoring-environment' in page.text
+    assert 'data-scoring-kpi-rows' in page.text
+    assert 'data-scoring-priority-rows' in page.text
+    assert '/static/js/scoring/scoring_config.js?v=' in page.text
+    assert 'data-no-persist' in page.text
+    assert 'Import Methodology (JSON)' in page.text
+    assert 'Export all methodologies or back them up in Admin' in page.text
+
+
+def test_scoring_job_results_cache_force_and_exports(scoring_api):
+    client = scoring_api['client']
+    dataset_id = scoring_api['dataset_id']
+    payload = {
+        'dataset_ids': scoring_api['complete_dataset_ids'],
+        'aggregation_levels': ['Operator', 'Region'],
+        'nr_mode': 'NSA',
+        'baseline_operator': 'EE',
+    }
+    # The Operator Maps are part of what a result is calculated with: changed later, the result is calculated again.
+    scoring_api['repository'].replace_operator_mapping_groups([
+        {'canonical': 'Three UK', 'aliases': ['3'], 'color': '#AABBCC'},
+        {'canonical': 'O2', 'aliases': ['O2 UK'], 'color': '#112233'},
+        {'canonical': 'Vodafone UK', 'aliases': ['VF'], 'color': '#445566'},
+        {'canonical': 'EE', 'aliases': ['EE (UK)'], 'color': '#778899'},
+    ])
+    created = client.post('/api/scoring/saved-filters', json=payload)
+    assert created.status_code == 200, created.text
+    job_id = created.json()['saved_filter']['id']
+    assert created.json()['saved_filter']['status'] == 'queued'
+    assert len(scoring_api['submitted']) == 1
+
+    unfinished_export = client.get(f'/scoring/saved-filters/{job_id}/export/scoring')
+    assert unfinished_export.status_code == 409
+
+    completed = saved_filters.calculate_saved_filter(scoring_api['repository'], job_id)
+    assert completed['status'] == 'completed'
+    assert scoring_api['calls'][0]['levels'] == ['Operator', 'Region']
+    assert scoring_api['calls'][0]['baseline_operator'] == 'EE'
+
+    cached = client.post('/api/scoring/saved-filters', json=payload)
+    assert cached.status_code == 200
+    assert cached.json()['cached'] is True
+    assert cached.json()['saved_filter']['id'] == job_id
+    assert len(scoring_api['submitted']) == 1
+
+    _mark_scoring_result_as_legacy(scoring_api['repository'], job_id)
+
+    result = client.get(f'/api/scoring/saved-filters/{job_id}')
+    assert result.status_code == 200
+    assert result.json()['saved_filter']['status'] == 'completed'
+    assert result.json()['scoring'][0]['weighted_points'] == 4.2
+    assert result.json()['charts'][0]['category'] == 'Overall'
+    assert result.json()['gap'][0]['gap_points'] == -0.6
+    assert result.json()['gap_direction'] == 'operator_minus_reference'
+    stored_result = saved_filters.get_saved_filter(scoring_api['repository'], job_id, include_result=True)['result']
+    assert stored_result['gap'][0]['gap_points'] == 0.6
+    assert 'gap_direction' not in stored_result
+    assert [row['operator'] for row in result.json()['scoring']] == ['EE', 'O2', 'Three UK', 'Vodafone UK']
+    score_table = result.json()['views']['score_tables'][0]
+    assert score_table['operators'] == ['Three UK', 'O2', 'Vodafone UK', 'EE']
+    assert score_table['operator_styles']['Three UK']['color'] == '#AABBCC'
+    assert score_table['operator_styles']['EE']['color'] == '#778899'
+
+    csv_response = client.get(f'/scoring/saved-filters/{job_id}/export/scoring')
+    assert csv_response.status_code == 200
+    assert csv_response.headers['content-type'].startswith('text/csv')
+    assert 'Download Throughput' in csv_response.content.decode('utf-8-sig')
+    gap_csv = client.get(f'/scoring/saved-filters/{job_id}/export/gap')
+    assert gap_csv.status_code == 200
+    assert 'gap_points' in gap_csv.content.decode('utf-8-sig')
+    gap_csv_rows = pd.read_csv(StringIO(gap_csv.content.decode('utf-8-sig')))
+    assert gap_csv_rows.loc[0, 'gap_points'] == -0.6
+
+    # Drawn in NetCheck, whose operators fill the headers with their colour (Ericsson is the default of the users).
+    assert client.put('/api/scoring/theme', json={'theme': 'netcheck'}).status_code == 200
+    ppt_response = client.get(f'/scoring/saved-filters/{job_id}/export/ppt')
+    assert ppt_response.status_code == 200, ppt_response.text
+    presentation = Presentation(BytesIO(ppt_response.content))
+    slide_text = '\n'.join(
+        shape.text for slide in presentation.slides for shape in slide.shapes if shape.has_text_frame
+    )
+    assert 'Scoring & GAP Analysis' in slide_text
+    assert '26-Q2' in slide_text
+    scoring_slides = {}
+    for slide in presentation.slides:
+        title = next(
+            (shape.text for shape in slide.shapes if shape.has_text_frame
+             and shape.text.startswith('Scoring Tables — ')),
+            None,
+        )
+        if title:
+            mode = title.splitlines()[0].rsplit(' — ', 1)[-1]
+            scoring_slides.setdefault(mode, slide)
+    assert set(scoring_slides) == {'Summary', 'Breakdown'}
+    expected_operators = ['Three UK', 'O2', 'Vodafone UK', 'EE']
+    # The scorecard: a Category (Summary) or KPI (Breakdown) column, then the operators.
+    expected_headers = {'Summary': ['Category'], 'Breakdown': ['KPI']}
+    for mode, fixed_count in [('Summary', 1), ('Breakdown', 1)]:
+        slide = scoring_slides[mode]
+        scoring_table = next(shape.table for shape in slide.shapes if shape.has_table)
+        assert [scoring_table.cell(0, column).text for column in range(fixed_count)] == expected_headers[mode]
+        # The results hold one Region (North): that level splits nothing and is left out, so the
+        # operators head the columns without a Region row.
+        assert [scoring_table.cell(0, column).text for column in range(fixed_count, fixed_count + 4)] == expected_operators
+        assert 'North' not in [scoring_table.cell(1, column).text for column in range(fixed_count, fixed_count + 4)]
+        assert str(scoring_table.cell(0, fixed_count).fill.fore_color.rgb) == 'AABBCC'
+
+    forced = client.post('/api/scoring/saved-filters', json={**payload, 'force': True})
+    assert forced.status_code == 200
+    # Recalculate calculates the same Saved Filter again.
+    assert forced.json()['saved_filter']['id'] == job_id
+    assert forced.json()['cached'] is False
+    assert len(scoring_api['submitted']) == 2
+    assert len(saved_filters.list_saved_filters(scoring_api['repository'])) == 1
+
+
+def test_scoring_job_match_api_is_read_only_and_uses_complete_validation(scoring_api):
+    client = scoring_api['client']
+    repository = scoring_api['repository']
+    payload = {
+        'dataset_ids': scoring_api['complete_dataset_ids'],
+        'aggregation_levels': ['Operator', 'Region'],
+        'nr_mode': 'NSA',
+        'baseline_operator': 'EE',
+        'context_filters': {'Region': ['North']},
+    }
+
+    missing = client.post('/api/scoring/saved-filters/match', json=payload)
+    assert missing.status_code == 200, missing.text
+    assert missing.json() == {'saved_filter': None}
+    assert saved_filters.list_saved_filters(repository) == []
+    assert scoring_api['submitted'] == []
+
+    created = client.post('/api/scoring/saved-filters', json=payload)
+    assert created.status_code == 200, created.text
+    job_id = created.json()['saved_filter']['id']
+    submitted_before_match = len(scoring_api['submitted'])
+    matched = client.post('/api/scoring/saved-filters/match', json=payload)
+    assert matched.status_code == 200, matched.text
+    assert matched.json()['saved_filter']['id'] == job_id
+    assert matched.json()['saved_filter']['status'] == 'queued'
+    assert len(saved_filters.list_saved_filters(repository)) == 1
+    assert len(scoring_api['submitted']) == submitted_before_match
+
+    incomplete = client.post('/api/scoring/saved-filters/match', json={
+        **payload, 'dataset_ids': [scoring_api['dataset_id']],
+    })
+    assert incomplete.status_code == 400
+    assert len(saved_filters.list_saved_filters(repository)) == 1
+    assert len(scoring_api['submitted']) == submitted_before_match
+
+    saved_filters.calculate_saved_filter(repository, job_id)
+    forced = client.post('/api/scoring/saved-filters', json={**payload, 'force': True})
+    assert forced.status_code == 200, forced.text
+    assert forced.json()['saved_filter']['id'] == job_id
+    assert forced.json()['cached'] is False
+    assert forced.json()['saved_filter']['status'] == 'queued'
+    assert len(saved_filters.list_saved_filters(repository)) == 1
+
+
+def test_global_raw_kpis_survive_job_reload_api_get_and_csv_export(scoring_api, monkeypatch):
+    client = scoring_api['client']
+    repository = scoring_api['repository']
+    engine = saved_filters._scoring_engine()
+    original_calculate = engine.calculate_scoring
+    metric = repository.get_scoring_configuration()['metrics'][0]
+    global_kpi = {
+        'campaign': '2026-Q2', 'region': 'North', 'city': 'Leeds', 'vendor': 'Nokia',
+        'dataset_type': 'voice', 'operator': 'EE', 'kpi_code': metric['code'],
+        'kpi': metric['kpi'], 'category': metric['category'],
+        'kpi_type': metric['kpi_type'], 'unit': '%', 'value': 98.75, 'sample_count': 12,
+        'environment': 'All Environments', 'complete_coverage': True, 'missing_environments': [],
+    }
+
+    def calculate_with_global_kpis(frames, levels, *, baseline_operator, configuration=None):
+        result = original_calculate(
+            frames, levels, baseline_operator=baseline_operator, configuration=configuration,
+        )
+        result['global_kpis'] = [global_kpi]
+        return result
+
+    monkeypatch.setattr(engine, 'calculate_scoring', calculate_with_global_kpis)
+    payload = {
+        'dataset_ids': scoring_api['complete_dataset_ids'],
+        'aggregation_levels': ['Operator', 'Region'],
+        'nr_mode': 'NSA', 'baseline_operator': 'EE',
+    }
+    created = client.post('/api/scoring/saved-filters', json=payload)
+    assert created.status_code == 200, created.text
+    job_id = created.json()['saved_filter']['id']
+    completed = saved_filters.calculate_saved_filter(repository, job_id)
+    assert completed['status'] == 'completed'
+    persisted = saved_filters.get_saved_filter(repository, job_id, include_result=True)
+    assert persisted['result']['global_kpis'] == [global_kpi]
+
+    response = client.get(f'/api/scoring/saved-filters/{job_id}')
+    assert response.status_code == 200, response.text
+    api_result = response.json()
+    assert api_result['global_kpis'] == [global_kpi]
+    assert api_result['scoring'] == persisted['result']['scoring']
+    assert api_result['charts'] == persisted['result']['charts']
+
+    csv_response = client.get(f'/scoring/saved-filters/{job_id}/export/scoring?table_mode=expanded&environment=all')
+    assert csv_response.status_code == 200, csv_response.text
+    exported_rows = list(csv.DictReader(StringIO(csv_response.content.decode('utf-8-sig'))))
+    global_row = next((row for row in exported_rows if (
+        row['operator'] == 'EE' and row['kpi_code'] == metric['code'] and row['kpi_value'] == '98.75'
+    )), None)
+    assert global_row, [row for row in exported_rows if row['kpi_code'] == metric['code']][:8]
+    assert global_row['kpi_value'] == '98.75'
+
+    from src.modules.scoring.scoring_exports import export_scoring_csv
+
+    without_global_kpis = deepcopy(persisted['result'])
+    without_global_kpis.pop('global_kpis')
+    job_metadata = saved_filters.get_saved_filter(repository, job_id)
+    baseline_rows = list(csv.DictReader(StringIO(export_scoring_csv(
+        job_metadata, without_global_kpis, 'scoring', 'expanded', environment='all',
+    ))))
+    score_signature = lambda rows: sorted(
+        (row['environment'], row['region'], row['city'], row['campaign'],
+         row['kpi_code'], row['row_type'], row['score_points'])
+        for row in rows
+    )
+    assert score_signature(exported_rows) == score_signature(baseline_rows)
+
+
+def test_scoring_ppt_export_normalizes_legacy_gap_without_mutating_saved_result(scoring_api, monkeypatch):
+    client = scoring_api['client']
+    response = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': scoring_api['complete_dataset_ids'],
+        'aggregation_levels': ['Operator'],
+        'nr_mode': 'NSA',
+        'baseline_operator': 'EE',
+    })
+    assert response.status_code == 200, response.text
+    job_id = response.json()['saved_filter']['id']
+    saved_filters.calculate_saved_filter(scoring_api['repository'], job_id)
+    _mark_scoring_result_as_legacy(scoring_api['repository'], job_id)
+
+    from src.modules.scoring import scoring_exports
+    captured = {}
+
+    def capture_export(job, result, *_args, **kwargs):
+        captured['result'] = deepcopy(result)
+        captured['operators'] = job.get('_operator_choices')
+        captured['gap_layout'] = kwargs.get('gap_layout')
+        captured['show_gap_values'] = kwargs.get('show_gap_values')
+        return b'ppt'
+
+    monkeypatch.setattr(scoring_exports, 'export_scoring_powerpoint', capture_export)
+    # The deck is composed as the Scoring section of a Bundle Report Template.
+    from src.modules.reporting import bundle_report_templates
+    composed = []
+    monkeypatch.setattr(bundle_report_templates, 'module_document',
+                        lambda key, content, kind, _title='', **_options: composed.append((key, content, kind)) or content)
+    exported = client.get(f'/scoring/saved-filters/{job_id}/export/ppt')
+    assert exported.status_code == 200
+    assert exported.content == b'ppt' and composed == [('scoring', b'ppt', 'powerpoint')]
+    assert captured['operators'] == {}
+    # The operators enabled in each section of the page travel with the export.
+    exported = client.get(f'/scoring/saved-filters/{job_id}/export/ppt',
+                          params={'operators': json.dumps({'summary-operators': ['VF', 'EE']})})
+    assert exported.status_code == 200 and captured['operators'] == {'summary-operators': ['VF', 'EE']}
+    assert client.get(f'/scoring/saved-filters/{job_id}/export/ppt', params={'operators': '[1]'}).status_code == 400
+    assert captured['gap_layout'] == 'end'
+    assert captured['show_gap_values'] is True
+    assert captured['result']['gap'][0]['gap_points'] == -0.6
+    assert captured['result']['gap_direction'] == 'operator_minus_reference'
+
+    adjacent = client.get(f'/scoring/saved-filters/{job_id}/export/ppt?gap_layout=adjacent')
+    assert adjacent.status_code == 200
+    assert captured['gap_layout'] == 'adjacent'
+
+    hidden_gaps = client.get(f'/scoring/saved-filters/{job_id}/export/ppt?show_gap_values=false')
+    assert hidden_gaps.status_code == 200
+    assert captured['show_gap_values'] is False
+
+    stored = saved_filters.get_saved_filter(scoring_api['repository'], job_id, include_result=True)['result']
+    assert stored['gap'][0]['gap_points'] == 0.6
+    assert 'gap_direction' not in stored
+
+
+def test_real_cdr_ingestion_is_scored_from_its_saved_filter_and_reuses_its_result(client):
+    _login(client)
+    workspace = app_module.active_workspace
+    configured_repository = Repository(workspace.database_path, app_module.repository.global_db_path,
+                                       app_module.workspace_registry.registry_path)
+    configured_repository.replace_scoring_configuration(scoring_configuration())
+    uploads = [
+        (
+            'tiny_2026-Q2_NSA_data.csv',
+            'data',
+            'Campaign,G_Level_1,G_Level_2,Operator,Test_Name,Test_Result,Transfer_Duration\n'
+            'UK_Q2_2026,Drive,City,EE,FDFS DL,Completed,10\n'
+            'UK_Q2_2026,Drive,City,O2,FDFS DL,Completed,20\n'
+            'UK_Q2_2026,Drive,City,O2,FDFS DL,Failed,30\n',
+        ),
+        (
+            'tiny_2026-Q2_NSA_voice.csv',
+            'voice',
+            'Campaign,G_Level_1,G_Level_2,Operator,Session_Type,Call_Status,Call_Setup_Time\n'
+            'UK_Q2_2026,Drive,City,EE,Voice,Completed,2\n',
+        ),
+        (
+            'tiny_2026-Q2_NSA_speech.csv',
+            'speech',
+            'Campaign,G_Level_1,G_Level_2,Operator,Session_Type,LQ\n'
+            'UK_Q2_2026,Drive,City,EE,Voice,4.2\n',
+        ),
+    ]
+    for filename, kind, content in uploads:
+        upload = client.post(
+            '/datasets-analysis/upload',
+            data={'dataset_kinds': kind, 'nr_modes': 'NSA'},
+            files={'dataset_files': (filename, BytesIO(content.encode('utf-8')), 'text/csv')},
+            follow_redirects=False,
+        )
+        assert upload.status_code == 303, upload.text
+
+    workspace = app_module.active_workspace
+    repository = Repository(
+        workspace.database_path,
+        global_db_path=app_module.repository.db_path,
+        workspace_registry_db_path=app_module.workspace_registry.registry_path,
+    )
+    deadline = time.monotonic() + 10
+    datasets_by_name = {}
+    while time.monotonic() < deadline:
+        datasets_by_name = {row['file_name']: row for row in repository.list_datasets()}
+        if all(
+            filename in datasets_by_name and datasets_by_name[filename]['status'] == 'ready'
+            for filename, _kind, _content in uploads
+        ):
+            break
+        time.sleep(0.05)
+    selected_datasets = [datasets_by_name[filename] for filename, _kind, _content in uploads]
+    assert all(dataset['status'] == 'ready' for dataset in selected_datasets)
+    dataset_id = int(datasets_by_name[uploads[0][0]]['id'])
+    expected_dataset_ids = [int(dataset['id']) for dataset in selected_datasets]
+
+    # Processing CDRs saves no Saved Filter: only the selections used are kept.
+    assert client.get('/api/scoring/saved-filters').json()['saved_filters'] == []
+    created = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': expected_dataset_ids, 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
+        'baseline_operator': 'EE',
+    })
+    assert created.status_code == 200, created.text
+    deadline = time.monotonic() + 10
+    automatic_job = None
+    while time.monotonic() < deadline:
+        response = client.get('/api/scoring/saved-filters')
+        assert response.status_code == 200, response.text
+        automatic_job = next((
+            job for job in response.json()['saved_filters']
+            if set(job['dataset_ids']) == set(expected_dataset_ids)
+            and job['aggregation_levels'] == ['Operator']
+        ), None)
+        if automatic_job and automatic_job['status'] in {'completed', 'failed'}:
+            break
+        time.sleep(0.05)
+
+    assert automatic_job is not None and automatic_job['id'] == created.json()['saved_filter']['id']
+    assert automatic_job['status'] == 'completed', automatic_job
+    result_response = client.get(f"/api/scoring/saved-filters/{automatic_job['id']}")
+    assert result_response.status_code == 200, result_response.text
+    result = result_response.json()
+
+    c17_rows = [row for row in result['scoring'] if row['kpi_code'] == 'K12']
+    assert {row['operator']: row['value'] for row in c17_rows} == {'EE': 100.0, 'O2': 50.0}
+    assert any('Incomplete KPI or environment coverage' in warning for warning in result['warnings'])
+
+    csv_response = client.get(f"/scoring/saved-filters/{automatic_job['id']}/export/scoring")
+    assert csv_response.status_code == 200, csv_response.text
+    exported_rows = list(csv.DictReader(StringIO(csv_response.content.decode('utf-8-sig'))))
+    exported_c17 = {row['operator']: float(row['value']) for row in exported_rows if row['kpi_code'] == 'K12'}
+    assert exported_c17 == {'EE': 100.0, 'O2': 50.0}
+
+    cached = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': expected_dataset_ids, 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
+        'baseline_operator': 'EE',
+    })
+    assert cached.status_code == 200, cached.text
+    assert cached.json()['cached'] is True
+    assert cached.json()['saved_filter']['id'] == automatic_job['id']
+
+
+@pytest.mark.parametrize('job_status', ['queued', 'completed', 'failed'])
+def test_scoring_delete_api_removes_job_and_recompute_uses_new_id(scoring_api, job_status):
+    client = scoring_api['client']
+    payload = {'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA'}
+    response = client.post('/api/scoring/saved-filters', json=payload)
+    assert response.status_code == 200, response.text
+    job_id = response.json()['saved_filter']['id']
+    repository = scoring_api['repository']
+    if job_status == 'completed':
+        assert saved_filters.calculate_saved_filter(repository, job_id)['status'] == 'completed'
+        assert client.get(f'/api/scoring/saved-filters/{job_id}').json()['scoring']
+    elif job_status == 'failed':
+        saved_filters._update_saved_filter(repository, job_id, status='failed', last_error='Test failure')
+    response = client.delete(f'/api/scoring/saved-filters/{job_id}')
+    assert response.status_code == 200, response.text
+    assert response.json() == {'deleted': job_id}
+    assert client.get(f'/api/scoring/saved-filters/{job_id}').status_code == 404
+    assert client.get(f'/scoring/saved-filters/{job_id}/export/scoring').status_code == 404
+    assert client.delete(f'/api/scoring/saved-filters/{job_id}').status_code == 404
+    assert client.get('/api/scoring/saved-filters').json()['saved_filters'] == []
+    assert repository.get_dataset(scoring_api['dataset_id']) is not None
+    recreated = client.post('/api/scoring/saved-filters', json=payload)
+    assert recreated.status_code == 200, recreated.text
+    assert recreated.json()['cached'] is False
+    assert recreated.json()['saved_filter']['id'] != job_id
+
+
+def test_scoring_delete_requires_login_and_workspace_access(scoring_api, monkeypatch):
+    client = scoring_api['client']
+    created = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
+    })
+    job_id = created.json()['saved_filter']['id']
+    client.get('/logout', follow_redirects=False)
+    assert client.delete(f'/api/scoring/saved-filters/{job_id}').status_code == 401
+    assert saved_filters.get_saved_filter(scoring_api['repository'], job_id) is not None
+    _login(client)
+    monkeypatch.setattr(app_module.repository, 'user_has_workspace_access', lambda username, workspace_id: False)
+    denied = client.delete(f'/api/scoring/saved-filters/{job_id}')
+    assert denied.status_code == 403
+    assert saved_filters.get_saved_filter(scoring_api['repository'], job_id) is not None
+
+
+def test_scoring_calculations_appear_in_the_background_tasks_with_their_time(scoring_api):
+    from datetime import datetime, timedelta
+
+    client = scoring_api['client']
+    repository = scoring_api['repository']
+    created = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'], 'nr_mode': 'NSA',
+        'baseline_operator': 'EE',
+    })
+    job_id = created.json()['saved_filter']['id']
+
+    def task():
+        groups = client.get('/api/background-tasks').json()
+        return next((item for group in groups.get('groups', []) for item in group['tasks']
+                     if item['id'].startswith('saved-filter:') and item['id'].endswith(f':{job_id}')), None)
+
+    queued = task()
+    assert queued['label'] == f'Scoring calculation #{job_id} (NSA)' and queued['status'] == 'queued'
+    started = datetime.now().astimezone() - timedelta(seconds=75)
+    with repository.connection() as connection:
+        connection.execute("UPDATE saved_filters SET status = 'processing', progress = 40, message = 'Reading processed CDR rows', "
+                           'started_at = ? WHERE id = ?', (started.isoformat(), job_id))
+    running = task()
+    assert running['status'] == 'processing' and running['detail'] == 'Reading processed CDR rows'
+    assert abs(running['started_at'] - started.timestamp()) < 1
+    with repository.connection() as connection:
+        connection.execute("UPDATE saved_filters SET status = 'completed', progress = 100, finished_at = ? WHERE id = ?",
+                           (datetime.now().astimezone().isoformat(), job_id))
+    # A finished calculation stays a few seconds, with its calculation time.
+    finished = task()
+    assert finished['status'] == 'ready' and 74 <= finished['duration_seconds'] <= 80

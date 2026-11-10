@@ -19,7 +19,8 @@ To present the tool to an audience, every presentation of DriveTest Analyzer is 
 | Application and workspace configuration | [Open section](#application-and-workspace-configuration) |
 | Background tasks and floating cards | [Open section](#background-tasks-and-floating-cards) |
 | Workspace | [Open section](#workspace) |
-| CDR Analysis | [Open section](#datasets-analysis) |
+| CDR Analysis | [Open section](#cdr-analysis) |
+| Scoring & GAP Analysis | [Open section](#scoring-gap-analysis) |
 | Network Insights | [Open section](#network-insights) |
 | PPT Designer | [Open section](#ppt-designer) |
 | Non-Qualified Calls | [Open section](#non-qualified-calls) |
@@ -38,7 +39,7 @@ To present the tool to an audience, every presentation of DriveTest Analyzer is 
 1. Sign in and open a workspace.
 2. Upload Data, Voice or Speech CDRs from **Workspace**.
 3. Confirm the detected input type (and, for CDRs, the NR Mode) and wait for processing to finish.
-4. Optionally map Vodafone and Three vendor information.
+4. Optionally map the Vendor of the CDRs from Multivendor Mappings and Network Inventories.
 5. Create or open a saved **PPT Designer** to analyse a complete template interactively, reuse prepared selections and generate its PowerPoint. Use **CDR Analysis**, **Chart Builder** or **Query Builder** for focused exploration. Use **Reporting** to build reports with the parts you choose of every module, generate them on demand or on their schedule and email them.
 6. Follow PPT preparation and generation in the floating task cards and **PPT Generation Jobs**.
 7. Use **Scoring & GAP Analysis** for saved NetCheck scores and GAP reference operator comparisons across selected CDRs and Split by levels; CDR processing also queues default Operator scoring when compatible companion CDRs are available. See [Scoring & GAP Analysis](scoring-gap-analysis.md).
@@ -56,6 +57,7 @@ The header is available throughout the authenticated application.
 - **Workspace selector** switches directly to another accessible workspace.
 - **Username button** opens the password-change dialog.
 - **Help Home** is the default page after login.
+- **Readme** shows the product and deployment quick start.
 - **Changelog** shows release history.
 - **Help** opens this detailed guide.
 - **App Logs** opens operational events for the active workspace.
@@ -65,7 +67,7 @@ The header is available throughout the authenticated application.
 
 ## Application and workspace configuration
 
-**Application Config** controls runtime settings shared by every workspace. The dedicated **Workspace Config** page groups Main Cities, Mappings & Reference Data (Operator, Vendor and Campaign Maps and Spectrum Holdings) and Scoring & GAP Analysis Setup for the active workspace. These are separate scopes: changing a workspace template or chart mapping does not change application runtime settings. See [Application Config](app-config.md) and [Workspace Config](workspace-config.md).
+**Application Config** controls runtime settings shared by every workspace. The dedicated **Workspace Config** page groups Main Cities, Mappings & Reference Data (Operator, Vendor and Campaign Maps, Map Areas, Spectrum Holdings, Serving Networks and the CDR Field Dictionary), Auto-calculated Fields and Scoring & GAP Analysis Setup for the active workspace. These are separate scopes: changing a workspace template or chart mapping does not change application runtime settings. See [Application Config](app-config.md) and [Workspace Config](workspace-config.md).
 
 ## Background tasks and floating cards
 
@@ -98,7 +100,7 @@ Workspace is the entry point for data and storage management.
 
 ### Data Ingestion
 
-- Upload `CSV`, `XLS`, `XLSX` and `XLSM` files.
+- Upload `CSV`, `XLS`, `XLSX` and `XLSM` files (and `KMZ`, `KML`, `GeoJSON`, `JSON` or zipped shapefiles for network inventories and polygons).
 - Review the proposed type for every file in a batch.
 - Import CDR-Data, CDR-Voice, CDR-Speech, Layer3 Logs (the parsed drivetest logs of each campaign), Multivendor Mappings, Network Inventories or generic datasets.
 - Optionally apply ready Multivendor Mappings and Network Inventories while a CDR is processed.
@@ -151,6 +153,10 @@ CDR Analysis analyses one processed CDR at a time.
 
 - Shows the filtered and aggregated records behind the design.
 - Supports Word and PowerPoint exports of the active analysis.
+
+## Scoring & GAP Analysis
+
+Scoring & GAP Analysis calculates NetCheck scores from the ready Data, Voice and Speech CDRs of one NR Mode, or of both side by side with **NSA vs SA**, grouped by Operator and optional Vendor, Region, City or Campaign, and compares every operator with a reference operator (the GAP). Results are saved with the workspace and offer eight tabs: Summary, Scoring Charts, Scoring Tables, Geographical Areas, Scoring Trends, GAP Analysis, Points Lost (where the points go, per KPI, area, Vendor and site) and Methodology Impact (two methodologies face to face), in the colour theme each user chooses, also in the CSV, PowerPoint and Word exports. Named scoring methodologies are managed in Workspace Config. See [Scoring & GAP Analysis](scoring-gap-analysis.md).
 
 ## Network Insights
 
@@ -208,7 +214,7 @@ The operational guide is [PPT Designer](ppt-designer.md). Template creation, col
 
 ## Non-Qualified Calls
 
-Non-Qualified Calls follows Scoring & GAP Analysis in the main tabs. It lists every Voice and Speech call and every Data test whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs of the workspace, summarises them by service, result, status, team, failure classification and Operator with drill-down into the calls, shows the NQ rate of each campaign and operator, and is an NQ Analysis Center: the teams follow each call up through its General (activity), RCA, Failure Details, Analysis, Implementation and Planning sections, with a Root Category and Root Cause recommended from the DT Analyzer RCA, the NetCheck RCA, the Ericsson RCA results and previous decisions, a status that follows the phases by customizable rules or is set by hand, a responsible team, an assignee, the workspace's own customizable fields and lists and a shared, traceable comment thread, while designs follow the lifecycle, the phases and the agreement of the root cause sources. Each call is identified by its `JOIN_ID`, so its analysis is shared by the Daily and Final CDRs that contain it. The follow-up exports to Excel and travels with workspace packages, transfers and backups. On a new deployment it is in the NQ Calls and All Modules profiles, and Super Admin → Modules Profiles chooses who sees it. See [Non-Qualified Calls](non-qualified-calls.md).
+Non-Qualified Calls follows Network Insights in the main tabs. It lists every Voice and Speech call and every Data test whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs of the workspace, summarises them by service, result, status, team, failure classification and Operator with drill-down into the calls, shows the NQ rate of each campaign and operator, and is an NQ Analysis Center: the teams follow each call up through its General (activity), RCA, Failure Details, Analysis, Implementation and Planning sections, with a Root Category and Root Cause recommended from the DT Analyzer RCA, the NetCheck RCA, the Ericsson RCA results and previous decisions, a status that follows the phases by customizable rules or is set by hand, a responsible team, an assignee, the workspace's own customizable fields and lists and a shared, traceable comment thread, while designs follow the lifecycle, the phases and the agreement of the root cause sources. Each call is identified by its `JOIN_ID`, so its analysis is shared by the Daily and Final CDRs that contain it. The follow-up exports to Excel and travels with workspace packages, transfers and backups. On a new deployment it is in the Non-Qualified Calls and All Modules profiles, and Super Admin → Modules Profiles chooses who sees it. See [Non-Qualified Calls](non-qualified-calls.md).
 
 ## Reporting
 
@@ -267,7 +273,7 @@ The **Admin** tab opens Administrator Config for `admin` and `super-admin` roles
 
 ## Super Admin
 
-The **Super Admin** tab, for the `super-admin` role only, manages the users and their access, Interface Settings and Database Management, and resets the application. See [Super Admin](super-admin.md).
+The **Super Admin** tab, for the `super-admin` role only, manages the users and their access (Users, Modules Profiles, Workspace Groups and Access Requests), Interface Settings, the Help Presentations, AI Comment Writers and Database Management, and resets the application. See [Super Admin](super-admin.md).
 
 ### User management
 

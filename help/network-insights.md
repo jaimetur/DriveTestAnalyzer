@@ -33,7 +33,7 @@ network-insights
 | Compare Low, Mid and High (TDD) spectrum | [Spectrum](#spectrum) |
 | Count the sites with NR TDD and NR FDD, logical and physical | [Spectrum](#spectrum) |
 | Compare the bandwidth of each band and the primary bandwidth (LTE + NR) of the tests in Cities, Towns, and Roads and railways | [Spectrum](#spectrum) |
-| Compare the latency, packet loss and jitter of the gaming and video chat tests | [Latency & Interactivity](#latency--interactivity) |
+| Compare the latency, packet loss and jitter of the gaming and video chat tests | [Latency & Interactivity](#latency-interactivity) |
 | Measure the distance to the serving sites and find overshooting cells | [Serving Cells](#serving-cells) |
 | Find 5G sites whose samples get no NR | [5G Availability](#5g-availability) |
 | Find the NR cell of NSA samples or compare the MIMO of the cells with the reported rank | [Serving Cells](#serving-cells) |
@@ -84,7 +84,7 @@ network-insights
 **LTE+NR** analyses each technology separately with its own thresholds, so LTE and NR are never pooled: Overview, RF Quality (two CDFs and a table per technology) and the Coverage and Interference Maps show an **LTE** section followed by an **NR** section. Each section includes the samples with measurements of its technology; a sample with both contributes once to each. Select LTE or NR to analyse one technology.
 
 > [!TIP]
-> The first analysis of a CDR reads its samples from its [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) in about a second; a CDR whose copy is not ready yet (being copied after it was processed or changed) has its radio fields copied into the combined reporting tables first, which can take a minute. Later analyses of the same CDRs reuse them and the parsed samples, so changing filters, thresholds or the map Operator is fast. Repeating an analysis with the same CDRs and options returns the stored result immediately, also after a restart (the newest 500 analyses are kept, the page analyses and those of the exports and of the reports of **Reporting** alike); it is recalculated when the CDRs, inventories and their snapshot dates, Serving Networks, Operator Maps or Spectrum Holdings change. Stored results live in `.network-insights-cache` beside the workspace database and can be deleted at any time.
+> The first analysis of a CDR reads its samples from its [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) in about a second; a CDR whose copy is not ready yet (being copied after it was processed or changed) has its radio fields copied into the combined reporting tables first, which can take a minute. Later analyses of the same CDRs reuse them and the parsed samples, so changing filters, thresholds or the map Operator is fast. Repeating an analysis with the same CDRs and options returns the stored result immediately, also after a restart (the newest 500 analyses are kept, the page analyses and those of the exports and of the reports of **Reporting** alike); it is recalculated when the CDRs, inventories and their snapshot dates, Serving Networks, Operator Maps or Spectrum Holdings change. Stored results live in `.cache/network-insights` beside the workspace database and can be deleted at any time.
 
 Operator names follow the workspace **Operator Maps**, including their colours; rows from ignored CDR sheets are excluded.
 

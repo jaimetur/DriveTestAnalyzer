@@ -475,7 +475,8 @@ def save_task(task_repository: Any, task_id: int | None, payload: dict[str, Any]
             raise ValueError(f"Invalid email recipients: {', '.join(invalid)}.")
     enabled = bool(payload.get('enabled', True))
     next_run = next_run_after(schedule, now_local()) if enabled else None
-    if schedule['mode'] == 'once' and next_run is None:
+    # (A single execution turned off, or already run, is saved as it is: its report can still be edited.)
+    if enabled and schedule['mode'] == 'once' and next_run is None:
         raise ValueError('The single execution must be in the future.')
     now = now_local().isoformat()
     values = (name[:160], json.dumps(definition, ensure_ascii=False), int(send_email), json.dumps(recipients),
@@ -1423,11 +1424,23 @@ def install_report_task_routes(core: Any) -> None:
             task_repository = core.Repository(workspace.database_path, global_db_path=core.repository.global_db_path,
                                               workspace_registry_db_path=core.workspace_registry.registry_path)
             database = str(Path(task_repository.db_path).resolve())
-            if database not in recovered_databases:
-                resume_interrupted_runs(task_repository, workspace.id)
-                recovered_databases.add(database)
-            started += [start_run(task_repository, task, 'schedule', task['created_by'], workspace.id)
-                        for task in claim_due_tasks(task_repository, now or now_local())]
+            # A workspace or a report that fails does not leave the others without their run: the reports claimed here
+            # already have their next execution, so each one is started on its own.
+            try:
+                if database not in recovered_databases:
+                    resume_interrupted_runs(task_repository, workspace.id)
+                    recovered_databases.add(database)
+                due = claim_due_tasks(task_repository, now or now_local())
+            except Exception as exc:
+                core.repository.try_add_log('system', 'reporting_scheduler_error', json.dumps(
+                    {'workspace': str(getattr(workspace, 'name', '') or workspace.id), 'error': str(exc)}, ensure_ascii=False))
+                continue
+            for task in due:
+                try:
+                    started.append(start_run(task_repository, task, 'schedule', task['created_by'], workspace.id))
+                except Exception as exc:
+                    task_repository.try_add_log('system', 'reporting_scheduler_error', json.dumps(
+                        {'report': str(task.get('name') or ''), 'job_id': task.get('id'), 'error': str(exc)}, ensure_ascii=False))
         return started
 
     def scheduler_loop(stop_event: Event) -> None:

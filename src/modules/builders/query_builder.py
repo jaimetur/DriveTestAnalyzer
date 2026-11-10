@@ -97,7 +97,9 @@ def normalize_query(query: str) -> str:
         raise ValueError('Enter a SQL query.')
     if ';' in query or not re.match(r'^(?:select|with)\b', query, flags=re.I):
         raise ValueError('Only one SELECT query (optionally starting with WITH) is allowed.')
-    return query
+    # The query is run inside others (its count, its pages, its filters): it ends on a line of its own, so one that
+    # closes with a line comment (-- …) keeps what follows it outside the comment.
+    return f'{query}\n'
 
 
 def _selected_views(connection: sqlite3.Connection, datasets: Iterable[dict[str, Any]],
@@ -296,7 +298,8 @@ def _execute(connection: sqlite3.Connection, database_path: Path, datasets: list
 
 
 def _read_only_authorizer(action: int, _arg1: str | None, _arg2: str | None, _database: str | None, _source: str | None) -> int:
-    allowed = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION}
+    # (SQLITE_RECURSIVE: a WITH RECURSIVE query only reads, and is stopped like any other.)
+    allowed = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION, sqlite3.SQLITE_RECURSIVE}
     return sqlite3.SQLITE_OK if action in allowed else sqlite3.SQLITE_DENY
 
 

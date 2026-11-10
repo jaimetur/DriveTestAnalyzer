@@ -326,10 +326,13 @@
     setBusy(true);
     if (!elements.messages.querySelector('.assistant-pending')) elements.messages.append(pendingBubble());
     showSteps(job.steps);
+    // A check that fails (the network, a restart of the server) is tried again a few times: the answer is still on its way.
+    let failedChecks = 0;
     const tick = async () => {
       if (!state.job || state.job.id !== job.id) return;
       try {
         const current = await api(`/api/assistant/jobs/${job.id}`);
+        failedChecks = 0;
         showSteps(current.steps);
         if (current.status === 'running') {
           state.poll = setTimeout(tick, 1000);
@@ -343,6 +346,11 @@
         scrollToEnd();
         refreshConversations().catch(() => {});
       } catch (error) {
+        failedChecks += 1;
+        if (failedChecks < 5) {
+          state.poll = setTimeout(tick, 2000);
+          return;
+        }
         elements.messages.querySelector('.assistant-pending')?.remove();
         stopPolling();
         setBusy(false);

@@ -21,6 +21,7 @@ import re
 import shutil
 import sqlite3
 import time
+import uuid
 import zipfile
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -701,7 +702,8 @@ def points_path(database_path: Any, dataset_id: int) -> Path:
 def build_points(source: Path, target: Path) -> int:
     """Write the points of a source to ``target``, by session and time; returns how many there are."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f'.{target.name}.{os.getpid()}.tmp')
+    # (A file of its own for each build: two requests may build the points of a dataset at once.)
+    temporary = target.with_name(f'.{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp')
     with duckdb.connect(config={'memory_limit': '1GB', 'threads': 4}) as duck:
         columns = {row[0] for row in duck.execute(f'DESCRIBE SELECT * FROM read_parquet({sql_text(source)})').fetchall()}
         duck.execute(f'COPY (SELECT * FROM ({_points_sql(source, columns)}) ORDER BY join_id, ue, ms, kind, row) '

@@ -5,7 +5,7 @@
 # DriveTest Analyzer Help
 
 > [!TIP]
-> **Start with your task.** Choose a guide below, then use its task index or the Page Sections navigation to reach the relevant workflow.
+> **Start with your task.** Choose a guide below, then use its task index or the **Modules & Sections** tab to reach the relevant workflow.
 
 Use this Help centre for detailed workflows, examples and technical rules. For a shorter introduction and deployment quick start, open the **Readme** tab.
 

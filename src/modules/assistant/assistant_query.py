@@ -336,10 +336,11 @@ class QueryDatabase:
         try:
             described = self.connection.execute(f'DESCRIBE {text}').fetchall()
             names = [str(row[0]) for row in described]
-            # Times with a time zone are read as text (their Python values need a module the tool does not have).
+            # Times with a time zone are read as text (their Python values need a module the tool does not have). The
+            # query ends on a line of its own: one that closes with a line comment keeps the parenthesis outside it.
             casts = [f'CAST(#{index + 1} AS VARCHAR)' if 'TIME ZONE' in str(row[1]).upper() else f'#{index + 1}'
                      for index, row in enumerate(described)]
-            cursor = self.connection.execute(f'SELECT {", ".join(casts)} FROM ({text}) AS assistant_query LIMIT {int(limit) + 1}')
+            cursor = self.connection.execute(f'SELECT {", ".join(casts)} FROM ({text}\n) AS assistant_query LIMIT {int(limit) + 1}')
             rows = [list(row) for row in cursor.fetchall()]
         except duckdb.InterruptException as exc:
             if stopped and stopped[0] == 'stopped':

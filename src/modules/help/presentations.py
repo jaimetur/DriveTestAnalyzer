@@ -140,7 +140,7 @@ def product_figures() -> dict[str, int]:
     }
     # (Without them, the presentations show the count written in build.js.)
     if tests_root.is_dir():
-        figures['tests'] = sum(1 for path in tests_root.glob('test_*.py') for line in path.read_text(encoding='utf-8', errors='replace').splitlines()
+        figures['tests'] = sum(1 for path in tests_root.rglob('test_*.py') for line in path.read_text(encoding='utf-8', errors='replace').splitlines()
                                if line.lstrip().startswith(('def test_', 'async def test_')))
     return figures
 

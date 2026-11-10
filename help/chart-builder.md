@@ -23,7 +23,7 @@ builders
 | Presentation | [Open section](#presentation) |
 | Workflow | [Open section](#workflow) |
 | Interactive Preview | [Open section](#interactive-preview) |
-| Add to PPT Design | [Open section](#add-to-ppt-design) |
+| Add to PPT Design or Template | [Open section](#add-to-ppt-design-or-template) |
 | Example | [Open section](#example) |
 | Filters | [Open section](#filters) |
 | Performance and troubleshooting | [Open section](#performance-and-troubleshooting) |
@@ -44,7 +44,8 @@ The Source Dataset selector is filtered by CDR Type and shows only processed dat
 
 | Control | Behaviour |
 | --- | --- |
-| Chart Title | Text displayed above the generated chart. |
+| Chart title | Text displayed above the generated chart. |
+| Data, Format | The two tabs of the chart definition: **Data** has the shelves and the settings of the chart type, **Format** the look of the chart (not available for a KPI Card). A dot on **Format** says the chart has a format of its own. |
 | Fields | The fields of the chosen CDRs, grouped by the sections of the [CDR Field Dictionary](workspace-config.md) and searchable: dimensions (values, blue `Abc`) and measures (numbers, green `#`), with **NR Mode** (the NR Mode of the CDR of each row, NSA or SA) beside Campaign. Drag one to a shelf, or click it and choose the shelf. |
 | Measure | The KPI. Its menu chooses the aggregation (Average, Median, Sum, Count, Count distinct, Minimum, Maximum, or the one of the chart type) and its order; Multi KPI CDF Lines, Scatter and the tables take several. |
 | Rows, Columns | Ordered splits of the chart: drag a pill along its shelf, or to another shelf, to change them. |
@@ -54,11 +55,11 @@ The Source Dataset selector is filtered by CDR Type and shows only processed dat
 | One chart per | A field whose values each get a chart of their own (up to 12), side by side, as a PPT Design lays them out in the place of one chart. |
 | Format | Beside **Data**, as in the [Designer](ppt-designer.md#designer): the colours, lines and opacity of the series, the legend, the labels and the axes, with **Copy format** and **Default colours**. On the chart itself, an entry of its legend opens the format of that series, a numeric axis its range and a category axis its values, and a value of the Rows or Columns dragged before or after another one changes their order (**Default order**, in the card of its values, gives it back). |
 
-The embedded viewer provides the same Canvas rendering, semantic hover details, zoom, panning and refresh behaviour as an individual PPT Designer chart. Its chart downloads as a PNG image or copies to the clipboard as a screenshot from the floating buttons at the top right corner of its card (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_chart_builder_image`, with the CDR type and CDRs used.
+The embedded viewer provides the same Canvas rendering, semantic hover details, zoom, panning and refresh behaviour as an individual PPT Designer chart: **Refresh chart** (top right of the viewer) draws it again, and the zoom buttons (− and +, from 100% to 400% in steps of 25%, and the reset arrow) and the arrows that appear once zoomed move the view. Its chart downloads as a PNG image or copies to the clipboard as a screenshot from the floating buttons at the top right corner of its card (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_chart_builder_image`, with the CDR type and CDRs used.
 
 ## Add to PPT Design or Template
 
-**Add to PPT Design or Template…** lists the PPT Designs and the PPT Templates whose slides you can edit (see [Who changes a Design](ppt-designer.md#who-changes-a-design)) and their slides with their free places: the chart goes, with its format and its One chart per (a KPI Card as a KPI card), to a free place of the slide chosen, or to a new slide at the end. In a **PPT Design** it becomes part of that Design only (one of its differences from its template, see [Designer](ppt-designer.md#designer)); in a **PPT Template** every PPT Design that follows the template shows it. Either way it reads the CDRs each Design chooses, not those chosen here. App Events record it as `design_chart_added` or `template_chart_added`.
+**Add to PPT Design or Template…** (disabled until a Measure and a Source Dataset are chosen) opens a dialog with the **PPT Design** and **PPT Template** tabs (a tab is disabled when you can edit none of that kind; with none of either, the dialog says to create one in PPT Designer first), the Design or Template to use and its **Slide** list, with the free places of each slide (a slide without one cannot be chosen), and **Add** or **Cancel**. Only the PPT Designs and the PPT Templates whose slides you can edit are listed (see [Who changes a Design](ppt-designer.md#who-changes-a-design)); the chart goes, with its format and its One chart per (a KPI Card as a KPI card), to a free place of the slide chosen, or to a new slide at the end. In a **PPT Design** it becomes part of that Design only (one of its differences from its template, see [Designer](ppt-designer.md#designer)); in a **PPT Template** every PPT Design that follows the template shows it. Either way it reads the CDRs each Design chooses, not those chosen here. App Events record it as `design_chart_added` or `template_chart_added`.
 
 ## Example
 

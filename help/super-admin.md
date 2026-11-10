@@ -79,7 +79,7 @@ Above the table, the search and the filters show only the users with a name or u
 
 A module that is in no profile is seen only by the super-admins without a profile, as a module added by a later version until it is added to the profiles that should have it. A module that is not shown to a user disappears from the main tabs and the Modules menu, and its pages and API answer 403. Workspace switching, dataset uploads and processing remain available everywhere. A report of [Reporting](reporting.md) only includes the sections of the modules seen by the user who generates it (for a run on its schedule, the owner of the schedule).
 
-A new deployment starts with three profiles: **Non-Qualified Calls** (**Workspace**, Non-Qualified Calls, **Reporting**, **Builders** and Ticket Center), **Benchmarking** (every main module except Non-Qualified Calls) and **All Modules** (every main module), the default one, in pink, blue and teal. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
+A new deployment starts with three profiles: **Non-Qualified Calls** (**Workspace**, Non-Qualified Calls, **Reporting**, **Builders**, AI Assistant and Ticket Center), **Benchmarking** (every main module except Non-Qualified Calls) and **All Modules** (every main module), the default one, in pink, blue and teal. Profiles are stored in the application database (`Modules Profiles` table, and each user's profile in `Users`).
 
 ## Workspace Groups
 
@@ -172,11 +172,12 @@ In **Back up now**, select in **Backup content** one or more content types and t
 - **Workspace Content: Network Insights Favourites**, **Report Definitions**, **Scoring & GAP Favourites Filters**, **Scoring & GAP Report Templates**, **Scoring Export Panels** and **Scoring Excluded Calls** each store one JSON file with the favourite Analysis Selections, what each report of [Reporting](reporting.md) includes with its schedule and email, the Favourites Filters (without their results), the saved configurations of the Scoring report editor, the exportable Scoring panels or the lists of Excluded Calls; restore adds them like an import of their element (backups of earlier versions also restore their **Report Schedules**).
 - **Workspace Content: NQ Call Tracking** stores one JSON file with the Non-Qualified Calls Analysis Center (sections, field catalog, statuses, teams, Status Rules, DT Analyzer RCA Rules, Prioritization Rules, root cause catalog and Ericsson RCA results), follow-up, comments and history, with the `JOIN_ID` of each call; restore merges it into the workspace without duplicating comments, history or RCA results.
 - **Workspace Content: NQ Calls Configuration** stores one JSON file with only the configuration of the Non-Qualified Calls Analysis Center (sections, field catalog, statuses, teams, Status Rules, DT Analyzer RCA Rules, Prioritization Rules, Map Levels, root cause catalog and table columns); restore merges it into the workspace like the configuration part of NQ Call Tracking.
+- **Workspace Content: AI Assistant Glossary** stores one JSON file with the terms of the glossary of the [AI Assistant](assistant.md#the-glossary-of-the-workspace), without the suggestions not accepted; restore replaces the term with the same identity, or else the same term, and adds the others, like an import.
 - **Workspace Content: App Events** stores one JSON file with every App Event of the workspace; restore adds the events the workspace does not have (the same user, action, details and time), among its own by date.
 - **Workspace Content: Input** stores raw dataset files when explicitly selected.
 - **Workspace Content: Output** stores generated reports and PPT Designer jobs when explicitly selected.
 
-Application database, Workspace Database, Designs, PPT Templates, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Methodologies and Auto-calculated Fields are selected by default. Main Cities precedes Mappings & Reference Data in Export and Backup/Restore component lists.
+Application database, Workspace Database, Designs, PPT Templates, Main Cities, Mappings & Reference Data, Scoring & GAP Analysis Methodologies, Auto-calculated Fields, Scoring Export Panels and Scoring Excluded Calls are selected by default. Main Cities precedes Mappings & Reference Data in Export and Backup/Restore component lists.
 
 The Backup content menu expands beyond the selector on desktop to show descriptions and wraps long text within the available width, including on mobile. Input and Output are opt-in. Its **Workspaces** group lists only the workspaces you can access: the Workspace Content options apply to the selected ones and are left out of the backup when none is selected. Workspace Content lists Workspace Database, Input and Output first and then the other contents by module, as Current Workspace Content does in [Export / Transfer](administrator-config.md#export-targets).
 
@@ -210,10 +211,10 @@ Tables are grouped by ownership:
 
 - **Config Tables**: global application configuration.
 - **Workspace Tables**: templates, datasets, profiles, logs, workspace state, PPT selections, Design selected rows and PPT Designer jobs.
-- **Individual dataset rows**: one materialised table per dataset.
+- **Individual Datasets**: one materialised table per dataset.
 - **Combined CDR rows**: reporting acceleration tables by CDR type.
 
-The **Table** picker lists the tables of each group by kind (Users & Access, Application, Datasets, Designs & Templates, Scoring & GAP Analysis, Non-Qualified Calls, Reporting, Mappings & Maps, Query Builder, Workspace, and the Voice, Data or Speech CDRs of each individual dataset), each kind in its colour, and its search box finds a table by its title or its database name.
+The **Table** picker lists the tables of each group by kind (Users & Access, Application, Datasets, PPT Designer & Templates, Scoring & GAP Analysis, Non-Qualified Calls, Reporting, Mappings & Maps, Query Builder, Ticket Center, AI Assistant, Workspace, and the Voice, Data, Speech or other datasets of each individual dataset), each kind in its colour, and its search box finds a table by its title or its database name.
 
 PowerPoint history is stored in **PPT Designer jobs** because each row retains its PPT definition and applied filter snapshot.
 
@@ -225,13 +226,13 @@ In the Database Viewer of Super Admin, **Operator Mappings** (`operator_mappings
 
 Alias lookup is case-insensitive, and one source label cannot belong to two canonical groups of the same type.
 
-The related **Chart mapping groups** table (`chart_mapping_groups`) stores each group's `mapping_type`, `canonical_value`, `position` and `color`. Its position establishes the explicit chart order: Operator order also drives Subscriber dimensions, while Vendor order drives Vendor dimensions and the Vendor part of `Operator_Vendor`. The `#RRGGBB` colour provides a stable chart theme; related shades distinguish multiple campaigns or series.
+The related **Chart Mapping Groups** table (`chart_mapping_groups`) stores each group's `mapping_type`, `canonical_value`, `position` and `color`. Its position establishes the explicit chart order: Operator order also drives Subscriber dimensions, while Vendor order drives Vendor dimensions and the Vendor part of `Operator_Vendor`. The `#RRGGBB` colour provides a stable chart theme; related shades distinguish multiple campaigns or series.
 
 Neither alias mapping nor chart order rewrites source workbooks, individual CDR rows or combined CDR tables.
 
 Select either mapping table in Database Viewer to inspect its rows, paginate 100 at a time, filter distinct values from a column, review active filter chips, edit a non-key cell or delete one row. `source_value` is a primary key and cannot be edited there; use Workspace Config to add or change an alias.
 
-In **Chart mapping groups**, `mapping_type` and `canonical_value` identify the group, while `position` and `color` hold its order and colour. Direct edits to these related tables are individual row operations and can leave a group's aliases, identity or order inconsistent.
+In **Chart Mapping Groups**, `mapping_type` and `canonical_value` identify the group, while `position` and `color` hold its order and colour. Direct edits to these related tables are individual row operations and can leave a group's aliases, identity or order inconsistent.
 
 Use [Workspace Config → Operator Maps](workspace-config.md#operator-maps) or [Vendor Maps](workspace-config.md#vendor-maps) to give each name of the CDRs its label and to add, rename, colour, move or delete labels. Renaming a label also updates exact references in Report Templates and saved Designs, and label changes clear chart caches.
 

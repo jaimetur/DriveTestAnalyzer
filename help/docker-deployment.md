@@ -42,6 +42,7 @@ The production stack:
 - mounts persistent config/data paths;
 - includes the bundled PowerPoint master;
 - includes Node.js with the packages of the generator of the Help presentations, Chromium and LibreOffice: the server generates the presentations, with live figures, in the background into the data directory, where they stay across image updates (see [Presentations](super-admin.md#presentations));
+- checks `/healthz` every 30 seconds (the container health check) and restarts unless stopped;
 - runs without source-code bind mounts;
 - supports native AMD64 and ARM64 images.
 
@@ -51,7 +52,7 @@ The production stack:
 docker compose --env-file docker/.env -f docker/docker-compose-dev.yml up --build
 ```
 
-Use development mode for source changes. It is not the recommended production configuration.
+Use development mode for source changes: it builds the image from the project root, mounts `src/` and starts the server with `DRIVETEST_ANALYZER_RELOAD=true`, published on `APP_DEV_PORT`. `docker/run-docker-dev.sh` runs the same command. It is not the recommended production configuration.
 
 ## Example environment
 
@@ -79,8 +80,8 @@ Deployments created while the application was named Dashboard Analytic keep thei
 
 Persist both roots:
 
-- Config: users, permissions and transfer offers, and the Kiro CLI that Super Admin installs for the generated comments of PPT Designer (`tools/kiro-cli`) with the keys of the AI writers (`ai-credentials.json`).
-- Data: workspace registry, databases, Report Templates, uploads, reports and transfer packages.
+- Config: users, permissions, tickets, application settings and transfer offers, and the Kiro CLI that Super Admin installs for the generated comments of PPT Designer (`tools/kiro-cli`) with the keys of the AI writers (`ai-credentials.json`).
+- Data: workspace registry, databases, the Parquet copies of the CDRs (`.cdr-store`), Report Templates, uploads, reports, scheduled backups, the Help presentations and transfer packages.
 
 Do not rely on the writable container layer. Recreating a container must not remove application state.
 

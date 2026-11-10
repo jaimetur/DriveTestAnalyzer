@@ -184,6 +184,7 @@ New, In Progress and Waiting for Info are the open statuses. The date a ticket i
 | Open tickets and comment on them | Every signed-in user with the module |
 | Edit a ticket (title, module, description), change its priority and add screenshots and files to it | Its reporter and the super-admins |
 | Edit or delete a comment | Its author (super-admins also delete any comment) |
+| Delete an attachment | Who added it and the super-admins |
 | Manage a ticket: **Attend this ticket**, its type, its status, who attends it (a super-admin), who reported it, its module, the version it was opened with the version that fixes it and the dates it was opened and resolved, whoever opened it | Super-admins |
 | Delete a ticket with its timeline and attachments | Super-admins |
 | Clean up the large attachments of finished tickets | Super-admins |

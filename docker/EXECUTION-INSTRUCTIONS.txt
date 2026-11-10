@@ -1,7 +1,17 @@
 DriveTest Analyzer Docker usage
 
-1. Review the existing .env file if needed.
+Run every command from the project root (the folder that holds docker/).
+
+1. Review the existing .env file if needed: image, ports, secret key, time zone and the
+   host folders for the configuration (HOST_CONFIG_DIR) and the data (HOST_DATA_DIR).
+   Set a private APP_SECRET_KEY before exposing the service.
 2. Review ports and volume paths.
-3. Start development with docker-compose-dev.yml.
+3. Start development with docker-compose-dev.yml (it builds the image from the sources and
+   needs the complete project, not only this bundle):
+   docker compose --env-file docker/.env -f docker/docker-compose-dev.yml up --build
+   (docker/run-docker-dev.sh runs the same command.)
 4. Start production with docker-compose.yml; Docker automatically pulls the native
-   linux/amd64 or linux/arm64 variant from the published multi-platform tag.
+   linux/amd64 or linux/arm64 variant from the published multi-platform tag:
+   docker compose --env-file docker/.env -f docker/docker-compose.yml up -d --pull always
+5. Open http://127.0.0.1:7278 (development: the APP_DEV_PORT of .env, 7279 by default) and sign
+   in with an account of the Default accounts table of README.md; change its password at once.

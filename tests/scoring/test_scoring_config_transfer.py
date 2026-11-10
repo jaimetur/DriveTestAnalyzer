@@ -1,0 +1,576 @@
+from __future__ import annotations
+
+import copy
+import json
+from pathlib import Path
+import zipfile
+
+import pytest
+
+import src.DriveTestAnalyzer as app_module
+from src.modules.core.repository import Repository
+from src.modules.scoring.scoring_config import (
+    default_scoring_profile, scoring_profiles_document,
+    validate_scoring_configuration, validate_scoring_profiles,
+)
+from tests.support.scoring_fixtures import legacy_scoring_configuration, scoring_configuration
+
+
+def _login(client) -> None:
+    response = client.post('/login', data={'username': 'admin', 'password': 'admin123'}, follow_redirects=False)
+    assert response.status_code == 303
+
+
+def _workspace_repository() -> tuple[object, Repository]:
+    workspace = app_module.active_workspace
+    assert workspace is not None
+    task_repository = Repository(
+        workspace.database_path,
+        global_db_path=app_module.repository.db_path,
+        workspace_registry_db_path=app_module.workspace_registry.registry_path,
+    )
+    task_repository.initialize()
+    task_repository.replace_scoring_configuration(scoring_configuration())
+    return workspace, task_repository
+
+
+def _configuration_with_medium_score(repository: Repository, value: float) -> dict:
+    configuration = copy.deepcopy(repository.get_scoring_configuration())
+    configuration['metrics'][0]['contexts']['DriveCity']['score_mapping']['medium_score'] = value
+    walk_share = 1 / len(configuration['metrics'])
+    for metric in configuration['metrics']:
+        metric['contexts']['Walk']['weight_share'] = walk_share
+    return configuration
+
+
+def _configuration_with_custom_gap_sections(repository: Repository) -> dict:
+    configuration = _configuration_with_medium_score(repository, 0.81)
+    configuration['title'] = 'Urban Drive Quality'
+    configuration['scope']['environments']['DriveCity']['source_filters']['G_Level_2'] = 'City QA'
+    configuration['metrics'][0]['mapping_method'] = 'piecewise_quadratic'
+    priorities = configuration['gap_priority']
+    configuration['gap_priority'] = [priorities[1], priorities[0], *priorities[2:]]
+    return configuration
+
+
+@pytest.mark.parametrize('mapping_method', ['piecewise_quadratic', 'piecewise_smoothstep'])
+def test_scoring_configuration_export_import_round_trip(client, tmp_path: Path, mapping_method: str) -> None:
+    _login(client)
+    workspace, repository = _workspace_repository()
+    expected = _configuration_with_custom_gap_sections(repository)
+    expected['metrics'][0]['mapping_method'] = mapping_method
+    repository.replace_scoring_configuration(expected)
+    profiles = repository.get_scoring_profiles()
+    # Only the methodology prepared here, without the others every workspace is given.
+    profiles['profiles'] = [profile for profile in profiles['profiles'] if profile['id'] == profiles['active_profile_id']]
+    second_profile = copy.deepcopy(profiles['profiles'][0])
+    second_profile.pop('campaigns', None)
+    second_profile['id'] = 'custom-2024'
+    second_profile['name'] = 'Custom 2024'
+    second_profile['configuration'] = copy.deepcopy(expected)
+    second_profile['configuration']['version'] = 'Custom 2024'
+    second_profile['configuration']['metrics'][0]['contexts']['Walk']['max_points'] = 10
+    second_profile['configuration']['metrics'][1]['contexts']['Walk']['max_points'] = 30
+    second_configuration = second_profile['configuration']
+    priorities = second_configuration['gap_priority']
+    second_configuration['gap_priority'] = priorities[1:] + priorities[:1]
+    profiles['profiles'].append(second_profile)
+    profiles['active_profile_id'] = second_profile['id']
+    expected_profiles = repository.replace_scoring_profiles(profiles)
+
+    package_path = tmp_path / 'scoring-configuration.zip'
+    app_module._build_single_export_archive_file(
+        'scoring-configuration', package_path, [workspace.id],
+    )
+    manifest = app_module.read_import_manifest(package_path)
+    assert manifest['kind'] == 'scoring-configuration'
+    assert manifest['workspace_components'] == ['scoring_configuration']
+    with zipfile.ZipFile(package_path) as archive:
+        member = manifest['archive_path']
+        document = json.loads(archive.read(member))
+    assert document['format'] == 'drivetest-analyzer-scoring-configuration'
+    assert document['version'] == 3
+    assert document['active_profile_id'] == expected_profiles['active_profile_id']
+    # The package says who created each methodology it knows the creator of (and the identity of those that replaced
+    # one of another server: none here).
+    assert document.pop('identities') == {}
+    created_by = document.pop('created_by')
+    assert set(created_by) <= {profile['id'] for profile in expected_profiles['profiles']}
+    assert document == scoring_profiles_document(expected_profiles)
+    assert all(profile['configuration']['title'] == 'Urban Drive Quality'
+               for profile in document['profiles'])
+    assert all(
+        profile['configuration']['scope']['environments']['DriveCity']['source_filters']['G_Level_2'] == 'City QA'
+        for profile in document['profiles']
+    )
+    assert all(profile['configuration']['metrics'][0]['mapping_method'] == mapping_method
+               for profile in document['profiles'])
+    assert all(
+        'aggregation_hierarchy' not in profile['configuration']
+        and profile['configuration']['gap_priority'] != scoring_configuration()['gap_priority']
+        for profile in document['profiles']
+    )
+    assert expected_profiles['profiles'][0]['configuration']['scope']['environments']['Walk']['total_points'] == 0
+    assert expected_profiles['profiles'][1]['configuration']['scope']['environments']['Walk']['total_points'] == 40
+    assert all(
+        metric['contexts']['Walk']['weight_share'] == 1 / len(expected_profiles['profiles'][0]['configuration']['metrics'])
+        for metric in expected_profiles['profiles'][0]['configuration']['metrics']
+    )
+
+    repository.replace_scoring_profiles({
+        'active_profile_id': 'netcheck-2026',
+        'profiles': [expected_profiles['profiles'][0]],
+    })
+    app_module._apply_import_archive(
+        package_path, manifest, destination_workspace_ids=[workspace.id],
+    )
+    # The methodology of the package is added; the workspace keeps its default methodology.
+    assert repository.get_scoring_profiles() == {**expected_profiles, 'active_profile_id': 'netcheck-2026'}
+
+
+def test_partial_backup_restores_only_scoring_configuration(client, tmp_path: Path) -> None:
+    _login(client)
+    workspace, repository = _workspace_repository()
+    expected = _configuration_with_custom_gap_sections(repository)
+    repository.replace_scoring_configuration(expected)
+    profiles = repository.get_scoring_profiles()
+    second_profile = copy.deepcopy(profiles['profiles'][0])
+    second_profile.pop('campaigns', None)
+    second_profile.update({'id': 'custom-2024', 'name': 'Custom 2024'})
+    second_profile['configuration']['version'] = 'Custom 2024'
+    second_configuration = second_profile['configuration']
+    priorities = second_configuration['gap_priority']
+    second_configuration['gap_priority'] = priorities[1:] + priorities[:1]
+    profiles['profiles'].append(second_profile)
+    profiles['active_profile_id'] = second_profile['id']
+    expected_profiles = repository.replace_scoring_profiles(profiles)
+
+    backup_path = app_module.create_recurring_database_backup({
+        'components': ['scoring_configuration'],
+        'workspace_ids': [workspace.id],
+        'backup_path': str(tmp_path),
+        'max_backups': 5,
+    })
+    assert app_module._backup_archive_components(backup_path) == ['scoring_configuration']
+
+    repository.replace_scoring_profiles({
+        'active_profile_id': 'netcheck-2026',
+        'profiles': [expected_profiles['profiles'][0]],
+    })
+    app_module.restore_database_backup(backup_path, ['scoring_configuration'])
+
+    # The methodology the workspace lost comes back; the workspace keeps its default methodology.
+    assert repository.get_scoring_profiles() == {**expected_profiles, 'active_profile_id': 'netcheck-2026'}
+    # The two methodologies customised above keep their GAP priorities (the other shipped ones keep theirs).
+    customised = {expected_profiles['profiles'][0]['id'], 'custom-2024'}
+    assert all(
+        'aggregation_hierarchy' not in profile['configuration']
+        and profile['configuration']['gap_priority'] != scoring_configuration()['gap_priority']
+        for profile in repository.get_scoring_profiles()['profiles'] if profile['id'] in customised
+    )
+
+
+def test_deleted_walk_environment_survives_json_archive_restore(client):
+    _login(client)
+    workspace, repository = _workspace_repository()
+    configuration = copy.deepcopy(repository.get_scoring_configuration())
+    configuration['scope']['environments']['Indoor'] = {
+        'source_filters': {'G_Level_1': 'Indoor', 'G_Level_2': 'Hall'},
+    }
+    for metric in configuration['metrics']:
+        indoor = copy.deepcopy(metric['contexts']['DriveCity'])
+        indoor['max_points'] = 0
+        metric['contexts']['Indoor'] = indoor
+    configuration['scope']['environments'].pop('Walk')
+    for metric in configuration['metrics']:
+        metric['contexts'].pop('Walk')
+
+    repository.replace_scoring_configuration(configuration)
+    expected_profiles = repository.get_scoring_profiles()
+    archive_payload = app_module._scoring_configuration_archive_payload(workspace)
+    exported = json.loads(archive_payload)
+    assert 'Walk' not in exported['profiles'][0]['configuration']['scope']['environments']
+    assert 'Indoor' in exported['profiles'][0]['configuration']['scope']['environments']
+
+    repository.replace_scoring_configuration(scoring_configuration())
+    app_module._import_workspace_scoring_configuration(workspace, archive_payload, 'super')
+
+    assert repository.get_scoring_profiles() == expected_profiles
+    assert 'Walk' not in repository.get_scoring_configuration()['scope']['environments']
+    assert 'Indoor' in repository.get_scoring_configuration()['scope']['environments']
+
+
+def test_renamed_environments_survive_profile_and_workspace_database_round_trips(client, tmp_path: Path):
+    _login(client)
+    workspace, repository = _workspace_repository()
+    configuration = repository.get_scoring_configuration()
+    original_road_contexts = [copy.deepcopy(metric['contexts']['Drive Connecting Roads']) for metric in configuration['metrics']]
+    original_walk_contexts = [copy.deepcopy(metric['contexts']['Walk']) for metric in configuration['metrics']]
+
+    walk = configuration['scope']['environments'].pop('Walk')
+    walk['source_filters'] = {'G_Level_1': 'Walk QA'}
+    configuration['scope']['environments']['Walk QA'] = walk
+    for metric in configuration['metrics']:
+        metric['contexts']['Walk QA'] = metric['contexts'].pop('Walk')
+    repository.replace_scoring_configuration(configuration)
+    expected_profiles = repository.get_scoring_profiles()
+    expected_configuration = expected_profiles['profiles'][0]['configuration']
+
+    assert 'Walk QA' in expected_configuration['scope']['environments']
+    assert 'Walk' not in expected_configuration['scope']['environments']
+    assert 'DriveConnectionroad' not in expected_configuration['scope']['environments']
+    assert expected_configuration['scope']['environments']['Drive Connecting Roads']['source_filters'] == {
+        'G_Level_1': 'Drive', 'G_Level_2': 'Connecting Roads',
+    }
+    assert expected_configuration['scope']['environments']['Walk QA']['source_filters'] == {
+        'G_Level_1': 'Walk QA',
+    }
+    for index, metric in enumerate(expected_configuration['metrics']):
+        assert metric['contexts']['Drive Connecting Roads'] == original_road_contexts[index]
+        assert metric['contexts']['Walk QA'] == original_walk_contexts[index]
+        assert 'Walk' not in metric['contexts']
+
+    exported = client.get('/api/workspace-config/scoring-configuration/export')
+    assert exported.status_code == 200
+    document = exported.json()
+    assert document['version'] == 3
+    assert document == scoring_profiles_document(expected_profiles)
+
+    repository.set_workspace_state('scoring_configuration', '')
+    imported = client.post('/api/workspace-config/scoring-configuration/import', files={
+        'package': ('renamed-scoring-configuration.json', exported.content, 'application/json'),
+    })
+    assert imported.status_code == 200, imported.text
+    assert imported.json() == expected_profiles
+
+    backup_path = app_module.create_recurring_database_backup({
+        'components': ['workspace_database'],
+        'workspace_ids': [workspace.id],
+        'backup_path': str(tmp_path),
+        'max_backups': 5,
+    })
+    repository.set_workspace_state('scoring_configuration', '')
+    app_module.restore_database_backup(backup_path, ['workspace_database'])
+    restored_profiles = repository.get_scoring_profiles()
+    assert restored_profiles == expected_profiles
+    restored_configuration = restored_profiles['profiles'][0]['configuration']
+    assert 'Walk' not in restored_configuration['scope']['environments']
+    assert 'Walk' not in restored_configuration['metrics'][0]['contexts']
+
+
+def test_legacy_workspace_backup_does_not_claim_scoring_configuration(tmp_path: Path) -> None:
+    package_path = tmp_path / 'legacy-workspace-backup.zip'
+    manifest = app_module.archive_manifest(
+        'database-backup',
+        components=['workspace_components'],
+        workspace_components=['workspace_database', 'main_cities'],
+    )
+    with zipfile.ZipFile(package_path, 'w') as archive:
+        archive.writestr('manifest.json', json.dumps(manifest))
+
+    assert app_module._backup_archive_components(package_path) == ['workspace_database', 'main_cities']
+
+
+def test_scoring_json_import_export_uses_workspace_database(client):
+    _login(client)
+    workspace = app_module.active_workspace
+    repository = Repository(workspace.database_path, app_module.repository.global_db_path,
+                            app_module.workspace_registry.registry_path)
+    repository.set_workspace_state('scoring_configuration', '')
+    assert client.get('/api/workspace-config/scoring-configuration').status_code == 409
+    assert 'Import the Scoring &amp; GAP Analysis Methodologies' in client.get('/scoring').text
+    document = {'format': 'drivetest-analyzer-scoring-configuration', 'version': 1,
+                'configuration': scoring_configuration()}
+    response = client.post('/api/workspace-config/scoring-configuration/import', files={
+        'package': ('scoring.json', json.dumps(document).encode(), 'application/json'),
+    })
+    assert response.status_code == 200
+    saved = repository.get_scoring_configuration()
+    saved['metrics'][0]['contexts']['DriveCity']['max_points'] = 80
+    assert client.put('/api/workspace-config/scoring-configuration', json=saved).status_code == 200
+    exported = client.get('/api/workspace-config/scoring-configuration/export')
+    assert exported.status_code == 200
+    assert exported.json()['version'] == 3
+    assert exported.json() == scoring_profiles_document(repository.get_scoring_profiles())
+    assert exported.json()['profiles'][0]['configuration']['metrics'][0]['contexts']['DriveCity']['max_points'] == 80
+
+
+def test_selected_profile_export_contains_only_that_profile(client):
+    _login(client)
+    _, repository = _workspace_repository()
+    profiles = repository.get_scoring_profiles()
+    second_profile = copy.deepcopy(profiles['profiles'][0])
+    second_profile.pop('campaigns', None)
+    second_profile.update({'id': 'custom-2024', 'name': 'Custom 2024'})
+    second_profile['configuration']['version'] = 'Custom 2024'
+    profiles['profiles'].append(second_profile)
+    saved_profiles = repository.replace_scoring_profiles(profiles)
+    second_profile = next(profile for profile in saved_profiles['profiles'] if profile['id'] == 'custom-2024')
+
+    response = client.get('/api/workspace-config/scoring-configuration/export?profile_id=custom-2024')
+
+    assert response.status_code == 200
+    assert response.headers['content-disposition'] == 'attachment; filename="scoring-methodology.json"'
+    assert response.json() == scoring_profiles_document({
+        'active_profile_id': 'custom-2024', 'profiles': [second_profile],
+    })
+
+
+def test_selected_profile_export_returns_not_found_for_missing_id(client):
+    _login(client)
+    _workspace_repository()
+
+    response = client.get('/api/workspace-config/scoring-configuration/export?profile_id=missing-profile')
+
+    assert response.status_code == 404
+
+
+def test_legacy_bare_json_and_v1_zip_import_create_a_single_default_profile(client, tmp_path: Path) -> None:
+    _login(client)
+    workspace, repository = _workspace_repository()
+    configuration = legacy_scoring_configuration()
+
+    response = client.post('/api/workspace-config/scoring-configuration/import', files={
+        'package': ('legacy.json', json.dumps(configuration).encode(), 'application/json'),
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()['profiles'] == [default_scoring_profile(configuration)]
+    assert response.json()['profiles'][0]['configuration']['scope']['environments']['Walk']['total_points'] == 0
+
+    legacy_archive = tmp_path / 'legacy-scoring-config.zip'
+    archive_path = 'workspaces/Imported/scoring-configuration/scoring-configuration.json'
+    manifest = app_module.archive_manifest(
+        'scoring-configuration', source_workspace={'id': '', 'name': 'Imported'},
+        workspace_components=['scoring_configuration'], archive_path=archive_path,
+    )
+    with zipfile.ZipFile(legacy_archive, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('manifest.json', json.dumps(manifest))
+        archive.writestr(archive_path, json.dumps({
+            'format': 'drivetest-analyzer-scoring-configuration',
+            'version': 1,
+            'configuration': configuration,
+        }))
+    legacy_manifest = app_module.read_import_manifest(legacy_archive)
+    app_module._apply_import_archive(
+        legacy_archive, legacy_manifest, destination_workspace_ids=[workspace.id],
+    )
+    restored = repository.get_scoring_profiles()
+    assert restored['active_profile_id'] == 'netcheck-2026'
+    restored_configuration = restored['profiles'][0]['configuration']
+    assert restored_configuration['scope']['environments']['Drive Connecting Roads']['source_filters'] == {
+        'G_Level_1': 'Drive', 'G_Level_2': 'Connecting Roads',
+    }
+    assert restored_configuration['metrics'][0]['contexts']['Drive Connecting Roads'] == (
+        default_scoring_profile(configuration)['configuration']['metrics'][0]['contexts']['DriveConnectionroad']
+    )
+
+
+def test_json_profile_merge_replaces_matching_ids_and_preserves_default_and_other_profiles(client):
+    _login(client)
+    _, repository = _workspace_repository()
+    original = repository.get_scoring_profiles()
+    default_id = original['active_profile_id']
+    default = copy.deepcopy(original['profiles'][0])
+    untouched = copy.deepcopy(default)
+    untouched.update({'id': 'untouched', 'name': 'Untouched'})
+    untouched.pop('campaigns', None)
+    untouched['configuration']['version'] = 'Untouched'
+    replaced = copy.deepcopy(default)
+    replaced.update({'id': 'replace-me', 'name': 'Old Name'})
+    replaced.pop('campaigns', None)
+    replaced['configuration']['version'] = 'Old Version'
+    repository.replace_scoring_profiles({
+        'active_profile_id': default_id,
+        'profiles': [default, untouched, replaced],
+    })
+
+    incoming = copy.deepcopy(replaced)
+    incoming.update({'name': 'Imported Name'})
+    incoming['configuration']['version'] = 'Imported Version'
+    added = copy.deepcopy(incoming)
+    added.update({'id': 'new-profile', 'name': 'New Profile'})
+    added['configuration']['version'] = 'New Version'
+    document = {
+        'format': 'drivetest-analyzer-scoring-configuration', 'version': 3,
+        'active_profile_id': 'new-profile', 'profiles': [incoming, added],
+    }
+
+    response = client.post(
+        '/api/workspace-config/scoring-configuration/import?mode=merge',
+        files={'package': ('profiles.json', json.dumps(document).encode(), 'application/json')},
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result['active_profile_id'] == default_id
+    assert [profile['id'] for profile in result['profiles']] == [default_id, 'untouched', 'replace-me', 'new-profile']
+    assert result['profiles'][0] == default
+    assert result['profiles'][1] == untouched
+    assert result['profiles'][2] == incoming
+    assert result['profiles'][3] == added
+
+
+def test_json_profile_merge_rejects_invalid_collection_without_changing_saved_profiles(client):
+    _login(client)
+    _, repository = _workspace_repository()
+    before = repository.get_scoring_profiles()
+    invalid = {
+        'format': 'drivetest-analyzer-scoring-configuration', 'version': 3,
+        'active_profile_id': 'missing', 'profiles': [before['profiles'][0]],
+    }
+
+    response = client.post(
+        '/api/workspace-config/scoring-configuration/import?mode=merge',
+        files={'package': ('invalid.json', json.dumps(invalid).encode(), 'application/json')},
+    )
+
+    assert response.status_code == 400
+    assert repository.get_scoring_profiles() == before
+
+
+def test_legacy_kpi_ids_migrate_to_sequential_codes_without_changing_gap_order(client):
+    _login(client)
+    workspace, repository = _workspace_repository()
+    legacy = legacy_scoring_configuration()
+    legacy_codes = [metric['code'] for metric in legacy['metrics']]
+    legacy['gap_priority'] = ['C17', 'C5', *[
+        code for code in legacy_codes if code not in {'C5', 'C17'}
+    ]]
+    raw = json.dumps(legacy)
+    repository.set_workspace_state('scoring_configuration', raw)
+
+    profiles = repository.get_scoring_profiles()
+    migrated = profiles['profiles'][0]['configuration']
+
+    assert [metric['code'] for metric in migrated['metrics']] == [f'K{index}' for index in range(1, 33)]
+    assert migrated['gap_priority'][:2] == ['K12', 'K1']
+    assert migrated['next_kpi_number'] == 33
+    assert 'validation_examples' not in migrated
+    assert repository.get_workspace_state('scoring_configuration') == raw
+    assert [metric['code'] for metric in legacy['metrics']] == legacy_codes
+
+
+def test_named_legacy_profile_codes_migrate_without_rewriting_snapshot_validation():
+    legacy = legacy_scoring_configuration()
+    legacy['gap_priority'] = ['C17', 'C5', *[
+        metric['code'] for metric in legacy['metrics'] if metric['code'] not in {'C5', 'C17'}
+    ]]
+    profiles = validate_scoring_profiles({
+        'active_profile_id': 'legacy',
+        'profiles': [{'id': 'legacy', 'name': 'Legacy', 'configuration': legacy}],
+    })
+    historic = validate_scoring_configuration(legacy)
+
+    assert profiles['profiles'][0]['configuration']['metrics'][0]['code'] == 'K1'
+    assert profiles['profiles'][0]['configuration']['gap_priority'][:2] == ['K12', 'K1']
+    assert historic['metrics'][0]['code'] == 'C5'
+
+
+def test_legacy_migration_does_not_collide_with_an_existing_sequential_custom_code():
+    legacy = legacy_scoring_configuration()
+    custom = copy.deepcopy(legacy['metrics'][0])
+    custom['code'] = 'K1'
+    legacy['metrics'].append(custom)
+    legacy['gap_priority'] = [metric['code'] for metric in legacy['metrics']]
+
+    profile = default_scoring_profile(legacy)
+
+    assert profile['configuration']['metrics'][0]['code'] == 'C5'
+    assert profile['configuration']['metrics'][-1]['code'] == 'K1'
+
+
+@pytest.mark.parametrize('collection_format', [False, True], ids=['legacy-v1', 'profiles-v3'])
+def test_admin_importer_accepts_scoring_configuration_json(client, collection_format):
+    # Only super-admins import packages.
+    _login(client)
+    assert client.post('/admin/import-export/inspect', files={'package': ('x.json', b'{}', 'application/json')}).status_code == 403
+    response = client.post('/login', data={'username': 'super', 'password': 'super123'}, follow_redirects=False)
+    assert response.status_code == 303
+    configuration = scoring_configuration()
+    configuration['title'] = 'Admin Import Methodology'
+    configuration['scope']['environments']['DriveCity']['source_filters']['G_Level_2'] = 'City QA'
+    if collection_format:
+        profiles = validate_scoring_profiles({
+            'active_profile_id': 'netcheck-2026',
+            'profiles': [default_scoring_profile(configuration)],
+        })
+        document = scoring_profiles_document(profiles)
+    else:
+        document = {
+            'format': 'drivetest-analyzer-scoring-configuration',
+            'version': 1,
+            'configuration': configuration,
+        }
+    response = client.post('/admin/import-export/inspect', files={
+        'package': ('scoring.json', json.dumps(document).encode(), 'application/json'),
+    })
+    assert response.status_code == 200
+    assert response.json()['kind'] == 'scoring-configuration'
+    assert response.json()['requires_destination_workspaces'] is True
+    upload = app_module.IMPORT_UPLOADS[response.headers['X-Import-Upload-Id']]
+    app_module._apply_import_archive(upload['path'], upload['manifest'],
+                                     destination_workspace_ids=[app_module.active_workspace.id])
+    repository = Repository(app_module.active_workspace.database_path, app_module.repository.global_db_path,
+                            app_module.workspace_registry.registry_path)
+    imported = repository.get_scoring_configuration()
+    assert imported['metrics'][0]['code'] == 'K1'
+    assert imported['title'] == 'Admin Import Methodology'
+    assert imported['scope']['environments']['DriveCity']['source_filters']['G_Level_2'] == 'City QA'
+
+
+def test_unconfigured_workspace_configuration_backup_round_trip(client):
+    _login(client)
+    workspace = app_module.active_workspace
+    repository = Repository(workspace.database_path, app_module.repository.global_db_path,
+                            app_module.workspace_registry.registry_path)
+    repository.set_workspace_state('scoring_configuration', '')
+    payload = app_module._scoring_configuration_archive_payload(workspace)
+    assert json.loads(payload)['profiles'] is None
+    # A package without methodologies leaves those of the workspace, as every import and restore keeps them.
+    repository.replace_scoring_configuration(scoring_configuration())
+    kept = repository.get_scoring_profiles()
+    app_module._import_workspace_scoring_configuration(workspace, payload, 'super')
+    assert repository.get_scoring_profiles() == kept
+
+    legacy_empty_payload = json.dumps({
+        'format': 'drivetest-analyzer-scoring-configuration',
+        'version': 1,
+        'configuration': None,
+    }).encode('utf-8')
+    app_module._import_workspace_scoring_configuration(workspace, legacy_empty_payload, 'super')
+    assert repository.get_scoring_profiles() == kept
+    # A workspace without methodologies takes those of a package.
+    full_payload = app_module._scoring_configuration_archive_payload(workspace)
+    repository.set_workspace_state('scoring_configuration', '')
+    app_module._import_workspace_scoring_configuration(workspace, full_payload, 'super')
+    assert repository.get_scoring_profiles() == kept
+
+
+def test_scoring_configuration_backup_leaves_the_report_configurations_to_their_own_element(client, tmp_path: Path) -> None:
+    from src.modules.scoring.scoring_reports import (
+        default_scenario, load_report_state, remember_last_configuration, report_configurations_document,
+        save_named_configuration,
+    )
+    _login(client)
+    workspace, repository = _workspace_repository()
+    repository.replace_scoring_configuration(scoring_configuration())
+    save_named_configuration(repository, 'Weekly', {'scenarios': [default_scenario(name='National'),
+                                                                  default_scenario(name='London')]})
+    remember_last_configuration(repository, {'scenarios': [default_scenario(name='Main Cities')]})
+    expected = load_report_state(repository)
+    backup_path = app_module.create_recurring_database_backup({
+        'components': ['scoring_configuration'], 'workspace_ids': [workspace.id],
+        'backup_path': str(tmp_path), 'max_backups': 5,
+    })
+    # The report configurations travel as Scoring & GAP Report Templates, not in the Scoring & GAP Analysis Methodologies.
+    with zipfile.ZipFile(backup_path) as archive:
+        assert not any(name.endswith(app_module.SCORING_REPORT_CONFIGURATIONS_MEMBER) for name in archive.namelist())
+    save_named_configuration(repository, 'Other', {'scenarios': [default_scenario()]})
+    app_module.restore_database_backup(backup_path, ['scoring_configuration'])
+    assert {'Other', 'Weekly'} <= {item['name'] for item in load_report_state(repository)['configurations']}
+    # Packages created before carried them in the Methodologies: restoring one replaces them as it did.
+    app_module._restore_workspace_scoring_report_configurations(workspace, json.dumps(report_configurations_document(expected)).encode())
+    assert load_report_state(repository) == expected
+    # Packages created before report configurations existed keep the current ones.
+    app_module._restore_workspace_scoring_report_configurations(workspace, None)
+    assert load_report_state(repository) == expected

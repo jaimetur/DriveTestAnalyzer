@@ -3555,10 +3555,11 @@ def install_design_routes(core):
         task_repository = bound_repository()
         ensure_design_ppt_jobs(task_repository)
         with task_repository.connection() as connection:
+            # (The PPTs being generated stay, as Delete export refuses them: stop them first.)
             rows = connection.execute(
-                f'SELECT id, output_path FROM {DESIGN_PPT_JOBS_TABLE}'
+                f"SELECT id, output_path FROM {DESIGN_PPT_JOBS_TABLE} WHERE status NOT IN ('queued', 'processing')"
             ).fetchall()
-            connection.execute(f'DELETE FROM {DESIGN_PPT_JOBS_TABLE}')
+            connection.execute(f"DELETE FROM {DESIGN_PPT_JOBS_TABLE} WHERE status NOT IN ('queued', 'processing')")
         database_key = str(Path(task_repository.db_path).resolve())
         with lock:
             for row in rows:
@@ -4253,6 +4254,8 @@ def install_design_routes(core):
         task_repository = bound_repository()
         definition = stored_design(design_id, task_repository)
         name = payload.name.strip()
+        if not name:
+            raise HTTPException(400, 'Enter a name for the PPT Template.')
         if any(str(row['name']).casefold() == name.casefold() for row in task_repository.list_report_templates()):
             raise HTTPException(409, 'A PPT Template with this name already exists.')
         _template, resolved, _report = design_slides_state(definition, task_repository)
@@ -4387,8 +4390,9 @@ def install_design_routes(core):
         """Add to Design: the chart becomes part of this Design only (a difference of it from its template)."""
         workspace_key()
         task_repository = bound_repository()
-        ensure_design_changeable(user, design_id, task_repository, 'change the slides of')
+        # (First the Design: one that no longer exists is not found, instead of refused as somebody else's.)
         definition = stored_design(design_id, task_repository)
+        ensure_design_changeable(user, design_id, task_repository, 'change the slides of')
         template = None if definition.own_slides else template_with_ids(definition.template, task_repository, user.username)[0]
         _base, resolved, _report = design_slides_state(definition, task_repository, template)
         element = added_element(payload, origin='design')
@@ -4822,6 +4826,12 @@ def install_design_routes(core):
         job_id = uuid4().hex
         with lock:
             comment_jobs[job_id] = {'state': 'processing', 'owner': user.username, 'workspace': workspace_key(), 'done': 0, 'total': total}
+            # (The finished jobs kept, as those of Generate All Slides.)
+            while len(comment_jobs) > 16:
+                removable = next((key for key, value in comment_jobs.items() if value.get('state') != 'processing'), None)
+                if removable is None:
+                    break
+                comment_jobs.pop(removable, None)
         background_tasks.add_task(run_kiro_brief_job, job_id, design_id, payload, user, workspace_key())
         return JSONResponse({'state': 'processing', 'job_id': job_id, 'done': 0, 'total': total}, status_code=202)
 

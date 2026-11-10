@@ -43,14 +43,23 @@ def invalidate_campaign_maps() -> None:
 
 def save_campaign_map(repository: Any, config: Any, username: str = '') -> dict:
     """Validate and save the workspace's Campaign Map; None restores the default one."""
+    previous = load_campaign_map(repository)
     if config is None:
         repository.set_workspace_state(CAMPAIGN_MAP_STATE_KEY, '')
     else:
         repository.set_workspace_state(CAMPAIGN_MAP_STATE_KEY, json.dumps(normalize_campaign_map(config), ensure_ascii=False))
     invalidate_campaign_maps()
+    saved = load_campaign_map(repository)
     if username and hasattr(repository, 'try_add_log'):
-        repository.try_add_log(username, 'campaign_map', 'Campaign Maps updated.')
-    return load_campaign_map(repository)
+        # What the map is now and, for what changed, what it was.
+        repository.try_add_log(username, 'campaign_map', json.dumps({
+            'restored_default': config is None,
+            **{key: saved.get(key) for key in ('format', 'mode_order', 'modes_in_label')},
+            'exceptions': [str(item.get('label') or '') for item in saved.get('exceptions') or []],
+            'previous': {key: previous.get(key) for key in ('format', 'mode_order', 'modes_in_label', 'exceptions')
+                         if previous.get(key) != saved.get(key)},
+        }, ensure_ascii=False))
+    return saved
 
 
 def campaign_map_preview(campaigns: list[str], config: dict) -> list[dict[str, Any]]:

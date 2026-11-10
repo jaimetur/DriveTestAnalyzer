@@ -37,8 +37,10 @@ roadmap
 - App Logs with user/system execution identity.
 - Portable and server-to-server environment transfer.
 - Responsive layouts for compact mobile screens.
-- Network Insights, Non-Qualified Calls (Beta) and the Ticket Center.
-- Bundle Report Templates and scheduled Reporting Jobs, with their Run History.
+- Network Insights, Non-Qualified Calls (Alpha) and the Ticket Center.
+- Reporting: reports with their own schedule, in PowerPoint and Word, emailed to their recipients, with a History of every run.
+- Email Delivery through an SMTP server or a Power Automate flow: reports, password resets, access requests and Ticket Center updates.
+- Request content from another server, for a server that cannot be reached from outside.
 - Users, Modules Profiles, Workspace Groups and scheduled backups.
 - The DT Analyzer RCA of Non-Qualified Calls, in every workspace, with rules each workspace can change.
 - The CDR Field Dictionary of Workspace Config, and the Umlaut reader and field profile (Umlaut CDR stays coming soon until a multi-operator export validates it).
@@ -53,11 +55,10 @@ roadmap
 - Germany pilot: a first test campaign in Germany.
 - Umlaut and P3 CDRs: workspaces of each provider that keep its field names and values, with its own Scoring methodologies, PPT templates and Non-Qualified Calls rules. [Benchmarking Providers](benchmarking-providers.md) describes the status of each phase and what each module will have with Umlaut CDRs.
 - Active Tests community: build with the tool the KPI and Scoring reports it generates today.
-- Non-Qualified Calls: confirm the NQ definition (currently every result other than Completed in NetCheck CDRs; in Umlaut CDRs, the calls and tests marked NOT QUALIFIED), the Umlaut and P3 values of the DT Analyzer RCA, and take the module out of Beta.
+- Non-Qualified Calls: confirm the NQ definition (currently every result other than Completed in NetCheck CDRs; in Umlaut CDRs, the calls and tests marked NOT QUALIFIED), the Umlaut and P3 values of the DT Analyzer RCA, and take the module out of Alpha.
 - Configuration datasets ingestion to enrich CDR dataset and combine them to extract combined info using SQL Queries or Report Templates.
 - Additional validated KPI/chart contracts.
 - Network Insights improvements.
-- Automatic emails.
 - TEMS logs, with their reports.
 
 ## Architecture considerations

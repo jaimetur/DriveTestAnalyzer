@@ -38,8 +38,8 @@ builders
 1. Open **Query Builder** with a workspace active.
 2. Select one or more ready source datasets in the **Data**, **Voice** and **Speech** panels (each with its count, **Select All / None**, and the campaigns and NR Mode of every CDR; Weekly and Daily CDRs are highlighted) and one or more **CDR types to use** represented by those sources.
 3. By default, **Show all fields** is off and `source_dataset_name` and `cdr_type` are preselected. Enable **Show all fields** to include every available column, or choose the fields to include in the result.
-4. Add filter conditions by choosing a column, comparison and value. Choose **AND** or **OR** between conditions to control how they are combined.
-5. Choose the sort order and maximum rows, or select **All rows** to omit the SQL `LIMIT`.
+4. Add filter conditions by choosing a column, a comparison (**Is**, **Is not**, **Contains**, **Starts with**, **Greater than (number)**, **Less than (number)**, **Is empty** or **Is not empty**) and a value. Choose **AND** or **OR** between conditions to control how they are combined.
+5. Choose the sort order and the maximum rows (1 to 100,000, 100 by default), or select **All rows** to omit the SQL `LIMIT`.
 6. Review the generated SQL, then run the query.
 
 Use **Clear Query** to start over. After you confirm, it clears the SQL, source selections, filters, field selection, sorting, limit and current results. Cancel keeps the current query unchanged; saved queries are not deleted.
@@ -48,7 +48,7 @@ The SQL preview updates live as you change the controls; the results table updat
 
 At least one CDR type must remain selected; if you try to clear the last one, it is restored and the assistant explains why. If no source or output field is available, the preview displays what is needed to continue.
 
-**Run query**, **Save query** and **Export CSV** are disabled until the query has a valid selection and every filter is complete.
+**Run query**, **Save query** and **Export CSV** are disabled until the query has a valid selection and every filter is complete; **Copy** and **Export CSV** also wait for a query to have run.
 
 > [!NOTE]
 > **Copy versus export.** Copy includes the visible page. CSV export includes all rows matching the result-column filters.
@@ -57,7 +57,7 @@ The result panel reports the current page's row count and columns, plus the tota
 
 With **All rows**, the generated SQL has no row limit and the pages cover all matching rows. Use the filter button in a result column's header to search its distinct values, select the values to keep, and apply or clear the filter. The menu shows up to 200 values at a time; search to find additional values.
 
-CDR rows have **`Operator_Vendor`** (`<Operator>_<Vendor>`) and **`Vendor`** (the vendor alone); vendor choices list real vendors before Mixed, Other and All groups, followed by operator-only identities labelled **Operator - All**. A result-column filter on the former `Vendor_Only` name targets `Vendor`, and one on `OP_Vendor` targets `Operator_Vendor`; include that column in the query result to use it. Saved SQL that names `Vendor_Only` must be updated to `Vendor`. Manually written SQL is preserved as authored.
+CDR rows have **`Operator_Vendor`** (`<Operator>_<Vendor>`) and **`Vendor`** (the vendor alone). A result-column filter on the former `Vendor_Only` name targets `Vendor`, and one on `OP_Vendor` targets `Operator_Vendor`; include that column in the query result to use it. Saved SQL that names `Vendor_Only` must be updated to `Vendor`. Manually written SQL is preserved as authored.
 
 Filters in different columns combine and apply to the full query result, including later pages. They reset when you run a new query. **Copy** copies the column headers and rows on the visible filtered page as tab-separated text. **Export CSV** downloads all rows and columns in the filtered result, without a row cap.
 
@@ -79,7 +79,7 @@ The views read the rows of each CDR from its [columnar copy](workspace-managemen
 
 SQL Mode follows the same 50-row pages, total result count, navigation above and below the table, **Copy** and CSV export behavior. Select at least one ready source dataset before running or saving a query.
 
-Runs and page changes continue in the background while Query Builder checks their status, so a long query does not need to hold one HTTP request open. Use **Cancel** in the running dialog to stop the current query. Only one Query Builder run can be active at a time across the server.
+Runs and page changes continue in the background while Query Builder checks their status, so a long query does not need to hold one HTTP request open. Use **Cancel query** in the running dialog to stop the current query. Only one Query Builder run can be active at a time across the server.
 
 ## Saved queries
 
@@ -87,6 +87,7 @@ Runs and page changes continue in the background while Query Builder checks thei
 - Saving checks the SQL and selected source columns without executing the full query. Run it separately to inspect results.
 - Loading a saved query restores its SQL and its source selections; a query without CDRs (such as an imported one) keeps the CDRs chosen in the panels, so they can be chosen before or after loading it. Generated SQL that matches the Assistance Mode controls also restores those controls; custom or unsupported SQL remains in **SQL Mode**.
 - Saved queries retain SQL and source references, so queries saved before Assistance Mode remain available in the same editor.
+- The **Saved queries** library lists each query with its name, description and sources, and for each one **Use query** (loads it into the editor), the edit button (**Edit saved query**: its name, description and source CDRs; the SQL stays as saved), the export button (JSON) and the delete button. Saving, editing and deleting a query need a user-editor, admin or super-admin; a user-viewer can load, run and export queries.
 - Use the delete button in the Saved queries library to remove a query after confirmation. The library and load picker refresh after deletion.
 - Export an individual saved query as JSON for inspection or archiving. Use a Query Builder Queries package or workspace backup/export ZIP to import saved queries into another workspace: the import replaces the queries the workspace has (found by their identity, so a query renamed on the source server is renamed here too, or by their name) and adds the others, see [Matching and creators](administrator-config.md#matching-and-creators).
 - Exported, transferred and backed-up queries carry their name, description and SQL, without CDRs: choose the CDRs when using an imported query. SQL conditions that inspect `source_dataset_name` use the file names of the CDRs chosen, so review them in another workspace.

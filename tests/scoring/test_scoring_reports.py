@@ -1,0 +1,330 @@
+"""Scoring reports: scenarios with their own filters, aggregation and content options."""
+from __future__ import annotations
+
+from io import BytesIO
+import json
+
+import pytest
+from pptx import Presentation
+
+from src.modules.scoring.scoring_exports import export_scoring_report
+from src.modules.scoring.scoring_reports import (
+    default_report_configuration, default_scenario, delete_named_configuration,
+    import_report_configurations, load_report_state, normalize_report_configuration, remember_last_configuration,
+    report_configurations_document, save_named_configuration,
+)
+from tests.support.scoring_synthetic import synthetic_result
+from tests.scoring.test_scoring_api import scoring_api  # noqa: F401  (fixture)
+from tests.scoring.test_scoring_exports import TEMPLATE
+
+OPERATORS = ['EE', 'O2 UK', 'Three UK', 'Vodafone UK']
+
+
+class _StateRepository:
+    def __init__(self):
+        self.state = {}
+
+    def get_workspace_state(self, key):
+        return self.state.get(key)
+
+    def set_workspace_state(self, key, value):
+        self.state[key] = value
+
+
+def _titles(content):
+    presentation = Presentation(BytesIO(content))
+    return [slide.shapes.title.text_frame.text.replace('\n', ' | ') if slide.shapes.title is not None else ''
+            for slide in presentation.slides]
+
+
+def test_default_scenario_follows_the_requested_defaults():
+    scenario = default_scenario(context_filters={'City': ['London']}, aggregation_levels=['City', 'Operator'])
+    # Campaign is part of every default scenario.
+    assert scenario['aggregation_levels'] == ['Operator', 'City', 'Campaign']
+    for kind in ('best_network', 'most_reliable'):
+        options = scenario['scorings'][kind]
+        assert options['enabled'] is True and options['environments'] == 'all'
+        assert options['summary'] == {'standings': True, 'position': True, 'levers': True, 'act': True, 'owners': True,
+                                      'places': True, 'route': True, 'scope': True}
+        assert options['charts'] == {'service': True, 'category': True, 'breakdown': True}
+        assert options['geographical_areas'] == {'cards': True, 'ranking': True, 'versus': True}
+        assert options['trends'] == {'trend': True, 'areas': True}
+        assert options['points'] == {'stake': True, 'kpis': True, 'map': True, 'postal_map': True, 'vendors': True, 'site_types': True,
+                                     'ran_vendors': True, 'site_classes': True, 'sites': True, 'stretches': True}
+        assert options['tables']['kpi_values'] is False and options['tables']['gap_values'] is False
+        # The operators of the GAP Analysis are the Focus operators of the Operator Maps.
+        assert options['gap'] == {'all_operators': True, 'individual': True, 'parts': True, 'profile': True}
+
+
+def test_report_configuration_is_normalized():
+    configuration = normalize_report_configuration({'scenarios': [
+        {'name': ' London ', 'context_filters': {'City': ['London', 'London'], 'Unknown': ['x']},
+         'aggregation_levels': ['Campaign', 'Bogus'], 'scorings': {'most_reliable': {'enabled': False}}},
+        {},
+    ]})
+    first, second = configuration['scenarios']
+    assert first['name'] == 'London' and first['context_filters'] == {'City': ['London']}
+    assert first['aggregation_levels'] == ['Operator', 'Campaign']
+    assert first['scorings']['most_reliable']['enabled'] is False
+    assert first['scorings']['best_network']['tables']['summary'] is True
+    assert second['name'] == 'Scenario 2'
+    with pytest.raises(ValueError):
+        normalize_report_configuration({'scenarios': []})
+    # Configurations saved before the Geographical Areas (then Locations) and Points Lost groups keep the choices of
+    # their former options.
+    earlier = normalize_report_configuration({'scenarios': [{'scorings': {'best_network': {
+        'charts': {'location_cards': False}, 'gap': {'points_loss_map': False, 'profile': False}}}}]})
+    options = earlier['scenarios'][0]['scorings']['best_network']
+    assert options['geographical_areas']['cards'] is False and options['points']['map'] is False
+    assert options['points']['kpis'] is False and options['gap']['profile'] is False
+    assert options['geographical_areas']['ranking'] is True and options['points']['stake'] is True
+    # Geographical Areas was called Locations.
+    from src.modules.scoring.scoring_reports import _normalize_options
+    assert _normalize_options({'locations': {'ranking': False}})['geographical_areas'] == {'cards': True, 'ranking': False, 'versus': True}
+    assert 'location_cards' not in options['charts'] and 'points_loss_map' not in options['gap']
+    with pytest.raises(ValueError, match='at least one scenario'):
+        normalize_report_configuration({'scenarios': [{'scorings': {
+            'best_network': {'enabled': False}, 'most_reliable': {'enabled': False}}}]})
+
+
+def test_configurations_are_saved_remembered_and_exported():
+    repository = _StateRepository()
+    configuration = default_report_configuration()
+    save_named_configuration(repository, 'National', configuration)
+    save_named_configuration(repository, 'national', configuration)  # same name, any case: replaced
+    remember_last_configuration(repository, {'scenarios': [default_scenario(name='London')]})
+    state = load_report_state(repository)
+    assert [item['name'] for item in state['configurations']] == ['national']
+    assert state['last']['scenarios'][0]['name'] == 'London'
+    document = report_configurations_document(state)
+    other = _StateRepository()
+    import_report_configurations(other, json.loads(json.dumps(document)))
+    assert load_report_state(other)['configurations'][0]['configuration'] == state['configurations'][0]['configuration']
+    delete_named_configuration(repository, 'NATIONAL')
+    assert load_report_state(repository)['configurations'] == []
+    with pytest.raises(ValueError):
+        import_report_configurations(other, {'format': 'something-else'})
+
+
+
+def test_report_configurations_travel_with_their_geographical_areas_and_scoring_trends():
+    area = {'enabled': True, 'time_split': 'Quarterly', 'breakdown': 'Cluster', 'cities': ['Leeds', 'Glasgow'],
+            'main_cities': True, 'campaigns': ['Latest 2 campaigns']}
+    configuration = {'scenarios': [{**default_scenario(name='National'), 'area_summary': area}]}
+    repository, other = _StateRepository(), _StateRepository()
+    save_named_configuration(repository, 'Areas', configuration)
+    document = json.loads(json.dumps(report_configurations_document(load_report_state(repository))))
+    import_report_configurations(other, document)
+    [saved] = load_report_state(other)['configurations']
+    assert saved['configuration'] == load_report_state(repository)['configurations'][0]['configuration']
+    assert saved['configuration']['scenarios'][0]['area_summary'] == area
+
+def test_report_document_has_one_section_per_scenario_and_scoring():
+    national_job, national = synthetic_result(levels=('Operator',))
+    cities_job, cities = synthetic_result(levels=('Operator', 'City'))
+    national_scenario = default_scenario(name='National')
+    cities_scenario = default_scenario(name='Main Cities', aggregation_levels=['Operator', 'City'])
+    cities_scenario['scorings']['most_reliable']['enabled'] = False
+    cities_scenario['scorings']['best_network']['charts']['breakdown'] = False
+    cities_scenario['scorings']['best_network']['gap']['individual'] = False
+    content = export_scoring_report([
+        {'scenario': normalize_report_configuration({'scenarios': [national_scenario]})['scenarios'][0],
+         'job': national_job, 'result': national},
+        {'scenario': normalize_report_configuration({'scenarios': [cities_scenario]})['scenarios'][0],
+         'job': cities_job, 'result': cities},
+    ], TEMPLATE, [{'canonical': name, 'aliases': [], 'position': index, 'color': '#365F91',
+                   **({'role': 'focus'} if name in {'Three UK', 'Vodafone UK'} else {})}
+                  for index, name in enumerate(OPERATORS)])
+    titles = _titles(content)
+    first = [title.split(' | ')[0] for title in titles]
+    assert first[0] == 'Scoring & GAP Analysis'
+    cover = Presentation(BytesIO(content)).slides[0]
+    assert 'Scenarios: National, Main Cities' in ' '.join(shape.text_frame.text for shape in cover.shapes
+                                                          if shape.has_text_frame)
+    # Each scenario opens with its transition (01, 02); its scorings are the transitions below it.
+    from src.modules.reporting import report_structure
+    deck = Presentation(BytesIO(content))
+    transitions = [(next(shape.text for shape in slide.shapes if shape.name.startswith(report_structure.COUNTER_PREFIX)),
+                    slide.shapes.title.text_frame.paragraphs[0].text)
+                   for slide in deck.slides if report_structure.level(slide) is not None]
+    assert [item for item in transitions if '.' not in item[0] or item[0].count('.') == 1] == [
+        ('01', 'National'), ('1.1', 'Best Network Scoring'), ('1.2', 'Most Reliable Network Scoring'),
+        ('02', 'Main Cities'), ('2.1', 'Best Network Scoring')]
+    main_cities = titles[first.index('Main Cities'):]
+    assert not any('per Category (Breakdown)' in title for title in main_cities)
+    assert not any(title.startswith('GAP Analysis — Three UK vs EE') for title in main_cities)
+    assert any(title.startswith('Best Network Scoring per City | Main Cities · Best Network') for title in main_cities)
+    # All Environments only: no environment blocks, and no "All Environments" in the subtitles.
+    assert not any('Drive - City' in title for title in titles)
+    assert not any('All Environments' in title for title in titles)
+    # Only the Focus operators of the Operator Maps (Vodafone and Three) are compared with EE.
+    assert not any('O2 UK vs EE' in title for title in titles)
+    assert any('Three UK vs EE' in title for title in titles)
+
+
+def test_split_environments_and_kpi_values():
+    job, result = synthetic_result(levels=('Operator',))
+    scenario = default_scenario(name='National')
+    options = scenario['scorings']['best_network']
+    options['environments'] = 'split'
+    options['tables']['kpi_values'] = True
+    scenario['scorings']['most_reliable']['enabled'] = False
+    content = export_scoring_report([{'scenario': normalize_report_configuration({'scenarios': [scenario]})['scenarios'][0],
+                                      'job': job, 'result': result}], TEMPLATE)
+    presentation = Presentation(BytesIO(content))
+    titles = [slide.shapes.title.text_frame.text.replace('\n', ' | ') for slide in presentation.slides]
+    assert any(title.startswith('Best Network — Drive - City') for title in titles)
+    breakdown = next(slide for slide, title in zip(presentation.slides, titles)
+                     if title.startswith('Scoring Tables — Breakdown'))
+    table = next(shape.table for shape in breakdown.shapes if shape.has_table)
+    headers = {table.cell(row, column).text for row in range(4) for column in range(len(table.columns))}
+    assert 'Value' in headers and 'Value / Score' in headers
+
+
+def test_report_api_generates_scenarios_and_remembers_the_configuration(scoring_api, monkeypatch):
+    from types import ModuleType
+
+    import pandas as pd
+
+    from src.modules.scoring import scoring as scoring_engine
+    from src.modules.scoring import saved_filters
+    from tests.scoring.test_scoring_most_reliable import _reliable_configuration
+
+    client = scoring_api['client']
+    repository = scoring_api['repository']
+    repository.replace_scoring_configuration(_reliable_configuration())
+    rows = [{'Campaign': '2026-Q2', 'Operator': operator, 'G_Level_1': 'Drive', 'G_Level_2': 'City',
+             'Session_Type': 'CALL', 'Call_Status': status}
+            for operator, status in (('EE', 'Completed'), ('O2 UK', 'Completed'), ('Three UK', 'Failed'))]
+    engine = ModuleType('src.modules.scoring.scoring')
+    engine.METHOD_VERSION = 'scoring-report-api-test'
+    engine.required_input_columns = lambda kind, levels: [*levels, 'score']
+    engine.calculate_scoring = lambda frames, levels, *, baseline_operator, configuration=None: (
+        scoring_engine.calculate_scoring({'voice': pd.DataFrame(rows)}, levels, baseline_operator=baseline_operator,
+                                         configuration=configuration))
+    monkeypatch.setattr(saved_filters, '_scoring_engine', lambda: engine)
+    created = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator'],
+        'nr_mode': 'NSA', 'baseline_operator': 'EE',
+    })
+    job_id = created.json()['saved_filter']['id']
+    saved_filters.calculate_saved_filter(repository, job_id)
+
+    national = default_scenario(name='National')
+    leeds = default_scenario(name='Leeds', context_filters={'City': ['Leeds']})
+    leeds['scorings']['most_reliable']['enabled'] = False
+    configuration = {'scenarios': [national, leeds]}
+    saved = client.post('/api/scoring/report-configurations', json={'name': 'Weekly', 'configuration': configuration})
+    assert saved.status_code == 200, saved.text
+    # Next to the configurations every workspace starts with (assets/scoring-report-configurations).
+    assert 'Weekly' in [item['name'] for item in client.get('/api/scoring/report-configurations').json()['configurations']]
+
+    # The report uses the CDRs, NR Mode, methodology and GAP reference of the Calculation panel.
+    job = saved_filters.get_saved_filter(repository, job_id)
+    selection = {key: job[key] for key in ('dataset_ids', 'nr_mode', 'baseline_operator', 'scoring_profile_id')}
+    assert client.post('/api/scoring/report/ppt', json={'configuration': configuration}).status_code == 400
+    response = client.post('/api/scoring/report/ppt', json={'configuration': configuration, **selection})
+    assert response.status_code == 200, response.text
+    assert 'National' in response.headers['content-disposition'] and 'Leeds' in response.headers['content-disposition']
+    titles = [title.split(' | ')[0] for title in _titles(response.content)]
+    # Each scenario has its transition, then its scorings (Leeds without Most Reliable).
+    leeds = titles[titles.index('Leeds'):]
+    assert 'National' in titles and 'Best Network Scoring' in leeds and 'Most Reliable Network Scoring' not in leeds
+    assert client.get('/api/scoring/report-configurations').json()['last']['scenarios'][1]['name'] == 'Leeds'
+    # The Leeds scenario has its own scoring job with its filter.
+    jobs = saved_filters.list_saved_filters(repository)
+    assert any((job.get('context_filters') or {}).get('City') == ['Leeds'] for job in jobs)
+
+    # From the page, every scenario takes the filters and Split by of the Calculation panel (an Operator pattern here);
+    # the configuration is remembered as it was chosen.
+    page = client.post('/api/scoring/report/ppt', json={'configuration': configuration, **selection,
+                                                        'context_filters': {'Operator': ['Not Three*']}, 'aggregation_levels': ['Operator']})
+    assert page.status_code == 200, page.text
+    jobs = saved_filters.list_saved_filters(repository)
+    assert any((job.get('context_filters') or {}).get('Operator') == ['Not Three*'] for job in jobs)
+    assert client.get('/api/scoring/report-configurations').json()['last']['scenarios'][1]['context_filters'] == {'City': ['Leeds']}
+
+    exported = client.get('/api/scoring/report-configurations/export').json()
+    assert exported['format'] == 'drivetest-analyzer-scoring-report-configurations'
+    assert 'Weekly' not in [item['name'] for item in client.delete('/api/scoring/report-configurations?name=Weekly').json()['configurations']]
+    imported = client.post('/api/scoring/report-configurations/import',
+                           files={'package': ('reports.json', json.dumps(exported), 'application/json')})
+    assert 'Weekly' in [item['name'] for item in imported.json()['configurations']]
+    bad = client.post('/api/scoring/report/ppt', json={'configuration': {'scenarios': []}, **selection})
+    assert bad.status_code == 400
+
+
+def test_levels_with_a_single_value_are_left_out_of_report_scenarios(monkeypatch):
+    import src.DriveTestAnalyzer as core
+    from src.modules.scoring.scoring_views import single_value_levels
+
+    one_campaign = {'scoring': [
+        {'operator': 'EE', 'campaign': 'UK_Q2_2026', 'city': 'London'},
+        {'operator': 'O2 UK', 'campaign': 'UK_Q2_2026', 'city': 'Leeds'},
+    ]}
+    assert single_value_levels(['Operator', 'Campaign', 'City'], one_campaign) == ['Campaign']
+
+    calculated = []
+
+    def create(_repository, _selected, levels, *_args, **_kwargs):
+        calculated.append(list(levels))
+        return {'id': len(calculated), 'status': 'completed', 'levels': list(levels)}, True
+
+    monkeypatch.setattr(core, 'validate_complete_scoring_cdr_selection', lambda *_args, **_kwargs: [1])
+    monkeypatch.setattr(core, 'save_saved_filter', create)
+    monkeypatch.setattr(core, 'get_saved_filter', lambda _repository, job_id, include_result=False: {
+        'id': job_id, 'status': 'completed', 'aggregation_levels': calculated[job_id - 1], 'result': one_campaign,
+    })
+    scenario = default_scenario(aggregation_levels=['Operator', 'City', 'Campaign'])
+    job = core._scenario_saved_filter(None, {'dataset_ids': [1], 'nr_mode': 'NSA'}, scenario, 'super')
+    # The Campaign level splits nothing: the scenario is calculated again without it.
+    assert calculated == [['Operator', 'City', 'Campaign'], ['Operator', 'City']]
+    assert job['aggregation_levels'] == ['Operator', 'City']
+
+
+def test_report_configurations_remember_the_configuration_they_were_chosen_from():
+    scenario = {'name': 'National', 'scorings': {'best_network': {'enabled': True}}}
+    assert normalize_report_configuration({'scenarios': [scenario], 'name': ' Weekly '})['name'] == 'Weekly'
+    assert 'name' not in normalize_report_configuration({'scenarios': [scenario]})
+
+
+def test_report_api_remembers_the_configuration_when_the_document_is_requested(scoring_api, monkeypatch):
+    import src.DriveTestAnalyzer as core
+
+    def failing_build(*_args, **_kwargs):
+        raise ValueError('The scoring of the scenario could not be calculated.')
+
+    monkeypatch.setattr(core, 'build_scoring_report_document', failing_build)
+    client = scoring_api['client']
+    configuration = {'name': 'Weekly', 'scenarios': [default_scenario(name='London', context_filters={'City': ['London']})]}
+    response = client.post('/api/scoring/report/ppt', json={
+        'configuration': configuration, 'dataset_ids': scoring_api['complete_dataset_ids'], 'nr_mode': 'NSA',
+    })
+    assert response.status_code == 400
+    # Remembered before the document is built, so also when it is not ready (or never is).
+    last = client.get('/api/scoring/report-configurations').json()['last']
+    assert last['name'] == 'Weekly' and last['scenarios'][0]['name'] == 'London'
+
+
+def test_report_api_shows_each_nr_mode_as_the_page_chooses_without_remembering_it(scoring_api, monkeypatch):
+    import src.DriveTestAnalyzer as core
+    built = []
+
+    def build(_repository, _base, configuration, *_args, **_kwargs):
+        built.append(configuration)
+        raise ValueError('Stop here.')
+
+    monkeypatch.setattr(core, 'build_scoring_report_document', build)
+    client = scoring_api['client']
+    configuration = {'name': 'Weekly', 'scenarios': [default_scenario(name='London')], 'nr_layout': 'grouped'}
+    request = {'configuration': configuration, 'dataset_ids': scoring_api['complete_dataset_ids'], 'nr_mode': 'NSA+SA'}
+    # NSA vs SA and NSA & SA charts of the page; the configuration chosen in the report editor never carries them.
+    assert client.post('/api/scoring/report/ppt', json={**request, 'nr_layout': 'grouped', 'nr_charts': 'separate'}).status_code == 400
+    assert client.post('/api/scoring/report/ppt', json=request).status_code == 400
+    assert [(item.get('nr_layout'), item.get('nr_charts')) for item in built] == [('grouped', 'separate'), (None, None)]
+    assert 'nr_layout' not in client.get('/api/scoring/report-configurations').json()['last']
+    for wrong in ({'nr_layout': 'other'}, {'nr_layout': 'grouped', 'nr_charts': 'other'}):
+        response = client.post('/api/scoring/report/ppt', json={**request, **wrong})
+        assert response.status_code == 400 and 'NSA vs SA must be' in response.json()['detail']
+    response = client.get('/scoring/saved-filters/1/export/ppt?nr_layout=other')
+    assert response.status_code == 400 and 'NSA vs SA must be' in response.json()['detail']

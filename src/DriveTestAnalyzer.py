@@ -35,6 +35,7 @@ from functools import lru_cache
 from pathlib import Path, PurePath, PurePosixPath
 from threading import Event, Lock, Thread
 from time import monotonic, sleep
+from types import SimpleNamespace
 from typing import Annotated
 from typing import Any, Iterable
 from typing import Callable
@@ -4654,6 +4655,36 @@ def process_dataset(
         _unregister_dataset_processing(dataset_id, task_repository)
 
 
+# The tests process their small datasets in the interpreter of the application (set in tests/conftest.py): a worker of
+# its own takes most of a second to start, for each of the hundreds of datasets they process.
+DATASET_WORKER_IN_PROCESS = os.environ.get('DTA_DATASET_WORKER_IN_PROCESS') == '1'
+
+
+def _run_dataset_here(
+    dataset_id: int, dataset_path: Path, username: str,
+    vodafone_mapping_dataset_id: int | None, three_mapping_dataset_id: int | None,
+    region_mapping_dataset_id: int | None, task_repository: Repository, operation: str,
+) -> None:
+    """What the dataset worker does, in this interpreter (see DATASET_WORKER_IN_PROCESS): the operation itself keeps
+    the stop requests and its own failures, as in the worker."""
+    from src import dataset_worker
+
+    try:
+        dataset_worker.run_dataset_operation(SimpleNamespace(
+            dataset_id=dataset_id, dataset_path=dataset_path, username=username, operation=operation,
+            workspace_db=task_repository.db_path, vodafone_mapping_dataset_id=vodafone_mapping_dataset_id,
+            three_mapping_dataset_id=three_mapping_dataset_id, region_mapping_dataset_id=region_mapping_dataset_id,
+        ), task_repository)
+    except Exception:
+        # (A worker that ends with an error leaves the dataset as failed, see below.)
+        finished = task_repository.get_dataset(dataset_id)
+        if finished and str(finished['status'] or '') != 'stopped':
+            task_repository.update_dataset_profile(
+                dataset_id, status='failed', processing_step='Failed',
+                last_error='The isolated CDR worker stopped unexpectedly.', processed_at=now_iso(),
+            )
+
+
 def _run_dataset_in_worker(
     dataset_id: int, dataset_path: Path, username: str,
     vodafone_mapping_dataset_id: int | None, three_mapping_dataset_id: int | None,
@@ -4661,6 +4692,10 @@ def _run_dataset_in_worker(
 ) -> None:
     """Move a large CDR parse out of the web-server interpreter."""
     if APP_SHUTTING_DOWN.is_set():
+        return
+    if DATASET_WORKER_IN_PROCESS:
+        _run_dataset_here(dataset_id, dataset_path, username, vodafone_mapping_dataset_id, three_mapping_dataset_id,
+                          region_mapping_dataset_id, task_repository, operation)
         return
     command = [
         sys.executable, '-m', 'src.dataset_worker',
@@ -6179,6 +6214,18 @@ def session_user(token: str | None) -> SessionUser | None:
 def optional_user(request: Request) -> SessionUser | None:
     """The signed-in user, or None for public pages such as Help."""
     return session_user(request.cookies.get(SESSION_COOKIE))
+
+
+async def json_object(request: Request) -> dict[str, Any]:
+    """The JSON object a request sends: a body that is not JSON, or not an object, is refused (400) instead of failing
+    in the route that reads its values."""
+    try:
+        payload = await request.json()
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=400, detail='The request is not valid JSON.') from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail='The request must be a JSON object.')
+    return payload
 
 
 def current_user(request: Request) -> SessionUser:
@@ -8674,6 +8721,15 @@ def _backup_archive_file(backup_path: str, filename: str) -> Path:
     if candidate.suffix.casefold() != '.zip' or not candidate.is_file() or candidate.parent not in backup_folders(root):
         raise ValueError('Select a backup ZIP from the selected backup path.')
     return candidate
+
+
+def requested_backup_archive(backup_path: str, filename: str) -> Path:
+    """The backup ZIP a request names; a path outside the data folder or a file that is not one of its backups is
+    refused (400)."""
+    try:
+        return _backup_archive_file(backup_path, filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def restore_database_backup(
@@ -14599,24 +14655,24 @@ def render_admin_template(
     from src.modules.cdr.l3_dt_logs import TABLE_TITLES as L3_DT_LOGS_TABLE_TITLES
 
     friendly_tables = {
-        WORKSPACE_REGISTRY_TABLE: 'Workspace registry',
-        'application_state': 'Application state',
+        WORKSPACE_REGISTRY_TABLE: 'Workspace Registry',
+        'application_state': 'Application State',
         'autocalculated_fields': 'Auto-calculated Fields',
-        'audit_logs': 'Audit log',
+        'audit_logs': 'Audit Log',
         'design_filter_selections': 'PPT Filter Selections',
         'design_ppt_jobs': 'PPT Designer Jobs',
         'design_drafts': 'PPT Drafts',
         'design_images': 'PPT Images',
         'cdr_catalogues': 'CDR Operator, Operator Vendor, Vendor, Region, Cluster, City, Campaign And Source Level Catalogues',
         'cdr_filter_facets': 'CDR Filter Facets',
-        'dataset_profiles': 'Dataset profiles',
-        'dataset_source_columns': 'Dataset source columns',
+        'dataset_profiles': 'Dataset Profiles',
+        'dataset_source_columns': 'Dataset Source Columns',
         'datasets': 'Datasets',
         'saved_filters': 'Scoring Saved Filters',
         'scoring_history': 'Scoring History',
         'scoring_history_sources': 'Scoring History Sources',
         'scoring_history_files': 'Scoring History Files',
-        'chart_mapping_groups': 'Chart mapping groups',
+        'chart_mapping_groups': 'Chart Mapping Groups',
         'operator_mappings': 'Operator Mappings',
         'vendor_mappings': 'Vendor Mappings',
         'inventory_cells': 'Inventory Cells',
@@ -14626,12 +14682,11 @@ def render_admin_template(
         'report_templates': 'PPT Templates',
         'saved_query_builder_queries': 'Query Builder Queries',
         'workspace_state': 'Workspace State',
-        'transfer_offers': 'Server transfer offers',
+        'transfer_offers': 'Server Transfer Offers',
         'users': 'Users',
         'modules_profiles': 'Modules Profiles',
         'workspace_groups': 'Workspace Groups',
         'workspace_group_members': 'Workspace Group Members',
-        'application_sessions': 'Application Sessions',
         'user_login_sessions': 'User Login Sessions',
         'tickets': 'Tickets',
         'ticket_comments': 'Ticket Comments',
@@ -17006,8 +17061,14 @@ def stop_background_task(
             WORKSPACE_DUPLICATION_STOP_REQUESTS.add(workspace_id)
     else:
         raise HTTPException(status_code=400, detail='This background task cannot be stopped.')
-    if prefix in {'export', 'import', 'transfer', 'workspace-cache-clear', 'workspace-duplicate'}:
+    if prefix in {'export', 'import', 'transfer', 'workspace-cache-clear', 'workspace-duplicate', 'auto-fields', 'auto-fields-state'}:
         task_repository.try_add_log(user.username, 'stop_background_task', json.dumps({'task_id': task_id}))
+    elif prefix == 'workspace-delete':
+        # The workspace being removed loses its own events: the stop is written to the open one, or to the application.
+        if active_workspace and active_workspace.id != workspace_id:
+            add_workspace_audit_log(active_workspace, user.username, 'stop_background_task', {'task_id': task_id})
+        else:
+            repository.try_add_log(user.username, 'stop_background_task', json.dumps({'task_id': task_id}))
     return JSONResponse({'stopping': task_id})
 
 
@@ -17115,7 +17176,7 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
     if name.startswith(('dataset_rows_', 'reporting_rows_')):
         kind_type = {'voice': 'Voice CDRs', 'data': 'Data CDRs', 'speech': 'Speech CDRs'}.get(kind, 'Other datasets')
         return kind_type, colors[kind_type]
-    if name in {'users', 'modules_profiles', 'workspace_groups', 'workspace_group_members', 'user_login_sessions', 'application_sessions'}:
+    if name in {'users', 'modules_profiles', 'workspace_groups', 'workspace_group_members', 'user_login_sessions'}:
         kind_type = 'Users & Access'
     elif name in {'application_state', 'transfer_offers', 'admin_notices_seen', WORKSPACE_REGISTRY_TABLE.casefold()}:
         kind_type = 'Application'
@@ -17125,11 +17186,11 @@ def database_table_type(table_name: str, dataset_kind: str = '') -> tuple[str, s
         kind_type = 'Non-Qualified Calls'
     elif name.startswith(('scoring_', 'saved_filters')):
         kind_type = 'Scoring & GAP Analysis'
-    elif name.startswith('report_task'):
+    elif name.startswith('report_task') or name == 'bundle_report_templates':
         kind_type = 'Reporting'
     elif name.startswith(('design_', 'report_templates')):
         kind_type = 'PPT Designer & Templates'
-    elif name.startswith(('dataset', 'cdr_', 'autocalculated', 'inventory_')):
+    elif name.startswith(('dataset', 'cdr_', 'autocalculated', 'inventory_', 'multivendor_mapping_', 'l3_dt_log_')):
         kind_type = 'Datasets'
     elif name in {'chart_mapping_groups', 'operator_mappings', 'vendor_mappings'} or name.startswith('map_area'):
         kind_type = 'Mappings & Maps'
@@ -17324,6 +17385,9 @@ def create_workspace(
     repository.try_add_log(user.username, 'create_workspace', json.dumps({
         'workspace': workspace.id, 'name': workspace.name, 'cdr_type': CDR_TYPES[cdr_type]['label'],
         'country': country, 'operators_added': operators_added,
+        # Who was given the workspace when it was created (a super-admin chooses them).
+        **({'users': sorted(selected_usernames), 'workspace_group_ids': sorted(workspace_group_ids)}
+           if user.role == 'super-admin' else {}),
     }))
     return RedirectResponse(f'/workspace?{urlencode({"workspace_notice": f"Created and opened {workspace.name}."})}', status_code=status.HTTP_303_SEE_OTHER)
 
@@ -17392,7 +17456,13 @@ def save_workspace(
         notice += f' {operators_added} operators of its country added to the Operator Maps.'
     add_workspace_audit_log(workspace, user.username, 'save_workspace', {
         'workspace': workspace.id, 'name': workspace.name,
+        **({'previous_name': current_workspace.name} if current_workspace.name != workspace.name else {}),
         'access_updated': user.role == 'super-admin',
+        # The users and Workspace Groups it was left with, and the CDR type and country it was given.
+        **({'users': sorted({item.strip() for item in usernames if item.strip()}, key=str.casefold),
+            'workspace_group_ids': sorted(workspace_group_ids)} if user.role == 'super-admin' else {}),
+        **({'cdr_type': cdr_type} if cdr_type else {}),
+        **({'country': country.strip().upper()} if country is not None else {}),
     })
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JSONResponse({'ok': True, 'notice': notice, 'workspace': {'id': workspace.id, 'name': workspace.name}})
@@ -17574,11 +17644,13 @@ def delete_workspace(
                     job.update(status='failed', error=str(exc), finished_at=datetime.now(timezone.utc).timestamp())
 
     submit_background_task(run_deletion)
+    deletion = {'workspace': workspace_id, 'name': registered_workspace.name, 'delete_files': delete_workspace_files}
     if active_workspace:
         # The removed workspace loses its own events: the deletion is written to the open one.
-        add_workspace_audit_log(active_workspace, user.username, 'delete_workspace', {
-            'workspace': workspace_id, 'name': registered_workspace.name, 'delete_files': delete_workspace_files,
-        })
+        add_workspace_audit_log(active_workspace, user.username, 'delete_workspace', deletion)
+    else:
+        # (With no workspace open, to the events of the application.)
+        repository.try_add_log(user.username, 'delete_workspace', json.dumps(deletion, ensure_ascii=False))
     return RedirectResponse(
         '/workspace?workspace_notice=Workspace+deletion+started.+The+workspace+will+disappear+when+the+operation+finishes.',
         status_code=status.HTTP_303_SEE_OTHER,
@@ -18310,7 +18382,7 @@ async def dataset_preview_data(
     columns, _derived = _ordered_cdr_preview_columns(
         available_columns, [dataset['stored_path']], [dataset_id],
     )
-    payload = await request.json()
+    payload = await json_object(request)
     page, filters, filter_column = _dataset_preview_request(payload, columns)
     if bool(payload.get('download')):
         repository.try_add_log(user.username, 'export_dataset_preview_csv', json.dumps({
@@ -18460,7 +18532,7 @@ async def combined_dataset_preview_data(
     source_paths = [dataset['stored_path'] for dataset in source_datasets]
     dataset_ids = [int(dataset['id']) for dataset in source_datasets]
     columns, _derived = _ordered_cdr_preview_columns(available_columns, source_paths, dataset_ids)
-    payload = await request.json()
+    payload = await json_object(request)
     page, filters, filter_column = _dataset_preview_request(payload, columns)
     if bool(payload.get('download')):
         repository.try_add_log(user.username, 'export_combined_cdr_preview_csv', json.dumps({
@@ -19939,7 +20011,7 @@ async def run_query_builder(request: Request, user: SessionUser = Depends(curren
     workspace = active_workspace
     if not workspace:
         raise HTTPException(status_code=400, detail='Open a workspace before running Query Builder.')
-    payload = await request.json()
+    payload = await json_object(request)
     datasets, query_sql = _query_builder_payload(payload)
     column_filters = payload.get('column_filters')
     offset = payload.get('offset', 0)
@@ -20012,7 +20084,7 @@ def query_builder_run_status(execution_id: str, user: SessionUser = Depends(curr
 async def query_builder_filter_values(request: Request, user: SessionUser = Depends(current_user)) -> JSONResponse:
     if not active_workspace:
         raise HTTPException(status_code=400, detail='Open a workspace before filtering Query Builder results.')
-    payload = await request.json()
+    payload = await json_object(request)
     datasets, query_sql = _query_builder_payload(payload)
     column_index = payload.get('column_index')
     if isinstance(column_index, bool) or not isinstance(column_index, int) or column_index < 0:
@@ -20052,7 +20124,9 @@ def cancel_query_builder_run(execution_id: str, user: SessionUser = Depends(curr
 
 @app.post('/api/query-builder/save')
 async def save_query_builder(request: Request, user: SessionUser = Depends(workspace_editor_user)) -> JSONResponse:
-    payload = await request.json()
+    if not active_workspace:
+        raise HTTPException(status_code=400, detail='Open a workspace before saving a query.')
+    payload = await json_object(request)
     datasets, query_sql = _query_builder_payload(payload)
     name = str(payload.get('name') or '').strip()
     if not name:
@@ -20070,7 +20144,7 @@ async def save_query_builder(request: Request, user: SessionUser = Depends(works
 async def update_saved_query_builder_query(query_id: int, request: Request, user: SessionUser = Depends(workspace_editor_user)) -> JSONResponse:
     if not active_workspace:
         raise HTTPException(status_code=400, detail='Open a workspace before editing a saved query.')
-    payload = await request.json()
+    payload = await json_object(request)
     existing = repository.get_query_builder_query(query_id)
     if not existing:
         raise HTTPException(status_code=404, detail='Saved query not found.')
@@ -20108,7 +20182,7 @@ def delete_saved_query_builder_query(query_id: int, user: SessionUser = Depends(
 async def export_query_builder(request: Request, user: SessionUser = Depends(current_user)) -> StreamingResponse:
     if not active_workspace:
         raise HTTPException(status_code=400, detail='Open a workspace before exporting Query Builder results.')
-    payload = await request.json()
+    payload = await json_object(request)
     datasets, query_sql = _query_builder_payload(payload)
     column_filters = payload.get('column_filters')
     try:
@@ -20165,7 +20239,7 @@ async def chart_builder_fields(request: Request, user: SessionUser = Depends(cur
     CDR Field Dictionary they belong to."""
     from src.modules.cdr import cdr_field_dictionary
     from src.modules.cdr.cdr_field_profiles import workspace_field_profile
-    payload = await request.json()
+    payload = await json_object(request)
     selected = {int(value) for value in payload.get('dataset_ids', []) if str(value).isdigit()}
     columns: list[str] = []
     for dataset in repository.list_datasets():
@@ -20193,7 +20267,7 @@ async def chart_builder_fields(request: Request, user: SessionUser = Depends(cur
 @app.post('/api/chart-builder/values')
 async def chart_builder_values(request: Request, user: SessionUser = Depends(current_user)) -> JSONResponse:
     """The values of a field in the chosen CDRs with their number of samples (most first), for the filter dialogs."""
-    payload = await request.json()
+    payload = await json_object(request)
     field = str(payload.get('field') or '').strip()
     if not field:
         raise HTTPException(status_code=400, detail='Choose a field.')
@@ -20217,7 +20291,7 @@ async def chart_builder_preview(request: Request, user: SessionUser = Depends(cu
     """The model of the chart of Chart Builder, with the format given to it (its series, legend, labels and axes), or with One
     chart per a field one model for each value of the field in the chosen CDRs (``type: repeat``), as a PPT Design lays
     them out."""
-    payload = await request.json()
+    payload = await json_object(request)
     frame, entry, source_key = _chart_builder_context(payload)
     definition = payload.get('definition') if isinstance(payload.get('definition'), dict) else {}
     style = definition.get('style') if isinstance(definition.get('style'), dict) else {}
@@ -20724,7 +20798,7 @@ class UseNewerCdrsRequest(BaseModel):
 
 @app.post('/api/scoring/saved-filters/{filter_id}/use-newer-cdrs')
 def scoring_saved_filters_use_newer_cdrs(filter_id: int, payload: UseNewerCdrsRequest | None = None,
-                                         user: SessionUser = Depends(current_user)) -> dict[str, Any]:
+                                         user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
     """Update a Saved Filter with the CDRs that replace its older ones and calculate it again in the background."""
     select = payload.select if payload is not None else True
     task_repository = scoring_repository(user)
@@ -21881,6 +21955,9 @@ async def scoring_report_configurations_import(
         state = import_report_configurations(task_repository, document, replace=replace)
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (KeyError, TypeError, AttributeError) as exc:
+        # (A file of the right format whose configurations are not what an export writes.)
+        raise HTTPException(status_code=400, detail='The file is not a valid Scoring Report configurations export.') from exc
     finally:
         await package.close()
     for name in removed:
@@ -24455,7 +24532,9 @@ async def save_workspace_scoring_profiles(
     task_repository.try_add_log(user.username, 'save_scoring_profiles', json.dumps({
         'active_profile_id': profiles['active_profile_id'],
         'profile_count': len(profiles['profiles']),
-    }))
+        'methodologies': [str(profile.get('name') or profile['id']) for profile in profiles['profiles']],
+        **({'added': added} if added else {}), **({'removed': removed} if removed else {}),
+    }, ensure_ascii=False))
     return JSONResponse(profiles, headers={'Cache-Control': 'no-store'})
 
 
@@ -24714,7 +24793,10 @@ def run_manual_database_backup(
 @app.get('/api/admin/backup-files')
 def backup_files(backup_path: str = Query(default=''), user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     """List restoreable ZIP files in one server-visible backup directory."""
-    root = ensure_backup_path_is_within_config(recurring_backup_path({'backup_path': backup_path}))
+    try:
+        root = ensure_backup_path_is_within_config(recurring_backup_path({'backup_path': backup_path}))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     files = []
     if root.is_dir():
         zips = [item for folder in backup_folders(root) if folder.is_dir() for item in folder.glob('*.zip')]
@@ -24740,7 +24822,7 @@ def backup_status(user: SessionUser = Depends(super_admin_user)) -> JSONResponse
 
 @app.post('/api/admin/backup-files/inspect')
 def inspect_backup_file(backup_path: str = Form(''), backup_file: str = Form(''), user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
-    archive_path = _backup_archive_file(backup_path, backup_file)
+    archive_path = requested_backup_archive(backup_path, backup_file)
     workspaces = _backup_archive_workspaces(archive_path)
     server_workspaces = {workspace.name for workspace in workspace_registry.list()}
     return JSONResponse({
@@ -24759,7 +24841,7 @@ def run_manual_database_restore(
     workspaces: list[str] | None = Form(default=None),
     user: SessionUser = Depends(super_admin_user),
 ) -> Response:
-    archive_path = _backup_archive_file(backup_path, backup_file)
+    archive_path = requested_backup_archive(backup_path, backup_file)
     selected = [item for item in components if item in {*APPLICATION_BACKUP_COMPONENTS, *WORKSPACE_ARCHIVE_COMPONENTS}]
     present = _backup_archive_components(archive_path)
     if not selected or not set(selected) <= set(present):
@@ -25651,7 +25733,8 @@ async def accept_transfer_offer(
     with TRANSFER_LOCK:
         _refresh_persisted_transfer_offers()
         offer = TRANSFER_OFFERS.get(offer_id)
-        if not offer:
+        # (A request of content from another server is answered from its own panel, not as an offer.)
+        if not offer or offer.get('direction') == 'request':
             raise HTTPException(status_code=404, detail='The pending transfer offer no longer exists.')
         if offer.get('status') == 'pending':
             if offer.get('requires_destination_workspaces') or offer.get('kind') in WORKSPACE_ELEMENT_EXPORT_TARGETS:
@@ -25743,7 +25826,7 @@ def reject_transfer_offer(offer_id: str, user: SessionUser = Depends(super_admin
     with TRANSFER_LOCK:
         _refresh_persisted_transfer_offers()
         offer = TRANSFER_OFFERS.get(offer_id)
-        if not offer or offer.get('status') != 'pending':
+        if not offer or offer.get('status') != 'pending' or offer.get('direction') == 'request':
             raise HTTPException(status_code=404, detail='The pending transfer offer no longer exists.')
         offer.update({'status': 'rejected', 'error': 'The destination super-admin rejected the transfer.', 'finished_at': datetime.now(timezone.utc).timestamp()})
         _save_transfer_offer(offer)
@@ -26384,6 +26467,17 @@ def admin_database_table_values(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def database_cell_text(value: Any) -> str:
+    """A cell of Database Management as an App Event tells it: its text in quotes (the start of a long one), the size of
+    a binary value, or empty."""
+    if value is None:
+        return 'empty'
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return f'binary ({len(value)} bytes)'
+    text = str(value)
+    return f'"{text[:120]}…"' if len(text) > 120 else f'"{text}"'
+
+
 @app.post('/admin/database/table')
 async def update_admin_database_table(request: Request, user: SessionUser = Depends(super_admin_user)) -> JSONResponse:
     if not active_workspace:
@@ -26404,7 +26498,7 @@ async def update_admin_database_table(request: Request, user: SessionUser = Depe
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail='The selected row is invalid.') from exc
     try:
-        repository.update_database_table_row(table, rowid, updates)
+        previous = repository.update_database_table_row(table, rowid, updates)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except sqlite3.IntegrityError as exc:
@@ -26414,7 +26508,9 @@ async def update_admin_database_table(request: Request, user: SessionUser = Depe
     DATAFRAME_CACHE.clear()
     if table in {'operator_mappings', 'vendor_mappings', 'chart_mapping_groups'}:
         _clear_chart_preview_caches()
-    repository.add_log(user.username, 'database_table_update', f'Updated row {rowid} in {table}.')
+    changed = '; '.join(f'{column} {database_cell_text(previous.get(column))} → {database_cell_text(value)}'
+                        for column, value in updates.items())
+    repository.add_log(user.username, 'database_table_update', f'Updated row {rowid} in {table}: {changed}.'[:2000])
     return JSONResponse({'ok': True, 'message': 'Row saved.'})
 
 
@@ -27013,7 +27109,7 @@ async def delete_admin_database_table_row(request: Request, user: SessionUser = 
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail='The selected row is invalid.') from exc
     try:
-        repository.delete_database_table_row(table, rowid)
+        deleted = repository.delete_database_table_row(table, rowid)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except sqlite3.IntegrityError as exc:
@@ -27023,7 +27119,8 @@ async def delete_admin_database_table_row(request: Request, user: SessionUser = 
     DATAFRAME_CACHE.clear()
     if table in {'operator_mappings', 'vendor_mappings', 'chart_mapping_groups'}:
         _clear_chart_preview_caches()
-    repository.add_log(user.username, 'database_table_delete', f'Deleted row {rowid} from {table}.')
+    row = '; '.join(f'{column} {database_cell_text(value)}' for column, value in deleted.items())
+    repository.add_log(user.username, 'database_table_delete', f'Deleted row {rowid} from {table}: {row}.'[:2000])
     return JSONResponse({'ok': True, 'message': 'Row deleted.'})
 
 
@@ -27405,7 +27502,7 @@ async def validate_report_catalogue_content(
     """Validate edited CSV without waiting for a Workspace database write."""
     del user
     try:
-        payload = await request.json()
+        payload = await json_object(request)
         content = str(payload.get('catalogue_content') or '')
         entries = parse_catalog_csv(content)
     except (TypeError, ValueError) as exc:
@@ -27535,7 +27632,7 @@ async def preview_report_template_chart(
     if not catalogue:
         raise HTTPException(status_code=404, detail='Report Template not found.')
     try:
-        payload = await request.json()
+        payload = await json_object(request)
         nr_mode = design_nr_mode_value(payload.get('nr_mode'))
         dimensions = load_workspace_calculated_dimensions()
         entries = [
@@ -27651,7 +27748,7 @@ async def preview_report_template_chart_image(
     if not catalogue:
         raise HTTPException(status_code=404, detail='Report Template not found.')
     try:
-        payload = await request.json()
+        payload = await json_object(request)
         nr_mode = design_nr_mode_value(payload.get('nr_mode'))
         dimensions = load_workspace_calculated_dimensions()
         entries = [
@@ -27880,6 +27977,11 @@ def update_user_account(
             last_name=last_name,
             email=email,
         )
+        if password.strip():
+            # A new password ends the sessions of the user on every browser (but this one, for one's own account), as
+            # Reset Password and Change password do.
+            own = str(target_user['username']).casefold() == user.username.casefold()
+            end_user_sessions(str(target_user['username']), keep_token=request.cookies.get(SESSION_COOKIE) if own else None)
         if normalized_role == 'super-admin' and target_user['role'] != 'super-admin':
             # A new super-admin sees every module until it is given a profile.
             repository.set_users_modules_profile([target_user_id], None)
@@ -28376,7 +28478,7 @@ async def _save_workspace_dimensions(request: Request, user: SessionUser) -> JSO
         raise HTTPException(status_code=400, detail='Open a workspace before managing auto-calculated fields.')
     workspace = active_workspace
     try:
-        payload = await request.json()
+        payload = await json_object(request)
 
         materialize = payload.get('materialize', True)
         if not isinstance(materialize, bool):
@@ -28442,7 +28544,8 @@ def auto_calculated_field_materialization_status(
 ) -> JSONResponse:
     with AUTO_CALCULATED_FIELD_JOBS_LOCK:
         job = dict(AUTO_CALCULATED_FIELD_JOBS.get(job_id) or {})
-    if not job or not repository.user_has_workspace_access(user.username, str(job['workspace_id'])):
+    # (A super-admin opens every workspace, also without a grant of its own.)
+    if not job or (user.role != 'super-admin' and not repository.user_has_workspace_access(user.username, str(job['workspace_id']))):
         raise HTTPException(status_code=404, detail='Materialization job not found.')
     return JSONResponse({
         key: value for key, value in job.items()
@@ -29052,7 +29155,7 @@ async def preview_auto_calculated_field(request: Request, user: SessionUser = De
     if not active_workspace:
         raise HTTPException(status_code=400, detail='Open a workspace first.')
     try:
-        payload = await request.json()
+        payload = await json_object(request)
 
         def tried() -> dict[str, Any]:
             checked = _auto_field_checked(payload)
@@ -29092,7 +29195,7 @@ async def auto_calculated_field_values(request: Request, user: SessionUser = Dep
     """The values a field of the CDRs takes (most rows first), for the value suggestions of the rule builder."""
     if not active_workspace:
         raise HTTPException(status_code=400, detail='Open a workspace first.')
-    payload = await request.json()
+    payload = await json_object(request)
     fields = [str(item).strip() for item in payload.get('fields') or [] if str(item).strip()]
     sources = [str(item).casefold() for item in payload.get('sources') or [] if str(item).casefold() in AUTO_FIELD_CDR_SOURCES]
     if not fields or not sources:
@@ -29144,7 +29247,7 @@ async def save_auto_calculated_field(request: Request, user: SessionUser = Depen
     if not active_workspace:
         raise HTTPException(status_code=400, detail='Open a workspace before managing auto-calculated fields.')
     workspace = active_workspace
-    payload = await request.json()
+    payload = await json_object(request)
 
     def save() -> tuple[tuple[Any, ...], dict[str, int], dict[str, Any] | None, dict[str, Any]]:
         checked = _auto_field_checked(payload)
@@ -29178,7 +29281,7 @@ async def delete_auto_calculated_field(request: Request, user: SessionUser = Dep
     if not active_workspace:
         raise HTTPException(status_code=400, detail='Open a workspace before managing auto-calculated fields.')
     workspace = active_workspace
-    payload = await request.json()
+    payload = await json_object(request)
     name = str(payload.get('name') or '').strip()
 
     def delete() -> tuple[tuple[Any, ...], dict[str, int], dict[str, Any] | None, dict[str, Any]]:
@@ -29207,7 +29310,7 @@ async def reorder_auto_calculated_fields(request: Request, user: SessionUser = D
     if not active_workspace:
         raise HTTPException(status_code=400, detail='Open a workspace before managing auto-calculated fields.')
     workspace = active_workspace
-    payload = await request.json()
+    payload = await json_object(request)
     names = [str(item or '').strip() for item in payload.get('names') or []]
 
     def reorder() -> tuple[tuple[Any, ...], dict[str, int], dict[str, Any] | None, dict[str, Any]]:

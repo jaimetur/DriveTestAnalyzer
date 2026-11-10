@@ -135,7 +135,7 @@ def _user(details: Any) -> str:
 
 
 def _account(details: dict[str, Any]) -> str:
-    """``name Ana García, role user-editor, active, Modules Profile Analysts, Workspace Groups UK``."""
+    """``name User A, role user-editor, active, Modules Profile Analysts, Workspace Groups UK``."""
     name = ' '.join(str(part) for part in (details.get('first_name'), details.get('last_name')) if part)
     parts = [f'name {name}' if name else '', f"email {details['email']}" if details.get('email') else '',
              f"role {details['role']}" if details.get('role') else '',

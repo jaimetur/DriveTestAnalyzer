@@ -26,6 +26,7 @@ dependencies = [
   "httpx>=0.28.0,<1.0.0",
   "pillow>=11.0.0,<13.0.0",
   "certifi>=2024.2.2",
+  "anthropic>=2.3.0,<3.0.0",
   "duckdb>=2.0.0,<3.0.0"
 ]
 
@@ -39,5 +40,10 @@ dev = [
 pythonpath = [".", "src"]
 testpaths = ["tests"]
 # The tests run in parallel, one process per CPU (-n 0 runs them in this process, for -s or a debugger), slowest first
-# as the last run measured them, two at a time per process (see tests/conftest.py).
-addopts = "-n auto --dist load --maxschedchunk 2"
+# as the last run measured them, two at a time per process (see tests/conftest.py). The tests that drive programs
+# outside the application (marked external) are left out: `pytest -m external` runs them, and
+# `pytest -m "external or not external"` every test.
+addopts = "-n auto --dist load --maxschedchunk 2 -m 'not external'"
+markers = [
+  "external: drives programs outside the application (a browser and LibreOffice) for minutes; run with -m external",
+]

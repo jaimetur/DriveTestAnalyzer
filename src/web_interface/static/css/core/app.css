@@ -5650,3 +5650,92 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 .assistant-glossary-new { margin-top: .8rem; padding: .7rem; border: 1px dashed #94a3b8; border-radius: .7rem; grid-template-columns: minmax(10rem, 16rem) minmax(0, 1fr) auto; }
 @media (max-width: 760px) { .assistant-glossary-form, .assistant-glossary-new { grid-template-columns: minmax(0, 1fr); } }
 .assistant-count { display: inline-flex; min-width: 1.5rem; justify-content: center; padding: .05rem .45rem; border-radius: 999px; background: #0e7490; color: #fff; font-size: .75rem; }
+
+/* Phones: what stays on the screen while a page is read leaves it to its content.
+   - The header of a module keeps two lines of its description (the Help has it whole), as the pages whose header is
+     a hero panel already did, and the line above the name of the tool is left out.
+   - The card of the unassigned values, minimized (as it starts on a phone, see app.js), is a pill at the right, beside
+     the button that goes back to the top, which is smaller. */
+@media (max-width: 640px) {
+  .topbar .title-block > .eyebrow { display: none; }
+  .shell main :is(.module-hero, .scoring-hero, [class*="module-hero-"]):not(.nq-hero) { padding-top: .8rem; padding-bottom: .8rem; }
+  .shell main :is(.module-hero, .scoring-hero, [class*="module-hero-"]):not(.nq-hero) h2 { margin: .15rem 0 .3rem; font-size: 1.45rem !important; line-height: 1.18; }
+  .shell main :is(.module-hero, .scoring-hero, [class*="module-hero-"]):not(.nq-hero) .lede {
+    display: -webkit-box; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: .85rem !important; line-height: 1.4; }
+  .back-to-top { left: .4rem; width: 2.75rem; min-width: 2.75rem; height: 2.75rem; min-height: 2.75rem; }
+  .back-to-top svg { width: 1.6rem; height: 1.6rem; }
+  .unassigned-values-card.is-collapsed:not([data-in-task-row]) { left: auto; right: .5rem; width: auto; max-width: calc(100vw - 4.4rem); transform: none; padding: .3rem .45rem .3rem .4rem; border-radius: 999px; }
+  .unassigned-values-card.is-collapsed:not([data-in-task-row]) .unassigned-values-card-header { gap: .4rem; }
+  .unassigned-values-card.is-collapsed:not([data-in-task-row]) .unassigned-values-card-title { font-size: .8rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .unassigned-values-card.is-collapsed:not([data-in-task-row]) .unassigned-values-card-toggle { width: 1.6rem; height: 1.6rem; }
+}
+
+/* ── Visual refresh ────────────────────────────────────────────────────────────────────────────────────────────────────
+   A calmer, more professional look on every screen. The colours that tell the modules, the kinds of data, the roles and
+   the themes apart stay; what changes is around them: a plain neutral page in place of the coloured glows, flat surfaces
+   with a fine border and a short shadow in place of the long floating ones, the font of the system (the fonts named
+   before were never loaded) and a header of quiet chips, tinted with the colour they had, in place of glowing pills.
+   It comes last, so it applies over the rules above; change those, not this layer, for anything it does not name. */
+:root {
+  --bg: #f4f2ec;
+  --bg-accent: linear-gradient(180deg, #f7f5f0 0%, #f2f0ea 100%);
+  --panel: #fffefc;
+  --panel-strong: #ffffff;
+  --line: rgba(25, 42, 53, .11);
+  --line-strong: rgba(25, 42, 53, .17);
+  --shadow: 0 1px 2px rgba(18, 32, 43, .05), 0 10px 28px rgba(18, 32, 43, .07);
+  --shadow-strong: 0 2px 6px rgba(18, 32, 43, .07), 0 18px 44px rgba(18, 32, 43, .11);
+  --radius: 14px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+body { font-family: var(--font-ui); background-attachment: fixed; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+.topbar h1, h2, h3, .metric-card strong, .score-item strong { font-family: var(--font-ui); letter-spacing: -.012em; }
+
+/* The header: the name of the tool with its version, and the workspace, the user and Logout as chips on one line. */
+.topbar { align-items: center; margin-bottom: 1.1rem; }
+.topbar .eyebrow { letter-spacing: .12em; font-size: .7rem; color: var(--muted); }
+.topnav { align-self: center; margin-top: 0; gap: .5rem; }
+.topnav .topnav-link { padding: .5rem .9rem; box-shadow: none; font-size: .92rem; }
+.title-badge { min-width: 0; padding: .3rem .7rem; border-color: color-mix(in srgb, #6941a4 26%, transparent); background: color-mix(in srgb, #6941a4 9%, #fff); color: #5a3794; font-weight: 650; box-shadow: none; }
+.title-badge:hover { background: color-mix(in srgb, #6941a4 16%, #fff); color: #46287a; filter: none; }
+.topnav .topnav-workspace-badge { border-color: color-mix(in srgb, var(--brand) 32%, transparent); background: color-mix(in srgb, var(--brand) 9%, #fff); color: #0a5753; box-shadow: none; }
+.topnav .topnav-user-badge-admin { border-color: color-mix(in srgb, #c84a4a 32%, transparent); background: color-mix(in srgb, #c84a4a 9%, #fff); color: #a03434; box-shadow: none; }
+.topnav .topnav-user-badge-super-admin { border-color: color-mix(in srgb, #5b3aa8 32%, transparent); background: color-mix(in srgb, #5b3aa8 9%, #fff); color: #4b2f8f; box-shadow: none; }
+.topnav .topnav-user-badge-user { border-color: color-mix(in srgb, #0b7a75 32%, transparent); background: color-mix(in srgb, #0b7a75 9%, #fff); color: #0a5753; box-shadow: none; }
+.topnav .topnav-user-badge[style*="--user-badge-color"] { border-color: color-mix(in srgb, var(--user-badge-color) 34%, transparent); background: color-mix(in srgb, var(--user-badge-color) 10%, #fff); color: color-mix(in srgb, var(--user-badge-color) 72%, #000); box-shadow: none; }
+.topnav-user-control:hover .topnav-user-badge, .topnav-user-control:focus-visible .topnav-user-badge { filter: none; transform: none; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 14%, transparent); }
+.topnav .topnav-link-logout { border-color: var(--line-strong); background: transparent; color: #8a3b3b; }
+.topnav .topnav-link-logout:hover { background: color-mix(in srgb, #c84a4a 9%, #fff); }
+
+/* The tabs of the modules: flat, each in its colour, without the shadows under them. */
+.module-tab, .module-tab.active { box-shadow: none; }
+.module-tab { border-radius: 11px 11px 0 0; }
+
+/* The header of a module keeps its colour and its drawing, with a title of the size of a heading instead of a poster. */
+.shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) { padding-top: 1.15rem; padding-bottom: 1.15rem; }
+.shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) h2 { margin: .2rem 0 .4rem; font-size: clamp(1.45rem, 1.1rem + 1vw, 2rem) !important; line-height: 1.18; }
+.shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) .lede { font-size: .95rem !important; line-height: 1.45; }
+
+@media (max-width: 640px) {
+  /* A phone: the workspace and the user share a line under the name of the tool, and Logout is a small chip beside it. */
+  .shell { padding: .6rem .55rem 1rem; }
+  .topbar { gap: .45rem; margin-bottom: .6rem; }
+  .topbar .brand-lockup { gap: .5rem; }
+  .topbar .brand-lockup h1 { font-size: 1.3rem; }
+  .topbar .brand-mark { width: 30px; height: 30px; }
+  .title-badge { padding: .2rem .55rem; font-size: .7rem; }
+  .topnav { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .35rem .4rem; width: 100%; }
+  .topnav .topnav-link { min-height: 0; padding: .38rem .7rem; font-size: .8rem; }
+  .topnav .topnav-workspace-switcher { grid-column: 1 / -1; min-width: 0; }
+  .topnav .topnav-workspace-badge { min-width: 0; }
+  .topnav .topnav-user-control { min-width: 0; }
+  .topnav .topnav-user-control .topnav-user-badge { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-menu-bar { min-height: 2.9rem; border-radius: 12px; box-shadow: 0 1px 2px rgba(18, 32, 43, .06); }
+  .mobile-menu-toggle { min-height: 2.2rem; background: color-mix(in srgb, var(--mobile-menu-accent) 82%, #000); box-shadow: none; }
+  /* Beside the card of the unassigned values, the cards of the background tasks are a third of the screen wide: the name
+     of their workspace goes under their buttons, on lines of whole words (beside them it had a letter per line). */
+  .background-task-panels[data-with-unassigned-card] .background-task-panel-header { flex-wrap: wrap; margin-right: 0; padding-top: 2rem; }
+  .background-task-panels[data-with-unassigned-card] .background-task-panel-header:has(.background-task-stop-all-button) { padding-top: 4rem; }
+  .background-task-panels[data-with-unassigned-card] .background-task-workspace { flex: 1 1 100%; font-size: .66rem; letter-spacing: .02em; overflow-wrap: break-word; }
+  .background-task-panels[data-with-unassigned-card] .background-task-count { margin: .25rem 0 0; }
+}

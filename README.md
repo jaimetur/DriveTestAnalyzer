@@ -34,18 +34,20 @@ After login, the application opens **Help Home** by default.
 ## Capabilities
 
 - Upload and process `CSV`, `XLS`, `XLSX` and `XLSM` files.
-- Classify CDR-Data, CDR-Voice, CDR-Speech, Smart Orchestrator Logs and VFUK/3UK mapping files.
+- Classify CDR-Data, CDR-Voice, CDR-Speech, Layer3 Logs, Multivendor Mappings, Network Inventories (tabular or Cell Configuration KMZ/KML packages) and Region, Cluster and Vendor polygons (`GeoJSON`, `JSON` or zipped shapefiles).
 - Combine operator workbook sheets and materialise normalised reporting fields.
 - Preview complete datasets with pagination and Excel-style column filters.
 - Analyse one processed CDR in CDR Analysis.
 - Calculate and revisit NetCheck scoring and operator GAP comparisons in Scoring & GAP Analysis, with CSV and PowerPoint exports.
 - Compare RSRP/SINR, map weak-coverage and high-interference areas, and review observed sites, spectrum and network deployment in Network Insights.
 - Explore template-driven Designs with synchronized adaptive filters in PPT Designer.
-- Create temporary ad-hoc charts in Chart Builder.
+- Index, summarise, prioritise and follow up every call and test that is not completed, with the DT Analyzer RCA root cause, in Non-Qualified Calls.
+- Create temporary ad-hoc charts in Chart Builder and run read-only SQL in Query Builder.
+- Ask the active workspace questions in your own words in the AI Assistant, and report bugs and requests in Ticket Center.
 - Generate NSA/SA PowerPoint reports from PPT Designs, and reports of several modules, on demand or on a schedule, in Reporting.
 - Create workspace-owned Auto-calculated Fields and apply them asynchronously to the applicable CDR tables.
-- Edit workspace-owned Report Templates with validation, assistance and chart previews.
-- Configure application-wide runtime overrides in Application Config, or manage workspace-owned Report Templates and chart mappings in Workspace Config.
+- Edit workspace-owned Report Templates in PPT Designer with validation, assistance and chart previews.
+- Configure application-wide runtime overrides in Application Config, or manage the Maps, Map Areas, networks, Auto-calculated Fields and scoring methodologies of the active workspace in Workspace Config.
 - Track meaningful user/system events in App Logs.
 - Follow workspace-scoped background work from floating task cards and stop eligible jobs safely.
 - Export, import or transfer configuration, templates and workspaces.
@@ -60,7 +62,7 @@ Workspace owns data ingestion and workspace-local storage.
 - **Workspaces Management**: create, open, close, rename, duplicate or remove workspaces; review disk usage and access.
 - **Data Ingestion**: upload one or more source files and confirm each detected type.
 - **Queue and Status**: monitor processing, preview data, open CDR Analysis, map/clear vendors, stop, retry or delete datasets.
-- **Auto-calculated Fields**: create, duplicate, import, export and rematerialize fields for applicable CDR types; follow background progress from Workspace.
+- **Auto-calculated Fields**: create, duplicate, import, export and rematerialize fields for applicable CDR types in Workspace Config; follow background progress from Workspace.
 - **Combined CDR tables**: inspect CDR-Data, CDR-Voice and CDR-Speech combined rows, preview them and recreate a table in the background when required.
 
 ### CDR Analysis
@@ -82,7 +84,7 @@ View Design opens immediately and shows centred preparation progress until its n
 
 Design queries read the workspace's combined CDR tables directly; reusable selection manifests and chart models avoid recalculating unchanged work, and a low-priority background worker pre-caches each Design's standard universes (all CDRs and the newest one to four per type) without blocking opening or exporting.
 
-See [PPT Designer Help](help/ppt-designer.md) for the operational workflow and [Workspace Config → Report Template reference](help/workspace-config.md#report-template-reference) for template authoring, supported chart types and examples.
+See [PPT Designer Help](help/ppt-designer.md) for the operational workflow and [PPT Designer → Report Template reference](help/ppt-designer.md#report-template-reference) for template authoring, supported chart types and examples.
 
 ### Reporting
 
@@ -92,7 +94,7 @@ Reporting keeps **reports**, each one PowerPoint and Word document with the chos
 
 Calculate scoring from ready Data, Voice and Speech CDRs of one NR Mode, or of both side by side with **NSA vs SA** (each campaign with its NR Mode), grouped by Operator and optional Vendor, Region, City or Campaign in a configurable hierarchy. The latest CDR of each type is preselected; automatic and dataset recalculations include compatible companions.
 
-Filter the selected CDRs by Operator, Vendor, Region, City (including Main Cities) and Campaign using cached values, in the configured hierarchy order. Persisted jobs retain their filters, scoring configuration, coverage and GAP reference comparisons. Results offer reference-style KPI matrices, optional measured values, environment filtering, threshold/GAP colors and labeled charts with an enlarged view, in six tabs: Summary, Scoring Charts, Scoring Tables, Locations, GAP Analysis and Points Lost (where the points go, per KPI, per area and per Vendor, kind of site, site and route stretch of the serving cells), in the colour theme each user chooses (NetCheck by default, Ericsson, Vodafone, Ocean, Graphite or Colour-blind safe), also in the exports. Operator Mapping controls operator order and colors.
+Filter the selected CDRs by Operator, Vendor, Region, City (including Main Cities) and Campaign using cached values, in the configured hierarchy order. Persisted jobs retain their filters, scoring configuration, coverage and GAP reference comparisons. Results offer reference-style KPI matrices, optional measured values, environment filtering, threshold/GAP colors and labeled charts with an enlarged view, in eight tabs: Summary, Scoring Charts, Scoring Tables, Geographical Areas, Scoring Trends, GAP Analysis, Points Lost (where the points go, per KPI, per area and per Vendor, kind of site, site and route stretch of the serving cells) and Methodology Impact (two methodologies face to face), in the colour theme each user chooses (Ericsson by default, NetCheck, Umlaut, Vodafone, Midnight, Paper or Heatmap), also in the exports. Operator Maps control operator order and colors.
 
 Scoring Calculation lets each job select a saved methodology while defaulting to the workspace default methodology. Workspace Config manages named scoring methodologies with a default selection, editable category-grouped KPI formulas/filters, additions/deletions, thresholds, weights, score mappings, aggregation hierarchy and GAP priority.
 
@@ -102,7 +104,11 @@ Export CSV tables or editable PowerPoint matrices and charts. See [Scoring & GAP
 
 ### Network Insights
 
-Analyse the network behind the measured performance from the radio fields of ready Data, Voice and Speech CDRs: RSRP and SINR distributions and quality classes per Operator, grouped by Campaign, Region, City or CDR type, with changes between the two latest campaigns; LTE+NR shows LTE and NR in separate sections. Coverage and interference maps locate grid areas below separate configurable LTE and NR thresholds. Every Multivendor Mapping and Network Inventory (Cell Configuration KMZ packages included) is a dated inventory snapshot: Serving Cells measures the distance from each sample to its serving site, the overshooting samples and cells and the share hosted by another network, 5G Availability finds the 5G sites whose samples get no NR, Network Snapshot compares the snapshots, the owner × host network matrix and the inventory quality, Cluster Sites Density calculates sites per km² and inter-site distances per cluster or region and also lets users select observed CDR sites/cells or complete inventory sites/cells per operator, Spectrum compares licensed holdings (configured in Workspace Config) with the spectrum deployed in the snapshot and the bands observed in the measurements, and Network Deployment counts the sites and cells of each owner network by host network, RAN vendor, technology, band, eMOCN scenario, region, cluster and more, groups Region and Cluster by imported polygon names, falling back to inventory fields when polygons are absent, exports each grouped table to CSV, and offers side-by-side Vodafone and Three Observed Sites/Cells (from CDRs) and Full Sites/Cells Inventory tables with Excel-style column filters, the latter of complete mapping rows filtered by Operator, Vendor, Region, City and Technology, with highlighted operator/vendor/location/technology/cluster fields, complete source attributes, individual CSV exports and Export All to CSV for all deployment views (`_VF`, `_3` or `_VF_3` file suffixes). Workspaces with NSA Report Templates also receive an NSA RF Quality Report Template and Design with RSRP/SINR CDF and bar slides. See [Network Insights Help](help/network-insights.md).
+Analyse the network behind the measured performance from the radio fields of ready Data, Voice and Speech CDRs: RSRP and SINR distributions and quality classes per Operator, grouped by Campaign, Region, City or CDR type, with changes between the two latest campaigns and Key Findings (six benchmark views of the Data tests with generated headlines); LTE+NR shows LTE and NR in separate sections. Latency & Interactivity compares the gaming and video chat tests. Coverage and interference maps locate grid areas below separate configurable LTE and NR thresholds. Every Multivendor Mapping and Network Inventory (Cell Configuration KMZ packages included) is a dated inventory snapshot: Serving Cells measures the distance from each sample to its serving site, the overshooting samples and cells and the share hosted by another network, 5G Availability finds the 5G sites whose samples get no NR, Network Snapshot compares the snapshots, the owner × host network matrix and the inventory quality, Cluster Sites Density calculates sites per km² and inter-site distances per cluster or region and also lets users select observed CDR sites/cells or complete inventory sites/cells per operator, Spectrum compares licensed holdings (configured in Workspace Config) with the spectrum deployed in the snapshot and the bands observed in the measurements, and Network Deployment counts the sites and cells of each owner network by host network, RAN vendor, technology, band, eMOCN scenario, region, cluster and more, groups Region and Cluster by imported polygon names, falling back to inventory fields when polygons are absent, exports each grouped table to CSV, and offers side-by-side Vodafone and Three Observed Sites/Cells (from CDRs) and Full Sites/Cells Inventory tables with Excel-style column filters, the latter of complete mapping rows filtered by Operator, Vendor, Region, City and Technology, with highlighted operator/vendor/location/technology/cluster fields, complete source attributes, individual CSV exports and Export All to CSV for all deployment views (`_VF`, `_3` or `_VF_3` file suffixes). Workspaces with NSA Report Templates also receive an NSA RF Quality Report Template and Design with RSRP/SINR CDF and bar slides. See [Network Insights Help](help/network-insights.md).
+
+### Non-Qualified Calls
+
+Review every Voice and Speech call and every Data test whose result is not Completed in the ready CDRs: summaries by service, result, status, team and Operator with drill-down, the NQ rate of each campaign and operator, NQ Prioritization (the scoring points each call loses, hotspots and repeated issues), NQ Maps and a map of each call, and the NQ Analysis Center where the teams follow each call up (status, team, assignee, comments) with a root cause recommended from the DT Analyzer RCA, the NetCheck RCA and the Ericsson RCA results. Each call is identified by its `JOIN_ID`. The follow-up exports to Excel and travels with workspace packages, transfers and backups. See [Non-Qualified Calls Help](help/non-qualified-calls.md).
 
 ### Chart Builder
 
@@ -137,10 +143,10 @@ Report the bugs of the tool, suggest improvements and ask for new features in ti
 
 ### Application Config and Workspace Config
 
-- **Application Config** stores runtime settings that apply across all workspaces. `user-editor`, `admin` and `super-admin` can use Config → Application Config; `user-viewer` cannot.
+- **Application Config** stores runtime settings that apply across all workspaces, including Email Delivery. `user-editor`, `admin` and `super-admin` can use Config → Application Config; `user-viewer` cannot.
 - **`user-viewer`** is read-only for the workspace: it explores datasets and generates jobs (PPTs, Scoring, Network Insights, queries and reports) but cannot upload, delete, reprocess, map or clear datasets, or save, rename or delete Designs, saved queries and Scoring jobs.
-- **Workspace Config** is selected from the Config dropdown and groups PPT Templates Management, Operator Mappings, Vendor Mappings, Spectrum Holdings and Serving Networks for the active workspace. Its Help chapter contains the PPT Templates Editor guide and complete Report Template reference. It uses Application Config's teal/navy palette and a Page Sections navigator. `user-editor`, `admin` and `super-admin` can manage these panels when a workspace is open; `user-viewer` cannot.
-- These scopes remain separate: Application Config values are global, while templates and chart mappings stay with their workspace and use the existing portable package formats.
+- **Workspace Config** is selected from the Config dropdown and groups Main Cities, Mappings & Reference Data (Operator, Vendor and Campaign Maps, Map Areas, Spectrum Holdings, Serving Networks and the CDR Field Dictionary), Auto-calculated Fields and Scoring & GAP Analysis Setup (methodologies, Scoring Export Panels and the AI Assistant glossary) for the active workspace. The PPT Templates and the Report Template reference are in PPT Designer. It uses Application Config's teal/navy palette and a Modules & Sections navigator. `user-editor`, `admin` and `super-admin` can manage these panels when a workspace is open; `user-viewer` cannot.
+- These scopes remain separate: Application Config values are global, while templates, maps and methodologies stay with their workspace and use the existing portable package formats.
 
 ### Administrator Config (Admin tab)
 
@@ -153,8 +159,9 @@ For `admin` and `super-admin` roles:
 
 For the `super-admin` role only:
 
-- **Users**, **Modules Profiles** and **Workspace Groups**: accounts (name, role, password and status), the main modules each one sees and the workspaces it opens, also for several users at once.
+- **Users**, **Modules Profiles**, **Workspace Groups** and **Access Requests**: accounts (name, role, password and status), the main modules each one sees and the workspaces it opens, also for several users at once, and the requests of new users.
 - **Interface Settings**: the order, titles, icons, colours and labels of the main tabs.
+- **Presentations** and **AI Comment Writers**: the workspaces whose figures the Help presentations show, and the AI engines (Kiro CLI or Claude) that write the generated comments and answer the AI Assistant.
 - **Database Management**: **Backup Protection** for granular on-demand/scheduled backups and overwrite-confirmed restore, plus **Database Viewer** for grouped application, workspace and combined-CDR tables, including the Operator Mappings, Vendor Mappings and Chart mapping groups tables, with server-side filters, editing and cleanup.
 - **Reset Application**: start again as a new deployment.
 
@@ -171,14 +178,15 @@ See [Product overview](help/overview.md) for a detailed tour of every module and
 1. Sign in and open or create a workspace.
 2. Upload the required source files in Workspace.
 3. Confirm their types and wait for **Processed**.
-4. Optionally map VFUK/3UK vendor data.
-5. Use CDR Analysis, PPT Designer, Chart Builder or Reporting.
+4. Optionally map the Vendor of the CDRs from Multivendor Mappings and Network Inventories.
+5. Use CDR Analysis, PPT Designer, Scoring & GAP Analysis, Network Insights, Non-Qualified Calls, the Builders, the AI Assistant or Reporting.
 6. Review long-running work in the floating task cards and **PPT Generation Jobs**.
 7. Check App Logs if an operation fails.
 
 ## Requirements
 
 - Python 3.15 for source development, with pandas 3 (`requirements.txt` installs it; pandas 2 has no build for Python 3.15). The Docker image uses `python:3.15-slim`.
+- Node.js with a Chromium-family browser for the chart rendering of exports and, optionally, LibreOffice for the Word versions and the previews of reports, when running from source (the Docker image includes them).
 - Docker Engine with Compose for the recommended service deployment.
 - Writable persistent configuration and data directories.
 
@@ -222,7 +230,7 @@ Run tests with:
 pytest -q
 ```
 
-The tests run in parallel, one process per CPU (`pytest-xdist`), the slowest first as the last run measured them (kept in the pytest cache); `pytest -q -n 0` runs them in one process, for `-s` or a debugger.
+The tests are grouped in one folder per package of `src/modules` (`tests/core`, `tests/scoring`, `tests/nq`…), so `pytest -q tests/scoring` runs those of one module. They run in parallel, one process per CPU (`pytest-xdist`), the slowest first as the last run measured them (kept in the pytest cache); `pytest -q -n 0` runs them in one process, for `-s` or a debugger. The tests that drive programs outside the application (a browser and LibreOffice, for minutes) are marked `external` and left out: `pytest -q -m external` runs them, and `pytest -q -m "external or not external"` every test, as the Unit Tests workflow does.
 
 ## Configuration
 
@@ -231,6 +239,7 @@ Local storage roots can be set in [`storage-paths.conf`](storage-paths.conf). En
 | Variable | Purpose |
 | --- | --- |
 | `APP_NAME` | Application name shown in the UI. |
+| `APP_HOST` | Bind address of `python src/main.py`; defaults to `0.0.0.0`. |
 | `APP_PORT` | Production HTTP port; the standard deployment uses `7278`. |
 | `APP_DEV_PORT` | Development service port. |
 | `APP_SECRET_KEY` | Private session-signing secret. |
@@ -332,10 +341,11 @@ CONTAINER_NAME=drivetest-analyzer
         ├── workspace-registry.db
         └── <workspace>/
             ├── <workspace>.db
+            ├── .cdr-store/           # Parquet copies of the CDRs
             ├── input/
             └── output/
                 └── reports/
-                    ├── designs/          # PPT Designer PowerPoint jobs
+                    ├── ppt-designs/      # PPT Designer PowerPoint jobs
                     ├── cdr-analysis/        # CDR Analysis exports
                     ├── network-insights/    # Network Insights exports
                     └── reporting-jobs/      # Runs of the reports of Reporting and their files
@@ -358,10 +368,12 @@ Back up both persistent roots. Backing up only the container does not preserve a
 
 The repository workflows run tests, build/push images and package source bundles.
 
+- Unit Tests run on pushes to `main`, `master` and `develop`, on pull requests and on demand, with Python 3.15.
 - Version tags publish the corresponding image tag.
 - Successful builds refresh `latest` according to workflow rules.
 - Pushes to `main` refresh the `main` tag.
 - Published manifests include AMD64 and ARM64 variants.
+- Build Docker also packages the Compose files, `docker/.env`, the execution notes and the documentation as `DriveTestAnalyzer_docker_bundle.zip`, and Build All the source as `DriveTestAnalyzer_<version>_source.zip` and, when a release is created, a GitHub release with the notes of that version of `CHANGELOG.md`.
 - Build cache accelerates unchanged dependency layers while source layers are invalidated by the current commit.
 
 Required repository secrets:
@@ -380,8 +392,8 @@ docker buildx imagetools inspect ${DOCKERHUB_USERNAME}/drivetest-analyzer:latest
 ```text
 DriveTestAnalyzer/
 ├── src/                                       # FastAPI application, modules and browser UI
-├── tests/                                     # Unit and integration tests
-├── tools/                                     # Release helper (CreateUpdateRelease.py)
+├── tests/                                     # Unit and integration tests, one folder per package of src/modules
+├── tools/                                     # Release helper (CreateUpdateRelease.py), postal layer builder, mirror/ and presentations/ (the Help presentations generator)
 ├── docker/                                    # Dockerfile, Compose files and environment settings
 ├── assets/powerpoint-templates/               # PowerPoint master/layout file (Template_VodafoneThree.pptx)
 ├── assets/autocalculated-fields/             # Auto-calculated Fields every new workspace starts with
@@ -400,17 +412,20 @@ DriveTestAnalyzer/
 ├── macos-installer/                           # Installer build script and .pkg
 ├── help/                                      # Detailed in-app documentation
 ├── storage-paths.conf                         # Optional local config/, data/ and assets/ roots
+├── .github/workflows/                         # Unit Tests, Build Docker and Build All
+├── pyproject.toml, requirements.txt           # Project metadata and dependencies (Python 3.15)
 ├── config/                                    # Default global application database (when storage-paths.conf does not override it)
 ├── data/workspaces/                           # Default workspace registry and isolated workspace data
 ├── README.md
-└── CHANGELOG.md
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+└── CODE_OF_CONDUCT.md
 ```
 
 ## Current limitations
 
 - General analysis caches remain process-local; PPT Designer preview manifests and report-faithful compact chart models persist beside each workspace database and survive application restarts. Design data itself is queried directly from the combined CDR tables.
 - SQLite is the current persistence model and may not suit very large concurrent deployments.
-- Smart Orchestrator Logs are listed as an input type, but they are not parsed or analysed yet.
 - Scoring starts from NetCheck 2026 Q2 Drive City/Road rules. Walk is supported at zero initial points with City-derived thresholds that require validation before allocation; custom environments can be configured using supported CDR fields and formula operations.
 
 ## More documentation

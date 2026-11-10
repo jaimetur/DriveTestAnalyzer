@@ -919,7 +919,11 @@ class Repository:
             try:
                 shutil.copy2(source, temporary)
                 with closing(sqlite3.connect(temporary)) as imported, imported:
+                    imported.row_factory = sqlite3.Row
                     self._migrate_user_roles(imported)
+                    # A database of an earlier version gets the tables and columns of this one before it is used: the
+                    # sign-in reads them at once.
+                    self._ensure_user_access_schema(imported)
                     imported.execute(
                         """
                         CREATE TABLE IF NOT EXISTS transfer_offers (
@@ -2938,8 +2942,8 @@ class Repository:
         except UnicodeDecodeError:
             return f'[binary data, {len(data):,} bytes]'
 
-    def update_database_table_row(self, table_name: str, rowid: int, updates: dict[str, Any]) -> None:
-        """Persist safe, non-key cell edits made by an administrator."""
+    def update_database_table_row(self, table_name: str, rowid: int, updates: dict[str, Any]) -> dict[str, Any]:
+        """Persist safe, non-key cell edits made by an administrator; returns the values the cells had."""
         if table_name not in self.list_database_tables():
             raise ValueError('The selected table does not exist in the active workspace database.')
         if table_name == WORKSPACE_REGISTRY_TABLE:
@@ -2966,6 +2970,10 @@ class Repository:
             ).fetchone()
             if stored and any(str(stored[column]) == 'blob' for column in updates):
                 raise ValueError('Binary values, such as screenshots, cannot be edited in Database Management.')
+            previous = conn.execute(
+                f"SELECT {', '.join(self._quote_identifier(column) for column in updates)} FROM {quoted_table} WHERE rowid = ?",
+                (int(rowid),),
+            ).fetchone()
             assignments = ', '.join(f"{self._quote_identifier(column)} = ?" for column in updates)
             values = [updates[column] for column in updates]
             result = conn.execute(
@@ -2975,9 +2983,10 @@ class Repository:
             if result.rowcount != 1:
                 raise ValueError('The row no longer exists. Refresh the table and try again.')
             self._touch_dataset_rows_revision(conn, table_name)
+        return {column: previous[column] for column in updates} if previous else {}
 
-    def delete_database_table_row(self, table_name: str, rowid: int) -> None:
-        """Delete one row selected in Database Management by its SQLite rowid."""
+    def delete_database_table_row(self, table_name: str, rowid: int) -> dict[str, Any]:
+        """Delete one row selected in Database Management by its SQLite rowid; returns the row it was."""
         if table_name not in self.list_database_tables():
             raise ValueError('The selected table does not exist in the active workspace database.')
         if table_name == WORKSPACE_REGISTRY_TABLE:
@@ -2988,10 +2997,12 @@ class Repository:
         with self._holding_cdr_table(table_name), self._table_connection(table_name)() as conn:
             if not self._database_table_has_rowid(conn, table_name):
                 raise ValueError('This internal table is read-only because it does not have SQLite row identifiers.')
+            deleted = conn.execute(f"SELECT * FROM {quoted_table} WHERE rowid = ?", (int(rowid),)).fetchone()
             result = conn.execute(f"DELETE FROM {quoted_table} WHERE rowid = ?", (int(rowid),))
             if result.rowcount != 1:
                 raise ValueError('The row no longer exists. Refresh the table and try again.')
             self._touch_dataset_rows_revision(conn, table_name)
+        return {key: deleted[key] for key in deleted.keys()} if deleted else {}
 
     @staticmethod
     def _touch_dataset_rows_revision(conn: sqlite3.Connection, table_name: str) -> None:

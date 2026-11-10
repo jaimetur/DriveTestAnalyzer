@@ -1,6 +1,6 @@
 # Workspace Config
 
-Workspace Config is a dedicated page for settings owned by the active workspace: Main Cities, Mappings & Reference Data (Operator, Vendor and Campaign Maps, Map Areas, Spectrum Holdings, Serving Networks and the CDR Field Dictionary), Auto-calculated Fields and Scoring & GAP Analysis Setup. These settings remain workspace-scoped and are included in the applicable import, export, transfer, backup and restore workflows.
+Workspace Config is a dedicated page for settings owned by the active workspace: Main Cities, Mappings & Reference Data (Operator, Vendor and Campaign Maps, Map Areas, Spectrum Holdings, Serving Networks and the CDR Field Dictionary), Auto-calculated Fields, Scoring & GAP Analysis Setup, Scoring Export Panels and the AI Assistant Glossary. These settings remain workspace-scoped and are included in the applicable import, export, transfer, backup and restore workflows.
 
 > [!IMPORTANT]
 > **Workspace settings.** Every edit on this page belongs to the active workspace. Application Config controls shared runtime settings.
@@ -155,7 +155,7 @@ Serving Networks tell the [Vendor mapping](workspace-management.md#vendor-mappin
 
 Nothing has to be typed or filled in: the table lists every Operator of the Operator Maps with the networks that serve it, and every Operator starts with the defaults — Vodafone and 3 serve each other, Lebara is served by Vodafone and 3, and every other Operator by its own network. The inventories say which network owns each cell and which one hosts its site, but not which Operators' subscribers the cell serves (eMOCN and MVNO agreements), so these relations are not read from them. Change them only when they differ:
 
-- **Served by the cells of** shows the chosen networks in order of preference (numbered, joined by arrows). Click **+ network** to add a network after the others, or a chosen network to remove it; an Operator keeps at least one. The networks offered are Vodafone, 3, O2, EE and those of the Network Inventories of the workspace.
+- **Served by the cells of** shows the chosen networks in order of preference (numbered, joined by arrows). Click a network chip such as **+ Vodafone** to add that network after the others, or a chosen network to remove it; an Operator keeps at least one. The networks offered are Vodafone, 3, O2, EE and those of the Network Inventories of the workspace.
 - **Source** is *Default* while an Operator follows the defaults and *Configured* when it differs; **Use default** returns it to them. Changed rows are highlighted until they are saved.
 - **Maximum serving distance (km)**, 30 by default: a cell farther than this from a sample's position is not taken as its serving cell, because global cell identities only repeat across Operators.
 
@@ -234,7 +234,7 @@ Fields are applied only to their selected CDR types. The combined tables keep th
 
 ## CDR type
 
-The **Workspace Configuration** panel at the top chooses the **CDR type** of the workspace: the provider of the CDR files it processes. Every workspace handles the CDRs of one provider, with its own field names, values and methodologies, so the CDRs of two providers are never mixed. **NetCheck CDR** is the default and the only type supported today; **Umlaut CDR** and **P3 CDR** files keep their own field names and appear as *coming soon* until they are supported. The type is also chosen when a workspace is created and can be changed from the workspaces table of [Workspace Management](workspace-management.md) while the workspace has no Data, Voice or Speech CDRs; once it has CDRs it keeps their type. It is stored in the workspace database, so it travels with the workspace in transfers, Full Workspace packages and backups. [Benchmarking Providers](benchmarking-providers.md) describes the status of the adaptation to Umlaut and P3 CDRs.
+The **Workspace Configuration** panel at the top chooses the **CDR type** of the workspace, saved with **Save CDR Type**: the provider of the CDR files it processes. Every workspace handles the CDRs of one provider, with its own field names, values and methodologies, so the CDRs of two providers are never mixed. **NetCheck CDR** is the default and the only type supported today; **Umlaut CDR** and **P3 CDR** files keep their own field names and appear as *coming soon* until they are supported. The type is also chosen when a workspace is created and can be changed from the workspaces table of [Workspace Management](workspace-management.md) while the workspace has no Data, Voice or Speech CDRs; once it has CDRs it keeps their type. It is stored in the workspace database, so it travels with the workspace in transfers, Full Workspace packages and backups. [Benchmarking Providers](benchmarking-providers.md) describes the status of the adaptation to Umlaut and P3 CDRs.
 
 ## Main Cities
 
@@ -244,13 +244,13 @@ Every City selector — PPT filters, the PowerPoint export, Scoring, Network Ins
 
 ## Portable operations
 
-Administrators use Admin's **Import / Export / Transfer** and Super Admin's **Backup Protection** controls to move or restore workspace settings. Main Cities is a portable component alongside Report Templates and Mappings & Reference Data; full-workspace packages and database backups also retain the setting. The Mappings & Reference Data package (`mappings-reference-data/mappings-reference-data.json`) contains the Operator and Vendor Maps, Spectrum Holdings, Serving Networks, the CDR Field Dictionary, Campaign Maps and Map Areas, and importing it replaces all of them in the destination workspace.
+Administrators use Admin's **Import / Export / Transfer** and Super Admin's **Backup Protection** controls to move or restore workspace settings. Main Cities is a portable component alongside Report Templates and Mappings & Reference Data; full-workspace packages and database backups also retain the setting. The Mappings & Reference Data package (`mappings-reference-data/mappings-reference-data.json`) contains the Operator and Vendor Maps, Spectrum Holdings, Serving Networks, the CDR Field Dictionary, Campaign Maps, Map Areas and Postal Codes, and importing it replaces all of them in the destination workspace.
 
 For global runtime settings, see [Application Config](app-config.md). Super Admin's [Database Viewer](super-admin.md#database-viewer) documents the underlying Operator and Vendor mapping tables.
 
 ## Scoring & GAP Analysis Setup
 
-A methodology defines the complete scoring setup: its title, environments, KPI definitions and weights and KPI priorities. Select or create a methodology before editing its settings. The aggregation hierarchy is an application setting ordered from the Aggregation levels of [Scoring & GAP Analysis](scoring-gap-analysis.md#3-set-filters-aggregation-and-reference), not part of a methodology.
+A methodology defines the complete scoring setup: its title, environments, KPI definitions and weights and KPI priorities. Select or create a methodology before editing its settings. The aggregation hierarchy is an application setting ordered from **Split by** of [Scoring & GAP Analysis](scoring-gap-analysis.md#3-set-filters-split-by-and-reference), not part of a methodology.
 
 ### Methodology controls
 

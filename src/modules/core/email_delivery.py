@@ -142,7 +142,10 @@ def save_email_delivery_settings(repository: Any, values: dict[str, Any], *, kee
         raise ValueError('Choose STARTTLS, SSL/TLS or no encryption.')
     port = _int(values.get('port'), 0)
     if not 1 <= port <= 65535:
-        raise ValueError('The SMTP port must be between 1 and 65535.')
+        if transport == 'smtp':
+            raise ValueError('The SMTP port must be between 1 and 65535.')
+        # (A Power Automate flow uses no port: the one saved before, or the usual one, is kept for the SMTP server.)
+        port = _int(previous.get('port'), 0) if 1 <= _int(previous.get('port'), 0) <= 65535 else 587
     from_address = str(values.get('from_address') or '').strip()
     if from_address and not EMAIL_ADDRESS_PATTERN.match(from_address):
         raise ValueError('Enter a valid sender address.')

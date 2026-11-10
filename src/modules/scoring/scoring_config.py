@@ -5,8 +5,11 @@ import copy
 import hashlib
 import json
 import math
+import pickle
 import re
+from collections import OrderedDict
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from src.branding import canonical_format
@@ -593,8 +596,38 @@ def _normalize_reliable_points(metrics: list[dict[str, Any]], environments: list
                 context[MOST_RELIABLE_POINTS] = round(context[MOST_RELIABLE_POINTS] * factor, 10)
 
 
+# The configurations validated lately, by their content: a workspace validates every one of its methodologies each time
+# they are read (when it opens, and on each page and calculation that scores), which takes about ten milliseconds each.
+_VALIDATED_CONFIGURATIONS: OrderedDict[bytes, bytes] = OrderedDict()
+_VALIDATED_CONFIGURATIONS_LOCK = Lock()
+_VALIDATED_CONFIGURATIONS_KEPT = 64
+
+
 def validate_scoring_configuration(payload: object) -> dict[str, Any]:
-    """Validate a self-contained workspace configuration without reading seed files."""
+    """Validate a self-contained workspace configuration without reading seed files.
+
+    The result depends on the content of the configuration alone, so the one of a content validated before is given
+    again (as a copy of its own each time: the callers change what they receive)."""
+    try:
+        content = hashlib.sha256(pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL)).digest()
+    except Exception:  # noqa: BLE001 - a content that cannot be told apart is validated every time
+        return _validated_scoring_configuration(payload)
+    with _VALIDATED_CONFIGURATIONS_LOCK:
+        validated = _VALIDATED_CONFIGURATIONS.get(content)
+        if validated is not None:
+            _VALIDATED_CONFIGURATIONS.move_to_end(content)
+    if validated is not None:
+        return pickle.loads(validated)
+    configuration = _validated_scoring_configuration(payload)
+    validated = pickle.dumps(configuration, protocol=pickle.HIGHEST_PROTOCOL)
+    with _VALIDATED_CONFIGURATIONS_LOCK:
+        _VALIDATED_CONFIGURATIONS[content] = validated
+        while len(_VALIDATED_CONFIGURATIONS) > _VALIDATED_CONFIGURATIONS_KEPT:
+            _VALIDATED_CONFIGURATIONS.popitem(last=False)
+    return configuration
+
+
+def _validated_scoring_configuration(payload: object) -> dict[str, Any]:
     configuration = _add_legacy_walk_context(unwrap_scoring_configuration_payload(payload))
     for key in _PROVENANCE_KEYS - {'title'}:
         configuration.pop(key, None)

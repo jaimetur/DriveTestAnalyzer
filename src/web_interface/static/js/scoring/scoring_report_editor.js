@@ -75,7 +75,7 @@
       geographical_areas: {cards: true, ranking: true, versus: true},
       trends: {trend: true, areas: true},
       gap: {all_operators: true, individual: true, parts: true, profile: true},
-      points: {stake: true, kpis: true, map: true, vendors: true, site_types: true, ran_vendors: true, site_classes: true, sites: true,
+      points: {stake: true, kpis: true, map: true, postal_map: true, vendors: true, site_types: true, ran_vendors: true, site_classes: true, sites: true,
         stretches: true},
     };
   }

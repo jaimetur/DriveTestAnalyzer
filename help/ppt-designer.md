@@ -37,7 +37,7 @@ ppt-designer
 3. For Multivendor Comparison, persist Vendor mappings first.
 4. Open **PPT Designer**.
 
-Any user with workspace access can manage PPT definitions. **user-editor**, **admin** and **super-admin** can also open **Edit PPT Template** and **Auto-Calculated Fields** from the viewer.
+**user-editor**, **admin** and **super-admin** create, import, duplicate, edit and delete PPT Designs (within [Who changes a Design](#who-changes-a-design)), manage PPT Templates and open **Edit PPT Template** and **Auto-Calculated Fields** from the viewer. A **user-viewer** opens a Design, applies other filters, generates its PPT and exports the Design.
 
 > [!TIP]
 > For a first comparison: create a Design (it compares the newest two campaigns of its NR Mode), choose its Scope, Campaign and other filters, apply them, then open **View PPT**. Inspect the charts before generating a PPT.
@@ -49,9 +49,9 @@ Designs use the same template schema and renderer as Reporting. Detailed templat
 ### Create a definition
 
 1. Enter its **PPT Name** (**My New PPT Design** is offered).
-2. Select the **NR Mode** of the CDRs it reads (**NSA**, **SA** or **NSA & SA** for both, see [NSA & SA in one Design](#nsa--sa-in-one-design)) and a **PPT Template**. When the NR Mode leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), their tests are left out of the Design, and its CDRs used and the viewer, beside its Campaign and Scope, name them (*Out of scope: SA · Three*). Any template serves every NR Mode: its titles name the NR Mode of the Design where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone).
+2. Select the **NR Mode** of the CDRs it reads (**NSA**, **SA** or **NSA & SA** for both, see [NSA & SA in one Design](#nsa-sa-in-one-design)) and a **PPT Template**. When the NR Mode leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), their tests are left out of the Design, and its CDRs used and the viewer, beside its Campaign and Scope, name them (*Out of scope: SA · Three*). Any template serves every NR Mode: its titles name the NR Mode of the Design where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone).
    The button beside **PPT Template** opens the **gallery** of the templates of the workspace: a card for each one with its first slides in small, as it lays them out (the picture of each chart type in its place, the covers and transitions in colour), how many slides and charts it has and **Default** on the default one, and **None — blank PPT** first; a click on a card chooses that template (**Esc** or **×** leaves the choice as it was).
-3. Click **Create PPT Design**. The saved definition opens in PPT Scope & Filters; with **None — blank PPT** as its PPT Template, it opens in its [Designer](#designer) instead, with only its cover, where its slides are added (it follows no template; **More → Save as template…** makes one of it). **Import PPT Design** imports a PPT Design exported before.
+3. Click **Create PPT Design**. The saved definition opens in PPT Scope & Filters; with **None — blank PPT** as its PPT Template, it opens in its [Designer](#designer) instead, with only its cover, where its slides are added (it follows no template; **More → Save as template…** makes one of it). **Import PPT Design** imports a standalone JSON definition of a Design; the ZIP that **Export Design** downloads is imported through Admin Import (see [Portability and maintenance](#portability-and-maintenance)).
 
 Names are unique in the workspace, whatever the NR Mode each Design reads: an NSA and an SA Design of the same template need names of their own (for example **NSA - NetCheck CDR Report** and **SA - NetCheck CDR Report**). The library sorts NSA first, then by name.
 
@@ -88,7 +88,7 @@ The library lists the Designs in the order of the workspace. Users who can chang
 
 ### Who changes a Design
 
-A Design is changed (its name, NR Mode and template, its Scope and filters with **Save Filters**, its slides in the [Designer](#designer) and the comments saved in it) and deleted only by the user who created it and by super-admins. Admins also change and delete the Designs created by user-editors, but not those of another admin or super-admin, nor the starter Designs, which belong to `super`; a user-editor changes only the Designs they created, and a user-viewer none. For the other users those controls are disabled, with a tooltip that names who changes the Design: they still open it, apply other filters, generate its PPT, export it and duplicate it as a Design of their own. [PPT Templates](#ppt-templates) follow the same rule. App Events record each refused change as `ppt_designer_change_refused`, with the Design or template, the action, its creator and the reason.
+A Design is changed (its name, NR Mode and template, its Scope and filters with **Save Filters**, its slides in the [Designer](#designer) and the comments saved in it) and deleted only by the user who created it and by super-admins. Admins also change and delete the Designs created by user-editors, but not those of another admin or super-admin, nor the starter Designs, which belong to `super`; a user-editor changes only the Designs they created, and a user-viewer none. For the other users those controls are disabled, with a tooltip that names who changes the Design: they still open it, apply other filters, generate its PPT and export it; a user-editor, admin or super-admin also duplicates it as a Design of their own. [PPT Templates](#ppt-templates) follow the same rule. App Events record each refused change as `ppt_designer_change_refused`, with the Design or template, the action, its creator and the reason.
 
 ### Change name, NR Mode or template
 
@@ -138,7 +138,7 @@ The Scope and vendor comparison are applied and saved with the filters. The view
 
 Each row keeps the NR Mode of its CDR (its **NR Mode** field): a Design of an NR Mode reads every Data, Voice and Speech test of the CDRs of that NR Mode, whatever RAT or call mode it ran on (an EPS fallback call of an SA CDR is an SA test). Use the **RAT** filter for a narrower technology selection.
 
-**Select Comparison Scope** shows **Vendor comparison** beside Scope when Multivendor Comparison is chosen. Vendor Only (All Operators Combined) is first and is the default when entering multivendor scope.
+**Select Comparison Scope** shows **Vendor comparison** beside Scope when Multivendor Comparison is chosen. **Vendor (All Operators Combined)** is first and is the default when entering multivendor scope; **Operator_Vendor** keeps each operator separate.
 
 ### Dates
 
@@ -360,7 +360,7 @@ Active columns are highlighted. Value choices respond to the other column filter
 | --- | --- |
 | Slide comments | Add, edit or remove; Enter or leaving an edit saves immediately |
 | Generated comments | The icons after the slide navigation: comments for the open slide from the figures of its charts (reviewed before they are added) or for all slides, and a menu with the writer and the Kiro brief |
-| **Presentation** | Advance every 3, 5, 10 or 15 seconds, with Fade, Slide or no transition |
+| **Presentation** | Opens the **Presentation mode** settings: **Seconds per slide** (1 to 300, 5 by default), **Transition duration (seconds)** (0.1 to 10, 1 by default), **Transition effect** (None, Random, Blinds, Blur, Bounce, Curtain, Fade, Flip by default, Mosaic, Rise, Slide from left, Slide from right, Soft rotate, Wipe or Zoom) and **Show comments** (Yes by default), then **Start presentation** advances the slides on its own; **Stop presentation** ends it |
 | Pause/Resume and Stop | Floating controls remain available in Presentation mode |
 | **PPT Filters** | Change applied selection without automatically saving defaults |
 | **Auto-Calculated Fields** | Open the shared workspace manager for permitted editors |
@@ -562,10 +562,11 @@ Jobs continue on the server after you leave the page. The table records ID, crea
 | Action | Availability / purpose |
 | --- | --- |
 | **Download PPT** | Download an available completed presentation |
-| Chart actions | Open or download generated charts |
-| Stop / retry / relaunch | Manage work when the job's state permits |
+| **View PPT snapshot** | Open the job in the viewer with the template and inputs it was generated with |
+| Chart actions | **Open PPT charts** in the [Charts Panel](#charts-panel), or download them |
+| **Stop export**, **Retry export** / **Relaunch Job** | Manage work when the job's state permits (a ready job is relaunched) |
 | Filter action | Inspect sources, dates, campaigns and filters in a tooltip/dialog |
-| Delete / **Delete All PPTs** | Remove jobs/files; requires user-editor, admin or super-admin |
+| **Delete export** / **Delete All PPTs** | Remove jobs/files; requires user-editor, admin or super-admin. A PPT being generated is not deleted: stop it first (Delete All PPTs leaves it in the list) |
 
 Excel-style header filters search job columns. The filter snapshot groups CDRs by Data/Voice/Speech and shows Campaigns above Operators.
 
@@ -578,7 +579,7 @@ Excel-style header filters search job columns. The filter snapshot groups CDRs b
 
 1. Filter by NR Mode, Design, Template, Scope, Region or City.
 2. Select a **PowerPoint Job**.
-3. Open a chart card in the expanded viewer, or use **View Filters** to inspect the snapshot.
+3. Open a chart card in the expanded viewer, use **View Filters** to inspect the snapshot, or **View as Design** to open the job in the viewer.
 
 Each filter offers only selections from jobs matching the other active filters. Choices describe complete exported selections. A job with seven cities contributes one City choice containing those seven cities; All Cities/All Regions appears only for jobs exported with those selections.
 
@@ -604,7 +605,7 @@ Permitted editors can open the generating template and Auto-Calculated Fields wi
 
 Templates belong to the active workspace and are stored in that workspace database's `report_templates` table. Import, export, backup and transfer packages serialize them as portable CSV files, but those files are package artifacts rather than the live source of record. Obsolete `slides-templates` directories are removed by the current migration and portability flows.
 
-The library keeps the templates of the workspace, one of them the default. A template has no NR Mode of its own: it serves the CDRs of any NR Mode, and each Design (or report of [Reporting](reporting.md)) chooses the NR Mode it reads. Its slide titles, subtitles and chart titles name that NR Mode where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone), so one template gives the NSA, the SA and the [NSA & SA](#nsa--sa-in-one-design) decks. PPT Designer also write the selection of each Design where they name it (`{Campaigns}`, `{Operators}`, `{Cities}`…, see [Fields in titles and text boxes](#fields-in-titles-and-text-boxes)). Every row has the **NR Mode** field (that of its CDR): a chart keeps one NR Mode with the filter `NR Mode IN (SA)` (its title's `{NR Mode}` then names that one), and NR Mode can split or label its series in Rows Split, Columns Split, Legend and the Dynamic Rows/Columns Field. Template names are unique in the workspace.
+The library keeps the templates of the workspace, one of them the default. A template has no NR Mode of its own: it serves the CDRs of any NR Mode, and each Design (or report of [Reporting](reporting.md)) chooses the NR Mode it reads. Its slide titles, subtitles and chart titles name that NR Mode where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone), so one template gives the NSA, the SA and the [NSA & SA](#nsa-sa-in-one-design) decks. PPT Designer also write the selection of each Design where they name it (`{Campaigns}`, `{Operators}`, `{Cities}`…, see [Fields in titles and text boxes](#fields-in-titles-and-text-boxes)). Every row has the **NR Mode** field (that of its CDR): a chart keeps one NR Mode with the filter `NR Mode IN (SA)` (its title's `{NR Mode}` then names that one), and NR Mode can split or label its series in Rows Split, Columns Split, Legend and the Dynamic Rows/Columns Field. Template names are unique in the workspace.
 
 PPT Templates belong to PPT Designer, not to Config: their actions use the addresses of PPT Designer (`/ppt-designer/templates/…`; the former `/workspace-config/report-templates/…` ones lead there), need PPT Designer in the user's Modules Profile and are recorded in App Events under PPT Designer, and they follow its rights. A template is changed (saved, renamed, overwritten on import, given copied slides or charts, edited in the [Designer](#designer) or from Chart Builder) and deleted as a Design (see [Who changes a Design](#who-changes-a-design)): by the user who created it and super-admins, and by admins too when a user-editor created it. The other users customize it from the [Designer](#designer) of their own Designs; for them its name, **Delete** and **Edit PPT Template** are disabled, with a tooltip that says why. A user-viewer sees and exports them. The slides of a template (with their charts, and its parameters) are edited from any Design that follows it, and kept in the template's CSV (its `Format` column).
 
@@ -614,14 +615,14 @@ Workspaces of earlier versions kept an NSA and an SA library: when they open, ea
 
 Available actions:
 
-- New
-- Import CSV
-- Edit
-- Rename
-- Duplicate
-- Set Default
-- Export
-- Delete
+- **New Template**
+- **Import** (a template CSV, with an optional template name)
+- **Edit** (✎)
+- Rename (the name field of the row)
+- **Duplicate**
+- **Set default** (★)
+- **Export** (⬇)
+- **Delete** (×)
 
 **Edit** opens the template in the viewer and its [Designer](#designer) as a PPT of its own, never listed among the PPT Designs: it reads the CDRs of the NR Mode and Campaign it was last opened with (NSA and Latest 2 campaigns the first time; PPT Scope & Filters changes them), every change of the Designer goes to the template (its bar reads **PPT Template** with the number of Designs that follow it), **More** offers only **Save as template…**, and it makes no PPT of its own (its Designs do). **Edit PPT Template**, the pencil at the top of the viewer, shows the template as a table (see [Table view](#table-view-template-editor)), for Find & Replace for example.
 
@@ -1152,7 +1153,7 @@ Distinct values come from the selected, filtered CDR universe; empty values are 
 For RF histograms, select **Operator**: the first definition is LTE and the second NR, so each Operator occupies one column. Campaigns remain grouped inside each chart. Changing filters changes the number of columns; LTE and NR keep their corresponding positions even when one technology has no valid samples.
 
 > [!NOTE]
-> **Vendor comparison:** When **Report type** is **Multivendor Comparison**, the **Vendor comparison** selector appears to its right. **Vendor Only (All Operators Combined)** is the first and default option when opening the export dialog; it pools selected operators using the same `Vendor` value. Choose **Operator - Vendor** to keep each operator separate. Campaigns remain separate. The job retains this choice for retries. Dynamic vendor grids use up to six columns per slide and keep operators of the same vendor together where possible.
+> **Vendor comparison:** When **Report type** is **Multivendor Comparison**, the **Vendor comparison** selector appears to its right. **Vendor (All Operators Combined)** is the first and default option when opening the export dialog; it pools selected operators using the same `Vendor` value. Choose **Operator_Vendor** to keep each operator separate. Campaigns remain separate. The job retains this choice for retries. Dynamic vendor grids use up to six columns per slide and keep operators of the same vendor together where possible.
 
 ## Portability and maintenance
 
@@ -1191,14 +1192,12 @@ Designs have their own Admin export/import/transfer/backup/restore component: an
 > Clear cache is a recovery action for derived artifacts, not a substitute for fixing missing source data, Vendor mappings or an invalid template. Inspect the cause first.
 
 > [!NOTE]
-> **Viewer comparison:** In the PPT viewer, selecting **Multivendor Comparison** reveals **Vendor comparison** to the right of Scope. Choose **Vendor Only (All Operators Combined)** to pool operators sharing a vendor, or **Operator - Vendor** to keep their results separate. Changing this selector renders the Design again immediately. Switching into multivendor scope defaults to Vendor Only; saved Designs retain their saved comparison. Use **Save Universe** to persist the choice.
-
-> **Vendor comparison:** When **Report type** is **Multivendor Comparison**, the **Vendor comparison** selector appears to its right. **Vendor Only (All Operators Combined)** is the first and default option when opening the export dialog; it pools selected operators using the same `Vendor` value. Choose **Operator - Vendor** to keep each operator separate. Campaigns remain separate. The job retains this choice for retries. Dynamic vendor grids use up to six columns per slide and keep operators of the same vendor together where possible.
+> **Viewer comparison:** In the PPT viewer, selecting **Multivendor Comparison** reveals **Vendor comparison** to the right of Scope. Choose **Vendor (All Operators Combined)** to pool operators sharing a vendor, or **Operator_Vendor** to keep their results separate. Changing this selector renders the Design again immediately. Switching into multivendor scope defaults to Vendor (All Operators Combined); saved Designs retain their saved comparison. Use **Save Filters** to persist the choice.
 
 ### Vendor-only report ordering
 
-For **Vendor Only (All Operators Combined)**, web charts/tables and PowerPoint reports list actual vendors alphabetically, then Ericsson (Mixed) (and the former Mixed Vendor), the former Other Vendor, All Vendor(s), operator-only identities labelled **Operator - All**, and finally Mixed (non-Ericsson). This order also applies to dynamic chart grids. Mixed/Other groups remain visible unless an explicit template filter excludes them. Vendor mapping persists `Operator - All` in `Operator_Vendor` and `Vendor` for operators without an assigned vendor. Existing values without the suffix remain compatible.
+For **Vendor (All Operators Combined)**, web charts/tables and PowerPoint reports list actual vendors alphabetically, then Ericsson (Mixed) (and the former Mixed Vendor), the former Other Vendor, All Vendor(s), operator-only identities labelled **Operator - All**, and finally Mixed (non-Ericsson). This order also applies to dynamic chart grids. Mixed/Other groups remain visible unless an explicit template filter excludes them. Vendor mapping persists `Operator - All` in `Operator_Vendor` and `Vendor` for operators without an assigned vendor. Existing values without the suffix remain compatible.
 
 In multivendor charts, operator-only identities such as **EE - All** retain the colour assigned to that operator in Operator mappings. This applies to web and newly generated PPT charts; the display suffix does not create a new colour identity. Real vendors retain their configured vendor colours.
 
-The default Campaign is **Latest 2 campaigns** for **Operator Comparison** and multivendor **Vendor Only**, and **Latest campaign** for multivendor **Operator - Vendor**. Changing the vendor comparison updates a Campaign that still has the default; a chosen Campaign is retained.
+The default Campaign is **Latest 2 campaigns** for **Operator Comparison** and multivendor **Vendor (All Operators Combined)**, and **Latest campaign** for multivendor **Operator_Vendor**. Changing the vendor comparison updates a Campaign that still has the default; a chosen Campaign is retained.

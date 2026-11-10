@@ -530,12 +530,19 @@
   // Insight selections (such as the KPI GAP Profile and Points Lost Map location and operators) are kept
   // when the page is reloaded; opening the page again starts from the defaults.
   const insightSelections = new Map(pageReloaded ? Object.entries(restoredScoringViewState.insightSelections || {}) : []);
+  // On a phone the tabs are one row scrolled sideways: the tab shown is brought to the middle of it.
+  const revealResultTab = tab => {
+    const bar = tab?.parentElement;
+    if (!bar || bar.scrollWidth <= bar.clientWidth + 1) return;
+    bar.scrollTo({left: Math.max(0, tab.offsetLeft - (bar.clientWidth - tab.offsetWidth) / 2), behavior: 'auto'});
+  };
   const showResultTab = name => {
     activeResultTab = name;
     for (const tab of root.querySelectorAll('[data-result-tab]')) {
       const selected = tab.dataset.resultTab === name;
       tab.setAttribute('aria-selected', String(selected));
       tab.tabIndex = selected ? 0 : -1;
+      if (selected) revealResultTab(tab);
     }
     for (const pane of root.querySelectorAll('[data-result-pane]')) pane.hidden = pane.dataset.resultPane !== name;
   };
@@ -9051,7 +9058,8 @@
     if (!lossBoundaryCache.has(key)) {
       lossBoundaryCache.set(key, requestJson(`${savedFiltersUrl}/${encodeURIComponent(savedFilterId)}/boundaries/${encodeURIComponent(field)}`)
         .then(body => ({boundaries: body?.boundaries || {}, outlines: body?.background || []}))
-        .catch(() => ({boundaries: {}, outlines: []})));
+        // (A request that failed is made again the next time the map is drawn.)
+        .catch(() => { lossBoundaryCache.delete(key); return {boundaries: {}, outlines: []}; }));
     }
     return lossBoundaryCache.get(key);
   }
@@ -10987,12 +10995,15 @@
       if (anyActive && !timer) timer = window.setInterval(refreshSavedFilters, 3500);
       if (!anyActive && timer) { window.clearInterval(timer); timer = null; }
     } catch (error) {
-      savedFilterList.innerHTML = '';
-      const empty = document.createElement('div');
-      empty.className = 'scoring-empty';
-      empty.textContent = error.message || 'The Saved Filters could not be loaded.';
-      savedFilterList.append(empty);
-      syncSavedFilterLists();
+      // A refresh that fails (one of those that follow a calculation, say) keeps the list read before it.
+      if (!savedFilters.length) {
+        savedFilterList.innerHTML = '';
+        const empty = document.createElement('div');
+        empty.className = 'scoring-empty';
+        empty.textContent = error.message || 'The Saved Filters could not be loaded.';
+        savedFilterList.append(empty);
+        syncSavedFilterLists();
+      }
       setMessage(error.message || 'The Saved Filters could not be loaded.', 'error');
     } finally {
       refreshInFlight = false;
@@ -12062,6 +12073,7 @@
       other.tabIndex = selected ? 0 : -1;
     }
     for (const pane of root.querySelectorAll('[data-result-pane]')) pane.hidden = pane.dataset.resultPane !== name;
+    revealResultTab(tab);
     // Chosen while the results are scrolled (their tab bar held at the top), the tab opens at its start.
     if (resultTabsBar) {
       const top = parseFloat(getComputedStyle(resultTabsBar).top) || 0;

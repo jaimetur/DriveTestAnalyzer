@@ -327,15 +327,16 @@ def _extract(filename: str, content: bytes, target: Path) -> None:
             archive.extractall(target, filter='data')
     elif name.endswith('.zip'):
         with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            root = target.resolve()
             for member in archive.infolist():
-                destination = (target / member.filename).resolve()
-                if not str(destination).startswith(str(target.resolve())):
+                if not (target / member.filename).resolve().is_relative_to(root):
                     raise ValueError('The archive has a path outside its folder.')
             archive.extractall(target)
             for member in archive.infolist():
                 mode = member.external_attr >> 16
-                if mode and not member.is_dir():
-                    os.chmod(target / member.filename, mode & 0o777)
+                extracted = target / member.filename
+                if mode and not member.is_dir() and extracted.is_file():
+                    os.chmod(extracted, mode & 0o777)
     elif re.search(r'\.(tar|tar\.gz|tgz|tar\.xz|tar\.bz2)$', name):
         with tarfile.open(fileobj=io.BytesIO(content), mode='r:*') as archive:
             archive.extractall(target, filter='data')

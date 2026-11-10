@@ -23,8 +23,9 @@ This article collects rules that affect data interpretation, performance, persis
 | Campaign ordering | [Open section](#campaign-ordering) |
 | Template execution semantics | [Open section](#template-execution-semantics) |
 | Multivendor calculation and remapping | [Open section](#multivendor-calculation-and-remapping) |
-| Interactive previews and PPT preparation | [Open section](#interactive-previews-and-design-preparation) |
+| Interactive previews and PPT preparation | [Open section](#interactive-previews-and-ppt-preparation) |
 | Filtered dataset preview | [Open section](#filtered-dataset-preview) |
+| Startup and workspace upgrades | [Open section](#startup-and-workspace-upgrades) |
 | Background jobs and output | [Open section](#background-jobs-and-output) |
 | Import, export and server transfer | [Open section](#import-export-and-server-transfer) |
 | Performance and scale | [Open section](#performance-and-scale) |
@@ -37,7 +38,7 @@ DriveTest Analyzer separates global configuration from workspace data.
 
 Stored below `APP_CONFIG_DIR`:
 
-- `application.db`: users, roles, workspace permissions and server-transfer offers.
+- `application.db`: users, roles, workspace permissions, Modules Profiles, Workspace Groups, Interface Settings and other global application state, the tickets of Ticket Center and server-transfer offers.
 
 ### Workspace data
 
@@ -199,7 +200,7 @@ vendor NOT CONTAINS (Mixed, Other);
 
 Chart Builder and PPT Templates Editor use the shared Interactive Preview. PPT Designer uses the same chart contracts in its live viewer, expanded viewer and historical Charts Panel, while preparing one synchronized dataset selection for the complete Design.
 
-Live charts draw their Canvas models in the user's browser. Server-side PPT exports send those same models through a persistent Node/Chromium renderer, which keeps chart geometry and semantic tooltips aligned with the interactive view. Docker includes these runtime dependencies; source deployments using `canvas` need Node.js, a supported Chromium-family browser and the WebSocket module.
+Live charts draw their Canvas models in the user's browser. Server-side PPT exports send those same models through a persistent Node/Chromium renderer, which keeps chart geometry and semantic tooltips aligned with the interactive view. Docker includes these runtime dependencies; source deployments using `canvas` need Node.js, a supported Chromium-family browser and the WebSocket module, and the Word versions and previews of reports need LibreOffice (`DRIVETEST_ANALYZER_SOFFICE` selects its executable).
 
 `DRIVETEST_ANALYZER_CHROMIUM` can select an explicit browser executable, while `DRIVETEST_ANALYZER_REPORT_CHART_RENDERER=pil` selects the legacy painter.
 
@@ -287,7 +288,8 @@ A transfer request runs the other way round, for a server that cannot be reached
 ## Performance and scale
 
 - SQLite uses WAL mode, a busy timeout and normal synchronous mode.
-- Processed CDR rows are materialised per dataset and into combined tables by CDR type.
+- Processed CDR rows are materialised per dataset and into combined tables by CDR type and, once copied, kept only in the Parquet copies of the CDRs (`.cdr-store`), which every module reads with DuckDB; their tables are emptied and a change rewrites only the affected columns of the copy (see [Columnar Copy of the CDRs](workspace-management.md#columnar-copy-of-the-cdrs)).
+- The application runs on Python 3.15 with pandas 3 and DuckDB 2.
 - PPT Designer filter catalogues normally come from persisted dataset profiles. If an older profile lacks a current default or added field, the application reads only the missing catalogues from combined CDR tables in one grouped pass per CDR type.
 - Combined CDR tables are queried directly and compact Canvas models persist across restarts after being requested. Live, expanded, historical and exported charts share aggregation, hierarchy, colour, title, legend and semantic-tooltip contracts.
 - Interactive Preview caches combined and filtered frames separately.

@@ -4469,7 +4469,9 @@ def _call_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[str
             f'SELECT COUNT(*), SUM(version), MAX(updated_at) FROM {NQ_CALL_TRACKING_TABLE}',
             f'SELECT COUNT(*), MAX(id), MAX(edited_at), MAX(deleted_at) FROM {NQ_CALL_COMMENTS_TABLE}',
             f'SELECT COUNT(*), MAX(imported_at) FROM {NQ_RCA_RESULTS_TABLE}',
-            f"SELECT COUNT(*), (SELECT value FROM workspace_state WHERE key = '{nq_dta_rca.FINGERPRINT_STATE_KEY}') FROM {NQ_DTA_RESULTS_TABLE}")]
+            f"SELECT COUNT(*), (SELECT value FROM workspace_state WHERE key = '{nq_dta_rca.FINGERPRINT_STATE_KEY}') FROM {NQ_DTA_RESULTS_TABLE}",
+            # (The calls themselves: a CDR indexed again may keep every count above.)
+            f'SELECT COUNT(*), SUM(call_count), MAX(synced_at) FROM {NQ_CALL_SOURCES_TABLE}')]
     cache_key = (_workspace_key(task_repository.db_path), hashlib.sha1(json.dumps(
         [base, base_params, stamp, taxonomy, {field: sorted(values) for field, values in wanted.items()}],
         sort_keys=True, default=str).encode()).hexdigest())
