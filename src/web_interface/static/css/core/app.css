@@ -5743,8 +5743,8 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 
 /* The tabs in one white panel, apart from the header of the module below them and with the same margin on every side:
    the administrative tabs (Help, App Logs, Config, Admin, Super Admin) as buttons on its upper row, and under a line
-   the tabs of the main modules, whole (with their lower edge) and rounded, more at the top, light, with a line of the
-   colour of their module on top and the open one filled with it. */
+   the tabs of the main modules, whole (with their lower edge) and rounded alike at their four corners, like the
+   buttons above them, light, with a line of the colour of their module on top and the open one filled with it. */
 .module-tabs { gap: .25rem; margin: 0 0 .9rem; padding: .4rem .45rem; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: var(--shadow); }
 .module-tabs.is-stuck { border-color: transparent; border-radius: 0; }
 .module-tabs-primary, .module-tabs-secondary { gap: .25rem; padding-left: 0; padding-right: 0; }
@@ -5752,7 +5752,7 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 .module-tab, .module-tab.active { box-shadow: none; }
 .module-tab { border-radius: 11px 11px 0 0; }
 .module-tabs-secondary .module-tab { margin-bottom: 0; padding: .38rem .7rem; border-radius: 10px; font-size: .84rem; }
-.module-tabs-primary .module-tab { border-bottom-style: solid; border-bottom-width: 1px; border-radius: 11px 11px 7px 7px; }
+.module-tabs-primary .module-tab { border-bottom-style: solid; border-bottom-width: 1px; border-radius: 10px; }
 /* Nothing of the main tabs stands out of the panel: the open one stays in line with the others instead of 2 px lower
    and no shadow falls under them. They are a little less tall, with the same height on every screen and when they
    shrink to fit in one row, and every tab centres its label under the line on top, so that the labels of all the tabs
