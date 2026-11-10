@@ -10547,6 +10547,112 @@ document.addEventListener('click', (event) => {
     }
     return element;
   };
+  // On a phone, where the bar stands above the bar of the modules, it fits the screen without scrolling (app.css hides
+  // its entries and its arrow back to the top, which the button back to the top replaces beside it): after the colour
+  // theme (as its icon), the section being read between the previous and the next one. A tap on it opens above the bar
+  // the list of every section and part. Each of them goes where its entry of the bar goes, through that entry.
+  if (!getComputedStyle(bar).getPropertyValue('--section-bar-accent').trim()) {
+    const moduleAccent = getComputedStyle(document.querySelector('.module-tab.active') || bar).getPropertyValue('--tab-accent').trim();
+    if (moduleAccent) bar.style.setProperty('--section-bar-accent', moduleAccent);
+  }
+  const labelOf = (item) => item.link.textContent.replace(/\s+/g, ' ').trim();
+  const stepButton = (direction) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'section-bar-step';
+    button.title = direction < 0 ? 'Previous section' : 'Next section';
+    button.setAttribute('aria-label', button.title);
+    button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${direction < 0 ? 'm15 6-6 6 6 6' : 'm9 6 6 6-6 6'}"/></svg>`;
+    return button;
+  };
+  const previous = stepButton(-1);
+  const next = stepButton(1);
+  const current = document.createElement('button');
+  current.type = 'button';
+  current.className = 'section-bar-current';
+  current.title = 'Every section of the page';
+  current.setAttribute('aria-haspopup', 'true');
+  current.setAttribute('aria-expanded', 'false');
+  const currentIcon = document.createElement('span');
+  currentIcon.className = 'section-bar-current-icon';
+  const currentLabel = document.createElement('span');
+  currentLabel.className = 'section-bar-current-label';
+  current.append(currentIcon, currentLabel);
+  current.insertAdjacentHTML('beforeend', '<svg class="section-bar-current-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>');
+  (bar.querySelector(':scope > .section-bar-theme') || toTop).after(previous, current, next);
+  const sheet = document.createElement('nav');
+  sheet.className = 'section-bar-sheet';
+  sheet.hidden = true;
+  sheet.setAttribute('aria-label', bar.getAttribute('aria-label') || 'Sections');
+  const sheetAccent = getComputedStyle(bar).getPropertyValue('--section-bar-accent').trim();
+  if (sheetAccent) sheet.style.setProperty('--section-bar-accent', sheetAccent);
+  document.body.append(sheet);
+  // The sections that can be reached now (in sight on the page), in their order: those the arrows step through.
+  const reachable = () => items.filter((item) => {
+    if (item.link.hidden) return false;
+    const element = target(item.hash);
+    return Boolean(element && !element.hidden && element.getClientRects().length);
+  });
+  let shownItem = null;
+  let shownLabel = null;
+  const showCurrent = (active) => {
+    const label = active ? labelOf(active) : 'Sections';
+    if (active !== shownItem || label !== shownLabel) {
+      shownItem = active;
+      shownLabel = label;
+      const icon = active?.link.querySelector('svg')?.cloneNode(true);
+      icon?.removeAttribute('class');
+      if (icon) currentIcon.replaceChildren(icon);
+      else currentIcon.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+      currentLabel.textContent = label;
+    }
+    const list = reachable();
+    previous.disabled = !active;
+    next.disabled = Boolean(list.length) && list.indexOf(active) === list.length - 1;
+  };
+  const step = (direction) => {
+    const list = reachable();
+    const to = list[(shownItem ? list.indexOf(shownItem) : -1) + direction];
+    if (to) to.link.click();
+    else if (direction < 0) toTop.click();
+  };
+  const closeSheet = () => {
+    if (sheet.hidden) return;
+    sheet.hidden = true;
+    current.setAttribute('aria-expanded', 'false');
+  };
+  const openSheet = () => {
+    sheet.replaceChildren(...items.filter((item) => !item.link.hidden).map((item) => {
+      const link = document.createElement('a');
+      link.href = item.hash;
+      if (item.parent) link.classList.add('is-part');
+      if (item === shownItem) { link.classList.add('is-active'); link.setAttribute('aria-current', 'location'); }
+      const icon = item.link.querySelector('svg')?.cloneNode(true);
+      icon?.removeAttribute('class');
+      const name = document.createElement('span');
+      name.textContent = labelOf(item);
+      link.append(...(icon ? [icon] : []), name);
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        closeSheet();
+        item.link.click();
+      });
+      return link;
+    }));
+    sheet.hidden = false;
+    current.setAttribute('aria-expanded', 'true');
+    sheet.querySelector('.is-active')?.scrollIntoView({block: 'nearest'});
+  };
+  current.addEventListener('click', () => (sheet.hidden ? openSheet() : closeSheet()));
+  previous.addEventListener('click', () => { closeSheet(); step(-1); });
+  next.addEventListener('click', () => { closeSheet(); step(1); });
+  document.addEventListener('click', (event) => {
+    if (!sheet.hidden && !sheet.contains(event.target) && !current.contains(event.target)) closeSheet();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !sheet.hidden) { closeSheet(); current.focus(); }
+  });
+
   // A bar wider than the window gets smaller labels, then loses its icons, before scrolling sideways.
   let fitted = 0;
   const fit = () => {
@@ -10569,6 +10675,7 @@ document.addEventListener('click', (event) => {
       const top = element.getBoundingClientRect().top;
       if (top <= offset || (atEnd && top < window.innerHeight)) active = item;
     });
+    showCurrent(active);
     toTop.classList.toggle('is-active', !active);
     if (active) toTop.removeAttribute('aria-current');
     else toTop.setAttribute('aria-current', 'location');

@@ -5747,6 +5747,8 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 
 /* The bar of the modules at the bottom of a phone (app.js builds it from the tabs the user has). */
 .mobile-bottom-nav { display: none; }
+/* The section being read with the arrows to the previous and the next one, and their list: only on phones (below). */
+.section-bar-step, .section-bar-current, .section-bar-sheet { display: none; }
 
 @media (max-width: 640px), (orientation: landscape) and (max-width: 1024px) and (max-height: 600px) {
   :root { --bottom-nav: calc(4rem + env(safe-area-inset-bottom, 0px)); }
@@ -5776,11 +5778,45 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
      above the bar of the modules instead of at the top: a section chosen opens at the top of the screen. */
   :root { --bottom-floaters: var(--bottom-nav); }
   body.has-section-bar:has(.mobile-bottom-nav:not(:empty)) { --section-top-offset: 8px; --bottom-floaters: calc(var(--bottom-nav) + 3.35rem); padding-bottom: var(--bottom-floaters); }
-  body:has(.mobile-bottom-nav:not(:empty)) :is(.section-bar, .nq-view-dock) { position: fixed; top: auto; right: 0; bottom: calc(var(--bottom-nav) + .4rem); left: 0; z-index: 8290;
-    max-width: calc(100% - 1rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); margin: 0 auto; box-shadow: 0 6px 18px rgba(18, 32, 43, .22); }
+  body:has(.mobile-bottom-nav:not(:empty)) :is(.section-bar, .nq-view-dock) { position: fixed; top: auto; right: max(.5rem, env(safe-area-inset-right, 0px)); bottom: calc(var(--bottom-nav) + .4rem);
+    left: max(.5rem, env(safe-area-inset-left, 0px)); z-index: 8290; justify-self: stretch; width: auto; max-width: none; margin: 0; box-shadow: 0 6px 18px rgba(18, 32, 43, .22); transition: left .2s ease; }
   .mobile-menu:not([hidden]) { padding-right: env(safe-area-inset-right, 0px); padding-left: env(safe-area-inset-left, 0px); }
-  body:has(.mobile-bottom-nav:not(:empty)) .section-bar { width: max-content; }
+  /* The button back to the top stands in the row of the bar, at its left (in place of the arrow of the bar), once the
+     page is scrolled down: the bar makes room for it. */
+  body.has-section-bar:has(.mobile-bottom-nav:not(:empty)) .back-to-top { bottom: calc(var(--bottom-nav) + .4rem); left: max(.5rem, env(safe-area-inset-left, 0px));
+    width: 2.95rem; min-width: 2.95rem; height: 2.95rem; min-height: 2.95rem; }
+  body.has-section-bar:has(.mobile-bottom-nav:not(:empty)) .back-to-top svg { width: 1.7rem; height: 1.7rem; }
+  body.has-section-bar:has(.mobile-bottom-nav:not(:empty)):has(.back-to-top.is-visible) :is(.section-bar, .nq-view-dock) { left: calc(max(.5rem, env(safe-area-inset-left, 0px)) + 3.35rem); }
+  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > a.section-bar-top { display: none; }
   body:has(.mobile-bottom-nav:not(:empty)) .nq-view-dock { width: auto; box-shadow: none; }
+  body:has(.mobile-bottom-nav:not(:empty)) .nq-view-dock .nq-view-switch { flex: 1 1 auto; width: auto; }
+  /* It fits the screen without scrolling (app.js): the colour theme as its icon, and the section being read between the
+     arrows to the previous and the next one; a tap on it lists every section above. */
+  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] { align-items: center; gap: .2rem; overflow: hidden; }
+  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > :is(a:not(.section-bar-top), .section-bar-group) { display: none; }
+  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-theme { position: relative; justify-content: center; width: 2.3rem; height: 2.3rem; margin: 0; padding: 0; border-right: 0; }
+  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-theme select { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; opacity: 0; }
+  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-step { display: inline-grid; flex: 0 0 auto; place-items: center; width: 2.3rem; height: 2.3rem; min-height: 0; padding: 0;
+    border: 0; border-radius: 999px; background: transparent; box-shadow: none; color: rgba(255, 255, 255, .95); }
+  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-step:disabled { opacity: .35; }
+  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-step svg { width: 1.25rem; height: 1.25rem; stroke-width: 2.6; }
+  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-current { display: inline-flex; flex: 1 1 auto; align-items: center; gap: .4rem; min-width: 0; height: 2.3rem; min-height: 0;
+    padding: 0 .7rem; border: 0; border-radius: 999px; background: #fff; box-shadow: 0 4px 12px rgba(0, 0, 0, .22); color: color-mix(in srgb, var(--section-bar-accent, #0b6664) 80%, #000);
+    font: inherit; font-size: .86rem; font-weight: 850; }
+  .section-bar-current-icon { display: inline-grid; flex: 0 0 auto; }
+  body:has(.mobile-bottom-nav:not(:empty)) .section-bar-current svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .section-bar-current-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+  body:has(.mobile-bottom-nav:not(:empty)) .section-bar-current .section-bar-current-chevron { flex: 0 0 auto; width: .95rem; height: .95rem; stroke-width: 2.6; transition: transform .15s ease; }
+  .section-bar-current[aria-expanded="true"] .section-bar-current-chevron { transform: rotate(180deg); }
+  .section-bar-sheet:not([hidden]) { position: fixed; right: .5rem; bottom: calc(var(--bottom-floaters, var(--bottom-nav)) + .4rem); left: .5rem; z-index: 10002; display: grid; gap: .15rem;
+    max-height: calc(100dvh - var(--bottom-floaters, var(--bottom-nav)) - 4rem); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; padding: .4rem;
+    border: 1px solid var(--line-strong); border-radius: 14px; background: #fff; box-shadow: var(--shadow-strong); }
+  .section-bar-sheet a { display: flex; align-items: center; gap: .6rem; padding: .62rem .75rem; border-radius: 10px; color: #33485a; font-size: .92rem; font-weight: 750; text-decoration: none; }
+  .section-bar-sheet a.is-part { padding-left: 2.15rem; font-size: .86rem; font-weight: 650; }
+  .section-bar-sheet a.is-active { background: color-mix(in srgb, var(--section-bar-accent, #0b6664) 13%, #fff); color: color-mix(in srgb, var(--section-bar-accent, #0b6664) 85%, #000); }
+  .section-bar-sheet svg { flex: 0 0 auto; width: 1.15rem; height: 1.15rem; fill: none; stroke: var(--section-bar-accent, currentColor); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  /* The Modules & Sections tab at the edge stands above the bars at the bottom, not over their buttons. */
+  body:has(.mobile-bottom-nav:not(:empty)) #page-panel-navigator.modules-sections-navigator :is(.page-panel-navigator-tab, .edge-navigator-hover-target) { top: 40%; }
   /* What floats at the bottom of the page stands above the bars. */
   .back-to-top { bottom: var(--back-to-top-bottom, calc(.6rem + var(--bottom-floaters))); }
   .unassigned-values-card { bottom: var(--unassigned-values-card-bottom, calc(.5rem + var(--bottom-floaters))); }
