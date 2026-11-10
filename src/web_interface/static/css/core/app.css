@@ -5752,6 +5752,10 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 .module-tab, .module-tab.active { box-shadow: none; }
 .module-tab { border-radius: 11px 11px 0 0; }
 .module-tabs-secondary .module-tab { margin-bottom: 0; padding: .38rem .7rem; border-radius: 10px; font-size: .84rem; }
+/* Nothing of the tabs stands out under the panel: the open one sits on its lower edge like the others instead of 2 px
+   below it, and no shadow falls under them (the line of their colour stays). */
+.module-tabs-primary .module-tab.active { margin-bottom: 0; }
+.module-tabs-primary .module-tab:not(.active), .module-tabs-primary .module-tab:not(.active):not(.module-tab-disabled):hover { box-shadow: inset 0 3px 0 var(--tab-accent, #8a99a6); }
 
 /* The header of a module keeps its colour and its drawing, with a title of the size of a heading instead of a poster. */
 .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) { padding-top: 1.15rem; padding-bottom: 1.15rem; }
