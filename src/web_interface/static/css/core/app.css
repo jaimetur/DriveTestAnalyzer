@@ -5741,26 +5741,24 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 .topnav-workspace-menu button .workspace-switcher-option-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .topnav-workspace-menu button > span:not(.workspace-switcher-option-label) { flex: 0 0 auto; }
 
-/* The tabs in one white panel, apart from the header of the module below them: the administrative tabs (Help, App
-   Logs, Config, Admin, Super Admin) as buttons on its upper row, and under a line the tabs of the main modules, which
-   keep their folder shape: rounded at the top, light, with a line of the colour of their module on top and the open one
-   filled with it. */
-.module-tabs { gap: .25rem; margin: 0 0 .9rem; padding: .4rem 1rem 0; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: var(--shadow); }
+/* The tabs in one white panel, apart from the header of the module below them and with the same margin on every side:
+   the administrative tabs (Help, App Logs, Config, Admin, Super Admin) as buttons on its upper row, and under a line
+   the tabs of the main modules, whole (with their lower edge) and rounded, more at the top, light, with a line of the
+   colour of their module on top and the open one filled with it. */
+.module-tabs { gap: .25rem; margin: 0 0 .9rem; padding: .4rem .45rem; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: var(--shadow); }
 .module-tabs.is-stuck { border-color: transparent; border-radius: 0; }
 .module-tabs-primary, .module-tabs-secondary { gap: .25rem; padding-left: 0; padding-right: 0; }
 .module-tabs-secondary { padding-bottom: .35rem; border-bottom: 1px solid var(--line); }
 .module-tab, .module-tab.active { box-shadow: none; }
 .module-tab { border-radius: 11px 11px 0 0; }
 .module-tabs-secondary .module-tab { margin-bottom: 0; padding: .38rem .7rem; border-radius: 10px; font-size: .84rem; }
-/* Nothing of the tabs stands out under the panel: the panel keeps them as far from its sides as the radius of its
-   corners (padding above), so that the square lower corners of the tabs at the ends never reach its curve, the open one
-   sits on its lower edge like the others instead of 2 px below it, and no shadow falls under them (the line of their
-   colour stays). */
+.module-tabs-primary .module-tab { border-bottom-style: solid; border-bottom-width: 1px; border-radius: 11px 11px 7px 7px; }
+/* Nothing of the main tabs stands out of the panel: the open one stays in line with the others instead of 2 px lower
+   and no shadow falls under them. They are a little less tall, with the same height on every screen and when they
+   shrink to fit in one row, and every tab centres its label under the line on top, so that the labels of all the tabs
+   stand at the same height: the open one has that line too, in a darker shade of its own colour (also with a colour of
+   Interface Settings, whose shadow fell under the panel). */
 .module-tabs-primary .module-tab.active { margin-bottom: 0; }
-/* The main tabs a little less tall, with the same height on every screen and when they shrink to fit in one row. The
-   open one has the line on top as well, in a darker shade of its own colour (also with a colour of Interface Settings,
-   whose shadow fell under the panel), and every tab centres its label under the line, so that the labels of all the
-   tabs stand at the same height. */
 .module-tabs-primary .module-tab, .module-tabs-primary:is(.is-compact-1, .is-compact-2) .module-tab { padding-top: calc(.5rem + 1.5px); padding-bottom: calc(.5rem - 1.5px); }
 .module-tabs .module-tabs-primary .module-tab.active { box-shadow: inset 0 3px 0 rgba(0, 0, 0, .22); }
 .module-tabs-primary .module-tab:not(.active), .module-tabs-primary .module-tab:not(.active):not(.module-tab-disabled):hover { box-shadow: inset 0 3px 0 var(--tab-accent, #8a99a6); }
