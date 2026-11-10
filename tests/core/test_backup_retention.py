@@ -272,3 +272,20 @@ def test_the_tiles_tell_full_from_light_backups(client):
     assert status['last_level'] == 'Light backup'
     assert status['next_level'] in {'Full backup', 'Light backup'}
     assert core.recurring_backup_status(config | {'enabled': False})['next_level'] == ''
+
+
+def test_the_backup_panel_shows_the_free_space_of_the_disk_of_the_backup_folder(client, monkeypatch, tmp_path):
+    # The disk of the backup folder (in Docker, that of the host folder mounted as the data folder), as a backup counts
+    # it, measured at the nearest folder that exists and at most once a minute.
+    core._BACKUP_DISK_SPACE.clear()
+    measured = []
+    monkeypatch.setattr(core, 'available_disk_space', lambda path: measured.append(path) or 30 * 1024 ** 3)
+    monkeypatch.setattr(core.shutil, 'disk_usage', lambda path: type('Usage', (), {'total': 120 * 1024 ** 3})())
+    missing = tmp_path / 'not-yet' / 'scheduled-backups'
+    assert core.backup_disk_space(missing) == {'free': '30 GB', 'detail': 'of 120 GB · 75% used'}
+    assert core.backup_disk_space(missing)['free'] == '30 GB' and measured == [tmp_path]
+    login_super(client)
+    status = client.get('/api/admin/backup-status').json()
+    assert status['disk_free'] == '30 GB' and status['disk_detail'] == 'of 120 GB · 75% used'
+    assert 'Free disk space' in client.get('/super-admin').text
+    core._BACKUP_DISK_SPACE.clear()

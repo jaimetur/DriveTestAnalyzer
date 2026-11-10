@@ -7757,8 +7757,32 @@ def ensure_backup_path_is_within_config(path: Path) -> Path:
     return resolved
 
 
+_BACKUP_DISK_SPACE: dict[str, tuple[float, int, int]] = {}
+
+
+def backup_disk_space(backup_root: Path) -> dict[str, str]:
+    """The free space of the disk that holds the backups, as a backup counts it (available_disk_space: on macOS also what
+    the system frees on demand), with its size and how much of it is used. The backup folder is inside the data folder,
+    so in Docker it is the disk of the host folder mounted as the data folder, not that of the container. Measured at
+    most once a minute (the panel asks for its status as it is shown)."""
+    folder = next((item for item in (backup_root, *backup_root.parents) if item.is_dir()), application_data_dir)
+    cached = _BACKUP_DISK_SPACE.get(str(folder))
+    if cached and monotonic() - cached[0] < 60:
+        free, total = cached[1], cached[2]
+    else:
+        try:
+            total = shutil.disk_usage(folder).total
+            free = available_disk_space(folder)
+        except OSError:
+            return {'free': 'Unknown', 'detail': ''}
+        _BACKUP_DISK_SPACE[str(folder)] = (monotonic(), free, total)
+    used = round(max(0, total - free) * 100 / total) if total else 0
+    return {'free': format_workspace_size(free), 'detail': f'of {format_workspace_size(total)} · {used}% used'}
+
+
 def recurring_backup_status(config: dict[str, Any]) -> dict[str, str | int]:
     root = recurring_backup_path(config)
+    disk = backup_disk_space(root)
     files = sorted(backup_zip_files(root), key=lambda item: item.stat().st_mtime)
     total = sum(item.stat().st_size for item in files)
     last = backup_started_at_label(files[-1]) if files else 'No successful backup yet'
@@ -7784,7 +7808,8 @@ def recurring_backup_status(config: dict[str, Any]) -> dict[str, str | int]:
             'size_detail': f"{format_workspace_size(sizes['full'])} full · {format_workspace_size(sizes['light'])} light",
             'last_level': f"{backup_file_info(files[-1])['level'].capitalize()} backup" if files else '',
             'next_level': f'{next_level.capitalize()} backup' if next_level else '',
-            'problem': recurring_backup_problem(), 'latest_sizes': latest_sizes}
+            'problem': recurring_backup_problem(), 'latest_sizes': latest_sizes,
+            'disk_free': disk['free'], 'disk_detail': disk['detail']}
 
 
 def backup_level_folder(backup_root: Path, level: str) -> Path:
