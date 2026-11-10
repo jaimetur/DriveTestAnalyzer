@@ -6,7 +6,7 @@
   <article class="panel hero-panel module-hero-assistant">
     <p class="eyebrow">AI Assistant</p>
     <h2>Ask your workspace in your own words</h2>
-    <p class="lede">Ask about the scoring, the Non-Qualified Calls, the campaigns or how the tool works, in any language. The assistant reads the workspace with the same calculations as its modules and answers here, with how it calculated every figure. The names of operators, vendors, areas, campaigns and methodologies leave this server as codes only: the AI engine never sees them, and you see the real names.</p>
+    <p class="lede">Ask about the scoring, the Non-Qualified Calls, the campaigns or how the tool works, in any language. The assistant reads the workspace with the same calculations as its modules and answers here, with tables, charts and how it calculated every figure. The names of operators, vendors, areas, campaigns and methodologies leave this server as codes only: the AI engine never sees them, and you see the real names.</p>
   </article>
 
   <div class="assistant-layout">
@@ -79,5 +79,6 @@
 </div>
 <script id="assistant-config" type="application/json">{{ assistant_config | tojson }}</script>
 <script defer src="{{ static_path('js/core/rich_text.js') }}?v={{ asset_version('js/core/rich_text.js') }}"></script>
+<script defer src="{{ static_path('js/core/canvas_charts.js') }}?v={{ asset_version('js/core/canvas_charts.js') }}"></script>
 <script defer src="{{ static_path('js/assistant/assistant.js') }}?v={{ asset_version('js/assistant/assistant.js') }}"></script>
 {% endblock %}

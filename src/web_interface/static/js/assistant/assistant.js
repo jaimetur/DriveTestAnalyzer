@@ -1,7 +1,7 @@
 // AI Assistant: the chat of the questions of a user about the active workspace.
 // A question is answered in the background (POST /api/assistant/ask): the page follows its steps
-// (GET /api/assistant/jobs/<id>) and shows the answer with its tables, follow-up questions, how it was calculated
-// and what was sent to the AI engine.
+// (GET /api/assistant/jobs/<id>) and shows the answer with its tables, its charts (drawn by the chart painter of
+// PPT Designer, core/canvas_charts.js), follow-up questions, how it was calculated and what was sent to the AI engine.
 (() => {
   'use strict';
 
@@ -179,6 +179,93 @@
     return box;
   }
 
+  // -- charts -------------------------------------------------------------------------------------------------------
+
+  const fileName = (title, fallback) => (title || fallback).replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 80) || fallback;
+
+  // The canvas of a chart, drawn once it is on the page (the painter measures its box). In the answer its title is
+  // above it (as PPT Designer does for its small charts): drawn in a small chart, it would cover the legend.
+  function chartCanvas(chart, className, titled = false) {
+    const holder = element('div', className);
+    const canvas = element('canvas');
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', chart.title || 'Chart');
+    holder.append(canvas);
+    const draw = () => {
+      if (!canvas.isConnected) { requestAnimationFrame(draw); return; }
+      if (typeof globalThis.renderCanvasChart !== 'function') {
+        holder.replaceChildren(element('p', 'form-note', 'The chart could not be drawn: reload the page.'));
+        return;
+      }
+      try { globalThis.renderCanvasChart(canvas, titled ? chart.model : {...chart.model, hide_title: true}); } catch (error) {
+        holder.replaceChildren(element('p', 'form-note', `The chart could not be drawn: ${error.message}`));
+      }
+    };
+    requestAnimationFrame(draw);
+    return {holder, canvas};
+  }
+
+  function downloadChart(canvas, title) {
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const link = element('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${fileName(title, 'ai-assistant-chart')}.png`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }, 'image/png');
+  }
+
+  // A chart larger, over the page (Escape or Close closes it).
+  function expandChart(chart) {
+    const overlay = element('div', 'confirm-overlay assistant-dialog assistant-chart-overlay');
+    const panel = element('div', 'confirm-panel assistant-chart-panel');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-label', chart.title || 'Chart');
+    const {holder, canvas} = chartCanvas(chart, 'assistant-chart-canvas assistant-chart-canvas-large', true);
+    const actions = element('div', 'confirm-actions');
+    const download = element('button', 'secondary', 'Download PNG');
+    download.type = 'button';
+    download.addEventListener('click', () => downloadChart(canvas, chart.title));
+    const close = element('button', '', 'Close');
+    close.type = 'button';
+    const closeOverlay = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (event) => { if (event.key === 'Escape') closeOverlay(); };
+    close.addEventListener('click', closeOverlay);
+    overlay.addEventListener('click', (event) => { if (event.target === overlay) closeOverlay(); });
+    document.addEventListener('keydown', onKey);
+    actions.append(download, close);
+    panel.append(holder, actions);
+    overlay.append(panel);
+    document.body.append(overlay);
+    close.focus();
+  }
+
+  function renderChart(chart) {
+    const box = element('figure', 'assistant-table-box assistant-chart-box');
+    const caption = element('figcaption', 'assistant-table-caption');
+    caption.append(element('span', 'assistant-table-title', chart.title || ''));
+    const tools = element('span', 'assistant-table-tools');
+    const origin = chart.origin ? `PPT Designer · ${chart.origin}` : '';
+    if (origin) tools.append(element('span', 'assistant-table-count', origin));
+    // Horizontal bars of many KPIs take a taller box, so their names keep a readable size.
+    const rows = chart.model.type === 'hbar' ? (chart.model.row_keys || []).length : 0;
+    const {holder, canvas} = chartCanvas(chart, `assistant-chart-canvas${rows > 12 ? ' tall' : ''}`);
+    const expand = element('button', 'assistant-link', 'Expand');
+    expand.type = 'button';
+    expand.addEventListener('click', () => expandChart(chart));
+    const download = element('button', 'assistant-link', 'Download PNG');
+    download.type = 'button';
+    download.addEventListener('click', () => downloadChart(canvas, chart.title));
+    tools.append(expand, download);
+    caption.append(tools);
+    box.append(caption, holder);
+    return box;
+  }
+
   function renderText(container, text) {
     if (window.RichText && typeof window.RichText.renderInto === 'function') {
       window.RichText.renderInto(container, text || '');
@@ -221,6 +308,7 @@
     const text = element('div', 'assistant-text');
     renderText(text, message.content);
     bubble.append(text);
+    (message.charts || []).forEach((chart) => { if (chart && chart.model) bubble.append(renderChart(chart)); });
     (message.tables || []).forEach((table) => bubble.append(renderTable(table)));
     if (message.warning) bubble.append(element('p', 'assistant-warning', message.warning));
     if ((message.follow_ups || []).length) {

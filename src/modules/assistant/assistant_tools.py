@@ -67,7 +67,8 @@ TOOLS: list[dict[str, str]] = [
                     'trends, and Where to act), for a global commentary. filters change what is calculated: an Operator filter '
                     'changes the points, because some KPIs are scored against the best operator of the calculation, so '
                     'to answer about some operators use "only", which lists only their groups and keeps the points the '
-                    'module shows. Vendor is the RAN vendor of the cells that served the test; '
+                    'module shows. Its scoring_id (S1) draws charts of the result in the answer. Vendor is the RAN vendor of the '
+                    'cells that served the test; '
                     '"VNx (Mixed)" means the test started or ended on a VNx cell and on another vendor, "Mixed '
                     '(non-VNx)" two other vendors.'},
     {'name': 'saved_filters', 'arguments': '{"saved_filter_id": 12 (optional)}',
@@ -110,7 +111,8 @@ TOOLS: list[dict[str, str]] = [
     {'name': 'ppt_design_charts', 'arguments': '{"design": "id or name", "slides": [3]}',
      'description': 'The charts of up to 4 slides of a Design, prepared as its viewer prepares them, read as the Auto '
                     'comments of PPT Designer read them: the value of every group of each chart with its samples, which '
-                    'direction is better, and the comments the rules write. To analyse or comment on charts of a Design.'},
+                    'direction is better, and the comments the rules write, and the chart_id (G1) that draws each chart in the '
+                    'answer as the Design draws it. To analyse, comment on or show charts of a Design.'},
     {'name': 'help_search', 'arguments': '{"query": "how to create a Saved Filter"}',
      'description': 'The passages of the Help of DriveTest Analyzer that best match a question about how the tool works.'},
     {'name': 'calculate', 'arguments': '{"expressions": ["921.81 - 863.11", "292182 / 382472 * 100"]}',
@@ -429,6 +431,8 @@ def scoring(context: ToolContext, arguments: dict[str, Any]) -> dict[str, Any]:
     except ValueError as exc:
         raise ToolError(str(exc)) from exc
     summary = summarize_scoring(result, selection, details, only)
+    from src.modules.assistant.assistant_charts import register_scoring
+    summary = {'scoring_id': register_scoring(context.cache, result, selection, only), **summary}
     if 'insights' in details:
         from src.modules.assistant.assistant_modules import scoring_insights
         context.progress('Building the Summary of the scoring')

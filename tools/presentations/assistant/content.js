@@ -12,11 +12,11 @@ module.exports = {
     { id: 'chat', type: 'showcase', section: 'Ask', footer: 'Ask', kicker: 'Ask', title: 'A question in, the answer with its figures out', visual: 'assistantChat',
       facts: [
         { icon: 'TbLanguage', text: 'Any language: the answer comes in the language of the question' },
-        { icon: 'TbTable', text: 'Tables when they help, and three questions to ask next' },
+        { icon: 'TbTable', text: 'Tables and charts when they help, and three questions to ask next' },
         { icon: 'TbTrophy', text: 'The same points as Scoring & GAP Analysis' },
         { icon: 'TbBolt', text: 'Seconds instead of building the selection by hand' },
       ],
-      notes: 'A question such as the scoring of an operator in a quarter broken down by Vendor is answered in the chat: the direct answer first, then a table, and three follow-up questions to ask next. While it works, the chat shows its steps: reading the workspace, calculating the scoring as a Saved Filter of the same selection would, calculating the shares and checking every figure. The engine is chosen among those Super Admin enabled, Kiro CLI or Claude. The operators and figures of this slide are illustrative.' },
+      notes: 'A question such as the scoring of an operator in a quarter broken down by Vendor is answered in the chat: the direct answer first, then a table and, when asked or when it helps, a chart drawn by the tool from the same data, and three follow-up questions to ask next. While it works, the chat shows its steps: reading the workspace, calculating the scoring as a Saved Filter of the same selection would, calculating the shares and checking every figure. The engine is chosen among those Super Admin enabled, Kiro CLI or Claude. The operators and figures of this slide are illustrative.' },
     { id: 'privacy', type: 'showcase', bare: true, section: 'Privacy', footer: 'Privacy by design', kicker: 'Privacy by design', title: 'The AI engine never sees a customer name', visual: 'assistantPrivacy',
       facts: [
         { icon: 'TbMask', text: 'Operators, vendors, areas, campaigns and methodologies become codes' },
@@ -32,7 +32,7 @@ module.exports = {
         { icon: 'TbTrophy', title: 'Scoring & GAP Analysis', text: 'Any split and filter as a Saved Filter, the saved results and the Summary.' },
         { icon: 'TbDatabaseSearch', title: 'NQ Calls & CDR rows', text: 'Counts, lists of JOIN_IDs and any statistic, in read-only SQL.' },
         { icon: 'TbAntenna', title: 'Network Insights', text: 'RSRP, SINR and Key Findings by operator or vendor.' },
-        { icon: 'TbPresentation', title: 'PPT Designer', text: 'The charts of a Design, read as its Auto comments read them.' },
+        { icon: 'TbPresentation', title: 'PPT Designer', text: 'The charts of a Design, read as its Auto comments read them and drawn in the chat.' },
         { icon: 'TbBook2', title: 'Help & Calculator', text: 'How to do anything; differences, shares and ratios.' },
       ],
       note: 'It only reads: asked to change something, it names the module that does it.',

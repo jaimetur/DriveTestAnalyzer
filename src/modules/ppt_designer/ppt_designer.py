@@ -8601,6 +8601,8 @@ def install_design_routes(core):
         wanted = {int(number) for number in slides or [] if str(number).strip().lstrip('-').isdigit()}
         focus = focus_operators(task_repository)
         read = []
+        # The model of every chart read, by its index: the AI Assistant draws them in its answers.
+        models: dict[int, dict] = {}
         for slide_number in sorted(grouped):
             if wanted and slide_number not in wanted:
                 continue
@@ -8629,12 +8631,13 @@ def install_design_routes(core):
                     continue
                 charts.append({'index': index, 'title': title, 'kpi': entry.kpi, 'model': model, 'hidden': [], 'shown': [],
                                'subject': ' · '.join(value for value in (entry.dynamic_row_value, entry.dynamic_column_value) if value)})
+                models[index] = model
             brief = design_comments.slide_brief(charts, focus_operators=focus, layout=header.layout or '') if charts else None
             read.append({'slide': slide_number, 'title': header.slide_title, 'subtitle': header.slide_subtitle,
                          'charts': brief['charts'] if brief else [], 'rules_comments': brief['rules_comments'] if brief else [],
                          **({'charts_not_read': unread} if unread else {})})
         return {'design': key, 'name': str(stored.get('name') or key), 'template': str(stored.get('template') or ''),
-                'nr_mode': design_nr_mode(stored), 'focus_operators': focus, 'slides': read}
+                'nr_mode': design_nr_mode(stored), 'focus_operators': focus, 'slides': read, 'chart_models': models}
 
     # The AI Assistant reads the Designs and the facts of their charts.
     core.design_reporting.outline = design_outline

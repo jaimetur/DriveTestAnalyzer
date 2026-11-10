@@ -457,6 +457,13 @@ def test_the_assistant_reads_the_charts_of_a_design_as_its_auto_comments(client)
     read = assistant_tools.run_tool(context, 'ppt_design_charts', {'design': 'Rates', 'slides': [slide['number']]})
     facts = read['slides'][0]
     assert [chart['title'] for chart in facts['charts']] == ['Rate CDF', 'Rate mean']
+    # Each chart has its id: the answer draws it with the model of its viewer, which the engine never receives.
+    assert [chart['chart_id'] for chart in facts['charts']] == ['G1', 'G2'] and 'chart_models' not in read
+    model = context.cache['design_charts']['G2']['model']
+    drawn = assistant.charts_module.build_chart({'source': 'G2', 'title': ''}, context.cache, [], assistant.charts_module.Colours({}))
+    assert drawn['model'] == model and model['type'] in {'mean_bar', 'hbar', 'dot'} and drawn['origin'] == 'Rates · slide 1'
+    assistant_tools.run_tool(context, 'ppt_design_charts', {'design': 'rates', 'slides': [slide['number']]})
+    assert list(context.cache['design_charts']) == ['G1', 'G2']
     assert facts['rules_comments'] == [item['text'] for item in generated['suggestions']]
     assert read['focus_operators'] == ['A'] and {record['labels'].get('Operator') for chart in facts['charts']
                                                  for record in chart['records']} == {'A', 'B'}
@@ -470,3 +477,124 @@ def test_the_assistant_reads_the_charts_of_a_design_as_its_auto_comments(client)
         assert _services('demo', 'user-editor') == {}
     finally:
         core.user_has_feature = before
+
+
+class ChartEngine:
+    """An engine that calculates the scoring, then draws it (once with a source that does not exist)."""
+    id, label = 'claude', 'Claude'
+
+    def __init__(self):
+        self.received: list[str] = []
+
+    def step(self, system, transcript):
+        self.received.append(transcript[-1]['content'])
+        if len(self.received) == 1:
+            return {'status': 'tools', 'note': 'Calculating', 'tool_calls': [
+                {'tool': 'scoring', 'arguments_json': json.dumps({'campaigns': ['latest'], 'split_by': ['Operator']})}],
+                'answer': '', 'tables': [], 'charts': [], 'follow_ups': []}, {'model': 'fake'}
+        result = json.loads(self.received[1].split('\n', 1)[1])[0]['result']
+        rows = [[group['operator'], str(group['points'])] for group in result['groups']]
+        charts = [{'title': 'Points of each operator', 'source': result['scoring_id'], 'view': 'points', 'type': '', 'x': [],
+                   'y': [], 'series': ''},
+                  {'title': '', 'source': 'T1', 'view': '', 'type': 'hbar', 'x': ['Operator'], 'y': ['Points'], 'series': ''}]
+        if len(self.received) == 2:
+            charts.append({'title': 'Wrong', 'source': 'S9', 'view': 'points', 'type': '', 'x': [], 'y': [], 'series': ''})
+        return {'status': 'answer', 'note': '', 'tool_calls': [], 'follow_ups': [], 'charts': charts,
+                'answer': 'The scoring of each operator.', 'tables': [
+                    {'title': 'Scoring', 'columns': ['Operator', 'Points'], 'rows': rows, 'result': ''}]}, {'model': 'fake'}
+
+
+def test_the_charts_of_an_answer_draw_the_data_of_the_tools_with_the_real_names(scored_repository):
+    repository, _ids = scored_repository
+    conversation = assistant.create_conversation(repository, 'super')
+    question = 'Draw the scoring of each operator of the latest campaign'
+    question_id = assistant.add_message(repository, conversation, 'user', question)
+    engine = ChartEngine()
+    steps = []
+    answer = assistant.answer_question(engine=engine, repository=repository, workspace_name='UK', username='super',
+                                       conversation_id=conversation, question=question, question_id=question_id,
+                                       progress=steps.append)
+    # The chart that cannot be drawn was sent back to the engine, which answered again without it.
+    assert 'S9' in engine.received[2] and 'Checking the charts of the answer' in steps and answer['warning'] == ''
+    context = assistant_tools.ToolContext(repository=repository, workspace_name='UK', username='super')
+    expected = {group['operator']: group['points'] for group in assistant_tools.scoring(context, {'split_by': ['Operator']})['groups']}
+    points, table = answer['charts']
+    assert (points['source'], points['model']['type'], points['title']) == ('S1', 'mean_bar', 'Points of each operator')
+    assert {bar['key'][0]: bar['value'] for bar in points['model']['bars']} == expected
+    assert table['model']['type'] == 'hbar' and {row[0]: cells[0] for row, cells in zip(
+        table['model']['row_keys'], table['model']['cells'], strict=True)} == expected
+    # The engine never received a name nor a chart; the charts are kept with the answer.
+    sent = json.dumps(answer['sent'])
+    assert all(name not in sent for name in expected) and 'mean_bar' not in ''.join(engine.received)
+    message_id = assistant.add_message(repository, conversation, 'assistant', answer['content'],
+                                       **{key: value for key, value in answer.items() if key != 'content'})
+    stored = assistant.get_message(repository, message_id, 'super')
+    assert [chart['model']['type'] for chart in stored['charts']] == ['mean_bar', 'hbar']
+
+
+def test_the_charts_of_tables_and_query_results_take_their_columns():
+    from src.modules.assistant import assistant_charts as charts
+
+    colours = charts.Colours(charts.operator_colours([{'canonical': 'EE', 'color': '#00a0a0', 'aliases': ['EE UK']},
+                                                      {'canonical': 'VF', 'color': '#e60000'}]))
+    columns = ['Campaign', 'Operator', 'Points']
+    rows = [['2026-Q2', 'EE', '930.1'], ['2026-Q2', 'VF', '1.234,5'], ['2026-Q3', 'EE UK', '938.45'], ['2026-Q3', 'VF', '863,11']]
+    line = charts.table_chart(columns, rows, {'type': 'line', 'x': ['Campaign'], 'y': ['Points'], 'series': 'Operator'}, '', colours)
+    assert line['type'] == 'lines' and line['x_keys'] == [['2026-Q2'], ['2026-Q3']]
+    assert [(item['name'], item['values'], item['colour']) for item in line['series']] == [
+        ('EE', [930.1, None], '#00A0A0'), ('VF', [1234.5, 863.11], '#E60000'), ('EE UK', [None, 938.45], '#00A0A0')]
+    bars = charts.table_chart(columns, rows, {'type': 'bar', 'x': ['Campaign', 'Operator'], 'y': ['Points'], 'series': ''}, 'T', colours)
+    assert [bar['key'] for bar in bars['bars']][:2] == [['2026-Q2', 'EE'], ['2026-Q2', 'VF']]
+    assert [bar['colour'] for bar in bars['bars']] == ['#00A0A0', '#E60000', '#00A0A0', '#E60000']
+    pie = charts.table_chart(['Category', 'Calls'], [['Drop', '12'], ['Setup', '4'], ['None', '0']],
+                             {'type': 'pie', 'x': [], 'y': [], 'series': ''}, '', colours)
+    assert [(item['name'], item['share']) for item in pie['pies'][0]['slices']] == [('Drop', .75), ('Setup', .25)]
+    with pytest.raises(charts.ChartError, match='"Rate" is not a column'):
+        charts.table_chart(columns, rows, {'type': 'bar', 'x': ['Campaign'], 'y': ['Rate'], 'series': ''}, '', colours)
+    with pytest.raises(charts.ChartError, match='type is one of'):
+        charts.table_chart(columns, rows, {'type': 'radar', 'x': [], 'y': [], 'series': ''}, '', colours)
+    built, problems = charts.build_charts([{'source': 'R1', 'type': 'bar', 'x': [], 'y': [], 'series': '', 'title': '', 'view': ''},
+                                           {'source': 'X1', 'type': '', 'x': [], 'y': [], 'series': '', 'title': '', 'view': ''}],
+                                          {'query_results': {'R1': {'columns': ['operator', 'calls'], 'rows': [['VF', 3], ['EE', 5]]}}},
+                                          [], {})
+    assert [bar['value'] for bar in built[0]['model']['bars']] == [3, 5] and problems == ['X1: source "X1" is not S1, G1, R1 or T1.']
+
+
+def test_the_scoring_charts_follow_the_views_of_the_module():
+    from src.modules.assistant import assistant_charts as charts
+
+    colours = charts.Colours(charts.operator_colours([{'canonical': 'VF', 'color': '#e60000', 'position': 1},
+                                                      {'canonical': 'EE', 'color': '#00a0a0', 'position': 0}]))
+
+    def total(campaign, operator, points, environment='Combined', category='Overall'):
+        return {'campaign': campaign, 'operator': operator, 'environment': environment, 'category': category,
+                'total_points': points, 'max_points': 1000}
+
+    result = {
+        'totals': [total('UK_Q3_NSA_2026', 'VF', 863.11), total('UK_Q3_NSA_2026', 'EE', 938.45),
+                   total('UK_Q2_NSA_2026', 'VF', 850.0), total('UK_Q2_NSA_2026', 'EE', 921.81),
+                   total('UK_Q3_NSA_2026', 'VF', 500.0, 'DriveCity'), total('UK_Q3_NSA_2026', 'EE', 520.0, 'DriveCity')],
+        'gap_totals': [{'campaign': 'UK_Q3_NSA_2026', 'operator': 'VF', 'environment': 'Combined', 'category': 'Overall',
+                        'gap_points': -75.34}],
+        'scoring': [{'campaign': 'UK_Q3_NSA_2026', 'operator': 'VF', 'kpi': kpi, 'max_points': 100, 'weighted_points': points}
+                    for kpi, points in (('Call Success', 60), ('Browsing', 90), ('Video', 75))],
+    }
+    stored = {'result': result, 'selection': {'campaigns': ['UK_Q3_NSA_2026', 'UK_Q2_NSA_2026'], 'baseline_operator': 'EE'},
+              'only': {}}
+    trend = charts.scoring_chart(stored, 'trend', '', '', colours)
+    assert trend['x_keys'] == [['UK_Q2_NSA_2026'], ['UK_Q3_NSA_2026']]
+    assert [(line['name'], line['values'], line['colour']) for line in trend['series']] == [
+        ('EE', [921.81, 938.45], '#00A0A0'), ('VF', [850.0, 863.11], '#E60000')]
+    points = charts.scoring_chart(stored, 'points', '', '', colours)
+    # The campaigns oldest first, the operators in the order of the Operator Maps, the axis up to the methodology points.
+    assert [bar['key'] for bar in points['bars']] == [['UK_Q2_NSA_2026', 'EE'], ['UK_Q2_NSA_2026', 'VF'],
+                                                      ['UK_Q3_NSA_2026', 'EE'], ['UK_Q3_NSA_2026', 'VF']]
+    assert points['domain']['y'] == [0.0, 1000.0]
+    environments = charts.scoring_chart(stored, 'environments', '', '', colours)
+    assert [bar['key'] for bar in environments['bars']] == [['DriveCity', 'UK_Q3_NSA_2026', 'EE'], ['DriveCity', 'UK_Q3_NSA_2026', 'VF']]
+    gap = charts.scoring_chart(stored, 'gap', 'hbar', '', colours)
+    assert gap['type'] == 'hbar' and gap['cells'] == [[-75.34]] and gap['title'] == 'GAP to EE'
+    kpis = charts.scoring_chart({**stored, 'only': {'Operator': ['VF']}}, 'kpis', '', '', colours)
+    assert kpis['row_keys'] == [['Call Success'], ['Video'], ['Browsing']] and kpis['cells'] == [[40.0], [25.0], [10.0]]
+    with pytest.raises(charts.ChartError, match='two or more campaigns'):
+        charts.scoring_chart({**stored, 'result': {'totals': result['totals'][:2]}}, 'trend', '', '', colours)

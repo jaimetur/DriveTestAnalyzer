@@ -228,8 +228,10 @@ def ppt_design_charts(context: ToolContext, arguments: dict[str, Any]) -> dict[s
         found = reader(design, slides)
     except (ValueError, RuntimeError) as exc:
         raise ToolError(str(exc)) from exc
+    from src.modules.assistant.assistant_charts import register_design_charts
+    register_design_charts(context.cache, found)
     found['note'] = ('The facts of each chart as the Auto comments of PPT Designer read them: each record is a group of '
                      'the chart (its labels) with its value, samples and how the comments write it ("shown"); '
                      '"better" says whether higher or lower is better; rules_comments are the comments the rules write '
-                     'for the slide.')
+                     'for the slide; chart_id draws the chart in the answer (source G1).')
     return compact(found, list_items=40)

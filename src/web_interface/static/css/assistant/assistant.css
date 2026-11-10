@@ -106,7 +106,24 @@
 .assistant-sent-step h4 { margin: .5rem 0 .2rem; font-size: .82rem; color: #475569; }
 .assistant-sent-step pre { margin: 0; max-height: 18rem; overflow: auto; background: #0f172a; color: #e2e8f0; border-radius: .5rem; padding: .6rem .8rem; font-size: .76rem; white-space: pre-wrap; word-break: break-word; }
 
+/* The charts of an answer: drawn by the chart painter of PPT Designer, with its values on hover. */
+.assistant-chart-box { min-width: min(100%, 36rem); }
+.assistant-chart-canvas { position: relative; width: 100%; aspect-ratio: 16 / 8; max-height: 30rem; border: 1px solid #e2e8f0; border-radius: .6rem; background: #fff; overflow: hidden; }
+.assistant-chart-canvas.tall { aspect-ratio: 16 / 11; max-height: 42rem; }
+.assistant-chart-canvas canvas { display: block; width: 100%; height: 100%; }
+.assistant-chart-canvas .ds-live-chart-tooltip { position: absolute; z-index: 4; display: grid; gap: 2px; max-width: min(260px, 80%); padding: 8px 10px; border: 1px solid #a5d8e2; border-radius: 8px; background: rgba(255, 255, 255, .97); box-shadow: 0 8px 24px rgba(15, 23, 42, .18); color: #0f172a; font-size: .75rem; line-height: 1.25; pointer-events: none; }
+.assistant-chart-canvas .ds-live-chart-tooltip[hidden] { display: none; }
+.assistant-chart-canvas .ds-live-chart-tooltip strong { color: #155e75; font-size: .79rem; }
+.assistant-chart-canvas .ds-live-chart-tooltip span { display: block; }
+.assistant-chart-canvas .ds-chart-zoom-selection { position: absolute; z-index: 4; box-sizing: border-box; border: 2px solid #0e7490; background: rgba(14, 116, 144, .14); pointer-events: none; }
+.assistant-chart-canvas .ds-chart-zoom-selection[hidden] { display: none !important; }
+.assistant-dialog .assistant-chart-panel { width: min(80rem, 96vw); max-height: 94vh; }
+.assistant-chart-canvas-large { aspect-ratio: 16 / 9; max-height: 76vh; }
+
 @media (max-width: 600px) {
+  .assistant-chart-box { min-width: 0; }
+  .assistant-chart-canvas { aspect-ratio: 4 / 3; }
+  .assistant-chart-canvas.tall { aspect-ratio: 3 / 4; }
   .assistant-chat { height: auto; min-height: 30rem; }
   .assistant-message { max-width: 100%; }
   .assistant-sidebar { position: static; max-height: none; }

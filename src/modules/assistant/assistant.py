@@ -31,8 +31,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from src.modules.ppt_designer import comment_writers as writers
+from src.modules.assistant import assistant_charts as charts_module
 from src.modules.assistant.assistant_privacy import CODE, Pseudonymizer, dumps, workspace_pseudonymizer
-from src.modules.assistant.assistant_tools import ToolContext, ToolError, catalog_text, result_size, run_tool, workspace_overview
+from src.modules.assistant.assistant_tools import (ToolContext, ToolError, _operator_groups, catalog_text, result_size, run_tool,
+                                                  workspace_overview)
 
 CONVERSATIONS_TABLE = 'assistant_conversations'
 MESSAGES_TABLE = 'assistant_messages'
@@ -116,10 +118,14 @@ The answer:
 - The text is Markdown: short paragraphs, bullets, **bold**; no headings above ###, no HTML.
 - Offer up to three follow-up questions the user may ask next (in "follow_ups"), in the language of the question.
 
+''' + charts_module.PROMPT + '''
+
 Reply with one JSON object only, every field present:
 {"status": "tools" or "answer", "note": "what you do now, one short sentence in the language of the user",
  "tool_calls": [{"tool": "name", "arguments_json": "{...}"}], "answer": "Markdown text, empty while status is tools",
- "tables": [{"title": "", "columns": ["", ""], "rows": [["", ""]], "result": ""}], "follow_ups": ["", ""]}
+ "tables": [{"title": "", "columns": ["", ""], "rows": [["", ""]], "result": ""}],
+ "charts": [{"title": "", "source": "S1", "view": "points", "type": "", "x": [], "y": [], "series": ""}],
+ "follow_ups": ["", ""]}
 
 Tools (arguments as a JSON object in arguments_json):
 ''' + catalog_text()
@@ -139,9 +145,10 @@ STEP_SCHEMA = {
                 'rows': {'type': 'array', 'items': {'type': 'array', 'items': {'type': 'string'}}},
                 'result': {'type': 'string'}},
             'required': ['title', 'columns', 'rows', 'result'], 'additionalProperties': False}},
+        'charts': {'type': 'array', 'items': charts_module.SPEC_SCHEMA},
         'follow_ups': {'type': 'array', 'items': {'type': 'string'}},
     },
-    'required': ['status', 'note', 'tool_calls', 'answer', 'tables', 'follow_ups'],
+    'required': ['status', 'note', 'tool_calls', 'answer', 'tables', 'charts', 'follow_ups'],
     'additionalProperties': False,
 }
 
@@ -170,6 +177,7 @@ def ensure_tables(repository: Any) -> None:
                 role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
                 content TEXT NOT NULL DEFAULT '',
                 tables_json TEXT NOT NULL DEFAULT '[]',
+                charts_json TEXT NOT NULL DEFAULT '[]',
                 follow_ups_json TEXT NOT NULL DEFAULT '[]',
                 trace_json TEXT NOT NULL DEFAULT '[]',
                 sent_json TEXT NOT NULL DEFAULT '[]',
@@ -199,6 +207,10 @@ def ensure_tables(repository: Any) -> None:
                 updated_at TEXT NOT NULL
             );
         ''')
+        # The charts of the answers came later (ticket #111): the messages of an earlier version get their column.
+        columns = {row[1] for row in connection.execute(f'PRAGMA table_info({MESSAGES_TABLE})').fetchall()}
+        if 'charts_json' not in columns:
+            connection.execute(f"ALTER TABLE {MESSAGES_TABLE} ADD COLUMN charts_json TEXT NOT NULL DEFAULT '[]'")
 
 
 def _now() -> str:
@@ -267,7 +279,8 @@ def _message(row: Any, include_sent: bool = False) -> dict[str, Any]:
     item = dict(row)
     message = {
         'id': item['id'], 'conversation_id': item['conversation_id'], 'role': item['role'], 'content': item['content'],
-        'tables': _loads(item.get('tables_json'), []), 'follow_ups': _loads(item.get('follow_ups_json'), []),
+        'tables': _loads(item.get('tables_json'), []), 'charts': _loads(item.get('charts_json'), []),
+        'follow_ups': _loads(item.get('follow_ups_json'), []),
         'trace': _loads(item.get('trace_json'), []), 'status': item['status'], 'warning': item['warning'],
         'engine': item['engine'], 'engine_label': writers.ENGINE_LABELS.get(item['engine'], item['engine']), 'model': item['model'],
         'input_tokens': item['input_tokens'], 'output_tokens': item['output_tokens'], 'duration_ms': item['duration_ms'],
@@ -297,7 +310,8 @@ def get_message(repository: Any, message_id: int, username: str, include_sent: b
 def add_message(repository: Any, conversation_id: int, role: str, content: str, **fields: Any) -> int:
     now = _now()
     values = {
-        'tables_json': dumps(fields.get('tables') or []), 'follow_ups_json': dumps(fields.get('follow_ups') or []),
+        'tables_json': dumps(fields.get('tables') or []), 'charts_json': dumps(fields.get('charts') or []),
+        'follow_ups_json': dumps(fields.get('follow_ups') or []),
         'trace_json': dumps(fields.get('trace') or []), 'sent_json': dumps(fields.get('sent') or []),
         'status': fields.get('status') or 'done', 'warning': fields.get('warning') or '', 'engine': fields.get('engine') or '',
         'model': fields.get('model') or '', 'input_tokens': int(fields.get('input_tokens') or 0),
@@ -603,8 +617,10 @@ def _history(repository: Any, conversation_id: int, pseudonyms: Pseudonymizer, b
             lines.append(f'User: {pseudonyms.mask_text(message["content"])[:1500]}')
         else:
             tables = '; '.join(f'{table.get("title")}: {dumps(table.get("rows"))[:600]}' for table in message['tables'])
+            charts = '; '.join(str(chart.get('title') or '') for chart in message.get('charts') or [])
             lines.append(f'Assistant: {pseudonyms.mask_text(message["content"])[:1500]}'
-                         + (f' [tables: {pseudonyms.mask_text(tables)}]' if tables else ''))
+                         + (f' [tables: {pseudonyms.mask_text(tables)}]' if tables else '')
+                         + (f' [charts drawn: {pseudonyms.mask_text(charts)}]' if charts else ''))
     return '\n'.join(lines)
 
 
@@ -662,7 +678,7 @@ def _answer(engine: Engine, context: ToolContext, conversation_id: int, question
         _numbers_in(source, allowed)
     tokens = {'input_tokens': 0, 'output_tokens': 0}
     model = ''
-    repaired = False
+    repaired = charts_repaired = False
     final: dict[str, Any] | None = None
     for step in range(MAX_STEPS + 1):
         if cancelled():
@@ -719,13 +735,16 @@ def _answer(engine: Engine, context: ToolContext, conversation_id: int, question
             continue
         answer = str(document.get('answer') or '').strip()
         tables = _tables(document.get('tables'), context.cache.get('query_results') or {})
-        if not answer and not tables:
+        specs = charts_module.clean_specs(document.get('charts'))
+        if not answer and not tables and not specs:
             if step >= MAX_STEPS:
                 raise AssistantError(f'{engine.label} gave no answer.')
             transcript.append({'role': 'user', 'content': 'Your answer is empty: write it now in "answer".'})
             continue
-        # The rows of a query result come from the tool itself: only the tables the engine wrote are checked.
-        problems = untraced_figures(answer, [table for table in tables if not table.get('result')], allowed)
+        # The rows of a query result come from the tool itself: only the tables the engine wrote are checked (and the
+        # titles of the charts, whose figures come from the data they name).
+        titles = [{'rows': [[spec['title']] for spec in specs]}] if specs else []
+        problems = untraced_figures(answer, [table for table in tables if not table.get('result')] + titles, allowed)
         if problems and not repaired and step < MAX_STEPS:
             repaired = True
             progress('Checking the figures of the answer')
@@ -734,7 +753,18 @@ def _answer(engine: Engine, context: ToolContext, conversation_id: int, question
                 + '. Copy every figure from the results (call calculate for differences, shares and ratios) or leave it '
                   'out, and reply with the whole answer again.')})
             continue
-        final = {'answer': answer, 'tables': tables,
+        shown_tables = [_shown_table(table, pseudonyms) for table in tables]
+        charts, chart_problems = charts_module.build_charts(
+            [pseudonyms.unmask(spec) for spec in specs], context.cache, shown_tables,
+            charts_module.operator_colours(_operator_groups(context)))
+        if chart_problems and not charts_repaired and step < MAX_STEPS:
+            charts_repaired = True
+            progress('Checking the charts of the answer')
+            transcript.append({'role': 'user', 'content': (
+                'These charts cannot be drawn: ' + pseudonyms.mask_text(' | '.join(chart_problems[:6]))
+                + '. Correct them (or leave them out) and reply with the whole answer again.')})
+            continue
+        final = {'answer': answer, 'tables': tables, 'charts': charts, 'chart_problems': chart_problems,
                  'follow_ups': [str(item).strip()[:300] for item in document.get('follow_ups') or [] if str(item).strip()][:3],
                  'problems': problems}
         break
@@ -743,8 +773,12 @@ def _answer(engine: Engine, context: ToolContext, conversation_id: int, question
     _save_pseudonyms(repository, conversation_id, pseudonyms)
     warning = (f'{len(final["problems"])} figure(s) of this answer could not be traced to the results of the tools: '
                + ', '.join(final['problems'][:8]) + '.') if final['problems'] else ''
+    if final['chart_problems']:
+        warning = ' '.join(part for part in (warning, f'{len(final["chart_problems"])} chart(s) could not be drawn: '
+                                             + '; '.join(final['chart_problems'][:4]) + '.') if part)
     return {
         'content': pseudonyms.unmask_text(final['answer']), 'tables': [_shown_table(table, pseudonyms) for table in final['tables']],
+        'charts': final['charts'],
         'follow_ups': pseudonyms.unmask(final['follow_ups']), 'trace': trace, 'warning': warning,
         'sent': sent, 'legend': pseudonyms.legend(), 'engine': engine.id, 'model': model,
         'duration_ms': round((time.monotonic() - started) * 1000), 'untraced': final['problems'], **tokens,
@@ -794,7 +828,8 @@ def _shown_table(table: dict[str, Any], pseudonyms: Pseudonymizer) -> dict[str, 
 def _summary(name: str, result: dict[str, Any]) -> str:
     """One line of the trace: what a tool gave."""
     if name == 'scoring' or ('groups' in result and 'split_by' in result):
-        return (f'{result.get("group_count", len(result.get("groups") or []))} groups of {", ".join(result.get("campaigns") or [])} '
+        return (f'{result.get("scoring_id", "")}: {result.get("group_count", len(result.get("groups") or []))} groups of '
+                f'{", ".join(result.get("campaigns") or [])} '
                 f'({result.get("nr_mode")}, split by {", ".join(result.get("split_by") or [])}; {result.get("methodology") or "default methodology"}; '
                 f'{result.get("cdrs", 0)} CDRs, from {result.get("calculated_from")})')
     if name == 'nq_calls':
@@ -815,8 +850,9 @@ def _summary(name: str, result: dict[str, Any]) -> str:
                 f'{len(result.get("designs") or [])} Designs')
     if name == 'ppt_design_charts':
         slides = [item for item in result.get('slides') or [] if isinstance(item, dict)]
+        ids = [str(chart.get('chart_id')) for item in slides for chart in item.get('charts') or [] if chart.get('chart_id')]
         return (f'{result.get("name")}: slides {", ".join(str(item.get("slide")) for item in slides)} '
-                f'({sum(len(item.get("charts") or []) for item in slides)} charts)')
+                f'({sum(len(item.get("charts") or []) for item in slides)} charts{": " + ", ".join(ids) if ids else ""})')
     if name == 'workspace_overview':
         return 'Campaigns, operators, vendors, areas, methodologies and Saved Filters of the workspace'
     if name == 'list_values':
@@ -918,7 +954,10 @@ def start_question(core: Any, *, repository_factory: Callable[[], Any], workspac
                 'steps': len(answer['sent']), 'tools': [{'tool': entry['tool'], 'error': entry.get('error', ''),
                                                           'duration_ms': entry['duration_ms']} for entry in answer['trace']],
                 'input_tokens': answer['input_tokens'], 'output_tokens': answer['output_tokens'],
-                'untraced_figures': answer['untraced'], 'sent_characters': sum(len(item['sent']) for item in answer['sent']),
+                'untraced_figures': answer['untraced'],
+                'charts': [{'source': chart['source'], 'view': chart['view'], 'type': chart['model'].get('type'),
+                            'title': chart['title']} for chart in answer['charts']],
+                'sent_characters': sum(len(item['sent']) for item in answer['sent']),
             }, ensure_ascii=False), timeout_seconds=5)
         except Exception as exc:  # noqa: BLE001 - every failure is told in the chat and recorded
             stopped = job['cancel'].is_set()

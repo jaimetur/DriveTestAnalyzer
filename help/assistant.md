@@ -7,9 +7,10 @@ Use the **AI Assistant** to ask the active workspace questions in your own words
 - any count, average or distribution of the rows of the CDRs;
 - the radio coverage and quality of Network Insights;
 - a commentary on the charts of a PPT Designer Design;
+- a chart of the scoring of the operators, of a PPT Designer Design or of any result, drawn in the chat;
 - which campaigns and methodologies there are, or how to do something in the tool.
 
-The assistant reads the workspace with the same calculations as its modules, answers with tables when they help, says how it calculated every figure and proposes the next questions to ask.
+The assistant reads the workspace with the same calculations as its modules, answers with tables and charts when they help, says how it calculated every figure and proposes the next questions to ask.
 
 > [!IMPORTANT]
 > **No customer name leaves the server.** Before a question, the workspace context or the result of a calculation is sent to the AI engine, every name of an operator, vendor, region, cluster, city, campaign, methodology, workspace or user is replaced by a code (`OP1`, `VN2`, `RG3`, `CL4`, `CT5`, `CP6`, `MT7`, `WS1`, `US1`), also in the words of your question and inside identifiers (`OP1_Voice`). The engine reasons on the codes; the tool puts the real names back in the answer you read. Only codes, figures, dates, the words of the question and the values a calculation needs (such as JOIN_IDs, KPI values or site IDs, at most 200 rows of a query) travel. Coordinates, subscriber identifiers (IMSI, IMEI, MSISDN, dialled number), IP addresses and the paths of the files never do: no table of the assistant holds them. A long list of an answer is shown by the tool itself, without passing through the engine. **What was sent**, below every answer, shows exactly what the engine received and what it replied.
@@ -31,6 +32,7 @@ assistant
 | --- | --- |
 | Ask a question | [Open section](#ask-a-question) |
 | Read an answer | [Open section](#read-an-answer) |
+| Charts | [Open section](#charts) |
 | What the assistant can read | [Open section](#what-the-assistant-can-read) |
 | Privacy: the names sent as codes | [Open section](#privacy-the-names-sent-as-codes) |
 | The glossary of the workspace | [Open section](#the-glossary-of-the-workspace) |
@@ -53,13 +55,15 @@ Ask as you would ask a colleague, for example:
 - *Comment globally on the scoring of 2026-Q3 against 2026-Q2 for Vodafone and EE, by Vendor.*
 - *Comment on the RSRP and SINR of each vendor in the latest campaign (Network Insights).*
 - *Analyse the first chart of the first PPT Design and give me your comments.*
+- *Draw a chart with the scoring of each operator of the latest campaign.*
+- *Show the charts of the second slide of the first PPT Design.*
 - *How do I create a Saved Filter that follows the latest campaign?*
 
 A quarter (2026-Q3) stands for the campaign of that quarter; when the quarter has an NSA and an SA campaign, the assistant answers for the NSA one and says that the SA one exists, or answers both. When a question can be read in ways that change the answer, it asks one short question back instead of guessing. Follow-up questions keep the context of the conversation (*and in SA?*).
 
 ## Read an answer
 
-Each answer starts with the direct answer and then the detail, with its tables. Each table says how many rows it has and has **Download CSV**, which saves it as a CSV file that Excel opens. A long table, such as a list of JOIN_IDs, scrolls inside the answer with its header in sight. The tool fills a table of a query result itself, with every row of the result (up to 5,000), so the engine never copies, cuts or changes a list. Below the answer:
+Each answer starts with the direct answer and then the detail, with its [charts](#charts) and tables. Each table says how many rows it has and has **Download CSV**, which saves it as a CSV file that Excel opens. A long table, such as a list of JOIN_IDs, scrolls inside the answer with its header in sight. The tool fills a table of a query result itself, with every row of the result (up to 5,000), so the engine never copies, cuts or changes a list. Below the answer:
 
 - **Follow-up questions**: the next questions the assistant proposes; select one to ask it.
 - The engine, its model, how long the answer took and the tokens it used.
@@ -70,6 +74,21 @@ Each answer starts with the direct answer and then the detail, with its tables. 
 
 > [!TIP]
 > **Every figure is checked.** Every figure of an answer must come from the results of the tools: differences, shares and ratios are calculated by the tool, not by the engine. When the engine writes a figure that is in no result, it is asked once to correct it; if it cannot, the answer shows a warning with the figures that could not be traced.
+
+## Charts
+
+Ask for a chart (*draw*, *plot*, *show a chart of…*) and the answer shows it above its tables; the assistant also adds one when a chart says more than a table, such as the points of several operators. The charts are drawn by the same chart painter as PPT Designer and Network Insights: hover a bar, a point or a slice to read its value, drag a rectangle to zoom, select a legend entry to hide its series. Above each chart, **Expand** opens it larger and **Download PNG** saves it as a picture.
+
+The engine never gives the figures of a chart: it only names the data the tools gave for the question and how to draw it, and the tool draws it from that data, with the real names. A chart can show:
+
+| Chart | What it draws |
+| --- | --- |
+| Scoring | A result of the scoring tool as Scoring & GAP Analysis shows it, in the colours of the Operator Maps and the order of their operators: the points of each group (by the split asked, such as Vendor or Region), the points per environment or per category, the GAP to the reference operator, the points of each operator over several campaigns (a trend) or the KPIs that lose most points. |
+| PPT Designer | A chart of a Design read for the question, exactly as the viewer of the Design draws it (its chart type, format, colours and legend), named after its Design and slide. |
+| Query | The rows of a query result: the categories of some columns, the values of others, a bar, line or pie per value of a column (one line per operator over the campaigns, for example). |
+| Table | A table of the answer (whose figures are checked as those of the text), as bars, horizontal bars, lines or a pie. |
+
+An answer has up to four charts, and a chart up to 160 bars or 24 lines. A chart that cannot be drawn (a column the data does not have, a trend of one campaign) is sent back to the engine once to correct it; if it still cannot be drawn, the answer shows a warning with the reason. The charts are kept with the answer and drawn again when the conversation is opened.
 
 ## What the assistant can read
 
@@ -85,7 +104,7 @@ The assistant only reads; it changes nothing in the workspace. When asked to cha
 | Query | One read-only SQL query (DuckDB) for any other question, over these tables: **nq_calls** (one row per Non-Qualified Call, as the list of the module shows it, with its follow-up, DT Analyzer RCA, scoring impact, priority, queue and its Hotspot, Time-Window and Cluster: their IDs `H-…`, `T-…`, `C-…` and how many calls each holds); **cdr_data**, **cdr_voice** and **cdr_speech** (every row of the CDRs, from their columnar copies); **cdrs** (the CDRs). It lists calls or tests, counts, averages, percentiles and distributions by any column, and joins the calls with the rows of their CDRs. Only one SELECT runs, on those tables only; it cannot change anything or read any file. It stops after 90 seconds and keeps up to 5,000 rows. |
 | Columns | The columns of each table of the query, with what each column of nq_calls holds, so the engine finds the fields it needs among the hundreds of the CDRs. |
 | Network Insights | The analysis of [Network Insights](network-insights.md) as its page shows it (the stored one when it was made before), for the campaigns, NR Mode, technology (LTE, NR or both), grouping (Operator, Vendor, Region…) and filters of the question: the RSRP and SINR of each group with their change against the previous campaign, the Key Findings with their headlines, and on request the spectrum, bandwidths, latency, NR carriers and serving cells. |
-| PPT Designer | The Designs of [PPT Designer](ppt-designer.md) in the order of their library, the slides of one with their charts, and the charts of up to four slides read as the [Auto comments](ppt-designer.md) read them: the value of every group of each chart with its samples, which direction is better and the comments the rules write. The Design is prepared as its viewer prepares it, with its saved selection and filters. |
+| PPT Designer | The Designs of [PPT Designer](ppt-designer.md) in the order of their library, the slides of one with their charts, and the charts of up to four slides read as the [Auto comments](ppt-designer.md) read them: the value of every group of each chart with its samples, which direction is better and the comments the rules write. The Design is prepared as its viewer prepares it, with its saved selection and filters, and any of its charts can be [drawn in the answer](#charts). |
 | Help | The passages of this Help that best answer a question about the tool. |
 | Calculator | Differences, shares and ratios of figures of the results. |
 
@@ -119,4 +138,4 @@ The assistant answers with the AI engines a super-admin enables in **Super Admin
 
 ## App Events
 
-Every action is recorded in App Events (module AI Assistant): each question (with its conversation, engine and text), each answer (its duration, steps, the tools used with their duration and errors, the tokens, the size of what was sent and any figure that could not be traced), each failed or stopped question with its reason, the feedback, the suggestions and the changes of the glossary, and the conversations renamed and deleted.
+Every action is recorded in App Events (module AI Assistant): each question (with its conversation, engine and text), each answer (its duration, steps, the tools used with their duration and errors, the tokens, the size of what was sent any figure that could not be traced and the charts it drew), each failed or stopped question with its reason, the feedback, the suggestions and the changes of the glossary, and the conversations renamed and deleted.
