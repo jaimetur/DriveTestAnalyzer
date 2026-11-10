@@ -244,6 +244,8 @@
   </div>
   {% if user and not embedded_template_editor and not embedded_preview %}
   {# Back to the top of the page, shown once the page is scrolled down, in the colour of its module. #}
+  {% if user and not embedded_template_editor and not embedded_preview %}{# Small screens: the modules the user opens most, and the menu, at the bottom (app.css, app.js). #}
+  <nav class="mobile-bottom-nav" data-mobile-bottom-nav aria-label="Modules"></nav>{% endif %}
   <button type="button" class="back-to-top" data-back-to-top title="Back to the top of the page" aria-label="Back to the top of the page" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="back-to-top-lead" d="m5 12 7-7 7 7"/><path class="back-to-top-trail" d="m5 19 7-7 7 7"/></svg></button>
   <div id="background-task-panels" class="background-task-panels" aria-live="polite" aria-label="Background tasks" hidden>
     <div class="background-task-dock background-task-dock-other" data-background-task-dock="other"></div>

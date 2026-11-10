@@ -6573,6 +6573,47 @@ function setupMobileMenu() {
     document.documentElement.classList.toggle('has-mobile-menu-open', open);
     if (open) close.focus();
   };
+
+  // The bar at the bottom: the four modules this user opens most on this device (those of the first tabs until there are
+  // visits to count), always with the one open, and the menu. Each keeps the icon and the colour of its tab.
+  const bottomNav = document.querySelector('[data-mobile-bottom-nav]');
+  if (bottomNav) {
+    const VISITS_KEY = 'drivetest-analyzer:module-visits';
+    const tabs = [...document.querySelectorAll('.module-tabs-primary a.module-tab[href]')]
+      .filter((tab) => !tab.classList.contains('module-tab-disabled'));
+    let visits = {};
+    try { visits = JSON.parse(window.localStorage.getItem(VISITS_KEY) || '{}') || {}; } catch (_error) { visits = {}; }
+    const opened = tabs.find((tab) => tab.classList.contains('active'));
+    if (opened) {
+      const path = opened.getAttribute('href');
+      visits[path] = (Number(visits[path]) || 0) + 1;
+      try { window.localStorage.setItem(VISITS_KEY, JSON.stringify(visits)); } catch (_error) { /* Counted for this page only. */ }
+    }
+    const ranked = tabs.map((tab, position) => ({tab, position, count: Number(visits[tab.getAttribute('href')]) || 0}))
+      .sort((left, right) => right.count - left.count || left.position - right.position);
+    const chosen = ranked.slice(0, 4);
+    if (opened && !chosen.some((entry) => entry.tab === opened)) chosen[chosen.length - 1] = ranked.find((entry) => entry.tab === opened);
+    const items = chosen.sort((left, right) => left.position - right.position).map(({tab}) => {
+      const link = document.createElement('a');
+      link.href = tab.getAttribute('href');
+      const accentColour = getComputedStyle(tab).getPropertyValue('--tab-accent').trim();
+      if (accentColour) link.style.setProperty('--tab-accent', accentColour);
+      if (tab === opened) { link.classList.add('is-active'); link.setAttribute('aria-current', 'page'); }
+      const label = document.createElement('span');
+      label.textContent = (tab.querySelector('.module-tab-label-mobile')?.textContent || tab.textContent || '').trim();
+      link.title = tab.title || label.textContent;
+      const tabIcon = tab.querySelector('svg.module-tab-icon')?.cloneNode(true);
+      tabIcon?.removeAttribute('class');
+      link.append(...(tabIcon ? [tabIcon] : []), label);
+      return link;
+    });
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.title = 'Every module and section';
+    more.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>Menu</span>';
+    more.addEventListener('click', () => setOpen(true));
+    if (items.length) bottomNav.replaceChildren(...items, more);
+  }
   toggle.addEventListener('click', () => setOpen(true));
   close.addEventListener('click', () => {
     setOpen(false);
@@ -12318,6 +12359,20 @@ if (queueNode) {
     }
   };
 
+  const PHONE_SCREEN = '(max-width: 640px)';
+  // A panel moved from its place keeps the top it was left at: when it grows (expanded with +, more tasks) or the window
+  // gets shorter, it is brought back up so it never ends below the screen (moved while minimized at the bottom of a
+  // phone, + opened it out of sight).
+  const keepMovedPanelsInView = () => {
+    root.querySelectorAll('.background-task-panel.is-detached').forEach((panel) => {
+      const height = panel.getBoundingClientRect().height;
+      if (!height) return;
+      const top = Math.max(8, Math.min(parseFloat(panel.style.top) || 0, window.innerHeight - height - 8));
+      if (`${top}px` !== panel.style.top) panel.style.top = `${top}px`;
+    });
+  };
+  window.addEventListener('resize', keepMovedPanelsInView);
+
   const createTaskPanel = (group) => {
     const panel = document.createElement('section');
     const panelKind = group.dock === 'export' ? 'export' : (group.workspace_id === '__server__' ? 'system' : (group.is_active ? 'active' : 'other'));
@@ -12333,6 +12388,7 @@ if (queueNode) {
     minimize.setAttribute('aria-label', 'Minimize background tasks');
     const setMinimized = (value) => {
       panel.classList.toggle('is-minimized', value);
+      window.requestAnimationFrame(keepMovedPanelsInView);
       minimize.textContent = value ? '+' : '−';
       minimize.title = value ? 'Expand background tasks' : 'Minimize background tasks';
       minimize.setAttribute('aria-label', minimize.title);
@@ -12365,6 +12421,14 @@ if (queueNode) {
     };
     const applyPosition = (position) => {
       if (!position || !Number.isFinite(position.left) || !Number.isFinite(position.top)) return restorePosition();
+      // On a phone the panel stays in its place at the bottom: there is no room to move it, and a touch on its header
+      // moved it without meaning to (the position kept for a larger screen waits for one).
+      if (window.matchMedia(PHONE_SCREEN).matches) {
+        panel.classList.remove('is-detached');
+        panel.style.left = '';
+        panel.style.top = '';
+        return;
+      }
       panel.classList.add('is-detached');
       const edgeGutter = 3.25 * parseFloat(window.getComputedStyle(document.documentElement).fontSize);
       const panelWidth = panel.getBoundingClientRect().width;
@@ -12388,6 +12452,7 @@ if (queueNode) {
     panel.addEventListener('pointerdown', (event) => {
       if (
         event.button !== 0
+        || window.matchMedia(PHONE_SCREEN).matches
         || !event.target.closest('.background-task-panel-header')
         || event.target.closest('button, a, input, select, textarea, label')
       ) return;
@@ -12654,6 +12719,7 @@ if (queueNode) {
     activeDock.replaceChildren(...activeGroups.map(refreshPanel), ...exportGroups.map(refreshPanel));
     otherDock.replaceChildren(...otherGroups.map(refreshPanel));
     systemDock.replaceChildren(...systemGroups.map(refreshPanel));
+    keepMovedPanelsInView();
     root.querySelectorAll('[data-restore-scroll-top]').forEach((list) => {
       const restoredScrollTop = Number(list.dataset.restoreScrollTop) || 0;
       list.dataset.restoringScroll = 'true';

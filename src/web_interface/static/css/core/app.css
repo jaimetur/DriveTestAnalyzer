@@ -5671,10 +5671,13 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 }
 
 /* ── Visual refresh ────────────────────────────────────────────────────────────────────────────────────────────────────
-   A calmer, more professional look on every screen. The colours that tell the modules, the kinds of data, the roles and
-   the themes apart stay; what changes is around them: a plain neutral page in place of the coloured glows, flat surfaces
-   with a fine border and a short shadow in place of the long floating ones, the font of the system (the fonts named
-   before were never loaded) and a header of quiet chips, tinted with the colour they had, in place of glowing pills.
+   A modern look for every screen. The colours that tell the modules, the kinds of data, the roles and the themes apart
+   stay; what changes is the frame around them:
+   - a plain neutral page in place of the coloured glows, and the font of the system (those named before were never loaded);
+   - a dark application bar with the name of the tool, the active workspace and the user;
+   - the tabs of the modules as one bar of pills, the open module filled with its colour, in place of folder tabs;
+   - flat white surfaces with a short shadow in place of the long floating ones;
+   - on a phone, the application bar on two short lines and a bar at the bottom with the modules (app.js).
    It comes last, so it applies over the rules above; change those, not this layer, for anything it does not name. */
 :root {
   --bg: #f4f2ec;
@@ -5685,57 +5688,121 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
   --line-strong: rgba(25, 42, 53, .17);
   --shadow: 0 1px 2px rgba(18, 32, 43, .05), 0 10px 28px rgba(18, 32, 43, .07);
   --shadow-strong: 0 2px 6px rgba(18, 32, 43, .07), 0 18px 44px rgba(18, 32, 43, .11);
-  --radius: 14px;
+  --radius: 16px;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --app-bar: linear-gradient(115deg, #0b1d2b 0%, #10344a 52%, #0c5d5a 100%);
+  --bottom-nav: 0px;
 }
 body { font-family: var(--font-ui); background-attachment: fixed; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 .topbar h1, h2, h3, .metric-card strong, .score-item strong { font-family: var(--font-ui); letter-spacing: -.012em; }
 
-/* The header: the name of the tool with its version, and the workspace, the user and Logout as chips on one line. */
-.topbar { align-items: center; margin-bottom: 1.1rem; }
-.topbar .eyebrow { letter-spacing: .12em; font-size: .7rem; color: var(--muted); }
+/* The application bar. */
+.topbar { align-items: center; margin-bottom: .8rem; padding: .7rem 1.1rem; border-radius: 16px; background: var(--app-bar); color: #fff; box-shadow: 0 10px 28px rgba(11, 29, 43, .22); }
+.topbar .eyebrow { margin-bottom: .2rem; letter-spacing: .14em; font-size: .66rem; color: rgba(255, 255, 255, .6); }
+.topbar .brand-lockup { gap: .7rem; }
+.topbar .brand-lockup h1 { color: #fff; font-size: 1.55rem; }
+.topbar .brand-mark { width: 40px; height: 40px; padding: 4px; border-radius: 11px; background: #fff; filter: none; }
 .topnav { align-self: center; margin-top: 0; gap: .5rem; }
-.topnav .topnav-link { padding: .5rem .9rem; box-shadow: none; font-size: .92rem; }
-.title-badge { min-width: 0; padding: .3rem .7rem; border-color: color-mix(in srgb, #6941a4 26%, transparent); background: color-mix(in srgb, #6941a4 9%, #fff); color: #5a3794; font-weight: 650; box-shadow: none; }
-.title-badge:hover { background: color-mix(in srgb, #6941a4 16%, #fff); color: #46287a; filter: none; }
-.topnav .topnav-workspace-badge { border-color: color-mix(in srgb, var(--brand) 32%, transparent); background: color-mix(in srgb, var(--brand) 9%, #fff); color: #0a5753; box-shadow: none; }
-.topnav .topnav-user-badge-admin { border-color: color-mix(in srgb, #c84a4a 32%, transparent); background: color-mix(in srgb, #c84a4a 9%, #fff); color: #a03434; box-shadow: none; }
-.topnav .topnav-user-badge-super-admin { border-color: color-mix(in srgb, #5b3aa8 32%, transparent); background: color-mix(in srgb, #5b3aa8 9%, #fff); color: #4b2f8f; box-shadow: none; }
-.topnav .topnav-user-badge-user { border-color: color-mix(in srgb, #0b7a75 32%, transparent); background: color-mix(in srgb, #0b7a75 9%, #fff); color: #0a5753; box-shadow: none; }
-.topnav .topnav-user-badge[style*="--user-badge-color"] { border-color: color-mix(in srgb, var(--user-badge-color) 34%, transparent); background: color-mix(in srgb, var(--user-badge-color) 10%, #fff); color: color-mix(in srgb, var(--user-badge-color) 72%, #000); box-shadow: none; }
-.topnav-user-control:hover .topnav-user-badge, .topnav-user-control:focus-visible .topnav-user-badge { filter: none; transform: none; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 14%, transparent); }
-.topnav .topnav-link-logout { border-color: var(--line-strong); background: transparent; color: #8a3b3b; }
-.topnav .topnav-link-logout:hover { background: color-mix(in srgb, #c84a4a 9%, #fff); }
+.topnav .topnav-link { padding: .48rem .9rem; box-shadow: none; font-size: .9rem; }
+.title-badge { min-width: 0; padding: .28rem .7rem; border-color: rgba(255, 255, 255, .24); background: rgba(255, 255, 255, .12); color: #fff; font-weight: 650; box-shadow: none; }
+.title-badge:hover { background: rgba(255, 255, 255, .2); color: #fff; filter: none; }
+.topnav .topnav-workspace-badge { border-color: rgba(255, 255, 255, .26); background: rgba(255, 255, 255, .1); color: #fff; box-shadow: none; }
+.topnav .topnav-workspace-badge:hover { background: rgba(255, 255, 255, .18); }
+/* The user: a chip with a dot of the colour of its role (or of the colour chosen for it). */
+.topnav .topnav-user-badge { --role: #1aa29b; gap: .5rem; border-color: rgba(255, 255, 255, .26); background: rgba(255, 255, 255, .1); color: #fff; box-shadow: none; }
+.topnav .topnav-user-badge::before { content: ''; flex: 0 0 auto; width: .6rem; height: .6rem; border-radius: 50%; background: var(--role); box-shadow: 0 0 0 2px rgba(255, 255, 255, .28); }
+.topnav .topnav-user-badge-admin { --role: #f0796c; border-color: rgba(255, 255, 255, .26); background: rgba(255, 255, 255, .1); color: #fff; box-shadow: none; }
+.topnav .topnav-user-badge-super-admin { --role: #a98cf0; border-color: rgba(255, 255, 255, .26); background: rgba(255, 255, 255, .1); color: #fff; box-shadow: none; }
+.topnav .topnav-user-badge-user { --role: #3fd0c5; border-color: rgba(255, 255, 255, .26); background: rgba(255, 255, 255, .1); color: #fff; box-shadow: none; }
+.topnav .topnav-user-badge[style*="--user-badge-color"] { --role: var(--user-badge-color); border-color: rgba(255, 255, 255, .26); background: rgba(255, 255, 255, .1); color: #fff; box-shadow: none; }
+.topnav-user-control:hover .topnav-user-badge, .topnav-user-control:focus-visible .topnav-user-badge { filter: none; transform: none; background: rgba(255, 255, 255, .18); box-shadow: none; }
+.topnav .topnav-link-logout { border-color: rgba(255, 255, 255, .26); background: transparent; color: #ffd4d0; }
+.topnav .topnav-link-logout:hover { background: rgba(240, 121, 108, .22); color: #fff; }
 
-/* The tabs of the modules: flat, each in its colour, without the shadows under them. */
-.module-tab, .module-tab.active { box-shadow: none; }
-.module-tab { border-radius: 11px 11px 0 0; }
+/* The tabs of the modules: one bar of pills. Each keeps the colour of its module: in its icon, and filling it when open. */
+.module-tabs { gap: .25rem; margin: 0 0 .9rem; padding: .4rem .45rem; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: var(--shadow); }
+.module-tabs.is-stuck { border-color: transparent; border-radius: 0; }
+.module-tabs-primary, .module-tabs-secondary { gap: .25rem; padding-left: 0; padding-right: 0; }
+.module-tabs-secondary { padding-bottom: .35rem; border-bottom: 1px solid var(--line); }
+.module-tab, .module-tab.active { margin-bottom: 0; border-radius: 10px; box-shadow: none; }
+.module-tabs-primary .module-tab, .module-tabs-secondary .module-tab { padding: .5rem .8rem; font-size: .92rem; }
+.module-tabs-primary .module-tab:not(.active) { border-color: transparent; background: transparent; box-shadow: none; color: #33485a; }
+.module-tabs-primary .module-tab:not(.active):not(.module-tab-disabled):hover { border-color: transparent; background: color-mix(in srgb, var(--tab-accent, #8a99a6) 11%, #fff); box-shadow: none; transform: none; }
+.module-tabs-primary .module-tab.active { box-shadow: 0 4px 12px color-mix(in srgb, var(--tab-accent, #0b7a75) 28%, transparent); }
+.module-tabs-secondary .module-tab { padding: .38rem .7rem; font-size: .84rem; }
 
 /* The header of a module keeps its colour and its drawing, with a title of the size of a heading instead of a poster. */
 .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) { padding-top: 1.15rem; padding-bottom: 1.15rem; }
 .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) h2 { margin: .2rem 0 .4rem; font-size: clamp(1.45rem, 1.1rem + 1vw, 2rem) !important; line-height: 1.18; }
 .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) .lede { font-size: .95rem !important; line-height: 1.45; }
 
+/* The fields say where the keyboard is with a ring of the colour of the tool. */
+:is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]), select, textarea):focus-visible { outline: 2px solid color-mix(in srgb, var(--brand) 55%, transparent); outline-offset: 1px; border-color: var(--brand); }
+
+/* The bar of the modules at the bottom of a phone (app.js builds it from the tabs the user has). */
+.mobile-bottom-nav { display: none; }
+
+@media (max-width: 640px), (orientation: landscape) and (max-width: 1024px) and (max-height: 600px) {
+  :root { --bottom-nav: calc(3.5rem + env(safe-area-inset-bottom, 0px)); }
+  body { padding-bottom: var(--bottom-nav); }
+  .mobile-bottom-nav:not(:empty) { position: fixed; right: 0; bottom: 0; left: 0; z-index: 8300; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: stretch;
+    box-sizing: border-box; height: var(--bottom-nav); padding: .25rem .3rem env(safe-area-inset-bottom, 0px); border-top: 1px solid var(--line-strong); background: rgba(255, 255, 255, .96);
+    box-shadow: 0 -6px 20px rgba(18, 32, 43, .08); backdrop-filter: blur(12px); }
+  .mobile-bottom-nav :is(a, button) { --item: var(--tab-accent, #33485a); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .12rem; min-width: 0; min-height: 0; margin: 0; padding: .2rem .1rem;
+    border: 0; border-radius: 12px; background: transparent; box-shadow: none; color: #5a6b78; font: inherit; font-size: .64rem; font-weight: 700; line-height: 1.1; text-decoration: none; }
+  .mobile-bottom-nav :is(a, button) svg { width: 1.4rem; height: 1.4rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .mobile-bottom-nav :is(a, button) span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-bottom-nav .is-active { background: color-mix(in srgb, var(--item) 13%, #fff); color: color-mix(in srgb, var(--item) 86%, #000); }
+  /* With the bar at the bottom (which has the menu), the bar of the menu at the top is not needed: the header of the
+     module names it, and the bar of its sections is what stays at the top of the page. */
+  body:has(.mobile-bottom-nav:not(:empty)) main > .mobile-menu-bar { display: none; }
+  /* What floats at the bottom of the page stands above the bar. */
+  .back-to-top { bottom: var(--back-to-top-bottom, calc(.6rem + var(--bottom-nav))); }
+  .unassigned-values-card { bottom: var(--unassigned-values-card-bottom, calc(.5rem + var(--bottom-nav))); }
+  .background-task-dock { bottom: calc(.5rem + var(--bottom-nav)); }
+}
+
 @media (max-width: 640px) {
-  /* A phone: the workspace and the user share a line under the name of the tool, and Logout is a small chip beside it. */
-  .shell { padding: .6rem .55rem 1rem; }
-  .topbar { gap: .45rem; margin-bottom: .6rem; }
+  /* A phone: the application bar is two short lines, the name of the tool with its version and, under it, the workspace
+     with the user and Logout. */
+  .shell { padding: .55rem .55rem 1rem; }
+  .topbar { gap: .45rem; margin-bottom: .55rem; padding: .6rem .65rem .65rem; border-radius: 14px; }
   .topbar .brand-lockup { gap: .5rem; }
-  .topbar .brand-lockup h1 { font-size: 1.3rem; }
-  .topbar .brand-mark { width: 30px; height: 30px; }
-  .title-badge { padding: .2rem .55rem; font-size: .7rem; }
-  .topnav { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .35rem .4rem; width: 100%; }
-  .topnav .topnav-link { min-height: 0; padding: .38rem .7rem; font-size: .8rem; }
-  .topnav .topnav-workspace-switcher { grid-column: 1 / -1; min-width: 0; }
-  .topnav .topnav-workspace-badge { min-width: 0; }
-  .topnav .topnav-user-control { min-width: 0; }
-  .topnav .topnav-user-control .topnav-user-badge { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar .brand-lockup h1 { font-size: 1.2rem; }
+  .topbar .brand-mark { width: 30px; height: 30px; padding: 3px; border-radius: 9px; }
+  .title-badge { padding: .18rem .5rem; font-size: .66rem; }
+  .topnav { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: .35rem; width: 100%; }
+  .topnav .topnav-link { min-height: 0; padding: .36rem .65rem; font-size: .76rem; }
+  .topnav .topnav-workspace-switcher { min-width: 0; }
+  .topnav .topnav-workspace-badge { min-width: 0; gap: .35rem; }
+  /* (The chip of the workspace shows its name and size: there is no room for "Active workspace:".) */
+  .topnav .topnav-workspace-badge > span:first-child { min-width: 0; overflow: hidden; font-size: 0; text-overflow: ellipsis; white-space: nowrap; }
+  .topnav .topnav-workspace-badge > span:first-child > span { font-size: .76rem; }
+  .topnav .topnav-workspace-badge [data-header-active-workspace-size] { display: none; }
+  .topnav .topnav-user-control { min-width: 0; max-width: 11.5rem; }
+  .topnav .topnav-user-badge { justify-content: flex-start; }
+  .topnav .topnav-user-control .topnav-user-badge { max-width: 100%; }
+  .topnav .topnav-user-control .topnav-user-badge > :not(:first-child), .topnav .topnav-user-badge { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-menu-bar { min-height: 2.9rem; border-radius: 12px; box-shadow: 0 1px 2px rgba(18, 32, 43, .06); }
   .mobile-menu-toggle { min-height: 2.2rem; background: color-mix(in srgb, var(--mobile-menu-accent) 82%, #000); box-shadow: none; }
-  /* Beside the card of the unassigned values, the cards of the background tasks are a third of the screen wide: the name
-     of their workspace goes under their buttons, on lines of whole words (beside them it had a letter per line). */
-  .background-task-panels[data-with-unassigned-card] .background-task-panel-header { flex-wrap: wrap; margin-right: 0; padding-top: 2rem; }
-  .background-task-panels[data-with-unassigned-card] .background-task-panel-header:has(.background-task-stop-all-button) { padding-top: 4rem; }
-  .background-task-panels[data-with-unassigned-card] .background-task-workspace { flex: 1 1 100%; font-size: .66rem; letter-spacing: .02em; overflow-wrap: break-word; }
-  .background-task-panels[data-with-unassigned-card] .background-task-count { margin: .25rem 0 0; }
+  /* The background tasks beside the card of the unassigned values. With the tasks of one place (the open workspace, as
+     a rule) their panel takes the row, and the card, minimized, is a badge between it and the button back to the top;
+     opened, the card is as wide as the screen, over the panels. With the tasks of two or three places each panel is a
+     third of the screen wide: the name of its workspace goes under its buttons, on lines of whole words (beside them
+     it had a letter per line). */
+  .background-task-panels[data-with-unassigned-card]:not(.has-both-sides, .has-three-docks) .background-task-dock { right: .5rem; left: auto; width: calc(100vw - 9.4rem); transform: none; }
+  .unassigned-values-card.is-collapsed[data-in-task-row] { left: 3.45rem; right: auto; width: auto; transform: none; padding: .3rem .4rem; border-radius: 999px; }
+  .unassigned-values-card.is-collapsed[data-in-task-row] .unassigned-values-card-header { flex-wrap: nowrap; gap: .35rem; }
+  .unassigned-values-card.is-collapsed[data-in-task-row] .unassigned-values-card-title { display: none; }
+  .unassigned-values-card[data-in-task-row]:not(.is-collapsed) { right: .5rem; left: .5rem; width: auto; transform: none; padding: .7rem .8rem; }
+  .unassigned-values-card[data-in-task-row]:not(.is-collapsed) .unassigned-values-card-title { order: 0; flex-basis: auto; font-size: .92rem; }
+  .background-task-panels[data-with-unassigned-card]:is(.has-both-sides, .has-three-docks) .background-task-panel-header { flex-wrap: wrap; margin-right: 0; padding-top: 2.4rem; }
+  .background-task-panels[data-with-unassigned-card]:is(.has-both-sides, .has-three-docks) .background-task-panel-header:has(.background-task-stop-all-button) { padding-top: 4.2rem; }
+  .background-task-panels[data-with-unassigned-card]:is(.has-both-sides, .has-three-docks) .background-task-workspace { flex: 1 1 100%; font-size: .66rem; letter-spacing: .02em; overflow-wrap: break-word; }
+  .background-task-panels[data-with-unassigned-card]:is(.has-both-sides, .has-three-docks) .background-task-count { margin: .25rem 0 0; }
+  /* The panels of the background tasks stay in their place on a phone (app.js): their header scrolls the page like the
+     rest of it, and the buttons that minimize them and return them to their place are large enough for a finger. */
+  .background-task-panel-header { touch-action: auto; }
+  .background-task-pin-button { display: none; }
+  .background-task-minimize-button { top: .4rem; right: .45rem; width: 1.9rem; height: 1.9rem; font-size: 1.35rem; }
 }
