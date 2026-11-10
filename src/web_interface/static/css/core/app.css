@@ -5753,6 +5753,12 @@ body { font-family: var(--font-ui); background-attachment: fixed; -webkit-font-s
   .mobile-bottom-nav :is(a, button) svg { width: 1.4rem; height: 1.4rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .mobile-bottom-nav :is(a, button) span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-bottom-nav .is-active { background: color-mix(in srgb, var(--item) 13%, #fff); color: color-mix(in srgb, var(--item) 86%, #000); }
+  /* The list of the builders that Builders opens, above the bar. */
+  .mobile-bottom-nav-sheet:not([hidden]) { position: fixed; right: .5rem; bottom: calc(var(--bottom-nav) + .4rem); z-index: 10002; display: grid; gap: .2rem; min-width: 12rem; padding: .35rem;
+    border: 1px solid var(--line-strong); border-radius: 14px; background: #fff; box-shadow: var(--shadow-strong); }
+  .mobile-bottom-nav-sheet a { display: flex; align-items: center; gap: .6rem; padding: .7rem .8rem; border-radius: 10px; color: #33485a; font-size: .92rem; font-weight: 750; text-decoration: none; }
+  .mobile-bottom-nav-sheet a.is-active, .mobile-bottom-nav-sheet a:hover { background: color-mix(in srgb, var(--tab-accent, #b85b20) 12%, #fff); color: color-mix(in srgb, var(--tab-accent, #b85b20) 85%, #000); }
+  .mobile-bottom-nav-sheet svg { flex: 0 0 auto; width: 1.2rem; height: 1.2rem; fill: none; stroke: var(--tab-accent, currentColor); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   /* With the bar at the bottom (which has the menu), the bar of the menu at the top is not needed: the header of the
      module names it, and the bar of its sections is what stays at the top of the page. */
   body:has(.mobile-bottom-nav:not(:empty)) main > .mobile-menu-bar { display: none; }
@@ -5805,4 +5811,10 @@ body { font-family: var(--font-ui); background-attachment: fixed; -webkit-font-s
   .background-task-panel-header { touch-action: auto; }
   .background-task-pin-button { display: none; }
   .background-task-minimize-button { top: .4rem; right: .45rem; width: 1.9rem; height: 1.9rem; font-size: 1.35rem; }
+  /* Every module in the bar at the bottom: two rows of six when they do not fit in one, the menu last in the second. */
+  :root[data-bottom-nav-rows="2"] { --bottom-nav: calc(6.7rem + env(safe-area-inset-bottom, 0px)); }
+  .mobile-bottom-nav[data-rows="2"]:not(:empty) { grid-auto-flow: row; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); row-gap: .15rem; }
+  .mobile-bottom-nav[data-rows="2"] .mobile-bottom-nav-menu { grid-column: 6; }
+  .mobile-bottom-nav[data-rows="2"] :is(a, button) { gap: .08rem; font-size: .6rem; }
+  .mobile-bottom-nav[data-rows="2"] :is(a, button) svg { width: 1.25rem; height: 1.25rem; }
 }

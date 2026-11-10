@@ -5180,7 +5180,9 @@ def test_workspace_management_isolates_dataset_databases_and_remembers_last_open
             (item for item in app_module.workspace_registry.list() if item.name == 'Default - Copy'),
             None,
         )
-        if copied_workspace and copied_workspace.status == 'ready':
+        # (A new workspace is registered as ready an instant before its copy starts: the copy has ended when no background
+        # job is left.)
+        if copied_workspace and copied_workspace.status == 'ready' and app_module.BACKGROUND_TASK_SCHEDULER.is_idle:
             break
         time.sleep(0.02)
     assert copied_workspace is not None

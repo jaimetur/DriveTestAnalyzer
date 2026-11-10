@@ -6574,45 +6574,81 @@ function setupMobileMenu() {
     if (open) close.focus();
   };
 
-  // The bar at the bottom: the four modules this user opens most on this device (those of the first tabs until there are
-  // visits to count), always with the one open, and the menu. Each keeps the icon and the colour of its tab.
+  // The bar at the bottom: every main module the user has, in the order of their tabs, each with the icon and the colour
+  // of its tab, and the menu last. On a phone they are two rows of six when they do not fit in one (app.css), the menu
+  // at the end of the second; Builders opens a small list of its builders above the bar.
   const bottomNav = document.querySelector('[data-mobile-bottom-nav]');
   if (bottomNav) {
-    const VISITS_KEY = 'drivetest-analyzer:module-visits';
-    const tabs = [...document.querySelectorAll('.module-tabs-primary a.module-tab[href]')]
-      .filter((tab) => !tab.classList.contains('module-tab-disabled'));
-    let visits = {};
-    try { visits = JSON.parse(window.localStorage.getItem(VISITS_KEY) || '{}') || {}; } catch (_error) { visits = {}; }
-    const opened = tabs.find((tab) => tab.classList.contains('active'));
-    if (opened) {
-      const path = opened.getAttribute('href');
-      visits[path] = (Number(visits[path]) || 0) + 1;
-      try { window.localStorage.setItem(VISITS_KEY, JSON.stringify(visits)); } catch (_error) { /* Counted for this page only. */ }
-    }
-    const ranked = tabs.map((tab, position) => ({tab, position, count: Number(visits[tab.getAttribute('href')]) || 0}))
-      .sort((left, right) => right.count - left.count || left.position - right.position);
-    const chosen = ranked.slice(0, 4);
-    if (opened && !chosen.some((entry) => entry.tab === opened)) chosen[chosen.length - 1] = ranked.find((entry) => entry.tab === opened);
-    const items = chosen.sort((left, right) => left.position - right.position).map(({tab}) => {
-      const link = document.createElement('a');
-      link.href = tab.getAttribute('href');
+    const tabs = [...document.querySelectorAll('.module-tabs-primary > .module-tab:is(a[href], button[data-module-builders-trigger])')];
+    const tabLabel = (tab) => (tab.querySelector('.module-tab-label-mobile')
+      || tab.querySelector(':scope > span:not(.module-tab-label-desktop)'))?.textContent.trim() || tab.title || '';
+    const item = (tab, element) => {
       const accentColour = getComputedStyle(tab).getPropertyValue('--tab-accent').trim();
-      if (accentColour) link.style.setProperty('--tab-accent', accentColour);
-      if (tab === opened) { link.classList.add('is-active'); link.setAttribute('aria-current', 'page'); }
+      if (accentColour) element.style.setProperty('--tab-accent', accentColour);
+      if (tab.classList.contains('active')) { element.classList.add('is-active'); element.setAttribute('aria-current', 'page'); }
       const label = document.createElement('span');
-      label.textContent = (tab.querySelector('.module-tab-label-mobile')?.textContent || tab.textContent || '').trim();
-      link.title = tab.title || label.textContent;
+      label.textContent = tabLabel(tab);
+      element.title = label.textContent;
       const tabIcon = tab.querySelector('svg.module-tab-icon')?.cloneNode(true);
       tabIcon?.removeAttribute('class');
-      link.append(...(tabIcon ? [tabIcon] : []), label);
-      return link;
+      element.append(...(tabIcon ? [tabIcon] : []), label);
+      return element;
+    };
+    let sheet = null;
+    const closeSheet = () => { if (sheet) sheet.hidden = true; };
+    const items = tabs.map((tab) => {
+      if (tab.tagName === 'A') {
+        const link = document.createElement('a');
+        link.href = tab.getAttribute('href');
+        return item(tab, link);
+      }
+      // Builders: its builders (those of the menu of its tab) in a list above the bar.
+      const button = item(tab, document.createElement('button'));
+      button.type = 'button';
+      button.setAttribute('aria-haspopup', 'true');
+      button.setAttribute('aria-expanded', 'false');
+      sheet = document.createElement('nav');
+      sheet.className = 'mobile-bottom-nav-sheet';
+      sheet.hidden = true;
+      sheet.setAttribute('aria-label', button.title);
+      const accentColour = button.style.getPropertyValue('--tab-accent');
+      if (accentColour) sheet.style.setProperty('--tab-accent', accentColour);
+      sheet.append(...[...document.querySelectorAll('[data-module-builders-options] .module-config-group > a[href]')].map((builder) => {
+        const link = document.createElement('a');
+        link.href = builder.getAttribute('href');
+        if (builder.classList.contains('is-active')) link.classList.add('is-active');
+        const icon = builder.querySelector('svg')?.cloneNode(true);
+        const name = document.createElement('span');
+        name.textContent = builder.querySelector('span')?.textContent.trim() || '';
+        link.append(...(icon ? [icon] : []), name);
+        return link;
+      }));
+      document.body.append(sheet);
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        sheet.hidden = !sheet.hidden;
+        button.setAttribute('aria-expanded', String(!sheet.hidden));
+      });
+      document.addEventListener('click', (event) => {
+        if (!sheet.hidden && !sheet.contains(event.target)) { closeSheet(); button.setAttribute('aria-expanded', 'false'); }
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !sheet.hidden) { closeSheet(); button.setAttribute('aria-expanded', 'false'); button.focus(); }
+      });
+      return button;
     });
     const more = document.createElement('button');
     more.type = 'button';
+    more.className = 'mobile-bottom-nav-menu';
     more.title = 'Every module and section';
     more.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>Menu</span>';
-    more.addEventListener('click', () => setOpen(true));
-    if (items.length) bottomNav.replaceChildren(...items, more);
+    more.addEventListener('click', () => { closeSheet(); setOpen(true); });
+    if (items.length) {
+      const rows = items.length + 1 > 6 ? 2 : 1;
+      bottomNav.dataset.rows = String(rows);
+      document.documentElement.dataset.bottomNavRows = String(rows);
+      bottomNav.replaceChildren(...items, more);
+    }
   }
   toggle.addEventListener('click', () => setOpen(true));
   close.addEventListener('click', () => {
