@@ -96,6 +96,20 @@
   <link rel="icon" type="image/png" sizes="16x16" href="{{ static_path('img/favicon-16x16.png') }}?v={{ asset_version('img/favicon-16x16.png') }}">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ static_path('img/apple-touch-icon.png') }}?v={{ asset_version('img/apple-touch-icon.png') }}">
   <link rel="stylesheet" href="{{ static_path('css/core/app.css') }}?v={{ asset_version('css/core/app.css') }}">
+  {#- A module opened from the bar at the bottom of a phone returns to where it was left (app.js marks the tap for a few
+      seconds): the pages read window.pageReopened as they read a reload. -#}
+  <script>
+    (() => {
+      window.pageReopened = false;
+      try {
+        const mark = JSON.parse(window.sessionStorage.getItem('drivetest-analyzer:reopen') || 'null');
+        window.sessionStorage.removeItem('drivetest-analyzer:reopen');
+        window.pageReopened = Boolean(mark && mark.path === window.location.pathname && Date.now() - mark.at < 15000 && !window.location.hash);
+      } catch (_error) {
+        // Optional: without the session storage the module opens at its top.
+      }
+    })();
+  </script>
   <!-- Campaign labels and order of the active workspace, for every page script. -->
   <script id="campaign-map" type="application/json">{{ campaign_map | default({}) | tojson }}</script>
   <script src="{{ static_path('js/core/campaign_labels.js') }}?v={{ asset_version('js/core/campaign_labels.js') }}"></script>

@@ -67,7 +67,8 @@
     if (storedPresentationEffect && [...effectSelect.options].some(option => option.value === storedPresentationEffect)) effectSelect.value = storedPresentationEffect;
   } catch (_) { /* Local storage is optional. */ }
   const navigationEntry = performance.getEntriesByType?.('navigation')?.[0];
-  const restorePageState = navigationEntry?.type === 'reload';
+  // A reload, or the module opened again from the bar at the bottom of a phone (base.html), returns to where it was left.
+  const restorePageState = navigationEntry?.type === 'reload' || window.pageReopened === true;
   const designId = () => {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
     const bytes = new Uint8Array(16);

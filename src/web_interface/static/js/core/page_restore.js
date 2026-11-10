@@ -12,10 +12,10 @@
   // The key of a page: its view, the user and the workspace.
   const keyOf = (view, workspaceId) => ['drivetest-analyzer', view,
     encodeURIComponent(document.body.dataset.authenticatedUser || 'anonymous'), encodeURIComponent(workspaceId || 'unknown')].join(':');
-  // Only a reload (or Back and Forward) returns to the saved position; a section chosen in a menu (#section-…) opens the
-  // page there instead.
-  const reloaded = () => !window.location.hash
-    && ['reload', 'back_forward'].includes(window.performance.getEntriesByType?.('navigation')?.[0]?.type);
+  // Only a reload (or Back and Forward, or the module opened again from the bar at the bottom of a phone, base.html)
+  // returns to the saved position; a section chosen in a menu (#section-…) opens the page there instead.
+  const reloaded = () => !window.location.hash && (window.pageReopened === true
+    || ['reload', 'back_forward'].includes(window.performance.getEntriesByType?.('navigation')?.[0]?.type));
 
   function begin({key, notice, theme = ''}) {
     try {

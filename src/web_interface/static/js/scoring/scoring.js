@@ -201,9 +201,10 @@
   }
   const restoredScoringViewState = readScoringViewState();
   // A section chosen in a menu (#section-… or a Scoring Results tab) opens the page there instead, and only a reload (or
-  // Back and Forward) returns to the saved position: opening the module starts at its top.
+  // Back and Forward, or the module opened again from the bar at the bottom of a phone, base.html) returns to the saved
+  // position: opening the module otherwise starts at its top.
   let scoringViewScrollRestorePending = Number.isFinite(restoredScoringViewState.scrollY) && !window.location.hash
-    && ['reload', 'back_forward'].includes(window.performance.getEntriesByType?.('navigation')?.[0]?.type);
+    && (window.pageReopened === true || ['reload', 'back_forward'].includes(window.performance.getEntriesByType?.('navigation')?.[0]?.type));
   let scoringViewScrollRestoreStarted = false;
   let scoringViewScrollRestoring = false;
   // The page restores its own position, once its results are drawn.
@@ -521,10 +522,10 @@
   // The filters of the Saved Filter whose results are shown, for the area, operators and vendors in the chart and
   // table titles.
   let resultScopeFilters = {};
-  // Reloading the page keeps the selected results tab; opening the page again
-  // from another page always starts on Summary.
+  // Reloading the page (or opening it again from the bar at the bottom of a phone) keeps the selected results tab;
+  // opening the page again from another page starts on Summary.
   const pageReloaded = (() => {
-    try { return performance.getEntriesByType('navigation')[0]?.type === 'reload'; } catch { return false; }
+    try { return window.pageReopened === true || performance.getEntriesByType('navigation')[0]?.type === 'reload'; } catch { return false; }
   })();
   let activeResultTab = (pageReloaded && restoredScoringViewState.resultTab) || 'summary';
   // Insight selections (such as the KPI GAP Profile and Points Lost Map location and operators) are kept

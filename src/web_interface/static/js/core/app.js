@@ -4324,6 +4324,14 @@ function replaceLocation(url) {
   // The page opened again with its saved selection keeps the section chosen in a menu (#section-…).
   const target = new URL(url, window.location.href);
   if (!target.hash && window.location.hash && target.pathname === window.location.pathname) target.hash = window.location.hash;
+  // A module opened again from the bar at the bottom of a phone (base.html) still returns to where it was left.
+  if (window.pageReopened === true && target.pathname === window.location.pathname && !target.hash) {
+    try {
+      window.sessionStorage.setItem('drivetest-analyzer:reopen', JSON.stringify({path: target.pathname, at: Date.now()}));
+    } catch (_error) {
+      // Optional: the module opens at its top.
+    }
+  }
   window.location.replace(target.href);
 }
 
@@ -6588,6 +6596,28 @@ function setupMobileMenu() {
   // last). Builders and Config open a small list of their pages above it, one at a time: a tap outside, Escape or the
   // button closes it; Menu opens and closes the menu.
   if (bottomNav) {
+    // A module (or a page of Builders or Config) opened from the bar opens where it was left: the mark is read by the page
+    // (base.html, window.pageReopened). The page being shown goes back to its top instead.
+    const openFromBar = (event, link) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const url = new URL(link.href, window.location.href);
+      if (url.pathname === window.location.pathname) {
+        event.preventDefault();
+        closeSheets();
+        if (window.location.hash) window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
+        window.scrollTo({top: 0, behavior: 'smooth'});
+        return;
+      }
+      try {
+        window.sessionStorage.setItem('drivetest-analyzer:reopen', JSON.stringify({path: url.pathname, at: Date.now()}));
+      } catch (_error) {
+        // Optional: the module opens at its top.
+      }
+    };
+    bottomNav.addEventListener('click', (event) => {
+      const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+      if (link) openFromBar(event, link);
+    });
     const sheets = [];
     const closeSheets = (except = null) => sheets.forEach(({sheet, button}) => {
       if (sheet === except || sheet.hidden) return;
@@ -6606,7 +6636,9 @@ function setupMobileMenu() {
       if (accentColour) sheet.style.setProperty('--tab-accent', accentColour);
       sheet.append(...pages.map((page) => {
         const link = document.createElement('a');
-        link.href = page.getAttribute('href');
+        // The page itself (without #top): another page opens where it was left, the one shown goes to its top.
+        link.href = new URL(page.getAttribute('href'), window.location.href).pathname;
+        link.addEventListener('click', (event) => openFromBar(event, link));
         if (page.classList.contains('is-active')) link.classList.add('is-active');
         const icon = page.querySelector('svg')?.cloneNode(true);
         icon?.removeAttribute('class');
@@ -10733,6 +10765,45 @@ document.addEventListener('click', (event) => {
   window.addEventListener('scroll', sync, {passive: true});
   window.addEventListener('resize', sync);
   sync();
+})();
+
+// Where each page was left, kept as it is left, for the module opened again from the bar at the bottom of a phone
+// (window.pageReopened, base.html): the page goes back there, following it while its panels fill, until it is reached
+// and stays or the user scrolls. Scoring & GAP Analysis, Non-Qualified Calls, Network Insights and PPT Designer keep and
+// apply their own.
+(() => {
+  if (['/scoring', '/non-qualified-calls', '/network-insights', '/ppt-designer'].includes(window.location.pathname)) return;
+  const key = `drivetest-analyzer:page-scroll:${document.body.dataset.authenticatedUser || 'anonymous'}:${window.location.pathname}`;
+  let top = 0;
+  let stopped = true;
+  // (Left while it is still going back there, the page keeps the position it goes back to.)
+  window.addEventListener('pagehide', () => {
+    try { window.sessionStorage.setItem(key, String(stopped ? Math.round(window.scrollY) : top)); } catch (_error) { /* Optional. */ }
+  });
+  if (window.pageReopened !== true) return;
+  try { top = Number(window.sessionStorage.getItem(key)) || 0; } catch (_error) { /* Optional: the page opens at its top. */ }
+  if (top <= 0) return;
+  if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+  stopped = false;
+  const stop = () => { stopped = true; };
+  ['wheel', 'touchstart', 'keydown', 'pointerdown'].forEach((type) => window.addEventListener(type, stop, {once: true, passive: true}));
+  const deadline = window.performance.now() + 10000;
+  let reachedAt = 0;
+  const follow = () => {
+    if (stopped) return;
+    window.scrollTo({top, left: 0, behavior: 'auto'});
+    const now = window.performance.now();
+    const reached = Math.abs(window.scrollY - top) < 2;
+    if (!reached) reachedAt = 0;
+    else if (!reachedAt) reachedAt = now;
+    // Kept a moment after it is reached: panels drawn above it would move it again.
+    if (now > deadline || (reachedAt && now - reachedAt > 1200)) {
+      stopped = true;
+      return;
+    }
+    window.setTimeout(follow, 100);
+  };
+  follow();
 })();
 
 // The red card of every page: the Operators, Vendors and Campaigns of the CDRs that no map assigns,
