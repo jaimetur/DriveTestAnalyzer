@@ -968,8 +968,9 @@
         <dl class="backup-stats" data-backup-status>
           <div class="backup-stat"><dt>Stored backups</dt><dd data-backup-status-count>{{ recurring_backup_status.count }}</dd><dd class="backup-stat-detail" data-backup-status-count-detail>{{ recurring_backup_status.count_detail }}</dd></div>
           <div class="backup-stat"><dt>Total size</dt><dd data-backup-status-size>{{ recurring_backup_status.size }}</dd><dd class="backup-stat-detail" data-backup-status-size-detail>{{ recurring_backup_status.size_detail }}</dd></div>
-          {#- The disk of the backup folder: in Docker, that of the host folder mounted as the data folder. -#}
-          <div class="backup-stat" title="Free space of the disk that holds the backup folder and the data"><dt>Free disk space</dt><dd data-backup-status-disk>{{ recurring_backup_status.disk_free }}</dd><dd class="backup-stat-detail" data-backup-status-disk-detail>{{ recurring_backup_status.disk_detail }}</dd></div>
+          {#- The disk of the backup folder: in Docker, that of the host folder mounted as the data folder; red with less
+              than 50 GB left. -#}
+          <div class="backup-stat{% if recurring_backup_status.disk_low %} is-low{% endif %}" title="Free space of the disk that holds the backup folder and the data" data-backup-status-disk-card><dt>Free disk space</dt><dd data-backup-status-disk>{{ recurring_backup_status.disk_free }}</dd><dd class="backup-stat-detail" data-backup-status-disk-detail>{{ recurring_backup_status.disk_detail }}</dd></div>
           <div class="backup-stat"><dt>Last successful backup</dt><dd data-backup-status-last>{{ recurring_backup_status.last_success }}</dd><dd class="backup-stat-detail" data-backup-status-last-level>{{ recurring_backup_status.last_level }}</dd></div>
           <div class="backup-stat"><dt>Next backup</dt><dd data-backup-status-next>{{ recurring_backup_status.next_run }}</dd><dd class="backup-stat-detail" data-backup-status-next-level>{{ recurring_backup_status.next_level }}</dd></div>
         </dl>
@@ -1530,6 +1531,7 @@
         const detail = document.querySelector(`[data-backup-status-${selector}]`);
         if (detail) detail.textContent = String(payload[key] || '');
       }
+      document.querySelector('[data-backup-status-disk-card]')?.classList.toggle('is-low', payload.disk_low === true);
       if (statusProblem) { statusProblem.textContent = String(payload.problem || ''); statusProblem.hidden = !payload.problem; }
       if (retentionMaximum && payload.latest_sizes) {
         const changed = String(payload.latest_sizes.full || 0) !== retentionMaximum.dataset.fullBytes || String(payload.latest_sizes.light || 0) !== retentionMaximum.dataset.lightBytes;

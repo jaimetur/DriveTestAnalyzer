@@ -5060,6 +5060,9 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 .backup-stat dd { margin: 0; color: #10314a; font-size: 1.05rem; font-weight: 800; overflow-wrap: anywhere; }
 .backup-stat dd.backup-stat-detail { color: #5b6b78; font-size: .8rem; font-weight: 700; }
 .backup-stat dd.backup-stat-detail:empty { display: none; }
+/* Less than 50 GB left on the disk of the backups: the card warns in red. */
+.backup-stat.is-low { border-color: #dc2626; background: linear-gradient(135deg, #fef2f2, #fee2e2); box-shadow: 0 0 0 1px #dc2626, 0 8px 20px rgba(220, 38, 38, .18); }
+.backup-stat.is-low dt, .backup-stat.is-low dd, .backup-stat.is-low dd.backup-stat-detail { color: #b91c1c; }
 .admin-stack .backup-protection .database-backup-form { gap: 1rem; }
 .backup-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .admin-stack .backup-protection .backup-card { --backup-accent: #0b7a75; display: flex; flex-direction: column; gap: .85rem; min-width: 0; padding: 1rem 1.05rem; border: 1px solid rgba(16, 49, 74, .12); border-radius: 16px; background: #fff; box-shadow: inset 0 4px 0 var(--backup-accent), 0 10px 26px rgba(16, 33, 49, .06); }

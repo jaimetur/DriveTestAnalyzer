@@ -11450,7 +11450,7 @@ def test_a_section_chosen_in_a_menu_opens_at_the_top_of_its_page():
     assert "document.addEventListener('DOMContentLoaded', openAddressSection, {once: true});" in app_script
     assert 'sibling = sibling.previousElementSibling) observer.observe(sibling);' in app_script
     scoring_script = (root / 'scoring' / 'scoring.js').read_text(encoding='utf-8')
-    assert "&& !window.location.hash\n    && ['reload', 'back_forward'].includes(" in scoring_script
+    assert "&& !window.location.hash\n    && (window.pageReopened === true || ['reload', 'back_forward'].includes(" in scoring_script
     assert "|| window.location.hash) return;" in (root / 'ppt_designer' / 'ppt_designer.js').read_text(encoding='utf-8')
     assert 'top > 0 && !window.location.hash' in app_script
     # A page that opens again with its saved selection (CDR Analysis) keeps the section.

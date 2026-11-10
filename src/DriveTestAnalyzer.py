@@ -7758,13 +7758,15 @@ def ensure_backup_path_is_within_config(path: Path) -> Path:
 
 
 _BACKUP_DISK_SPACE: dict[str, tuple[float, int, int]] = {}
+# Less free space than this and the panel warns in red.
+LOW_DISK_SPACE_BYTES = 50 * 1024 ** 3
 
 
-def backup_disk_space(backup_root: Path) -> dict[str, str]:
+def backup_disk_space(backup_root: Path) -> dict[str, Any]:
     """The free space of the disk that holds the backups, as a backup counts it (available_disk_space: on macOS also what
-    the system frees on demand), with its size and how much of it is used. The backup folder is inside the data folder,
-    so in Docker it is the disk of the host folder mounted as the data folder, not that of the container. Measured at
-    most once a minute (the panel asks for its status as it is shown)."""
+    the system frees on demand), with its size, how much of it is used and whether less than 50 GB are left. The backup
+    folder is inside the data folder, so in Docker it is the disk of the host folder mounted as the data folder, not that
+    of the container. Measured at most once a minute (the panel asks for its status as it is shown)."""
     folder = next((item for item in (backup_root, *backup_root.parents) if item.is_dir()), application_data_dir)
     cached = _BACKUP_DISK_SPACE.get(str(folder))
     if cached and monotonic() - cached[0] < 60:
@@ -7774,10 +7776,12 @@ def backup_disk_space(backup_root: Path) -> dict[str, str]:
             total = shutil.disk_usage(folder).total
             free = available_disk_space(folder)
         except OSError:
-            return {'free': 'Unknown', 'detail': ''}
+            return {'free': 'Unknown', 'detail': '', 'low': False}
         _BACKUP_DISK_SPACE[str(folder)] = (monotonic(), free, total)
     used = round(max(0, total - free) * 100 / total) if total else 0
-    return {'free': format_workspace_size(free), 'detail': f'of {format_workspace_size(total)} · {used}% used'}
+    low = free < LOW_DISK_SPACE_BYTES
+    return {'free': format_workspace_size(free), 'low': low,
+            'detail': f"of {format_workspace_size(total)} · {used}% used{' · less than 50 GB left' if low else ''}"}
 
 
 def recurring_backup_status(config: dict[str, Any]) -> dict[str, str | int]:
@@ -7809,7 +7813,7 @@ def recurring_backup_status(config: dict[str, Any]) -> dict[str, str | int]:
             'last_level': f"{backup_file_info(files[-1])['level'].capitalize()} backup" if files else '',
             'next_level': f'{next_level.capitalize()} backup' if next_level else '',
             'problem': recurring_backup_problem(), 'latest_sizes': latest_sizes,
-            'disk_free': disk['free'], 'disk_detail': disk['detail']}
+            'disk_free': disk['free'], 'disk_detail': disk['detail'], 'disk_low': disk['low']}
 
 
 def backup_level_folder(backup_root: Path, level: str) -> Path:

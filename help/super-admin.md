@@ -155,7 +155,7 @@ Database Management has two clearly separated subsections: **Backup Protection**
 > [!IMPORTANT]
 > **Server-visible backup folders.** The folder picker shows storage visible to the server or container, not folders on the browser computer.
 
-**Super Admin → Database Management → Backup Protection** shows the stored backups, their total size, the free space of the disk that holds the backup folder (its size and how much of it is used; in Docker, the disk of the host folder mounted as the data folder, not that of the container; on macOS counting the space the system frees on demand, as the check before each backup does), the last successful backup and the next scheduled one above three cards: **Back up now**, **Restore** and **Scheduled backups**.
+**Super Admin → Database Management → Backup Protection** shows the stored backups, their total size, the free space of the disk that holds the backup folder (its size and how much of it is used; in Docker, the disk of the host folder mounted as the data folder, not that of the container; on macOS counting the space the system frees on demand, as the check before each backup does; red, with a note, when less than 50 GB are left), the last successful backup and the next scheduled one above three cards: **Back up now**, **Restore** and **Scheduled backups**.
 
 In **Back up now**, select in **Backup content** one or more content types and the workspaces they apply to:
 
