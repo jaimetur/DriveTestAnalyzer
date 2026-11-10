@@ -1684,7 +1684,7 @@
     const format = payload.legend_format || {}, labelWidth = rowLabelWidth(rowKeys, layout), levels = rowKeys[0]?.length || 0;
     const plotLeft = layout.left + levels * labelWidth + 16, plotRight = layout.right - 84, top = layout.top + 4, bottom = layout.bottom - 58;
     const domain = expandedDomain(payload.domain?.x), bandHeight = (bottom - top) / rowKeys.length;
-    const toX = drawXValueAxis(context, state, transform, domain, plotLeft, plotRight, top, bottom, `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`);
+    const toX = drawXValueAxis(context, state, transform, domain, plotLeft, plotRight, top, bottom, payload.value_title || `${aggregationName(payload.aggregation)} of ${payload.metric || ''}`);
     const zeroX = toX(clamp(0, domain[0], domain[1])), slots = Math.max(columnKeys.length, 1);
     rowKeys.forEach((rowKey, rowIndex) => {
       const bandTop = top + rowIndex * bandHeight, gap = slots > 1 ? Math.min(4, bandHeight * .04) : 0;
@@ -1963,8 +1963,10 @@
     const layout = legendLayout(payload.legend), series = payload.series || [], dual = Boolean(payload.domain?.y2);
     const provisional = {left: layout.left + 78, right: layout.right - (dual ? 96 : 24)};
     const axis = categoryAxis(context, payload, provisional.left, provisional.right), frame = plotFrame(layout, axis, dual);
+    // A title of the category axis (the charts of the AI Assistant) takes a line below its labels.
+    if (payload.category_title) frame.bottom -= 34;
     const toY = drawYValueAxis(context, state, transform, expandedDomain(payload.domain?.y), frame.left, frame.right, frame.top, frame.bottom,
-      `${aggregationName(series.find(item => !item.axis)?.aggregation || payload.aggregation)} of ${payload.metric || ''}`);
+      payload.value_title || `${aggregationName(series.find(item => !item.axis)?.aggregation || payload.aggregation)} of ${payload.metric || ''}`);
     const toY2 = dual ? drawYValueAxis(context, state, transform, expandedDomain(payload.domain.y2), frame.left, frame.right, frame.top, frame.bottom,
       `${aggregationName(series.find(item => item.axis)?.aggregation)} of ${payload.metric2 || ''}`, {side: 'right'}) : null;
     series.forEach(item => {
@@ -1982,6 +1984,10 @@
     });
     line(context, frame.left, frame.bottom, frame.right, frame.bottom, '#9AAAB5', 2);
     drawCategoryAxisLabels(context, axis, frame.left, frame.right, frame.top, frame.bottom, payload.legend_format);
+    if (payload.category_title) {
+      context.fillStyle = '#405765'; context.textAlign = 'center'; context.textBaseline = 'top'; font(context, 20, true);
+      context.fillText(String(payload.category_title), (frame.left + frame.right) / 2, frame.bottom + (axis.time ? 40 : axis.axis.leafHeight) + 4);
+    }
     drawLegend(context, payload.legend, {sideX: layout.position === 'right' ? frame.right + (dual ? 110 : 25) : undefined});
   }
 

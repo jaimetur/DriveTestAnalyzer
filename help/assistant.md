@@ -57,6 +57,7 @@ Ask as you would ask a colleague, for example:
 - *Analyse the first chart of the first PPT Design and give me your comments.*
 - *Draw a chart with the scoring of each operator of the latest campaign.*
 - *Show the charts of the second slide of the first PPT Design.*
+- *Show the DL throughput CDF of the last two NSA campaigns, with the lines of the latest campaign thicker.*
 - *How do I create a Saved Filter that follows the latest campaign?*
 
 A quarter (2026-Q3) stands for the campaign of that quarter; when the quarter has an NSA and an SA campaign, the assistant answers for the NSA one and says that the SA one exists, or answers both. When a question can be read in ways that change the answer, it asks one short question back instead of guessing. Follow-up questions keep the context of the conversation (*and in SA?*).
@@ -87,8 +88,19 @@ The engine never gives the figures of a chart: it only names the data the tools 
 | PPT Designer | A chart of a Design read for the question, exactly as the viewer of the Design draws it (its chart type, format, colours and legend), named after its Design and slide. |
 | Query | The rows of a query result: the categories of some columns, the values of others, a bar, line or pie per value of a column (one line per operator over the campaigns, for example). |
 | Table | A table of the answer (whose figures are checked as those of the text), as bars, horizontal bars, lines or a pie. |
+| Earlier chart | A chart of an earlier answer of the conversation, drawn again with another style or title without calculating anything. |
 
-An answer has up to four charts, and a chart up to 160 bars or 24 lines. A chart that cannot be drawn (a column the data does not have, a trend of one campaign) is sent back to the engine once to correct it; if it still cannot be drawn, the answer shows a warning with the reason. The charts are kept with the answer and drawn again when the conversation is opened.
+Each operator keeps its colour of the Operator Maps, also when its name is part of the name of a series (*EE UK_Q3_NSA_2026*): when an operator has several lines, the one of its latest campaign is solid and the earlier ones dashed, then dotted.
+
+**Style a chart in your own words**, in the question or afterwards (*make the lines of the latest campaign thicker*, *VF in blue*, *the 2026-Q2 lines dotted*, *legend at the bottom*, *call the axis Share of tests*):
+
+- the **colour** of a series (a colour name or `#RRGGBB`), the **width** of its line (1 to 14; 4 by default) and its **dash** (solid, dashed or dotted), for one series or for every series whose name holds a word, such as a campaign or an operator;
+- the place of the **legend** (top, bottom, left, right or none);
+- the **titles of the axes**: both in line charts, the axis of the values in bar charts, those of the Format of PPT Designer in the charts of a Design.
+
+A style asked after the chart is drawn draws it again from the earlier answer: the assistant does not calculate it again.
+
+An answer has up to four charts, and a chart up to 160 bars or 24 lines. A chart that cannot be drawn (a column the data does not have, a trend of one campaign, a style for a series the chart does not have) is sent back to the engine once to correct it; if it still cannot be drawn, the answer shows a warning with the reason. The charts are kept with the answer and drawn again when the conversation is opened.
 
 ## What the assistant can read
 

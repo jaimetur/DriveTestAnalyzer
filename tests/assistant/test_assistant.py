@@ -557,7 +557,7 @@ def test_the_charts_of_tables_and_query_results_take_their_columns():
                                            {'source': 'X1', 'type': '', 'x': [], 'y': [], 'series': '', 'title': '', 'view': ''}],
                                           {'query_results': {'R1': {'columns': ['operator', 'calls'], 'rows': [['VF', 3], ['EE', 5]]}}},
                                           [], {})
-    assert [bar['value'] for bar in built[0]['model']['bars']] == [3, 5] and problems == ['X1: source "X1" is not S1, G1, R1 or T1.']
+    assert [bar['value'] for bar in built[0]['model']['bars']] == [3, 5] and problems == ['X1: source "X1" is not S1, G1, R1, T1 or P1.']
 
 
 def test_the_scoring_charts_follow_the_views_of_the_module():
@@ -598,3 +598,80 @@ def test_the_scoring_charts_follow_the_views_of_the_module():
     assert kpis['row_keys'] == [['Call Success'], ['Video'], ['Browsing']] and kpis['cells'] == [[40.0], [25.0], [10.0]]
     with pytest.raises(charts.ChartError, match='two or more campaigns'):
         charts.scoring_chart({**stored, 'result': {'totals': result['totals'][:2]}}, 'trend', '', '', colours)
+
+
+def test_the_charts_take_the_styles_asked_and_keep_one_colour_per_operator():
+    from src.modules.assistant import assistant_charts as charts
+
+    colours = charts.Colours(charts.operator_colours([{'canonical': 'EE', 'color': '#00a0a0'}, {'canonical': 'VF', 'color': '#e60000'}]))
+    rows = [[threshold, f'{operator} {campaign}', value] for threshold, values in (('20', (10, 12, 8, 9)), ('40', (40, 45, 30, 33)))
+            for (operator, campaign), value in zip((('EE', 'UK_Q2_2026'), ('EE', 'UK_Q3_NSA_2026'), ('VF', 'UK_Q2_2026'),
+                                                    ('VF', 'UK_Q3_NSA_2026')), values, strict=True)]
+    spec = {'type': 'line', 'x': ['Mbps'], 'y': ['CDF'], 'series': 'Series'}
+    model = charts.table_chart(['Mbps', 'Series', 'CDF'], rows, spec, '', colours)
+    # Each operator keeps its colour; its latest campaign is solid, the earlier one dashed.
+    assert [(item['name'], item['colour'], item['dash']) for item in model['series']] == [
+        ('EE UK_Q2_2026', '#00A0A0', [10, 6]), ('EE UK_Q3_NSA_2026', '#00A0A0', []),
+        ('VF UK_Q2_2026', '#E60000', [10, 6]), ('VF UK_Q3_NSA_2026', '#E60000', [])]
+    assert model['value_title'] == 'CDF'
+    styled = charts.apply_styles(model, {'styles': [{'series': 'Q3_NSA', 'colour': '', 'width': 8, 'dash': ''},
+                                                    {'series': 'VF UK_Q2_2026', 'colour': 'blue', 'width': 0, 'dash': 'dotted'}],
+                                         'legend': 'bottom', 'x_title': 'DL throughput (Mbps)', 'y_title': 'Share of tests (%)'})
+    assert [(item['width'], item['colour'], item['dash']) for item in styled['series']] == [
+        (4, '#00A0A0', [10, 6]), (8, '#00A0A0', []), (4, '#1F5FBF', [2, 5]), (8, '#E60000', [])]
+    legend = {item['label']: item for item in styled['legend']['items']}
+    assert legend['EE UK_Q3_NSA_2026']['width'] == 8 and legend['VF UK_Q2_2026']['colour'] == '#1F5FBF'
+    assert styled['legend']['position'] == 'bottom' and styled['value_title'] == 'Share of tests (%)'
+    assert styled['category_title'] == 'DL throughput (Mbps)' and 'format_overrides' not in styled
+    with pytest.raises(charts.ChartError, match='No series of the chart is named "O2"'):
+        charts.apply_styles(model, {'styles': [{'series': 'O2', 'colour': '', 'width': 6, 'dash': ''}]})
+    with pytest.raises(charts.ChartError, match='colour "sky" is not'):
+        charts.apply_styles(model, {'styles': [{'series': '', 'colour': 'sky', 'width': 0, 'dash': ''}]})
+    bars = charts.table_chart(['Operator', 'Points'], [['EE', '938.45'], ['VF', '863.11']], {'type': 'bar', 'x': [], 'y': []}, '', colours)
+    with pytest.raises(charts.ChartError, match='no title on its x axis'):
+        charts.apply_styles(bars, {'x_title': 'Operators'})
+    design = charts.apply_styles({'type': 'cdf', 'series': []}, {'x_title': 'Mbps'})
+    assert design['format_overrides'] == {'axes': {'x': {'title': 'Mbps'}}}
+    assert [bar['colour'] for bar in charts.apply_styles(bars, {'styles': [{'series': 'VF', 'colour': '#123456', 'width': 0,
+                                                                            'dash': ''}]})['bars']] == ['#00A0A0', '#123456']
+
+
+class RestyleEngine:
+    """An engine that draws a chart of an earlier answer again, thicker, without calling any tool."""
+    id, label = 'claude', 'Claude'
+
+    def __init__(self):
+        self.received: list[str] = []
+
+    def step(self, system, transcript):
+        self.received.append(transcript[0]['content'])
+        return {'status': 'answer', 'note': '', 'tool_calls': [], 'tables': [], 'follow_ups': [],
+                'answer': 'The same chart, its latest campaign thicker.',
+                'charts': [{'title': '', 'source': 'P2', 'view': '', 'type': '', 'x': [], 'y': [], 'series': '', 'legend': '',
+                            'x_title': '', 'y_title': '', 'styles': [{'series': 'Q3', 'colour': '', 'width': 7, 'dash': ''}]}]}, {
+            'model': 'fake'}
+
+
+def test_a_chart_of_an_earlier_answer_is_drawn_again_with_another_style(named_repository):
+    from src.modules.assistant import assistant_charts as charts
+
+    repository = named_repository
+    conversation = assistant.create_conversation(repository, 'super')
+    assistant.add_message(repository, conversation, 'user', 'Draw the trend')
+    colours = charts.Colours({})
+    line = charts.line_model('Trend', 'Points', [['Q2'], ['Q3']], [('Q2 line', [1.0, 2.0], '#111111'),
+                                                                   ('Q3 line', [2.0, 3.0], '#222222')], ['Campaign'])
+    bars = charts.bar_model('Bars', 'Points', [(['A'], 1.0, colours.of('A'), 'A')], ['Operator'])
+    assistant.add_message(repository, conversation, 'assistant', 'Two charts.', charts=[
+        {'title': 'Bars', 'source': 'S1', 'view': 'points', 'type': '', 'model': bars},
+        {'title': 'Trend', 'source': 'R1', 'view': '', 'type': 'line', 'model': line}])
+    question = 'Make the lines of the latest campaign thicker'
+    question_id = assistant.add_message(repository, conversation, 'user', question)
+    engine = RestyleEngine()
+    answer = assistant.answer_question(engine=engine, repository=repository, workspace_name='UK', username='super',
+                                       conversation_id=conversation, question=question, question_id=question_id)
+    assert 'P1 "Bars" (mean_bar); P2 "Trend" (lines)' in engine.received[0]
+    chart = answer['charts'][0]
+    assert chart['source'] == 'P2' and [item['width'] for item in chart['model']['series']] == [4, 7]
+    assert chart['style'] == {'styles': [{'series': 'Q3', 'colour': '', 'width': 7, 'dash': ''}]}
+    assert answer['warning'] == '' and answer['trace'] == []

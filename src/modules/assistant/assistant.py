@@ -607,8 +607,22 @@ def _fit(document: Any, limit: int = MAX_TOOL_RESULT_CHARS) -> Any:
     return fitted
 
 
-def _history(repository: Any, conversation_id: int, pseudonyms: Pseudonymizer, before_id: int) -> str:
-    """The earlier questions and answers of the conversation, masked and short."""
+def earlier_charts(messages: list[dict[str, Any]]) -> dict[int, list[tuple[str, dict[str, Any]]]]:
+    """The charts of the answers of a conversation with their ids (P1, P2… in the order they were drawn), by answer: the
+    engine names one to draw it again with another style."""
+    numbered: dict[int, list[tuple[str, dict[str, Any]]]] = {}
+    count = 0
+    for message in messages:
+        for chart in message.get('charts') or [] if message['role'] == 'assistant' else []:
+            if isinstance(chart, dict) and isinstance(chart.get('model'), dict):
+                count += 1
+                numbered.setdefault(message['id'], []).append((f'P{count}', chart))
+    return numbered
+
+
+def _history(repository: Any, conversation_id: int, pseudonyms: Pseudonymizer, before_id: int,
+             numbered: dict[int, list[tuple[str, dict[str, Any]]]] | None = None) -> str:
+    """The earlier questions and answers of the conversation, masked and short (with the ids of their charts)."""
     turns = [message for message in list_messages(repository, conversation_id) if message['id'] < before_id
              and message['status'] == 'done'][-2 * HISTORY_EXCHANGES:]
     lines = []
@@ -617,7 +631,8 @@ def _history(repository: Any, conversation_id: int, pseudonyms: Pseudonymizer, b
             lines.append(f'User: {pseudonyms.mask_text(message["content"])[:1500]}')
         else:
             tables = '; '.join(f'{table.get("title")}: {dumps(table.get("rows"))[:600]}' for table in message['tables'])
-            charts = '; '.join(str(chart.get('title') or '') for chart in message.get('charts') or [])
+            charts = '; '.join(f'{chart_id} "{chart.get("title") or ""}" ({chart["model"].get("type")})'
+                               for chart_id, chart in (numbered or {}).get(message['id'], []))
             lines.append(f'Assistant: {pseudonyms.mask_text(message["content"])[:1500]}'
                          + (f' [tables: {pseudonyms.mask_text(tables)}]' if tables else '')
                          + (f' [charts drawn: {pseudonyms.mask_text(charts)}]' if charts else ''))
@@ -662,7 +677,11 @@ def _answer(engine: Engine, context: ToolContext, conversation_id: int, question
     progress('Reading the workspace')
     overview = workspace_overview(context)
     glossary = _glossary_text(repository)
-    history = _history(repository, conversation_id, pseudonyms, question_id)
+    earlier = [message for message in list_messages(repository, conversation_id)
+               if message['id'] < question_id and message['status'] == 'done']
+    numbered = earlier_charts(earlier)
+    context.cache['previous_charts'] = {chart_id: chart for charts in numbered.values() for chart_id, chart in charts}
+    history = _history(repository, conversation_id, pseudonyms, question_id, numbered)
     opening = '\n\n'.join(part for part in (
         f'Today is {date.today().isoformat()}.',
         'Workspace context (JSON):\n' + dumps(pseudonyms.mask(overview)),
@@ -956,7 +975,7 @@ def start_question(core: Any, *, repository_factory: Callable[[], Any], workspac
                 'input_tokens': answer['input_tokens'], 'output_tokens': answer['output_tokens'],
                 'untraced_figures': answer['untraced'],
                 'charts': [{'source': chart['source'], 'view': chart['view'], 'type': chart['model'].get('type'),
-                            'title': chart['title']} for chart in answer['charts']],
+                            'title': chart['title'], 'style': chart.get('style') or {}} for chart in answer['charts']],
                 'sent_characters': sum(len(item['sent']) for item in answer['sent']),
             }, ensure_ascii=False), timeout_seconds=5)
         except Exception as exc:  # noqa: BLE001 - every failure is told in the chat and recorded

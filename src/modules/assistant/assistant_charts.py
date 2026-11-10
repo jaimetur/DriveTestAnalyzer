@@ -5,7 +5,12 @@ server holds and how to draw it. A chart comes from a scoring result of the scor
 per environment or category, the GAP to the reference, their trend over the campaigns or the KPIs that lose most points,
 as Scoring & GAP Analysis draws them, in the colours of the Operator Maps), from a chart of a PPT Design read with
 ppt_design_charts (G1: the model its viewer draws, unchanged), from a query result (R1) or from a table of the answer
-(T1, whose figures the validator of the answers checks).
+(T1, whose figures the validator of the answers checks), or from a chart of an earlier answer of the conversation (P1),
+drawn again with another style without calculating anything.
+
+The engine can also style a chart: the colour, line width and dash of its series (named whole or by a part of their
+name, such as a campaign), the place of its legend and the titles of its axes. The style is applied to the model, so
+the page draws it as given.
 
 Every chart is a model of the chart painter of PPT Designer and Network Insights (static/js/core/canvas_charts.js), so
 the page draws it with the same look, values on hover, zoom and legend.
@@ -29,8 +34,18 @@ KPIS_PER_GROUP = 8
 MAX_MODEL_CHARS = 2_500_000
 PALETTE = ('#14867D', '#DF7A45', '#5A82AA', '#8B63B1', '#B49A32', '#E15759', '#59A14F', '#76B7B2', '#EDC948', '#9C755F')
 DEFAULT_COLOUR = '#365F91'
-SPEC_KEYS = ('title', 'source', 'view', 'type', 'x', 'y', 'series')
-SOURCE = re.compile(r'^\s*([SGRT])(\d{1,3})\s*$', re.IGNORECASE)
+SPEC_KEYS = ('title', 'source', 'view', 'type', 'x', 'y', 'series', 'styles', 'legend', 'x_title', 'y_title')
+SOURCE = re.compile(r'^\s*([SGRTP])(\d{1,3})\s*$', re.IGNORECASE)
+DASHES = {'solid': [], 'dashed': [10, 6], 'dotted': [2, 5]}
+LEGEND_POSITIONS = ('top', 'bottom', 'left', 'right', 'none')
+MAX_STYLES = 24
+MAX_LINE_WIDTH = 14
+# The CSS names of colours the engine may use besides #RRGGBB.
+COLOUR_NAMES = {'black': '#000000', 'white': '#FFFFFF', 'red': '#E60000', 'green': '#2E9E44', 'blue': '#1F5FBF',
+                'yellow': '#F2C200', 'orange': '#F28C00', 'purple': '#7B2D8E', 'pink': '#E05297', 'grey': '#7F7F7F',
+                'gray': '#7F7F7F', 'brown': '#8B5A2B', 'cyan': '#00A3C4', 'teal': '#14867D', 'navy': '#1B2A5E',
+                'magenta': '#C2187A', 'darkblue': '#0B3C8C', 'lightblue': '#7CB9E8', 'darkgreen': '#1E6B30',
+                'lightgreen': '#8BD17C', 'darkred': '#8B0000'}
 SCORING_KEYS = ('campaign', 'vendor', 'region', 'cluster', 'city', 'dataset_type', 'operator')
 LEVEL_LABELS = {'campaign': 'Campaign', 'vendor': 'Vendor', 'region': 'Region', 'cluster': 'Cluster', 'city': 'City',
                 'dataset_type': 'Dataset Type', 'operator': 'Operator'}
@@ -41,6 +56,12 @@ SPEC_SCHEMA = {
         'title': {'type': 'string'}, 'source': {'type': 'string'}, 'view': {'type': 'string'}, 'type': {'type': 'string'},
         'x': {'type': 'array', 'items': {'type': 'string'}}, 'y': {'type': 'array', 'items': {'type': 'string'}},
         'series': {'type': 'string'},
+        'styles': {'type': 'array', 'items': {
+            'type': 'object', 'properties': {
+                'series': {'type': 'string'}, 'colour': {'type': 'string'}, 'width': {'type': 'number'},
+                'dash': {'type': 'string'}},
+            'required': ['series', 'colour', 'width', 'dash'], 'additionalProperties': False}},
+        'legend': {'type': 'string'}, 'x_title': {'type': 'string'}, 'y_title': {'type': 'string'},
     },
     'required': list(SPEC_KEYS),
     'additionalProperties': False,
@@ -59,7 +80,14 @@ PROMPT = '''Charts:
   for example ["Campaign"] for a line over campaigns), "y" (the columns of the values) and, for one line or bar series
   per value of a column, "series" (for example "Operator"). Leave the fields a source does not use empty.
 - A chart has a short "title" in the language of the question. Write about what it shows in the answer, without
-  copying every value of it: the user sees the chart.'''
+  copying every value of it: the user sees the chart.
+- Style a chart when the user asks (a thicker line, another colour, a dashed line, where the legend goes, the axis
+  titles): "styles" lists {"series": a series name, or a part of the names such as a campaign or an operator, every
+  series when empty; "colour": "#RRGGBB" or a colour name, empty to keep it; "width": the line width, 1 to 14 (the
+  default is 4), 0 to keep it; "dash": solid, dashed or dotted, empty to keep it}. "legend" is top, bottom, left, right
+  or none; "x_title" and "y_title" rename the axes. Leave them empty otherwise. Never say a chart cannot be styled.
+- The charts drawn earlier in the conversation have ids P1, P2… (see the conversation so far): to show one again with
+  another style or title, use it as "source" with the new styles, without calling the tools again.'''
 
 
 class ChartError(ValueError):
@@ -118,18 +146,28 @@ class Colours:
 
     def __init__(self, operators: dict[str, tuple[str, int]]) -> None:
         self.operators, self.assigned = operators, {}
+        names = sorted(operators, key=len, reverse=True)
+        # An operator inside a longer name (EE UK_Q3_NSA_2026), its longest name first.
+        self.pattern = re.compile('|'.join(rf'(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])' for name in names)) if names else None
+
+    def operator_in(self, name: str) -> str | None:
+        text = str(name).strip().casefold()
+        if text in self.operators:
+            return text
+        match = self.pattern.search(text) if self.pattern else None
+        return match.group(0) if match else None
 
     def of(self, name: str) -> str:
-        style = self.operators.get(str(name).strip().casefold())
-        if style:
-            return style[0]
+        operator = self.operator_in(name)
+        if operator:
+            return self.operators[operator][0]
         if name not in self.assigned:
             self.assigned[name] = PALETTE[len(self.assigned) % len(PALETTE)]
         return self.assigned[name]
 
     def for_key(self, key: list[str]) -> str:
         """A bar named by several values: the colour of its operator, else of its last value."""
-        operator = next((value for value in key if value.strip().casefold() in self.operators), None)
+        operator = next((value for value in key if self.operator_in(value)), None)
         return self.of(operator if operator is not None else key[-1] if key else '')
 
     def position(self, name: str) -> int:
@@ -191,7 +229,8 @@ def hbar_model(title: str, metric: str, rows: list[list[str]], columns: list[str
     values = [value for row in cells for value in row if value is not None]
     legend = [(column, colours[0][index]) for index, column in enumerate(columns)] if len(columns) > 1 else []
     return {
-        'renderer': 'assistant', 'type': 'hbar', 'title': title, 'metric': metric, 'aggregation': 'sum', 'decimals': 2,
+        'renderer': 'assistant', 'type': 'hbar', 'title': title, 'metric': metric, 'value_title': metric,
+        'aggregation': 'sum', 'decimals': 2,
         'row_keys': rows, 'column_keys': [[column] for column in columns], 'cells': cells, 'cell_colours': colours,
         'dimensions': [[name] for name in dimensions], 'domain': {'x': _domain(values)},
         'legend': _legend(legend, 'top'),
@@ -199,7 +238,8 @@ def hbar_model(title: str, metric: str, rows: list[list[str]], columns: list[str
 
 
 def line_model(title: str, metric: str, x_keys: list[list[str]], series: list[tuple[str, list[float | None], str]],
-               dimensions: list[str], domain: list[float] | None = None) -> dict[str, Any]:
+               dimensions: list[str], domain: list[float] | None = None,
+               dashes: dict[str, list[int]] | None = None) -> dict[str, Any]:
     if not x_keys or not series:
         raise ChartError('The chart has no values to draw.')
     if len(series) > MAX_SERIES:
@@ -210,12 +250,16 @@ def line_model(title: str, metric: str, x_keys: list[list[str]], series: list[tu
         pad = (high - low) * .15 or abs(high) * .1 or 1
         bottom = 0.0 if low >= 0 and low - pad <= 0 else low - pad
         domain = [round(bottom, 4), round(high + pad, 4)]
+    dashes = dashes or {}
+    legend = _legend([(name, colour) for name, _line, colour in series], 'top', lines=True)
+    for item in legend['items']:
+        item.update(width=4, dash=dashes.get(item['label'], []))
     return {
-        'renderer': 'assistant', 'type': 'lines', 'title': title, 'metric': metric, 'aggregation': 'sum',
-        'x_keys': x_keys, 'dimensions': [[name] for name in dimensions], 'domain': {'y': domain},
-        'series': [{'name': name, 'key': [name], 'values': line, 'colour': colour, 'width': 4, 'aggregation': 'sum'}
-                   for name, line, colour in series],
-        'legend': _legend([(name, colour) for name, _line, colour in series], 'top', lines=True),
+        'renderer': 'assistant', 'type': 'lines', 'title': title, 'metric': metric, 'value_title': metric,
+        'aggregation': 'sum', 'x_keys': x_keys, 'dimensions': [[name] for name in dimensions], 'domain': {'y': domain},
+        'series': [{'name': name, 'key': [name], 'values': line, 'colour': colour, 'width': 4, 'dash': dashes.get(name, []),
+                    'aggregation': 'sum'} for name, line, colour in series],
+        'legend': legend,
     }
 
 
@@ -491,7 +535,7 @@ def table_chart(columns: list[str], rows: list[list[Any]], spec: dict[str, Any],
                          for category in categories], colours.of(name)) for name in series_names]
         if not split:
             lines = [(metric or lines[0][0], lines[0][1], colours.for_key([metric]))]
-        return line_model(title, metric, categories, lines, dimensions)
+        return line_model(title, metric, categories, lines, dimensions, dashes=operator_dashes([name for name, _line, _colour in lines], colours))
     if chart_type == 'pie':
         pies = []
         for name in series_names:
@@ -528,13 +572,146 @@ def table_chart(columns: list[str], rows: list[list[Any]], spec: dict[str, Any],
 
 # -- the charts of an answer --------------------------------------------------------------------------------------------
 
+def operator_dashes(names: list[str], colours: Colours) -> dict[str, list[int]]:
+    """The lines of one operator share its colour: the one of its latest campaign is solid, the earlier ones dashed, then
+    dotted."""
+    by_operator: dict[str, list[str]] = {}
+    for name in names:
+        operator = colours.operator_in(name)
+        if operator:
+            by_operator.setdefault(operator, []).append(name)
+    dashes = {}
+    for group in by_operator.values():
+        if len(group) < 2:
+            continue
+        for position, name in enumerate(sorted(group, key=_campaign_order, reverse=True)):
+            dashes[name] = DASHES[('solid', 'dashed', 'dotted')[min(position, 2)]]
+    return dashes
+
+
+def _colour(value: str) -> str:
+    text = re.sub(r'\s+', '', str(value or '')).casefold()
+    if not text:
+        return ''
+    if re.fullmatch(r'#?[0-9a-f]{6}', text):
+        return '#' + text.lstrip('#').upper()
+    if re.fullmatch(r'#?[0-9a-f]{3}', text):
+        return '#' + ''.join(character * 2 for character in text.lstrip('#')).upper()
+    if text in COLOUR_NAMES:
+        return COLOUR_NAMES[text]
+    raise ChartError(f'colour "{value}" is not #RRGGBB nor one of {", ".join(sorted(COLOUR_NAMES))}.')
+
+
+def _series_names(model: dict[str, Any]) -> list[str]:
+    """The names of the series of a model, as its legend and its tooltips show them."""
+    names = [str(item.get('label')) for item in (model.get('legend') or {}).get('items') or [] if item.get('label') is not None]
+    names += [str(item.get('name') if item.get('name') is not None else item.get('legend_name') or '')
+              for item in model.get('series') or [] if isinstance(item, dict)]
+    names += [str(item.get('legend') or '') for item in model.get('bars') or [] if isinstance(item, dict)]
+    names += [str(slice_.get('name') or '') for pie in model.get('pies') or [] for slice_ in pie.get('slices') or []]
+    names += [str(key[-1]) for key in model.get('column_keys') or [] if key]
+    if model.get('type') == 'hbar':
+        names += [str(key[-1]) for key in model.get('row_keys') or [] if key]
+    return [name for name in dict.fromkeys(names) if name]
+
+
+def _matching(names: list[str], wanted: str) -> list[str]:
+    """The series a style names: all when empty, the one with that name, else those whose name holds it."""
+    text = str(wanted or '').strip().casefold()
+    if not text:
+        return names
+    exact = [name for name in names if name.casefold() == text]
+    return exact or [name for name in names if text in name.casefold()]
+
+
+def apply_styles(model: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
+    """The model with the styles of a request: colour, line width and dash of its series, place of its legend, titles of
+    its axes."""
+    styles = spec.get('styles') or []
+    legend = str(spec.get('legend') or '').strip().casefold()
+    x_title, y_title = str(spec.get('x_title') or '').strip(), str(spec.get('y_title') or '').strip()
+    if not styles and not legend and not x_title and not y_title:
+        return model
+    names = _series_names(model)
+    for style in styles:
+        chosen = set(_matching(names, style.get('series')))
+        if not chosen:
+            raise ChartError(f'No series of the chart is named "{style.get("series")}": its series are '
+                             f'{", ".join(names[:24]) or "none"}.')
+        colour = _colour(style.get('colour'))
+        try:
+            width = float(style.get('width') or 0)
+        except (TypeError, ValueError):
+            width = 0.0
+        width = min(max(width, 0.0), MAX_LINE_WIDTH)
+        dash = str(style.get('dash') or '').strip().casefold()
+        if dash and dash not in DASHES:
+            raise ChartError(f'dash is one of {", ".join(DASHES)}.')
+
+        def paint(item: dict[str, Any], *, line: bool = True) -> None:
+            if colour:
+                item['colour'] = colour
+            if line and width:
+                item['width'] = width
+            if line and dash:
+                item['dash'] = DASHES[dash]
+
+        for item in (model.get('legend') or {}).get('items') or []:
+            if str(item.get('label')) in chosen:
+                paint(item)
+        for item in model.get('series') or []:
+            if isinstance(item, dict) and str(item.get('name') if item.get('name') is not None else item.get('legend_name') or '') in chosen:
+                paint(item)
+        for item in model.get('bars') or []:
+            if isinstance(item, dict) and (str(item.get('legend') or '') in chosen or any(str(part) in chosen for part in item.get('key') or [])):
+                paint(item, line=False)
+        for pie in model.get('pies') or []:
+            for item in pie.get('slices') or []:
+                if str(item.get('name') or '') in chosen:
+                    paint(item, line=False)
+        if colour and model.get('cell_colours'):
+            rows, columns = model.get('row_keys') or [], model.get('column_keys') or []
+            for row_index, row in enumerate(model['cell_colours']):
+                for column_index in range(len(row)):
+                    row_key = [str(part) for part in (rows[row_index] if row_index < len(rows) else [])]
+                    column_key = [str(part) for part in (columns[column_index] if column_index < len(columns) else [])]
+                    if any(part in chosen for part in (*row_key, *column_key)):
+                        row[column_index] = colour
+    if legend:
+        if legend not in LEGEND_POSITIONS:
+            raise ChartError(f'legend is one of {", ".join(LEGEND_POSITIONS)}.')
+        model.setdefault('legend', {'items': []})['position'] = legend
+    if (x_title or y_title) and model.get('renderer') == 'assistant':
+        # The charts drawn here: the horizontal axis and the vertical one, where the chart has a title for them.
+        kind = model.get('type')
+        places = {'lines': ('category_title', 'value_title'), 'hbar': ('value_title', None), 'mean_bar': (None, 'metric'),
+                  'pie': (None, None)}.get(kind, (None, None))
+        for title, place, axis in ((x_title, places[0], 'x'), (y_title, places[1], 'y')):
+            if title and place is None:
+                raise ChartError(f'A {kind} chart has no title on its {axis} axis: leave {axis}_title empty.')
+            if title:
+                model[place] = title
+    elif x_title or y_title:
+        # A chart of a Design takes them as the Format of PPT Designer gives them.
+        axes = model.setdefault('format_overrides', {}).setdefault('axes', {})
+        if x_title:
+            axes.setdefault('x', {})['title'] = x_title
+        if y_title:
+            axes.setdefault('y', {})['title'] = y_title
+    return model
+
+
 def clean_specs(value: Any) -> list[dict[str, Any]]:
     """The chart requests of a step, every field a string (or a list of strings)."""
     specs = []
     for item in value if isinstance(value, list) else []:
         if not isinstance(item, dict):
             continue
-        spec = {key: str(item.get(key) or '').strip()[:200] for key in ('title', 'source', 'view', 'type', 'series')}
+        spec = {key: str(item.get(key) or '').strip()[:200]
+                for key in ('title', 'source', 'view', 'type', 'series', 'legend', 'x_title', 'y_title')}
+        spec['styles'] = [{'series': str(style.get('series') or '').strip()[:200], 'colour': str(style.get('colour') or '').strip()[:40],
+                           'width': style.get('width') or 0, 'dash': str(style.get('dash') or '').strip()[:20]}
+                          for style in item.get('styles') or [] if isinstance(style, dict)][:MAX_STYLES]
         for key in ('x', 'y'):
             raw = item.get(key)
             spec[key] = [str(part).strip()[:200] for part in (raw if isinstance(raw, list) else [raw] if raw else [])
@@ -548,7 +725,7 @@ def build_chart(spec: dict[str, Any], cache: dict[str, Any], tables: list[dict[s
     """The model of one chart of an answer (its names real: ``spec`` and ``tables`` are given unmasked)."""
     match = SOURCE.match(spec.get('source') or '')
     if not match:
-        raise ChartError(f'source "{spec.get("source")}" is not S1, G1, R1 or T1.')
+        raise ChartError(f'source "{spec.get("source")}" is not S1, G1, R1, T1 or P1.')
     kind, number = match.group(1).upper(), int(match.group(2))
     source = f'{kind}{number}'
     title = spec.get('title') or ''
@@ -564,6 +741,13 @@ def build_chart(spec: dict[str, Any], cache: dict[str, Any], tables: list[dict[s
         model = json.loads(json.dumps(stored['model']))
         if title:
             model['title'] = title
+    elif kind == 'P':
+        stored = (cache.get('previous_charts') or {}).get(source)
+        if stored is None:
+            raise ChartError(f'There is no chart {source} earlier in this conversation.')
+        model = json.loads(json.dumps(stored['model']))
+        if title:
+            model['title'] = title
     elif kind == 'R':
         stored = (cache.get('query_results') or {}).get(source)
         if stored is None:
@@ -575,12 +759,16 @@ def build_chart(spec: dict[str, Any], cache: dict[str, Any], tables: list[dict[s
         table = tables[number - 1]
         model = table_chart([str(column) for column in table.get('columns') or []], [list(row) for row in table.get('rows') or []],
                             spec, title or str(table.get('title') or ''), colours)
+    model = apply_styles(model, spec)
     size = len(json.dumps(model, ensure_ascii=False, default=str))
     if size > MAX_MODEL_CHARS:
         raise ChartError(f'The chart {source} is too large to show in the chat ({size // 1_000_000} MB); open it in its module.')
+    origin = (f'{stored.get("design")} · slide {stored.get("slide")}' if kind == 'G' else
+              str(stored.get('origin') or '') if kind == 'P' else '')
+    style = {key: spec[key] for key in ('styles', 'legend', 'x_title', 'y_title') if spec.get(key)}
     return {'title': str(model.get('title') or title), 'source': source, 'view': spec.get('view') or '',
-            'type': spec.get('type') or '', 'model': model,
-            **({'origin': f'{stored.get("design")} · slide {stored.get("slide")}'} if kind == 'G' else {})}
+            'type': spec.get('type') or '', 'model': model, **({'origin': origin} if origin else {}),
+            **({'style': style} if style else {})}
 
 
 def build_charts(specs: list[dict[str, Any]], cache: dict[str, Any], tables: list[dict[str, Any]],
