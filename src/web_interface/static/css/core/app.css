@@ -5741,12 +5741,16 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 .topnav-workspace-menu button .workspace-switcher-option-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .topnav-workspace-menu button > span:not(.workspace-switcher-option-label) { flex: 0 0 auto; }
 
-/* The tabs of the main modules keep their folder shape: rounded at the top, light, with a line of the colour of their
-   module on top and the open one filled with it. The administrative tabs above them (Help, App Logs, Config, Admin,
-   Super Admin) are buttons. */
+/* The tabs in one white panel, apart from the header of the module below them: the administrative tabs (Help, App
+   Logs, Config, Admin, Super Admin) as buttons on its upper row, and under a line the tabs of the main modules, which
+   keep their folder shape: rounded at the top, light, with a line of the colour of their module on top and the open one
+   filled with it. */
+.module-tabs { gap: .25rem; margin: 0 0 .9rem; padding: .4rem .45rem 0; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: var(--shadow); }
+.module-tabs.is-stuck { border-color: transparent; border-radius: 0; }
+.module-tabs-primary, .module-tabs-secondary { gap: .25rem; padding-left: 0; padding-right: 0; }
+.module-tabs-secondary { padding-bottom: .35rem; border-bottom: 1px solid var(--line); }
 .module-tab, .module-tab.active { box-shadow: none; }
 .module-tab { border-radius: 11px 11px 0 0; }
-.module-tabs-secondary { gap: .3rem; padding-bottom: .45rem; }
 .module-tabs-secondary .module-tab { margin-bottom: 0; padding: .38rem .7rem; border-radius: 10px; font-size: .84rem; }
 
 /* The header of a module keeps its colour and its drawing, with a title of the size of a heading instead of a poster. */
