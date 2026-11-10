@@ -5898,3 +5898,30 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
   .mobile-bottom-nav[data-rows="2"] :is(a, button) { gap: .14rem; font-size: .68rem; }
   .mobile-bottom-nav[data-rows="2"] :is(a, button) svg { width: 1.55rem; height: 1.55rem; }
 }
+
+/* Phones: the rows of the tables that turn into cards (app.js) look like the cards of Reporting: no lines inside, the
+   name on top in bold, the other values two per row under the names of their columns, the actions at the bottom, and
+   several cards on each page. */
+@media (max-width: 640px) {
+  table.is-phone-card-list.is-phone-card-list { display: block; width: 100%; min-width: 0 !important; }
+  table.is-phone-card-list.is-phone-card-list thead { display: none; }
+  table.is-phone-card-list.is-phone-card-list tbody { display: grid; gap: .65rem; }
+  table.is-phone-card-list.is-phone-card-list tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem .8rem; padding: .8rem .9rem;
+    overflow: visible; border: 1px solid var(--line-strong); border-radius: 12px; background: #fff; box-shadow: 0 1px 2px rgba(18, 32, 43, .05); }
+  table.is-phone-card-list.is-phone-card-list tbody tr.mobile-card-page-hidden { display: none !important; }
+  /* The row marked in the table (the open workspace, the chosen PPT job) is the card marked, as the chosen report. */
+  table.is-phone-card-list.is-phone-card-list tbody tr:is(.active-workspace-row, .is-selected) { border-color: var(--brand, #0b7a75); box-shadow: inset 4px 0 0 var(--brand, #0b7a75); }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th) { display: block; width: auto !important; min-width: 0 !important; max-width: none !important; padding: 0;
+    border: 0; background: none !important; text-align: left; font-size: .86rem; white-space: normal; overflow-wrap: anywhere; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-label]:not([data-card-title], [data-card-actions])::before { content: attr(data-label); display: block;
+    margin-bottom: .12rem; color: #7b8994; font-size: .62rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th):is([data-card-title], [data-card-actions], [colspan])::before { display: none; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-title] { order: -1; grid-column: 1 / -1; color: var(--text, #17201b); font-size: 1rem; font-weight: 800; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-actions] { order: 99; grid-column: 1 / -1; padding-top: .3rem; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[colspan] { grid-column: 1 / -1; }
+  table.is-phone-card-list.is-phone-card-list tbody :is(td, th)[data-card-actions] > * { justify-content: flex-start; }
+}
+/* Phones: a dialog takes the screen; the bars at the bottom give way to it while it is open. */
+@media (max-width: 640px), (orientation: landscape) and (max-width: 1024px) and (max-height: 600px) {
+  :root.has-bottom-nav body:has(:is(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-preview-overlay:not([hidden]))) :is(.mobile-bottom-nav, .mobile-bottom-nav-sheet, .section-bar, .section-bar-sheet, .nq-view-dock, .back-to-top, .unassigned-values-card) { visibility: hidden; }
+}

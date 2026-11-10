@@ -565,9 +565,28 @@ function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
     '.report-charts-grid',
   ].join(', ');
   const compactViewport = window.matchMedia('(max-width: 640px)');
-  const pageSize = 1;
+  // Several cards on each page: five rows of a table, four charts.
+  const pageSizeOf = (collection) => (collection.matches('.report-charts-grid') ? 4 : 5);
   const states = new WeakMap();
   let scheduled = false;
+  // Each row is a card as those of Reporting (app.css): its name on top, in bold and without the name of its column,
+  // the other values under the names of their columns and its actions at the bottom. The name is the first cell of
+  // these columns; a cell without the name of its column takes it from the header of the table.
+  const TITLE_COLUMNS = ['Workspace', 'Template name', 'PPT Design', 'Content', 'Name in the CDRs', 'Label', 'Operator', 'Field', 'Name'];
+  const ACTION_COLUMNS = ['Actions', 'Action'];
+  const markCards = (table, rows) => {
+    table.classList.add('is-phone-card-list');
+    const headers = [...(table.tHead?.rows[0]?.cells || [])].map((cell) => cell.textContent.trim());
+    rows.forEach((row) => {
+      const cells = [...row.cells];
+      cells.forEach((cell, index) => {
+        if (!cell.hasAttribute('data-label') && headers[index] && cell.colSpan === 1) cell.dataset.label = headers[index];
+      });
+      const title = TITLE_COLUMNS.map((label) => cells.find((cell) => cell.dataset.label === label)).find(Boolean);
+      cells.forEach((cell) => cell.toggleAttribute('data-card-title', cell === title));
+      cells.forEach((cell) => cell.toggleAttribute('data-card-actions', ACTION_COLUMNS.includes(cell.dataset.label)));
+    });
+  };
 
   const cardRows = (collection) => {
     if (collection.matches('.report-charts-grid')) {
@@ -602,12 +621,15 @@ function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
         const button = event.target.closest('button');
         if (!button) return;
         const rows = cardRows(table);
-        const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+        const pageCount = Math.max(1, Math.ceil(rows.length / pageSizeOf(table)));
+        const before = state.page;
         if (button.hasAttribute('data-mobile-card-first')) state.page = 0;
         if (button.hasAttribute('data-mobile-card-previous')) state.page = Math.max(0, state.page - 1);
         if (button.hasAttribute('data-mobile-card-next')) state.page = Math.min(pageCount - 1, state.page + 1);
         if (button.hasAttribute('data-mobile-card-last')) state.page = pageCount - 1;
         refreshTable(table);
+        // Another page starts at its first card.
+        if (state.page !== before) (table.closest('.table-wrap, .data-table-wrap, .queue-table-wrap, .catalogue-workspace-table-wrap') || table).scrollIntoView({block: 'start', behavior: 'smooth'});
       });
     }
     const rows = cardRows(table);
@@ -617,6 +639,8 @@ function limitSeriesCollectionByX(seriesCollection, xMaxOverride) {
       state.pager.hidden = true;
       return;
     }
+    const pageSize = pageSizeOf(table);
+    if (table.matches('table')) markCards(table, rows);
     const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
     state.page = Math.min(state.page, pageCount - 1);
     rows.forEach((row, index) => row.classList.toggle('mobile-card-page-hidden', Math.floor(index / pageSize) !== state.page));
