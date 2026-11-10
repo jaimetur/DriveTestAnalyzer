@@ -149,7 +149,8 @@ from src.modules.core.module_labels import (
     ICONS as MODULE_LABEL_ICONS, MAIN_MODULES, MAX_LABEL_LENGTH as MAX_MODULE_LABEL_LENGTH, MAX_SHORT_TITLE_LENGTH,
     MAX_TITLE_LENGTH, MODULE_LABELS_STATE_KEY, MODULE_TABS, RETIRED_MODULES, SECTION_ICONS, TAB_ICONS, load_module_labels, module_label_badges,
     module_tabs, section_links,
-    ADMINISTRATIVE_ICONS, help_chapter_icons, normalize_module_labels, ordered_help_documents, rename_modules_in_help, renamed_help_chapters,
+    ADMINISTRATIVE_ICONS, DOCUMENT_HELP_ICONS, help_chapter_icons, normalize_module_labels, ordered_help_documents, rename_modules_in_help,
+    renamed_help_chapters,
 )
 from src.modules.core.output_layout import (
     CDR_ANALYSIS_FOLDER, migrate_output_layout, module_output_dir,
@@ -6547,6 +6548,8 @@ def render_template(request: Request, template_name: str, context: dict[str, Any
         'workspace_materializing': bool(active_workspace) and isinstance(template_user, SessionUser) and not embedded_template_editor
         and repository.get_workspace_state('calculated_dimensions_need_materialization') == 'processing',
         'administrative_icons': ADMINISTRATIVE_ICONS,
+        # The icons of the Help chapters of documents (Presentations, Roadmap…), for the bar at the bottom of phones.
+        'document_help_icons': DOCUMENT_HELP_ICONS,
         # Values of the CDRs that no Operator, Vendor or Campaign Map assigns: a warning card on every page.
         'unassigned_mapping_values': unassigned_mapping_values() if isinstance(template_user, SessionUser) and not embedded_template_editor
         and not context.get('embedded_preview') else {},
