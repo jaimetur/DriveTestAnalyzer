@@ -65,7 +65,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  {#- Added to the Home Screen of a phone, the tool opens on the whole screen, without the bars of the browser. -#}
+  <link rel="manifest" href="{{ static_path('manifest.json') }}?v={{ asset_version('manifest.json') }}">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="{{ app_name }}">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>{{ link_preview.title if link_preview and link_preview.opens_presentation else page_title | default(app_name) }}</title>
   {% if link_preview %}
   <!-- What the link of a presentation shows where it is shared. -->
@@ -98,7 +104,17 @@
 <body data-ignore-event-time-filtering="{{ 'true' if ignore_event_time_filtering else 'false' }}"{% if user %} data-authenticated-user="{{ user.username | lower }}" data-authenticated-role="{{ user.role }}" data-authenticated-session="{{ user.session_marker }}"{% endif %}{% if embedded_template_editor %} data-embedded-template-editor{% endif %}{% if embedded_preview %} data-embedded-dataset-preview{% endif %}>
   <div class="shell">
     {% if not embedded_preview %}
-    <header class="topbar">
+    {#- The application bar takes the colour of the module open, darker (app.css): that of its tab. -#}
+    {%- set app_bar = namespace(accent='') -%}
+    {%- if user -%}
+    {%- for tab in module_tabs if features[tab.key] -%}
+    {%- if (tab.key == 'builders' and request.url.path in ['/chart-builder', '/query-builder']) or (tab.key != 'builders' and (request.url.path == tab.href or request.url.path.startswith(tab.href ~ '/'))) %}{% set app_bar.accent = tab.tab_color %}{% endif -%}
+    {%- endfor -%}
+    {%- for key, href in [('help', '/documents/view/help'), ('readme', '/documents/view/readme'), ('changelog', '/documents/view/changelog'), ('app-logs', '/app-logs'), ('config', '/application-config'), ('config', '/workspace-config'), ('admin', '/admin'), ('super-admin', '/super-admin')] -%}
+    {%- if request.url.path == href or request.url.path.startswith(href ~ '/') %}{% set app_bar.accent = administrative_icons[key].color %}{% endif -%}
+    {%- endfor -%}
+    {%- endif %}
+    <header class="topbar{% if app_bar.accent %} topbar-module{% endif %}"{% if app_bar.accent %} style="--module-accent: {{ app_bar.accent }}"{% endif %}>
       <div class="title-block">
         <p class="eyebrow">NetCheck / Smart Orchestrator Analytics</p>
         <div class="title-row">

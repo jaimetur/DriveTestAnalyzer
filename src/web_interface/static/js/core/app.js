@@ -6567,17 +6567,27 @@ function setupMobileMenu() {
     bar.querySelector('[data-mobile-menu-current]')?.replaceChildren(...(icon ? [icon] : []), label);
   }
 
+  // With the bar at the bottom, the menu ends above it and its Menu button, which shows × while it is open, closes it.
+  const bottomNav = document.querySelector('[data-mobile-bottom-nav]');
+  const menuButton = () => bottomNav?.querySelector('.mobile-bottom-nav-menu') || null;
   const setOpen = (open) => {
     menu.hidden = !open;
     toggle.setAttribute('aria-expanded', String(open));
+    const button = menuButton();
+    if (button) {
+      button.setAttribute('aria-expanded', String(open));
+      button.querySelector('path')?.setAttribute('d', open ? 'M6 6l12 12M18 6 6 18' : 'M4 7h16M4 12h16M4 17h16');
+      button.querySelector('span').textContent = open ? 'Close' : 'Menu';
+    }
     document.documentElement.classList.toggle('has-mobile-menu-open', open);
     if (open) close.focus();
   };
+  const opener = () => (menuButton()?.getClientRects().length ? menuButton() : toggle);
 
   // The bar at the bottom: every main module the user has, in the order of their tabs, each with the icon and the colour
-  // of its tab, and the menu last. On a phone they are two rows of six when they do not fit in one (app.css), the menu
-  // at the end of the second; Builders opens a small list of its builders above the bar.
-  const bottomNav = document.querySelector('[data-mobile-bottom-nav]');
+  // of its tab, then the configuration pages of the user (or, without them, the Help) and the menu last. On a phone they
+  // are two rows of six when they do not fit in one (app.css), the menu at the end of the second. Builders and Config
+  // open a small list of their pages above the bar.
   if (bottomNav) {
     const tabs = [...document.querySelectorAll('.module-tabs-primary > .module-tab:is(a[href], button[data-module-builders-trigger])')];
     const tabLabel = (tab) => (tab.querySelector('.module-tab-label-mobile')
@@ -6594,55 +6604,102 @@ function setupMobileMenu() {
       element.append(...(tabIcon ? [tabIcon] : []), label);
       return element;
     };
-    let sheet = null;
-    const closeSheet = () => { if (sheet) sheet.hidden = true; };
+    // The lists that a button of the bar opens above it, one at a time: a tap outside, Escape or the button closes it.
+    const sheets = [];
+    const closeSheets = (except = null) => sheets.forEach(({sheet, button}) => {
+      if (sheet === except || sheet.hidden) return;
+      sheet.hidden = true;
+      button.setAttribute('aria-expanded', 'false');
+    });
+    const withSheet = (button, pages) => {
+      button.type = 'button';
+      button.setAttribute('aria-haspopup', 'true');
+      button.setAttribute('aria-expanded', 'false');
+      const sheet = document.createElement('nav');
+      sheet.className = 'mobile-bottom-nav-sheet';
+      sheet.hidden = true;
+      sheet.setAttribute('aria-label', button.title);
+      const accentColour = button.style.getPropertyValue('--tab-accent');
+      if (accentColour) sheet.style.setProperty('--tab-accent', accentColour);
+      sheet.append(...pages.map((page) => {
+        const link = document.createElement('a');
+        link.href = page.getAttribute('href');
+        if (page.classList.contains('is-active')) link.classList.add('is-active');
+        const icon = page.querySelector('svg')?.cloneNode(true);
+        icon?.removeAttribute('class');
+        const name = document.createElement('span');
+        name.textContent = (page.querySelector('span') || page).textContent.trim();
+        link.append(...(icon ? [icon] : []), name);
+        return link;
+      }));
+      document.body.append(sheet);
+      sheets.push({sheet, button});
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const open = sheet.hidden;
+        closeSheets(sheet);
+        if (open && !menu.hidden) setOpen(false);
+        sheet.hidden = !open;
+        button.setAttribute('aria-expanded', String(open));
+      });
+      return button;
+    };
+    document.addEventListener('click', (event) => {
+      sheets.forEach(({sheet}) => { if (!sheet.hidden && !sheet.contains(event.target)) closeSheets(); });
+    });
+    document.addEventListener('keydown', (event) => {
+      const open = sheets.find(({sheet}) => !sheet.hidden);
+      if (event.key === 'Escape' && open) { closeSheets(); open.button.focus(); }
+    });
+    const markActive = (element) => { element.classList.add('is-active'); element.setAttribute('aria-current', 'page'); };
     const items = tabs.map((tab) => {
       if (tab.tagName === 'A') {
         const link = document.createElement('a');
         link.href = tab.getAttribute('href');
         return item(tab, link);
       }
-      // Builders: its builders (those of the menu of its tab) in a list above the bar.
-      const button = item(tab, document.createElement('button'));
-      button.type = 'button';
-      button.setAttribute('aria-haspopup', 'true');
-      button.setAttribute('aria-expanded', 'false');
-      sheet = document.createElement('nav');
-      sheet.className = 'mobile-bottom-nav-sheet';
-      sheet.hidden = true;
-      sheet.setAttribute('aria-label', button.title);
-      const accentColour = button.style.getPropertyValue('--tab-accent');
-      if (accentColour) sheet.style.setProperty('--tab-accent', accentColour);
-      sheet.append(...[...document.querySelectorAll('[data-module-builders-options] .module-config-group > a[href]')].map((builder) => {
-        const link = document.createElement('a');
-        link.href = builder.getAttribute('href');
-        if (builder.classList.contains('is-active')) link.classList.add('is-active');
-        const icon = builder.querySelector('svg')?.cloneNode(true);
-        const name = document.createElement('span');
-        name.textContent = builder.querySelector('span')?.textContent.trim() || '';
-        link.append(...(icon ? [icon] : []), name);
-        return link;
-      }));
-      document.body.append(sheet);
-      button.addEventListener('click', (event) => {
-        event.stopPropagation();
-        sheet.hidden = !sheet.hidden;
-        button.setAttribute('aria-expanded', String(!sheet.hidden));
-      });
-      document.addEventListener('click', (event) => {
-        if (!sheet.hidden && !sheet.contains(event.target)) { closeSheet(); button.setAttribute('aria-expanded', 'false'); }
-      });
-      document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !sheet.hidden) { closeSheet(); button.setAttribute('aria-expanded', 'false'); button.focus(); }
-      });
-      return button;
+      // Builders: its builders (those of the menu of its tab).
+      return withSheet(item(tab, document.createElement('button')),
+        [...document.querySelectorAll('[data-module-builders-options] .module-config-group > a[href]')]);
     });
+    // Config: the configuration pages of the user, as Administrative Modules lists them in the menu (Application Config
+    // and Workspace Config, Administrator Config and Super Admin), each with the icon and the colour of its module.
+    const administration = menu.querySelector('nav[aria-label="Administrative modules"]');
+    const configPages = administration ? [...administration.querySelectorAll(':scope > a[href], :scope > details > summary > a[href]')]
+      .filter((page) => page.getAttribute('href') !== '/app-logs') : [];
+    const configTab = document.querySelector('[data-module-config-trigger]');
+    const menuAccent = (selector) => document.querySelector(selector)?.style.getPropertyValue('--menu-accent').trim() || '';
+    if (configTab && configPages.length) {
+      const button = item(configTab, document.createElement('button'));
+      const colour = menuAccent('[data-module-config-options]');
+      if (colour) button.style.setProperty('--tab-accent', colour);
+      button.title = 'Configuration pages';
+      if (configPages.some((page) => page.classList.contains('is-active'))) markActive(button);
+      items.push(withSheet(button, configPages));
+    } else {
+      const helpTab = document.querySelector('.module-tabs-secondary > a.module-tab[href="/documents/view/help"]');
+      if (helpTab && items.length) {
+        const link = item(helpTab, document.createElement('a'));
+        link.href = helpTab.getAttribute('href');
+        const colour = menuAccent('[data-module-sections-for="help"]');
+        if (colour) link.style.setProperty('--tab-accent', colour);
+        items.push(link);
+      }
+    }
     const more = document.createElement('button');
     more.type = 'button';
     more.className = 'mobile-bottom-nav-menu';
     more.title = 'Every module and section';
+    more.setAttribute('aria-haspopup', 'dialog');
+    more.setAttribute('aria-controls', 'mobile-menu');
+    more.setAttribute('aria-expanded', 'false');
     more.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>Menu</span>';
-    more.addEventListener('click', () => { closeSheet(); setOpen(true); });
+    more.addEventListener('click', (event) => {
+      event.stopPropagation();
+      closeSheets();
+      setOpen(menu.hidden);
+      if (menu.hidden) more.focus();
+    });
     if (items.length) {
       const rows = items.length + 1 > 6 ? 2 : 1;
       bottomNav.dataset.rows = String(rows);
@@ -6653,13 +6710,13 @@ function setupMobileMenu() {
   toggle.addEventListener('click', () => setOpen(true));
   close.addEventListener('click', () => {
     setOpen(false);
-    toggle.focus();
+    opener().focus();
   });
   menu.querySelectorAll('a[href], [data-about-open]').forEach((item) => item.addEventListener('click', () => setOpen(false)));
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !menu.hidden) {
       setOpen(false);
-      toggle.focus();
+      opener().focus();
     }
   });
   const smallScreen = window.matchMedia(MOBILE_MENU_SCREENS);
@@ -10442,10 +10499,13 @@ document.addEventListener('click', (event) => {
   let closeTimer = 0;
   const place = (group) => {
     const box = group.wrap.getBoundingClientRect();
-    group.list.style.top = `${Math.round(box.bottom + 6)}px`;
+    // Below the entry or, with the bar at the bottom of a phone, above it; a list longer than the room left scrolls.
+    const below = window.innerHeight - box.bottom - 18;
+    const above = box.top - 18;
+    const up = above > below;
+    group.list.style.maxHeight = `${Math.max(120, Math.round(up ? above : below))}px`;
+    group.list.style.top = `${Math.round(up ? Math.max(8, box.top - 12 - group.list.offsetHeight) : box.bottom + 6)}px`;
     group.list.style.left = `${Math.round(Math.max(8, Math.min(box.left, window.innerWidth - group.list.offsetWidth - 8)))}px`;
-    // It ends above the bottom of the screen; a list longer than the room left scrolls.
-    group.list.style.maxHeight = `${Math.max(120, Math.round(window.innerHeight - box.bottom - 18))}px`;
   };
   const close = (group) => {
     if (group.list.matches(':popover-open')) group.list.hidePopover();
