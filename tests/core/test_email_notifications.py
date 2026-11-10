@@ -181,6 +181,8 @@ def test_access_requests_are_emailed_and_the_requester_is_told_when_activated(cl
     client.post('/admin/users/bulk', data={'user_ids': [user_id], 'action': 'activate'})
     granted = flow[-1]
     assert granted['kind'] == 'access_granted' and granted['to'] == 'ana.garcia@example.com'
+    # Copied to everyone the request went to: the administrator and the approvers.
+    assert granted['cc'].split(';') == [message['to'], *message['cc'].split(';')[:-1]]
     assert granted['subject'] == 'DT Analyzer - Your access has been granted'
     assert 'https://tool.example:8443/login' in granted['html'] and 'EABCDEF' in granted['html']
     # Not again for a user that waits for nothing.

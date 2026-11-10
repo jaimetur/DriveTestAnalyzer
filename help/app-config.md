@@ -50,7 +50,7 @@ The **Email Delivery** panel sets how the tool sends its emails: the reports of 
 | Username, Password | Optional SMTP authentication. Leave the password empty to keep the saved one, or the `SMTP_PASSWORD` deployment value; **Remove the saved password** deletes it |
 | Attachment Size Limit (MB) | (20 by default) Through SMTP, a report whose files exceed this total is emailed with their download links instead of attached (without the Public address of the server, it fails) |
 | Sender Address, Sender Name | The `From` of every SMTP email. With a flow, the sender is its mailbox: give its address, where the replies go when nobody else should get them |
-| Access requests | Each access request goes to the administrator and the approvers, copied to the requester, and the requester is told when the user is activated |
+| Access requests | Each access request goes to the administrator and the approvers, copied to the requester, and the requester is told when the user is activated, with the administrator and the approvers in copy |
 | Ticket Center | The reporter of a ticket gets its confirmation and every change others make to it or to a ticket that mentions it |
 | Users Told Of Their Own Changes | Nobody is emailed the changes they make to their own tickets, except the users chosen here (for example, when someone else works on their tickets with their user). Nobody is chosen by default |
 

@@ -16012,7 +16012,8 @@ def confirm_password_reset(request: Request, payload: PasswordResetConfirmPayloa
 
 
 def notify_access_granted(before: Any, actor: str, base_url: str) -> None:
-    """Tell a user whose access request waited that an administrator activated it."""
+    """Tell a user whose access request waited that an administrator activated it, copied to everyone the request was
+    emailed to (the administrator and the approvers)."""
     if not before or before['active'] or not before['access_requested_at'] or not before['email']:
         return
     updated = repository.get_user_by_id(int(before['id']))
@@ -16032,7 +16033,8 @@ def notify_access_granted(before: Any, actor: str, base_url: str) -> None:
         '<p style="color:#4b5563">Forgot your password? Use <strong>Forgot your password?</strong> on the sign-in page.</p>',
     ], link=('Sign in', f'{base}/login'))
     notifications.deliver(repository, kind='access_granted', recipients=[str(updated['email'])], subject=subject, html_body=body,
-                          actor=actor, switch='notify_access_requests', details={'user': str(updated['username'])})
+                          cc=[__author_email__, *(address for _, address in ACCESS_REQUEST_APPROVERS)], actor=actor,
+                          switch='notify_access_requests', details={'user': str(updated['username'])})
 
 
 @app.get('/logout')
