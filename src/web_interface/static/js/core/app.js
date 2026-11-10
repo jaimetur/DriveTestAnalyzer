@@ -10685,11 +10685,19 @@ document.addEventListener('click', (event) => {
   const sheetAccent = getComputedStyle(bar).getPropertyValue('--section-bar-accent').trim();
   if (sheetAccent) sheet.style.setProperty('--section-bar-accent', sheetAccent);
   document.body.append(sheet);
-  // The sections that can be reached now (in sight on the page), in their order: those the arrows step through.
+  // A panel hidden as a tab (Ticket Center shows one of its views at a time) is still a section of the page: its entry
+  // opens it. Another hidden panel (the Charts Panel of PPT Designer without PPTs…) is not.
+  const isTab = (element) => Boolean(element?.matches('[role="tabpanel"]'));
+  const hiddenSection = (item) => {
+    const element = target(item.hash);
+    return Boolean(element?.hidden) && !isTab(element);
+  };
+  // The sections that can be reached now (in sight on the page, or a view of its tabs), in their order: those the
+  // arrows step through.
   const reachable = () => items.filter((item) => {
     if (item.link.hidden) return false;
     const element = target(item.hash);
-    return Boolean(element && !element.hidden && element.getClientRects().length);
+    return Boolean(element && (isTab(element) || (!element.hidden && element.getClientRects().length)));
   });
   let shownItem = null;
   let shownLabel = null;
@@ -10720,7 +10728,7 @@ document.addEventListener('click', (event) => {
     current.setAttribute('aria-expanded', 'false');
   };
   const openSheet = () => {
-    sheet.replaceChildren(...items.filter((item) => !item.link.hidden && !item.link.closest('[hidden]') && !target(item.hash)?.hidden).map((item) => {
+    sheet.replaceChildren(...items.filter((item) => !item.link.hidden && !item.link.closest('[hidden]') && !hiddenSection(item)).map((item) => {
       const link = document.createElement('a');
       link.href = item.hash;
       if (item.parent) link.classList.add('is-part');
@@ -10769,7 +10777,7 @@ document.addEventListener('click', (event) => {
     let active = null;
     // An entry whose panel is hidden (the Charts Panel of PPT Designer without PPTs…) is hidden with it.
     if (!ownBar) items.forEach((item) => {
-      const hide = Boolean(target(item.hash)?.hidden);
+      const hide = hiddenSection(item);
       const entry = item.parent ? null : item.link.closest('.section-bar-group') || item.link;
       if (entry && entry.hidden !== hide) entry.hidden = hide;
     });

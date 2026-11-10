@@ -9385,7 +9385,7 @@ def test_top_navigation_shows_document_links(client) -> None:
     assert 'title="Open Changelog"' in response.text
     assert '<span class="module-tab-label-mobile">Analysis</span>' in response.text
     assert 'href="/logout"' in response.text
-    assert '<span class="topnav-link topnav-user-badge topnav-user-badge-admin" >User: admin (admin · All Modules)</span>' in response.text
+    assert '<span class="topnav-link topnav-user-badge topnav-user-badge-admin" >admin (admin · All Modules)</span>' in response.text
 
     for route in ('/chart-builder', '/query-builder'):
         builder_page = client.get(route)
@@ -9526,7 +9526,7 @@ def test_non_admin_navigation_hides_admin_tab(client) -> None:
     assert 'data-page-panel-navigator' in workspace.text
     assert 'href="/application-config"' not in workspace.text
     assert 'href="/workspace-config"' not in workspace.text
-    assert 'User: demo' in workspace.text
+    assert '>demo (user' in workspace.text
 
 
 def test_admin_imports_report_catalogue(client) -> None:
