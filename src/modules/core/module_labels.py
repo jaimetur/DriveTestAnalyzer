@@ -384,7 +384,8 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                           ('Charts and Scorecards', 'Charts and Scorecards', 'chart'),
                           ('Processed Metrics', 'Processed Metrics', 'gauge')],
     'ppt-designer': [('PPT Designs', 'PPT Designs', 'presentation'),
-                       ('PPT Generation Jobs', 'PPT Generation Jobs', 'jobs')],
+                       ('PPT Generation Jobs', 'PPT Generation Jobs', 'jobs'),
+                       ('Charts Panel', 'Charts Panel', 'chart')],
     'scoring': [('Select NR Mode, Campaign, filters, Split by & GAP reference', 'Scoring Calculation', 'sliders'),
                 ('Scoring & GAP Results', 'Scoring & GAP Results', 'chart', [
                     ('scoring-results-summary', 'Summary', 'summary'), ('scoring-results-charts', 'Scoring Charts', 'chart'),

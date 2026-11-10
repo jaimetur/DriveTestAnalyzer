@@ -10402,6 +10402,8 @@ document.addEventListener('click', (event) => {
   const items = [];
   const groups = [];
   let bar = document.querySelector('[data-section-bar]');
+  // (A page with its own bar shows and hides its entries itself; the entries of the others follow their panels.)
+  const ownBar = Boolean(bar);
   if (!bar) {
     const {entries, menu, name} = menuEntries();
     const first = [...main.querySelectorAll('.panel')].find((panel) => !panel.parentElement?.closest('.panel'));
@@ -10633,7 +10635,7 @@ document.addEventListener('click', (event) => {
     current.setAttribute('aria-expanded', 'false');
   };
   const openSheet = () => {
-    sheet.replaceChildren(...items.filter((item) => !item.link.hidden).map((item) => {
+    sheet.replaceChildren(...items.filter((item) => !item.link.hidden && !item.link.closest('[hidden]') && !target(item.hash)?.hidden).map((item) => {
       const link = document.createElement('a');
       link.href = item.hash;
       if (item.parent) link.classList.add('is-part');
@@ -10680,6 +10682,12 @@ document.addEventListener('click', (event) => {
     const atEnd = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2;
     // The section being read: the last one whose top has reached the bar (the last one in sight at the end of the page).
     let active = null;
+    // An entry whose panel is hidden (the Charts Panel of PPT Designer without PPTs…) is hidden with it.
+    if (!ownBar) items.forEach((item) => {
+      const hide = Boolean(target(item.hash)?.hidden);
+      const entry = item.parent ? null : item.link.closest('.section-bar-group') || item.link;
+      if (entry && entry.hidden !== hide) entry.hidden = hide;
+    });
     items.forEach((item) => {
       const element = target(item.hash);
       if (!element || element.hidden || !element.getClientRects().length) return;
