@@ -260,8 +260,32 @@
   </div>
   {% if user and not embedded_template_editor and not embedded_preview %}
   {# Back to the top of the page, shown once the page is scrolled down, in the colour of its module. #}
-  {% if user and not embedded_template_editor and not embedded_preview %}{# Small screens: the modules the user opens most, and the menu, at the bottom (app.css, app.js). #}
-  <nav class="mobile-bottom-nav" data-mobile-bottom-nav aria-label="Modules"></nav>{% endif %}
+  {% if user and not embedded_template_editor and not embedded_preview %}
+  {#- Small screens (app.css): every main module the user can open, in the order of their tabs, with the icon, the short
+      title and the colour of its tab, then Config (the configuration pages of the role) or, without them, Help, and the
+      menu last; two rows of six when they do not fit in one. Drawn here so that the page shows it from its first
+      moment; app.js opens the lists of Builders and Config and the menu. -#}
+  {%- set bottom_nav = namespace(count=0) -%}
+  {%- for tab in module_tabs if features[tab.key] and (active_workspace if tab.key == 'builders' else (not tab.needs_workspace or active_workspace)) %}{% set bottom_nav.count = bottom_nav.count + 1 %}{% endfor -%}
+  {%- set path = request.url.path -%}
+  <nav class="mobile-bottom-nav" data-mobile-bottom-nav aria-label="Modules"{% if bottom_nav.count %} data-rows="{{ 2 if bottom_nav.count + 2 > 6 else 1 }}"{% endif %}>{% if bottom_nav.count %}
+    {%- for tab in module_tabs if features[tab.key] and (active_workspace if tab.key == 'builders' else (not tab.needs_workspace or active_workspace)) %}
+    {%- set open = path in ['/chart-builder', '/query-builder'] if tab.key == 'builders' else (path == tab.href or path.startswith(tab.href ~ '/')) %}
+    {%- set content %}{% if tab.icon_path %}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">{{ tab.icon_path | safe }}</svg>{% endif %}<span>{{ tab.short_title }}</span>{% endset %}
+    {%- if tab.key == 'builders' %}
+    <button type="button" class="{% if open %}is-active{% endif %}" style="--tab-accent: {{ tab.tab_color }}" title="{{ tab.short_title }}" data-bottom-nav-builders{% if open %} aria-current="page"{% endif %}>{{ content }}</button>
+    {%- else %}
+    <a href="{{ tab.href }}" class="{% if open %}is-active{% endif %}" style="--tab-accent: {{ tab.tab_color }}" title="{{ tab.short_title }}"{% if open %} aria-current="page"{% endif %}>{{ content }}</a>
+    {%- endif %}{% endfor %}
+    {%- if user.role in ['user-editor', 'admin', 'super-admin'] %}
+    {%- set open = path in ['/application-config', '/workspace-config', '/admin', '/super-admin'] %}
+    <button type="button" class="{% if open %}is-active{% endif %}" style="--tab-accent: {{ administrative_icons['config'].color }}" title="Configuration pages" data-bottom-nav-config{% if open %} aria-current="page"{% endif %}>{{ tab_icon('config', '') }}<span>Config</span></button>
+    {%- else %}
+    {%- set open = path.startswith('/documents/view/help') %}
+    <a href="/documents/view/help" class="{% if open %}is-active{% endif %}" style="--tab-accent: {{ administrative_icons['help'].color }}" title="Help"{% if open %} aria-current="page"{% endif %}>{{ tab_icon('help', '') }}<span>Help</span></a>
+    {%- endif %}
+    <button type="button" class="mobile-bottom-nav-menu" title="Every module and section" aria-haspopup="dialog" aria-controls="mobile-menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>Menu</span></button>
+  {% endif %}</nav>{% endif %}
   <button type="button" class="back-to-top" data-back-to-top title="Back to the top of the page" aria-label="Back to the top of the page" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="back-to-top-lead" d="m5 12 7-7 7 7"/><path class="back-to-top-trail" d="m5 19 7-7 7 7"/></svg></button>
   <div id="background-task-panels" class="background-task-panels" aria-live="polite" aria-label="Background tasks" hidden>
     <div class="background-task-dock background-task-dock-other" data-background-task-dock="other"></div>

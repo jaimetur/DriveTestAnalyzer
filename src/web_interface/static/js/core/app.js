@@ -6584,27 +6584,10 @@ function setupMobileMenu() {
   };
   const opener = () => (menuButton()?.getClientRects().length ? menuButton() : toggle);
 
-  // The bar at the bottom: every main module the user has, in the order of their tabs, each with the icon and the colour
-  // of its tab, then the configuration pages of the user (or, without them, the Help) and the menu last. On a phone they
-  // are two rows of six when they do not fit in one (app.css), the menu at the end of the second. Builders and Config
-  // open a small list of their pages above the bar.
+  // The bar at the bottom (base.html draws it: every main module the user can open, then Config or Help and the menu
+  // last). Builders and Config open a small list of their pages above it, one at a time: a tap outside, Escape or the
+  // button closes it; Menu opens and closes the menu.
   if (bottomNav) {
-    const tabs = [...document.querySelectorAll('.module-tabs-primary > .module-tab:is(a[href], button[data-module-builders-trigger])')];
-    const tabLabel = (tab) => (tab.querySelector('.module-tab-label-mobile')
-      || tab.querySelector(':scope > span:not(.module-tab-label-desktop)'))?.textContent.trim() || tab.title || '';
-    const item = (tab, element) => {
-      const accentColour = getComputedStyle(tab).getPropertyValue('--tab-accent').trim();
-      if (accentColour) element.style.setProperty('--tab-accent', accentColour);
-      if (tab.classList.contains('active')) { element.classList.add('is-active'); element.setAttribute('aria-current', 'page'); }
-      const label = document.createElement('span');
-      label.textContent = tabLabel(tab);
-      element.title = label.textContent;
-      const tabIcon = tab.querySelector('svg.module-tab-icon')?.cloneNode(true);
-      tabIcon?.removeAttribute('class');
-      element.append(...(tabIcon ? [tabIcon] : []), label);
-      return element;
-    };
-    // The lists that a button of the bar opens above it, one at a time: a tap outside, Escape or the button closes it.
     const sheets = [];
     const closeSheets = (except = null) => sheets.forEach(({sheet, button}) => {
       if (sheet === except || sheet.hidden) return;
@@ -6612,7 +6595,7 @@ function setupMobileMenu() {
       button.setAttribute('aria-expanded', 'false');
     });
     const withSheet = (button, pages) => {
-      button.type = 'button';
+      if (!button || !pages.length) return;
       button.setAttribute('aria-haspopup', 'true');
       button.setAttribute('aria-expanded', 'false');
       const sheet = document.createElement('nav');
@@ -6642,7 +6625,6 @@ function setupMobileMenu() {
         sheet.hidden = !open;
         button.setAttribute('aria-expanded', String(open));
       });
-      return button;
     };
     document.addEventListener('click', (event) => {
       sheets.forEach(({sheet}) => { if (!sheet.hidden && !sheet.contains(event.target)) closeSheets(); });
@@ -6651,61 +6633,21 @@ function setupMobileMenu() {
       const open = sheets.find(({sheet}) => !sheet.hidden);
       if (event.key === 'Escape' && open) { closeSheets(); open.button.focus(); }
     });
-    const markActive = (element) => { element.classList.add('is-active'); element.setAttribute('aria-current', 'page'); };
-    const items = tabs.map((tab) => {
-      if (tab.tagName === 'A') {
-        const link = document.createElement('a');
-        link.href = tab.getAttribute('href');
-        return item(tab, link);
-      }
-      // Builders: its builders (those of the menu of its tab).
-      return withSheet(item(tab, document.createElement('button')),
-        [...document.querySelectorAll('[data-module-builders-options] .module-config-group > a[href]')]);
-    });
+    // Builders: its builders (those of the menu of its tab).
+    withSheet(bottomNav.querySelector('[data-bottom-nav-builders]'),
+      [...document.querySelectorAll('[data-module-builders-options] .module-config-group > a[href]')]);
     // Config: the configuration pages of the user, as Administrative Modules lists them in the menu (Application Config
     // and Workspace Config, Administrator Config and Super Admin), each with the icon and the colour of its module.
     const administration = menu.querySelector('nav[aria-label="Administrative modules"]');
-    const configPages = administration ? [...administration.querySelectorAll(':scope > a[href], :scope > details > summary > a[href]')]
-      .filter((page) => page.getAttribute('href') !== '/app-logs') : [];
-    const configTab = document.querySelector('[data-module-config-trigger]');
-    const menuAccent = (selector) => document.querySelector(selector)?.style.getPropertyValue('--menu-accent').trim() || '';
-    if (configTab && configPages.length) {
-      const button = item(configTab, document.createElement('button'));
-      const colour = menuAccent('[data-module-config-options]');
-      if (colour) button.style.setProperty('--tab-accent', colour);
-      button.title = 'Configuration pages';
-      if (configPages.some((page) => page.classList.contains('is-active'))) markActive(button);
-      items.push(withSheet(button, configPages));
-    } else {
-      const helpTab = document.querySelector('.module-tabs-secondary > a.module-tab[href="/documents/view/help"]');
-      if (helpTab && items.length) {
-        const link = item(helpTab, document.createElement('a'));
-        link.href = helpTab.getAttribute('href');
-        const colour = menuAccent('[data-module-sections-for="help"]');
-        if (colour) link.style.setProperty('--tab-accent', colour);
-        items.push(link);
-      }
-    }
-    const more = document.createElement('button');
-    more.type = 'button';
-    more.className = 'mobile-bottom-nav-menu';
-    more.title = 'Every module and section';
-    more.setAttribute('aria-haspopup', 'dialog');
-    more.setAttribute('aria-controls', 'mobile-menu');
-    more.setAttribute('aria-expanded', 'false');
-    more.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>Menu</span>';
-    more.addEventListener('click', (event) => {
+    withSheet(bottomNav.querySelector('[data-bottom-nav-config]'), administration
+      ? [...administration.querySelectorAll(':scope > a[href], :scope > details > summary > a[href]')].filter((page) => page.getAttribute('href') !== '/app-logs')
+      : []);
+    menuButton()?.addEventListener('click', (event) => {
       event.stopPropagation();
       closeSheets();
       setOpen(menu.hidden);
-      if (menu.hidden) more.focus();
+      if (menu.hidden) menuButton().focus();
     });
-    if (items.length) {
-      const rows = items.length + 1 > 6 ? 2 : 1;
-      bottomNav.dataset.rows = String(rows);
-      document.documentElement.dataset.bottomNavRows = String(rows);
-      bottomNav.replaceChildren(...items, more);
-    }
   }
   toggle.addEventListener('click', () => setOpen(true));
   close.addEventListener('click', () => {

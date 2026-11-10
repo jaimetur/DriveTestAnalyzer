@@ -61,6 +61,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import QueryParams
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES as GZIP_DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 from starlette.requests import ClientDisconnect
 
 DEFAULT_TRANSFER_PORT = 7278
@@ -3733,8 +3734,31 @@ def startup_status() -> JSONResponse:
                         headers={'Cache-Control': 'no-store'})
 
 
-app.mount('/static', StaticFiles(directory=settings.static_dir), name='static')
+class VersionedStaticFiles(StaticFiles):
+    """The files of the interface. One asked for with its fingerprint (?v=, asset_version) never changes under that
+    address: browsers keep it for a year instead of asking for it again on every page."""
+
+    async def get_response(self, path: str, scope) -> Response:
+        response = await super().get_response(path, scope)
+        if response.status_code == 200 and QueryParams(scope.get('query_string', b'').decode('latin-1')).get('v'):
+            response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        return response
+
+
+app.mount('/static', VersionedStaticFiles(directory=settings.static_dir), name='static')
 templates = Jinja2Templates(directory=str(settings.template_dir))
+
+# Pages, scripts, styles and JSON travel compressed when the browser accepts it (a page and its scripts are several
+# times smaller over the network of a phone). What is downloaded as a file (ZIP and Office documents, CSV, databases,
+# attachments) and streamed progress are sent as they are.
+UNCOMPRESSED_CONTENT_TYPES = GZIP_DEFAULT_EXCLUDED_CONTENT_TYPES + (
+    'application/octet-stream', 'application/pdf', 'application/x-ndjson', 'application/x-sqlite3', 'text/csv',
+    'application/vnd.apache.parquet', 'application/vnd.google-earth.kmz', 'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+)
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6, exclude_content_types=UNCOMPRESSED_CONTENT_TYPES)
 
 
 def asset_version(relative_path: str) -> str:
