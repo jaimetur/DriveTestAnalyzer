@@ -66,7 +66,7 @@ MODULE_TABS: dict[str, dict[str, Any]] = {
     'ticket-center': {'css': 'module-tab-ticket-center', 'href': '/tickets', 'title': 'Ticket Center', 'short_title': 'Tickets',
                       'nav_title': 'Ticket Center', 'tab_icon': 'ticket-center', 'tab_color': '#DC2626',
                       'docs': ('ticket-center.md',), 'needs_workspace': False},
-    'assistant': {'css': 'module-tab-assistant', 'href': '/assistant', 'title': 'AI Assistant', 'short_title': 'Assistant',
+    'assistant': {'css': 'module-tab-assistant', 'href': '/assistant', 'title': 'AI Assistant', 'short_title': 'AI Assistant',
                   'nav_title': 'AI Assistant', 'tab_icon': 'assistant', 'tab_color': '#0E7490', 'docs': ('assistant.md',)},
 }
 
@@ -256,6 +256,9 @@ FORMER_REPORTING_TITLES = frozenset({'scheduled reporting', 'scheduled reporting
 # Interface Settings and the Non-Qualified Calls profile saved when Ticket Center was called Bugs Report keep that
 # name: it becomes Ticket Center once (with its short title and its ticket icon), and any name chosen afterwards stays.
 TICKET_CENTER_TITLE_MIGRATION_KEY = 'module_tab_labels_ticket_center_title_v1'
+# Interface Settings saved when the short title of the AI Assistant was Assistant keep it: it becomes AI Assistant once,
+# and any short title chosen afterwards stays.
+ASSISTANT_SHORT_TITLE_MIGRATION_KEY = 'module_tab_labels_assistant_short_title_v1'
 
 
 def migrate_ticket_center_title(repository: Any) -> bool:
@@ -310,6 +313,23 @@ def migrate_reporting_title(repository: Any) -> bool:
                                             profile['modules'])
             changed = True
     repository.set_application_state(REPORTING_TITLE_MIGRATION_KEY, '1')
+    return changed
+
+
+def migrate_assistant_short_title(repository: Any) -> bool:
+    """Rename a stored Assistant short title of the AI Assistant tab to AI Assistant; True when it changed."""
+    if repository.get_application_state(ASSISTANT_SHORT_TITLE_MIGRATION_KEY) == '1':
+        return False
+    try:
+        stored = json.loads(repository.get_application_state(MODULE_LABELS_STATE_KEY) or '{}')
+    except (TypeError, ValueError):
+        stored = {}
+    entry = stored.get('assistant') if isinstance(stored, dict) else None
+    changed = isinstance(entry, dict) and str(entry.get('short_title') or '').strip().casefold() == 'assistant'
+    if changed:
+        entry['short_title'] = MODULE_TABS['assistant']['short_title']
+        repository.set_application_state(MODULE_LABELS_STATE_KEY, json.dumps(stored, sort_keys=True))
+    repository.set_application_state(ASSISTANT_SHORT_TITLE_MIGRATION_KEY, '1')
     return changed
 
 

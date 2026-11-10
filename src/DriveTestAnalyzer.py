@@ -3506,9 +3506,10 @@ async def lifespan(_: FastAPI):
         apply_runtime_configuration(stored_runtime_configuration)
     migrate_workspace_template_registries()
     migrate_ppt_module_names()
-    from src.modules.core.module_labels import migrate_reporting_title, migrate_ticket_center_title
+    from src.modules.core.module_labels import migrate_assistant_short_title, migrate_reporting_title, migrate_ticket_center_title
     migrate_reporting_title(repository)
     migrate_ticket_center_title(repository)
+    migrate_assistant_short_title(repository)
     submit_background_task(empty_workspace_trash)
     submit_background_task(fill_user_last_logins_from_app_events)
     # Workspace schema cleanup and interrupted-job recovery happen when a

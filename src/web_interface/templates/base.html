@@ -118,15 +118,6 @@
       } catch (_error) {
         // Optional: without the session storage the module opens at its top.
       }
-      // The bar at the bottom of a phone in one row or with every module, as it was left (app.js), from the first moment.
-      try {
-        const root = document.documentElement;
-        if (root.classList.contains('has-bottom-nav-expandable') && window.localStorage.getItem('drivetest-analyzer:bottom-nav') === 'expanded') {
-          root.classList.add('has-bottom-nav-expanded');
-        }
-      } catch (_error) {
-        // Optional: the bar shows one row.
-      }
     })();
   </script>
   <!-- Campaign labels and order of the active workspace, for every page script. -->
@@ -296,13 +287,13 @@
   {% if user and not embedded_template_editor and not embedded_preview %}
   {#- Small screens (app.css): every main module the user can open, in the order of their tabs, with the icon, the short
       title and the colour of its tab, then Config (the configuration pages of the role, when it has them), App Logs,
-      Help, Changelog, Readme, Presentations and Roadmap, and the menu last. When they do not fit in one row, the row scrolls sideways with the menu fixed at its end, and a swipe up
-      on the bar (or its handle) shows them all in rows of six. Drawn here so that the page shows it from its first
+      Help, Changelog, Readme, Presentations and Roadmap, and the menu last. When they do not fit in one row, every page
+      shows one row that scrolls sideways with the menu fixed at its end, and its handle shows them all in rows of six. Drawn here so that the page shows it from its first
       moment; app.js opens the lists of Builders and Config and the menu, and shows the rows. -#}
   {%- set path = request.url.path -%}
   <nav class="mobile-bottom-nav" data-mobile-bottom-nav aria-label="Modules">{% if bottom_nav.count %}
     {%- if bottom_nav.cells > 6 %}
-    <button type="button" class="mobile-bottom-nav-handle" data-bottom-nav-handle aria-expanded="false" aria-label="Show every module" title="Swipe up for every module, down for one row"></button>
+    <button type="button" class="mobile-bottom-nav-handle" data-bottom-nav-handle aria-expanded="false" aria-label="Show every module" title="Tap or swipe up for every module, down for one row"></button>
     {%- endif %}
     <div class="mobile-bottom-nav-items" data-bottom-nav-items>
     {%- for tab in module_tabs if features[tab.key] and (active_workspace if tab.key == 'builders' else (not tab.needs_workspace or active_workspace)) %}
@@ -319,8 +310,8 @@
     {%- endif %}
     {%- set open = path == '/app-logs' %}
     <a href="/app-logs" class="{% if open %}is-active{% endif %}" style="--tab-accent: {{ administrative_icons['app-logs'].color }}" title="App Logs"{% if open %} aria-current="page"{% endif %}>{{ tab_icon('app-logs', '') }}<span>App Logs</span></a>
-    {#- Presentations is Slides in the bar, where its title does not fit. -#}
-    {%- set documents = [('/documents/view/changelog', 'Changelog', 'Changelog', administrative_icons['changelog'].d), ('/documents/view/readme', 'Readme', 'Readme', administrative_icons['readme'].d), ('/documents/view/help/presentations.md', 'Slides', 'Presentations', document_help_icons['presentations.md']), ('/documents/view/help/roadmap.md', 'Roadmap', 'Roadmap', document_help_icons['roadmap.md'])] %}
+    {#- Short labels in the bar, where the titles do not fit: Changes (Changelog) and Slides (Presentations). -#}
+    {%- set documents = [('/documents/view/changelog', 'Changes', 'Changelog', administrative_icons['changelog'].d), ('/documents/view/readme', 'Readme', 'Readme', administrative_icons['readme'].d), ('/documents/view/help/presentations.md', 'Slides', 'Presentations', document_help_icons['presentations.md']), ('/documents/view/help/roadmap.md', 'Roadmap', 'Roadmap', document_help_icons['roadmap.md'])] %}
     {%- set open = path.startswith('/documents/view/help') and path not in documents | map(attribute=0) | list %}
     <a href="/documents/view/help" class="{% if open %}is-active{% endif %}" style="--tab-accent: {{ administrative_icons['help'].color }}" title="Help"{% if open %} aria-current="page"{% endif %}>{{ tab_icon('help', '') }}<span>Help</span></a>
     {%- for href, label, title, icon in documents %}

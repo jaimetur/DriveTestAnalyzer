@@ -6717,9 +6717,21 @@ function setupMobileMenu() {
       setOpen(menu.hidden);
       if (menu.hidden) menuButton().focus();
     });
-    // When the modules do not fit in one row (base.html), the row scrolls sideways with Menu fixed at its end; a swipe up
-    // on the bar, or a tap on its handle, shows every module in rows, and a swipe down returns to one row. The browser
-    // remembers it (base.html applies it before the page shows).
+    // A label longer than its button (AI Assistant, Workspace) takes a smaller letter until it fits, instead of being cut.
+    const fitLabels = () => bottomNav.querySelectorAll(':scope :is(a, button) > span').forEach((label) => {
+      label.style.removeProperty('font-size');
+      if (!label.getClientRects().length) return;
+      let size = parseFloat(getComputedStyle(label).fontSize);
+      while (label.scrollWidth > label.clientWidth + 0.5 && size > 8.5) {
+        size = Math.max(8.5, Math.min(size - 0.2, Math.floor(size * label.clientWidth / label.scrollWidth * 10) / 10));
+        label.style.fontSize = `${size}px`;
+      }
+    });
+    fitLabels();
+    window.addEventListener('resize', fitLabels);
+    // When the modules do not fit in one row (base.html), every page shows one row that scrolls sideways with Menu fixed
+    // at its end; only its handle shows every module in rows (a tap, or a swipe up on it) and returns to one row (a tap,
+    // or a swipe down).
     const root = document.documentElement;
     const items = bottomNav.querySelector('[data-bottom-nav-items]');
     const handle = bottomNav.querySelector('[data-bottom-nav-handle]');
@@ -6737,21 +6749,14 @@ function setupMobileMenu() {
         if (!open || expanded()) return;
         items.scrollLeft = Math.max(0, open.offsetLeft - items.offsetLeft - (items.clientWidth - open.offsetWidth) / 2);
       };
-      const setExpanded = (value, remember = true) => {
+      const setExpanded = (value) => {
         root.classList.toggle('has-bottom-nav-expanded', value);
         handle.setAttribute('aria-expanded', String(value));
         handle.setAttribute('aria-label', value ? 'Show the modules in one row' : 'Show every module');
-        if (remember) {
-          try {
-            window.localStorage.setItem('drivetest-analyzer:bottom-nav', value ? 'expanded' : 'row');
-          } catch (_error) {
-            // Optional: the next page shows one row.
-          }
-        }
         showOpen();
         edges();
       };
-      setExpanded(expanded(), false);
+      setExpanded(false);
       items.addEventListener('scroll', edges, {passive: true});
       window.addEventListener('resize', edges);
       handle.addEventListener('click', (event) => {
@@ -6759,16 +6764,15 @@ function setupMobileMenu() {
         closeSheets();
         setExpanded(!expanded());
       });
-      // A vertical swipe on the bar: up shows every module, down one row, as soon as the finger has moved enough. A swipe
-      // that starts upwards or downwards never scrolls the page (iOS ignores the touch-action of the bar, app.css), one
-      // that starts sideways scrolls the row; the tap that ends a swipe opens nothing.
+      // A vertical swipe on the handle: up shows every module, down one row, as soon as the finger has moved enough, and
+      // the page does not scroll (iOS ignores touch-action, app.css); the tap that ends a swipe does nothing else.
       let gesture = null;
       let swipedAt = 0;
-      bottomNav.addEventListener('touchstart', (event) => {
+      handle.addEventListener('touchstart', (event) => {
         const touch = event.touches.length === 1 ? event.touches[0] : null;
         gesture = touch ? {x: touch.clientX, y: touch.clientY, axis: '', done: false} : null;
       }, {passive: true});
-      bottomNav.addEventListener('touchmove', (event) => {
+      handle.addEventListener('touchmove', (event) => {
         const touch = event.touches.length === 1 ? event.touches[0] : null;
         if (!gesture || !touch) return;
         const dx = touch.clientX - gesture.x;
@@ -6788,8 +6792,8 @@ function setupMobileMenu() {
         if (gesture?.axis === 'y') swipedAt = Date.now();
         gesture = null;
       };
-      bottomNav.addEventListener('touchend', endGesture, {passive: true});
-      bottomNav.addEventListener('touchcancel', endGesture, {passive: true});
+      handle.addEventListener('touchend', endGesture, {passive: true});
+      handle.addEventListener('touchcancel', endGesture, {passive: true});
       bottomNav.addEventListener('click', (event) => {
         if (Date.now() - swipedAt < 450) {
           event.preventDefault();
