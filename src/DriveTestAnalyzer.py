@@ -72,7 +72,7 @@ from src.modules.core.background_scheduler import BackgroundTaskScheduler
 from src.modules.cdr import cdr_store
 from src.modules.ppt_designer import design_slides, ppt_design_cache
 from src.modules.core import notifications, workspace_cache
-from src.modules.core.auth import SessionUser, verify_password
+from src.modules.core.auth import AttemptLimiter, SessionUser, password_needs_rehash, verify_password
 from src.modules.mapping.workspace_countries import country_options
 from src.modules.mapping.operator_roles import (
     drop_excluded_operators, drop_out_of_scope_operators, excluded_operators, normalize_mapping_role, normalize_nr_modes,
@@ -3586,6 +3586,52 @@ async def record_app_event_origin(request: Request, call_next):
         APP_EVENT_ORIGIN.reset(token)
 
 
+# The open workspace is one for the whole server: whoever opens another changes it for everybody. The pages and requests
+# that read or change the data of the open workspace are therefore refused to a user it was not given to (a super-admin
+# opens every workspace): the main modules but Workspace (where a workspace is opened) and Ticket Center (which needs
+# none), and the paths below of Workspace, Workspace Config, Datasets Management and App Logs. The routes that name
+# their workspace (rename, access, duplicate, delete, cache) check it themselves.
+OPEN_WORKSPACE_FEATURES = frozenset(FEATURE_KEYS) - {'workspace', 'ticket-center'}
+OPEN_WORKSPACE_PATHS = (
+    '/datasets-analysis', '/dashboard', '/workspace/preview', '/workspace/combined', '/workspace/map-', '/workspace/clear-',
+    '/workspace/reprocess-datasets', '/workspace/delete-datasets', '/workspace/stop-datasets', '/workspace/datasets',
+    '/workspace/calculated-dimensions', '/api/workspace/', '/api/workspace-config', '/workspace-config',
+    '/api/mapping-assignments', '/api/datasets', '/api/uploads', '/api/cdr-analysis', '/admin/datasets', '/app-logs',
+    '/api/app-logs',
+)
+OPEN_WORKSPACE_ACCESS_SECONDS = 5.0
+_open_workspace_access: dict[tuple[str, str], tuple[float, bool]] = {}
+
+
+# (The links of the report emails check the workspace of their report, open or not, and record who they refuse.)
+OPEN_WORKSPACE_EXEMPT_PATHS = ('/reporting/files/', '/reporting/view/')
+
+
+def needs_open_workspace(path: str) -> bool:
+    if path.startswith(OPEN_WORKSPACE_EXEMPT_PATHS):
+        return False
+    return feature_for_path(path) in OPEN_WORKSPACE_FEATURES or path.startswith(OPEN_WORKSPACE_PATHS)
+
+
+def may_use_open_workspace(user: SessionUser | None) -> bool:
+    """Whether a signed-in user may use the workspace that is open (checked every few seconds, not on every request)."""
+    workspace = active_workspace
+    if user is None or workspace is None or user.role == 'super-admin':
+        return True
+    key = (user.username.casefold(), str(workspace.id))
+    cached = _open_workspace_access.get(key)
+    if cached and monotonic() - cached[0] < OPEN_WORKSPACE_ACCESS_SECONDS:
+        return cached[1]
+    try:
+        allowed = repository.user_has_workspace_access(user.username, workspace.id)
+    except sqlite3.Error:
+        return True  # (A busy database refuses nobody: the routes that change data check again.)
+    if len(_open_workspace_access) > 2000:
+        _open_workspace_access.clear()
+    _open_workspace_access[key] = (monotonic(), allowed)
+    return allowed
+
+
 @app.middleware('http')
 async def track_interactive_application_requests(request: Request, call_next):
     """Return lightweight unauthenticated responses for passive polling."""
@@ -3598,6 +3644,14 @@ async def track_interactive_application_requests(request: Request, call_next):
             if request.url.path.startswith('/api/'):
                 return JSONResponse({'detail': detail}, status_code=status.HTTP_403_FORBIDDEN)
             return HTMLResponse(detail, status_code=status.HTTP_403_FORBIDDEN)
+    if active_workspace is not None and needs_open_workspace(request.url.path):
+        user = session_user(request.cookies.get(SESSION_COOKIE))
+        if not may_use_open_workspace(user):
+            detail = (f'You do not have access to the open workspace ({active_workspace.name}). '
+                      'Open one of your workspaces in Workspace.')
+            if request.method == 'GET' and not request.url.path.startswith('/api/') and 'text/html' in request.headers.get('accept', ''):
+                return RedirectResponse('/workspace?' + urlencode({'workspace_error': detail}), status_code=status.HTTP_303_SEE_OTHER)
+            return JSONResponse({'detail': detail}, status_code=status.HTTP_403_FORBIDDEN)
     if (
         request.url.path in {'/api/background-tasks', '/api/workspaces/sizes'}
         and session_user(request.cookies.get(SESSION_COOKIE)) is None
@@ -15460,24 +15514,38 @@ def login(
 ) -> Response:
     submitted_username = username.strip().casefold()
     next_url = safe_next_url(next_url)
-    record = repository.get_user(username)
-    if not record or not record.active or not verify_password(password, record.password_hash):
+
+    def refused(message: str, reason: str, status_code: int) -> Response:
         # A failed sign-in belongs to no account: system records it, with the login typed in its details.
         repository.try_add_log('system', 'login', json.dumps({
-            'success': False, 'result': 'failed', 'reason': 'invalid_credentials',
+            'success': False, 'result': 'failed', 'reason': reason,
             'username': submitted_username or '(blank)', 'workspace_id': workspace_id or '',
         }))
-        workspaces = workspace_registry.list()
         return render_template(
             request,
             'login.html',
             {
-                'error': 'Invalid credentials', 'default_access_accounts': build_default_access_accounts(),
-                'workspaces': workspaces, 'active_workspace': active_workspace, 'next_url': next_url,
+                'error': message, 'default_access_accounts': build_default_access_accounts(),
+                'workspaces': workspace_registry.list(), 'active_workspace': active_workspace, 'next_url': next_url,
                 'selected_workspace_id': active_workspace.id if active_workspace else workspace_registry.most_recent().id,
             },
-            status_code=401,
+            status_code=status_code,
         )
+
+    # After several wrong passwords in a row for a username, its next tries wait (see SIGN_IN_ATTEMPTS).
+    waiting = SIGN_IN_ATTEMPTS.wait_seconds(submitted_username)
+    if waiting:
+        return refused(sign_in_wait_message(waiting), 'too_many_attempts', 429)
+    record = repository.get_user(username)
+    if not record or not record.active or not verify_password(password, record.password_hash):
+        SIGN_IN_ATTEMPTS.failed(submitted_username)
+        return refused('Invalid credentials', 'invalid_credentials', 401)
+    SIGN_IN_ATTEMPTS.succeeded(submitted_username)
+    if password_needs_rehash(record.password_hash):
+        # A password kept as earlier versions did is kept as this one does, now that it is known to be right (its
+        # sessions stay: the password is the same).
+        with suppress(sqlite3.Error, ValueError):
+            repository.update_password(record.username, password)
 
     if workspace_id:
         if record.role != 'super-admin' and not repository.user_has_workspace_access(record.username, workspace_id):
@@ -15512,6 +15580,8 @@ def login(
     user = SessionUser(username=record.username, role=record.role)
     response = RedirectResponse(next_url or '/documents/view/help', status_code=status.HTTP_303_SEE_OTHER)
     create_session(response, user, secure=request.url.scheme == 'https')
+    if record.role == 'super-admin':
+        remember_server_address(request)
     try:
         repository.record_user_login(record.username)
     except sqlite3.Error:
@@ -15522,6 +15592,17 @@ def login(
         'workspace': active_workspace.name if active_workspace else '',
     }))
     return response
+
+
+# The wrong passwords in a row of each username: after five, its next tries wait 30 seconds, twice as long after each
+# further one, up to five minutes; a right password, or half an hour without tries, starts over. It limits how fast
+# passwords can be guessed at the sign-in and at the access request (which checks the password of an existing account).
+SIGN_IN_ATTEMPTS = AttemptLimiter()
+
+
+def sign_in_wait_message(seconds: int) -> str:
+    wait = f'{math.ceil(seconds / 60)} minutes' if seconds > 90 else f'{seconds} seconds'
+    return f'Too many wrong passwords for this username. Try again in {wait}.'
 
 
 # -- access requests from the login page ---------------------------------------------------------
@@ -15620,8 +15701,13 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
     if record:
         if record.role not in ACCESS_REQUEST_ROLES:
             raise HTTPException(status_code=403, detail=f'{record.username} is an administrator account: change its access in Admin.')
+        waiting = SIGN_IN_ATTEMPTS.wait_seconds(record.username)
+        if waiting:
+            raise HTTPException(status_code=429, detail=sign_in_wait_message(waiting))
         if not verify_password(payload.password, record.password_hash):
+            SIGN_IN_ATTEMPTS.failed(record.username)
             raise HTTPException(status_code=403, detail=f'The password is not the current password of {record.username}.')
+        SIGN_IN_ATTEMPTS.succeeded(record.username)
         username, role = record.username, record.role
         user_id = next(int(row['id']) for row in repository.list_users() if str(row['username']).casefold() == username.casefold())
         member_of = {int(group['id']) for group in repository.list_workspace_groups() if user_id in group['member_ids']}
@@ -15718,10 +15804,44 @@ PASSWORD_RESET_INTERVAL_SECONDS = 60
 _password_reset_sent: dict[str, float] = {}
 
 
+# The addresses the super-admins have signed in at, newest first: the ones this server is known to be reached at.
+KNOWN_ADDRESSES_STATE_KEY = 'known_server_addresses_v1'
+KNOWN_ADDRESSES_KEPT = 8
+
+
+def known_server_addresses() -> list[str]:
+    try:
+        stored = json.loads(repository.get_application_state(KNOWN_ADDRESSES_STATE_KEY) or '[]')
+    except (TypeError, ValueError, sqlite3.Error):
+        return []
+    return [str(address) for address in stored if isinstance(address, str) and address] if isinstance(stored, list) else []
+
+
+def remember_server_address(request: Request) -> None:
+    """Keep the address a super-admin signed in at (see email_base_url)."""
+    address = str(request.base_url).rstrip('/')
+    known = known_server_addresses()
+    if known[:1] == [address]:
+        return
+    with suppress(sqlite3.Error):
+        repository.set_application_state(KNOWN_ADDRESSES_STATE_KEY, json.dumps(
+            [address, *(item for item in known if item != address)][:KNOWN_ADDRESSES_KEPT]))
+
+
 def email_base_url(request: Request) -> str:
     """The address of the tool in the links of an email: the Public address of the server of Application Runtime, or the
-    one the request came with."""
-    return str(runtime_configuration().get('public_address') or str(request.base_url)).rstrip('/')
+    one the request came with when it is one of the addresses of this server.
+
+    The address of a request is whatever its sender wrote in it, and a password reset is asked for without signing in:
+    a link built from it could lead its reader, with a valid token, to another server. So without a Public address the
+    links use the address of the request only when a super-admin has signed in at it; otherwise the latest address a
+    super-admin signed in at. A server nobody has signed in at yet has only the address of the request."""
+    public_address = str(runtime_configuration().get('public_address') or '').rstrip('/')
+    if public_address:
+        return public_address
+    requested = str(request.base_url).rstrip('/')
+    known = known_server_addresses()
+    return requested if not known or requested in known else known[0]
 
 
 def password_reset_marker(password_hash: str) -> str:
@@ -16032,7 +16152,8 @@ def workspace(
     workspace_statuses = {
         item.id: workspace_table_status(item, workspace_lifecycle_jobs) for item in workspaces
     }
-    if not active_workspace:
+    # (A user the open workspace was not given to sees the page as with none open: the workspaces to open.)
+    if not active_workspace or not workspace_access.get(active_workspace.id, user.role == 'super-admin'):
         return render_template(
             request,
             'workspace.html',
@@ -24118,7 +24239,8 @@ def save_email_delivery_configuration(
     from_address: str = Form(''),
     from_name: str = Form(''),
     max_attachments_mb: int = Form(DEFAULT_MAX_ATTACHMENTS_MB),
-    user: SessionUser = Depends(config_editor_user),
+    # (Admins and super-admins: whoever sets the server of the emails receives what it sends, password resets among them.)
+    user: SessionUser = Depends(admin_user),
 ) -> RedirectResponse:
     logged = ('transport', 'host', 'port', 'security', 'username', 'from_address', 'from_name', 'max_attachments_mb',
               'password_configured', 'webhook_configured', 'link_days', 'notify_access_requests', 'notify_tickets',
@@ -24144,7 +24266,7 @@ def save_email_delivery_configuration(
 
 
 @app.post('/application-config/email-delivery/test')
-def send_email_delivery_test(recipient: str = Form(''), user: SessionUser = Depends(config_editor_user)) -> RedirectResponse:
+def send_email_delivery_test(recipient: str = Form(''), user: SessionUser = Depends(admin_user)) -> RedirectResponse:
     recipients = parse_recipients(recipient)
     if not recipients or invalid_recipients(recipients):
         return RedirectResponse('/application-config?' + urlencode({'error': 'Enter a valid test recipient.'}) + '#email-delivery', status_code=status.HTTP_303_SEE_OTHER)
@@ -24185,6 +24307,11 @@ def save_configuration(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     chromium_path = chromium_path.strip()
+    if user.role not in {'admin', 'super-admin'}:
+        # The program the server runs and the address of the links of its emails are set by admins and super-admins: a
+        # user-editor saves the rest of the configuration and leaves both as they are.
+        chromium_path = str(runtime_configuration().get('chromium_path') or '')
+        public_address = str(runtime_configuration().get('public_address') or '')
     if not 1 <= max_background_tasks <= 32:
         raise HTTPException(status_code=400, detail='Maximum simultaneous tasks must be between 1 and 32.')
     if chromium_path:

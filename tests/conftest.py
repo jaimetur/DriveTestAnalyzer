@@ -28,6 +28,9 @@ os.environ['DTA_POINTS_LOSS_IN_PROCESS'] = '1'
 # The tests process their datasets in their own process too: a worker of its own takes most of a second to start for
 # each dataset (tests/core/test_app.py processes one in its worker, and stops one).
 os.environ['DTA_DATASET_WORKER_IN_PROCESS'] = '1'
+# The passwords of the tests are hashed with the least work scrypt allows: the application spends a tenth of a second
+# on each hash and each sign-in, on purpose, and the tests sign in thousands of times.
+os.environ['DTA_PASSWORD_HASH_LOG_N'] = '4'
 
 import pytest
 from fastapi.testclient import TestClient
@@ -218,6 +221,9 @@ def _copy_client_workspace(template: Path, root: Path) -> None:
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client_workspace_template: Path) -> TestClient:
     _copy_client_workspace(client_workspace_template, tmp_path)
     _prepare_client_folders(tmp_path, monkeypatch, create=False)
+    # (The wrong passwords of a test do not make the next one wait, nor does it inherit the addresses it signed in from.)
+    app_module.SIGN_IN_ATTEMPTS.clear()
+    app_module._open_workspace_access.clear()
 
     with TestClient(app_module.app) as test_client:
         # The workspace is ready before the test starts, also on a busy machine (see client_workspace_template).
@@ -243,6 +249,11 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client_workspace_tem
 
         cookies.set = replace_cookie
         yield test_client
+        # A job of this test still running in the background (the copy or the deletion of a workspace) would end in the
+        # databases of the next test: it is given the time to finish here.
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not app_module.BACKGROUND_TASK_SCHEDULER.is_idle:
+            time.sleep(0.01)
     # The next test of this process starts without the workspace of this one: a test without a workspace reads the
     # labels and maps the application ships, not those this test saved.
     app_module.active_workspace = None

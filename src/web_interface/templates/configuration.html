@@ -43,7 +43,7 @@
           <span class="table-help">Overrides DRIVETEST_ANALYZER_REPORT_CHART_RENDERER.</span>
         </label>
         <label>Chromium Executable
-          <input type="text" name="chromium_path" value="{{ configuration.chromium_path }}" placeholder="Auto-detect Chromium or Chrome">
+          <input type="text" name="chromium_path" value="{{ configuration.chromium_path }}" placeholder="Auto-detect Chromium or Chrome" {% if user.role not in ['admin', 'super-admin'] %}disabled title="Admins and super-admins change it"{% endif %}>
           <span class="table-help">Overrides DRIVETEST_ANALYZER_CHROMIUM. Leave empty to use deployment configuration or automatic detection.</span>
         </label>
       </section>
@@ -67,7 +67,7 @@
       <section class="configuration-card" data-configuration-card>
         <div class="configuration-card-head"><p class="eyebrow">Shared Links</p><h3>Public Address</h3></div>
         <label>Public address of the server
-          <input type="url" name="public_address" value="{{ configuration.public_address }}" placeholder="https://dta.example.com:8443" autocomplete="off" spellcheck="false">
+          <input type="url" name="public_address" value="{{ configuration.public_address }}" placeholder="https://dta.example.com:8443" autocomplete="off" spellcheck="false" {% if user.role not in ['admin', 'super-admin'] %}disabled title="Admins and super-admins change it"{% endif %}>
           <span class="table-help">The address of the links of the presentations (Copy link) and of their previews, and of the links of the emails of the tool. Give the name of the server rather than its IP: WhatsApp on Android does not open links with an IP. Leave it empty to use the address each user opened the application with (the report emails of the scheduled jobs then have no download links).</span>
         </label>
       </section>
@@ -78,6 +78,19 @@
     </form>
   </article>
 
+  {# The server that sends the emails (password resets among them) is set by admins and super-admins. #}
+  {% if user.role not in ['admin', 'super-admin'] %}
+  <article class="panel configuration-panel" id="email-delivery">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Emails of the Tool</p>
+        <h2>Email Delivery</h2>
+      </div>
+      <span class="pill">{% if email_delivery.configured %}Configured{% else %}Not configured{% endif %}</span>
+    </div>
+    <p class="table-help">Admins and super-admins choose how the tool sends its emails (the scheduled reports, the access requests, the password resets and the updates of Ticket Center).</p>
+  </article>
+  {% else %}
   <article class="panel configuration-panel" id="email-delivery" data-email-delivery>
     <div class="section-head">
       <div>
@@ -167,6 +180,7 @@
       <button type="submit" {% if not email_delivery.configured %}disabled title="Save the SMTP server or the flow first"{% endif %}>Send Test Email</button>
     </form>
   </article>
+  {% endif %}
 
 </section>
 <script>

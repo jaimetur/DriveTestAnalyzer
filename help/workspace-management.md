@@ -27,6 +27,8 @@ workspace-config
 
 ## Workspace Lifecycle
 
+The open workspace is one for the whole server: opening another one changes it for everybody. A user the open workspace was not given to (by name or through a Workspace Group; super-admins open every one) sees **Workspace** as with none open, to open one of theirs, and is refused its data everywhere else: its modules, its datasets and previews, Workspace Config, Datasets Management and App Logs.
+
 - Create, open, close, rename, duplicate and delete workspaces. **Create and open** asks for the name, the **CDR type** (NetCheck CDR by default; Umlaut CDR and P3 CDR are coming soon), the **Country** and, for super-admins, the **Access**, all in one row. A workspace created for one of the 50 listed countries starts with the [Operator Maps](workspace-config.md#operator-maps) of its mobile operators, in their corporate colours; with **None** it starts without Operator Maps.
 - Review the CDR type, country, access and size of each workspace, in that order after its name. The workspaces table changes the **CDR Type** of a workspace without CDRs (a workspace with Data, Voice or Speech CDRs keeps their type) and its **Country** (a new country adds its operators that the Operator Maps do not have yet, and keeps the labels the workspace already has), and super-admins choose in its **Access** selector the Workspace Groups that open it and the users it is granted to individually; **✓** saves the row. Super-admins also give workspaces to groups in [Super Admin → Workspace Groups](super-admin.md#workspace-groups).
 - Keep databases, uploaded files and generated output isolated.

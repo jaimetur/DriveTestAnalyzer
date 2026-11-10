@@ -1313,6 +1313,10 @@ def test_configuration_access_matches_editor_and_viewer_roles(client) -> None:
     assert client.post('/workspace-config/operator-mappings/save', data={'canonical_value': 'No Access'}).status_code == 403
     assert client.post('/workspace-config/main-cities/save', data={'selected_cities': ['London']}).status_code == 403
 
+    # (An editor of the open workspace: Workspace Config is of the workspace, which is refused to who it was not given to.)
+    app_module.repository.create_user('editor', 'editor123', 'user-editor')
+    editor_id = next(int(row['id']) for row in app_module.repository.list_users() if row['username'] == 'editor')
+    app_module.repository.set_user_workspace_access(editor_id, [app_module.active_workspace.id])
     app_module.SESSIONS['editor-config-access'] = app_module.SessionUser(username='editor', role='user-editor')
     client.cookies.set(app_module.SESSION_COOKIE, 'editor-config-access')
     app_page = client.get('/application-config')
