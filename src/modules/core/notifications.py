@@ -59,7 +59,9 @@ def submit(task: Callable[[], Any]) -> None:
 
 
 def html_to_text(markup: str) -> str:
-    text = re.sub(r'<br\s*/?>|</p>|</li>|</tr>|</h\d>|</div>|</pre>', '\n', markup, flags=re.IGNORECASE)
+    # The cells of a row stay apart (a label and its value: 'User EABCDEF').
+    text = re.sub(r'</t[dh]>', ' ', markup, flags=re.IGNORECASE)
+    text = re.sub(r'<br\s*/?>|</p>|</li>|</tr>|</h\d>|</div>|</pre>', '\n', text, flags=re.IGNORECASE)
     text = '\n'.join(line.rstrip() for line in html.unescape(re.sub(r'<[^>]+>', '', text)).replace('\xa0', ' ').split('\n'))
     return re.sub(r'\n{3,}', '\n\n', text).strip() + '\n'
 
@@ -68,13 +70,39 @@ def action_label(action: str) -> str:
     return f'<span style="color:{ACTION_COLOURS.get(action, "#1E61A3")}">{html.escape(action)}</span>'
 
 
+def button(label: str, url: str) -> str:
+    """A button of an email that opens ``url``."""
+    return (f'<p style="margin:20px 0"><a href="{html.escape(url, quote=True)}" style="background:#1E61A3;color:#ffffff;'
+            f'padding:9px 16px;border-radius:6px;text-decoration:none;font-weight:bold">{html.escape(label)}</a></p>')
+
+
+def callout(label: str, markup: str, *, colour: str = '#1E61A3', background: str = '#EEF5FC') -> str:
+    """A box of an email that stands out from its paragraphs: a short label in capitals over its text (HTML), with a line
+    of its colour on the left. A table, which every mail client draws as it is (Outlook too)."""
+    return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:14px 0">'
+            f'<tr><td style="background:{background};border-left:4px solid {colour};padding:11px 14px">'
+            f'<p style="margin:0 0 4px;font-size:11px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:{colour}">'
+            f'{html.escape(label)}</p><p style="margin:0">{markup}</p></td></tr></table>')
+
+
+def details_table(rows: Iterable[tuple[str, str]], *, title: str = '') -> str:
+    """The details of an email as a table of labels and values (HTML), one per row, under a ``title`` in capitals."""
+    cells = ''.join(
+        '<tr><td style="padding:8px 14px 8px 0;border-top:1px solid #e5e9ee;color:#6b7280;white-space:nowrap;vertical-align:top">'
+        f'{html.escape(label)}</td><td style="padding:8px 0;border-top:1px solid #e5e9ee;vertical-align:top;overflow-wrap:anywhere">'
+        f'{value}</td></tr>' for label, value in rows)
+    heading = (f'<p style="margin:22px 0 6px;font-size:11px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:#6b7280">'
+               f'{html.escape(title)}</p>') if title else ''
+    return (heading + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+            f'style="border-collapse:collapse;font-size:14px;border-bottom:1px solid #e5e9ee">{cells}</table>')
+
+
 def email_page(app_name: str, title: str, parts: Iterable[str], *, link: tuple[str, str] | None = None,
                action: str | Iterable[str] = '') -> str:
     """The HTML of an email of the tool: a title, its paragraphs, a button to open the page it is about and a footer.
     ``action`` (what happened, such as New Comment; or several, one after another) leads the title, larger and in its
     colour."""
-    button = (f'<p style="margin:20px 0"><a href="{html.escape(link[1], quote=True)}" style="background:#1E61A3;color:#ffffff;'
-              f'padding:9px 16px;border-radius:6px;text-decoration:none;font-weight:bold">{html.escape(link[0])}</a></p>') if link else ''
+    link_button = button(*link) if link else ''
     actions = [action] if isinstance(action, str) else list(action)
     actions = [item for item in actions if item]
     heading = (f'<p style="font-size:21px;line-height:1.3;font-weight:bold;margin:0 0 12px">'
@@ -83,7 +111,7 @@ def email_page(app_name: str, title: str, parts: Iterable[str], *, link: tuple[s
         f'<p style="font-size:17px;font-weight:bold;margin:0 0 12px">{html.escape(title)}</p>')
     return ('<html><body style="font-family:Arial,sans-serif;font-size:14px;color:#1f2933;line-height:1.45">'
             + heading
-            + ''.join(parts) + button +
+            + ''.join(parts) + link_button +
             f'<p style="color:#6b7280;font-size:12px;margin-top:24px">Sent automatically by {html.escape(app_name)}.</p>'
             '</body></html>')
 

@@ -15748,9 +15748,15 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
     def describe(groups: list[dict[str, Any]], key: str) -> str:
         return '; '.join(f"{group['name']} ({', '.join(group[key])})" for group in groups) or 'None'
 
+    def describe_html(groups: list[dict[str, Any]], key: str) -> str:
+        # For the email the tool sends: each group (or profile) in bold, on its own line, with what it opens in grey.
+        return '<br>'.join(f"<strong>{html.escape(group['name'])}</strong>" + (
+            f'<br><span style="color:#6b7280;font-size:13px">{html.escape(", ".join(group[key]))}</span>' if group[key] else '')
+            for group in groups) or 'None'
+
     requested_groups = [group['id'] for group in workspace_groups]
     record = repository.get_user(signum)
-    previous: list[str] = []
+    previous: list[tuple[str, str, str]] = []
     if record:
         if record.role not in ACCESS_REQUEST_ROLES:
             raise HTTPException(status_code=403, detail=f'{record.username} is an administrator account: change its access in Admin.')
@@ -15766,8 +15772,9 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         member_of = {int(group['id']) for group in repository.list_workspace_groups() if user_id in group['member_ids']}
         current_profiles = {int(item['id']) for item in repository.list_modules_profiles() if user_id in item['member_ids']}
         previous_profile = [item for item in options['modules_profiles'] if item['id'] in current_profiles]
-        previous = [f"Previous workspaces: {describe([group for group in options['workspace_groups'] if group['id'] in member_of], 'workspaces')}",
-                    f"Previous modules profile: {describe(previous_profile, 'modules')}"]
+        previous_groups = [group for group in options['workspace_groups'] if group['id'] in member_of]
+        previous = [('Previous workspaces', describe(previous_groups, 'workspaces'), describe_html(previous_groups, 'workspaces')),
+                    ('Previous modules profile', describe(previous_profile, 'modules'), describe_html(previous_profile, 'modules'))]
         # Groups that open no workspace are kept; the others become the requested ones.
         kept = [group_id for group_id in member_of if group_id not in {group['id'] for group in options['workspace_groups']}]
         repository.set_user_workspace_groups(user_id, kept + requested_groups)
@@ -15804,19 +15811,23 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
                f'I have requested access to {__app_name__}. My user has been created but it is not active yet.')
     administrator = __author__.split()[0]
     approvers = [name.split()[0] for name, _ in ACCESS_REQUEST_APPROVERS]
+    greeting = f"Hello {', '.join([administrator, *approvers[:-1]])} and {approvers[-1]},"
+    approver_names = f"{', '.join(approvers[:-1])} or {approvers[-1]}"
+    activate = 'activate my user again' if record else 'activate my user'
+    # Super Admin, where the users are activated.
+    server = f'{email_base_url(request)}/super-admin'
     body = '\n'.join([
-        f"Hello {', '.join([administrator, *approvers[:-1]])} and {approvers[-1]},",
+        greeting,
         '',
         opening,
         '',
         # A mailto body is plain text: the approvers' part is framed in capitals to stand out.
         '========================================',
         'APPROVAL NEEDED',
-        f"{', '.join(approvers[:-1])} or {approvers[-1]}: please review the request and approve it by replying to all.",
+        f'{approver_names}: please review the request and approve it by replying to all.',
         '========================================',
         '',
-        f"{administrator}: once one of them has approved it, please {'activate my user again' if record else 'activate my user'} "
-        'in Super Admin › Users.',
+        f'{administrator}: once one of them has approved it, please {activate} in Super Admin › Users.',
         '',
         f'User: {username}',
         f'Name: {first_name} {last_name}',
@@ -15824,14 +15835,38 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
         f'Role: {role}',
         f'Workspaces: {workspaces}',
         f'Modules Profile: {profile_text}',
-        *previous,
+        *(f'{label}: {value}' for label, value, _ in previous),
         f'Requested on: {requested}',
-        # Super Admin, where the users are activated.
-        f"Server: {str(request.base_url).rstrip('/')}/super-admin",
+        f'Server: {server}',
         '',
         'Thank you,',
         username,
     ])
+    # The email the tool sends: the request, the approval asked for in a box that stands out, the step of the
+    # administrator, the details in a table and a button to Super Admin (a mail client ignores the line breaks of a text).
+    details = [
+        ('User', f'<strong>{html.escape(username)}</strong>'),
+        ('Name', html.escape(f'{first_name} {last_name}')),
+        *([('Email', f'<a href="mailto:{html.escape(email, quote=True)}" style="color:#1E61A3">{html.escape(email)}</a>')] if email else []),
+        ('Role', html.escape(role)),
+        ('Workspaces', describe_html(workspace_groups, 'workspaces')),
+        ('Modules Profile', describe_html([profile], 'modules')),
+        *((label, markup) for label, _, markup in previous),
+        ('Requested on', html.escape(requested)),
+    ]
+    email_html = [
+        f'<p style="color:#4b5563">Sent by {html.escape(__app_name__)} on behalf of <strong>{html.escape(f"{first_name} {last_name}")}</strong> '
+        f'({html.escape(username)}{f", {html.escape(email)}" if email else ""}). Reply to all to answer the request.</p>',
+        f'<p style="margin:16px 0 8px">{html.escape(greeting)}</p>',
+        f'<p style="margin:0 0 8px">{html.escape(opening)}</p>',
+        notifications.callout('Approval needed', f'<strong>{html.escape(approver_names)}</strong>: please review the request and '
+                              'approve it by replying to all.', colour='#B45309', background='#FFF6E5'),
+        notifications.callout('After the approval', f'<strong>{html.escape(administrator)}</strong>: once one of them has approved '
+                              f'it, please {activate} in <strong>Super Admin › Users</strong>.'),
+        notifications.details_table(details, title='Access change requested' if record else 'Access requested'),
+        notifications.button('Open Super Admin', server),
+        f'<p style="margin:0">Thank you,<br><strong>{html.escape(f"{first_name} {last_name}")}</strong> ({html.escape(username)})</p>',
+    ]
     subject = f"Access {'change ' if record else ''}request: {username}"
     approvers_cc = [address for _, address in ACCESS_REQUEST_APPROVERS]
     # Sent on its own when Email Delivery is set up: to the administrator, copied to the approvers and the requester, whose
@@ -15839,11 +15874,8 @@ def create_access_request(request: Request, payload: AccessRequestPayload) -> JS
     sent = notifications.deliver(
         repository, kind='access_request', recipients=[__author_email__], cc=[*approvers_cc, *([email] if email else [])],
         reply_to=email, subject=subject, actor=username, background=False, switch='notify_access_requests',
-        details={'user': username}, html_body=notifications.email_page(__app_name__, subject, [
-            f'<p style="color:#4b5563">Sent by {html.escape(__app_name__)} on behalf of <strong>{html.escape(f"{first_name} {last_name}")}</strong> '
-            f'({html.escape(username)}{f", {html.escape(email)}" if email else ""}). Reply to all to answer the request.</p>',
-            f'<div style="white-space:pre-wrap">{html.escape(body)}</div>',
-        ]))
+        details={'user': username}, html_body=notifications.email_page(
+            __app_name__, subject, [f'<div style="max-width:640px">{"".join(email_html)}</div>']))
     return JSONResponse({
         'username': username, 'name': f'{first_name} {last_name}', 'role': role, 'existing': record is not None,
         'workspaces': workspaces, 'modules_profile': profile_text, 'email_sent': sent,

@@ -167,7 +167,12 @@ def test_access_requests_are_emailed_and_the_requester_is_told_when_activated(cl
     assert message['kind'] == 'access_request' and message['to'] == 'jaime.tur@ericsson.com'
     assert message['cc'].split(';')[-1] == 'ana.garcia@example.com' and len(message['cc'].split(';')) == 5
     assert message['reply_to'] == 'ana.garcia@example.com' and message['subject'] == 'DT Analyzer - Access request: EABCDEF'
-    assert 'on behalf of <strong>Ana García</strong>' in message['html'] and 'Email: ana.garcia@example.com' in message['html']
+    assert 'on behalf of <strong>Ana García</strong>' in message['html'] and 'mailto:ana.garcia@example.com' in message['html']
+    # In sections, not the text of the mail application (whose line breaks a mail client ignores): the approval in a box,
+    # the details in a table and a button to Super Admin at the Public address.
+    assert 'Approval needed' in message['html'] and 'pre-wrap' not in message['html']
+    assert 'href="https://tool.example:8443/super-admin"' in message['html']
+    assert 'User EABCDEF' in notifications.html_to_text(message['html'])
     assert core.repository.get_user('EABCDEF').email == 'ana.garcia@example.com'
     assert logged('email_sent')[-1]['kind'] == 'access_request'
     # Once a super-admin activates the user, the requester is told.
