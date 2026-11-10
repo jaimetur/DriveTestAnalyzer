@@ -6018,3 +6018,7 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
   .topbar { flex-wrap: wrap; row-gap: .5rem; }
   .topnav-workspace-switcher { position: relative; top: auto; left: auto; transform: none; }
 }
+
+/* Modules & Sections (the drawer and the menu of phones): a module without sections lines up with those that have
+   them, leaving empty the place of their arrow (1.5rem and the gap before it), instead of reaching further right. */
+.modules-sections-navigator .module-navigator-category > nav:has(> details.module-tree-module) > :is(a, .module-tree-about) { width: calc(100% - 1.75rem); }
