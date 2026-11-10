@@ -1097,10 +1097,10 @@ Workspaces of earlier layouts are completed once:
 
 On a phone the page fits the width of the screen:
 
-- The [Sections bar](#sections-bar) stays on one row (scrolling sideways), the filters and the indicators go two per row, the tabs of the NQ Rate, the Root Cause Sources and the call scroll sideways, and the tables of the Designs keep their first column in view while they scroll.
+- The [Sections bar](#sections-bar) floats above the bar of the modules with the NQ Analysis Configuration beside it and shows the section being read between the arrows to the previous and the next one (a tap on it lists every section), the filters and the indicators go two per row, the tabs of the NQ Rate, the Root Cause Sources and the call scroll sideways, and the tables of the Designs keep their first column in view while they scroll.
 - The table of the calls stays a table, scrolled sideways, with its header and its pages as on a larger screen, so a call is found at a glance.
 - The call details fill the screen and scroll as a whole with their tabs at the top (the chosen tab comes into view), the phases two per row and the names and values of the call in two equal columns, and the dialogs of the NQ Analysis Configuration fill the screen with their rows wrapped.
-- The introduction at the top of the page shows its first two lines: **More** shows it whole.
+- The introduction at the top of the page shows its first two lines: **More**, at its top right, shows it whole. The filters applied are small chips, and the count of the calls and **Reindex** share a row.
 - The [map of the call](#map-of-the-call) and [NQ Maps](#nq-maps) take the width of the screen with their controls two per row and their zoom buttons always shown. The controls above the map take two per line, and over the map the cards **CDR Info** and **LOGS Info** go side by side below the zoom buttons (an unfolded card takes the width of the map). A double tap opens the map larger, filling the screen with its note in two lines and a lower signalling timeline, and zooms in there.
 
 ## Speed with large workspaces

@@ -5662,9 +5662,9 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 @media (max-width: 640px) {
   .topbar .title-block > .eyebrow { display: none; }
   .shell main :is(.module-hero, .scoring-hero, [class*="module-hero-"]):not(.nq-hero) { padding-top: .8rem; padding-bottom: .8rem; }
-  .shell main :is(.module-hero, .scoring-hero, [class*="module-hero-"]):not(.nq-hero) h2 { margin: .15rem 0 .3rem; font-size: 1.45rem !important; line-height: 1.18; }
+  .shell main :is(.module-hero, .scoring-hero, [class*="module-hero-"]):not(.nq-hero) h2 { margin: .15rem 0 .3rem; font-size: 1.12rem !important; line-height: 1.22; }
   .shell main :is(.module-hero, .scoring-hero, [class*="module-hero-"]):not(.nq-hero) .lede {
-    display: -webkit-box; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: .85rem !important; line-height: 1.4; }
+    display: -webkit-box; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: .82rem !important; line-height: 1.4; }
   .back-to-top { left: .4rem; width: 2.75rem; min-width: 2.75rem; height: 2.75rem; min-height: 2.75rem; }
   .back-to-top svg { width: 1.6rem; height: 1.6rem; }
   .unassigned-values-card.is-collapsed:not([data-in-task-row]) { left: auto; right: .5rem; width: auto; max-width: calc(100vw - 4.4rem); transform: none; padding: .3rem .45rem .3rem .4rem; border-radius: 999px; }
@@ -5782,8 +5782,8 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
   .mobile-bottom-nav :is(a, button) span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-bottom-nav :is(.is-active, [aria-expanded="true"]) { background: color-mix(in srgb, var(--item) 13%, #fff); color: color-mix(in srgb, var(--item) 86%, #000); }
   /* The menu ends above the bar, so that its Menu button (× while it is open) closes it. */
-  body:has(.mobile-bottom-nav:not(:empty)) .mobile-menu:not([hidden]) { bottom: var(--bottom-nav); box-shadow: 0 1px 0 var(--line-strong); }
-  body:has(.mobile-bottom-nav:not(:empty)) .mobile-menu-body { padding-bottom: 0; }
+  :root.has-bottom-nav body .mobile-menu:not([hidden]) { bottom: var(--bottom-nav); box-shadow: 0 1px 0 var(--line-strong); }
+  :root.has-bottom-nav body .mobile-menu-body { padding-bottom: 0; }
   /* The list of the pages that Builders and Config open, above the bar. */
   .mobile-bottom-nav-sheet:not([hidden]) { position: fixed; right: .5rem; bottom: calc(var(--bottom-nav) + .4rem); z-index: 10002; display: grid; gap: .2rem; min-width: 12rem; padding: .35rem;
     border: 1px solid var(--line-strong); border-radius: 14px; background: #fff; box-shadow: var(--shadow-strong); }
@@ -5792,40 +5792,40 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
   .mobile-bottom-nav-sheet svg { flex: 0 0 auto; width: 1.2rem; height: 1.2rem; fill: none; stroke: var(--tab-accent, currentColor); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   /* With the bar at the bottom (which has the menu), the bar of the menu at the top is not needed: the header of the
      module names it, and the bar of its sections is what stays at the top of the page. */
-  body:has(.mobile-bottom-nav:not(:empty)) main > .mobile-menu-bar { display: none; }
+  :root.has-bottom-nav body main > .mobile-menu-bar { display: none; }
   /* The bar of the sections of the page (in Non-Qualified Calls, with the NQ Analysis Center beside it) floats just
      above the bar of the modules instead of at the top: a section chosen opens at the top of the screen. */
   :root { --bottom-floaters: var(--bottom-nav); }
-  body.has-section-bar:has(.mobile-bottom-nav:not(:empty)) { --section-top-offset: 8px; --bottom-floaters: calc(var(--bottom-nav) + 3.35rem); padding-bottom: var(--bottom-floaters); }
-  body:has(.mobile-bottom-nav:not(:empty)) :is(.section-bar, .nq-view-dock) { position: fixed; top: auto; right: max(.5rem, env(safe-area-inset-right, 0px)); bottom: calc(var(--bottom-nav) + .4rem);
+  :root.has-bottom-nav body.has-section-bar { --section-top-offset: 8px; --bottom-floaters: calc(var(--bottom-nav) + 3.35rem); padding-bottom: var(--bottom-floaters); }
+  :root.has-bottom-nav body :is(.section-bar, .nq-view-dock) { position: fixed; top: auto; right: max(.5rem, env(safe-area-inset-right, 0px)); bottom: calc(var(--bottom-nav) + .4rem);
     left: max(.5rem, env(safe-area-inset-left, 0px)); z-index: 8290; justify-self: stretch; width: auto; max-width: none; margin: 0; box-shadow: 0 6px 18px rgba(18, 32, 43, .22); transition: left .2s ease; }
   .mobile-menu:not([hidden]) { padding-right: env(safe-area-inset-right, 0px); padding-left: env(safe-area-inset-left, 0px); }
   /* The button back to the top stands in the row of the bar, at its left (in place of the arrow of the bar), once the
      page is scrolled down: the bar makes room for it. */
-  body.has-section-bar:has(.mobile-bottom-nav:not(:empty)) .back-to-top { bottom: calc(var(--bottom-nav) + .4rem); left: max(.5rem, env(safe-area-inset-left, 0px));
+  :root.has-bottom-nav body.has-section-bar .back-to-top { bottom: calc(var(--bottom-nav) + .4rem); left: max(.5rem, env(safe-area-inset-left, 0px));
     width: 2.95rem; min-width: 2.95rem; height: 2.95rem; min-height: 2.95rem; }
-  body.has-section-bar:has(.mobile-bottom-nav:not(:empty)) .back-to-top svg { width: 1.7rem; height: 1.7rem; }
-  body.has-section-bar:has(.mobile-bottom-nav:not(:empty)):has(.back-to-top.is-visible) :is(.section-bar, .nq-view-dock) { left: calc(max(.5rem, env(safe-area-inset-left, 0px)) + 3.35rem); }
-  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > a.section-bar-top { display: none; }
-  body:has(.mobile-bottom-nav:not(:empty)) .nq-view-dock { width: auto; box-shadow: none; }
-  body:has(.mobile-bottom-nav:not(:empty)) .nq-view-dock .nq-view-switch { flex: 1 1 auto; width: auto; }
+  :root.has-bottom-nav body.has-section-bar .back-to-top svg { width: 1.7rem; height: 1.7rem; }
+  :root.has-bottom-nav body.has-section-bar:has(.back-to-top.is-visible) :is(.section-bar, .nq-view-dock) { left: calc(max(.5rem, env(safe-area-inset-left, 0px)) + 3.35rem); }
+  :root.has-bottom-nav body [data-section-bar] > a.section-bar-top { display: none; }
+  :root.has-bottom-nav body .nq-view-dock { width: auto; box-shadow: none; }
+  :root.has-bottom-nav body .nq-view-dock .nq-view-switch { flex: 1 1 auto; width: auto; }
   /* It fits the screen without scrolling (app.js): the colour theme as its icon, and the section being read between the
      arrows to the previous and the next one; a tap on it lists every section above. */
-  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] { align-items: center; gap: .2rem; overflow: hidden; }
-  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > :is(a:not(.section-bar-top), .section-bar-group) { display: none; }
-  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-theme { position: relative; justify-content: center; width: 2.3rem; height: 2.3rem; margin: 0; padding: 0; border-right: 0; }
-  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-theme select { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; opacity: 0; }
-  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-step { display: inline-grid; flex: 0 0 auto; place-items: center; width: 2.3rem; height: 2.3rem; min-height: 0; padding: 0;
+  :root.has-bottom-nav body [data-section-bar] { align-items: center; gap: .2rem; overflow: hidden; }
+  :root.has-bottom-nav body [data-section-bar] > :is(a:not(.section-bar-top), .section-bar-group) { display: none; }
+  :root.has-bottom-nav body [data-section-bar] > .section-bar-theme { position: relative; justify-content: center; width: 2.3rem; height: 2.3rem; margin: 0; padding: 0; border-right: 0; }
+  :root.has-bottom-nav body [data-section-bar] > .section-bar-theme select { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; opacity: 0; }
+  :root.has-bottom-nav body [data-section-bar] > .section-bar-step { display: inline-grid; flex: 0 0 auto; place-items: center; width: 2.3rem; height: 2.3rem; min-height: 0; padding: 0;
     border: 0; border-radius: 999px; background: transparent; box-shadow: none; color: rgba(255, 255, 255, .95); }
-  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-step:disabled { opacity: .35; }
-  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-step svg { width: 1.25rem; height: 1.25rem; stroke-width: 2.6; }
-  body:has(.mobile-bottom-nav:not(:empty)) [data-section-bar] > .section-bar-current { display: inline-flex; flex: 1 1 auto; align-items: center; gap: .4rem; min-width: 0; height: 2.3rem; min-height: 0;
+  :root.has-bottom-nav body [data-section-bar] > .section-bar-step:disabled { opacity: .35; }
+  :root.has-bottom-nav body [data-section-bar] > .section-bar-step svg { width: 1.25rem; height: 1.25rem; stroke-width: 2.6; }
+  :root.has-bottom-nav body [data-section-bar] > .section-bar-current { display: inline-flex; flex: 1 1 auto; align-items: center; gap: .4rem; min-width: 0; height: 2.3rem; min-height: 0;
     padding: 0 .7rem; border: 0; border-radius: 999px; background: #fff; box-shadow: 0 4px 12px rgba(0, 0, 0, .22); color: color-mix(in srgb, var(--section-bar-accent, #0b6664) 80%, #000);
     font: inherit; font-size: .86rem; font-weight: 850; }
   .section-bar-current-icon { display: inline-grid; flex: 0 0 auto; }
-  body:has(.mobile-bottom-nav:not(:empty)) .section-bar-current svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  :root.has-bottom-nav body .section-bar-current svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .section-bar-current-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-  body:has(.mobile-bottom-nav:not(:empty)) .section-bar-current .section-bar-current-chevron { flex: 0 0 auto; width: .95rem; height: .95rem; stroke-width: 2.6; transition: transform .15s ease; }
+  :root.has-bottom-nav body .section-bar-current .section-bar-current-chevron { flex: 0 0 auto; width: .95rem; height: .95rem; stroke-width: 2.6; transition: transform .15s ease; }
   .section-bar-current[aria-expanded="true"] .section-bar-current-chevron { transform: rotate(180deg); }
   .section-bar-sheet:not([hidden]) { position: fixed; right: .5rem; bottom: calc(var(--bottom-floaters, var(--bottom-nav)) + .4rem); left: .5rem; z-index: 10002; display: grid; gap: .15rem;
     max-height: calc(100dvh - var(--bottom-floaters, var(--bottom-nav)) - 4rem); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; padding: .4rem;
@@ -5835,7 +5835,7 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
   .section-bar-sheet a.is-active { background: color-mix(in srgb, var(--section-bar-accent, #0b6664) 13%, #fff); color: color-mix(in srgb, var(--section-bar-accent, #0b6664) 85%, #000); }
   .section-bar-sheet svg { flex: 0 0 auto; width: 1.15rem; height: 1.15rem; fill: none; stroke: var(--section-bar-accent, currentColor); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   /* The Modules & Sections tab at the edge stands above the bars at the bottom, not over their buttons. */
-  body:has(.mobile-bottom-nav:not(:empty)) #page-panel-navigator.modules-sections-navigator :is(.page-panel-navigator-tab, .edge-navigator-hover-target) { top: 40%; }
+  :root.has-bottom-nav body #page-panel-navigator.modules-sections-navigator :is(.page-panel-navigator-tab, .edge-navigator-hover-target) { top: 40%; }
   /* What floats at the bottom of the page stands above the bars. */
   .back-to-top { bottom: var(--back-to-top-bottom, calc(.6rem + var(--bottom-floaters))); }
   .unassigned-values-card { bottom: var(--unassigned-values-card-bottom, calc(.5rem + var(--bottom-floaters))); }
@@ -5843,6 +5843,12 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 }
 
 @media (max-width: 640px) {
+  /* A phone: the header of a module is short, its title of the size of the title of a panel and its description small
+     (the modules show two lines of it). */
+  .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) { padding-top: .8rem; padding-bottom: .85rem; }
+  .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) h2 { margin: .15rem 0 .3rem; font-size: 1.12rem !important; line-height: 1.22; }
+  .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) .lede { font-size: .82rem !important; line-height: 1.4; }
+  .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) .eyebrow { margin-bottom: .1rem; font-size: .62rem; }
   /* A phone: the application bar is two short lines, the name of the tool with its version and, under it, the workspace
      with the user and Logout. */
   .shell { padding: .55rem .55rem 1rem; }
@@ -5886,7 +5892,7 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
   .background-task-pin-button { display: none; }
   .background-task-minimize-button { top: .4rem; right: .45rem; width: 1.9rem; height: 1.9rem; font-size: 1.35rem; }
   /* Every module in the bar at the bottom: two rows of six when they do not fit in one, the menu last in the second. */
-  :root:has(.mobile-bottom-nav[data-rows="2"]:not(:empty)) { --bottom-nav: calc(7.8rem + env(safe-area-inset-bottom, 0px)); }
+  :root.has-bottom-nav-rows-2 { --bottom-nav: calc(7.8rem + env(safe-area-inset-bottom, 0px)); }
   .mobile-bottom-nav[data-rows="2"]:not(:empty) { grid-auto-flow: row; grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); row-gap: .15rem; }
   .mobile-bottom-nav[data-rows="2"] .mobile-bottom-nav-menu { grid-column: 6; }
   .mobile-bottom-nav[data-rows="2"] :is(a, button) { gap: .14rem; font-size: .68rem; }

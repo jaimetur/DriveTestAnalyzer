@@ -61,8 +61,15 @@
 </div>
 {%- endmacro -%}
 {%- macro new_badge(module) -%}{%- set badge = (module_tab_badges | default({})).get(module) -%}{%- if badge -%}<svg class="module-tab-new module-tab-new-{{ module }}" viewBox="0 0 {{ badge.width }} 14" style="width: {{ '%.2f' | format(badge.width * 1.06 / 14) }}rem" role="img" aria-label="{{ badge.text }}"><title>{{ badge.text }}</title><rect width="{{ badge.width }}" height="14" rx="4" style="fill: {{ badge.color }}"/>{%- if badge.icon_path -%}<path class="module-tab-new-icon" d="{{ badge.icon_path }}" style="{{ 'fill: ' ~ badge.icon_color ~ '; stroke: none' if badge.icon_mode == 'fill' else 'fill: none; stroke: ' ~ badge.icon_color }}"/>{%- endif -%}<text x="{{ badge.text_x }}" y="10.2" text-anchor="middle" style="fill: {{ badge.ink }}">{{ badge.text }}</text></svg>{%- endif -%}{%- endmacro -%}
+{#- Small screens (app.css): the modules of the bar at the bottom, drawn at the end of the page, counted here for the
+    classes of the page, so that the page is laid out for the bar (the bar of the menu at the top hidden, the room of
+    the bar kept) from its first moment, before the end of the page arrives. -#}
+{%- set bottom_nav = namespace(count=0) -%}
+{%- if user and not embedded_template_editor and not embedded_preview -%}
+{%- for tab in module_tabs if features[tab.key] and (active_workspace if tab.key == 'builders' else (not tab.needs_workspace or active_workspace)) %}{% set bottom_nav.count = bottom_nav.count + 1 %}{% endfor -%}
+{%- endif %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"{% if bottom_nav.count %} class="has-bottom-nav{% if bottom_nav.count + 2 > 6 %} has-bottom-nav-rows-2{% endif %}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -279,8 +286,6 @@
       title and the colour of its tab, then Config (the configuration pages of the role) or, without them, Help, and the
       menu last; two rows of six when they do not fit in one. Drawn here so that the page shows it from its first
       moment; app.js opens the lists of Builders and Config and the menu. -#}
-  {%- set bottom_nav = namespace(count=0) -%}
-  {%- for tab in module_tabs if features[tab.key] and (active_workspace if tab.key == 'builders' else (not tab.needs_workspace or active_workspace)) %}{% set bottom_nav.count = bottom_nav.count + 1 %}{% endfor -%}
   {%- set path = request.url.path -%}
   <nav class="mobile-bottom-nav" data-mobile-bottom-nav aria-label="Modules"{% if bottom_nav.count %} data-rows="{{ 2 if bottom_nav.count + 2 > 6 else 1 }}"{% endif %}>{% if bottom_nav.count %}
     {%- for tab in module_tabs if features[tab.key] and (active_workspace if tab.key == 'builders' else (not tab.needs_workspace or active_workspace)) %}

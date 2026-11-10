@@ -1519,7 +1519,7 @@ def test_designs_lifecycle_and_layout(client):
     assert "window.addEventListener('beforeunload', rememberScroll);" in design_script
     assert "document.addEventListener('visibilitychange'" in design_script
     assert "document.documentElement.scrollHeight - window.innerHeight" in design_script
-    assert "const restorePageState = navigationEntry?.type === 'reload';" in design_script
+    assert "const restorePageState = navigationEntry?.type === 'reload' || window.pageReopened === true;" in design_script
     assert "if (!restorePageState) resetScroll();" in design_script
     assert "if (restorePageState) restoreScroll(); else resetScroll();" in design_script
     assert "sessionStorage.removeItem(scrollStorageKey);" in design_script

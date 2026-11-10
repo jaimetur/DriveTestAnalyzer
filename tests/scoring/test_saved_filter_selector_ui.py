@@ -382,9 +382,13 @@ def test_reload_opens_scoring_dimmed_at_the_saved_position_until_it_is_drawn():
     assert 'if ((maximum >= target && !reading) || interacted) document.querySelector(NOTICE)?.remove();' in follow
     assert 'const pageHeight = document.body.scrollHeight;' in follow and "document.documentElement.style.minHeight = '';" in follow
     assert 'window.PageRestore.follow(target, {onDone: () => {' in script
-    # Only a reload (or Back and Forward) returns there: opening the module starts at its top.
-    assert "&& ['reload', 'back_forward'].includes(window.performance.getEntriesByType?.('navigation')?.[0]?.type);" in restore
-    assert "&& ['reload', 'back_forward'].includes(window.performance.getEntriesByType?.('navigation')?.[0]?.type);" in script
+    # Only a reload (or Back and Forward, or the module opened again from the bar at the bottom of a phone) returns
+    # there: opening the module otherwise starts at its top.
+    reopened_or_reloaded = ("(window.pageReopened === true\n    || ['reload', 'back_forward'].includes("
+                            "window.performance.getEntriesByType?.('navigation')?.[0]?.type));")
+    assert reopened_or_reloaded in restore
+    assert ("&& (window.pageReopened === true || ['reload', 'back_forward'].includes("
+            "window.performance.getEntriesByType?.('navigation')?.[0]?.type));") in script
     # What was in view when the page was left shows as it was, in a frame without scripts, under the gradient.
     assert "window.sessionStorage.getItem(`${key}:snapshot`)" in restore and "frame.setAttribute('sandbox', 'allow-same-origin');" in restore
     assert 'frame.contentWindow.scrollTo(0, snapshot.scroll_y);' in restore
