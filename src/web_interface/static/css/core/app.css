@@ -5741,17 +5741,13 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 .topnav-workspace-menu button .workspace-switcher-option-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .topnav-workspace-menu button > span:not(.workspace-switcher-option-label) { flex: 0 0 auto; }
 
-/* The tabs of the modules: one bar of pills. Each keeps the colour of its module: in its icon, and filling it when open. */
-.module-tabs { gap: .25rem; margin: 0 0 .9rem; padding: .4rem .45rem; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: var(--shadow); }
-.module-tabs.is-stuck { border-color: transparent; border-radius: 0; }
-.module-tabs-primary, .module-tabs-secondary { gap: .25rem; padding-left: 0; padding-right: 0; }
-.module-tabs-secondary { padding-bottom: .35rem; border-bottom: 1px solid var(--line); }
-.module-tab, .module-tab.active { margin-bottom: 0; border-radius: 10px; box-shadow: none; }
-.module-tabs-primary .module-tab, .module-tabs-secondary .module-tab { padding: .5rem .8rem; font-size: .92rem; }
-.module-tabs-primary .module-tab:not(.active) { border-color: transparent; background: transparent; box-shadow: none; color: #33485a; }
-.module-tabs-primary .module-tab:not(.active):not(.module-tab-disabled):hover { border-color: transparent; background: color-mix(in srgb, var(--tab-accent, #8a99a6) 11%, #fff); box-shadow: none; transform: none; }
-.module-tabs-primary .module-tab.active { box-shadow: 0 4px 12px color-mix(in srgb, var(--tab-accent, #0b7a75) 28%, transparent); }
-.module-tabs-secondary .module-tab { padding: .38rem .7rem; font-size: .84rem; }
+/* The tabs of the main modules keep their folder shape: rounded at the top, light, with a line of the colour of their
+   module on top and the open one filled with it. The administrative tabs above them (Help, App Logs, Config, Admin,
+   Super Admin) are buttons. */
+.module-tab, .module-tab.active { box-shadow: none; }
+.module-tab { border-radius: 11px 11px 0 0; }
+.module-tabs-secondary { gap: .3rem; padding-bottom: .45rem; }
+.module-tabs-secondary .module-tab { margin-bottom: 0; padding: .38rem .7rem; border-radius: 10px; font-size: .84rem; }
 
 /* The header of a module keeps its colour and its drawing, with a title of the size of a heading instead of a poster. */
 .shell main :is(.hero-panel, .module-hero, .scoring-hero, [class*="module-hero-"]) { padding-top: 1.15rem; padding-bottom: 1.15rem; }

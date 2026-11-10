@@ -29,7 +29,7 @@ The UI uses a shared header, module tabs, panels, dialogs and tables. Read [Prod
 
 ## Navigation
 
-The dark application bar at the top, in a darker shade of the colour of the module open (dark blue and teal outside the modules), holds the name of the tool with its version, the active workspace and the user (with a dot of the colour of its role) with **Logout**. Under it, one bar holds the tabs as pills: the administrative tabs on its upper row and the primary module tabs on the lower one, each with its icon in the colour of its module, the open one filled with that colour; on a narrower window the main tabs take their short names and wrap to a second row when they do not fit. On small screens a bar at the bottom of the screen takes the place of both rows (see [Small screens](#small-screens)).
+The dark application bar at the top, in a darker shade of the colour of the module open (dark blue and teal outside the modules), holds the name of the tool with its version, the active workspace and the user (with a dot of the colour of its role) with **Logout**. Under it are the tabs: the administrative tabs, as buttons, on the upper row, and the primary module tabs on the lower one, as folder tabs with a line of the colour of their module on top and their icon in that colour, the open one filled with that colour; on a narrower window the main tabs take their short names and wrap to a second row when they do not fit. On small screens a bar at the bottom of the screen takes the place of both rows (see [Small screens](#small-screens)).
 
 Primary tabs, in their default order (super-admins change their order, titles, icons and colours in **Super Admin → Interface Settings**):
 
