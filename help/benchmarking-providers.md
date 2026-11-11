@@ -3,7 +3,7 @@
 DriveTest Analyzer was built for the CDRs of NetCheck. It is being adapted to the CDRs of other benchmarking providers, Umlaut first, then P3 and later RootMetrics, without losing any feature and without translating their CDRs into NetCheck names. This chapter describes the status of that adaptation and the model it follows; the compatibility report of each provider, below it in Help Navigation, compares its CDRs with NetCheck CDRs.
 
 > [!NOTE]
-> **Available versus planned.** Today every workspace processes NetCheck CDRs. **Umlaut CDR** and **P3 CDR** appear as *coming soon* in the [CDR type](workspace-config.md#cdr-type) of a workspace until they are supported; **RootMetrics** CDRs are planned after P3 and are not listed yet. The compatibility reports describe planned work, not features of the current release.
+> **Available versus planned.** Today every workspace processes NetCheck CDRs. **Umlaut CDR**, **P3 CDR** and **RootMetrics CDR** appear as *coming soon* in the [CDR type](workspace-config.md#cdr-type) of a workspace until they are supported. The compatibility reports describe planned work, not features of the current release.
 
 ## In this guide
 
@@ -39,7 +39,7 @@ The adaptation is planned in eight phases. The durations are indicative: they de
 
 Phase 1 is available now and changes nothing for NetCheck workspaces:
 
-- **CDR types.** NetCheck CDR is the supported type; Umlaut CDR and P3 CDR are listed as coming soon. A workspace that has Data, Voice or Speech CDRs keeps its CDR type (see [CDR type](workspace-config.md#cdr-type)).
+- **CDR types.** NetCheck CDR is the supported type; Umlaut CDR, P3 CDR and RootMetrics CDR are listed as coming soon. A workspace that has Data, Voice or Speech CDRs keeps its CDR type (see [CDR type](workspace-config.md#cdr-type)).
 - **Field profiles.** Every CDR type has a field profile that holds the CDR columns the tool reads: the sheets and fields of ingestion, the sources of Non-Qualified Calls (its index, the import of previous analyses and the Failure Map), the radio and dimension columns of Network Insights, the serving cells of the Vendor Mapping and the coordinates of Map Areas. The NetCheck profile holds exactly the columns read before.
 - **Validated.** The same real NetCheck CDRs processed before and after the change gave the same results (89 of 89 outputs).
 
@@ -59,7 +59,7 @@ The common engine of phase 5, the [DT Analyzer RCA](non-qualified-calls.md#dt-an
 
 ### Decisions
 
-- **One provider per workspace.** A workspace is created for NetCheck, Umlaut or P3 CDRs (its CDR type) and keeps it once it has CDRs. The CDRs of several providers are never mixed.
+- **One provider per workspace.** A workspace is created for NetCheck, Umlaut, P3 or RootMetrics CDRs (its CDR type) and keeps it once it has CDRs. The CDRs of several providers are never mixed.
 - **Native names.** Every CDR keeps its original columns, and users see the field names, values and files of their provider. Whatever the tool needs and the provider does not bring is added as a derived column, marked as such.
 - **Each provider's Scoring.** The NetCheck methodology is not adapted: the Umlaut methodology is implemented when it is available, written with the Umlaut fields.
 - **NQ by provider.** In NetCheck CDRs a call or test is NQ when its result is not Completed; in Umlaut CDRs, when its own Qualifier column says NOT QUALIFIED.

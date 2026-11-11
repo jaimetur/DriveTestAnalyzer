@@ -49,10 +49,11 @@ def test_the_netcheck_profile_holds_the_columns_every_module_reads():
 
 def test_a_cdr_type_without_its_own_profile_reads_as_netcheck():
     assert field_profile('netcheck') is NETCHECK_PROFILE
-    assert field_profile('p3') is NETCHECK_PROFILE and field_profile('') is NETCHECK_PROFILE
+    assert field_profile('p3') is NETCHECK_PROFILE and field_profile('rootmetrics') is NETCHECK_PROFILE
+    assert field_profile('') is NETCHECK_PROFILE
     assert field_profile('umlaut').cdr_type == 'umlaut'
-    assert [option['value'] for option in cdr_types.cdr_type_options()] == ['netcheck', 'umlaut', 'p3']
-    assert not cdr_types.CDR_TYPES['p3']['supported']
+    assert [option['value'] for option in cdr_types.cdr_type_options()] == ['netcheck', 'umlaut', 'p3', 'rootmetrics']
+    assert not cdr_types.CDR_TYPES['p3']['supported'] and not cdr_types.CDR_TYPES['rootmetrics']['supported']
 
 
 def test_the_cdr_type_of_a_file_comes_from_its_profile():
@@ -118,4 +119,5 @@ def test_a_workspace_with_cdrs_keeps_its_cdr_type(client, tmp_path, monkeypatch)
     assert cdr_types.set_workspace_cdr_type(core.repository, 'netcheck') == 'netcheck'
     page = client.get('/workspace-config').text
     assert '<option value="p3" disabled>P3 CDR (coming soon)</option>' in page
+    assert '<option value="rootmetrics" disabled>RootMetrics CDR (coming soon)</option>' in page
     assert 'kept once it has CDRs' in page

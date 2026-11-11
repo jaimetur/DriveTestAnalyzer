@@ -7,7 +7,7 @@ module.exports = {
     { id: 'cover', type: 'cover', section: 'Introduction', footer: 'Main module', kicker: 'Main module · Workspace Management', title: 'Workspace',
       icon: 'TbDatabase', icons: ['TbCloudUpload', 'TbBuildingBroadcastTower', 'TbMap2', 'TbSettingsAutomation'],
       lead: 'Isolated workspaces with their CDRs, Layer3 Logs, network inventories and maps: the data every module analyses, processed in the background.',
-      tags: ['One workspace per team or country', 'NetCheck CDRs · Umlaut and P3 coming soon', 'Processed in the background'],
+      tags: ['One workspace per team or country', 'NetCheck CDRs · Umlaut, P3 and RootMetrics coming soon', 'Processed in the background'],
       notes: 'Workspace is the first operational module. It keeps isolated workspaces, each with its own database, files and output, ingests every dataset the other modules read and processes it in the background.' },
     { id: 'lifecycle', type: 'hub', section: 'Introduction', footer: 'Workspace lifecycle', kicker: 'Workspace lifecycle', title: 'One workspace, one isolated world',
       center: { icon: 'TbFolders', title: 'Workspace' },

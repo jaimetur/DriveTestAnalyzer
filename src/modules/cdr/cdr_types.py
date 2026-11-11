@@ -2,9 +2,9 @@
 
 Each workspace processes the CDRs of one provider and keeps it once it has
 CDRs, so its modules never mix the field names, values and methodologies of
-two providers. NetCheck CDR is supported; Umlaut CDR and P3 CDR files keep
-their own field names and are listed as upcoming until their readers and
-field profiles (see cdr_field_profiles) are available.
+two providers. NetCheck CDR is supported; Umlaut CDR, P3 CDR and RootMetrics
+CDR files keep their own field names and are listed as upcoming until their
+readers and field profiles (see cdr_field_profiles) are available.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ CDR_TYPES: dict[str, dict[str, Any]] = {
     'netcheck': {'label': 'NetCheck CDR', 'provider': 'NetCheck', 'supported': True},
     'umlaut': {'label': 'Umlaut CDR', 'provider': 'Umlaut', 'supported': False},
     'p3': {'label': 'P3 CDR', 'provider': 'P3', 'supported': False},
+    'rootmetrics': {'label': 'RootMetrics CDR', 'provider': 'RootMetrics', 'supported': False},
 }
 CDR_DATASET_KINDS = frozenset({'data', 'voice', 'speech'})
 
