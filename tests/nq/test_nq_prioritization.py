@@ -1268,7 +1268,7 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     subtitles = [subtitle for component, subtitle, *_rest in tables if component == 'rules']
     assert subtitles == ['Dual Queue (Scoring Based) · List 1 · Weekly & Final CDRs', 'Dual Queue (Scoring Based) · Outside the lists']
     columns = next(columns for component, _subtitle, columns, *_rest in tables if component == 'rules')
-    assert columns == ['Priority', 'Step', 'NR Mode', 'Operators', 'Call Type', 'Area', 'Condition', 'Calls', 'Open', 'Waiting', 'Points lost', 'Queue']
+    assert columns == ['Priority', 'Step', 'NR Mode', 'Call Type', 'Area', 'Condition', 'Operators', 'Calls', 'Open', 'Waiting', 'Points lost', 'Queue']
     deck = client.post('/api/non-qualified-calls/export/powerpoint', json={'filters': {}})
     titles = [slide.shapes.title.text_frame.text for slide in Presentation(io.BytesIO(deck.content)).slides if slide.shapes.title is not None]
     assert any(title.startswith('NQ Prioritization & Queues') for title in titles)
@@ -1486,6 +1486,8 @@ def test_the_data_queue_lists_its_hotspots_and_the_other_calls_apart(strategized
         assert len(members) == item['waiting'] and item['calls'] >= max(2, item['waiting'])
         assert {row['cluster_key'] for row in members} == {item['key']} and {row['queue'] for row in members} == {'Data'}
         assert item['id'].startswith('H') and item['assigned'] <= item['waiting']
+        # The calls of the queue in the hotspot that no longer wait: in progress or closed.
+        assert item['waiting'] + item['in_progress'] + item['closed'] == item['calls']
     assert not {row['call_key'] for row in data['singles']} & {key for item in data['hotspots'] for key in item['call_keys']}
     # PowerPoint and Word list its hotspots, then its individual failures, after the steps.
     from src.modules.nq import non_qualified_calls_export

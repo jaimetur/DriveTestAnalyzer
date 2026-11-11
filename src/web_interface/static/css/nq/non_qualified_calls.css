@@ -1697,7 +1697,19 @@ body:has(dialog.nq-priority-dialog[open]) { overflow: hidden; }
    narrow as their content, the rest of the width for the others. */
 .nq-priority-steps-summary :is(th:nth-child(2), td.nq-step-number) { text-align: center; }
 .nq-priority-steps-summary :is(th, td):is(:nth-child(1), :nth-child(2)) { width: 1%; white-space: nowrap; }
-.nq-priority-steps-summary td:is(:nth-child(4), :nth-child(6), .nq-step-condition) { white-space: normal; }
+.nq-priority-steps-summary td:is(:nth-child(7), .nq-step-condition) { white-space: normal; }
+/* The steps in pills of a colour each, and the Area in the colour of its value (Strategy subpanel and queues). */
+.nq-step-pill { display: inline-block; min-width: 1.7rem; padding: .1rem .45rem; border: 0; border-radius: 999px;
+  background: var(--nq-step-color); color: #fff; font-size: .72rem; font-weight: 800; text-align: center; cursor: default; }
+button.nq-step-pill { cursor: pointer; }
+.nq-failure-table td .nq-step-pill { min-width: 1.7rem; padding: .1rem .45rem; color: #fff; background: var(--nq-step-color); }
+button.nq-step-pill.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--nq-step-color); }
+.nq-step-area > span { display: inline-block; padding: .1rem .5rem; border-radius: 999px; color: #fff; font-size: .72rem; font-weight: 800;
+  white-space: nowrap; background: #5f6b7a; }
+.nq-step-area.is-cities > span { background: #a61e4d; }
+.nq-step-area.is-connecting-roads > span { background: #364fc7; }
+.nq-queue-waiting small.is-progress { color: #b35c00; }
+.nq-queue-waiting small.is-closed { color: #2b8a3e; }
 .nq-priority-steps-summary td.nq-step-condition { min-width: 9rem; }
 :is(.nq-step-mode, .nq-step-type, .nq-step-queue) > span { display: inline-block; padding: .1rem .5rem; color: #fff; font-size: .72rem;
   font-weight: 800; white-space: nowrap; }

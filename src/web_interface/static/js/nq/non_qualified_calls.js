@@ -3572,18 +3572,18 @@
         {node: pointsBar(rule.points, most.points), className: 'nq-step-bar-cell'}];
       if (rule.kind !== 'step') {
         return ['—', {text: rule.kind === 'out_of_scope' ? 'Out of scope' : 'No step', className: 'nq-failure-name', pairs: rulePairs, title: rule.label},
-          '—', '—', '—', '—', {text: rule.label, className: 'nq-step-condition', title: rule.conditions}, number(rule.calls),
+          '—', '—', '—', {text: rule.label, className: 'nq-step-condition', title: rule.conditions}, '—', number(rule.calls),
           ...bars, rule.criterion || '—'];
       }
       const queue = String(rule.queue || 'Tracked').toLowerCase();
       return [{text: rule.priority, className: `nq-queue-priority is-${String(rule.priority).toLowerCase()}`},
-        {text: String(rule.number), className: 'nq-step-number', pairs: rulePairs, title: rule.name},
+        {node: stepPill(rule.number, true), className: 'nq-step-number', pairs: rulePairs, title: rule.name},
         {text: rule.nr_mode === 'any' ? 'Any' : rule.nr_mode, className: `nq-step-mode is-${String(rule.nr_mode).toLowerCase()}`},
-        rule.operators || '—', {text: rule.call_type, className: `nq-step-type is-${queue}`}, rule.area,
-        {node: conditionNode(rule.condition), className: 'nq-step-condition', title: rule.conditions}, number(rule.calls),
+        {text: rule.call_type, className: `nq-step-type is-${queue}`}, areaCell(rule.area),
+        {node: conditionNode(rule.condition), className: 'nq-step-condition', title: rule.conditions}, rule.operators || '—', number(rule.calls),
         ...bars, {text: rule.queue, className: `nq-step-queue is-${queue}`}];
     };
-    const columns = ['Priority', 'Step', 'NR Mode', 'Operators', 'Call Type', 'Area', 'Condition', 'Calls', 'Follow-up', 'Points lost', 'Queue'];
+    const columns = ['Priority', 'Step', 'NR Mode', 'Call Type', 'Area', 'Condition', 'Operators', 'Calls', 'Follow-up', 'Points lost', 'Queue'];
     const tabs = [
       ['campaign', finalList ? 'List 1 · Weekly CDRs' : 'List 1 · Weekly & Final CDRs',
         finalList ? 'While the Final CDR of the campaign is not scored.' : 'The only list of the strategy: before and after the Final CDR of the campaign is scored.'],
@@ -3592,6 +3592,16 @@
     ].filter(([key]) => data.rules.some((rule) => groupOf(rule) === key));
     const callsOf = (key) => data.rules.filter((rule) => groupOf(rule) === key).reduce((sum, rule) => sum + Number(rule.calls || 0), 0);
     if (!tabs.some(([key]) => key === stepsTab)) {
+    // Each step in a pill of a colour of its own (the golden angle keeps the colours of the next steps apart), in the
+    // Strategy subpanel and in the queues; a button when a click shows its calls.
+    const stepColor = (number) => `hsl(${Math.round((Number(number) * 137.508) % 360)} 58% 38%)`;
+    const stepPill = (number, button = false) => {
+      const element = node(button ? 'button' : 'span', String(number), 'nq-step-pill');
+      element.style.setProperty('--nq-step-color', stepColor(number));
+      return element;
+    };
+    // The Area of a step in a pill of its colour: Cities, Connecting Roads or Any.
+    const areaCell = (area) => ({text: area || '—', className: `nq-step-area is-${String(area || 'any').toLowerCase().replace(/[^a-z]+/g, '-')}`});
       const lists = tabs.filter(([key]) => key !== 'outside');
       stepsTab = (lists.reduce((best, tab) => (callsOf(tab[0]) > callsOf(best[0]) ? tab : best), lists[0] || tabs[0]) || [''])[0];
     }
@@ -3867,7 +3877,7 @@
       const rule = item.step ? rulesByName[item.rule] : null;
       if (!item.step) return ['—', '—', '—', '—'];
       const title = `Step ${item.step} of ${item.list === 'final' ? 'List 2 · Final CDRs' : 'List 1 · Weekly CDRs'}: ${rule?.conditions || item.rule || ''}`;
-      const number = {text: String(item.step), className: 'nq-queue-step-number', title};
+      const number = {node: stepPill(item.step), className: 'nq-queue-step-number', title};
       if (!rule) return [number, '—', '—', '—'];
       return [number,
         {text: rule.nr_mode === 'any' ? 'Any' : rule.nr_mode, className: `nq-step-mode is-${String(rule.nr_mode).toLowerCase()}`, title},
@@ -3898,14 +3908,18 @@
         const waiting = node('div');
         const count = node('span');
         count.append(node('strong', number(item.waiting)), document.createTextNode(` of ${number(item.calls)}`));
-        waiting.append(count, node('small', `${number(item.assigned)} assigned`));
+        // Below, how many of them have an Analyst, and the calls of the queue in the hotspot that no longer wait: attended
+        // and still open (in progress), or closed.
+        waiting.append(count, node('small', `${number(item.assigned)} assigned`),
+          ...(item.in_progress ? [node('small', `${number(item.in_progress)} in progress`, 'is-progress')] : []),
+          ...(item.closed ? [node('small', `${number(item.closed)} closed`, 'is-closed')] : []));
         return [{text: number(item.position), className: 'nq-queue-position'},
           {node: id, pairs: [['hotspot', item.key]], reveal: 'section-nq-calls', className: 'nq-failure-name',
             title: `${number(item.waiting)} waiting of the ${number(item.calls)} calls of this queue in the hotspot (${item.nr_mode || '—'}): click to see them`},
           {text: item.priority || '—', className: `nq-queue-priority is-${String(item.priority || '').toLowerCase()}`},
           ...stepCells(item), item.operator || '—', item.campaign || '—',
           {node: waiting, className: 'nq-queue-waiting',
-            title: `${number(item.waiting)} of its ${number(item.calls)} calls of this queue wait (open and not attended yet); ${number(item.assigned)} of them already have an Analyst`},
+            title: `${number(item.waiting)} of its ${number(item.calls)} calls of this queue wait (open and not attended yet); ${number(item.assigned)} of them already have an Analyst; ${number(item.in_progress || 0)} in progress (attended, still open) and ${number(item.closed || 0)} closed`},
           {text: points(item.gain), className: 'nq-queue-number', title: 'Expected Gain of its waiting calls together'},
           item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—',
           ...actionCells(item.call_keys || [], item.free_keys || [], `hotspot ${item.id}`)];

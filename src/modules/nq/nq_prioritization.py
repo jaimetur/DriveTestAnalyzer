@@ -3461,9 +3461,15 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
     # queue among the filtered calls, in the order of its first waiting call; the waiting calls of the queue out of such a
     # hotspot are listed apart, one by one.
     queue_spots: dict[tuple[str, str], int] = {}
-    for row in rows:
+    # The calls of the queue in each hotspot that no longer wait: attended and still open (in progress), or closed.
+    spot_states: dict[tuple[str, str], dict[str, int]] = {}
+    for row, opened, followed in zip(rows, is_open, attended):
         if row['prioritization'] == PRIORITIZED and row['queue'] and row['cluster_key']:
-            queue_spots[(row['queue'], row['cluster_key'])] = queue_spots.get((row['queue'], row['cluster_key']), 0) + 1
+            spot = (row['queue'], row['cluster_key'])
+            queue_spots[spot] = queue_spots.get(spot, 0) + 1
+            counts = spot_states.setdefault(spot, {'progress': 0, 'closed': 0})
+            counts['progress'] += bool(opened and followed)
+            counts['closed'] += not opened
     spot_info = {item['key']: item for item in spot_rows}
 
     def hotspot_queue(item: dict[str, Any]) -> dict[str, Any]:
@@ -3487,6 +3493,7 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
                 'campaign': compact_campaign_value(first['campaign']) or first['campaign'], 'priority': first['priority'],
                 'step': first.get('queue_step'), 'list': first.get('queue_list') or '', 'rule': first['priority_rule'],
                 'waiting': len(members), 'calls': queue_spots[(item['name'], key)],
+                'in_progress': spot_states[(item['name'], key)]['progress'], 'closed': spot_states[(item['name'], key)]['closed'],
                 'assigned': sum(queue_state(row) == QUEUE_ANALYST for row in members),
                 'gain': round(sum(gains), 2) if gains else None,
                 'level': min(levels_of, key=lambda name: level_order.index(name) if name in level_order else len(level_order))

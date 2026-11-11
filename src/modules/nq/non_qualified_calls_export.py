@@ -443,7 +443,7 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
         rows = [row for row in shown if (row.get('list') if row.get('kind') == 'step' else 'outside') == key]
         if rows:
             tables.append(('rules', f"{strategy.get('label') or 'Strategy'} · {title}",
-                           ['Priority', 'Step', 'NR Mode', 'Operators', 'Call Type', 'Area', 'Condition', 'Calls', 'Open', 'Waiting',
+                           ['Priority', 'Step', 'NR Mode', 'Call Type', 'Area', 'Condition', 'Operators', 'Calls', 'Open', 'Waiting',
                             'Points lost', 'Queue'], [[*_step_fields(row)[:7], f"{row['calls']:,}", f"{row['open']:,}", f"{row.get('waiting', 0):,}",
                                                       _points(row['points']), _step_fields(row)[7]] for row in rows], {7, 8, 9, 10}))
     queue = [[row['join_id'] or '—', row['operator'], row['service'], row['nr_mode'] or '—', row['campaign'] or '—',
@@ -497,13 +497,13 @@ def group_time(value: Any) -> str:
 
 
 def _step_fields(row: dict[str, Any]) -> list[str]:
-    """The fields of a step as the Prioritization Rules show them (Priority, Step, NR Mode, Operators, Call Type, Area,
-    Condition and Queue, the calls and the points going before the Queue); the calls out of scope and those no step takes say
+    """The fields of a step as the Strategy subpanel shows them (Priority, Step, NR Mode, Call Type, Area, Condition,
+    Operators and Queue, the calls and the points going before the Queue); the calls out of scope and those no step takes say
     so in the Condition."""
     if row.get('kind') != 'step':
-        return ['—', _step_name(row), '—', '—', '—', '—', row.get('label') or row['conditions'], row['criterion'] or '—']
+        return ['—', _step_name(row), '—', '—', '—', row.get('label') or row['conditions'], '—', row['criterion'] or '—']
     return [row.get('priority') or '—', _step_name(row), 'Any' if row.get('nr_mode') == 'any' else row.get('nr_mode') or '—',
-            row.get('operators') or '—', row.get('call_type') or '—', row.get('area') or '—', row.get('condition') or '—',
+            row.get('call_type') or '—', row.get('area') or '—', row.get('condition') or '—', row.get('operators') or '—',
             row.get('queue') or '—']
 
 
