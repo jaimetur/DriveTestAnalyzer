@@ -9842,9 +9842,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def nq_queue_take(payload: QueueCallsPayload, user=Depends(editor_user)) -> JSONResponse:
         """The user takes waiting calls of the queues as their analyst (ticket #122)."""
         repository = workspace_repository(user)
-        result = nq_prioritization.take_calls(repository, queue_call_keys(payload), user.username, set(workspace_users()))
+        result = translate(lambda: nq_prioritization.take_calls(repository, queue_call_keys(payload), user.username,
+                                                                 set(workspace_users()), payload.team or None))
         log_action(repository, user, 'nq_queue_take', {
-            'selected': len(payload.call_keys), 'taken': len(result['taken']), 'call_keys': result['taken'][:50],
+            'selected': len(payload.call_keys), 'taken': len(result['taken']), 'team': result.get('team') or '',
+            'call_keys': result['taken'][:50],
             'skipped': result['skipped'][:50]})
         return JSONResponse(result)
 

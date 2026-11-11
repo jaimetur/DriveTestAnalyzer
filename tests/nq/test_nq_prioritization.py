@@ -1512,11 +1512,11 @@ def test_analysts_take_the_waiting_calls_and_admins_assign_them(strategized):
     url = '/api/non-qualified-calls/prioritization'
     panel = client.post(url, json={'filters': {}}).json()
     voice = panel['queues'][0]
-    first, second, third = (row['call_key'] for row in voice['rows'][:3])
+    first, second, third, fourth = (row['call_key'] for row in voice['rows'][:4])
     assert panel['view'] == 'all' and panel['views']['all'] == panel['totals']['next'] == panel['views']['unassigned']
     assert panel['views']['mine'] == panel['views']['team'] == 0 and voice['team'] == ''
     # Taking a call makes the user its analyst: it waits as Assigned in their view, and nobody else can take it.
-    assert client.post('/api/non-qualified-calls/queues/take', json={'call_keys': [first]}).json() == {'taken': [first], 'skipped': []}
+    assert client.post('/api/non-qualified-calls/queues/take', json={'call_keys': [first]}).json() == {'taken': [first], 'skipped': [], 'team': ''}
     mine = client.post(url, json={'filters': {}, 'view': 'mine'}).json()
     assert [(row['call_key'], row['analyst'], row['state']) for item in mine['queues'] for row in item['rows']] == [(first, 'super', 'analyst')]
     assert mine['totals']['next'] == panel['totals']['next'] and mine['views']['unassigned'] == panel['views']['unassigned'] - 1
@@ -1540,6 +1540,15 @@ def test_analysts_take_the_waiting_calls_and_admins_assign_them(strategized):
     assert client.post('/api/non-qualified-calls/queues/take', json={'call_keys': [second]}).json()['taken'] == [second]
     taken = nq.call_detail(core.repository, second)['call']
     assert (taken['analyst'], taken['team'], taken['status']) == ('editor', 'Netcheck', 'Assigned')
+    # Ticket #123: the call takes the team of its analyst; one in several teams chooses which, and it replaces the team the
+    # call had.
+    with core.repository.connection() as connection:
+        connection.execute(f'INSERT INTO {nq.NQ_TEAM_MEMBERS_TABLE} (team, username) VALUES (?, ?)', ('Operations', 'editor'))
+    take = '/api/non-qualified-calls/queues/take'
+    assert client.post(take, json={'call_keys': [fourth]}).status_code == 400
+    assert client.post(take, json={'call_keys': [fourth], 'team': 'E2E Team'}).status_code == 400
+    assert client.post(take, json={'call_keys': [fourth], 'team': 'operations'}).json() == {'taken': [fourth], 'skipped': [], 'team': 'Operations'}
+    assert nq.call_detail(core.repository, fourth)['call']['team'] == 'Operations'
     # Admins assign calls to a team (or an analyst); viewers can do neither.
     login(client)
     assert client.post('/api/non-qualified-calls/queues/assign', json={'call_keys': [third], 'team': 'Operations'}).json() == {

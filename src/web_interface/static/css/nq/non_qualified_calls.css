@@ -1788,6 +1788,15 @@ span.nq-condition-value { display: inline-block; padding: .05rem .45rem; border-
 .nq-queue-subpanel .nq-priority-tracked { margin-top: 1.4rem; }
 /* Actions (Take, Assign) and Select, the last column, of the queues; the dialog that assigns one call or hotspot. */
 .nq-queue-table :is(td.nq-queue-select-cell, th:nth-child(11)) { text-align: center; }
+.nq-queue-select-all { display: inline-flex; align-items: center; gap: .25rem; font-weight: 800; cursor: pointer; white-space: nowrap; }
+/* Take (green: you take it) and Assign (purple: admins give it to someone) in colours of their own. */
+:root .nq-queue-table .nq-queue-actions .nq-queue-take { border-color: #2b8a3e; background: #2b8a3e; color: #fff; }
+:root .nq-queue-table .nq-queue-actions .nq-queue-take:hover { background: #237032; border-color: #237032; color: #fff; }
+:root .nq-queue-assign-one { border: 1px solid #6741d9; color: #6741d9; background: #fff; border-radius: 6px; padding: .1rem .55rem;
+  font-size: .75rem; cursor: pointer; }
+:root .nq-queue-assign-one:hover { background: #6741d9; color: #fff; }
+.nq-queue-take-team-text { margin: 0; color: var(--nq-dark); font-size: .85rem; }
+.nq-queue-take-team-text:empty, #nq-queue-take-team-field[hidden] { display: none; }
 .nq-queue-table th:last-child:not(:only-child) { white-space: nowrap; }
 .nq-queue-assign-fields { display: grid; gap: .7rem; margin: .4rem 0; }
 .nq-queue-assign-fields label { display: grid; gap: .25rem; font-weight: 700; color: var(--nq-dark); }

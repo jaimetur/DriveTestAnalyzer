@@ -1318,12 +1318,23 @@ def queue_context(repository: Any, username: str, settings: dict[str, Any] | Non
     return queue_teams, user_teams
 
 
-def take_calls(repository: Any, call_keys: list[str], username: str, users: set[str]) -> dict[str, Any]:
-    """The user becomes the analyst of the waiting calls nobody has taken (ticket #122); a call without a team takes the
-    team of its queue when the user is one of its members. A call another analyst took first (even a moment before) is
-    left as it is and reported with its analyst."""
+def take_calls(repository: Any, call_keys: list[str], username: str, users: set[str], team: str | None = None) -> dict[str, Any]:
+    """The user becomes the analyst of the waiting calls nobody has taken (ticket #122), and the calls take the team of
+    the analyst (ticket #123): ``team``, one of the teams the user is a member of (chosen when they are several), else
+    their only team; a user of no team leaves each call its team. A call another analyst took first (even a moment
+    before) is left as it is and reported with its analyst."""
     from src.modules.nq import non_qualified_calls as nq
-    queue_teams, user_teams = queue_context(repository, username)
+    teams = nq.list_options(repository)['teams']
+    own = [item['name'] for item in teams if username.casefold() in {str(member).casefold() for member in item.get('members') or []}]
+    if team:
+        chosen = next((name for name in own if name.casefold() == str(team).casefold()), None)
+        if chosen is None:
+            raise ValueError(f'You are not a member of the team {team}.')
+        team = chosen
+    else:
+        team = own[0] if len(own) == 1 else None
+        if len(own) > 1:
+            raise ValueError('Choose which of your teams takes the calls.')
     default = nq.untracked_status(repository)
     taken: list[str] = []
     skipped: list[dict[str, str]] = []
@@ -1344,10 +1355,7 @@ def take_calls(repository: Any, call_keys: list[str], username: str, users: set[
         if analyst:
             skipped.append({'call_key': key, 'join_id': str(row['join_id'] or ''), 'reason': f'Already taken by {analyst}.'})
             continue
-        changes = {'analyst': username}
-        team = queue_team(row, queue_teams)
-        if not row['team'] and team and team.casefold() in user_teams:
-            changes['team'] = team
+        changes = {'analyst': username, **({'team': team} if team else {})}
         try:
             nq.update_tracking(repository, [key], changes, username, users, expected_version=int(row['version']))
         except nq.TrackingConflict:
@@ -1360,7 +1368,7 @@ def take_calls(repository: Any, call_keys: list[str], username: str, users: set[
             skipped.append({'call_key': key, 'join_id': str(row['join_id'] or ''), 'reason': str(exc)})
             continue
         taken.append(key)
-    return {'taken': taken, 'skipped': skipped}
+    return {'taken': taken, 'skipped': skipped, 'team': team or ''}
 
 
 def assign_calls(repository: Any, call_keys: list[str], changes: dict[str, Any], username: str, users: set[str]) -> dict[str, Any]:

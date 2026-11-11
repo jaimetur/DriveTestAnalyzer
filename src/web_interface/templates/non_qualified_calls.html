@@ -461,6 +461,17 @@
     <footer><button type="button" class="nq-secondary-action" id="nq-options-cancel">{{ 'Cancel' if nq_can_configure else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-options-save"{% if not nq_can_configure %} hidden{% endif %}>Save</button></footer>
   </form>
 </dialog>
+<dialog class="nq-options-dialog nq-queue-assign-dialog" id="nq-queue-take-dialog" aria-labelledby="nq-queue-take-title">
+  <form method="dialog" class="nq-options-form" id="nq-queue-take-form">
+    <header><h2 id="nq-queue-take-title">Take</h2><p class="form-note" id="nq-queue-take-note"></p></header>
+    <div class="nq-queue-assign-fields">
+      <label for="nq-queue-take-team" id="nq-queue-take-team-field">Team<select id="nq-queue-take-team"></select></label>
+      <p class="nq-queue-take-team-text" id="nq-queue-take-team-text"></p>
+    </div>
+    <p class="nq-options-error" id="nq-queue-take-error" role="alert"></p>
+    <footer><button type="button" class="nq-secondary-action" id="nq-queue-take-cancel">Cancel</button><button type="submit" class="nq-primary-action">Take</button></footer>
+  </form>
+</dialog>
 <dialog class="nq-options-dialog nq-queue-assign-dialog" id="nq-queue-assign-dialog" aria-labelledby="nq-queue-assign-title">
   <form method="dialog" class="nq-options-form" id="nq-queue-assign-form">
     <header><h2 id="nq-queue-assign-title">Assign</h2><p class="form-note" id="nq-queue-assign-note"></p></header>

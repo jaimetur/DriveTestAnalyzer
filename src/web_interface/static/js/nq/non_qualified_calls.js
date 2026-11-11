@@ -3368,9 +3368,9 @@
     loadCalls({quiet: true});
     loadPrioritization();
   };
-  const takeQueueCalls = async (callKeys) => {
+  const takeQueueCalls = async (callKeys, team = '') => {
     try {
-      const result = await api('/api/non-qualified-calls/queues/take', {method: 'POST', body: JSON.stringify({call_keys: callKeys})});
+      const result = await api('/api/non-qualified-calls/queues/take', {method: 'POST', body: JSON.stringify({call_keys: callKeys, team: team || null})});
       const skipped = result.skipped || [];
       if (result.taken.length) toast(`${number(result.taken.length)} call${result.taken.length === 1 ? '' : 's'} taken.`);
       if (skipped.length) toast(skipped.length === 1 ? `${skipped[0].join_id || 'The call'}: ${skipped[0].reason}`
@@ -3380,6 +3380,40 @@
       toast(error.message, 'error');
     }
   };
+  // Take asks first (ticket #123): the user becomes the analyst of the call, or of the waiting calls without an analyst of
+  // the hotspot, and they take the team of the user (the one chosen when the user is a member of several; a user of no
+  // team leaves each call its team).
+  const queueTakeDialog = $('nq-queue-take-dialog');
+  let queueTakeKeys = [];
+  const ownTeams = () => (state.options.teams || []).filter((item) => (item.members || [])
+    .some((member) => String(member).toLowerCase() === String(state.user.username || '').toLowerCase())).map((item) => item.name);
+  const openQueueTake = (callKeys, what, queueTeam = '') => {
+    queueTakeKeys = callKeys;
+    const teams = ownTeams();
+    $('nq-queue-take-title').textContent = `Take ${what}`;
+    $('nq-queue-take-note').textContent = callKeys.length === 1 ? 'You become the analyst of this call: it keeps waiting in its queue, as Assigned, until you attend it.'
+      : `You become the analyst of its ${callKeys.length} waiting calls without an analyst: they keep waiting in the queue, as Assigned, until you attend them.`;
+    $('nq-queue-take-error').textContent = '';
+    const select = $('nq-queue-take-team');
+    select.replaceChildren(...teams.map((name) => {
+      const option = node('option', name);
+      option.value = name;
+      return option;
+    }));
+    if (teams.length) select.value = teams.find((name) => name.toLowerCase() === queueTeam.toLowerCase()) || teams[0];
+    $('nq-queue-take-team-field').hidden = teams.length < 2;
+    $('nq-queue-take-team-text').textContent = teams.length === 1 ? `Team: ${teams[0]}, your team, replaces the team of ${callKeys.length === 1 ? 'the call' : 'the calls'}.`
+      : teams.length ? `Your team chosen above replaces the team of ${callKeys.length === 1 ? 'the call' : 'the calls'}.`
+        : `You are not a member of any team: ${callKeys.length === 1 ? 'the call keeps its team' : 'each call keeps its team'}.`;
+    queueTakeDialog.showModal();
+  };
+  $('nq-queue-take-cancel')?.addEventListener('click', () => queueTakeDialog.close());
+  $('nq-queue-take-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const teams = ownTeams();
+    queueTakeDialog.close();
+    await takeQueueCalls(queueTakeKeys, teams.length > 1 ? $('nq-queue-take-team').value : '');
+  });
   // Assign one call or the waiting calls of one hotspot of a queue to a team and / or an analyst (admins), from its Assign
   // button: a team with members offers only them as analysts, as the follow-up of a call.
   const queueAssignDialog = $('nq-queue-assign-dialog');
@@ -3766,11 +3800,11 @@
         const take = node('button', 'Take', 'nq-queue-take');
         take.type = 'button';
         take.title = free.length === 1 ? 'Become the analyst of this call' : `Become the analyst of its ${free.length} calls without an analyst`;
-        take.addEventListener('click', () => takeQueueCalls(free));
+        take.addEventListener('click', () => openQueueTake(free, what, owner.queue_team || ''));
         box.append(take);
       }
       if (canAssign && callKeys.length) {
-        const assign = node('button', 'Assign', 'nq-queue-take nq-queue-assign-one');
+        const assign = node('button', 'Assign', 'nq-queue-assign-one');
         assign.type = 'button';
         assign.title = callKeys.length === 1 ? 'Assign this call to a team or an analyst' : `Assign its ${callKeys.length} waiting calls to a team or an analyst`;
         assign.addEventListener('click', () => openQueueAssign({
@@ -3794,6 +3828,34 @@
       return {node: check, className: 'nq-queue-select-cell'};
     };
     const actionHeaders = [...(canTake || canAssign ? ['Actions'] : []), ...(canAssign ? ['Select'] : [])];
+    // Select All in the header of Select: it ticks (or clears) every call or hotspot of the table, and shows when only some
+    // of them are ticked.
+    const withSelectAll = (table, keyGroups) => {
+      if (!canAssign) return table;
+      const head = table.querySelector('th:last-child');
+      const boxes = () => [...table.querySelectorAll('td.nq-queue-select-cell input[type="checkbox"]')];
+      const all = node('input');
+      all.type = 'checkbox';
+      all.title = 'Select every row of this table (or none)';
+      all.setAttribute('aria-label', 'Select all');
+      const sync = () => {
+        const ticked = boxes().filter((box) => box.checked).length;
+        all.checked = ticked > 0 && ticked === boxes().length;
+        all.indeterminate = ticked > 0 && ticked < boxes().length;
+      };
+      all.addEventListener('change', () => {
+        keyGroups.flat().forEach((key) => (all.checked ? queueSelection.add(key) : queueSelection.delete(key)));
+        boxes().forEach((box) => { box.checked = all.checked; });
+        all.indeterminate = false;
+        updateAssignBar();
+      });
+      table.addEventListener('change', (event) => { if (event.target !== all) sync(); });
+      const label = node('label', undefined, 'nq-queue-select-all');
+      label.append(all, document.createTextNode('All'));
+      head.replaceChildren(label);
+      sync();
+      return table;
+    };
     const actionCells = (callKeys, free, what, owner) => [...(canTake || canAssign ? [queueActions(callKeys, free, what, owner)] : []),
       ...(canAssign ? [queueSelect(callKeys)] : [])];
     // The step of a call (or hotspot) right after its Priority, as the Strategy subpanel shows it: its number, then its NR Mode,
@@ -3816,7 +3878,7 @@
       return {node: box, className: 'nq-queue-step-cell',
         title: `Step ${item.step} of ${item.list === 'final' ? 'List 2 · Final CDRs' : 'List 1 · Weekly CDRs'}: ${rule?.conditions || item.rule || ''}`};
     };
-    const queueTable = (rows) => withClass(failureTable(['#', 'JOIN_ID', 'Priority', 'Step', 'Operator', 'Campaign', 'Owner', 'Expected Gain', 'Scoring Impact', ...actionHeaders],
+    const queueTable = (rows) => withSelectAll(withClass(failureTable(['#', 'JOIN_ID', 'Priority', 'Step', 'Operator', 'Campaign', 'Owner', 'Expected Gain', 'Scoring Impact', ...actionHeaders],
       rows.map((item) => [{text: number(item.position), className: 'nq-queue-position'},
         {text: item.join_id || item.call_key, className: 'nq-failure-name nq-queue-join', action: () => openDetail(item.call_key)},
         {text: item.priority || '—', className: `nq-queue-priority is-${String(item.priority || '').toLowerCase()}`},
@@ -3825,7 +3887,8 @@
         {text: points(item.gain), className: 'nq-queue-number',
           title: item.gain_campaign ? `From the Final CDR of ${item.gain_campaign}` : 'No campaign with a Final CDR to tell it: the oldest first'},
         item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—',
-        ...actionCells([item.call_key], item.analyst ? [] : [item.call_key], `call ${item.join_id || item.call_key}`, item)])), 'nq-queue-table');
+        ...actionCells([item.call_key], item.analyst ? [] : [item.call_key], `call ${item.join_id || item.call_key}`, item)])), 'nq-queue-table'),
+      rows.map((item) => [item.call_key]));
     // A queue listed by hotspots (ticket #123): a row per hotspot with its waiting calls, the same columns as the calls; a
     // click on its ID filters the list (and the queues) by the hotspot, as in the Hotspots panel. Its ID with its sites and
     // its period below it, and in Waiting its calls waiting of the calls of the queue in the hotspot, over those of them
@@ -3851,6 +3914,7 @@
           item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—',
           ...actionCells(item.call_keys || [], item.free_keys || [], `hotspot ${item.id}`)];
       })), 'nq-queue-table'), 'nq-hotspot-queue-table');
+      withSelectAll(table, rows.map((item) => item.call_keys || []));
       table.querySelector('th:nth-child(7)').title = 'The calls of the hotspot waiting in this queue (open and not attended yet), of the calls of the queue in the hotspot (waiting or not), and below how many of the waiting ones already have an Analyst';
       return table;
     };
