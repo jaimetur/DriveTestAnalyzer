@@ -4987,11 +4987,14 @@
       if (source.cause) changes.root_cause = source.cause;
       const same = Object.entries(changes).every(([key, value]) => (call[key] || '') === value);
       if (state.user.can_edit && Object.keys(changes).length && !same) {
-        const use = node('button', 'Use', 'nq-secondary-action');
+        const use = node('button', 'Use as Final Decision', 'nq-use-final');
         use.type = 'button';
         use.title = `Set ${Object.values(changes).join(' · ')}`;
         use.addEventListener('click', () => patchCall(call, changes, use, `${label} applied.`));
-        item.append(use);
+        // In a footer of its own below a divider, apart from the values the source proposes.
+        const footer = node('div', undefined, 'nq-source-card-actions');
+        footer.append(use);
+        item.append(footer);
       }
       cards.append(item);
     });

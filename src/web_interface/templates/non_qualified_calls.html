@@ -117,11 +117,11 @@
       {# The fields of Fields & Sections and the follow-up, each in the card of its source (non_qualified_calls.js,
          fieldOrigin): the CDR, the RCAs, DT Analyzer and the analysts, in the order of the catalog. The filters of the
          catalog fields and of the CDR columns of the CDR Fields Filters are added by the script. #}
-      <section class="nq-filter-card nq-source-card" data-nq-origin="cdr" data-nq-filter-card="cdr">
+      <section class="nq-filter-card nq-filter-source-card" data-nq-origin="cdr" data-nq-filter-card="cdr">
       <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="cdr">CDR</span>CDR Fields Filters: <small>as they come in the CDR</small></p>
       <div class="nq-filter-grid" data-nq-filter-host="cdr"></div>
       </section>
-      <section class="nq-filter-card nq-source-card" data-nq-origin="rca" data-nq-filter-card="rca">
+      <section class="nq-filter-card nq-filter-source-card" data-nq-origin="rca" data-nq-filter-card="rca">
       <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="rca">RCA</span>RCA Classification Filters: <small>what each RCA found, before the analysts</small></p>
       <p class="nq-filter-subtitle" data-nq-filter-subtitle="dta">DT Analyzer RCA</p>
       <div class="nq-filter-grid" data-nq-filter-host="dta"></div>
@@ -134,7 +134,7 @@
       <p class="nq-filter-subtitle" data-nq-filter-subtitle="ericsson">Ericsson RCA</p>
       <div class="nq-filter-grid" data-nq-filter-host="ericsson"></div>
       </section>
-      <section class="nq-filter-card nq-source-card" data-nq-origin="tool" data-nq-filter-card="tool">
+      <section class="nq-filter-card nq-filter-source-card" data-nq-origin="tool" data-nq-filter-card="tool">
       <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="tool">DT Analyzer</span>Automatic Fields Filters: <small>filled by the tool: Status Rules, NQ Prioritization, hotspots</small></p>
       <div class="nq-filter-grid" data-nq-filter-host="tool">
         <label>Global Status<em class="nq-filter-alias">Analysis Finished</em><select data-nq-filter="status" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Global Status"></select></label>
@@ -142,7 +142,7 @@
         <label title="How far each call has been followed up: attended or not, stalled, closed, with a team, an analyst, comments or a root cause">Follow-up<select data-nq-filter="state" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Follow-up"></select></label>
       </div>
       </section>
-      <section class="nq-filter-card nq-source-card" data-nq-origin="analyst" data-nq-filter-card="analyst">
+      <section class="nq-filter-card nq-filter-source-card" data-nq-origin="analyst" data-nq-filter-card="analyst">
       <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="analyst">Analyst</span>Analysis Team Fields Filters: <small>filled by the analysts</small></p>
       <div class="nq-filter-grid" data-nq-filter-host="analyst">
         <label>Team<em class="nq-filter-alias">Responsible Stream</em><select data-nq-filter="team" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Team"></select></label>
