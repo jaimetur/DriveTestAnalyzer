@@ -247,15 +247,30 @@ a.topnav-link-logout { background: linear-gradient(135deg, #ffd8d8, #ffc6c6); bo
 .presentations-workspace { display: inline-flex; align-items: center; gap: .5rem; padding: .5rem .85rem; border: 1px solid var(--line); border-radius: 999px; background: #fff; font-weight: 700; cursor: pointer; }
 .presentations-workspace:has(input:checked) { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, #fff); color: #075d59; }
 .presentations-workspace input { width: 1rem; height: 1rem; margin: 0; }
-.comment-writers-form, .comment-writers-kiro-install { display: grid; gap: .85rem; }
-.comment-writers-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem; }
-.comment-writers-section { display: grid; gap: .6rem; padding: .85rem; border: 1px solid var(--line); border-radius: .8rem; background: #fcfcfd; }
-.comment-writers-section h3 { margin: 0; font-size: .95rem; }
+.comment-writers-form, .comment-writers-kiro-install { display: grid; gap: .85rem; align-content: start; }
+/* One card for the common settings, then one per LLM writer side by side (stacked on narrow screens). */
+.comment-writers-engines { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: .85rem; align-items: start; }
+.comment-writers-card { display: grid; gap: .75rem; align-content: start; min-width: 0; padding: 1rem 1.1rem; border: 1px solid var(--line); border-radius: .9rem; background: #fcfcfd; }
+.comment-writers-card h3 { margin: 0; font-size: 1rem; }
+.comment-writers-card .alert { margin: 0; }
+.comment-writers-card .form-note { margin: 0; }
+.comment-writers-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.comment-writers-card-head h3 { margin-right: auto; }
+.comment-writers-chip { padding: .15rem .6rem; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: #5b6472; font-size: .75rem; font-weight: 700; }
+.comment-writers-chip.is-on { border-color: color-mix(in srgb, var(--brand) 45%, #fff); background: color-mix(in srgb, var(--brand) 10%, #fff); color: #075d59; }
+.comment-writers-chip.is-ok { border-color: rgba(31, 157, 107, 0.35); background: rgba(31, 157, 107, 0.12); color: #14684a; }
+.comment-writers-chip.is-warning { border-color: rgba(181, 114, 14, 0.35); background: rgba(213, 143, 31, 0.16); color: #80520a; }
+/* Two columns of fields whose inputs line up: the label on top, the input, then its note. */
+.comment-writers-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem 1rem; align-items: start; }
+@media (max-width: 640px) { .comment-writers-fields { grid-template-columns: minmax(0, 1fr); } }
+.comment-writers-fields > label { display: grid; gap: .35rem; align-content: start; min-width: 0; margin: 0; }
+.comment-writers-fields > label > input, .comment-writers-fields > label > select, .comment-writers-fields .comment-writers-key-field { width: 100%; max-width: none; box-sizing: border-box; }
 .comment-writers-key-field { display: flex; align-items: center; gap: .5rem; }
 .comment-writers-key-field input { flex: 1; min-width: 0; }
+.comment-writers-kiro-install h4 { margin: 0; font-size: .9rem; }
 .admin-stack .comment-writers-key-field .comment-writers-remove-key { flex: 0 0 auto; white-space: nowrap; background: #fff; color: #9b1c2a; border: 1px solid #e3b3b9; box-shadow: none; }
 .admin-stack .comment-writers-key-field .comment-writers-remove-key:hover { background: #fdecee; border-color: #c9626f; color: #7d1220; }
-.comment-writers-kiro-install { margin-top: .85rem; padding-top: .85rem; border-top: 1px solid var(--line); }
+.comment-writers-kiro-install { padding-top: .85rem; border-top: 1px solid var(--line); gap: .6rem; }
 #api-keys-overlay [hidden] { display: none !important; }
 #email-overlay [hidden], [data-email-delivery] [hidden] { display: none !important; }
 .api-keys-fields { display: grid; gap: .65rem; margin: .4rem 0; }

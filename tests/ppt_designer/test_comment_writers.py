@@ -182,6 +182,9 @@ def test_super_admin_sets_the_writers_and_users_their_keys(client):
     page = client.get('/super-admin')
     assert page.status_code == 200 and 'AI Comment Writers' in page.text and 'Rules only' in page.text
     assert f'href="{writers.KIRO_CLI_DOWNLOAD_URL}"' in page.text and 'Open Artifactory' in page.text
+    # Without Kiro CLI a warning card says so.
+    assert 'data-kiro-missing' in page.text and 'Kiro CLI is not installed.' in page.text
+    assert 'the comments users ask of Kiro CLI are written by the rules' not in page.text
     saved = client.post('/super-admin/comment-writers', data={
         'enabled': ['kiro_cli', 'kiro_brief', 'claude'], 'default': 'kiro_cli', 'claude_model': 'claude-sonnet-5-5',
         'claude_effort': 'medium', 'timeout_seconds': '90', 'claude_api_key': 'sk-ant-secret',
@@ -196,6 +199,8 @@ def test_super_admin_sets_the_writers_and_users_their_keys(client):
     assert writers.server_key(core.application_config_dir, 'claude') == 'sk-ant-secret'
     page = client.get('/super-admin').text
     assert 'sk-ant-secret' not in page and 'data-api-keys-open' in page
+    # Kiro CLI enabled but not installed: the warning says the rules write its comments.
+    assert 'the comments users ask of Kiro CLI are written by the rules' in page
     # Kiro takes each user's key and Claude the server's by default: the user menu asks only for Kiro.
     assert client.get('/account/api-keys').json() == {'providers': [{'id': 'kiro_cli', 'label': 'Kiro CLI', 'saved': False}]}
     assert client.post('/account/api-keys', data={'kiro_cli': 'ksk_mine', 'claude': 'ignored'}).json() == {'saved': ['kiro_cli'], 'removed': []}
@@ -239,6 +244,8 @@ def test_designs_write_with_kiro_and_import_a_kiro_brief(client):
     uploaded = client.post('/super-admin/comment-writers/kiro-cli', files={'package': ('kiro.zip', fake_kiro_zip(reply), 'application/zip')})
     assert uploaded.status_code == 200, uploaded.text
     assert uploaded.json()['installed']['version']
+    page = client.get('/super-admin').text
+    assert 'data-kiro-missing' not in page and 'Installed: ' in page
     events = [row['action'] for row in core.repository.list_logs()]
     assert 'install_kiro_cli_failed' in events and 'install_kiro_cli' in events
     client.post('/super-admin/comment-writers', data={'enabled': ['kiro_cli', 'kiro_brief'], 'default': 'kiro_cli'})
