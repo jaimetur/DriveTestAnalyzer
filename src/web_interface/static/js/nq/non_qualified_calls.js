@@ -338,8 +338,9 @@
     ericsson: 'Found by the Ericsson RCA', tool: 'Filled by DT Analyzer: Status Rules and NQ Prioritization',
     analyst: 'Filled by the analysts', suggested: 'Filled by the analysts; DT Analyzer suggests a value until they set it',
   };
-  const originBadge = (origin) => {
-    const badge = node('span', ORIGIN_LABELS[origin] || origin, 'nq-source-badge');
+  // The source of a value in the call panel: a dot of its colour and its name in small text beside the name of the field.
+  const originBadge = (origin, short = true) => {
+    const badge = node('span', short && origin === 'suggested' ? 'Suggested' : ORIGIN_LABELS[origin] || origin, 'nq-source-mark');
     badge.dataset.origin = origin;
     badge.title = ORIGIN_TITLES[origin] || '';
     return badge;
@@ -4496,7 +4497,7 @@
     });
     toggle.title = 'Show in the sections only the fields the analysts fill (green labels)';
     toggle.append(box, ' Only the fields the analysts fill');
-    host.replaceChildren(node('span', 'Source:', 'nq-source-legend-title'), ...origins.map(originBadge), toggle);
+    host.replaceChildren(node('span', 'Source:', 'nq-source-legend-title'), ...origins.map((origin) => originBadge(origin, false)), toggle);
   };
   const renderTracking = (call) => {
     const host = $('nq-drawer-tracking');
@@ -4603,10 +4604,7 @@
       const value = call.values?.[item.key];
       const cell = node('div', undefined, `nq-call-info-item${String(value ?? '').length > 20 ? ' is-wide' : ''}`);
       if (item.description) cell.title = item.description;
-      cell.dataset.origin = fieldOrigin(item);
-      const label = node('span', item.label, 'nq-call-info-label');
-      label.append(' ', originBadge(cell.dataset.origin));
-      cell.append(label, readonlyValue(item, value));
+      cell.append(node('span', item.label, 'nq-call-info-label'), readonlyValue(item, value));
       return cell;
     };
     // The repeated issue of the call (Repeated Issue, Repetitions, Repeated Campaigns, Repetition Place) together on a row of
@@ -4616,7 +4614,10 @@
     infoGrid.append(...infoFields.filter((item) => !repeats.includes(item)).map(infoCard));
     const repeatGrid = node('div', undefined, 'nq-call-info-grid nq-call-info-repeats');
     repeatGrid.append(...repeats.map(infoCard));
-    infoPanel.append(node('span', 'Prioritization Info', 'nq-phase-panel-title'), ...[infoGrid, repeatGrid].filter((grid) => grid.childElementCount));
+    // Every value of the subpanel comes from DT Analyzer (the NQ Prioritization): one mark for all, beside its title.
+    const infoTitle = node('span', 'Prioritization Info', 'nq-phase-panel-title');
+    infoTitle.append(originBadge('tool'));
+    infoPanel.append(infoTitle, ...[infoGrid, repeatGrid].filter((grid) => grid.childElementCount));
     // The fields of the analysts of General (Unique ID…) follow the Reviewer, saved as soon as they change like it.
     const generalFields = analystFieldsOf('general').filter((item) => !HEADER_FIELDS.includes(item.key)).map((item) => {
       const block = fieldBlock(item, call);
@@ -4841,14 +4842,15 @@
     const wrapper = node(editable && field.type !== 'long_text' ? 'label' : 'div', undefined, `nq-analysis-field is-${field.type}${editable ? '' : ' is-readonly'}`);
     // The name and its tags on one line (a long name is shortened, whole on hover), so every value of a row lines up.
     const title = node('span', undefined, 'nq-field-title');
-    // The fields of the DT Analyzer RCA show their name without the source, which their tag names.
-    const prefix = field.source === 'dta' ? `${SOURCE_TAGS.dta} ` : '';
+    // The fields of the RCAs show their name without the source, which their mark names.
+    const fieldSource = fieldOrigin(field);
+    const prefix = ['dta', 'netcheck', 'ericsson'].includes(fieldSource) ? `${ORIGIN_LABELS[fieldSource]} ` : '';
     const name = node('span', prefix && field.label.startsWith(prefix) ? field.label.slice(prefix.length) : field.label, 'nq-field-name');
     name.title = field.label;
     title.append(name);
     // Where the value comes from, in a label of its own colour (ticket #121); the fields of the analysts are framed.
-    wrapper.dataset.origin = fieldOrigin(field);
-    title.append(originBadge(wrapper.dataset.origin));
+    wrapper.dataset.origin = fieldSource;
+    title.append(originBadge(fieldSource));
     if (field.required_to_close) title.append(node('small', 'required to close', 'nq-required-tag'));
     if (field.description) wrapper.title = field.description;
     wrapper.append(title);
@@ -4859,6 +4861,12 @@
     const value = call.fields?.[field.key] || '';
     const control = fieldInput(field, value);
     wrapper.append(control);
+    // A field of the analysts still empty stands out until it is filled in.
+    wrapper.classList.toggle('is-to-fill', !value);
+    wrapper.addEventListener('change', () => {
+      const current = control.value ?? control.querySelector?.('[data-field-key]')?.value ?? '';
+      wrapper.classList.toggle('is-to-fill', !String(current || '').trim());
+    });
     // A value of the CDR proposed for the empty field (a list only proposes one of its values).
     let proposal = call.proposals?.[field.key];
     if (proposal && field.type === 'list') proposal = field.options.find((option) => option.name.toLowerCase() === proposal.toLowerCase())?.name;

@@ -101,14 +101,32 @@
 .nq-filter-subtitle[hidden], .nq-source-card .nq-filter-grid[hidden] { display: none; }
 /* The name the analysis team gives a filter (Responsible Stream for Team), below its own. */
 .nq-filter-alias { margin-top: -.3rem; color: var(--nq-muted); font-size: .7rem; font-style: normal; font-weight: 650; }
-/* The call panel: the fields of the analysts framed in green, the legend of the sources and the switch that leaves
-   only them in the sections. */
-.nq-drawer :is(.nq-analysis-field, .nq-call-info-item)[data-origin] .nq-source-badge { margin-left: auto; }
-.nq-drawer-body .nq-analysis-field:is([data-origin="analyst"], [data-origin="suggested"]) { padding: .45rem .55rem .55rem; border: 1px solid #b9dfc8; border-left: 4px solid var(--nq-origin-analyst); border-radius: 10px; background: #f6fcf8; }
-.nq-tracking-field > span .nq-source-badge, .nq-call-info-label .nq-source-badge { margin-left: .25rem; vertical-align: middle; }
-.nq-source-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; padding: .5rem 1.2rem; color: var(--nq-muted); font-size: .76rem; font-weight: 800; }
+/* The call panel (header, legend, tracking values and the fields of the sections): the source of every value in a quiet
+   mark beside its name, a dot of its colour and its name in small text (never a pill, which the values are), so the name
+   of the field keeps its room. The fields the analysts fill have a green pencil before their name, and while empty a
+   green-tinted control: what is still to be filled stands out. */
+.nq-source-mark { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .3rem; color: var(--nq-origin-tool); font-size: .64rem; font-weight: 750; letter-spacing: .04em; line-height: 1.2; text-transform: uppercase; white-space: nowrap; }
+.nq-source-mark::before { content: ""; flex: 0 0 auto; width: .46rem; height: .46rem; border-radius: 50%; background: currentColor; }
+.nq-source-mark[data-origin="cdr"] { color: var(--nq-origin-cdr); }
+.nq-source-mark:is([data-origin="dta"], [data-origin="netcheck"], [data-origin="ericsson"]) { color: #a86400; }
+.nq-source-mark:is([data-origin="analyst"], [data-origin="suggested"]) { color: var(--nq-origin-analyst); }
+.nq-source-mark[data-origin="suggested"]::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+/* In the fields of the sections the mark has a line of its own below the whole name, so every control of a row lines up. */
+.nq-drawer .nq-field-title { flex-direction: column; align-items: flex-start; gap: .12rem; }
+.nq-drawer .nq-field-title .nq-field-name { overflow: visible; white-space: normal; }
+.nq-drawer :is(.nq-analysis-field, .nq-tracking-field):is([data-origin="analyst"], [data-origin="suggested"]) .nq-field-name::before,
+.nq-drawer .nq-tracking-field:is([data-origin="analyst"], [data-origin="suggested"]) > span:first-child::before {
+  content: ""; display: inline-block; width: .72rem; height: .72rem; margin-right: .3rem; vertical-align: -.08rem; background: var(--nq-origin-analyst);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.nq-drawer-body .nq-analysis-field.is-to-fill :is(input:not([type="checkbox"]), textarea, select, .nq-pill-select, .nq-choice-trigger, .multiselect-trigger) { border-color: #9fd3b4; background-color: #f4fbf7; }
+.nq-tracking-field > span:first-child .nq-source-mark { margin-left: .45rem; vertical-align: .05rem; }
+.nq-phase-panel-title .nq-source-mark { margin-left: .6rem; vertical-align: .05rem; }
+.nq-source-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1rem; padding: .45rem 1.2rem; border-top: 1px solid var(--nq-border); color: var(--nq-muted); font-size: .72rem; font-weight: 700; }
 .nq-source-legend:empty { display: none; }
-.nq-analyst-only { display: inline-flex; align-items: center; gap: .4rem; margin-left: auto; padding: .25rem .7rem; border: 1px solid var(--nq-origin-analyst); border-radius: 999px; background: #f6fcf8; color: var(--nq-origin-analyst); font-size: .76rem; font-weight: 800; cursor: pointer; }
+.nq-source-legend-title { letter-spacing: .04em; text-transform: uppercase; }
+.nq-analyst-only { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .4rem; margin-left: auto; color: var(--nq-origin-analyst); font-size: .74rem; font-weight: 750; white-space: nowrap; cursor: pointer; }
 .nq-analyst-only input { margin: 0; accent-color: var(--nq-origin-analyst); }
 .nq-drawer.is-analyst-only .nq-drawer-body .nq-analysis-field[data-origin]:not([data-origin="analyst"], [data-origin="suggested"]) { display: none; }
 /* A filter with a value applied stands out: its name and its list in the colour of the module. */
@@ -287,7 +305,7 @@
 /* Call drawer */
 .nq-drawer-backdrop { position: fixed; inset: 0; z-index: 80; background: rgba(40, 8, 20, .28); }
 .nq-drawer-backdrop[hidden] { display: none; }
-.nq-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 81; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); width: min(620px, 100vw); background: #fff; box-shadow: -18px 0 40px rgba(60, 10, 30, .22); transform: translateX(105%); transition: transform .22s ease; visibility: hidden; }
+.nq-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 81; display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr); width: min(620px, 100vw); background: #fff; box-shadow: -18px 0 40px rgba(60, 10, 30, .22); transform: translateX(105%); transition: transform .22s ease; visibility: hidden; }
 .nq-drawer.is-open { transform: none; visibility: visible; }
 .nq-drawer-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .35rem 1rem; padding: 1.1rem 1.2rem .9rem; background: linear-gradient(125deg, #7d1238, #e0507a); color: #fff; }
 /* The call takes the width the tools leave (never pushing them to another row); the groups go on a row of their own. */
