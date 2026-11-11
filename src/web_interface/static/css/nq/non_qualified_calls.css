@@ -1292,6 +1292,12 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-fill-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, #7ee2a8, #2fbf71); transition: width .3s ease; }
 .nq-drawer-progress strong { flex: 0 0 auto; font-size: .78rem; }
 .nq-drawer-progress.is-complete .nq-fill-bar > span { background: #2fbf71; }
+/* Every field filled: a gold trophy beside the bar, popping in when the analyst completes the call. */
+.nq-fill-trophy { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .4rem; padding: .2rem .65rem .2rem .3rem; border-radius: 999px; background: linear-gradient(135deg, #fff3c4, #ffd34d); color: #7a4b00; font-size: .74rem; font-weight: 850; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); }
+.nq-fill-trophy svg { width: 1.35rem; height: 1.35rem; padding: .15rem; border-radius: 50%; background: #e0a100; fill: #fff; }
+.nq-fill-trophy.is-new { animation: nq-trophy-pop .9s cubic-bezier(.2, 1.6, .4, 1) both; }
+@keyframes nq-trophy-pop { 0% { opacity: 0; transform: scale(.3) rotate(-25deg); } 60% { opacity: 1; transform: scale(1.18) rotate(8deg); } 100% { transform: scale(1) rotate(0); } }
+@media (prefers-reduced-motion: reduce) { .nq-fill-trophy.is-new { animation: none; } }
 /* The warning before ending the analysis of a call with fields of the analysts still empty: wide enough to show it all
    (no inner scroll), what the change does, the progress and a green card per section, one below the other, its name on the
    left and its empty fields in a row. */
@@ -1367,6 +1373,8 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-choice-picker .nq-choice-option.is-selected { border-color: var(--nq-color, #b0234f); background: var(--nq-soft, #fcedf2); }
 .nq-choice-picker .nq-choice-option.is-selected::after { content: '✓'; margin-left: auto; color: var(--nq-color, #b0234f); font-weight: 900; }
 .nq-choice-picker .nq-choice-option .nq-pill { max-width: 18rem; font-size: .82rem; }
+/* A value without colour reads as plain text on the row (no white pill over its hover or selection). */
+.nq-choice-picker .nq-choice-option .nq-pill:not(.is-colored) { border-color: transparent; background: transparent; color: var(--nq-text, #3d1824); }
 /* The default users of the application: first in the lists of analysts, tagged, with a line before the others. */
 .nq-user-tag { flex: 0 0 auto; padding: .05rem .4rem; border: 1px solid var(--nq-border, #f0c4d3); border-radius: 999px; background: var(--nq-softer, #fff7fa); color: var(--nq-muted, #7a5a66); font-size: .64rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
 /* An Analyst without user account (a name the analyses of the previous tool brought): dashed and italic. */

@@ -4568,9 +4568,22 @@
     bar.setAttribute('aria-valuemin', '0');
     bar.setAttribute('aria-valuemax', String(total));
     bar.setAttribute('aria-valuenow', String(filled));
-    host.replaceChildren(node('span', 'Analyst fields', 'nq-fill-label'), bar,
-      node('strong', filled === total ? `${filled}/${total} · Complete` : `${filled}/${total} · ${share} %`));
-    host.classList.toggle('is-complete', filled === total);
+    const complete = filled === total;
+    const parts = [node('span', 'Analyst fields', 'nq-fill-label'), bar,
+      node('strong', complete ? `${filled}/${total} · Complete` : `${filled}/${total} · ${share} %`)];
+    // Every field filled: a trophy, which pops in when the analyst has just completed the call (not when it opens complete).
+    if (complete && total) {
+      const trophy = node('span', undefined, 'nq-fill-trophy');
+      trophy.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v2h3v3a4 4 0 0 1-4 4h-.35A5 5 0 0 1 13 15.9V18h3v2H8v-2h3v-2.1A5 5 0 0 1 8.35 13H8a4 4 0 0 1-4-4V6h3V4zm0 4H6v1a2 2 0 0 0 1 1.73V8zm10 0v2.73A2 2 0 0 0 18 9V8h-1z"/></svg>';
+      trophy.append(node('span', 'All fields filled'));
+      trophy.title = 'Every field the analysts fill in this call has a value: well done!';
+      const key = state.detail?.call?.call_key || '';
+      if (host.dataset.completeKey === `no:${key}`) trophy.classList.add('is-new');
+      parts.push(trophy);
+    }
+    host.dataset.completeKey = `${complete ? 'yes' : 'no'}:${state.detail?.call?.call_key || ''}`;
+    host.replaceChildren(...parts);
+    host.classList.toggle('is-complete', complete);
     host.title = missing.length ? `Still empty: ${missing.join(', ')}` : 'Every field the analysts fill has a value';
     host.hidden = !total;
   };
@@ -4957,7 +4970,34 @@
       note.textContent = count ? `${count} unsaved change${count === 1 ? '' : 's'} (Save keeps those of every section)` : '';
     });
     drawer.classList.toggle('has-unsaved', count > 0);
-    if (state.detail?.call) renderFillProgress(state.detail.call);
+    if (state.detail?.call) renderFillCounters(state.detail.call);
+  };
+  // The counters of the fields the analysts fill (each tab, every tab together, the bar of the header), with the changes not
+  // saved yet, so they follow the analyst as they fill the fields in.
+  const renderFillCounters = (call) => {
+    const pending = changedFields();
+    const valueOf = (key) => String((key in pending ? pending[key] : call.fields?.[key]) ?? '').trim();
+    drawerTabs().filter((group) => group.key !== 'rca').forEach((group) => {
+      const badge = drawer.querySelector(`[data-nq-tab="${CSS.escape(group.key)}"] .nq-tab-badge`);
+      if (!badge) return;
+      const fields = group.sections.flatMap((section) => (section.key === 'general' ? [] : analystFieldsOf(section.key)))
+        .filter((field) => field.source === 'user' && !isOptionalField(field));
+      const filled = fields.filter((field) => valueOf(field.key)).length;
+      badge.textContent = fields.length ? `${filled}/${fields.length}` : '';
+      badge.title = `${filled} of the ${fields.length} fields the analysts fill in here have a value`;
+      badge.hidden = !fields.length;
+      badge.classList.toggle('is-complete', Boolean(fields.length) && filled === fields.length);
+    });
+    const tabsCount = $('nq-tabs-count');
+    if (tabsCount) {
+      const {tabs: tabsFill} = fillProgress(call);
+      tabsCount.textContent = `Tabs ${tabsFill.filled}/${tabsFill.total}`;
+      tabsCount.title = tabsFill.missing.length ? `Still empty in the tabs: ${tabsFill.missing.join(', ')}`
+        : 'Every field the analysts fill in the tabs has a value';
+      tabsCount.classList.toggle('is-complete', tabsFill.filled === tabsFill.total);
+      tabsCount.hidden = !tabsFill.total;
+    }
+    renderFillProgress(call);
   };
   const fieldBlock = (field, call) => {
     const editable = field.source === 'user';
@@ -5240,11 +5280,9 @@
         complete = Boolean(call.root_category || call.root_cause);
         text = complete ? '✓' : recommendationOf(call) ? '★' : '';
         title = complete ? 'A root category or cause is selected' : 'A recommended root category and cause wait to be accepted';
-      } else if (editable.length) {
-        const filled = editable.filter((field) => call.fields?.[field.key]).length;
-        text = `${filled}/${editable.length}`;
-        title = `${filled} of the ${editable.length} fields the analysts fill in here have a value`;
-        complete = filled === editable.length;
+      } else {
+        // The counters of the fields of the analysts follow the changes not saved yet (renderFillCounters).
+        return;
       }
       badge.textContent = text;
       badge.title = title;
@@ -5253,15 +5291,6 @@
     });
     // How many of the fields the analysts fill in every tab have a value, in a label like that of the header, above the tabs.
     renderSourceLegend();
-    const tabsCount = $('nq-tabs-count');
-    if (tabsCount) {
-      const {tabs: tabsFill} = fillProgress(call);
-      tabsCount.textContent = `Tabs ${tabsFill.filled}/${tabsFill.total}`;
-      tabsCount.title = tabsFill.missing.length ? `Still empty in the tabs: ${tabsFill.missing.join(', ')}`
-        : 'Every field the analysts fill in the tabs has a value';
-      tabsCount.classList.toggle('is-complete', tabsFill.filled === tabsFill.total);
-      tabsCount.hidden = !tabsFill.total;
-    }
     syncUnsaved();
   };
   const renderSamples = (detail) => {
