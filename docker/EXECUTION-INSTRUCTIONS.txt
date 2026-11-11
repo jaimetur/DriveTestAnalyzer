@@ -13,5 +13,7 @@ Run every command from the project root (the folder that holds docker/).
 4. Start production with docker-compose.yml; Docker automatically pulls the native
    linux/amd64 or linux/arm64 variant from the published multi-platform tag:
    docker compose --env-file docker/.env -f docker/docker-compose.yml up -d --pull always
+   On x86-64 CPUs without AVX, such as the Intel Celeron of many NAS, set IMAGE_TAG=latest-noavx in
+   .env: the latest image stops at once with exit code 132 on them.
 5. Open http://127.0.0.1:7278 (development: the APP_DEV_PORT of .env, 7279 by default) and sign
    in with an account of the Default accounts table of README.md; change its password at once.

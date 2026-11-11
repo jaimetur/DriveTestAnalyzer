@@ -10,6 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- **Docker — Image for x86-64 CPUs without AVX:** a `latest-noavx` image (and `<version>-noavx`) runs the same application with DuckDB compiled for x86-64-v2, for CPUs such as the Intel Celeron of many NAS, where the official DuckDB stops the container with exit code 132. The compiled DuckDB is kept in a GitHub release, so it is built once per DuckDB version.
 
 #### 🐛 Bug fixes:
 - The preview of a Users & Access import or transfer no longer shows the password of the account that imports as changed, since that account keeps its username, role, status and password.

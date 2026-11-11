@@ -46,6 +46,12 @@ The production stack:
 - runs without source-code bind mounts;
 - supports native AMD64 and ARM64 images.
 
+### CPUs without AVX
+
+The official DuckDB packages for x86-64 need AVX2, so on a CPU without AVX, such as the Intel Celeron of many NAS, the `latest` image stops at once with exit code 132 (illegal instruction), writes nothing in its log and restarts in a loop.
+
+On those CPUs set `IMAGE_TAG=latest-noavx`, or `<version>-noavx` for one release. It is the same application, Python and DuckDB version, with DuckDB compiled for x86-64-v2. It is published for AMD64 only. The compiled DuckDB is kept in a GitHub release (`duckdb-noavx-<version>`), so it is compiled once per DuckDB version and every other build reuses it.
+
 ## Development
 
 ```bash

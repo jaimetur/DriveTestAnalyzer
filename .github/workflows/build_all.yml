@@ -19,6 +19,8 @@ on:
 
 jobs:
   build-docker:
+    permissions:
+      contents: write
     uses: ./.github/workflows/build_docker.yml
     with:
       create_release: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release || false }}

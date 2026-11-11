@@ -288,6 +288,7 @@ Key behaviour:
 - Uses `${IMAGE_REPOSITORY}:${IMAGE_TAG}`.
 - Pulls the selected tag on start.
 - Supports native `linux/amd64` and `linux/arm64` images.
+- On x86-64 CPUs without AVX, use `IMAGE_TAG=latest-noavx`, with DuckDB compiled for x86-64-v2.
 - Includes `assets/powerpoint-templates/Template_VodafoneThree.pptx` in the image.
 - Mounts configuration and workspace data outside the container.
 - Exposes port `7278` by default.
@@ -373,6 +374,7 @@ The repository workflows run tests, build/push images and package source bundles
 - Successful builds refresh `latest` according to workflow rules.
 - Pushes to `main` refresh the `main` tag.
 - Published manifests include AMD64 and ARM64 variants.
+- Build Docker also publishes `latest-noavx` and `<version>-noavx` (AMD64 only), with the DuckDB wheel that Build DuckDB without AVX compiles once per DuckDB version.
 - Build Docker also packages the Compose files, `docker/.env`, the execution notes and the documentation as `DriveTestAnalyzer_docker_bundle.zip`, and Build All the source as `DriveTestAnalyzer_<version>_source.zip` and, when a release is created, a GitHub release with the notes of that version of `CHANGELOG.md`.
 - Build cache accelerates unchanged dependency layers while source layers are invalidated by the current commit.
 
