@@ -3743,7 +3743,7 @@
     // A hotspot or a time-window issue: its site (the site of most of its calls, +N when they are at more) filters
     // its calls.
     // The title tells how the failures of a hotspot are joined: Time-Window OR (or AND) Clustered Issues.
-    const hotspotBlock = groupBlock(`Hotspots (Time-Window ${joinWord} Clustered Issues)`, hotspotNote,
+    const hotspotBlock = groupBlock(`Hotspots (Clustered ${joinWord} Time-Window Issues)`, hotspotNote,
       spots.length ? groupTable(spots, 'hotspot', 'hotspot', 'Hotspot ID', (item) => [groupSites(item), groupPeriod(item)])
         : node('p', 'No hotspot among the filtered calls.', 'nq-muted'), spots);
     const runNote = `Failures of the same operator, NR Mode, campaign and drive (the car), whatever their call type and wherever they were (the Ping tests and the calls out of scope apart), each within the Time window of the one before: every time-window issue with the filtered calls of each, the most calls first (${number(runs.length)} time-window issue${runs.length === 1 ? '' : 's'}).`;
@@ -3774,7 +3774,7 @@
     const calls = (items) => items.reduce((total, item) => total + item.calls, 0);
     const others = [[runBlock, runs], [issueBlock, data.issues]]
       .sort(([, a], [, b]) => calls(b) - calls(a) || a.length - b.length).map(([block]) => block);
-    // In a panel of their own, below the NQ Prioritization & Queues.
+    // In a panel of their own, above the NQ Prioritization & Queues.
     $('nq-clusters').replaceChildren(node('p', `With the criteria of the Prioritization Rules below, the more general tables first: with the OR join the hotspots, which hold the time-window and the clustered issues together; with AND the time-window and the clustered issues, as every failure of a hotspot of AND is in a time-window issue and in a cluster. Between these two, the one with more calls goes first (with the same calls, the one in fewer rows).`, 'nq-hint'),
       criteria, kindsLegend(), ...(joinWord === 'OR' ? [hotspotBlock, ...others] : [...others, hotspotBlock]));
     // The step tells the NR Mode and the kind of call, so the queue keeps to the columns that tell the calls apart: the
@@ -3858,31 +3858,27 @@
     };
     const actionCells = (callKeys, free, what, owner) => [...(canTake || canAssign ? [queueActions(callKeys, free, what, owner)] : []),
       ...(canAssign ? [queueSelect(callKeys)] : [])];
-    // The step of a call (or hotspot) right after its Priority, as the Strategy subpanel shows it: its number, then its NR Mode,
-    // Call Type and Condition in their colours; its list (Weekly or Final) and what it takes on hover.
+    // The step of a call (or hotspot) right after its Priority, as the Strategy subpanel shows it: its number, its NR Mode,
+    // its Call Type and its Condition, each in a column of its own and in its colours; its list (Weekly or Final) and what it
+    // takes on hover.
     const rulesByName = Object.fromEntries((data.rules || []).filter((rule) => rule.kind === 'step').map((rule) => [rule.name, rule]));
-    const stepCell = (item) => {
-      if (!item.step) return '—';
-      const rule = rulesByName[item.rule];
-      const box = node('span', undefined, 'nq-queue-step-tags');
-      box.append(node('strong', String(item.step), 'nq-queue-step-number'));
-      if (rule) {
-        const tag = (className, text) => {
-          const wrapper = node('span', undefined, className);
-          wrapper.append(node('span', text));
-          return wrapper;
-        };
-        box.append(tag(`nq-step-mode is-${String(rule.nr_mode).toLowerCase()}`, rule.nr_mode === 'any' ? 'Any' : rule.nr_mode),
-          tag(`nq-step-type is-${String(rule.queue || 'Tracked').toLowerCase()}`, rule.call_type), conditionNode(rule.condition));
-      }
-      return {node: box, className: 'nq-queue-step-cell',
-        title: `Step ${item.step} of ${item.list === 'final' ? 'List 2 · Final CDRs' : 'List 1 · Weekly CDRs'}: ${rule?.conditions || item.rule || ''}`};
+    const STEP_HEADERS = ['Step', 'NR Mode', 'Call Type', 'Condition'];
+    const stepCells = (item) => {
+      const rule = item.step ? rulesByName[item.rule] : null;
+      if (!item.step) return ['—', '—', '—', '—'];
+      const title = `Step ${item.step} of ${item.list === 'final' ? 'List 2 · Final CDRs' : 'List 1 · Weekly CDRs'}: ${rule?.conditions || item.rule || ''}`;
+      const number = {text: String(item.step), className: 'nq-queue-step-number', title};
+      if (!rule) return [number, '—', '—', '—'];
+      return [number,
+        {text: rule.nr_mode === 'any' ? 'Any' : rule.nr_mode, className: `nq-step-mode is-${String(rule.nr_mode).toLowerCase()}`, title},
+        {text: rule.call_type, className: `nq-step-type is-${String(rule.queue || 'Tracked').toLowerCase()}`, title},
+        {node: conditionNode(rule.condition), className: 'nq-queue-step-condition', title}];
     };
-    const queueTable = (rows) => withSelectAll(withClass(failureTable(['#', 'JOIN_ID', 'Priority', 'Step', 'Operator', 'Campaign', 'Owner', 'Expected Gain', 'Scoring Impact', ...actionHeaders],
+    const queueTable = (rows) => withSelectAll(withClass(failureTable(['#', 'JOIN_ID', 'Priority', ...STEP_HEADERS, 'Operator', 'Campaign', 'Owner', 'Expected Gain', 'Scoring Impact', ...actionHeaders],
       rows.map((item) => [{text: number(item.position), className: 'nq-queue-position'},
         {text: item.join_id || item.call_key, className: 'nq-failure-name nq-queue-join', action: () => openDetail(item.call_key)},
         {text: item.priority || '—', className: `nq-queue-priority is-${String(item.priority || '').toLowerCase()}`},
-        stepCell(item), item.operator || '—', item.campaign || '—',
+        ...stepCells(item), item.operator || '—', item.campaign || '—',
         ownerCell(item),
         {text: points(item.gain), className: 'nq-queue-number',
           title: item.gain_campaign ? `From the Final CDR of ${item.gain_campaign}` : 'No campaign with a Final CDR to tell it: the oldest first'},
@@ -3894,7 +3890,7 @@
     // its period below it, and in Waiting its calls waiting of the calls of the queue in the hotspot, over those of them
     // with an Analyst.
     const hotspotQueueTable = (rows) => {
-      const table = withClass(withClass(failureTable(['#', 'Hotspot ID', 'Priority', 'Step', 'Operator', 'Campaign', 'Waiting', 'Expected Gain', 'Scoring Impact', ...actionHeaders],
+      const table = withClass(withClass(failureTable(['#', 'Hotspot ID', 'Priority', ...STEP_HEADERS, 'Operator', 'Campaign', 'Waiting', 'Expected Gain', 'Scoring Impact', ...actionHeaders],
       rows.map((item) => {
         const id = node('button', undefined, 'nq-failure-drill nq-group-id');
         id.append(node('strong', item.id, 'nq-group-id-line'), node('span', groupSites(item), 'nq-group-id-line nq-group-id-what'),
@@ -3907,7 +3903,7 @@
           {node: id, pairs: [['hotspot', item.key]], reveal: 'section-nq-calls', className: 'nq-failure-name',
             title: `${number(item.waiting)} waiting of the ${number(item.calls)} calls of this queue in the hotspot (${item.nr_mode || '—'}): click to see them`},
           {text: item.priority || '—', className: `nq-queue-priority is-${String(item.priority || '').toLowerCase()}`},
-          stepCell(item), item.operator || '—', item.campaign || '—',
+          ...stepCells(item), item.operator || '—', item.campaign || '—',
           {node: waiting, className: 'nq-queue-waiting',
             title: `${number(item.waiting)} of its ${number(item.calls)} calls of this queue wait (open and not attended yet); ${number(item.assigned)} of them already have an Analyst`},
           {text: points(item.gain), className: 'nq-queue-number', title: 'Expected Gain of its waiting calls together'},
@@ -3915,7 +3911,7 @@
           ...actionCells(item.call_keys || [], item.free_keys || [], `hotspot ${item.id}`)];
       })), 'nq-queue-table'), 'nq-hotspot-queue-table');
       withSelectAll(table, rows.map((item) => item.call_keys || []));
-      table.querySelector('th:nth-child(7)').title = 'The calls of the hotspot waiting in this queue (open and not attended yet), of the calls of the queue in the hotspot (waiting or not), and below how many of the waiting ones already have an Analyst';
+      table.querySelector('th:nth-child(10)').title = 'The calls of the hotspot waiting in this queue (open and not attended yet), of the calls of the queue in the hotspot (waiting or not), and below how many of the waiting ones already have an Analyst';
       return table;
     };
     // An empty queue (or list) says so in a label of its own.
@@ -5064,7 +5060,7 @@
     $('nq-drawer-unique').hidden = !uniqueField;
     $('nq-drawer-l3-ues').textContent = call.l3_log || '';
     $('nq-drawer-l3').hidden = !call.l3_log;
-    // Its groups of 2 calls or more, each with what it is, its NR Mode, its ID in the NQ Hotspots, Time-Window & Clustered Issues
+    // Its groups of 2 calls or more, each with what it is, its NR Mode, its ID in the NQ Hotspots, Clustered & Time-Window Issues
     // panel and its calls, and what it holds: its sites (spatial groups: clusters), its period (temporal groups: runs) or both
     // (hotspots). Its hotspot and its time-window issue keep to its NR Mode and campaign, its cluster to its NR Mode: no group
     // mixes two NR Modes.

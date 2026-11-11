@@ -2200,7 +2200,7 @@ def place_values(repository: Any, settings: dict[str, Any]) -> dict[str, dict[st
 
 def group_id(letter: str, key: str, length: int = 6) -> str:
     """The short ID of a group: H (hotspot), T (time-window issue) or C (cluster), and the start of the key
-    of its first call (the NQ Hotspots, Time-Window & Clustered Issues panel takes more of it where two groups of a table would
+    of its first call (the NQ Hotspots, Clustered & Time-Window Issues panel takes more of it where two groups of a table would
     share it)."""
     return f"{letter}-{key.split(':', 1)[-1].upper()[:length]}"
 
@@ -2227,7 +2227,7 @@ CALL_GROUPS = (('hotspot', 'H', 'cluster_key', 'cluster_size', 'hotspot'), ('clu
 
 def call_groups(call: dict[str, Any], connection: Any = None) -> list[dict[str, Any]]:
     """The groups of a call of 2 calls or more, from its stored keys and sizes (``GROUP_FIELDS``), by the IDs of the
-    NQ Hotspots, Time-Window & Clustered Issues panel: its hotspot, its cluster and its run of consecutive failures, all of
+    NQ Hotspots, Clustered & Time-Window Issues panel: its hotspot, its cluster and its run of consecutive failures, all of
     its NR Mode; a call is in one of each at most. Each with its key and the filter of the list of calls by it,
     and with a ``connection`` what it holds too: its sites (the places of its calls, the most calls first, with how many),
     when its first and last call started and, for a hotspot and a cluster, how far its calls reach (``metres``, as the map

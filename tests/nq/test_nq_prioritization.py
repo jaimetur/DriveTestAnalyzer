@@ -1073,7 +1073,7 @@ def test_the_calls_show_and_export_the_ids_of_their_groups(prioritized):
     place = keys.index(fields['place_label']['key'])
     assert keys[place + 1:place + 4] == [fields[ref]['key'] for ref in refs]
     assert all(fields[ref]['in_export'] and not fields[ref]['in_table'] for ref in refs)
-    # Each call takes the IDs of the groups of its header, those of the NQ Hotspots, Time-Window & Clustered Issues panel.
+    # Each call takes the IDs of the groups of its header, those of the NQ Hotspots, Clustered & Time-Window Issues panel.
     listed = client.post('/api/non-qualified-calls/calls', json={'filters': {}, 'page_size': 100, 'breakdowns': False}).json()['calls']
     assert listed and all({ref: call['values'][fields[ref]['key']] for ref in refs} == group_ids_of(rows[call['call_key']]) for call in listed)
     assert any(call['values'][fields['hotspot_id']['key']] for call in listed)
@@ -1228,18 +1228,19 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert run['calls'] >= 2 and sum(run['kinds'].values()) == run['calls'] and run['key'].startswith('run:')
     calls = client.post('/api/non-qualified-calls/calls', json={'filters': {'consecutive_issue': [run['key']]}, 'page_size': 100}).json()
     assert calls['total'] == run['calls'] == run['size']
-    # The exports follow the order of the page: the steps (a table per list, then the calls outside the lists), the queues,
-    # the KPIs, then the hotspots, the consecutive issues and the clustered issues (the hotspots first with the OR join).
+    # The exports follow the order of the page: the hotspots, the consecutive issues and the clustered issues (the hotspots
+    # first with the OR join), then the steps (a table per list, then the calls outside the lists), the queues and the KPIs.
     tables = non_qualified_calls_export.prioritization_tables(panel)
     order = [component for component, *_rest in tables]
-    assert order.index('rules') < order.index('queue') < order.index('kpis') < order.index('hotspots') < min(order.index('consecutive'), order.index('issues'))
+    assert order.index('hotspots') < min(order.index('consecutive'), order.index('issues'))
+    assert max(order.index('consecutive'), order.index('issues')) < order.index('rules') < order.index('queue') < order.index('kpis')
     # Between the consecutive and the clustered issues, the one with more calls first.
     total = {'consecutive': sum(item['calls'] for item in panel['consecutive']), 'issues': sum(item['calls'] for item in panel['issues'])}
     first, second = sorted(('consecutive', 'issues'), key=order.index)
     assert total[first] >= total[second]
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'issues').startswith('Clustered Issues')
     assert next(subtitle for component, subtitle, *_rest in tables if component == 'hotspots').startswith(
-        'Hotspots (Time-Window OR Clustered Issues)')
+        'Hotspots (Clustered OR Time-Window Issues)')
     # The clusters of the panel are those of the rules, each of one NR Mode, whatever NR Modes the filters leave.
     assert 'cluster_mode' not in panel
     sa = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'nr_mode': ['SA']}}).json()
@@ -1250,7 +1251,7 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     joined = non_qualified_calls_export.prioritization_tables({**panel, 'settings': {**panel['settings'], 'hotspot_join': 'and'}})
     order_and = [component for component, *_rest in joined]
     assert max(order_and.index('consecutive'), order_and.index('issues')) < order_and.index('hotspots')
-    assert next(subtitle for component, subtitle, *_rest in joined if component == 'hotspots').startswith('Hotspots (Time-Window AND')
+    assert next(subtitle for component, subtitle, *_rest in joined if component == 'hotspots').startswith('Hotspots (Clustered AND')
     # The three tables share their columns.
     columns = {component: columns for component, _subtitle, columns, *_rest in tables}
     assert [columns[name][0] for name in ('hotspots', 'consecutive', 'issues')] == ['Hotspot ID', 'Time-Window ID', 'Cluster ID']

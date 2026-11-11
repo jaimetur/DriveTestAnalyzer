@@ -66,6 +66,24 @@ FIELD_SOURCES = {
     'rca': 'From the Ericsson RCA', 'dta': 'From the DT Analyzer RCA', 'derived': 'Derived from the call',
     'priority': 'From the NQ Prioritization',
 }
+# The CDR values of the NetCheck RCA, filtered by filters of their own (Failure Classification, Category, Subcategory).
+NETCHECK_RCA_REFS = ('failure_classification', 'failure_category', 'failure_subcategory')
+# The short texts filtered by their values: those found by the tool (RCA, CDR, NQ Prioritization IDs).
+TEXT_FILTER_SOURCES = frozenset({'dta', 'rca', 'cdr', 'priority'})
+
+
+def is_filter_field(field: dict[str, Any]) -> bool:
+    """Whether a catalog field has a filter ``field:<key>`` in the Filters panel: its lists and Yes / No fields, the short
+    texts found by the tool and those the tool suggests to the analysts (the follow-up and the NetCheck RCA have filters
+    of their own). non_qualified_calls.js (isFilterField) follows the same rule."""
+    source, kind = field.get('source'), field.get('type')
+    if source == 'tracking' or (source == 'cdr' and field.get('source_ref') in NETCHECK_RCA_REFS):
+        return False
+    if kind in {'list', 'yes_no'}:
+        return True
+    return kind == 'text' and (source in TEXT_FILTER_SOURCES or bool(field.get('suggest_from')))
+
+
 # Follow-up values a tracking field shows.
 TRACKING_REFS = {
     'status': 'NQ Call Status', 'team': 'Team', 'analyst': 'Analyst', 'reviewer': 'Reviewer', 'updated_at': 'Last modification',
@@ -248,15 +266,15 @@ DEFAULT_FIELDS = (
            description='The site where the repeated issues list the call: the site of the cell where the call ended, the site '
                        'that served its start, its eNB / gNB or the spot where it started.'),
     _field('hotspot_id', 'Hotspot ID', 'general', 'text', 'priority', 'hotspot_id',
-           description='The ID of the hotspot of the call (H-...) in the NQ Hotspots, Time-Window & Clustered Issues panel: the '
+           description='The ID of the hotspot of the call (H-...) in the NQ Hotspots, Clustered & Time-Window Issues panel: the '
                        'failures of its operator, NR Mode and campaign linked to each other in time or distance (empty when it '
                        'is in none of 2 calls or more).'),
     _field('consecutive_id', 'Time-Window ID', 'general', 'text', 'priority', 'consecutive_id',
-           description='The ID of the time-window issue of the call (T-...) in the NQ Hotspots, Time-Window & Clustered Issues '
+           description='The ID of the time-window issue of the call (T-...) in the NQ Hotspots, Clustered & Time-Window Issues '
                        'panel: the failures of its operator, NR Mode, campaign and drive one after another, each within the Time '
                        'window of the one before (empty when it is in none of 2 calls or more).'),
     _field('cluster_id', 'Cluster ID', 'general', 'text', 'priority', 'cluster_id',
-           description='The ID of the cluster of the call (C-...) in the NQ Hotspots, Time-Window & Clustered Issues panel: the '
+           description='The ID of the cluster of the call (C-...) in the NQ Hotspots, Clustered & Time-Window Issues panel: the '
                        'calls of its operator and NR Mode failed close to each other or at the same site, in its campaign and '
                        'those of the Cluster period (empty when it is in none of 2 calls or more).'),
     _field('team_responsible', 'Team Responsible', 'general', 'list', 'tracking', 'team', in_table=True),

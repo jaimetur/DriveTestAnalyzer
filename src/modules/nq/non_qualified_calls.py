@@ -313,6 +313,14 @@ ANALYSIS_CENTER_V41_STATE_KEY = 'nq_analysis_center_v41'
 # their last change other than that go back to the queues, and the default status Assigned comes between the first
 # status and Under Analysis, once.
 ANALYSIS_CENTER_V42_STATE_KEY = 'nq_analysis_center_v42'
+# The panel of the hotspots is named NQ Hotspots, Clustered & Time-Window Issues (ticket #123): the Hotspot ID,
+# Time-Window ID and Cluster ID whose description is still the former default (as stored: at most 300 characters) take the
+# current one, once.
+ANALYSIS_CENTER_V43_STATE_KEY = 'nq_analysis_center_v43'
+V43_FORMER_DESCRIPTIONS = tuple(
+    (field['key'], field['description'].replace('NQ Hotspots, Clustered & Time-Window Issues',
+                                                'NQ Hotspots, Time-Window & Clustered Issues')[:300])
+    for field in nq_catalog.DEFAULT_FIELDS if field['key'] in ('hotspot_id', 'consecutive_id', 'cluster_id'))
 V42_ASSIGNED_STATUS = ('Assigned', '#2f80c8', False)
 # The follow-up changes that only assign a call: they leave it waiting in its queue (not attended).
 ASSIGNMENT_FIELDS = ('team', 'analyst', 'reviewer')
@@ -326,7 +334,7 @@ ASSIGNMENT_HISTORY_FIELDS = frozenset({*ASSIGNMENT_FIELDS, *(f'field:{field}' fo
 DTA_L3_STATE_KEY = 'nq_dta_rca_l3_logs'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-11-11.4'
+SCHEMA_VERSION = '2026-11-11.5'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -374,7 +382,7 @@ SUBSCRIBER_SOURCES = NETCHECK_PROFILE.nq_subscriber_sources
 # Filters on indexed fields; the tracking filters are handled separately.
 FIELD_FILTERS = (
     'service', 'campaign', 'operator', 'operator_vendor', 'vendor_operator', 'vendor', 'region', 'cluster', 'city',
-    'technology', 'test_name', 'result', 'failure_classification', 'failure_category',
+    'technology', 'test_name', 'result', 'failure_classification', 'failure_category', 'failure_subcategory',
 )
 TRACKING_FILTERS = ('status', 'team', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause', 'status_mode')
 # Filters typed as a list of values rather than chosen among them (a JOIN_ID has too many values to list).
@@ -705,7 +713,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY, ANALYSIS_CENTER_V34_STATE_KEY,
                 ANALYSIS_CENTER_V35_STATE_KEY, ANALYSIS_CENTER_V36_STATE_KEY, ANALYSIS_CENTER_V37_STATE_KEY,
                 ANALYSIS_CENTER_V38_STATE_KEY, ANALYSIS_CENTER_V39_STATE_KEY, ANALYSIS_CENTER_V40_STATE_KEY,
-                ANALYSIS_CENTER_V41_STATE_KEY, ANALYSIS_CENTER_V42_STATE_KEY)
+                ANALYSIS_CENTER_V41_STATE_KEY, ANALYSIS_CENTER_V42_STATE_KEY, ANALYSIS_CENTER_V43_STATE_KEY)
         states ={str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -938,6 +946,9 @@ def ensure_nq_tables(task_repository: Any) -> None:
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V42_STATE_KEY):
         _separate_assignments(task_repository)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V42_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V43_STATE_KEY):
+        _renew_default_descriptions(task_repository, dict(V43_FORMER_DESCRIPTIONS))
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V43_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -2130,7 +2141,9 @@ def indexed_cdr_columns(repository: Any) -> list[str]:
                    if field['source'] == 'cdr' and field['source_ref'].startswith('column:')]
     except Exception:  # noqa: BLE001 - the catalog table may not exist yet while the module tables are created.
         catalog = []
-    return list(dict.fromkeys([*columns['cdr'], *columns['export_cdr'], *_user_cdr_columns(repository), *catalog]))
+    # The CDR columns of the CDR Fields Filters (NetCheck's G_Level_1 to G_Level_4).
+    filtered = workspace_field_profile(repository).nq_filter_columns
+    return list(dict.fromkeys([*columns['cdr'], *columns['export_cdr'], *_user_cdr_columns(repository), *catalog, *filtered]))
 
 
 def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, export_cdr: Any = (), *,
@@ -5223,7 +5236,29 @@ def filter_options(task_repository: Any, layout: dict[str, list[str]] | None = N
     with task_repository.connection() as connection:
         values['nr_mode'] = sorted({str(row[0]) for row in connection.execute(
             f"SELECT DISTINCT nr_mode FROM {NQ_CALLS_TABLE} WHERE nr_mode <> ''")}, key=lambda value: (value != 'NSA', value))
+    values.update(_text_filter_options(task_repository))
     return values
+
+
+def _text_filter_options(task_repository: Any) -> dict[str, list[str]]:
+    """The values of the filters chosen among the values of the calls rather than among those of a list: the short
+    texts of the catalog (RCA, CDR, NQ Prioritization IDs, the cells suggested to the analysts) and the CDR columns of the
+    CDR Fields Filters, in one pass over the calls."""
+    expressions = {f"field:{definition['key']}": field_sql(definition) for definition in list_fields(task_repository)
+                   if nq_catalog.is_filter_field(definition) and definition['type'] == 'text'}
+    expressions.update({f'column:cdr:{name}': column_filter_sql(f'cdr:{name}')
+                        for name in workspace_field_profile(task_repository).nq_filter_columns})
+    if not expressions:
+        return {}
+    keys = list(expressions)
+    with task_repository.connection() as connection:
+        base, params = _base_sql(untracked_status(task_repository), task_repository)
+        row = connection.execute(
+            f"WITH calls AS ({base}) SELECT {', '.join(f'json_group_array(DISTINCT {expressions[key]})' for key in keys)} FROM calls",
+            params).fetchone()
+    return {key: sorted((str(value) for value in json.loads(found or '[]') if value not in (None, '')),
+                        key=str.casefold)[:MAX_COLUMN_FILTER_VALUES]
+            for key, found in zip(keys, row)}
 
 
 def _filter_expressions(task_repository: Any, definitions: list[dict[str, Any]]) -> dict[str, str]:
@@ -5232,7 +5267,7 @@ def _filter_expressions(task_repository: Any, definitions: list[dict[str, Any]])
     expressions = {field: field for field in (*FIELD_FILTERS, *TRACKING_FILTERS)}
     expressions['nr_mode'] = 'nr_mode'
     for definition in definitions:
-        if definition['source'] in {'user', 'derived', 'priority'} and definition['type'] in {'list', 'yes_no'}:
+        if nq_catalog.is_filter_field(definition):
             expressions[f"field:{definition['key']}"] = field_sql(definition)
     # Every optional and indexed CDR column, as the table layout of each user may show it.
     for key in [*COLUMN_FILTER_SQL, *(f'cdr:{name}' for name in indexed_cdr_columns(task_repository))]:
@@ -9741,6 +9776,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'fields': provider_field_labels(list_fields(repository), repository),
             'default_fields': provider_field_labels(nq_catalog.default_fields(), repository), 'field_types': FIELD_TYPES,
             'field_sources': nq_catalog.FIELD_SOURCES,
+            # The CDR columns of the CDR Fields Filters (G_Level_1 to G_Level_4 of NetCheck CDRs).
+            'cdr_filter_columns': list(workspace_field_profile(repository).nq_filter_columns),
             'tracking_refs': nq_catalog.TRACKING_REFS, 'rca_refs': nq_catalog.RCA_REFS, 'call_fields': list(CATALOG_CALL_FIELDS),
             'sections': list_sections(repository), 'default_sections': nq_catalog.default_sections(), 'call_section': CALL_SECTION,
             'status_rules': status_rules(repository), 'default_status_rules': nq_catalog.default_status_rules(),

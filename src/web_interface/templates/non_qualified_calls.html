@@ -40,8 +40,8 @@
   <div class="nq-view-dock">
   <nav class="nq-view-switch" id="nq-view-switch" aria-label="Non-Qualified Calls sections" data-section-bar>
     <a href="#section-filters" title="The filters of the calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/></svg>Filters</a>
+    <a href="#section-nq-hotspots-clustered-time-window-issues" title="NQ Hotspots, Clustered &amp; Time-Window Issues: the failures that repeat close in time, in distance or both"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2"/><circle cx="15.5" cy="8" r="2"/><circle cx="12" cy="15" r="2"/><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" stroke-dasharray="3 2.5"/></svg>NQ Hotspots</a>
     <a href="#section-nq-prioritization-queues" title="NQ Prioritization &amp; Queues: the calls to analyse next in the Voice and Data queues, the steps of the strategy, the scoring impact and the repeated issues"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h4v4H3zM9 5h4v4H9zM3 15h4v4H3zM9 15h4v4H9z"/><path d="M15 7h6m-2-2 2 2-2 2M15 17h6m-2-2 2 2-2 2"/></svg>NQ Queues</a>
-    <a href="#section-nq-hotspots-time-window-clustered-issues" title="NQ Hotspots, Time-Window &amp; Clustered Issues: the failures that repeat close in time, in distance or both"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2"/><circle cx="15.5" cy="8" r="2"/><circle cx="12" cy="15" r="2"/><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" stroke-dasharray="3 2.5"/></svg>NQ Hotspots</a>
     <a href="#section-nq-maps" title="NQ Maps: the filtered NQ calls, their CDRs and their Layer3 Logs on one map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>NQ Maps</a>
     <a href="#section-nq-calls" title="NQ Calls: the calls that match the filters"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>NQ Calls <span class="nq-view-count" id="nq-view-count"></span></a>
     <a href="#section-summary" title="The Executive Summary of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Summary</a>
@@ -114,22 +114,43 @@
         <label title="How the CDRs see each call: the latest version, changed between CDRs, a newer version in a CDR that is not chosen, not in the Final CDR of its campaign, or Completed in a newer CDR (listed only when chosen here)">CDR Version<select data-nq-filter="version" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="CDR Version"></select></label>
       </div>
       </section>
-      {# The fields of Fields & Sections: those of the CDR and the follow-up here, and the fields of the analysts the
-         script adds, all in the order of the catalog. #}
-      <section class="nq-filter-card">
-      <p class="nq-filter-group-title" id="nq-field-filters-title">NQ Analysis Fields Filters:</p>
-      <div class="nq-filter-grid nq-field-filter-grid" id="nq-field-filters">
+      {# The fields of Fields & Sections and the follow-up, each in the card of its source (non_qualified_calls.js,
+         fieldOrigin): the CDR, the RCAs, DT Analyzer and the analysts, in the order of the catalog. The filters of the
+         catalog fields and of the CDR columns of the CDR Fields Filters are added by the script. #}
+      <section class="nq-filter-card nq-source-card" data-nq-origin="cdr" data-nq-filter-card="cdr">
+      <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="cdr">CDR</span>CDR Fields Filters: <small>as they come in the CDR</small></p>
+      <div class="nq-filter-grid" data-nq-filter-host="cdr"></div>
+      </section>
+      <section class="nq-filter-card nq-source-card" data-nq-origin="rca" data-nq-filter-card="rca">
+      <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="rca">RCA</span>RCA Classification Filters: <small>what each RCA found, before the analysts</small></p>
+      <p class="nq-filter-subtitle" data-nq-filter-subtitle="dta">DT Analyzer RCA</p>
+      <div class="nq-filter-grid" data-nq-filter-host="dta"></div>
+      <p class="nq-filter-subtitle" data-nq-filter-subtitle="netcheck">{{ provider.rca | default('NetCheck RCA', true) }}</p>
+      <div class="nq-filter-grid" data-nq-filter-host="netcheck">
         <label>Failure Classification<select data-nq-filter="failure_classification" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Classification"></select></label>
         <label>Failure Category<select data-nq-filter="failure_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Category"></select></label>
-        <label>Global Status<select data-nq-filter="status" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Global Status"></select></label>
+        <label>Failure Subcategory<select data-nq-filter="failure_subcategory" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Subcategory"></select></label>
+      </div>
+      <p class="nq-filter-subtitle" data-nq-filter-subtitle="ericsson">Ericsson RCA</p>
+      <div class="nq-filter-grid" data-nq-filter-host="ericsson"></div>
+      </section>
+      <section class="nq-filter-card nq-source-card" data-nq-origin="tool" data-nq-filter-card="tool">
+      <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="tool">DT Analyzer</span>Automatic Fields Filters: <small>filled by the tool: Status Rules, NQ Prioritization, hotspots</small></p>
+      <div class="nq-filter-grid" data-nq-filter-host="tool">
+        <label>Global Status<em class="nq-filter-alias">Analysis Finished</em><select data-nq-filter="status" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Global Status"></select></label>
         <label title="Whether the status follows the Status Rules or was set by hand">Status Set<select data-nq-filter="status_mode" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Status Set"></select></label>
         <label title="How far each call has been followed up: attended or not, stalled, closed, with a team, an analyst, comments or a root cause">Follow-up<select data-nq-filter="state" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Follow-up"></select></label>
-        <label>Team<select data-nq-filter="team" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Team"></select></label>
+      </div>
+      </section>
+      <section class="nq-filter-card nq-source-card" data-nq-origin="analyst" data-nq-filter-card="analyst">
+      <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="analyst">Analyst</span>Analysis Team Fields Filters: <small>filled by the analysts</small></p>
+      <div class="nq-filter-grid" data-nq-filter-host="analyst">
+        <label>Team<em class="nq-filter-alias">Responsible Stream</em><select data-nq-filter="team" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Team"></select></label>
         <label>Analyst<select data-nq-filter="analyst" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Analyst"></select></label>
         <label>Reviewer<select data-nq-filter="reviewer" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Reviewer"></select></label>
         <label>Root Domain<select data-nq-filter="root_domain" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Domain"></select></label>
-        <label>Root Category<select data-nq-filter="root_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Category"></select></label>
-        <label>Root Cause<select data-nq-filter="root_cause" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Cause"></select></label>
+        <label>Root Category<em class="nq-filter-alias">Final Failure Category</em><select data-nq-filter="root_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Category"></select></label>
+        <label>Root Cause<em class="nq-filter-alias">Final Failure Subcategory</em><select data-nq-filter="root_cause" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Cause"></select></label>
       </div>
       </section>
       <section class="nq-filter-card" hidden>
@@ -147,6 +168,16 @@
     </div>
   </details>
 
+  {# The hotspots, the time-window issues and the clusters of the filtered calls, from the data of the NQ
+     Prioritization (shown when either panel is unfolded), before the NQ Prioritization & Queues. #}
+  <details class="panel collapsible-panel nq-clusters-panel" data-nq-view-panel="clusters" data-nq-loader="clusters" open data-panel-state-key="non-qualified-calls:clusters">
+    <summary class="collapsible-summary"><div><p class="eyebrow">Repeated failures</p><h2>NQ Hotspots, Clustered &amp; Time-Window Issues</h2></div><span class="collapse-chip">Collapse</span></summary>
+    <div class="collapsible-panel-body">
+      <div class="nq-active-filters" data-nq-active-filters hidden></div>
+      <div class="nq-priority nq-clusters" id="nq-clusters"></div>
+    </div>
+  </details>
+
   <details class="panel collapsible-panel nq-priority-panel" data-nq-view-panel="prioritization" data-nq-loader="prioritization" open data-panel-state-key="non-qualified-calls:prioritization">
     <summary class="collapsible-summary"><div><p class="eyebrow">Analysis plan</p><h2>NQ Prioritization &amp; Queues</h2></div><span class="collapse-chip">Collapse</span></summary>
     <div class="collapsible-panel-body">
@@ -161,16 +192,6 @@
       </div>
       <div class="nq-kpis" id="nq-priority-kpis"></div>
       <div class="nq-priority" id="nq-priority"></div>
-    </div>
-  </details>
-
-  {# The hotspots, the time-window issues and the clusters of the filtered calls, from the data of the NQ
-     Prioritization (shown when either panel is unfolded). #}
-  <details class="panel collapsible-panel nq-clusters-panel" data-nq-view-panel="clusters" data-nq-loader="clusters" open data-panel-state-key="non-qualified-calls:clusters">
-    <summary class="collapsible-summary"><div><p class="eyebrow">Repeated failures</p><h2>NQ Hotspots, Time-Window &amp; Clustered Issues</h2></div><span class="collapse-chip">Collapse</span></summary>
-    <div class="collapsible-panel-body">
-      <div class="nq-active-filters" data-nq-active-filters hidden></div>
-      <div class="nq-priority nq-clusters" id="nq-clusters"></div>
     </div>
   </details>
 
@@ -401,7 +422,7 @@
       <form class="nq-drawer-find" id="nq-drawer-find" role="search"{% if provider and not provider.join_id %} hidden{% endif %}><input type="search" id="nq-drawer-find-input" placeholder="Go to a JOIN_ID…" autocomplete="off" aria-label="Go to the call of a JOIN_ID" title="Paste a JOIN_ID and press Enter to open its call"></form>
       <button type="button" class="nq-drawer-close" id="nq-drawer-close" aria-label="Close the call details">&times;</button>
     </div>
-    {# Its hotspot, time-window issue and clusters, by the IDs of the NQ Hotspots, Time-Window & Clustered Issues panel,
+    {# Its hotspot, time-window issue and clusters, by the IDs of the NQ Hotspots, Clustered & Time-Window Issues panel,
        across the whole header so that the four fit on one row. #}
     <div class="nq-drawer-join nq-drawer-groups" id="nq-drawer-groups" hidden><span>Groups</span><div class="nq-drawer-group-list" id="nq-drawer-groups-list"></div></div>
   </header>

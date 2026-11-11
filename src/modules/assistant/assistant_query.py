@@ -4,7 +4,7 @@ The tables the engine can read:
 
 - ``nq_calls``: one row per Non-Qualified Call, the latest version of each call, as the NQ Calls list of the module
   shows it. Each row has its follow-up, its DT Analyzer RCA, its impact and priority, and its Hotspot, Time-Window
-  and Cluster groups (their IDs and sizes, as the NQ Hotspots, Time-Window & Clustered Issues panel shows them).
+  and Cluster groups (their IDs and sizes, as the NQ Hotspots, Clustered & Time-Window Issues panel shows them).
 - ``cdr_data``, ``cdr_voice``, ``cdr_speech``: the rows of the CDRs, read from their columnar copies (cdr_store).
 - ``cdrs``: the ready CDRs of the workspace.
 
@@ -442,7 +442,7 @@ def nq_calls_frame(context: ToolContext):
             **{name: row[name] for name in ('suggested_priority', 'prioritization', 'priority_rule', 'queue')},
             'queue_step': _whole(row['queue_step']), 'expected_points': row['expected_points'],
         }
-        # Its groups as the NQ Hotspots, Time-Window & Clustered Issues panel shows them: those of 2 calls or more.
+        # Its groups as the NQ Hotspots, Clustered & Time-Window Issues panel shows them: those of 2 calls or more.
         for prefix, letter, key, size in (('hotspot', 'H', 'cluster_key', 'cluster_size'),
                                           ('time_window', 'T', 'consecutive_key', 'consecutive_size'),
                                           ('nq_cluster', 'C', 'repeat_key', 'repeat_size')):
