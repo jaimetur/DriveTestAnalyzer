@@ -18,7 +18,7 @@ from typing import Any, Iterable
 
 # Values that say when, by whom or in which order an item was saved (or how often it was used), not what it is.
 IGNORED_FIELDS = frozenset({'uid', 'id', 'created_at', 'updated_at', 'updated_by', 'position', 'use_count', 'last_used_at',
-                            'version'})
+                            'version', 'last_login_at'})
 # Values inside the values of an item (the rows of a list, the entries of a section) that only say when or by whom
 # they were saved, which an import writes again when it saves them (the Map Areas, the personal NQ table layouts).
 NESTED_IGNORED_FIELDS = frozenset({'created_at', 'updated_at', 'updated_by', 'last_used_at', 'use_count'})

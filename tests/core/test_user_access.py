@@ -405,6 +405,29 @@ def test_the_users_table_shows_the_last_log_in(client):
     assert '<small>just now</small>' in page and 'title="demo has not signed in yet">Never</span>' in page
 
 
+def test_users_access_carries_the_most_recent_last_log_in(client):
+    login(client)
+    core.repository.create_user('ana', 'secret123', 'user-editor')
+    core.repository.create_user('ben', 'secret123', 'user-viewer')
+    with core.repository.global_connection() as conn:
+        conn.executemany('UPDATE users SET last_login_at = ? WHERE username = ?', [
+            ('2026-10-01T09:30:00+02:00', 'ana'), ('2026-10-05T09:30:00+02:00', 'ben')])
+    content, manifest, payload = users_access_package(client)
+    accounts = {account['username']: account for account in payload['users']}
+    assert accounts['ana']['last_login_at'] == '2026-10-01T09:30:00+02:00'
+    # The other server saw Ana later and Ben earlier (in another timezone), and a user this one does not have.
+    accounts['ana']['last_login_at'] = '2026-10-03T08:00:00+00:00'
+    accounts['ben']['last_login_at'] = '2026-10-04T08:00:00+00:00'
+    payload['users'].append({**accounts['ben'], 'uid': '', 'username': 'carla', 'last_login_at': '2026-10-02T10:00:00+01:00'})
+    # A package of an earlier version carries no last log-in: the local one stays.
+    del accounts['demo']['last_login_at']
+    import_package(client, repackage(manifest, payload))
+    wait_for_imports()
+    last_logins = {row['username']: row['last_login_at'] for row in core.repository.list_users()}
+    assert (last_logins['ana'], last_logins['ben'], last_logins['carla'], last_logins['demo']) == (
+        '2026-10-03T08:00:00+00:00', '2026-10-05T09:30:00+02:00', '2026-10-02T10:00:00+01:00', '')
+
+
 def test_relative_age_tells_how_long_ago():
     now = datetime.now(timezone.utc)
     ages = [timedelta(seconds=5), timedelta(minutes=5), timedelta(hours=3), timedelta(days=4), timedelta(days=21),

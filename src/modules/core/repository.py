@@ -316,6 +316,19 @@ def local_now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec='microseconds')
 
 
+def later_timestamp(*timestamps: object) -> str:
+    """The most recent of ISO timestamps written on any server (with or without their offset); '' when none is one."""
+    def moment(value: str) -> datetime | None:
+        try:
+            parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.astimezone()
+
+    dated = [(parsed, value) for value in (str(item or '').strip() for item in timestamps) if (parsed := moment(value))]
+    return max(dated, key=lambda pair: pair[0])[1] if dated else ''
+
+
 # The Report Templates of a workspace: one library, a template serving the CDRs of any NR Mode (the Design chooses it).
 REPORT_TEMPLATES_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS {table} (
@@ -3313,7 +3326,7 @@ class Repository:
             self._ensure_user_access_schema(conn)
             users = conn.execute(
                 'SELECT id, uid, username, password_hash, role, active, created_at, workspace_ids_json, first_name, last_name, access_requested_at, '
-                'email FROM users ORDER BY id'
+                'email, last_login_at FROM users ORDER BY id'
             ).fetchall()
             profile_uids = {int(row['id']): str(row['uid']) for row in conn.execute('SELECT id, uid FROM modules_profiles').fetchall()}
             group_uids = {int(row['id']): str(row['uid']) for row in conn.execute('SELECT id, uid FROM workspace_groups').fetchall()}
@@ -3330,6 +3343,7 @@ class Repository:
                        'password_hash': str(row['password_hash']), 'role': str(row['role']),
                        'active': bool(row['active']), 'created_at': str(row['created_at'] or ''),
                        'access_requested_at': str(row['access_requested_at'] or '') if not row['active'] else '',
+                       'last_login_at': str(row['last_login_at'] or ''),
                        'modules_profile': profile_by_user.get(int(row['id'])),
                        'workspace_groups': sorted(groups_by_user.get(int(row['id']), []), key=str.casefold),
                        'workspaces': names(self._workspace_ids_from_json(row['workspace_ids_json']))} for row in users],
@@ -3436,7 +3450,8 @@ class Repository:
                 summary['workspace_groups'] += 1
             summary['renamed'] += [f'Workspace Group {line}' for line in group_matcher.summary()]
             user_rows = {int(row['id']): row for row in conn.execute(
-                'SELECT id, uid, username, role, active, password_hash, workspace_ids_json, access_requested_at, email FROM users').fetchall()}
+                'SELECT id, uid, username, role, active, password_hash, workspace_ids_json, access_requested_at, email, last_login_at '
+                'FROM users').fetchall()}
             user_matcher = ItemMatcher([(user_id, str(row['username']), str(row['uid'])) for user_id, row in user_rows.items()])
             for account in payload['users']:
                 if not isinstance(account, dict):
@@ -3465,6 +3480,9 @@ class Repository:
                 # Its email (packages of earlier versions keep the local one, or derive it from the names).
                 email = str(account.get('email') or '').strip() if 'email' in account else (
                     str(row['email'] or '') if row else derived_email(first_name, last_name))
+                # Each server records the sign-ins it receives: the account keeps the most recent of both (packages of
+                # earlier versions carry none, so the local one stays).
+                last_login = later_timestamp(account.get('last_login_at'), row['last_login_at'] if row else '')
                 if row:
                     user_id = int(row['id'])
                     new_username = final
@@ -3478,20 +3496,21 @@ class Repository:
                         summary['renamed'].append(f'user "{row["username"]}" renamed "{new_username}"')
                     conn.execute(
                         'UPDATE users SET username = ?, role = ?, active = ?, password_hash = ?, workspace_ids_json = ?, modules_profile_id = ?, '
-                        "first_name = ?, last_name = ?, access_requested_at = ?, email = ?, uid = CASE WHEN ? <> '' THEN ? ELSE uid END WHERE id = ?",
+                        "first_name = ?, last_name = ?, access_requested_at = ?, email = ?, last_login_at = ?, "
+                        "uid = CASE WHEN ? <> '' THEN ? ELSE uid END WHERE id = ?",
                         (new_username, role, int(active), password_hash,
                          self._workspace_ids_json(resolve(account.get('workspaces'), self._workspace_ids_from_json(row['workspace_ids_json']))),
-                         profile_id, first_name, last_name, '' if active else requested_at, email, uid, uid, user_id),
+                         profile_id, first_name, last_name, '' if active else requested_at, email, last_login, uid, uid, user_id),
                     )
                     summary['users_updated'] += 1
                 else:
                     user_id = int(conn.execute(
                         'INSERT INTO users (username, password_hash, role, active, created_at, workspace_ids_json, modules_profile_id, '
-                        "first_name, last_name, access_requested_at, email, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                        "first_name, last_name, access_requested_at, email, last_login_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
                         "CASE WHEN ? <> '' THEN ? ELSE lower(hex(randomblob(16))) END)",
                         (username, password_hash, role, int(active), str(account.get('created_at') or '') or local_now_iso(),
                          self._workspace_ids_json(resolve(account.get('workspaces'))), profile_id, first_name, last_name,
-                         '' if active else requested_at, email, uid, uid),
+                         '' if active else requested_at, email, last_login, uid, uid),
                     ).lastrowid)
                     summary['users_created'] += 1
                 conn.executemany('DELETE FROM workspace_group_members WHERE group_id = ? AND user_id = ?',

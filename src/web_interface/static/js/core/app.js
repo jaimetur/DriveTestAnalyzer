@@ -13998,6 +13998,20 @@ function inPlaceOf(element) {
       else source.before(button);
       panel.append(source);
     }
+    // Its submit button takes the picture of what it creates, and Cancel beside it closes the dialog without creating.
+    const submit = [...panel.querySelectorAll('button[type="submit"]')].pop();
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'create-dialog-cancel';
+    cancelButton.textContent = 'Cancel';
+    if (submit) {
+      const actions = document.createElement('div');
+      actions.className = 'create-dialog-actions';
+      submit.before(actions);
+      submit.classList.add('create-dialog-submit');
+      submit.insertAdjacentHTML('afterbegin', button.querySelector('svg').outerHTML);
+      actions.append(cancelButton, submit);
+    }
     overlay.append(panel);
     document.body.append(overlay);
     const close = () => {
@@ -14010,6 +14024,7 @@ function inPlaceOf(element) {
       (panel.querySelector('input:not([type="hidden"]):not([type="color"]), select, textarea') || panel).focus();
     });
     closeButton.addEventListener('click', close);
+    cancelButton.addEventListener('click', close);
     overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
     overlay.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } });
   });

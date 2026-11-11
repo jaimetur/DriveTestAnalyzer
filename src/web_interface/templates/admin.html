@@ -202,7 +202,7 @@
             <td class="user-identity-cell">
               <form id="user-create" action="/admin/users" method="post" autocomplete="off"></form>
               <div class="user-identity">
-                <span class="user-avatar user-avatar-new" aria-hidden="true">+</span>
+                <span class="user-avatar user-avatar-new" aria-hidden="true" data-create-user-initials><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.8 20c.8-3.8 3.6-5.9 7.2-5.9s6.4 2.1 7.2 5.9"/></svg></span>
                 <div class="user-identity-text">
                   <div class="user-identity-edit">
                     <input class="table-input user-name-input" type="text" name="first_name" placeholder="First name" form="user-create" autocomplete="off" aria-label="First name of the new user">
@@ -226,7 +226,7 @@
             <td><select class="table-select user-profile-select" name="modules_profile_id" form="user-create" aria-label="Modules Profile of the new user" {% if default_profile %}style="--profile-color: {{ default_profile.color }}"{% endif %} data-profile-select>{% for profile in modules_profiles %}<option value="{{ profile.id }}" data-color="{{ profile.color }}" {% if profile.is_default %}selected{% endif %}>{{ profile.name }}</option>{% endfor %}</select></td>
             <td></td>
             <td>{{ workspace_access_picker('user-create', [], [], 'the new user') }}</td>
-            <td><div class="table-actions user-row-actions"><button type="submit" form="user-create" class="users-create-button">Create</button></div></td>
+            <td><div class="table-actions user-row-actions"><button type="submit" form="user-create" class="users-create-button">Create user</button></div></td>
           </tr>
         </tbody>
       </table>
@@ -2276,6 +2276,33 @@
   document.querySelectorAll('[data-user-autofill-guard]').forEach((control) => {
     control.addEventListener('focus', () => control.removeAttribute('readonly'));
   });
+
+  // New user: its avatar shows the initials it will have (as the table does), and the email is first.last@ericsson.com
+  // from the names, as in an access request, until another address is typed (emptied, it follows the names again).
+  const createForm = document.getElementById('user-create');
+  const createField = (name) => document.querySelector(`[form="user-create"][name="${name}"]`);
+  const createInitials = document.querySelector('[data-create-user-initials]');
+  const createPersonIcon = createInitials?.innerHTML || '';
+  let createEmailTyped = false;
+  const createEmailPart = (name) => String(name || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '');
+  const updateNewUserIdentity = () => {
+    const [first, last, username] = ['first_name', 'last_name', 'username'].map((name) => createField(name)?.value.trim() || '');
+    const initials = (first && last ? first[0] + last[0] : username.slice(0, 2)).toUpperCase();
+    if (createInitials) {
+      createInitials.classList.toggle('has-initials', Boolean(initials));
+      if (initials) createInitials.textContent = initials; else createInitials.innerHTML = createPersonIcon;
+    }
+    const email = createField('email');
+    if (email && !createEmailTyped) {
+      const [firstPart, lastPart] = [createEmailPart(first), createEmailPart(last)];
+      email.value = firstPart && lastPart ? `${firstPart}.${lastPart}@ericsson.com` : '';
+    }
+  };
+  if (createForm) {
+    ['first_name', 'last_name', 'username'].forEach((name) => createField(name)?.addEventListener('input', updateNewUserIdentity));
+    createField('email')?.addEventListener('input', (event) => { createEmailTyped = Boolean(event.target.value.trim()); });
+  }
 
   const createPassword = document.querySelector('[data-create-user-password]');
   const createPasswordToggle = document.querySelector('[data-create-user-password-toggle]');
