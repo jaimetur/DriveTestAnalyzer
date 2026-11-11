@@ -18,7 +18,7 @@ from typing import Any, Iterable
 
 # Values that say when, by whom or in which order an item was saved (or how often it was used), not what it is.
 IGNORED_FIELDS = frozenset({'uid', 'id', 'created_at', 'updated_at', 'updated_by', 'position', 'use_count', 'last_used_at',
-                            'version', 'last_login_at'})
+                            'version'})
 # Values inside the values of an item (the rows of a list, the entries of a section) that only say when or by whom
 # they were saved, which an import writes again when it saves them (the Map Areas, the personal NQ table layouts).
 NESTED_IGNORED_FIELDS = frozenset({'created_at', 'updated_at', 'updated_by', 'last_used_at', 'use_count'})
@@ -27,6 +27,7 @@ SENSITIVE_FIELDS = frozenset({'password_hash'})
 FIELD_LABELS = {
     'password_hash': 'Password', 'query_sql': 'SQL', 'is_default': 'Default', 'default': 'Default', 'created_by': 'Creator',
     'assigned_to': 'Assignee', 'cdrs': 'CDRs', 'nr_mode': 'NR Mode', 'access_requested_at': 'Access Request',
+    'last_login_at': 'Last Log-in',
     'send_email': 'Send Email', 'scoring_profile_id': 'Scoring Methodology', 'context_filters': 'Filters',
     'area_summary': 'Geographical Areas & Scoring Trends', 'operator_mappings': 'Operator Maps',
     'operator_name_comments': 'Comments of the Operator Names', 'vendor_mappings': 'Vendor Maps',
@@ -336,16 +337,42 @@ def named_items(entries: Iterable[dict[str, Any]], name_key: str = 'name') -> li
             for entry in entries if str(entry.get(name_key) or '').strip()]
 
 
-def users_access_items(document: Any) -> dict[str, list[Item]]:
-    """The users, Modules Profiles and Workspace Groups of a Users & Access document."""
-    return {'users': named_items(_documents(document, 'users'), 'username'),
+def _local_minute(timestamp: Any, display_timezone: Any = None) -> str:
+    """A timestamp of any server in the time this one shows (``display_timezone``, the local one by default), to the
+    minute (``2026-11-11 14:05``): so the last log-in of two servers compare as text, as the Users table tells them."""
+    from datetime import datetime
+
+    text = str(timestamp or '').strip()
+    try:
+        moment = datetime.fromisoformat(text.replace('Z', '+00:00'))
+    except ValueError:
+        return text
+    return (moment if moment.tzinfo else moment.astimezone()).astimezone(display_timezone).strftime('%Y-%m-%d %H:%M')
+
+
+def users_access_items(document: Any, display_timezone: Any = None) -> dict[str, list[Item]]:
+    """The users, Modules Profiles and Workspace Groups of a Users & Access document (the last log-in of each user in
+    the local time of this server, to the minute)."""
+    users = [{**user, 'last_login_at': _local_minute(user.get('last_login_at'), display_timezone)} if 'last_login_at' in user else user
+             for user in _documents(document, 'users')]
+    return {'users': named_items(users, 'username'),
             'modules_profiles': named_items(_documents(document, 'modules_profiles')),
             'workspace_groups': named_items(_documents(document, 'workspace_groups'))}
 
 
 def users_as_imported(users: list[Item], local: list[Item], importing_user: str) -> list[Item]:
-    """The users of a package as their import saves them: the account that imports, found as the import finds it (by
-    its identity, then by its username), keeps its username, role, active status and password."""
+    """The users of a package as their import saves them: each keeps the most recent last log-in of both servers (a
+    package of an earlier version, without it, keeps the local one), and the account that imports, found as the import
+    finds it (by its identity, then by its username), keeps its username, role, active status and password."""
+    by_uid = {item.uid: item for item in local if item.uid}
+    by_name = {item.name.casefold(): item for item in local}
+    latest = []
+    for item in users:
+        match = by_uid.get(item.uid) or by_name.get(item.name.casefold())
+        here = str(match.values.get('last_login_at') or '') if match else ''
+        last_login = max(str(item.values.get('last_login_at') or ''), here)
+        latest.append(Item(name=item.name, values={**item.values, 'last_login_at': last_login}, uid=item.uid))
+    users = latest
     name = importing_user.strip().casefold()
     own = next((item for item in local if item.name.casefold() == name), None)
     if own is None:

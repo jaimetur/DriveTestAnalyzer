@@ -405,7 +405,7 @@ def test_the_users_table_shows_the_last_log_in(client):
     assert '<small>just now</small>' in page and 'title="demo has not signed in yet">Never</span>' in page
 
 
-def test_users_access_carries_the_most_recent_last_log_in(client):
+def test_users_access_carries_the_most_recent_last_log_in(client, tmp_path: Path):
     login(client)
     core.repository.create_user('ana', 'secret123', 'user-editor')
     core.repository.create_user('ben', 'secret123', 'user-viewer')
@@ -421,6 +421,13 @@ def test_users_access_carries_the_most_recent_last_log_in(client):
     payload['users'].append({**accounts['ben'], 'uid': '', 'username': 'carla', 'last_login_at': '2026-10-02T10:00:00+01:00'})
     # A package of an earlier version carries no last log-in: the local one stays.
     del accounts['demo']['last_login_at']
+    # The preview tells the last log-in the import saves (in this server's time, to the minute), only where it changes.
+    with zipfile.ZipFile(io.BytesIO(repackage(manifest, payload))) as archive:
+        message, lines, changed = core._preview_package(archive, manifest, [], tmp_path / 'staging', 'super')
+    told = ' '.join([message, *map(str, lines)])
+    assert changed and '1 new' in message and '1 updated' in message
+    assert f"Last Log-in: {core.format_local_timestamp('2026-10-01T09:30:00+02:00')[:16]} → " in told
+    assert told.count('Last Log-in') == 1
     import_package(client, repackage(manifest, payload))
     wait_for_imports()
     last_logins = {row['username']: row['last_login_at'] for row in core.repository.list_users()}

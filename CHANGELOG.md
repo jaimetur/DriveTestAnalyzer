@@ -19,7 +19,7 @@
 - The preview of a Users & Access import or transfer no longer shows the password of the account that imports as changed, since that account keeps its username, role, status and password.
 - The users of Super Admin are sorted again by a click on the title of a column (User, Last Log-in, Role, Modules Profile, Active, Workspaces); it did nothing since **New user** opens in a dialog.
 - The **Workspaces** list of the **New user** dialog, and the **Access** list of **New workspace**, open over the dialog (upwards when there is no room below) instead of staying hidden under it.
-- The last log-in of the users travels with Users & Access (export, transfer and restore): each user keeps the most recent one of both servers, instead of only the sign-ins of the server it is on.
+- The last log-in of the users travels with Users & Access (export, transfer and restore): each user keeps the most recent one of both servers, instead of only the sign-ins of the server it is on, and the preview of the import tells the last log-in it would update.
 - **Scoring & GAP Analysis — Context filters kept (ticket #114):** the Calculation panel keeps and restores the **Operator_Vendor**, **Vendor_Operator** and **Cluster** filters too (they came back empty, so a later calculation included every vendor), each user keeps their own panel selection in the workspace instead of sharing one, a note under the Context filters explains how to score some vendors of one operator, and the App Event of each calculation records its filters, Split by, GAP reference and methodology.
 
 #### 📚 Documentation:

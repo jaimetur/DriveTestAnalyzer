@@ -12016,7 +12016,8 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
     from src.modules.core.import_changes import breakdown, compare, counted, joined, users_access_items
 
     workspaces = workspace_registry.list()
-    before = users_access_items(json.loads(_users_access_archive_payload()))
+    shown = configured_display_timezone()
+    before = users_access_items(json.loads(_users_access_archive_payload()), shown)
     summary = repository.merge_users_access(
         payload, {workspace.name: workspace.id for workspace in workspaces},
         source_workspace_names=source_names, protected_username=importing_user,
@@ -12024,7 +12025,7 @@ def import_users_access(content: bytes, manifest: dict[str, Any], importing_user
         source_workspace_uids=source_uids,
     )
     invalidate_module_access_cache()
-    after, package = users_access_items(json.loads(_users_access_archive_payload())), users_access_items(payload)
+    after, package = users_access_items(json.loads(_users_access_archive_payload()), shown), users_access_items(payload, shown)
     # Each kind of item: what it is called (one, several) and what the import did to those of the package.
     kinds = [(key, singular, plural, compare(package[key], before[key], after[key]))
              for key, singular, plural in (('users', 'user', 'users'), ('modules_profiles', 'Modules Profile', 'Modules Profiles'),
@@ -12666,8 +12667,9 @@ def _preview_application_config(archive: zipfile.ZipFile, manifest: dict[str, An
     replace_application_database_from_server(package_database, manifest.get('source_workspaces'), predicted)
     workspaces = workspace_registry.list()
     names, uids = {workspace.id: workspace.name for workspace in workspaces}, {workspace.id: workspace.uid for workspace in workspaces}
-    before = {**users_access_items(repository.users_access_payload(names, uids)), **_application_settings_items(repository)}
-    after = {**users_access_items(predicted.users_access_payload(names, uids)), **_application_settings_items(predicted)}
+    shown = configured_display_timezone()
+    before = {**users_access_items(repository.users_access_payload(names, uids), shown), **_application_settings_items(repository)}
+    after = {**users_access_items(predicted.users_access_payload(names, uids), shown), **_application_settings_items(predicted)}
     told, lines, changed = [], [], False
     for key, singular, plural in (('users', 'user', 'users'), ('modules_profiles', 'Modules Profile', 'Modules Profiles'),
                                   ('workspace_groups', 'Workspace Group', 'Workspace Groups'), ('tickets', 'ticket', 'tickets'),
@@ -12755,8 +12757,9 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
     if kind == 'users-access':
         if USERS_ACCESS_ARCHIVE_PATH not in archive.namelist():
             return 'The package does not contain Users & Access.', [], True
-        package, before = users_access_items(_json_document(archive.read(USERS_ACCESS_ARCHIVE_PATH))), users_access_items(
-            json.loads(_users_access_archive_payload()))
+        shown = configured_display_timezone()
+        package = users_access_items(_json_document(archive.read(USERS_ACCESS_ARCHIVE_PATH)), shown)
+        before = users_access_items(json.loads(_users_access_archive_payload()), shown)
         package['users'] = users_as_imported(package['users'], before['users'], importing_user)
         kinds = [(singular, plural, compare(package[key], before[key], package[key]))
                  for key, singular, plural in (('users', 'user', 'users'), ('modules_profiles', 'Modules Profile', 'Modules Profiles'),
