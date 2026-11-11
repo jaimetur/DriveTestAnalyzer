@@ -2702,7 +2702,7 @@ def test_adding_a_dataset_builds_a_new_chart_model_with_every_campaign(client):
 
 
 def test_design_api_answers_401_once_the_session_has_ended(client):
-    # (A session outlives a restart of the application for 90 days, see tests/core/test_login_sessions.py: it ends when
+    # (A session outlives a restart of the application, see tests/core/test_login_sessions.py: it ends when
     # the user signs out.)
     setup_design(client)
     assert client.get('/api/ppt-designer', follow_redirects=False).status_code == 200

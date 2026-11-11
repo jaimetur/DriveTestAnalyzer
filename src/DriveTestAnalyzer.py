@@ -161,8 +161,12 @@ from src.utils.filesystem import ensure_directories, safe_join
 
 SESSION_COOKIE = 'bench_automations_session'
 SESSIONS: dict[str, SessionUser] = {}
-# A login lasts this long, whatever restarts the application; every so often it is checked against its user.
+# A login outlives restarts and updates of the application. The accounts of LONG_SESSION_USERS keep it for
+# SESSION_LIFETIME; every other account loses it after SESSION_IDLE_TIMEOUT without activity. Every so often a session
+# is checked against its user (and, for the idle timeout, its activity is recorded).
 SESSION_LIFETIME = timedelta(days=90)
+SESSION_IDLE_TIMEOUT = timedelta(hours=1)
+LONG_SESSION_USERS = frozenset({'ejaitur'})
 SESSION_CHECK_SECONDS = 60.0
 SESSION_CHECKS: dict[str, float] = {}
 ANALYSIS_CACHE: dict[str, dict[str, Any]] = {}
@@ -6238,6 +6242,12 @@ def _session_hash(token: str) -> str:
     return hashlib.sha256(token.encode('utf-8')).hexdigest()
 
 
+def session_lifetime(username: str) -> timedelta:
+    """How long a session of the user lasts: SESSION_LIFETIME from the login for LONG_SESSION_USERS, otherwise
+    SESSION_IDLE_TIMEOUT from its last activity."""
+    return SESSION_LIFETIME if username.strip().casefold() in LONG_SESSION_USERS else SESSION_IDLE_TIMEOUT
+
+
 def create_session(response: Response, user: SessionUser, *, secure: bool = False) -> None:
     token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
@@ -6245,7 +6255,7 @@ def create_session(response: Response, user: SessionUser, *, secure: bool = Fals
     # If it cannot be kept, the session lasts until the application restarts.
     with suppress(sqlite3.Error):
         repository.save_login_session(_session_hash(token), user.username, user.session_marker,
-                                      now.isoformat(timespec='seconds'), (now + SESSION_LIFETIME).isoformat(timespec='seconds'))
+                                      now.isoformat(timespec='seconds'), (now + session_lifetime(user.username)).isoformat(timespec='seconds'))
         SESSION_CHECKS[token] = time_module.monotonic()
     response.set_cookie(SESSION_COOKIE, token, max_age=int(SESSION_LIFETIME.total_seconds()), httponly=True, samesite='lax', secure=secure)
 
@@ -6269,7 +6279,7 @@ def end_user_sessions(username: str, keep_token: str | None = None) -> None:
 
 def session_user(token: str | None) -> SessionUser | None:
     """The user of a session: kept in memory and, every so often or after a restart, read again with its current role. A
-    session that expired or whose user is no longer active ends."""
+    session that expired or whose user is no longer active ends; one with an idle timeout is extended on each check."""
     if not token:
         return None
     user = SESSIONS.get(token)
@@ -6281,9 +6291,13 @@ def session_user(token: str | None) -> SessionUser | None:
         record = repository.get_user(str(stored['username'])) if stored else None
     except sqlite3.Error:
         return user
-    if not record or not record.active or str(stored['expires_at']) <= datetime.now(timezone.utc).isoformat(timespec='seconds'):
+    now = datetime.now(timezone.utc)
+    if not record or not record.active or str(stored['expires_at']) <= now.isoformat(timespec='seconds'):
         end_session(token)
         return None
+    if session_lifetime(record.username) == SESSION_IDLE_TIMEOUT:
+        with suppress(sqlite3.Error):
+            repository.extend_login_session(_session_hash(token), (now + SESSION_IDLE_TIMEOUT).isoformat(timespec='seconds'))
     if not user or user.username != record.username or user.role != record.role:
         user = SessionUser(username=record.username, role=record.role, session_marker=str(stored['session_marker']))
         SESSIONS[token] = user

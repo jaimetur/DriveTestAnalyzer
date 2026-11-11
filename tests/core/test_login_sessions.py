@@ -1,4 +1,5 @@
-"""Login sessions: they outlive a restart of the application for 90 days and end when they must."""
+"""Login sessions: they outlive a restart of the application (90 days for the owner account, 1 hour without activity
+for every other account) and end when they must."""
 
 import hashlib
 from datetime import datetime, timedelta, timezone
@@ -32,13 +33,13 @@ def stored(token):
     return core.repository.login_session(hashlib.sha256(token.encode()).hexdigest())
 
 
-def test_a_login_outlives_a_restart_for_90_days_and_keeps_only_the_hash_of_its_token(client):
+def test_a_login_outlives_a_restart_and_keeps_only_the_hash_of_its_token(client):
     response = login(client)
     assert 'max-age=7776000' in response.headers['set-cookie'].casefold()
     token = token_of(client)
     row = stored(token)
     assert row['username'] == 'super' and token not in dict(row).values()
-    assert datetime.fromisoformat(row['expires_at']) - datetime.fromisoformat(row['created_at']) == timedelta(days=90)
+    assert datetime.fromisoformat(row['expires_at']) - datetime.fromisoformat(row['created_at']) == timedelta(hours=1)
     marker = core.SESSIONS[token].session_marker
     restart()
     assert signed_in(client)
@@ -109,3 +110,31 @@ def test_the_login_page_opens_the_application_when_already_signed_in(client):
     client.get('/logout', follow_redirects=False)
     assert client.get('/login', follow_redirects=False).status_code == 200
 
+
+
+def test_only_the_owner_account_keeps_its_login_for_90_days(client):
+    login(client)
+    core.repository.create_user('EJAITUR', 'Secret123', 'super-admin')
+    login(client, 'EJAITUR', 'Secret123')
+    row = stored(token_of(client))
+    assert datetime.fromisoformat(row['expires_at']) - datetime.fromisoformat(row['created_at']) == timedelta(days=90)
+    restart()
+    assert signed_in(client)
+    assert stored(token_of(client))['expires_at'] == row['expires_at']
+
+
+def test_other_accounts_lose_their_login_after_an_hour_without_activity(client, monkeypatch):
+    login(client)
+    token = token_of(client)
+    # Activity moves the expiry an hour ahead, also after a restart.
+    with core.repository.global_connection() as connection:
+        connection.execute('UPDATE user_login_sessions SET expires_at = ?', ((datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(timespec='seconds'),))
+    restart()
+    assert signed_in(client)
+    left = datetime.fromisoformat(stored(token)['expires_at']) - datetime.now(timezone.utc)
+    assert timedelta(minutes=58) < left <= timedelta(hours=1)
+    # An hour without activity ends it, even while it is kept in memory.
+    with core.repository.global_connection() as connection:
+        connection.execute('UPDATE user_login_sessions SET expires_at = ?', ((datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec='seconds'),))
+    monkeypatch.setattr(core, 'SESSION_CHECK_SECONDS', -1.0)
+    assert not signed_in(client) and stored(token) is None

@@ -3190,6 +3190,11 @@ class Repository:
         with self.global_connection() as conn:
             return conn.execute('SELECT * FROM user_login_sessions WHERE token_hash = ?', (token_hash,)).fetchone()
 
+    def extend_login_session(self, token_hash: str, expires_at: str) -> None:
+        """Move the expiry of a login session (its activity, for sessions with an idle timeout)."""
+        with self.global_connection() as conn:
+            conn.execute('UPDATE user_login_sessions SET expires_at = ? WHERE token_hash = ?', (expires_at, token_hash))
+
     def end_login_session(self, token_hash: str) -> None:
         with self.global_connection() as conn:
             conn.execute('DELETE FROM user_login_sessions WHERE token_hash = ?', (token_hash,))

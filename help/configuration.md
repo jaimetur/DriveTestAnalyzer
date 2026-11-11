@@ -62,7 +62,7 @@ See [Application Config](app-config.md) for the complete in-app workflow. Worksp
 
 Always replace `APP_SECRET_KEY` outside local development.
 
-A login lasts 90 days in its browser, also across restarts and updates of the application: only the hash of its token is kept, in the **User Login Sessions** table of the application database. While it is valid, the login page opens the application. It ends when the user signs out, changes their password (on their other browsers) or has it reset, and when the account is deactivated or deleted. A change of role applies within a minute. A session token is a credential: serve the application over HTTPS outside local development.
+A login ends after one hour without activity in its browser; the owner account of the tool keeps it for 90 days. A session still valid goes on across restarts and updates of the application: only the hash of its token is kept, in the **User Login Sessions** table of the application database. While it is valid, the login page opens the application. It ends when the user signs out, changes their password (on their other browsers) or has it reset, and when the account is deactivated or deleted. A change of role applies within a minute. A session token is a credential: serve the application over HTTPS outside local development.
 
 ## Storage roots
 
