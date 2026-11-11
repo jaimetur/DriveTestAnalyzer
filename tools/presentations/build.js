@@ -1132,6 +1132,19 @@ async function solutionArchitecture(pres, sectionTitle = 'Platform') {
     + 'workspaces and configurations through transfers.');
 }
 
+// The deployment of the solution, which closes the Architecture presentation: how it runs on AWS today and how it could run
+// in the Ericsson cloud, the two architecture slides of the Benchmarking Providers Roadmap in the pictures of architecture/
+// (taken from its slides.html with their footers numbered 03 and 04), with its titles and notes.
+const DEPLOYMENT_SLIDES = [['aws', 'deployment-aws.png'], ['ericsson', 'deployment-ericsson.png']];
+function deploymentSlides(pres, providers, sectionTitle = 'Deployment') {
+  for (const [id, image] of DEPLOYMENT_SLIDES) {
+    const slide = providers.slides.find((item) => item.id === id);
+    const page = pres.addSlide({ sectionTitle });
+    page.addImage({ path: path.join(__dirname, 'architecture', image), x: 0, y: 0, w: '100%', h: '100%', objectName: slide.title });
+    if (slide.notes) page.addNotes(slide.notes);
+  }
+}
+
 async function rcaArchitecture(pres, sectionTitle = 'DT Analyzer RCA') {
   const slide = pres.addSlide({ masterName: 'CONTENT', sectionTitle });
   heading(slide, 'DT Analyzer RCA, ', 'from the CDR to the Selected Cause', 'Where it takes its data, how it decides, when it runs and where its results go');
@@ -1530,8 +1543,9 @@ function presentationsOf(decks) {
         { title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] },
       ] },
     { id: 'architecture', title: 'DriveTest Analyzer — Architecture', file: 'architecture.pptx', download: 'DriveTest Analyzer - Architecture.pptx',
-      description: 'How the solution is built, from the inputs the teams upload to what it delivers, and how the DT Analyzer RCA finds the root cause of every Non-Qualified Call.',
-      sections: [{ title: 'Solution', slides: ['Solution architecture'] }, { title: 'DT Analyzer RCA', slides: ['DT Analyzer RCA architecture'] }] },
+      description: 'How the solution is built, from the inputs the teams upload to what it delivers, how the DT Analyzer RCA finds the root cause of every Non-Qualified Call, and how the solution is deployed: on AWS today and, as a proposal, in the Ericsson cloud.',
+      sections: [{ title: 'Solution', slides: ['Solution architecture'] }, { title: 'DT Analyzer RCA', slides: ['DT Analyzer RCA architecture'] },
+        { title: 'Deployment', slides: DEPLOYMENT_SLIDES.map(([id]) => decks['benchmarking-providers'].slides.find((item) => item.id === id).title) }] },
     { id: 'one-slider', title: 'DriveTest Analyzer — One-slider', file: 'one-slider.pptx', download: 'DriveTest Analyzer - One-slider.pptx',
       description: 'The most important of the tool in a single slide: figures, modules, teams, platform and what comes next.',
       sections: [{ title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] }] },
@@ -1637,6 +1651,8 @@ async function main() {
   await solutionArchitecture(architecture, 'Solution');
   architecture.addSection({ title: 'DT Analyzer RCA' });
   await rcaArchitecture(architecture, 'DT Analyzer RCA');
+  architecture.addSection({ title: 'Deployment' });
+  deploymentSlides(architecture, decks['benchmarking-providers']);
   const architectureFile = path.join(OUT, 'architecture.pptx');
   await architecture.writeFile({ fileName: architectureFile });
   await applyTheme(architectureFile, THEME);

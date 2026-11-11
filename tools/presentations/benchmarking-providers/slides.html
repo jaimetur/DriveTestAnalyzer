@@ -4,7 +4,9 @@
   design of its own deck (Space Grotesk, IBM Plex Sans and JetBrains Mono from Google Fonts, the Ericsson logo at the top
   right). slides.json lists their order, sections, titles and speaker notes; the slide-NN.png pictures beside it are what
   build.js turns into the PowerPoint. After a change, take the pictures again with
-  `node module_decks.js <folder> benchmarking-providers` and copy them here as palette PNGs.
+  `node module_decks.js <folder> benchmarking-providers` and copy them here as palette PNGs. The two deployment slides
+  (AWS and the Ericsson cloud) also close the Architecture presentation: take them again for ../architecture/ with
+  `?slides=21-22&renumber=3`, which numbers their footers 03 and 04.
 -->
 <html lang="en">
 <head>
@@ -755,6 +757,16 @@
   if (range) {
     const [first, last] = range.split('-').map(Number);
     document.querySelectorAll('.slide').forEach((slide, index) => { slide.style.display = index + 1 >= first && index + 1 <= last ? '' : 'none'; slide.style.marginTop = '0'; });
+  }
+  // ?renumber=N numbers the footers of the slides shown from N, for their pictures in another presentation.
+  let number = Number(query.get('renumber'));
+  if (number) {
+    document.querySelectorAll('.slide').forEach((slide) => {
+      const foot = slide.querySelector('.foot');
+      if (slide.style.display === 'none' || !foot) return;
+      foot.textContent = foot.textContent.replace(/^\d+/, String(number).padStart(2, '0'));
+      number += 1;
+    });
   }
 </script>
 </body>

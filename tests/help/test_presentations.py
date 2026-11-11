@@ -314,8 +314,10 @@ def test_the_server_generates_every_presentation_with_the_pictures_of_their_slid
     # LibreOffice renders only the decks of native slides: build.js writes the pictures of the others, as large.
     assert len(rendered) == 4 and [item['id'] for item in manifest['presentations'] if not item.get('drawn')] == ['overview', 'architecture', 'one-slider', 'roadmap', 'full-presentation']
     assert Image.open(current / 'workspace-config' / 'slide-01.png').size == (1920, 1080)
-    # The architecture of the solution and of the DT Analyzer RCA: the solution one also in the Platform section of the Overview.
-    assert [slide for section in by_id['architecture']['sections'] for slide in section['slides']] == ['Solution architecture', 'DT Analyzer RCA architecture']
+    # The architecture of the solution and of the DT Analyzer RCA, and the deployment on AWS and in the Ericsson cloud of the
+    # Benchmarking Providers Roadmap: the solution one also in the Platform section of the Overview.
+    assert [slide for section in by_id['architecture']['sections'] for slide in section['slides']] == [
+        'Solution architecture', 'DT Analyzer RCA architecture', 'Deployment on AWS', 'Deployment in the Ericsson cloud']
     assert next(section for section in by_id['overview']['sections'] if section['title'] == 'Platform')['slides'] == ['Solution architecture', 'Enterprise-ready']
     assert Image.open(current / 'workspace-config' / 'thumb-01.png').size == (600, 338)
     # The decks drawn by module_decks.js have their slides by section, as in their content.js.
