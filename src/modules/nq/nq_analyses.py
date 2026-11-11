@@ -38,8 +38,8 @@ COLUMN_ALIASES: dict[str, tuple[str, str]] = {
     'finalcategoryclassification': ('tracking', 'root_category'),
     'rootcause': ('tracking', 'root_cause'), 'selectedrootcause': ('tracking', 'root_cause'),
     'finalcausesubcategory': ('tracking', 'root_cause'), 'subcategory': ('tracking', 'root_cause'),
-    # The people who reviewed the calls may not be users of the tool: their names are kept as they are.
-    'reviewer': ('field', 'reviewer'),
+    # Who reviewed the calls: a user account, or the name of a person without account (kept as it is written).
+    'reviewer': ('tracking', 'reviewer'),
     'priority': ('field', 'priority'),
     'analysisfinished': ('field', 'analysis_status'),
     'status': ('field', 'planned_status'),

@@ -5,7 +5,7 @@ sections (General, RCA, Failure Event, Analysis, Implementation and Planning). A
 value from one source:
 
 - ``user``: entered by the analysts (lists, text, numbers, dates, Yes / No);
-- ``tracking``: the follow-up of the call (status, team, analyst, last change, comments and the
+- ``tracking``: the follow-up of the call (status, team, analyst, reviewer, last change, comments and the
   selected root category and cause);
 - ``cdr``: an indexed call field or a CDR column (read only);
 - ``rca``: the Ericsson RCA results imported by JOIN_ID (read only);
@@ -68,7 +68,7 @@ FIELD_SOURCES = {
 }
 # Follow-up values a tracking field shows.
 TRACKING_REFS = {
-    'status': 'NQ Call Status', 'team': 'Team', 'analyst': 'Analyst', 'updated_at': 'Last modification',
+    'status': 'NQ Call Status', 'team': 'Team', 'analyst': 'Analyst', 'reviewer': 'Reviewer', 'updated_at': 'Last modification',
     'comments': 'Comments', 'root_category': 'Root Category', 'root_cause': 'Root Cause',
 }
 # Values of the imported Ericsson RCA results; any other column of the file is kept as well.
@@ -263,7 +263,9 @@ DEFAULT_FIELDS = (
     _field('analyst', 'Analyst', 'general', 'list', 'tracking', 'analyst', in_table=True,
            description='Who analyses the call: a user account, a member of the responsible team (any user of the workspace when '
                        'the team has no members); an analyst without account comes only from the analyses of the previous tool.'),
-    _field('reviewer', 'Reviewer', 'general', 'text', description='Who reviewed the analysis of the call.'),
+    _field('reviewer', 'Reviewer', 'general', 'list', 'tracking', 'reviewer',
+           description='Who reviewed the analysis of the call: a user account of the workspace; a reviewer without account comes '
+                       'only from the analyses of the previous tool.'),
     _field('unique_id', 'Unique ID', 'general', 'text',
            description='The identifier of the analysis in the workbooks of the previous tool (their Unique ID).'),
     _field('date_last_modification', 'Date last modification', 'general', 'date', 'tracking', 'updated_at',
@@ -808,7 +810,7 @@ def condition_fields(fields: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """The fields a status rule can read, with the values it can choose."""
     known: dict[str, dict[str, Any]] = {ATTENDED_FIELD: {'label': 'Attended (followed up or commented)', 'values': list(YES_NO)}}
     for field in fields:
-        if field['source'] == 'tracking' and field['source_ref'] in {'team', 'analyst', 'root_category', 'root_cause'}:
+        if field['source'] == 'tracking' and field['source_ref'] in {'team', 'analyst', 'reviewer', 'root_category', 'root_cause'}:
             known[f"@{field['source_ref']}"] = {'label': field['label'], 'values': []}
         elif field['source'] in {'user', 'derived'} and field['type'] in {'list', 'yes_no'}:
             values = [option['name'] for option in field['options']] if field['type'] == 'list' else list(YES_NO)

@@ -542,7 +542,7 @@ def nq_call_items(document: Any) -> list[Item]:
     values: dict[str, dict[str, Any]] = {}
     for row in _documents(document, 'tracking'):
         values.setdefault(str(row.get('call_key') or ''), {}).update(
-            {key: row.get(key) for key in ('status', 'status_mode', 'team', 'analyst', 'root_domain', 'root_category', 'root_cause')})
+            {key: row.get(key) for key in ('status', 'status_mode', 'team', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause')})
     for row in _documents(document, 'field_values'):
         field_key = str(row.get('field_key') or '')
         values.setdefault(str(row.get('call_key') or ''), {})[labels.get(field_key) or field_key] = row.get('value')

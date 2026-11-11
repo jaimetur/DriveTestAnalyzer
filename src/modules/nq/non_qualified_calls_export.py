@@ -21,7 +21,7 @@ FILTER_LABELS = (
     ('region', 'Region'), ('cluster', 'Cluster'),
     ('city', 'City'), ('technology', 'Technology'), ('test_name', 'Test Name'), ('result', 'Result'),
     ('failure_classification', 'Failure Classification'), ('failure_category', 'Failure Category'),
-    ('status', 'Status'), ('status_mode', 'Status Set'), ('team', 'Team'), ('analyst', 'Analyst'), ('root_domain', 'Root Domain'),
+    ('status', 'Status'), ('status_mode', 'Status Set'), ('team', 'Team'), ('analyst', 'Analyst'), ('reviewer', 'Reviewer'), ('root_domain', 'Root Domain'),
     ('root_category', 'Root Category'), ('root_cause', 'Root Cause'), ('call_type', 'Call Type'), ('period', 'Period'),
     ('age', 'Age of Open Calls'), ('root_pair', 'Root Domain · Cause'),
     ('effective_domain', 'Root Domain (with suggestions)'), ('effective_cause', 'Root Domain · Cause (with suggestions)'),

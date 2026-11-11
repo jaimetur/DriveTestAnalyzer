@@ -653,7 +653,7 @@ def test_tracking_document_carries_the_analysis_center(client, tmp_path):
 def test_tracking_documents_find_their_calls_by_join_id(client, tmp_path):
     calls = setup_calls(client, tmp_path)
     key = calls['0xA1']['call_key']
-    patch(client, calls['0xA1'], {'team': 'Netcheck', 'fields': {'reviewer': 'Anudeep'}})
+    patch(client, calls['0xA1'], {'team': 'Netcheck', 'reviewer': 'super'})
     assert client.post(f'/api/non-qualified-calls/calls/{key}/comments', json={'body': 'Checked'}).status_code == 200
     document = nq.export_tracking_document(core.repository).decode('utf-8')
     # Each call travels with its JOIN_ID and service.
@@ -665,7 +665,7 @@ def test_tracking_documents_find_their_calls_by_join_id(client, tmp_path):
             connection.execute(f'DELETE FROM {table}')
     assert nq.import_tracking_document(core.repository, former) == 1
     detail = client.get(f'/api/non-qualified-calls/calls/{key}').json()
-    assert detail['call']['team'] == 'Netcheck' and detail['call']['fields']['reviewer'] == 'Anudeep'
+    assert detail['call']['team'] == 'Netcheck' and detail['call']['reviewer'] == 'super'
     assert [comment['body'] for comment in detail['comments']] == ['Checked'] and detail['history']
     # A call without a JOIN_ID keeps its key, and so does a Speech sample with the key of its JOIN_ID and sample.
     assert nq._document_call_keys([{'call_key': 'abc', 'service': 'voice', 'join_id': ''}]) == {}
@@ -804,7 +804,6 @@ def test_analysts_without_account_are_linked_to_their_accounts(client, tmp_path)
     teams = [{**team, 'previous': team['name'], 'members': ['super'] if team['name'] == 'Netcheck' else []}
              for team in state['options']['teams']]
     assert client.put('/api/non-qualified-calls/options', json={'statuses': statuses, 'teams': teams}).status_code == 200
-    patch(client, calls['0xC3'], {'fields': {'reviewer': 'Jorge'}})
     # The analysts without account the analyses of the previous tool bring (also of a call whose CDR is not loaded yet).
     default = nq.untracked_status(core.repository)
     with core.repository.connection() as connection:
@@ -814,16 +813,22 @@ def test_analysts_without_account_are_linked_to_their_accounts(client, tmp_path)
                 f"INSERT INTO {nq.NQ_CALL_TRACKING_TABLE} (call_key, status, team, analyst, status_mode, version, updated_by, updated_at) "
                 "VALUES (?, ?, ?, ?, 'auto', 1, 'import', '2026-09-01T10:00:00') ON CONFLICT(call_key) DO UPDATE SET "
                 "team = excluded.team, analyst = excluded.analyst", (call_key, default, team, analyst))
-    # The Analyst filters the calls by the accounts and the names it holds; the Reviewer by the names it holds.
+        # A reviewer without account.
+        connection.execute(f"UPDATE {nq.NQ_CALL_TRACKING_TABLE} SET reviewer = 'Jorge' WHERE call_key = ?", (calls['0xC3']['call_key'],))
+    # The Analyst and the Reviewer filter the calls by the accounts and the names they hold.
     state = client.get('/api/non-qualified-calls/state').json()
-    assert state['value_filter_fields'] == ['reviewer'] and state['user_names']['EANUDRE'] == 'Anudeep Reddy'
+    assert 'value_filter_fields' not in state and state['user_names']['EANUDRE'] == 'Anudeep Reddy'
     assert state['default_users'] == ['super', 'admin', 'demo']
     assert state['filter_options']['analyst'] == ['Anudeep', 'Raj Kumar', 'rajkumar']
-    assert state['filter_options']['field:reviewer'] == ['Jorge']
+    assert state['filter_options']['reviewer'] == ['Jorge']
+    assert [call['join_id'] for call in query(client, filters={'reviewer': ['Jorge']})['calls']] == ['0xC3']
     assert [call['join_id'] for call in query(client, filters={'analyst': ['Raj Kumar', 'rajkumar']})['calls']] == ['0xB2', '0xA1']
     # A name without account cannot be chosen as the Analyst of a call.
     assert client.patch(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}",
                         json={'changes': {'analyst': 'Anudeep'}}).status_code == 400
+    # Nor as its Reviewer, which takes any account of the workspace (not only the members of the team).
+    assert client.patch(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}",
+                        json={'changes': {'reviewer': 'Jorge'}}).status_code == 400
     # One row per analyst or reviewer without account (the same letters are one name), with the account named as them.
     listed = client.get('/api/non-qualified-calls/analysts').json()
     assert [(item['key'], item['analyst_calls'], item['reviewer_calls'], item['suggested']) for item in listed['people']] == [
@@ -849,10 +854,10 @@ def test_analysts_without_account_are_linked_to_their_accounts(client, tmp_path)
                for entry in detail['history'])
     third = client.get(f"/api/non-qualified-calls/calls/{calls['0xC3']['call_key']}").json()
     assert (third['call']['analyst'], third['call']['team']) == ('EANUDRE', '')
-    # The Reviewer takes the first and last name of the account.
+    # The Reviewer takes the account.
     reviewed = client.post('/api/non-qualified-calls/analysts/link', json={'links': {'jorge': 'jorge.m'}}).json()
     assert (reviewed['calls'], reviewed['analyst_calls'], reviewed['reviewer_calls'], reviewed['people']) == (1, 0, 1, {'jorge': 1})
-    assert client.get(f"/api/non-qualified-calls/calls/{calls['0xC3']['call_key']}").json()['call']['fields']['reviewer'] == 'Jorge Martin'
+    assert client.get(f"/api/non-qualified-calls/calls/{calls['0xC3']['call_key']}").json()['call']['reviewer'] == 'jorge.m'
     netcheck = next(team for team in nq.list_options(core.repository)['teams'] if team['name'] == 'Netcheck')
     assert sorted(netcheck['members']) == ['rajkumar.s', 'super']
     # Everybody has an account now.
@@ -863,22 +868,22 @@ def test_analysts_without_account_are_linked_to_their_accounts(client, tmp_path)
 
 def test_each_filter_lists_the_values_the_other_filters_leave(client, tmp_path):
     calls = setup_calls(client, tmp_path)
-    patch(client, calls['0xA1'], {'fields': {'reviewer': 'Raj Kumar'}, 'team': 'Netcheck'})
+    patch(client, calls['0xA1'], {'reviewer': 'super', 'team': 'Netcheck'})
     values = lambda filters: client.post('/api/non-qualified-calls/filters/values', json={'filters': filters}).json()['values']
     every = values({})
     operators = sorted({call['operator'] for call in calls.values()})
     dataset = str(calls['0xA1']['dataset_id'])
     assert every['operator'] == operators and every['technology'] == ['LTE', 'NR'] and every['datasets'] == [dataset]
-    assert every['field:reviewer'] == ['', 'Raj Kumar'] and every['team'] == ['', 'Netcheck']
+    assert every['reviewer'] == ['', 'super'] and every['team'] == ['', 'Netcheck']
     # A filter leaves in the others only the values of its calls, and keeps all of its own.
     ee = calls['0xC3']['operator']
     chosen = values({'operator': [ee]})
     assert chosen['operator'] == operators and chosen['technology'] == ['NR'] and chosen['datasets'] == [dataset]
-    assert chosen['field:reviewer'] == [''] and chosen['team'] == ['']
-    # The fields of the analysis too, also against the other filters.
-    raj = values({'fields': {'reviewer': ['Raj Kumar']}})
-    assert raj['field:reviewer'] == ['', 'Raj Kumar'] and raj['technology'] == ['LTE'] and raj['operator'] == [calls['0xA1']['operator']]
-    assert values({'operator': [ee], 'fields': {'reviewer': ['Raj Kumar']}})['datasets'] == []
+    assert chosen['reviewer'] == [''] and chosen['team'] == ['']
+    # The follow-up too, also against the other filters.
+    reviewed = values({'reviewer': ['super']})
+    assert reviewed['reviewer'] == ['', 'super'] and reviewed['technology'] == ['LTE'] and reviewed['operator'] == [calls['0xA1']['operator']]
+    assert values({'operator': [ee], 'reviewer': ['super']})['datasets'] == []
 
 
 def test_the_spellings_of_a_netcheck_rca_value_are_one_value(client, tmp_path):
@@ -2122,3 +2127,94 @@ def test_tracking_documents_before_ticket_124_bring_their_asignee_as_the_analyst
     assert 'assignee' not in {field['key'] for field in nq.list_fields(core.repository)}
     # A document of a newer version is refused.
     assert pytest.raises(ValueError, nq.import_tracking_document, core.repository, json.dumps({**document, 'version': 99}))
+
+
+def test_workspaces_before_ticket_125_move_the_reviewer_to_the_follow_up(client, tmp_path):
+    # A workspace of before: the Reviewer is a text field holding usernames, first and last names and other names.
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    keys = {join_id: call['call_key'] for join_id, call in calls.items()}
+    repository.create_user('jorge.m', 'analyst123', 'user-editor', first_name='Jorge', last_name='Martin')
+    user_id = next(int(row['id']) for row in repository.list_users() if row['username'] == 'jorge.m')
+    repository.set_user_workspace_access(user_id, [core.active_workspace.id])
+    with repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_FIELDS_TABLE} SET source = 'user', source_ref = '', field_type = 'text', description = ? "
+                           "WHERE field_key = 'reviewer'", (nq.V41_FORMER_DESCRIPTION,))
+        for call_key, name in ((keys['0xA1'], 'super'), (keys['0xB2'], 'Jorge Martin'), (keys['0xC3'], 'Sujay'), ('waiting-call', 'Sujay')):
+            connection.execute(f"INSERT INTO {nq.NQ_FIELD_VALUES_TABLE} (call_key, field_key, value, updated_by, updated_at) "
+                               "VALUES (?, 'reviewer', ?, 'import', '2026-09-01T10:00:00')", (call_key, name))
+            connection.execute(f"INSERT INTO {nq.NQ_CALL_HISTORY_TABLE} (uid, call_key, field, old_value, new_value, changed_by, changed_at) "
+                               "VALUES (?, ?, 'field:reviewer', '', ?, 'import', '2026-09-01T10:00:00')", (f'r-{call_key}', call_key, name))
+    repository.set_workspace_state(nq.SAVED_FILTERS_STATE_KEY, json.dumps({'fields': {'reviewer': ['Jorge Martin', 'Sujay'],
+                                                                                     'analysis_status': ['Finished']}}))
+    repository.set_workspace_state(nq.ANALYSES_EQUIVALENCES_STATE_KEY, json.dumps({'field:reviewer': {'jm': {'to': 'Jorge Martin'}}}))
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V41_STATE_KEY, '')
+    repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '2026-11-11.3')
+    nq.ensure_nq_tables(repository)
+    assert repository.get_workspace_state(nq.SCHEMA_STATE_KEY) == nq.SCHEMA_VERSION
+    with repository.connection() as connection:
+        tracked = {row[0]: row[1] for row in connection.execute(f'SELECT call_key, reviewer FROM {nq.NQ_CALL_TRACKING_TABLE}')}
+        left = connection.execute(f"SELECT COUNT(*) FROM {nq.NQ_FIELD_VALUES_TABLE} WHERE field_key = 'reviewer'").fetchone()[0]
+        history = Counter(row[0] for row in connection.execute(f'SELECT field FROM {nq.NQ_CALL_HISTORY_TABLE}'))
+        attended = connection.execute(f"SELECT attended_at FROM {nq.NQ_CALL_TRACKING_TABLE} WHERE call_key = 'waiting-call'").fetchone()[0]
+    # A username or the first and last name of an account is that account; any other name stays (also a call not loaded).
+    assert (tracked[keys['0xA1']], tracked[keys['0xB2']], tracked[keys['0xC3']], tracked['waiting-call']) == (
+        'super', 'jorge.m', 'Sujay', 'Sujay') and left == 0 and attended == ''
+    assert history['reviewer'] == 4 and 'field:reviewer' not in history
+    field = {item['key']: item for item in nq.list_fields(repository)}['reviewer']
+    assert (field['source'], field['source_ref'], field['type']) == ('tracking', 'reviewer', 'list')
+    assert field['description'] == next(item for item in nq_catalog.DEFAULT_FIELDS if item['key'] == 'reviewer')['description']
+    assert json.loads(repository.get_workspace_state(nq.SAVED_FILTERS_STATE_KEY)) == {
+        'fields': {'analysis_status': ['Finished']}, 'reviewer': ['jorge.m', 'Sujay']}
+    assert 'tracking:reviewer' in json.loads(repository.get_workspace_state(nq.ANALYSES_EQUIVALENCES_STATE_KEY))
+    # The reviewer without account is listed to be linked, and the call shows it.
+    assert [item['key'] for item in client.get('/api/non-qualified-calls/analysts').json()['people']] == ['sujay']
+    assert client.get(f"/api/non-qualified-calls/calls/{keys['0xC3']}").json()['call']['reviewer'] == 'Sujay'
+    # Run again, it changes nothing.
+    nq._move_reviewer_field(repository)
+    with repository.connection() as connection:
+        assert {row[0]: row[1] for row in connection.execute(f'SELECT call_key, reviewer FROM {nq.NQ_CALL_TRACKING_TABLE}')} == tracked
+
+
+def test_tracking_documents_before_ticket_125_bring_their_reviewer_to_the_follow_up(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    core.repository.create_user('jorge.m', 'analyst123', 'user-editor', first_name='Jorge', last_name='Martin')
+    patch(client, calls['0xA1'], {'reviewer': 'super'})
+    document = json.loads(nq.export_tracking_document(core.repository))
+    assert document['version'] == nq.TRACKING_FORMAT_VERSION and document['tracking'][0]['reviewer'] == 'super'
+    # The same document as a version before wrote it: the Reviewer a text field, with a name of an account and another.
+    former = json.loads(json.dumps(document))
+    former['version'] = 4
+    for row in former['tracking']:
+        row.pop('reviewer')
+    for field in former['fields']:
+        if field['key'] == 'reviewer':
+            field.update(source='user', source_ref='', type='text', description=nq.V41_FORMER_DESCRIPTION)
+    former['field_values'] += [{'call_key': calls['0xA1']['call_key'], 'field_key': 'reviewer', 'value': 'Jorge Martin',
+                                'updated_by': 'import', 'updated_at': '2026-09-01T10:00:00'},
+                               {'call_key': calls['0xB2']['call_key'], 'field_key': 'reviewer', 'value': 'Sujay',
+                                'updated_by': 'import', 'updated_at': '2026-09-01T10:00:00'}]
+    former['history'] = [dict(entry, field='field:reviewer') if entry['field'] == 'reviewer' else entry for entry in former['history']]
+    upgraded = nq.upgrade_legacy_document(former)
+    assert not any(item['field_key'] == 'reviewer' for item in upgraded['field_values'])
+    assert not any(entry['field'] == 'field:reviewer' for entry in upgraded['history'])
+    assert next(field for field in upgraded['fields'] if field['key'] == 'reviewer')['source'] == 'tracking'
+    with core.repository.connection() as connection:
+        for table in (nq.NQ_CALL_TRACKING_TABLE, nq.NQ_CALL_HISTORY_TABLE, nq.NQ_FIELD_VALUES_TABLE):
+            connection.execute(f'DELETE FROM {table}')
+    assert nq.import_tracking_document(core.repository, json.dumps(former)) >= 2
+    # The name of an account is that account; another name is a reviewer without account.
+    assert client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['call']['reviewer'] == 'jorge.m'
+    other = client.get(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}").json()
+    assert other['call']['reviewer'] == 'Sujay' and 'reviewer' not in other['call']['fields']
+    assert {field['key']: field for field in nq.list_fields(core.repository)}['reviewer']['source'] == 'tracking'
+
+
+def test_the_reviewers_of_the_previous_analyses_are_accounts_or_kept_without_account(client, tmp_path):
+    setup_calls(client, tmp_path)
+    translator = nq._AnalysesTranslator(core.repository, {'super', 'jorge.m'}, {'jorge.m': 'Jorge Martin'})
+    translator.names = {}
+    assert translator.translate(('tracking', 'reviewer'), 'Jorge Martin') == ('tracking', 'reviewer', 'jorge.m')
+    assert translator.translate(('tracking', 'reviewer'), 'super') == ('tracking', 'reviewer', 'super')
+    assert translator.translate(('tracking', 'reviewer'), 'Sujay') == ('tracking', 'reviewer', 'Sujay')
+    assert list(translator.without_account['reviewer']) == ['sujay'] and not translator.without_account['analyst']

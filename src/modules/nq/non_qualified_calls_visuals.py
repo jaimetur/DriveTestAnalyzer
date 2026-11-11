@@ -190,7 +190,7 @@ def campaign_label(value: str) -> str:
 
 def _items(distribution: dict[str, Any], colours: dict[tuple[str, str], str]) -> list[tuple[str, int, str]]:
     field = distribution.get('field') or ''
-    empty = 'Unassigned' if field in {'team', 'analyst'} else 'Not classified'
+    empty = 'Unassigned' if field in {'team', 'analyst', 'reviewer'} else 'Not classified'
     items = []
     for index, item in enumerate(distribution.get('items') or []):
         value = str(item.get('value') or '')
@@ -871,7 +871,7 @@ def _pill(panel: Panel, x: float, y: float, text: str, points: float, fill: str,
 
 
 # The fields the Status Rules read besides those of the catalog.
-RULE_FIELD_LABELS = {'@attended': 'Attended', '@team': 'Team', '@analyst': 'Analyst', '@root_category': 'Root Category',
+RULE_FIELD_LABELS = {'@attended': 'Attended', '@team': 'Team', '@analyst': 'Analyst', '@reviewer': 'Reviewer', '@root_category': 'Root Category',
                      '@root_cause': 'Root Cause'}
 
 
