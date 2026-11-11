@@ -14,6 +14,7 @@
 
 #### 🐛 Bug fixes:
 - The preview of a Users & Access import or transfer no longer shows the password of the account that imports as changed, since that account keeps its username, role, status and password.
+- The users of Super Admin are sorted again by a click on the title of a column (User, Last Log-in, Role, Modules Profile, Active, Workspaces); it did nothing since **New user** opens in a dialog.
 
 #### 📚 Documentation:
 

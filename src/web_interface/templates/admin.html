@@ -2603,10 +2603,12 @@
     if (!sorted || !usersBody) return;
     const {key} = usersSort;
     const direction = usersSort.direction === 'desc' ? -1 : 1;
+    // The creation row moves into the New user dialog, so it is an anchor only while it is still in the table.
+    const anchor = usersCreateRow?.parentNode === usersBody ? usersCreateRow : null;
     [...userRows].sort((left, right) => (key === 'last-login' && (!sortValue(left, key) - !sortValue(right, key)))
       || compareUsers(left, right, key) * direction || compareUsers(left, right, 'user')
       || Number(left.dataset.userId) - Number(right.dataset.userId))
-      .forEach((row) => usersBody.insertBefore(row, usersCreateRow));
+      .forEach((row) => usersBody.insertBefore(row, anchor));
   };
   sortButtons.forEach((button) => button.addEventListener('click', () => {
     const key = button.dataset.usersSort;
