@@ -4771,17 +4771,23 @@ function setupWorkspaceUserPickers() {
     const menu = picker.querySelector('.workspace-user-picker-menu');
     const options = Array.from(picker.querySelectorAll('.workspace-user-picker-menu label'));
     const checkboxes = options.map((option) => option.querySelector('input[type="checkbox"]')).filter((checkbox) => checkbox && !checkbox.disabled);
-    const portalize = Boolean(picker.closest('.table-wrap')) && Boolean(menu);
+    // (In a table, or in a creation dialog, the menu floats over the page so no scrolling box cuts it.)
+    const portalize = Boolean(picker.closest('.table-wrap, .create-dialog-panel, [data-create-dialog]')) && Boolean(menu);
     const menuHome = menu?.parentNode;
     const menuNextSibling = menu?.nextSibling;
 
     const positionPortalMenu = () => {
       if (!portalize || !menu || !picker.open) return;
       const bounds = picker.getBoundingClientRect();
-      const availableHeight = Math.max(8 * 16, window.innerHeight - bounds.bottom - 16);
+      // Below the picker, or above it when the window has more room there (a picker at the bottom of a dialog).
+      const below = window.innerHeight - bounds.bottom - 16;
+      const upward = below < 224 && bounds.top - 16 > below;
+      const availableHeight = Math.max(8 * 16, upward ? bounds.top - 16 : below);
+      menu.classList.toggle('is-upward', upward);
       // As wide as its longest entry (a user's name with its tag on one line) and at least as the picker, within the window.
       Object.assign(menu.style, {
-        top: `${bounds.bottom - 1}px`,
+        top: upward ? 'auto' : `${bounds.bottom - 1}px`,
+        bottom: upward ? `${window.innerHeight - bounds.top - 1}px` : 'auto',
         width: 'max-content',
         minWidth: `${Math.min(Math.max(bounds.width, 184), window.innerWidth - 16)}px`,
         maxWidth: `${window.innerWidth - 16}px`,
@@ -4792,7 +4798,7 @@ function setupWorkspaceUserPickers() {
     const restorePortalMenu = () => {
       if (!portalize || !menu || !menuHome || !menu.classList.contains('workspace-user-picker-menu-portal')) return;
       menuHome.insertBefore(menu, menuNextSibling);
-      menu.classList.remove('workspace-user-picker-menu-portal');
+      menu.classList.remove('workspace-user-picker-menu-portal', 'is-upward', 'is-workspace');
       menu.removeAttribute('style');
     };
 
@@ -4823,6 +4829,8 @@ function setupWorkspaceUserPickers() {
       if (picker.open && search) {
         if (portalize && menu) {
           menu.classList.add('workspace-user-picker-menu-portal');
+          // (Blue as its picker in Workspace; red, the default, in Admin and Super Admin.)
+          menu.classList.toggle('is-workspace', Boolean(picker.closest('.create-dialog-from-workspace, .workspace-switcher-panel')));
           document.body.append(menu);
           positionPortalMenu();
         }
@@ -13919,10 +13927,20 @@ document.addEventListener('change', async (event) => {
   stored().forEach((job, index) => window.setTimeout(() => check(job.id), 1500 + index * 300));
 })();
 
-// Creation forms (data-create-dialog="<title>"; data-create-label the text of their button): a button in their place
-// opens them in a floating dialog, instead of their fields taking room all the time. The form keeps its fields, its
+// Creation forms (data-create-dialog="<title>"; data-create-label the text of their button, data-create-icon the picture
+// of what it creates, data-create-button-in a bar of their panel that takes the button at its end): a button in their
+// place opens them in a floating dialog, instead of their fields taking room all the time. The form keeps its fields, its
 // submission and its own scripts (inPlaceOf answers for the place it was taken from). A creation row of a table goes in
 // a table of its own, each field under the name of its column, and its button before the table.
+const CREATE_DIALOG_ICONS = {
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  user: '<circle cx="10" cy="8" r="3.6"/><path d="M3.5 20c.6-3.6 3.2-5.6 6.5-5.6 1.4 0 2.7.4 3.7 1M18.5 14v6M15.5 17h6"/>',
+  profile: '<rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.5"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1.5"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1.5"/><path d="M17.25 14v6.5M14 17.25h6.5"/>',
+  group: '<path d="M3.5 7.5a2 2 0 0 1 2-2h3.6l2 2h7.4a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><circle cx="9.5" cy="12.6" r="1.7"/><circle cx="14.5" cy="12.6" r="1.7"/><path d="M6.8 17.2c.5-1.4 1.5-2.1 2.7-2.1s2.2.7 2.5 1.5c.3-.8 1.3-1.5 2.5-1.5s2.2.7 2.7 2.1"/>',
+  workspace: '<path d="M3.5 7.5a2 2 0 0 1 2-2h3.6l2 2h7.4a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M12 11v6M9 14h6"/>',
+  label: '<path d="M3.5 12.2V5.5a2 2 0 0 1 2-2h6.7l8.3 8.3a2 2 0 0 1 0 2.8l-6.1 6.1a2 2 0 0 1-2.8 0z"/><circle cx="8" cy="8" r="1.4"/>',
+  term: '<path d="M5 4.5h11.5a2 2 0 0 1 2 2V20H7a2 2 0 0 1-2-2z"/><path d="M5 18a2 2 0 0 1 2-2h11.5M11.75 7v6M8.75 10h6"/>',
+};
 function inPlaceOf(element) {
   return element?.closest?.('[data-create-dialog-overlay]')?.createDialogButton || element;
 }
@@ -13933,8 +13951,10 @@ function inPlaceOf(element) {
     button.type = 'button';
     button.className = 'create-dialog-open';
     button.setAttribute('aria-haspopup', 'dialog');
-    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+    button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${CREATE_DIALOG_ICONS[source.dataset.createIcon] || CREATE_DIALOG_ICONS.plus}</svg>`;
     button.append(document.createTextNode(source.dataset.createLabel || title));
+    const buttonBar = source.dataset.createButtonIn
+      ? source.closest('.panel, details, section')?.querySelector(source.dataset.createButtonIn) : null;
     const overlay = document.createElement('div');
     overlay.className = 'confirm-overlay create-dialog-overlay';
     overlay.hidden = true;
@@ -13969,11 +13989,13 @@ function inPlaceOf(element) {
       holder.className = `${table?.className || ''} create-dialog-table`;
       const body = document.createElement('tbody');
       holder.append(body);
-      (table?.closest('.table-wrap, .data-table-wrap') || table)?.before(button);
+      if (buttonBar) buttonBar.append(button);
+      else (table?.closest('.table-wrap, .data-table-wrap') || table)?.before(button);
       body.append(source);
       panel.append(holder);
     } else {
-      source.before(button);
+      if (buttonBar) buttonBar.append(button);
+      else source.before(button);
       panel.append(source);
     }
     overlay.append(panel);

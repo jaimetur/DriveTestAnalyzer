@@ -98,7 +98,7 @@
       <div>
         <p class="eyebrow">Identity</p>
         <h2>Users</h2>
-        <p class="summary-description">Every account with its role, <strong>Modules Profile</strong> (the modules it sees), active status and <strong>workspaces</strong> (its Workspace Groups plus individual workspaces). Change any of them in place, or select several users to change them at once. The last row creates a user.</p>
+        <p class="summary-description">Every account with its role, <strong>Modules Profile</strong> (the modules it sees), active status and <strong>workspaces</strong> (its Workspace Groups plus individual workspaces). Change any of them in place, or select several users to change them at once. <strong>New user</strong> creates one.</p>
       </div>
       <div class="summary-inline-actions"><span class="pill users-count" data-users-count role="status">{{ users | length }} users</span><span class="collapse-chip">Collapse</span></div>
     </summary>
@@ -197,7 +197,7 @@
             </td>
           </tr>
           {% endfor %}
-          <tr class="users-create-row" data-users-create-row data-create-dialog="New user">
+          <tr class="users-create-row" data-users-create-row data-create-dialog="New user" data-create-icon="user" data-create-button-in=".users-toolbar">
             <td class="user-select-column"></td>
             <td class="user-identity-cell">
               <form id="user-create" action="/admin/users" method="post" autocomplete="off"></form>
@@ -280,7 +280,7 @@
         </footer>
       </article>
       {% endfor %}
-      <form class="access-card access-card-new" action="/admin/modules-profiles" method="post" autocomplete="off" data-create-dialog="New Modules Profile">
+      <form class="access-card access-card-new" action="/admin/modules-profiles" method="post" autocomplete="off" data-create-dialog="New Modules Profile" data-create-icon="profile">
         <p class="access-card-new-title">New profile</p>
         <input class="table-input" type="text" name="name" placeholder="Profile name" required aria-label="New profile name">
         <input class="table-input" type="text" name="description" placeholder="Description (optional)" aria-label="New profile description">
@@ -329,7 +329,7 @@
         </footer>
       </article>
       {% endfor %}
-      <form class="access-card access-card-new" action="/admin/workspace-groups" method="post" autocomplete="off" data-create-dialog="New Workspace Group">
+      <form class="access-card access-card-new" action="/admin/workspace-groups" method="post" autocomplete="off" data-create-dialog="New Workspace Group" data-create-icon="group">
         <p class="access-card-new-title">New Workspace Group</p>
         <input class="table-input" type="text" name="name" placeholder="Group name" required aria-label="New group name">
         <input class="table-input" type="text" name="description" placeholder="Description (optional)" aria-label="New group description">

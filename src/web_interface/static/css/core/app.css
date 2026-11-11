@@ -5988,8 +5988,24 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
   .shell main .workspace-switcher-panel .workspace-management > summary { min-height: 0; padding: .55rem .8rem; font-size: .9rem; }
 }
 /* Creation forms in a floating dialog (app.js, data-create-dialog): the button that opens one, and the dialog. */
-.create-dialog-open { display: inline-flex; align-items: center; justify-self: start; align-self: start; gap: .45rem; width: auto !important; max-width: 100%; }
-.create-dialog-open svg { flex: 0 0 auto; width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.create-dialog-open { display: inline-flex; align-items: center; justify-self: start; align-self: start; gap: .45rem; width: auto !important; max-width: 100%; min-height: 2.35rem; margin: 0 0 .6rem; padding: .4rem .95rem .4rem .75rem; border: 1px solid rgba(11, 122, 117, .35); border-radius: 999px; background: #e9f6f4; box-shadow: none; color: #0a5c58; font-size: .82rem; font-weight: 700; line-height: 1.2; letter-spacing: 0; text-transform: none; white-space: nowrap; cursor: pointer; transition: background .12s ease, border-color .12s ease, color .12s ease; }
+.create-dialog-open.create-dialog-open:is(:hover, :focus-visible) { border-color: #0b7a75; background: #0b7a75; color: #fff; box-shadow: 0 2px 8px rgba(11, 122, 117, .25); }
+.create-dialog-open svg { flex: 0 0 auto; width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+/* (Soft in the colour of the page it stands in, filled on hover: red in Admin and Super Admin.) */
+.create-dialog-open.create-dialog-open { border-color: rgba(11, 122, 117, .35); background: #e9f6f4; box-shadow: none; color: #0a5c58; }
+.admin-stack .create-dialog-open.create-dialog-open { border-color: rgba(139, 29, 36, .3); background: #fff0ef; color: #8d2631; }
+.admin-stack .create-dialog-open.create-dialog-open:is(:hover, :focus-visible) { border-color: #8b1d24; background: linear-gradient(135deg, #8b1d24, #c94c4b); color: #fff; box-shadow: 0 2px 8px rgba(139, 29, 36, .25); }
+/* (In a bar of search and filters it closes the bar, at its right end.) */
+.users-toolbar .create-dialog-open { margin: 0 0 0 auto; }
+/* (A menu of workspaces opened from a creation dialog floats over it; upward it opens from the top of its picker.) */
+.workspace-user-picker-menu.workspace-user-picker-menu-portal { z-index: 10010; }
+.workspace-user-picker-menu.workspace-user-picker-menu-portal.is-upward { border-radius: 9px 9px 0 0; box-shadow: 0 -16px 30px rgba(65,18,27,0.24); }
+.workspace-user-picker-menu-portal.is-workspace { border-color: #5bb2d1; background: #f7fbfd; color: #143d56; box-shadow: 0 16px 30px rgba(2,37,53,0.30); }
+.workspace-user-picker-menu-portal.is-workspace .workspace-user-picker-search { border-color: #87c8df; color: #143d56; }
+.workspace-user-picker-menu-portal.is-workspace .workspace-user-picker-toggle { background: #dceff6; color: #0b5875; }
+.workspace-user-picker-menu-portal.is-workspace .workspace-user-picker-toggle:hover, .workspace-user-picker-menu-portal.is-workspace label:hover { background: #c9e6f1; }
+.workspace-user-picker-menu-portal.is-workspace :is(label, label span) { color: #143d56; -webkit-text-fill-color: #143d56; }
+.workspace-user-picker-menu-portal.is-workspace label input[type="checkbox"] { accent-color: #0b7a75; }
 .create-dialog-overlay[hidden] { display: none !important; }
 .create-dialog-overlay .create-dialog-panel { position: relative; width: min(680px, 94vw); max-width: none; max-height: 92dvh; overflow: auto; text-align: left; }
 .create-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .9rem; }

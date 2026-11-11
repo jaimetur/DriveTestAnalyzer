@@ -11,10 +11,12 @@
 
 #### 🚀 Enhancements:
 - **Docker — Image for x86-64 CPUs without AVX:** a `latest-noavx` image (and `<version>-noavx`) runs the same application with DuckDB compiled for x86-64-v2, for CPUs such as the Intel Celeron of many NAS, where the official DuckDB stops the container with exit code 132. The compiled DuckDB is kept in a GitHub release, so it is built once per DuckDB version.
+- **Interface — New … buttons:** the buttons that open the creation dialogs are compact, in a soft tint of the colour of their page (filled on hover), and each shows a picture of what it creates (a person for **New user**, a folder for **New workspace**, a tag for the labels, a book for **New term**…); **New user** stands at the end of the bar of search and filters of the users.
 
 #### 🐛 Bug fixes:
 - The preview of a Users & Access import or transfer no longer shows the password of the account that imports as changed, since that account keeps its username, role, status and password.
 - The users of Super Admin are sorted again by a click on the title of a column (User, Last Log-in, Role, Modules Profile, Active, Workspaces); it did nothing since **New user** opens in a dialog.
+- The **Workspaces** list of the **New user** dialog, and the **Access** list of **New workspace**, open over the dialog (upwards when there is no room below) instead of staying hidden under it.
 
 #### 📚 Documentation:
 

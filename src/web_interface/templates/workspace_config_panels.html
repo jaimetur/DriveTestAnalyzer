@@ -126,7 +126,7 @@
     <span class="mapping-unsaved-count" data-mapping-unsaved-count role="status" aria-live="polite">No unsaved changes</span>
     <button type="button" class="mapping-save-all" data-mapping-save-all disabled>Save Labels</button>
   </div>
-  <form class="operator-mapping-create" action="/workspace-config/{{ kind }}-mappings/save" method="post" data-create-dialog="New {{ title }} label">
+  <form class="operator-mapping-create" action="/workspace-config/{{ kind }}-mappings/save" method="post" data-create-dialog="New {{ title }} label" data-create-icon="label">
     <label>Colour<input type="color" name="color" value="#6F42C1"></label>
     <label>Label<input type="text" name="canonical_value" placeholder="New {{ title }} label" required></label>
     {% if kind == 'operator' %}<label>Role{{ mapping_role_select('', '', 'the new label') }}</label><label>NR Modes{{ mapping_nr_modes_select([], '', 'the new label') }}</label>{% endif %}
@@ -590,7 +590,7 @@
         <p class="form-note">No term yet.</p>
         {% endfor %}
       </div>
-      <form action="/workspace-config/assistant-glossary/save" method="post" class="assistant-glossary-form assistant-glossary-new" data-create-dialog="New term">
+      <form action="/workspace-config/assistant-glossary/save" method="post" class="assistant-glossary-form assistant-glossary-new" data-create-dialog="New term" data-create-icon="term">
         <label>New term<input type="text" name="term" maxlength="120" required placeholder="Vendor A"></label>
         <label>Meaning<textarea name="meaning" rows="2" maxlength="2000" required placeholder="The Region of the tests whose network Ericsson operates (the performance owner)."></textarea></label>
         <button type="submit">Add Term</button>
