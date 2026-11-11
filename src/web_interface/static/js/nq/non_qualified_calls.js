@@ -318,7 +318,8 @@
   const filterableFields = () => state.fields.filter(isFilterField);
   // Where the value of a field comes from (ticket #121), for the cards of the Filters panel and the label of each field
   // of the call panel: the CDR, the DT Analyzer RCA, the RCA of the CDR (NetCheck), the Ericsson RCA, DT Analyzer (the
-  // Status Rules and the NQ Prioritization), or the analysts (suggested when the tool fills it until they set it).
+  // Status Rules and the NQ Prioritization), or the analysts (also those the tool proposes or fills until they set them:
+  // filling them is still their decision).
   const fieldOrigin = (field) => {
     const {source, source_ref: ref} = field;
     if (source === 'dta') return 'dta';
@@ -327,26 +328,32 @@
     if (source === 'derived') return 'cdr';
     if (source === 'priority') return 'tool';
     if (source === 'tracking') return ['status', 'updated_at'].includes(ref) ? 'tool' : 'analyst';
-    return field.suggest_from || (field.key === 'priority' && field.type === 'list') ? 'suggested' : 'analyst';
+    // The Priority is filled by the NQ Prioritization (Auto) until somebody sets it by hand, like the NQ Call Status.
+    if (field.key === 'priority' && field.type === 'list') return 'tool';
+    return 'analyst';
   };
   const ORIGIN_LABELS = {
     cdr: 'CDR', dta: 'DT Analyzer RCA', netcheck: PROVIDER_RCA, ericsson: 'Ericsson RCA', tool: 'DT Analyzer',
-    analyst: 'Analyst', suggested: 'Analyst · suggested',
+    analyst: 'Analyst',
   };
   const ORIGIN_TITLES = {
     cdr: 'As it comes in the CDR', dta: 'Found by the DT Analyzer RCA', netcheck: `Found by the ${PROVIDER_RCA} (in the CDR)`,
     ericsson: 'Found by the Ericsson RCA', tool: 'Filled by DT Analyzer: Status Rules and NQ Prioritization',
-    analyst: 'Filled by the analysts', suggested: 'Filled by the analysts; DT Analyzer suggests a value until they set it',
+    analyst: 'Filled by the analysts',
   };
   // The source of a value in the call panel: a dot of its colour and its name in small text beside the name of the field.
-  const originBadge = (origin, short = true) => {
-    const badge = node('span', short && origin === 'suggested' ? 'Suggested' : ORIGIN_LABELS[origin] || origin, 'nq-source-mark');
+  // A field of the analysts says when it is optional and when a value is proposed for the call (from the CDR):
+  // Analyst (Optional), Analyst (Suggested), Analyst (Optional, Suggested).
+  const originBadge = (origin, suggestion = '', optional = false) => {
+    const notes = [optional ? 'Optional' : '', suggestion ? 'Suggested' : ''].filter(Boolean);
+    const badge = node('span', `${ORIGIN_LABELS[origin] || origin}${notes.length ? ` (${notes.join(', ')})` : ''}`, 'nq-source-mark');
     badge.dataset.origin = origin;
-    badge.title = ORIGIN_TITLES[origin] || '';
+    badge.title = [ORIGIN_TITLES[origin] || '', optional ? 'optional: not counted in the Analyst fields of the call' : '',
+      suggestion ? `the CDR suggests ${suggestion}` : ''].filter(Boolean).join('; ');
     return badge;
   };
   // The card (and RCA group) of the Filters panel of each origin.
-  const ORIGIN_HOSTS = {cdr: 'cdr', dta: 'dta', netcheck: 'netcheck', ericsson: 'ericsson', tool: 'tool', analyst: 'analyst', suggested: 'analyst'};
+  const ORIGIN_HOSTS = {cdr: 'cdr', dta: 'dta', netcheck: 'netcheck', ericsson: 'ericsson', tool: 'tool', analyst: 'analyst'};
   const filterSelects = () => [...root.querySelectorAll('[data-nq-filter]')];
   // The filters of the CDR and the follow-up that are fields of the catalog (source:reference), among its fields.
   const CATALOG_FILTERS = {
@@ -974,13 +981,31 @@
     const control = choiceControl({
       items, value: current, empty: 'Unassigned', label: `${HISTORY_LABELS[kind]} of the call`,
       title: (value) => (kind === 'status' ? `Status: ${value} (${statusModeText(call).toLowerCase()})` : `${HISTORY_LABELS[kind]}: ${value || 'Unassigned'}`),
-      onChange: (value) => patchCall(call, value === AUTO_STATUS ? {status_mode: 'auto'} : {[kind]: value}, control,
-        value === AUTO_STATUS ? 'The status follows the Status Rules again.' : `${HISTORY_LABELS[kind]} updated.`),
+      onChange: async (value) => {
+        // Closing the call while fields of the analysts are still empty asks first.
+        const closing = kind === 'status' && state.options.statuses.some((item) => item.closed && item.name === value);
+        if (closing && !(await confirmMissing(call, `Closing the call as <strong>${escapeHtml(value)}</strong>`))) {
+          control.setValue(current);
+          return;
+        }
+        patchCall(call, value === AUTO_STATUS ? {status_mode: 'auto'} : {[kind]: value}, control,
+          value === AUTO_STATUS ? 'The status follows the Status Rules again.' : `${HISTORY_LABELS[kind]} updated.`);
+      },
     });
     control.classList.add(`nq-pill-${kind}`);
     return control;
   };
   // Whether the status follows the Status Rules (Auto) or was chosen by hand.
+  // The Priority given by the NQ Prioritization (Auto) or chosen by hand (the rules no longer change it).
+  const priorityModeBadge = (call) => {
+    // By hand: marked so by the rules, or a value other than the one they gave (they mark it at their next run).
+    const value = String(call.values?.priority || call.fields?.priority || '');
+    const manual = call.priority_filled === '@by-hand' || Boolean(value && call.priority_filled !== value);
+    const badge = node('span', manual ? 'By hand' : 'Auto', `nq-status-mode${manual ? ' is-manual' : ''}`);
+    badge.title = manual ? 'Chosen by hand: the NQ Prioritization does not change it any more'
+      : 'Given by the NQ Prioritization (its step) until somebody chooses another one';
+    return badge;
+  };
   const statusModeBadge = (call) => {
     const manual = call.status_mode === 'manual';
     const badge = node('span', manual ? 'By hand' : 'Auto', `nq-status-mode${manual ? ' is-manual' : ''}`);
@@ -4478,6 +4503,77 @@
   const GROUP_ID_REFS = ['hotspot_id', 'consecutive_id', 'cluster_id'];
   const phaseFields = () => PHASE_SECTIONS.map((key) => state.fields.find((field) => field.section === key && field.type === 'list'
     && ['user', 'derived'].includes(field.source))).filter(Boolean);
+  // What the analysts fill in a call (ticket #121): the Team, Analyst, Reviewer, Root Category and Root Cause of its header and
+  // every field of the analysts of its tabs and header, with the changes not saved yet; the values ignored are about to be set.
+  // The fields of the analysts of the RCA section (their Initial Classification) are optional: the final decision, the Root
+  // Category and Root Cause of the header, is what counts.
+  const isOptionalField = (field) => field.source === 'user' && field.section === 'rca';
+  const HEADER_TO_FILL = [['team', 'Team'], ['analyst', 'Analyst'], ['reviewer', 'Reviewer'], ['root_category', 'Root Category'],
+    ['root_cause', 'Root Cause']];
+  const fillProgress = (call, ignored = []) => {
+    const pending = drawer.classList.contains('is-open') ? changedFields() : {};
+    const items = [
+      ...HEADER_TO_FILL.map(([key, label]) => ({key, label, group: 'Header', filled: Boolean(call[key])})),
+      ...state.fields.filter((field) => field.source === 'user' && fieldOrigin(field) === 'analyst' && !HEADER_FIELDS.includes(field.key)
+        && !isOptionalField(field))
+        .map((field) => ({key: field.key, label: field.label, group: field.section === 'general' ? 'Header' : sectionOf(field.section).label,
+          filled: Boolean(String((field.key in pending ? pending[field.key] : call.fields?.[field.key]) ?? '').trim())})),
+    ].filter((item) => !ignored.includes(item.key));
+    const missingItems = items.filter((item) => !item.filled);
+    const header = items.filter((item) => item.group === 'Header');
+    const tabs = items.filter((item) => item.group !== 'Header');
+    return {filled: items.length - missingItems.length, total: items.length, missing: missingItems.map((item) => item.label),
+      header: {filled: header.filter((item) => item.filled).length, total: header.length,
+        missing: header.filter((item) => !item.filled).map((item) => item.label)},
+      tabs: {filled: tabs.filter((item) => item.filled).length, total: tabs.length,
+        missing: tabs.filter((item) => !item.filled).map((item) => item.label)},
+      groups: [...new Set(missingItems.map((item) => item.group))].map((group) => [group,
+        missingItems.filter((item) => item.group === group).map((item) => item.label)])};
+  };
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => (
+    {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
+  // Asks before an action that ends the analysis of a call (closing it, a final value of a phase) while fields of the
+  // analysts are still empty; true to go on.
+  // ``action`` is HTML (the values in <strong>): what the change does, such as "Finished ends Analysis Status".
+  const confirmMissing = async (call, action, ignored = []) => {
+    const {filled, total, missing, groups} = fillProgress(call, ignored);
+    if (!missing.length) return true;
+    const share = total ? Math.round((filled / total) * 100) : 0;
+    const copyHtml = [
+      `<p class="nq-missing-action">${action}.</p>`,
+      `<div class="nq-missing-progress"><span class="nq-missing-bar"><span style="width:${share}%"></span></span>`,
+      `<span><strong>${filled}/${total}</strong> fields of the analysts filled · <strong>${missing.length}</strong> still empty</span></div>`,
+      // Each section in a card of its own, one below the other.
+      '<div class="nq-missing-groups">',
+      ...groups.map(([group, labels]) => `<section class="nq-missing-group"><h5>${escapeHtml(group)} <small>${labels.length}</small></h5>`
+        + `<div>${labels.map((label) => `<span class="nq-missing-chip">${escapeHtml(label)}</span>`).join('')}</div></section>`),
+      '</div>',
+    ].join('');
+    return typeof window.showConfirmDialog === 'function'
+      ? Boolean(await window.showConfirmDialog('', {title: 'Some fields are still empty', copyHtml, confirmLabel: 'Continue anyway',
+        cancelLabel: 'Go back and fill them', tone: 'warning', variant: 'nq-missing'}))
+      : window.confirm(`${missing.length} fields of the analysts are still empty. Continue anyway?`);
+  };
+  // A progress bar across the header of the call: full once every field the analysts fill has a value.
+  const renderFillProgress = (call) => {
+    const host = $('nq-drawer-progress');
+    if (!host) return;
+    const {filled, total, missing} = fillProgress(call);
+    const share = total ? Math.round((filled / total) * 100) : 100;
+    const bar = node('span', undefined, 'nq-fill-bar');
+    const done = node('span');
+    done.style.width = `${share}%`;
+    bar.append(done);
+    bar.setAttribute('role', 'progressbar');
+    bar.setAttribute('aria-valuemin', '0');
+    bar.setAttribute('aria-valuemax', String(total));
+    bar.setAttribute('aria-valuenow', String(filled));
+    host.replaceChildren(node('span', 'Analyst fields', 'nq-fill-label'), bar,
+      node('strong', filled === total ? `${filled}/${total} · Complete` : `${filled}/${total} · ${share} %`));
+    host.classList.toggle('is-complete', filled === total);
+    host.title = missing.length ? `Still empty: ${missing.join(', ')}` : 'Every field the analysts fill has a value';
+    host.hidden = !total;
+  };
   // The sources of the fields of the call panel, above its tabs, and the switch that leaves only the fields of the
   // analysts in the sections (remembered in this browser).
   const ANALYST_ONLY_KEY = 'nq-call-panel-analyst-only';
@@ -4497,16 +4593,20 @@
     });
     toggle.title = 'Show in the sections only the fields the analysts fill (green labels)';
     toggle.append(box, ' Only the fields the analysts fill');
-    // The marks by kind of source, each kind in a dashed frame of its colour: the CDR, the RCAs, DT Analyzer, the analysts.
-    const groups = [['cdr', ['cdr']], ['rca', ['dta', 'netcheck', 'ericsson']], ['tool', ['tool']], ['analyst', ['analyst', 'suggested']]]
+    // The marks by kind of source, each kind in a dashed frame of its colour: the RCAs, the CDR, DT Analyzer, the analysts.
+    const groups = [['rca', ['dta', 'netcheck', 'ericsson']], ['cdr', ['cdr']], ['tool', ['tool']], ['analyst', ['analyst']]]
       .map(([kind, members]) => [kind, members.filter((origin) => origins.includes(origin))]).filter(([, members]) => members.length)
       .map(([kind, members]) => {
         const group = node('span', undefined, 'nq-source-group');
         group.dataset.origin = kind;
-        group.append(...members.map((origin) => originBadge(origin, false)));
+        group.append(...members.map((origin) => originBadge(origin)));
         return group;
       });
-    host.replaceChildren(node('span', 'Source:', 'nq-source-legend-title'), ...groups, toggle);
+    // The counter of the fields of the analysts of every tab, filled in by renderSections.
+    const tabsCount = node('span', '', 'nq-fill-count nq-tabs-count');
+    tabsCount.id = 'nq-tabs-count';
+    tabsCount.hidden = true;
+    host.replaceChildren(node('span', 'Source:', 'nq-source-legend-title'), ...groups, toggle, tabsCount);
   };
   const renderTracking = (call) => {
     const host = $('nq-drawer-tracking');
@@ -4515,6 +4615,7 @@
     // rest by the analysts.
     const field = (kind, label) => {
       const wrapper = node('label', undefined, 'nq-tracking-field');
+      wrapper.dataset.kind = kind;
       wrapper.dataset.origin = kind === 'status' ? 'tool' : 'analyst';
       wrapper.append(node('span', label));
       wrapper.querySelector('span').append(' ', originBadge(wrapper.dataset.origin));
@@ -4531,7 +4632,7 @@
       priority = node('label', undefined, 'nq-tracking-field nq-tracking-priority');
       priority.dataset.origin = fieldOrigin(priorityField);
       const priorityTitle = node('span', priorityField.label);
-      priorityTitle.append(' ', originBadge(priority.dataset.origin));
+      priorityTitle.append(' ', originBadge(priority.dataset.origin), ' ', priorityModeBadge(call));
       priority.append(priorityTitle);
       if (state.user.can_edit) {
         const control = choiceControl({
@@ -4603,6 +4704,7 @@
     const phasePanel = node('section', undefined, 'nq-phase-panel');
     phasePanel.setAttribute('aria-label', 'Phases of the call');
     phasePanel.append(node('span', 'Phases', 'nq-phase-panel-title'), phases);
+    renderFillProgress(call);
     // The values of the NQ Prioritization of the call, read only, in a Prioritization Info subpanel above the phases (not in their tab),
     // but for the IDs of its groups, which its Groups in the header show.
     const infoFields = state.fields.filter((item) => item.source === 'priority' && !GROUP_ID_REFS.includes(item.source_ref));
@@ -4638,7 +4740,13 @@
       });
       return block;
     });
-    host.replaceChildren(status, ...(priority ? [priority] : []), field('team', 'Team'), field('analyst', 'Analyst'),
+    // How many of the fields the analysts fill in the header have a value, like the counter of each tab.
+    const {header: headerFill} = fillProgress(call);
+    const headerCount = node('span', `Header ${headerFill.filled}/${headerFill.total}`,
+      `nq-fill-count nq-header-count${headerFill.filled === headerFill.total ? ' is-complete' : ''}`);
+    headerCount.title = headerFill.missing.length ? `Still empty in the header: ${headerFill.missing.join(', ')}`
+      : 'Every field the analysts fill in the header has a value';
+    host.replaceChildren(headerCount, status, ...(priority ? [priority] : []), field('team', 'Team'), field('analyst', 'Analyst'),
       field('reviewer', 'Reviewer'), ...generalFields, rootField,
       ...(infoFields.length ? [infoPanel] : []), ...(phases.childElementCount ? [phasePanel] : []), updated);
   };
@@ -4713,7 +4821,8 @@
     return wrapper;
   };
   // A field entered by the analysts, edited in its section and saved with the version of the call.
-  const fieldInput = (field, value) => {
+  // ``guard`` (chosen value) answers whether a value chosen in a list goes on.
+  const fieldInput = (field, value, guard = null) => {
     let control;
     if (field.type === 'list' || field.type === 'yes_no') {
       // A list is chosen in the coloured picker; its value travels in a hidden input, saved with the others.
@@ -4723,7 +4832,11 @@
       input.value = value;
       input.dataset.fieldKey = field.key;
       input.dataset.original = value;
-      const changed = (chosen) => {
+      const changed = async (chosen) => {
+        if (guard && chosen !== input.value && !(await guard(chosen))) {
+          picker.setValue(input.value);
+          return;
+        }
         input.value = chosen;
         input.dispatchEvent(new Event('change', {bubbles: true}));
       };
@@ -4844,6 +4957,7 @@
       note.textContent = count ? `${count} unsaved change${count === 1 ? '' : 's'} (Save keeps those of every section)` : '';
     });
     drawer.classList.toggle('has-unsaved', count > 0);
+    if (state.detail?.call) renderFillProgress(state.detail.call);
   };
   const fieldBlock = (field, call) => {
     const editable = field.source === 'user';
@@ -4859,7 +4973,11 @@
     title.append(name);
     // Where the value comes from, in a label of its own colour (ticket #121); the fields of the analysts are framed.
     wrapper.dataset.origin = fieldSource;
-    title.append(originBadge(fieldSource));
+    // A value of the CDR proposed for the field (a list only proposes one of its values).
+    let proposal = editable ? call.proposals?.[field.key] : '';
+    if (proposal && field.type === 'list') proposal = field.options.find((option) => option.name.toLowerCase() === proposal.toLowerCase())?.name;
+    const optional = isOptionalField(field);
+    title.append(originBadge(fieldSource, proposal || '', optional));
     if (field.required_to_close) title.append(node('small', 'required to close', 'nq-required-tag'));
     if (field.description) wrapper.title = field.description;
     wrapper.append(title);
@@ -4868,17 +4986,24 @@
       return wrapper;
     }
     const value = call.fields?.[field.key] || '';
-    const control = fieldInput(field, value);
+    // A final value of a list (Finished, Implemented, Planned...) asks first while fields of the analysts are still empty.
+    const guard = field.type === 'list' ? (chosen) => {
+      const option = field.options.find((item) => item.name === chosen);
+      return option?.final ? confirmMissing(call, `<strong>${escapeHtml(chosen)}</strong> ends <strong>${escapeHtml(field.label)}</strong>`, [field.key]) : true;
+    } : null;
+    const control = fieldInput(field, value, guard);
+    // The status of each phase (the first list of Analysis, Implementation and Planning) stands out from the other fields.
+    if (phaseFields().includes(field)) wrapper.classList.add('is-phase-status');
     wrapper.append(control);
-    // A field of the analysts still empty stands out until it is filled in.
-    wrapper.classList.toggle('is-to-fill', !value);
-    wrapper.addEventListener('change', () => {
-      const current = control.value ?? control.querySelector?.('[data-field-key]')?.value ?? '';
-      wrapper.classList.toggle('is-to-fill', !String(current || '').trim());
-    });
-    // A value of the CDR proposed for the empty field (a list only proposes one of its values).
-    let proposal = call.proposals?.[field.key];
-    if (proposal && field.type === 'list') proposal = field.options.find((option) => option.name.toLowerCase() === proposal.toLowerCase())?.name;
+    // A field of the analysts still empty stands out until it is filled in, unless it is optional.
+    wrapper.classList.toggle('is-to-fill', !value && !optional);
+    if (!optional) {
+      wrapper.addEventListener('change', () => {
+        const current = control.value ?? control.querySelector?.('[data-field-key]')?.value ?? '';
+        wrapper.classList.toggle('is-to-fill', !String(current || '').trim());
+      });
+    }
+    // The proposed value fills the empty field at a click.
     if (proposal && state.user.can_edit && !value) {
       const use = node('button', `Use the CDR value: ${proposal}`, 'nq-proposal');
       use.type = 'button';
@@ -5067,8 +5192,8 @@
               const origin = fieldOrigin(run[0]);
               const panel = node('section', undefined, 'nq-subpanel nq-rca-source-panel');
               panel.dataset.origin = origin;
-              panel.style.setProperty('--nq-section', ['analyst', 'suggested'].includes(origin) ? '#16884a' : '#c77700');
-              const byAnalysts = ['analyst', 'suggested'].includes(origin);
+              panel.style.setProperty('--nq-section', origin === 'analyst' ? '#16884a' : '#c77700');
+              const byAnalysts = origin === 'analyst';
               const title = node('h4', byAnalysts ? 'Initial Classification' : ORIGIN_LABELS[origin] || origin);
               const grid = node('div', undefined, 'nq-analysis-grid nq-rca-source-grid');
               grid.append(...run.map((field) => fieldBlock(field, call)));
@@ -5111,6 +5236,7 @@
       let title = '';
       let complete = false;
       if (group.key === 'rca') {
+        // The final decision only: its Initial Classification is optional (not counted).
         complete = Boolean(call.root_category || call.root_cause);
         text = complete ? '✓' : recommendationOf(call) ? '★' : '';
         title = complete ? 'A root category or cause is selected' : 'A recommended root category and cause wait to be accepted';
@@ -5125,6 +5251,17 @@
       badge.hidden = !text;
       badge.classList.toggle('is-complete', complete);
     });
+    // How many of the fields the analysts fill in every tab have a value, in a label like that of the header, above the tabs.
+    renderSourceLegend();
+    const tabsCount = $('nq-tabs-count');
+    if (tabsCount) {
+      const {tabs: tabsFill} = fillProgress(call);
+      tabsCount.textContent = `Tabs ${tabsFill.filled}/${tabsFill.total}`;
+      tabsCount.title = tabsFill.missing.length ? `Still empty in the tabs: ${tabsFill.missing.join(', ')}`
+        : 'Every field the analysts fill in the tabs has a value';
+      tabsCount.classList.toggle('is-complete', tabsFill.filled === tabsFill.total);
+      tabsCount.hidden = !tabsFill.total;
+    }
     syncUnsaved();
   };
   const renderSamples = (detail) => {
@@ -6614,6 +6751,13 @@
       keywords.title = 'The call gets this value when one of these keywords is in the call values the field reads ("a+b" needs both)';
       row.append(keywords);
     }
+    const final = node('label', undefined, 'nq-toggle nq-flag nq-value-final');
+    const box = node('input');
+    box.type = 'checkbox';
+    box.checked = Boolean(option.final);
+    final.title = 'A final value ends its phase (Finished, Implemented, Planned...): choosing it asks first while fields of the analysts are still empty';
+    final.append(box, ' Final');
+    row.append(final);
     iconButtons(row, row, () => row.remove());
     return row;
   };
@@ -6773,7 +6917,8 @@
     options: [...block.querySelectorAll('.nq-field-value')].map((row) => {
       const color = row.querySelector('input[type="color"]');
       return {name: row.querySelector('.nq-root-name').value.trim(), color: color.dataset.chosen ? color.value : '',
-        previous: row.dataset.previous, keywords: row.querySelector('.nq-root-keywords')?.value || ''};
+        previous: row.dataset.previous, keywords: row.querySelector('.nq-root-keywords')?.value || '',
+        final: Boolean(row.querySelector('.nq-value-final input')?.checked)};
     }).filter((option) => option.name),
     in_table: Boolean(block.dataset.inTable),
     in_export: Boolean(block.dataset.inExport),

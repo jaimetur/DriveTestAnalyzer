@@ -157,8 +157,10 @@ def field_key(label: str, taken: set[str]) -> str:
 PRIORITY_COLORS = ('#c92a2a', '#e8590c', '#d97706', '#5c940d', '#0c8599', '#1971c2', '#6741d9', '#5f6b7a')
 
 
-def _option(name: str, color: str = '', keywords: tuple[str, ...] = ()) -> dict[str, Any]:
-    return {'name': name, 'color': color, 'keywords': list(keywords)}
+def _option(name: str, color: str = '', keywords: tuple[str, ...] = (), final: bool = False) -> dict[str, Any]:
+    # A final value ends its phase (Finished, Implemented, Planned...): choosing it warns while fields of the analysts are
+    # still empty (ticket #121).
+    return {'name': name, 'color': color, 'keywords': list(keywords), **({'final': True} if final else {})}
 
 
 def _field(key: str, label: str, section: str, field_type: str, source: str = 'user', ref: str = '', *,
@@ -316,8 +318,8 @@ DEFAULT_FIELDS = (
     _field('failure_comment', 'Failure Comment', 'failure_event', 'long_text', 'cdr', 'failure_comment',
            description='The comment NetCheck writes on the failure in the CDR (Failure_Comment).'),
     _field('analysis_status', 'Analysis Status', 'analysis', 'list', options=(
-        _option('Pending', _GREY), _option('Ongoing', _AMBER), _option('Finished', _GREEN),
-        _option('Rejected', _RED), _option('Invalidated', _SLATE)), in_table=True, in_summary=True),
+        _option('Pending', _GREY), _option('Ongoing', _AMBER), _option('Finished', _GREEN, final=True),
+        _option('Rejected', _RED, final=True), _option('Invalidated', _SLATE, final=True)), in_table=True, in_summary=True),
     _field('tunnel_failure', 'Tunnel Failure', 'analysis', 'yes_no'),
     _field('needed_technology', 'Needed Technology', 'analysis', 'text'),
     _field('failure_latitude', 'Failure Latitude', 'analysis', 'number', suggest_from='latitude'),
@@ -329,8 +331,8 @@ DEFAULT_FIELDS = (
     _field('findings', 'Findings', 'analysis', 'long_text'),
     _field('proposed_measure', 'Proposed Measure', 'analysis', 'long_text'),
     _field('implementation_status', 'Implementation Status', 'implementation', 'list', options=(
-        _option('Not yet evaluated', _RED), _option('Under evaluation', _AMBER), _option('Evaluated', _BLUE),
-        _option('Implemented', _GREEN), _option('Not Applicable', _SLATE)), in_table=True, in_summary=True),
+        _option('Not yet evaluated', _RED), _option('Under evaluation', _AMBER), _option('Evaluated', _BLUE, final=True),
+        _option('Implemented', _GREEN, final=True), _option('Not Applicable', _SLATE, final=True)), in_table=True, in_summary=True),
     _field('implementation_team', 'Implementation Team', 'implementation', 'list',
            options=tuple(_option(name, color) for name, color in DEFAULT_TEAMS),
            description='The team responsible for the implementation (it can differ from the team that analysed the call).'),
@@ -339,7 +341,7 @@ DEFAULT_FIELDS = (
     _field('implementation_site', 'Implementation Site', 'implementation', 'text'),
     _field('notice_to_vf3', 'Notice to VF3', 'implementation', 'yes_no'),
     _field('planned_status', 'Planned Status', 'planning', 'list', options=(
-        _option('Not Planned', _GREY), _option('Planned', _GREEN)), in_summary=True),
+        _option('Not Planned', _GREY), _option('Planned', _GREEN, final=True)), in_summary=True),
     _field('planned_date', 'Planned Date', 'planning', 'date', description='Today by default; choose the date in the calendar.'),
     _field('planned_fy', 'Planned FY', 'planning', 'list', options=tuple(_option(f'FY{year}') for year in range(26, 32)),
            description='The fiscal year (FY27) the measure is planned for, when there is no exact date.'),
@@ -618,6 +620,8 @@ def normalize_options(items: Any, label: str, *, with_keywords: bool = False) ->
                  'previous': _clean(option.get('previous'))}
         if with_keywords:
             entry['keywords'] = keywords(option.get('keywords'))
+        if _flag(option.get('final')):
+            entry['final'] = True
         options.append(entry)
     return options
 
@@ -968,10 +972,11 @@ def catalog_workbook(sections: list[dict[str, str]], fields: list[dict[str, Any]
            for index, field in enumerate(fields)],
           [7, 16, 34, 30, 11, 10, 26, 9, 9, 11, 10, 14, 60],
           colors=[by_section.get(field['section'], {}).get('color', '') for field in fields])
-    list_rows = [[field['key'], option['name'], option.get('color', ''), ', '.join(option.get('keywords') or [])]
+    list_rows = [[field['key'], option['name'], option.get('color', ''), ', '.join(option.get('keywords') or []),
+                  'Yes' if option.get('final') else '']
                  for field in fields if field['type'] == 'list' and field['source'] in {'user', 'derived'}
                  for option in field['options']]
-    sheet('Lists', ['List', 'Value', 'Colour', 'Keywords'], list_rows, [30, 40, 12, 60])
+    sheet('Lists', ['List', 'Value', 'Colour', 'Keywords', 'Final'], list_rows, [30, 40, 12, 60, 8])
     stored = stored_root_catalog(root)
     root_rows = [['Domain', item['name'], '', '', item.get('color', ''), ', '.join(item.get('keywords') or [])] for item in stored['domains']]
     root_rows += [['Root Category', item['name'], '', item['domain'], '', ', '.join(item.get('keywords') or [])]
@@ -1032,7 +1037,8 @@ def read_catalog_workbook(content: bytes) -> dict[str, Any]:
     if 'lists' in names:
         for row in _rows(names['lists']):
             lists.setdefault(str(row.get('list') or '').strip(), []).append(
-                {'name': row.get('value'), 'color': row.get('colour') or row.get('color') or '', 'keywords': _split(row.get('keywords'))})
+                {'name': row.get('value'), 'color': row.get('colour') or row.get('color') or '', 'keywords': _split(row.get('keywords')),
+                 'final': _flag(row.get('final'))})
     fields = []
     for row in sorted(_rows(names['fields']), key=lambda row: float(row.get('order') or 0) if str(row.get('order') or '').replace('.', '', 1).isdigit() else 0):
         label = str(row.get('field') or '').strip()

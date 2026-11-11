@@ -425,6 +425,9 @@
     {# Its hotspot, time-window issue and clusters, by the IDs of the NQ Hotspots, Clustered & Time-Window Issues panel,
        across the whole header so that the four fit on one row. #}
     <div class="nq-drawer-join nq-drawer-groups" id="nq-drawer-groups" hidden><span>Groups</span><div class="nq-drawer-group-list" id="nq-drawer-groups-list"></div></div>
+    {# How many of the fields the analysts fill in the whole call (header and tabs) have a value: complete when all do
+       (non_qualified_calls.js, renderFillProgress). #}
+    <div class="nq-drawer-progress" id="nq-drawer-progress" hidden></div>
   </header>
   <div class="nq-drawer-tracking" id="nq-drawer-tracking"></div>
   {# The colour of each source of the fields (CDR, RCA, DT Analyzer, Analyst) and the switch that shows only the fields of

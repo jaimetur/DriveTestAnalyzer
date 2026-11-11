@@ -1209,7 +1209,7 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     assert page.count('<section class="nq-filter-card') == 6
     # Every field of the call panel shows its source, with the legend and the switch of the analysts' fields.
     assert 'id="nq-source-legend"' in page
-    assert "title.append(originBadge(fieldSource));" in script and "'nq-call-panel-analyst-only'" in script
+    assert "title.append(originBadge(fieldSource, proposal || '', optional));" in script and "'nq-call-panel-analyst-only'" in script
     # The drawer has a row for that legend, so its tabs never fall on the row of the tab content.
     styles = (Path(__file__).parents[2] / 'src/web_interface/static/css/nq/non_qualified_calls.css').read_text(encoding='utf-8')
     assert 'grid-template-rows: auto auto auto auto minmax(0, 1fr); width: min(620px, 100vw);' in styles

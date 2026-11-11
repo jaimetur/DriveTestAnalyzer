@@ -322,6 +322,9 @@ V43_FORMER_DESCRIPTIONS = tuple(
                                                 'NQ Hotspots, Time-Window & Clustered Issues')[:300])
     for field in nq_catalog.DEFAULT_FIELDS if field['key'] in ('hotspot_id', 'consecutive_id', 'cluster_id'))
 V42_ASSIGNED_STATUS = ('Assigned', '#2f80c8', False)
+# The values of the phase lists can be final (ticket #121: choosing one warns while fields of the analysts are still empty):
+# the lists that mark none yet mark, once, those of their default values that end their phase.
+ANALYSIS_CENTER_V44_STATE_KEY = 'nq_analysis_center_v44'
 # The follow-up changes that only assign a call: they leave it waiting in its queue (not attended).
 ASSIGNMENT_FIELDS = ('team', 'analyst', 'reviewer')
 # The fields that only sort the queues (the Priority, which the NQ Prioritization also fills) do not attend a call either.
@@ -334,7 +337,7 @@ ASSIGNMENT_HISTORY_FIELDS = frozenset({*ASSIGNMENT_FIELDS, *(f'field:{field}' fo
 DTA_L3_STATE_KEY = 'nq_dta_rca_l3_logs'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-11-11.5'
+SCHEMA_VERSION = '2026-11-11.6'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -713,7 +716,8 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY, ANALYSIS_CENTER_V34_STATE_KEY,
                 ANALYSIS_CENTER_V35_STATE_KEY, ANALYSIS_CENTER_V36_STATE_KEY, ANALYSIS_CENTER_V37_STATE_KEY,
                 ANALYSIS_CENTER_V38_STATE_KEY, ANALYSIS_CENTER_V39_STATE_KEY, ANALYSIS_CENTER_V40_STATE_KEY,
-                ANALYSIS_CENTER_V41_STATE_KEY, ANALYSIS_CENTER_V42_STATE_KEY, ANALYSIS_CENTER_V43_STATE_KEY)
+                ANALYSIS_CENTER_V41_STATE_KEY, ANALYSIS_CENTER_V42_STATE_KEY, ANALYSIS_CENTER_V43_STATE_KEY,
+                ANALYSIS_CENTER_V44_STATE_KEY)
         states ={str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -949,7 +953,32 @@ def ensure_nq_tables(task_repository: Any) -> None:
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V43_STATE_KEY):
         _renew_default_descriptions(task_repository, dict(V43_FORMER_DESCRIPTIONS))
         task_repository.set_workspace_state(ANALYSIS_CENTER_V43_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V44_STATE_KEY):
+        _mark_final_values(task_repository)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V44_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
+
+
+def _mark_final_values(task_repository: Any) -> None:
+    """Once: the lists with final values by default that mark none yet mark those of their values (same name, any case)."""
+    finals = {field['key']: {option['name'].casefold() for option in field['options'] if option.get('final')}
+              for field in nq_catalog.DEFAULT_FIELDS}
+    finals = {key: names for key, names in finals.items() if names}
+    with task_repository.connection() as connection:
+        rows = connection.execute(f'SELECT field_key, options_json FROM {NQ_FIELDS_TABLE}').fetchall()
+        for row in rows:
+            names = finals.get(str(row['field_key']))
+            try:
+                options = json.loads(row['options_json'] or '[]')
+            except (TypeError, ValueError):
+                continue
+            if not names or not isinstance(options, list) or any(isinstance(item, dict) and item.get('final') for item in options):
+                continue
+            marked = [{**item, 'final': True} if isinstance(item, dict) and str(item.get('name') or '').casefold() in names else item
+                      for item in options]
+            if marked != options:
+                connection.execute(f'UPDATE {NQ_FIELDS_TABLE} SET options_json = ? WHERE field_key = ?',
+                                   (json.dumps(marked, ensure_ascii=False), str(row['field_key'])))
 
 
 # The labels and description the Asignee field had by default, which take those of the Analyst.
@@ -3129,7 +3158,7 @@ def list_fields(task_repository: Any) -> list[dict[str, Any]]:
         fields.append({
             'key': str(row['field_key']), 'label': str(row['label']), 'type': str(row['field_type']),
             'options': [{'name': str(item.get('name') or ''), 'color': str(item.get('color') or ''),
-                         'keywords': _keywords(item.get('keywords'))}
+                         'keywords': _keywords(item.get('keywords')), **({'final': True} if item.get('final') else {})}
                         for item in options if isinstance(item, dict) and item.get('name')],
             'in_table': bool(row['in_table']), 'in_summary': bool(row['in_summary']),
             'required_to_close': bool(row['required_to_close']), 'description': str(row['description'] or ''),
@@ -3158,7 +3187,8 @@ def _store_fields(task_repository: Any, fields: list[dict[str, Any]]) -> None:
             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [(field['key'], field['label'], field['type'],
               json.dumps([{'name': option['name'], 'color': option.get('color', ''),
-                           **({'keywords': option['keywords']} if option.get('keywords') else {})}
+                           **({'keywords': option['keywords']} if option.get('keywords') else {}),
+                           **({'final': True} if option.get('final') else {})}
                           for option in field['options']], ensure_ascii=False),
               index, int(field['in_table']), int(field['in_summary']), int(field['required_to_close']), field['description'],
               field['section'], field['source'], field['source_ref'], int(field.get('in_export', True)), field.get('suggest_from', ''))
@@ -4543,7 +4573,8 @@ PRIORITY_COLUMNS_SQL = (
     "COALESCE(p.impact_json, '[]') AS impact_json, COALESCE(p.place_label, '') AS place_label, "
     "p.repetitions AS repetitions, p.repeated_campaigns AS repeated_campaigns, COALESCE(p.repeated, '') AS repeated, "
     "COALESCE(p.prioritization, '') AS prioritization, COALESCE(p.priority_rule, '') AS priority_rule, "
-    "COALESCE(p.suggested_priority, '') AS suggested_priority, COALESCE(p.queue, '') AS queue, p.queue_step AS queue_step, "
+    "COALESCE(p.suggested_priority, '') AS suggested_priority, COALESCE(p.priority_filled, '') AS priority_filled, "
+    "COALESCE(p.queue, '') AS queue, p.queue_step AS queue_step, "
     "COALESCE(p.queue_list, '') AS queue_list, p.expected_points AS expected_points, "
     "COALESCE(p.expected_campaign, '') AS expected_campaign, COALESCE(p.cluster_key, '') AS cluster_key, "
     "p.cluster_size AS cluster_size, COALESCE(p.consecutive_key, '') AS consecutive_key, p.consecutive_size AS consecutive_size, "

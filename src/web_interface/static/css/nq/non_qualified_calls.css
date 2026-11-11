@@ -81,7 +81,6 @@
 .nq-source-badge[data-origin="cdr"] { background: var(--nq-origin-cdr); }
 .nq-source-badge:is([data-origin="rca"], [data-origin="dta"], [data-origin="netcheck"], [data-origin="ericsson"]) { background: var(--nq-origin-rca); }
 .nq-source-badge[data-origin="analyst"] { background: var(--nq-origin-analyst); }
-.nq-source-badge[data-origin="suggested"] { background: #fff; color: var(--nq-origin-analyst); box-shadow: inset 0 0 0 2px var(--nq-origin-analyst); }
 .nq-filter-source-card { border-left-width: 6px; }
 /* The lists of a row line up when a filter shows the name the team gives it below its own. */
 .nq-filter-source-card .nq-filter-grid { align-items: end; }
@@ -109,8 +108,7 @@
 .nq-source-mark::before { content: ""; flex: 0 0 auto; width: .46rem; height: .46rem; border-radius: 50%; background: currentColor; }
 .nq-source-mark[data-origin="cdr"] { color: var(--nq-origin-cdr); }
 .nq-source-mark:is([data-origin="dta"], [data-origin="netcheck"], [data-origin="ericsson"]) { color: #a86400; }
-.nq-source-mark:is([data-origin="analyst"], [data-origin="suggested"]) { color: var(--nq-origin-analyst); }
-.nq-source-mark[data-origin="suggested"]::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+.nq-source-mark[data-origin="analyst"] { color: var(--nq-origin-analyst); }
 /* In the fields of the sections the mark has a line of its own below the whole name, so every control of a row lines up. */
 .nq-drawer .nq-field-title { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: .12rem; }
 /* The name, the control and the proposal of the fields of a row share its rows (subgrid): a name on two lines moves the
@@ -118,8 +116,8 @@
 .nq-drawer-body .nq-analysis-grid { row-gap: 0; }
 .nq-drawer-body .nq-analysis-grid > .nq-analysis-field { grid-row: span 3; grid-template-rows: subgrid; row-gap: .3rem; margin-bottom: .7rem; }
 .nq-drawer .nq-field-title .nq-field-name { overflow: visible; white-space: normal; }
-.nq-drawer :is(.nq-analysis-field, .nq-tracking-field):is([data-origin="analyst"], [data-origin="suggested"]) .nq-field-name::before,
-.nq-drawer .nq-tracking-field:is([data-origin="analyst"], [data-origin="suggested"]) > span:first-child::before {
+.nq-drawer :is(.nq-analysis-field, .nq-tracking-field)[data-origin="analyst"] .nq-field-name::before,
+.nq-drawer .nq-tracking-field[data-origin="analyst"] > span:first-child::before {
   content: ""; display: inline-block; width: .72rem; height: .72rem; margin-right: .3rem; vertical-align: -.08rem; background: var(--nq-origin-analyst);
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'/%3E%3C/svg%3E") center / contain no-repeat;
@@ -132,12 +130,12 @@
 .nq-drawer-body .nq-analysis-field[data-origin="tool"] .nq-readonly-value,
 .nq-drawer .nq-call-info-item { border: 1px solid #ddd3f6; background: var(--nq-origin-tool-soft); }
 .nq-drawer .nq-call-info-item { border-width: 0; }
-.nq-drawer-body .nq-analysis-field:is([data-origin="analyst"], [data-origin="suggested"]) :is(input:not([type="checkbox"]), textarea, select, .nq-pill-select, .nq-readonly-value, .rt-frame) { border-color: #a9d8bb; background-color: #f2faf5; }
+.nq-drawer-body .nq-analysis-field[data-origin="analyst"] :is(input:not([type="checkbox"]), textarea, select, .nq-pill-select:not(.is-colored), .nq-readonly-value, .rt-frame) { border-color: #a9d8bb; background-color: #f2faf5; }
 /* The values of the header follow the same palette: Team, Analyst, Reviewer, Root Category and Root Cause and the fields of
    the analysts of General green (dashed while empty), the proposal of an RCA amber. The NQ Call Status and the Priority
    keep the colour of their value, which tells the value. */
-.nq-drawer-tracking :is(.nq-tracking-field, .nq-analysis-field):is([data-origin="analyst"], [data-origin="suggested"]) :is(.nq-pill-select:not(.is-colored), input:not([type="checkbox"])) { border-color: #a9d8bb; background-color: #f2faf5; }
-.nq-drawer-tracking :is(.nq-tracking-field, .nq-analysis-field):is([data-origin="analyst"], [data-origin="suggested"]) .nq-pill-select.is-empty { border-style: dashed; border-color: var(--nq-origin-analyst); }
+.nq-drawer-tracking :is(.nq-tracking-field, .nq-analysis-field)[data-origin="analyst"] :is(.nq-pill-select:not(.is-colored), input:not([type="checkbox"])) { border-color: #a9d8bb; background-color: #f2faf5; }
+.nq-drawer-tracking :is(.nq-tracking-field, .nq-analysis-field)[data-origin="analyst"] .nq-pill-select.is-empty { border-style: dashed; border-color: var(--nq-origin-analyst); }
 .nq-drawer-tracking .nq-tracking-root .nq-root-suggestion { border-color: #e7b866; background: var(--nq-origin-rca-soft); }
 /* The RCA tab opens with the Analysts subpanel (their mark beside its title): their Initial Classification and their
    Final Root Cause Decision, each a subpanel of its own inside it. */
@@ -146,7 +144,7 @@
 .nq-analysts-panel .nq-rca-source-panel, .nq-analysts-panel .nq-decision { margin-bottom: 0; }
 .nq-decision-title { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
 /* The Root Category and Root Cause the analysts select in the Final Root Cause Decision of the RCA tab, likewise. */
-.nq-drawer-body .nq-decision-current .nq-root-select { border-color: #a9d8bb; background-color: #f2faf5; }
+.nq-drawer-body .nq-decision-current .nq-root-select:not(.is-colored) { border-color: #a9d8bb; background-color: #f2faf5; }
 .nq-drawer-body .nq-decision-current .nq-root-select.is-empty { border-style: dashed; border-color: var(--nq-origin-analyst); }
 .nq-drawer-body .nq-analysis-field.is-to-fill :is(input:not([type="checkbox"]), textarea, select, .nq-pill-select, .rt-frame) { border-style: dashed; border-color: var(--nq-origin-analyst); }
 .nq-tracking-field > span:first-child .nq-source-mark { margin-left: .45rem; vertical-align: .05rem; }
@@ -161,10 +159,10 @@
 .nq-source-group[data-origin="analyst"] { color: var(--nq-origin-analyst); }
 .nq-analyst-only { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .4rem; margin-left: auto; color: var(--nq-origin-analyst); font-size: .74rem; font-weight: 750; white-space: nowrap; cursor: pointer; }
 .nq-analyst-only input { margin: 0; accent-color: var(--nq-origin-analyst); }
-.nq-drawer.is-analyst-only .nq-drawer-body .nq-analysis-field[data-origin]:not([data-origin="analyst"], [data-origin="suggested"]) { display: none; }
+.nq-drawer.is-analyst-only .nq-drawer-body .nq-analysis-field[data-origin]:not([data-origin="analyst"]) { display: none; }
 /* Neither the subpanels left without a field of the analysts, nor the title of the values of the RCA sources and the other
    columns of the Ericsson RCA file. */
-.nq-drawer.is-analyst-only .nq-drawer-body .nq-subpanel:not(.nq-analysts-panel):not(:has(.nq-analysis-field:is([data-origin="analyst"], [data-origin="suggested"]))),
+.nq-drawer.is-analyst-only .nq-drawer-body .nq-subpanel:not(.nq-analysts-panel):not(:has(.nq-analysis-field[data-origin="analyst"])),
 .nq-drawer.is-analyst-only .nq-drawer-body :is(.nq-rca-values-title, .nq-rca-extra-card) { display: none; }
 /* A filter with a value applied stands out: its name and its list in the colour of the module. */
 .non-qualified-calls .nq-filter-grid label.is-filtered, .non-qualified-calls .nq-search.is-filtered { color: var(--nq-color); }
@@ -425,7 +423,10 @@
 .nq-drawer .nq-drawer-find input { box-sizing: border-box; width: 13.5rem; min-height: 2.2rem; padding: .4rem .75rem; border: 1px solid rgba(255, 255, 255, .5); border-radius: 999px; background: rgba(255, 255, 255, .15); color: #fff; font: inherit; font-size: .82rem; font-weight: 700; }
 .nq-drawer .nq-drawer-find input::placeholder { color: rgba(255, 230, 238, .85); }
 .nq-drawer .nq-drawer-find input:focus { border-color: #fff; background: rgba(255, 255, 255, .25); outline: none; }
-.nq-drawer-tracking { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem .8rem; padding: .9rem 1.2rem; border-bottom: 1px solid var(--nq-border); background: var(--nq-softer); }
+.nq-drawer-tracking > * { grid-column: span 2; }
+/* The NQ Call Status and the Priority share the first line, Team, Analyst and Reviewer the second (six columns). */
+.nq-drawer-tracking > :is([data-kind="status"], .nq-tracking-priority) { grid-column: span 3; }
+.nq-drawer-tracking { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .6rem .8rem; padding: .9rem 1.2rem; border-bottom: 1px solid var(--nq-border); background: var(--nq-softer); }
 .nq-tracking-field { display: grid; gap: .3rem; color: var(--nq-muted); font-size: .72rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .nq-tracking-field .nq-pill-select, .nq-tracking-field .nq-pill { max-width: 100%; justify-self: start; text-transform: none; letter-spacing: 0; }
 .nq-tracking-note { grid-column: 1 / -1; margin: 0; color: var(--nq-muted); font-size: .78rem; }
@@ -537,6 +538,7 @@ body:has(.nq-drawer.is-open) { overflow: hidden; }
   .non-qualified-calls .nq-hero { flex-direction: column; align-items: flex-start; }
   .nq-sync { white-space: normal; }
   .nq-drawer-tracking, .nq-options-columns { grid-template-columns: minmax(0, 1fr); }
+  .nq-drawer-tracking > *, .nq-drawer-tracking > :is([data-kind="status"], .nq-tracking-priority) { grid-column: 1 / -1; }
 }
 
 /* Filter dropdowns: open over the following panels instead of being clipped. */
@@ -821,7 +823,8 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-analysis-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .7rem .9rem; }
 /* The values of each RCA source in a subpanel of their own, named after it: its fields need no mark of their own. */
 .nq-rca-source-panel { margin-bottom: 0; }
-.nq-rca-source-panel .nq-field-title .nq-source-mark { display: none; }
+/* Those of the analysts (Initial Classification) keep theirs: Analyst (Optional). */
+.nq-rca-source-panel:not([data-origin="analyst"]) .nq-field-title .nq-source-mark { display: none; }
 /* Four values per row, so each pair of the Ericsson RCA (Category and Subcategory A and B, Initial, Suggested) keeps to one row. */
 @media (min-width: 1100px) { .nq-rca-source-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 /* Save of the RCA tab at the end of the last row of values, level with them. */
@@ -924,6 +927,15 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-drawer-tabs .is-active .nq-tab-badge:not(.is-complete) { background: #fff; color: var(--nq-dark); }
 .nq-tab-badge[hidden] { display: none; }
 .nq-tab-badge.is-complete { background: #e3f1ea; color: #1f6b43; }
+/* The counters of the fields the analysts fill in the header (its top right corner, out of the grid) and in every tab
+   (above the tabs, after the switch): the same dark green labels, with a check once all have a value, apart from the
+   light Auto tags. */
+.nq-fill-count { display: inline-flex; align-items: center; padding: .12rem .6rem; border-radius: 999px; background: #1f6b43; color: #fff; font-size: .72rem; font-weight: 850; letter-spacing: .02em; white-space: nowrap; }
+.nq-fill-count.is-complete::after { content: " ✓"; }
+.nq-fill-count[hidden] { display: none; }
+.nq-drawer-tracking { position: relative; }
+.nq-drawer-tracking > .nq-header-count { position: absolute; top: .35rem; right: 1.2rem; }
+.nq-source-legend > .nq-analyst-only + .nq-tabs-count { margin-left: .2rem; }
 .nq-drawer-tracking .nq-phase-strip { display: flex; flex-wrap: wrap; grid-column: 1 / -1; align-items: center; gap: .35rem; }
 .nq-drawer .nq-phase-step { display: inline-flex; align-items: center; gap: .4rem; min-height: 0; padding: .25rem .4rem .25rem .6rem; border: 1px solid var(--nq-border); border-left: 4px solid var(--nq-section); border-radius: 10px; background: #fff; color: var(--nq-text); box-shadow: none; }
 .nq-drawer .nq-phase-step:hover { border-color: var(--nq-section); background: #fff; }
@@ -1271,6 +1283,36 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 /* The phases in a subpanel of their own: one card per phase, its name above its value, across the panel. */
 .nq-drawer-tracking .nq-phase-panel { display: grid; grid-column: 1 / -1; gap: .45rem; padding: .6rem .7rem .7rem; border: 1px solid var(--nq-border); border-radius: 12px; background: #fff; }
 .nq-phase-panel-title { color: var(--nq-muted); font-size: .68rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
+/* Across the header of the call, how many fields the analysts fill in the whole call have a value (ticket #121): a bar that
+   is full once they all do. */
+.nq-drawer-progress { display: flex; flex: 1 1 100%; align-items: center; gap: .7rem; margin-top: .5rem; color: #fff; font-size: .72rem; font-weight: 800; }
+.nq-drawer-progress[hidden] { display: none; }
+.nq-fill-label { flex: 0 0 auto; letter-spacing: .05em; text-transform: uppercase; opacity: .9; }
+.nq-fill-bar { position: relative; flex: 1 1 auto; height: .55rem; overflow: hidden; border-radius: 999px; background: rgba(255, 255, 255, .25); }
+.nq-fill-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, #7ee2a8, #2fbf71); transition: width .3s ease; }
+.nq-drawer-progress strong { flex: 0 0 auto; font-size: .78rem; }
+.nq-drawer-progress.is-complete .nq-fill-bar > span { background: #2fbf71; }
+/* The warning before ending the analysis of a call with fields of the analysts still empty: wide enough to show it all
+   (no inner scroll), what the change does, the progress and a green card per section, one below the other, its name on the
+   left and its empty fields in a row. */
+.confirm-overlay.confirm-variant-nq-missing .confirm-panel { width: min(58rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow-y: auto; }
+.confirm-overlay.confirm-variant-nq-missing .confirm-panel #confirm-copy { max-height: none; overflow: visible; white-space: normal; }
+.nq-missing-action { margin: 0 0 .9rem; font-size: .95rem; line-height: 1.45; }
+.nq-missing-progress { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem; margin-bottom: 1rem; color: #24452f; font-size: .88rem; }
+.nq-missing-bar { position: relative; flex: 0 0 10rem; height: .5rem; overflow: hidden; border-radius: 999px; background: #dcefe3; }
+.nq-missing-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: #16884a; }
+.nq-missing-groups { display: grid; gap: .55rem; }
+.nq-missing-group { display: grid; grid-template-columns: 11rem minmax(0, 1fr); align-items: start; gap: .6rem 1rem; padding: .6rem .8rem; border: 1px solid #b9dfc8; border-left: 4px solid #16884a; border-radius: 10px; background: #f3fbf6; }
+.nq-missing-group h5 { display: flex; align-items: center; justify-content: space-between; gap: .4rem; margin: .2rem 0 0; color: #16884a; font-size: .74rem; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+.nq-missing-group h5 small { padding: .05rem .5rem; border-radius: 999px; background: #16884a; color: #fff; font-size: .68rem; }
+.nq-missing-group > div { display: flex; flex-wrap: wrap; gap: .4rem; }
+.nq-missing-chip { padding: .22rem .6rem; border: 1px dashed #16884a; border-radius: 6px; background: #fff; color: #24452f; font-size: .8rem; font-weight: 600; line-height: 1.3; }
+@media (max-width: 640px) { .nq-missing-group { grid-template-columns: minmax(0, 1fr); } }
+/* The NQ Call Status and the Priority of the header stand out like the status of each phase: in their control only. */
+.nq-drawer-tracking > .nq-tracking-field:is([data-kind="status"], .nq-tracking-priority) .nq-pill-select { font-weight: 800; box-shadow: 0 0 0 2px rgba(0, 0, 0, .18), 0 2px 6px rgba(0, 0, 0, .18); }
+/* The status of each phase (Analysis Status, Implementation Status, Planned Status) stands out: its control is darker. */
+.nq-drawer-body .nq-analysis-field.is-phase-status .nq-pill-select:not(.is-colored) { border: 2px solid var(--nq-origin-analyst); background: #cfe6d7; font-weight: 800; }
+.nq-drawer-body .nq-analysis-field.is-phase-status .nq-pill-select.is-colored { box-shadow: 0 0 0 2px rgba(0, 0, 0, .18), 0 2px 6px rgba(0, 0, 0, .18); font-weight: 800; }
 .nq-drawer-tracking .nq-phase-panel .nq-phase-strip { display: flex; flex-wrap: nowrap; align-items: stretch; gap: .35rem; }
 .nq-drawer .nq-phase-panel .nq-phase-step { flex: 1 1 0; flex-direction: column; align-items: flex-start; justify-content: center; gap: .3rem; padding: .45rem .6rem; background: var(--nq-softer); }
 .nq-drawer .nq-phase-panel .nq-phase-step .nq-pill { max-width: 100%; overflow: visible; font-size: .78rem; line-height: 1.25; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; }
