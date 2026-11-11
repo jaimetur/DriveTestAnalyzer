@@ -1458,6 +1458,47 @@ def test_the_default_strategy_fills_the_queues_and_priorities_by_step(strategize
     assert [option['name'] for option in fields['priority_rule']['options']] == list(steps)
 
 
+def test_the_data_queue_lists_its_hotspots_and_the_other_calls_apart(strategized):
+    # Ticket #123: the Data queue lists by default its hotspots with at least the Minimum hotspot size of failures of the
+    # queue, each with its waiting calls, and its other waiting calls one by one; the Voice queue lists its calls.
+    client = strategized['client']
+    settings = {**nq_prioritization.load_settings(core.repository), 'min_hotspot_calls': 2}
+    assert nq_prioritization.normalize_settings({})['hotspot_queues'] == ['Data']
+    # The synthetic Data calls fail apart: three of them of one operator, NR Mode and campaign make a hotspot.
+    data_calls = [row for row in priority_rows().values() if row['queue'] == 'Data']
+    first = data_calls[0]
+    spot = [row for row in data_calls if (row['operator'], row['nr_mode'], row['campaign']) == (first['operator'], first['nr_mode'], first['campaign'])][:3]
+    assert len(spot) == 3
+    with core.repository.connection() as connection:
+        connection.executemany(f'UPDATE {nq_prioritization.PRIORITY_TABLE} SET cluster_key = ?, cluster_size = 3 WHERE call_key = ?',
+                               [(first['cluster_key'], row['call_key']) for row in spot])
+    assert client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': settings}).status_code == 200
+    panel = client.post('/api/non-qualified-calls/prioritization', json={'filters': {}}).json()
+    voice, data = panel['queues']
+    voice, data = panel['queues']
+    assert not voice.get('by_hotspots') and data['by_hotspots'] and data['hotspots']
+    assert [item['position'] for item in data['hotspots']] == list(range(1, len(data['hotspots']) + 1))
+    assert sum(item['waiting'] for item in data['hotspots']) + data['singles_total'] == data['total']
+    rows = priority_rows()
+    for item in data['hotspots']:
+        members = [rows[key] for key in item['call_keys']]
+        assert len(members) == item['waiting'] and item['calls'] >= max(2, item['waiting'])
+        assert {row['cluster_key'] for row in members} == {item['key']} and {row['queue'] for row in members} == {'Data'}
+        assert item['id'].startswith('H') and item['assigned'] <= item['waiting']
+    assert not {row['call_key'] for row in data['singles']} & {key for item in data['hotspots'] for key in item['call_keys']}
+    # The hotspot of a row filters the queues by its calls.
+    first = data['hotspots'][0]
+    narrowed = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'hotspot': [first['key']]}}).json()
+    assert [item['key'] for item in next(item for item in narrowed['queues'] if item['name'] == 'Data')['hotspots']] == [first['key']]
+    # Without queues by hotspots, the Data queue lists its calls again; the change is logged.
+    settings['hotspot_queues'] = []
+    assert client.put('/api/non-qualified-calls/prioritization/settings', json={'settings': settings}).status_code == 200
+    panel = client.post('/api/non-qualified-calls/prioritization', json={'filters': {}}).json()
+    assert not any(item.get('by_hotspots') for item in panel['queues'])
+    log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_prioritization_settings')
+    assert 'hotspot_queues' in json.loads(log['details'])['changed']
+
+
 def test_admins_switch_the_strategy_at_once_and_calls_in_analysis_keep_their_priority(strategized):
     client = strategized['client']
     rows = priority_rows()

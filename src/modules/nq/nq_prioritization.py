@@ -110,6 +110,9 @@ DEFAULT_STRATEGY = CITIES_FIRST
 # The Voice and Data queues of the teams, or the Unique queue of a strategy of one queue (Vodafone Proposal).
 VOICE_QUEUE, DATA_QUEUE, UNIQUE_QUEUE = 'Voice', 'Data', 'Unique'
 QUEUE_ORDER = (VOICE_QUEUE, DATA_QUEUE, UNIQUE_QUEUE)
+# The queues listed by hotspots instead of by calls (ticket #123), and the failures of a queue a hotspot needs to be listed.
+DEFAULT_HOTSPOT_QUEUES = (DATA_QUEUE,)
+DEFAULT_MIN_HOTSPOT_CALLS = 3
 # List 1 orders the calls of a campaign until its Final CDR is scored; list 2 orders them after.
 CAMPAIGN_LIST, FINAL_LIST = 'campaign', 'final'
 LIST_LABELS = {CAMPAIGN_LIST: 'Campaign', FINAL_LIST: 'Final'}
@@ -328,6 +331,7 @@ def default_settings(operators: dict[str, list[str]] | None = None, modes: list[
             'cluster_road_meters': CLUSTER_ROAD_METERS,
             'consecutive_minutes': CLUSTER_MINUTES, 'consecutive_isd': CONSECUTIVE_ISD, 'consecutive_city_meters': CONSECUTIVE_CITY_METERS,
             'consecutive_road_meters': CONSECUTIVE_ROAD_METERS, 'hotspot_join': DEFAULT_HOTSPOT_JOIN, 'capacity': 20,
+            'hotspot_queues': list(DEFAULT_HOTSPOT_QUEUES), 'min_hotspot_calls': DEFAULT_MIN_HOTSPOT_CALLS,
             'fill_priority': True, 'excluded_regions': list(DEFAULT_EXCLUDED_REGIONS),
             'excluded_modes': [dict(item) for item in modes or []], 'strategies': [], 'strategy_names': {},
             'final_lists': {key: key not in LIST_1_ONLY for key in STRATEGIES}}
@@ -446,6 +450,9 @@ def normalize_settings(value: Any, *, strict: bool = False, operators: dict[str,
         'hotspot_join': _hotspot_join(value.get('hotspot_join', defaults['hotspot_join']), strict),
         'capacity': _whole(value.get('capacity', defaults['capacity']), defaults['capacity'], 1, 500,
                            'The calls to analyse next', strict),
+        'hotspot_queues': _hotspot_queues(value.get('hotspot_queues', defaults['hotspot_queues']), strict),
+        'min_hotspot_calls': _whole(value.get('min_hotspot_calls', defaults['min_hotspot_calls']), defaults['min_hotspot_calls'],
+                                    2, 50, 'The Minimum hotspot size', strict),
         'fill_priority': bool(value.get('fill_priority', defaults['fill_priority'])),
         'excluded_regions': _values(value['excluded_regions']) if isinstance(value.get('excluded_regions'), list) else list(DEFAULT_EXCLUDED_REGIONS),
         'excluded_modes': (normalize_modes(value['excluded_modes'], strict) if isinstance(value.get('excluded_modes'), list)
@@ -454,6 +461,19 @@ def normalize_settings(value: Any, *, strict: bool = False, operators: dict[str,
         # Dual Queue (Scoring Based) and Vodafone Proposal by default.
         'final_lists': {key: bool(final_lists.get(key, key not in LIST_1_ONLY)) for key in labels},
     }
+
+
+def _hotspot_queues(value: Any, strict: bool) -> list[str]:
+    """The queues listed by hotspots, in the order of the queues."""
+    if not isinstance(value, list):
+        if strict:
+            raise ValueError('Choose the queues listed by hotspots.')
+        return list(DEFAULT_HOTSPOT_QUEUES)
+    names = {str(item).casefold() for item in value}
+    unknown = names - {name.casefold() for name in QUEUE_ORDER}
+    if unknown and strict:
+        raise ValueError('The queues listed by hotspots are Voice, Data or Unique.')
+    return [name for name in QUEUE_ORDER if name.casefold() in names]
 
 
 def normalize_modes(value: list[Any], strict: bool = False) -> list[dict[str, str]]:
@@ -589,7 +609,7 @@ SETTING_LABELS = {'high_share': 'High impact (%)', 'medium_share': 'Medium impac
                   'consecutive_minutes': 'Time window (min)', 'consecutive_isd': 'Time-window distance (ISD)',
                   'consecutive_city_meters': 'Time-window distance without ISD · Cities (m)',
                   'consecutive_road_meters': 'Time-window distance without ISD · Connecting Roads (m)', 'hotspot_join': 'Hotspot join',
-                  'capacity': 'Next to analyse',
+                  'capacity': 'Next to analyse', 'min_hotspot_calls': 'Minimum hotspot size (calls)',
                   'fill_priority': 'Fill the Priority'}
 
 
@@ -615,6 +635,8 @@ def settings_changes(before: Any, settings: Any) -> list[str]:
     pairs = lambda items: [f"{item['nr_mode']} · {item['operator']}" for item in items]  # noqa: E731
     if pairs(settings['excluded_modes']) != pairs(before['excluded_modes']):
         lines.append(list_change('Operators out of scope', pairs(before['excluded_modes']), pairs(settings['excluded_modes'])))
+    if settings['hotspot_queues'] != before['hotspot_queues']:
+        lines.append(list_change('Queues by hotspots', before['hotspot_queues'], settings['hotspot_queues']))
     text = lambda value: ('Yes' if value else 'No') if isinstance(value, bool) else HOTSPOT_JOINS.get(value, str(value))  # noqa: E731
     lines += [f'{label}: {text(before.get(key))} → {text(settings.get(key))}' for key, label in SETTING_LABELS.items()
               if settings.get(key) != before.get(key)]
@@ -3293,6 +3315,43 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         entry['points'] = round(entry['points'], 2)
     level_order = [name for name, _color in nq_catalog.IMPACT_LEVELS]
 
+    # The queues listed by hotspots (ticket #123): each hotspot with at least the Minimum hotspot size of failures of the
+    # queue among the filtered calls, in the order of its first waiting call; the waiting calls of the queue out of such a
+    # hotspot are listed apart, one by one.
+    queue_spots: dict[tuple[str, str], int] = {}
+    for row in rows:
+        if row['prioritization'] == PRIORITIZED and row['queue'] and row['cluster_key']:
+            queue_spots[(row['queue'], row['cluster_key'])] = queue_spots.get((row['queue'], row['cluster_key']), 0) + 1
+    spot_info = {item['key']: item for item in spot_rows}
+
+    def hotspot_queue(item: dict[str, Any]) -> dict[str, Any]:
+        spots_of: dict[str, list[dict[str, Any]]] = {}
+        singles = []
+        for row in item['rows']:
+            key = row['cluster_key']
+            if key and queue_spots.get((item['name'], key), 0) >= settings['min_hotspot_calls']:
+                spots_of.setdefault(key, []).append(row)
+            else:
+                singles.append(row)
+        listed = []
+        for position, (key, members) in enumerate(spots_of.items(), start=1):
+            info, first = spot_info.get(key) or {}, members[0]
+            gains = [float(row['expected_points']) for row in members if row.get('expected_points') is not None]
+            levels_of = [row['impact_level'] for row in members if row['impact_level']]
+            listed.append({
+                'position': position, 'key': key, 'id': info.get('id') or group_id('H', key, 32),
+                'place': info.get('place', ''), 'places': info.get('places', 0), 'first': info.get('first', ''),
+                'last': info.get('last', ''), 'operator': first['operator'], 'nr_mode': first['nr_mode'],
+                'campaign': compact_campaign_value(first['campaign']) or first['campaign'], 'priority': first['priority'],
+                'step': first.get('queue_step'), 'list': first.get('queue_list') or '', 'rule': first['priority_rule'],
+                'waiting': len(members), 'calls': queue_spots[(item['name'], key)],
+                'assigned': sum(queue_state(row) == QUEUE_ANALYST for row in members),
+                'gain': round(sum(gains), 2) if gains else None,
+                'level': min(levels_of, key=lambda name: level_order.index(name) if name in level_order else len(level_order))
+                if levels_of else '',
+                'call_keys': [row['call_key'] for row in members]})
+        return {'hotspots': listed[:settings['capacity']], 'hotspot_total': len(listed), 'singles': singles}
+
     def queue_row(row: dict[str, Any], position: int) -> dict[str, Any]:
         return {'position': position, 'call_key': row['call_key'], 'join_id': row['join_id'], 'operator': row['operator'],
                 'service': nq.SERVICE_LABELS.get(str(row['service']), str(row['service'])), 'nr_mode': row['nr_mode'],
@@ -3310,7 +3369,8 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'strategies': strategy_labels(settings),
         'settings': {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'cluster_isd',
                                                     'spot_meters', 'cluster_road_meters', 'consecutive_minutes', 'consecutive_isd',
-                                                    'consecutive_city_meters', 'consecutive_road_meters', 'hotspot_join', 'capacity')},
+                                                    'consecutive_city_meters', 'consecutive_road_meters', 'hotspot_join', 'capacity',
+                                                    'hotspot_queues', 'min_hotspot_calls')},
         'totals': {
             'calls': len(rows), 'prioritized': sum(row['prioritization'] == PRIORITIZED for row in rows),
             'tracked': sum(row['prioritization'] == TRACK_ONLY for row in rows),
@@ -3330,7 +3390,13 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'issues': issue_rows, 'issue_count': len(issue_rows),
         'queue': [queue_row(row, position) for position, row in enumerate(queue[:settings['capacity']], start=1)],
         'queues': [{'name': item['name'], 'total': item['total'],
-                    'rows': [queue_row(row, position) for position, row in enumerate(item['rows'][:settings['capacity']], start=1)]}
+                    'rows': [queue_row(row, position) for position, row in enumerate(item['rows'][:settings['capacity']], start=1)],
+                    # A queue listed by hotspots: its hotspots, and its other waiting calls one by one.
+                    **({'by_hotspots': True, 'hotspots': grouped['hotspots'], 'hotspot_total': grouped['hotspot_total'],
+                        'singles_total': len(grouped['singles']),
+                        'singles': [queue_row(row, position)
+                                    for position, row in enumerate(grouped['singles'][:settings['capacity']], start=1)]}
+                       if (grouped := hotspot_queue(item) if item['name'] in settings['hotspot_queues'] else None) else {})}
                    for item in queues],
         # The tracked calls, which no team takes, in the same order (the panel folds them below the queues).
         'tracked': {'name': 'Tracked', 'total': len(tracked),

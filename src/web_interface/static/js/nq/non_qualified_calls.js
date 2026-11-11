@@ -3351,6 +3351,8 @@
   const points = (value) => (value === null || value === undefined ? '—' : Number(value).toFixed(2));
   // Whether the Tracked queue of the panel is unfolded (folded by default).
   let trackedQueueOpen = false;
+  // The individual failures of each queue listed by hotspots, open or folded as the panel is drawn again.
+  const singleQueuesOpen = {};
   // The list whose steps the Strategy subpanel shows (campaign, final or outside; the list with the most calls at first).
   let stepsTab = '';
   const renderPrioritization = (data) => {
@@ -3678,11 +3680,42 @@
         {text: points(item.gain), className: 'nq-queue-number',
           title: item.gain_campaign ? `From the Final CDR of ${item.gain_campaign}` : 'No campaign with a Final CDR to tell it: the oldest first'},
         item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—'])), 'nq-queue-table');
+    // A queue listed by hotspots (ticket #123): a row per hotspot with its waiting calls, the same columns as the calls; a
+    // click on its ID filters the list (and the queues) by the hotspot, as in the Hotspots panel.
+    const hotspotQueueTable = (rows) => withClass(failureTable(['#', 'Hotspot ID', 'Priority', 'Operator', 'Campaign', 'Step', 'Calls', 'Assigned', 'Expected Gain', 'Scoring Impact'],
+      rows.map((item) => {
+        const id = node('button', undefined, 'nq-failure-drill nq-group-id');
+        const line = node('span', undefined, 'nq-group-id-line');
+        line.append(node('strong', item.id), node('span', ` · ${groupSites(item)}`, 'nq-group-id-what'));
+        id.append(line, node('span', groupPeriod(item), 'nq-group-id-line nq-group-id-what nq-group-id-period'));
+        return [{text: number(item.position), className: 'nq-queue-position'},
+          {node: id, pairs: [['hotspot', item.key]], reveal: 'section-nq-calls', className: 'nq-failure-name',
+            title: `${number(item.waiting)} waiting of the ${number(item.calls)} calls of this queue in the hotspot (${item.nr_mode || '—'}): click to see them`},
+          {text: item.priority || '—', className: `nq-queue-priority is-${String(item.priority || '').toLowerCase()}`},
+          item.operator || '—', item.campaign || '—',
+          {text: item.step ? `Step ${item.step} · ${item.list === 'final' ? 'Final' : 'Weekly'}` : '—', title: item.rule || '',
+            className: `nq-queue-step is-${item.list === 'final' ? 'final' : 'weekly'}`},
+          {text: `${number(item.waiting)} / ${number(item.calls)}`, className: 'nq-queue-number', title: 'Waiting / calls of this queue in the hotspot'},
+          {text: `${number(item.assigned)} / ${number(item.waiting)}`, className: 'nq-queue-number', title: 'Waiting calls with an Analyst / waiting calls'},
+          {text: points(item.gain), className: 'nq-queue-number', title: 'Expected Gain of its waiting calls together'},
+          item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—'];
+      })), 'nq-queue-table');
     const queues = node('div', undefined, 'nq-priority-queues');
     queues.append(...(data.queues || []).map((item) => {
       const box = node('div', undefined, 'nq-failure-card');
-      box.append(node('strong', `${item.name} queue · ${number(item.total)} waiting`, 'nq-failure-operator'),
-        item.rows.length ? queueTable(item.rows) : node('p', 'No call is waiting in this queue.', 'nq-muted'));
+      if (!item.by_hotspots) {
+        box.append(node('strong', `${item.name} queue · ${number(item.total)} waiting`, 'nq-failure-operator'),
+          item.rows.length ? queueTable(item.rows) : node('p', 'No call is waiting in this queue.', 'nq-muted'));
+        return box;
+      }
+      // Its waiting calls out of a hotspot of the Minimum hotspot size, one by one, folded below the hotspots.
+      const singles = node('details', undefined, 'nq-priority-tracked');
+      singles.open = Boolean(singleQueuesOpen[item.name]);
+      singles.addEventListener('toggle', () => { singleQueuesOpen[item.name] = singles.open; });
+      singles.append(node('summary', `Individual failures · ${number(item.singles_total)} waiting (out of a hotspot of ${number(data.settings.min_hotspot_calls)} or more failures)`),
+        item.singles.length ? queueTable(item.singles) : node('p', 'No individual failure is waiting.', 'nq-muted'));
+      box.append(node('strong', `${item.name} queue · ${number(item.hotspot_total)} hotspot${item.hotspot_total === 1 ? '' : 's'} · ${number(item.total)} waiting`, 'nq-failure-operator'),
+        item.hotspots.length ? hotspotQueueTable(item.hotspots) : node('p', 'No hotspot is waiting in this queue.', 'nq-muted'), singles);
       return box;
     }));
     // The tracked calls, which no team takes, folded below the queues (they stay open or folded as the panel is drawn again).
@@ -3695,7 +3728,7 @@
         data.tracked.rows.length ? queueTable(data.tracked.rows) : node('p', 'No tracked call is waiting.', 'nq-muted'));
       content.push(tracked);
     }
-    section('queues', 'Next to analyse', `The first ${data.settings.capacity} calls of each queue that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, are folded below them. Click a call to open it.`, ...content);
+    section('queues', 'Next to analyse', `The first ${data.settings.capacity} calls of each queue that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, are folded below them. Click a call to open it. A queue listed by hotspots shows its first ${data.settings.capacity} hotspots of ${data.settings.min_hotspot_calls} or more failures of the queue, in the order of their first waiting call (click a hotspot to see its calls), and its other waiting calls folded below them.`, ...content);
     $('nq-priority').replaceChildren(...['queues', 'steps', 'impact'].map((key) => sections[key]).filter(Boolean));
   };
   let priorityToken = 0;
@@ -7196,12 +7229,14 @@
     previous_quarters: 'nq-priority-quarters', cluster_isd: 'nq-priority-cluster-isd', spot_meters: 'nq-priority-spot',
     cluster_road_meters: 'nq-priority-cluster-roads', consecutive_minutes: 'nq-priority-consecutive-minutes',
     consecutive_isd: 'nq-priority-consecutive-isd', consecutive_city_meters: 'nq-priority-consecutive-city',
-    consecutive_road_meters: 'nq-priority-consecutive-roads', capacity: 'nq-priority-capacity'};
+    consecutive_road_meters: 'nq-priority-consecutive-roads', capacity: 'nq-priority-capacity',
+    min_hotspot_calls: 'nq-priority-min-hotspot'};
   // The settings chosen from a list (not numbers).
   const PRIORITY_CHOICES = {hotspot_join: 'nq-priority-hotspot-join'};
   // Every setting of the levels as the dialog holds it.
   const levelSettings = () => ({...Object.fromEntries(Object.entries(PRIORITY_INPUTS).map(([key, id]) => [key, Number($(id).value)])),
-    ...Object.fromEntries(Object.entries(PRIORITY_CHOICES).map(([key, id]) => [key, $(id).value]))});
+    ...Object.fromEntries(Object.entries(PRIORITY_CHOICES).map(([key, id]) => [key, $(id).value])),
+    hotspot_queues: [...priorityDialog.querySelectorAll('[data-nq-hotspot-queue]')].filter((box) => box.checked).map((box) => box.value)});
   // Every field of the steps of each strategy while the dialog is open (admins change them).
   let strategySteps = {};
   const FOCUSED = '@focused';
@@ -7971,6 +8006,7 @@
     strategyFinalLists = {...(settings.final_lists || {})};
     fillScopeSelects($('nq-priority-regions-out'), $('nq-priority-modes-out'), settings);
     Object.entries({...PRIORITY_INPUTS, ...PRIORITY_CHOICES}).forEach(([key, id]) => { $(id).value = settings[key]; });
+    priorityDialog.querySelectorAll('[data-nq-hotspot-queue]').forEach((box) => { box.checked = (settings.hotspot_queues || []).includes(box.value); });
     $('nq-priority-fill').checked = Boolean(settings.fill_priority);
     showStrategy(select.value);
   };

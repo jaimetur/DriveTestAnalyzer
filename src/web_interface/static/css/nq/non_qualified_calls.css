@@ -1807,6 +1807,9 @@ td.nq-queue-number { text-align: right; font-variant-numeric: tabular-nums; }
 .nq-priority-level { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: .15rem .5rem; }
 .nq-priority-level > label { display: block; font-weight: 700; color: var(--nq-dark); white-space: nowrap; }
 .nq-priority-level > label strong { display: inline; }
+.nq-priority-level > .nq-priority-label { display: block; font-weight: 700; color: var(--nq-dark); white-space: nowrap; }
+.nq-priority-checks { gap: .55rem; font-weight: 600; }
+.nq-priority-checks label { display: inline-flex; align-items: center; gap: .2rem; }
 .nq-priority-level .nq-priority-help { grid-column: 1 / -1; font-size: .75rem; }
 /* The distances without an ISD, below the distance in ISDs they stand in for. */
 .nq-priority-levels-grid > .nq-priority-level.is-sub { margin-top: -.35rem; padding-left: .8rem; }
