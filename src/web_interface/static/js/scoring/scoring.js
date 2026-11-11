@@ -569,7 +569,9 @@
   let selectionSaveChain = Promise.resolve();
   const selectionClientId = window.crypto?.randomUUID?.()
     || `scoring-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const selectionFieldOrder = ['Region', 'City', 'Operator', 'Vendor', 'Campaign'];
+  // Every context filter of the panel: the selection is saved, compared and restored with all of them (Cluster,
+  // Operator_Vendor and Vendor_Operator included, restored before Vendor so their pairing does not change it).
+  const selectionFieldOrder = ['Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Campaign'];
 
   const valueOf = (object, keys, fallback = '') => {
     if (!object || typeof object !== 'object') return fallback;

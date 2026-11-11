@@ -1909,6 +1909,7 @@
         {% endfor %}{% endfor %}
       </div>
       <p class="scoring-context-filter-note">Values come from every CDR of the NR Mode, with the labels of the Operator and Vendor Maps; each filter lists only the values the other filters leave. Leaving a filter empty includes all values. Main Cities uses the workspace city list.</p>
+      <p class="scoring-context-filter-note">Filters add up, and Vendor applies to every operator left. To score some Vendors of one operator, choose that operator in Operator and the Vendors in Vendor: the other operators, and with them the GAP against the reference operator (unless it is that operator), are left out. To keep the other operators whole, choose the operator's Vendors in Operator_Vendor (or Vendor_Operator) together with the other operators' values.</p>
     </div>
     <div class="scoring-picker">
       <div class="scoring-picker-head"><strong>Split by</strong></div>

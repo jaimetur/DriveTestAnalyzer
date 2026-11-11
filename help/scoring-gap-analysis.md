@@ -170,6 +170,10 @@ The **Operator_Vendor** selector filters the `<Operator>_<Vendor>` identity, **V
 
 Selecting **Ericsson** and **Huawei** includes only those vendor identities from the selected operators. To include an operator with no assigned vendor, also select its **Operator - All** choice, or leave the Vendor filter unrestricted. Vendor mapping stores the suffix in `Operator_Vendor` and `Vendor`; legacy operator-only values without it remain supported.
 
+The filters add up, and **Vendor** applies to every operator left: Ericsson alone leaves out the other vendors of every operator. To score some vendors of one operator, choose that operator in **Operator** and the vendors in **Vendor**; the other operators, and with them the GAP against the reference operator, are left out. To keep the other operators whole, choose the vendors of that operator in **Operator_Vendor** (or **Vendor_Operator**) together with the values of the other operators. The note under the Context filters says so.
+
+The Calculation panel keeps every filter it shows, Cluster, Operator_Vendor and Vendor_Operator included, for the next time it opens; each user keeps their own selection in each workspace (a user without one starts from the latest selection saved in it).
+
 Legacy saved operator-prefixed selections are normalized to vendor names. The **Operator** filter remains independent. When Vendor is a Split by level, operators without a vendor still display **All** in that level; web and PowerPoint retain the existing comparison and reference behavior.
 
 ### How the GAP reference is matched

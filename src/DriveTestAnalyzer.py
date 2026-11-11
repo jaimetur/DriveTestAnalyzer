@@ -20784,7 +20784,7 @@ def scoring_theme_put(payload: ScoringThemeRequest, user: SessionUser = Depends(
 def scoring_selection_get(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     task_repository = scoring_repository(user)
     persisted = task_repository.get_workspace_state(SCORING_SELECTION_STATE_KEY) is not None
-    selection, warnings = load_scoring_selection(task_repository)
+    selection, warnings = load_scoring_selection(task_repository, user.username)
     return {'selection': selection, 'warnings': warnings, 'persisted': persisted}
 
 
@@ -20813,9 +20813,10 @@ def scoring_selection_put(
         selection,
         client_id=payload.client_id.strip() if payload.client_id else None,
         client_revision=payload.client_revision,
+        username=user.username,
     )
     if not accepted:
-        selection, warnings = load_scoring_selection(task_repository)
+        selection, warnings = load_scoring_selection(task_repository, user.username)
     return {'selection': selection, 'warnings': warnings, 'accepted': accepted}
 
 
@@ -20883,10 +20884,14 @@ def saved_filters_save(payload: SavedFilterRequest, user: SessionUser = Depends(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not cached:
         _queue_saved_filter_calculation(task_repository, saved_filter['id'])
+    # The selection calculated (filters, Split by, reference and methodology), to know what a result was asked for.
     task_repository.try_add_log(user.username, 'scoring_calculation_requested', json.dumps({
         'saved_filter_id': saved_filter['id'], 'starred': bool(saved_filter.get('pinned')), 'name': saved_filter.get('name') or '',
         'datasets': len(selected_ids), 'nr_mode': payload.nr_mode, 'force': payload.force, 'cached': cached,
-    }))
+        'dataset_ids': selected_ids, 'aggregation_levels': payload.aggregation_levels,
+        'baseline_operator': payload.baseline_operator, 'scoring_profile_id': payload.scoring_profile_id or '',
+        'context_filters': {field: values for field, values in payload.context_filters.items() if values},
+    }, ensure_ascii=False))
     _prioritize_saved_filter(task_repository, saved_filter['id'])
     # Only the starred Saved Filters are kept: the user's other unstarred ones go.
     prune_unpinned_saved_filters(task_repository, saved_filter['id'], user.username)

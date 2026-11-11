@@ -1,4 +1,4 @@
-"""Workspace-wide persistence for the Scoring calculation controls."""
+"""Persistence of the Scoring calculation controls: each user's own selection in the workspace."""
 
 from __future__ import annotations
 
@@ -22,9 +22,9 @@ from src.modules.scoring.scoring_config import load_aggregation_hierarchy
 SCORING_SELECTION_STATE_KEY = 'scoring_calculation_selection_v1'
 SCORING_SELECTION_FORMAT = 'drivetest-analyzer-scoring-selection'
 SCORING_SELECTION_VERSION = 1
-SCORING_CONTEXT_FILTER_FIELDS = ('Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor', 'Campaign')
+SCORING_CONTEXT_FILTER_FIELDS = ('Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Campaign')
 # Filters that are not aggregation levels: saved selections only list them when used.
-SCORING_OPTIONAL_CONTEXT_FILTERS = frozenset({'Cluster', 'Operator_Vendor'})
+SCORING_OPTIONAL_CONTEXT_FILTERS = frozenset({'Cluster', 'Operator_Vendor', 'Vendor_Operator'})
 MAX_TRACKED_CLIENTS = 64
 
 
@@ -251,8 +251,8 @@ def _normalize_context_filters(
         warnings.append('Saved context filters were invalid and have been cleared.')
         return normalized
     supported = {column_identity(field): field for field in SCORING_CONTEXT_FILTER_FIELDS}
-    # Cluster and Operator_Vendor filter the samples without being aggregation levels.
-    allowed_fields = {column_identity(field) for field in hierarchy} | {'cluster', 'operatorvendor'}
+    # Cluster, Operator_Vendor and Vendor_Operator filter the samples without being aggregation levels.
+    allowed_fields = {column_identity(field) for field in hierarchy} | {'cluster', 'operatorvendor', 'vendoroperator'}
     values_by_field: dict[str, dict[str, str]] = {field: {} for field in SCORING_CONTEXT_FILTER_FIELDS}
     stale_fields = False
     for raw_field, raw_values in raw_filters.items():
@@ -410,8 +410,17 @@ def _normalize_selection(
     }, list(dict.fromkeys(warnings))
 
 
-def load_scoring_selection(repository: Repository) -> tuple[dict[str, Any], list[str]]:
-    """Return the normalized workspace selection without reading CDR rows."""
+def _user_key(username: str | None) -> str:
+    """The key of a user's own selection in the ``users`` of the selection document."""
+    return str(username or '').strip().casefold()
+
+
+def load_scoring_selection(repository: Repository, username: str | None = None) -> tuple[dict[str, Any], list[str]]:
+    """Return the normalized selection of the user's panel without reading CDR rows.
+
+    Each user keeps their own selection in the workspace; a user who has none yet starts from the latest selection saved
+    in it (the one every user shared before each user kept their own).
+    """
     raw = repository.get_workspace_state(SCORING_SELECTION_STATE_KEY)
     if raw is None:
         return _default_selection(repository), []
@@ -422,7 +431,9 @@ def load_scoring_selection(repository: Repository) -> tuple[dict[str, Any], list
     if not isinstance(document, dict):
         return _default_selection(repository), ['Saved scoring selection could not be read and has been reset.']
     if canonical_format(document.get('format')) == SCORING_SELECTION_FORMAT and document.get('version') == SCORING_SELECTION_VERSION:
-        selection = document.get('selection')
+        users = document.get('users') if isinstance(document.get('users'), dict) else {}
+        own = users.get(_user_key(username)) if _user_key(username) else None
+        selection = own if isinstance(own, dict) else document.get('selection')
     else:
         # Accept a flat selection document to ease recovery from early versions.
         selection = document
@@ -446,8 +457,12 @@ def save_scoring_selection(
     *,
     client_id: str | None = None,
     client_revision: int | None = None,
+    username: str | None = None,
 ) -> bool:
-    """Atomically store a selection and reject delayed writes from the same tab."""
+    """Atomically store the selection of the user's panel and reject delayed writes from the same tab.
+
+    The user's selection is kept as theirs (``users``) and as the latest one of the workspace, which users without one
+    of their own start from."""
     with repository.connection() as connection:
         connection.execute('BEGIN IMMEDIATE')
         row = connection.execute(
@@ -458,7 +473,10 @@ def save_scoring_selection(
         except (TypeError, json.JSONDecodeError):
             existing = {}
         revisions: dict[str, int] = {}
+        users: dict[str, Any] = {}
         if isinstance(existing, dict) and canonical_format(existing.get('format')) == SCORING_SELECTION_FORMAT:
+            if isinstance(existing.get('users'), dict):
+                users = {str(key): value for key, value in existing['users'].items() if isinstance(value, dict)}
             raw_revisions = existing.get('client_revisions')
             if isinstance(raw_revisions, dict):
                 for existing_client, existing_revision in raw_revisions.items():
@@ -476,7 +494,9 @@ def save_scoring_selection(
             while len(revisions) > MAX_TRACKED_CLIENTS:
                 revisions.pop(next(iter(revisions)))
 
-        document = serialize_scoring_selection(selection, revisions)
+        if _user_key(username):
+            users[_user_key(username)] = selection
+        document = serialize_scoring_selection(selection, revisions, users)
         connection.execute(
             'INSERT INTO workspace_state (key, value) VALUES (?, ?) '
             'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
@@ -488,11 +508,13 @@ def save_scoring_selection(
 def serialize_scoring_selection(
     selection: dict[str, Any],
     client_revisions: dict[str, int] | None = None,
+    users: dict[str, dict[str, Any]] | None = None,
 ) -> str:
-    """Serialize the stable versioned workspace selection document."""
+    """Serialize the stable versioned workspace selection document: the latest selection and each user's own one."""
     return json.dumps({
         'format': SCORING_SELECTION_FORMAT,
         'version': SCORING_SELECTION_VERSION,
         'selection': selection,
         'client_revisions': client_revisions or {},
+        **({'users': users} if users else {}),
     }, ensure_ascii=False, separators=(',', ':'))
