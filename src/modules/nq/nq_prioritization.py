@@ -331,7 +331,7 @@ def default_settings(operators: dict[str, list[str]] | None = None, modes: list[
             'cluster_road_meters': CLUSTER_ROAD_METERS,
             'consecutive_minutes': CLUSTER_MINUTES, 'consecutive_isd': CONSECUTIVE_ISD, 'consecutive_city_meters': CONSECUTIVE_CITY_METERS,
             'consecutive_road_meters': CONSECUTIVE_ROAD_METERS, 'hotspot_join': DEFAULT_HOTSPOT_JOIN, 'capacity': 20,
-            'hotspot_queues': list(DEFAULT_HOTSPOT_QUEUES), 'min_hotspot_calls': DEFAULT_MIN_HOTSPOT_CALLS,
+            'hotspot_queues': list(DEFAULT_HOTSPOT_QUEUES), 'min_hotspot_calls': DEFAULT_MIN_HOTSPOT_CALLS, 'queue_teams': {},
             'fill_priority': True, 'excluded_regions': list(DEFAULT_EXCLUDED_REGIONS),
             'excluded_modes': [dict(item) for item in modes or []], 'strategies': [], 'strategy_names': {},
             'final_lists': {key: key not in LIST_1_ONLY for key in STRATEGIES}}
@@ -453,6 +453,7 @@ def normalize_settings(value: Any, *, strict: bool = False, operators: dict[str,
         'hotspot_queues': _hotspot_queues(value.get('hotspot_queues', defaults['hotspot_queues']), strict),
         'min_hotspot_calls': _whole(value.get('min_hotspot_calls', defaults['min_hotspot_calls']), defaults['min_hotspot_calls'],
                                     2, 50, 'The Minimum hotspot size', strict),
+        'queue_teams': _queue_teams(value.get('queue_teams', defaults['queue_teams']), strict),
         'fill_priority': bool(value.get('fill_priority', defaults['fill_priority'])),
         'excluded_regions': _values(value['excluded_regions']) if isinstance(value.get('excluded_regions'), list) else list(DEFAULT_EXCLUDED_REGIONS),
         'excluded_modes': (normalize_modes(value['excluded_modes'], strict) if isinstance(value.get('excluded_modes'), list)
@@ -474,6 +475,26 @@ def _hotspot_queues(value: Any, strict: bool) -> list[str]:
     if unknown and strict:
         raise ValueError('The queues listed by hotspots are Voice, Data or Unique.')
     return [name for name in QUEUE_ORDER if name.casefold() in names]
+
+
+def _queue_teams(value: Any, strict: bool) -> dict[str, str]:
+    """The team of each queue (ticket #122): its calls without a team of their own wait for its members (My team) until
+    one of them takes them. None by default."""
+    if not isinstance(value, dict):
+        if strict and value is not None:
+            raise ValueError('Choose the team of each queue.')
+        return {}
+    names = {name.casefold(): name for name in QUEUE_ORDER}
+    chosen: dict[str, str] = {}
+    for key, team in value.items():
+        name = names.get(str(key).casefold())
+        if name is None:
+            if strict:
+                raise ValueError('The queues with a team are Voice, Data or Unique.')
+            continue
+        if str(team or '').strip():
+            chosen[name] = str(team).strip()
+    return {name: chosen[name] for name in QUEUE_ORDER if name in chosen}
 
 
 def normalize_modes(value: list[Any], strict: bool = False) -> list[dict[str, str]]:
@@ -549,6 +570,12 @@ def save_settings(repository: Any, payload: Any, username: str) -> dict[str, Any
     """Save the settings and apply the rules again at once; the impact and the repetitions are calculated again in the
     background when their settings change."""
     settings = normalize_settings(payload, strict=True, operators=default_step_operators(repository))
+    from src.modules.nq import non_qualified_calls as nq
+    teams = {item['name'].casefold(): item['name'] for item in nq.list_options(repository)['teams']}
+    unknown = [team for team in settings['queue_teams'].values() if team.casefold() not in teams]
+    if unknown:
+        raise ValueError(f'{unknown[0]} is not a team of Non-Qualified Calls.')
+    settings['queue_teams'] = {name: teams[team.casefold()] for name, team in settings['queue_teams'].items()}
     # The NR Mode · operator pairs out of scope are those of the Operator Maps, whatever the payload gives.
     settings['excluded_modes'] = map_excluded_modes(repository)
     before = load_settings(repository)
@@ -637,6 +664,10 @@ def settings_changes(before: Any, settings: Any) -> list[str]:
         lines.append(list_change('Operators out of scope', pairs(before['excluded_modes']), pairs(settings['excluded_modes'])))
     if settings['hotspot_queues'] != before['hotspot_queues']:
         lines.append(list_change('Queues by hotspots', before['hotspot_queues'], settings['hotspot_queues']))
+    for name in QUEUE_ORDER:
+        old, new = before.get('queue_teams', {}).get(name, ''), settings['queue_teams'].get(name, '')
+        if old != new:
+            lines.append(f"{name} queue team: {old or 'None'} → {new or 'None'}")
     text = lambda value: ('Yes' if value else 'No') if isinstance(value, bool) else HOTSPOT_JOINS.get(value, str(value))  # noqa: E731
     lines += [f'{label}: {text(before.get(key))} → {text(settings.get(key))}' for key, label in SETTING_LABELS.items()
               if settings.get(key) != before.get(key)]
@@ -1251,6 +1282,102 @@ def is_attended(row: Any) -> bool:
 def queue_state(row: Any) -> str:
     """Who has a call of a queue: its analyst, else its team, else nobody."""
     return QUEUE_ANALYST if row['analyst'] else QUEUE_TEAM if row['team'] else QUEUE_UNASSIGNED
+
+
+# The views of the queues: every waiting call, those nobody has (no team, no analyst), those waiting for an analyst of
+# the teams of the user (their team, or the team of their queue when they have none) and those of the user.
+VIEW_ALL, VIEW_UNASSIGNED, VIEW_TEAM, VIEW_MINE = 'all', 'unassigned', 'team', 'mine'
+QUEUE_VIEWS = (VIEW_ALL, VIEW_UNASSIGNED, VIEW_TEAM, VIEW_MINE)
+
+
+def queue_team(row: Any, queue_teams: dict[str, str]) -> str:
+    """The team a waiting call goes to: its own, else the team of its queue."""
+    queue = str(row['queue'] or '') if 'queue' in row.keys() else ''
+    return str(row['team'] or '') or queue_teams.get(queue, '')
+
+
+def in_view(view: str, row: Any, username: str, user_teams: set[str], queue_teams: dict[str, str]) -> bool:
+    if view == VIEW_UNASSIGNED:
+        return not row['analyst'] and not row['team']
+    if view == VIEW_TEAM:
+        return not row['analyst'] and queue_team(row, queue_teams).casefold() in user_teams
+    if view == VIEW_MINE:
+        return str(row['analyst'] or '').casefold() == username.casefold()
+    return True
+
+
+def queue_context(repository: Any, username: str, settings: dict[str, Any] | None = None) -> tuple[dict[str, str], set[str]]:
+    """The team of each queue (only teams that still exist, by their current name) and the teams of the user."""
+    from src.modules.nq import non_qualified_calls as nq
+    teams = nq.list_options(repository)['teams']
+    names = {item['name'].casefold(): item['name'] for item in teams}
+    settings = settings or load_settings(repository)
+    queue_teams = {name: names[team.casefold()] for name, team in settings['queue_teams'].items() if team.casefold() in names}
+    user_teams = {item['name'].casefold() for item in teams
+                  if username.casefold() in {str(member).casefold() for member in item.get('members') or []}}
+    return queue_teams, user_teams
+
+
+def take_calls(repository: Any, call_keys: list[str], username: str, users: set[str]) -> dict[str, Any]:
+    """The user becomes the analyst of the waiting calls nobody has taken (ticket #122); a call without a team takes the
+    team of its queue when the user is one of its members. A call another analyst took first (even a moment before) is
+    left as it is and reported with its analyst."""
+    from src.modules.nq import non_qualified_calls as nq
+    queue_teams, user_teams = queue_context(repository, username)
+    default = nq.untracked_status(repository)
+    taken: list[str] = []
+    skipped: list[dict[str, str]] = []
+
+    def current(key: str) -> Any:
+        with repository.connection() as connection:
+            return nq._call_row(connection, key, default, repository)
+
+    for key in dict.fromkeys(str(key) for key in call_keys if str(key)):
+        row = current(key)
+        if row is None:
+            skipped.append({'call_key': key, 'join_id': '', 'reason': 'The call is no longer available.'})
+            continue
+        analyst = str(row['analyst'] or '')
+        if analyst.casefold() == username.casefold():
+            taken.append(key)
+            continue
+        if analyst:
+            skipped.append({'call_key': key, 'join_id': str(row['join_id'] or ''), 'reason': f'Already taken by {analyst}.'})
+            continue
+        changes = {'analyst': username}
+        team = queue_team(row, queue_teams)
+        if not row['team'] and team and team.casefold() in user_teams:
+            changes['team'] = team
+        try:
+            nq.update_tracking(repository, [key], changes, username, users, expected_version=int(row['version']))
+        except nq.TrackingConflict:
+            again = current(key)
+            skipped.append({'call_key': key, 'join_id': str(row['join_id'] or ''),
+                            'reason': f"Already taken by {again['analyst']}." if again is not None and again['analyst']
+                            else 'Somebody changed the call meanwhile: try again.'})
+            continue
+        except ValueError as exc:
+            skipped.append({'call_key': key, 'join_id': str(row['join_id'] or ''), 'reason': str(exc)})
+            continue
+        taken.append(key)
+    return {'taken': taken, 'skipped': skipped}
+
+
+def assign_calls(repository: Any, call_keys: list[str], changes: dict[str, Any], username: str, users: set[str]) -> dict[str, Any]:
+    """Give the calls a team and / or an analyst (admins, ticket #122): each call on its own, so one the rules of its
+    team refuse does not stop the others; an empty value takes the team or analyst away."""
+    from src.modules.nq import non_qualified_calls as nq
+    chosen = {key: str(value or '').strip() for key, value in (changes or {}).items() if key in ('team', 'analyst')}
+    if not chosen:
+        raise ValueError('Choose a team or an analyst.')
+    changed: list[str] = []
+    skipped: list[dict[str, str]] = []
+    for key in dict.fromkeys(str(key) for key in call_keys if str(key)):
+        try:
+            changed += nq.update_tracking(repository, [key], dict(chosen), username, users)
+        except (LookupError, ValueError) as exc:
+            skipped.append({'call_key': key, 'reason': str(exc)})
+    return {'changed': changed, 'skipped': skipped, 'changes': chosen}
 
 
 def order_queue(rows: list[dict[str, Any]], priorities: list[str]) -> list[dict[str, Any]]:
@@ -3141,7 +3268,7 @@ def status(repository: Any) -> dict[str, Any]:
 MAX_PANEL_KPIS = 12
 
 
-def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
+def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> dict[str, Any]:
     """The NQ Prioritization of the filtered calls: the calls of each step, the KPIs whose points they lose, the
     repeated issues and the calls to analyse next (prioritized, open and not attended yet) in each queue, and the tracked
     ones apart."""
@@ -3275,11 +3402,18 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
     names = priority_options(repository) or list(STRATEGY_PRIORITY_NAMES)
     # The queues of the steps of the strategy: Voice and Data, or the Unique queue of a strategy of one queue.
     used = {entry.get('queue') for entry in entries if entry.get('kind') == 'step'} | {row['queue'] for row in queue}
+    # The view of the queues the user chose (ticket #122), with the waiting calls of every view.
+    view = view if view in QUEUE_VIEWS else VIEW_ALL
+    queue_teams, user_teams = queue_context(repository, username, settings)
+    views = {name: sum(in_view(name, row, username, user_teams, queue_teams) for row in queue) for name in QUEUE_VIEWS}
+    waiting_total = len(queue)
     for name in [name for name in QUEUE_ORDER if name in used] or [VOICE_QUEUE, DATA_QUEUE]:
-        members = [{**row, 'priority': priority_of(row)} for row in queue if row['queue'] == name]
-        queues.append({'name': name, 'total': len(members), 'rows': order_queue(members, names)})
+        members = [{**row, 'priority': priority_of(row)} for row in queue
+                   if row['queue'] == name and in_view(view, row, username, user_teams, queue_teams)]
+        queues.append({'name': name, 'total': len(members), 'rows': order_queue(members, names), 'team': queue_teams.get(name, '')})
     queue = []
-    tracked = order_queue([{**row, 'priority': priority_of(row)} for row in tracked], names)
+    tracked = order_queue([{**row, 'priority': priority_of(row)} for row in tracked
+                           if in_view(view, row, username, user_teams, queue_teams)], names)
     # Every hotspot, run of consecutive failures and cluster among the filtered calls, the most calls first: its main site
     # (the place of most of its calls), its NR Modes and campaigns (the most calls first), the start of its first and last
     # call and its calls of each call type.
@@ -3349,7 +3483,9 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
                 'gain': round(sum(gains), 2) if gains else None,
                 'level': min(levels_of, key=lambda name: level_order.index(name) if name in level_order else len(level_order))
                 if levels_of else '',
-                'call_keys': [row['call_key'] for row in members]})
+                'call_keys': [row['call_key'] for row in members],
+                # Those without an analyst yet, which Take gives the user (ticket #122).
+                'free_keys': [row['call_key'] for row in members if not row['analyst']]})
         return {'hotspots': listed[:settings['capacity']], 'hotspot_total': len(listed), 'singles': singles}
 
     def queue_row(row: dict[str, Any], position: int) -> dict[str, Any]:
@@ -3361,7 +3497,9 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
                 'gain': None if row.get('expected_points') is None else round(float(row['expected_points']), 2),
                 'gain_campaign': row.get('expected_campaign') or '', 'list': row.get('queue_list') or '',
                 'level': row['impact_level'], 'repetitions': row['repetitions'], 'place': row['place_label'],
-                'team': row['team'], 'analyst': row['analyst'], 'state': queue_state(row)}
+                'team': row['team'], 'analyst': row['analyst'], 'state': queue_state(row),
+                # The team of its queue, for a call without a team of its own.
+                'queue_team': '' if row['team'] else queue_teams.get(str(row['queue'] or ''), '')}
     return {
         'status': status(repository),
         'strategy': {'key': strategy, 'label': strategy_labels(settings)[strategy]},
@@ -3370,14 +3508,17 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'settings': {key: settings[key] for key in ('high_share', 'medium_share', 'min_calls', 'previous_quarters', 'cluster_isd',
                                                     'spot_meters', 'cluster_road_meters', 'consecutive_minutes', 'consecutive_isd',
                                                     'consecutive_city_meters', 'consecutive_road_meters', 'hotspot_join', 'capacity',
-                                                    'hotspot_queues', 'min_hotspot_calls')},
+                                                    'hotspot_queues', 'min_hotspot_calls', 'queue_teams')},
+        # The view of the queues, the waiting calls of each view and the teams of the user (ticket #122).
+        'view': view, 'views': views, 'user_teams': sorted(user_teams),
         'totals': {
             'calls': len(rows), 'prioritized': sum(row['prioritization'] == PRIORITIZED for row in rows),
             'tracked': sum(row['prioritization'] == TRACK_ONLY for row in rows),
             'high': sum(row['impact_level'] == IMPACT_HIGH for row in rows),
             'repeated': sum(row['repeated'] == 'Yes' for row in rows), 'places': len(issue_rows),
             'points': round(sum(float(row['impact_points'] or 0) for row in rows), 2),
-            'next': len(queue) + sum(item['total'] for item in queues),
+            # Every waiting call of the queues, whatever the view.
+            'next': waiting_total,
             'waiting': sum(not row['impact_state'] for row in rows),
         },
         'levels': [{'value': name, 'count': levels[name], 'color': dict(nq_catalog.IMPACT_LEVELS).get(name, '')}
@@ -3389,7 +3530,7 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         'hotspots': spot_rows, 'consecutive': run_rows,
         'issues': issue_rows, 'issue_count': len(issue_rows),
         'queue': [queue_row(row, position) for position, row in enumerate(queue[:settings['capacity']], start=1)],
-        'queues': [{'name': item['name'], 'total': item['total'],
+        'queues': [{'name': item['name'], 'total': item['total'], 'team': item['team'],
                     'rows': [queue_row(row, position) for position, row in enumerate(item['rows'][:settings['capacity']], start=1)],
                     # A queue listed by hotspots: its hotspots, and its other waiting calls one by one.
                     **({'by_hotspots': True, 'hotspots': grouped['hotspots'], 'hotspot_total': grouped['hotspot_total'],

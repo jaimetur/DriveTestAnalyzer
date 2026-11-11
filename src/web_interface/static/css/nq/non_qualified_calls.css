@@ -1798,6 +1798,32 @@ td.nq-queue-number { text-align: right; font-variant-numeric: tabular-nums; }
 .nq-queue-table td.nq-queue-join, .nq-queue-table td.nq-queue-join .nq-failure-drill { white-space: nowrap; }
 /* The tracked calls, folded below the queues. */
 .nq-priority-tracked { margin-top: .9rem; }
+/* The views of the queues, who has each call, Take and the assignment of the admins (ticket #122). */
+.nq-queue-views { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .7rem; }
+.nq-queue-view { border: 1px solid #c9d3dd; background: #fff; color: #33424f; border-radius: 999px; padding: .25rem .8rem;
+  font-size: .8rem; cursor: pointer; }
+.nq-queue-view.is-active { background: #0f56b3; border-color: #0f56b3; color: #fff; font-weight: 600; }
+.nq-queue-assign { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .7rem; padding: .5rem .7rem;
+  border: 1px solid #c9d3dd; border-radius: 8px; background: #f4f7fb; }
+.nq-queue-assign[hidden] { display: none; }
+.nq-queue-assign-count { font-weight: 600; font-size: .82rem; }
+.nq-queue-assign select { max-width: 14rem; }
+.nq-queue-assign-apply { background: #0f56b3; color: #fff; border: 0; border-radius: 6px; padding: .3rem .9rem; cursor: pointer; }
+.nq-queue-assign-clear { background: #fff; color: #33424f; border: 1px solid #c9d3dd; border-radius: 6px; padding: .3rem .8rem; cursor: pointer; }
+.nq-queue-assign :is(.nq-queue-assign-apply, .nq-queue-assign-clear) { font-size: .82rem; }
+.nq-queue-table td.nq-queue-owner { white-space: normal; font-size: .8rem; }
+.nq-queue-owner.is-analyst > span { font-weight: 600; }
+.nq-queue-owner.is-queue-team > span { color: #6b7a88; font-style: italic; }
+.nq-queue-actions { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.nq-queue-take { border: 1px solid #0f56b3; color: #0f56b3; background: #fff; border-radius: 6px; padding: .1rem .55rem;
+  font-size: .75rem; cursor: pointer; }
+.nq-queue-take:hover { background: #0f56b3; color: #fff; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .nq-queue-view { background: transparent; color: inherit; border-color: #4a5763; }
+  :root:not([data-theme="light"]) .nq-queue-assign { background: rgba(255, 255, 255, .04); border-color: #4a5763; }
+  :root:not([data-theme="light"]) .nq-queue-take { background: transparent; }
+  :root:not([data-theme="light"]) .nq-queue-assign-clear { background: transparent; color: inherit; border-color: #4a5763; }
+}
 .nq-priority-tracked > summary { color: var(--nq-dark); font-weight: 800; cursor: pointer; }
 .nq-priority-tracked > :not(summary) { margin-top: .5rem; }
 /* The Voice and Data queues of the panel, one beside the other on wide screens. */

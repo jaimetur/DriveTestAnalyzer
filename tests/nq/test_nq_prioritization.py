@@ -1499,6 +1499,55 @@ def test_the_data_queue_lists_its_hotspots_and_the_other_calls_apart(strategized
     assert 'hotspot_queues' in json.loads(log['details'])['changed']
 
 
+def test_analysts_take_the_waiting_calls_and_admins_assign_them(strategized):
+    # Ticket #122: assigned calls keep waiting in their queue; the views split them; Take and Assign give them owners.
+    client = strategized['client']
+    workspace_user('editor', 'user-editor')
+    workspace_user('viewer', 'user-viewer')
+    url = '/api/non-qualified-calls/prioritization'
+    panel = client.post(url, json={'filters': {}}).json()
+    voice = panel['queues'][0]
+    first, second, third = (row['call_key'] for row in voice['rows'][:3])
+    assert panel['view'] == 'all' and panel['views']['all'] == panel['totals']['next'] == panel['views']['unassigned']
+    assert panel['views']['mine'] == panel['views']['team'] == 0 and voice['team'] == ''
+    # Taking a call makes the user its analyst: it waits as Assigned in their view, and nobody else can take it.
+    assert client.post('/api/non-qualified-calls/queues/take', json={'call_keys': [first]}).json() == {'taken': [first], 'skipped': []}
+    mine = client.post(url, json={'filters': {}, 'view': 'mine'}).json()
+    assert [(row['call_key'], row['analyst'], row['state']) for item in mine['queues'] for row in item['rows']] == [(first, 'super', 'analyst')]
+    assert mine['totals']['next'] == panel['totals']['next'] and mine['views']['unassigned'] == panel['views']['unassigned'] - 1
+    assert nq.call_detail(core.repository, first)['call']['status'] == 'Assigned'
+    login(client, 'editor', 'editor123')
+    skipped = client.post('/api/non-qualified-calls/queues/take', json={'call_keys': [first]}).json()
+    assert skipped['taken'] == [] and skipped['skipped'][0]['reason'] == 'Already taken by super.'
+    assert client.post('/api/non-qualified-calls/queues/assign', json={'call_keys': [second], 'team': 'Netcheck'}).status_code == 403
+    # The team of the Voice queue: its members see its calls without a team in My team, and take them with the team.
+    login(client)
+    settings = {**nq_prioritization.load_settings(core.repository), 'queue_teams': {'voice': 'netcheck'}}
+    assert client.put(f'{url}/settings', json={'settings': settings}).status_code == 200
+    assert nq_prioritization.load_settings(core.repository)['queue_teams'] == {'Voice': 'Netcheck'}
+    with core.repository.connection() as connection:
+        connection.execute(f'INSERT INTO {nq.NQ_TEAM_MEMBERS_TABLE} (team, username) VALUES (?, ?)', ('Netcheck', 'editor'))
+    login(client, 'editor', 'editor123')
+    team = client.post(url, json={'filters': {}, 'view': 'team'}).json()
+    rows = [row for item in team['queues'] for row in item['rows']]
+    assert team['user_teams'] == ['netcheck'] and second in [row['call_key'] for row in rows] and first not in [row['call_key'] for row in rows]
+    assert {row['queue_team'] for row in rows if row['call_key'] == second} == {'Netcheck'}
+    assert client.post('/api/non-qualified-calls/queues/take', json={'call_keys': [second]}).json()['taken'] == [second]
+    taken = nq.call_detail(core.repository, second)['call']
+    assert (taken['analyst'], taken['team'], taken['status']) == ('editor', 'Netcheck', 'Assigned')
+    # Admins assign calls to a team (or an analyst); viewers can do neither.
+    login(client)
+    assert client.post('/api/non-qualified-calls/queues/assign', json={'call_keys': [third], 'team': 'Operations'}).json() == {
+        'changed': 1, 'skipped': []}
+    unassigned = client.post(url, json={'filters': {}, 'view': 'unassigned'}).json()
+    assert third not in [row['call_key'] for item in unassigned['queues'] for row in item['rows']]
+    assert nq.call_detail(core.repository, third)['call']['status'] == 'Assigned'
+    login(client, 'viewer', 'viewer123')
+    assert client.post('/api/non-qualified-calls/queues/take', json={'call_keys': [third]}).status_code == 403
+    actions = [row['action'] for row in core.repository.list_logs(limit=100)]
+    assert 'nq_queue_take' in actions and 'nq_queue_assign' in actions
+
+
 def test_admins_switch_the_strategy_at_once_and_calls_in_analysis_keep_their_priority(strategized):
     client = strategized['client']
     rows = priority_rows()

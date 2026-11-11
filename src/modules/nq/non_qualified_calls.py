@@ -9822,8 +9822,48 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         return JSONResponse({'sections': save_sections(repository, payload.sections, user.username, defaults=payload.defaults)})
 
+    class PrioritizationPanelPayload(ExportPayload):
+        # The view of the queues (ticket #122): all, unassigned, team or mine.
+        view: str = 'all'
+
+    class QueueCallsPayload(BaseModel):
+        call_keys: list[str] = Field(default_factory=list)
+        team: str | None = None
+        analyst: str | None = None
+
+    def queue_call_keys(payload: QueueCallsPayload) -> list[str]:
+        if not payload.call_keys:
+            raise HTTPException(400, 'Select at least one call.')
+        if len(payload.call_keys) > 5000:
+            raise HTTPException(400, 'Change at most 5000 calls at once.')
+        return payload.call_keys
+
+    @core.app.post('/api/non-qualified-calls/queues/take')
+    def nq_queue_take(payload: QueueCallsPayload, user=Depends(editor_user)) -> JSONResponse:
+        """The user takes waiting calls of the queues as their analyst (ticket #122)."""
+        repository = workspace_repository(user)
+        result = nq_prioritization.take_calls(repository, queue_call_keys(payload), user.username, set(workspace_users()))
+        log_action(repository, user, 'nq_queue_take', {
+            'selected': len(payload.call_keys), 'taken': len(result['taken']), 'call_keys': result['taken'][:50],
+            'skipped': result['skipped'][:50]})
+        return JSONResponse(result)
+
+    @core.app.post('/api/non-qualified-calls/queues/assign')
+    def nq_queue_assign(payload: QueueCallsPayload, user=Depends(core.current_user)) -> JSONResponse:
+        """Admins give waiting calls of the queues a team and / or an analyst (ticket #122)."""
+        if not can_moderate(user):
+            raise HTTPException(403, 'Only admins and super-admins can assign the calls of the queues.')
+        repository = workspace_repository(user)
+        changes = {key: value for key, value in (('team', payload.team), ('analyst', payload.analyst)) if value is not None}
+        result = translate(lambda: nq_prioritization.assign_calls(repository, queue_call_keys(payload), changes,
+                                                                   user.username, set(workspace_users())))
+        log_action(repository, user, 'nq_queue_assign', {
+            'selected': len(payload.call_keys), 'changed': len(result['changed']), 'changes': result['changes'],
+            'call_keys': result['changed'][:50], 'skipped': result['skipped'][:50]})
+        return JSONResponse({'changed': len(result['changed']), 'skipped': result['skipped']})
+
     @core.app.post('/api/non-qualified-calls/prioritization')
-    def nq_prioritization_panel(payload: ExportPayload, user=Depends(core.current_user)) -> JSONResponse:
+    def nq_prioritization_panel(payload: PrioritizationPanelPayload, user=Depends(core.current_user)) -> JSONResponse:
         """The NQ Prioritization of the filtered calls; the first time (and after an update of its calculation), it is
         calculated at once in the background."""
         repository = workspace_repository(user)
@@ -9831,7 +9871,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         if (nq_prioritization.outdated(repository) and not nq_index_status(repository)['indexing']
                 and not (current and current['status'] in {'queued', 'processing'}) and nq_prioritization.needs_calculation(repository)):
             nq_prioritization.start(repository, core.submit_background_task)
-        return JSONResponse(nq_prioritization.panel(repository, payload.filters, user.username))
+        return JSONResponse(nq_prioritization.panel(repository, payload.filters, user.username, payload.view))
 
     @core.app.post('/api/non-qualified-calls/prioritization/recalculate')
     def nq_prioritization_recalculate(user=Depends(editor_user)) -> JSONResponse:

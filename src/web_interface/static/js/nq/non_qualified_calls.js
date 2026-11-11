@@ -3357,6 +3357,29 @@
   let trackedQueueOpen = false;
   // The individual failures of each queue listed by hotspots, open or folded as the panel is drawn again.
   const singleQueuesOpen = {};
+  // The view of the queues (ticket #122): every waiting call, those nobody has, those of the teams of the user, the user's.
+  const QUEUE_VIEWS = [['all', 'All'], ['unassigned', 'Unassigned'], ['team', 'My team'], ['mine', 'Assigned to me']];
+  let queueView = 'all';
+  try { queueView = window.localStorage.getItem('nq-queue-view') || 'all'; } catch (error) { queueView = 'all'; }
+  // The waiting calls admins selected in the queues to assign them (call keys; a hotspot selects all its calls).
+  const queueSelection = new Set();
+  const reloadQueues = () => {
+    priorityKey = '';
+    loadCalls({quiet: true});
+    loadPrioritization();
+  };
+  const takeQueueCalls = async (callKeys) => {
+    try {
+      const result = await api('/api/non-qualified-calls/queues/take', {method: 'POST', body: JSON.stringify({call_keys: callKeys})});
+      const skipped = result.skipped || [];
+      if (result.taken.length) toast(`${number(result.taken.length)} call${result.taken.length === 1 ? '' : 's'} taken.`);
+      if (skipped.length) toast(skipped.length === 1 ? `${skipped[0].join_id || 'The call'}: ${skipped[0].reason}`
+        : `${number(skipped.length)} calls not taken: ${skipped[0].reason}`, 'error');
+      reloadQueues();
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+  };
   // The list whose steps the Strategy subpanel shows (campaign, final or outside; the list with the most calls at first).
   let stepsTab = '';
   const renderPrioritization = (data) => {
@@ -3674,19 +3697,52 @@
     const levelColors = Object.fromEntries((data.levels || []).map((item) => [item.value, item.color]));
     // Each queue fits its card without scrolling sideways (the JOIN_ID on one line, the other columns wrap when needed).
     const withClass = (element, className) => { element.classList.add(className); return element; };
-    const queueTable = (rows) => withClass(failureTable(['#', 'JOIN_ID', 'Priority', 'Operator', 'Campaign', 'Step', 'Expected Gain', 'Scoring Impact'],
+    // Who has a waiting call (its analyst, else its team, else the team of its queue) and what the user can do with it:
+    // Take it (editors, when it has no analyst) and select it to assign it (admins) — ticket #122.
+    const canTake = Boolean(state.user.can_edit);
+    const canAssign = Boolean(state.user.can_moderate);
+    const ownerCell = (item) => (item.analyst ? {text: userName(item.analyst), className: 'nq-queue-owner is-analyst', title: `Analyst: ${userName(item.analyst)}`}
+      : item.team ? {text: item.team, className: 'nq-queue-owner is-team', title: `Team: ${item.team}, waiting for an analyst`}
+        : item.queue_team ? {text: item.queue_team, className: 'nq-queue-owner is-queue-team', title: `No team yet: the ${item.queue_team} team takes the calls of this queue`}
+          : {text: '—', className: 'nq-queue-owner', title: 'Nobody has this call yet'});
+    const queueActions = (callKeys, free) => {
+      const box = node('span', undefined, 'nq-queue-actions');
+      if (canAssign) {
+        const check = node('input');
+        check.type = 'checkbox';
+        check.title = 'Select to assign';
+        check.checked = callKeys.every((key) => queueSelection.has(key));
+        check.addEventListener('change', () => {
+          callKeys.forEach((key) => (check.checked ? queueSelection.add(key) : queueSelection.delete(key)));
+          updateAssignBar();
+        });
+        box.append(check);
+      }
+      if (canTake && free.length) {
+        const take = node('button', 'Take', 'nq-queue-take');
+        take.type = 'button';
+        take.title = free.length === 1 ? 'Become the analyst of this call' : `Become the analyst of its ${free.length} calls without an analyst`;
+        take.addEventListener('click', () => takeQueueCalls(free));
+        box.append(take);
+      }
+      return {node: box, className: 'nq-queue-action-cell'};
+    };
+    const actionHeaders = canTake || canAssign ? [''] : [];
+    const queueTable = (rows) => withClass(failureTable(['#', 'JOIN_ID', 'Priority', 'Operator', 'Campaign', 'Step', 'Owner', 'Expected Gain', 'Scoring Impact', ...actionHeaders],
       rows.map((item) => [{text: number(item.position), className: 'nq-queue-position'},
         {text: item.join_id || item.call_key, className: 'nq-failure-name nq-queue-join', action: () => openDetail(item.call_key)},
         {text: item.priority || '—', className: `nq-queue-priority is-${String(item.priority || '').toLowerCase()}`},
         item.operator || '—', item.campaign || '—',
         {text: item.step ? `Step ${item.step} · ${item.list === 'final' ? 'Final' : 'Weekly'}` : '—', title: item.rule || '',
           className: `nq-queue-step is-${item.list === 'final' ? 'final' : 'weekly'}`},
+        ownerCell(item),
         {text: points(item.gain), className: 'nq-queue-number',
           title: item.gain_campaign ? `From the Final CDR of ${item.gain_campaign}` : 'No campaign with a Final CDR to tell it: the oldest first'},
-        item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—'])), 'nq-queue-table');
+        item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—',
+        ...(actionHeaders.length ? [queueActions([item.call_key], item.analyst ? [] : [item.call_key])] : [])])), 'nq-queue-table');
     // A queue listed by hotspots (ticket #123): a row per hotspot with its waiting calls, the same columns as the calls; a
     // click on its ID filters the list (and the queues) by the hotspot, as in the Hotspots panel.
-    const hotspotQueueTable = (rows) => withClass(failureTable(['#', 'Hotspot ID', 'Priority', 'Operator', 'Campaign', 'Step', 'Calls', 'Assigned', 'Expected Gain', 'Scoring Impact'],
+    const hotspotQueueTable = (rows) => withClass(failureTable(['#', 'Hotspot ID', 'Priority', 'Operator', 'Campaign', 'Step', 'Calls', 'Assigned', 'Expected Gain', 'Scoring Impact', ...actionHeaders],
       rows.map((item) => {
         const id = node('button', undefined, 'nq-failure-drill nq-group-id');
         const line = node('span', undefined, 'nq-group-id-line');
@@ -3702,13 +3758,14 @@
           {text: `${number(item.waiting)} / ${number(item.calls)}`, className: 'nq-queue-number', title: 'Waiting / calls of this queue in the hotspot'},
           {text: `${number(item.assigned)} / ${number(item.waiting)}`, className: 'nq-queue-number', title: 'Waiting calls with an Analyst / waiting calls'},
           {text: points(item.gain), className: 'nq-queue-number', title: 'Expected Gain of its waiting calls together'},
-          item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—'];
+          item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—',
+          ...(actionHeaders.length ? [queueActions(item.call_keys || [], item.free_keys || [])] : [])];
       })), 'nq-queue-table');
     const queues = node('div', undefined, 'nq-priority-queues');
     queues.append(...(data.queues || []).map((item) => {
       const box = node('div', undefined, 'nq-failure-card');
       if (!item.by_hotspots) {
-        box.append(node('strong', `${item.name} queue · ${number(item.total)} waiting`, 'nq-failure-operator'),
+        box.append(node('strong', `${item.name} queue${item.team ? ` · ${item.team} team` : ''} · ${number(item.total)} waiting`, 'nq-failure-operator'),
           item.rows.length ? queueTable(item.rows) : node('p', 'No call is waiting in this queue.', 'nq-muted'));
         return box;
       }
@@ -3718,12 +3775,80 @@
       singles.addEventListener('toggle', () => { singleQueuesOpen[item.name] = singles.open; });
       singles.append(node('summary', `Individual failures · ${number(item.singles_total)} waiting (out of a hotspot of ${number(data.settings.min_hotspot_calls)} or more failures)`),
         item.singles.length ? queueTable(item.singles) : node('p', 'No individual failure is waiting.', 'nq-muted'));
-      box.append(node('strong', `${item.name} queue · ${number(item.hotspot_total)} hotspot${item.hotspot_total === 1 ? '' : 's'} · ${number(item.total)} waiting`, 'nq-failure-operator'),
+      box.append(node('strong', `${item.name} queue${item.team ? ` · ${item.team} team` : ''} · ${number(item.hotspot_total)} hotspot${item.hotspot_total === 1 ? '' : 's'} · ${number(item.total)} waiting`, 'nq-failure-operator'),
         item.hotspots.length ? hotspotQueueTable(item.hotspots) : node('p', 'No hotspot is waiting in this queue.', 'nq-muted'), singles);
       return box;
     }));
+    // The views of the queues, with their waiting calls (ticket #122).
+    const viewBar = node('div', undefined, 'nq-queue-views');
+    viewBar.setAttribute('role', 'group');
+    viewBar.setAttribute('aria-label', 'View of the queues');
+    viewBar.append(...QUEUE_VIEWS.map(([key, label]) => {
+      const button = node('button', `${label} · ${number(data.views?.[key] ?? 0)}`, `nq-queue-view${(data.view || 'all') === key ? ' is-active' : ''}`);
+      button.type = 'button';
+      button.title = {all: 'Every waiting call of the queues', unassigned: 'The waiting calls with no team and no analyst',
+        team: (data.user_teams || []).length ? `The waiting calls of your teams (${data.user_teams.join(', ')}) without an analyst`
+          : 'You are not a member of any team', mine: 'The waiting calls you are the analyst of'}[key];
+      button.addEventListener('click', () => {
+        queueView = key;
+        try { window.localStorage.setItem('nq-queue-view', key); } catch (error) { /* the view is only kept for this page */ }
+        reloadQueues();
+      });
+      return button;
+    }));
+    // Admins assign the selected calls (or hotspots) to a team and / or an analyst.
+    const assignBar = node('div', undefined, 'nq-queue-assign');
+    const KEEP = '@keep';
+    const NONE = '@none';
+    const assignSelect = (label, options) => {
+      const select = node('select');
+      select.setAttribute('aria-label', label);
+      select.append(...[[KEEP, `${label}: keep`], [NONE, `${label}: none`], ...options].map(([value, text]) => {
+        const option = node('option', text);
+        option.value = value;
+        return option;
+      }));
+      return select;
+    };
+    const teamSelect = assignSelect('Team', state.options.teams.map((item) => [item.name, item.name]));
+    const analystSelect = assignSelect('Analyst', [...state.users].sort(byUserName).map((name) => [name, userName(name)]));
+    const assignCount = node('span', '', 'nq-queue-assign-count');
+    const assignButton = node('button', 'Assign', 'nq-queue-assign-apply');
+    assignButton.type = 'button';
+    const clearButton = node('button', 'Clear', 'nq-queue-assign-clear');
+    clearButton.type = 'button';
+    function updateAssignBar() {
+      assignBar.hidden = !canAssign || !queueSelection.size;
+      assignCount.textContent = `${number(queueSelection.size)} selected call${queueSelection.size === 1 ? '' : 's'}`;
+    }
+    clearButton.addEventListener('click', () => {
+      queueSelection.clear();
+      reloadQueues();
+    });
+    assignButton.addEventListener('click', async () => {
+      const value = (select) => (select.value === KEEP ? null : select.value === NONE ? '' : select.value);
+      const team = value(teamSelect);
+      const analyst = value(analystSelect);
+      if (team === null && analyst === null) {
+        toast('Choose a team or an analyst.', 'error');
+        return;
+      }
+      try {
+        const result = await api('/api/non-qualified-calls/queues/assign', {
+          method: 'POST', body: JSON.stringify({call_keys: [...queueSelection], team, analyst}),
+        });
+        toast(`${number(result.changed)} call${result.changed === 1 ? '' : 's'} assigned.`);
+        if ((result.skipped || []).length) toast(`${number(result.skipped.length)} not assigned: ${result.skipped[0].reason}`, 'error');
+        queueSelection.clear();
+        reloadQueues();
+      } catch (error) {
+        toast(error.message, 'error');
+      }
+    });
+    assignBar.append(assignCount, teamSelect, analystSelect, assignButton, clearButton);
+    updateAssignBar();
     // The tracked calls, which no team takes, folded below the queues (they stay open or folded as the panel is drawn again).
-    const content = [queues];
+    const content = [viewBar, assignBar, queues];
     if (data.tracked) {
       const tracked = node('details', undefined, 'nq-priority-tracked');
       tracked.open = trackedQueueOpen;
@@ -3732,7 +3857,7 @@
         data.tracked.rows.length ? queueTable(data.tracked.rows) : node('p', 'No tracked call is waiting.', 'nq-muted'));
       content.push(tracked);
     }
-    section('queues', 'Next to analyse', `The first ${data.settings.capacity} calls of each queue that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, are folded below them. Click a call to open it. A queue listed by hotspots shows its first ${data.settings.capacity} hotspots of ${data.settings.min_hotspot_calls} or more failures of the queue, in the order of their first waiting call (click a hotspot to see its calls), and its other waiting calls folded below them.`, ...content);
+    section('queues', 'Next to analyse', `The first ${data.settings.capacity} calls of each queue that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, are folded below them. Click a call to open it. A queue listed by hotspots shows its first ${data.settings.capacity} hotspots of ${data.settings.min_hotspot_calls} or more failures of the queue, in the order of their first waiting call (click a hotspot to see its calls), and its other waiting calls folded below them. A call given a team or an analyst still waits until somebody attends it: the views show every waiting call, those nobody has, those waiting for an analyst of your teams (their team, or the team of their queue) and yours; Owner tells who has each call, Take makes you its analyst (every call without an analyst of a hotspot) and admins select calls or hotspots to assign them to a team or an analyst.`, ...content);
     $('nq-priority').replaceChildren(...['queues', 'steps', 'impact'].map((key) => sections[key]).filter(Boolean));
   };
   let priorityToken = 0;
@@ -3756,7 +3881,7 @@
     priorityKey = key;
     const token = ++priorityToken;
     try {
-      const data = await api('/api/non-qualified-calls/prioritization', {method: 'POST', body: JSON.stringify({filters})});
+      const data = await api('/api/non-qualified-calls/prioritization', {method: 'POST', body: JSON.stringify({filters, view: queueView})});
       if (token === priorityToken) renderPrioritization(data);
     } catch (error) {
       if (token === priorityToken) {
@@ -7241,7 +7366,10 @@
   // Every setting of the levels as the dialog holds it.
   const levelSettings = () => ({...Object.fromEntries(Object.entries(PRIORITY_INPUTS).map(([key, id]) => [key, Number($(id).value)])),
     ...Object.fromEntries(Object.entries(PRIORITY_CHOICES).map(([key, id]) => [key, $(id).value])),
-    hotspot_queues: [...priorityDialog.querySelectorAll('[data-nq-hotspot-queue]')].filter((box) => box.checked).map((box) => box.value)});
+    hotspot_queues: [...priorityDialog.querySelectorAll('[data-nq-hotspot-queue]')].filter((box) => box.checked).map((box) => box.value),
+    // The team of each queue (ticket #122), none when @none.
+    queue_teams: Object.fromEntries([...priorityDialog.querySelectorAll('[data-nq-queue-team]')]
+      .filter((select) => select.value && select.value !== '@none').map((select) => [select.dataset.nqQueueTeam, select.value]))});
   // Every field of the steps of each strategy while the dialog is open (admins change them).
   let strategySteps = {};
   const FOCUSED = '@focused';
@@ -8012,6 +8140,17 @@
     fillScopeSelects($('nq-priority-regions-out'), $('nq-priority-modes-out'), settings);
     Object.entries({...PRIORITY_INPUTS, ...PRIORITY_CHOICES}).forEach(([key, id]) => { $(id).value = settings[key]; });
     priorityDialog.querySelectorAll('[data-nq-hotspot-queue]').forEach((box) => { box.checked = (settings.hotspot_queues || []).includes(box.value); });
+    priorityDialog.querySelectorAll('[data-nq-queue-team]').forEach((select) => {
+      const chosen = (settings.queue_teams || {})[select.dataset.nqQueueTeam] || '';
+      const teams = state.options.teams.map((item) => item.name);
+      select.replaceChildren(...[['@none', 'None'], ...[...new Set([...teams, ...(chosen ? [chosen] : [])])].map((name) => [name, name])].map(([value, text]) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = text;
+        return option;
+      }));
+      select.value = chosen || '@none';
+    });
     $('nq-priority-fill').checked = Boolean(settings.fill_priority);
     showStrategy(select.value);
   };
@@ -8335,6 +8474,10 @@
           node('p', 'They keep their name as the Analyst of their calls: give them their user account in the equivalences '
             + '(Analyst → username) before importing, or later with Link Analysts to Accounts.', 'nq-muted'),
           chips((result.analysts_without_account || []).map((item) => [item.value, number(item.rows)]))]),
+        section('Reviewers without account', (result.reviewers_without_account || []).length, [
+          node('p', 'They keep their name as the Reviewer of their calls: give them their user account in the equivalences '
+            + '(Reviewer → username) before importing, or later with Link Analysts to Accounts.', 'nq-muted'),
+          chips((result.reviewers_without_account || []).map((item) => [item.value, number(item.rows)]))]),
         section('Domains that change in the catalog', (result.domain_changes || []).length, chips((result.domain_changes || []).map((item) => [
           `${item.value}: ${item.from || 'no domain'} → ${item.to}`, `${item.kind} · ${number(item.rows)}`]))),
         section('Values kept only in the import note', result.invalid_total,
@@ -8392,10 +8535,6 @@
         ['Import notes', result.notes, 'What has no field, one per call'],
         ['Dated by their analysis', result.dated, result.estimated ? `${number(result.estimated)} a week after the call` : 'Every call'],
         ['New in the catalog', added, `${count((result.domain_changes || []).length, 'domain')} changed`],
-        section('Reviewers without account', (result.reviewers_without_account || []).length, [
-          node('p', 'They keep their name as the Reviewer of their calls: give them their user account in the equivalences '
-            + '(Reviewer → username) before importing, or later with Link Analysts to Accounts.', 'nq-muted'),
-          chips((result.reviewers_without_account || []).map((item) => [item.value, number(item.rows)]))]),
         ['Values only in the note', result.invalid_total, 'Not valid for their field'],
       ].forEach(([label, value, note]) => {
         const card = node('div', undefined, 'nq-analyses-kpi');
