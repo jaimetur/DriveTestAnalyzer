@@ -89,6 +89,9 @@ class CdrFieldProfile:
     nq_call_radio_from_samples: Sources = ()
     # Which calls are Non-Qualified, as Non-Qualified Calls says it ("Every call ... whose result is not Completed").
     nq_definition: str = 'whose result is not Completed (Failed, Dropped, Cutoff…)'
+    # The CDR columns Non-Qualified Calls filters by in its CDR Fields Filters, as they come in the CDR (NetCheck's
+    # location levels); kept with every call.
+    nq_filter_columns: Sources = ()
 
 
 _NETCHECK_STATUS = ('status', 'Call_Status', 'Test_Result', 'Test_Status')
@@ -411,6 +414,7 @@ NETCHECK_PROFILE = CdrFieldProfile(
         'speech': (('Recording_Latitude', 'Recording_Longitude'), ('Playing_Latitude', 'Playing_Longitude')),
     },
     environment_columns=('G_Level_1', 'G_Level_2', 'G_Level_3'),
+    nq_filter_columns=('G_Level_1', 'G_Level_2', 'G_Level_3', 'G_Level_4'),
 )
 
 # Each Umlaut service names its result, start, position and cells its own way: the candidates list one per service.

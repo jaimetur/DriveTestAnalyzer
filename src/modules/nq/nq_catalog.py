@@ -66,6 +66,24 @@ FIELD_SOURCES = {
     'rca': 'From the Ericsson RCA', 'dta': 'From the DT Analyzer RCA', 'derived': 'Derived from the call',
     'priority': 'From the NQ Prioritization',
 }
+# The CDR values of the NetCheck RCA, filtered by filters of their own (Failure Classification, Category, Subcategory).
+NETCHECK_RCA_REFS = ('failure_classification', 'failure_category', 'failure_subcategory')
+# The short texts filtered by their values: those found by the tool (RCA, CDR, NQ Prioritization IDs).
+TEXT_FILTER_SOURCES = frozenset({'dta', 'rca', 'cdr', 'priority'})
+
+
+def is_filter_field(field: dict[str, Any]) -> bool:
+    """Whether a catalog field has a filter ``field:<key>`` in the Filters panel: its lists and Yes / No fields, the short
+    texts found by the tool and those the tool suggests to the analysts (the follow-up and the NetCheck RCA have filters
+    of their own). non_qualified_calls.js (isFilterField) follows the same rule."""
+    source, kind = field.get('source'), field.get('type')
+    if source == 'tracking' or (source == 'cdr' and field.get('source_ref') in NETCHECK_RCA_REFS):
+        return False
+    if kind in {'list', 'yes_no'}:
+        return True
+    return kind == 'text' and (source in TEXT_FILTER_SOURCES or bool(field.get('suggest_from')))
+
+
 # Follow-up values a tracking field shows.
 TRACKING_REFS = {
     'status': 'NQ Call Status', 'team': 'Team', 'analyst': 'Analyst', 'reviewer': 'Reviewer', 'updated_at': 'Last modification',

@@ -382,7 +382,7 @@ SUBSCRIBER_SOURCES = NETCHECK_PROFILE.nq_subscriber_sources
 # Filters on indexed fields; the tracking filters are handled separately.
 FIELD_FILTERS = (
     'service', 'campaign', 'operator', 'operator_vendor', 'vendor_operator', 'vendor', 'region', 'cluster', 'city',
-    'technology', 'test_name', 'result', 'failure_classification', 'failure_category',
+    'technology', 'test_name', 'result', 'failure_classification', 'failure_category', 'failure_subcategory',
 )
 TRACKING_FILTERS = ('status', 'team', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause', 'status_mode')
 # Filters typed as a list of values rather than chosen among them (a JOIN_ID has too many values to list).
@@ -2141,7 +2141,9 @@ def indexed_cdr_columns(repository: Any) -> list[str]:
                    if field['source'] == 'cdr' and field['source_ref'].startswith('column:')]
     except Exception:  # noqa: BLE001 - the catalog table may not exist yet while the module tables are created.
         catalog = []
-    return list(dict.fromkeys([*columns['cdr'], *columns['export_cdr'], *_user_cdr_columns(repository), *catalog]))
+    # The CDR columns of the CDR Fields Filters (NetCheck's G_Level_1 to G_Level_4).
+    filtered = workspace_field_profile(repository).nq_filter_columns
+    return list(dict.fromkeys([*columns['cdr'], *columns['export_cdr'], *_user_cdr_columns(repository), *catalog, *filtered]))
 
 
 def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, export_cdr: Any = (), *,
@@ -5234,7 +5236,29 @@ def filter_options(task_repository: Any, layout: dict[str, list[str]] | None = N
     with task_repository.connection() as connection:
         values['nr_mode'] = sorted({str(row[0]) for row in connection.execute(
             f"SELECT DISTINCT nr_mode FROM {NQ_CALLS_TABLE} WHERE nr_mode <> ''")}, key=lambda value: (value != 'NSA', value))
+    values.update(_text_filter_options(task_repository))
     return values
+
+
+def _text_filter_options(task_repository: Any) -> dict[str, list[str]]:
+    """The values of the filters chosen among the values of the calls rather than among those of a list: the short
+    texts of the catalog (RCA, CDR, NQ Prioritization IDs, the cells suggested to the analysts) and the CDR columns of the
+    CDR Fields Filters, in one pass over the calls."""
+    expressions = {f"field:{definition['key']}": field_sql(definition) for definition in list_fields(task_repository)
+                   if nq_catalog.is_filter_field(definition) and definition['type'] == 'text'}
+    expressions.update({f'column:cdr:{name}': column_filter_sql(f'cdr:{name}')
+                        for name in workspace_field_profile(task_repository).nq_filter_columns})
+    if not expressions:
+        return {}
+    keys = list(expressions)
+    with task_repository.connection() as connection:
+        base, params = _base_sql(untracked_status(task_repository), task_repository)
+        row = connection.execute(
+            f"WITH calls AS ({base}) SELECT {', '.join(f'json_group_array(DISTINCT {expressions[key]})' for key in keys)} FROM calls",
+            params).fetchone()
+    return {key: sorted((str(value) for value in json.loads(found or '[]') if value not in (None, '')),
+                        key=str.casefold)[:MAX_COLUMN_FILTER_VALUES]
+            for key, found in zip(keys, row)}
 
 
 def _filter_expressions(task_repository: Any, definitions: list[dict[str, Any]]) -> dict[str, str]:
@@ -5243,7 +5267,7 @@ def _filter_expressions(task_repository: Any, definitions: list[dict[str, Any]])
     expressions = {field: field for field in (*FIELD_FILTERS, *TRACKING_FILTERS)}
     expressions['nr_mode'] = 'nr_mode'
     for definition in definitions:
-        if definition['source'] in {'user', 'derived', 'priority'} and definition['type'] in {'list', 'yes_no'}:
+        if nq_catalog.is_filter_field(definition):
             expressions[f"field:{definition['key']}"] = field_sql(definition)
     # Every optional and indexed CDR column, as the table layout of each user may show it.
     for key in [*COLUMN_FILTER_SQL, *(f'cdr:{name}' for name in indexed_cdr_columns(task_repository))]:
@@ -9752,6 +9776,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'fields': provider_field_labels(list_fields(repository), repository),
             'default_fields': provider_field_labels(nq_catalog.default_fields(), repository), 'field_types': FIELD_TYPES,
             'field_sources': nq_catalog.FIELD_SOURCES,
+            # The CDR columns of the CDR Fields Filters (G_Level_1 to G_Level_4 of NetCheck CDRs).
+            'cdr_filter_columns': list(workspace_field_profile(repository).nq_filter_columns),
             'tracking_refs': nq_catalog.TRACKING_REFS, 'rca_refs': nq_catalog.RCA_REFS, 'call_fields': list(CATALOG_CALL_FIELDS),
             'sections': list_sections(repository), 'default_sections': nq_catalog.default_sections(), 'call_section': CALL_SECTION,
             'status_rules': status_rules(repository), 'default_status_rules': nq_catalog.default_status_rules(),

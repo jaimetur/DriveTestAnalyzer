@@ -1183,16 +1183,33 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     assert head.index('data-sort="root_category"') < head.index('data-sort="status"') < head.index('data-sort="team"') \
         < head.index('data-sort="comments"') and '>Global Status</span>' in head
     assert page.index('nq-filters-panel') < page.index('nq-calls-panel') < page.index('nq-summary-panel')
-    # The General Filters (the CDRs and the call), then the NQ Analysis Fields Filters with those of the catalog fields of
-    # the CDR and the follow-up (the script adds the others and puts all in the order of the catalog).
-    general = page.split('>General Filters:</p>', 1)[1].split('id="nq-field-filters-title"', 1)[0]
-    fields = page.split('id="nq-field-filters-title">NQ Analysis Fields Filters:</p>', 1)[1].split('id="nq-column-filters-title"', 1)[0]
+    # The General Filters (the CDRs and the call), then the filters of the fields by their source (ticket #121): CDR, RCA
+    # (DT Analyzer RCA, NetCheck RCA, Ericsson RCA), DT Analyzer and Analyst, with those of the CDR and the follow-up (the
+    # script adds the catalog fields and the CDR columns and puts all in the order of the catalog).
+    general = page.split('>General Filters:</p>', 1)[1].split('data-nq-filter-card="cdr"', 1)[0]
     assert 'data-nq-filter="campaign"' in general and 'data-nq-filter="version"' in general and 'data-nq-filter="status"' not in general
-    for name in ('failure_classification', 'failure_category', 'status', 'status_mode', 'state', 'team', 'analyst', 'root_domain',
-                 'root_category', 'root_cause'):
-        assert f'data-nq-filter="{name}"' in fields, name
+    cards = {}
+    for origin in ('cdr', 'rca', 'tool', 'analyst'):
+        cards[origin] = page.split(f'data-nq-filter-card="{origin}"', 1)[1].split('</section>', 1)[0]
+        assert f'data-nq-origin="{origin}"' in page
+    assert page.index('data-nq-filter-card="cdr"') < page.index('data-nq-filter-card="rca"') \
+        < page.index('data-nq-filter-card="tool"') < page.index('data-nq-filter-card="analyst"') < page.index('id="nq-column-filters-title"')
+    assert '>CDR Fields Filters: <small>' in cards['cdr'] and 'data-nq-filter-host="cdr"' in cards['cdr']
+    for host in ('dta', 'netcheck', 'ericsson'):
+        assert f'data-nq-filter-host="{host}"' in cards['rca'] and f'data-nq-filter-subtitle="{host}"' in cards['rca'], host
+    for origin, names in (('rca', ('failure_classification', 'failure_category', 'failure_subcategory')),
+                          ('tool', ('status', 'status_mode', 'state')),
+                          ('analyst', ('team', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause'))):
+        for name in names:
+            assert f'data-nq-filter="{name}"' in cards[origin], name
+    # The names the analysis team gives some filters, below theirs.
+    for alias in ('Responsible Stream', 'Final Failure Category', 'Final Failure Subcategory', 'Analysis Finished'):
+        assert f'<em class="nq-filter-alias">{alias}</em>' in page, alias
     # Each group in a card of its own.
-    assert page.count('<section class="nq-filter-card"') == 3
+    assert page.count('<section class="nq-filter-card') == 6
+    # Every field of the call panel shows its source, with the legend and the switch of the analysts' fields.
+    assert 'id="nq-source-legend"' in page
+    assert "title.append(originBadge(wrapper.dataset.origin));" in script and "'nq-call-panel-analyst-only'" in script
     # The phase cards leave out the calls without a value unless Show Empty Status (unchecked) is checked.
     assert '<input type="checkbox" id="nq-life-show-empty"> Show Empty Status</label>' in page
     assert "const base = phase.drill || showEmpty ? total : items.reduce((sum, item) => sum + item.count, 0);" in script

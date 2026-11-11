@@ -31,7 +31,7 @@
     service: 'Service', campaign: 'Campaign', operator: 'Operator', operator_vendor: 'Operator_Vendor', vendor_operator: 'Vendor_Operator', vendor: 'Vendor',
     region: 'Region', cluster: 'Cluster', city: 'City', dataset_id: 'CDR', join_id: 'Join ID',
     technology: 'Technology', test_name: 'Test Name', result: 'Result', failure_classification: 'Failure Classification',
-    failure_category: 'Failure Category', status: 'Global Status', team: 'Team', analyst: 'Analyst', reviewer: 'Reviewer', datasets: 'CDR',
+    failure_category: 'Failure Category', failure_subcategory: 'Failure Subcategory', status: 'Global Status', team: 'Team', analyst: 'Analyst', reviewer: 'Reviewer', datasets: 'CDR',
     root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause', status_mode: 'Status Set',
     nr_mode: 'NR Mode', call_type: 'Call Type', period: 'Period',
     age: 'Age of Open Calls', root_pair: 'Root Domain · Cause', effective_domain: 'Root Domain (with suggestions)',
@@ -95,7 +95,7 @@
 
   const state = {
     options: {statuses: [], teams: []}, rootCauses: {domains: [], categories: [], causes: [], require_to_close: false}, users: [], userNames: {},
-    defaultUsers: [],
+    defaultUsers: [], cdrFilterColumns: [],
     user: {username: '', can_edit: false, can_moderate: false},
     unassigned: '__unassigned__', datasets: [], mainCities: [], sort: 'start_time', direction: 'desc', page: 1, pageSize: 10,
     result: null, selected: new Set(), detail: null, requestToken: 0, busy: false, extraFilters: {}, stale: new Set(),
@@ -306,14 +306,51 @@
     && (state.user.can_moderate || comment.created_by.toLowerCase() === state.user.username.toLowerCase());
 
   // -- filters --------------------------------------------------------------
-  // The list and Yes / No fields chosen among their values: entered by the analysts, derived from the call or given by the
-  // NQ Prioritization.
-  const filterableFields = () => state.fields.filter((field) => ['list', 'yes_no'].includes(field.type)
-    && ['user', 'derived', 'priority'].includes(field.source));
+  // The CDR values of the NetCheck RCA, which have filters of their own (Failure Classification, Category, Subcategory).
+  const NETCHECK_RCA_REFS = ['failure_classification', 'failure_category', 'failure_subcategory'];
+  // The catalog fields with a filter of their own (nq_catalog.is_filter_field follows the same rule): the list and Yes /
+  // No fields, the short texts found by the tool (RCA, CDR, NQ Prioritization IDs) and those it suggests to the analysts.
+  const isFilterField = (field) => {
+    if (field.source === 'tracking' || (field.source === 'cdr' && NETCHECK_RCA_REFS.includes(field.source_ref))) return false;
+    if (['list', 'yes_no'].includes(field.type)) return true;
+    return field.type === 'text' && (['dta', 'rca', 'cdr', 'priority'].includes(field.source) || Boolean(field.suggest_from));
+  };
+  const filterableFields = () => state.fields.filter(isFilterField);
+  // Where the value of a field comes from (ticket #121), for the cards of the Filters panel and the label of each field
+  // of the call panel: the CDR, the DT Analyzer RCA, the RCA of the CDR (NetCheck), the Ericsson RCA, DT Analyzer (the
+  // Status Rules and the NQ Prioritization), or the analysts (suggested when the tool fills it until they set it).
+  const fieldOrigin = (field) => {
+    const {source, source_ref: ref} = field;
+    if (source === 'dta') return 'dta';
+    if (source === 'rca') return 'ericsson';
+    if (source === 'cdr') return NETCHECK_RCA_REFS.includes(ref) ? 'netcheck' : 'cdr';
+    if (source === 'derived') return 'cdr';
+    if (source === 'priority') return 'tool';
+    if (source === 'tracking') return ['status', 'updated_at'].includes(ref) ? 'tool' : 'analyst';
+    return field.suggest_from || (field.key === 'priority' && field.type === 'list') ? 'suggested' : 'analyst';
+  };
+  const ORIGIN_LABELS = {
+    cdr: 'CDR', dta: 'DT Analyzer RCA', netcheck: PROVIDER_RCA, ericsson: 'Ericsson RCA', tool: 'DT Analyzer',
+    analyst: 'Analyst', suggested: 'Analyst · suggested',
+  };
+  const ORIGIN_TITLES = {
+    cdr: 'As it comes in the CDR', dta: 'Found by the DT Analyzer RCA', netcheck: `Found by the ${PROVIDER_RCA} (in the CDR)`,
+    ericsson: 'Found by the Ericsson RCA', tool: 'Filled by DT Analyzer: Status Rules and NQ Prioritization',
+    analyst: 'Filled by the analysts', suggested: 'Filled by the analysts; DT Analyzer suggests a value until they set it',
+  };
+  const originBadge = (origin) => {
+    const badge = node('span', ORIGIN_LABELS[origin] || origin, 'nq-source-badge');
+    badge.dataset.origin = origin;
+    badge.title = ORIGIN_TITLES[origin] || '';
+    return badge;
+  };
+  // The card (and RCA group) of the Filters panel of each origin.
+  const ORIGIN_HOSTS = {cdr: 'cdr', dta: 'dta', netcheck: 'netcheck', ericsson: 'ericsson', tool: 'tool', analyst: 'analyst', suggested: 'analyst'};
   const filterSelects = () => [...root.querySelectorAll('[data-nq-filter]')];
   // The filters of the CDR and the follow-up that are fields of the catalog (source:reference), among its fields.
   const CATALOG_FILTERS = {
     failure_classification: 'cdr:failure_classification', failure_category: 'cdr:failure_category',
+    failure_subcategory: 'cdr:failure_subcategory',
     root_domain: 'tracking:root_category', root_category: 'tracking:root_category', root_cause: 'tracking:root_cause',
     status: 'tracking:status', status_mode: 'tracking:status', state: 'tracking:status', team: 'tracking:team',
     analyst: 'tracking:analyst', reviewer: 'tracking:reviewer',
@@ -347,44 +384,69 @@
       state: FOLLOW_UP_STATES.map((value) => [value, STATE_LABELS[value]]),
       version: Object.entries(state.versionLabels),
     };
-    // A filter for every list and Yes / No field of the catalog (and Analyst and Reviewer), beside those of the CDR and
-    // the follow-up that are fields of the catalog too.
-    const fieldHost = $('nq-field-filters');
+    // A filter for every catalog field with one (isFilterField) and for the CDR columns of the CDR Fields Filters, in the
+    // card of its origin (ticket #121) beside those of the CDR, the RCA and the follow-up that are fields of the catalog.
+    const hosts = Object.fromEntries([...root.querySelectorAll('[data-nq-filter-host]')].map((host) => [host.dataset.nqFilterHost, host]));
     const filterable = filterableFields();
-    const present = new Set(filterable.map((field) => `field:${field.key}`));
-    fieldHost.querySelectorAll('[data-nq-filter^="field:"]').forEach((select) => {
+    const added = [
+      // Under the name of its RCA a filter drops it from its own (Category A of the Ericsson RCA).
+      ...filterable.map((field) => {
+        const origin = fieldOrigin(field);
+        const prefix = ['dta', 'netcheck', 'ericsson'].includes(origin) ? `${ORIGIN_LABELS[origin]} ` : '';
+        const label = prefix && field.label.startsWith(prefix) ? field.label.slice(prefix.length) : field.label;
+        return {name: `field:${field.key}`, label, host: ORIGIN_HOSTS[origin], field};
+      }),
+      ...state.cdrFilterColumns.map((column) => ({name: `column:cdr:${column}`, label: column, host: 'cdr'})),
+    ];
+    const present = new Set(added.map((item) => item.name));
+    Object.values(hosts).forEach((host) => host.querySelectorAll('[data-nq-filter^="field:"], [data-nq-filter^="column:"]').forEach((select) => {
       if (!present.has(select.dataset.nqFilter)) select.closest('label').remove();
-    });
-    filterable.forEach((field) => {
-      const name = `field:${field.key}`;
-      const listed = (field.options || []).map((option) => option.name);
-      const choices = {yes_no: ['Yes', 'No'], list: listed.length ? listed : null}[field.type] || values[name] || [];
-      entries[name] = [[state.unassigned, 'Empty'], ...choices.map((value) => [value, value])];
-      if (fieldHost.querySelector(`[data-nq-filter="${CSS.escape(name)}"]`)) return;
-      const label = node('label', field.label);
+    }));
+    added.forEach(({name, label: text, host: hostKey, field}) => {
+      if (field) {
+        const listed = (field.options || []).map((option) => option.name);
+        const choices = {yes_no: ['Yes', 'No'], list: listed.length ? listed : null}[field.type] || values[name] || [];
+        entries[name] = [[state.unassigned, 'Empty'], ...choices.map((value) => [value, value])];
+      } else {
+        entries[name] = [[state.unassigned, 'Empty'], ...(values[name] || []).map((value) => [value, value])];
+      }
+      const host = hosts[hostKey] || hosts.analyst;
+      const existing = root.querySelector(`[data-nq-filter-host] [data-nq-filter="${CSS.escape(name)}"]`);
+      if (existing) {
+        if (!host.contains(existing)) host.append(existing.closest('label'));
+        return;
+      }
+      const label = node('label', text);
       const select = node('select');
       select.multiple = true;
       select.size = 1;
       select.dataset.nqFilter = name;
       select.dataset.multiselectNoValuesLabel = 'No values available';
       select.dataset.multiselectEmptyLabel = 'All values';
-      select.setAttribute('aria-label', field.label);
+      select.setAttribute('aria-label', field?.label || text);
       label.append(select);
-      fieldHost.append(label);
+      host.append(label);
     });
-    // In the order of Fields & Sections (the filters of the CDR and the follow-up at the place of their field).
+    // In the order of Fields & Sections (the filters of the CDR and the follow-up at the place of their field), the CDR
+    // columns last; a card, or an RCA group, without filters is hidden.
     const position = new Map();
     state.fields.forEach((field, index) => {
       position.set(`field:${field.key}`, index);
       position.set(`${field.source}:${field.source_ref}`, index);
     });
-    [...fieldHost.children].map((label, order) => {
-      const name = label.querySelector('[data-nq-filter]')?.dataset.nqFilter || '';
-      return [position.get(CATALOG_FILTERS[name] || name) ?? -1, order, label];
-    }).sort((a, b) => a[0] - b[0] || a[1] - b[1]).forEach(([, , label]) => fieldHost.append(label));
-    fieldHost.hidden = !fieldHost.querySelector('[data-nq-filter]');
-    $('nq-field-filters-title').hidden = fieldHost.hidden;
-    fieldHost.closest('.nq-filter-card').hidden = fieldHost.hidden;
+    state.cdrFilterColumns.forEach((column, index) => position.set(`column:cdr:${column}`, state.fields.length + index));
+    Object.entries(hosts).forEach(([key, host]) => {
+      [...host.children].map((label, order) => {
+        const name = label.querySelector('[data-nq-filter]')?.dataset.nqFilter || '';
+        return [position.get(CATALOG_FILTERS[name] || name) ?? -1, order, label];
+      }).sort((a, b) => a[0] - b[0] || a[1] - b[1]).forEach(([, , label]) => host.append(label));
+      host.hidden = !host.querySelector('[data-nq-filter]');
+      const subtitle = root.querySelector(`[data-nq-filter-subtitle="${key}"]`);
+      if (subtitle) subtitle.hidden = host.hidden;
+    });
+    root.querySelectorAll('[data-nq-filter-card]').forEach((card) => {
+      card.hidden = !card.querySelector('[data-nq-filter-host]:not([hidden]) [data-nq-filter]');
+    });
     // A filter for every optional and CDR column of the table (Region, Cluster and CDR have theirs).
     const columnHost = $('nq-column-filters');
     const cdrColumnHost = $('nq-cdr-column-filters');
@@ -394,10 +456,12 @@
       if (!wanted.has(select.dataset.nqFilter)) select.closest('label').remove();
     }));
     columns.forEach((column) => {
-      if (column.filter !== 'datasets') entries[column.filter] = [[state.unassigned, 'Empty'], ...(values[column.filter] || []).map((value) => [value, value])];
-      // CDR columns add no filter to the panel: they filter from their header only.
+      if (column.filter !== 'datasets' && !entries[column.filter]) entries[column.filter] = [[state.unassigned, 'Empty'], ...(values[column.filter] || []).map((value) => [value, value])];
+      // CDR columns add no filter to the panel: they filter from their header only (those of the CDR Fields Filters
+      // with the filter of that card).
       const host = column.filter.startsWith('column:cdr:') ? cdrColumnHost : columnHost;
       if (host.querySelector(`[data-nq-filter="${CSS.escape(column.filter)}"]`)) return;
+      if (root.querySelector(`[data-nq-filter-host] [data-nq-filter="${CSS.escape(column.filter)}"]`)) return;
       const label = node('label', column.label);
       const select = node('select');
       select.multiple = true;
@@ -2979,6 +3043,7 @@
       state.defaultFields = payload.default_fields || [];
       state.fieldTypes = payload.field_types || {};
       state.fieldSources = payload.field_sources || {};
+      state.cdrFilterColumns = payload.cdr_filter_columns || [];
       state.trackingRefs = payload.tracking_refs || {};
       state.rcaRefs = payload.rca_refs || {};
       state.dtaRefs = payload.dta_refs || {};
@@ -4412,11 +4477,37 @@
   const GROUP_ID_REFS = ['hotspot_id', 'consecutive_id', 'cluster_id'];
   const phaseFields = () => PHASE_SECTIONS.map((key) => state.fields.find((field) => field.section === key && field.type === 'list'
     && ['user', 'derived'].includes(field.source))).filter(Boolean);
+  // The sources of the fields of the call panel, above its tabs, and the switch that leaves only the fields of the
+  // analysts in the sections (remembered in this browser).
+  const ANALYST_ONLY_KEY = 'nq-call-panel-analyst-only';
+  const renderSourceLegend = () => {
+    const host = $('nq-source-legend');
+    if (!host || host.childElementCount) return;
+    const origins = Object.keys(ORIGIN_LABELS).filter((origin) => origin === 'tool'
+      || state.fields.some((field) => fieldOrigin(field) === origin));
+    const toggle = node('label', undefined, 'nq-analyst-only');
+    const box = node('input');
+    box.type = 'checkbox';
+    try { box.checked = localStorage.getItem(ANALYST_ONLY_KEY) === '1'; } catch (_error) { box.checked = false; }
+    drawer.classList.toggle('is-analyst-only', box.checked);
+    box.addEventListener('change', () => {
+      drawer.classList.toggle('is-analyst-only', box.checked);
+      try { localStorage.setItem(ANALYST_ONLY_KEY, box.checked ? '1' : '0'); } catch (_error) { /* not remembered */ }
+    });
+    toggle.title = 'Show in the sections only the fields the analysts fill (green labels)';
+    toggle.append(box, ' Only the fields the analysts fill');
+    host.replaceChildren(node('span', 'Source:', 'nq-source-legend-title'), ...origins.map(originBadge), toggle);
+  };
   const renderTracking = (call) => {
     const host = $('nq-drawer-tracking');
+    renderSourceLegend();
+    // Every value of the header with the label of its source: the status set by the Status Rules (DT Analyzer), the
+    // rest by the analysts.
     const field = (kind, label) => {
       const wrapper = node('label', undefined, 'nq-tracking-field');
+      wrapper.dataset.origin = kind === 'status' ? 'tool' : 'analyst';
       wrapper.append(node('span', label));
+      wrapper.querySelector('span').append(' ', originBadge(wrapper.dataset.origin));
       wrapper.append(state.user.can_edit ? trackingSelect(kind, call) : pill(kind, call[kind]));
       return wrapper;
     };
@@ -4428,7 +4519,10 @@
     if (priorityField) {
       const value = String(call.values?.priority || '');
       priority = node('label', undefined, 'nq-tracking-field nq-tracking-priority');
-      priority.append(node('span', priorityField.label));
+      priority.dataset.origin = fieldOrigin(priorityField);
+      const priorityTitle = node('span', priorityField.label);
+      priorityTitle.append(' ', originBadge(priority.dataset.origin));
+      priority.append(priorityTitle);
       if (state.user.can_edit) {
         const control = choiceControl({
           items: fieldChoices(priorityField, value), value, empty: 'Not set', label: `${priorityField.label} of the call`,
@@ -4448,6 +4542,8 @@
     const domain = call.root_domain ? node('span', call.root_domain, 'nq-domain-tag') : null;
     if (domain) domain.style.setProperty('--nq-section', domainColor(call.root_domain) || '#7b8790');
     const title = node('span', 'Root Category · Root Cause');
+    rootField.dataset.origin = 'analyst';
+    title.append(' ', originBadge('analyst'));
     if (domain) title.append(' ', domain);
     rootField.append(title, rootCauseControl(call));
     // The phases of the call, each in the colour of its section; a click opens its tab. The first one, RCA
@@ -4507,7 +4603,10 @@
       const value = call.values?.[item.key];
       const cell = node('div', undefined, `nq-call-info-item${String(value ?? '').length > 20 ? ' is-wide' : ''}`);
       if (item.description) cell.title = item.description;
-      cell.append(node('span', item.label, 'nq-call-info-label'), readonlyValue(item, value));
+      cell.dataset.origin = fieldOrigin(item);
+      const label = node('span', item.label, 'nq-call-info-label');
+      label.append(' ', originBadge(cell.dataset.origin));
+      cell.append(label, readonlyValue(item, value));
       return cell;
     };
     // The repeated issue of the call (Repeated Issue, Repetitions, Repeated Campaigns, Repetition Place) together on a row of
@@ -4747,7 +4846,9 @@
     const name = node('span', prefix && field.label.startsWith(prefix) ? field.label.slice(prefix.length) : field.label, 'nq-field-name');
     name.title = field.label;
     title.append(name);
-    if (!editable) title.append(node('small', SOURCE_TAGS[field.source] || field.source, `nq-source-tag is-${field.source}`));
+    // Where the value comes from, in a label of its own colour (ticket #121); the fields of the analysts are framed.
+    wrapper.dataset.origin = fieldOrigin(field);
+    title.append(originBadge(wrapper.dataset.origin));
     if (field.required_to_close) title.append(node('small', 'required to close', 'nq-required-tag'));
     if (field.description) wrapper.title = field.description;
     wrapper.append(title);

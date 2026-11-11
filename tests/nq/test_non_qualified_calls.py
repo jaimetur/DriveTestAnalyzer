@@ -1214,6 +1214,37 @@ def test_cdr_columns_and_optional_columns_of_the_calls_table(client, tmp_path):
     assert client.put('/api/non-qualified-calls/table-columns', json={'builtin': ['unknown'], 'cdr': []}).status_code == 400
 
 
+def test_field_filters_by_source_have_their_values_and_filter_the_calls(client, tmp_path):
+    """Ticket #121: the G_Level columns of NetCheck CDRs, the Failure Subcategory and the short texts of the catalog (RCA,
+    CDR, NQ Prioritization IDs and the cells suggested to the analysts) are filters of their own, with their values."""
+    enable_module()
+    rows = voice_rows()
+    rows['Failure_Subcategory'] = ['', 'Low RSRP', 'SIP 503']
+    rows['G_Level_1'] = ['Drive', 'Walk', 'Drive']
+    rows['G_Level_4'] = ['Leeds', 'York', 'Leeds']
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', rows)
+    login(client)
+    state = client.get('/api/non-qualified-calls/state').json()
+    assert state['cdr_filter_columns'] == ['G_Level_1', 'G_Level_2', 'G_Level_3', 'G_Level_4']
+    query(client)
+    options = client.get('/api/non-qualified-calls/state').json()['filter_options']
+    assert options['failure_subcategory'] == ['Low RSRP', 'SIP 503']
+    assert options['column:cdr:G_Level_1'] == ['Drive', 'Walk'] and options['column:cdr:G_Level_4'] == ['Leeds', 'York']
+    assert 'field:dta_rca_category' in options and 'field:last_cell_id' in options
+    assert [call['failure_subcategory'] for call in query(client, filters={'failure_subcategory': ['SIP 503']})['calls']] == ['SIP 503']
+    walk = query(client, filters={'columns': {'cdr:G_Level_1': ['Walk']}})['calls']
+    assert [call['failure_subcategory'] for call in walk] == ['Low RSRP']
+    # The catalog fields with a filter: lists and Yes / No, the texts found by the tool and those it suggests.
+    fields = {field['key']: field for field in state['fields']}
+    assert nq.nq_catalog.is_filter_field(fields['analysis_status']) and nq.nq_catalog.is_filter_field(fields['dta_rca_category'])
+    assert nq.nq_catalog.is_filter_field(fields['hotspot_id']) and nq.nq_catalog.is_filter_field(fields['serving_cell_when_failure'])
+    assert not nq.nq_catalog.is_filter_field(fields['netcheck_suggested_cause'])  # Failure Subcategory filters it
+    assert not nq.nq_catalog.is_filter_field(fields['analyst']) and not nq.nq_catalog.is_filter_field(fields['findings'])
+    category = options['field:dta_rca_category'][0]
+    matching = query(client, filters={'fields': {'dta_rca_category': [category]}})['total']
+    assert 0 < matching <= query(client)['total']
+
+
 def test_session_type_is_a_call_column_with_its_own_filter(client, tmp_path):
     enable_module()
     rows = voice_rows()
