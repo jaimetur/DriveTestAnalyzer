@@ -114,43 +114,22 @@
         <label title="How the CDRs see each call: the latest version, changed between CDRs, a newer version in a CDR that is not chosen, not in the Final CDR of its campaign, or Completed in a newer CDR (listed only when chosen here)">CDR Version<select data-nq-filter="version" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="CDR Version"></select></label>
       </div>
       </section>
-      {# The fields of Fields & Sections and the follow-up, each in the card of its source (non_qualified_calls.js,
-         fieldOrigin): the CDR, the RCAs, DT Analyzer and the analysts, in the order of the catalog. The filters of the
-         catalog fields and of the CDR columns of the CDR Fields Filters are added by the script. #}
-      <section class="nq-filter-card nq-source-card" data-nq-origin="cdr" data-nq-filter-card="cdr">
-      <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="cdr">CDR</span>CDR Fields Filters: <small>as they come in the CDR</small></p>
-      <div class="nq-filter-grid" data-nq-filter-host="cdr"></div>
-      </section>
-      <section class="nq-filter-card nq-source-card" data-nq-origin="rca" data-nq-filter-card="rca">
-      <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="rca">RCA</span>RCA Classification Filters: <small>what each RCA found, before the analysts</small></p>
-      <p class="nq-filter-subtitle" data-nq-filter-subtitle="dta">DT Analyzer RCA</p>
-      <div class="nq-filter-grid" data-nq-filter-host="dta"></div>
-      <p class="nq-filter-subtitle" data-nq-filter-subtitle="netcheck">{{ provider.rca | default('NetCheck RCA', true) }}</p>
-      <div class="nq-filter-grid" data-nq-filter-host="netcheck">
+      {# The fields of Fields & Sections: those of the CDR and the follow-up here, and the fields of the analysts the
+         script adds, all in the order of the catalog. #}
+      <section class="nq-filter-card">
+      <p class="nq-filter-group-title" id="nq-field-filters-title">NQ Analysis Fields Filters:</p>
+      <div class="nq-filter-grid nq-field-filter-grid" id="nq-field-filters">
         <label>Failure Classification<select data-nq-filter="failure_classification" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Classification"></select></label>
         <label>Failure Category<select data-nq-filter="failure_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Category"></select></label>
-        <label>Failure Subcategory<select data-nq-filter="failure_subcategory" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Subcategory"></select></label>
-      </div>
-      <p class="nq-filter-subtitle" data-nq-filter-subtitle="ericsson">Ericsson RCA</p>
-      <div class="nq-filter-grid" data-nq-filter-host="ericsson"></div>
-      </section>
-      <section class="nq-filter-card nq-source-card" data-nq-origin="tool" data-nq-filter-card="tool">
-      <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="tool">DT Analyzer</span>Automatic Fields Filters: <small>filled by the tool: Status Rules, NQ Prioritization, hotspots</small></p>
-      <div class="nq-filter-grid" data-nq-filter-host="tool">
-        <label>Global Status<em class="nq-filter-alias">Analysis Finished</em><select data-nq-filter="status" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Global Status"></select></label>
+        <label>Global Status<select data-nq-filter="status" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Global Status"></select></label>
         <label title="Whether the status follows the Status Rules or was set by hand">Status Set<select data-nq-filter="status_mode" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Status Set"></select></label>
         <label title="How far each call has been followed up: attended or not, stalled, closed, with a team, an analyst, comments or a root cause">Follow-up<select data-nq-filter="state" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Follow-up"></select></label>
-      </div>
-      </section>
-      <section class="nq-filter-card nq-source-card" data-nq-origin="analyst" data-nq-filter-card="analyst">
-      <p class="nq-filter-group-title"><span class="nq-source-badge" data-origin="analyst">Analyst</span>Analysis Team Fields Filters: <small>filled by the analysts</small></p>
-      <div class="nq-filter-grid" data-nq-filter-host="analyst">
-        <label>Team<em class="nq-filter-alias">Responsible Stream</em><select data-nq-filter="team" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Team"></select></label>
+        <label>Team<select data-nq-filter="team" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Team"></select></label>
         <label>Analyst<select data-nq-filter="analyst" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Analyst"></select></label>
         <label>Reviewer<select data-nq-filter="reviewer" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Reviewer"></select></label>
         <label>Root Domain<select data-nq-filter="root_domain" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Domain"></select></label>
-        <label>Root Category<em class="nq-filter-alias">Final Failure Category</em><select data-nq-filter="root_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Category"></select></label>
-        <label>Root Cause<em class="nq-filter-alias">Final Failure Subcategory</em><select data-nq-filter="root_cause" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Cause"></select></label>
+        <label>Root Category<select data-nq-filter="root_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Category"></select></label>
+        <label>Root Cause<select data-nq-filter="root_cause" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Cause"></select></label>
       </div>
       </section>
       <section class="nq-filter-card" hidden>
