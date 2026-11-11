@@ -17,6 +17,14 @@ on:
     tags:
       - 'v*'
 
+# Several Build All runs of the same branch launched minutes apart (one per pushed change) raced while deleting and
+# recreating the same GitHub release (HTTP 422 "tag_name already exists") and left a failed run holding the Docker
+# concurrency group. Only the latest run of a branch or tag goes on; the earlier one is cancelled as a whole. The group
+# differs from that of build_docker.yml, which a called workflow must not share with its caller.
+concurrency:
+  group: build-all-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-docker:
     permissions:
@@ -108,11 +116,21 @@ jobs:
         run: |
           set -euo pipefail
 
+          # A manual run also deletes the tag, so the release is created again with its tag on the commit built
+          # (gh release create keeps an existing tag where it was); a tag push keeps the tag that started it.
+          cleanup=()
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            cleanup=(--cleanup-tag)
+          fi
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             echo "Release ${RELEASE_TAG} exists. Deleting it before recreation."
-            gh release delete "${RELEASE_TAG}" --yes
+            gh release delete "${RELEASE_TAG}" --yes "${cleanup[@]}"
           else
             echo "Release ${RELEASE_TAG} does not exist."
+            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]] && gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+              echo "Deleting the tag ${RELEASE_TAG} left without its release."
+              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/tags/${RELEASE_TAG}"
+            fi
           fi
 
       - name: Publish GitHub release
