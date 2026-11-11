@@ -124,7 +124,16 @@
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'/%3E%3C/svg%3E") center / contain no-repeat;
 }
-.nq-drawer-body .nq-analysis-field.is-to-fill :is(input:not([type="checkbox"]), textarea, select, .nq-pill-select, .nq-choice-trigger, .multiselect-trigger) { border-color: #9fd3b4; background-color: #f4fbf7; }
+/* The value of every field takes the palette of its source mark: a soft tint and a border of its colour (CDR blue, RCA
+   amber, DT Analyzer violet, analysts green), in the sections and in Prioritization Info. A field of the analysts still
+   empty has a dashed border, so what is to be filled stands out. */
+.nq-drawer-body .nq-analysis-field[data-origin="cdr"] .nq-readonly-value { border: 1px solid #c4d9f3; background: var(--nq-origin-cdr-soft); }
+.nq-drawer-body .nq-analysis-field:is([data-origin="dta"], [data-origin="netcheck"], [data-origin="ericsson"]) .nq-readonly-value { border: 1px solid #f0d3a2; background: var(--nq-origin-rca-soft); }
+.nq-drawer-body .nq-analysis-field[data-origin="tool"] .nq-readonly-value,
+.nq-drawer .nq-call-info-item { border: 1px solid #ddd3f6; background: var(--nq-origin-tool-soft); }
+.nq-drawer .nq-call-info-item { border-width: 0; }
+.nq-drawer-body .nq-analysis-field:is([data-origin="analyst"], [data-origin="suggested"]) :is(input:not([type="checkbox"]), textarea, select, .nq-pill-select, .nq-readonly-value, .rt-frame) { border-color: #a9d8bb; background-color: #f2faf5; }
+.nq-drawer-body .nq-analysis-field.is-to-fill :is(input:not([type="checkbox"]), textarea, select, .nq-pill-select, .rt-frame) { border-style: dashed; border-color: var(--nq-origin-analyst); }
 .nq-tracking-field > span:first-child .nq-source-mark { margin-left: .45rem; vertical-align: .05rem; }
 .nq-phase-panel-title .nq-source-mark { margin-left: .6rem; vertical-align: .05rem; }
 .nq-source-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1rem; padding: .45rem 1.2rem; border-top: 1px solid var(--nq-border); color: var(--nq-muted); font-size: .72rem; font-weight: 700; }
