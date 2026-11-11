@@ -133,6 +133,15 @@
 .nq-drawer .nq-call-info-item { border: 1px solid #ddd3f6; background: var(--nq-origin-tool-soft); }
 .nq-drawer .nq-call-info-item { border-width: 0; }
 .nq-drawer-body .nq-analysis-field:is([data-origin="analyst"], [data-origin="suggested"]) :is(input:not([type="checkbox"]), textarea, select, .nq-pill-select, .nq-readonly-value, .rt-frame) { border-color: #a9d8bb; background-color: #f2faf5; }
+/* The values of the header follow the same palette: Team, Analyst, Reviewer, Root Category and Root Cause and the fields of
+   the analysts of General green (dashed while empty), the proposal of an RCA amber. The NQ Call Status and the Priority
+   keep the colour of their value, which tells the value. */
+.nq-drawer-tracking :is(.nq-tracking-field, .nq-analysis-field):is([data-origin="analyst"], [data-origin="suggested"]) :is(.nq-pill-select:not(.is-colored), input:not([type="checkbox"])) { border-color: #a9d8bb; background-color: #f2faf5; }
+.nq-drawer-tracking :is(.nq-tracking-field, .nq-analysis-field):is([data-origin="analyst"], [data-origin="suggested"]) .nq-pill-select.is-empty { border-style: dashed; border-color: var(--nq-origin-analyst); }
+.nq-drawer-tracking .nq-tracking-root .nq-root-suggestion { border-color: #e7b866; background: var(--nq-origin-rca-soft); }
+/* The Root Category and Root Cause the analysts select in the Root Cause Decision of the RCA tab, likewise. */
+.nq-drawer-body .nq-decision-current .nq-root-select { border-color: #a9d8bb; background-color: #f2faf5; }
+.nq-drawer-body .nq-decision-current .nq-root-select.is-empty { border-style: dashed; border-color: var(--nq-origin-analyst); }
 .nq-drawer-body .nq-analysis-field.is-to-fill :is(input:not([type="checkbox"]), textarea, select, .nq-pill-select, .rt-frame) { border-style: dashed; border-color: var(--nq-origin-analyst); }
 .nq-tracking-field > span:first-child .nq-source-mark { margin-left: .45rem; vertical-align: .05rem; }
 .nq-phase-panel-title .nq-source-mark { margin-left: .6rem; vertical-align: .05rem; }
