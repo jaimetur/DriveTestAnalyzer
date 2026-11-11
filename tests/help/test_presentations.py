@@ -259,11 +259,13 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
     assert {'operators', 'vendors-campaigns', 'places'} <= {slide['id'] for slide in by_id['workspace-config']['slides']}
     assert {'templates'} <= {slide['id'] for slide in by_id['ppt-designer']['slides']}
     assert {'groups', 'map', 'map-findings'} <= {slide['id'] for slide in by_id['non-qualified-calls']['slides']}
-    # The DT Analyzer RCA keeps its slides.html, and the benchmarking providers deck its pictures.
-    for name, count in (('dt-analyzer-rca', 14), ('benchmarking-providers', 24)):
+    # The DT Analyzer RCA keeps its slides.html, and the benchmarking providers deck its pictures and the slides.html they
+    # are taken from.
+    for name, count in (('dt-analyzer-rca', 14), ('benchmarking-providers', 26)):
         slides = json.loads((GENERATOR_FOLDER / name / 'slides.json').read_text(encoding='utf-8'))['slides']
         assert len(slides) == count and all(slide['title'] and slide['notes'] for slide in slides), name
     assert (GENERATOR_FOLDER / 'dt-analyzer-rca' / 'slides.html').is_file()
+    assert (GENERATOR_FOLDER / 'benchmarking-providers' / 'slides.html').is_file()
     assert all((GENERATOR_FOLDER / 'benchmarking-providers' / slide['image']).is_file()
                for slide in json.loads((GENERATOR_FOLDER / 'benchmarking-providers' / 'slides.json').read_text(encoding='utf-8'))['slides'])
     # Help Home and Product Presentations show every presentation: those of the tool (the Architecture and the Benchmarking

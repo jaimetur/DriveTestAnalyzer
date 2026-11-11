@@ -53,7 +53,7 @@ roadmap
 ## Planned product work
 
 - Germany pilot: a first test campaign in Germany.
-- Umlaut CDRs first, and later P3 and RootMetrics CDRs: workspaces of each provider that keep its field names and values, with its own Scoring methodologies, PPT templates and Non-Qualified Calls rules. [Benchmarking Providers](benchmarking-providers.md) describes the status of each phase and what each module will have with Umlaut CDRs.
+- Umlaut CDRs first, and later P3 and RootMetrics CDRs: workspaces of each provider that keep its field names and values, with its own Scoring methodologies, PPT templates and Non-Qualified Calls rules. [Benchmarking Providers](benchmarking-providers.md) describes the status and time plan of each phase, what each module will have with Umlaut CDRs and what is needed to finish.
 - Active Tests community: build with the tool the KPI and Scoring reports it generates today.
 - Non-Qualified Calls: confirm the NQ definition (currently every result other than Completed in NetCheck CDRs; in Umlaut CDRs, the calls and tests marked NOT QUALIFIED), the Umlaut, P3 and RootMetrics values of the DT Analyzer RCA, and take the module out of Alpha.
 - Configuration datasets ingestion to enrich CDR dataset and combine them to extract combined info using SQL Queries or Report Templates.

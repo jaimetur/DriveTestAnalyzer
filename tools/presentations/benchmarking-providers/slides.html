@@ -1,0 +1,796 @@
+<!doctype html>
+<!--
+  The slides of the Benchmarking Providers Roadmap presentation of the Help, one <section> each (1920 × 1080), in the
+  design of its own deck (Space Grotesk, IBM Plex Sans and JetBrains Mono from Google Fonts, the Ericsson logo at the top
+  right). slides.json lists their order, sections, titles and speaker notes; the slide-NN.png pictures beside it are what
+  build.js turns into the PowerPoint. After a change, take the pictures again with
+  `node module_decks.js <folder> benchmarking-providers` and copy them here as palette PNGs.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Benchmarking Providers Roadmap</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=block">
+<style>
+* { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #0B1422; }
+  .slide { position: relative; width: 1920px; height: 1080px; overflow: hidden; padding: 128px 128px 160px; display: flex;
+    flex-direction: column; font-family: 'IBM Plex Sans', Arial, sans-serif; }
+  .slide + .slide { margin-top: 40px; }
+  .slide * { margin: 0; }
+  .slide p { line-height: 1.36; }
+  .slide ul { padding-left: 31px; }
+  .dark { background: #0B1422; color: #E8EEF6; }
+  .light { background: #F2F4F7; color: #12203A; }
+  .mono { font-family: 'JetBrains Mono', 'Courier New', monospace; }
+  .display, h1, h2 { font-family: 'Space Grotesk', Arial, sans-serif; }
+  .head { display: flex; flex-direction: column; gap: 16px; }
+  .kicker { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 26px; letter-spacing: 3px; text-transform: uppercase; color: #27C3D6; }
+  .light .kicker { color: #0B7F8F; }
+  h2 { font-size: 72px; font-weight: 700; line-height: 1.1; }
+  .foot { position: absolute; left: 128px; bottom: 64px; width: 1664px; font-size: 24px; color: #6F84A0; }
+  .light .foot { color: #6B7A8F; }
+  .slide .icon { flex: none; }
+  /* The Ericsson logo at the top right: white on the dark slides, black on the light ones. */
+  .logo { position: absolute; left: 1719px; top: 40px; width: 73px; height: 64px;
+    background: url(../../../src/web_interface/static/img/ericsson-logo-white.png) center / contain no-repeat; }
+  .light .logo, .slide[data-logo="light"] .logo { filter: invert(1); }
+
+  .pill { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 26px; color: #0B1422; padding: 10px 22px; border-radius: 999px; }
+  .stat { background: #FBFCFD; border: 1px solid #D9E0E8; border-radius: 20px; padding: 40px; display: flex; flex-direction: column; gap: 12px; }
+  .stat .figure { font-family: 'Space Grotesk', Arial, sans-serif; font-size: 96px; font-weight: 700; line-height: 1; color: #12203A; }
+  .stat p:not(.figure) { font-size: 28px; line-height: 1.35; color: #4A5A70; }
+  .stat.dark-card { background: #12203A; border-color: #12203A; }
+  .soft { background: #E6EBF1; }
+
+  .provider { flex: 1; background: #13213A; border-top: 8px solid; border-radius: 20px; padding: 32px; display: flex; flex-direction: column; gap: 18px; }
+  .provider h3 { font-family: 'Space Grotesk', Arial, sans-serif; font-size: 40px; font-weight: 700; }
+  .provider ul { font-size: 24px; line-height: 1.45; color: #C9D6E6; display: flex; flex-direction: column; gap: 10px; }
+
+  .rules { display: flex; flex-direction: column; background: #FBFCFD; border: 1px solid #D9E0E8; border-radius: 20px; }
+  .rules > div { display: flex; gap: 32px; align-items: center; padding: 26px 40px; border-bottom: 1px solid #D9E0E8; }
+  .rules > div:last-child { border-bottom: none; }
+  .rules .icon { color: #0B7F8F; width: 56px; height: 56px; }
+  .rules .rule { font-family: 'Space Grotesk', Arial, sans-serif; font-size: 34px; font-weight: 700; width: 520px; flex: none; }
+  .rules p:last-child { flex: 1; font-size: 28px; line-height: 1.35; color: #4A5A70; }
+
+  .layer { background: #13213A; border-left: 10px solid; border-radius: 16px; padding: 24px 32px; display: flex; gap: 28px; align-items: center; }
+  .layer .mono { font-size: 26px; width: 150px; flex: none; }
+  .layer p:last-child { flex: 1; font-size: 27px; line-height: 1.35; color: #C9D6E6; }
+
+  .table-box { background: #FBFCFD; border: 1px solid #D9E0E8; border-radius: 16px; padding: 14px 22px; }
+  .table-box table { width: 100%; border-collapse: collapse; }
+  .table-box th { background: #12203A; color: #E8EEF6; text-align: left; font-weight: 600; padding: 10px 16px; }
+  .table-box td { padding: 9px 16px; border-bottom: 1px solid #D9E0E8; vertical-align: top; }
+  .table-box tr:last-child td { border-bottom: none; }
+  .table-box tr:nth-child(2n+3) td { background: #EDF1F5; }
+  .mono-table { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 25px; line-height: 1.36; }
+  .files-table { font-size: 24px; line-height: 1.3; }
+  .files-table td { padding: 10px 16px; }
+  .inv-table { font-size: 24px; line-height: 1.32; }
+  .inv-table th { font-size: 24px; padding: 12px 18px; }
+  .inv-table td { padding: 14px 18px; color: #2A3A55; }
+  .inv-table td b { color: #12203A; }
+
+  .impact { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; }
+  .impact > div { background: #13213A; border-radius: 18px; padding: 26px; display: flex; flex-direction: column; gap: 12px; }
+  .chip { font-size: 22px; font-weight: 600; color: #0B1422; padding: 5px 14px; border-radius: 999px; align-self: flex-start; }
+  .impact h3 { font-size: 30px; font-weight: 600; line-height: 1.2; }
+  .impact p:last-child { font-size: 23px; line-height: 1.4; color: #9FB2C8; }
+
+  .input { font-size: 26px; font-weight: 600; background: #FBFCFD; border: 1px solid #D9E0E8; border-radius: 14px; padding: 20px 24px; }
+
+  .phases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .phases > div { border-top: 8px solid; background: #FBFCFD; border-radius: 0 0 16px 16px; padding: 24px 22px; display: flex; flex-direction: column; gap: 12px; }
+  .phases .done { border-top-color: #27C3D6; background: #12203A; color: #E8EEF6; }
+  .phases .n { font-family: 'Space Grotesk', Arial, sans-serif; font-size: 56px; font-weight: 700; line-height: 1; color: #12203A; }
+  .phases .done .n { color: #27C3D6; }
+  .phases .t { font-size: 26px; font-weight: 600; line-height: 1.3; }
+  .phases .s { font-size: 24px; color: #4A5A70; }
+  .phases .done .s { color: #9FB2C8; }
+
+  .check { background: #13213A; border-radius: 18px; padding: 32px 36px; display: flex; gap: 24px; align-items: flex-start; }
+  .check .icon { color: #27C3D6; width: 52px; height: 52px; }
+  .check > div { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .check h3 { font-size: 32px; font-weight: 600; }
+  .check p { font-size: 26px; line-height: 1.4; color: #9FB2C8; }
+  .code-row { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 24px; line-height: 1.3 !important; background: #1B2C4A; border-radius: 10px; padding: 12px 18px; }
+
+  .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .feature-grid > div { background: #13213A; border-radius: 18px; padding: 28px 30px; display: flex; gap: 20px; align-items: flex-start; }
+  .feature-grid .icon { color: #27C3D6; width: 44px; height: 44px; }
+  .feature-grid h3 { font-size: 32px; font-weight: 600; margin-bottom: 8px; }
+  .feature-grid p { font-size: 24px; line-height: 1.4; color: #9FB2C8; }
+
+  .tier { background: #1B2C4A; border-radius: 14px; padding: 18px 28px; display: flex; gap: 24px; align-items: center; }
+  .tier .mono { font-size: 24px; color: #27C3D6; width: 210px; flex: none; }
+  .tier p:last-child { flex: 1; font-size: 26px; color: #C9D6E6; }
+  .tier.focus { background: #13213A; border: 2px solid #27C3D6; }
+  .tier.focus p:last-child { color: #E8EEF6; }
+  .side-card { flex: 1; background: #E8EEF6; color: #0B1422; border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 10px; }
+  .side-card h3 { font-size: 30px; font-weight: 600; }
+  .side-card p { font-size: 24px; line-height: 1.4; color: #2A3A55; }
+  .side-card .icon { color: #0B7F8F; width: 48px; height: 48px; }
+  .side-card.big { border-radius: 18px; padding: 30px; gap: 12px; }
+
+  .step { flex: 1; background: #FBFCFD; border: 1px solid #D9E0E8; border-radius: 16px; padding: 26px 22px; display: flex; flex-direction: column; gap: 12px; }
+  .step .icon { color: #0B7F8F; width: 48px; height: 48px; }
+  .step .t { font-size: 26px; font-weight: 600; line-height: 1.25; }
+  .step p:last-child { font-size: 24px; line-height: 1.35; color: #4A5A70; }
+  .step.strong { background: #12203A; color: #E8EEF6; border-color: #12203A; }
+  .step.strong .icon { color: #27C3D6; }
+  .step.strong p:last-child { color: #C9D6E6; }
+
+  .path-box { background: #13213A; border-radius: 18px; padding: 28px 34px; display: flex; flex-direction: column; gap: 10px; }
+  .path-box .label { font-size: 26px; color: #27C3D6; }
+  .path-box p:last-child { font-size: 24px; line-height: 1.55; color: #C9D6E6; }
+
+  .layer-band { border-radius: 12px; padding: 16px 24px; }
+  .layer-band p { font-size: 26px; color: #E8EEF6; }
+  .fact { background: #FBFCFD; border: 1px solid #D9E0E8; border-radius: 16px; padding: 22px 28px; display: flex; gap: 20px; align-items: center; }
+  .fact .icon { color: #0B7F8F; width: 44px; height: 44px; }
+  .fact p { flex: 1; font-size: 26px; }
+
+  .op { display: flex; flex-direction: column; gap: 12px; padding: 34px; background: #13213A; border-radius: 18px; }
+  .op .icon { width: 52px; height: 52px; color: #27C3D6; }
+  .op h3 { font-size: 34px; font-weight: 600; }
+  .op p { font-size: 26px; line-height: 1.4; color: #9FB2C8; }
+
+  .col-card { flex: 1; background: #FBFCFD; border: 1px solid #D9E0E8; border-radius: 22px; padding: 36px; display: flex; flex-direction: column; gap: 18px; }
+  .col-card .mono { font-size: 26px; }
+  .col-card ul { font-size: 27px; line-height: 1.42; color: #2A3A55; display: flex; flex-direction: column; gap: 14px; }
+  .col-card.accent { background: #E3F4F6; border-color: #A9DCE3; }
+  .col-card.dark-card { background: #12203A; border-color: #12203A; color: #E8EEF6; }
+  .col-card.dark-card ul { color: #C9D6E6; }
+
+  .needs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .needs > div { background: #FFF4E6; border-radius: 16px; padding: 20px 26px; display: flex; flex-direction: column; gap: 8px; }
+  .need-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  .needs h3 { font-size: 27px; font-weight: 700; line-height: 1.25; }
+  .needs p { font-size: 22px; line-height: 1.35; color: #3B2F2A; }
+  .who { display: flex; gap: 6px; flex: none; }
+  .who span { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 18px; font-weight: 600; padding: 3px 10px; border-radius: 999px; color: #0B1422; }
+
+  /* The time plan. */
+  .gantt { background: #FBFCFD; border: 1px solid #D9E0E8; border-radius: 18px; padding: 18px 24px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .g-group { display: grid; grid-template-columns: 190px 1fr; align-items: stretch; }
+  .g-provider { font-family: 'Space Grotesk', Arial, sans-serif; font-size: 27px; font-weight: 700; border-left: 8px solid; padding: 4px 0 0 14px; }
+  .g-row { display: grid; grid-template-columns: 318px 62px 1044px; height: 38px; align-items: center; }
+  .g-months { margin-left: 190px; height: 58px; }
+  .g-months .g-lane b { top: 28px; }
+  .g-months .g-lane b.g-year { top: 0; font-size: 17px; font-weight: 400; color: #6B7A8F; border-bottom: 2px solid #C9D3DF; padding-bottom: 2px; }
+  .g-months b { position: absolute; top: 0; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 19px; font-weight: 600; color: #4A5A70; text-align: center; }
+  .g-label { font-size: 21px; color: #12203A; white-space: nowrap; }
+  .g-weeks { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 19px; color: #6B7A8F; }
+  .g-lane { position: relative; height: 100%; }
+  .g-holiday { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, #E9EDF2 0 6px, #F6F8FA 6px 12px); }
+  .g-bar { position: absolute; top: 8px; height: 22px; border-radius: 6px; }
+  .g-gate, .g-done { position: absolute; top: 11px; width: 16px; height: 16px; transform: rotate(45deg); }
+  .g-gate { border: 3px solid; background: #FBFCFD; margin-left: -8px; }
+  .g-done { background: #12203A; margin-left: -2px; }
+  .g-note { position: absolute; top: 6px; font-style: normal; font-size: 20px; font-weight: 600; color: #12203A; white-space: nowrap; }
+  .g-legend { display: flex; gap: 36px; justify-content: flex-end; font-size: 20px; color: #4A5A70; padding-top: 6px; }
+  .g-legend span { display: flex; align-items: center; gap: 12px; }
+  .g-legend .g-gate, .g-legend .g-done { margin: 0 4px; }
+
+  /* The deployment diagrams: who reaches the server, the server, and what it reaches. */
+  .deploy { display: flex; gap: 12px; align-items: center; }
+  .side { width: 312px; flex: none; display: flex; flex-direction: column; gap: 12px; }
+  .side-title { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 20px; letter-spacing: 2px; text-transform: uppercase; color: #0B7F8F; }
+  .zone { flex: 1; border: 3px dashed; border-radius: 22px; padding: 30px 20px 20px; display: flex; flex-direction: column; gap: 12px; position: relative; }
+  .zone-name { position: absolute; top: -17px; left: 22px; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 20px; padding: 0 10px; }
+  .box { border-radius: 14px; padding: 13px 16px; display: flex; gap: 14px; align-items: flex-start; background: #FBFCFD; border: 1px solid #D9E0E8; }
+  .box .icon { width: 34px; height: 34px; margin-top: 1px; color: #0B7F8F; }
+  .box h4 { font-size: 22px; font-weight: 600; line-height: 1.25; }
+  .box p { font-size: 19px; line-height: 1.32; color: #4A5A70; margin-top: 2px; }
+  .box.strong { background: #12203A; border-color: #12203A; color: #E8EEF6; }
+  .box.strong .icon { color: #27C3D6; }
+  .box.strong p { color: #C9D6E6; }
+  .box.nav { background: #13213A; border-color: #1E3050; color: #E8EEF6; }
+  .box.nav .icon { color: #FFB547; }
+  .box.nav p { color: #9FB2C8; }
+  .containers { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .containers p { background: #1B2C4A; border-radius: 10px; padding: 9px 14px; color: #C9D6E6; margin: 0; display: grid;
+    grid-template-columns: 218px 1fr; column-gap: 10px; align-items: baseline; }
+  .containers b { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 19px; color: #FFB547; }
+  .box.strong .containers p { background: #1E3253; }
+  .box.strong .containers b { color: #27C3D6; }
+</style>
+</head>
+<body>
+
+<!-- 01 · Cover -->
+<section class="slide dark" id="cover" style="background:radial-gradient(circle at 78% 30%, #18345E 0%, #0B1422 62%);justify-content:center;gap:40px">
+<svg aria-label="Concentric signal waves" width="760" height="760" viewBox="0 0 760 760" style="position:absolute;left:1120px;top:160px;width:760px;height:760px">
+<circle cx="380" cy="380" r="70" fill="none" stroke="#27C3D6" stroke-width="6" opacity="0.9"/>
+<circle cx="380" cy="380" r="150" fill="none" stroke="#4C8DFF" stroke-width="4" opacity="0.7"/>
+<circle cx="380" cy="380" r="230" fill="none" stroke="#FF6B6B" stroke-width="4" opacity="0.55"/>
+<circle cx="380" cy="380" r="310" fill="none" stroke="#FFB547" stroke-width="3" opacity="0.4"/>
+<circle cx="380" cy="380" r="370" fill="none" stroke="#B48CFF" stroke-width="3" opacity="0.35"/>
+<circle cx="380" cy="380" r="22" fill="#27C3D6"/>
+<circle cx="530" cy="380" r="14" fill="#4C8DFF"/>
+<circle cx="217" cy="217" r="14" fill="#FF6B6B"/>
+<circle cx="380" cy="690" r="14" fill="#FFB547"/>
+<circle cx="642" cy="118" r="14" fill="#B48CFF"/>
+</svg>
+<p class="mono" style="font-size:28px;letter-spacing:4px;text-transform:uppercase;color:#27C3D6;width:900px">DriveTest Analyzer · Architecture 2026</p>
+<h1 class="display" style="font-size:132px;font-weight:700;line-height:1.02;letter-spacing:-3px;width:1100px">One tool.<br>Four providers.</h1>
+<p style="font-size:40px;line-height:1.35;color:#9FB2C8;width:1000px">NetCheck, Umlaut, P3 and RootMetrics on the same platform, each with its own language of fields, methodologies and templates.</p>
+<div style="display:flex;gap:16px">
+<p class="pill" style="background:#4C8DFF">NetCheck</p>
+<p class="pill" style="background:#FF6B6B">Umlaut</p>
+<p class="pill" style="background:#FFB547">P3</p>
+<p class="pill" style="background:#B48CFF">RootMetrics</p>
+</div>
+<p class="foot">Multi-provider model · time plan · internal architecture · deployment on AWS and in the Ericsson cloud · 11 November 2026</p>
+<i class="logo"></i>
+</section>
+
+<!-- 02 · Starting point -->
+<section class="slide light" id="today" style="gap:56px">
+<div class="head"><p class="kicker">Starting point</p><h2>A complete platform, built for NetCheck</h2></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:28px">
+<div class="stat"><p class="figure">10</p><p>main modules, from Workspace to the AI Assistant</p></div>
+<div class="stat"><p class="figure">146k</p><p>lines of Python, plus 100k of web interface</p></div>
+<div class="stat"><p class="figure">2,386</p><p>automated tests in 154 files</p></div>
+<div class="stat dark-card"><p class="figure" style="color:#27C3D6">1</p><p style="color:#C9D6E6">CDR provider supported today: NetCheck</p></div>
+</div>
+<div style="display:flex;gap:28px;align-items:stretch">
+<div class="soft" style="flex:1;border-radius:20px;padding:36px 40px;display:flex;flex-direction:column;gap:12px">
+<h3 style="font-size:32px;font-weight:600">A real NetCheck CDR (UK Q3 2026 SA)</h3>
+<p style="font-size:28px;line-height:1.4;color:#4A5A70">Data 345,697 rows × 338 columns · Voice 26,397 × 283 · Speech 363,834 × 263</p>
+</div>
+<div class="soft" style="flex:1;border-radius:20px;padding:36px 40px;display:flex;flex-direction:column;gap:12px">
+<h3 style="font-size:32px;font-weight:600">Written in NetCheck names</h3>
+<p class="mono" style="font-size:26px;line-height:1.5;color:#4A5A70">JOIN_ID · Call_Status = Completed · G_Level_1–5 · Mean_Data_Rate · LQ</p>
+</div>
+</div>
+<p class="foot">02 · Starting point · Figures of version 0.12.2</p>
+<i class="logo"></i>
+</section>
+
+<!-- 03 · The challenge -->
+<section class="slide dark" id="providers" style="gap:56px">
+<div class="head"><p class="kicker">The challenge</p><h2>Four providers, four languages</h2></div>
+<div style="display:flex;gap:24px;align-items:stretch">
+<div class="provider" style="border-top-color:#4C8DFF">
+<h3 style="color:#4C8DFF">NetCheck</h3>
+<ul>
+<li>3 workbooks: Data, Voice and Speech</li>
+<li>One sheet per operator after “KPI Definition”</li>
+<li>JOIN_ID shared by daily and final CDRs</li>
+<li>Completed · Failed · Dropped · Cutoff</li>
+<li>Environment in G_Level_1 to G_Level_5</li>
+</ul>
+</div>
+<div class="provider" style="border-top-color:#FF6B6B">
+<h3 style="color:#FF6B6B">Umlaut</h3>
+<ul>
+<li>One file per service: 9 data files, M2M and OTT calls and samples</li>
+<li>A client&lt;N&gt;_&lt;operator&gt; sheet and a Statistics sheet</li>
+<li>Side1 / Side2, Sequence and Filename</li>
+<li>SUCCESS · FAILED · DROPPED and Qualifier</li>
+<li>cities · towns · roads</li>
+</ul>
+</div>
+<div class="provider" style="border-top-color:#FFB547">
+<h3 style="color:#FFB547">P3</h3>
+<ul>
+<li>Format to be confirmed with a sample</li>
+<li>The Umlaut files link to a P3 path</li>
+<li>It may share a family with Umlaut</li>
+<li>It comes in with the same model: reader, profile and content</li>
+</ul>
+</div>
+<div class="provider" style="border-top-color:#B48CFF">
+<h3 style="color:#B48CFF">RootMetrics</h3>
+<ul>
+<li>Format to be confirmed with a sample</li>
+<li>Its own scoring methodology, to be confirmed</li>
+<li>It comes in after P3 with the same model: reader, profile and content</li>
+</ul>
+</div>
+</div>
+<p class="foot">03 · The challenge · Almost no column name is shared by NetCheck and Umlaut: only Operator and Technology</p>
+<i class="logo"></i>
+</section>
+
+<!-- 04 · The principle -->
+<section class="slide" id="statement" style="background:linear-gradient(120deg, #27C3D6 0%, #4C8DFF 100%);color:#0B1422;justify-content:center;gap:48px" data-logo="light">
+<p class="mono" style="font-size:28px;letter-spacing:4px;text-transform:uppercase;color:#0B1422">The principle</p>
+<h1 class="display" style="font-size:150px;font-weight:700;line-height:1;letter-spacing:-4px;width:1600px">One workspace,<br>one provider.</h1>
+<p style="font-size:44px;line-height:1.3;color:#0B1422;width:1400px">Every team sees the field names, values and files of its own provider. Nothing is translated into NetCheck.</p>
+<p class="foot" style="color:#0B1422">04 · The principle</p>
+<i class="logo"></i>
+</section>
+
+<!-- 05 · Decisions -->
+<section class="slide light" id="decisions" style="gap:48px">
+<div class="head"><p class="kicker">Decisions</p><h2>Five rules of the multi-provider model</h2></div>
+<div class="rules">
+<div><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></svg><p class="rule">One provider per workspace</p><p>Chosen when the workspace is created; it does not change once the workspace has CDRs.</p></div>
+<div><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><p class="rule">Native names</p><p>Every CDR keeps its original columns; whatever is missing is added as a derived column.</p></div>
+<div><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><rect x="15" y="5" width="4" height="12" rx="1"></rect><rect x="7" y="8" width="4" height="9" rx="1"></rect></svg><p class="rule">Each provider’s Scoring</p><p>Each provider’s methodology is implemented as it is once available; the NetCheck one is not adapted.</p></div>
+<div><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg><p class="rule">NQ by provider</p><p>NetCheck: any result other than Completed. Umlaut: Qualifier = NOT QUALIFIED. P3 and RootMetrics: their own.</p></div>
+<div><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path><path d="M9 18h6"></path><path d="M10 22h4"></path></svg><p class="rule">A DT Analyzer RCA</p><p>One common engine in every workspace, shown first; the provider’s RCA and the Ericsson RCA are further sources.</p></div>
+</div>
+<p class="foot">05 · Decisions</p>
+<i class="logo"></i>
+</section>
+
+<!-- 06 · Three layers per provider -->
+<section class="slide dark" id="layers" style="gap:56px">
+<div class="head"><p class="kicker">Multi-provider architecture</p><h2>Three layers per provider</h2></div>
+<div style="display:flex;gap:24px;align-items:center">
+<div style="width:300px;background:#13213A;border:2px dashed #3A5276;border-radius:20px;padding:32px;display:flex;flex-direction:column;gap:14px">
+<svg class="icon" style="color:#9FB2C8;width:52px;height:52px" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
+<h3 style="font-size:32px;font-weight:600">Export</h3>
+<p style="font-size:24px;line-height:1.4;color:#9FB2C8">NetCheck workbooks, the Umlaut All / SP / Voice folder, P3 and RootMetrics files</p>
+</div>
+<svg class="connector" width="72" height="24" viewBox="0 0 72 24" style="flex:none;color:#27C3D6"><line x1="0" y1="12" x2="62" y2="12" stroke="currentColor" stroke-width="4"/><path d="M58 5 L72 12 L58 19 Z" fill="currentColor"/></svg>
+<div style="flex:1;display:flex;flex-direction:column;gap:18px">
+<div class="layer" style="border-left-color:#4C8DFF"><p class="mono" style="color:#4C8DFF">READER</p><p>Code per provider: which files and sheets are CDRs, their type, the sides of the call and the joins</p></div>
+<div class="layer" style="border-left-color:#27C3D6"><p class="mono" style="color:#27C3D6">PROFILE</p><p>Where each concept lives: native column, conversion and the meaning of its values</p></div>
+<div class="layer" style="border-left-color:#FFB547"><p class="mono" style="color:#FFB547">CONTENT</p><p>Methodologies, PPT templates, NQ and RCA rules, written with the provider’s names</p></div>
+</div>
+<svg class="connector" width="72" height="24" viewBox="0 0 72 24" style="flex:none;color:#27C3D6"><line x1="0" y1="12" x2="62" y2="12" stroke="currentColor" stroke-width="4"/><path d="M58 5 L72 12 L58 19 Z" fill="currentColor"/></svg>
+<div style="width:330px;background:#E8EEF6;border-radius:20px;padding:32px;display:flex;flex-direction:column;gap:10px">
+<h3 style="font-size:32px;font-weight:600;color:#0B1422">Modules</h3>
+<p style="font-size:24px;line-height:1.5;color:#2A3A55">Scoring &amp; GAP Analysis<br>PPT Designer<br>Non-Qualified Calls<br>Network Insights<br>CDR Analysis · Reporting<br>Builders · AI Assistant</p>
+</div>
+</div>
+<p style="font-size:30px;line-height:1.4;color:#9FB2C8;width:1500px">The modules keep a single logic: they ask the workspace’s profile for the data and use their provider’s content.</p>
+<p class="foot">06 · Multi-provider architecture</p>
+<i class="logo"></i>
+</section>
+
+<!-- 07 · The field profile -->
+<section class="slide light" id="profile" style="gap:44px">
+<div class="head"><p class="kicker">The field profile</p><h2>One concept, each provider’s name</h2></div>
+<div class="table-box">
+<table class="mono-table">
+<tr><th style="width:26%">Concept</th><th style="width:34%;color:#8CB4FF">NetCheck</th><th style="width:40%;color:#FF9A9A">Umlaut</th></tr>
+<tr><td>Call result</td><td>Call_Status = Completed</td><td>Sequence Status Overall = SUCCESS</td></tr>
+<tr><td>NQ call</td><td>result ≠ Completed</td><td>Qualifier = NOT QUALIFIED</td></tr>
+<tr><td>Call setup</td><td>Call_Setup_Time</td><td>Call Setup Duration (Alerting) [s]</td></tr>
+<tr><td>Speech quality</td><td>LQ</td><td>POLQA Value Overall</td></tr>
+<tr><td>Throughput</td><td>Mean_Data_Rate (Mbit/s)</td><td>Transfer Datarate [kbit/s] ÷ 1000</td></tr>
+<tr><td>Test position</td><td>Test_Start_Latitude</td><td>Network Access LAT</td></tr>
+<tr><td>Serving cell</td><td>Cell_ID [a]→[b]</td><td>eNodeB × 256 + Cell ID</td></tr>
+<tr><td>Environment</td><td>G_Level_2</td><td>umlaut Scoring Infrastructure Type</td></tr>
+</table>
+</div>
+<p class="foot">07 · The field profile · 84 of the 109 field groups the tool uses have an equivalent in Umlaut · the CDR Field Dictionary can change any of them</p>
+<i class="logo"></i>
+</section>
+
+<!-- 08 · Impact per module -->
+<section class="slide dark" id="modules" style="gap:44px">
+<div class="head"><p class="kicker">Impact per module</p><h2>What each provider changes in each module</h2></div>
+<div class="impact">
+<div><p class="chip" style="background:#27C3D6">Direct</p><h3>Builders</h3><p>Chart and Query Builder work with any column</p></div>
+<div><p class="chip" style="background:#4C8DFF">Almost direct</p><h3>CDR Analysis</h3><p>Its KPIs come from the layer the profile fills</p></div>
+<div><p class="chip" style="background:#4C8DFF">Almost direct</p><h3>Reporting</h3><p>Composes the parts of the other modules</p></div>
+<div><p class="chip" style="background:#4C8DFF">Almost direct</p><h3>AI Assistant</h3><p>Its tools reuse the calculations of the modules</p></div>
+<div><p class="chip" style="background:#7EE2A8">Done for Umlaut</p><h3>Workspace</h3><p>A reader and upload per provider, Umlaut’s in phase 2</p></div>
+<div><p class="chip" style="background:#FFB547">Moderate</p><h3>Scoring &amp; GAP Analysis</h3><p>The provider’s methodology, formulas with native names</p></div>
+<div><p class="chip" style="background:#FFB547">Moderate</p><h3>PPT Designer</h3><p>Templates per service with the provider’s values</p></div>
+<div><p class="chip" style="background:#FFB547">Moderate</p><h3>Non-Qualified Calls</h3><p>Call key, NQ definition and RCA rules per provider</p></div>
+<div><p class="chip" style="background:#FFB547">Moderate</p><h3>Layer3 Logs</h3><p>A pre-processing script per provider: NQ calls only</p></div>
+<div><p class="chip" style="background:#FF6B6B">Major</p><h3>Network Insights</h3><p>Call radio rebuilt from samples; NR cells without NCI</p></div>
+</div>
+<p class="foot">08 · Impact per module · Priority: Scoring &amp; GAP Analysis, PPT Designer and Non-Qualified Calls · Ticket Center does not read CDRs</p>
+<i class="logo"></i>
+</section>
+
+<!-- 09 · RCA -->
+<section class="slide light" id="rca" style="gap:48px">
+<div class="head"><p class="kicker">RCA</p><h2>One RCA of our own for every provider</h2></div>
+<div style="display:flex;gap:24px;align-items:center">
+<div style="width:420px;display:flex;flex-direction:column;gap:16px">
+<p class="input">Result and failure of the CDR</p>
+<p class="input">Radio of LTE and NR, both sides</p>
+<p class="input">Mobility and KPIs of the call</p>
+<p class="input">Network around it, from the inventory</p>
+</div>
+<svg class="connector" width="72" height="24" viewBox="0 0 72 24" style="flex:none;color:#0B7F8F"><line x1="0" y1="12" x2="62" y2="12" stroke="currentColor" stroke-width="4"/><path d="M58 5 L72 12 L58 19 Z" fill="currentColor"/></svg>
+<div style="flex:1;background:#12203A;color:#E8EEF6;border-radius:22px;padding:40px;display:flex;flex-direction:column;gap:20px">
+<h3 class="display" style="font-size:44px;font-weight:700;color:#27C3D6">DT Analyzer RCA</h3>
+<p class="mono" style="font-size:25px;line-height:1.6;color:#C9D6E6">RSRP &lt; −110 dBm → Coverage<br>SINR &lt; 0 dB → Interference<br>DNS or access failure → Core / server<br>“No alerting on answer side” → IMS / B side</p>
+<p style="font-size:24px;line-height:1.4;color:#9FB2C8">Ordered rules per workspace, on the fields of the provider’s profile</p>
+</div>
+<svg class="connector" width="72" height="24" viewBox="0 0 72 24" style="flex:none;color:#0B7F8F"><line x1="0" y1="12" x2="62" y2="12" stroke="currentColor" stroke-width="4"/><path d="M58 5 L72 12 L58 19 Z" fill="currentColor"/></svg>
+<div style="width:360px;display:flex;flex-direction:column;gap:16px">
+<p style="font-size:26px;font-weight:600;color:#0B1422;background:#27C3D6;border-radius:14px;padding:20px 24px">Root category and cause, with the evidence</p>
+<p style="font-size:24px;line-height:1.4;color:#4A5A70;background:#E6EBF1;border-radius:14px;padding:20px 24px">Shown first, beside the provider’s RCA (when it has one), the Ericsson RCA and the analysts’</p>
+</div>
+</div>
+<p class="foot">09 · RCA · Available in every workspace; the provider’s values and failure catalogue are its inputs to complete</p>
+<i class="logo"></i>
+</section>
+
+<!-- 10 · Roadmap -->
+<section class="slide light" id="roadmap" style="gap:48px">
+<div class="head"><p class="kicker">Roadmap</p><h2>From the base to RootMetrics, in eight phases</h2></div>
+<div class="phases">
+<div class="done"><p class="n">1</p><p class="t">Multi-provider base</p><p class="s">Done in 0.9.0</p></div>
+<div class="done"><p class="n">2</p><p class="t">Umlaut reader, profile and upload</p><p class="s">Done in 0.9.0 · columnar copy checked in 0.11.0</p></div>
+<div style="border-top-color:#FF6B6B"><p class="n">3</p><p class="t">Scoring ready for Umlaut</p><p class="s">January 2027 · needs its methodology</p></div>
+<div style="border-top-color:#FF6B6B"><p class="n">4</p><p class="t">Umlaut PPT templates</p><p class="s">January 2027</p></div>
+<div style="border-top-color:#FF6B6B"><p class="n">5</p><p class="t">Umlaut NQ Calls, RCA and Layer3 inputs</p><p class="s">January 2027 · DT Analyzer RCA ready</p></div>
+<div style="border-top-color:#FF6B6B"><p class="n">6</p><p class="t">Umlaut Network Insights</p><p class="s">February 2027 · NR by PCI + ARFCN ready</p></div>
+<div style="border-top-color:#FFB547"><p class="n">7</p><p class="t">P3 reader, profile and content</p><p class="s">Feb–Apr 2027 · once a sample is in</p></div>
+<div style="border-top-color:#B48CFF"><p class="n">8</p><p class="t">RootMetrics reader, profile and content</p><p class="s">Apr–May 2027 · once a sample is in</p></div>
+</div>
+<p style="font-size:28px;line-height:1.4;color:#4A5A70;width:1664px">Dates of the time plan on the next slide: each phase starts when its inputs are in.</p>
+<p class="foot">10 · Roadmap</p>
+<i class="logo"></i>
+</section>
+
+<!-- 11 · Time plan (the chart is drawn by assemble.cjs from its rows) -->
+<section class="slide light" id="timeplan" style="gap:36px">
+<div class="head"><p class="kicker">Time plan</p><h2>Umlaut, then P3, then RootMetrics</h2></div>
+<div class="gantt"><div class="g-row g-months"><span></span><span></span><div class="g-lane"><b class="g-year" style="left:0.0px;width:149.1px">2026</b><b class="g-year" style="left:149.1px;width:894.9px">2027</b><b style="left:0.0px;width:149.1px">Dec</b><b style="left:149.1px;width:149.1px">Jan</b><b style="left:298.3px;width:149.1px">Feb</b><b style="left:447.4px;width:149.1px">Mar</b><b style="left:596.6px;width:149.1px">Apr</b><b style="left:745.7px;width:149.1px">May</b><b style="left:894.9px;width:149.1px">Jun</b></div></div><div class="g-group"><p class="g-provider" style="color:#E04848;border-left-color:#FF6B6B">Umlaut</p><div><div class="g-row"><span class="g-label">3 · Scoring with its methodology</span><span class="g-weeks">2 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:164.1px;width:59.7px;background:#FF6B6B"></i><i class="g-gate" style="left:146.2px;border-color:#FF6B6B"></i></div></div><div class="g-row"><span class="g-label">4 · PPT templates</span><span class="g-weeks">1 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:231.2px;width:25.4px;background:#FF6B6B"></i></div></div><div class="g-row"><span class="g-label">5 · NQ Calls, RCA and Layer3</span><span class="g-weeks">1 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:265.5px;width:25.4px;background:#FF6B6B"></i></div></div><div class="g-row"><span class="g-label">6 · Network Insights</span><span class="g-weeks">1 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:298.3px;width:25.4px;background:#FF6B6B"></i></div></div><div class="g-row"><span class="g-label">Validation with the teams</span><span class="g-weeks">1 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:335.6px;width:25.4px;background:#FF6B6B"></i><i class="g-done" style="left:369.9px"></i><em class="g-note" style="left:405.7px">Umlaut CDR supported · February 2027</em></div></div></div></div><div class="g-group"><p class="g-provider" style="color:#B9790F;border-left-color:#FFB547">P3</p><div><div class="g-row"><span class="g-label">7 · Report, reader and profile</span><span class="g-weeks">2 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:372.9px;width:62.6px;background:#FFB547"></i><i class="g-gate" style="left:369.9px;border-color:#FFB547"></i></div></div><div class="g-row"><span class="g-label">7 · Scoring with its methodology</span><span class="g-weeks">2 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:447.4px;width:56.7px;background:#FFB547"></i></div></div><div class="g-row"><span class="g-label">7 · Templates, NQ Calls and NI</span><span class="g-weeks">2 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:514.5px;width:59.7px;background:#FFB547"></i></div></div><div class="g-row"><span class="g-label">Validation with the teams</span><span class="g-weeks">1 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:584.6px;width:23.9px;background:#FFB547"></i><i class="g-done" style="left:617.5px"></i><em class="g-note" style="left:653.2px">P3 CDR supported · April 2027</em></div></div></div></div><div class="g-group"><p class="g-provider" style="color:#7F55D9;border-left-color:#B48CFF">RootMetrics</p><div><div class="g-row"><span class="g-label">8 · Report, reader and profile</span><span class="g-weeks">2 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:618.9px;width:55.2px;background:#B48CFF"></i><i class="g-gate" style="left:614.5px;border-color:#B48CFF"></i></div></div><div class="g-row"><span class="g-label">8 · Scoring with its methodology</span><span class="g-weeks">2 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:686.1px;width:55.2px;background:#B48CFF"></i></div></div><div class="g-row"><span class="g-label">8 · Templates, NQ Calls and NI</span><span class="g-weeks">2 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:753.2px;width:59.7px;background:#B48CFF"></i></div></div><div class="g-row"><span class="g-label">Validation with the teams</span><span class="g-weeks">1 wk</span><div class="g-lane" style="background:repeating-linear-gradient(90deg, transparent 0 148.14285714285714px, #E1E7EF 148.14285714285714px 149.14285714285714px)"><i class="g-holiday" style="left:96.9px;width:56.7px"></i><i class="g-bar" style="left:823.3px;width:23.9px;background:#B48CFF"></i><i class="g-done" style="left:856.1px"></i><em class="g-note" style="right:234.7px">RootMetrics CDR supported · May 2027</em></div></div></div></div><div class="g-legend"><span><i class="g-gate" style="position:static;border-color:#12203A"></i>inputs in hand</span><span><i class="g-done" style="position:static"></i>CDR type supported</span><span><i class="g-holiday" style="position:static;display:inline-block;width:28px;height:20px"></i>holidays</span></div></div>
+<p class="foot">11 · Time plan · About 6 to 7 weeks per provider, one at a time, each started once its inputs are in; a later input moves its bars</p>
+<i class="logo"></i>
+</section>
+
+<!-- 12 · Phase 1 -->
+<section class="slide dark" id="phase1" style="gap:48px">
+<div class="head"><p class="kicker">Phase 1 · done</p><h2>The multi-provider base, NetCheck untouched</h2></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+<div class="check"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg><div><h3>Provider registry</h3><p>NetCheck active; Umlaut, P3 and RootMetrics coming soon</p></div></div>
+<div class="check"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg><div><h3>NetCheck profile</h3><p>The same columns the tool read before</p></div></div>
+<div class="check"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg><div><h3>Modules on the profile</h3><p>Ingestion, NQ Calls, Network Insights, serving cells and Map Areas</p></div></div>
+<div class="check"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="16" r="1"></circle><rect x="3" y="10" width="18" height="12" rx="2"></rect><path d="M7 10V7a5 5 0 0 1 10 0v3"></path></svg><div><h3>Provider locked</h3><p>A workspace with CDRs keeps its CDR type</p></div></div>
+</div>
+<div style="background:linear-gradient(90deg, #27C3D6 0%, #4C8DFF 100%);border-radius:18px;padding:30px 40px">
+<p style="font-size:30px;line-height:1.35;color:#0B1422;font-weight:600">Validated: the same NetCheck CDRs give exactly the same results before and after the change (89 of 89 outputs).</p>
+</div>
+<p class="foot">12 · Phase 1 · Module cdr_field_profiles · RootMetrics CDR added as coming soon in 0.12.2</p>
+<i class="logo"></i>
+</section>
+
+<!-- 13 · Phase 1, what changed -->
+<section class="slide dark" id="phase1-map" style="gap:32px">
+<div class="head"><p class="kicker">Phase 1 · what changed</p><h2>From columns inside each module to one profile</h2></div>
+<div style="display:flex;gap:28px;align-items:stretch">
+<div style="flex:1;background:#13213A;border-top:8px solid #FF6B6B;border-radius:20px;padding:32px;display:flex;flex-direction:column;gap:14px">
+<p class="mono" style="font-size:26px;color:#FF6B6B">BEFORE</p>
+<p style="font-size:26px;line-height:1.35;color:#C9D6E6">Each module held its own NetCheck lists</p>
+<div style="display:flex;flex-direction:column;gap:10px">
+<p class="code-row">ingestion · inline column lists</p>
+<p class="code-row">NQ Calls · FIELD_SOURCES</p>
+<p class="code-row">Network Insights · RF_FIELD_ALIASES</p>
+<p class="code-row">serving cells · CDR_CELL_COLUMNS</p>
+<p class="code-row">Map Areas · COORDINATE_SOURCES</p>
+</div>
+</div>
+<svg class="connector" width="80" height="24" viewBox="0 0 80 24" style="flex:none;color:#27C3D6"><line x1="0" y1="12" x2="70" y2="12" stroke="currentColor" stroke-width="5"/><path d="M66 5 L80 12 L66 19 Z" fill="currentColor"/></svg>
+<div style="flex:1;background:#13213A;border-top:8px solid #27C3D6;border-radius:20px;padding:32px;display:flex;flex-direction:column;gap:12px">
+<p class="mono" style="font-size:26px;color:#27C3D6">AFTER</p>
+<p class="code-row">Workspace · CDR type = netcheck (locked once it has CDRs)</p>
+<svg width="40" height="40" viewBox="0 0 40 40" style="align-self:center;flex:none"><path d="M13 0h14v20h11L20 40 2 20h11z" fill="#27C3D6"/></svg>
+<div style="background:#27C3D6;border-radius:12px;padding:16px 20px;display:flex;flex-direction:column;gap:4px">
+<p class="mono" style="font-size:24px;font-weight:600;color:#0B1422">workspace_field_profile() → NETCHECK_PROFILE</p>
+<p style="font-size:24px;color:#0B1422">cdr_field_profiles.py: every column table in one place</p>
+</div>
+<svg width="40" height="40" viewBox="0 0 40 40" style="align-self:center;flex:none"><path d="M13 0h14v20h11L20 40 2 20h11z" fill="#27C3D6"/></svg>
+<p style="font-size:24px;line-height:1.4;color:#C9D6E6;background:#1B2C4A;border-radius:10px;padding:12px 18px">Ingestion · NQ Calls · Network Insights · serving cells · Map Areas</p>
+</div>
+</div>
+<div style="display:flex;gap:20px">
+<p style="flex:1;font-size:26px;font-weight:600;color:#0B1422;background:#27C3D6;border-radius:14px;padding:18px 24px">89 / 89 identical outputs on real NetCheck CDRs</p>
+<p style="flex:1;font-size:26px;font-weight:600;color:#0B1422;background:#E8EEF6;border-radius:14px;padding:18px 24px">Umlaut, P3 and RootMetrics CDR listed as coming soon</p>
+</div>
+<p class="foot">13 · Phase 1 · commit 6d9764ce on branch 0.9.0</p>
+<i class="logo"></i>
+</section>
+
+<!-- 14 · Phase 1, file by file -->
+<section class="slide light" id="phase1-files" style="gap:40px">
+<div class="head"><p class="kicker">Phase 1 · file by file</p><h2>What changed in the code</h2></div>
+<div class="table-box">
+<table class="files-table">
+<tr><th style="width:32%">File</th><th style="width:68%">Change</th></tr>
+<tr><td>cdr_field_profiles.py (new)</td><td>Profiles of the CDR types: every column table the modules read</td></tr>
+<tr><td>cdr_types.py</td><td>P3 CDR coming soon; a workspace with CDRs keeps its CDR type</td></tr>
+<tr><td>ingestion.py</td><td>Type detection, ignored sheets and internal fields from the profile</td></tr>
+<tr><td>non_qualified_calls.py</td><td>Index and analyses import by the profile; NQ by its qualification column</td></tr>
+<tr><td>nq_call_map.py</td><td>Positions, cell trace, PCIs, radio and tests around from the profile</td></tr>
+<tr><td>network_insights.py</td><td>Radio and dimension columns from the profile when reading samples</td></tr>
+<tr><td>serving_cells · map_area_columns · scoring_points_loss</td><td>Cells, positions, time and Map Areas coordinates from the profile</td></tr>
+<tr><td>DriveTestAnalyzer.py</td><td>Processing, source columns and preview pass the workspace’s profile</td></tr>
+<tr><td>UI · Help · CHANGELOG · tests</td><td>Config note, 3 help pages, changelog, 7 new tests, 2 NQ tests fixed</td></tr>
+</table>
+</div>
+<p class="foot">14 · Phase 1 · 16 files, 696 lines added and 410 removed; no database migration</p>
+<i class="logo"></i>
+</section>
+
+<!-- 15 · Phase 2 -->
+<section class="slide dark" id="phase2" style="gap:44px">
+<div class="head"><p class="kicker">Phase 2 · done</p><h2>Umlaut CDRs read with their own names</h2></div>
+<div class="feature-grid">
+<div><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><div><h3>Umlaut reader</h3><p>Each service workbook is a CDR; Statistics ignored; one operator per client sheet; Side2 headers kept apart</p></div></div>
+<div><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg><div><h3>Umlaut profile</h3><p>Native names; SUCCESS, FAILED, DROPPED read as Completed, Failed, Dropped; kbit/s to Mbit/s</p></div></div>
+<div><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"></path><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"></circle></svg><div><h3>Derived columns</h3><p>Campaign from the file name, Test_Key (Filename + Task Name + start), ECI from eNodeB and Cell ID</p></div></div>
+<div><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg><div><h3>Upload</h3><p>Umlaut CDR — Data, Voice or Speech from the service name; Final stage; All_* summaries left out</p></div></div>
+<div><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg><div><h3>Non-Qualified Calls</h3><p>NQ when its qualifier says NOT QUALIFIED; samples joined to their call by Sequence; DT Analyzer RCA</p></div></div>
+<div><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></svg><div><h3>CDR Field Dictionary</h3><p>211 fields in Workspace Config, editable per workspace, exported and backed up with the mappings</p></div></div>
+</div>
+<div style="background:linear-gradient(90deg, #27C3D6 0%, #4C8DFF 100%);border-radius:18px;padding:26px 40px">
+<p style="font-size:30px;line-height:1.35;color:#0B1422;font-weight:600">Umlaut CDR stays coming soon in the CDR type until a multi-operator export validates it.</p>
+</div>
+<p class="foot">15 · Phase 2 · Umlaut reader, profile and upload</p>
+<i class="logo"></i>
+</section>
+
+<!-- 16 · Phase 2, validated -->
+<section class="slide light" id="phase2-validation" style="gap:48px">
+<div class="head"><p class="kicker">Phase 2 · validated</p><h2>A real Umlaut export, NetCheck untouched</h2></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:28px">
+<div class="stat"><p class="figure" style="font-size:88px">90&#8239;/&#8239;90</p><p>NetCheck outputs identical before and after the change</p></div>
+<div class="stat"><p class="figure">894</p><p>automated tests passed</p></div>
+<div class="stat"><p class="figure">211</p><p>fields in the CDR Field Dictionary</p></div>
+<div class="stat dark-card"><p class="figure" style="color:#27C3D6">478</p><p style="color:#C9D6E6">NQ in the WindTre Round 1 export</p></div>
+</div>
+<div style="display:flex;gap:28px;align-items:stretch">
+<div class="soft" style="flex:1;border-radius:20px;padding:32px 40px;display:flex;flex-direction:column;gap:12px">
+<h3 style="font-size:30px;font-weight:600">WindTre Round 1, processed in a test workspace</h3>
+<p style="font-size:26px;line-height:1.4;color:#4A5A70">52 Voice calls, 26 Speech calls (285 samples), 3 File DL and 397 Interactivity tests NOT QUALIFIED, classified by the DT Analyzer RCA</p>
+</div>
+<div class="soft" style="flex:1;border-radius:20px;padding:32px 40px;display:flex;flex-direction:column;gap:12px">
+<h3 style="font-size:30px;font-weight:600">The same from its columnar copy</h3>
+<p style="font-size:26px;line-height:1.4;color:#4A5A70">13 CDRs and 194,053 rows read identically from Parquet with DuckDB in every module, guarded by tests since 0.11.0</p>
+</div>
+</div>
+<p class="foot">16 · Phase 2 · Validated on a real Umlaut export and on real NetCheck CDRs</p>
+<i class="logo"></i>
+</section>
+
+<!-- 17 · Internal architecture -->
+<section class="slide dark" id="internal" style="gap:40px">
+<div class="head"><p class="kicker">Internal architecture</p><h2>How the tool is built</h2></div>
+<div style="display:flex;gap:24px;align-items:stretch">
+<div style="flex:3;display:flex;flex-direction:column;gap:14px">
+<div class="tier"><p class="mono">BROWSER</p><p>Jinja2 templates and JavaScript · Canvas charts · OpenStreetMap maps</p></div>
+<div class="tier"><p class="mono">APPLICATION</p><p>FastAPI on Uvicorn · users, Modules Profiles and Workspace Groups · App Events</p></div>
+<div class="tier focus"><p class="mono">MODULES</p><p>CDR Analysis · Network Insights · PPT Designer · Scoring &amp; GAP Analysis · Non-Qualified Calls · Reporting · Builders · AI Assistant · Ticket Center</p></div>
+<div class="tier"><p class="mono">ENGINE</p><p>pandas · NumPy · GeoPandas · DuckDB · provider readers and profiles · mappings · DT Analyzer RCA</p></div>
+<div class="tier"><p class="mono">DATA</p><p>CDR rows in Parquet, read with DuckDB · SQLite for configuration, follow-up and results · caches</p></div>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px">
+<div class="side-card"><h3>Background</h3><p>Scheduler with priorities per workspace · isolated CDR and report workers · backups</p></div>
+<div class="side-card"><h3>Export</h3><p>python-pptx · python-docx · LibreOffice · Chromium and Node.js</p></div>
+<div class="side-card"><h3>AI engine</h3><p>Kiro CLI or Claude, with names sent as codes</p></div>
+</div>
+</div>
+<p class="foot">17 · Internal architecture · Python 3.15 · 130 modules in 14 packages of src/modules</p>
+<i class="logo"></i>
+</section>
+
+<!-- 18 · Life of a CDR -->
+<section class="slide light" id="lifecycle" style="gap:56px">
+<div class="head"><p class="kicker">Life of a CDR</p><h2>From the uploaded file to the report</h2></div>
+<div style="display:flex;gap:10px;align-items:stretch">
+<div class="step"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg><p class="t">Upload</p><p>The provider’s workbooks or folder; type, NR Mode and stage</p></div>
+<svg class="connector" width="40" height="24" viewBox="0 0 40 24" style="flex:none;color:#0B7F8F"><line x1="0" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="3"/><path d="M26 5 L40 12 L26 19 Z" fill="currentColor"/></svg>
+<div class="step"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg><p class="t">Reader</p><p>Which sheets and files are CDRs; original columns kept</p></div>
+<svg class="connector" width="40" height="24" viewBox="0 0 40 24" style="flex:none;color:#0B7F8F"><line x1="0" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="3"/><path d="M26 5 L40 12 L26 19 Z" fill="currentColor"/></svg>
+<div class="step strong"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg><p class="t">Profile</p><p>Internal layer: status, times, operator, technology</p></div>
+<svg class="connector" width="40" height="24" viewBox="0 0 40 24" style="flex:none;color:#0B7F8F"><line x1="0" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="3"/><path d="M26 5 L40 12 L26 19 Z" fill="currentColor"/></svg>
+<div class="step"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg><p class="t">Mappings</p><p>Vendor by serving cell, region, Map Areas, campaigns</p></div>
+<svg class="connector" width="40" height="24" viewBox="0 0 40 24" style="flex:none;color:#0B7F8F"><line x1="0" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="3"/><path d="M26 5 L40 12 L26 19 Z" fill="currentColor"/></svg>
+<div class="step"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></svg><p class="t">Columnar copy</p><p>Parquet files per CDR, read with DuckDB; its table emptied</p></div>
+<svg class="connector" width="40" height="24" viewBox="0 0 40 24" style="flex:none;color:#0B7F8F"><line x1="0" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="3"/><path d="M26 5 L40 12 L26 19 Z" fill="currentColor"/></svg>
+<div class="step"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><rect x="15" y="5" width="4" height="12" rx="1"></rect><rect x="7" y="8" width="4" height="9" rx="1"></rect></svg><p class="t">Modules</p><p>NQ index, Scoring and NI caches, PPT, Word and Excel</p></div>
+</div>
+<p style="font-size:30px;line-height:1.4;color:#4A5A70;width:1600px">Source values are never rewritten: the operator, vendor and campaign labels are applied when they are shown, and a change rewrites only its columns in the copy.</p>
+<p class="foot">18 · Life of a CDR</p>
+<i class="logo"></i>
+</section>
+
+<!-- 19 · Storage -->
+<section class="slide dark" id="storage" style="gap:44px">
+<div class="head"><p class="kicker">Storage</p><h2>Every workspace is self-contained</h2></div>
+<div style="display:flex;gap:28px;align-items:stretch">
+<div style="flex:3;display:flex;flex-direction:column;gap:20px">
+<div class="path-box"><p class="mono label">APP_CONFIG_DIR</p><p class="mono">application.db · users, access, sessions, tickets, transfers</p></div>
+<div class="path-box"><p class="mono label">APP_DATA_DIR</p><p class="mono">workspaces/workspace-registry.db<br>workspaces/&lt;ws&gt;/&lt;ws&gt;.db · settings, NQ, Scoring, events<br>workspaces/&lt;ws&gt;/.cdr-store/ · Parquet copy of every CDR<br>workspaces/&lt;ws&gt;/.cache/ · scoring, network-insights, nq-calls…<br>workspaces/&lt;ws&gt;/input/ · output/reports/<br>scheduled-backups/full · light · transfer-packages/</p></div>
+</div>
+<div style="flex:2;display:flex;flex-direction:column;gap:20px">
+<div class="side-card big"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></svg><h3>CDR rows in Parquet, read with DuckDB</h3><p>Network Insights 79× faster, a workspace database 10× lighter; Tableau reads the same copies</p></div>
+<div class="side-card big"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"></path><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"></circle></svg><h3>The provider travels with it</h3><p>The CDR type lives in the workspace database, also in transfers and backups</p></div>
+</div>
+</div>
+<p class="foot">19 · Storage · Caches can be rebuilt; databases, CDR copies and raw inputs are what a backup must keep</p>
+<i class="logo"></i>
+</section>
+
+<!-- 20 · Docker -->
+<section class="slide light" id="container" style="gap:48px">
+<div class="head"><p class="kicker">Docker</p><h2>One container with everything inside</h2></div>
+<div style="display:flex;gap:32px;align-items:stretch">
+<div style="flex:3;background:#12203A;border-radius:22px;padding:34px;display:flex;flex-direction:column;gap:12px">
+<p class="mono" style="font-size:24px;color:#9FB2C8">jaimetur/drivetest-analyzer · Docker Hub · AMD64 and ARM64</p>
+<div class="layer-band" style="background:#27C3D6"><p style="font-weight:600;color:#0B1422">Application code (src, assets, help), stamped with its Git revision</p></div>
+<div class="layer-band" style="background:#2A4A78"><p>Help presentations generator (Node.js packages)</p></div>
+<div class="layer-band" style="background:#22406A"><p>Chromium, Node.js, LibreOffice Impress and Writer, fonts</p></div>
+<div class="layer-band" style="background:#1B3459"><p>Python packages: FastAPI, pandas, GeoPandas, DuckDB, python-pptx…</p></div>
+<div class="layer-band" style="background:#162B4A"><p style="color:#C9D6E6">python:3.15-slim</p></div>
+</div>
+<div style="flex:2;display:flex;flex-direction:column;gap:16px">
+<div class="fact"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg><p>Port 7278, HTTP; HTTPS in front of it</p></div>
+<div class="fact"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M17 12h-2l-2 5-2-10-2 5H7"></path></svg><p>Health check /healthz every 30 s</p></div>
+<div class="fact"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></svg><p>Volumes /app/config and /app/data</p></div>
+<div class="fact"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"></path><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"></circle></svg><p>APP_SECRET_KEY and TZ in the environment</p></div>
+<div class="fact"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg><p>Restart unless stopped; migrations at startup</p></div>
+</div>
+</div>
+<p class="foot">20 · Docker · Built by GitHub Actions on every push · latest-noavx for CPUs without AVX2 · docker compose up -d --pull always</p>
+<i class="logo"></i>
+</section>
+
+<!-- 21 · AWS -->
+<section class="slide dark" id="aws" style="gap:34px">
+<div class="head"><p class="kicker" style="color:#FFB547">Cloud · AWS · how it runs today</p><h2>Deployment on AWS</h2></div>
+<div class="deploy">
+<div class="side">
+<p class="side-title" style="color:#FFB547">Who reaches it</p>
+<div class="box nav"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg><div><h4>Users</h4><p>Browser or phone, HTTPS on port 8443</p></div></div>
+<div class="box nav"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><rect x="15" y="5" width="4" height="12" rx="1"></rect><rect x="7" y="8" width="4" height="9" rx="1"></rect></svg><div><h4>Tableau</h4><p>Dashboards on the workspaces, PostgreSQL with TLS on 5432</p></div></div>
+<div class="box nav"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" x2="20" y1="19" y2="19"></line></svg><div><h4>Administrators</h4><p>AWS SSO and SSM Session Manager: a shell with no SSH port open</p></div></div>
+</div>
+<svg class="connector" width="40" height="24" viewBox="0 0 40 24" style="flex:none;color:#FFB547"><line x1="0" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="4"/><path d="M26 5 L40 12 L26 19 Z" fill="currentColor"/></svg>
+<div class="zone" style="border-color:#FFB547"><p class="zone-name" style="color:#FFB547;background:#0B1422">AWS account of the team · eu-west-1</p>
+<div class="box nav"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg><div><h4>Security group, the firewall of the instance</h4><p>Open: 8443 HTTPS and 5432 PostgreSQL (TLS only). SSH 22 only from the internal 10.1.0.0/16 network and two admin addresses</p></div></div>
+<div class="box nav"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"></rect><rect width="20" height="8" x="2" y="14" rx="2" ry="2"></rect><line x1="6" x2="6.01" y1="6" y2="6"></line><line x1="6" x2="6.01" y1="18" y2="18"></line></svg><div style="flex:1"><h4>EC2 instance · Ubuntu with Docker Engine</h4>
+<div class="containers">
+<p><b>Caddy</b> reverse proxy: HTTPS on 8443 with a Let’s Encrypt certificate</p>
+<p><b>drivetest-analyzer</b> the tool, on 7278 inside the instance</p>
+<p><b>tableau-db</b> PostgreSQL 17 + pg_duckdb, refreshed every 5 min</p>
+<p><b>Dockhand</b> pulls each new image and recreates the container</p>
+</div></div></div>
+<div class="box nav"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><line x1="22" x2="2" y1="12" y2="12"></line><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path><line x1="6" x2="6.01" y1="16" y2="16"></line><line x1="10" x2="10.01" y1="16" y2="16"></line></svg><div><h4>EBS volumes</h4><p>50 GB root: the system and the Docker images, pruned every week · 1 TiB /data volume: config, workspaces, backups and the Tableau database</p></div></div>
+</div>
+<svg class="connector" width="40" height="24" viewBox="0 0 40 24" style="flex:none;color:#FFB547"><line x1="0" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="4"/><path d="M26 5 L40 12 L26 19 Z" fill="currentColor"/></svg>
+<div class="side">
+<p class="side-title" style="color:#FFB547">What it reaches</p>
+<div class="box nav"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"></path><path d="M12 22V12"></path><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"></path><path d="m7.5 4.27 9 5.15"></path></svg><div><h4>Docker Hub</h4><p>The image, built by GitHub Actions on every push</p></div></div>
+<div class="box nav"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg><div><h4>Power Automate</h4><p>The flow that sends the emails</p></div></div>
+<div class="box nav"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg><div><h4>AI engine</h4><p>Kiro CLI or Claude: comments, AI Assistant</p></div></div>
+<div class="box nav"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"></path><path d="M15 5.764v15"></path><path d="M9 3.236v15"></path></svg><div><h4>OpenStreetMap</h4><p>Map tiles, cached on the server</p></div></div>
+<div class="box nav"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M8 3 4 7l4 4"></path><path d="M4 7h16"></path><path d="m16 21 4-4-4-4"></path><path d="M20 17H4"></path></svg><div><h4>Other servers</h4><p>Transfers of workspaces and content</p></div></div>
+</div>
+</div>
+<p class="foot">21 · AWS · One instance that grows in size · no load balancer, VPN, ECR, Secrets Manager or SES · snapshots of /data recommended</p>
+<i class="logo"></i>
+</section>
+
+<!-- 22 · Ericsson cloud -->
+<section class="slide light" id="ericsson" style="gap:34px">
+<div class="head"><p class="kicker">Cloud · Ericsson · proposal</p><h2>Deployment in the Ericsson cloud</h2></div>
+<div class="deploy">
+<div class="side">
+<p class="side-title">Who reaches it</p>
+<div class="box"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg><div><h4>Teams</h4><p>Browser on the Ericsson network, HTTPS on 443</p></div></div>
+<div class="box"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><rect x="15" y="5" width="4" height="12" rx="1"></rect><rect x="7" y="8" width="4" height="9" rx="1"></rect></svg><div><h4>Tableau Server</h4><p>Dashboards on the workspaces, PostgreSQL with TLS on 5432</p></div></div>
+<div class="box"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" x2="20" y1="19" y2="19"></line></svg><div><h4>Administrators</h4><p>SSH from the admin jump host only</p></div></div>
+</div>
+<svg class="connector" width="40" height="24" viewBox="0 0 40 24" style="flex:none;color:#0B7F8F"><line x1="0" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="4"/><path d="M26 5 L40 12 L26 19 Z" fill="currentColor"/></svg>
+<div class="zone" style="border-color:#0B7F8F"><p class="zone-name" style="color:#0B7F8F;background:#F2F4F7">Ericsson cloud · one Linux virtual machine</p>
+<div class="box"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M12 9v6"></path><path d="M16 15v6"></path><path d="M16 3v6"></path><path d="M3 15h18"></path><path d="M3 9h18"></path><path d="M8 15v6"></path><path d="M8 3v6"></path></svg><div><h4>Firewall</h4><p>443 from the Ericsson network, 5432 from Tableau Server, 22 from the jump host; nothing open to the internet</p></div></div>
+<div class="box"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg><div><h4>Reverse proxy with a corporate certificate</h4><p>A DNS name and its TLS certificate on 443, passed to the tool on 7278</p></div></div>
+<div class="box strong"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"></rect><rect width="20" height="8" x="2" y="14" rx="2" ry="2"></rect><line x1="6" x2="6.01" y1="6" y2="6"></line><line x1="6" x2="6.01" y1="18" y2="18"></line></svg><div style="flex:1"><h4>Linux VM with Docker Engine</h4><p>Sized like the AWS instance, grown by resizing it:</p>
+<div class="containers">
+<p><b>drivetest-analyzer</b> the same image as on AWS</p>
+<p><b>tableau-db</b> PostgreSQL with pg_duckdb, for Tableau Server</p>
+</div></div></div>
+<div class="box"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><line x1="22" x2="2" y1="12" y2="12"></line><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path><line x1="6" x2="6.01" y1="16" y2="16"></line><line x1="10" x2="10.01" y1="16" y2="16"></line></svg><div><h4>Block volume</h4><p>1 TB SSD for config, workspaces, backups and the Tableau database, with snapshots of the platform</p></div></div>
+</div>
+<svg class="connector" width="40" height="24" viewBox="0 0 40 24" style="flex:none;color:#0B7F8F"><line x1="0" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="4"/><path d="M26 5 L40 12 L26 19 Z" fill="currentColor"/></svg>
+<div class="side">
+<p class="side-title">Through the proxy</p>
+<div class="box"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"></path><path d="M12 22V12"></path><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"></path><path d="m7.5 4.27 9 5.15"></path></svg><div><h4>Image registry</h4><p>Docker Hub, or an internal mirror of it</p></div></div>
+<div class="box"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg><div><h4>Power Automate</h4><p>The same flow for the emails</p></div></div>
+<div class="box"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></svg><div><h4>AI engine</h4><p>Kiro CLI or Claude, if allowed</p></div></div>
+<div class="box"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"></path><path d="M15 5.764v15"></path><path d="M9 3.236v15"></path></svg><div><h4>OpenStreetMap</h4><p>Map tiles, cached on the server</p></div></div>
+<div class="box"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M8 3 4 7l4 4"></path><path d="M4 7h16"></path><path d="m16 21 4-4-4-4"></path><path d="M20 17H4"></path></svg><div><h4>AWS server</h4><p>Transfers of workspaces both ways</p></div></div>
+</div>
+</div>
+<p class="foot">22 · Ericsson cloud · Only what is around the container changes: the image, volumes and backups are those of AWS</p>
+<i class="logo"></i>
+</section>
+
+<!-- 23 · Operations -->
+<section class="slide dark" id="operations" style="gap:48px">
+<div class="head"><p class="kicker">Operations</p><h2>Running it day to day</h2></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+<div class="op"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><h3>Backups</h3><p>Scheduled light backups between weekly full ones, kept by days, weeks and months; Restore Full or Light</p></div>
+<div class="op"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg><h3>Upgrades</h3><p>Each push builds the image; the new tag is pulled and the container recreated; migrations run at startup</p></div>
+<div class="op"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M17 12h-2l-2 5-2-10-2 5H7"></path></svg><h3>Monitoring</h3><p>/healthz for the platform; App Logs and App Events for every user action; free disk space before each backup</p></div>
+<div class="op"><svg class="icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path><path d="m21.854 2.147-10.94 10.939"></path></svg><h3>Transfers</h3><p>Offers and requests between servers approved by a super-admin, and Import / Export packages</p></div>
+</div>
+<p class="foot">23 · Operations · Snapshots of the data volume by the platform are still recommended</p>
+<i class="logo"></i>
+</section>
+
+<!-- 24 · Scaling -->
+<section class="slide light" id="scale" style="gap:44px">
+<div class="head"><p class="kicker">Scaling</p><h2>From one server to the cloud at scale</h2></div>
+<div style="display:flex;gap:24px;align-items:stretch">
+<div class="col-card">
+<p class="mono" style="color:#0B7F8F">TODAY</p>
+<ul>
+<li>One container per server, grown with more CPU, memory and disk</li>
+<li>Background scheduler and isolated workers</li>
+<li>SQLite for configuration, follow-up and results</li>
+</ul>
+</div>
+<div class="col-card accent">
+<p class="mono" style="color:#0B7F8F">DONE IN 0.10–0.12</p>
+<ul>
+<li>CDR rows in Parquet, read with DuckDB</li>
+<li>Network Insights 79× faster, Points Lost Map 300×</li>
+<li>Tableau on the workspace through PostgreSQL with pg_duckdb</li>
+</ul>
+</div>
+<div class="col-card dark-card">
+<p class="mono" style="color:#27C3D6">NEXT ON THE ROADMAP</p>
+<ul>
+<li>Health monitoring, with alerts on runs that take too long</li>
+<li>Automated end-to-end deployment checks</li>
+<li>More providers on the same model</li>
+</ul>
+</div>
+</div>
+<p class="foot">24 · Scaling · The columnar store replaced the move to PostgreSQL planned before</p>
+<i class="logo"></i>
+</section>
+
+<!-- 25 · What we need -->
+<section class="slide" id="next" style="background:linear-gradient(120deg, #FFB547 0%, #FF6B6B 100%);color:#0B1422;gap:30px" data-logo="light">
+<div class="head"><p class="kicker" style="color:#0B1422">Next step · to complete Umlaut, P3 and RootMetrics</p><h2>What we need to continue</h2></div>
+<div class="needs">
+<div><div class="need-head"><h3>CDR exports of a real benchmark</h3><div class="who"><span style="background:#FF6B6B">Umlaut</span><span style="background:#FFB547">P3</span><span style="background:#B48CFF">RootMetrics</span></div></div><p>Umlaut: multi-operator, with NR SA and walk or train tests, which validates its reader. P3 and RootMetrics: a whole campaign.</p></div>
+<div><div class="need-head"><h3>Description of the CDR formats</h3><div class="who"><span style="background:#FFB547">P3</span><span style="background:#B48CFF">RootMetrics</span></div></div><p>Files, sheets, fields, units and values of each export, to write its reader and its profile.</p></div>
+<div><div class="need-head"><h3>Scoring methodology documents</h3><div class="who"><span style="background:#FF6B6B">Umlaut</span><span style="background:#FFB547">P3</span><span style="background:#B48CFF">RootMetrics</span></div></div><p>KPIs, thresholds, weights, categories and areas, with a published scoring to check ours against.</p></div>
+<div><div class="need-head"><h3>Layer3 logs pre-processing script</h3><div class="who"><span style="background:#FF6B6B">Umlaut</span><span style="background:#FFB547">P3</span><span style="background:#B48CFF">RootMetrics</span></div></div><p>From each provider’s logs, only the NQ calls and the columns needed, by its call key: the Layer3 Logs we upload, as for NetCheck.</p></div>
+<div><div class="need-head"><h3>Network Inventories of each country</h3><div class="who"><span style="background:#FF6B6B">Umlaut</span><span style="background:#FFB547">P3</span><span style="background:#B48CFF">RootMetrics</span></div></div><p>Every operator of the benchmark: LTE and NR cells with identity, PCI, channel, position and vendor (next slide).</p></div>
+<div><div class="need-head"><h3>Failure catalogue of each provider</h3><div class="who"><span style="background:#FF6B6B">Umlaut</span><span style="background:#FFB547">P3</span><span style="background:#B48CFF">RootMetrics</span></div></div><p>What every failure indication means, and its own RCA when it has one, for the rules of the DT Analyzer RCA.</p></div>
+<div><div class="need-head"><h3>Ericsson RCA by the provider’s key</h3><div class="who"><span style="background:#FF6B6B">Umlaut</span><span style="background:#FFB547">P3</span><span style="background:#B48CFF">RootMetrics</span></div></div><p>Its results keyed by the Umlaut Sequence or Test_Key, and those of P3 and RootMetrics, not the NetCheck JOIN_ID.</p></div>
+<div><div class="need-head"><h3>Reference reports</h3><div class="who"><span style="background:#FF6B6B">Umlaut</span><span style="background:#FFB547">P3</span><span style="background:#B48CFF">RootMetrics</span></div></div><p>The PowerPoint reports the teams deliver today with each provider, to build its PPT Designer templates.</p></div>
+</div>
+<p class="foot" style="color:#0B1422">25 · Next step · Each provider starts when its inputs are in</p>
+<i class="logo"></i>
+</section>
+
+<!-- 26 · Network Inventories -->
+<section class="slide light" id="inventories" style="gap:36px">
+<div class="head"><p class="kicker">Next step · Network Inventories</p><h2>The Network Inventories we need</h2></div>
+<div class="table-box">
+<table class="inv-table">
+<tr><th style="width:21%">Inventory</th><th style="width:47%">What it must contain</th><th style="width:32%">What the tool does with it</th></tr>
+<tr><td><b>LTE cells</b> of every operator</td><td>eNodeB ID and Cell ID (or ECI), PCI, EARFCN, band, bandwidth, TAC, site ID and cell name, latitude, longitude, azimuth</td><td>The serving cell of each sample and test, its Vendor, Network Insights</td></tr>
+<tr><td><b>NR cells</b> of every operator</td><td>gNodeB ID, its length and Cell ID (or NCI), PCI, SSB NR-ARFCN, band, bandwidth, NSA or SA, position, azimuth</td><td>NR cells found by PCI + ARFCN + distance where the CDR has no NCI, as in Umlaut</td></tr>
+<tr><td><b>Owner, host and state</b> of each cell</td><td>Network that owns it and Host Network whose RAN carries it, Vendor, status on air, antenna height and tilts</td><td>RAN sharing, Vendor Points Lost, cells out of service and overshooting in the DT Analyzer RCA</td></tr>
+<tr><td><b>A snapshot per campaign</b></td><td>The date of the network it describes; CSV, Excel or Cell Configuration KMZ, any layout</td><td>The inventory closest to each campaign</td></tr>
+<tr><td><b>Areas of the country</b></td><td>Region and Cluster polygons of the performance owners, Vendor polygons where there is no inventory</td><td>Scoring by area, Where to act, Vendor without an inventory</td></tr>
+</table>
+</div>
+<p class="foot">26 · Network Inventories · For the country of each benchmark · a Multivendor Mapping can give the Vendor when the inventory has none</p>
+<i class="logo"></i>
+</section>
+
+<script>
+  // ?slide=N shows slide N alone, and ?slides=A-B the slides from A to B one below the other, at the top, for their pictures.
+  const query = new URLSearchParams(location.search);
+  const range = query.get('slides') || (query.get('slide') && `${query.get('slide')}-${query.get('slide')}`);
+  if (range) {
+    const [first, last] = range.split('-').map(Number);
+    document.querySelectorAll('.slide').forEach((slide, index) => { slide.style.display = index + 1 >= first && index + 1 <= last ? '' : 'none'; slide.style.marginTop = '0'; });
+  }
+</script>
+</body>
+</html>

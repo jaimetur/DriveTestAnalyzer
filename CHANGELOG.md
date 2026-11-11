@@ -26,6 +26,7 @@
 
 #### 📚 Documentation:
 - **Changelog — Ticket links:** every ticket a release names (ticket #N) is a link that opens its page in the Ticket Center.
+- **Benchmarking Providers Roadmap presentation ([ticket #120](https://108.132.147.165:8443/tickets/120)):** every slide matches the tool of this version (the modules with the AI Assistant and PPT Designer, the DT Analyzer RCA shown first, Python 3.15, the CDR rows in Parquet read with DuckDB instead of a move to PostgreSQL) and the deck adds a time plan of about six or seven weeks per provider (Umlaut CDR supported in February 2027, P3 CDR in April 2027 and RootMetrics CDR in May 2027, each once its inputs are in), the deployment on AWS as it runs today (security group and open ports, EC2 with its containers, EBS volumes, SSM access and the services it reaches, each box saying what it is for), a proposal for the Ericsson cloud, and what is needed to complete the three providers: CDR exports, format descriptions, Scoring methodology documents, a Layer3 logs pre-processing script, failure catalogues, the Ericsson RCA by the provider's key, reference reports and the Network Inventories with what each must contain, also in the Benchmarking Providers chapter. Its slides are kept as HTML beside their pictures, and the card of the Roadmap presentation names what it really shows.
 
 ---
 

@@ -11,12 +11,13 @@ DriveTest Analyzer was built for the CDRs of NetCheck. It is being adapted to th
 | --- | --- |
 | Presentation | [Open section](#presentation) |
 | Adaptation status | [Open section](#adaptation-status) |
+| What is needed to continue | [Open section](#what-is-needed-to-continue) |
 | The multi-provider model | [Open section](#the-multi-provider-model) |
 | Compatibility reports | [Open section](#compatibility-reports) |
 
 ## Presentation
 
-The adaptation is also a presentation, **Benchmarking Providers Roadmap**, in [Product Presentations](presentations.md): the multi-provider model, the status of each phase, how the tool is built inside and how it is deployed as a Docker container in the cloud, on AWS or in the Ericsson cloud. Select it to open it in the slide viewer or download its PowerPoint.
+The adaptation is also a presentation, **Benchmarking Providers Roadmap**, in [Product Presentations](presentations.md): the multi-provider model, the status of each phase and its time plan, how the tool is built inside, how it runs as a Docker container on AWS today and how it could run in the Ericsson cloud, and what is needed to complete Umlaut, P3 and RootMetrics. Select it to open it in the slide viewer or download its PowerPoint.
 
 ```presentations
 benchmarking-providers
@@ -24,18 +25,20 @@ benchmarking-providers
 
 ## Adaptation status
 
-The adaptation is planned in eight phases. The durations are indicative: they depend on multi-operator samples, the Umlaut Scoring methodology and the P3 and RootMetrics formats.
+The adaptation is planned in eight phases, one provider at a time: Umlaut, then P3, then RootMetrics. The dates are an estimate: each provider starts once its inputs are in (see [What is needed to continue](#what-is-needed-to-continue)), and a later input moves its dates by the same time.
 
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 1. Multi-provider base | The CDR types of the providers and a field profile per CDR type; the modules read the CDR columns through the profile of the workspace. | **Done** in version 0.9.0 |
 | 2. Umlaut reader, profile and upload | The Umlaut reader (files per service, the Statistics sheet, Side1/Side2 headers, samples joined to their call), the Umlaut profile with its native names, campaign and operator detection confirmed on upload, derived columns (call key, ECI, mean radio of the call) and a CDR Field Dictionary panel. | **Done** in version 0.9.0; Umlaut CDR stays *coming soon* until a multi-operator export validates it |
-| 3. Scoring ready for Umlaut | Formulas with native names and a field picker, percentiles other than P90 and environments by the Umlaut scoring category; the Umlaut methodology is loaded when it is available. | Planned · 1 week |
-| 4. Umlaut PPT templates | PPT Designer templates per service and Auto-calculated Fields with Umlaut values. | Planned · 1 week |
-| 5. Non-Qualified Calls and RCA | NQ = Qualifier NOT QUALIFIED, an Umlaut call key, the Umlaut values of the DT Analyzer RCA (available in every workspace) and the Ericsson RCA by the provider's call key. | Planned · 1.5–2 weeks |
-| 6. Umlaut Network Insights | The radio of the calls from their samples, NR cells by PCI + ARFCN + distance, MIMO rank and bandwidths. | Planned · 1–1.5 weeks |
-| 7. P3 | The P3 reader, profile and content, with the same model. | Once a P3 sample is available |
-| 8. RootMetrics | The RootMetrics reader, profile and content, with the same model, and its own Scoring methodology. | Once a RootMetrics sample is available |
+| 3. Scoring ready for Umlaut | Formulas with native names and a field picker, percentiles other than P90 and environments by the Umlaut scoring category; the Umlaut methodology is loaded when it is available. | Planned · January 2027, 2 weeks |
+| 4. Umlaut PPT templates | PPT Designer templates per service and Auto-calculated Fields with Umlaut values. | Planned · January 2027, 1 week |
+| 5. Non-Qualified Calls and RCA | NQ = Qualifier NOT QUALIFIED, an Umlaut call key, the Umlaut values of the DT Analyzer RCA (available in every workspace), the Ericsson RCA by the provider's call key and the Layer3 Logs of the Umlaut NQ calls. | Planned · January 2027, 1 week |
+| 6. Umlaut Network Insights | The radio of the calls from their samples, NR cells by PCI + ARFCN + distance, MIMO rank and bandwidths. | Planned · February 2027, 1 week |
+| 7. P3 | The P3 compatibility report, reader, profile and content, with the same model, and its own Scoring methodology. | Once a P3 sample is available · February to April 2027 |
+| 8. RootMetrics | The RootMetrics compatibility report, reader, profile and content, with the same model, and its own Scoring methodology. | Once a RootMetrics sample is available · April to May 2027 |
+
+Each provider takes about six or seven weeks and ends with a week of validation with the teams, when its CDR type stops being *coming soon*: Umlaut CDR in February 2027, P3 CDR in April 2027 and RootMetrics CDR in May 2027. The Christmas weeks are left out of the plan.
 
 Phase 1 is available now and changes nothing for NetCheck workspaces:
 
@@ -54,6 +57,33 @@ Phase 2 is available too, while Umlaut CDR stays *coming soon* until a multi-ope
 - **Validated.** The same real NetCheck CDRs processed before and after phase 2 gave the same results (90 of 90 outputs); a real Umlaut export (WindTre, Round 1) was processed with the Umlaut profile in a test workspace.
 
 The common engine of phase 5, the [DT Analyzer RCA](non-qualified-calls.md#dt-analyzer-rca), is available too: it finds the root cause of every Non-Qualified Call from the data of its CDR, read through the field profile of the workspace, with rules each workspace can change.
+
+## What is needed to continue
+
+To complete Umlaut, P3 and RootMetrics, each provider needs:
+
+- **CDR exports of a real benchmark.** For Umlaut, a multi-operator export, ideally with NR SA and walk or train tests, which also validates its reader; for P3 and RootMetrics, a whole campaign.
+- **A description of the CDR formats** of P3 and RootMetrics: the files, sheets, fields, units and values of each export, to write their reader and profile.
+- **The Scoring methodology documents** of each provider: KPIs, thresholds, weights, categories and areas, with a published scoring to check the results of the tool against. Scoring & GAP Analysis cannot be built without them.
+- **A pre-processing script of the Layer3 logs** of each provider: as the one of NetCheck, it keeps only the NQ calls and the columns needed, by the call key of the provider, and its output is what is uploaded as [Layer3 Logs](workspace-management.md#layer3-logs).
+- **The Network Inventories** of the country of each benchmark, described below.
+- **The failure catalogue** of each provider: what every failure indication means, and its own RCA when it has one, for the rules of the DT Analyzer RCA.
+- **The Ericsson RCA by the call key of each provider** (the Umlaut Sequence or Test_Key, and those of P3 and RootMetrics) instead of the NetCheck JOIN_ID.
+- **Reference reports**: the PowerPoint reports the teams deliver today with each provider, to build its PPT Designer templates.
+
+### Network Inventories
+
+The [Network Inventories](workspace-management.md#network-inventories) needed for the country of each benchmark, for every operator in it:
+
+| Inventory | What it must contain | What the tool does with it |
+| --- | --- | --- |
+| LTE cells | eNodeB ID and Cell ID (or ECI), PCI, EARFCN, band, bandwidth, TAC, site ID and cell name, latitude, longitude and azimuth. | The serving cell of each sample and test, its Vendor and Network Insights. |
+| NR cells | gNodeB ID, its length and Cell ID (or NCI), PCI, SSB NR-ARFCN, band, bandwidth, NSA or SA, position and azimuth. | The NR cells found by PCI, ARFCN and distance where the CDR has no NCI, as in Umlaut. |
+| Owner, host and state of each cell | The network that owns it and the Host Network whose RAN carries it, its Vendor, its status on air, antenna height and tilts. | RAN sharing, Vendor Points Lost, and the cells out of service and overshooting of the DT Analyzer RCA. |
+| A snapshot per campaign | The date of the network it describes, as CSV, Excel or Cell Configuration KMZ, in any layout. | The inventory closest to each campaign. |
+| Areas of the country | The Region and Cluster polygons of the performance owners, and Vendor polygons where there is no inventory. | Scoring by area, Where to act and the Vendor without an inventory. |
+
+A [Multivendor Mapping](workspace-management.md#multivendor-mappings) can give the Vendor when the inventory has none.
 
 ## The multi-provider model
 

@@ -6,14 +6,14 @@
       "image": "slide-01.png",
       "section": "Introduction",
       "title": "One tool. Four providers.",
-      "notes": "DriveTest Analyzer is no longer a tool for NetCheck CDRs only. This deck covers the multi-provider model (NetCheck, Umlaut and later P3 and RootMetrics), how the tool is built inside, and how it is deployed as a Docker container in the cloud, on AWS or in the Ericsson cloud."
+      "notes": "DriveTest Analyzer is no longer a tool for NetCheck CDRs only. This deck covers the multi-provider model (NetCheck today, then Umlaut, P3 and RootMetrics), the time plan of their adaptation, how the tool is built inside, how it runs on AWS today and how it could run in the Ericsson cloud, and what we need to finish."
     },
     {
       "id": "today",
       "image": "slide-02.png",
       "section": "Introduction",
       "title": "A complete platform, built for NetCheck",
-      "notes": "Today the tool is complete, but everything is written in NetCheck names and values: ingestion, the Scoring formulas, the PPT templates, the NQ definition and the radio tables of Network Insights. The figures come from the repository (branch 0.9.0) and the UK workspace."
+      "notes": "Today the tool is complete, but everything is written in NetCheck names and values: ingestion, the Scoring formulas, the PPT templates, the NQ definition and the radio tables of Network Insights. The figures come from the repository at version 0.12.2 (10 main modules, 146k lines of Python, 100k of web interface, 2,386 automated tests in 154 files) and the UK workspace."
     },
     {
       "id": "providers",
@@ -34,140 +34,154 @@
       "image": "slide-05.png",
       "section": "Introduction",
       "title": "Five rules of the multi-provider model",
-      "notes": "The five agreed rules: one provider per workspace, native names visible, Scoring with each provider’s methodology, each provider’s NQ definition, and the DT Analyzer RCA as the common engine, available in every workspace beside the NetCheck and Ericsson RCAs."
+      "notes": "The five agreed rules: one provider per workspace, native names visible, Scoring with each provider’s own methodology, each provider’s NQ definition, and the DT Analyzer RCA as the common engine, available in every workspace and shown first, beside the provider’s RCA and the Ericsson RCA."
     },
     {
       "id": "layers",
       "image": "slide-06.png",
       "section": "Multi-provider architecture",
       "title": "Three layers per provider",
-      "notes": "The reader understands the structure of each provider’s export. The profile tells every module where each piece of data is and how to read it. The content is the provider’s own methodologies, templates and rules. The modules are not duplicated: the same logic serves every provider."
+      "notes": "The reader understands the structure of each provider’s export. The profile tells every module where each piece of data is and how to read it. The content is the provider’s own methodologies, templates and rules. The modules are not duplicated: the same logic serves every provider, from Scoring & GAP Analysis to the AI Assistant."
     },
     {
       "id": "profile",
       "image": "slide-07.png",
       "section": "Multi-provider architecture",
       "title": "One concept, each provider’s name",
-      "notes": "The profile is the central piece. For each provider, every concept a module needs has its native column, its conversion (for example kbit/s to Mbit/s) and the meaning of its values (SUCCESS stands for Completed). Users keep seeing the native column; the module reads the concept. The 84 of 109 figure comes from the compatibility analysis."
+      "notes": "The profile is the central piece. For each provider, every concept a module needs has its native column, its conversion (for example kbit/s to Mbit/s) and the meaning of its values (SUCCESS stands for Completed). The Umlaut call setup is measured up to the alerting by default; the CDR Field Dictionary of Workspace Config can change it to Option D, as any other field. Users keep seeing the native column; the module reads the concept. The 84 of 109 figure comes from the compatibility analysis."
     },
     {
       "id": "modules",
       "image": "slide-08.png",
       "section": "Multi-provider architecture",
-      "title": "What Umlaut changes in each module",
-      "notes": "Builders work as soon as the CDR can be loaded. CDR Analysis and Reporting barely change. Scoring, PPT Designer and NQ Calls need their Umlaut content. The major changes are in ingestion (the Umlaut reader) and Network Insights, because Umlaut only gives the radio of a call at its start and end and has no identity for NR cells."
+      "title": "What each provider changes in each module",
+      "notes": "Builders work as soon as the CDR can be loaded. CDR Analysis, Reporting and the AI Assistant barely change, because they reuse the calculations of the other modules. The Workspace already has the Umlaut reader and upload (phase 2). Scoring & GAP Analysis, PPT Designer and Non-Qualified Calls need the content of each provider, and the Layer3 Logs a pre-processing script per provider. The major change is Network Insights, because Umlaut only gives the radio of a call at its start and end and has no identity for NR cells. Ticket Center does not read CDRs."
     },
     {
       "id": "rca",
       "image": "slide-09.png",
       "section": "Multi-provider architecture",
       "title": "One RCA of our own for every provider",
-      "notes": "Today the NetCheck RCA section suggests a domain and a cause with keywords on the NetCheck failure classification. The DT Analyzer RCA, available in every workspace with rules that can be edited, combines the failure description with the phase that fails and the radio at the time of the failure; Umlaut, which only brings a failure text, and P3 and RootMetrics still need their own inputs. The rules shown are examples of the kind of condition, not a closed catalogue."
+      "notes": "The DT Analyzer RCA is available in every workspace and shows first among the RCA sources. It reads each call through the profile of its provider: its result and failure, the LTE and NR radio of both sides, its mobility and KPIs, and the network around it from the Network Inventory; ordered rules that each workspace can edit give the root category and cause, with the evidence. What each provider still needs are its values and its failure catalogue. The rules shown are examples of the kind of condition, not a closed catalogue."
     },
     {
       "id": "roadmap",
       "image": "slide-10.png",
-      "section": "Multi-provider architecture",
+      "section": "Roadmap",
       "title": "From the base to RootMetrics, in eight phases",
-      "notes": "Phases 1 and 2 are done in version 0.9.0: the multi-provider base and the Umlaut reader, profile and upload. Phases 3 to 6 bring Umlaut to the priority modules, Scoring, PPT Designer and NQ Calls, and to Network Insights. P3 and then RootMetrics come last with the same model, as soon as there is a sample of each."
+      "notes": "Phases 1 and 2 are done in version 0.9.0, and the Umlaut CDRs were checked with the columnar copy in 0.11.0. Phases 3 to 6 bring Umlaut to Scoring, PPT Designer, Non-Qualified Calls with the RCA and Layer3 inputs, and Network Insights; the DT Analyzer RCA and the NR cells found by PCI and ARFCN already exist. P3 and then RootMetrics come next with the same model, as soon as there is a sample of each. The dates follow the time plan of the next slide."
+    },
+    {
+      "id": "timeplan",
+      "image": "slide-11.png",
+      "section": "Roadmap",
+      "title": "Umlaut, then P3, then RootMetrics",
+      "notes": "A plan of about six or seven weeks per provider, one provider at a time. Umlaut needs six weeks from January 2027 (Scoring 2, PPT templates 1, Non-Qualified Calls with the RCA and Layer3 1, Network Insights 1, and 1 of validation with the teams), so Umlaut CDR would be supported in February 2027. P3 follows with its compatibility report, reader and profile, its Scoring and its content, and is supported in April 2027; RootMetrics follows in the same way, supported in May 2027. Each provider starts only once its inputs are in, and a later input moves its bars by the same time; the Christmas weeks are left out."
     },
     {
       "id": "phase1",
-      "image": "slide-11.png",
-      "section": "Multi-provider architecture",
+      "image": "slide-12.png",
+      "section": "Roadmap",
       "title": "The multi-provider base, NetCheck untouched",
-      "notes": "Phase 1 prepares the tool without changing anything for NetCheck users. The modules no longer hold NetCheck names inside; they ask the workspace’s profile for them. The NetCheck profile reproduces exactly the previous columns, and the validation proved it: processing the same real NetCheck CDRs before and after the change gave 89 of 89 identical outputs, and every related test passes."
+      "notes": "Phase 1 prepares the tool without changing anything for NetCheck users. The modules no longer hold NetCheck names inside; they ask the workspace’s profile for them. The NetCheck profile reproduces exactly the previous columns, and the validation proved it: processing the same real NetCheck CDRs before and after the change gave 89 of 89 identical outputs, and every related test passes. RootMetrics CDR was added beside them as coming soon in 0.12.2."
     },
     {
       "id": "phase1-map",
-      "image": "slide-12.png",
-      "section": "Multi-provider architecture",
+      "image": "slide-13.png",
+      "section": "Roadmap",
       "title": "From columns inside each module to one profile",
-      "notes": "Before phase 1, each module carried its own lists of NetCheck column names. Now they all live in one field profile per CDR type, in cdr_field_profiles.py, and every module asks for the profile of its workspace. For NetCheck the profile holds exactly the previous columns, so the same CDRs give the same results: 89 of 89 outputs were identical on a real sample of the UK workspace. A workspace with CDRs can no longer change its CDR type, and P3 now appears beside Umlaut as coming soon."
+      "notes": "Before phase 1, each module carried its own lists of NetCheck column names. Now they all live in one field profile per CDR type, in cdr_field_profiles.py, and every module asks for the profile of its workspace. For NetCheck the profile holds exactly the previous columns, so the same CDRs give the same results: 89 of 89 outputs were identical on a real sample of the UK workspace. A workspace with CDRs can no longer change its CDR type, and Umlaut, P3 and RootMetrics appear as coming soon."
     },
     {
       "id": "phase1-files",
-      "image": "slide-13.png",
-      "section": "Multi-provider architecture",
+      "image": "slide-14.png",
+      "section": "Roadmap",
       "title": "What changed in the code",
       "notes": "File by file: a new module with the profiles; the CDR type registry with P3 and the lock; and the modules that read CDR columns, which now take them from the workspace’s profile instead of their own NetCheck lists. The app passes the profile when it processes a CDR. There is no database migration, so restarting the application changes nothing in existing workspaces. The second commit only updates two NQ tests that already failed before phase 1."
     },
     {
       "id": "phase2",
-      "image": "slide-14.png",
-      "section": "Multi-provider architecture",
+      "image": "slide-15.png",
+      "section": "Roadmap",
       "title": "Umlaut CDRs read with their own names",
       "notes": "Phase 2 reads Umlaut CDRs with their own names. The Umlaut reader takes every service workbook as a CDR, ignores the Statistics sheet, reads one operator per client sheet and keeps the headers of the second side of a call apart; All_Data and All_Voice are summaries, not CDRs. The Umlaut profile keeps the native names, reads SUCCESS, FAILED and DROPPED as Completed, Failed and Dropped, converts kbit/s to Mbit/s and measures call setup up to Alerting by default (Option D through the dictionary). Derived columns add the Campaign from the benchmark of the file name, a Test_Key for the data tests and the ECI of the serving cell. On upload each file takes its type from its service name, as a Final CDR. In Non-Qualified Calls a call or test is NQ when its qualifier says NOT QUALIFIED, with the DT Analyzer RCA. The CDR Field Dictionary of Workspace Config shows and edits the 211 fields per workspace. Umlaut CDR stays coming soon until a multi-operator export validates it."
     },
     {
       "id": "phase2-validation",
-      "image": "slide-15.png",
-      "section": "Multi-provider architecture",
+      "image": "slide-16.png",
+      "section": "Roadmap",
       "title": "A real Umlaut export, NetCheck untouched",
-      "notes": "Phase 2 was validated in three ways. The same real NetCheck CDRs give exactly the same results before and after the change (90 of 90 outputs). The automated tests pass (894). And the real WindTre Round 1 Umlaut export was processed in a test workspace: 478 NQ (52 Voice calls, 26 Speech calls with 285 samples, 3 File DL and 397 Interactivity tests), classified by the DT Analyzer RCA. Ping and DNS have no qualifier, so they have no NQ."
+      "notes": "Phase 2 was validated in three ways. The same real NetCheck CDRs give exactly the same results before and after the change (90 of 90 outputs). The automated tests pass (894). And the real WindTre Round 1 Umlaut export was processed in a test workspace: 478 NQ (52 Voice calls, 26 Speech calls with 285 samples, 3 File DL and 397 Interactivity tests), classified by the DT Analyzer RCA. Ping and DNS have no qualifier, so they have no NQ. Since 0.11.0 the same export is read identically from its columnar copy in every module (13 CDRs, 194,053 rows), guarded by tests."
     },
     {
       "id": "internal",
-      "image": "slide-16.png",
+      "image": "slide-17.png",
       "section": "Internal architecture",
       "title": "How the tool is built",
-      "notes": "A single FastAPI application serves the web interface (Jinja2 templates and JavaScript) and the API. Each analysis module is a Python module that reads the CDRs materialised in the workspace’s SQLite database. Heavy work, such as processing a CDR or generating a report, runs in the background: a scheduler with priorities per workspace and isolated workers, so the interface stays responsive. Exports use python-pptx and python-docx, LibreOffice for previews and Chromium with Node.js to draw the charts."
+      "notes": "A single FastAPI application on Python 3.15 serves the web interface (Jinja2 templates and JavaScript) and the API. Each module is a Python package that reads the CDRs from their Parquet copies with DuckDB; SQLite keeps the configuration, the follow-up and the results of each workspace. Heavy work, such as processing a CDR or generating a report, runs in the background: a scheduler with priorities per workspace and isolated workers, so the interface stays responsive. Exports use python-pptx and python-docx, LibreOffice for previews and Chromium with Node.js to draw the charts; the AI engine (Kiro CLI or Claude) writes slide comments and answers in the AI Assistant, with the names sent as codes."
     },
     {
       "id": "lifecycle",
-      "image": "slide-17.png",
+      "image": "slide-18.png",
       "section": "Internal architecture",
       "title": "From the uploaded file to the report",
-      "notes": "This is how the tool walks a CDR. It is uploaded and its type, NR Mode and stage are confirmed. The provider’s reader decides what is CDR. The profile fills the internal layer the modules use. Then the mappings are applied and the CDR is materialised in per-CDR and combined tables, which the modules read with their indexes and caches."
+      "notes": "This is how the tool walks a CDR. It is uploaded and its type, NR Mode and stage are confirmed. The provider’s reader decides what is CDR. The profile fills the internal layer the modules use. Then the mappings are applied and the CDR is copied to its Parquet files, read with DuckDB, and its table is emptied. A later change rewrites only the columns that change in the copy, never putting the rows back in SQLite."
     },
     {
       "id": "storage",
-      "image": "slide-18.png",
+      "image": "slide-19.png",
       "section": "Internal architecture",
       "title": "Every workspace is self-contained",
-      "notes": "Global configuration lives in APP_CONFIG_DIR and everything that belongs to a workspace in its own folder under APP_DATA_DIR: its database, uploaded files, generated output and caches. That is why a workspace can be transferred to another server or restored on its own, and why the CDR type of a workspace travels with it."
+      "notes": "Global configuration lives in APP_CONFIG_DIR and everything that belongs to a workspace in its own folder under APP_DATA_DIR: its database (settings, NQ follow-up, Scoring and App Events), the Parquet copy of every CDR in .cdr-store, the uploaded files, the generated output and the caches. The columnar copy made Network Insights 79 times faster and the workspace database 10 times lighter, and Tableau reads the same copies. A workspace can be transferred to another server or restored on its own, and its CDR type travels with it."
     },
     {
       "id": "container",
-      "image": "slide-19.png",
+      "image": "slide-20.png",
       "section": "Cloud deployment",
       "title": "One container with everything inside",
-      "notes": "The production image is built from python:3.12-slim with the Python packages, then the tools the exports need (Chromium and Node.js to draw charts, LibreOffice for previews), the Help presentations generator and finally the application code, stamped with its Git revision. Compose publishes port 7278, checks /healthz every 30 seconds, restarts the container unless it is stopped and mounts the config and data volumes, which is where all state lives."
+      "notes": "The production image is built by GitHub Actions on every push and published on Docker Hub for AMD64 and ARM64, with a latest-noavx variant for CPUs without AVX2: python:3.15-slim with the Python packages (FastAPI, pandas, GeoPandas, DuckDB, python-pptx…), the tools the exports need (Chromium and Node.js to draw charts, LibreOffice for previews), the Help presentations generator and the application code, stamped with its Git revision. Compose publishes port 7278, checks /healthz every 30 seconds, restarts the container unless it is stopped and mounts the config and data volumes, where all state lives; HTTPS is served in front of it."
     },
     {
       "id": "aws",
-      "image": "slide-20.png",
+      "image": "slide-21.png",
       "section": "Cloud deployment",
       "title": "Deployment on AWS",
-      "notes": "A proposed AWS layout. Users reach a load balancer with an HTTPS certificate; the container runs on an EC2 instance in a private subnet and keeps all its state on an EBS volume mounted as /app/config and /app/data. Because the tool uses SQLite, its databases need block storage (EBS) rather than a network file system such as EFS, and today it runs as a single instance that is scaled up. Around it: the image in ECR, the secret key in Secrets Manager, logs and alarms in CloudWatch, backup copies in S3 or AWS Backup snapshots, and email through SES."
+      "notes": "This is how the tool runs on AWS today, in the account of the team in eu-west-1. Users reach it with a browser or a phone over HTTPS on port 8443, served by a Caddy reverse proxy with a Let’s Encrypt certificate, which passes the requests to the tool on 7278; Tableau reads the workspaces from PostgreSQL with pg_duckdb on 5432, TLS only. The security group of the EC2 instance is its firewall: it opens only those two ports, and SSH only to the internal network and two admin addresses, while administrators use AWS SSO and SSM Session Manager. The instance runs Ubuntu with Docker: Caddy, the tool, the tableau-db container refreshed every 5 minutes, and Dockhand, which pulls the new image built by GitHub Actions and recreates the container. Two EBS volumes: a 50 GB root for the system and the images, pruned every week, and a 1 TiB /data volume with the config, the workspaces, the backups and the Tableau database. It reaches Docker Hub, the Power Automate flow of the emails, the AI engine, OpenStreetMap and the other servers of the tool. There is no load balancer, VPN, ECR, Secrets Manager or SES; snapshots of /data are recommended."
     },
     {
       "id": "ericsson",
-      "image": "slide-21.png",
+      "image": "slide-22.png",
       "section": "Cloud deployment",
       "title": "Deployment in the Ericsson cloud",
-      "notes": "Inside the Ericsson cloud the same image runs on a virtual machine or as a single Kubernetes replica with a read-write-once block volume, behind the corporate reverse proxy with its TLS certificate and, if required, single sign-on. The image can be mirrored in an internal registry, email goes through the corporate SMTP relay, backup copies go to object storage, and workspaces can be moved between servers with the transfer feature, for example between an AWS and an Ericsson instance."
+      "notes": "A proposal for the Ericsson cloud, with the same image. One Linux virtual machine sized like the AWS instance, behind a firewall that opens 443 to the Ericsson network, 5432 to Tableau Server and SSH to the admin jump host, with nothing open to the internet. A reverse proxy gives the tool a DNS name and a corporate TLS certificate on 443 and passes the requests to the container on 7278. Docker runs the tool and the tableau-db container; a 1 TB block volume keeps the config, the workspaces, the backups and the Tableau database, with snapshots of the platform. Through the corporate proxy it reaches the image registry (Docker Hub or an internal mirror), the Power Automate flow of the emails, the AI engine if the policy allows it, OpenStreetMap and the AWS server, for transfers both ways; requests cover the case where one side cannot be reached."
     },
     {
       "id": "operations",
-      "image": "slide-22.png",
+      "image": "slide-23.png",
       "section": "Cloud deployment",
       "title": "Running it day to day",
-      "notes": "Operating the tool needs little: scheduled backups written below the data volume, upgrades by pulling and recreating the container (database migrations run at startup), the /healthz endpoint for the platform and App Logs and App Events for traceability, and transfers to move workspaces between servers."
+      "notes": "Operating the tool needs little: scheduled light backups between weekly full ones, kept by days, weeks and months below the data volume; upgrades by pulling the image built on every push and recreating the container, with database migrations at startup; the /healthz endpoint for the platform and App Logs and App Events for traceability; and transfers, offers and requests, to move workspaces and content between servers. Snapshots of the data volume by the platform are still recommended."
     },
     {
       "id": "scale",
-      "image": "slide-23.png",
+      "image": "slide-24.png",
       "section": "Cloud deployment",
       "title": "From one server to the cloud at scale",
-      "notes": "Today the tool scales up: one container per server, one SQLite database per workspace and the background work inside the container. The roadmap of the tool already plans PostgreSQL, scale-out and speed on AWS, and health monitoring; the multi-provider model adds providers without new copies of the modules."
+      "notes": "Today the tool scales up: one container per server, the background work inside it and SQLite for configuration, follow-up and results. Versions 0.10 to 0.12 moved the CDR rows to Parquet read with DuckDB, which replaced the move to PostgreSQL planned before (Network Insights 79 times faster, the Points Lost Map more than 300 times), and connected Tableau through PostgreSQL with pg_duckdb. Next on the roadmap: health monitoring with alerts on runs that take too long, automated end-to-end deployment checks, and more providers on the same model."
     },
     {
       "id": "next",
-      "image": "slide-24.png",
+      "image": "slide-25.png",
       "section": "Next step",
       "title": "What we need to continue",
-      "notes": "To continue from phase 3 we need a representative multi-operator Umlaut export (ideally with NR SA and walk or train tests), which also validates the Umlaut reader so that Umlaut CDR stops being coming soon; samples of P3 and RootMetrics CDRs; the Umlaut Scoring methodology; and answers to the open questions: whether Call Setup Time is measured up to Alerting or up to Option D, whether the Conversational App is WhatsApp, and how Umlaut names its campaigns."
+      "notes": "To complete Umlaut, P3 and RootMetrics we need, for each of them: CDR exports of a real benchmark (for Umlaut a multi-operator one, ideally with NR SA and walk or train tests, which also validates its reader so that Umlaut CDR stops being coming soon); a description of the P3 and RootMetrics formats; the Scoring methodology documents of each provider (KPIs, thresholds, weights, categories and areas, with a published scoring to check ours against), without which Scoring & GAP Analysis cannot be built; a pre-processing script of the Layer3 logs of each provider that keeps only the NQ calls and the columns needed, by the call key of the provider, as we have for NetCheck, whose output is the Layer3 Logs we upload; the Network Inventories of each country; the failure catalogue of each provider; the Ericsson RCA keyed by the call key of each provider; and the PowerPoint reports the teams deliver today."
+    },
+    {
+      "id": "inventories",
+      "image": "slide-26.png",
+      "section": "Next step",
+      "title": "The Network Inventories we need",
+      "notes": "The Network Inventories we need for the country of each benchmark, for every operator in it: the LTE cells with their identity (eNodeB ID and Cell ID, or ECI), PCI, EARFCN, band, bandwidth, TAC, site, cell name, position and azimuth; the NR cells with the gNodeB ID, its length and the Cell ID (or NCI), PCI, SSB NR-ARFCN, band, bandwidth, NSA or SA, position and azimuth, which let the tool find the NR cells by PCI, ARFCN and distance where the CDR has no NCI, as in Umlaut; for each cell, the network that owns it, the Host Network whose RAN carries it, its Vendor, its status, height and tilts; one snapshot per campaign, in CSV, Excel or Cell Configuration KMZ; and the Region and Cluster polygons of the performance owners, with Vendor polygons where there is no inventory. A Multivendor Mapping can give the Vendor when the inventory has none."
     }
   ]
 }

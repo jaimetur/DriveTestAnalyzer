@@ -1445,7 +1445,8 @@ async function applyTheme(file, theme) {
 // ------------------------------------------------------------------------------------- decks of their own design
 // Decks in a design of their own: a picture of each slide and slides.json with their order, section, title and speaker
 // notes. benchmarking-providers/ keeps those of the adaptation of the tool to the CDRs of benchmarking providers other than
-// NetCheck (Umlaut first, then P3 and RootMetrics), with the Ericsson logo at the top right; module_decks.js draws the
+// NetCheck (Umlaut first, then P3 and RootMetrics), with the Ericsson logo at the top right, taken from the slides.html
+// beside them (`node module_decks.js <folder> benchmarking-providers` takes them again); module_decks.js draws the
 // others when the presentations are generated: the deck of every main module from the content.js of its folder, in the
 // order of its tabs, and the DT Analyzer RCA of Non-Qualified Calls from its slides.html.
 const { DECKS: MODULE_DECK_IDS, DRAWN, draw } = require('./module_decks.js');
@@ -1535,11 +1536,11 @@ function presentationsOf(decks) {
       description: 'The most important of the tool in a single slide: figures, modules, teams, platform and what comes next.',
       sections: [{ title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] }] },
     { id: 'roadmap', title: 'DriveTest Analyzer — Roadmap', file: 'roadmap.pptx', download: 'DriveTest Analyzer - Roadmap.pptx',
-      description: 'What comes next: Umlaut, P3 and RootMetrics CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.',
+      description: 'What comes next: the Germany pilot, Umlaut CDRs, the Active Tests community, Network Insights improvements, automatic emails, TEMS logs, health monitoring and P3 and RootMetrics CDRs.',
       sections: [{ title: 'Roadmap', slides: ['Roadmap — what comes next'] }] },
     { id: 'benchmarking-providers', title: decks['benchmarking-providers'].title, file: 'benchmarking-providers.pptx', drawn: true,
       download: 'DriveTest Analyzer - Benchmarking Providers Roadmap.pptx',
-      description: 'How the tool is being adapted to Umlaut, P3 and RootMetrics CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud.',
+      description: 'How the tool is being adapted to Umlaut, P3 and RootMetrics CDRs: the status and time plan of each phase, how it is built inside, how it runs on AWS and could run in the Ericsson cloud, and what is needed to finish.',
       sections: imageSections(decks['benchmarking-providers']) },
     ...MODULE_DECK_IDS.flatMap((id) => [
       { id, title: decks[id].title, file: `${id}.pptx`, drawn: true, download: `DriveTest Analyzer - ${decks[id].name}.pptx`,
