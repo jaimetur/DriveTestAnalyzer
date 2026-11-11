@@ -112,7 +112,11 @@
 .nq-source-mark:is([data-origin="analyst"], [data-origin="suggested"]) { color: var(--nq-origin-analyst); }
 .nq-source-mark[data-origin="suggested"]::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
 /* In the fields of the sections the mark has a line of its own below the whole name, so every control of a row lines up. */
-.nq-drawer .nq-field-title { flex-direction: column; align-items: flex-start; gap: .12rem; }
+.nq-drawer .nq-field-title { flex-direction: column; justify-content: flex-end; align-items: flex-start; gap: .12rem; }
+/* The name, the control and the proposal of the fields of a row share its rows (subgrid): a name on two lines moves the
+   names of its row, never their controls, and every name rests on its control. */
+.nq-drawer-body .nq-analysis-grid { row-gap: 0; }
+.nq-drawer-body .nq-analysis-grid > .nq-analysis-field { grid-row: span 3; grid-template-rows: subgrid; row-gap: .3rem; margin-bottom: .7rem; }
 .nq-drawer .nq-field-title .nq-field-name { overflow: visible; white-space: normal; }
 .nq-drawer :is(.nq-analysis-field, .nq-tracking-field):is([data-origin="analyst"], [data-origin="suggested"]) .nq-field-name::before,
 .nq-drawer .nq-tracking-field:is([data-origin="analyst"], [data-origin="suggested"]) > span:first-child::before {
