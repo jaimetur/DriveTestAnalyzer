@@ -1253,7 +1253,7 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
     ] },
     { label: 'NEXT', color: K.blue, pin: 'TbRocket', x: 4.5, y: 4.45, card: [2.7, 5.02, 5.9, 1.52], columns: 2, items: [
       ['TbFlag', 'Germany pilot', 'First DE test campaign'],
-      ['TbArrowsExchange', 'Umlaut & P3 CDRs', 'Ingest & score both providers'],
+      ['TbArrowsExchange', 'Umlaut CDRs', 'Ingest & score with its own fields'],
       ['TbUsersGroup', 'Active Tests community', 'Their KPI & Scoring reports'],
       ['TbPhoneCheck', 'NQ Calls out of Beta', 'From Beta to every team'],
     ] },
@@ -1261,9 +1261,10 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
       ['TbAntennaBars5', 'Network Insights', 'Improvements to the module'],
       ['TbMailForward', 'Automatic emails', 'Reports sent by email on their own'],
     ] },
-    { label: 'LATER', color: 'E07800', pin: 'TbClock', x: 10.7, y: 4.2, card: [8.95, 4.8, 3.5, 1.52], items: [
+    { label: 'LATER', color: 'E07800', pin: 'TbClock', x: 10.7, y: 4.2, card: [8.95, 4.8, 3.5, 1.98], items: [
       ['TbRoute', 'TEMS logs', 'Drive test logs and their reports'],
       ['TbHeartbeat', 'Health monitoring', 'Alerts & checks after each deploy'],
+      ['TbChartDots3', 'P3 & RootMetrics CDRs', 'The next benchmarking providers'],
     ] },
   ];
   for (const phase of phases) {
@@ -1295,10 +1296,11 @@ async function roadmap(pres, files, masterName = 'CONTENT') {
     + 'analytical caches, fast at any size; Tableau connected to the workspace database; and the Layer3 Logs, the parsed '
     + 'drive test logs of each campaign, whose signalling the maps of the Non-Qualified Calls, NQ Maps and the DT Analyzer RCA '
     + 'read. Next: a first pilot campaign in '
-    + 'Germany, the adaptation of the ingestion and scoring to Umlaut and P3 CDRs, the Active Tests community, so that the tool '
+    + 'Germany, the adaptation of the ingestion and scoring to Umlaut CDRs, the Active Tests community, so that the tool '
     + 'builds the KPI and Scoring reports they produce today, and Non-Qualified Calls out of Beta. Soon: improvements to '
-    + 'Network Insights and automatic emails. Later: TEMS logs with their reports, and health '
-    + 'monitoring: alerts on runs that take too long and automatic checks after every deployment. These are intentions, not '
+    + 'Network Insights and automatic emails. Later: TEMS logs with their reports, health '
+    + 'monitoring: alerts on runs that take too long and automatic checks after every deployment, and P3 and RootMetrics CDRs, '
+    + 'the next benchmarking providers, brought in with the same model as Umlaut. These are intentions, not '
     + 'dated commitments.');
 }
 
@@ -1403,9 +1405,9 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
   label('ROADMAP', 8.15, 5.72);
   const milestones = [
     { x: 8.5, y: 6.36, color: '0C9B5B', phase: 'TODAY', pin: 'TbCircleCheck', text: `${MODULE_COUNT} modules, AI Assistant` },
-    { x: 9.75, y: 6.42, color: K.blue, phase: 'NEXT', pin: 'TbRocket', text: 'Germany, Umlaut & P3' },
+    { x: 9.75, y: 6.42, color: K.blue, phase: 'NEXT', pin: 'TbRocket', text: 'Germany, Umlaut' },
     { x: 11.0, y: 6.4, color: '8C60A8', phase: 'SOON', pin: 'TbTrendingUp', text: 'Network Insights, emails' },
-    { x: 12.2, y: 6.4, color: 'E07800', phase: 'LATER', pin: 'TbClock', text: 'TEMS logs, health' },
+    { x: 12.2, y: 6.4, color: 'E07800', phase: 'LATER', pin: 'TbClock', text: 'TEMS, health, P3, RootMetrics' },
   ];
   for (const milestone of milestones) {
     text(slide, milestone.phase, { x: milestone.x - 0.6, y: 6.0, w: 1.2, h: 0.2, fontSize: 9.5, bold: true, color: milestone.color, align: 'center', charSpacing: 1 });
@@ -1420,8 +1422,8 @@ async function oneSlider(pres, files, masterName = 'SINGLE', sectionTitle = 'Dri
     + 'benchmarking, the NQ team, troubleshooting and technical and executive reporting, on an enterprise platform on AWS with '
     + `roles, isolated workspaces, automated backups, a Ticket Center, a ${STATS.chapters}-chapter Help and ${STATS.tests} `
     + 'automated tests. Roadmap: today the columnar store on DuckDB, Tableau connected, the AI Assistant and GenAI slide comments and the Layer3 '
-    + 'Logs on the maps and the RCA of the Non-Qualified Calls; next the Germany pilot, Umlaut and P3 CDRs and the Active '
-    + 'Tests community; then Network Insights and automatic emails; later TEMS logs and health monitoring.');
+    + 'Logs on the maps and the RCA of the Non-Qualified Calls; next the Germany pilot, Umlaut CDRs and the Active '
+    + 'Tests community; then Network Insights and automatic emails; later TEMS logs, health monitoring and P3 and RootMetrics CDRs.');
 }
 
 // The colours and fonts of the theme of a written deck (pptxgenjs writes Office's own).
@@ -1443,9 +1445,9 @@ async function applyTheme(file, theme) {
 // ------------------------------------------------------------------------------------- decks of their own design
 // Decks in a design of their own: a picture of each slide and slides.json with their order, section, title and speaker
 // notes. benchmarking-providers/ keeps those of the adaptation of the tool to the CDRs of benchmarking providers other than
-// NetCheck (Umlaut first, then P3), with the Ericsson logo at the top right; module_decks.js draws the others when the
-// presentations are generated: the deck of every main module from the content.js of its folder, in the order of its
-// tabs, and the DT Analyzer RCA of Non-Qualified Calls from its slides.html.
+// NetCheck (Umlaut first, then P3 and RootMetrics), with the Ericsson logo at the top right; module_decks.js draws the
+// others when the presentations are generated: the deck of every main module from the content.js of its folder, in the
+// order of its tabs, and the DT Analyzer RCA of Non-Qualified Calls from its slides.html.
 const { DECKS: MODULE_DECK_IDS, DRAWN, draw } = require('./module_decks.js');
 
 function imageDeck(dir) {
@@ -1533,11 +1535,11 @@ function presentationsOf(decks) {
       description: 'The most important of the tool in a single slide: figures, modules, teams, platform and what comes next.',
       sections: [{ title: 'In one slide', slides: ['DriveTest Analyzer in one slide'] }] },
     { id: 'roadmap', title: 'DriveTest Analyzer — Roadmap', file: 'roadmap.pptx', download: 'DriveTest Analyzer - Roadmap.pptx',
-      description: 'What comes next: Umlaut CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.',
+      description: 'What comes next: Umlaut, P3 and RootMetrics CDRs, the Active Tests community, scale-out and speed on AWS, PostgreSQL and health monitoring.',
       sections: [{ title: 'Roadmap', slides: ['Roadmap — what comes next'] }] },
     { id: 'benchmarking-providers', title: decks['benchmarking-providers'].title, file: 'benchmarking-providers.pptx', drawn: true,
       download: 'DriveTest Analyzer - Benchmarking Providers Roadmap.pptx',
-      description: 'How the tool is being adapted to Umlaut and P3 CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud.',
+      description: 'How the tool is being adapted to Umlaut, P3 and RootMetrics CDRs and the status of each phase, how it is built inside and how it is deployed in the cloud.',
       sections: imageSections(decks['benchmarking-providers']) },
     ...MODULE_DECK_IDS.flatMap((id) => [
       { id, title: decks[id].title, file: `${id}.pptx`, drawn: true, download: `DriveTest Analyzer - ${decks[id].name}.pptx`,

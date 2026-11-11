@@ -5,8 +5,8 @@
       "id": "cover",
       "image": "slide-01.png",
       "section": "Introduction",
-      "title": "One tool. Three providers.",
-      "notes": "DriveTest Analyzer is no longer a tool for NetCheck CDRs only. This deck covers the multi-provider model (NetCheck, Umlaut and later P3), how the tool is built inside, and how it is deployed as a Docker container in the cloud, on AWS or in the Ericsson cloud."
+      "title": "One tool. Four providers.",
+      "notes": "DriveTest Analyzer is no longer a tool for NetCheck CDRs only. This deck covers the multi-provider model (NetCheck, Umlaut and later P3 and RootMetrics), how the tool is built inside, and how it is deployed as a Docker container in the cloud, on AWS or in the Ericsson cloud."
     },
     {
       "id": "today",
@@ -19,8 +19,8 @@
       "id": "providers",
       "image": "slide-03.png",
       "section": "Introduction",
-      "title": "Three providers, three languages",
-      "notes": "Each provider delivers its CDRs differently. NetCheck groups them by CDR type and operator; Umlaut splits them by service and by side of the call, and adds its own Qualifier. We have no P3 sample yet; the Umlaut files themselves link to a P3 path, which suggests the formats may be related."
+      "title": "Four providers, four languages",
+      "notes": "Each provider delivers its CDRs differently. NetCheck groups them by CDR type and operator; Umlaut splits them by service and by side of the call, and adds its own Qualifier. We have no P3 or RootMetrics sample yet; the Umlaut files themselves link to a P3 path, which suggests the formats may be related. RootMetrics comes in after P3, with the same model."
     },
     {
       "id": "statement",
@@ -41,7 +41,7 @@
       "image": "slide-06.png",
       "section": "Multi-provider architecture",
       "title": "Three layers per provider",
-      "notes": "The reader understands the structure of each provider’s export. The profile tells every module where each piece of data is and how to read it. The content is the provider’s own methodologies, templates and rules. The modules are not duplicated: the same logic serves the three providers."
+      "notes": "The reader understands the structure of each provider’s export. The profile tells every module where each piece of data is and how to read it. The content is the provider’s own methodologies, templates and rules. The modules are not duplicated: the same logic serves every provider."
     },
     {
       "id": "profile",
@@ -62,14 +62,14 @@
       "image": "slide-09.png",
       "section": "Multi-provider architecture",
       "title": "One RCA of our own for every provider",
-      "notes": "Today the NetCheck RCA section suggests a domain and a cause with keywords on the NetCheck failure classification. The DT Analyzer RCA, available in every workspace with rules that can be edited, combines the failure description with the phase that fails and the radio at the time of the failure; Umlaut, which only brings a failure text, and P3 still need their own inputs. The rules shown are examples of the kind of condition, not a closed catalogue."
+      "notes": "Today the NetCheck RCA section suggests a domain and a cause with keywords on the NetCheck failure classification. The DT Analyzer RCA, available in every workspace with rules that can be edited, combines the failure description with the phase that fails and the radio at the time of the failure; Umlaut, which only brings a failure text, and P3 and RootMetrics still need their own inputs. The rules shown are examples of the kind of condition, not a closed catalogue."
     },
     {
       "id": "roadmap",
       "image": "slide-10.png",
       "section": "Multi-provider architecture",
-      "title": "From the base to P3, in seven phases",
-      "notes": "Phases 1 and 2 are done in version 0.9.0: the multi-provider base and the Umlaut reader, profile and upload. Phases 3 to 6 bring Umlaut to the priority modules, Scoring, PPT Designer and NQ Calls, and to Network Insights. P3 comes last with the same model, as soon as there is a sample."
+      "title": "From the base to RootMetrics, in eight phases",
+      "notes": "Phases 1 and 2 are done in version 0.9.0: the multi-provider base and the Umlaut reader, profile and upload. Phases 3 to 6 bring Umlaut to the priority modules, Scoring, PPT Designer and NQ Calls, and to Network Insights. P3 and then RootMetrics come last with the same model, as soon as there is a sample of each."
     },
     {
       "id": "phase1",
@@ -167,7 +167,7 @@
       "image": "slide-24.png",
       "section": "Next step",
       "title": "What we need to continue",
-      "notes": "To continue from phase 3 we need a representative multi-operator Umlaut export (ideally with NR SA and walk or train tests), which also validates the Umlaut reader so that Umlaut CDR stops being coming soon; a sample of P3 CDRs; the Umlaut Scoring methodology; and answers to the open questions: whether Call Setup Time is measured up to Alerting or up to Option D, whether the Conversational App is WhatsApp, and how Umlaut names its campaigns."
+      "notes": "To continue from phase 3 we need a representative multi-operator Umlaut export (ideally with NR SA and walk or train tests), which also validates the Umlaut reader so that Umlaut CDR stops being coming soon; samples of P3 and RootMetrics CDRs; the Umlaut Scoring methodology; and answers to the open questions: whether Call Setup Time is measured up to Alerting or up to Option D, whether the Conversational App is WhatsApp, and how Umlaut names its campaigns."
     }
   ]
 }

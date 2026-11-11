@@ -22,6 +22,7 @@
 - **Scoring & GAP Analysis — Context filters kept (ticket #114):** the Calculation panel keeps and restores the **Operator_Vendor**, **Vendor_Operator** and **Cluster** filters too (they came back empty, so a later calculation included every vendor), each user keeps their own panel selection in the workspace instead of sharing one, a note under the Context filters explains how to score some vendors of one operator, and the App Event of each calculation records its filters, Split by, GAP reference and methodology.
 
 #### 📚 Documentation:
+- **Benchmarking Providers and Roadmap — RootMetrics:** RootMetrics is a fourth benchmarking provider, planned after P3 for a future adaptation: the Benchmarking Providers chapter and the Benchmarking Providers Roadmap presentation (four providers, an eighth phase for its reader, profile and content, and its CDR samples among what is needed), the Roadmap chapter and the Roadmap and One-slider presentations include it, with Umlaut CDRs under Next and P3 and RootMetrics CDRs under Later.
 
 ---
 

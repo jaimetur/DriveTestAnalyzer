@@ -1,9 +1,9 @@
 # Benchmarking providers
 
-DriveTest Analyzer was built for the CDRs of NetCheck. It is being adapted to the CDRs of other benchmarking providers, Umlaut first and then P3, without losing any feature and without translating their CDRs into NetCheck names. This chapter describes the status of that adaptation and the model it follows; the compatibility report of each provider, below it in Help Navigation, compares its CDRs with NetCheck CDRs.
+DriveTest Analyzer was built for the CDRs of NetCheck. It is being adapted to the CDRs of other benchmarking providers, Umlaut first, then P3 and later RootMetrics, without losing any feature and without translating their CDRs into NetCheck names. This chapter describes the status of that adaptation and the model it follows; the compatibility report of each provider, below it in Help Navigation, compares its CDRs with NetCheck CDRs.
 
 > [!NOTE]
-> **Available versus planned.** Today every workspace processes NetCheck CDRs. **Umlaut CDR** and **P3 CDR** appear as *coming soon* in the [CDR type](workspace-config.md#cdr-type) of a workspace until they are supported. The compatibility reports describe planned work, not features of the current release.
+> **Available versus planned.** Today every workspace processes NetCheck CDRs. **Umlaut CDR** and **P3 CDR** appear as *coming soon* in the [CDR type](workspace-config.md#cdr-type) of a workspace until they are supported; **RootMetrics** CDRs are planned after P3 and are not listed yet. The compatibility reports describe planned work, not features of the current release.
 
 ## In this guide
 
@@ -24,7 +24,7 @@ benchmarking-providers
 
 ## Adaptation status
 
-The adaptation is planned in seven phases. The durations are indicative: they depend on multi-operator samples, the Umlaut Scoring methodology and the P3 format.
+The adaptation is planned in eight phases. The durations are indicative: they depend on multi-operator samples, the Umlaut Scoring methodology and the P3 and RootMetrics formats.
 
 | Phase | Scope | Status |
 | --- | --- | --- |
@@ -35,6 +35,7 @@ The adaptation is planned in seven phases. The durations are indicative: they de
 | 5. Non-Qualified Calls and RCA | NQ = Qualifier NOT QUALIFIED, an Umlaut call key, the Umlaut values of the DT Analyzer RCA (available in every workspace) and the Ericsson RCA by the provider's call key. | Planned · 1.5–2 weeks |
 | 6. Umlaut Network Insights | The radio of the calls from their samples, NR cells by PCI + ARFCN + distance, MIMO rank and bandwidths. | Planned · 1–1.5 weeks |
 | 7. P3 | The P3 reader, profile and content, with the same model. | Once a P3 sample is available |
+| 8. RootMetrics | The RootMetrics reader, profile and content, with the same model, and its own Scoring methodology. | Once a RootMetrics sample is available |
 
 Phase 1 is available now and changes nothing for NetCheck workspaces:
 
@@ -100,5 +101,7 @@ Each provider has a compatibility report of its own, listed below Benchmarking P
 
 - [Umlaut CDR Compatibility](/documents/reports/umlaut-cdr-compatibility): the analysis of a sample Umlaut export. It compares the Umlaut files, fields and values with NetCheck CDRs: the equivalent of each of the 109 groups of NetCheck fields the tool uses (84 of them have the same data, the same data with another unit or values, or an exact calculation), what each module will have with Umlaut CDRs and what it will not, the Scoring KPIs with equivalent data, the limits of full compatibility and the open questions.
 - [P3 CDR Compatibility](/documents/reports/p3-cdr-compatibility): pending a sample of P3 CDRs; it tells what is known, what the analysis will cover and what is needed.
+
+RootMetrics will have its own report once a sample of its CDRs is available.
 
 See the [Roadmap](roadmap.md) for the other planned work.
