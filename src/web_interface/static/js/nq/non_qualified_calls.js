@@ -4907,13 +4907,13 @@
       if (button) button.disabled = false;
     }
   };
-  // The Root Cause Decision of the RCA section: the selected Root Category and Cause, the recommendation
+  // The Final Root Cause Decision of the RCA section, the analysts' own: the selected Root Category and Cause, the recommendation
   // merged from every source, and what each source (NetCheck, Ericsson RCA, DT Analyzer RCA, comments, previous
   // decisions) proposes.
   const rootDecisionCard = (call) => {
     const card = node('section', undefined, 'nq-decision');
     const head = node('header');
-    head.append(node('h3', 'Root Cause Decision'), node('p', 'The Root Category and Root Cause of the call, chosen independently from the catalog. Accept the recommendation, use what one source proposes or choose any other value.', 'form-note'));
+    head.append(node('h3', 'Final Root Cause Decision', 'nq-decision-title'), node('p', 'The Root Category and Root Cause of the call, chosen independently from the catalog. Accept the recommendation, use what one source proposes or choose any other value.', 'form-note'));
     const current = node('div', undefined, 'nq-decision-current');
     const pickers = node('div', undefined, 'nq-root-cell');
     if (state.user.can_edit) pickers.append(rootPickerButton('root_category', call), rootPickerButton('root_cause', call));
@@ -5025,12 +5025,21 @@
       const ofSection = (key) => (key === 'general' ? [] : analystFieldsOf(key));
       const fields = group.sections.flatMap((section) => ofSection(section.key));
       const editable = fields.filter((field) => field.source === 'user');
-      const parts = group.key === 'rca' ? [rootDecisionCard(call)] : [];
+      // The RCA tab opens with the Analysts subpanel: their Initial Classification (the fields of the analysts of the
+      // section, saved with the others: Save takes the changes of the whole call) and their Final Root Cause Decision.
+      const analysts = group.key === 'rca' ? node('section', undefined, 'nq-subpanel nq-analysts-panel') : null;
+      if (analysts) {
+        analysts.style.setProperty('--nq-section', '#16884a');
+        const title = node('h4', 'Analysts');
+        title.append(originBadge('analyst'));
+        analysts.append(title, rootDecisionCard(call));
+      }
+      const parts = analysts ? [analysts] : [];
       if (fields.length) {
         const form = node('form', undefined, 'nq-analysis-form nq-section-form');
-        // The RCA tab: the fields of the analysts first, then the title of the values of the RCA sources.
-        const rcaTitle = group.key === 'rca' ? node('h4', 'Values of the RCA sources') : null;
-        if (rcaTitle) form.append(rcaTitle);
+        // The RCA tab: below the Analysts subpanel, the values of the RCA sources.
+        if (group.key === 'rca') form.append(node('h4', 'Values of the RCA sources'));
+        let analystsPanel = null;
         group.sections.forEach((section) => {
           const sectionFields = ofSection(section.key);
           if (!sectionFields.length) return;
@@ -5048,11 +5057,11 @@
               panel.dataset.origin = origin;
               panel.style.setProperty('--nq-section', ['analyst', 'suggested'].includes(origin) ? '#16884a' : '#c77700');
               const byAnalysts = ['analyst', 'suggested'].includes(origin);
-              const title = node('h4', byAnalysts ? 'Analysts' : ORIGIN_LABELS[origin] || origin);
+              const title = node('h4', byAnalysts ? 'Initial Classification' : ORIGIN_LABELS[origin] || origin);
               const grid = node('div', undefined, 'nq-analysis-grid nq-rca-source-grid');
               grid.append(...run.map((field) => fieldBlock(field, call)));
               panel.append(title, grid);
-              if (byAnalysts) rcaTitle.before(panel);
+              if (byAnalysts) analystsPanel = panel;
               else form.append(panel);
             });
             return;
@@ -5074,6 +5083,7 @@
           form.append(actions);
           form.onsubmit = (event) => { event.preventDefault(); saveFields(call, save); };
         }
+        if (analystsPanel) analysts.querySelector('.nq-decision').before(analystsPanel);
         parts.push(form);
       } else if (!['general', 'rca'].includes(group.key)) {
         parts.push(node('p', state.user.can_edit ? 'No fields in this section yet: add them in NQ Analysis Configuration › Fields & Sections.'

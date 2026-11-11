@@ -139,7 +139,13 @@
 .nq-drawer-tracking :is(.nq-tracking-field, .nq-analysis-field):is([data-origin="analyst"], [data-origin="suggested"]) :is(.nq-pill-select:not(.is-colored), input:not([type="checkbox"])) { border-color: #a9d8bb; background-color: #f2faf5; }
 .nq-drawer-tracking :is(.nq-tracking-field, .nq-analysis-field):is([data-origin="analyst"], [data-origin="suggested"]) .nq-pill-select.is-empty { border-style: dashed; border-color: var(--nq-origin-analyst); }
 .nq-drawer-tracking .nq-tracking-root .nq-root-suggestion { border-color: #e7b866; background: var(--nq-origin-rca-soft); }
-/* The Root Category and Root Cause the analysts select in the Root Cause Decision of the RCA tab, likewise. */
+/* The RCA tab opens with the Analysts subpanel (their mark beside its title): their Initial Classification and their
+   Final Root Cause Decision, each a subpanel of its own inside it. */
+.nq-analysts-panel { margin-bottom: 1rem; }
+.nq-analysts-panel > h4 { display: flex; align-items: center; gap: .6rem; }
+.nq-analysts-panel .nq-rca-source-panel, .nq-analysts-panel .nq-decision { margin-bottom: 0; }
+.nq-decision-title { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
+/* The Root Category and Root Cause the analysts select in the Final Root Cause Decision of the RCA tab, likewise. */
 .nq-drawer-body .nq-decision-current .nq-root-select { border-color: #a9d8bb; background-color: #f2faf5; }
 .nq-drawer-body .nq-decision-current .nq-root-select.is-empty { border-style: dashed; border-color: var(--nq-origin-analyst); }
 .nq-drawer-body .nq-analysis-field.is-to-fill :is(input:not([type="checkbox"]), textarea, select, .nq-pill-select, .rt-frame) { border-style: dashed; border-color: var(--nq-origin-analyst); }
