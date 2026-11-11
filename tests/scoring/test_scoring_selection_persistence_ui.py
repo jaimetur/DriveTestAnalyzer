@@ -53,7 +53,8 @@ def test_scoring_selection_roundtrips_explicit_empty_filters_and_methodology():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
 
-    assert "const selectionFieldOrder = ['Region', 'City', 'Operator', 'Vendor', 'Campaign'];" in script
+    assert ("const selectionFieldOrder = ['Region', 'Cluster', 'City', 'Operator', 'Operator_Vendor', 'Vendor_Operator', "
+            "'Vendor', 'Campaign'];") in script
     assert "context_filters: Object.fromEntries(selectionFieldOrder.map(key => [key, filters[key] || []]))" in script
     assert "scoring_profile_id: String(scoringProfileSelect?.value || activeProfileId)" in script
     assert "const requested = filters[key] ?? filters[key.toLowerCase()] ?? [];" in script
