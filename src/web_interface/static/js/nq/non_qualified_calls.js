@@ -7735,8 +7735,20 @@
       }
     }, 350);
   };
+  // The settings of each queue (Queues by hotspots and the team of the queue) only for the queues the steps of the strategy
+  // shown use: the Unique queue only for a strategy of one queue, such as Vodafone Proposal; the others keep their values.
+  const showQueueSettings = (strategy) => {
+    const queues = state.prioritizationFields.queues || {};
+    // The steps of the lists the strategy uses: list 2 (Final CDRs) only while Use List 2 for Final CDRs is on.
+    const finalList = strategyFinalLists[strategy] !== false;
+    const used = new Set(Object.entries(strategySteps[strategy] || {})
+      .filter(([id, chosen]) => !chosen.deleted && chosen.queue && (finalList || !id.startsWith('final')))
+      .map(([, chosen]) => queues[chosen.queue] || chosen.queue));
+    priorityDialog.querySelectorAll('[data-nq-queue-of]').forEach((element) => { element.hidden = !used.has(element.dataset.nqQueueOf); });
+  };
   const renderStrategySteps = (strategy) => {
     const fields = state.prioritizationFields;
+    showQueueSettings(strategy);
     // The steps of the strategy as the dialog holds them: the default ones but those deleted, and those added.
     const steps = Object.keys(strategySteps[strategy] || {}).filter((id) => !strategySteps[strategy][id].deleted)
       .map((id) => ({id, list: id.startsWith('final') ? 'final' : 'campaign'}));
@@ -8004,6 +8016,7 @@
             chosen.queue = queueSelect.value;
             paint();
             paintType();
+            showQueueSettings(strategy);
           });
           paint();
           queue.append(queueSelect);

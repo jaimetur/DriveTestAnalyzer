@@ -1863,7 +1863,10 @@ td.nq-queue-number { text-align: right; font-variant-numeric: tabular-nums; }
 .nq-priority-level > .nq-priority-label { display: block; font-weight: 700; color: var(--nq-dark); white-space: nowrap; }
 .nq-priority-checks { gap: .55rem; font-weight: 600; }
 /* A setting whose choices take a line of their own, below its name (Queues by hotspots). */
-.nq-priority-level.is-stacked .nq-priority-value { grid-column: 1 / -1; justify-self: start; flex-wrap: wrap; }
+.nq-priority-level.is-stacked > :is(label, .nq-priority-label) { grid-column: 1 / -1; }
+.nq-priority-level.is-stacked .nq-priority-value { grid-column: 1 / -1; justify-self: stretch; flex-wrap: wrap; }
+.nq-priority-level.is-stacked .nq-priority-value > select { width: 100%; }
+.nq-priority-level[hidden], .nq-priority-checks > label[hidden] { display: none; }
 .nq-priority-checks label { display: inline-flex; align-items: center; gap: .2rem; }
 .nq-priority-level .nq-priority-help { grid-column: 1 / -1; font-size: .75rem; }
 /* The distances without an ISD, below the distance in ISDs they stand in for. */
