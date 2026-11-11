@@ -154,6 +154,11 @@
 .nq-source-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1rem; padding: .45rem 1.2rem; border-top: 1px solid var(--nq-border); color: var(--nq-muted); font-size: .72rem; font-weight: 700; }
 .nq-source-legend:empty { display: none; }
 .nq-source-legend-title { letter-spacing: .04em; text-transform: uppercase; }
+/* Each kind of source of the legend in a dashed frame of its colour (the three RCAs together, the analysts together). */
+.nq-source-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .3rem .9rem; padding: .2rem .6rem; border: 1px dashed currentColor; border-radius: 999px; color: var(--nq-origin-tool); }
+.nq-source-group[data-origin="cdr"] { color: var(--nq-origin-cdr); }
+.nq-source-group[data-origin="rca"] { color: #a86400; }
+.nq-source-group[data-origin="analyst"] { color: var(--nq-origin-analyst); }
 .nq-analyst-only { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .4rem; margin-left: auto; color: var(--nq-origin-analyst); font-size: .74rem; font-weight: 750; white-space: nowrap; cursor: pointer; }
 .nq-analyst-only input { margin: 0; accent-color: var(--nq-origin-analyst); }
 .nq-drawer.is-analyst-only .nq-drawer-body .nq-analysis-field[data-origin]:not([data-origin="analyst"], [data-origin="suggested"]) { display: none; }

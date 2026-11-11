@@ -4254,7 +4254,7 @@
   const CALL_DETAILS_COLOR = '#9aa5ad';
   // The Failure Map (the map of the area where the call failed, nq_call_map.js): a step of its own, without fields, right
   // after the Activity, before RCA (where the call failed comes before why).
-  const FAILURE_MAP = {key: 'map', label: 'Failure Map Analysis', color: '#0B7285', sections: []};
+  const FAILURE_MAP = {key: 'map', label: 'Map Analysis', color: '#0B7285', sections: []};
   const drawerTabs = () => {
     const known = new Set(state.sections.map((section) => section.key));
     const grouped = new Set(TAB_GROUPS.flat());
@@ -4497,7 +4497,16 @@
     });
     toggle.title = 'Show in the sections only the fields the analysts fill (green labels)';
     toggle.append(box, ' Only the fields the analysts fill');
-    host.replaceChildren(node('span', 'Source:', 'nq-source-legend-title'), ...origins.map((origin) => originBadge(origin, false)), toggle);
+    // The marks by kind of source, each kind in a dashed frame of its colour: the CDR, the RCAs, DT Analyzer, the analysts.
+    const groups = [['cdr', ['cdr']], ['rca', ['dta', 'netcheck', 'ericsson']], ['tool', ['tool']], ['analyst', ['analyst', 'suggested']]]
+      .map(([kind, members]) => [kind, members.filter((origin) => origins.includes(origin))]).filter(([, members]) => members.length)
+      .map(([kind, members]) => {
+        const group = node('span', undefined, 'nq-source-group');
+        group.dataset.origin = kind;
+        group.append(...members.map((origin) => originBadge(origin, false)));
+        return group;
+      });
+    host.replaceChildren(node('span', 'Source:', 'nq-source-legend-title'), ...groups, toggle);
   };
   const renderTracking = (call) => {
     const host = $('nq-drawer-tracking');
