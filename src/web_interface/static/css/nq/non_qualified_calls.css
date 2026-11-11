@@ -1785,7 +1785,13 @@ span.nq-condition-value { display: inline-block; padding: .05rem .45rem; border-
 .nq-queue-subpanel-team { color: var(--nq-muted); font-size: .8rem; font-weight: 700; }
 .nq-queue-subpanel-badge { padding: .1rem .55rem; border: 1px solid color-mix(in srgb, var(--nq-queue-accent) 35%, white); border-radius: 999px;
   background: color-mix(in srgb, var(--nq-queue-accent) 9%, white); color: var(--nq-queue-accent); font-size: .76rem; font-weight: 800; }
-.nq-queue-subpanel .nq-priority-tracked { margin-top: .7rem; }
+.nq-queue-subpanel .nq-priority-tracked { margin-top: 1.4rem; }
+/* Actions (Take, Assign) and Select, the last column, of the queues; the dialog that assigns one call or hotspot. */
+.nq-queue-table :is(td.nq-queue-select-cell, th:nth-child(11)) { text-align: center; }
+.nq-queue-table th:last-child:not(:only-child) { white-space: nowrap; }
+.nq-queue-assign-fields { display: grid; gap: .7rem; margin: .4rem 0; }
+.nq-queue-assign-fields label { display: grid; gap: .25rem; font-weight: 700; color: var(--nq-dark); }
+.nq-queue-assign-fields select { width: 100%; }
 .nq-queue-subpanel > .nq-priority-tracked:first-of-type:last-child { margin-top: 0; }
 .nq-priority-queues .nq-queue-table { max-width: 100%; overflow-x: auto; }
 /* An empty queue or list says so in a label of its own. */
@@ -1818,6 +1824,10 @@ td.nq-queue-number { text-align: right; font-variant-numeric: tabular-nums; }
 .nq-queue-table :is(th, td) { padding-right: .4rem; padding-left: .4rem; }
 .nq-queue-table td:is(:nth-child(4), :nth-child(5), :nth-child(6), :nth-child(8)) { white-space: normal; }
 .nq-queue-table td.nq-queue-join, .nq-queue-table td.nq-queue-join .nq-failure-drill { white-space: nowrap; }
+/* The step of a queue as the Strategy subpanel shows it: its number, then its NR Mode, Call Type and Condition. */
+.nq-queue-table td.nq-queue-step-cell { white-space: normal; }
+.nq-queue-step-tags { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .2rem .3rem; }
+.nq-queue-step-number { min-width: 1.2rem; color: var(--nq-dark); font-weight: 800; text-align: center; }
 /* Every header of a queue over its column: the position and the numbers (Waiting of the hotspots, Expected Gain) to the
    right, the JOIN_ID or Hotspot ID, the texts and the pills to the left. */
 .nq-queue-table :is(th, td):nth-child(1) { text-align: right; }

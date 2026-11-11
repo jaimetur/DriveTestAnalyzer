@@ -1228,11 +1228,11 @@ def test_panel_filters_and_exports_show_the_prioritization(prioritized):
     assert run['calls'] >= 2 and sum(run['kinds'].values()) == run['calls'] and run['key'].startswith('run:')
     calls = client.post('/api/non-qualified-calls/calls', json={'filters': {'consecutive_issue': [run['key']]}, 'page_size': 100}).json()
     assert calls['total'] == run['calls'] == run['size']
-    # The exports follow the order of the page: the queues, the steps (a table per list, then the calls outside the lists),
+    # The exports follow the order of the page: the steps (a table per list, then the calls outside the lists), the queues,
     # the KPIs, then the hotspots, the consecutive issues and the clustered issues (the hotspots first with the OR join).
     tables = non_qualified_calls_export.prioritization_tables(panel)
     order = [component for component, *_rest in tables]
-    assert order.index('queue') < order.index('rules') < order.index('kpis') < order.index('hotspots') < min(order.index('consecutive'), order.index('issues'))
+    assert order.index('rules') < order.index('queue') < order.index('kpis') < order.index('hotspots') < min(order.index('consecutive'), order.index('issues'))
     # Between the consecutive and the clustered issues, the one with more calls first.
     total = {'consecutive': sum(item['calls'] for item in panel['consecutive']), 'issues': sum(item['calls'] for item in panel['issues'])}
     first, second = sorted(('consecutive', 'issues'), key=order.index)
@@ -1486,6 +1486,11 @@ def test_the_data_queue_lists_its_hotspots_and_the_other_calls_apart(strategized
         assert {row['cluster_key'] for row in members} == {item['key']} and {row['queue'] for row in members} == {'Data'}
         assert item['id'].startswith('H') and item['assigned'] <= item['waiting']
     assert not {row['call_key'] for row in data['singles']} & {key for item in data['hotspots'] for key in item['call_keys']}
+    # PowerPoint and Word list its hotspots, then its individual failures, after the steps.
+    from src.modules.nq import non_qualified_calls_export
+
+    exported = [subtitle for component, subtitle, *_rest in non_qualified_calls_export.prioritization_tables(panel) if component == 'queue']
+    assert 'Next to analyse · Data queue · hotspots' in exported and 'Next to analyse · Voice queue' in exported
     # The hotspot of a row filters the queues by its calls.
     first = data['hotspots'][0]
     narrowed = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'hotspot': [first['key']]}}).json()

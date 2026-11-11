@@ -279,7 +279,7 @@ def classified_root_stats(stats: dict[str, Any]) -> dict[str, Any]:
 # chooses them (see bundle_report_templates): (panel key, panel title, ((component key, label), ...)).
 REPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ('summary', 'Summary', (('executive', 'Executive Summary'),)),
-    ('prioritization', 'NQ Prioritization & Queues', (('queue', 'Next to analyse'), ('rules', 'Prioritization Rules'),
+    ('prioritization', 'NQ Prioritization & Queues', (('rules', 'Prioritization Rules'), ('queue', 'Next to analyse'),
                                                       ('kpis', 'Scoring points lost by KPI'))),
     ('clusters', 'NQ Hotspots, Time-Window & Clustered Issues', (('hotspots', 'Hotspots'), ('consecutive', 'Time-Window Issues'),
                                                               ('issues', 'Clustered Issues'))),
@@ -396,25 +396,11 @@ def _points(value: Any) -> str:
 
 
 def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str], list[list[str]], set[int]]]:
-    """The NQ Prioritization as on the page: the calls to analyse next in the queue of each team, the calls of each step of
-    its strategy, the KPIs whose points the calls lose and the repeated issues ((component, subtitle, columns, rows, numeric
+    """The NQ Prioritization as on the page: the calls of each step of its strategy, the calls (or hotspots) to analyse next
+    in the queue of each team, the KPIs whose points the calls lose and the repeated issues ((component, subtitle, columns, rows, numeric
     columns))."""
     tables = []
     strategy = data.get('strategy') or {}
-    queue = [[row['join_id'] or '—', row['operator'], row['service'], row['nr_mode'] or '—', row['campaign'] or '—',
-              row['result'] or '—', row['rule'] or '—', row['priority'] or '—', _points(row['points']),
-              '—' if row['repetitions'] is None else f"{row['repetitions']:,}", row['place'] or '—'] for row in data.get('queue') or []]
-    if queue:
-        tables.append(('queue', 'Next to analyse', ['JOIN_ID', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Result', 'Rule',
-                                                    'Priority', 'Points lost', 'Repetitions', 'Place'], queue, {8, 9}))
-    for item in data.get('queues') or []:
-        rows = [[f"{row['position']:,}", row['join_id'] or '—', row['priority'] or '—', row['operator'], row['service'],
-                 row['nr_mode'] or '—', row['campaign'] or '—', row['rule'] or '—', _points(row.get('gain')),
-                 _points(row['points']), row['level'] or '—'] for row in item.get('rows') or []]
-        if rows:
-            tables.append(('queue', f"Next to analyse · {item['name']} queue",
-                           ['#', 'JOIN_ID', 'Priority', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Step', 'Expected Gain',
-                            'Points lost', 'Scoring Impact'], rows, {0, 8, 9}))
     # The steps of each list in a table of its own and the calls out of scope and those no step takes in a third, as the
     # tabs of the page.
     shown = [row for row in data.get('rules') or [] if row['calls'] or row['name']]
@@ -428,6 +414,37 @@ def prioritization_tables(data: dict[str, Any]) -> list[tuple[str, str, list[str
                            ['Priority', 'Step', 'NR Mode', 'Operators', 'Call Type', 'Area', 'Condition', 'Calls', 'Open', 'Waiting',
                             'Points lost', 'Queue'], [[*_step_fields(row)[:7], f"{row['calls']:,}", f"{row['open']:,}", f"{row.get('waiting', 0):,}",
                                                       _points(row['points']), _step_fields(row)[7]] for row in rows], {7, 8, 9, 10}))
+    queue = [[row['join_id'] or '—', row['operator'], row['service'], row['nr_mode'] or '—', row['campaign'] or '—',
+              row['result'] or '—', row['rule'] or '—', row['priority'] or '—', _points(row['points']),
+              '—' if row['repetitions'] is None else f"{row['repetitions']:,}", row['place'] or '—'] for row in data.get('queue') or []]
+    if queue:
+        tables.append(('queue', 'Next to analyse', ['JOIN_ID', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Result', 'Rule',
+                                                    'Priority', 'Points lost', 'Repetitions', 'Place'], queue, {8, 9}))
+    call_columns = ['#', 'JOIN_ID', 'Priority', 'Operator', 'Service', 'NR Mode', 'Campaign', 'Step', 'Expected Gain', 'Points lost',
+                    'Scoring Impact']
+
+    def call_rows(rows: list[dict[str, Any]]) -> list[list[str]]:
+        return [[f"{row['position']:,}", row['join_id'] or '—', row['priority'] or '—', row['operator'], row['service'],
+                 row['nr_mode'] or '—', row['campaign'] or '—', row['rule'] or '—', _points(row.get('gain')),
+                 _points(row['points']), row['level'] or '—'] for row in rows]
+    for item in data.get('queues') or []:
+        # A queue listed by hotspots (ticket #123): its hotspots, then its other waiting calls one by one.
+        if item.get('by_hotspots'):
+            spots = [[f"{row['position']:,}", row['id'], row.get('place') or '—', f"{row.get('first') or ''} – {row.get('last') or ''}".strip(' –') or '—',
+                      row['priority'] or '—', row['operator'] or '—', row['nr_mode'] or '—', row['campaign'] or '—', row['rule'] or '—',
+                      f"{row['waiting']:,} of {row['calls']:,}", f"{row['assigned']:,}", _points(row.get('gain')), row['level'] or '—']
+                     for row in item.get('hotspots') or []]
+            if spots:
+                tables.append(('queue', f"Next to analyse · {item['name']} queue · hotspots",
+                               ['#', 'Hotspot ID', 'Site', 'Period', 'Priority', 'Operator', 'NR Mode', 'Campaign', 'Step', 'Waiting',
+                                'Assigned', 'Expected Gain', 'Scoring Impact'], spots, {0, 10, 11}))
+            singles = call_rows(item.get('singles') or [])
+            if singles:
+                tables.append(('queue', f"Next to analyse · {item['name']} queue · individual failures", call_columns, singles, {0, 8, 9}))
+            continue
+        rows = call_rows(item.get('rows') or [])
+        if rows:
+            tables.append(('queue', f"Next to analyse · {item['name']} queue", call_columns, rows, {0, 8, 9}))
     kpis = [[row['kpi'], row.get('category') or '—', row['environment'], f"{row['calls']:,}", _points(row['points'])]
             for row in data.get('kpis') or []]
     if kpis:

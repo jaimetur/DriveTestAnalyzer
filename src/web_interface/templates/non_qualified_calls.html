@@ -461,6 +461,17 @@
     <footer><button type="button" class="nq-secondary-action" id="nq-options-cancel">{{ 'Cancel' if nq_can_configure else 'Close' }}</button><button type="submit" class="nq-primary-action" id="nq-options-save"{% if not nq_can_configure %} hidden{% endif %}>Save</button></footer>
   </form>
 </dialog>
+<dialog class="nq-options-dialog nq-queue-assign-dialog" id="nq-queue-assign-dialog" aria-labelledby="nq-queue-assign-title">
+  <form method="dialog" class="nq-options-form" id="nq-queue-assign-form">
+    <header><h2 id="nq-queue-assign-title">Assign</h2><p class="form-note" id="nq-queue-assign-note"></p></header>
+    <div class="nq-queue-assign-fields">
+      <label for="nq-queue-assign-team">Team<select id="nq-queue-assign-team"></select></label>
+      <label for="nq-queue-assign-analyst">Analyst<select id="nq-queue-assign-analyst"></select></label>
+    </div>
+    <p class="nq-options-error" id="nq-queue-assign-error" role="alert"></p>
+    <footer><button type="button" class="nq-secondary-action" id="nq-queue-assign-cancel">Cancel</button><button type="submit" class="nq-primary-action">Assign</button></footer>
+  </form>
+</dialog>
 <dialog class="nq-options-dialog nq-members-dialog" id="nq-members-dialog" aria-labelledby="nq-members-title">
   <form method="dialog" class="nq-options-form" id="nq-members-form">
     <header><h2 id="nq-members-title">Team members</h2><p class="form-note">A call assigned to a team with members can only be assigned to one of them; a team without members accepts every user of the workspace. A user can belong to several teams. The members are saved with Save of Statuses &amp; Teams.</p></header>
