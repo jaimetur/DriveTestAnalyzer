@@ -23,6 +23,7 @@
 - If an existing changelog bullet already describes the same functionality, update or rewrite that bullet so it reflects the final behavior.
 - Do not add changelog entries for internal implementation changes that have no relevant user-facing or developer-facing impact.
 - Do not create blank lines between bullets on the same section and also under the section name and the first bullet.
+- Write every ticket reference as a link to its page in the Ticket Center: `[ticket #115](https://108.132.147.165:8443/tickets/115)`.
 
 ## Documentation
 - Whenever implementing or modifying a feature, review all documentation related to that feature.
