@@ -157,6 +157,10 @@
 .nq-analyst-only { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .4rem; margin-left: auto; color: var(--nq-origin-analyst); font-size: .74rem; font-weight: 750; white-space: nowrap; cursor: pointer; }
 .nq-analyst-only input { margin: 0; accent-color: var(--nq-origin-analyst); }
 .nq-drawer.is-analyst-only .nq-drawer-body .nq-analysis-field[data-origin]:not([data-origin="analyst"], [data-origin="suggested"]) { display: none; }
+/* Neither the subpanels left without a field of the analysts, nor the title of the values of the RCA sources and the other
+   columns of the Ericsson RCA file. */
+.nq-drawer.is-analyst-only .nq-drawer-body .nq-subpanel:not(.nq-analysts-panel):not(:has(.nq-analysis-field:is([data-origin="analyst"], [data-origin="suggested"]))),
+.nq-drawer.is-analyst-only .nq-drawer-body :is(.nq-rca-values-title, .nq-rca-extra-card) { display: none; }
 /* A filter with a value applied stands out: its name and its list in the colour of the module. */
 .non-qualified-calls .nq-filter-grid label.is-filtered, .non-qualified-calls .nq-search.is-filtered { color: var(--nq-color); }
 .non-qualified-calls .nq-filter-grid label.is-filtered .multiselect-trigger,

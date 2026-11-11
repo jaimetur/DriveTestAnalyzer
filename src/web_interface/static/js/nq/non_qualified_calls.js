@@ -5038,7 +5038,7 @@
       if (fields.length) {
         const form = node('form', undefined, 'nq-analysis-form nq-section-form');
         // The RCA tab: below the Analysts subpanel, the values of the RCA sources.
-        if (group.key === 'rca') form.append(node('h4', 'Values of the RCA sources'));
+        if (group.key === 'rca') form.append(node('h4', 'Values of the RCA sources', 'nq-rca-values-title'));
         let analystsPanel = null;
         group.sections.forEach((section) => {
           const sectionFields = ofSection(section.key);
