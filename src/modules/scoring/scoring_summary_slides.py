@@ -711,8 +711,8 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
             slide = new_slide(presentation, title, _subtitle(subtitle, scope, first['context'], _context_text(first['context'])))
             for index, (item, (left, top, width, height)) in enumerate(zip(group, operator_frames(len(group)))):
                 color = _color(item.get('color'), index)
-                # Split by Vendor (``by_vendor``), each Vendor is scored on its own tests: no share of the points, and the
-                # average of the Vendors weighted by their tests as the total.
+                # Split by Vendor (``by_vendor``), each Vendor is scored on its own tests: the points it costs the operator
+                # (in proportion to its tests, adding up to their average weighted by tests) and its Own scoring (#115).
                 by_vendor = bool(item.get('by_vendor'))
                 lost = (f" · {len(item['rows'])} Vendor{'' if len(item['rows']) == 1 else 's'} · {item['total']:,.1f} points lost "
                         'on average (weighted by tests)') if by_vendor else (
@@ -728,7 +728,7 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                 with_tests = item.get('has_tests')
                 # A RAN Vendor or site type: its calls and tests and the points it loses per 1,000 of them too.
                 with_counts = bool(with_tests and item.get('has_counts'))
-                headers = [*leads, 'Points lost', *([] if by_vendor else ['Share of points']), *(['Tests'] if with_counts else []),
+                headers = [*leads, 'Points lost', 'Share of points', *(['Own scoring'] if by_vendor else []), *(['Tests'] if with_counts else []),
                            *(['Share of tests'] if with_tests else []), *(['Per 1,000 tests'] if with_counts else [])]
                 fixed = [*([.95, .85] if hosted else [1.45]), 1.1, *([.8] * (len(headers) - len(leads) - 1))]
                 # Narrow panels leave the cities and routes out (with the calls and tests, those without 1.6 in. for them).
@@ -759,14 +759,16 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                         _cell(table.cell(row_index, 0), row['name'], size=size, color=INK if row['identified'] else MUTED)
                     _cell(table.cell(row_index, lead), f"{row['points']:,.2f}", size=size, bold=True, fill=None, align=PP_ALIGN.RIGHT)
                     offset = lead + 1
-                    if not by_vendor:
-                        _cell(table.cell(row_index, offset), f"{row['share']:.1f}%", size=size, align=PP_ALIGN.RIGHT)
+                    _cell(table.cell(row_index, offset), f"{row['share']:.1f}%", size=size, align=PP_ALIGN.RIGHT)
+                    offset += 1
+                    if by_vendor:
+                        _cell(table.cell(row_index, offset), f"{row['own_points']:,.2f}", size=size, align=PP_ALIGN.RIGHT)
                         offset += 1
                     if with_counts:
                         _cell(table.cell(row_index, offset), f"{row.get('tests') or 0:,}", size=size, align=PP_ALIGN.RIGHT)
                         offset += 1
                     if with_tests:
-                        above = (not by_vendor and row['tests_share'] is not None and row['share'] > row['tests_share'] * 1.25
+                        above = (row['tests_share'] is not None and row['share'] > row['tests_share'] * 1.25
                                  and row['share'] - row['tests_share'] > 3)
                         _cell(table.cell(row_index, offset), '—' if row['tests_share'] is None else f"{row['tests_share']:.1f}%", size=size,
                               color=LOSS_COLOR if above else INK, bold=above, align=PP_ALIGN.RIGHT)
@@ -781,8 +783,8 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                 # The total of the Vendors or kinds of site listed.
                 tests = [row['tests_share'] for row in rows if row['tests_share'] is not None]
                 _total_row(table, len(rows) + 1, [item.get('total_label') or 'Total', *([''] if hosted else []),
-                                                  f"{item['total'] if by_vendor else sum(row['points'] for row in rows):,.2f}",
-                                                  *([] if by_vendor else [f"{sum(row['share'] for row in rows):.1f}%"]),
+                                                  f"{sum(row['points'] for row in rows):,.2f}",
+                                                  f"{sum(row['share'] for row in rows):.1f}%", *([''] if by_vendor else []),
                                                   *([f"{item.get('tests') or 0:,}"] if with_counts else []),
                                                   *([f'{sum(tests):.1f}%' if tests else '—'] if with_tests else []),
                                                   *(['—' if item.get('rate') is None else f"{item['rate']:,.1f}"] if with_counts else []),
@@ -792,9 +794,10 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                 _row_bars(slide, [row['points'] for row in rows], left=left + sum(widths[:lead]), top=top + .38 + row_height,
                           width=widths[lead], row_height=row_height, color=LOSS_COLOR)
                 _to_front(slide, shape)
-            _text(slide, 'The scoring is split by Vendor: each Vendor is scored on its own tests, so its points lost compare directly '
-                         'with the other Vendors. Share of tests: the tests of the operator it served. Total: the average of the '
-                         'Vendors weighted by their tests.' if any(item.get('by_vendor') for item in group) else
+            _text(slide, 'The scoring is split by Vendor: each Vendor is scored on its own tests. Points lost: what it costs the '
+                         'operator, its own points lost in proportion to its share of the tests, adding up to the total (the average '
+                         'of the Vendors weighted by their tests). Own scoring: the points lost by the scoring of the Vendor on its '
+                         'own tests, which compare directly with the other Vendors.' if any(item.get('by_vendor') for item in group) else
                          'Each call or test belongs to the network that hosts all its serving cells and to their RAN '
                          'Vendor, MIX when they differ (Not identified: no serving cell in the inventories). Per 1,000 tests: from 100.'
                          + (' Split by Vendor: each Vendor counts in proportion to its tests (Total: their average weighted by tests).'

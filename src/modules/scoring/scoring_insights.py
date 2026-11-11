@@ -1283,9 +1283,11 @@ def _vendor_series_together(series: list[tuple[dict[str, Any], int, dict[str, di
     together in one table (``by_vendor``).
 
     Split by Vendor, each Vendor is scored on its own tests, so its table would hold that Vendor alone: a row per Vendor
-    gives instead the points its own scoring loses (all on the same scale, so they compare directly), its share of the
-    tests of the operator and the cities and routes that lose most. Unknown and the Mixed Vendors are muted. The total
-    is the average of the Vendors weighted by their tests (by the Vendors alone without tests counted).
+    gives instead the points it costs the operator (the points its own scoring loses in proportion to its share of the
+    tests, ``points``, with their share), the points its own scoring loses (``own_points``, all on the same scale, so
+    they compare directly), its share of the tests of the operator and the cities and routes that lose most (weighted
+    the same way). Unknown and the Mixed Vendors are muted. The rows add up to the total, the average of the Vendors
+    weighted by their tests (by the Vendors alone without tests counted).
     """
     from src.modules.cdr_analysis.cdr_reporting import VENDOR_UNKNOWN
     from src.modules.scoring.scoring_points_loss import NOT_SPECIFIED
@@ -1315,15 +1317,23 @@ def _vendor_series_together(series: list[tuple[dict[str, Any], int, dict[str, di
             'cities': [{'name': city, 'points': points} for city, points in sorted(cities.items(), key=lambda pair: -pair[1])[:3]],
         })
     for group in groups.values():
-        rows = sorted(group['rows'], key=lambda row: -row['points'])
+        rows = group['rows']
         counted = sum(row['tests'] for row in rows)
+        # Ticket #115: each Vendor costs the operator its own points lost in proportion to its share of the tests, so
+        # the rows add up to the total; its own scoring stays beside it to compare the Vendors on the same scale.
         for row in rows:
             tests = row.pop('tests')
             row['tests_share'] = tests / counted * 100 if counted else None
-        group['rows'] = rows
+            weight = tests / counted if counted else 1 / len(rows)
+            row['own_points'] = row['points']
+            row['points'] = row['own_points'] * weight
+            row['cities'] = [{'name': city['name'], 'points': city['points'] * weight} for city in row['cities']]
+        total = sum(row['points'] for row in rows)
+        for row in rows:
+            row['share'] = row['points'] / total * 100 if total else 0.0
+        group['rows'] = sorted(rows, key=lambda row: -row['points'])
         group['has_tests'] = bool(counted)
-        group['total'] = (sum(row['points'] * row['tests_share'] for row in rows) / 100 if counted
-                          else sum(row['points'] for row in rows) / len(rows))
+        group['total'] = total
     return items
 
 

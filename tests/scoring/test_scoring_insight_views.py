@@ -154,14 +154,18 @@ def test_points_lost_per_vendor_puts_the_vendor_series_of_an_operator_together()
                             vendor_map('VF', 'Ericsson', 40.0, {'London': 30.0, 'Leeds': 10.0}),
                             vendor_map('EE', 'All', 25.0, {'London': 25.0})], result)
     vf, ee = views['vendor_losses']
-    # One table per operator, without the Vendor in its scope: a row per Vendor with the points its own scoring loses.
+    # One table per operator, without the Vendor in its scope: a row per Vendor with the points it costs the operator
+    # (ticket #115: its own points lost in proportion to its tests), the Vendor that costs most first, and its own scoring.
     assert vf['by_vendor'] and vf['context'] == {'city': 'London', 'campaign': '2026-Q3'}
-    assert [(row['name'], row['points']) for row in vf['rows']] == [('Samsung', 120.0), ('Ericsson', 40.0)]
-    assert [row['tests_share'] for row in vf['rows']] == pytest.approx([25.0, 75.0])
-    assert all(row['share'] is None for row in vf['rows'])
-    assert vf['rows'][1]['cities'] == [{'name': 'London', 'points': 30.0}, {'name': 'Leeds', 'points': 10.0}]
-    # The total: the average of the Vendors weighted by their tests.
+    assert {row['name']: (row['points'], row['own_points']) for row in vf['rows']} == {
+        'Samsung': pytest.approx((30.0, 120.0)), 'Ericsson': pytest.approx((30.0, 40.0))}
+    assert {row['name']: row['tests_share'] for row in vf['rows']} == {'Samsung': pytest.approx(25.0), 'Ericsson': pytest.approx(75.0)}
+    assert sum(row['share'] for row in vf['rows']) == pytest.approx(100.0)
+    ericsson = next(row for row in vf['rows'] if row['name'] == 'Ericsson')
+    assert ericsson['cities'] == [{'name': 'London', 'points': pytest.approx(22.5)}, {'name': 'Leeds', 'points': pytest.approx(7.5)}]
+    # The rows add up to the total: the average of the Vendors weighted by their tests.
     assert vf['total_label'] == VENDORS_TOTAL_LABEL and vf['total'] == pytest.approx(120 * .25 + 40 * .75)
+    assert sum(row['points'] for row in vf['rows']) == pytest.approx(vf['total'])
     # An operator without a Vendor has one row All (without tests counted, the plain average).
     assert [row['name'] for row in ee['rows']] == ['All'] and ee['total'] == 25.0 and not ee['has_tests']
 
@@ -169,10 +173,10 @@ def test_points_lost_per_vendor_puts_the_vendor_series_of_an_operator_together()
     add_serving_loss_slides(deck, views['vendor_losses'], title='Points Lost — per Vendor', column='Vendor', subtitle='',
                             new_slide=_slide)
     tables = [shape.table for slide in deck.slides for shape in slide.shapes if shape.has_table]
-    table = next(table for table in tables if table.cell(1, 0).text == 'Samsung')
+    table = next(table for table in tables if table.cell(1, 0).text in ('Samsung', 'Ericsson'))
     headers = [cell.text for cell in table.rows[0].cells]
-    assert 'Share of points' not in headers and headers[:3] == ['Vendor', 'Points lost', 'Share of tests']
-    assert [cell.text for cell in table.rows[len(table.rows) - 1].cells][:3] == [VENDORS_TOTAL_LABEL, '60.00', '100.0%']
+    assert headers[:5] == ['Vendor', 'Points lost', 'Share of points', 'Own scoring', 'Share of tests']
+    assert [cell.text for cell in table.rows[len(table.rows) - 1].cells][:5] == [VENDORS_TOTAL_LABEL, '60.00', '100.0%', '', '100.0%']
     texts = [shape.text_frame.text for slide in deck.slides for shape in slide.shapes if shape.has_text_frame]
     assert any('VF · 2 Vendors · 60.0 points lost on average (weighted by tests)' in text for text in texts)
 

@@ -8587,8 +8587,9 @@
       banner.className = 'scoring-insight-banner';
       const color = safeHexColor(item.color);
       if (color) banner.style.setProperty('--banner-color', color);
-      // Split by Vendor, each Vendor is scored on its own tests: a row per Vendor with the points its scoring loses, no
-      // share of the points, and the average of the Vendors weighted by their tests as the total.
+      // Split by Vendor, each Vendor is scored on its own tests: a row per Vendor with the points it costs the operator
+      // (its own points lost in proportion to its tests) and the points its own scoring loses (Own scoring); the rows
+      // add up to the average of the Vendors weighted by their tests (ticket #115).
       const byVendor = Boolean(item.by_vendor);
       banner.append(insightStrong(item.label), byVendor
         ? ` · ${item.rows.length} Vendor${item.rows.length === 1 ? '' : 's'} · ${insightNumber(item.total, 1)} points lost on average (weighted by tests)`
@@ -8606,21 +8607,22 @@
       const withEnvironments = item.rows.some(row => row.environments?.length);
       const sum = field => item.rows.reduce((total, row) => total + (Number(row[field]) || 0), 0);
       const rateTitle = `Points lost per ${insightNumber(item.rate_tests || 1000, 0)} calls and tests (from ${insightNumber(item.rate_minimum || 0, 0)} tests)`;
-      const total = [insightTotalLabel(item.total_label || undefined, leadColumns.length), insightTotalCell(byVendor ? item.total : sum('points'), {digits: 1}),
-        ...(byVendor ? [] : [insightTotalCell(sum('share'), {digits: 1, suffix: '%'})]),
+      const total = [insightTotalLabel(item.total_label || undefined, leadColumns.length), insightTotalCell(sum('points'), {digits: 1}),
+        insightTotalCell(sum('share'), {digits: 1, suffix: '%'}), ...(byVendor ? [''] : []),
         ...(withCounts ? [insightTotalCell(item.tests, {digits: 0})] : []),
         ...(withTests ? [insightTotalCell(item.rows.some(row => row.tests_share !== null) ? sum('tests_share') : null, {digits: 1, suffix: '%'})] : []),
         ...(withCounts ? [insightTotalCell(item.rate, {digits: 1})] : []),
         ...(withEnvironments ? [''] : []), ...(withCities ? [''] : [])];
-      wrapper.append(banner, insightTable([...leadColumns, 'Points lost', ...(byVendor ? [] : ['Share of points']), ...(withCounts ? ['Tests'] : []),
+      wrapper.append(banner, insightTable([...leadColumns, 'Points lost', 'Share of points', ...(byVendor ? ['Own scoring'] : []), ...(withCounts ? ['Tests'] : []),
         ...(withTests ? ['Share of tests'] : []), ...(withCounts ? ['Per 1,000 tests'] : []),
         ...(withEnvironments ? ['Where'] : []), ...(withCities ? ['Cities and routes that lose most'] : [])], shownRows.map(row => [
         ...lead(row),
         gapBarCell(row.points, peak, {loss: true, total: true}),
-        ...(byVendor ? [] : [{text: `${insightNumber(row.share, 1)}%`, className: 'scoring-insight-number'}]),
+        {text: `${insightNumber(row.share, 1)}%`, className: 'scoring-insight-number'},
+        ...(byVendor ? [{text: insightNumber(row.own_points, 1), className: 'scoring-insight-number', title: 'Points lost by the scoring of the Vendor on its own tests'}] : []),
         ...(withCounts ? [{text: insightNumber(row.tests || 0, 0), className: 'scoring-insight-number', title: 'Calls and tests of the operator served by it'}] : []),
         ...(withTests ? [{text: row.tests_share === null ? '—' : `${insightNumber(row.tests_share, 1)}%`,
-          className: `scoring-insight-number ${!byVendor && row.tests_share !== null && row.share > row.tests_share * 1.25 && row.share - row.tests_share > 3 ? 'is-loss' : ''}`,
+          className: `scoring-insight-number ${row.tests_share !== null && row.share > row.tests_share * 1.25 && row.share - row.tests_share > 3 ? 'is-loss' : ''}`,
           title: 'Share of the tests of the operator served by it'}] : []),
         ...(withCounts ? [{text: row.rate === null || row.rate === undefined ? '—' : insightNumber(row.rate, 1), className: 'scoring-insight-number', title: rateTitle}] : []),
         ...(withEnvironments ? [{text: (row.environments || []).map(name => shortEnvironmentLabel(name)).join(', '), className: 'scoring-loss-environment'}] : []),
@@ -8630,7 +8632,7 @@
     }
     const vendorSeries = inScope.some(entry => entry.by_vendor);
     section.append(grid, insightParagraph('scoring-insight-note', kind === 'vendor_losses' && vendorSeries
-      ? 'The scoring is split by Vendor: each Vendor is scored on its own tests (the RAN Vendor of the cells that served them), so its points lost compare directly with the other Vendors. Share of tests: the tests of the operator it served. Unknown and Mixed in grey. Total: the average of the Vendors weighted by their tests.'
+      ? 'The scoring is split by Vendor: each Vendor is scored on its own tests (the RAN Vendor of the cells that served them). Points lost: what it costs the operator, its own points lost in proportion to its share of the tests of the operator, so the Vendors add up to the total (the average of the Vendors weighted by their tests). Own scoring: the points lost by the scoring of the Vendor on its own tests, which compare directly with the other Vendors. Unknown and Mixed in grey. In red, a share of the points lost well above the share of the tests.'
       : kind === 'vendor_losses'
       ? 'Each test belongs to the RAN Vendor of its serving cells, Mixed when they differ (Not identified: no serving cell in the inventories). In red, a share of the points lost well above the share of the tests.'
       : kind === 'ran_vendor_losses'
