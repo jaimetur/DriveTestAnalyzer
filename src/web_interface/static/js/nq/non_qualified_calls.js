@@ -3592,6 +3592,16 @@
     // colour of the module.
     const conditionKeys = Object.fromEntries(Object.values(state.prioritizationFields?.conditions || {})
       .flatMap((conditions) => Object.entries(conditions).map(([key, label]) => [label, key])));
+    // Each step in a pill of a colour of its own (the golden angle keeps the colours of the next steps apart), in the
+    // Strategy subpanel and in the queues; a button when a click shows its calls.
+    const stepColor = (number) => `hsl(${Math.round((Number(number) * 137.508) % 360)} 58% 38%)`;
+    const stepPill = (number, button = false) => {
+      const element = node(button ? 'button' : 'span', String(number), 'nq-step-pill');
+      element.style.setProperty('--nq-step-color', stepColor(number));
+      return element;
+    };
+    // The Area of a step in a pill of its colour: Cities, Connecting Roads or Any.
+    const areaCell = (area) => ({text: area || '—', className: `nq-step-area is-${String(area || 'any').toLowerCase().replace(/[^a-z]+/g, '-')}`});
     const conditionNode = (text) => {
       const element = node('span', undefined, 'nq-step-condition-text');
       String(text || '').split(/(\bAND\b|\bOR\b|[()])/).map((part) => part.trim()).filter(Boolean)
@@ -3657,16 +3667,6 @@
     ].filter(([key]) => data.rules.some((rule) => groupOf(rule) === key));
     const callsOf = (key) => data.rules.filter((rule) => groupOf(rule) === key).reduce((sum, rule) => sum + Number(rule.calls || 0), 0);
     if (!tabs.some(([key]) => key === stepsTab)) {
-    // Each step in a pill of a colour of its own (the golden angle keeps the colours of the next steps apart), in the
-    // Strategy subpanel and in the queues; a button when a click shows its calls.
-    const stepColor = (number) => `hsl(${Math.round((Number(number) * 137.508) % 360)} 58% 38%)`;
-    const stepPill = (number, button = false) => {
-      const element = node(button ? 'button' : 'span', String(number), 'nq-step-pill');
-      element.style.setProperty('--nq-step-color', stepColor(number));
-      return element;
-    };
-    // The Area of a step in a pill of its colour: Cities, Connecting Roads or Any.
-    const areaCell = (area) => ({text: area || '—', className: `nq-step-area is-${String(area || 'any').toLowerCase().replace(/[^a-z]+/g, '-')}`});
       const lists = tabs.filter(([key]) => key !== 'outside');
       stepsTab = (lists.reduce((best, tab) => (callsOf(tab[0]) > callsOf(best[0]) ? tab : best), lists[0] || tabs[0]) || [''])[0];
     }
