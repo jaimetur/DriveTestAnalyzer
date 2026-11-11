@@ -46,9 +46,11 @@
   .scoring-start-tip-title { display: flex; align-items: center; gap: .45rem; color: #245a96; font-size: .8rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
   .scoring-start-tip-title::before { content: '✓'; display: inline-flex; align-items: center; justify-content: center; width: 1.2rem; height: 1.2rem; border: 2px solid currentColor; border-radius: 50%; font-size: .7rem; }
   .scoring-start-tip p { margin: .35rem 0 0; }
+  .scoring-vendor-tip { margin-top: .6rem; }
   /* (Neither while a Saved Filter is edited in the dialog.) */
   .scoring-controls.is-editing-saved-filter .scoring-controls-head .saved-filter-selector,
   .scoring-controls.is-editing-saved-filter .scoring-start-tip { display: none; }
+  .scoring-controls.is-editing-saved-filter .scoring-vendor-tip { display: block; }
   .scoring-hero-badge { display: inline-flex; align-items: center; gap: .45rem; padding: .5rem .85rem; border: 0; border-radius: 999px; background: linear-gradient(128deg, #143653, #176e77); color: #fff; font-size: .78rem; font-weight: 800; white-space: nowrap; box-shadow: 0 6px 14px rgba(20, 54, 83, .22); }
   .scoring-controls-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .scoring-filter-grid { display: grid; grid-template-columns: minmax(12rem,15rem) minmax(0,1fr); gap: 1rem; align-items: start; }
@@ -1909,7 +1911,11 @@
         {% endfor %}{% endfor %}
       </div>
       <p class="scoring-context-filter-note">Values come from every CDR of the NR Mode, with the labels of the Operator and Vendor Maps; each filter lists only the values the other filters leave. Leaving a filter empty includes all values. Main Cities uses the workspace city list.</p>
-      <p class="scoring-context-filter-note">Filters add up, and Vendor applies to every operator left. To score some Vendors of one operator, choose that operator in Operator and the Vendors in Vendor: the other operators, and with them the GAP against the reference operator (unless it is that operator), are left out. To keep the other operators whole, choose the operator's Vendors in Operator_Vendor (or Vendor_Operator) together with the other operators' values.</p>
+      {# How to score some Vendors of one operator: Vendor alone applies to every operator. #}
+      <div class="scoring-start-tip scoring-vendor-tip" role="note">
+        <strong class="scoring-start-tip-title">Vendors of one operator</strong>
+        <p><strong>Vendor</strong> applies to every operator. Choose the operator in <strong>Operator</strong> to score only it, or its Vendors in <strong>Operator_Vendor</strong> to keep the other operators.</p>
+      </div>
     </div>
     <div class="scoring-picker">
       <div class="scoring-picker-head"><strong>Split by</strong></div>
