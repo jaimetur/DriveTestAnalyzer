@@ -190,7 +190,7 @@ def campaign_label(value: str) -> str:
 
 def _items(distribution: dict[str, Any], colours: dict[tuple[str, str], str]) -> list[tuple[str, int, str]]:
     field = distribution.get('field') or ''
-    empty = 'Unassigned' if field in {'team', 'assignee'} else 'Not classified'
+    empty = 'Unassigned' if field in {'team', 'analyst'} else 'Not classified'
     items = []
     for index, item in enumerate(distribution.get('items') or []):
         value = str(item.get('value') or '')
@@ -290,13 +290,13 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
     _bar_card(work, 0, 0, third, work.height, 'Age of Open Calls',
               [(str(item['value']), int(item['count']), RASPBERRY) for item in progress.get('aging') or []])
     _workload_card(work, third + gap, 0, third, work.height, 'Team Workload', progress.get('teams') or [])
-    _workload_card(work, 2 * (third + gap), 0, third, work.height, 'Assignee Workload', progress.get('assignees') or [])
+    _workload_card(work, 2 * (third + gap), 0, third, work.height, 'Analyst Workload', progress.get('analysts') or [])
     panels.append((progress_title(granularity_label, 'Age and Workload'), work.png()))
     return panels
 
 
 def _workload_card(panel: Panel, left: float, top: float, width: float, height: float, title: str, rows: list[dict[str, Any]]) -> None:
-    """Open and closed calls per team or assignee as stacked bars."""
+    """Open and closed calls per team or analyst as stacked bars."""
     panel.card(left, top, width, height)
     panel.text(left + 0.18, top + 0.16, title, 12, bold=True, color=DARK)
     legend_x = left + width - 0.18
@@ -871,7 +871,7 @@ def _pill(panel: Panel, x: float, y: float, text: str, points: float, fill: str,
 
 
 # The fields the Status Rules read besides those of the catalog.
-RULE_FIELD_LABELS = {'@attended': 'Attended', '@team': 'Team', '@assignee': 'Assignee', '@root_category': 'Root Category',
+RULE_FIELD_LABELS = {'@attended': 'Attended', '@team': 'Team', '@analyst': 'Analyst', '@root_category': 'Root Category',
                      '@root_cause': 'Root Cause'}
 
 

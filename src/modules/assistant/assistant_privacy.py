@@ -365,8 +365,7 @@ def workspace_pseudonymizer(repository: Any, workspace_name: str = '', state: di
     for kind, names in WELL_KNOWN.items():
         for name in names:
             pseudonyms.add(kind, name)
-    # The users of the tool (the analysts, assignees and reviewers of the Non-Qualified Calls): their user names and
-    # full names.
+    # The users of the tool (the analysts and reviewers of the Non-Qualified Calls): their user names and full names.
     try:
         users = repository.list_users()
     except Exception:  # noqa: BLE001 - a repository without the global database
@@ -375,6 +374,17 @@ def workspace_pseudonymizer(repository: Any, workspace_name: str = '', state: di
         item = dict(user)
         pseudonyms.add_user(str(item.get('username') or ''),
                             f'{str(item.get("first_name") or "").strip()} {str(item.get("last_name") or "").strip()}')
+    # The analysts of the Non-Qualified Calls without a user account (names the analyses of the previous tool brought).
+    accounts = {str(dict(user).get('username') or '').casefold() for user in users or []}
+    try:
+        with repository.connection() as connection:
+            analysts = [str(row[0]) for row in connection.execute(
+                "SELECT DISTINCT analyst FROM nq_call_tracking WHERE analyst <> ''").fetchall()]
+    except Exception:  # noqa: BLE001 - a workspace without Non-Qualified Calls
+        analysts = []
+    for name in analysts:
+        if name.casefold() not in accounts:
+            pseudonyms.add_user(name, name)
     return pseudonyms
 
 

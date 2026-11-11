@@ -4,7 +4,7 @@ A Non-Qualified (NQ) call is a Voice or Speech call, or a Data test, whose resul
 is anything other than ``Completed`` (for example Failed, Dropped or Cutoff).
 The module indexes those rows of every ready CDR of the active workspace in
 ``nq_calls`` and lets the teams follow each one up: a status, a responsible team,
-an assignee and a shared comment thread. Every change is recorded in
+an analyst and a shared comment thread. Every change is recorded in
 ``nq_call_history`` with its author and time.
 
 Each call can also be labelled with a root cause from a configurable two-level
@@ -117,9 +117,11 @@ INDEX_VERSION = 8
 KEY_SCHEME = '3'
 KEY_SCHEME_STATE_KEY = 'nq_calls_key_scheme'
 TRACKING_FORMAT = 'nq-call-tracking'
-TRACKING_FORMAT_VERSION = 3
+# Version 4: the Asignee is the Analyst (ticket #124); earlier documents are upgraded on import.
+TRACKING_FORMAT_VERSION = 4
 CONFIGURATION_FORMAT = 'nq-calls-configuration'
-CONFIGURATION_FORMAT_VERSION = 1
+# Version 2: the Asignee is the Analyst (ticket #124); earlier documents are upgraded on import.
+CONFIGURATION_FORMAT_VERSION = 2
 UNASSIGNED = '__unassigned__'
 MAX_COMMENT_LENGTH = 5000
 # The rows of a page of the calls table, the first one by default (also with All panels).
@@ -150,7 +152,7 @@ ANALYSIS_CENTER_V5_STATE_KEY = 'nq_analysis_center_v5'
 # The fields the analyses of the previous tool bring (initial root category and cause, priority, analyst, reviewer,
 # description, implementation team and planned fiscal year), added once to the workspaces created before them.
 ANALYSIS_CENTER_V6_STATE_KEY = 'nq_analysis_center_v6'
-ANALYSES_FIELD_KEYS = {'initial_root_category', 'initial_root_cause', 'priority', 'analyst', 'reviewer', 'description',
+ANALYSES_FIELD_KEYS = {'initial_root_category', 'initial_root_cause', 'priority', 'reviewer', 'description',
                        'implementation_team', 'planned_fy'}
 # Vendor 1 and Vendor 2 when Failure, the priorities P1 to P4, the E2E Team (formerly E2E stream) and the Core domain
 # (formerly Core 2G/4G/5G), once.
@@ -299,12 +301,15 @@ ANALYSIS_CENTER_V38_STATE_KEY = 'nq_analysis_center_v38'
 # The DT Analyzer RCA reads the Layer3 Logs (engine 4): a workspace with rules of its own takes the new default rules
 # and the conditions the default rules it kept as they were gained.
 ANALYSIS_CENTER_V39_STATE_KEY = 'nq_analysis_center_v39'
+# The Asignee of the follow-up and the Analyst field of the analyses of the previous tool are one Analyst (ticket #124):
+# the follow-up column, the catalog field, the history, the filters, the rules and the layouts are renamed once.
+ANALYSIS_CENTER_V40_STATE_KEY = 'nq_analysis_center_v40'
 # The Layer3 Logs the DT Analyzer RCA read last (l3_dt_logs.rca_signature): when one is imported, processed again or
 # deleted, the calls of its campaign are calculated again.
 DTA_L3_STATE_KEY = 'nq_dta_rca_l3_logs'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-10-30.1'
+SCHEMA_VERSION = '2026-11-11.1'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -354,10 +359,10 @@ FIELD_FILTERS = (
     'service', 'campaign', 'operator', 'operator_vendor', 'vendor_operator', 'vendor', 'region', 'cluster', 'city',
     'technology', 'test_name', 'result', 'failure_classification', 'failure_category',
 )
-TRACKING_FILTERS = ('status', 'team', 'assignee', 'root_domain', 'root_category', 'root_cause', 'status_mode')
+TRACKING_FILTERS = ('status', 'team', 'analyst', 'root_domain', 'root_category', 'root_cause', 'status_mode')
 # Filters typed as a list of values rather than chosen among them (a JOIN_ID has too many values to list).
 TYPED_FILTERS = ('join_id',)
-TRACKING_FIELDS = ('status', 'team', 'assignee', 'root_domain', 'root_category', 'root_cause', 'status_mode')
+TRACKING_FIELDS = ('status', 'team', 'analyst', 'root_domain', 'root_category', 'root_cause', 'status_mode')
 # Filters set by clicking the Progress View and Root Cause Analysis: NR mode, call type
 # (Classic, WhatsApp, Data), a timeline period ("month:2026-07"), the age of open calls,
 # a labelled root cause ("RF||Coverage"), the root domain or cause counting the suggested
@@ -378,7 +383,7 @@ RCA_FILTER_SOURCES = ('netcheck', 'script', 'dta')
 _ATTENDED_SQL = "(updated_at <> '' OR comment_count > 0)"
 STATE_SQL = {
     'attended': _ATTENDED_SQL, 'not_attended': f'NOT {_ATTENDED_SQL}', 'with_team': "team <> ''",
-    'assigned': "assignee <> ''", 'commented': 'comment_count > 0', 'labelled': "root_domain <> ''",
+    'assigned': "analyst <> ''", 'commented': 'comment_count > 0', 'labelled': "root_domain <> ''",
     # RCA Identification: a root category or cause is selected.
     'identified': "(root_category <> '' OR root_cause <> '')", 'not_identified': "(root_category = '' AND root_cause = '')",
 }
@@ -386,7 +391,7 @@ SORT_COLUMNS = {
     'service': 'service', 'start_time': 'start_time', 'operator': 'operator', 'operator_vendor': 'operator_vendor', 'vendor': 'vendor',
     'campaign': 'campaign', 'city': 'city', 'technology': 'technology', 'test_name': 'test_name',
     'result': 'result', 'failure': 'failure_classification', 'status': 'status', 'team': 'team',
-    'assignee': 'assignee', 'root_cause': 'root_domain', 'root_category': 'root_category', 'cause': 'root_cause',
+    'analyst': 'analyst', 'root_cause': 'root_domain', 'root_category': 'root_category', 'cause': 'root_cause',
     'comments': 'comment_count',
     'updated_at': 'updated_at', 'join_id': 'join_id', 'region': 'region', 'cluster': 'cluster', 'nr_mode': 'nr_mode',
     'cell_id': 'cell_id', 'direction': 'direction', 'session_type': 'session_type', 'end_time': 'end_time', 'cdr': 'dataset_id',
@@ -523,7 +528,7 @@ CREATE TABLE IF NOT EXISTS {NQ_CALL_TRACKING_TABLE} (
     call_key TEXT PRIMARY KEY,
     status TEXT NOT NULL DEFAULT '',
     team TEXT NOT NULL DEFAULT '',
-    assignee TEXT NOT NULL DEFAULT '',
+    analyst TEXT NOT NULL DEFAULT '',
     root_domain TEXT NOT NULL DEFAULT '',
     root_cause TEXT NOT NULL DEFAULT '',
     version INTEGER NOT NULL DEFAULT 0,
@@ -680,7 +685,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY, ANALYSIS_CENTER_V31_STATE_KEY,
                 ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY, ANALYSIS_CENTER_V34_STATE_KEY,
                 ANALYSIS_CENTER_V35_STATE_KEY, ANALYSIS_CENTER_V36_STATE_KEY, ANALYSIS_CENTER_V37_STATE_KEY,
-                ANALYSIS_CENTER_V38_STATE_KEY, ANALYSIS_CENTER_V39_STATE_KEY)
+                ANALYSIS_CENTER_V38_STATE_KEY, ANALYSIS_CENTER_V39_STATE_KEY, ANALYSIS_CENTER_V40_STATE_KEY)
         states = {str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -702,6 +707,10 @@ def ensure_nq_tables(task_repository: Any) -> None:
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (NQ_ROOT_CATALOG_TABLE,),
         ).fetchone()
         tracking = _columns_of(connection, NQ_CALL_TRACKING_TABLE)
+        # The Asignee of the follow-up is the Analyst (ticket #124).
+        if 'assignee' in tracking and 'analyst' not in tracking:
+            connection.execute(f'ALTER TABLE {NQ_CALL_TRACKING_TABLE} RENAME COLUMN assignee TO analyst')
+            tracking = _columns_of(connection, NQ_CALL_TRACKING_TABLE)
         for column, definition in (('root_domain', "TEXT NOT NULL DEFAULT ''"), ('root_cause', "TEXT NOT NULL DEFAULT ''"),
                                    ('root_category', "TEXT NOT NULL DEFAULT ''"), ('status_mode', "TEXT NOT NULL DEFAULT 'auto'")):
             if tracking and column not in tracking:
@@ -899,7 +908,118 @@ def ensure_nq_tables(task_repository: Any) -> None:
         nq_dta_rca.add_new_default_rules(task_repository, 4)
         nq_dta_rca.renew_changed_default_rules(task_repository, 4)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V39_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V40_STATE_KEY):
+        _merge_analyst_fields(task_repository)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V40_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
+
+
+# The labels and description the Asignee field had by default, which take those of the Analyst.
+V40_FORMER_LABELS = {'asignee', 'assignee'}
+V40_FORMER_DESCRIPTION = 'A member of the responsible team (any user of the workspace when the team has no members).'
+# The names the saved filters, rules, equivalences and table layouts gave the Asignee and the Analyst field, by what
+# each saved document is: the name they take now.
+V40_RENAMES = {
+    'filters': {'assignee': 'analyst', 'field:analyst': 'analyst'},
+    'rules': {'@assignee': '@analyst', 'assignee': 'analyst'},
+    'equivalences': {'tracking:assignee': 'tracking:analyst', 'field:analyst': 'tracking:analyst'},
+    'layout': {'assignee': 'analyst', 'tracking:assignee': 'tracking:analyst'},
+}
+
+
+def _renamed_json(value: Any, names: dict[str, str]) -> Any:
+    """A saved JSON document with the names renamed: keys (merging lists and objects that meet under the new name),
+    values and list items (the repeated ones once)."""
+    if isinstance(value, dict):
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            new_key, item = names.get(key, key), _renamed_json(item, names)
+            if new_key in result and isinstance(result[new_key], list) and isinstance(item, list):
+                result[new_key] = list(dict.fromkeys([*result[new_key], *item])) if all(
+                    isinstance(entry, str) for entry in [*result[new_key], *item]) else [*result[new_key], *item]
+            elif new_key in result and isinstance(result[new_key], dict) and isinstance(item, dict):
+                result[new_key] = {**item, **result[new_key]}
+            elif new_key not in result or key != new_key:
+                result[new_key] = item
+        return result
+    if isinstance(value, list):
+        items = [_renamed_json(item, names) for item in value]
+        return list(dict.fromkeys(items)) if all(isinstance(item, str) for item in items) else items
+    if isinstance(value, str):
+        return names.get(value, value)
+    return value
+
+
+def _merge_analyst_fields(task_repository: Any) -> None:
+    """Once (ticket #124): the Asignee of the follow-up and the Analyst text field are one Analyst. Each call keeps its
+    Asignee (an account); a call without one takes the name its Analyst field held (an analyst without account until
+    Link Analysts to Accounts links it), and the history of both is the history of the Analyst. The catalog field, the
+    saved filters, the Status Rules, the reviewed equivalences and the table layouts take the new name."""
+    default = untracked_status(task_repository)
+    with task_repository.connection() as connection:
+        rows = connection.execute(
+            f"SELECT f.call_key, f.value, t.call_key AS tracked, COALESCE(t.analyst, '') AS analyst "
+            f"FROM {NQ_FIELD_VALUES_TABLE} f LEFT JOIN {NQ_CALL_TRACKING_TABLE} t ON t.call_key = f.call_key "
+            "WHERE f.field_key = 'analyst' AND f.value <> ''").fetchall()
+        moved, inserted = [], []
+        for row in rows:
+            if row['tracked'] is None:
+                # A call only its fields followed up so far: a follow-up row that does not make it attended.
+                connection.execute(
+                    f"INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, analyst, status_mode, version, updated_by, updated_at) "
+                    "VALUES (?, ?, ?, 'auto', 1, '', '')", (row['call_key'], default, row['value']))
+                moved.append(str(row['call_key']))
+                inserted.append(str(row['call_key']))
+            elif not row['analyst']:
+                connection.execute(f'UPDATE {NQ_CALL_TRACKING_TABLE} SET analyst = ? WHERE call_key = ?', (row['value'], row['call_key']))
+                moved.append(str(row['call_key']))
+        connection.execute(f"DELETE FROM {NQ_FIELD_VALUES_TABLE} WHERE field_key = 'analyst'")
+        connection.execute(f"UPDATE {NQ_CALL_HISTORY_TABLE} SET field = 'analyst' WHERE field IN ('assignee', 'field:analyst')")
+        # The catalog: the Asignee field (its place, columns and export) is the Analyst; the Analyst text field goes.
+        connection.execute(f"DELETE FROM {NQ_FIELDS_TABLE} WHERE field_key = 'analyst' AND source <> 'tracking'")
+        analyst = next(field for field in nq_catalog.DEFAULT_FIELDS if field['key'] == 'analyst')
+        for row in connection.execute(f"SELECT label, description FROM {NQ_FIELDS_TABLE} WHERE field_key = 'assignee'").fetchall():
+            label = analyst['label'] if str(row['label']).casefold() in V40_FORMER_LABELS else str(row['label'])
+            description = analyst['description'] if str(row['description']) == V40_FORMER_DESCRIPTION else str(row['description'])
+            connection.execute(f"UPDATE {NQ_FIELDS_TABLE} SET field_key = 'analyst', source_ref = 'analyst', label = ?, "
+                               "description = ? WHERE field_key = 'assignee'", (label, description))
+        connection.execute(f"UPDATE {NQ_FIELDS_TABLE} SET source_ref = 'analyst' WHERE source = 'tracking' AND source_ref = 'assignee'")
+        # The table layouts of the users.
+        for row in connection.execute(f'SELECT username, layout_json FROM {NQ_USER_LAYOUTS_TABLE}').fetchall():
+            try:
+                layout = json.loads(row['layout_json'] or '')
+            except (TypeError, ValueError):
+                continue
+            renamed = _renamed_json(layout, V40_RENAMES['layout'])
+            if renamed != layout:
+                connection.execute(f'UPDATE {NQ_USER_LAYOUTS_TABLE} SET layout_json = ? WHERE username = ?',
+                                   (json.dumps(renamed, ensure_ascii=False), row['username']))
+    if not any(field['key'] == 'analyst' for field in list_fields(task_repository)):
+        fields = list_fields(task_repository)
+        if _add_default_fields(fields, {'analyst'}):
+            _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                       CATALOG_CALL_FIELDS))
+    # The saved filters, Status Rules, reviewed equivalences and table columns of the workspace.
+    for state_key, kind in ((SAVED_FILTERS_STATE_KEY, 'filters'), (STATUS_RULES_STATE_KEY, 'rules'),
+                            (ANALYSES_EQUIVALENCES_STATE_KEY, 'equivalences'), (TABLE_COLUMNS_STATE_KEY, 'layout'),
+                            (COLUMN_ORDER_STATE_KEY, 'layout')):
+        stored = task_repository.get_workspace_state(state_key)
+        try:
+            document = json.loads(stored) if stored else None
+        except (TypeError, ValueError):
+            continue
+        renamed = _renamed_json(document, V40_RENAMES[kind])
+        if document is not None and renamed != document:
+            task_repository.set_workspace_state(state_key, json.dumps(renamed, ensure_ascii=False))
+    # The statuses change only where the Status Rules read the Analyst (and for the new follow-up rows), so the rename
+    # changes no other status.
+    reads_analyst = any(condition.get('field') == '@analyst' for rule in status_rules(task_repository)
+                        for condition in rule.get('conditions') or [])
+    if moved and (reads_analyst or inserted):
+        recompute_statuses(task_repository, 'system', moved if reads_analyst else inserted)
+    if hasattr(task_repository, 'try_add_log'):
+        task_repository.try_add_log('system', 'nq_analyst_fields_merged', json.dumps(
+            {'calls_given_their_analyst': len(moved), 'ticket': 124}, ensure_ascii=False))
 
 
 def _remove_repeated_comments(task_repository: Any) -> int:
@@ -2854,11 +2974,11 @@ def _store_fields(task_repository: Any, fields: list[dict[str, Any]]) -> None:
 
 def save_fields(task_repository: Any, items: Any, username: str, *, defaults: bool = False) -> list[dict[str, Any]]:
     """Replace the field catalog; renamed list values follow on every call and in the status rules, values in use
-    cannot be removed, and the follow-up fields (status, team, assignee…) stay."""
+    cannot be removed, and the follow-up fields (status, team, analyst…) stay."""
     existing = {field['key']: field for field in list_fields(task_repository)}
     if not isinstance(items, list):
         raise ValueError('The field list is invalid.')
-    # The follow-up fields (status, team, assignee…) cannot be removed: those left out keep their place at the end.
+    # The follow-up fields (status, team, analyst…) cannot be removed: those left out keep their place at the end.
     given = {str(item.get('source_ref')) for item in items if isinstance(item, dict) and item.get('source') == 'tracking'}
     given |= {str(existing[str(item.get('key'))]['source_ref']) for item in items
               if isinstance(item, dict) and str(item.get('key')) in existing and existing[str(item.get('key'))]['source'] == 'tracking'}
@@ -3188,7 +3308,7 @@ def _merged_catalog(task_repository: Any, incoming: dict[str, Any]) -> dict[str,
 
 def preview_catalog(task_repository: Any, content: bytes) -> dict[str, Any]:
     """What importing a catalog workbook would change, without changing anything."""
-    incoming = nq_catalog.read_catalog_workbook(content)
+    incoming = upgrade_legacy_document(nq_catalog.read_catalog_workbook(content))
     merged = _merged_catalog(task_repository, incoming)
     current_fields = {field['key']: field for field in list_fields(task_repository)}
     normalized = nq_catalog.normalize_fields(merged['fields'], current_fields, CATALOG_CALL_FIELDS)
@@ -3216,7 +3336,7 @@ def preview_catalog(task_repository: Any, content: bytes) -> dict[str, Any]:
 def import_catalog(task_repository: Any, content: bytes, username: str, users: set[str] | None = None) -> dict[str, Any]:
     """Import a catalog workbook: the new fields, list values, catalog entries, statuses and teams are added, and the
     sections and status rules it has are taken. Nothing is removed."""
-    incoming = nq_catalog.read_catalog_workbook(content)
+    incoming = upgrade_legacy_document(nq_catalog.read_catalog_workbook(content))
     merged = _merged_catalog(task_repository, incoming)
     if merged['sections']:
         save_sections(task_repository, merged['sections'], username)
@@ -3420,28 +3540,46 @@ def save_root_causes(task_repository: Any, catalog: Any, require_to_close: bool,
     return list_root_causes(task_repository)
 
 
-# Who analysed and who reviewed each call, as the analysis workbooks name them (also before they had an account).
+# Who analyses each call (the Analyst of its follow-up: a user account, or the name of a person without account that an
+# import of the analyses of the previous tool brought) and who reviewed it.
 ANALYST_FIELD = 'analyst'
 REVIEWER_FIELD = 'reviewer'
-# The accounts every new deployment starts with (repository.py): first in the lists of assignees, apart and tagged.
+# The accounts every new deployment starts with (repository.py): first in the lists of analysts, apart and tagged.
 DEFAULT_USERS = ('super', 'admin', 'demo')
 
 
-def _analyst_rows(connection: Any, field: str = ANALYST_FIELD) -> list[Any]:
-    """The Analyst (or the Reviewer) of every call of the workspace with its assignee and team, also of the calls whose
-    CDR is not loaded yet (``loaded`` 0: their imported analysis waits for it)."""
+def _people_rows(connection: Any, role: str) -> list[Any]:
+    """The Analyst (the follow-up of the call) or the Reviewer (a field of the call) of every call of the workspace with
+    its team, also of the calls whose CDR is not loaded yet (``loaded`` 0: their imported analysis waits for it)."""
+    loaded = (f"(t.call_key IN (SELECT call_key FROM {NQ_CALLS_TABLE}) OR t.call_key IN (SELECT sample_key FROM {NQ_CALLS_TABLE} "
+              f"WHERE sample_key <> '')) AS loaded")
+    if role == ANALYST_FIELD:
+        return connection.execute(f"SELECT t.call_key, t.analyst AS value, t.team, {loaded} FROM {NQ_CALL_TRACKING_TABLE} t "
+                                  "WHERE t.analyst <> ''").fetchall()
     return connection.execute(
-        f"SELECT f.call_key, f.value, COALESCE(t.assignee, '') AS assignee, COALESCE(t.team, '') AS team, "
-        f"(f.call_key IN (SELECT call_key FROM {NQ_CALLS_TABLE}) OR f.call_key IN (SELECT sample_key FROM {NQ_CALLS_TABLE} "
-        f"WHERE sample_key <> '')) AS loaded FROM {NQ_FIELD_VALUES_TABLE} f "
-        f"LEFT JOIN {NQ_CALL_TRACKING_TABLE} t ON t.call_key = f.call_key WHERE f.field_key = ? AND f.value <> ''", (field,)).fetchall()
+        f"SELECT f.call_key, f.value, COALESCE(t.team, '') AS team, {loaded.replace('t.call_key', 'f.call_key')} "
+        f"FROM {NQ_FIELD_VALUES_TABLE} f LEFT JOIN {NQ_CALL_TRACKING_TABLE} t ON t.call_key = f.call_key "
+        "WHERE f.field_key = ? AND f.value <> ''", (role,)).fetchall()
+
+
+def _account_names(users: Any) -> dict[str, str]:
+    """``users`` (usernames, or username → first and last name) as username → name."""
+    return dict(users) if isinstance(users, dict) else {user: '' for user in users}
+
+
+def _has_account(role: str, value: str, users: dict[str, str]) -> bool:
+    """Whether a person of a call is a user account: the Analyst holds its username, the Reviewer its username or its
+    first and last name."""
+    value = value.casefold()
+    return any(value == user.casefold() or (role == REVIEWER_FIELD and name and value == name.casefold())
+               for user, name in users.items())
 
 
 def _analyst_user(spellings: list[str], users: Any) -> str:
     """The only user named as the analyst, by its username or its first and last name (``users``: username → name):
     the whole name (Raj Kumar is rajkumar), then the first part of the user (Anudeep is anudeep.kumar or Anudeep
     Reddy), then the first part of both (Raj Kumar is raj.k)."""
-    users = users if isinstance(users, dict) else {user: '' for user in users}
+    users = _account_names(users)
     whole = lambda value: nq_analyses.identity(value)
     first = lambda value: nq_analyses.identity(re.split(r'[\s._@-]+', str(value).strip())[0])
     for analyst_part, user_part in ((whole, whole), (whole, first), (first, first)):
@@ -3452,47 +3590,49 @@ def _analyst_user(spellings: list[str], users: Any) -> str:
     return ''
 
 
-def analyst_assignments(task_repository: Any, users: Any = ()) -> dict[str, Any]:
-    """Who analysed or reviewed the calls (also those whose CDR is not loaded yet): each person with the spellings they
-    are written with (the same letters: Raj Kumar is Rajkumar), their calls as Analyst and as Reviewer, their analysed
-    calls without an assignee and the suggested user (the only user named as them, or the assignee most of their
-    analysed calls have)."""
+def analyst_account(name: str, users: Any) -> str:
+    """The user account a name of a person is (its username, else the only account named as it), or ''."""
+    users = _account_names(users)
+    exact = next((user for user in users if user.casefold() == str(name).strip().casefold()), '')
+    return exact or _analyst_user([str(name)], users)
+
+
+def analysts_without_account(task_repository: Any, users: Any = ()) -> dict[str, Any]:
+    """The analysts and reviewers of the calls without a user account (also of the calls whose CDR is not loaded yet):
+    each person with the spellings they are written with (the same letters: Raj Kumar is Rajkumar), their calls as
+    Analyst and as Reviewer and the suggested account (the only user named as them)."""
+    users = _account_names(users)
     with task_repository.connection() as connection:
-        rows = [(role, row) for role, field in (('analyst', ANALYST_FIELD), ('reviewer', REVIEWER_FIELD))
-                for row in _analyst_rows(connection, field)]
+        rows = [(role, row) for role in (ANALYST_FIELD, REVIEWER_FIELD) for row in _people_rows(connection, role)]
     groups: dict[str, dict[str, Any]] = {}
     for role, row in rows:
+        if _has_account(role, str(row['value']), users):
+            continue
         key = nq_analyses.identity(row['value'])
-        group = groups.setdefault(key, {'spellings': Counter(), 'analyst': 0, 'reviewer': 0, 'unassigned': 0, 'assignees': Counter()})
+        group = groups.setdefault(key, {'spellings': Counter(), ANALYST_FIELD: 0, REVIEWER_FIELD: 0})
         group['spellings'][str(row['value'])] += 1
         group[role] += 1
-        if role == 'analyst':
-            if row['assignee']:
-                group['assignees'][str(row['assignee'])] += 1
-            else:
-                group['unassigned'] += 1
     people = []
     for key, group in groups.items():
         spellings = [spelling for spelling, _count in group['spellings'].most_common()]
-        people.append({'key': key, 'name': spellings[0], 'spellings': spellings, 'analyst_calls': group['analyst'],
-                       'reviewer_calls': group['reviewer'], 'unassigned': group['unassigned'],
-                       'suggested': _analyst_user(spellings, users)
-                       or (group['assignees'].most_common(1)[0][0] if group['assignees'] else '')})
+        people.append({'key': key, 'name': spellings[0], 'spellings': spellings, 'analyst_calls': group[ANALYST_FIELD],
+                       'reviewer_calls': group[REVIEWER_FIELD], 'suggested': _analyst_user(spellings, users)})
     people.sort(key=lambda item: (-item['analyst_calls'] - item['reviewer_calls'], item['name'].casefold()))
     return {'people': people}
 
 
-def assign_analysts(task_repository: Any, assignments: Any, username: str, users: set[str], *,
-                    names: dict[str, str] | None = None, overwrite: bool = False, preview: bool = False) -> dict[str, Any]:
-    """Link each analyst or reviewer to the user chosen for them (``assignments``: name key → user name). The calls
-    they analysed get the user as assignee (only those without one unless ``overwrite``; every call keeps its team and
-    the user joins the teams with members they are not one of), and their Analyst and Reviewer take the first and last
-    name of the user (``names``: username → name) when it has them. The calls whose CDR is not loaded yet change as
-    their imported analysis does (``waiting`` counts them). ``preview`` counts the calls and teams without changing
-    anything."""
+def link_analysts(task_repository: Any, links: Any, username: str, users: set[str], *,
+                  names: dict[str, str] | None = None, preview: bool = False) -> dict[str, Any]:
+    """Link each analyst or reviewer without account to the user account chosen for them (``links``: name key → user
+    name): the calls they analyse take the account as their Analyst (they keep their team, and the account joins the
+    teams with members it is not one of), and the calls they reviewed take the first and last name of the account
+    (``names``: username → name) as their Reviewer, or its username without them. The calls whose CDR is not loaded yet
+    change as their imported analysis does (``waiting`` counts them). ``preview`` counts the calls and teams without
+    changing anything."""
     lookup = {name.casefold(): name for name in users}
     names = names or {}
-    chosen = {str(key): str(name).strip() for key, name in (assignments.items() if isinstance(assignments, dict) else []) if str(name).strip()}
+    accounts = {user: names.get(user, '') for user in users}
+    chosen = {str(key): str(name).strip() for key, name in (links.items() if isinstance(links, dict) else []) if str(name).strip()}
     unknown = [name for name in chosen.values() if name.casefold() not in lookup]
     if unknown:
         raise ValueError(f'{unknown[0]} is not a user of this workspace.')
@@ -3506,36 +3646,32 @@ def assign_analysts(task_repository: Any, assignments: Any, username: str, users
     waiting: set[str] = set()
     counts: Counter = Counter()
     with task_repository.connection() as connection:
-        rows = [(field, row) for field in (ANALYST_FIELD, REVIEWER_FIELD) for row in _analyst_rows(connection, field)]
-    for field, row in rows:
+        rows = [(role, row) for role in (ANALYST_FIELD, REVIEWER_FIELD) for row in _people_rows(connection, role)]
+    for role, row in rows:
         key = nq_analyses.identity(row['value'])
-        if key not in chosen or field not in defined:
+        if key not in chosen or role not in defined or _has_account(role, str(row['value']), accounts):
             continue
         user = lookup[chosen[key].casefold()]
         call_key = str(row['call_key'])
         change: dict[str, Any] = {}
-        if field == ANALYST_FIELD:
-            assignee, team = str(row['assignee']), team_names.get(str(row['team']).casefold(), str(row['team']))
-            if assignee.casefold() != user.casefold() and (not assignee or overwrite):
-                if team and members.get(team.casefold()) and user.casefold() not in members[team.casefold()]:
-                    joins.add((team, user))
-                change.update({'assignee': user, 'team': team})
-                counts['assignees'] += 1
-        # The Analyst or Reviewer takes the name of the account.
-        if names.get(user) and str(row['value']) != names[user]:
-            change['fields'] = {field: names[user]}
-            counts[f'{field}_names'] += 1
-        if change:
-            merged = changes.setdefault(call_key, {})
-            merged.update({name: value for name, value in change.items() if name != 'fields'})
-            if 'fields' in change:
-                merged['fields'] = {**merged.get('fields', {}), **change['fields']}
-            per_person.setdefault(key, set()).add(call_key)
-            if not row['loaded']:
-                waiting.add(call_key)
-    summary = {'calls': len(changes), 'assignees': counts['assignees'], 'analyst_names': counts[f'{ANALYST_FIELD}_names'],
-               'reviewer_names': counts[f'{REVIEWER_FIELD}_names'], 'waiting': len(waiting),
-               'people': {key: len(keys) for key, keys in per_person.items()},
+        if role == ANALYST_FIELD:
+            team = team_names.get(str(row['team']).casefold(), str(row['team']))
+            if team and members.get(team.casefold()) and user.casefold() not in members[team.casefold()]:
+                joins.add((team, user))
+            change.update({ANALYST_FIELD: user, 'team': team})
+            counts['analyst_calls'] += 1
+        else:
+            change['fields'] = {REVIEWER_FIELD: names.get(user) or user}
+            counts['reviewer_calls'] += 1
+        merged = changes.setdefault(call_key, {})
+        merged.update({name: value for name, value in change.items() if name != 'fields'})
+        if 'fields' in change:
+            merged['fields'] = {**merged.get('fields', {}), **change['fields']}
+        per_person.setdefault(key, set()).add(call_key)
+        if not row['loaded']:
+            waiting.add(call_key)
+    summary = {'calls': len(changes), 'analyst_calls': counts['analyst_calls'], 'reviewer_calls': counts['reviewer_calls'],
+               'waiting': len(waiting), 'people': {key: len(keys) for key, keys in per_person.items()},
                'joins': [{'team': team, 'user': user} for team, user in sorted(joins)]}
     if preview or not summary['calls']:
         return summary
@@ -3552,16 +3688,16 @@ def assign_analysts(task_repository: Any, assignments: Any, username: str, users
     if waiting:
         _update_waiting_calls(task_repository, {key: changes[key] for key in waiting}, username)
     if hasattr(task_repository, 'try_add_log'):
-        task_repository.try_add_log(username, 'nq_analyst_assignees', json.dumps(
-            {'calls': summary['calls'], 'assignees': summary['assignees'], 'analyst_names': summary['analyst_names'],
-             'reviewer_names': summary['reviewer_names'], 'waiting': summary['waiting'], 'overwrite': overwrite,
-             'assignments': chosen}, ensure_ascii=False))
+        task_repository.try_add_log(username, 'nq_analysts_linked', json.dumps(
+            {'calls': summary['calls'], 'analyst_calls': summary['analyst_calls'], 'reviewer_calls': summary['reviewer_calls'],
+             'waiting': summary['waiting'], 'links': chosen,
+             'joins': summary['joins']}, ensure_ascii=False))
     return summary
 
 
 def _update_waiting_calls(task_repository: Any, changes: dict[str, dict[str, Any]], username: str) -> None:
     """Change the imported analysis of calls whose CDR is not loaded yet as the import writes it (``changes``: call key
-    → assignee, team and fields): their follow-up and fields with their history; their status follows the Status Rules."""
+    → analyst, team and fields): their follow-up and fields with their history; their status follows the Status Rules."""
     keys = list(changes)
     default = untracked_status(task_repository)
     when = now_iso()
@@ -3569,17 +3705,17 @@ def _update_waiting_calls(task_repository: Any, changes: dict[str, dict[str, Any
         tracking = {str(row['call_key']): dict(row) for row in _rows_of_calls(connection, f'SELECT * FROM {NQ_CALL_TRACKING_TABLE}', keys)}
         stored = field_values(connection, keys)
         for call_key, change in changes.items():
-            current = tracking.get(call_key) or {'status': default, 'status_mode': 'auto', 'team': '', 'assignee': '',
+            current = tracking.get(call_key) or {'status': default, 'status_mode': 'auto', 'team': '', 'analyst': '',
                                                  'root_domain': '', 'root_category': '', 'root_cause': ''}
-            follow_up = {ref: change[ref] for ref in ('assignee', 'team') if ref in change and str(current.get(ref) or '') != change[ref]}
+            follow_up = {ref: change[ref] for ref in ('analyst', 'team') if ref in change and str(current.get(ref) or '') != change[ref]}
             if follow_up:
                 row = {**current, **follow_up}
                 connection.execute(
-                    f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, assignee, root_domain, root_category, root_cause, '
+                    f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, analyst, root_domain, root_category, root_cause, '
                     'status_mode, version, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(call_key) DO UPDATE SET '
-                    'team = excluded.team, assignee = excluded.assignee, version = version + 1, updated_by = excluded.updated_by, '
+                    'team = excluded.team, analyst = excluded.analyst, version = version + 1, updated_by = excluded.updated_by, '
                     'updated_at = excluded.updated_at',
-                    (call_key, row['status'], row['team'], row['assignee'], row['root_domain'], row['root_category'], row['root_cause'],
+                    (call_key, row['status'], row['team'], row['analyst'], row['root_domain'], row['root_category'], row['root_cause'],
                      row['status_mode'], username, when))
                 for ref, value in follow_up.items():
                     _record_history(connection, call_key, ref, str(current.get(ref) or ''), value, username, when)
@@ -3699,7 +3835,7 @@ def _status_inputs(call: Any, stored: dict[str, str], fields: list[dict[str, Any
     values = {field['key']: (stored.get(field['key'], '') if field['source'] == 'user' else derived_value(field, call) if call is not None else '')
               for field in fields if field['source'] in {'user', 'derived'}}
     values[ATTENDED_FIELD] = 'Yes' if attended else 'No'
-    for ref in ('team', 'assignee', 'root_category', 'root_cause'):
+    for ref in ('team', 'analyst', 'root_category', 'root_cause'):
         values[f'@{ref}'] = str(tracking.get(ref) or '')
     return values
 
@@ -4233,7 +4369,7 @@ def _base_sql(default: str, task_repository: Any, dataset_ids: list[int] | None 
     """One row per call with its follow-up: the version of the most recent CDR among the chosen ones.
 
     Without a choice of CDRs the latest versions come from the ``nq_call_latest`` table; the follow-up (status,
-    team, assignee, root cause, comments, fields and RCA results) is always read as it is now.
+    team, analyst, root cause, comments, fields and RCA results) is always read as it is now.
     """
     maps = _value_maps(task_repository)
     _dta_ready(task_repository)
@@ -4247,7 +4383,7 @@ def _base_sql(default: str, task_repository: Any, dataset_ids: list[int] | None 
         SELECT s.*,
                COALESCE(NULLIF(t.status, ''), ?) AS status,
                COALESCE(t.team, '') AS team,
-               COALESCE(t.assignee, '') AS assignee,
+               COALESCE(t.analyst, '') AS analyst,
                COALESCE(t.root_domain, '') AS root_domain,
                COALESCE(t.root_category, '') AS root_category,
                COALESCE(t.root_cause, '') AS root_cause,
@@ -4285,7 +4421,7 @@ def _sample_sql(default: str, task_repository: Any) -> tuple[str, list[Any]]:
         SELECT {columns}, c.sample_key AS call_key, c.call_key AS parent_key, c.sample_id, c.join_id, c.extra_json,
                1 AS nq_samples, '' AS vendor_operator, {last_cell_sql('c.cell_id')} AS last_cell_id,
                COALESCE(NULLIF(t.status, ''), ?) AS status, COALESCE(t.team, '') AS team,
-               COALESCE(t.assignee, '') AS assignee, COALESCE(t.root_domain, '') AS root_domain,
+               COALESCE(t.analyst, '') AS analyst, COALESCE(t.root_domain, '') AS root_domain,
                COALESCE(t.root_category, '') AS root_category, COALESCE(t.root_cause, '') AS root_cause,
                COALESCE(t.status_mode, 'auto') AS status_mode, COALESCE(t.version, 0) AS version,
                COALESCE(t.updated_by, '') AS updated_by, COALESCE(t.updated_at, '') AS updated_at,
@@ -4645,7 +4781,7 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
         clauses.append(f"status NOT IN ({', '.join('?' for _ in closed_statuses)})")
         params.extend(closed_statuses)
     if filters.get('mine'):
-        clauses.append('assignee = ? COLLATE NOCASE')
+        clauses.append('analyst = ? COLLATE NOCASE')
         params.append(username)
     if filters.get('without_comments'):
         clauses.append('comment_count = 0')
@@ -4853,10 +4989,10 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
             f"SELECT COUNT(*) AS total, "
             f"SUM(CASE WHEN status IN ({closed_marks}) THEN 1 ELSE 0 END) AS closed, "
             f"SUM(CASE WHEN comment_count > 0 THEN 1 ELSE 0 END) AS commented, "
-            # Attended: followed up (a status, team, assignee or root cause change) or commented.
+            # Attended: followed up (a status, team, analyst or root cause change) or commented.
             f"SUM(CASE WHEN updated_at <> '' OR comment_count > 0 THEN 1 ELSE 0 END) AS attended, "
             f"SUM(CASE WHEN team <> '' THEN 1 ELSE 0 END) AS with_team, "
-            f"SUM(CASE WHEN assignee <> '' THEN 1 ELSE 0 END) AS assigned "
+            f"SUM(CASE WHEN analyst <> '' THEN 1 ELSE 0 END) AS assigned "
             f"FROM ({filtered})",
             [*closed, *all_params],
         ).fetchone()
@@ -4871,7 +5007,7 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
 
 
 # The text fields of people (who analysed and who reviewed each call): filtered, like lists, by the names they hold.
-VALUE_FILTER_FIELDS = ('analyst', 'reviewer')
+VALUE_FILTER_FIELDS = ('reviewer',)
 
 
 def filter_options(task_repository: Any, layout: dict[str, list[str]] | None = None) -> dict[str, list[str]]:
@@ -4897,8 +5033,8 @@ def filter_options(task_repository: Any, layout: dict[str, list[str]] | None = N
                 values[field] = sorted({spellings.get(value, value) for value in values[field]}, key=str.casefold)
             elif field == 'campaign':
                 values[field] = sorted(values[field], key=campaign_sort_key)
-        assignees = connection.execute(
-            f"SELECT DISTINCT assignee FROM {NQ_CALL_TRACKING_TABLE} WHERE assignee <> '' ORDER BY assignee COLLATE NOCASE"
+        analysts = connection.execute(
+            f"SELECT DISTINCT analyst FROM {NQ_CALL_TRACKING_TABLE} WHERE analyst <> '' ORDER BY analyst COLLATE NOCASE"
         ).fetchall()
         # The values of every optional and CDR column of the table, for their header filters.
         chosen = layout or table_columns(task_repository)
@@ -4915,7 +5051,7 @@ def filter_options(task_repository: Any, layout: dict[str, list[str]] | None = N
                 f"SELECT DISTINCT value FROM {NQ_FIELD_VALUES_TABLE} WHERE field_key = ? AND value <> '' "
                 f"AND call_key IN (SELECT call_key FROM {NQ_CALLS_TABLE}) ORDER BY value COLLATE NOCASE "
                 f"LIMIT {MAX_COLUMN_FILTER_VALUES}", (key,))]
-    values['assignee'] = [str(row['assignee']) for row in assignees]
+    values['analyst'] = [str(row['analyst']) for row in analysts]
     # NR Mode, the first General Filter: with Campaign it says which CDRs the calls come from.
     with task_repository.connection() as connection:
         values['nr_mode'] = sorted({str(row[0]) for row in connection.execute(
@@ -5058,10 +5194,10 @@ def _rows_of_calls(connection: Any, select: str, keys: list[str], where: str = '
 def progress_stats(task_repository: Any, filters: dict[str, Any], username: str, granularity: str = 'week') -> dict[str, Any]:
     """Follow-up progress of the calls matching the filters.
 
-    Distributions by status, team, assignee, service and result; how many calls
+    Distributions by status, team, analyst, service and result; how many calls
     were detected, attended (first change or comment), commented, moved to each
     status, closed and reopened per week, month, quarter or year; the open
-    backlog, the age of open calls, the workload of teams and assignees and the
+    backlog, the age of open calls, the workload of teams and analysts and the
     activity of every user.
     """
     granularity = granularity if granularity in PROGRESS_GRANULARITIES else 'week'
@@ -5072,7 +5208,7 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
                                 [item['name'] for item in options['statuses'] if item['closed']], list_fields(task_repository))
     with task_repository.connection() as connection:
         calls = connection.execute(
-            f'WITH calls AS ({base}) SELECT call_key, start_time, status, team, assignee, service, result FROM calls{where}',
+            f'WITH calls AS ({base}) SELECT call_key, start_time, status, team, analyst, service, result FROM calls{where}',
             [*base_params, *params],
         ).fetchall()
         keys = [str(row['call_key']) for row in calls]
@@ -5200,7 +5336,7 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         'distributions': [
             {'field': 'status', 'label': 'By Status', 'items': distribution('status', '—', [item['name'] for item in options['statuses']])},
             {'field': 'team', 'label': 'By Team', 'items': distribution('team', 'Unassigned', [item['name'] for item in options['teams']])},
-            {'field': 'assignee', 'label': 'By Assignee', 'items': distribution('assignee', 'Unassigned')},
+            {'field': 'analyst', 'label': 'By Analyst', 'items': distribution('analyst', 'Unassigned')},
             {'field': 'service', 'label': 'By Service', 'items': [
                 {**item, 'value': SERVICE_LABELS.get(item['value'], item['value']), 'filter': item['value']}
                 for item in distribution('service', '—')]},
@@ -5211,7 +5347,7 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         # The moves to each open status (those to a closed status are the closures of the Closed column).
         'statuses': [item['name'] for item in options['statuses'] if not item['closed']],
         'teams': workload('team'),
-        'assignees': workload('assignee')[:20],
+        'analysts': workload('analyst')[:20],
         'activity': sorted(({'name': name, **values} for name, values in activity.items()),
                            key=lambda entry: (-(entry['changes'] + entry['comments']), entry['name'].casefold()))[:20],
     }
@@ -6210,12 +6346,12 @@ def _validate_changes(changes: dict[str, Any], options: dict[str, list[dict[str,
         if value and value.casefold() not in names:
             raise ValueError('Choose one of the configured teams.')
         validated['team'] = names.get(value.casefold(), '')
-    if 'assignee' in changes:
-        value = str(changes.get('assignee') or '').strip()
+    if 'analyst' in changes:
+        value = str(changes.get('analyst') or '').strip()
         lookup = {name.casefold(): name for name in users}
         if value and value.casefold() not in lookup:
             raise ValueError('Choose a user with access to this workspace.')
-        validated['assignee'] = lookup.get(value.casefold(), '')
+        validated['analyst'] = lookup.get(value.casefold(), '')
     for key, plural, title in (('root_category', 'categories', 'Root Categories'), ('root_cause', 'causes', 'Root Causes')):
         if key in changes:
             names = {item['name'].casefold(): item['name'] for item in taxonomy[plural]}
@@ -6289,8 +6425,9 @@ def update_tracking(
 ) -> list[str]:
     """Apply follow-up and field changes; returns the calls that changed.
 
-    A team with members only accepts them as assignees: assigning anybody else is refused, and
-    moving a call to such a team clears an assignee who is not a member. ``apply_recommendation``
+    A team with members only accepts them as analysts: assigning anybody else is refused, and
+    moving a call to such a team clears an analyst account that is not a member (an analyst without account, which
+    only the import of the analyses of the previous tool brings, stays). ``apply_recommendation``
     gives the calls without a root category and cause the recommended ones, and a root cause chosen for
     a call without root category brings the category it is mapped to. Choosing a status sets
     it by hand; otherwise (or after going back to automatic) the status rules set it from the
@@ -6337,20 +6474,21 @@ def update_tracking(
             if validated.get('root_cause') and 'root_category' not in validated and not current['root_category']:
                 current['root_category'] = root_category_of(taxonomy, current['root_cause'])
             current['root_domain'] = domain_of(taxonomy, current['root_category'], current['root_cause'])
-            # An assignee chosen alone brings the call to their team (the first one when they are in several),
+            # An analyst chosen alone brings the call to their team (the first one when they are in several),
             # unless the call already has a team they belong to.
-            if validated.get('assignee') and 'team' not in validated:
+            if validated.get('analyst') and 'team' not in validated:
                 current_members = members.get(current['team'].casefold())
-                if not current['team'] or (current_members and current['assignee'].casefold() not in current_members):
+                if not current['team'] or (current_members and current['analyst'].casefold() not in current_members):
                     team = next((item['name'] for item in options['teams']
-                                 if current['assignee'].casefold() in members.get(item['name'].casefold(), set())), '')
+                                 if current['analyst'].casefold() in members.get(item['name'].casefold(), set())), '')
                     if team:
                         current['team'] = team
             allowed = members.get(current['team'].casefold())
-            if allowed and current['assignee'] and current['assignee'].casefold() not in allowed:
-                if 'assignee' in validated:
-                    raise ValueError(f'{current["assignee"]} is not a member of the {current["team"]} team.')
-                current['assignee'] = ''
+            accounts = {user.casefold() for user in users}
+            if allowed and current['analyst'].casefold() in accounts and current['analyst'].casefold() not in allowed:
+                if 'analyst' in validated:
+                    raise ValueError(f'{current["analyst"]} is not a member of the {current["team"]} team.')
+                current['analyst'] = ''
             stored = field_values(connection, [call_key]).get(call_key, {})
             field_differences = {key: value for key, value in field_changes.items() if stored.get(key, '') != value}
             merged = {**stored, **field_changes}
@@ -6368,13 +6506,13 @@ def update_tracking(
                 if missing and ('status' in differences or field_differences):
                     raise ValueError(f'Fill {", ".join(missing)} before closing a call as {current["status"]}.')
             connection.execute(
-                f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, assignee, root_domain, root_category, root_cause, '
+                f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, analyst, root_domain, root_category, root_cause, '
                 'status_mode, version, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(call_key) DO UPDATE SET '
-                'status = excluded.status, team = excluded.team, assignee = excluded.assignee, '
+                'status = excluded.status, team = excluded.team, analyst = excluded.analyst, '
                 'root_domain = excluded.root_domain, root_category = excluded.root_category, root_cause = excluded.root_cause, '
                 'status_mode = excluded.status_mode, version = version + 1, '
                 'updated_by = excluded.updated_by, updated_at = excluded.updated_at',
-                (call_key, current['status'], current['team'], current['assignee'], current['root_domain'],
+                (call_key, current['status'], current['team'], current['analyst'], current['root_domain'],
                  current['root_category'], current['root_cause'], current['status_mode'], username, when),
             )
             automatic = current['status_mode'] != 'manual'
@@ -6558,7 +6696,7 @@ def clear_rca_results(task_repository: Any, username: str) -> int:
 # Analyses of the previous tool: imported by JOIN_ID (admins and super-admins)
 # ---------------------------------------------------------------------------
 # Follow-up columns named otherwise than their catalog field; the catalog fields are found by name or key.
-ANALYSES_TRACKING = ('status', 'team', 'assignee', 'root_category', 'root_cause')
+ANALYSES_TRACKING = ('status', 'team', 'analyst', 'root_category', 'root_cause')
 MAX_ANALYSES_ISSUES = 20
 # The equivalences reviewed for the analyses of the previous tool: what each value of their workbooks becomes.
 ANALYSES_EQUIVALENCES_STATE_KEY = 'nq_analyses_equivalences'
@@ -6640,12 +6778,16 @@ class _AnalysesTranslator:
     values of the catalog (same name or same letters), the old names of some values, and new values where the catalog
     accepts them (list values and teams; root categories and causes only through an equivalence with their domain)."""
 
-    def __init__(self, task_repository: Any, users: set[str]) -> None:
+    def __init__(self, task_repository: Any, users: set[str], names: dict[str, str] | None = None) -> None:
         self.fields = {field['key']: field for field in list_fields(task_repository)}
         options = list_options(task_repository)
         self.statuses = [item['name'] for item in options['statuses']]
         self.teams = [item['name'] for item in options['teams']]
         self.users = {name.casefold(): name for name in users}
+        # The accounts with their first and last name, which the analysts of the analyses are matched to.
+        self.accounts = {user: (names or {}).get(user, '') for user in users}
+        # The analysts no account is named as: kept by name, each way of writing them counted.
+        self.without_account: dict[str, Counter] = {}
         self.taxonomy = list_root_causes(task_repository)
         self.domains = [item['name'] for item in self.taxonomy['domains']]
         self.equivalences = analyses_equivalences(task_repository)
@@ -6742,8 +6884,16 @@ class _AnalysesTranslator:
             elif ref == 'status':
                 equivalence = self._equivalence(target, value)
                 found = nq_analyses.list_choice(equivalence['to'] if equivalence else value, self.statuses)
-            elif ref == 'assignee':
-                found = self.users.get((self._equivalence(target, value) or {}).get('to', value).casefold())
+            elif ref == 'analyst':
+                # The account of the analyst (the reviewed equivalence, its username, else the only account named as
+                # it); without one, the analyst keeps the name the most rows write (an analyst without account).
+                equivalence = self._equivalence(target, value)
+                wanted = equivalence['to'] if equivalence else value
+                if not wanted or wanted.strip() in nq_analyses.EMPTY_TEXTS:
+                    return None
+                found = self.users.get(wanted.casefold()) or (None if equivalence else analyst_account(wanted, self.accounts) or None)
+                if not found:
+                    found = self._count_new(self.without_account, self.names.get(nq_analyses.identity(wanted), wanted.strip())[:OPTION_NAME_LIMIT])
             else:
                 equivalence = self._equivalence(target, value)
                 wanted = (equivalence['to'] if equivalence else BUILTIN_ANALYSES_VALUES['team'].get(value.casefold(), value))[:TEAM_NAME_LIMIT]
@@ -6756,7 +6906,7 @@ class _AnalysesTranslator:
             return None
         if field['type'] in {'text', 'list'} and value.strip() in nq_analyses.EMPTY_TEXTS:
             return None
-        if ref in {'analyst', 'reviewer'}:
+        if ref == REVIEWER_FIELD:
             value = self.names.get(nq_analyses.identity(value), value)
         equivalence = self._equivalence(target, value)
         if equivalence is not None:
@@ -7005,7 +7155,7 @@ def _analyses_note(source: str, lines: list[str]) -> str:
 
 
 def import_analyses(task_repository: Any, content: bytes, file_name: str, username: str, users: set[str], *,
-                    overwrite: bool = False, dry_run: bool = False,
+                    overwrite: bool = False, dry_run: bool = False, names: dict[str, str] | None = None,
                     progress: Callable[[str, float], None] | None = None) -> dict[str, Any]:
     """Import the analyses of the previous tool into the follow-up of the calls, by JOIN_ID.
 
@@ -7022,10 +7172,10 @@ def import_analyses(task_repository: Any, content: bytes, file_name: str, userna
     parsed = read_analyses(content, file_name, definitions, lambda name, index, count: report(
         f'Reading the sheet {name}', 0.02 + 0.33 * index / max(count, 1)), workspace_field_profile(task_repository))
     report('Finding the calls in the workspace', 0.36)
-    translator = _AnalysesTranslator(task_repository, users)
+    translator = _AnalysesTranslator(task_repository, users, names)
     # Every way a name of an analyst or a reviewer is written becomes its most used spelling.
     translator.names = nq_analyses.canonical_names([value for entry in parsed['entries'] for (kind, ref), value in entry['values'].items()
-                                                   if (kind, ref) in {('field', 'analyst'), ('field', 'reviewer')}])
+                                                   if (kind, ref) in {('tracking', 'analyst'), ('field', 'reviewer')}])
     with task_repository.connection() as connection:
         known: dict[str, tuple[str, str]] = {}
         for row in connection.execute(f'SELECT DISTINCT call_key, join_id, service FROM {NQ_CALLS_TABLE}'):
@@ -7149,6 +7299,10 @@ def import_analyses(task_repository: Any, content: bytes, file_name: str, userna
                         if ('field', ref, name.casefold()) in applied],
         'new_teams': [{'value': name, 'rows': count} for name, count in sorted(translator.added_teams().values(), key=lambda item: -item[1])
                       if ('tracking', 'team', name.casefold()) in applied],
+        # The analysts no account is named as, who keep their name until they are linked to an account.
+        'analysts_without_account': [{'value': name, 'rows': count} for name, count in sorted(
+            translator._spellings(translator.without_account).values(), key=lambda item: (-item[1], item[0].casefold()))
+            if ('tracking', ANALYST_FIELD, name.casefold()) in applied],
         'new_categories': [{'value': item['name'], 'domain': item['domain'], 'rows': item['rows']}
                            for item in translator.new_roots['categories'].values()
                            if ('tracking', 'root_category', item['name'].casefold()) in applied],
@@ -7258,7 +7412,7 @@ def _write_analyses(task_repository: Any, plans: list[dict[str, Any]], username:
             if progress is not None and number % 100 == 0:
                 progress(number, len(plans))
             call_key = plan['call_key']
-            current = tracking.get(call_key) or {'status': default, 'status_mode': 'auto', 'team': '', 'assignee': '',
+            current = tracking.get(call_key) or {'status': default, 'status_mode': 'auto', 'team': '', 'analyst': '',
                                                   'root_domain': '', 'root_category': '', 'root_cause': '', 'version': 0}
             stored = values.get(call_key, {})
             existing = {str(row['body']).strip() for row in comment_rows.get(call_key, []) if not row['deleted_at']} \
@@ -7312,12 +7466,12 @@ def _write_analyses(task_repository: Any, plans: list[dict[str, Any]], username:
             # As a change made in the call, a change of its fields is its last modification too.
             if follow_up or fields:
                 connection.execute(
-                    f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, assignee, root_domain, root_category, root_cause, '
+                    f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, analyst, root_domain, root_category, root_cause, '
                     'status_mode, version, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(call_key) DO UPDATE SET '
-                    'status = excluded.status, team = excluded.team, assignee = excluded.assignee, root_domain = excluded.root_domain, '
+                    'status = excluded.status, team = excluded.team, analyst = excluded.analyst, root_domain = excluded.root_domain, '
                     'root_category = excluded.root_category, root_cause = excluded.root_cause, status_mode = excluded.status_mode, '
                     'version = version + 1, updated_by = excluded.updated_by, updated_at = excluded.updated_at',
-                    (call_key, row['status'], row['team'], row['assignee'], row['root_domain'], row['root_category'], row['root_cause'],
+                    (call_key, row['status'], row['team'], row['analyst'], row['root_domain'], row['root_category'], row['root_cause'],
                      row['status_mode'], username, last))
                 for ref, value in follow_up.items():
                     _record_history(connection, call_key, ref, str(current.get(ref) or ''), value, username, when)
@@ -7390,7 +7544,7 @@ def _file_equivalence_rows(task_repository: Any, content: bytes, file_name: str,
     """One row per value of the follow-up and list columns of an analyses file, with what it becomes and why."""
     parsed = read_analyses(content, file_name, definitions, profile=workspace_field_profile(task_repository))
     translator.names = nq_analyses.canonical_names([value for entry in parsed['entries'] for (kind, ref), value in entry['values'].items()
-                                                   if (kind, ref) in {('field', 'analyst'), ('field', 'reviewer')}])
+                                                   if (kind, ref) in {('tracking', 'analyst'), ('field', 'reviewer')}])
     reviewable = {('tracking', ref) for ref in ANALYSES_TRACKING} | {
         ('field', field['key']) for field in definitions if field['source'] == 'user' and field['type'] in {'list', 'yes_no'}}
     counts: Counter = Counter()
@@ -7518,7 +7672,7 @@ def _equivalences_workbook(task_repository: Any, rows: list[tuple[Any, ...]], tr
     sheet.auto_filter.ref = sheet.dimensions
     # The values each target takes: those of the catalog, then the new ones the equivalences name.
     choices: dict[str, list[str]] = {
-        'tracking:status': list(translator.statuses), 'tracking:team': list(translator.teams), 'tracking:assignee': sorted(users, key=str.casefold),
+        'tracking:status': list(translator.statuses), 'tracking:team': list(translator.teams), 'tracking:analyst': sorted(users, key=str.casefold),
         'tracking:root_category': [item['name'] for item in taxonomy['categories']],
         'tracking:root_cause': [item['name'] for item in taxonomy['causes']]}
     for field in definitions:
@@ -8151,7 +8305,7 @@ def _excel_value(value: Any) -> Any:
 
 
 HISTORY_LABELS = {
-    'status': 'Status', 'status_auto': 'Status (automatic)', 'status_mode': 'Status set', 'team': 'Team', 'assignee': 'Assignee',
+    'status': 'Status', 'status_auto': 'Status (automatic)', 'status_mode': 'Status set', 'team': 'Team', 'analyst': 'Analyst',
     'root_domain': 'Root Domain', 'root_category': 'Root Category', 'root_cause': 'Root Cause',
     'comment_edit': 'Comment edited', 'comment_delete': 'Comment deleted',
 }
@@ -8203,7 +8357,7 @@ def export_tracking_document(task_repository: Any) -> bytes:
     ensure_nq_tables(task_repository)
     with task_repository.connection() as connection:
         tracking = [dict(row) for row in connection.execute(
-            f'SELECT call_key, status, status_mode, team, assignee, root_domain, root_category, root_cause, version, updated_by, '
+            f'SELECT call_key, status, status_mode, team, analyst, root_domain, root_category, root_cause, version, updated_by, '
             f'updated_at FROM {NQ_CALL_TRACKING_TABLE} ORDER BY call_key')]
         rca_results = [dict(row) for row in connection.execute(
             f'SELECT original_join_id AS join_id, values_json, source_file, imported_by, imported_at '
@@ -8246,9 +8400,71 @@ def export_configuration_document(task_repository: Any) -> bytes:
     return json.dumps(document, ensure_ascii=False, indent=2).encode('utf-8')
 
 
+def upgrade_legacy_document(document: Any) -> Any:
+    """A tracking or configuration document of a version before ticket #124 as this version writes it: its Asignee is
+    the Analyst (fields, follow-up, history, Status Rules, table columns and layouts, equivalences) and the names of its
+    Analyst text field are the Analyst of the calls without an Asignee. Other documents are given back as they are."""
+    if not isinstance(document, dict):
+        return document
+    fields = document.get('fields') if isinstance(document.get('fields'), list) else []
+    tracking = document.get('tracking') if isinstance(document.get('tracking'), list) else []
+    if not any(isinstance(item, dict) and item.get('key') == 'assignee' for item in fields) \
+            and not any(isinstance(item, dict) and 'assignee' in item for item in tracking):
+        return document
+    document = json.loads(json.dumps(document))
+    analyst = next(field for field in nq_catalog.DEFAULT_FIELDS if field['key'] == ANALYST_FIELD)
+    upgraded_fields = []
+    for item in document.get('fields') or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get('key') == ANALYST_FIELD and item.get('source') != 'tracking':
+            continue
+        if item.get('key') == 'assignee' or (item.get('source') == 'tracking' and item.get('source_ref') == 'assignee'):
+            item = {**item, 'key': ANALYST_FIELD, 'source_ref': ANALYST_FIELD}
+            if str(item.get('label') or '').casefold() in V40_FORMER_LABELS:
+                item['label'] = analyst['label']
+            if str(item.get('description') or '') == V40_FORMER_DESCRIPTION:
+                item['description'] = analyst['description']
+        upgraded_fields.append(item)
+    if 'fields' in document:
+        document['fields'] = upgraded_fields
+    rows = {}
+    for item in document.get('tracking') or []:
+        if isinstance(item, dict):
+            if 'assignee' in item:
+                item[ANALYST_FIELD] = item.pop('assignee')
+            rows[_text(item.get('call_key'))] = item
+    # The names of the Analyst text field: the Analyst of the calls without one.
+    values = document.get('field_values') if isinstance(document.get('field_values'), list) else None
+    if values is not None:
+        kept = []
+        for item in values:
+            if not isinstance(item, dict) or item.get('field_key') != ANALYST_FIELD:
+                kept.append(item)
+                continue
+            call_key, name = _text(item.get('call_key')), _text(item.get('value'))
+            row = rows.get(call_key)
+            if row is None and call_key and name:
+                row = rows[call_key] = {'call_key': call_key, 'status': '', 'status_mode': 'auto', 'team': '', ANALYST_FIELD: '',
+                                        'root_domain': '', 'root_category': '', 'root_cause': '', 'version': 1,
+                                        'updated_by': _text(item.get('updated_by')), 'updated_at': _text(item.get('updated_at'))}
+                document.setdefault('tracking', []).append(row)
+            if row is not None and not _text(row.get(ANALYST_FIELD)):
+                row[ANALYST_FIELD] = name
+        document['field_values'] = kept
+    for item in document.get('history') or []:
+        if isinstance(item, dict) and item.get('field') in {'assignee', f'field:{ANALYST_FIELD}'}:
+            item['field'] = ANALYST_FIELD
+    for key, kind in (('status_rules', 'rules'), ('rules', 'rules'), ('table_columns', 'layout'), ('column_order', 'layout'),
+                      ('user_layouts', 'layout'), ('analyses_equivalences', 'equivalences')):
+        if key in document:
+            document[key] = _renamed_json(document[key], V40_RENAMES[kind])
+    return document
+
+
 def import_configuration_document(task_repository: Any, payload: bytes | str) -> None:
     """Merge an Analysis Center configuration like the configuration part of a tracking document."""
-    document = json.loads(payload.decode('utf-8') if isinstance(payload, bytes) else payload)
+    document = upgrade_legacy_document(json.loads(payload.decode('utf-8') if isinstance(payload, bytes) else payload))
     if not isinstance(document, dict) or document.get('format') != CONFIGURATION_FORMAT:
         raise ValueError('The file is not a Non-Qualified Calls configuration export.')
     if int(document.get('version') or 0) > CONFIGURATION_FORMAT_VERSION:
@@ -8311,6 +8527,7 @@ def predicted_configuration(current: dict[str, Any], incoming: dict[str, Any]) -
     columns and order, personal layouts (by username), root cause rule and settings, NQ Prioritization and DT Analyzer
     RCA rules of the document are taken."""
     predicted = json.loads(json.dumps(current))
+    incoming = upgrade_legacy_document(incoming)
 
     def merged_by_name(current_items: Any, incoming_items: Any, members: bool = False) -> list[dict[str, Any]]:
         merged = [dict(item) for item in current_items or [] if isinstance(item, dict)]
@@ -8620,7 +8837,7 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
     is removed. The calls with a JOIN_ID take the key this version computes from it (``calls``),
     so a document whose keys were computed otherwise still finds them; the others keep their key.
     """
-    document = json.loads(payload.decode('utf-8') if isinstance(payload, bytes) else payload)
+    document = upgrade_legacy_document(json.loads(payload.decode('utf-8') if isinstance(payload, bytes) else payload))
     if not isinstance(document, dict) or document.get('format') != TRACKING_FORMAT:
         raise ValueError('The file is not a Non-Qualified Calls tracking export.')
     if int(document.get('version') or 0) > TRACKING_FORMAT_VERSION:
@@ -8652,9 +8869,9 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
             mode = 'manual' if _text(item.get('status_mode')) == 'manual' or (
                 'status_mode' not in item and _text(item.get('status')) not in {'', 'Open'}) else 'auto'
             connection.execute(
-                f'INSERT OR REPLACE INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, status_mode, team, assignee, root_domain, '
+                f'INSERT OR REPLACE INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, status_mode, team, analyst, root_domain, '
                 'root_category, root_cause, version, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                (call_key, _text(item.get('status')), mode, _text(item.get('team')), _text(item.get('assignee')),
+                (call_key, _text(item.get('status')), mode, _text(item.get('team')), _text(item.get('analyst')),
                  _text(item.get('root_domain')), _text(item.get('root_category')), _text(item.get('root_cause')),
                  int(item.get('version') or 1), _text(item.get('updated_by')), incoming_at),
             )
@@ -8738,6 +8955,7 @@ def predicted_tracking_document(before: Any, package: Any) -> Any:
     one) and take their newer edits, and nothing is removed."""
     if not isinstance(before, dict) or not isinstance(package, dict):
         return package
+    package = upgrade_legacy_document(package)
 
     def records(document: dict[str, Any], name: str) -> list[dict[str, Any]]:
         items = document.get(name)
@@ -8764,7 +8982,7 @@ def predicted_tracking_document(before: Any, package: Any) -> Any:
             'status_mode' not in item and _text(item.get('status')) not in {'', 'Open'}) else 'auto'
         tracking[call_key] = {
             'call_key': call_key, 'status': _text(item.get('status')), 'status_mode': mode, 'team': _text(item.get('team')),
-            'assignee': _text(item.get('assignee')), 'root_domain': _text(item.get('root_domain')),
+            'analyst': _text(item.get('analyst')), 'root_domain': _text(item.get('root_domain')),
             'root_category': _text(item.get('root_category')), 'root_cause': _text(item.get('root_cause')),
             'version': int(item.get('version') or 1), 'updated_by': _text(item.get('updated_by')), 'updated_at': incoming_at,
         }
@@ -8927,9 +9145,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     class ApplyCategoriesPayload(BaseModel):
         preview: bool = False
 
-    class AnalystAssignmentsPayload(BaseModel):
-        assignments: dict[str, str] = Field(default_factory=dict)
-        overwrite: bool = False
+    class AnalystLinksPayload(BaseModel):
+        links: dict[str, str] = Field(default_factory=dict)
         preview: bool = False
 
     class SectionsPayload(BaseModel):
@@ -9098,7 +9315,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         ('nr_mode', 'NR Mode'), ('campaign', 'Campaign'), ('service', 'Service'), ('operator', 'Operator'),
         ('operator_vendor', 'Operator_Vendor'), ('vendor_operator', 'Vendor_Operator'), ('vendor', 'Vendor'),
         ('region', 'Region'), ('cluster', 'Cluster'), ('city', 'City'), ('result', 'Result'), ('failure_classification', 'Failure Classification'),
-        ('status', 'Status'), ('status_mode', 'Status Set'), ('team', 'Team'), ('assignee', 'Assignee'), ('root_domain', 'Root Domain'),
+        ('status', 'Status'), ('status_mode', 'Status Set'), ('team', 'Team'), ('analyst', 'Analyst'), ('root_domain', 'Root Domain'),
         ('root_category', 'Root Category'), ('root_cause', 'Root Cause'), ('version', 'CDR Version'),
     )
     report_settings = (
@@ -9117,7 +9334,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         values['datasets'] = [[str(item['id']), item['name']] for item in indexed_datasets(repository)]
         values['status'] = [item['name'] for item in options['statuses']]
         values['team'] = [[UNASSIGNED, 'Unassigned'], *[item['name'] for item in options['teams']]]
-        values['assignee'] = [[UNASSIGNED, 'Unassigned'], *workspace_users()]
+        values['analyst'] = [[UNASSIGNED, 'Unassigned'], *workspace_users()]
         taxonomy = list_root_causes(repository)
         values['root_domain'] = [[UNASSIGNED, NOT_CLASSIFIED], *[domain['name'] for domain in taxonomy['domains']]]
         values['root_category'] = [[UNASSIGNED, NOT_CLASSIFIED], *[item['name'] for item in taxonomy['categories']]]
@@ -9502,7 +9719,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         content, name, form = await uploaded_file(request, 'file', 100)
         users = set(workspace_users())
-        options = {'overwrite': str(form.get('overwrite') or '') == '1', 'dry_run': str(form.get('preview') or '') == '1'}
+        options = {'overwrite': str(form.get('overwrite') or '') == '1', 'dry_run': str(form.get('preview') or '') == '1',
+                   'names': user_names()}
         if str(form.get('stream') or '') != '1':
             try:
                 return JSONResponse(import_analyses(repository, content, name, user.username, users, **options))
@@ -9904,22 +10122,21 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.get('/api/non-qualified-calls/analysts')
     def nq_analysts(user=Depends(core.current_user)) -> JSONResponse:
-        """The analysts and reviewers of the calls with their calls and assignees, and the users of the workspace."""
+        """The analysts and reviewers of the calls without a user account, and the users of the workspace."""
         repository = workspace_repository(user)
         users, names = workspace_users(), user_names()
-        return JSONResponse({**analyst_assignments(repository, {user: names.get(user, '') for user in users}),
+        return JSONResponse({**analysts_without_account(repository, {user: names.get(user, '') for user in users}),
                              'users': users, 'user_names': names})
 
-    @core.app.post('/api/non-qualified-calls/analysts/assign')
-    def nq_assign_analysts(payload: AnalystAssignmentsPayload, user=Depends(core.current_user)) -> JSONResponse:
-        """The calls of each analyst assigned to the user chosen for them, and the Analyst and Reviewer of the calls
-        named as their users (``preview`` counts them, for every role; admins and super-admins apply them)."""
+    @core.app.post('/api/non-qualified-calls/analysts/link')
+    def nq_link_analysts(payload: AnalystLinksPayload, user=Depends(core.current_user)) -> JSONResponse:
+        """Link each analyst or reviewer without account to the user account chosen for them (``preview`` counts the
+        calls that change, for every role; admins and super-admins apply it)."""
         if not payload.preview:
             config_user(user)
         repository = workspace_repository(user)
-        return JSONResponse(translate(lambda: assign_analysts(
-            repository, payload.assignments, user.username, set(workspace_users()), names=user_names(),
-            overwrite=payload.overwrite, preview=payload.preview)))
+        return JSONResponse(translate(lambda: link_analysts(
+            repository, payload.links, user.username, set(workspace_users()), names=user_names(), preview=payload.preview)))
 
     @core.app.post('/api/non-qualified-calls/root-causes/apply-categories')
     def nq_apply_cause_categories(payload: ApplyCategoriesPayload, user=Depends(config_user)) -> JSONResponse:

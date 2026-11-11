@@ -65,9 +65,11 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     # The 37 fields of the meeting workbook, with the Auto RCA fields, the Last Cell ID and Failure Comment of the CDR and
     # the fields of the analyses of the previous tool, of the DT Analyzer RCA and of the NQ Prioritization, each next to the
     # field it goes with in the Excel export.
-    assert len(fields) == 72
+    assert len(fields) == 71
     keys = [field['key'] for field in fields]
-    for before, after in (('nq_call_status', 'priority'), ('priority', 'prioritization'), ('assignee', 'analyst'), ('analyst', 'reviewer'),
+    # One Analyst (the user account, or the name of an analyst without account): the Asignee is gone (ticket #124).
+    assert 'assignee' not in keys and next(field for field in fields if field['key'] == 'analyst')['source'] == 'tracking'
+    for before, after in (('nq_call_status', 'priority'), ('priority', 'prioritization'), ('team_responsible', 'analyst'), ('analyst', 'reviewer'),
                           ('planned_date', 'planned_fy'), ('implementation_status', 'implementation_team'),
                           ('initial_root_category', 'initial_root_cause'),
                           ('vendor_when_failure', 'vendor_2_when_failure'), ('reviewer', 'unique_id'),
@@ -256,7 +258,7 @@ def test_only_admins_change_the_configuration_and_every_user_has_a_table_layout(
         ('put', '/api/non-qualified-calls/status-rules'): {'rules': state['status_rules']},
         ('put', '/api/non-qualified-calls/root-causes'): {'domains': [], 'categories': [], 'causes': []},
         ('put', '/api/non-qualified-calls/table-columns'): {'builtin': ['join_id']},
-        ('post', '/api/non-qualified-calls/analysts/assign'): {'assignments': {}},
+        ('post', '/api/non-qualified-calls/analysts/link'): {'links': {}},
         ('post', '/api/non-qualified-calls/root-causes/apply-categories'): {'preview': True},
         ('post', '/api/non-qualified-calls/table-layout/publish'): None,
     }
@@ -298,14 +300,14 @@ def test_only_admins_change_the_configuration_and_every_user_has_a_table_layout(
     page = client.get('/non-qualified-calls').text
     assert 'id="nq-config-toggle"' in page and 'Only admins and super-admins can change the NQ Analysis Configuration.' in page
     for dialog in ('nq-options-dialog', 'nq-fields-dialog', 'nq-root-dialog', 'nq-status-rules-dialog', 'nq-rca-dialog',
-                   'nq-assign-analysts-dialog', 'nq-analyses-dialog'):
+                   'nq-link-analysts-dialog', 'nq-analyses-dialog'):
         assert f'id="{dialog}"' in page, dialog
     assert page.count('class="nq-config-fieldset" disabled') >= 10 and 'data-nq-status-rules-open title=' in page
     for path in ('/api/non-qualified-calls/analysts', '/api/non-qualified-calls/analyses/template',
                  '/api/non-qualified-calls/analyses/equivalences'):
         assert client.get(path).status_code == 200, path
-    assert client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': {}}).status_code == 403
-    assert client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': {}, 'preview': True}).status_code == 200
+    assert client.post('/api/non-qualified-calls/analysts/link', json={'links': {}}).status_code == 403
+    assert client.post('/api/non-qualified-calls/analysts/link', json={'links': {}, 'preview': True}).status_code == 200
     # Admins save their layout for the workspace: its columns, the Table column and Excel of the fields and the order.
     login(client)
     client.put('/api/non-qualified-calls/table-layout/mine', json={'builtin': ['cell_id'], 'fields': ['priority'],
@@ -604,7 +606,7 @@ def test_catalog_workbook_round_trip_and_the_meeting_layout(client, tmp_path):
     assert imported.status_code == 200, imported.text
     route = next(field for field in imported.json()['fields'] if field['label'] == 'Drive Route')
     assert [option['name'] for option in route['options']] == ['M25', 'A1'] and route['section'] == 'analysis' and route['in_table']
-    assert len(imported.json()['fields']) == 73
+    assert len(imported.json()['fields']) == 72
     # The workbook of the meeting: sections in the first row, fields in the second, values below.
     meeting = Workbook()
     sheet = meeting.active
@@ -634,7 +636,7 @@ def test_tracking_document_carries_the_analysis_center(client, tmp_path):
     sections[0]['label'] = 'Overview'
     assert client.put('/api/non-qualified-calls/sections', json={'sections': sections}).status_code == 200
     document = json.loads(nq.export_tracking_document(core.repository))
-    assert document['version'] == 3 and document['sections'][0]['label'] == 'Overview'
+    assert document['version'] == nq.TRACKING_FORMAT_VERSION and document['sections'][0]['label'] == 'Overview'
     assert document['rca_results'][0]['join_id'] == '0xA1' and document['status_rules']
     assert document['tracking'][0]['status_mode'] == 'manual' and document['tracking'][0]['root_category'] == 'E2E'
     with core.repository.connection() as connection:
@@ -651,7 +653,7 @@ def test_tracking_document_carries_the_analysis_center(client, tmp_path):
 def test_tracking_documents_find_their_calls_by_join_id(client, tmp_path):
     calls = setup_calls(client, tmp_path)
     key = calls['0xA1']['call_key']
-    patch(client, calls['0xA1'], {'team': 'Netcheck', 'fields': {'analyst': 'Anudeep'}})
+    patch(client, calls['0xA1'], {'team': 'Netcheck', 'fields': {'reviewer': 'Anudeep'}})
     assert client.post(f'/api/non-qualified-calls/calls/{key}/comments', json={'body': 'Checked'}).status_code == 200
     document = nq.export_tracking_document(core.repository).decode('utf-8')
     # Each call travels with its JOIN_ID and service.
@@ -663,7 +665,7 @@ def test_tracking_documents_find_their_calls_by_join_id(client, tmp_path):
             connection.execute(f'DELETE FROM {table}')
     assert nq.import_tracking_document(core.repository, former) == 1
     detail = client.get(f'/api/non-qualified-calls/calls/{key}').json()
-    assert detail['call']['team'] == 'Netcheck' and detail['call']['fields']['analyst'] == 'Anudeep'
+    assert detail['call']['team'] == 'Netcheck' and detail['call']['fields']['reviewer'] == 'Anudeep'
     assert [comment['body'] for comment in detail['comments']] == ['Checked'] and detail['history']
     # A call without a JOIN_ID keeps its key, and so does a Speech sample with the key of its JOIN_ID and sample.
     assert nq._document_call_keys([{'call_key': 'abc', 'service': 'voice', 'join_id': ''}]) == {}
@@ -708,7 +710,7 @@ def test_first_version_workspaces_move_to_the_analysis_center(client, tmp_path):
     assert [item['name'] for item in nq.list_options(repository)['statuses']][0] == 'Not Attended'
     # The workspace's field keeps its key and values and takes its place in the catalog.
     findings = next(field for field in nq.list_fields(repository) if field['label'] == 'Findings')
-    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 72
+    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 71
 
 
 def test_recommendation_engine_maps_each_source_onto_the_catalog():
@@ -772,7 +774,7 @@ def test_calls_are_read_from_their_latest_versions_kept_up_to_date(client, tmp_p
     assert nq._schema_ready(repository)
 
 
-def test_an_assignee_brings_the_call_to_their_team(client, tmp_path):
+def test_an_analyst_brings_the_call_to_their_team(client, tmp_path):
     calls = setup_calls(client, tmp_path)
     core.repository.create_user('analyst', 'analyst123', 'user-editor')
     user_id = next(int(row['id']) for row in core.repository.list_users() if row['username'] == 'analyst')
@@ -782,13 +784,13 @@ def test_an_assignee_brings_the_call_to_their_team(client, tmp_path):
     members = {'Netcheck': ['analyst'], 'Operations': ['super']}
     teams = [{**team, 'previous': team['name'], 'members': members.get(team['name'], [])} for team in state['options']['teams']]
     assert client.put('/api/non-qualified-calls/options', json={'statuses': statuses, 'teams': teams}).status_code == 200
-    assert patch(client, calls['0xA1'], {'assignee': 'analyst'})['team'] == 'Netcheck'
-    # Out of a team with other members, the assignee moves the call to their own team.
+    assert patch(client, calls['0xA1'], {'analyst': 'analyst'})['team'] == 'Netcheck'
+    # Out of a team with other members, the analyst moves the call to their own team.
     other = patch(client, calls['0xB2'], {'team': 'Operations'})
-    assert other['team'] == 'Operations' and patch(client, calls['0xB2'], {'assignee': 'analyst'})['team'] == 'Netcheck'
+    assert other['team'] == 'Operations' and patch(client, calls['0xB2'], {'analyst': 'analyst'})['team'] == 'Netcheck'
 
 
-def test_analysts_become_the_asignees_of_their_calls(client, tmp_path):
+def test_analysts_without_account_are_linked_to_their_accounts(client, tmp_path):
     calls = setup_calls(client, tmp_path)
     # A signum is found by the first name of its account.
     names = {'EANUDRE': ('Anudeep', 'Reddy'), 'jorge.m': ('Jorge', 'Martin')}
@@ -802,88 +804,81 @@ def test_analysts_become_the_asignees_of_their_calls(client, tmp_path):
     teams = [{**team, 'previous': team['name'], 'members': ['super'] if team['name'] == 'Netcheck' else []}
              for team in state['options']['teams']]
     assert client.put('/api/non-qualified-calls/options', json={'statuses': statuses, 'teams': teams}).status_code == 200
-    patch(client, calls['0xA1'], {'fields': {'analyst': 'Raj Kumar'}, 'team': 'Netcheck'})
-    patch(client, calls['0xB2'], {'fields': {'analyst': 'rajkumar'}, 'assignee': 'super'})
-    patch(client, calls['0xC3'], {'fields': {'analyst': 'Anudeep', 'reviewer': 'Jorge'}})
-    # Analyst and Reviewer filter the calls by the names they hold.
-    state = client.get('/api/non-qualified-calls/state').json()
-    assert state['value_filter_fields'] == ['analyst', 'reviewer'] and state['user_names']['EANUDRE'] == 'Anudeep Reddy'
-    assert state['default_users'] == ['super', 'admin', 'demo']
-    assert state['filter_options']['field:analyst'] == ['Anudeep', 'Raj Kumar', 'rajkumar']
-    assert state['filter_options']['field:reviewer'] == ['Jorge']
-    assert [call['join_id'] for call in query(client, filters={'fields': {'analyst': ['Raj Kumar', 'rajkumar']}})['calls']] == ['0xB2', '0xA1']
-    assert [call['join_id'] for call in query(client, filters={'fields': {'reviewer': [nq.UNASSIGNED]}})['calls']] == ['0xB2', '0xA1']
-    # An analysis imported for a call whose CDR is not loaded yet waits for it.
+    patch(client, calls['0xC3'], {'fields': {'reviewer': 'Jorge'}})
+    # The analysts without account the analyses of the previous tool bring (also of a call whose CDR is not loaded yet).
+    default = nq.untracked_status(core.repository)
     with core.repository.connection() as connection:
-        connection.execute(f"INSERT INTO {nq.NQ_FIELD_VALUES_TABLE} (call_key, field_key, value, updated_by, updated_at) "
-                           "VALUES ('waiting-call', 'analyst', 'Anudeep', 'import', '2026-09-01T10:00:00')")
-    # One row per analyst or reviewer (the same letters are one name), with the user named as them; also the analyses
-    # waiting for their CDR.
+        for call_key, analyst, team in ((calls['0xA1']['call_key'], 'Raj Kumar', 'Netcheck'), (calls['0xB2']['call_key'], 'rajkumar', ''),
+                                        (calls['0xC3']['call_key'], 'Anudeep', ''), ('waiting-call', 'Anudeep', '')):
+            connection.execute(
+                f"INSERT INTO {nq.NQ_CALL_TRACKING_TABLE} (call_key, status, team, analyst, status_mode, version, updated_by, updated_at) "
+                "VALUES (?, ?, ?, ?, 'auto', 1, 'import', '2026-09-01T10:00:00') ON CONFLICT(call_key) DO UPDATE SET "
+                "team = excluded.team, analyst = excluded.analyst", (call_key, default, team, analyst))
+    # The Analyst filters the calls by the accounts and the names it holds; the Reviewer by the names it holds.
+    state = client.get('/api/non-qualified-calls/state').json()
+    assert state['value_filter_fields'] == ['reviewer'] and state['user_names']['EANUDRE'] == 'Anudeep Reddy'
+    assert state['default_users'] == ['super', 'admin', 'demo']
+    assert state['filter_options']['analyst'] == ['Anudeep', 'Raj Kumar', 'rajkumar']
+    assert state['filter_options']['field:reviewer'] == ['Jorge']
+    assert [call['join_id'] for call in query(client, filters={'analyst': ['Raj Kumar', 'rajkumar']})['calls']] == ['0xB2', '0xA1']
+    # A name without account cannot be chosen as the Analyst of a call.
+    assert client.patch(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}",
+                        json={'changes': {'analyst': 'Anudeep'}}).status_code == 400
+    # One row per analyst or reviewer without account (the same letters are one name), with the account named as them.
     listed = client.get('/api/non-qualified-calls/analysts').json()
-    assert [(item['key'], item['analyst_calls'], item['reviewer_calls'], item['unassigned'], item['suggested'])
-            for item in listed['people']] == [('anudeep', 2, 0, 2, 'EANUDRE'), ('rajkumar', 2, 0, 1, 'rajkumar.s'),
-                                              ('jorge', 0, 1, 0, 'jorge.m')]
+    assert [(item['key'], item['analyst_calls'], item['reviewer_calls'], item['suggested']) for item in listed['people']] == [
+        ('anudeep', 2, 0, 'EANUDRE'), ('rajkumar', 2, 0, 'rajkumar.s'), ('jorge', 0, 1, 'jorge.m')]
     assert sorted(listed['people'][1]['spellings']) == ['Raj Kumar', 'rajkumar'] and 'ashish.a' in listed['users']
     assert listed['user_names'] == {'EANUDRE': 'Anudeep Reddy', 'jorge.m': 'Jorge Martin'}
-    assert nq._analyst_user(['Ashish'], listed['users']) == ''
-    # The preview counts the calls without an assignee, the Analysts named as their account (when it has a name) and
-    # the teams the user joins, and changes nothing.
-    assignments = {'rajkumar': 'rajkumar.s', 'anudeep': 'EANUDRE'}
-    preview = client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': assignments, 'preview': True}).json()
-    assert preview == {'calls': 3, 'assignees': 3, 'analyst_names': 2, 'reviewer_names': 0, 'waiting': 1,
-                       'people': {'rajkumar': 1, 'anudeep': 2}, 'joins': [{'team': 'Netcheck', 'user': 'rajkumar.s'}]}
-    assert client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['call']['assignee'] == ''
-    applied = client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': assignments}).json()
-    assert applied['calls'] == 3
+    assert nq._analyst_user(['Ashish'], listed['users']) == '' and nq.analyst_account('Rajkumar', listed['users']) == 'rajkumar.s'
+    # The preview counts the calls and the teams the account joins, and changes nothing.
+    links = {'rajkumar': 'rajkumar.s', 'anudeep': 'EANUDRE'}
+    preview = client.post('/api/non-qualified-calls/analysts/link', json={'links': links, 'preview': True}).json()
+    assert preview == {'calls': 4, 'analyst_calls': 4, 'reviewer_calls': 0, 'waiting': 1,
+                       'people': {'rajkumar': 2, 'anudeep': 2}, 'joins': [{'team': 'Netcheck', 'user': 'rajkumar.s'}]}
+    assert client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['call']['analyst'] == 'Raj Kumar'
+    assert client.post('/api/non-qualified-calls/analysts/link', json={'links': links}).json()['calls'] == 4
     # The waiting analysis changes too, with its history, for when its CDR is loaded.
     with core.repository.connection() as connection:
-        waiting = connection.execute(f"SELECT assignee FROM {nq.NQ_CALL_TRACKING_TABLE} WHERE call_key = 'waiting-call'").fetchone()
-        analyst = connection.execute(f"SELECT value FROM {nq.NQ_FIELD_VALUES_TABLE} WHERE call_key = 'waiting-call' "
-                                     "AND field_key = 'analyst'").fetchone()
+        waiting = connection.execute(f"SELECT analyst FROM {nq.NQ_CALL_TRACKING_TABLE} WHERE call_key = 'waiting-call'").fetchone()
         changes = {row[0] for row in connection.execute(f"SELECT field FROM {nq.NQ_CALL_HISTORY_TABLE} WHERE call_key = 'waiting-call'")}
-    assert (waiting[0], analyst[0]) == ('EANUDRE', 'Anudeep Reddy') and {'assignee', 'field:analyst'} <= changes
+    assert waiting[0] == 'EANUDRE' and 'analyst' in changes
     detail = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()
-    assert (detail['call']['assignee'], detail['call']['team']) == ('rajkumar.s', 'Netcheck')
-    assert any(entry['field'] == 'assignee' and entry['new_value'] == 'rajkumar.s' for entry in detail['history'])
+    assert (detail['call']['analyst'], detail['call']['team']) == ('rajkumar.s', 'Netcheck')
+    assert any(entry['field'] == 'analyst' and (entry['old_value'], entry['new_value']) == ('Raj Kumar', 'rajkumar.s')
+               for entry in detail['history'])
     third = client.get(f"/api/non-qualified-calls/calls/{calls['0xC3']['call_key']}").json()
-    assert (third['call']['assignee'], third['call']['team']) == ('EANUDRE', '')
-    # The Analyst takes the name of the account, in the history; one without a name keeps its own.
-    assert third['call']['fields']['analyst'] == 'Anudeep Reddy' and detail['call']['fields']['analyst'] == 'Raj Kumar'
-    assert any(entry['field'] == 'field:analyst' and entry['old_value'] == 'Anudeep' for entry in third['history'])
-    # So does the Reviewer.
-    reviewed = client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': {'jorge': 'jorge.m'}}).json()
-    assert (reviewed['calls'], reviewed['assignees'], reviewed['reviewer_names'], reviewed['people']) == (1, 0, 1, {'jorge': 1})
+    assert (third['call']['analyst'], third['call']['team']) == ('EANUDRE', '')
+    # The Reviewer takes the first and last name of the account.
+    reviewed = client.post('/api/non-qualified-calls/analysts/link', json={'links': {'jorge': 'jorge.m'}}).json()
+    assert (reviewed['calls'], reviewed['analyst_calls'], reviewed['reviewer_calls'], reviewed['people']) == (1, 0, 1, {'jorge': 1})
     assert client.get(f"/api/non-qualified-calls/calls/{calls['0xC3']['call_key']}").json()['call']['fields']['reviewer'] == 'Jorge Martin'
     netcheck = next(team for team in nq.list_options(core.repository)['teams'] if team['name'] == 'Netcheck')
     assert sorted(netcheck['members']) == ['rajkumar.s', 'super']
-    # The Asignee a call already has stays unless replaced.
-    assert client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': assignments}).json()['calls'] == 0
-    replaced = client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': assignments, 'overwrite': True}).json()
-    assert replaced['calls'] == 1
-    assert client.get(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}").json()['call']['assignee'] == 'rajkumar.s'
-    assert client.get('/api/non-qualified-calls/analysts').json()['people'][0]['unassigned'] == 0
-    unknown = client.post('/api/non-qualified-calls/analysts/assign', json={'assignments': {'anudeep': 'nobody'}})
+    # Everybody has an account now.
+    assert client.get('/api/non-qualified-calls/analysts').json()['people'] == []
+    unknown = client.post('/api/non-qualified-calls/analysts/link', json={'links': {'anudeep': 'nobody'}})
     assert unknown.status_code == 400 and 'nobody' in unknown.json()['detail']
 
 
 def test_each_filter_lists_the_values_the_other_filters_leave(client, tmp_path):
     calls = setup_calls(client, tmp_path)
-    patch(client, calls['0xA1'], {'fields': {'analyst': 'Raj Kumar'}, 'team': 'Netcheck'})
+    patch(client, calls['0xA1'], {'fields': {'reviewer': 'Raj Kumar'}, 'team': 'Netcheck'})
     values = lambda filters: client.post('/api/non-qualified-calls/filters/values', json={'filters': filters}).json()['values']
     every = values({})
     operators = sorted({call['operator'] for call in calls.values()})
     dataset = str(calls['0xA1']['dataset_id'])
     assert every['operator'] == operators and every['technology'] == ['LTE', 'NR'] and every['datasets'] == [dataset]
-    assert every['field:analyst'] == ['', 'Raj Kumar'] and every['team'] == ['', 'Netcheck']
+    assert every['field:reviewer'] == ['', 'Raj Kumar'] and every['team'] == ['', 'Netcheck']
     # A filter leaves in the others only the values of its calls, and keeps all of its own.
     ee = calls['0xC3']['operator']
     chosen = values({'operator': [ee]})
     assert chosen['operator'] == operators and chosen['technology'] == ['NR'] and chosen['datasets'] == [dataset]
-    assert chosen['field:analyst'] == [''] and chosen['team'] == ['']
+    assert chosen['field:reviewer'] == [''] and chosen['team'] == ['']
     # The fields of the analysis too, also against the other filters.
-    raj = values({'fields': {'analyst': ['Raj Kumar']}})
-    assert raj['field:analyst'] == ['', 'Raj Kumar'] and raj['technology'] == ['LTE'] and raj['operator'] == [calls['0xA1']['operator']]
-    assert values({'operator': [ee], 'fields': {'analyst': ['Raj Kumar']}})['datasets'] == []
+    raj = values({'fields': {'reviewer': ['Raj Kumar']}})
+    assert raj['field:reviewer'] == ['', 'Raj Kumar'] and raj['technology'] == ['LTE'] and raj['operator'] == [calls['0xA1']['operator']]
+    assert values({'operator': [ee], 'fields': {'reviewer': ['Raj Kumar']}})['datasets'] == []
 
 
 def test_the_spellings_of_a_netcheck_rca_value_are_one_value(client, tmp_path):
@@ -1153,20 +1148,20 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     again = client.post('/api/non-qualified-calls/analyses/import', data={'preview': '1'},
                         files={'file': ('export.xlsx', io.BytesIO(exported), 'application/octet-stream')}).json()
     assert again['matched'] == 4 and 'Analysis Status' in again['columns'] and again['changed'] == 0
-    # The NQ Analysis Configuration menu ends with both imports and Analysts / Reviewers → Asignees after a line, and the sections
+    # The NQ Analysis Configuration menu ends with both imports and Link Analysts to Accounts after a line, and the sections
     # menu of the module lists it after a line with every option (the page opens them); only admins and super-admins
     # import analyses.
     page = client.get('/non-qualified-calls').text
     center = page.split('id="nq-config-menu"', 1)[1].split('</div>\n  </div>', 1)[0]
     assert center.index('nq-menu-separator') < center.index('id="nq-rca-open"') < center.index('id="nq-analyses-open"') \
-        < center.index('id="nq-assign-analysts-open"')
+        < center.index('id="nq-link-analysts-open"')
     assert 'Import Ericsson RCA Results</strong>' in center and 'Import Previous NQ Analyses</strong>' in center
     assert 'nq-import-toggle' not in page
     menu = page.split('data-module-sections-for="non-qualified-calls"', 1)[1].split('</nav>', 1)[0]
     assert menu.index('<span>NQ Calls</span>') < menu.index('module-sections-separator') < menu.index('<span>NQ Analysis Configuration</span>')
     script = (Path(__file__).parents[2] / 'src/web_interface/static/js/nq/non_qualified_calls.js').read_text(encoding='utf-8')
     anchors = ('fields-and-sections', 'statuses-and-teams', 'status-rules', 'root-cause-catalog', 'dta-rca-rules',
-               'import-ericsson-rca-results', 'import-previous-nq-analyses', 'analysts-reviewers-to-asignees')
+               'import-ericsson-rca-results', 'import-previous-nq-analyses', 'link-analysts-to-accounts')
     for anchor in ('section-nq-analysis-configuration', *anchors):
         assert f'href="/non-qualified-calls#{anchor}"' in menu and f"'{anchor}':" in script, anchor
     assert menu.index('#root-cause-catalog') < menu.index('#dta-rca-rules') < menu.rindex('module-sections-separator') \
@@ -1178,7 +1173,7 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     assert toolbar.index('data-nq-layout-view="mine"') < toolbar.index('id="nq-layout-publish"') \
         < toolbar.index('id="nq-column-order-reset"') < toolbar.index('id="nq-columns-open"')
     assert 'in your own layout (only for you)">Columns</button>' in toolbar
-    # The Global Status and the Team / Assignee come before the comments; the calls panel follows the Filters.
+    # The Global Status and the Team / Analyst come before the comments; the calls panel follows the Filters.
     head = page.split('<thead>', 1)[1].split('</thead>', 1)[0]
     assert head.index('data-sort="root_category"') < head.index('data-sort="status"') < head.index('data-sort="team"') \
         < head.index('data-sort="comments"') and '>Global Status</span>' in head
@@ -1188,7 +1183,7 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     general = page.split('>General Filters:</p>', 1)[1].split('id="nq-field-filters-title"', 1)[0]
     fields = page.split('id="nq-field-filters-title">NQ Analysis Fields Filters:</p>', 1)[1].split('id="nq-column-filters-title"', 1)[0]
     assert 'data-nq-filter="campaign"' in general and 'data-nq-filter="version"' in general and 'data-nq-filter="status"' not in general
-    for name in ('failure_classification', 'failure_category', 'status', 'status_mode', 'state', 'team', 'assignee', 'root_domain',
+    for name in ('failure_classification', 'failure_category', 'status', 'status_mode', 'state', 'team', 'analyst', 'root_domain',
                  'root_category', 'root_cause'):
         assert f'data-nq-filter="{name}"' in fields, name
     # Each group in a card of its own.
@@ -1302,9 +1297,11 @@ def test_analyses_of_the_previous_tool_keep_everything_through_reviewed_equivale
     preview = upload('/api/non-qualified-calls/analyses/import', preview='1').json()
     assert [item['sheet'] for item in preview['sheets']] == ['Vodafone NSA', 'MBB Data Analysis']
     assert (preview['calls'], preview['matched'], preview['pending'], preview['duplicates'], preview['skipped']) == (5, 4, 1, 1, 0)
-    assert preview['noted'] == ['Campaign'] and preview['cdr_columns'] == 5
+    # A second column of the Analyst (the Asignee after the Team) stays in the import note.
+    assert preview['noted'] == ['Asignee', 'Campaign'] and preview['cdr_columns'] == 5
     assert preview['new_categories'] == [{'value': 'Additional Investigation LTE', 'domain': 'Additional Investigation', 'rows': 1}]
     assert preview['new_teams'] == [{'value': 'Transport Stream', 'rows': 1}]
+    assert preview['analysts_without_account'] == [{'value': 'Raj Kumar', 'rows': 2}, {'value': 'Sujay', 'rows': 1}]
     assert query(client, filters={'fields': {'analysis_status': ['Finished']}})['total'] == 0
     result = upload('/api/non-qualified-calls/analyses/import').json()
     assert (result['changed'], result['pending'], result['comments']) == (4, 1, 5)
@@ -1313,7 +1310,8 @@ def test_analyses_of_the_previous_tool_keep_everything_through_reviewed_equivale
     assert (first['root_category'], first['root_domain'], first['root_cause'], first['team']) == (
         'Additional Investigation LTE', 'Additional Investigation', '', 'RAN Planning Coverage')
     values = first['values']
-    assert (values['priority'], values['analyst'], values['analysis_status'], values['failed_party']) == ('P2', 'Raj Kumar', 'Finished', 'UE_A (MT)')
+    # The analysts no account is named as keep their name as the Analyst of their calls.
+    assert (values['priority'], first['analyst'], values['analysis_status'], values['failed_party']) == ('P2', 'Raj Kumar', 'Finished', 'UE_A (MT)')
     # Two vendors in one cell are Vendor 1 and Vendor 2.
     assert (values['band_when_failure'], values['vendor_when_failure'], values['vendor_2_when_failure']) == ('LTE800', 'Ericsson', 'Huawei')
     assert (values['planned_status'], values['implementation_status'], values['planned_fy']) == ('Not Planned', 'Implemented', 'FY27')
@@ -1359,7 +1357,7 @@ def test_analyses_of_the_previous_tool_keep_everything_through_reviewed_equivale
     frame = calls_frame().iloc[[3]].assign(Call_Status='Failed', status='Failed')
     add_cdr(tmp_path, 'UK_Voice_Q4.xlsx', 'voice', frame)
     later = {call['join_id']: call for call in query(client)['calls']}['0xD4']
-    assert (later['values']['analysis_status'], later['values']['analyst'], later['values']['failed_party'], later['team']) == (
+    assert (later['values']['analysis_status'], later['analyst'], later['values']['failed_party'], later['team']) == (
         'Pending', 'Raj Kumar', 'UE_A (MO)', 'Transport Stream')
 
 
@@ -1993,3 +1991,88 @@ def test_the_import_of_previous_analyses_streams_its_progress(client, tmp_path):
     bad = client.post('/api/non-qualified-calls/analyses/import', data={'stream': '1'},
                       files={'file': ('analyses.csv', io.BytesIO(b'Nothing,Here\n1,2\n'), 'text/csv')})
     assert 'JOIN_ID column' in [json.loads(line) for line in bad.text.splitlines() if line.strip()][-1]['error']
+
+
+def test_workspaces_before_ticket_124_merge_the_asignee_and_the_analyst(client, tmp_path):
+    # A workspace of before: the Asignee of the follow-up and the Analyst text field of the analyses of the previous tool.
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+    keys = {join_id: call['call_key'] for join_id, call in calls.items()}
+    patch(client, calls['0xA1'], {'analyst': 'super'})
+    default = nq.untracked_status(repository)
+    with repository.connection() as connection:
+        connection.execute(f'ALTER TABLE {nq.NQ_CALL_TRACKING_TABLE} RENAME COLUMN analyst TO assignee')
+        connection.execute(f"UPDATE {nq.NQ_FIELDS_TABLE} SET field_key = 'assignee', source_ref = 'assignee', label = 'Asignee', "
+                           "description = ? WHERE field_key = 'analyst'", (nq.V40_FORMER_DESCRIPTION,))
+        connection.execute(f"INSERT INTO {nq.NQ_FIELDS_TABLE} (field_key, label, field_type, position, section, source) "
+                           "VALUES ('analyst', 'Analyst', 'text', 39, 'general', 'user')")
+        connection.execute(f"UPDATE {nq.NQ_CALL_HISTORY_TABLE} SET field = 'assignee' WHERE field = 'analyst'")
+        for call_key, name in ((keys['0xA1'], 'Raj Kumar'), (keys['0xB2'], 'Sujay'), ('waiting-call', 'Jorge')):
+            connection.execute(f"INSERT INTO {nq.NQ_FIELD_VALUES_TABLE} (call_key, field_key, value, updated_by, updated_at) "
+                               "VALUES (?, 'analyst', ?, 'import', '2026-09-01T10:00:00')", (call_key, name))
+            connection.execute(f"INSERT INTO {nq.NQ_CALL_HISTORY_TABLE} (uid, call_key, field, old_value, new_value, changed_by, changed_at) "
+                               "VALUES (?, ?, 'field:analyst', '', ?, 'import', '2026-09-01T10:00:00')", (f'h-{name}', call_key, name))
+        connection.execute(f"INSERT INTO {nq.NQ_USER_LAYOUTS_TABLE} (username, layout_json, view, updated_at) VALUES "
+                           "('super', ?, 'mine', '')", (json.dumps({'fields': ['assignee', 'analyst', 'reviewer']}),))
+    repository.set_workspace_state(nq.SAVED_FILTERS_STATE_KEY, json.dumps({'assignee': ['super'], 'fields': {'field:analyst': ['Sujay']},
+                                                                          'field:analyst': ['Raj Kumar']}))
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V40_STATE_KEY, '')
+    repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '2026-10-30.1')
+    nq.ensure_nq_tables(repository)
+    assert repository.get_workspace_state(nq.SCHEMA_STATE_KEY) == nq.SCHEMA_VERSION
+    with repository.connection() as connection:
+        assert 'analyst' in nq._columns_of(connection, nq.NQ_CALL_TRACKING_TABLE)
+        tracked = {row[0]: row[1] for row in connection.execute(f'SELECT call_key, analyst FROM {nq.NQ_CALL_TRACKING_TABLE}')}
+        left = connection.execute(f"SELECT COUNT(*) FROM {nq.NQ_FIELD_VALUES_TABLE} WHERE field_key = 'analyst'").fetchone()[0]
+        history = Counter(row[0] for row in connection.execute(f'SELECT field FROM {nq.NQ_CALL_HISTORY_TABLE}'))
+        layout = json.loads(connection.execute(f"SELECT layout_json FROM {nq.NQ_USER_LAYOUTS_TABLE} WHERE username = 'super'").fetchone()[0])
+    # The account the call had stays; the calls without one take the name of their Analyst (also a call not loaded yet).
+    assert (tracked[keys['0xA1']], tracked[keys['0xB2']], tracked['waiting-call']) == ('super', 'Sujay', 'Jorge') and left == 0
+    assert history['analyst'] == 4 and not {'assignee', 'field:analyst'} & set(history)
+    fields = {field['key']: field for field in nq.list_fields(repository)}
+    assert 'assignee' not in fields and (fields['analyst']['label'], fields['analyst']['source'], fields['analyst']['source_ref']) == (
+        'Analyst', 'tracking', 'analyst')
+    assert fields['analyst']['description'] == next(field for field in nq_catalog.DEFAULT_FIELDS if field['key'] == 'analyst')['description']
+    assert layout == {'fields': ['analyst', 'reviewer']}
+    saved = json.loads(repository.get_workspace_state(nq.SAVED_FILTERS_STATE_KEY))
+    assert saved['analyst'] == ['super', 'Raj Kumar'] and saved['fields'] == {'analyst': ['Sujay']}
+    # Run again, it changes nothing.
+    nq._merge_analyst_fields(repository)
+    with repository.connection() as connection:
+        assert {row[0]: row[1] for row in connection.execute(f'SELECT call_key, analyst FROM {nq.NQ_CALL_TRACKING_TABLE}')} == tracked
+
+
+def test_tracking_documents_before_ticket_124_bring_their_asignee_as_the_analyst(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    key = calls['0xA1']['call_key']
+    patch(client, calls['0xA1'], {'analyst': 'super'})
+    document = json.loads(nq.export_tracking_document(core.repository))
+    assert document['version'] == nq.TRACKING_FORMAT_VERSION and document['tracking'][0]['analyst'] == 'super'
+    # The same document as a version before wrote it: the Asignee, and the Analyst text field of another call.
+    former = json.loads(json.dumps(document))
+    former['version'] = 3
+    for row in former['tracking']:
+        row['assignee'] = row.pop('analyst')
+    for field in former['fields']:
+        if field['key'] == 'analyst':
+            field.update(key='assignee', source_ref='assignee', label='Asignee')
+    former['fields'].append({'key': 'analyst', 'label': 'Analyst', 'type': 'text', 'source': 'user', 'section': 'general', 'options': []})
+    former['field_values'].append({'call_key': calls['0xB2']['call_key'], 'field_key': 'analyst', 'value': 'Sujay',
+                                   'updated_by': 'import', 'updated_at': '2026-09-01T10:00:00'})
+    former['history'] = [dict(entry, field='assignee') if entry['field'] == 'analyst' else entry for entry in former['history']]
+    former['status_rules'] = [{'status': rule['status'], 'conditions': [dict(condition, field='@assignee') if condition['field'] == '@analyst'
+                                                                       else condition for condition in rule['conditions']]}
+                              for rule in former['status_rules']]
+    upgraded = nq.upgrade_legacy_document(former)
+    assert [field['key'] for field in upgraded['fields']].count('analyst') == 1 and 'assignee' not in [field['key'] for field in upgraded['fields']]
+    assert all('assignee' not in row for row in upgraded['tracking'])
+    with core.repository.connection() as connection:
+        for table in (nq.NQ_CALL_TRACKING_TABLE, nq.NQ_CALL_HISTORY_TABLE, nq.NQ_FIELD_VALUES_TABLE):
+            connection.execute(f'DELETE FROM {table}')
+    assert nq.import_tracking_document(core.repository, json.dumps(former)) >= 2
+    assert client.get(f'/api/non-qualified-calls/calls/{key}').json()['call']['analyst'] == 'super'
+    other = client.get(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}").json()
+    assert other['call']['analyst'] == 'Sujay' and 'analyst' not in other['call']['fields']
+    assert 'assignee' not in {field['key'] for field in nq.list_fields(core.repository)}
+    # A document of a newer version is refused.
+    assert pytest.raises(ValueError, nq.import_tracking_document, core.repository, json.dumps({**document, 'version': 99}))

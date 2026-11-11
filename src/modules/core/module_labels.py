@@ -447,7 +447,7 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
                                 ('dta-rca-rules', 'DT Analyzer RCA Rules', 'function'), ('map-levels', 'Map Levels', 'map'), None,
                                 ('import-ericsson-rca-results', 'Import Ericsson RCA Results', 'upload'),
                                 ('import-previous-nq-analyses', 'Import Previous NQ Analyses', 'upload'),
-                                ('analysts-reviewers-to-asignees', 'Analysts / Reviewers → Asignees', 'user-plus')])],
+                                ('link-analysts-to-accounts', 'Link Analysts to Accounts', 'user-plus')])],
     # The tabs of the header of Ticket Center, in their order.
     'ticket-center': [('New Ticket', 'New Ticket', 'ticket'), ('All Tickets', 'All Tickets', 'table'), ('Dashboard', 'Dashboard', 'summary'),
                       ('Statistics', 'Statistics', 'chart'), ('Time Spent', 'Time Spent', 'gauge')],

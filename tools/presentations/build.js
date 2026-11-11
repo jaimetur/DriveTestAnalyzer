@@ -497,7 +497,7 @@ async function nqCalls(pres) {
   shape(slide, pres.shapes.ROUNDED_RECTANGLE, { x: 6.4, y: 3.68, w: 2.3, h: 1.25, rectRadius: 0.12, fill: { color: K.tint }, line: { color: K.tint, width: 0 } });
   text(slide, [
     { text: 'Status, Team', options: { fontSize: 15, bold: true, breakLine: true } },
-    { text: '& Assignee', options: { fontSize: 15, bold: true, breakLine: true } },
+    { text: '& Analyst', options: { fontSize: 15, bold: true, breakLine: true } },
     { text: 'by Status Rules or by hand', options: { fontSize: 11, color: K.grey } },
   ], { x: 6.58, y: 3.68, w: 2.0, h: 1.25, valign: 'middle' });
   const extras = [['TbChartBar', 'Summary by campaign & operator'], ['TbFileSpreadsheet', 'Excel export with your layout'],
@@ -518,7 +518,7 @@ async function nqCalls(pres) {
   slide.addNotes(`Every Voice, Speech and Data CDR is indexed in the background: ${STATS.nqExact} Non-Qualified calls in `
     + `${plural(FIGURES.campaigns, 'campaign')} of ${STATS.where}, out of ${compact(FIGURES.nq_calls_total)} calls and tests. Each call`
     + ' keeps its follow-up by its NetCheck JOIN_ID through six sections; the root cause comes from '
-    + 'the DT Analyzer RCA, the NetCheck RCA, the Ericsson RCA and the analysts; status, team and assignee follow rules or are set by hand.');
+    + 'the DT Analyzer RCA, the NetCheck RCA, the Ericsson RCA and the analysts; status, team and analyst follow rules or are set by hand.');
 }
 
 async function networkInsights(pres, files) {

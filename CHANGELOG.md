@@ -6,10 +6,12 @@
 ## Release: v0.12.3
 ### Release Date: 2026-11-12
 #### ⚠️ Breaking Changes:
+- **Non-Qualified Calls — Asignee renamed Analyst ([ticket #124](https://108.132.147.165:8443/tickets/124)):** the follow-up field, its database column (`nq_call_tracking.analyst`), its filter, Status Rules condition (`@analyst`), history entries, NQ Calls Excel column, AI Assistant column and API key are named `analyst` instead of `assignee`; NQ Call Tracking and NQ Calls Configuration exports are written in a new version that earlier versions of the tool refuse, while the exports, transfers and backups of earlier versions are still imported (their Asignee becomes the Analyst).
 
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- **Non-Qualified Calls — One Analyst per call ([ticket #124](https://108.132.147.165:8443/tickets/124)):** the Asignee and the Analyst of the previous analyses are one **Analyst**, chosen from the user accounts of the workspace (the members of the team when it has them); an analyst of the Previous NQ Analyses no account is named as stays as an **analyst without account** (tagged **No account**, counted in the filters and statistics, never offered for new calls), the import preview lists them so their accounts can be given in the equivalences, and **Link Analysts to Accounts** (formerly Analysts / Reviewers → Asignees) links them later. Existing workspaces keep each call's Asignee and give the calls without one the name of their former Analyst, with both histories as the Analyst's.
 
 #### 🐛 Bug fixes:
 

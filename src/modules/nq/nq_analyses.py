@@ -31,13 +31,15 @@ EMPTY_TEXTS = {'0'}
 COLUMN_ALIASES: dict[str, tuple[str, str]] = {
     'nqcallstatus': ('tracking', 'status'),
     'teamresponsible': ('tracking', 'team'), 'responsiblestream': ('tracking', 'team'),
-    'assignee': ('tracking', 'assignee'), 'asignee': ('tracking', 'assignee'),
+    # Who analysed the calls: a user account, or the name of a person without account (kept as it is written).
+    'analyst': ('tracking', 'analyst'), 'team': ('tracking', 'analyst'),
+    'assignee': ('tracking', 'analyst'), 'asignee': ('tracking', 'analyst'),
     'rootcategory': ('tracking', 'root_category'), 'selectedrootcategory': ('tracking', 'root_category'),
     'finalcategoryclassification': ('tracking', 'root_category'),
     'rootcause': ('tracking', 'root_cause'), 'selectedrootcause': ('tracking', 'root_cause'),
     'finalcausesubcategory': ('tracking', 'root_cause'), 'subcategory': ('tracking', 'root_cause'),
-    # The people who analysed and reviewed the calls are not users of the tool: their names are kept as they are.
-    'team': ('field', 'analyst'), 'analyst': ('field', 'analyst'), 'reviewer': ('field', 'reviewer'),
+    # The people who reviewed the calls may not be users of the tool: their names are kept as they are.
+    'reviewer': ('field', 'reviewer'),
     'priority': ('field', 'priority'),
     'analysisfinished': ('field', 'analysis_status'),
     'status': ('field', 'planned_status'),

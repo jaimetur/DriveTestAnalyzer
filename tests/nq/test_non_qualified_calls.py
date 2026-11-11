@@ -169,7 +169,7 @@ def test_nq_calls_are_indexed_tracked_and_commented(client, tmp_path):
     # A stale version means another user changed the call first.
     assert client.patch(url, json={'changes': {'status': 'Closed'}, 'version': 0}).status_code == 409
     assert client.patch(url, json={'changes': {'status': 'Unknown'}}).status_code == 400
-    assert client.patch(url, json={'changes': {'assignee': 'nobody'}}).status_code == 400
+    assert client.patch(url, json={'changes': {'analyst': 'nobody'}}).status_code == 400
 
     comment = client.post(f'{url}/comments', json={'body': 'Waiting for E2E traces from the vendor.'}).json()['comment']
     assert client.post(f'{url}/comments', json={'body': '   '}).status_code == 400
@@ -185,7 +185,7 @@ def test_nq_calls_are_indexed_tracked_and_commented(client, tmp_path):
     edited = client.patch(f"/api/non-qualified-calls/comments/{own['id']}", json={'body': 'Traces requested twice.'})
     assert edited.status_code == 200 and edited.json()['comment']['edited_by'] == 'editor'
     bulk = client.post('/api/non-qualified-calls/calls/bulk', json={
-        'call_keys': [call['call_key'] for call in result['calls']], 'changes': {'assignee': 'editor'}})
+        'call_keys': [call['call_key'] for call in result['calls']], 'changes': {'analyst': 'editor'}})
     assert bulk.json() == {'changed': 4}
     assert query(client, filters={'mine': True})['total'] == 4
 
@@ -198,7 +198,7 @@ def test_nq_calls_are_indexed_tracked_and_commented(client, tmp_path):
     deleted = client.delete(f"/api/non-qualified-calls/comments/{own['id']}").json()['comment']
     assert deleted['body'] == '' and deleted['deleted_by'] == 'super'
     detail = client.get(url).json()
-    assert [entry['field'] for entry in detail['history']][-3:] == ['comment_edit', 'assignee', 'comment_delete']
+    assert [entry['field'] for entry in detail['history']][-3:] == ['comment_edit', 'analyst', 'comment_delete']
     assert detail['history'][-1]['old_value'] == 'Traces requested twice.'
 
     # Processing the same CDR again keeps the follow-up of its calls.
@@ -492,15 +492,15 @@ def test_teams_members_progress_shared_filters_and_reporting_artifact(client, tm
     page = client.get('/non-qualified-calls').text
     assert 'id="nq-members-dialog"' in page and 'Teams Users Assignments' not in client.get('/workspace-config').text
 
-    # A call of a team with members only accepts its members as assignee.
+    # A call of a team with members only accepts its members as analyst.
     call = next(item for item in query(client)['calls'] if item['result'] == 'Dropped')
     url = f"/api/non-qualified-calls/calls/{call['call_key']}"
-    assert client.patch(url, json={'changes': {'team': 'Operations', 'assignee': 'viewer'}}).status_code == 400
-    assigned = client.patch(url, json={'changes': {'team': 'Field Ops', 'assignee': 'viewer'}}).json()['call']
-    assert assigned['assignee'] == 'viewer'
-    # Moving it to a team the assignee does not belong to clears the assignee.
+    assert client.patch(url, json={'changes': {'team': 'Operations', 'analyst': 'viewer'}}).status_code == 400
+    assigned = client.patch(url, json={'changes': {'team': 'Field Ops', 'analyst': 'viewer'}}).json()['call']
+    assert assigned['analyst'] == 'viewer'
+    # Moving it to a team the analyst does not belong to clears the analyst.
     moved = client.patch(url, json={'changes': {'team': 'Operations'}}).json()['call']
-    assert moved['team'] == 'Operations' and moved['assignee'] == ''
+    assert moved['team'] == 'Operations' and moved['analyst'] == ''
     assert client.post(f'{url}/comments', json={'body': 'Checked the drive test.'}).status_code == 200
 
     # Summary breakdowns, in the order of the page and of the one-slide Executive Summary.
@@ -517,7 +517,7 @@ def test_teams_members_progress_shared_filters_and_reporting_artifact(client, tm
     assert progress.status_code == 200, progress.text
     progress = progress.json()
     assert progress['summary']['total'] == 4 and progress['summary']['attended'] == 1
-    assert {item['field'] for item in progress['distributions']} >= {'status', 'team', 'assignee'}
+    assert {item['field'] for item in progress['distributions']} >= {'status', 'team', 'analyst'}
     assert progress['periods'] and sum(period['detected'] for period in progress['periods']) == 4
 
     # The Filters panel is shared by every user and session of the workspace.
@@ -842,12 +842,12 @@ def test_every_header_name_sorts_and_filters_the_calls(client, tmp_path):
     login(client)
     keys = [call['call_key'] for call in query(client)['calls']]
     client.patch(f'/api/non-qualified-calls/calls/{keys[0]}', json={'changes': {'root_category': 'Poor Coverage LTE', 'root_cause': 'Coverage'}})
-    for sort in ('cause', 'vendor', 'technology', 'campaign', 'service', 'result', 'assignee'):
+    for sort in ('cause', 'vendor', 'technology', 'campaign', 'service', 'result', 'analyst'):
         result = query(client, sort=sort, direction='asc')
         assert result['sort'] == sort and result['total'] == 4, sort
     assert query(client, sort='cause', direction='desc')['calls'][0]['root_cause'] == 'Coverage'
     page = client.get('/non-qualified-calls').text
-    for field in ('service', 'vendor', 'campaign', 'technology', 'result', 'failure_classification', 'team', 'assignee',
+    for field in ('service', 'vendor', 'campaign', 'technology', 'result', 'failure_classification', 'team', 'analyst',
                   'root_category', 'root_cause'):
         assert f'data-filter="{field}"' in page and f'data-nq-filter="{field}"' in page, field
     # The root domain is filtered in the Filters panel, with the Status Set (automatic or by hand).

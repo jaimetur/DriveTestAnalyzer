@@ -21,7 +21,7 @@ FILTER_LABELS = (
     ('region', 'Region'), ('cluster', 'Cluster'),
     ('city', 'City'), ('technology', 'Technology'), ('test_name', 'Test Name'), ('result', 'Result'),
     ('failure_classification', 'Failure Classification'), ('failure_category', 'Failure Category'),
-    ('status', 'Status'), ('status_mode', 'Status Set'), ('team', 'Team'), ('assignee', 'Assignee'), ('root_domain', 'Root Domain'),
+    ('status', 'Status'), ('status_mode', 'Status Set'), ('team', 'Team'), ('analyst', 'Analyst'), ('root_domain', 'Root Domain'),
     ('root_category', 'Root Category'), ('root_cause', 'Root Cause'), ('call_type', 'Call Type'), ('period', 'Period'),
     ('age', 'Age of Open Calls'), ('root_pair', 'Root Domain · Cause'),
     ('effective_domain', 'Root Domain (with suggestions)'), ('effective_cause', 'Root Domain · Cause (with suggestions)'),
@@ -161,7 +161,7 @@ def report_tables(summary: dict[str, Any], breakdowns: list[dict[str, Any]], pro
     tables.append((f"Progress per {GRANULARITY_LABELS.get(progress['granularity'], 'Week')}", *timeline_table(progress)))
     tables.append(('Age of Open Calls', ['Age since the call', 'Open calls'], [[item['value'], str(item['count'])] for item in progress['aging']]))
     tables.append(('Team Workload', *workload_table('Team', progress['teams'])))
-    tables.append(('Assignee Workload', *workload_table('Assignee', progress['assignees'])))
+    tables.append(('Analyst Workload', *workload_table('Analyst', progress['analysts'])))
     tables.append(('User Activity', *activity_table(progress['activity'])))
     return tables
 

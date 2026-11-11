@@ -27,7 +27,7 @@
     <div class="nq-hero-copy">
       <p class="eyebrow">Non-Qualified Calls · Analysis Center</p>
       <h2>Follow up every call and test that did not complete</h2>
-      <p class="lede">Every Voice and Speech call and every Data test {{ provider.definition | default('whose result is not Completed (Failed, Dropped, Cutoff…)', true) }} in the ready CDRs of this workspace. Review the overall health, drill down from the summary into the calls, and follow each one through the sections of the Analysis Center: its root cause decided from the DT Analyzer RCA, {{ provider.rca | default('NetCheck RCA', true) }}, the Ericsson RCA and the analysts, its failure event, and its analysis, implementation and planning phases, with a status set by rules, a responsible team, an assignee and a shared comment thread.</p>
+      <p class="lede">Every Voice and Speech call and every Data test {{ provider.definition | default('whose result is not Completed (Failed, Dropped, Cutoff…)', true) }} in the ready CDRs of this workspace. Review the overall health, drill down from the summary into the calls, and follow each one through the sections of the Analysis Center: its root cause decided from the DT Analyzer RCA, {{ provider.rca | default('NetCheck RCA', true) }}, the Ericsson RCA and the analysts, its failure event, and its analysis, implementation and planning phases, with a status set by rules, a responsible team, an analyst and a shared comment thread.</p>
       <button type="button" class="nq-hero-more" data-nq-hero-more aria-expanded="false" title="Show the whole introduction">More</button>
     </div>
   </article>
@@ -68,7 +68,7 @@
       <div class="nq-menu-separator" role="separator"></div>
       <button type="button" role="menuitem" id="nq-rca-open" data-nq-rca-open><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['upload'] | safe }}</svg><strong>Import Ericsson RCA Results</strong><span>The results of the Ericsson RCA, by JOIN_ID</span></button>
       <button type="button" role="menuitem" id="nq-analyses-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['upload'] | safe }}</svg><strong>Import Previous NQ Analyses</strong><span>The analyses made with the previous tool, by JOIN_ID (admins and super-admins)</span></button>
-      <button type="button" role="menuitem" id="nq-assign-analysts-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['user-plus'] | safe }}</svg><strong>Analysts / Reviewers → Asignees</strong><span>Link each Analyst and Reviewer to their user account: its name in the calls and the Asignee of those they analysed</span></button>
+      <button type="button" role="menuitem" id="nq-link-analysts-open"><svg class="nq-menu-icon" viewBox="0 0 24 24" aria-hidden="true">{{ section_icons['user-plus'] | safe }}</svg><strong>Link Analysts to Accounts</strong><span>Give the analysts and reviewers without account that the previous analyses brought their user account</span></button>
     </div>
   </div>
   </div>
@@ -123,9 +123,9 @@
         <label>Failure Category<select data-nq-filter="failure_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Failure Category"></select></label>
         <label>Global Status<select data-nq-filter="status" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Global Status"></select></label>
         <label title="Whether the status follows the Status Rules or was set by hand">Status Set<select data-nq-filter="status_mode" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Status Set"></select></label>
-        <label title="How far each call has been followed up: attended or not, stalled, closed, with a team, an assignee, comments or a root cause">Follow-up<select data-nq-filter="state" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Follow-up"></select></label>
+        <label title="How far each call has been followed up: attended or not, stalled, closed, with a team, an analyst, comments or a root cause">Follow-up<select data-nq-filter="state" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Follow-up"></select></label>
         <label>Team<select data-nq-filter="team" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Team"></select></label>
-        <label>Assignee<select data-nq-filter="assignee" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Assignee"></select></label>
+        <label>Analyst<select data-nq-filter="analyst" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Analyst"></select></label>
         <label>Root Domain<select data-nq-filter="root_domain" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Domain"></select></label>
         <label>Root Category<select data-nq-filter="root_category" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Category"></select></label>
         <label>Root Cause<select data-nq-filter="root_cause" multiple size="1" data-multiselect-no-values-label="Loading values…" data-multiselect-empty-label="All values" aria-label="Root Cause"></select></label>
@@ -223,7 +223,7 @@
               <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="result" data-filter="result">Result</span></span><span class="nq-header-item"><span data-sort="failure" data-filter="failure_classification">Failure</span></span></th>
               <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="root_category" data-filter="root_category">Root Category</span></span><span class="nq-header-item"><span data-sort="cause" data-filter="root_cause">Root Cause</span></span></th>
               <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="status" data-filter="status">Global Status</span></span></th>
-              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="team" data-filter="team">Team</span></span><span class="nq-header-item"><span data-sort="assignee" data-filter="assignee">Assignee</span></span></th>
+              <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="team" data-filter="team">Team</span></span><span class="nq-header-item"><span data-sort="analyst" data-filter="analyst">Analyst</span></span></th>
               <th class="nq-sort-pair"><span class="nq-header-item"><span data-sort="comments">Comments</span></span></th>
             </tr>
           </thead>
@@ -339,7 +339,7 @@
     <div class="collapsible-panel-body">
       <div class="nq-active-filters" data-nq-active-filters hidden></div>
       <div class="nq-progress-head">
-        <p class="nq-hint">How the filtered calls are being followed up: their distribution, how many were attended, moved between statuses, closed and reopened in each period, the age of open calls and the workload of teams, assignees and users.</p>
+        <p class="nq-hint">How the filtered calls are being followed up: their distribution, how many were attended, moved between statuses, closed and reopened in each period, the age of open calls and the workload of teams, analysts and users.</p>
         <label class="nq-page-size">Periods<select id="nq-granularity"><option value="week">Week</option><option value="month" selected>Month</option><option value="quarter">Quarter</option><option value="year">Year</option></select></label>
       </div>
       <div class="nq-kpis" id="nq-progress-kpis"></div>
@@ -352,7 +352,7 @@
       <div class="nq-progress-grid">
         <section class="nq-progress-section"><h3>Age of Open Calls</h3><div id="nq-aging"></div></section>
         <section class="nq-progress-section"><h3>Team Workload</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-team-workload"></table></div></section>
-        <section class="nq-progress-section"><h3>Assignee Workload</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-assignee-workload"></table></div></section>
+        <section class="nq-progress-section"><h3>Analyst Workload</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-analyst-workload"></table></div></section>
         <section class="nq-progress-section"><h3>User Activity</h3><div class="nq-table-wrap"><table class="nq-table nq-stats-table" id="nq-activity"></table></div></section>
       </div>
     </div>
@@ -362,7 +362,7 @@
     <strong id="nq-bulk-count"></strong>
     <select id="nq-bulk-status" aria-label="Set the status of the selected calls"><option value="">Set status…</option></select>
     <select id="nq-bulk-team" aria-label="Set the team of the selected calls"><option value="">Set team…</option></select>
-    <select id="nq-bulk-assignee" aria-label="Assign the selected calls"><option value="">Assign to…</option></select>
+    <select id="nq-bulk-analyst" aria-label="Assign the selected calls"><option value="">Assign to…</option></select>
     <select id="nq-bulk-category" aria-label="Set the root category of the selected calls"><option value="">Set root category…</option></select>
     <select id="nq-bulk-root" aria-label="Set the root cause of the selected calls"><option value="">Set root cause…</option></select>
     <select id="nq-bulk-field" aria-label="Set a field of the selected calls" hidden><option value="">Set field…</option></select>
@@ -724,18 +724,17 @@
     <footer><button type="button" class="nq-link-action is-danger" id="nq-rca-clear"{% if not nq_can_configure %} hidden{% endif %}>Delete every result</button><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-rca-cancel">Close</button><button type="submit" class="nq-primary-action" id="nq-rca-import" disabled{% if not nq_can_configure %} hidden{% endif %}>Import</button></footer>
   </form>
 </dialog>
-{# The Analyst of every call (as the analysis workbooks name them) given as Asignee (non_qualified_calls.js). #}
-<dialog class="nq-options-dialog nq-assign-analysts-dialog" id="nq-assign-analysts-dialog" aria-labelledby="nq-assign-analysts-title">
-  <form method="dialog" class="nq-options-form" id="nq-assign-analysts-form">
-    <header><h2 id="nq-assign-analysts-title">Analysts / Reviewers → Asignees</h2><p class="form-note">Choose the user account of each Analyst or Reviewer: it becomes the Asignee of the calls they analysed, and their Analyst and Reviewer take the first and last name of the account (New Analyst / Reviewer). Names written the same way (Raj Kumar and Rajkumar) are one person. Every call keeps its team, and the user joins the teams with members they are not one of. Each change stays in the history of its call.</p>
-      <fieldset class="nq-config-fieldset"{{ config_lock }}><label class="nq-toggle" title="Otherwise only the calls without an Asignee get one"><input type="checkbox" id="nq-assign-analysts-overwrite"> Replace the Asignee the calls already have</label></fieldset></header>
-    {% if not nq_can_configure %}{{ role_warning('the Asignees of the Analysts and Reviewers') }}{% endif %}
-    <fieldset class="nq-config-fieldset"{{ config_lock }}><div class="nq-table-wrap"><table class="nq-table nq-stats-table nq-assign-analysts-table">
-      <thead><tr><th>Analyst / Reviewer</th><th title="The name they take: the first and last name of the account chosen">New Analyst / Reviewer</th><th title="Calls they analysed">As Analyst</th><th title="Calls they reviewed">As Reviewer</th><th title="Calls they analysed without an Asignee">Without Asignee</th><th>User account</th><th>Calls that change</th></tr></thead>
-      <tbody id="nq-assign-analysts-rows"></tbody></table></div></fieldset>
-    <p class="form-note" id="nq-assign-analysts-summary" aria-live="polite"></p>
-    <p class="nq-options-error" id="nq-assign-analysts-error" role="alert"></p>
-    <footer><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-assign-analysts-cancel">Close</button><button type="submit" class="nq-primary-action" id="nq-assign-analysts-apply" disabled{% if not nq_can_configure %} hidden{% endif %}>Apply</button></footer>
+{# The analysts and reviewers without account linked to their user accounts (non_qualified_calls.js). #}
+<dialog class="nq-options-dialog nq-link-analysts-dialog" id="nq-link-analysts-dialog" aria-labelledby="nq-link-analysts-title">
+  <form method="dialog" class="nq-options-form" id="nq-link-analysts-form">
+    <header><h2 id="nq-link-analysts-title">Link Analysts to Accounts</h2><p class="form-note">The analysts and reviewers without a user account, as the analyses of the previous tool name them. Choose the user account of each one: it becomes the Analyst of the calls they analyse, and the Reviewer of those they reviewed takes its first and last name. Names written the same way (Raj Kumar and Rajkumar) are one person. Every call keeps its team, and the account joins the teams with members it is not one of. Each change stays in the history of its call.</p></header>
+    {% if not nq_can_configure %}{{ role_warning('the accounts of the analysts and reviewers') }}{% endif %}
+    <fieldset class="nq-config-fieldset"{{ config_lock }}><div class="nq-table-wrap"><table class="nq-table nq-stats-table nq-link-analysts-table">
+      <thead><tr><th>Analyst / Reviewer without account</th><th title="Calls they analyse">As Analyst</th><th title="Calls they reviewed">As Reviewer</th><th>User account</th><th>Calls that change</th></tr></thead>
+      <tbody id="nq-link-analysts-rows"></tbody></table></div></fieldset>
+    <p class="form-note" id="nq-link-analysts-summary" aria-live="polite"></p>
+    <p class="nq-options-error" id="nq-link-analysts-error" role="alert"></p>
+    <footer><span class="nq-rule-spacer"></span><button type="button" class="nq-secondary-action" id="nq-link-analysts-cancel">Close</button><button type="submit" class="nq-primary-action" id="nq-link-analysts-apply" disabled{% if not nq_can_configure %} hidden{% endif %}>Link</button></footer>
   </form>
 </dialog>
 <dialog class="nq-options-dialog nq-columns-dialog" id="nq-columns-dialog" aria-labelledby="nq-columns-title">

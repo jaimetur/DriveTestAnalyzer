@@ -195,7 +195,7 @@
 .nq-table td.nq-empty { padding: 2rem; color: var(--nq-muted); font-weight: 700; text-align: center; cursor: default; }
 .nq-stacked { max-width: 6.6rem; }
 .non-qualified-calls .nq-table .nq-pill-select { width: 100%; min-width: 8.4rem; max-width: 13rem; }
-.non-qualified-calls .nq-table .nq-pill-assignee { width: 100%; min-width: 8.4rem; max-width: 13rem; }
+.non-qualified-calls .nq-table .nq-pill-analyst { width: 100%; min-width: 8.4rem; max-width: 13rem; }
 .nq-stacked strong, .nq-stacked span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nq-stacked strong { font-weight: 750; }
 .nq-stacked span { color: var(--nq-muted); font-size: .76rem; }
@@ -304,7 +304,7 @@
 .nq-drawer-group.is-cluster { --nq-group: #2b8a3e; }
 .nq-drawer-group.is-run { --nq-group: #1864ab; }
 /* The fields of the analysts of General beside the follow-up: the titles and the height, border and text of its lists (the
-   Assignee). */
+   Analyst). */
 .nq-drawer .nq-drawer-tracking .nq-analysis-field.nq-tracking-general { gap: .3rem; color: var(--nq-muted); font-size: .72rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .nq-drawer .nq-drawer-tracking .nq-tracking-general .nq-field-title { color: inherit; font: inherit; letter-spacing: inherit; }
 .nq-drawer .nq-drawer-tracking .nq-analysis-field.nq-tracking-general input:not([type="checkbox"]) { box-sizing: border-box; width: 100%; height: auto; min-height: 0; padding: .22rem .75rem; border: 1px solid var(--nq-border); border-radius: 999px; background: #fff; color: var(--nq-text); font: inherit; font-size: .78rem; font-weight: 650; line-height: normal; letter-spacing: 0; text-transform: none; box-shadow: none; }
@@ -1058,12 +1058,11 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-dta-condition .nq-dta-value[hidden] { display: none; }
 /* Ericsson RCA Results. */
 .nq-rca-dialog { width: min(900px, calc(100vw - 32px)); }
-.nq-assign-analysts-dialog { width: min(1100px, calc(100vw - 32px)); }
-.nq-assign-analysts-dialog .nq-table-wrap { max-height: min(52vh, 520px); overflow-y: auto; }
-.nq-assign-analysts-table td.is-new-name { color: var(--nq-dark); font-weight: 750; }
-.nq-assign-analysts-table td { vertical-align: middle; }
-.nq-assign-analysts-table td small { display: block; font-size: .74rem; }
-.nq-assign-analysts-table select { width: 100%; min-width: 11rem; }
+.nq-link-analysts-dialog { width: min(960px, calc(100vw - 32px)); }
+.nq-link-analysts-dialog .nq-table-wrap { max-height: min(52vh, 520px); overflow-y: auto; }
+.nq-link-analysts-table td { vertical-align: middle; }
+.nq-link-analysts-table td small { display: block; font-size: .74rem; }
+.nq-link-analysts-table select { width: 100%; min-width: 11rem; }
 .nq-rca-current, .nq-rca-preview { display: grid; gap: .4rem; }
 .nq-rca-preview { padding: .7rem .9rem; border: 1px solid var(--nq-color); border-radius: 12px; background: var(--nq-softer); }
 .nq-rca-preview[hidden] { display: none; }
@@ -1143,7 +1142,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-field-fallback-label { display: block; margin-top: .1rem; color: var(--nq-muted); font-size: .62rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
 /* The panel is never wider than the app (1680 px): the default columns fit it with narrower selects, values, cell paddings
    and header names at every width. */
-.non-qualified-calls .nq-table .nq-pill-select, .non-qualified-calls .nq-table .nq-pill-assignee { min-width: 6.2rem; max-width: 8rem; }
+.non-qualified-calls .nq-table .nq-pill-select, .non-qualified-calls .nq-table .nq-pill-analyst { min-width: 6.2rem; max-width: 8rem; }
 .non-qualified-calls .nq-table .nq-root-select { min-width: 6.8rem; max-width: 9.5rem; }
 .nq-table th, .nq-table td { padding-left: 4px; padding-right: 4px; }
 .non-qualified-calls .nq-table .nq-comment-button { max-width: 8rem; }
@@ -1212,7 +1211,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 /* Long texts and comments (rich_text.css): bullets and numbers in the colour of Non-Qualified Calls. */
 :is(.nq-bullets, .nq-comment-body) { --rt-accent: var(--nq-color); --rt-title: var(--nq-dark); --rt-heading: var(--nq-dark); --rt-muted: var(--nq-muted); --rt-rule: var(--nq-border); }
 .nq-bullets { color: var(--nq-text); font-size: .88rem; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
-/* The coloured pickers of lists, statuses, teams and assignees: every choice as a pill in its colour. */
+/* The coloured pickers of lists, statuses, teams and analysts: every choice as a pill in its colour. */
 :is(.non-qualified-calls, .nq-drawer) .nq-choice { width: 100%; text-align: left; }
 .nq-choice-field { display: grid; }
 .nq-choice-picker { min-width: 13rem; }
@@ -1222,8 +1221,11 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-choice-picker .nq-choice-option.is-selected { border-color: var(--nq-color, #b0234f); background: var(--nq-soft, #fcedf2); }
 .nq-choice-picker .nq-choice-option.is-selected::after { content: '✓'; margin-left: auto; color: var(--nq-color, #b0234f); font-weight: 900; }
 .nq-choice-picker .nq-choice-option .nq-pill { max-width: 18rem; font-size: .82rem; }
-/* The default users of the application: first in the lists of assignees, tagged, with a line before the others. */
+/* The default users of the application: first in the lists of analysts, tagged, with a line before the others. */
 .nq-user-tag { flex: 0 0 auto; padding: .05rem .4rem; border: 1px solid var(--nq-border, #f0c4d3); border-radius: 999px; background: var(--nq-softer, #fff7fa); color: var(--nq-muted, #7a5a66); font-size: .64rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
+/* An Analyst without user account (a name the analyses of the previous tool brought): dashed and italic. */
+.nq-user-tag.is-no-account { border-style: dashed; font-style: italic; }
+.nq-pill.is-no-account { border-style: dashed; font-style: italic; }
 .nq-user-divider { position: relative; margin-top: .45rem; }
 .nq-user-divider::before { content: ''; position: absolute; top: -.3rem; right: .2rem; left: .2rem; border-top: 1px solid var(--nq-border, #f0c4d3); pointer-events: none; }
 .nq-choice-picker .nq-choice-option.is-action { margin-top: .25rem; border-top: 1px dashed var(--nq-border, #f0c4d3); border-radius: 0 0 10px 10px; }

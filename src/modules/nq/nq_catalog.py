@@ -5,7 +5,7 @@ sections (General, RCA, Failure Event, Analysis, Implementation and Planning). A
 value from one source:
 
 - ``user``: entered by the analysts (lists, text, numbers, dates, Yes / No);
-- ``tracking``: the follow-up of the call (status, team, assignee, last change, comments and the
+- ``tracking``: the follow-up of the call (status, team, analyst, last change, comments and the
   selected root category and cause);
 - ``cdr``: an indexed call field or a CDR column (read only);
 - ``rca``: the Ericsson RCA results imported by JOIN_ID (read only);
@@ -68,7 +68,7 @@ FIELD_SOURCES = {
 }
 # Follow-up values a tracking field shows.
 TRACKING_REFS = {
-    'status': 'NQ Call Status', 'team': 'Team', 'assignee': 'Assignee', 'updated_at': 'Last modification',
+    'status': 'NQ Call Status', 'team': 'Team', 'analyst': 'Analyst', 'updated_at': 'Last modification',
     'comments': 'Comments', 'root_category': 'Root Category', 'root_cause': 'Root Cause',
 }
 # Values of the imported Ericsson RCA results; any other column of the file is kept as well.
@@ -260,10 +260,9 @@ DEFAULT_FIELDS = (
                        'calls of its operator and NR Mode failed close to each other or at the same site, in its campaign and '
                        'those of the Cluster period (empty when it is in none of 2 calls or more).'),
     _field('team_responsible', 'Team Responsible', 'general', 'list', 'tracking', 'team', in_table=True),
-    _field('assignee', 'Asignee', 'general', 'list', 'tracking', 'assignee', in_table=True,
-           description='A member of the responsible team (any user of the workspace when the team has no members).'),
-    _field('analyst', 'Analyst', 'general', 'text',
-           description='Who analysed the call, also when that person is not a user of the tool (the analyses of the previous tool).'),
+    _field('analyst', 'Analyst', 'general', 'list', 'tracking', 'analyst', in_table=True,
+           description='Who analyses the call: a user account, a member of the responsible team (any user of the workspace when '
+                       'the team has no members); an analyst without account comes only from the analyses of the previous tool.'),
     _field('reviewer', 'Reviewer', 'general', 'text', description='Who reviewed the analysis of the call.'),
     _field('unique_id', 'Unique ID', 'general', 'text',
            description='The identifier of the analysis in the workbooks of the previous tool (their Unique ID).'),
@@ -336,7 +335,7 @@ DEFAULT_STATUSES = (
     ('Under Planning', '#e0464e', False),
     ('Closed', '#2e8b57', True),
 )
-# Conditions read list and Yes / No fields of the catalog, the team and assignee, and "@attended"
+# Conditions read list and Yes / No fields of the catalog, the team and analyst, and "@attended"
 # (the call has been followed up or commented).
 ATTENDED_FIELD = '@attended'
 RULE_OPERATORS = {'in': 'is one of', 'not_in': 'is not one of', 'empty': 'is empty', 'not_empty': 'is not empty'}
@@ -765,7 +764,7 @@ def stored_root_catalog(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, l
 
 
 def normalize_status_rules(rules: Any, statuses: list[str], fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Rules naming known statuses and conditions on list and Yes / No fields, the team, the assignee or "attended"."""
+    """Rules naming known statuses and conditions on list and Yes / No fields, the team, the analyst or "attended"."""
     if not isinstance(rules, list):
         raise ValueError('The status rules are invalid.')
     names = {name.casefold(): name for name in statuses}
@@ -801,7 +800,7 @@ def condition_fields(fields: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """The fields a status rule can read, with the values it can choose."""
     known: dict[str, dict[str, Any]] = {ATTENDED_FIELD: {'label': 'Attended (followed up or commented)', 'values': list(YES_NO)}}
     for field in fields:
-        if field['source'] == 'tracking' and field['source_ref'] in {'team', 'assignee', 'root_category', 'root_cause'}:
+        if field['source'] == 'tracking' and field['source_ref'] in {'team', 'analyst', 'root_category', 'root_cause'}:
             known[f"@{field['source_ref']}"] = {'label': field['label'], 'values': []}
         elif field['source'] in {'user', 'derived'} and field['type'] in {'list', 'yes_no'}:
             values = [option['name'] for option in field['options']] if field['type'] == 'list' else list(YES_NO)

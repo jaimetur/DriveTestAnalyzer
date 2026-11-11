@@ -12741,7 +12741,8 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
         elif kind == 'nq-call-tracking':
             # The follow-up merges as its import merges it (newer values win, comments are added once, nothing is
             # removed), and is told as the completion message tells it.
-            from src.modules.nq.non_qualified_calls import predicted_tracking_document
+            from src.modules.nq.non_qualified_calls import predicted_tracking_document, upgrade_legacy_document
+            package = upgrade_legacy_document(package)
             changes = {workspace.id: compare(element_items(kind, package), element_items(kind, before[workspace.id]),
                                              element_items(kind, predicted_tracking_document(before[workspace.id], package)),
                                              ELEMENT_LABELS.get(kind), detailed=True)

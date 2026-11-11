@@ -31,7 +31,7 @@
     service: 'Service', campaign: 'Campaign', operator: 'Operator', operator_vendor: 'Operator_Vendor', vendor_operator: 'Vendor_Operator', vendor: 'Vendor',
     region: 'Region', cluster: 'Cluster', city: 'City', dataset_id: 'CDR', join_id: 'Join ID',
     technology: 'Technology', test_name: 'Test Name', result: 'Result', failure_classification: 'Failure Classification',
-    failure_category: 'Failure Category', status: 'Global Status', team: 'Team', assignee: 'Assignee', datasets: 'CDR',
+    failure_category: 'Failure Category', status: 'Global Status', team: 'Team', analyst: 'Analyst', datasets: 'CDR',
     root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause', status_mode: 'Status Set',
     nr_mode: 'NR Mode', call_type: 'Call Type', period: 'Period',
     age: 'Age of Open Calls', root_pair: 'Root Domain · Cause', effective_domain: 'Root Domain (with suggestions)',
@@ -72,7 +72,7 @@
   const FOLLOW_UP_STATES = ['attended', 'not_attended', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
   const HISTORY_LABELS = {status: 'Status', status_auto: 'Status (automatic)', status_mode: 'Status Set', team: 'Team',
-    assignee: 'Assignee', root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause'};
+    analyst: 'Analyst', root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause'};
   // The label of a changed field: a follow-up field or a catalog field ("field:key").
   const historyLabel = (field) => (field.startsWith('field:')
     ? (state.fields.find((item) => item.key === field.slice(6))?.label || field.slice(6)) : (HISTORY_LABELS[field] || field));
@@ -244,12 +244,17 @@
   const isDefaultUser = (username) => userOrder(username) < state.defaultUsers.length;
   const byUserName = (left, right) => userOrder(left) - userOrder(right) || userName(left).localeCompare(userName(right));
   const DEFAULT_USER_TAG = 'default user';
+  // An Analyst that is no user account: a name the analyses of the previous tool brought, until it is linked to one.
+  const NO_ACCOUNT_TAG = 'No account';
+  const withoutAccount = (name) => Boolean(name) && name !== state.unassigned
+    && !state.users.some((user) => user.toLowerCase() === String(name).toLowerCase());
   // The labels of a list of users ([element, username]): the tag of the default users and the line after them.
   const tagUsers = (entries) => {
     let afterDefault = false;
     entries.forEach(([label, username]) => {
       const tagged = isDefaultUser(username);
       if (tagged && !label.querySelector('.nq-user-tag')) label.append(node('span', DEFAULT_USER_TAG, 'nq-user-tag'));
+      if (withoutAccount(username) && !label.querySelector('.nq-user-tag')) label.append(node('span', NO_ACCOUNT_TAG, 'nq-user-tag is-no-account'));
       label.classList.toggle('nq-user-divider', afterDefault && !tagged && username !== state.unassigned);
       if (username !== state.unassigned) afterDefault = tagged;
     });
@@ -264,10 +269,14 @@
     });
   };
   const pill = (kind, name, emptyLabel = 'Unassigned') => {
-    const element = node('span', (kind === 'assignee' && name ? userName(name) : name) || emptyLabel, `nq-pill nq-pill-${kind}`);
+    const element = node('span', (kind === 'analyst' && name ? userName(name) : name) || emptyLabel, `nq-pill nq-pill-${kind}`);
     if (kind === 'root_cause') outlinePill(element, optionColor(kind, name));
-    else paintPill(element, kind === 'assignee' ? '' : optionColor(kind, name));
+    else paintPill(element, kind === 'analyst' ? '' : optionColor(kind, name));
     if (!name) element.classList.add('is-empty');
+    if (kind === 'analyst' && withoutAccount(name)) {
+      element.classList.add('is-no-account');
+      element.title = `${name}: an analyst without user account (Link Analysts to Accounts links it)`;
+    }
     return element;
   };
   // A small tag in the colour of a section (or of a source).
@@ -304,7 +313,7 @@
     failure_classification: 'cdr:failure_classification', failure_category: 'cdr:failure_category',
     root_domain: 'tracking:root_category', root_category: 'tracking:root_category', root_cause: 'tracking:root_cause',
     status: 'tracking:status', status_mode: 'tracking:status', state: 'tracking:status', team: 'tracking:team',
-    assignee: 'tracking:assignee',
+    analyst: 'tracking:analyst',
   };
   const fillSelect = (select, entries) => {
     const previous = new Set([...select.selectedOptions].map((option) => option.value));
@@ -326,7 +335,7 @@
       service: ['voice', 'speech', 'data'].filter((value) => (values.service || []).includes(value)).map((value) => [value, SERVICE_LABELS[value]]),
       status: state.options.statuses.map((item) => [item.name, item.name]),
       team: [unassigned, ...state.options.teams.map((item) => [item.name, item.name])],
-      assignee: [unassigned, ...[...new Set([...(values.assignee || []), ...state.users])].sort(byUserName).map((name) => [name, userName(name)])],
+      analyst: [unassigned, ...[...new Set([...(values.analyst || []), ...state.users])].sort(byUserName).map((name) => [name, userName(name)])],
       root_domain: [[state.unassigned, NOT_CLASSIFIED], ...state.rootCauses.domains.map((item) => [item.name, item.name])],
       root_category: [[state.unassigned, NOT_CLASSIFIED], ...state.rootCauses.categories.map((item) => [item.name, item.name])],
       root_cause: [[state.unassigned, NO_CAUSE], ...state.rootCauses.causes.map((item) => [item.name, item.name])],
@@ -472,7 +481,7 @@
       label.classList.toggle('nq-unavailable', Boolean(option) && !option.selected && !offered(select.dataset.nqFilter, option.value));
       return [label, option?.value];
     });
-    if (select.dataset.nqFilter === 'assignee') tagUsers(labels.filter(([label]) => !label.classList.contains('nq-unavailable')));
+    if (select.dataset.nqFilter === 'analyst') tagUsers(labels.filter(([label]) => !label.classList.contains('nq-unavailable')));
   };
   const loadAvailable = async (filters, quiet) => {
     const signature = JSON.stringify(filters);
@@ -498,7 +507,7 @@
     if (field === 'dataset_id') field = 'datasets';
     const select = root.querySelector(`[data-nq-filter="${field}"]`);
     if (!select) return;
-    const target = ['team', 'assignee', 'root_domain', 'root_category', 'root_cause'].includes(field) ? (value || state.unassigned) : value;
+    const target = ['team', 'analyst', 'root_domain', 'root_category', 'root_cause'].includes(field) ? (value || state.unassigned) : value;
     const chosen = [...select.selectedOptions].map((option) => option.value);
     const toggleOff = chosen.length === 1 && chosen[0] === target;
     [...select.options].forEach((option) => { option.selected = !toggleOff && option.value === target; });
@@ -698,7 +707,7 @@
         const isField = field.startsWith('field:');
         // Only the fields with a filter of their own (lists and Yes / No of the analysts or derived) drill down.
         const fieldFilter = isField && root.querySelector(`[data-nq-filter="${CSS.escape(field)}"]`);
-        const blankable = ['team', 'assignee', 'root_domain', 'root_category', 'root_cause'];
+        const blankable = ['team', 'analyst', 'root_domain', 'root_category', 'root_cause'];
         const filterValue = ((blankable.includes(field) || isField) && !item.value) ? state.unassigned : item.value;
         const chosen = filterValues(filters, field) || [];
         const active = chosen.length === 1 && chosen[0] === filterValue;
@@ -792,7 +801,7 @@
     } else {
       boxes = options.map(checkbox);
     }
-    if (field === 'assignee') tagUsers(boxes.map(([label, , option]) => [label, option.value]));
+    if (field === 'analyst') tagUsers(boxes.map(([label, , option]) => [label, option.value]));
     if (!boxes.length) list.append(node('p', 'No values.', 'nq-muted'));
     const syncAll = () => {
       const shown = boxes.filter(([label]) => !label.hidden);
@@ -888,7 +897,8 @@
           value: name, label: userName(name), tag: isDefaultUser(name) ? DEFAULT_USER_TAG : '',
           divider: index > 0 && isDefaultUser(users[index - 1]) && !isDefaultUser(name)}))];
     const current = call[kind] || '';
-    if (current && !items.some((item) => item.value === current)) items.push({value: current, label: kind === 'assignee' ? userName(current) : current});
+    if (current && !items.some((item) => item.value === current)) items.push({value: current, label: kind === 'analyst' ? userName(current) : current,
+      tag: kind === 'analyst' && withoutAccount(current) ? NO_ACCOUNT_TAG : ''});
     // A status set by hand can go back to the Status Rules.
     if (kind === 'status' && call.status_mode === 'manual') items.push({value: AUTO_STATUS, label: '↺ Back to automatic', action: true});
     const control = choiceControl({
@@ -1453,7 +1463,7 @@
     row.append(...shownColumns.map((key) => cells[naturalColumns.indexOf(key)]));
   };
   // Every column shows the colour of its group above its name, as the Excel export: the call columns that of the call,
-  // the follow-up columns (status, team and assignee, root category and cause, comments) that of the section of their field.
+  // the follow-up columns (status, team and analyst, root category and cause, comments) that of the section of their field.
   const callSection = () => state.callSection || {key: 'call', label: 'Call', color: '#5e6b75'};
   const trackingSection = (ref) => sectionOf(state.fields.find((field) => field.source === 'tracking' && field.source_ref === ref)?.section || 'general');
   const FOLLOW_UP_HEADERS = {team: 'team', root_category: 'root_category', status: 'status', comments: 'comments'};
@@ -1700,7 +1710,7 @@
         stacked(call.test_name, call.technology), failure, ...optionalColumns().map((column) => optionalCell(call, column)),
         ...groups.filter((group) => group.field.section === 'rca').map(fieldGroupCell),
         root, ...groups.filter((group) => group.field.section !== 'rca').map(fieldGroupCell), status,
-        tracking('team', 'assignee'), comments,
+        tracking('team', 'analyst'), comments,
       );
       orderRowCells(row);
       row.addEventListener('click', (event) => {
@@ -1805,8 +1815,8 @@
     fill('nq-bulk-status', 'Set status…', [...state.options.statuses.map((item) => [item.name, item.name]),
       [AUTO_STATUS, '↺ Back to automatic']]);
     fill('nq-bulk-team', 'Set team…', [[state.unassigned, 'Unassigned'], ...state.options.teams.map((item) => [item.name, item.name])]);
-    fill('nq-bulk-assignee', 'Assign to…', [[state.unassigned, 'Unassigned']]);
-    $('nq-bulk-assignee')?.append(...userOptions(state.users));
+    fill('nq-bulk-analyst', 'Assign to…', [[state.unassigned, 'Unassigned']]);
+    $('nq-bulk-analyst')?.append(...userOptions(state.users));
     // Root categories and causes under their domain.
     [['nq-bulk-category', 'Set root category…', NOT_CLASSIFIED, state.rootCauses.categories],
       ['nq-bulk-root', 'Set root cause…', NO_CAUSE, state.rootCauses.causes]].forEach(([id, placeholder, empty, items]) => {
@@ -2101,7 +2111,7 @@
       slice.addEventListener('pointerleave', chartTooltip.hide);
       slice.addEventListener('click', () => {
         chartTooltip.hide();
-        const field = {status: 'status', team: 'team', assignee: 'assignee', service: 'service', result: 'result'}[distribution.field];
+        const field = {status: 'status', team: 'team', analyst: 'analyst', service: 'service', result: 'result'}[distribution.field];
         if (field) selectOnly(field, item.filter ?? (['Unassigned', '—'].includes(item.value) ? '' : item.value));
       });
       svg.append(slice);
@@ -2118,7 +2128,7 @@
       const swatch = node('span', '', 'nq-swatch');
       swatch.style.background = colorFor(item, index);
       button.append(swatch, node('span', item.value, 'nq-pie-label'), node('strong', `${number(item.count)} · ${percent(item.count, total)}`));
-      const filterField = {status: 'status', team: 'team', assignee: 'assignee', service: 'service', result: 'result'}[distribution.field];
+      const filterField = {status: 'status', team: 'team', analyst: 'analyst', service: 'service', result: 'result'}[distribution.field];
       button.title = `Show only ${item.value}`;
       button.addEventListener('click', () => {
         const value = item.filter ?? (['Unassigned', '—'].includes(item.value) ? '' : item.value);
@@ -2265,9 +2275,9 @@
     const person = (name) => (name === 'Unassigned' ? state.unassigned : name);
     statsTable($('nq-team-workload'), ['Team', 'Open', 'Closed', 'Total'], workload(progress.teams),
       {drillRow: (index) => [['team', person(progress.teams[index].name)]]});
-    statsTable($('nq-assignee-workload'), ['Assignee', 'Open', 'Closed', 'Total'],
-      workload(progress.assignees.map((row) => ({...row, name: row.name === 'Unassigned' ? row.name : userName(row.name)}))),
-      {drillRow: (index) => [['assignee', person(progress.assignees[index].name)]]});
+    statsTable($('nq-analyst-workload'), ['Analyst', 'Open', 'Closed', 'Total'],
+      workload(progress.analysts.map((row) => ({...row, name: row.name === 'Unassigned' ? row.name : userName(row.name)}))),
+      {drillRow: (index) => [['analyst', person(progress.analysts[index].name)]]});
     statsTable($('nq-activity'), ['User', 'Changes', 'Comments', 'Calls Closed'],
       progress.activity.map((row) => [row.name, number(row.changes), number(row.comments), number(row.closed)]));
   };
@@ -2520,7 +2530,7 @@
     return `${label} ${verb} ${values.join(', ')}`;
   };
   // The calls that meet a Status Rule: each condition becomes the filter of its field.
-  const CONDITION_FILTERS = {'@team': 'team', '@assignee': 'assignee', '@root_category': 'root_category', '@root_cause': 'root_cause'};
+  const CONDITION_FILTERS = {'@team': 'team', '@analyst': 'analyst', '@root_category': 'root_category', '@root_cause': 'root_cause'};
   const applyRuleFilters = (rule, index) => {
     rule.conditions.forEach((condition) => {
       if (condition.field === '@attended') {
@@ -4165,7 +4175,7 @@
     const repeatGrid = node('div', undefined, 'nq-call-info-grid nq-call-info-repeats');
     repeatGrid.append(...repeats.map(infoCard));
     infoPanel.append(node('span', 'Prioritization Info', 'nq-phase-panel-title'), ...[infoGrid, repeatGrid].filter((grid) => grid.childElementCount));
-    // The fields of the analysts of General (Analyst, Reviewer…) follow the Assignee, saved as soon as they change like it.
+    // The fields of the analysts of General (Analyst, Reviewer…) follow the Analyst, saved as soon as they change like it.
     const generalFields = analystFieldsOf('general').filter((item) => !HEADER_FIELDS.includes(item.key)).map((item) => {
       const block = fieldBlock(item, call);
       block.classList.add('nq-tracking-field', 'nq-tracking-general');
@@ -4176,7 +4186,7 @@
       });
       return block;
     });
-    host.replaceChildren(status, ...(priority ? [priority] : []), field('team', 'Team'), field('assignee', 'Assignee'), ...generalFields, rootField,
+    host.replaceChildren(status, ...(priority ? [priority] : []), field('team', 'Team'), field('analyst', 'Analyst'), ...generalFields, rootField,
       ...(infoFields.length ? [infoPanel] : []), ...(phases.childElementCount ? [phasePanel] : []), updated);
   };
   const DETAIL_FIELDS = [
@@ -5411,8 +5421,8 @@
       toast(error.message, 'error');
     }
   };
-  // Status (or back to the Status Rules), team, assignee, root category and root cause of the selected calls.
-  [['nq-bulk-status', 'status'], ['nq-bulk-team', 'team'], ['nq-bulk-assignee', 'assignee'], ['nq-bulk-category', 'root_category'],
+  // Status (or back to the Status Rules), team, analyst, root category and root cause of the selected calls.
+  [['nq-bulk-status', 'status'], ['nq-bulk-team', 'team'], ['nq-bulk-analyst', 'analyst'], ['nq-bulk-category', 'root_category'],
     ['nq-bulk-root', 'root_cause']].forEach(([id, kind]) => {
     $(id)?.addEventListener('change', async (event) => {
       const value = event.target.value;
@@ -5444,7 +5454,7 @@
     const callKey = state.detail?.call.call_key;
     if (!callKey) return;
     deleteHistory('/api/non-qualified-calls/history/clear', {method: 'POST', body: JSON.stringify({call_keys: [callKey]})},
-      'Delete the whole history of this call? Its status, team, assignee, root cause and comments stay; the history cannot be recovered.');
+      'Delete the whole history of this call? Its status, team, analyst, root cause and comments stay; the history cannot be recovered.');
   });
   $('nq-bulk-history')?.addEventListener('click', async () => {
     const count = state.selected.size;
@@ -6758,7 +6768,7 @@
   // The values a condition chooses among: list values, Yes / No, teams, users, root categories or causes.
   const conditionValues = (field) => {
     if (field === '@team') return state.options.teams.map((item) => item.name);
-    if (field === '@assignee') return state.users;
+    if (field === '@analyst') return state.users;
     if (field === '@root_category') return state.rootCauses.categories.map((item) => item.name);
     if (field === '@root_cause') return state.rootCauses.causes.map((item) => item.name);
     return state.conditionFields[field]?.values || [];
@@ -8279,6 +8289,11 @@
         apart.length ? list('Left out:', apart) : null,
         section('New values in the catalog', groups.reduce((sum, [, items]) => sum + items.length, 0),
           groups.map(([title, items]) => group(title, items)), true),
+        // The analysts no user account is named as keep their name (an equivalence of the Analyst names their account).
+        section('Analysts without account', (result.analysts_without_account || []).length, [
+          node('p', 'They keep their name as the Analyst of their calls: give them their user account in the equivalences '
+            + '(Analyst → username) before importing, or later with Link Analysts to Accounts.', 'nq-muted'),
+          chips((result.analysts_without_account || []).map((item) => [item.value, number(item.rows)]))]),
         section('Domains that change in the catalog', (result.domain_changes || []).length, chips((result.domain_changes || []).map((item) => [
           `${item.value}: ${item.from || 'no domain'} → ${item.to}`, `${item.kind} · ${number(item.rows)}`]))),
         section('Values kept only in the import note', result.invalid_total,
@@ -8686,57 +8701,48 @@
       }
     });
   }
-  // -- Analysts / Reviewers → Asignees dialog ----------------------------------------------------------------
-  // The user account chosen for each Analyst or Reviewer becomes the Asignee of the calls they analysed, and their Analyst
-  // and Reviewer take the name of the account (New Analyst / Reviewer); the counts follow every choice.
-  const assignDialog = $('nq-assign-analysts-dialog');
-  if (assignDialog) {
-    let assignToken = 0;
-    const assignSelects = () => [...$('nq-assign-analysts-rows').querySelectorAll('select[data-person]')];
-    const assignRequest = (preview) => api('/api/non-qualified-calls/analysts/assign', {method: 'POST', body: JSON.stringify({
-      assignments: Object.fromEntries(assignSelects().filter((select) => select.value).map((select) => [select.dataset.person, select.value])),
-      overwrite: $('nq-assign-analysts-overwrite').checked, preview,
+  // -- Link Analysts to Accounts dialog ------------------------------------------------------------------------
+  // The user account chosen for each analyst or reviewer without account becomes the Analyst of the calls they analyse,
+  // and the Reviewer of those they reviewed takes its name; the counts follow every choice.
+  const linkDialog = $('nq-link-analysts-dialog');
+  if (linkDialog) {
+    let linkToken = 0;
+    const linkSelects = () => [...$('nq-link-analysts-rows').querySelectorAll('select[data-person]')];
+    const linkRequest = (preview) => api('/api/non-qualified-calls/analysts/link', {method: 'POST', body: JSON.stringify({
+      links: Object.fromEntries(linkSelects().filter((select) => select.value).map((select) => [select.dataset.person, select.value])),
+      preview,
     })});
     const plural = (count, one, many) => `${number(count)} ${count === 1 ? one : many}`;
-    const assignSummary = (result) => {
-      const chosen = assignSelects().some((select) => select.value);
+    const linkSummary = (result) => {
+      const chosen = linkSelects().some((select) => select.value);
       const joins = result.joins.map((item) => `${userName(item.user)} joins ${item.team}`);
-      const named = [result.analyst_names ? plural(result.analyst_names, 'Analyst', 'Analysts') : '',
-        result.reviewer_names ? plural(result.reviewer_names, 'Reviewer', 'Reviewers') : ''].filter(Boolean);
       return [
-        !chosen ? 'Choose the user account of an Analyst or a Reviewer.' : !result.calls ? 'No call changes with these choices.' : '',
-        result.assignees ? `${plural(result.assignees, 'call gets', 'calls get')} a new Asignee.` : '',
-        named.length ? `${named.join(' and ')} of the calls take the name of their account.` : '',
+        !chosen ? 'Choose the user account of an analyst or a reviewer.' : !result.calls ? 'No call changes with these choices.' : '',
+        result.analyst_calls ? `${plural(result.analyst_calls, 'call takes', 'calls take')} the account as its Analyst.` : '',
+        result.reviewer_calls ? `${plural(result.reviewer_calls, 'call takes', 'calls take')} the account as its Reviewer.` : '',
         joins.length ? `Team members added: ${joins.join(', ')}.` : '',
         result.waiting ? `${result.waiting === result.calls ? 'They wait' : `${number(result.waiting)} of them ${result.waiting === 1 ? 'waits' : 'wait'}`} for their CDR to be loaded: their imported analysis changes.` : '',
       ].filter(Boolean).join(' ');
     };
-    const previewAssign = debounce(async () => {
-      const token = ++assignToken;
-      const apply = $('nq-assign-analysts-apply');
+    const previewLink = debounce(async () => {
+      const token = ++linkToken;
+      const apply = $('nq-link-analysts-apply');
       apply.disabled = true;
       try {
-        const result = await assignRequest(true);
-        if (token !== assignToken) return;
-        assignSelects().forEach((select) => {
+        const result = await linkRequest(true);
+        if (token !== linkToken) return;
+        linkSelects().forEach((select) => {
           select.closest('tr').querySelector('[data-analyst-change]').textContent = select.value ? number(result.people[select.dataset.person] || 0) : '—';
         });
-        $('nq-assign-analysts-summary').textContent = assignSummary(result);
-        $('nq-assign-analysts-error').textContent = '';
+        $('nq-link-analysts-summary').textContent = linkSummary(result);
+        $('nq-link-analysts-error').textContent = '';
         apply.disabled = !result.calls;
       } catch (error) {
-        if (token === assignToken) $('nq-assign-analysts-error').textContent = error.message;
+        if (token === linkToken) $('nq-link-analysts-error').textContent = error.message;
       }
     }, 250);
-    // The name an Analyst or Reviewer takes with the account chosen: its first and last name (without them, the name stays).
-    const showNewName = (select, cell, current) => {
-      const name = select.value ? state.userNames?.[select.value] || '' : '';
-      cell.textContent = !select.value ? '—' : name || current;
-      cell.classList.toggle('is-new-name', Boolean(name) && name !== current);
-      cell.title = select.value && !name ? 'The account has no first and last name: the name stays as it is' : '';
-    };
-    // A row per analyst or reviewer: their name and spellings, the name they take, their calls as Analyst and as Reviewer,
-    // the analysed calls without an Asignee, the user account and the calls that change.
+    // A row per analyst or reviewer without account: their name and spellings, their calls as Analyst and as Reviewer,
+    // the user account and the calls that change.
     const personRow = (person, users) => {
       const row = node('tr');
       const name = node('td');
@@ -8745,66 +8751,59 @@
       const select = node('select');
       select.dataset.person = person.key;
       select.setAttribute('aria-label', `User account of ${person.name}`);
-      select.append(node('option', 'Leave unchanged'), ...userOptions(users));
+      select.append(node('option', 'Keep without account'), ...userOptions(users));
       select.options[0].value = '';
       select.value = users.includes(person.suggested) ? person.suggested : '';
       const account = node('td');
       account.append(select);
-      const newName = node('td');
-      showNewName(select, newName, person.name);
-      select.addEventListener('change', () => { showNewName(select, newName, person.name); previewAssign(); });
+      select.addEventListener('change', previewLink);
       const change = node('td', '—', 'nq-number');
       change.dataset.analystChange = '';
-      row.append(name, newName, node('td', number(person.analyst_calls), 'nq-number'), node('td', number(person.reviewer_calls), 'nq-number'),
-        node('td', number(person.unassigned), 'nq-number'), account, change);
+      row.append(name, node('td', number(person.analyst_calls), 'nq-number'), node('td', number(person.reviewer_calls), 'nq-number'),
+        account, change);
       return row;
     };
-    const renderAssign = (payload) => {
-      $('nq-assign-analysts-rows').replaceChildren(...payload.people.map((person) => personRow(person, payload.users)));
+    const renderLinks = (payload) => {
+      $('nq-link-analysts-rows').replaceChildren(...payload.people.map((person) => personRow(person, payload.users)));
       if (!payload.people.length) {
-        const cell = node('td', 'No call of this workspace has an Analyst or a Reviewer.', 'nq-muted');
-        cell.colSpan = 7;
+        const cell = node('td', 'Every analyst and reviewer of the calls of this workspace has a user account.', 'nq-muted');
+        cell.colSpan = 5;
         const row = node('tr');
         row.append(cell);
-        $('nq-assign-analysts-rows').append(row);
+        $('nq-link-analysts-rows').append(row);
       }
     };
-    $('nq-assign-analysts-open').addEventListener('click', async () => {
-      $('nq-assign-analysts-overwrite').checked = false;
-      $('nq-assign-analysts-error').textContent = '';
-      $('nq-assign-analysts-summary').textContent = 'Reading the analysts and reviewers of the calls…';
-      $('nq-assign-analysts-rows').replaceChildren();
-      $('nq-assign-analysts-apply').disabled = true;
-      assignDialog.showModal();
+    $('nq-link-analysts-open').addEventListener('click', async () => {
+      $('nq-link-analysts-error').textContent = '';
+      $('nq-link-analysts-summary').textContent = 'Reading the analysts and reviewers without account…';
+      $('nq-link-analysts-rows').replaceChildren();
+      $('nq-link-analysts-apply').disabled = true;
+      linkDialog.showModal();
       try {
         const payload = await api('/api/non-qualified-calls/analysts');
         state.userNames = {...state.userNames, ...(payload.user_names || {})};
-        renderAssign(payload);
-        previewAssign();
+        renderLinks(payload);
+        previewLink();
       } catch (error) {
-        $('nq-assign-analysts-summary').textContent = '';
-        $('nq-assign-analysts-error').textContent = error.message;
+        $('nq-link-analysts-summary').textContent = '';
+        $('nq-link-analysts-error').textContent = error.message;
       }
     });
-    $('nq-assign-analysts-overwrite').addEventListener('change', previewAssign);
-    $('nq-assign-analysts-cancel').addEventListener('click', () => assignDialog.close());
-    $('nq-assign-analysts-form').addEventListener('submit', async (event) => {
+    $('nq-link-analysts-cancel').addEventListener('click', () => linkDialog.close());
+    $('nq-link-analysts-form').addEventListener('submit', async (event) => {
       event.preventDefault();
-      const message = 'Replace the Asignee the calls already have with the user account of their Analyst?';
-      if ($('nq-assign-analysts-overwrite').checked && !(typeof window.showConfirmDialog === 'function'
-        ? await window.showConfirmDialog(message, {title: 'Replace Asignees', confirmLabel: 'Replace'}) : window.confirm(message))) return;
-      const button = $('nq-assign-analysts-apply');
+      const button = $('nq-link-analysts-apply');
       button.disabled = true;
       try {
-        const result = await assignRequest(false);
+        const result = await linkRequest(false);
         toast(`${plural(result.calls, 'call', 'calls')} linked to the accounts of their Analyst and Reviewer.`);
-        assignDialog.close();
-        // The new team members reach the pickers with the state of the page.
+        linkDialog.close();
+        // The new team members and analysts reach the pickers with the state of the page.
         await loadState();
         loadCalls({quiet: true});
         if (state.detail) openDetail(state.detail.call.call_key, {keepTab: true});
       } catch (error) {
-        $('nq-assign-analysts-error').textContent = error.message;
+        $('nq-link-analysts-error').textContent = error.message;
         button.disabled = false;
       }
     });
@@ -8816,7 +8815,7 @@
     'status-rules': 'nq-status-rules-open', 'prioritization-rules': 'nq-prioritization-open', 'root-cause-catalog': 'nq-root-open',
     'dta-rca-rules': 'nq-dta-rules-open', 'map-levels': 'nq-map-levels-open',
     'import-ericsson-rca-results': 'nq-rca-open', 'import-previous-nq-analyses': 'nq-analyses-open',
-    'analysts-reviewers-to-asignees': 'nq-assign-analysts-open',
+    'link-analysts-to-accounts': 'nq-link-analysts-open',
   };
   // A link to a call (#call=<call key>) opens it, and one to the map of a site (#site-area=…, as Sites to review of Scoring &
   // GAP Analysis opens it) opens that map; a call opened from that map closes it.
