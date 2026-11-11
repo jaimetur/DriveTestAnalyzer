@@ -31,14 +31,14 @@ The adaptation is planned in eight phases, one provider at a time: Umlaut, then 
 | --- | --- | --- |
 | 1. Multi-provider base | The CDR types of the providers and a field profile per CDR type; the modules read the CDR columns through the profile of the workspace. | **Done** in version 0.9.0 |
 | 2. Umlaut reader, profile and upload | The Umlaut reader (files per service, the Statistics sheet, Side1/Side2 headers, samples joined to their call), the Umlaut profile with its native names, campaign and operator detection confirmed on upload, derived columns (call key, ECI, mean radio of the call) and a CDR Field Dictionary panel. | **Done** in version 0.9.0; Umlaut CDR stays *coming soon* until a multi-operator export validates it |
-| 3. Scoring ready for Umlaut | Formulas with native names and a field picker, percentiles other than P90 and environments by the Umlaut scoring category; the Umlaut methodology is loaded when it is available. | Planned · January 2027, 2 weeks |
+| 3. Scoring ready for Umlaut | Formulas with native names and a field picker, percentiles other than P90 and environments by the Umlaut scoring category; the Umlaut methodology is loaded when it is available. | Planned · January 2027, 3 weeks |
 | 4. Umlaut PPT templates | PPT Designer templates per service and Auto-calculated Fields with Umlaut values. | Planned · January 2027, 1 week |
-| 5. Non-Qualified Calls and RCA | NQ = Qualifier NOT QUALIFIED, an Umlaut call key, the Umlaut values of the DT Analyzer RCA (available in every workspace), the Ericsson RCA by the provider's call key and the Layer3 Logs of the Umlaut NQ calls. | Planned · January 2027, 1 week |
-| 6. Umlaut Network Insights | The radio of the calls from their samples, NR cells by PCI + ARFCN + distance, MIMO rank and bandwidths. | Planned · February 2027, 1 week |
-| 7. P3 | The P3 compatibility report, reader, profile and content, with the same model, and its own Scoring methodology. | Once a P3 sample is available · February to April 2027 |
-| 8. RootMetrics | The RootMetrics compatibility report, reader, profile and content, with the same model, and its own Scoring methodology. | Once a RootMetrics sample is available · April to May 2027 |
+| 5. Non-Qualified Calls and RCA | NQ = Qualifier NOT QUALIFIED, an Umlaut call key, the Umlaut values of the DT Analyzer RCA (available in every workspace), the Ericsson RCA by the provider's call key and the Layer3 Logs of the Umlaut NQ calls. | Planned · February 2027, 2 weeks |
+| 6. Umlaut Network Insights | The radio of the calls from their samples, NR cells by PCI + ARFCN + distance, MIMO rank and bandwidths. | Planned · February 2027, 2 weeks |
+| 7. P3 | The P3 compatibility report, reader, profile and content, with the same model, and its own Scoring methodology. | Once a P3 sample is available · March to May 2027 |
+| 8. RootMetrics | The RootMetrics compatibility report, reader, profile and content, with the same model, and its own Scoring methodology. | Once a RootMetrics sample is available · May to July 2027 |
 
-Each provider takes about six or seven weeks and ends with a week of validation with the teams, when its CDR type stops being *coming soon*: Umlaut CDR in February 2027, P3 CDR in April 2027 and RootMetrics CDR in May 2027. The Christmas weeks are left out of the plan.
+Each provider takes about eight to ten weeks and ends with a week of validation with the teams, when its CDR type stops being *coming soon*: Umlaut CDR in March 2027, P3 CDR in May 2027 and RootMetrics CDR in July 2027. The Christmas weeks are left out of the plan.
 
 Phase 1 is available now and changes nothing for NetCheck workspaces:
 
