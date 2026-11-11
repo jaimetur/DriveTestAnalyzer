@@ -1818,6 +1818,11 @@ td.nq-queue-number { text-align: right; font-variant-numeric: tabular-nums; }
 .nq-queue-table :is(th, td) { padding-right: .4rem; padding-left: .4rem; }
 .nq-queue-table td:is(:nth-child(4), :nth-child(5), :nth-child(6), :nth-child(8)) { white-space: normal; }
 .nq-queue-table td.nq-queue-join, .nq-queue-table td.nq-queue-join .nq-failure-drill { white-space: nowrap; }
+/* Every header of a queue over its column: the position and the numbers (Waiting of the hotspots, Expected Gain) to the
+   right, the JOIN_ID or Hotspot ID, the texts and the pills to the left. */
+.nq-queue-table :is(th, td):nth-child(1) { text-align: right; }
+.nq-queue-table :is(th, td):is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5), :nth-child(6), :nth-child(7), :nth-child(9), :nth-child(10)) { text-align: left; }
+.nq-queue-table :is(th, td):nth-child(8), .nq-hotspot-queue-table :is(th, td):nth-child(7) { text-align: right; }
 /* The tracked calls, folded below the queues. */
 .nq-priority-tracked { margin-top: .9rem; }
 /* The views of the queues, who has each call, Take and the assignment of the admins (ticket #122). */
