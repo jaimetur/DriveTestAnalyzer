@@ -59,6 +59,10 @@ DEFAULT_CLEANUP_MB = 10
 # scripts); the page shows them. Any other file is attached as a file, which is downloaded and never shown in the page.
 IMAGE_EXTENSIONS = {'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp'}
 FILE_CONTENT_TYPE = 'application/octet-stream'
+# The text files the type database of the system may not know (that of a Linux server or of the Docker image has no .log):
+# the same type wherever the tool runs.
+TEXT_CONTENT_TYPES = {'.log': 'text/plain', '.txt': 'text/plain', '.csv': 'text/csv', '.md': 'text/markdown',
+                      '.json': 'application/json', '.xml': 'application/xml', '.yaml': 'application/yaml', '.yml': 'application/yaml'}
 # The files a ticket does not take: programs and scripts that run when they are opened (zipped, they can be attached).
 BLOCKED_EXTENSIONS = frozenset({
     '.app', '.bat', '.cmd', '.com', '.command', '.cpl', '.dll', '.exe', '.hta', '.jar', '.js', '.jse', '.lnk', '.msi',
@@ -164,7 +168,7 @@ def checked_attachment(file_name: object, content: bytes) -> dict[str, Any]:
     if content_type is not None:
         name = name or 'screenshot'
         return {'file_name': name if '.' in name else name + IMAGE_EXTENSIONS[content_type], 'content_type': content_type, 'content': content}
-    guessed = mimetypes.guess_type(name)[0] if name else None
+    guessed = (TEXT_CONTENT_TYPES.get(file_extension(name)) or mimetypes.guess_type(name)[0]) if name else None
     return {'file_name': name or 'file', 'content_type': guessed if guessed and not guessed.startswith('image/') else FILE_CONTENT_TYPE,
             'content': content}
 
