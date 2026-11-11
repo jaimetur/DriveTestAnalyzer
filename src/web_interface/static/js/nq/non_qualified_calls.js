@@ -4252,9 +4252,9 @@
   const TAB_GROUPS = [['general'], ['rca'], ['failure_event'], ['analysis'], ['implementation', 'planning']];
   // The call details close the tabs, in grey.
   const CALL_DETAILS_COLOR = '#9aa5ad';
-  // The Failure Map (the map of the area where the call failed, nq_call_map.js): a step of its own, without fields, between
-  // RCA and Failure Details.
-  const FAILURE_MAP = {key: 'map', label: 'Failure Map', color: '#0B7285', sections: []};
+  // The Failure Map (the map of the area where the call failed, nq_call_map.js): a step of its own, without fields, right
+  // after the Activity, before RCA (where the call failed comes before why).
+  const FAILURE_MAP = {key: 'map', label: 'Failure Map Analysis', color: '#0B7285', sections: []};
   const drawerTabs = () => {
     const known = new Set(state.sections.map((section) => section.key));
     const grouped = new Set(TAB_GROUPS.flat());
@@ -4263,9 +4263,9 @@
       .map((keys) => ({key: keys[0], sections: keys.map(sectionOf), color: sectionOf(keys[0]).color,
         label: keys[0] === 'general' ? 'Activity' : keys.map((key) => sectionOf(key).label).join(' & ')}));
     if (!callMap) return groups;
-    const details = groups.findIndex((group) => group.key === 'failure_event');
     const rca = groups.findIndex((group) => group.key === 'rca');
-    const at = details >= 0 ? details : rca >= 0 ? rca + 1 : Math.min(1, groups.length);
+    const details = groups.findIndex((group) => group.key === 'failure_event');
+    const at = rca >= 0 ? rca : details >= 0 ? details : Math.min(1, groups.length);
     return [...groups.slice(0, at), FAILURE_MAP, ...groups.slice(at)];
   };
   const buildDrawerTabs = () => {
@@ -4565,19 +4565,19 @@
     };
     const phaseStep = (sectionKey, name, value, color, title, empty = 'Not started') => (
       phaseCard(tabOf(sectionKey), sectionOf(sectionKey).color, name, value, color, title, empty));
-    if (state.sections.some((section) => section.key === 'rca')) {
-      const identified = call.root_category || call.root_cause;
-      const recommended = !identified && recommendationOf(call);
-      phaseStep('rca', 'RCA Identification', identified, optionColor('root_category', call.root_category) || optionColor('root_cause', call.root_cause),
-        'RCA Identification', recommended ? 'Recommended' : 'Not started');
-    }
-    // The Failure Map tells where the call failed (its place and the NQ calls there); Failure Details how many of its
-    // fields are filled in.
+    // The Failure Map tells where the call failed (its place and the NQ calls there), first; then RCA Identification and
+    // Failure Details how many of its fields are filled in.
     if (callMap) {
       const located = call.latitude !== null && call.latitude !== undefined;
       const repeated = Number(call.repetitions) > 1 ? ` (${number(call.repetitions)} Non-Qualified Calls of its operator there)` : '';
       phaseCard(FAILURE_MAP, FAILURE_MAP.color, FAILURE_MAP.label, call.place_label || (located ? 'Located' : ''), FAILURE_MAP.color,
         `Where the call failed${repeated}`, 'No position');
+    }
+    if (state.sections.some((section) => section.key === 'rca')) {
+      const identified = call.root_category || call.root_cause;
+      const recommended = !identified && recommendationOf(call);
+      phaseStep('rca', 'RCA Identification', identified, optionColor('root_category', call.root_category) || optionColor('root_cause', call.root_cause),
+        'RCA Identification', recommended ? 'Recommended' : 'Not started');
     }
     const detailFields = state.fields.filter((item) => item.section === 'failure_event' && item.source === 'user');
     if (detailFields.length && state.sections.some((section) => section.key === 'failure_event')) {
