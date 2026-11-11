@@ -292,8 +292,10 @@ def workspace(client, tmp_path):
 
 
 def _wait_inline(monkeypatch) -> list:
-    """The jobs of the workspace run at once."""
+    """The jobs of the workspace run at once, and only those of the test: the idle tasks of the application (placing the
+    tests in the Map Areas after a minute without requests, which a slow runner reaches during the test) do not run."""
     jobs = []
+    monkeypatch.setattr(app_module, 'IDLE_TASK_CALLBACKS', [])
 
     def run(_repository, callback, *args, **_kwargs):
         jobs.append(callback)
