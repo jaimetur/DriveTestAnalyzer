@@ -3741,17 +3741,15 @@
         item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—',
         ...(actionHeaders.length ? [queueActions([item.call_key], item.analyst ? [] : [item.call_key])] : [])])), 'nq-queue-table');
     // A queue listed by hotspots (ticket #123): a row per hotspot with its waiting calls, the same columns as the calls; a
-    // click on its ID filters the list (and the queues) by the hotspot, as in the Hotspots panel.
-    // Its ID, its sites and its period on three lines, its operator over its campaign, and in Waiting its calls waiting of
-    // the calls of the queue in the hotspot, over those of them with an Analyst, so that the table fits its card.
+    // click on its ID filters the list (and the queues) by the hotspot, as in the Hotspots panel. Its ID with its sites and
+    // its period below it, and in Waiting its calls waiting of the calls of the queue in the hotspot, over those of them
+    // with an Analyst.
     const hotspotQueueTable = (rows) => {
-      const table = withClass(withClass(failureTable(['#', 'Hotspot ID', 'Priority', 'Operator / Campaign', 'Step', 'Waiting', 'Expected Gain', 'Scoring Impact', ...actionHeaders],
+      const table = withClass(withClass(failureTable(['#', 'Hotspot ID', 'Priority', 'Operator', 'Campaign', 'Step', 'Waiting', 'Expected Gain', 'Scoring Impact', ...actionHeaders],
       rows.map((item) => {
         const id = node('button', undefined, 'nq-failure-drill nq-group-id');
         id.append(node('strong', item.id, 'nq-group-id-line'), node('span', groupSites(item), 'nq-group-id-line nq-group-id-what'),
           node('span', groupPeriod(item), 'nq-group-id-line nq-group-id-what nq-group-id-period'));
-        const owner = node('div');
-        owner.append(node('span', item.operator || '—'), node('small', item.campaign || '—'));
         const waiting = node('div');
         const count = node('span');
         count.append(node('strong', number(item.waiting)), document.createTextNode(` of ${number(item.calls)}`));
@@ -3760,7 +3758,7 @@
           {node: id, pairs: [['hotspot', item.key]], reveal: 'section-nq-calls', className: 'nq-failure-name',
             title: `${number(item.waiting)} waiting of the ${number(item.calls)} calls of this queue in the hotspot (${item.nr_mode || '—'}): click to see them`},
           {text: item.priority || '—', className: `nq-queue-priority is-${String(item.priority || '').toLowerCase()}`},
-          {node: owner, className: 'nq-queue-owner-campaign'},
+          item.operator || '—', item.campaign || '—',
           {text: item.step ? `Step ${item.step} · ${item.list === 'final' ? 'Final' : 'Weekly'}` : '—', title: item.rule || '',
             className: `nq-queue-step is-${item.list === 'final' ? 'final' : 'weekly'}`},
           {node: waiting, className: 'nq-queue-waiting',
@@ -3769,26 +3767,39 @@
           item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—',
           ...(actionHeaders.length ? [queueActions(item.call_keys || [], item.free_keys || [])] : [])];
       })), 'nq-queue-table'), 'nq-hotspot-queue-table');
-      table.querySelector('th:nth-child(6)').title = 'The calls of the hotspot waiting in this queue (open and not attended yet), of the calls of the queue in the hotspot (waiting or not), and below how many of the waiting ones already have an Analyst';
+      table.querySelector('th:nth-child(7)').title = 'The calls of the hotspot waiting in this queue (open and not attended yet), of the calls of the queue in the hotspot (waiting or not), and below how many of the waiting ones already have an Analyst';
       return table;
     };
+    // An empty queue (or list) says so in a label of its own.
+    const emptyLabel = (text) => node('p', text, 'nq-queue-empty');
+    // Each queue in a subpanel of its own, one above the other across the panel: its name and team, then its waiting calls
+    // (and its hotspots) in badges, in the colour of the queue.
+    const QUEUE_ACCENTS = {Voice: '#1366d6', Data: '#0f8a7d', Unique: '#b0234f', Tracked: '#5f6b7a'};
+    const queueSubpanel = (name, team, badges, ...body) => {
+      const box = node('section', undefined, 'nq-queue-subpanel');
+      box.style.setProperty('--nq-queue-accent', QUEUE_ACCENTS[name] || QUEUE_ACCENTS.Tracked);
+      const head = node('header', undefined, 'nq-queue-subpanel-head');
+      head.append(node('h4', name === 'Tracked' ? 'Tracked' : `${name} queue`), ...(team ? [node('span', `${team} team`, 'nq-queue-subpanel-team')] : []),
+        ...badges.map((text) => node('span', text, 'nq-queue-subpanel-badge')));
+      box.append(head, ...body);
+      return box;
+    };
+    const plural = (count, noun) => `${number(count)} ${noun}${count === 1 ? '' : 's'}`;
     const queues = node('div', undefined, 'nq-priority-queues');
     queues.append(...(data.queues || []).map((item) => {
-      const box = node('div', undefined, 'nq-failure-card');
       if (!item.by_hotspots) {
-        box.append(node('strong', `${item.name} queue${item.team ? ` · ${item.team} team` : ''} · ${number(item.total)} waiting`, 'nq-failure-operator'),
-          item.rows.length ? queueTable(item.rows) : node('p', 'No call is waiting in this queue.', 'nq-muted'));
-        return box;
+        return queueSubpanel(item.name, item.team, [`${number(item.total)} waiting`],
+          item.rows.length ? queueTable(item.rows) : emptyLabel(`No call is waiting in the ${item.name} queue.`));
       }
       // Its waiting calls out of a hotspot of the Minimum hotspot size, one by one, folded below the hotspots.
       const singles = node('details', undefined, 'nq-priority-tracked');
       singles.open = Boolean(singleQueuesOpen[item.name]);
       singles.addEventListener('toggle', () => { singleQueuesOpen[item.name] = singles.open; });
       singles.append(node('summary', `Individual failures · ${number(item.singles_total)} waiting (out of a hotspot of ${number(data.settings.min_hotspot_calls)} or more failures)`),
-        item.singles.length ? queueTable(item.singles) : node('p', 'No individual failure is waiting.', 'nq-muted'));
-      box.append(node('strong', `${item.name} queue${item.team ? ` · ${item.team} team` : ''} · ${number(item.hotspot_total)} hotspot${item.hotspot_total === 1 ? '' : 's'} · ${number(item.total)} waiting`, 'nq-failure-operator'),
-        item.hotspots.length ? hotspotQueueTable(item.hotspots) : node('p', 'No hotspot is waiting in this queue.', 'nq-muted'), singles);
-      return box;
+        item.singles.length ? queueTable(item.singles) : emptyLabel('No individual failure is waiting in this queue.'));
+      return queueSubpanel(item.name, item.team, [plural(item.hotspot_total, 'hotspot'), `${number(item.total)} waiting`],
+        item.hotspots.length ? hotspotQueueTable(item.hotspots)
+          : emptyLabel(`No hotspot of ${number(data.settings.min_hotspot_calls)} or more failures is waiting in the ${item.name} queue.`), singles);
     }));
     // The views of the queues, with their waiting calls (ticket #122).
     const viewBar = node('div', undefined, 'nq-queue-views');
@@ -3861,14 +3872,15 @@
     // The tracked calls, which no team takes, folded below the queues (they stay open or folded as the panel is drawn again).
     const content = [viewBar, assignBar, queues];
     if (data.tracked) {
+      // The tracked calls, in no team queue, in a subpanel of their own below the queues, folded.
       const tracked = node('details', undefined, 'nq-priority-tracked');
       tracked.open = trackedQueueOpen;
       tracked.addEventListener('toggle', () => { trackedQueueOpen = tracked.open; });
-      tracked.append(node('summary', `Tracked · ${number(data.tracked.total)} waiting (no team queue: only tracked)`),
-        data.tracked.rows.length ? queueTable(data.tracked.rows) : node('p', 'No tracked call is waiting.', 'nq-muted'));
-      content.push(tracked);
+      tracked.append(node('summary', 'Show the tracked calls (no team queue: only tracked)'),
+        data.tracked.rows.length ? queueTable(data.tracked.rows) : emptyLabel('No tracked call is waiting.'));
+      queues.append(queueSubpanel('Tracked', '', [`${number(data.tracked.total)} waiting`], tracked));
     }
-    section('queues', 'Next to analyse', `The first ${data.settings.capacity} calls of each queue that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, are folded below them. Click a call to open it. A queue listed by hotspots shows its first ${data.settings.capacity} hotspots of ${data.settings.min_hotspot_calls} or more failures of the queue, in the order of their first waiting call (click a hotspot to see its calls): Waiting tells how many of its calls wait, of the calls of the queue in the hotspot (3 of 5), and below how many of them already have an Analyst (assigned); its other waiting calls are folded below the hotspots. A call given a team or an analyst still waits until somebody attends it: the views show every waiting call, those nobody has, those waiting for an analyst of your teams (their team, or the team of their queue) and yours; Owner tells who has each call, Take makes you its analyst (every call without an analyst of a hotspot) and admins select calls or hotspots to assign them to a team or an analyst.`, ...content);
+    section('queues', 'Next to analyse', `Each queue in a subpanel, one above the other: its first ${data.settings.capacity} calls that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, in the last subpanel, folded. Click a call to open it. A queue listed by hotspots shows its first ${data.settings.capacity} hotspots of ${data.settings.min_hotspot_calls} or more failures of the queue, in the order of their first waiting call (click a hotspot to see its calls): Waiting tells how many of its calls wait, of the calls of the queue in the hotspot (3 of 5), and below how many of them already have an Analyst (assigned); its other waiting calls are folded below the hotspots. A call given a team or an analyst still waits until somebody attends it: the views show every waiting call, those nobody has, those waiting for an analyst of your teams (their team, or the team of their queue) and yours; Owner tells who has each call, Take makes you its analyst (every call without an analyst of a hotspot) and admins select calls or hotspots to assign them to a team or an analyst.`, ...content);
     $('nq-priority').replaceChildren(...['queues', 'steps', 'impact'].map((key) => sections[key]).filter(Boolean));
   };
   let priorityToken = 0;

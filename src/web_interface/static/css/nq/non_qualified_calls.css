@@ -1773,11 +1773,25 @@ span.nq-condition-value { display: inline-block; padding: .05rem .45rem; border-
 .nq-group-id-what { color: var(--nq-muted); font-weight: 600; }
 .nq-group-id-period { white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* The hotspots of a queue: the ID, its sites and its period on three lines, so that the table fits its card. */
-.nq-hotspot-queue-table td .nq-group-id-line { white-space: normal; }
-.nq-hotspot-queue-table td .nq-group-id { min-width: 8.3rem; }
-.nq-hotspot-queue-table td.nq-queue-owner-campaign { white-space: normal; }
-.nq-hotspot-queue-table :is(.nq-queue-owner-campaign, .nq-queue-waiting) span { display: block; }
-.nq-hotspot-queue-table :is(.nq-queue-owner-campaign, .nq-queue-waiting) small { display: block; color: var(--nq-muted); font-size: .72rem; line-height: 1.25; }
+.nq-hotspot-queue-table td .nq-group-id-line { white-space: nowrap; }
+.nq-queue-waiting span, .nq-queue-waiting small { display: block; }
+.nq-queue-waiting small { color: var(--nq-muted); font-size: .72rem; line-height: 1.25; }
+/* Each queue in a subpanel of its own, one above the other, in the colour of the queue; its table never widens it
+   (it scrolls inside it only on a screen too narrow for its columns). */
+.nq-queue-subpanel { min-width: 0; padding: .7rem .85rem .8rem; border: 1px solid var(--nq-border); border-left: 5px solid var(--nq-queue-accent);
+  border-radius: 12px; background: #fff; }
+.nq-queue-subpanel-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .55rem; margin-bottom: .55rem; }
+.nq-queue-subpanel-head h4 { margin: 0; color: var(--nq-queue-accent); font-size: .95rem; font-weight: 800; }
+.nq-queue-subpanel-team { color: var(--nq-muted); font-size: .8rem; font-weight: 700; }
+.nq-queue-subpanel-badge { padding: .1rem .55rem; border: 1px solid color-mix(in srgb, var(--nq-queue-accent) 35%, white); border-radius: 999px;
+  background: color-mix(in srgb, var(--nq-queue-accent) 9%, white); color: var(--nq-queue-accent); font-size: .76rem; font-weight: 800; }
+.nq-queue-subpanel .nq-priority-tracked { margin-top: .7rem; }
+.nq-queue-subpanel > .nq-priority-tracked:first-of-type:last-child { margin-top: 0; }
+.nq-priority-queues .nq-queue-table { max-width: 100%; overflow-x: auto; }
+/* An empty queue or list says so in a label of its own. */
+.nq-queue-empty { display: inline-flex; align-items: center; gap: .4rem; margin: .1rem 0 0; padding: .45rem .85rem; border: 1px dashed var(--nq-border);
+  border-radius: 10px; background: #fbf6f8; color: var(--nq-dark); font-size: .85rem; font-weight: 700; }
+.nq-queue-empty::before { content: '✓'; color: #2b8a3e; font-weight: 900; }
 .nq-hotspot-queue-table td.nq-queue-waiting { text-align: right; font-variant-numeric: tabular-nums; }
 .nq-hotspot-queue-table td.nq-queue-waiting :is(span, small) { white-space: nowrap; }
 /* Each table of groups with its title and the calls it holds in a badge beside it. */
@@ -1835,7 +1849,7 @@ td.nq-queue-number { text-align: right; font-variant-numeric: tabular-nums; }
 .nq-priority-tracked > summary { color: var(--nq-dark); font-weight: 800; cursor: pointer; }
 .nq-priority-tracked > :not(summary) { margin-top: .5rem; }
 /* The Voice and Data queues of the panel, one beside the other on wide screens. */
-.nq-priority-queues { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 44rem), 1fr)); gap: .9rem; }
+.nq-priority-queues { display: grid; grid-template-columns: minmax(0, 1fr); gap: .9rem; }
 /* The levels: one setting per row, its name and value, and what it means below them. */
 .nq-priority-levels-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: .65rem; font-size: .8rem; }
 .nq-priority-level { display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: .15rem .5rem; }
