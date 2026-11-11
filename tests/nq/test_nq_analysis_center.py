@@ -102,7 +102,7 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     assert [option['name'] for option in by_key['planned_status']['options']] == ['Not Planned', 'Planned']
     assert [section['key'] for section in state['sections']] == list(nq_catalog.SECTION_KEYS)
     assert state['sections'][1]['color'] == '#FFC000'
-    assert [item['name'] for item in state['options']['statuses']][:2] == ['Not Attended', 'Under Analysis']
+    assert [item['name'] for item in state['options']['statuses']][:3] == ['Not Attended', 'Assigned', 'Under Analysis']
     assert 'RAN Planning Coverage' in [item['name'] for item in state['options']['teams']]
     root = state['root_causes']
     assert 'Poor Coverage LTE' in [item['name'] for item in root['categories']]
@@ -479,8 +479,8 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     lifecycle = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
     pipeline = {item['status']: item['count'] for item in lifecycle['pipeline']}
     assert pipeline['Under Analysis'] == 2 and 'Open' not in pipeline and pipeline['Not Attended'] == 1
-    # Open is the sum of the statuses of the attended calls not closed yet.
-    assert lifecycle['open_statuses'] == ['Under Analysis', 'Under Implementation', 'Under Planning']
+    # Open is the sum of the statuses of the calls somebody has (assigned or attended) not closed yet.
+    assert lifecycle['open_statuses'] == ['Assigned', 'Under Analysis', 'Under Implementation', 'Under Planning']
     assert lifecycle['open'] == sum(pipeline[name] for name in lifecycle['open_statuses'])
     # Not Attended: the calls in the first status, with its colour.
     assert lifecycle['not_attended'] == {'status': 'Not Attended', 'count': pipeline['Not Attended'], 'color': '#9aa5ad'}
@@ -1805,7 +1805,9 @@ def test_workspaces_before_make_open_the_group_of_the_phase_statuses(client, tmp
     with repository.connection() as connection:
         connection.execute(f"UPDATE {nq.NQ_CALL_OPTIONS_TABLE} SET position = position + 1 WHERE kind = 'status' AND position > 0")
         connection.execute(f"INSERT INTO {nq.NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed) VALUES ('status', 'Open', '#d14a68', 1, 0)")
-    rules = nq.status_rules(repository)
+        # Nor the status Assigned of later versions (ticket #122).
+        connection.execute(f"DELETE FROM {nq.NQ_CALL_OPTIONS_TABLE} WHERE kind = 'status' AND name = 'Assigned'")
+    rules = [rule for rule in nq.status_rules(repository) if rule['status'] != 'Assigned']
     rules[-1]['status'] = 'Open'
     repository.set_workspace_state(nq.STATUS_RULES_STATE_KEY, json.dumps(rules))
     client.post(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}/comments", json={'body': 'Looking at it'})
@@ -1821,6 +1823,50 @@ def test_workspaces_before_make_open_the_group_of_the_phase_statuses(client, tmp
     assert (found['0xB2']['status'], found['0xB2']['status_mode']) == ('Under Analysis', 'manual')
     assert json.loads(repository.get_workspace_state(nq.SAVED_FILTERS_STATE_KEY))['status'] == [
         'Under Analysis', 'Under Implementation', 'Under Planning', 'Closed']
+
+
+def test_assigning_a_call_leaves_it_waiting_until_somebody_attends_it(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    repository = core.repository
+
+    def tracking() -> dict[str, dict]:
+        with repository.connection() as connection:
+            return {str(row['call_key']): dict(row) for row in connection.execute(f'SELECT * FROM {nq.NQ_CALL_TRACKING_TABLE}')}
+
+    def statuses() -> dict[str, str]:
+        return {item['join_id']: item['status'] for item in query(client)['calls']}
+
+    # A team (or an analyst, or the Priority) assigns the call: it is Assigned and still waits in its queue.
+    patch(client, calls['0xA1'], {'team': 'Netcheck'})
+    patch(client, calls['0xA1'], {'fields': {'priority': 'P1'}})
+    assert statuses()['0xA1'] == 'Assigned' and tracking()[calls['0xA1']['call_key']]['attended_at'] == ''
+    # Any other change attends it.
+    patch(client, calls['0xA1'], {'fields': {'analysis_status': 'Ongoing'}})
+    assert statuses()['0xA1'] == 'Under Analysis' and tracking()[calls['0xA1']['call_key']]['attended_at']
+    # Assigning it again later does not send it back to the queue.
+    patch(client, calls['0xA1'], {'team': ''})
+    assert statuses()['0xA1'] == 'Under Analysis'
+    # Workspaces of before: any change attended a call. Those only assigned go back to their queues, the others keep it.
+    patch(client, calls['0xB2'], {'team': 'Netcheck'})
+    patch(client, calls['0xC3'], {'fields': {'analysis_status': 'Ongoing'}})
+    with repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_CALL_TRACKING_TABLE} SET attended_at = updated_at")
+        connection.execute(f"DELETE FROM {nq.NQ_CALL_OPTIONS_TABLE} WHERE kind = 'status' AND name = 'Assigned'")
+    rules = [rule for rule in nq.status_rules(repository) if rule['status'] != 'Assigned']
+    repository.set_workspace_state(nq.STATUS_RULES_STATE_KEY, json.dumps(rules))
+    nq.recompute_statuses(repository, 'system')
+    assert statuses() == {'0xA1': 'Under Analysis', '0xB2': 'Under Analysis', '0xC3': 'Under Analysis'}
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V42_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert [item['name'] for item in nq.list_options(repository)['statuses']][:3] == ['Not Attended', 'Assigned', 'Under Analysis']
+    assert [rule['status'] for rule in nq.status_rules(repository)][-2:] == ['Assigned', 'Assigned']
+    assert statuses() == {'0xA1': 'Under Analysis', '0xB2': 'Assigned', '0xC3': 'Under Analysis'}
+    assert tracking()[calls['0xB2']['call_key']]['attended_at'] == ''
+    # Running it again changes nothing.
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V42_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert [item['name'] for item in nq.list_options(repository)['statuses']].count('Assigned') == 1
+    assert [rule['status'] for rule in nq.status_rules(repository)].count('Assigned') == 2
 
 
 def test_the_progress_view_counts_the_statuses_the_rules_set(client, tmp_path):
@@ -1843,7 +1889,7 @@ def test_the_default_rules_go_from_the_end_of_the_pipeline_and_invalid_analyses_
     calls = setup_calls(client, tmp_path)
     rules = nq_catalog.default_status_rules()
     assert [rule['status'] for rule in rules] == ['Closed', 'Closed', 'Closed', 'Under Planning', 'Under Implementation',
-                                                 'Under Analysis', 'Under Analysis']
+                                                 'Under Analysis', 'Under Analysis', 'Assigned', 'Assigned']
     # A finished analysis closes the call unless it is planned or in implementation.
     evaluate = lambda values: nq_catalog.evaluate_status(rules, {'@attended': 'Yes', **values}, 'Not Attended')
     assert evaluate({'analysis_status': 'Finished'}) == 'Closed'

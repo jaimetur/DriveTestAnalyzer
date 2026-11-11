@@ -12,6 +12,7 @@
 
 #### 🚀 Enhancements:
 - **Non-Qualified Calls — One Analyst per call ([ticket #124](https://108.132.147.165:8443/tickets/124)):** the Asignee and the Analyst of the previous analyses are one **Analyst**, chosen from the user accounts of the workspace (the members of the team when it has them); an analyst of the Previous NQ Analyses no account is named as stays as an **analyst without account** (tagged **No account**, counted in the filters and statistics, never offered for new calls), the import preview lists them so their accounts can be given in the equivalences, and **Link Analysts to Accounts** (formerly Analysts / Reviewers → Asignees) links them later. Existing workspaces keep each call's Asignee and give the calls without one the name of their former Analyst, with both histories as the Analyst's.
+- **Non-Qualified Calls — Assigned calls wait in their queue ([ticket #122](https://108.132.147.165:8443/tickets/122)):** giving a call a team, an analyst, a reviewer or a Priority no longer attends it: it gets the new default status **Assigned** (between Not Attended and Under Analysis, set by two Status Rules after the others) and stays in its NQ Prioritization queue until somebody changes anything else or comments it; NQ Call Tracking exports carry when each call was first attended. Existing workspaces send back to their queues the calls only assigned since their last other change and add the status and its rules once.
 
 #### 🐛 Bug fixes:
 

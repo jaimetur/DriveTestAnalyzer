@@ -1216,6 +1216,21 @@ def strategy_decision(strategy: str, call: dict[str, Any], steps: list[dict[str,
     return NO_RULE, '', '', '', None, ''
 
 
+# The state of a call waiting in a queue (ticket #122): nobody has it yet, a team has it, or an analyst has it.
+QUEUE_UNASSIGNED, QUEUE_TEAM, QUEUE_ANALYST = 'unassigned', 'team', 'analyst'
+
+
+def is_attended(row: Any) -> bool:
+    """Whether somebody attended the call: a change other than assigning it (``attended_at``) or a comment. An attended
+    call leaves the queues; an assigned one waits in them."""
+    return bool(row['attended_at']) or int(row['comment_count'] or 0) > 0
+
+
+def queue_state(row: Any) -> str:
+    """Who has a call of a queue: its analyst, else its team, else nobody."""
+    return QUEUE_ANALYST if row['analyst'] else QUEUE_TEAM if row['team'] else QUEUE_UNASSIGNED
+
+
 def order_queue(rows: list[dict[str, Any]], priorities: list[str]) -> list[dict[str, Any]]:
     """The calls of a queue in the order the analysts take them: Priority, the newest campaign first, the step of its
     list, the highest Expected Gain first, then the oldest call (``priority`` of each row is its Priority)."""
@@ -3123,7 +3138,7 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         base, base_params = nq._materialized(connection, base, base_params, bool(nq._scope(filters)))
         rows = [dict(row) for row in connection.execute(
             f'WITH calls AS ({base}) SELECT call_key, join_id, service, nr_mode, campaign, operator, result, start_time, status, '
-            'updated_at, comment_count, root_category, field_values_json, impact_points, impact_level, impact_state, '
+            'updated_at, attended_at, comment_count, team, analyst, root_category, field_values_json, impact_points, impact_level, impact_state, '
             'impact_json, place_label, repetitions, repeated_campaigns, repeated, prioritization, priority_rule, '
             'suggested_priority, queue, queue_step, queue_list, expected_points, expected_campaign, test_name, session_type, '
             'cluster_key, cluster_size, consecutive_key, consecutive_size, repeat_key, repeat_size '
@@ -3135,7 +3150,7 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
         row['group_key'], row['group_size'] = row['repeat_key'], row['repeat_size']
         row['repeated'] = 'Yes' if row['group_key'] else 'No'
     is_open = [str(row['status'] or '').casefold() not in closed_names for row in rows]
-    attended = [bool(row['updated_at']) or int(row['comment_count'] or 0) > 0 for row in rows]
+    attended = [is_attended(row) for row in rows]
     strategy = settings['strategy']
     # The calls of each step of the strategy, in their order, then those none takes.
     # Each step with its number and list, its fields as the Prioritization Rules show them (NR Mode, Call Type, Area,
@@ -3286,7 +3301,8 @@ def panel(repository: Any, filters: Any, username: str) -> dict[str, Any]:
                 'points': None if row['impact_points'] is None else round(float(row['impact_points']), 2),
                 'gain': None if row.get('expected_points') is None else round(float(row['expected_points']), 2),
                 'gain_campaign': row.get('expected_campaign') or '', 'list': row.get('queue_list') or '',
-                'level': row['impact_level'], 'repetitions': row['repetitions'], 'place': row['place_label']}
+                'level': row['impact_level'], 'repetitions': row['repetitions'], 'place': row['place_label'],
+                'team': row['team'], 'analyst': row['analyst'], 'state': queue_state(row)}
     return {
         'status': status(repository),
         'strategy': {'key': strategy, 'label': strategy_labels(settings)[strategy]},

@@ -304,12 +304,24 @@ ANALYSIS_CENTER_V39_STATE_KEY = 'nq_analysis_center_v39'
 # The Asignee of the follow-up and the Analyst field of the analyses of the previous tool are one Analyst (ticket #124):
 # the follow-up column, the catalog field, the history, the filters, the rules and the layouts are renamed once.
 ANALYSIS_CENTER_V40_STATE_KEY = 'nq_analysis_center_v40'
+# Assigning a call is not attending it (ticket #122): the calls followed up only by assignments (Team, Analyst) since
+# their last change other than that go back to the queues, and the default status Assigned comes between the first
+# status and Under Analysis, once.
+ANALYSIS_CENTER_V42_STATE_KEY = 'nq_analysis_center_v42'
+V42_ASSIGNED_STATUS = ('Assigned', '#2f80c8', False)
+# The follow-up changes that only assign a call: they leave it waiting in its queue (not attended).
+ASSIGNMENT_FIELDS = ('team', 'analyst', 'reviewer')
+# The fields that only sort the queues (the Priority, which the NQ Prioritization also fills) do not attend a call either.
+TRIAGE_FIELDS = (nq_prioritization.PRIORITY_FIELD,)
+# Their history entries, with the status the Status Rules give the call then.
+ASSIGNMENT_HISTORY_FIELDS = frozenset({*ASSIGNMENT_FIELDS, *(f'field:{field}' for field in (*ASSIGNMENT_FIELDS, *TRIAGE_FIELDS)),
+                                       'status_auto'})
 # The Layer3 Logs the DT Analyzer RCA read last (l3_dt_logs.rca_signature): when one is imported, processed again or
 # deleted, the calls of its campaign are calculated again.
 DTA_L3_STATE_KEY = 'nq_dta_rca_l3_logs'
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-11-11.1'
+SCHEMA_VERSION = '2026-11-11.3'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -380,7 +392,7 @@ KEY_FILTERS = ('effective_domain', 'effective_cause', 'node', 'rca_state', 'netc
 ROOT_SOURCES = ('analysts', 'netcheck', 'script', 'dta')
 # The RCA sources whose root domain, category and cause filter the calls (computed per call).
 RCA_FILTER_SOURCES = ('netcheck', 'script', 'dta')
-_ATTENDED_SQL = "(updated_at <> '' OR comment_count > 0)"
+_ATTENDED_SQL = "(attended_at <> '' OR comment_count > 0)"
 STATE_SQL = {
     'attended': _ATTENDED_SQL, 'not_attended': f'NOT {_ATTENDED_SQL}', 'with_team': "team <> ''",
     'assigned': "analyst <> ''", 'commented': 'comment_count > 0', 'labelled': "root_domain <> ''",
@@ -535,7 +547,8 @@ CREATE TABLE IF NOT EXISTS {NQ_CALL_TRACKING_TABLE} (
     root_category TEXT NOT NULL DEFAULT '',
     status_mode TEXT NOT NULL DEFAULT 'auto',
     updated_by TEXT NOT NULL DEFAULT '',
-    updated_at TEXT NOT NULL DEFAULT ''
+    updated_at TEXT NOT NULL DEFAULT '',
+    attended_at TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS {NQ_CALL_COMMENTS_TABLE} (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -685,8 +698,9 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V29_STATE_KEY, ANALYSIS_CENTER_V30_STATE_KEY, ANALYSIS_CENTER_V31_STATE_KEY,
                 ANALYSIS_CENTER_V32_STATE_KEY, ANALYSIS_CENTER_V33_STATE_KEY, ANALYSIS_CENTER_V34_STATE_KEY,
                 ANALYSIS_CENTER_V35_STATE_KEY, ANALYSIS_CENTER_V36_STATE_KEY, ANALYSIS_CENTER_V37_STATE_KEY,
-                ANALYSIS_CENTER_V38_STATE_KEY, ANALYSIS_CENTER_V39_STATE_KEY, ANALYSIS_CENTER_V40_STATE_KEY)
-        states = {str(row[0]): str(row[1]) for row in connection.execute(
+                ANALYSIS_CENTER_V38_STATE_KEY, ANALYSIS_CENTER_V39_STATE_KEY, ANALYSIS_CENTER_V40_STATE_KEY,
+                ANALYSIS_CENTER_V42_STATE_KEY)
+        states ={str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
 
@@ -712,7 +726,8 @@ def ensure_nq_tables(task_repository: Any) -> None:
             connection.execute(f'ALTER TABLE {NQ_CALL_TRACKING_TABLE} RENAME COLUMN assignee TO analyst')
             tracking = _columns_of(connection, NQ_CALL_TRACKING_TABLE)
         for column, definition in (('root_domain', "TEXT NOT NULL DEFAULT ''"), ('root_cause', "TEXT NOT NULL DEFAULT ''"),
-                                   ('root_category', "TEXT NOT NULL DEFAULT ''"), ('status_mode', "TEXT NOT NULL DEFAULT 'auto'")):
+                                   ('root_category', "TEXT NOT NULL DEFAULT ''"), ('status_mode', "TEXT NOT NULL DEFAULT 'auto'"),
+                                   ('attended_at', "TEXT NOT NULL DEFAULT ''")):
             if tracking and column not in tracking:
                 connection.execute(f'ALTER TABLE {NQ_CALL_TRACKING_TABLE} ADD COLUMN {column} {definition}')
         definitions = _columns_of(connection, NQ_FIELDS_TABLE)
@@ -911,6 +926,9 @@ def ensure_nq_tables(task_repository: Any) -> None:
     if not task_repository.get_workspace_state(ANALYSIS_CENTER_V40_STATE_KEY):
         _merge_analyst_fields(task_repository)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V40_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V42_STATE_KEY):
+        _separate_assignments(task_repository)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V42_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -1020,6 +1038,62 @@ def _merge_analyst_fields(task_repository: Any) -> None:
     if hasattr(task_repository, 'try_add_log'):
         task_repository.try_add_log('system', 'nq_analyst_fields_merged', json.dumps(
             {'calls_given_their_analyst': len(moved), 'ticket': 124}, ensure_ascii=False))
+
+
+def _separate_assignments(task_repository: Any) -> None:
+    """Once (ticket #122): a call is attended since its first change other than an assignment (a status chosen by hand,
+    a root cause, a field) or its first comment, no longer since any change. The calls only assigned so far go back to
+    their queues; a call followed up before the history existed keeps its last modification. The status Assigned comes
+    after the first status, and the Status Rules give it to the calls not attended with an analyst or a team (after
+    every other rule); the statuses follow."""
+    skipped = ASSIGNMENT_HISTORY_FIELDS
+    with task_repository.connection() as connection:
+        histories: set[str] = set()
+        first_work: dict[str, str] = {}
+        for row in connection.execute(f'SELECT call_key, field, changed_at FROM {NQ_CALL_HISTORY_TABLE}'):
+            key = str(row['call_key'])
+            histories.add(key)
+            if row['field'] not in skipped and row['changed_at'] and (key not in first_work or row['changed_at'] < first_work[key]):
+                first_work[key] = str(row['changed_at'])
+        quiet = (*ASSIGNMENT_FIELDS, *TRIAGE_FIELDS)
+        marks = ', '.join('?' for _ in quiet)
+        for row in connection.execute(
+                f"SELECT call_key, MIN(updated_at) AS first FROM {NQ_FIELD_VALUES_TABLE} WHERE value <> '' AND updated_at <> '' "
+                f'AND field_key NOT IN ({marks}) GROUP BY call_key', quiet):
+            key = str(row['call_key'])
+            if key not in first_work or row['first'] < first_work[key]:
+                first_work[key] = str(row['first'])
+        tracked = connection.execute(f"SELECT call_key, updated_at FROM {NQ_CALL_TRACKING_TABLE} WHERE updated_at <> ''").fetchall()
+        returned = 0
+        for row in tracked:
+            key = str(row['call_key'])
+            attended = first_work.get(key) or ('' if key in histories else str(row['updated_at']))
+            returned += not attended
+            connection.execute(f'UPDATE {NQ_CALL_TRACKING_TABLE} SET attended_at = ? WHERE call_key = ?', (attended, key))
+        statuses = connection.execute(
+            f"SELECT name FROM {NQ_CALL_OPTIONS_TABLE} WHERE kind = 'status' ORDER BY position, rowid").fetchall()
+        name, color, closed = V42_ASSIGNED_STATUS
+        added = bool(statuses) and all(str(row['name']).casefold() != name.casefold() for row in statuses)
+        if added:
+            connection.execute(f"UPDATE {NQ_CALL_OPTIONS_TABLE} SET position = position + 1 WHERE kind = 'status' AND position >= 1")
+            connection.execute(f"INSERT INTO {NQ_CALL_OPTIONS_TABLE} (kind, name, color, position, is_closed) VALUES ('status', ?, ?, 1, ?)",
+                               (name, color, int(closed)))
+    try:
+        rules = json.loads(task_repository.get_workspace_state(STATUS_RULES_STATE_KEY) or '[]')
+    except (TypeError, ValueError):
+        rules = []
+    if isinstance(rules, list) and rules and not any(
+            isinstance(rule, dict) and str(rule.get('status') or '').casefold() == name.casefold() for rule in rules):
+        known = nq_catalog.condition_fields(list_fields(task_repository))
+        rules += [{'status': rule['status'], 'conditions': [dict(condition, values=list(condition['values']))
+                                                            for condition in rule['conditions']]}
+                  for rule in nq_catalog.ASSIGNED_RULES
+                  if all(condition['field'] in known for condition in rule['conditions'])]
+        task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
+    recompute_statuses(task_repository, 'system')
+    if hasattr(task_repository, 'try_add_log'):
+        task_repository.try_add_log('system', 'nq_assignments_separated', json.dumps(
+            {'calls_back_in_queues': returned, 'assigned_status_added': added, 'ticket': 122}, ensure_ascii=False))
 
 
 def _remove_repeated_comments(task_repository: Any) -> int:
@@ -3880,7 +3954,7 @@ def recompute_statuses(task_repository: Any, username: str, keys: list[str] | No
                     rows.setdefault(str(row['call_key']), row)
         for key in candidates:
             tracking = tracked.get(key, {})
-            attended = bool(tracking.get('updated_at')) or key in commented
+            attended = bool(tracking.get('attended_at')) or key in commented
             status = evaluate_status(rules, _status_inputs(rows.get(key), stored.get(key, {}), fields, tracking, attended), fallback)
             current = str(tracking.get('status') or '') or fallback
             if status == current:
@@ -4391,6 +4465,7 @@ def _base_sql(default: str, task_repository: Any, dataset_ids: list[int] | None 
                COALESCE(t.version, 0) AS version,
                COALESCE(t.updated_by, '') AS updated_by,
                COALESCE(t.updated_at, '') AS updated_at,
+               COALESCE(t.attended_at, '') AS attended_at,
                (SELECT COUNT(*) FROM {NQ_CALL_COMMENTS_TABLE} m WHERE m.call_key = s.call_key AND m.deleted_at = '') AS comment_count,
                (SELECT json_group_object(f.field_key, f.value) FROM {NQ_FIELD_VALUES_TABLE} f
                 WHERE f.call_key = s.call_key AND f.value <> '') AS field_values_json,
@@ -4425,6 +4500,7 @@ def _sample_sql(default: str, task_repository: Any) -> tuple[str, list[Any]]:
                COALESCE(t.root_category, '') AS root_category, COALESCE(t.root_cause, '') AS root_cause,
                COALESCE(t.status_mode, 'auto') AS status_mode, COALESCE(t.version, 0) AS version,
                COALESCE(t.updated_by, '') AS updated_by, COALESCE(t.updated_at, '') AS updated_at,
+               COALESCE(t.attended_at, '') AS attended_at,
                (SELECT COUNT(*) FROM {NQ_CALL_COMMENTS_TABLE} m WHERE m.call_key = c.sample_key AND m.deleted_at = '') AS comment_count,
                c.dataset_id AS latest_dataset_id, 1 AS cdr_count, '' AS version_state,
                (SELECT json_group_object(f.field_key, f.value) FROM {NQ_FIELD_VALUES_TABLE} f
@@ -4989,8 +5065,8 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
             f"SELECT COUNT(*) AS total, "
             f"SUM(CASE WHEN status IN ({closed_marks}) THEN 1 ELSE 0 END) AS closed, "
             f"SUM(CASE WHEN comment_count > 0 THEN 1 ELSE 0 END) AS commented, "
-            # Attended: followed up (a status, team, analyst or root cause change) or commented.
-            f"SUM(CASE WHEN updated_at <> '' OR comment_count > 0 THEN 1 ELSE 0 END) AS attended, "
+            # Attended: followed up (a change other than assigning it, such as a status, root cause or field) or commented.
+            f"SUM(CASE WHEN {_ATTENDED_SQL} THEN 1 ELSE 0 END) AS attended, "
             f"SUM(CASE WHEN team <> '' THEN 1 ELSE 0 END) AS with_team, "
             f"SUM(CASE WHEN analyst <> '' THEN 1 ELSE 0 END) AS assigned "
             f"FROM ({filtered})",
@@ -5247,7 +5323,9 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
     for row in history:
         moment = _parse_time(row['changed_at'])
         key = str(row['call_key'])
-        follow_up(key, moment)
+        # Assigning the call (and the status the rules give it then) does not attend it (ticket #122).
+        if row['field'] not in ASSIGNMENT_HISTORY_FIELDS:
+            follow_up(key, moment)
         user = activity.setdefault(str(row['changed_by'] or '—'), {'changes': 0, 'comments': 0, 'closed': 0})
         user['changes'] += 1
         target = bucket(moment)
@@ -6492,8 +6570,13 @@ def update_tracking(
             stored = field_values(connection, [call_key]).get(call_key, {})
             field_differences = {key: value for key, value in field_changes.items() if stored.get(key, '') != value}
             merged = {**stored, **field_changes}
+            # Assigning the call (its team or analyst) or its Priority does not attend it: any other change does (ticket #122).
+            work = any(key not in TRIAGE_FIELDS for key in field_differences) or 'status' in validated or any(
+                str(row[field]) != current[field] for field in TRACKING_FIELDS if field not in (*ASSIGNMENT_FIELDS, 'status'))
+            attended_at = str(row['attended_at'] or '') or (when if work else '')
+            attended = bool(attended_at) or int(row['comment_count'] or 0) > 0
             if current['status_mode'] != 'manual':
-                current['status'] = evaluate_status(rules, _status_inputs(row, merged, definitions, current, True), fallback)
+                current['status'] = evaluate_status(rules, _status_inputs(row, merged, definitions, current, attended), fallback)
             differences = {field: value for field, value in current.items() if str(row[field]) != value}
             if not differences and not field_differences:
                 continue
@@ -6507,13 +6590,14 @@ def update_tracking(
                     raise ValueError(f'Fill {", ".join(missing)} before closing a call as {current["status"]}.')
             connection.execute(
                 f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, analyst, root_domain, root_category, root_cause, '
-                'status_mode, version, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(call_key) DO UPDATE SET '
+                'status_mode, version, updated_by, updated_at, attended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?) '
+                'ON CONFLICT(call_key) DO UPDATE SET '
                 'status = excluded.status, team = excluded.team, analyst = excluded.analyst, '
                 'root_domain = excluded.root_domain, root_category = excluded.root_category, root_cause = excluded.root_cause, '
                 'status_mode = excluded.status_mode, version = version + 1, '
-                'updated_by = excluded.updated_by, updated_at = excluded.updated_at',
+                'updated_by = excluded.updated_by, updated_at = excluded.updated_at, attended_at = excluded.attended_at',
                 (call_key, current['status'], current['team'], current['analyst'], current['root_domain'],
-                 current['root_category'], current['root_cause'], current['status_mode'], username, when),
+                 current['root_category'], current['root_cause'], current['status_mode'], username, when, attended_at),
             )
             automatic = current['status_mode'] != 'manual'
             for field, value in differences.items():
@@ -7463,16 +7547,21 @@ def _write_analyses(task_repository: Any, plans: list[dict[str, Any]], username:
             if 'status' in follow_up:
                 row['status_mode'] = 'manual'
             row['root_domain'] = domain_of(taxonomy, str(row['root_category']), str(row['root_cause'])) or str(row['root_domain'] or '')
-            # As a change made in the call, a change of its fields is its last modification too.
+            # As a change made in the call, a change of its fields is its last modification too. An analysis that only
+            # assigns the call (its analyst or team) does not attend it (ticket #122).
             if follow_up or fields:
+                work = any(ref not in TRIAGE_FIELDS for ref in fields) or any(ref not in ASSIGNMENT_FIELDS for ref in follow_up)
+                attended_at = str(current.get('attended_at') or '') or (when if work else '')
                 connection.execute(
                     f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, analyst, root_domain, root_category, root_cause, '
-                    'status_mode, version, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(call_key) DO UPDATE SET '
+                    'status_mode, version, updated_by, updated_at, attended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?) '
+                    'ON CONFLICT(call_key) DO UPDATE SET '
                     'status = excluded.status, team = excluded.team, analyst = excluded.analyst, root_domain = excluded.root_domain, '
                     'root_category = excluded.root_category, root_cause = excluded.root_cause, status_mode = excluded.status_mode, '
-                    'version = version + 1, updated_by = excluded.updated_by, updated_at = excluded.updated_at',
+                    'version = version + 1, updated_by = excluded.updated_by, updated_at = excluded.updated_at, '
+                    'attended_at = excluded.attended_at',
                     (call_key, row['status'], row['team'], row['analyst'], row['root_domain'], row['root_category'], row['root_cause'],
-                     row['status_mode'], username, last))
+                     row['status_mode'], username, last, attended_at))
                 for ref, value in follow_up.items():
                     _record_history(connection, call_key, ref, str(current.get(ref) or ''), value, username, when)
             for ref, value in fields.items():
@@ -7808,7 +7897,7 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     """Where the filtered calls are in their follow-up: the status pipeline, how the statuses were set, the
     phase fields, the time spent in each status, the most frequent moves and the calls without recent changes."""
     rows, context = _filtered_calls(task_repository, filters, username,
-                                    'call_key, start_time, status, status_mode, updated_at, comment_count, field_values_json, '
+                                    'call_key, start_time, status, status_mode, updated_at, attended_at, comment_count, field_values_json, '
                                     'service, test_name, session_type, operator, campaign, city, root_category, root_cause')
     options, definitions = context['options'], context['definitions']
     statuses = options['statuses']
@@ -7833,7 +7922,7 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
         if days is not None:
             stalled.append({'call_key': str(row['call_key']), 'status': status, 'operator': str(row['operator'] or ''),
                             'campaign': str(row['campaign'] or ''), 'city': str(row['city'] or ''),
-                            'days': days, 'followed_up': bool(row['updated_at'])})
+                            'days': days, 'followed_up': bool(row['attended_at'])})
     pipeline = [{'status': item['name'], 'color': item['color'], 'closed': item['closed'], 'count': counts.get(item['name'], 0),
                  'avg_age_days': round(sum(ages.get(item['name'], [])) / len(ages[item['name']]), 1) if ages.get(item['name']) else None}
                 for item in statuses]
@@ -7878,7 +7967,8 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     time_in_status.sort(key=lambda item: order.index(item['status']) if item['status'] in order else len(order))
     stalled.sort(key=lambda item: -item['days'])
     identified = sum(1 for row in rows if row['root_category'] or row['root_cause'])
-    # Open: the attended calls not closed yet, every status between the first one (not attended) and the closed ones.
+    # Open: the calls somebody has (assigned or attended) not closed yet, every status between the first one (nobody has
+    # them) and the closed ones.
     open_statuses = [item['status'] for item in pipeline if not item['closed'] and item['status'] != first]
     waiting = next((item for item in pipeline if item['status'] == first and not item['closed']), None)
     return {
@@ -8358,7 +8448,7 @@ def export_tracking_document(task_repository: Any) -> bytes:
     with task_repository.connection() as connection:
         tracking = [dict(row) for row in connection.execute(
             f'SELECT call_key, status, status_mode, team, analyst, root_domain, root_category, root_cause, version, updated_by, '
-            f'updated_at FROM {NQ_CALL_TRACKING_TABLE} ORDER BY call_key')]
+            f'updated_at, attended_at FROM {NQ_CALL_TRACKING_TABLE} ORDER BY call_key')]
         rca_results = [dict(row) for row in connection.execute(
             f'SELECT original_join_id AS join_id, values_json, source_file, imported_by, imported_at '
             f'FROM {NQ_RCA_RESULTS_TABLE} ORDER BY join_id')]
@@ -8870,10 +8960,12 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
                 'status_mode' not in item and _text(item.get('status')) not in {'', 'Open'}) else 'auto'
             connection.execute(
                 f'INSERT OR REPLACE INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, status_mode, team, analyst, root_domain, '
-                'root_category, root_cause, version, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'root_category, root_cause, version, updated_by, updated_at, attended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (call_key, _text(item.get('status')), mode, _text(item.get('team')), _text(item.get('analyst')),
                  _text(item.get('root_domain')), _text(item.get('root_category')), _text(item.get('root_cause')),
-                 int(item.get('version') or 1), _text(item.get('updated_by')), incoming_at),
+                 int(item.get('version') or 1), _text(item.get('updated_by')), incoming_at,
+                 # Exports of before ticket #122 counted any change as attending the call.
+                 _text(item.get('attended_at')) if 'attended_at' in item else incoming_at),
             )
             touched.add(call_key)
         for item in comments:

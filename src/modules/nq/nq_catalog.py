@@ -326,10 +326,12 @@ DEFAULT_FIELDS = (
 )
 
 # -- statuses, teams and status rules ---------------------------------------------------------
-# (name, colour, closed). An attended call is open: Under Analysis, then Under Implementation or Under Planning (Open,
-# their group, is their sum), until it is closed.
+# (name, colour, closed). A call given a team or an analyst and not attended yet is Assigned (it still waits in its
+# queue); an attended call is open: Under Analysis, then Under Implementation or Under Planning (Open, their group, is
+# their sum), until it is closed.
 DEFAULT_STATUSES = (
     ('Not Attended', '#9aa5ad', False),
+    ('Assigned', '#2f80c8', False),
     ('Under Analysis', '#7030A0', False),
     ('Under Implementation', '#C55A11', False),
     ('Under Planning', '#e0464e', False),
@@ -343,6 +345,11 @@ RULE_OPERATORS = {'in': 'is one of', 'not_in': 'is not one of', 'empty': 'is emp
 # Planning, Under Implementation and Under Analysis (a finished analysis closes only a call neither planned nor in
 # implementation).
 _IMPLEMENTING = ['Not yet evaluated', 'Under evaluation', 'Evaluated']
+# A call not attended yet with an analyst or a team is Assigned (after every other rule: attending it moves it on).
+ASSIGNED_RULES = (
+    {'status': 'Assigned', 'conditions': [{'field': '@analyst', 'op': 'not_empty', 'values': []}]},
+    {'status': 'Assigned', 'conditions': [{'field': '@team', 'op': 'not_empty', 'values': []}]},
+)
 DEFAULT_STATUS_RULES = (
     {'status': 'Closed', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Rejected', 'Invalidated']}]},
     {'status': 'Closed', 'conditions': [{'field': 'implementation_status', 'op': 'in', 'values': ['Implemented']}]},
@@ -353,6 +360,7 @@ DEFAULT_STATUS_RULES = (
     {'status': 'Under Implementation', 'conditions': [{'field': 'implementation_status', 'op': 'in', 'values': _IMPLEMENTING}]},
     {'status': 'Under Analysis', 'conditions': [{'field': 'analysis_status', 'op': 'in', 'values': ['Ongoing']}]},
     {'status': 'Under Analysis', 'conditions': [{'field': ATTENDED_FIELD, 'op': 'in', 'values': ['Yes']}]},
+    *ASSIGNED_RULES,
 )
 
 # -- root cause catalog -----------------------------------------------------------------------
