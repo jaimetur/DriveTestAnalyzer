@@ -5028,7 +5028,9 @@
       const parts = group.key === 'rca' ? [rootDecisionCard(call)] : [];
       if (fields.length) {
         const form = node('form', undefined, 'nq-analysis-form nq-section-form');
-        if (group.key === 'rca') form.append(node('h4', 'Values of the RCA sources'));
+        // The RCA tab: the fields of the analysts first, then the title of the values of the RCA sources.
+        const rcaTitle = group.key === 'rca' ? node('h4', 'Values of the RCA sources') : null;
+        if (rcaTitle) form.append(rcaTitle);
         group.sections.forEach((section) => {
           const sectionFields = ofSection(section.key);
           if (!sectionFields.length) return;
@@ -5039,10 +5041,19 @@
               if (runs.at(-1)?.[0].source !== field.source) runs.push([]);
               runs.at(-1).push(field);
             });
+            // Each in a subpanel of its own under the name of its source (ticket #121), in the colour of its mark.
             runs.forEach((run) => {
+              const origin = fieldOrigin(run[0]);
+              const panel = node('section', undefined, 'nq-subpanel nq-rca-source-panel');
+              panel.dataset.origin = origin;
+              panel.style.setProperty('--nq-section', ['analyst', 'suggested'].includes(origin) ? '#16884a' : '#c77700');
+              const byAnalysts = ['analyst', 'suggested'].includes(origin);
+              const title = node('h4', byAnalysts ? 'Analysts' : ORIGIN_LABELS[origin] || origin);
               const grid = node('div', undefined, 'nq-analysis-grid nq-rca-source-grid');
               grid.append(...run.map((field) => fieldBlock(field, call)));
-              form.append(grid);
+              panel.append(title, grid);
+              if (byAnalysts) rcaTitle.before(panel);
+              else form.append(panel);
             });
             return;
           }
@@ -5059,14 +5070,8 @@
           const save = node('button', `Save ${group.key === 'general' ? 'Fields' : group.label}`, 'nq-primary-action');
           save.type = 'submit';
           actions.append(node('span', '', 'nq-composer-note'), save);
-          // In the RCA tab, Save closes the last row of values when it has room (beside the Initial Root Category and Cause).
-          const lastRow = group.key === 'rca' ? [...form.querySelectorAll(':scope > .nq-rca-source-grid')].at(-1) : null;
-          if (lastRow && lastRow.children.length % 4) {
-            actions.classList.add('nq-rca-save');
-            lastRow.append(actions);
-          } else {
-            form.append(actions);
-          }
+          // Below the subpanels of the RCA sources in the RCA tab, as in the other tabs.
+          form.append(actions);
           form.onsubmit = (event) => { event.preventDefault(); saveFields(call, save); };
         }
         parts.push(form);

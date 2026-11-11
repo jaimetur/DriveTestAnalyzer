@@ -804,12 +804,12 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 /* Analysis fields of a call, its Speech samples and the CDRs that contain it. */
 .nq-analysis-form { display: grid; gap: .8rem; }
 .nq-analysis-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .7rem .9rem; }
-.nq-rca-source-grid + .nq-rca-source-grid { margin-top: .7rem; padding-top: .7rem; border-top: 1px dashed var(--nq-border); }
+/* The values of each RCA source in a subpanel of their own, named after it: its fields need no mark of their own. */
+.nq-rca-source-panel { margin-bottom: 0; }
+.nq-rca-source-panel .nq-field-title .nq-source-mark { display: none; }
 /* Four values per row, so each pair of the Ericsson RCA (Category and Subcategory A and B, Initial, Suggested) keeps to one row. */
 @media (min-width: 1100px) { .nq-rca-source-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 /* Save of the RCA tab at the end of the last row of values, level with them. */
-.nq-rca-source-grid > .nq-rca-save { grid-column: -2 / -1; align-self: end; }
-@media (max-width: 1099px) { .nq-rca-source-grid > .nq-rca-save { grid-column: 1 / -1; } }
 .nq-analysis-field { display: grid; align-content: start; gap: .3rem; color: var(--nq-text); font-size: .8rem; font-weight: 800; }
 .nq-analysis-field.is-long_text { grid-column: 1 / -1; }
 .nq-analysis-field :is(input, textarea, select) { box-sizing: border-box; width: 100%; min-width: 0; font-weight: 600; }
