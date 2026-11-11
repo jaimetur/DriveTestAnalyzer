@@ -12,6 +12,7 @@
 #### 🚀 Enhancements:
 
 #### 🐛 Bug fixes:
+- The preview of a Users & Access import or transfer no longer shows the password of the account that imports as changed, since that account keeps its username, role, status and password.
 
 #### 📚 Documentation:
 

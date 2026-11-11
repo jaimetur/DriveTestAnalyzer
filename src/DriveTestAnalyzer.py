@@ -12698,7 +12698,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
     from src.modules.core.import_changes import (
         DETAILED_ELEMENTS, ELEMENT_LABELS, ELEMENT_NAMES, SETTINGS_ELEMENTS, breakdown, compare, compare_settings, counted,
         element_items, favourites_order_changes, joined, kept_postal_codes, predict, settings_values, ticket_items,
-        users_access_items,
+        users_access_items, users_as_imported,
     )
     from src.modules.core.transfer_identities import imported_creator
 
@@ -12757,6 +12757,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
             return 'The package does not contain Users & Access.', [], True
         package, before = users_access_items(_json_document(archive.read(USERS_ACCESS_ARCHIVE_PATH))), users_access_items(
             json.loads(_users_access_archive_payload()))
+        package['users'] = users_as_imported(package['users'], before['users'], importing_user)
         kinds = [(singular, plural, compare(package[key], before[key], package[key]))
                  for key, singular, plural in (('users', 'user', 'users'), ('modules_profiles', 'Modules Profile', 'Modules Profiles'),
                                                ('workspace_groups', 'Workspace Group', 'Workspace Groups'))]

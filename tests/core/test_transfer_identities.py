@@ -742,6 +742,28 @@ def test_the_preview_tells_what_an_import_would_do_and_only_the_chosen_packages_
     assert "match[3] ? 'import-count-removed'" in script and "`import-summary-section import-summary-${entry.kind}`" in script
 
 
+def test_the_preview_of_users_access_keeps_what_the_account_that_imports_keeps(client, tmp_path):
+    repository = core.repository
+    package = tmp_path / 'users.zip'
+    repository.create_user('analyst', 'analyst123', 'user-viewer')
+    core.build_export_archive_file(['users-access'], package, [])
+    manifest = core.read_import_manifest(package)
+    # After the export, the password of the account that imports and of another account change here.
+    repository.update_password('super', 'another-password')
+    repository.update_password('analyst', 'another-password')
+    [preview] = core.preview_import_archive(package, manifest, [], 'super')['packages']
+    [section] = preview['sections']
+    assert [item['name'] for item in section['items']] == ['analyst'] and '1 updated' in preview['message']
+    # With only the account that imports different, the package would change nothing, and so its import does.
+    repository.update_password('analyst', 'analyst123')
+    core.build_export_archive_file(['users-access'], package, [])
+    repository.update_password('super', 'one-more-password')
+    [preview] = core.preview_import_archive(package, core.read_import_manifest(package), [], 'super')['packages']
+    assert (preview['changed'], preview['sections']) == (False, [])
+    core._apply_import_archive(package, core.read_import_manifest(package), importing_user='super')
+    assert core.verify_password('one-more-password', repository.get_user('super').password_hash)
+
+
 def test_the_preview_counts_the_app_events_an_import_would_add(client, tmp_path):
     workspace = core.active_workspace
     core.repository.add_log('super', 'preview_check', 'First event')

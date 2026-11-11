@@ -343,6 +343,19 @@ def users_access_items(document: Any) -> dict[str, list[Item]]:
             'workspace_groups': named_items(_documents(document, 'workspace_groups'))}
 
 
+def users_as_imported(users: list[Item], local: list[Item], importing_user: str) -> list[Item]:
+    """The users of a package as their import saves them: the account that imports, found as the import finds it (by
+    its identity, then by its username), keeps its username, role, active status and password."""
+    name = importing_user.strip().casefold()
+    own = next((item for item in local if item.name.casefold() == name), None)
+    if own is None:
+        return users
+    incoming = next((item for item in users if own.uid and item.uid == own.uid), None) or next(
+        (item for item in users if item.name.casefold() == name), None)
+    kept = {key: own.values.get(key) for key in ('username', 'role', 'active', 'password_hash')}
+    return [Item(name=own.name, values={**item.values, **kept}, uid=item.uid) if item is incoming else item for item in users]
+
+
 def ticket_items(document: Any) -> list[Item]:
     """The tickets of a Ticket Center document, with their comments and attachments (not the changes of their fields,
     which their values tell)."""
