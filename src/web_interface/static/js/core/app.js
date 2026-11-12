@@ -7,6 +7,22 @@ window.canDeleteShared = (createdBy) => {
   const creator = String(createdBy || '').trim().toLowerCase();
   return Boolean(creator) && creator === String(document.body?.dataset.authenticatedUser || '').toLowerCase();
 };
+// Who created, changed, uploaded or generated something is written by the first and last name of the account (its
+// username when it has none or it no longer exists); the names come with every page of a signed-in user.
+window.personName = (() => {
+  let names = null;
+  return (username) => {
+    const text = String(username ?? '');
+    if (!text) return text;
+    if (!names) {
+      try {
+        const raw = JSON.parse(document.getElementById('person-names')?.textContent || '{}');
+        names = new Map(Object.entries(raw).map(([key, name]) => [key.toLowerCase(), name]));
+      } catch { names = new Map(); }
+    }
+    return names.get(text.toLowerCase()) || text;
+  };
+})();
 window.sharedDeleteRefusal = (label) => `Only admins and super-admins, or the user who created it, can delete this ${label}`;
 
 // Errors answered by a proxy in front of the server, or by a server failure, are

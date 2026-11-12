@@ -1366,7 +1366,7 @@
       node('span', mode === NSA_AND_SA ? 'NSA & SA' : mode, `ds-design-card-mode is-${mode === NSA_AND_SA ? 'both' : String(mode).toLowerCase()}`),
       node('span', item.template || '—', 'ds-design-card-template'),
     );
-    const changes = [update?.at ? `Updated ${update.at}${update.by ? ` by ${update.by}` : ''}` : '', item.created_by ? `Created by ${item.created_by}` : ''];
+    const changes = [update?.at ? `Updated ${update.at}${update.by ? ` by ${window.personName(update.by)}` : ''}` : '', item.created_by ? `Created by ${window.personName(item.created_by)}` : ''];
     const meta = node('p', changes.filter(Boolean).join(' · ') || '—', 'ds-design-card-meta');
     const details = node('div', undefined, 'ds-design-card-details');
     details.hidden = true;
@@ -1507,7 +1507,7 @@
       row.append(nameCell, technologyCell, templateCell);
       // Who created the Design, who last changed it and when.
       const authorCell = (label, name) => {
-        const cell = node('td', name || '—', 'ds-design-author'); cell.dataset.label = label;
+        const cell = node('td', window.personName(name) || '—', 'ds-design-author'); cell.dataset.label = label;
         return cell;
       };
       const update = designUpdates.get(id);
@@ -1990,7 +1990,7 @@
           void loadDesignPptCharts(job.id);
         });
       }
-      for (const value of [job.id, job.generated_by, job.date]) row.append(node('td', String(value)));
+      for (const value of [job.id, window.personName(job.generated_by), job.date]) row.append(node('td', String(value)));
       // NR Mode uses the same colour code as the Datasets and Designs selectors.
       const nrMode = String(job.nr_mode || job.technology || job.type || '-');
       const nrModeCell = node('td');

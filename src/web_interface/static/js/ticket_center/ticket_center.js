@@ -581,7 +581,7 @@
         const extension = (/\.([a-z0-9]{1,10})$/i.exec(item.file_name)?.[1] || 'file').toUpperCase();
         fileBox.append(cell('span', 'ticket-file-type', item.is_screenshot ? 'IMG' : extension),
           cell('span', 'tickets-cleanup-name', item.file_name),
-          cell('small', '', `${item.comment_id ? 'In a comment' : 'In the description'} · ${item.uploaded_by}`));
+          cell('small', '', `${item.comment_id ? 'In a comment' : 'In the description'} · ${window.personName(item.uploaded_by)}`));
         file.append(fileBox);
         row.append(check, ticket, file, cell('td', 'tickets-cleanup-number', fileSize(Number(item.size))), cell('td', 'tickets-cleanup-date', String(item.created_at || '').slice(0, 10)));
       });

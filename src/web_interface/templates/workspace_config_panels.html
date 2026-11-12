@@ -565,7 +565,7 @@
             <input type="hidden" name="entry_id" value="{{ entry.id }}">
             <label>Term<input type="text" name="term" value="{{ entry.term }}" maxlength="120" required></label>
             <label>Meaning<textarea name="meaning" rows="2" maxlength="2000" required>{{ entry.meaning }}</textarea></label>
-            <span class="form-note">Suggested by {{ entry.created_by }} · {{ entry.created_at[:16] | replace('T', ' ') }}</span>
+            <span class="form-note">Suggested by {{ entry.created_by | person_name }} · {{ entry.created_at[:16] | replace('T', ' ') }}</span>
             <button type="submit">Accept</button>
           </form>
           <form action="/workspace-config/assistant-glossary/{{ entry.id }}/delete" method="post" data-confirm="Dismiss the suggestion {{ entry.term }}?"><button type="submit" class="secondary">Dismiss</button></form>
@@ -581,7 +581,7 @@
             <input type="hidden" name="entry_id" value="{{ entry.id }}">
             <label>Term<input type="text" name="term" value="{{ entry.term }}" maxlength="120" required></label>
             <label>Meaning<textarea name="meaning" rows="2" maxlength="2000" required>{{ entry.meaning }}</textarea></label>
-            <span class="form-note">{{ entry.updated_by or entry.created_by }} · {{ entry.updated_at[:16] | replace('T', ' ') }}</span>
+            <span class="form-note">{{ (entry.updated_by or entry.created_by) | person_name }} · {{ entry.updated_at[:16] | replace('T', ' ') }}</span>
             <button type="submit">Save</button>
           </form>
           <form action="/workspace-config/assistant-glossary/{{ entry.id }}/delete" method="post" data-confirm="Delete the term {{ entry.term }} from the glossary?"><button type="submit" class="danger-button icon-action" aria-label="Delete the term {{ entry.term }}" title="Delete term">×</button></form>

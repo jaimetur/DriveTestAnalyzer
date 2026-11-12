@@ -139,7 +139,7 @@
       item.file_name ? element('span', {className: 'scoring-exclusions-meta', textContent: item.file_name}) : null,
       item.reason ? element('span', {className: 'scoring-exclusions-reason', textContent: item.reason}) : null);
     const changed = item.updated_at && item.updated_at !== item.created_at
-      ? element('span', {className: 'scoring-exclusions-meta', textContent: `Changed by ${item.updated_by} on ${when(item.updated_at)}`}) : null;
+      ? element('span', {className: 'scoring-exclusions-meta', textContent: `Changed by ${window.personName(item.updated_by)} on ${when(item.updated_at)}`}) : null;
     const download = element('a', {href: `${API}/${item.id}/calls`, title: 'Download the calls of the list (CSV)'}, icon('download'));
     download.dataset.action = 'download';
     download.setAttribute('aria-label', `Download the calls of “${item.name}”`);
@@ -150,7 +150,7 @@
       ['On', element('label', {className: 'scoring-exclusions-switch'}, toggle, element('span'))],
       ['List', listCell], ['CDRs', cdrCell(item)], ['Calls', number(item.call_count)], ['Found in the CDRs', foundCell(item)],
       ['Imported', element('div', {},
-        element('span', {textContent: `${item.created_by} · ${when(item.created_at)}`}), changed)],
+        element('span', {textContent: `${window.personName(item.created_by)} · ${when(item.created_at)}`}), changed)],
       ['', actions],
     ];
     const row = element('tr', {}, ...cells.map(([label, content], index) => {

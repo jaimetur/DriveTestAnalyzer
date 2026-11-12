@@ -1748,7 +1748,7 @@
       status.classList.add('nq-tracking-stack');
       const updated = node('span', undefined, 'nq-status-updated');
       updated.append(statusModeBadge(call), ` ${call.updated_at ? `Updated ${relativeTime(call.updated_at)}${call.updated_by ? ` by ${call.updated_by}` : ''}` : 'Not followed up yet'}`);
-      updated.title = call.updated_at ? `Last follow-up by ${call.updated_by || '—'} · ${exactTime(call.updated_at)}` : 'Nobody has changed this call yet';
+      updated.title = call.updated_at ? `Last follow-up by ${call.updated_by ? userName(call.updated_by) : '—'} · ${exactTime(call.updated_at)}` : 'Nobody has changed this call yet';
       status.append(updated);
       const comments = node('td', undefined, 'nq-comments-cell');
       const commentButton = node('button', undefined, 'nq-comment-button');
@@ -4347,7 +4347,7 @@
     const item = node('li', undefined, 'nq-event nq-event-change');
     item.append(node('span', '', 'nq-event-dot'));
     const text = node('p');
-    const who = node('strong', entry.changed_by);
+    const who = node('strong', userName(entry.changed_by));
     if (entry.field === 'comment_edit') text.append(who, ' edited a comment');
     else if (entry.field === 'comment_delete') text.append(who, ' deleted a comment');
     else if (entry.field === 'status_mode') {

@@ -479,6 +479,7 @@
   {% endif %}
   <script id="vendor-filter-operators" type="application/json">{{ vendor_filter_identities | default({}) | tojson }}</script>
   <script id="operator-out-of-scope" type="application/json">{{ operator_out_of_scope | default([]) | tojson }}</script>
+  {% if user is defined and user %}<script id="person-names" type="application/json">{{ person_names() | tojson }}</script>{% endif %}
   <script src="{{ static_path('js/core/app.js') }}?v={{ asset_version('js/core/app.js') }}"></script>
   <script src="{{ static_path('js/workspace/auto_calculated_fields.js') }}?v={{ asset_version('js/workspace/auto_calculated_fields.js') }}"></script>
   {% if user is defined and user and not embedded_preview %}

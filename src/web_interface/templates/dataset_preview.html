@@ -64,7 +64,7 @@
       {% else %}
       <article><span>Available Columns</span><strong>{{ visible_column_count }}</strong></article>
       {% endif %}
-      <article><span>{{ preview_metadata_label | default('Uploaded By') }}</span><strong>{{ preview_metadata_value | default(dataset.uploaded_by) }}</strong></article>
+      <article><span>{{ preview_metadata_label | default('Uploaded By') }}</span><strong>{{ preview_metadata_value | default(dataset.uploaded_by | person_name) }}</strong></article>
     </section>
     <div class="inline-actions preview-actions">
       {% if not embedded_preview %}

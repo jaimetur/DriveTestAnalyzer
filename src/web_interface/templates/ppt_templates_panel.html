@@ -31,7 +31,7 @@
         {% set updated_parts = (catalogue.updated_at or '').replace('T', ' ').split() %}
         <td class="catalogue-timestamp"><span>{{ created_parts[0] if created_parts else '-' }}</span>{% if created_parts | length > 1 %}<span>{{ created_parts[1] }}</span>{% endif %}</td>
         <td class="catalogue-timestamp"><span>{{ updated_parts[0] if updated_parts else '-' }}</span>{% if updated_parts | length > 1 %}<span>{{ updated_parts[1] }}</span>{% endif %}</td>
-        <td class="catalogue-updated-by">{{ catalogue.updated_by or '-' }}</td>
+        <td class="catalogue-updated-by">{{ (catalogue.updated_by | person_name) or '-' }}</td>
         <td class="catalogue-default-cell"><span class="catalogue-default-mark {% if catalogue.active %}is-default{% else %}is-not-default{% endif %}" aria-label="{% if catalogue.active %}Default template{% else %}Not the default template{% endif %}" title="{% if catalogue.active %}Default template{% else %}Not the default template{% endif %}">{% if catalogue.active %}✓{% else %}○{% endif %}</span></td>
         <td>
           <div class="catalogue-workspace-actions">

@@ -19380,6 +19380,30 @@ def user_choices(usernames: Iterable[str] | None = None) -> list[dict[str, Any]]
 
 
 templates.env.globals['user_choices'] = user_choices
+
+
+def person_names() -> dict[str, str]:
+    """The first and last name of every account that has them, by username: how the pages write who created, changed,
+    uploaded or generated something (window.personName and the person_name filter); the others keep their username."""
+    names = {}
+    for row in repository.list_users():
+        name = ' '.join(part for part in (str(row['first_name'] or '').strip(), str(row['last_name'] or '').strip()) if part)
+        if name:
+            names[str(row['username'])] = name
+    return names
+
+
+def person_name(username: Any) -> str:
+    """A username written as the first and last name of its account (the username itself when it has none)."""
+    text = str(username or '')
+    if not text:
+        return text
+    folded = text.casefold()
+    return next((name for key, name in person_names().items() if key.casefold() == folded), text)
+
+
+templates.env.globals['person_names'] = person_names
+templates.env.filters['person_name'] = person_name
 # Whether the tool can send emails (the Forgot your password? of the login page).
 templates.env.globals['email_delivery_ready'] = lambda: bool(email_delivery_settings(repository)['configured'])
 templates.env.globals['mirror_of'] = mirror_of
