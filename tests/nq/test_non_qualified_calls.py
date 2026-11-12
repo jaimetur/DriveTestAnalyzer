@@ -3,6 +3,7 @@ import json
 import threading
 import time
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -1302,6 +1303,10 @@ def test_join_id_filter_and_reindex(client, tmp_path):
     reindexed = client.post('/api/non-qualified-calls/reindex').json()['sync']
     assert reindexed['calls'] == first['calls'] and not reindexed['indexing']
     assert nq.nq_index_job(core.repository.db_path)['result']['reindexed'] == 1
+    # Only admins and super-admins reindex: the button is not on the page of the other users.
+    login(client, 'editor', 'editor123')
+    assert client.post('/api/non-qualified-calls/reindex').status_code == 403
+    assert 'id="nq-refresh"' not in client.get('/non-qualified-calls').text
 
 
 def test_calls_are_indexed_in_the_background_when_the_server_is_idle(client, tmp_path, monkeypatch):
@@ -1315,10 +1320,19 @@ def test_calls_are_indexed_in_the_background_when_the_server_is_idle(client, tmp
     add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q2.xlsx', 'voice', voice_rows())
     waiting = client.post('/api/non-qualified-calls/calls', json={}).json()['sync']
     assert waiting['pending'] == 1 and waiting['calls'] == calls and not waiting['indexing']
-    # The indexing of the idle server is a background task, shown with the others.
+    # The idle server indexes it only at night, with no long work running.
     queued = []
     monkeypatch.setattr(core, 'submit_background_task', lambda callback, *args: queued.append((callback, args)))
     idle_task = next(callback for seconds, callback in core.IDLE_TASK_CALLBACKS if seconds == nq.NQ_INDEX_IDLE_SECONDS)
+    assert nq.nq_index_night(datetime(2026, 11, 12, 3)) and not nq.nq_index_night(datetime(2026, 11, 12, 7))
+    monkeypatch.setattr(nq, 'nq_index_night', lambda now=None: False)
+    idle_task()
+    monkeypatch.setattr(nq, 'nq_index_night', lambda now=None: True)
+    monkeypatch.setattr(core, '_server_busy', lambda: True)
+    idle_task()
+    assert not queued
+    # The indexing of the idle server is a background task, shown with the others, and an App Event.
+    monkeypatch.setattr(core, '_server_busy', lambda: False)
     idle_task()
     assert len(queued) == 1
     card = next(task for task in core._workspace_background_tasks(core.active_workspace) if task['id'].startswith('nq-index:'))
@@ -1327,6 +1341,7 @@ def test_calls_are_indexed_in_the_background_when_the_server_is_idle(client, tmp
     callback(*args)
     done = client.get('/api/non-qualified-calls/index-status').json()['sync']
     assert done['pending'] == 0 and not done['indexing']
+    assert '"indexed_cdrs": 1' in next(row['details'] for row in core.repository.list_logs() if row['action'] == 'nq_calls_reindexed')
 
 
 def test_page_polls_are_not_activity():

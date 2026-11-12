@@ -2924,9 +2924,12 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
 
 
 # ---------------------------------------------------------------------------
-# Indexing in the background: new, changed or removed CDRs are indexed once the server has been idle for a while
-# (or at once the first time, and on Reindex), never while a page waits for its calls.
-NQ_INDEX_IDLE_SECONDS = 2 * 60
+# Indexing in the background: new, changed or removed CDRs (imported, reprocessed, of another type, included in or
+# left out of the combined tables) are indexed at night, between these hours, once the server has been idle for a
+# while and runs no long work (or at once the first time, and on Reindex, which only admins and super-admins launch),
+# never while a page waits for its calls.
+NQ_INDEX_NIGHT_HOURS = (0, 7)
+NQ_INDEX_IDLE_SECONDS = 15 * 60
 # The NQ Prioritization is calculated after the indexing (see nq_prioritization).
 NQ_PRIORITIZATION_IDLE_SECONDS = 3 * 60
 _index_jobs: dict[str, dict[str, Any]] = {}
@@ -2937,14 +2940,21 @@ def _workspace_key(path: Any) -> str:
     return str(Path(str(path)).resolve())
 
 
+def nq_index_night(now: datetime | None = None) -> bool:
+    """Whether it is the time of the night when the idle server indexes the new or changed CDRs."""
+    start, end = NQ_INDEX_NIGHT_HOURS
+    return start <= (now or datetime.now().astimezone()).hour < end
+
+
 def nq_index_job(database_path: Any) -> dict[str, Any] | None:
     with _index_jobs_guard:
         job = _index_jobs.get(_workspace_key(database_path))
         return dict(job) if job else None
 
 
-def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: bool = False) -> dict[str, Any]:
-    """Queue the indexing of the workspace (every CDR again with ``force``), unless it is already queued or running."""
+def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: bool = False, log_event: bool = False) -> dict[str, Any]:
+    """Queue the indexing of the workspace (every CDR again with ``force``), unless it is already queued or running;
+    ``log_event`` records in App Events what the indexing of the idle server did."""
     key = _workspace_key(task_repository.db_path)
     with _index_jobs_guard:
         current = _index_jobs.get(key)
@@ -2965,6 +2975,10 @@ def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: b
             return
         with _index_jobs_guard:
             job.update(status='ready', result=result, finished_at=time.time())
+        if log_event and hasattr(task_repository, 'try_add_log'):
+            task_repository.try_add_log('system', 'nq_calls_reindexed', json.dumps(
+                {'indexed_cdrs': result['reindexed'], 'removed_cdrs': result['removed'], 'calls': result['calls'],
+                 'seconds': round(time.time() - (job['started_at'] or time.time()), 1)}))
 
     submit(run)
     with _index_jobs_guard:
@@ -9408,10 +9422,13 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     from fastapi import Depends, HTTPException, Query, Request
 
     def index_when_idle() -> None:
-        """Index the new, changed or removed CDRs of the active workspace once nobody has used the server for a while,
-        if the module has been opened there."""
+        """Index the new, changed or removed CDRs of the active workspace at night, once nobody has used the server
+        for a while and no long work runs, if the module has been opened there."""
         workspace = core.active_workspace
-        if not workspace:
+        if not workspace or not nq_index_night():
+            return
+        server_busy = getattr(core, '_server_busy', None)
+        if server_busy and server_busy():
             return
         repository = core.Repository(workspace.database_path, global_db_path=core.repository.global_db_path,
                                      workspace_registry_db_path=core.workspace_registry.registry_path)
@@ -9421,7 +9438,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                 return
         status = nq_index_status(repository)
         if status['pending'] and not status['indexing']:
-            start_nq_index(repository, core.submit_background_task)
+            start_nq_index(repository, core.submit_background_task, log_event=True)
 
     def index_tasks(workspace: Any) -> list[dict[str, Any]]:
         job = nq_index_job(workspace.database_path)
@@ -9629,6 +9646,12 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         """The NQ Analysis Configuration and the table layout of the workspace: admins and super-admins."""
         return user.role in {'admin', 'super-admin'}
 
+    def index_for_admins(repository: Any, user: Any) -> None:
+        """New CDR columns of a table layout are indexed at once for admins and super-admins (who can reindex); those
+        of other users wait for the indexing of the night."""
+        if can_configure(user):
+            start_nq_index(repository, core.submit_background_task)
+
     def config_user(user=Depends(core.current_user)):
         if not can_configure(user):
             raise HTTPException(403, 'Only admins and super-admins can change the NQ Analysis Configuration.')
@@ -9782,7 +9805,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         from src.modules.reporting.report_tasks import artifact_path
 
         repository = workspace_repository(user)
-        sync_nq_calls(repository)
+        if not nq_index_status(repository)['synced_at']:
+            # Nothing indexed yet: the report indexes it. New or changed CDRs wait for the indexing of the night.
+            sync_nq_calls(repository)
         settings = config.get('options') if isinstance(config.get('options'), dict) else {}
         filters = {key: [str(value) for value in values] for key, values in (settings.get('filters') or {}).items()
                    if isinstance(values, list) and values}
@@ -9906,7 +9931,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.post('/api/non-qualified-calls/reindex')
     def nq_reindex(user=Depends(core.current_user)) -> JSONResponse:
-        """Index the calls of every CDR again in the background, keeping their follow-up."""
+        """Index the calls of every CDR again in the background, keeping their follow-up (admins and super-admins)."""
+        if not can_configure(user):
+            raise HTTPException(403, 'Only admins and super-admins can reindex the Non-Qualified Calls.')
         repository = workspace_repository(user)
         start_nq_index(repository, core.submit_background_task, force=True)
         if hasattr(repository, 'try_add_log'):
@@ -10237,7 +10264,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         changes = payload.model_dump(exclude={'reason'})
         layouts = translate(lambda: save_user_layout(repository, user.username, changes, reason=payload.reason))
-        start_nq_index(repository, core.submit_background_task)
+        index_for_admins(repository, user)
         return JSONResponse({'table_layout': layouts, 'sync': nq_index_status(repository)})
 
     @core.app.put('/api/non-qualified-calls/table-layout/view')
@@ -10245,7 +10272,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         """Whether the user sees their own layout or that of the workspace."""
         repository = workspace_repository(user)
         layouts = translate(lambda: set_layout_view(repository, user.username, payload.view))
-        start_nq_index(repository, core.submit_background_task)
+        index_for_admins(repository, user)
         return JSONResponse({'table_layout': layouts, 'sync': nq_index_status(repository)})
 
     @core.app.post('/api/non-qualified-calls/table-layout/mine/copy')

@@ -61,10 +61,10 @@ In a workspace of Umlaut CDRs (see [Benchmarking Providers](benchmarking-provide
 
 ### Indexing
 
-Every ready Voice, Speech and Data CDR of the active workspace is indexed as a background task, shown in the floating background tasks card: the first time the page opens, and then, when a CDR is added, reprocessed or deleted, once nobody has used the application for two minutes (the pages refreshing themselves do not count), so the page never waits for the indexing. Each CDR is read from its [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) when the copy holds it as it is. The top of the **Filters** panel shows how many NQ calls and CDRs are indexed, when they were last indexed, and the CDRs waiting to be indexed or the indexing in progress, after which the page reloads its calls.
+Every ready Voice, Speech and Data CDR of the active workspace is indexed as a background task, shown in the floating background tasks card: the first time the page opens, and then, when a CDR is imported, reprocessed, deleted, given another CDR type (Daily, Weekly, Final or Flex) or included in or left out of the combined tables, at night (between 00:00 and 07:00, server time) once nobody has used the application for fifteen minutes (the pages refreshing themselves do not count) and no import, export, transfer, backup or CDR processing is running, so the indexing, which can take several minutes, never slows the tool down during the day and the page never waits for it. Until then those CDRs show as waiting to be indexed, and their calls keep the values of their last indexing. App Events records each indexing of the night (`nq_calls_reindexed`). Each CDR is read from its [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) when the copy holds it as it is. The top of the **Filters** panel shows how many NQ calls and CDRs are indexed, when they were last indexed, and the CDRs waiting to be indexed or the indexing in progress, after which the page reloads its calls.
 
 > [!TIP]
-> **Reindex** indexes the calls of every CDR again at once, in the background, even when no CDR has changed. Their follow-up is kept.
+> **Reindex**, only for admins and super-admins, indexes the calls of every CDR again at once, in the background, even when no CDR has changed, without waiting for the night. Their follow-up is kept. The new CDR columns an admin adds to a table layout are indexed at once too; those of the personal layout of other users wait for the indexing of the night.
 
 ### Call identity
 

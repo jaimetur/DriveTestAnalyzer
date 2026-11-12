@@ -2025,7 +2025,7 @@
   root.querySelectorAll('[data-nq-loader]').forEach((panel) => panel.addEventListener('toggle', () => { if (panel.open) refreshStale(); }));
 
   // -- loading ----------------------------------------------------------------
-  // The indexing runs in the background (when the server is idle, the first time, or on Reindex): the badge says
+  // The indexing runs in the background (at night when the server is idle, the first time, or on Reindex): the badge says
   // so, and the page follows it with a light status request, then reloads its calls.
   let indexWatch = null;
   const watchIndexing = () => {
@@ -2052,9 +2052,9 @@
       : sync.pending ? ` · ${number(sync.pending)} CDR${sync.pending === 1 ? '' : 's'} waiting to be indexed` : '';
     $('nq-sync').textContent = `${number(sync.calls)} Non-Qualified Calls in ${number(sync.datasets)} CDRs${when}${pending}`;
     $('nq-sync').title = [sync.synced_at ? `CDRs last indexed ${exactTime(sync.synced_at)}` : '',
-      sync.pending && !sync.indexing ? 'New or changed CDRs are indexed once the server is idle, or now with Reindex' : '',
+      sync.pending && !sync.indexing ? `New or changed CDRs are indexed at night, once the server is idle${$('nq-refresh') ? ', or now with Reindex' : ''}` : '',
       sync.error ? `The last indexing failed: ${sync.error}` : ''].filter(Boolean).join('\n');
-    $('nq-refresh').disabled = Boolean(sync.indexing);
+    if ($('nq-refresh')) $('nq-refresh').disabled = Boolean(sync.indexing);
     if (sync.indexing && watch) watchIndexing();
   };
   async function loadCalls({quiet = false} = {}) {
@@ -5828,9 +5828,9 @@
     $('nq-search').value = '';
     scheduleLoad();
   });
-  // Reindex: the calls of every CDR are indexed again in the background (their follow-up is kept); the page
-  // reloads them once it ends.
-  $('nq-refresh').addEventListener('click', async () => {
+  // Reindex (admins and super-admins): the calls of every CDR are indexed again in the background (their follow-up
+  // is kept); the page reloads them once it ends.
+  $('nq-refresh')?.addEventListener('click', async () => {
     $('nq-refresh').disabled = true;
     try {
       const {sync} = await api('/api/non-qualified-calls/reindex', {method: 'POST'});

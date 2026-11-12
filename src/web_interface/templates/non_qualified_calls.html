@@ -80,7 +80,7 @@
       <div class="nq-sync-bar">
         <div class="nq-sync-status">
           <p class="nq-sync" id="nq-sync" role="status">Loading Non-Qualified Calls…</p>
-          <button type="button" class="nq-hero-action" id="nq-refresh" title="Index the calls of every CDR again (their follow-up is kept)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>Reindex</button>
+          {% if nq_can_configure %}<button type="button" class="nq-hero-action" id="nq-refresh" title="Index the calls of every CDR again now (their follow-up is kept); it can take several minutes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>Reindex</button>{% endif %}
         </div>
         <div class="nq-sync-exports">
           <button type="button" class="document-export-action document-export-powerpoint" data-nq-document-export="powerpoint" title="Executive Summary and Progress Status of the filtered calls"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 13l3-3 2 2 4-4"/></svg>Export PPT</button>
