@@ -3931,13 +3931,15 @@
     const actionHeaders = [...(canTake || canAssign ? ['Actions'] : []), ...(canAssign ? ['Select'] : [])];
     // Select All in the header of Select: it ticks (or clears) every call or hotspot of the table, and shows when only some
     // of them are ticked.
-    const withSelectAll = (table, keyGroups) => {
+    // It tells how many calls it selects: those of the rows of the table only (``what`` names them).
+    const withSelectAll = (table, keyGroups, what) => {
       if (!canAssign) return table;
       const head = table.querySelector('th:last-child');
       const boxes = () => [...table.querySelectorAll('td.nq-queue-select-cell input[type="checkbox"]')];
       const all = node('input');
       all.type = 'checkbox';
-      all.title = 'Select every row of this table (or none)';
+      const calls = new Set(keyGroups.flat()).size;
+      all.title = `Select the ${number(calls)} waiting call${calls === 1 ? '' : 's'} of ${what || `the ${number(keyGroups.length)} rows of this table`} (or none)`;
       all.setAttribute('aria-label', 'Select all');
       const sync = () => {
         const ticked = boxes().filter((box) => box.checked).length;
@@ -3953,6 +3955,7 @@
       table.addEventListener('change', (event) => { if (event.target !== all) sync(); });
       const label = node('label', undefined, 'nq-queue-select-all');
       label.append(all, document.createTextNode('All'));
+      label.title = all.title;
       head.replaceChildren(label);
       sync();
       return table;
@@ -3990,7 +3993,7 @@
     // click on its ID filters the list (and the queues) by the hotspot, as in the Hotspots panel. Its ID with its sites and
     // its period below it, and in Waiting its calls waiting of the calls of the queue in the hotspot, over those of them
     // with an Analyst.
-    const hotspotQueueTable = (rows) => {
+    const hotspotQueueTable = (rows, total) => {
       const table = withClass(withClass(failureTable(['#', 'Hotspot ID', 'Priority', ...STEP_HEADERS, 'Operator', 'Campaign', 'Waiting', 'Expected Gain', 'Scoring Impact', ...actionHeaders],
       rows.map((item) => {
         const id = node('button', undefined, 'nq-failure-drill nq-group-id');
@@ -4017,7 +4020,8 @@
           item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—',
           ...actionCells(item.call_keys || [], item.free_keys || [], `hotspot ${item.id}`)];
       })), 'nq-queue-table'), 'nq-hotspot-queue-table');
-      withSelectAll(table, rows.map((item) => item.call_keys || []));
+      withSelectAll(table, rows.map((item) => item.call_keys || []),
+        `the ${plural(rows.length, 'hotspot')} listed${total > rows.length ? ` (the first ${number(rows.length)} of ${number(total)}: the individual failures and the other hotspots are not selected)` : ' (the individual failures are not selected)'}`);
       table.querySelector('th:nth-child(10)').title = 'The calls of the hotspot waiting in this queue (open and not attended yet), of its calls in the queue (waiting or not, its Track only calls too), and below how many of the waiting ones already have an Analyst and how many of its calls are Track only';
       return table;
     };
@@ -4048,8 +4052,11 @@
       singles.addEventListener('toggle', () => { singleQueuesOpen[item.name] = singles.open; });
       singles.append(node('summary', `Individual failures · ${number(item.singles_total)} waiting (out of a hotspot of ${number(data.settings.min_hotspot_calls)} or more failures)`),
         item.singles.length ? queueTable(item.singles) : emptyLabel('No individual failure is waiting in this queue.'));
-      return queueSubpanel(item.name, item.team, [plural(item.hotspot_total, 'hotspot'), `${number(item.total)} waiting`],
-        item.hotspots.length ? hotspotQueueTable(item.hotspots)
+      // The hotspots listed, of all those of the queue when Next to analyse leaves some out.
+      const spotsBadge = item.hotspots.length < item.hotspot_total ? `${number(item.hotspots.length)} of ${plural(item.hotspot_total, 'hotspot')}`
+        : plural(item.hotspot_total, 'hotspot');
+      return queueSubpanel(item.name, item.team, [spotsBadge, `${number(item.total)} waiting`],
+        item.hotspots.length ? hotspotQueueTable(item.hotspots, item.hotspot_total)
           : emptyLabel(`No hotspot of ${number(data.settings.min_hotspot_calls)} or more failures is waiting in the ${item.name} queue.`), singles);
     }));
     // The views of the queues, with their waiting calls (ticket #122).
@@ -4058,6 +4065,9 @@
     viewBar.setAttribute('aria-label', 'View of the queues');
     viewBar.append(...QUEUE_VIEWS.map(([key, label]) => {
       const button = node('button', `${label} · ${number(data.views?.[key] ?? 0)}`, `nq-queue-view${(data.view || 'all') === key ? ' is-active' : ''}`);
+      // Its waiting calls in each queue (ticket #126).
+      const inQueues = Object.entries(data.view_queues?.[key] || {}).filter(([, count]) => count);
+      if (inQueues.length) button.append(node('span', ` (${inQueues.map(([name, count]) => `${name} ${number(count)}`).join(' · ')})`, 'nq-queue-view-queues'));
       button.type = 'button';
       button.title = {all: 'Every waiting call of the queues', unassigned: 'The waiting calls with no team and no analyst',
         team: (data.user_teams || []).length ? `The waiting calls of your teams (${data.user_teams.join(', ')}) without an analyst`

@@ -1510,6 +1510,9 @@ def test_the_data_queue_lists_its_hotspots_and_the_other_calls_apart(strategized
     assert (spot_row['waiting'], spot_row['calls']) == (listed['waiting'] + 1, listed['calls'] + 1)
     assert other['call_key'] not in {row['call_key'] for row in joined['tracked']['rows']}
     assert joined['tracked']['total'] == panel['tracked']['total'] and joined['totals']['next'] == panel['totals']['next']
+    # Each view tells its waiting calls in each queue.
+    assert {name: sum(counts.values()) for name, counts in joined['view_queues'].items()} == joined['views']
+    assert joined['view_queues']['all'] == {item['name']: item['total'] for item in joined['queues']}
     # The hotspot of a row filters the queues by its calls.
     first = data['hotspots'][0]
     narrowed = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'hotspot': [first['key']]}}).json()

@@ -3452,7 +3452,11 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
     queue_teams, user_teams = queue_context(repository, username, settings)
     views = {name: sum(in_view(name, row, username, user_teams, queue_teams) for row in queue) for name in QUEUE_VIEWS}
     waiting_total = len(queue)
-    for name in [name for name in QUEUE_ORDER if name in used] or [VOICE_QUEUE, DATA_QUEUE]:
+    queue_names = [name for name in QUEUE_ORDER if name in used] or [VOICE_QUEUE, DATA_QUEUE]
+    # The waiting calls of each view in each queue (ticket #126), as the views tell them.
+    view_queues = {view_name: {name: sum(row['queue'] == name and in_view(view_name, row, username, user_teams, queue_teams)
+                                         for row in queue) for name in queue_names} for view_name in QUEUE_VIEWS}
+    for name in queue_names:
         members = [{**row, 'priority': priority_of(row)} for row in queue
                    if row['queue'] == name and in_view(view, row, username, user_teams, queue_teams)]
         queues.append({'name': name, 'total': len(members), 'rows': order_queue(members, names), 'team': queue_teams.get(name, '')})
@@ -3550,7 +3554,7 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
                                                     'consecutive_city_meters', 'consecutive_road_meters', 'hotspot_join', 'capacity',
                                                     'hotspot_queues', 'min_hotspot_calls', 'queue_teams')},
         # The view of the queues, the waiting calls of each view and the teams of the user (ticket #122).
-        'view': view, 'views': views, 'user_teams': sorted(user_teams),
+        'view': view, 'views': views, 'view_queues': view_queues, 'user_teams': sorted(user_teams),
         'totals': {
             'calls': len(rows), 'prioritized': sum(row['prioritization'] == PRIORITIZED for row in rows),
             'tracked': sum(row['prioritization'] == TRACK_ONLY for row in rows),
