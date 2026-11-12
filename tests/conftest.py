@@ -224,6 +224,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client_workspace_tem
     # (The wrong passwords of a test do not make the next one wait, nor does it inherit the addresses it signed in from.)
     app_module.SIGN_IN_ATTEMPTS.clear()
     app_module._open_workspace_access.clear()
+    app_module.demo_mode.forget()
 
     with TestClient(app_module.app) as test_client:
         # The workspace is ready before the test starts, also on a busy machine (see client_workspace_template).

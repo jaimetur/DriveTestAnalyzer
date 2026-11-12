@@ -127,6 +127,8 @@
     });
     const signature = (model) => JSON.stringify(toPayload(model));
     const isDirty = () => Boolean(current) && signature(current.model) !== current.baseline;
+    // (Demo Mode asks to save them before signing the user out.)
+    window.registerUnsavedChanges?.('auto-calculated-field', () => (isDirty() ? 'Auto-calculated Field' : null));
     const formulaFromRules = (model) => {
       const branches = model.rules.filter((rule) => ruleWhen(rule) && rule.value !== '');
       if (!branches.length) return '';

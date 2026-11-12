@@ -3751,6 +3751,8 @@ document.querySelectorAll('[data-catalogue-editor]').forEach((editor) => {
   // unsaved table data in the browser. The CSV rendered by the server remains
   // the single source of truth after a selection change.
   editor.hasUnsavedCatalogueChanges = hasUnsavedCatalogueChanges;
+  // (Demo Mode asks to save them before signing the user out.)
+  window.registerUnsavedChanges?.('chart-template', () => (hasUnsavedCatalogueChanges() ? 'Chart template' : null));
   editor.saveCatalogueTemplate = saveCatalogueTemplate;
   saveForm.addEventListener('submit', async (event) => {
     event.preventDefault();

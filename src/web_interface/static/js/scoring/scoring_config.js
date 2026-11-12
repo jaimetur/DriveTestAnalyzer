@@ -1619,6 +1619,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
   };
 
   const hasUnsavedChanges = () => kpiDirty || priorityDirty;
+  // (Demo Mode asks to save them before signing the user out.)
+  window.registerUnsavedChanges?.('scoring-methodology', () => (hasUnsavedChanges() ? 'Scoring Methodology' : null));
 
   const discardUnsavedChanges = () => {
     kpiDirty = false;

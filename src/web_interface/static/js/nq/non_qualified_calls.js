@@ -4976,6 +4976,11 @@
   };
   // Another call opens in the panel once the changes of this one are saved or discarded.
   const leaveDetail = () => settleChanges(drawer, 'This call');
+  // (Demo Mode asks to save them before signing the user out.)
+  window.registerUnsavedChanges?.('nq-call', () => {
+    const pending = pendingChanges(drawer);
+    return pending.fields || pending.comment || pending.edits.length ? `NQ call: ${describeChanges(pending)}` : null;
+  });
   // Every section tells how many of the fields of the call are still unsaved.
   const syncUnsaved = () => {
     const count = Object.keys(changedFields()).length;
@@ -8686,6 +8691,7 @@
   // dialog holds changes not saved yet.
   let prioritySaved = '';
   const priorityChanged = () => Boolean(prioritySaved) && JSON.stringify(prioritySettings()) !== prioritySaved;
+  window.registerUnsavedChanges?.('nq-prioritization-rules', () => (priorityDialog?.open && !$('nq-priority-save')?.hidden && priorityChanged() ? 'NQ Prioritization Rules' : null));
   // How the strategies work tells the levels as they are set in the dialog.
   const showAboutValues = () => {
     priorityDialog.querySelectorAll('[data-nq-about]').forEach((value) => {

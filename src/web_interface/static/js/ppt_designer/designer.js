@@ -58,6 +58,8 @@
   // The slide set of the open Design
   // ------------------------------------------------------------------
   const dirty = () => state.templateDirty || state.designDirty || state.keepTemplateChanges;
+  // (Demo Mode asks to save them before signing the user out.)
+  window.registerUnsavedChanges?.('ppt-designer-slides', () => (state.active && dirty() ? 'Slides of the open PPT Design' : null));
   // JSON with the keys of every object in order: the same slide set gives the same text however it was edited.
   const stable = value => JSON.stringify(value ?? null, (_key, item) => (item && typeof item === 'object' && !Array.isArray(item)
     ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item));

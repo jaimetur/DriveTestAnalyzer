@@ -38,6 +38,12 @@
     <form class="form-stack login-form" method="post" action="/login">
       {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
       {% if error %}<div class="alert{% if error_tone == 'warning' %} alert-warning{% endif %}" role="alert">{{ error }}</div>{% endif %}
+      {# Demo Mode: why the users were signed out and until when only the users of the demo sign in (demo_mode.js). #}
+      <div class="demo-login-notice{% if demo_signed_out %} is-signed-out{% endif %}" data-demo-login-notice{% if not demo_mode_info.active and not demo_signed_out %} hidden{% endif %}>
+        <strong data-demo-login-title>{% if demo_signed_out %}You were signed out for a demo{% else %}Demo in progress{% endif %}</strong>
+        <p data-demo-login-text>{% if demo_mode_info.active %}{{ demo_mode_info.started_by_name }} is using DriveTest Analyzer for a demo. It is expected to be available again at about <time data-demo-mode-time datetime="{{ demo_mode_info.expected_end }}">{{ demo_mode_info.expected_end }}</time>; only the users of the demo can sign in until then.{% else %}The demo is over: you can sign in again.{% endif %}</p>
+        <p class="demo-login-message" data-demo-login-message{% if not demo_mode_info.active or not demo_mode_info.message %} hidden{% endif %}>{{ demo_mode_info.message or '' }}</p>
+      </div>
       <label>Username<input type="text" name="username" autocomplete="username" required></label>
       <label>Password
         <span class="login-password-editor">

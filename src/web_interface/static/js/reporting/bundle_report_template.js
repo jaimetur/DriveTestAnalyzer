@@ -960,6 +960,8 @@
   let savedSnapshot = '';
   const editorSnapshot = () => JSON.stringify({name: $('brt-name').value.trim(), definition: collect(), schedule: collectSchedule()});
   const editorDirty = () => !root.hidden && editorSnapshot() !== savedSnapshot;
+  // (Demo Mode asks to save them before signing the user out.)
+  window.registerUnsavedChanges?.('bundle-report-template', () => (editorDirty() ? `Report “${$('brt-name').value.trim() || 'New report'}”` : null));
   // Leaving a report with changes not saved (Close, or opening another one) asks first.
   async function confirmDiscard() {
     if (!editorDirty()) return true;

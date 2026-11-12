@@ -72,7 +72,7 @@ from src.modules.core.app_event_details import app_event_origin, app_event_origi
 from src.modules.core.background_scheduler import BackgroundTaskScheduler
 from src.modules.cdr import cdr_store
 from src.modules.ppt_designer import design_slides, ppt_design_cache
-from src.modules.core import notifications, workspace_cache
+from src.modules.core import demo_mode as demo_mode_module, notifications, workspace_cache
 from src.modules.core.auth import AttemptLimiter, SessionUser, password_needs_rehash, verify_password
 from src.modules.mapping.workspace_countries import country_options
 from src.modules.mapping.operator_roles import (
@@ -3267,7 +3267,7 @@ LAST_INTERACTIVE_APPLICATION_ACTIVITY = monotonic()
 PASSIVE_APPLICATION_REQUEST_PATHS = {
     '/api/background-tasks', '/api/workspaces/sizes', '/admin/import-export/transfers/offers', '/api/admin-notices',
     '/api/admin/backup-status', '/api/admin/backup-files',
-    '/api/ppt-designer/statuses', '/api/ppt-designer/ppt-jobs',
+    '/api/ppt-designer/statuses', '/api/ppt-designer/ppt-jobs', '/api/demo-mode/heartbeat',
 }
 
 
@@ -3637,6 +3637,36 @@ def may_use_open_workspace(user: SessionUser | None) -> bool:
         _open_workspace_access.clear()
     _open_workspace_access[key] = (monotonic(), allowed)
     return allowed
+
+
+# What a user without access to a demo can still reach: the sign-in page, the poll that warns it and the files of the pages.
+DEMO_MODE_OPEN_PATHS = ('/static/', '/api/demo-mode/', '/login', '/logout', '/favicon.ico', '/api/startup-status', '/healthz')
+DEMO_MODE_SIGNED_OUT_DETAIL = 'You were signed out: the platform is being used for a demo. Sign in again when it is over.'
+DEMO_MODE_CHANGES_REFUSED_DETAIL = ('The platform is being used for a demo and you are being signed out: changes are not '
+                                    'possible any more.')
+
+
+@app.middleware('http')
+async def enforce_demo_mode(request: Request, call_next):
+    """While a demo is on, the users without access are signed out (see src/modules/core/demo_mode.py): their
+    requests sign them out once their time is over, and their changes are refused once they have nothing left to save."""
+    path = request.url.path
+    if path.startswith(DEMO_MODE_OPEN_PATHS) or not demo_mode.active:
+        return await call_next(request)
+    user = session_user(request.cookies.get(SESSION_COOKIE))
+    if user is None:
+        return await call_next(request)
+    if not demo_mode.check_request(user.username, user.role):
+        if request.method == 'GET' and not path.startswith('/api/') and 'text/html' in request.headers.get('accept', ''):
+            response = RedirectResponse('/login?demo=signed-out', status_code=status.HTTP_303_SEE_OTHER)
+        else:
+            response = JSONResponse({'detail': DEMO_MODE_SIGNED_OUT_DETAIL}, status_code=status.HTTP_401_UNAUTHORIZED)
+        response.delete_cookie(SESSION_COOKIE)
+        return response
+    if request.method not in {'GET', 'HEAD', 'OPTIONS'} and demo_mode.refuses_changes(user.username, user.role):
+        repository.try_add_log(user.username, 'demo_mode_change_refused', json.dumps({'method': request.method, 'path': path}))
+        return JSONResponse({'detail': DEMO_MODE_CHANGES_REFUSED_DETAIL}, status_code=423)
+    return await call_next(request)
 
 
 @app.middleware('http')
@@ -6299,6 +6329,33 @@ def end_user_sessions(username: str, keep_token: str | None = None) -> None:
         repository.end_user_login_sessions(username, _session_hash(keep_token) if keep_token else '')
 
 
+def signed_in_usernames() -> set[str]:
+    """The users with a session (in memory, or kept for after a restart)."""
+    names = {session.username for session in list(SESSIONS.values())}
+    with suppress(sqlite3.Error):
+        names.update(repository.login_session_usernames(datetime.now(timezone.utc).isoformat(timespec='seconds')))
+    return names
+
+
+def demo_mode_event(username: str, action: str, details: dict[str, Any]) -> None:
+    """An App Event of Demo Mode (one that cannot be written is tried again without waiting behind a writer)."""
+    try:
+        repository.add_log(username, action, json.dumps(details, default=str))
+    except sqlite3.Error:
+        repository.try_add_log(username, action, json.dumps(details, default=str))
+
+
+# Demo Mode keeps the platform for the users of a demo while it lasts (see src/modules/core/demo_mode.py).
+demo_mode = demo_mode_module.DemoMode(
+    load=lambda: repository.get_application_state(demo_mode_module.STATE_KEY),
+    save=lambda value: repository.set_application_state(demo_mode_module.STATE_KEY, value),
+    users=lambda: repository.list_users(),
+    session_usernames=signed_in_usernames,
+    end_sessions=lambda username: end_user_sessions(username),
+    log=demo_mode_event,
+)
+
+
 def session_user(token: str | None) -> SessionUser | None:
     """The user of a session: kept in memory and, every so often or after a restart, read again with its current role. A
     session that expired or whose user is no longer active ends; one with an idle timeout is extended on each check."""
@@ -6585,6 +6642,8 @@ def render_template(request: Request, template_name: str, context: dict[str, Any
         'workspace_materializing': bool(active_workspace) and isinstance(template_user, SessionUser) and not embedded_template_editor
         and repository.get_workspace_state('calculated_dimensions_need_materialization') == 'processing',
         'administrative_icons': ADMINISTRATIVE_ICONS,
+        # Demo Mode: the pill and the menu of the app bar, the notices of the users being signed out, the sign-in page.
+        'demo_mode_info': demo_mode_page_info(template_user if isinstance(template_user, SessionUser) else None),
         # The icons of the Help chapters of documents (Presentations, Roadmap…), for the bar at the bottom of phones.
         'document_help_icons': DOCUMENT_HELP_ICONS,
         # Values of the CDRs that no Operator, Vendor or Campaign Map assigns: a warning card on every page.
@@ -15598,6 +15657,7 @@ def login_page(request: Request) -> Response:
             'selected_workspace_id': selected_workspace_id,
             'next_url': safe_next_url(request.query_params.get('next')),
             'reset_token': reset_token, 'reset_username': reset_user.username if reset_user else '',
+            'demo_signed_out': request.query_params.get('demo') == 'signed-out',
         },
     )
 
@@ -15639,6 +15699,11 @@ def login(
         SIGN_IN_ATTEMPTS.failed(submitted_username)
         return refused('Invalid credentials', 'invalid_credentials', 401)
     SIGN_IN_ATTEMPTS.succeeded(submitted_username)
+    # During a demo only its users sign in (before opening a workspace, which would change it for the demo too).
+    if not demo_mode.is_allowed(record.username, record.role):
+        demo_mode_event(record.username, 'demo_mode_sign_in_refused', {'started_by': (demo_mode.state() or {}).get('started_by', '')})
+        return refused('The platform is being used for a demo: only the users of the demo can sign in until it is over.',
+                       'demo_mode', 403)
     if password_needs_rehash(record.password_hash):
         # A password kept as earlier versions did is kept as this one does, now that it is known to be right (its
         # sessions stay: the password is the same).
@@ -16105,6 +16170,101 @@ def logout(request: Request) -> Response:
     response = RedirectResponse('/login', status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(SESSION_COOKIE)
     return response
+
+
+# -- Demo Mode ---------------------------------------------------------------------------------------------------
+def demo_mode_page_info(user: SessionUser | None) -> dict[str, Any]:
+    """What the pages are told about Demo Mode when they open (the poll tells the rest)."""
+    info = demo_mode.public_info()
+    if info['active']:
+        info['started_by_name'] = person_name(info['started_by'])
+    if user is not None:
+        info['can_start'] = user.role in demo_mode_module.MANAGER_ROLES
+        info['can_manage'] = demo_mode.can_manage(user.username, user.role)
+        info['allowed'] = demo_mode.is_allowed(user.username, user.role)
+    return info
+
+
+def demo_mode_request_error(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=400, detail=str(exc) if isinstance(exc, demo_mode_module.DemoModeError) else 'Invalid request.')
+
+
+@app.get('/api/demo-mode/public')
+def demo_mode_public() -> JSONResponse:
+    """The demo in progress, for the sign-in page (no session needed)."""
+    return JSONResponse(demo_mode_page_info(None), headers={'Cache-Control': 'no-store'})
+
+
+@app.post('/api/demo-mode/heartbeat')
+async def demo_mode_heartbeat(request: Request) -> JSONResponse:
+    """The poll of every page: it tells the unsaved changes of the page and learns what Demo Mode asks of its user."""
+    token = request.cookies.get(SESSION_COOKIE)
+    user = session_user(token)
+    if user is None:
+        return JSONResponse({'authenticated': False, **demo_mode_page_info(None)}, headers={'Cache-Control': 'no-store'})
+    payload = await json_object(request)
+    unsaved = payload.get('unsaved') if isinstance(payload.get('unsaved'), list) else []
+    reply = await run_in_threadpool(
+        demo_mode.heartbeat, user.username, user.role, session=_session_hash(token), tab=payload.get('tab'),
+        unsaved=unsaved, leave=bool(payload.get('leave')),
+    )
+    if reply.get('active'):
+        reply['started_by_name'] = person_name(reply['started_by'])
+        for item in reply.get('departures') or []:
+            item['name'] = person_name(item['username'])
+    response = JSONResponse(reply, headers={'Cache-Control': 'no-store'})
+    if reply.get('signed_out'):
+        response.delete_cookie(SESSION_COOKIE)
+    return response
+
+
+@app.get('/api/demo-mode/users')
+def demo_mode_users(user: SessionUser = Depends(admin_user)) -> JSONResponse:
+    """The accounts for the dialog that starts or changes the demo, with the demo in progress."""
+    state = demo_mode.state()
+    if state is not None and not demo_mode.can_manage(user.username, user.role):
+        raise HTTPException(status_code=403, detail='Only the admins and super-admins of the demo can change it.')
+    return JSONResponse({
+        'users': demo_mode.users_overview(user.username, user.role), 'demo': state,
+        'default_message': demo_mode_module.DEFAULT_MESSAGE, 'role': user.role,
+        'extend_minutes': list(demo_mode_module.EXTEND_MINUTES),
+    }, headers={'Cache-Control': 'no-store'})
+
+
+@app.post('/api/demo-mode/start')
+async def demo_mode_start(request: Request, user: SessionUser = Depends(admin_user)) -> JSONResponse:
+    payload = await json_object(request)
+    try:
+        state = await run_in_threadpool(lambda: demo_mode.start(
+            user.username, user.role, expected_end=payload.get('expected_end'), message=payload.get('message'),
+            users=payload.get('users') if isinstance(payload.get('users'), list) else []))
+    except (demo_mode_module.DemoModeError, TypeError, ValueError) as exc:
+        raise demo_mode_request_error(exc) from exc
+    return JSONResponse({'demo': state})
+
+
+@app.post('/api/demo-mode/update')
+async def demo_mode_update(request: Request, user: SessionUser = Depends(admin_user)) -> JSONResponse:
+    """Change the expected end, the message or the users of the demo, extend it or be reminded later."""
+    payload = await json_object(request)
+    users = payload.get('users')
+    try:
+        state = await run_in_threadpool(lambda: demo_mode.update(
+            user.username, user.role, expected_end=payload.get('expected_end'), message=payload.get('message'),
+            users=users if isinstance(users, list) else None, extend_minutes=payload.get('extend_minutes'),
+            remind_minutes=payload.get('remind_minutes')))
+    except (demo_mode_module.DemoModeError, TypeError, ValueError) as exc:
+        raise demo_mode_request_error(exc) from exc
+    return JSONResponse({'demo': state})
+
+
+@app.post('/api/demo-mode/end')
+def demo_mode_end(user: SessionUser = Depends(admin_user)) -> JSONResponse:
+    try:
+        demo_mode.end(user.username, user.role)
+    except demo_mode_module.DemoModeError as exc:
+        raise demo_mode_request_error(exc) from exc
+    return JSONResponse({'ended': True})
 
 
 @app.get('/documents/view/{doc_name}', response_class=HTMLResponse)

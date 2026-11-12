@@ -286,7 +286,41 @@ def _email(sent: bool) -> Callable[[Any], str]:
     return describe
 
 
+_DEMO_SIGN_OUT_REASONS = {
+    'no_page_open': 'at once (no page open)', 'warning_time_over': 'after the warning time', 'saved_changes': 'once its changes were saved',
+    'signed_out_by_user': 'with Sign out now', 'pages_closed': 'after its pages were closed',
+}
+
+
+def _demo_users(details: dict[str, Any]) -> str:
+    users = ', '.join(str(user) for user in details.get('users') or []) or 'nobody else'
+    return f"{users}{' (and every super-admin)' if details.get('super_admins_always') else ''}"
+
+
+def _demo_mode_changed(details: dict[str, Any]) -> str:
+    return _sentence('Demo Mode', [changes_text(details.get('changes') or {}, {
+        'expected_end': 'Expected end', 'remind_at': 'Reminder', 'message': 'Message', 'users': 'Users with access',
+        'keep_super_admins': 'Every super-admin keeps access'})])
+
+
 _DESCRIBERS: dict[str, Callable[[Any], str]] = {
+    'demo_mode_started': lambda details: (f"Demo Mode started until {details.get('expected_end')}, with access for "
+                                          f"{_demo_users(details)}."),
+    'demo_mode_changed': _demo_mode_changed,
+    'demo_mode_extended': lambda details: (f"Demo Mode extended by {details.get('extended_by_minutes')} minutes, until "
+                                           f"{(details.get('changes') or {}).get('expected_end', ['', ''])[1]}."),
+    'demo_mode_reminder_postponed': lambda details: (f"Demo Mode reminder postponed until "
+                                                     f"{(details.get('changes') or {}).get('remind_at', ['', ''])[1]}."),
+    'demo_mode_ended': lambda details: (f"Demo Mode ended (started by {details.get('started_by')} at {details.get('started_at')}, "
+                                        f"expected end {details.get('expected_end')})."),
+    'demo_mode_user_warned': lambda details: (f"Warned that {details.get('started_by')} started Demo Mode and signed out "
+                                              f"soon{'' if details.get('page_open') else ' (no page open)'}."),
+    'demo_mode_user_signed_out': lambda details: (
+        f"Signed out by Demo Mode {_DEMO_SIGN_OUT_REASONS.get(str(details.get('reason')), str(details.get('reason')))}"
+        f"{' (unsaved: ' + ', '.join(details['unsaved_changes_before_leaving']) + ')' if details.get('unsaved_changes_before_leaving') else ''}."),
+    'demo_mode_sign_in_refused': lambda details: f"Sign-in refused: Demo Mode started by {details.get('started_by')} is on.",
+    'demo_mode_change_refused': lambda details: (f"{details.get('method')} {details.get('path')} refused: the user is being "
+                                                 'signed out by Demo Mode.'),
     'email_sent': _email(True),
     'email_failed': _email(False),
     'change_email': lambda details: _sentence('Email address', [
@@ -373,7 +407,7 @@ _SERVER_ACTION_PREFIXES = (('scheduled_database_backup_', 'scheduler'),)
 _REMOTE_ACTION_PREFIXES = ('incoming_server_transfer_', 'incoming_transfer_import_', 'incoming_transfer_request_')
 _PUBLIC_ACTIONS = {'access_request': 'access-request', 'access_change_request': 'access-request', 'login': 'sign-in',
                    'logout': 'sign-in', 'password_reset_requested': 'sign-in', 'password_reset': 'sign-in',
-                   'download_reporting_file_link': 'page'}
+                   'download_reporting_file_link': 'page', 'demo_mode_sign_in_refused': 'sign-in'}
 # The module of the events of earlier versions, which did not record the page they came from (by action, or its start).
 _MODULE_ACTIONS = (
     ('non-qualified-calls', ('nq_',)),

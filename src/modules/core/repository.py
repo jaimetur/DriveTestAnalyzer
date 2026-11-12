@@ -3199,6 +3199,12 @@ class Repository:
         with self.global_connection() as conn:
             conn.execute('DELETE FROM user_login_sessions WHERE token_hash = ?', (token_hash,))
 
+    def login_session_usernames(self, now: str) -> list[str]:
+        """The users with a login session that has not expired (Demo Mode signs out those without access)."""
+        with self.global_connection() as conn:
+            return [str(row['username']) for row in conn.execute(
+                'SELECT DISTINCT username FROM user_login_sessions WHERE expires_at > ?', (now,)).fetchall()]
+
     def end_user_login_sessions(self, username: str, keep_token_hash: str = '') -> None:
         """End the login sessions of a user (all but the one given)."""
         with self.global_connection() as conn:

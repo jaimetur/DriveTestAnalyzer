@@ -469,6 +469,8 @@
     $('ds-unsaved-filters-badge').hidden = !hasUnsavedFilterChanges();
   };
   const updateDirtyState = () => { dirty = hasUnsavedDesignChanges(); updateFilterActionState(); updateUnsavedFiltersBadge(); return dirty; };
+  // (Demo Mode asks to save them before signing the user out.)
+  window.registerUnsavedChanges?.('ppt-designer-design', () => (definition && hasUnsavedDesignChanges() ? `PPT Design “${definition.name || 'Design'}”` : null));
   const updateSavedDefinition = updates => {
     try {
       savedDefinition = definitionFingerprint({...JSON.parse(savedDefinition || '{}'), ...updates});

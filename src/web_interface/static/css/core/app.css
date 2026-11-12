@@ -6076,3 +6076,102 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 /* Modules & Sections (the drawer and the menu of phones): a module without sections lines up with those that have
    them, leaving empty the place of their arrow (1.5rem and the gap before it), instead of reaching further right. */
 .modules-sections-navigator .module-navigator-category > nav:has(> details.module-tree-module) > :is(a, .module-tree-about) { width: calc(100% - 1.75rem); }
+
+/* Demo Mode (demo_mode.js): the item of the user menu, the pill of the app bar, its dialogs, the notices of the users
+   being signed out and the notice of the sign-in page, in amber. */
+:root { --demo: #f2a33a; --demo-strong: #d98a20; --demo-ink: #5a3600; --demo-soft: #fff4e2; --demo-line: #f3d6a6; }
+.topnav-user-options button.topnav-demo-start { border-top: 1px solid #e3e7ea; color: #8a5200; font-weight: 650; }
+.topnav-user-options button.topnav-demo-start svg { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.topnav .topnav-demo-pill { display: inline-flex; align-items: center; gap: .45rem; border: 0; background: var(--demo); color: var(--demo-ink); font-weight: 750; white-space: nowrap; cursor: pointer; }
+.topnav .topnav-demo-pill:hover { background: #f5b257; }
+.topnav .topnav-demo-pill.is-overdue { background: #f07b5a; color: #4a1300; }
+.topnav-demo-dot { width: 8px; height: 8px; border-radius: 50%; background: #c0392b; box-shadow: 0 0 0 3px rgba(192, 57, 43, .25); animation: demo-mode-pulse 1.4s infinite; }
+@keyframes demo-mode-pulse { 50% { box-shadow: 0 0 0 6px rgba(192, 57, 43, .06); } }
+.topnav-demo-waiting { padding: 0 .45rem; border-radius: 99px; background: #fff; color: #8a5200; font-size: .7rem; }
+.topnav-demo-options { min-width: 18rem; }
+.topnav-demo-options svg { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.topnav-demo-options button.topnav-demo-end { border-top: 1px solid #e3e7ea; color: #b03a2e; font-weight: 650; }
+.topnav-demo-departures { padding: .2rem .3rem .45rem; border-bottom: 1px solid #e3e7ea; }
+.topnav-demo-section { margin: .2rem .4rem .35rem; color: #8a5200; font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.topnav-demo-departure { display: flex; align-items: center; gap: .5rem; padding: .25rem .4rem; font-size: .8rem; }
+.topnav-demo-departure small { margin-left: auto; overflow: hidden; color: #6b7a86; text-overflow: ellipsis; white-space: nowrap; max-width: 11rem; }
+.demo-tag { padding: .12rem .45rem; border-radius: 6px; font-size: .66rem; font-weight: 700; white-space: nowrap; }
+.demo-tag-you { background: #fff1dc; color: #8a5200; }
+.demo-tag-online { background: #e3f6e8; color: #1e7a3b; }
+.demo-tag-unsaved { background: #fdecea; color: #b03a2e; }
+.demo-tag-role { background: #eef1f3; color: #4d5b66; }
+.demo-tag-super-admin { background: #eee8fb; color: #5b3aa8; }
+.demo-tag-admin { background: #fde8e5; color: #b03a2e; }
+.demo-tag-user-editor { background: #e4f2f1; color: #0b6560; }
+.demo-mode-backdrop { position: fixed; inset: 0; z-index: 2147483000; display: grid; place-items: center; padding: 16px; background: rgba(11, 29, 43, .55); overflow-y: auto; }
+.demo-mode-backdrop.demo-mode-leaving { background: rgba(11, 29, 43, .72); backdrop-filter: blur(3px); }
+.demo-mode-dialog { width: min(640px, 100%); max-height: calc(100vh - 32px); overflow: auto; border-radius: 16px; background: #fff; color: #1d2a35; box-shadow: 0 24px 60px rgba(0, 0, 0, .35); }
+.demo-mode-dialog-header { display: flex; align-items: center; gap: .8rem; padding: 16px 20px; border-bottom: 1px solid var(--demo-line); background: linear-gradient(135deg, var(--demo-soft), #ffe7c2); }
+.demo-mode-dialog-header.is-overdue { border-color: #efbcb5; background: linear-gradient(135deg, #fdecea, #f9d6d2); }
+.demo-mode-dialog-header h2 { margin: 0; font-size: 1.1rem; }
+.demo-mode-dialog-header p { margin: 2px 0 0; color: #7a5a2a; font-size: .82rem; }
+.demo-mode-dialog-badge { display: grid; flex: 0 0 auto; width: 38px; height: 38px; place-items: center; border-radius: 10px; background: var(--demo); color: var(--demo-ink); }
+.demo-mode-dialog svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.demo-mode-dialog-body { display: grid; gap: 16px; padding: 18px 20px; }
+.demo-mode-field { display: grid; gap: 6px; }
+.demo-mode-field small { color: #5d6b76; font-size: .76rem; }
+.demo-mode-label { font-size: .82rem; font-weight: 700; }
+.demo-mode-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.demo-mode-dialog input[type="date"], .demo-mode-dialog input[type="time"], .demo-mode-dialog textarea, .demo-mode-search { padding: .45rem .6rem; border: 1px solid #cfd7dd; border-radius: 8px; font: inherit; }
+.demo-mode-dialog textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.demo-mode-search { width: 100%; box-sizing: border-box; }
+.demo-mode-chip { padding: .35rem .8rem; border: 1px solid #cfd7dd; border-radius: 99px; background: #f6f8f9; font: inherit; font-size: .8rem; font-weight: 650; cursor: pointer; }
+.demo-mode-users { max-height: 250px; overflow: auto; border: 1px solid #e1e6ea; border-radius: 10px; }
+.demo-mode-user { display: flex; align-items: center; gap: .6rem; padding: .5rem .75rem; border-top: 1px solid #eef1f3; cursor: pointer; }
+.demo-mode-user:first-child { border-top: 0; }
+.demo-mode-user.is-locked { background: #f7f9fa; cursor: default; }
+.demo-mode-user-name { display: grid; flex: 1; min-width: 0; }
+.demo-mode-dialog .demo-mode-user input[type="checkbox"] { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; padding: 0; }
+.demo-mode-dialog .demo-mode-row input[type="date"], .demo-mode-dialog .demo-mode-row input[type="time"] { flex: 0 1 auto; width: auto; min-width: 0; }
+.demo-mode-dialog button.demo-mode-chip { width: auto; color: #1d2a35; }
+.demo-mode-dialog .demo-mode-user-name { color: #1d2a35; }
+.demo-mode-presence { flex: 0 0 auto; width: 10px; height: 10px; border: 2px solid #c3ccd3; border-radius: 50%; box-sizing: border-box; }
+.demo-mode-presence.is-online { border-color: #1e9e4a; background: #2fbf5f; box-shadow: 0 0 0 3px rgba(47, 191, 95, .22); }
+.demo-mode-user-name small { overflow: hidden; color: #6b7a86; text-overflow: ellipsis; white-space: nowrap; }
+.demo-mode-summary { padding: .6rem .8rem; border: 1px solid var(--demo-line); border-radius: 10px; background: #fff8ec; color: #6a4a14; font-size: .8rem; }
+.demo-mode-summary ul { margin: .3rem 0 0; padding-left: 1.1rem; }
+.demo-mode-error { margin: 0; color: #b03a2e; font-size: .82rem; }
+.demo-mode-dialog-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .6rem; padding: 14px 20px; border-top: 1px solid #eef1f3; }
+.demo-mode-dialog button.demo-mode-primary, .demo-mode-dialog button.demo-mode-secondary, .demo-mode-dialog button.demo-mode-danger, .demo-mode-dialog button.demo-mode-save { padding: .5rem 1rem; border: 1px solid #cfd7dd; border-radius: 9px; background: #fff; color: #1d2a35; font: inherit; font-weight: 650; cursor: pointer; }
+.demo-mode-dialog button.demo-mode-primary { border-color: var(--demo-strong); background: var(--demo); color: var(--demo-ink); }
+.demo-mode-dialog button.demo-mode-danger { border-color: #efbcb5; color: #b03a2e; }
+.demo-mode-dialog button.demo-mode-save { border-color: #0b7a75; background: #0b7a75; color: #fff; }
+.demo-mode-dialog button:disabled { opacity: .5; cursor: default; }
+.demo-mode-extend { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .5rem; }
+.demo-mode-extend-button { padding: .6rem .4rem; border: 1px solid var(--demo-line); border-radius: 10px; background: #fff8ec; color: #8a5200; font: inherit; font-weight: 700; cursor: pointer; }
+.demo-mode-extend-button:hover { background: #ffe7c2; }
+.demo-mode-leaving .demo-mode-dialog { width: min(460px, 100%); }
+.demo-mode-notice { display: grid; justify-items: center; gap: .2rem; padding: 24px 22px; text-align: center; }
+.demo-mode-notice h2 { margin: .3rem 0 .2rem; font-size: 1.2rem; }
+.demo-mode-notice p { margin: .3rem 0; color: #4d5b66; }
+.demo-mode-notice-icon { display: grid; width: 52px; height: 52px; place-items: center; border-radius: 14px; background: var(--demo); color: var(--demo-ink); }
+.demo-mode-notice-icon.is-save { background: #0b7a75; color: #fff; }
+.demo-mode-notice-icon svg { width: 26px; height: 26px; }
+.demo-mode-until { color: #8a5200; font-size: 1.4rem; font-weight: 800; }
+.demo-mode-message { width: 100%; box-sizing: border-box; padding: .5rem .7rem; border-radius: 10px; background: #f7f9fa; font-style: italic; }
+.demo-mode-timer { display: inline-block; padding: .1rem .5rem; border-radius: 8px; background: #fff1dc; color: #8a5200; font-variant-numeric: tabular-nums; font-weight: 800; }
+.demo-mode-pending { width: 100%; box-sizing: border-box; padding: .5rem .7rem; border: 1px solid #efbcb5; border-radius: 10px; background: #fdf3f1; text-align: left; font-size: .84rem; }
+.demo-mode-pending strong { color: #b03a2e; }
+.demo-mode-pending ul { margin: .25rem 0 0; padding-left: 1.1rem; }
+.demo-mode-banner { position: fixed; top: 10px; left: 50%; z-index: 2147482000; display: flex; align-items: center; gap: .55rem; width: min(760px, calc(100vw - 32px)); padding: .55rem .9rem; border-radius: 12px; background: var(--demo); color: var(--demo-ink); box-shadow: 0 10px 30px rgba(11, 29, 43, .3); font-size: .84rem; transform: translateX(-50%); }
+.demo-mode-banner svg { flex: 0 0 auto; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.demo-mode-refused { position: fixed; bottom: 18px; left: 50%; z-index: 2147482500; width: min(520px, calc(100vw - 32px)); padding: .6rem .9rem; border-radius: 10px; background: #1d2a35; color: #fff; font-size: .84rem; text-align: center; transform: translateX(-50%); }
+.demo-login-notice { display: grid; gap: .3rem; padding: .7rem .8rem; border: 1px solid var(--demo-line); border-radius: 10px; background: var(--demo-soft); color: #6a4a14; font-size: .84rem; }
+.demo-login-notice[hidden] { display: none; }
+.demo-login-notice p { margin: 0; }
+.demo-login-notice.is-over { border-color: #b8e2c4; background: #eaf7ee; color: #1e5c33; }
+.demo-login-message { font-style: italic; }
+@media (max-width: 640px) {
+  .demo-mode-dialog-body, .demo-mode-dialog-header, .demo-mode-dialog-footer { padding-right: 14px; padding-left: 14px; }
+  .demo-mode-extend { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .topnav .topnav-demo-pill { grid-column: 1 / -1; justify-content: center; }
+}
+
+/* The badge of the user in the app bar shows its role (or Modules Profile) colour as its left edge instead of a dot. */
+.topnav .topnav-user-badge { border-left: 4px solid var(--role); }
+.topnav .topnav-user-badge::before { content: none; }
