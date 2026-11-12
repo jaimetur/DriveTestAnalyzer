@@ -10,9 +10,14 @@ according to its ``in_combined`` choice:
 
 * ``yes`` / ``no``: chosen by the user;
 * ``auto``: Final CDRs are included; a Weekly or Daily CDR is included until an
-  included Final CDR of the same type and NR Mode covers one of its campaigns, or
-  until a newer Weekly or Daily CDR of the same type contains every one of its calls
-  (a cumulative CDR replaces the previous ones).
+  included Final CDR of the same type and NR Mode shares one of its campaigns or
+  covers all its dates (its first and last call dates are within those of the Final
+  CDR), until a newer Weekly or Daily CDR of the same type contains every one of its
+  calls (a cumulative CDR replaces the previous ones), or, for a Daily CDR, until a
+  Weekly CDR covers all its dates. A Flex CDR (a local campaign) never replaces a CDR
+  that is not Flex, nor the other way round. A CDR whose dates only partly overlap
+  those of an included Final CDR stays included, with the overlapping days in its
+  reason.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ import json
 import re
 from contextlib import contextmanager
 from contextvars import ContextVar
+from datetime import date
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -131,7 +137,8 @@ def _facts(repository: Any, datasets: list[Any]) -> dict[int, dict[str, Any]]:
         for dataset in datasets:
             dataset_id = int(dataset['id'])
             entry = cached.get(str(dataset_id))
-            if isinstance(entry, dict) and entry.get('revision') == _revision(dataset):
+            # Entries cached before the first call date was kept are read again.
+            if isinstance(entry, dict) and entry.get('revision') == _revision(dataset) and 'first_date' in entry:
                 facts[dataset_id] = entry
                 continue
             table = f'dataset_rows_{dataset_id}'
@@ -150,14 +157,15 @@ def _facts(repository: Any, datasets: list[Any]) -> dict[int, dict[str, Any]]:
                     f'SELECT DISTINCT {_quote(campaign_column)} FROM {_quote(table)} '
                     f'WHERE TRIM(COALESCE({_quote(campaign_column)}, \'\')) <> \'\' LIMIT 1000').fetchall()]
             start_column = _resolve(columns, *_START_COLUMNS)
-            data_date = ''
+            data_date = first_date = ''
             if start_column:
-                value = connection.execute(
-                    f"SELECT MAX(replace(substr(CAST({_quote(start_column)} AS TEXT), 1, 19), 'T', ' ')) FROM {_quote(table)}"
-                ).fetchone()[0]
-                data_date = str(value or '')
+                start = f"replace(substr(CAST({_quote(start_column)} AS TEXT), 1, 19), 'T', ' ')"
+                first, last = connection.execute(
+                    f"SELECT MIN(NULLIF({start}, '')), MAX({start}) FROM {_quote(table)}"
+                ).fetchone()
+                data_date, first_date = str(last or ''), str(first or '')
             entry = {'revision': _revision(dataset), 'campaigns': sorted(set(campaigns), key=str.casefold),
-                     'data_date': data_date, 'has_join_id': bool(_resolve(columns, 'JOIN_ID'))}
+                     'data_date': data_date, 'first_date': first_date, 'has_join_id': bool(_resolve(columns, 'JOIN_ID'))}
             facts[dataset_id] = entry
             cached[str(dataset_id)] = entry
             changed = True
@@ -235,7 +243,45 @@ def combined_inclusion(repository: Any) -> dict[int, dict[str, Any]]:
     return remembered[key]
 
 
+_DAY = re.compile(r'\d{4}-\d{2}-\d{2}')
+
+
+def _day(value: object) -> str:
+    """The date (yyyy-mm-dd) of a call date, or '' when it has none."""
+    text = str(value or '')[:10]
+    return text if _DAY.fullmatch(text) else ''
+
+
+def _date_range(item: dict[str, Any]) -> tuple[str, str] | None:
+    first, last = _day(item.get('first_date')), _day(item.get('data_date'))
+    return (first, last) if first and last and first <= last else None
+
+
+def _covers(outer: dict[str, Any], inner: dict[str, Any]) -> bool:
+    """Whether the dates of a CDR are all within those of another one (both with dates)."""
+    outer_range, inner_range = _date_range(outer), _date_range(inner)
+    return bool(outer_range and inner_range and outer_range[0] <= inner_range[0] and inner_range[1] <= outer_range[1])
+
+
+def _overlap_days(first: dict[str, Any], second: dict[str, Any]) -> int:
+    """How many days the dates of two CDRs share."""
+    first_range, second_range = _date_range(first), _date_range(second)
+    if not first_range or not second_range:
+        return 0
+    start, end = max(first_range[0], second_range[0]), min(first_range[1], second_range[1])
+    if start > end:
+        return 0
+    return (date.fromisoformat(end) - date.fromisoformat(start)).days + 1
+
+
+def _short_range(item: dict[str, Any]) -> str:
+    first, last = _date_range(item) or ('', '')
+    return f'{first} to {last}' if first != last else first
+
+
 def _combined_inclusion(repository: Any) -> dict[int, dict[str, Any]]:
+    from src.modules.cdr.cdr_auto_selection import is_flex_cdr
+
     datasets = [dataset for dataset in repository.list_datasets()
                 if str(_row(dataset, 'status', '')) == 'ready' and str(_row(dataset, 'dataset_kind', '')).casefold() in CDR_STAGE_KINDS]
     facts = _facts(repository, datasets)
@@ -248,10 +294,16 @@ def _combined_inclusion(repository: Any) -> dict[int, dict[str, Any]]:
         info[dataset_id] = {'stage': stage, 'in_combined': choice, 'kind': str(dataset['dataset_kind']).casefold(),
                             'nr_mode': str(_row(dataset, 'nr_mode', '') or '').upper(),
                             'campaigns': {campaign.casefold() for campaign in facts[dataset_id]['campaigns']},
-                            'data_date': facts[dataset_id]['data_date']}
+                            'data_date': facts[dataset_id]['data_date'], 'first_date': facts[dataset_id].get('first_date') or '',
+                            'flex': is_flex_cdr(facts[dataset_id]['campaigns'], _row(dataset, 'campaign', ''))}
 
     def manual(item: dict[str, Any]) -> bool | None:
         return {'yes': True, 'no': False}.get(item['in_combined'])
+
+    def same_cdrs(item: dict[str, Any], other: dict[str, Any]) -> bool:
+        """Whether one CDR can replace another: same type, NR Mode (or one without it) and Flex or not."""
+        return (other['kind'] == item['kind'] and other['flex'] == item['flex']
+                and (not item['nr_mode'] or not other['nr_mode'] or other['nr_mode'] == item['nr_mode']))
 
     finals = [dataset_id for dataset_id, item in info.items()
               if item['stage'] == 'final' and manual(item) is not False]
@@ -265,11 +317,14 @@ def _combined_inclusion(repository: Any) -> dict[int, dict[str, Any]]:
             item.update(included=True, reason='Final CDRs are always included')
             continue
         replacing = next((final_id for final_id in finals
-                          if info[final_id]['kind'] == item['kind']
-                          and (not item['nr_mode'] or not info[final_id]['nr_mode'] or info[final_id]['nr_mode'] == item['nr_mode'])
-                          and item['campaigns'] & info[final_id]['campaigns']), None)
+                          if same_cdrs(item, info[final_id]) and item['campaigns'] & info[final_id]['campaigns']), None)
         if replacing is not None:
             item.update(included=False, reason=f'Replaced by the Final CDR {names[replacing]}', replaced_by=replacing)
+            continue
+        covering = next((final_id for final_id in finals if same_cdrs(item, info[final_id]) and _covers(info[final_id], item)), None)
+        if covering is not None:
+            item.update(included=False, replaced_by=covering,
+                        reason=f'Its dates ({_short_range(item)}) are covered by the Final CDR {names[covering]}')
             continue
         item.update(included=True, reason='No Final CDR of its campaign yet')
     # A cumulative Weekly or Daily CDR contains every call of the previous ones of its campaign: only the newest stays.
@@ -290,6 +345,27 @@ def _combined_inclusion(repository: Any) -> dict[int, dict[str, Any]]:
         if container is not None:
             label = CDR_STAGE_LABELS[info[container]['stage']]
             item.update(included=False, reason=f'Every call is in the newer {label} CDR {names[container]}', replaced_by=container)
+    # A Daily CDR whose dates a Weekly CDR covers (not one excluded by hand) holds no call the Weekly CDR has not.
+    weeklies = [dataset_id for dataset_id, item in info.items() if item['stage'] == 'weekly' and manual(item) is not False]
+    for dataset_id, item in info.items():
+        if not item.get('included') or item['stage'] != 'daily' or item['in_combined'] != 'auto':
+            continue
+        covering = next((weekly_id for weekly_id in weeklies
+                         if same_cdrs(item, info[weekly_id]) and _covers(info[weekly_id], item)), None)
+        if covering is not None:
+            item.update(included=False, replaced_by=covering,
+                        reason=f'Its dates ({_short_range(item)}) are covered by the Weekly CDR {names[covering]}')
+    # A Weekly or Daily CDR that stays with some days of an included Final CDR counts the calls of those days twice.
+    included_finals = [dataset_id for dataset_id, item in info.items() if item['stage'] == 'final' and item.get('included')]
+    for dataset_id, item in info.items():
+        if not item.get('included') or item['stage'] == 'final':
+            continue
+        shared = max(((_overlap_days(item, info[final_id]), final_id) for final_id in included_finals
+                      if same_cdrs(item, info[final_id])), default=(0, None))
+        if shared[0]:
+            days = 'day' if shared[0] == 1 else 'days'
+            item.update(overlap_days=shared[0], overlaps=shared[1],
+                        reason=f"{item['reason']}; {shared[0]} {days} of its dates are also in the Final CDR {names[shared[1]]}")
     for item in info.values():
         item['campaigns'] = sorted(item['campaigns'])
     return info

@@ -144,6 +144,20 @@ A **Flex campaign** is a local campaign: a complete campaign, but localised in o
 
 The Final, Weekly and Daily CDR cards list their CDRs of Flex campaigns apart, in a **Flex CDRs** card of their own inside them, dashed in amber, with its count, badges and the notice that says how they are used; it shows only when the stage has such CDRs, and a CDR moves in or out of it at once when its stage changes.
 
+Ad-hoc campaigns do not always say Flex, so the tool recognises the **Final CDRs that look local** and suggests them as Flex. A Final CDR that is not Flex yet is suggested when:
+
+- its tests cover a small part (35% or less) of the area of the other Final CDRs of its type (Data, Voice or Speech) and NR Mode that are not Flex, measured in cells of a quarter of a degree, whether it is one city, several cities of one zone or a whole region; or
+- its file name has the name of an area of the workspace (a `City`, `Cluster` or `Region` value of its CDRs, such as `London`), unless its tests cover most (60% or more) of the area of the other Final CDRs.
+
+Weekly and Daily CDRs are never suggested, nor a CDR whose name says Weekly or Daily: they hold the calls measured so far and do not cover the whole country yet, so their stage decides. The coverage of each Final CDR is read once it is processed (the Final CDRs uploaded before are read while the tool is idle) and again only when the CDR changes; the suggestions show once every Final CDR has been read.
+
+The Campaign cell of a suggested CDR says why, in amber (*Looks local (London): its tests cover 3% of the area of the other Final CDRs*), and names the other CDRs with the same Campaign values, which would be Flex too. Its two answers (user-editors, admins and super-admins) are recorded in App Events:
+
+- **Mark as Flex**, after a confirmation, labels its Campaign values in [Campaign Maps](workspace-config.md#campaign-maps) with a Flex label made of their year and quarter and the area (`26-Q4-London-Flex`, or `…-Local-Flex` without a main area); Campaign values that already have an exception take the Flex label in it. The CDR moves to the **Flex CDRs** card and the combined tables follow.
+- **Not local** hides the suggestion until the CDR changes.
+
+A campaign is still made Flex by hand as before, with Flex in its Campaign values or in its Campaign Maps label, and a label edited in Campaign Maps takes it out of Flex again. As Flex is a property of the Campaign values, a local CDR whose rows carry the same Campaign value as the CDRs of the whole country cannot be told apart from them: its tests count in that campaign.
+
 ### CDR Stage: Final, Weekly and Daily
 
 Every CDR is a **Final** CDR, delivered after its measurement campaign, or a **Weekly** or **Daily** CDR, received every week or day while the campaign runs, either incremental (the calls of one week or day) or cumulative (every call so far). During upload the CDR Stage is proposed from the filename and can be changed per file before processing starts:
@@ -163,11 +177,15 @@ The **Active?** column holds the choice (**Auto**, the default, **Yes** or **No*
 |---|---|---|
 | *Included manually* / *Excluded manually* | The choice is **Yes** or **No**. It overrides every other rule, for Final, Weekly and Daily CDRs alike. | As chosen |
 | *Final CDRs are always included* | A Final CDR set to **Auto**. A Final CDR only leaves the combined tables when it is set to **No**. | Yes |
-| *Replaced by the Final CDR …* | A Weekly or Daily CDR set to **Auto** covered by a Final CDR that is included (not set to **No**), of the same type (Data, Voice or Speech), of the same NR Mode (or either has none) and that shares at least one `Campaign` value with it. The reason names that Final CDR. | No |
+| *Replaced by the Final CDR …* | A Weekly or Daily CDR set to **Auto** covered by a Final CDR that is included (not set to **No**), of the same type (Data, Voice or Speech), of the same NR Mode (or either has none), Flex or not like it, and that shares at least one `Campaign` value with it. The reason names that Final CDR. | No |
+| *Its dates (… to …) are covered by the Final CDR …* | A Weekly or Daily CDR set to **Auto** whose dates are all within those of such a Final CDR, whatever its `Campaign` values: its first and last call dates are between the first and last call dates of the Final CDR (a Weekly CDR from 1 to 20 October and a Final CDR from 1 to 30 October). | No |
 | *Every call is in the newer Weekly CDR …* / *… Daily CDR …* | A Weekly or Daily CDR set to **Auto** with no Final CDR yet, when the newest Weekly or Daily CDR of the same type, NR Mode and campaign (by the date of its data), or a newer Weekly CDR, contains every one of its calls (`JOIN_ID`). This is how a cumulative CDR replaces the previous ones and a Weekly CDR the Daily CDRs of its week, also when newer Daily CDRs follow it; incremental CDRs, each with its own calls, are all included. | No |
+| *Its dates (…) are covered by the Weekly CDR …* | A Daily CDR set to **Auto** whose dates are all within those of a Weekly CDR (not set to **No**) of the same type, NR Mode and Flex or not. | No |
 | *No Final CDR of its campaign yet* | Any other Weekly or Daily CDR set to **Auto**: it is the best data available while the campaign runs. | Yes |
 
-A CDR left out stays in the Workspace and in CDR Analysis; only the combined tables leave it out. Setting a Final CDR to **No** stops it covering its Weekly and Daily CDRs, which come back with the last two reasons.
+A Flex CDR (a [local campaign](#flex-campaigns)) never replaces a CDR that is not Flex, nor the other way round, whatever their dates. A Weekly or Daily CDR that stays included while some of its days are in an included Final CDR (its dates only partly overlap) adds them to its reason (*…; 6 days of its dates are also in the Final CDR …*): the calls of those days are counted twice unless one of the two is set to **No**.
+
+A CDR left out stays in the Workspace and in CDR Analysis; only the combined tables leave it out. Setting a Final CDR to **No** stops it covering its Weekly and Daily CDRs, which come back with the reasons that follow it.
 
 For example, for the Voice SA CDRs of the campaign UK Q3, with cumulative Daily CDRs:
 

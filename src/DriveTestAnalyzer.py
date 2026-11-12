@@ -4169,6 +4169,20 @@ def add_flex_campaigns(datasets: list[dict[str, Any]], task_repository: Reposito
         dataset['flex_campaign'] = int(dataset['id']) in campaigns and is_flex_cdr(campaigns[int(dataset['id'])], dataset.get('campaign'))
 
 
+def add_flex_suggestions(datasets: list[dict[str, Any]], task_repository: Repository | None = None) -> None:
+    """The Final CDRs that look local (see ``flex_detection``), with what their card says and the label proposed; none
+    until the idle task has read the coverage of every Final CDR."""
+    from src.modules.cdr.flex_detection import describe, flex_suggestions
+
+    try:
+        suggestions = flex_suggestions(task_repository or repository, read_missing=False)
+    except Exception:  # noqa: BLE001 - the Workspace still lists its datasets.
+        suggestions = {}
+    for dataset in datasets:
+        suggestion = suggestions.get(int(dataset['id']))
+        dataset['flex_suggestion'] = {**suggestion, 'text': describe(suggestion)} if suggestion else None
+
+
 def add_workspace_mapping_capabilities(datasets: list[dict[str, Any]]) -> None:
     """Expose the single Workspace mapping actions for Vendor, Region and Cluster."""
     add_workspace_vendor_capabilities(datasets)
@@ -5522,6 +5536,14 @@ def rebuild_dataset_artifacts(
     if dataset_kind in CDR_DATASET_KINDS and update_combined_reporting:
         # A Daily CDR replaced by a Final CDR, or a Final CDR that replaces Daily CDRs, changes the combined tables.
         try_sync_combined_cdr_inclusion(task_repository)
+    if dataset_kind in CDR_DATASET_KINDS:
+        # What a Final CDR covers, for the suggestion of a local (Flex) campaign on its card.
+        try:
+            from src.modules.cdr.flex_detection import final_cdrs_to_read, local_facts
+
+            local_facts(task_repository, [row for row in final_cdrs_to_read(task_repository) if int(row['id']) == int(dataset_id)])
+        except Exception:  # noqa: BLE001 - read later by the idle task.
+            pass
     return {
         'df': df,
         'summary': summary,
@@ -16317,6 +16339,7 @@ def workspace(
     add_workspace_mapping_capabilities(datasets)
     add_inventory_row_details(datasets)
     add_combined_inclusion(datasets)
+    add_flex_suggestions(datasets)
     add_l3_nq_calls(datasets)
     mappable_cdr_datasets = [dataset for dataset in datasets if dataset.get('can_map_mappings')]
     vendor_signatures: dict[tuple[int, ...], str] = {}
@@ -16858,6 +16881,24 @@ def _fill_cdr_facets_when_idle() -> None:
 
 
 register_idle_task(_fill_cdr_facets_when_idle, MAP_AREA_FILL_IDLE_SECONDS)
+
+
+def _read_local_coverage_when_idle(max_seconds: float = 20) -> None:
+    """Read what the active workspace's Final CDRs cover (see ``flex_detection``) for those not read yet."""
+    if not active_workspace or APP_SHUTTING_DOWN.is_set():
+        return
+    from src.modules.cdr.flex_detection import final_cdrs_to_read, local_facts
+
+    task_repository = Repository(active_workspace.database_path, global_db_path=repository.global_db_path,
+                                 workspace_registry_db_path=workspace_registry.registry_path)
+    started = monotonic()
+    for dataset in final_cdrs_to_read(task_repository):
+        if APP_SHUTTING_DOWN.is_set() or monotonic() - started >= max_seconds:
+            return
+        local_facts(task_repository, [dataset])
+
+
+register_idle_task(_read_local_coverage_when_idle, MAP_AREA_FILL_IDLE_SECONDS)
 
 
 def _global_background_tasks(user: SessionUser, accessible_ids: set[str]) -> list[dict[str, Any]]:
@@ -23404,6 +23445,59 @@ def update_dataset_in_combined(
         }))
         queue_combined_cdr_inclusion_sync(user.username)
     return JSONResponse({'dataset_id': dataset_id, 'in_combined': choice, 'combined': combined_inclusion_payload()})
+
+
+class DatasetFlexUpdate(BaseModel):
+    action: str
+    label: str = ''
+
+
+@app.post('/workspace/datasets/{dataset_id}/flex')
+def update_dataset_flex(
+    dataset_id: int, payload: DatasetFlexUpdate, user: SessionUser = Depends(config_editor_user),
+) -> JSONResponse:
+    """Answer the suggestion of a local campaign of a Final CDR: ``mark`` labels its Campaign values with a Flex label in
+    Campaign Maps, ``dismiss`` hides the suggestion until the CDR changes."""
+    from src.modules.cdr.cdr_auto_selection import cdr_campaigns
+    from src.modules.cdr.flex_detection import dismiss, flex_label, flex_suggestions, mark_as_flex
+
+    if not active_workspace:
+        raise HTTPException(status_code=409, detail='Open a workspace before changing its CDRs.')
+    require_workspace_access(user, active_workspace.id)
+    dataset = repository.get_dataset(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail='Dataset not found')
+    if str(dataset['dataset_kind'] or '').casefold() not in CDR_DATASET_KINDS:
+        raise HTTPException(status_code=400, detail='Only CDR datasets have a Flex campaign.')
+    action = str(payload.action or '').strip().casefold()
+    if action not in {'mark', 'dismiss'}:
+        raise HTTPException(status_code=422, detail='Choose mark or dismiss.')
+    suggestion = flex_suggestions(repository, read_missing=False).get(dataset_id) or {}
+    if action == 'dismiss':
+        dismiss(repository, dataset)
+        repository.add_log(user.username, 'update_dataset_flex', json.dumps({
+            'dataset_id': dataset_id, 'file': dataset['file_name'], 'action': 'dismiss', 'suggestion': suggestion,
+        }, ensure_ascii=False))
+        return JSONResponse({'dataset_id': dataset_id, 'action': 'dismiss'})
+    campaigns = cdr_campaigns(repository, [dataset_id]).get(dataset_id) or []
+    label = str(payload.label or '').strip() or suggestion.get('label') or flex_label(campaigns, suggestion.get('area') or '')
+    try:
+        config = mark_as_flex(repository, campaigns, label, user.username)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Labels, order and the campaigns of every module change: as when Campaign Maps are saved.
+    ANALYSIS_CACHE.clear()
+    PREPARED_ANALYSIS_FRAME_CACHE.clear()
+    DATAFRAME_CACHE.clear()
+    _clear_chart_preview_caches()
+    repository.add_log(user.username, 'update_dataset_flex', json.dumps({
+        'dataset_id': dataset_id, 'file': dataset['file_name'], 'action': 'mark', 'label': label,
+        'campaigns': campaigns, 'suggestion': suggestion,
+    }, ensure_ascii=False))
+    # A Flex Final CDR no longer replaces the Weekly and Daily CDRs of the whole country, nor they it.
+    queue_combined_cdr_inclusion_sync(user.username)
+    return JSONResponse({'dataset_id': dataset_id, 'action': 'mark', 'label': label,
+                         'exceptions': [item['label'] for item in config.get('exceptions') or []]})
 
 
 @app.post('/dashboard/retry/{dataset_id}', include_in_schema=False)

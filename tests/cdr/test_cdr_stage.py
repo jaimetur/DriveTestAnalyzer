@@ -156,6 +156,44 @@ def test_daily_cdrs_in_a_weekly_cdr_stay_out_when_newer_daily_cdrs_follow_it(cli
     assert combined_ids() == {weekly, later}
 
 
+def voice_days(days: list[str], campaign: str, prefix: str) -> pd.DataFrame:
+    """One call per day, with JOIN_IDs of their own (no CDR contains the calls of another)."""
+    frame = voice([f'{prefix}{position}' for position in range(len(days))], days[0], campaign)
+    return frame.assign(Call_Start_Time=[f'{day} 10:00:00' for day in days])
+
+
+def test_final_and_weekly_cdrs_replace_the_cdrs_whose_dates_they_cover(client, tmp_path):
+    login(client)
+    weekly = add_cdr(tmp_path, 'UK_Voice_Weekly_W42.xlsx', 'voice',
+                     voice_days(['2026-10-01', '2026-10-20'], 'UK_W42_Q4_SA_2026', 'w'), 'weekly')
+    daily = add_cdr(tmp_path, 'UK_Voice_20261005.xlsx', 'voice', voice_days(['2026-10-05'], 'UK_D_Q4_SA_2026', 'd'), 'daily')
+    later = add_cdr(tmp_path, 'UK_Voice_20261025.xlsx', 'voice',
+                    voice_days(['2026-10-25', '2026-11-02'], 'UK_L_Q4_SA_2026', 'l'), 'daily')
+    core.sync_combined_cdr_inclusion()
+    inclusion = combined_inclusion(core.repository)
+    # A Weekly CDR covers the dates of a Daily CDR of another Campaign value.
+    assert inclusion[daily]['reason'] == 'Its dates (2026-10-05) are covered by the Weekly CDR UK_Voice_Weekly_W42.xlsx'
+    assert combined_ids() == {weekly, later}
+
+    # A Flex Final CDR never replaces the CDRs of the campaign of the whole country, whatever their dates.
+    local = add_cdr(tmp_path, 'UK_Voice_London_Final.xlsx', 'voice',
+                    voice_days(['2026-10-01', '2026-10-30'], 'UK_Flex_London_2026', 'f'), 'final')
+    core.sync_combined_cdr_inclusion()
+    assert combined_ids() == {weekly, later, local}
+
+    final = add_cdr(tmp_path, 'UK_Voice_Final_Oct.xlsx', 'voice',
+                    voice_days(['2026-10-01', '2026-10-30'], 'UK_Q4_SA_2026', 'x'), 'final')
+    core.sync_combined_cdr_inclusion()
+    inclusion = combined_inclusion(core.repository)
+    assert inclusion[weekly]['included'] is False
+    assert inclusion[weekly]['reason'] == 'Its dates (2026-10-01 to 2026-10-20) are covered by the Final CDR UK_Voice_Final_Oct.xlsx'
+    assert inclusion[daily]['included'] is False
+    # Partly overlapping dates keep the CDR, with the days it shares in its reason.
+    assert inclusion[later]['included'] is True and inclusion[later]['overlap_days'] == 6
+    assert inclusion[later]['reason'].endswith('; 6 days of its dates are also in the Final CDR UK_Voice_Final_Oct.xlsx')
+    assert combined_ids() == {later, local, final}
+
+
 def test_weekly_and_daily_cards_show_only_with_cdrs(client, tmp_path):
     login(client)
     add_cdr(tmp_path, 'UK_Voice_Q3_Final.xlsx', 'voice', voice(['0xA'], '2026-09-30'), 'final')

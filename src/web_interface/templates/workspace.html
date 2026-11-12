@@ -283,6 +283,17 @@
             {% if layout == 'cdr' %}
             <td data-label="Campaign" data-queue-campaign data-queue-sort-value="{{ dataset.campaign or '' }}" data-queue-sort-cell="campaign">
               <input type="text" class="queue-campaign-input" value="{{ dataset.campaign or '' }}" placeholder="YYYY-Qn" maxlength="40" spellcheck="false" autocomplete="off" list="cdr-campaign-options" data-dataset-campaign-input data-update-url="/workspace/datasets/{{ dataset.id }}/campaign" aria-label="Campaign of {{ dataset.file_name }}" title="The campaign of this CDR, such as 2026-Q2, or 2025-Q2-Flex with a name after its quarter (suggested from its file name or, without a quarter in it, from its rows and Campaign Maps; blank: no campaign)"{% if user.role not in ['user-editor', 'admin', 'super-admin'] %} readonly{% endif %}>
+              {% if dataset.flex_suggestion %}
+              <div class="queue-flex-suggestion" data-flex-suggestion data-update-url="/workspace/datasets/{{ dataset.id }}/flex" data-flex-label="{{ dataset.flex_suggestion.label }}" title="{{ dataset.flex_suggestion.text }}">
+                <span class="queue-flex-suggestion-text"><span class="dataset-subcard-flex-tag">Flex?</span> {{ dataset.flex_suggestion.text }}</span>
+                {% if user.role in ['user-editor', 'admin', 'super-admin'] %}
+                <span class="queue-flex-suggestion-actions">
+                  <button type="button" class="queue-flex-suggestion-button is-primary" data-flex-action="mark" title="Label its campaign {{ dataset.flex_suggestion.label }} in Campaign Maps: a Flex campaign is used only where it is checked by hand">Mark as Flex</button>
+                  <button type="button" class="queue-flex-suggestion-button" data-flex-action="dismiss" title="Hide this suggestion until the CDR changes">Not local</button>
+                </span>
+                {% endif %}
+              </div>
+              {% endif %}
             </td>
             {% endif %}
             <td data-label="NR Mode" data-queue-nr-mode data-queue-sort-value="{{ dataset.nr_mode or '' }}" data-queue-sort-cell="nr-mode">
@@ -307,7 +318,7 @@
             </td>
             <td data-label="Active?" data-queue-combined data-queue-sort-value="{{ '1' if dataset.combined_included else '0' }}" data-queue-sort-cell="combined">
               <div class="queue-combined-cell">
-                <select class="queue-combined-select" data-dataset-combined-select data-dataset-id="{{ dataset.id }}" data-update-url="/workspace/datasets/{{ dataset.id }}/in-combined" aria-label="Active? for {{ dataset.file_name }}"{% if user.role in ['admin', 'super-admin'] %} title="Auto: Final CDRs are included, Daily CDRs until a Final CDR of their campaign arrives"{% else %} title="Only admins and super-admins change Active: it recalculates the combined tables and indexes the calls again" disabled data-role-locked{% endif %}>
+                <select class="queue-combined-select" data-dataset-combined-select data-dataset-id="{{ dataset.id }}" data-update-url="/workspace/datasets/{{ dataset.id }}/in-combined" aria-label="Active? for {{ dataset.file_name }}"{% if user.role in ['admin', 'super-admin'] %} title="Auto: Final CDRs are included, Weekly and Daily CDRs until a Final CDR of their campaign, or one that covers their dates, arrives"{% else %} title="Only admins and super-admins change Active: it recalculates the combined tables and indexes the calls again" disabled data-role-locked{% endif %}>
                   {% for value, label in in_combined_options %}<option value="{{ value }}"{% if dataset.in_combined == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
                 </select>
                 <span class="queue-combined-state {{ 'is-included' if dataset.combined_included else 'is-excluded' }}" data-combined-state title="{{ dataset.combined_reason }}">{{ 'Yes' if dataset.combined_included else 'No' }}</span>

@@ -13687,6 +13687,38 @@ document.addEventListener('change', async (event) => {
   }
 });
 
+// A Final CDR that looks local: Mark as Flex labels its campaign with Flex in Campaign Maps, Not local hides the suggestion.
+document.addEventListener('click', async (event) => {
+  const button = event.target instanceof Element ? event.target.closest('[data-flex-action]') : null;
+  const box = button?.closest('[data-flex-suggestion]');
+  if (!(button instanceof HTMLButtonElement) || !(box instanceof HTMLElement) || !box.dataset.updateUrl) return;
+  const action = button.dataset.flexAction;
+  const label = box.dataset.flexLabel || '';
+  if (action === 'mark') {
+    const accepted = await showConfirmDialog(
+      `Label the campaign of this CDR ${label} in Campaign Maps? A Flex campaign is left out of Latest campaign, Previous campaign and the other automatic choices, and is used only where it is checked by hand.`,
+      {title: 'Mark as Flex', confirmLabel: 'Mark as Flex'},
+    );
+    if (!accepted) return;
+  }
+  const buttons = [...box.querySelectorAll('[data-flex-action]')];
+  buttons.forEach((item) => { item.disabled = true; });
+  try {
+    const response = await fetch(box.dataset.updateUrl, {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+      body: JSON.stringify({action, label}),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || 'The Flex campaign could not be updated.');
+    // The CDR moves to the Flex CDRs card and the combined tables follow.
+    window.location.reload();
+  } catch (error) {
+    showInfoDialog(error instanceof Error ? error.message : 'The Flex campaign could not be updated.', {title: 'Flex campaign update failed', tone: 'error'});
+    buttons.forEach((item) => { item.disabled = false; });
+  }
+});
+
 // The Campaign of a CDR, such as 2026-Q2 (blank: no campaign).
 document.addEventListener('change', async (event) => {
   const input = event.target instanceof HTMLInputElement ? event.target.closest('[data-dataset-campaign-input]') : null;
