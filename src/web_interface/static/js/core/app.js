@@ -6780,11 +6780,10 @@ function setupDropdownAlignment() {
 
 // The tabs of the modules stay at the top of the screen while a page scrolls (sticky, app.css): --module-tabs-offset,
 // the height they cover, keeps the bars and panels that stick to the top of the page below them. The application bar
-// stays above them too (has-sticky-header) while both take no more than a third of the screen; otherwise only the tabs
-// stay, and tabs that would take more than a third of a small screen do not stay either. On small screens the bar of
-// the menu stands in for the tabs (app.css).
-const STICKY_HEADER_TOP = 8;
-const STICKY_HEADER_GAP = 8;
+// stays above them too (has-sticky-header) while both take no more than a third of the screen, both where they stand at
+// the top of the page so that neither moves when the page scrolls; otherwise only the tabs stay, and tabs that would take
+// more than a third of a small screen do not stay either. On small screens the bar of the menu stands in for the tabs
+// (app.css).
 function moduleTabsOffset() {
   return parseFloat(document.documentElement.style.getPropertyValue('--module-tabs-offset')) || 0;
 }
@@ -6799,13 +6798,17 @@ function setupStickyModuleTabs() {
   const measure = () => {
     const bar = shown();
     const height = Math.ceil(bar.getBoundingClientRect().height);
-    const headerHeight = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
+    // Where the bar and the tabs stand at the top of the page, from the shell and main, which do not stick.
+    const pageTop = (element, child) => element.getBoundingClientRect().top + window.scrollY
+      + parseFloat(getComputedStyle(element).paddingTop) + parseFloat(getComputedStyle(child).marginTop);
+    const headerTop = header ? Math.max(0, pageTop(header.parentElement, header)) : 0;
+    const barTop = header ? Math.max(0, pageTop(bar.parentElement, bar)) : 0;
     const third = window.innerHeight / 3;
-    const withHeader = header !== null && STICKY_HEADER_TOP + headerHeight + STICKY_HEADER_GAP + height <= third;
+    const withHeader = header !== null && barTop + height <= third;
     const tall = !withHeader && height > third;
-    const top = withHeader ? STICKY_HEADER_TOP + headerHeight + STICKY_HEADER_GAP : 0;
+    const top = withHeader ? barTop : 0;
     root.classList.toggle('has-sticky-header', withHeader);
-    root.style.setProperty('--sticky-header-top', `${STICKY_HEADER_TOP}px`);
+    root.style.setProperty('--sticky-header-top', `${headerTop}px`);
     root.style.setProperty('--module-tabs-top', `${top}px`);
     bar.classList.toggle('is-tall', tall);
     root.style.setProperty('--module-tabs-offset', `${tall ? 0 : top + height}px`);

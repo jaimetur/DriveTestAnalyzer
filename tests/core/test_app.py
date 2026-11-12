@@ -11527,7 +11527,7 @@ def test_the_module_tabs_stay_at_the_top_with_the_sticky_bars_below_them():
     sticky = script[script.index('function setupStickyModuleTabs() {'):script.index('\nsetupStickyModuleTabs();')]
     # The application bar stays above the tabs while both take no more than a third of the screen; otherwise tabs
     # that would take more than a third do not stay either. What stays offsets the other sticky bars.
-    assert 'const withHeader = header !== null && STICKY_HEADER_TOP + headerHeight + STICKY_HEADER_GAP + height <= third;' in sticky
+    assert 'const withHeader = header !== null && barTop + height <= third;' in sticky
     assert 'const tall = !withHeader && height > third;' in sticky
     assert "root.classList.toggle('has-sticky-header', withHeader);" in sticky
     assert "root.style.setProperty('--module-tabs-offset', `${tall ? 0 : top + height}px`);" in sticky
