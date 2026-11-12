@@ -574,7 +574,7 @@ def test_the_evidence_shows_the_radio_of_each_source_on_its_own_line():
     assert nq_dta_rca.ericsson_inputs('') == {} and nq_dta_rca.provider_averages('No SYNCACK') == []
     # The Layer3 Log at the failure comes before the Ericsson RCA, which comes before the average of the CDR.
     logged = evaluate({}, {'l3_lte_rsrp_end': -119.0, 'l3_tx_max': 23.0, 'eri_lte_rsrp': -100.0, 'lte_rsrp': -90.0})
-    assert 'Radio (Layer3 Log, at the failure): LTE PCell RSRP −119 dBm, UE Tx Power 23 dBm' in logged['evidence']
+    assert 'Radio (Layer3 Log, at the failure): LTE PCell RSRP −119 dBm, UE Tx Power (maximum) 23 dBm' in logged['evidence']
 
 
 def test_the_rsrp_at_the_failure_reads_the_most_precise_source():

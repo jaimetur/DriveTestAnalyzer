@@ -916,8 +916,10 @@ def radio_line(inputs: dict[str, Any]) -> str:
             if values:
                 parts.append(f"{technology.upper()} PCell {', '.join(values)}")
         if parts:
-            power = _number(inputs.get('l3_tx_max' if source.startswith('Layer3') else 'eri_tx_power'))
-            power_text = f", UE Tx Power {_measure(power, 'dBm')}" if power is not None else ''
+            logged = source.startswith('Layer3')
+            power = _number(inputs.get('l3_tx_max' if logged else 'eri_tx_power'))
+            # The log gives the highest UE Tx Power of its last seconds, the Ericsson RCA that of its window.
+            power_text = f", UE Tx Power{' (maximum)' if logged else ''} {_measure(power, 'dBm')}" if power is not None else ''
             return f"Radio ({source}): {' · '.join(parts)}{power_text}"
     return ''
 
