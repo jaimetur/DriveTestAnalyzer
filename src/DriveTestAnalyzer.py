@@ -16208,6 +16208,9 @@ async def demo_mode_heartbeat(request: Request) -> JSONResponse:
         demo_mode.heartbeat, user.username, user.role, session=_session_hash(token), tab=payload.get('tab'),
         unsaved=unsaved, leave=bool(payload.get('leave')),
     )
+    if user.role in demo_mode_module.MANAGER_ROLES and not reply.get('signed_out'):
+        # (The green dot of the users online in the Users table of Super Admin.)
+        reply['online'] = demo_mode.online_usernames()
     if reply.get('active'):
         reply['started_by_name'] = person_name(reply['started_by'])
         for item in reply.get('departures') or []:
@@ -19563,6 +19566,8 @@ def person_name(username: Any) -> str:
 
 
 templates.env.globals['person_names'] = person_names
+# The users with a page open now (lower case), for the green dot of the Users table.
+templates.env.globals['online_usernames'] = lambda: demo_mode.online_usernames()
 templates.env.filters['person_name'] = person_name
 # Whether the tool can send emails (the Forgot your password? of the login page).
 templates.env.globals['email_delivery_ready'] = lambda: bool(email_delivery_settings(repository)['configured'])

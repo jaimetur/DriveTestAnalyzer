@@ -233,3 +233,13 @@ def test_the_demo_outlives_a_restart_and_never_ends_by_itself():
                           end_sessions=lambda username: None, log=lambda *args: None, clock=clock,
                           now=lambda: datetime.now(timezone.utc) + timedelta(hours=3))
     assert again.active and again.public_info()['overdue'] is True
+
+
+def test_admins_are_told_which_users_are_online(accounts):
+    client = accounts
+    login(client, 'EUSER01', 'Secret123')
+    assert 'online' not in heartbeat(client)
+    login(client, 'super', 'super123')
+    assert heartbeat(client, tab='super-tab')['online'] == ['euser01', 'super']
+    page = client.get('/super-admin')
+    assert 'data-user-online="euser01"' in page.text and page.text.count('class="user-online-dot"') == len(core.repository.list_users())

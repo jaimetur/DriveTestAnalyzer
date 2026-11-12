@@ -4956,6 +4956,9 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 .users-table .user-select-column input { width: 1rem; height: 1rem; margin: 0; accent-color: #0b7a75; }
 .user-identity { position: relative; display: flex; align-items: center; gap: .7rem; min-width: 14rem; }
 .user-avatar { display: grid; flex: 0 0 2.3rem; place-items: center; width: 2.3rem; height: 2.3rem; border-radius: 50%; background: hsl(var(--avatar-hue, 200) 60% 92%); color: hsl(var(--avatar-hue, 200) 45% 30%); font-size: .76rem; font-weight: 800; letter-spacing: .02em; }
+.user-avatar-presence { position: relative; display: inline-grid; flex: 0 0 2.3rem; }
+.user-online-dot { position: absolute; right: -1px; bottom: -1px; width: .72rem; height: .72rem; box-sizing: border-box; border: 2px solid #fff; border-radius: 50%; background: #2fbf5f; box-shadow: 0 0 0 2px rgba(47, 191, 95, .25); }
+.user-online-dot[hidden] { display: none; }
 .user-avatar-new { border: 1.5px solid rgba(16, 49, 74, .12); background: #eef2f5; color: #8a97a3; font-size: 1.1rem; user-select: none; pointer-events: none; }
 .user-avatar-new svg { width: 58%; height: 58%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .user-avatar-new.has-initials { border-color: transparent; background: #f8d2cd; color: #7d2731; font-size: .85rem; }

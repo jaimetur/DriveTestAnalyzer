@@ -95,7 +95,7 @@ Demo Mode keeps the platform for the users of a live demo: everybody else is sig
 
 - **Expected end of the demo**: a date and time (**+30 min**, **+1 h** and **+2 h** set it from now).
 - **Message for the users**: a proposed text that can be changed, shown to the users who are signed out with who started the demo and its expected end.
-- **Users with access during the demo**: every active account, with a green dot for those online now and a tag for those with unsaved changes. The user who starts the demo always keeps access and, when an admin starts it (or changes its users), so does every super-admin; a super-admin can leave the other super-admins out. A summary tells how many users keep access and which online users will be warned or asked to save first.
+- **Users with access during the demo**: every active account, with a green dot for those online now (as in the Users table of [Super Admin](super-admin.md#users)) and a tag for those with unsaved changes. The user who starts the demo always keeps access and, when an admin starts it (or changes its users), so does every super-admin; a super-admin can leave the other super-admins out. A summary tells how many users keep access and which online users will be warned or asked to save first.
 
 Then:
 

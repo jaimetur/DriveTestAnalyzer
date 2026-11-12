@@ -445,5 +445,11 @@ class DemoMode:
                 })
             return sorted(rows, key=lambda item: (not item['you'], not item['locked'], item['username'].casefold()))
 
+    def online_usernames(self) -> list[str]:
+        """The users (in lower case) with a page open now, Demo Mode or not: the green dot of the Users table."""
+        with self._lock:
+            now = self._clock()
+            return sorted({page.username for page in self._pages.values() if now - page.seen <= PAGE_OPEN_SECONDS})
+
     def was_signed_out(self, username: str) -> bool:
         return _fold(username) in self._signed_out

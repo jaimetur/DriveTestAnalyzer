@@ -429,6 +429,14 @@
         window.location.assign(SIGNED_OUT_URL);
         return;
       }
+      // The green dot of the users online in the Users table (admins and super-admins are told who is online).
+      if (Array.isArray(reply.online)) {
+        const online = new Set(reply.online);
+        document.querySelectorAll('[data-user-online]').forEach((holder) => {
+          const dot = holder.querySelector('.user-online-dot');
+          if (dot) dot.hidden = !online.has(holder.dataset.userOnline);
+        });
+      }
       state = {...reply, manage: Boolean(reply.manage)};
       leaving = reply.active && reply.leaving ? reply.leaving : null;
       if (leaving) showLeaving(reply);

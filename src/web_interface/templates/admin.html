@@ -135,7 +135,8 @@
               <form id="user-password-reset-{{ row['id'] }}" action="/admin/users/{{ row['id'] }}/reset-password" method="post" data-user-password-reset data-reset-username="{{ row['username'] }}"></form>
               {% set full_name = (row['first_name'] ~ ' ' ~ row['last_name']) | trim %}
               <div class="user-identity" data-user-identity data-created="#{{ row['id'] }} · {{ row['created_at'][:10] }}">
-                <span class="user-avatar" style="--avatar-hue: {{ (row['id'] * 67) % 360 }}" aria-hidden="true" data-user-initials>{{ ((row['first_name'][:1] ~ row['last_name'][:1]) if row['first_name'] and row['last_name'] else row['username'][:2]) | upper }}</span>
+                {% set is_online = row['username'] | lower in online_usernames() %}
+                <span class="user-avatar-presence" data-user-online="{{ row['username'] | lower }}"><span class="user-avatar" style="--avatar-hue: {{ (row['id'] * 67) % 360 }}" aria-hidden="true" data-user-initials>{{ ((row['first_name'][:1] ~ row['last_name'][:1]) if row['first_name'] and row['last_name'] else row['username'][:2]) | upper }}</span><span class="user-online-dot" title="Online now" aria-label="Online now" role="img"{% if not is_online %} hidden{% endif %}></span></span>
                 <div class="user-identity-text">
                   <div class="user-identity-view">
                     <strong class="user-display-name" data-user-display-name>{{ full_name or row['username'] }}</strong>
