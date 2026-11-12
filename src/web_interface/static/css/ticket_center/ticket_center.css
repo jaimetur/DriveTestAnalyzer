@@ -389,7 +389,7 @@ a.tickets-health-tile:hover { border-color: color-mix(in srgb, var(--tone) 40%, 
 .tickets-swatch[data-series="weekday"] { background: linear-gradient(180deg, #ef4444, #991b1b); }
 .tickets-swatch[data-series="weekend"] { background: linear-gradient(180deg, #8193a8, #475569); }
 .tickets-time-groups { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; }
-.ticket-center .tickets-spent-row { grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr) 4.8rem; }
+.ticket-center .tickets-rank.tickets-spent-row { grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr) 5.4rem; }
 .tickets-spent-name { display: flex; align-items: center; gap: .45rem; min-width: 0; }
 .tickets-spent-name > :is(.tickets-rank-dot, .tickets-avatar) { flex: 0 0 auto; margin-right: 0; }
 .tickets-spent-name > span:last-child { display: grid; min-width: 0; }
