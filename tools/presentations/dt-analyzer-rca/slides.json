@@ -20,7 +20,7 @@
       "image": "slide-03.png",
       "section": "Introduction",
       "title": "From the CDR to the Selected Cause",
-      "notes": "The DT Analyzer RCA reads every Non-Qualified Call through the NQ index, which keeps, for each processed CDR, the values its rules read through the field profile of the CDR type; the Network Inventory adds the network around the call and, when its campaign has them, the Layer3 Logs add its session. The rules of the workspace, 77 by default, are tried in order against the Root Cause Catalog, and the first that holds gives the root domain, Root Category and Root Cause with the evidence, kept in its results. They join the RCA of the provider, the Ericsson RCA imported by JOIN_ID and the earlier decisions and comments of the analysts in the recommendation of the Selected Cause, weighted; with Learn from the decisions of the analysts on, it learns from them. It runs when CDRs are indexed, when the rules, the Root Cause Catalog or the Network Inventory change, and for the calls of a campaign whose Layer3 Logs are imported or deleted; the NQ Calls page, the exports, Reporting and the AI Assistant show its results."
+      "notes": "The DT Analyzer RCA reads every Non-Qualified Call through the NQ index, which keeps, for each processed CDR, the values its rules read through the field profile of the CDR type; the Network Inventory adds the network around the call and, when its campaign has them, the Layer3 Logs add its session. The rules of the workspace, 77 by default, are tried in order against the Root Cause Catalog, and the first that holds gives the root domain, Root Category and Root Cause with the evidence, kept in its results. They join the RCA of the provider, the Ericsson RCA imported by JOIN_ID and the earlier decisions and comments of the analysts in the recommendation of the Selected Cause, weighted; with Learn from the decisions of the analysts on, it learns from them. It runs when CDRs are indexed, when the rules, the Root Cause Catalog or the Network Inventory change, for the calls of a campaign whose Layer3 Logs are imported or deleted, and for the calls whose Ericsson RCA is imported or deleted; the NQ Calls page, the exports, Reporting and the AI Assistant show its results."
     },
     {
       "id": "inputs",
@@ -76,7 +76,7 @@
       "image": "slide-11.png",
       "section": "Results",
       "title": "Every call says why",
-      "notes": "Each call gets its root domain, Root Category and Root Cause on the catalog of the workspace, the rule and the evidence: the values that met the rule and, for the rules of the network around the call, the serving and nearest sites it read. They show in the Root Cause Sources and Root Cause Analysis panels, the RCA tab of the call and every export."
+      "notes": "Each call gets its root domain, Root Category and Root Cause on the catalog of the workspace, the rule and the evidence, a line per subject: the values that met the rule, the provider description, the radio before the failure from its most precise source (the Layer3 Log of the call, else the Ericsson RCA) and the averages of the whole call, and, for the rules of the network around the call, the serving and nearest sites it read. They show in the Root Cause Sources and Root Cause Analysis panels, the RCA tab of the call and every export."
     },
     {
       "id": "learning",

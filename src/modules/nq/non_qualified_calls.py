@@ -48,7 +48,7 @@ from operator import itemgetter
 from pathlib import Path
 from io import BytesIO
 from threading import Lock
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterable, Iterator
 
 from src.modules.cdr import cdr_field_dictionary, l3_dt_logs
 from src.modules.cdr.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
@@ -335,6 +335,10 @@ ASSIGNMENT_HISTORY_FIELDS = frozenset({*ASSIGNMENT_FIELDS, *(f'field:{field}' fo
 # The Layer3 Logs the DT Analyzer RCA read last (l3_dt_logs.rca_signature): when one is imported, processed again or
 # deleted, the calls of its campaign are calculated again.
 DTA_L3_STATE_KEY = 'nq_dta_rca_l3_logs'
+# The JOIN_IDs (lowercase) whose Ericsson RCA was imported or deleted since the DT Analyzer RCA read it, which it
+# calculates again (it reads the radio of its evidence); ``*`` stands for every call with a JOIN_ID.
+DTA_ERICSSON_STATE_KEY = 'nq_dta_rca_ericsson'
+DTA_ERICSSON_MAX_PENDING = 900
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
 SCHEMA_VERSION = '2026-11-11.6'
@@ -4411,16 +4415,25 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
     # The calls of the campaigns whose Layer3 Logs changed since the last calculation.
     logs = l3_dt_logs.rca_signature(task_repository)
     campaigns = _l3_changed_campaigns(task_repository, logs)
+    # The calls whose Ericsson RCA was imported or deleted since the last calculation.
+    pending_state = str(task_repository.get_workspace_state(DTA_ERICSSON_STATE_KEY) or '')
+    pending = _ericsson_pending(pending_state)
+    ericsson = ('' if not pending else " OR c.join_id <> ''" if '*' in pending
+                else f" OR lower(c.join_id) IN ({', '.join('?' for _ in pending)})")
     missing = '' if everything else (f' WHERE NOT EXISTS (SELECT 1 FROM {NQ_DTA_RESULTS_TABLE} r '
                                      'WHERE r.dataset_id = c.dataset_id AND r.source_row_id = c.source_row_id)'
-                                     + (f" OR lower(c.campaign) IN ({', '.join('?' for _ in campaigns)})" if campaigns else ''))
+                                     + (f" OR lower(c.campaign) IN ({', '.join('?' for _ in campaigns)})" if campaigns else '')
+                                     + ericsson)
+    parameters = [] if everything else [campaign.casefold() for campaign in campaigns] + ([] if '*' in pending else pending)
     with task_repository.connection() as connection:
         rows = connection.execute(f"SELECT {', '.join(f'c.{column}' for column in _DTA_COLUMNS)} FROM {NQ_CALLS_TABLE} c{missing}",
-                                  [] if everything else [campaign.casefold() for campaign in campaigns]).fetchall()
+                                  parameters).fetchall()
     compiled = nq_dta_rca.compile_rules(rules, taxonomy)
     context = _dta_context(task_repository, rows, bool(network))
     # What the Layer3 Logs of each call tell, by its JOIN_ID.
     logged = l3_dt_logs.rca_inputs(task_repository, [row['join_id'] for row in rows if row['join_id']]) if logs else {}
+    # The radio the Ericsson RCA of each call measured in its logs, by its JOIN_ID.
+    measured = _ericsson_rca_inputs(task_repository, [row['join_id'] for row in rows if row['join_id']])
     results = []
     for row in rows:
         try:
@@ -4429,6 +4442,7 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
             inputs = {}
         inputs.update(context.get((int(row['dataset_id']), int(row['source_row_id'])), {}))
         inputs.update(logged.get(str(row['join_id'] or '').strip().casefold(), {}))
+        inputs.update(measured.get(str(row['join_id'] or '').strip().casefold(), {}))
         found = nq_dta_rca.evaluate(compiled, row, inputs) or {}
         results.append((int(row['dataset_id']), int(row['source_row_id']), found.get('rule', ''), found.get('rule_key', ''),
                         found.get('domain', ''), found.get('category', ''), found.get('cause', ''), found.get('evidence', '')))
@@ -4447,8 +4461,46 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
                            (nq_dta_rca.FINGERPRINT_STATE_KEY, fingerprint))
         connection.execute('INSERT INTO workspace_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
                            (DTA_L3_STATE_KEY, json.dumps(logs, sort_keys=True)))
+        # The Ericsson RCA read, unless another file was imported meanwhile.
+        connection.execute('DELETE FROM workspace_state WHERE key = ? AND value = ?', (DTA_ERICSSON_STATE_KEY, pending_state))
     _refresh_dta_learning(task_repository)
     return len(results)
+
+
+def _ericsson_pending(value: Any) -> list[str]:
+    try:
+        pending = json.loads(value or '[]') or []
+    except (TypeError, ValueError):
+        return []
+    return [str(item) for item in pending] if isinstance(pending, list) else []
+
+
+def _mark_ericsson_changed(connection: Any, join_ids: Iterable[str] | None) -> None:
+    """Note the JOIN_IDs whose Ericsson RCA changed (None: every one) for the DT Analyzer RCA to calculate them again."""
+    row = connection.execute('SELECT value FROM workspace_state WHERE key = ?', (DTA_ERICSSON_STATE_KEY,)).fetchone()
+    pending = _ericsson_pending(row[0] if row else '')
+    merged = ['*'] if join_ids is None or '*' in pending else list(dict.fromkeys([*pending, *(str(item).casefold() for item in join_ids if item)]))
+    if len(merged) > DTA_ERICSSON_MAX_PENDING:
+        merged = ['*']
+    if merged:
+        connection.execute('INSERT INTO workspace_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+                           (DTA_ERICSSON_STATE_KEY, json.dumps(merged)))
+
+
+def _ericsson_rca_inputs(task_repository: Any, join_ids: Iterable[object]) -> dict[str, dict[str, float]]:
+    """The inputs of the DT Analyzer RCA from the imported Ericsson RCA of each JOIN_ID (lowercase): the radio of its
+    evidence (nq_dta_rca.ericsson_inputs)."""
+    keys = sorted({str(item).strip().casefold() for item in join_ids if str(item or '').strip()})
+    found: dict[str, dict[str, float]] = {}
+    with task_repository.connection() as connection:
+        for start in range(0, len(keys), 500):
+            chunk = keys[start:start + 500]
+            for row in connection.execute(
+                    f"SELECT join_id, json_extract(values_json, '$.rca_evidence') FROM {NQ_RCA_RESULTS_TABLE} "
+                    f"WHERE join_id IN ({', '.join('?' for _ in chunk)})", chunk):
+                if inputs := nq_dta_rca.ericsson_inputs(row[1]):
+                    found[str(row[0])] = inputs
+    return found
 
 
 def _l3_changed_campaigns(task_repository: Any, logs: dict[str, list[Any]]) -> list[str]:
@@ -4531,7 +4583,8 @@ def _dta_ready(task_repository: Any) -> None:
     """The DT Analyzer RCA calculated again before the calls are read when its rules or the Root Cause Catalog
     changed, and what it learns when the decisions of the analysts changed, unless the calls are being indexed."""
     if (str(task_repository.get_workspace_state(nq_dta_rca.FINGERPRINT_STATE_KEY) or '') != dta_rca_fingerprint(task_repository)
-            or _l3_changed_campaigns(task_repository, l3_dt_logs.rca_signature(task_repository))):
+            or _l3_changed_campaigns(task_repository, l3_dt_logs.rca_signature(task_repository))
+            or _ericsson_pending(task_repository.get_workspace_state(DTA_ERICSSON_STATE_KEY))):
         refresh_dta_rca(task_repository, wait=False)
     elif str(task_repository.get_workspace_state(nq_dta_rca.LEARNED_FINGERPRINT_STATE_KEY) or '') != _dta_learning_fingerprint(task_repository):
         lock = _sync_lock(task_repository)
@@ -6902,6 +6955,8 @@ def import_rca_results(task_repository: Any, content: bytes, file_name: str, use
             'VALUES (?, ?, ?, ?, ?, ?)',
             [(item['join_id'].casefold(), item['join_id'], json.dumps(item['values'], ensure_ascii=False), file_name, username, when)
              for item in results])
+        # The DT Analyzer RCA of those calls reads the radio of their evidence again.
+        _mark_ericsson_changed(connection, None if replace else [item['join_id'] for item in results])
         if add_to_catalog and unmapped:
             catalog = nq_catalog.stored_root_catalog(_read_root_catalog(connection))
             for item in unmapped:
@@ -6935,6 +6990,8 @@ def rca_results_summary(task_repository: Any) -> dict[str, Any]:
 def clear_rca_results(task_repository: Any, username: str) -> int:
     with task_repository.connection() as connection:
         deleted = connection.execute(f'DELETE FROM {NQ_RCA_RESULTS_TABLE}').rowcount
+        if deleted:
+            _mark_ericsson_changed(connection, None)
     if hasattr(task_repository, 'try_add_log'):
         task_repository.try_add_log(username, 'nq_rca_clear', f'{deleted} Ericsson RCA results deleted.')
     return int(deleted or 0)

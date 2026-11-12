@@ -2,6 +2,7 @@
 indexing, the results in every place the RCA sources are listed, the editable rules and their transfer."""
 
 import hashlib
+import io
 import json
 
 import pandas as pd
@@ -37,7 +38,7 @@ def test_the_first_rule_that_holds_gives_the_root_cause_with_its_evidence():
     dns = {'failure_classification': 'Protocol Problems', 'failure_category': 'DNS', 'failure_subcategory': 'No response from DNS'}
     result = evaluate(dns, {'lte_rsrp': -118.4, 'lte_sinr': 4})
     assert (result['rule'], result['category'], result['cause'], result['domain']) == ('Poor LTE coverage', 'Poor Coverage LTE', 'Coverage', 'RF')
-    assert result['evidence'] == 'LTE RSRP (average) −118.4 dBm (< −110 dBm)'
+    assert result['evidence'] == 'LTE RSRP (average) −118.4 dBm (< −110 dBm)\nCall average (CDR): LTE RSRP −118.4 dBm, SINR 4 dB'
     result = evaluate(dns, {'lte_rsrp': -85, 'lte_sinr': 12})
     assert (result['rule'], result['cause'], result['domain']) == ('DNS', 'DNS', 'Protocol')
     assert 'No response from DNS' in result['evidence']
@@ -471,7 +472,7 @@ def test_the_network_around_the_call_finds_holes_overshooting_pci_collisions_out
     note = 'Network Inventory: nearest site 12 (Vodafone) at 7.00 km'
     found = evaluate({}, {**weak, 'nearest_site_distance': 7.0, 'nearest_site_isd_ratio': 2.3, 'network_note': note})
     assert (found['rule_key'], found['category'], found['cause']) == ('coverage-hole', 'Poor Coverage LTE', 'Large distance to the nearest site')
-    assert found['evidence'].endswith(f'. {note}')
+    assert found['evidence'].endswith(f'\n{note}')
     assert evaluate({}, {'nearest_site_isd_ratio': 2.3})['rule_key'] == 'no-service-hole'
     # Served from beyond twice the inter-site distance of its site: overshooting, in NR alone too; not where sites are far apart.
     far = {'serving_distance': 3.0, 'serving_isd_ratio': 2.5, 'nearest_site_isd_ratio': .4}
@@ -547,3 +548,64 @@ def test_the_help_lists_every_default_rule_in_its_order():
     section = text.split('\n### Default rules\n', 1)[1].split('\n### Root domains, categories and causes\n', 1)[0]
     for number, rule in enumerate(nq_dta_rca.default_rules(), 1):
         assert f"| {number} | {rule['name']} |" in section, rule['name']
+
+
+def test_the_evidence_shows_the_radio_of_each_source_on_its_own_line():
+    # The NetCheck comment gives the averages of the whole call per technology; the Ericsson RCA the LTE PCell before the failure.
+    call = {'failure_classification': 'E2E Trace Required', 'failure_category': 'Packet Loss',
+            'failure_subcategory': 'No answer to Hello Message',
+            'failure_comment': 'IPADDR=3.5.245.241 (ENDC-5G)Mean RSRP, Mean SINR, %RSRP<=-115dBm, %SINR<=0dB : -71.54dBm 6.77dB 0% 12% '
+                               '(ENDC-4G)Mean RSRP, Mean SINR, %RSRP<=-115dBm, %SINR<=0dB : -80,2dBm 4,10dB 1% 20%'}
+    ericsson = nq_dta_rca.ericsson_inputs('LTE PCell RSRP=-82.8 dBm, SINR=5.2375, TxPower=-13.0; none of the Poor Coverage / '
+                                          'Mobility Issue / DL Interference / UL Interference LTE conditions matched.')
+    assert ericsson == {'eri_lte_rsrp': -82.8, 'eri_lte_sinr': 5.24, 'eri_tx_power': -13.0}
+    found = evaluate(call, {'lte_rsrp': -80.2, 'lte_sinr': 4.1, **ericsson})
+    assert found['rule'] == 'Packet loss'
+    assert found['evidence'].split('\n') == [
+        'Failure description contains “packet loss”',
+        'Provider description: E2E Trace Required · Packet Loss · No answer to Hello Message · IPADDR=3.5.245.241',
+        'Radio (Ericsson RCA, before the failure): LTE PCell RSRP −82.8 dBm, SINR 5.24 dB, UE Tx Power −13 dBm',
+        'Call average (provider comment): ENDC-5G mean RSRP −71.54 dBm, mean SINR 6.77 dB (RSRP ≤ −115 dBm in 0 %, SINR ≤ 0 dB in '
+        '12 % of the samples) · ENDC-4G mean RSRP −80.2 dBm, mean SINR 4.1 dB (RSRP ≤ −115 dBm in 1 %, SINR ≤ 0 dB in 20 % of the samples)']
+    # Both sides: the worst radio of each technology, the highest power; no value of a side without measurements.
+    assert nq_dta_rca.ericsson_inputs('A: NR PCell RSRP=-110.0 dBm < RSRP_Low=-107 dBm; no NCell found. | B: LTE PCell RSRP=-90.8 dBm, '
+                                      'SINR=5.25, TxPower=nan; none matched. | C: Anchor Access = GSM; no radio') == {
+        'eri_nr_rsrp': -110.0, 'eri_lte_rsrp': -90.8, 'eri_lte_sinr': 5.25}
+    assert nq_dta_rca.ericsson_inputs('') == {} and nq_dta_rca.provider_averages('No SYNCACK') == []
+    # The Layer3 Log at the failure comes before the Ericsson RCA, which comes before the average of the CDR.
+    logged = evaluate({}, {'l3_lte_rsrp_end': -119.0, 'l3_tx_max': 23.0, 'eri_lte_rsrp': -100.0, 'lte_rsrp': -90.0})
+    assert 'Radio (Layer3 Log, at the failure): LTE PCell RSRP −119 dBm, UE Tx Power 23 dBm' in logged['evidence']
+
+
+def test_the_rsrp_at_the_failure_reads_the_most_precise_source():
+    outage = {'cells_out_of_service': 1}
+    # The average of the CDR is good, the Ericsson RCA measured a weak coverage before the failure: a cell out of service.
+    found = evaluate({}, {**outage, 'lte_rsrp': -80.0, 'eri_lte_rsrp': -112.0})
+    assert found['rule_key'] == 'cell-outage'
+    assert found['evidence'].startswith('Cells out of service on its sites 1 (≥ 1); RSRP at the failure (LTE, Ericsson RCA, before '
+                                        'the failure) −112 dBm (< −105 dBm)')
+    # The Layer3 Log at the failure goes first, and the CDR average when nothing else measured it.
+    assert evaluate({}, {**outage, 'l3_lte_rsrp_end': -80.0, 'eri_lte_rsrp': -112.0})['rule_key'] != 'cell-outage'
+    assert 'RSRP at the failure (LTE, CDR, call average) −110 dBm' in evaluate({}, {**outage, 'lte_rsrp': -110.0})['evidence']
+    # The Ericsson RCA values are inputs of the rules editor, never read from the CDR.
+    groups = {item['key']: item['group'] for item in nq_dta_rca.inputs_catalog()}
+    assert {key for key, group in groups.items() if group == 'Ericsson RCA'} == set(nq_dta_rca.ERICSSON_INPUTS) == {
+        'eri_lte_rsrp', 'eri_lte_sinr', 'eri_nr_rsrp', 'eri_nr_sinr', 'eri_tx_power'}
+    assert not set(nq_dta_rca.ERICSSON_INPUTS) & set(nq_dta_rca.CDR_INPUTS)
+
+
+def test_importing_or_deleting_the_ericsson_rca_calculates_its_calls_again(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    assert 'Ericsson RCA' not in detail(client, calls['0xC3'])['values']['dta_rca_evidence']
+    csv = ('JOIN_ID,RCA_Suggested_Category,RCA_Suggested_Cause,RCA_Evidence\n'
+           '0xC3,Poor Coverage LTE,Coverage,"LTE PCell RSRP=-118.0 dBm < RSRP_Low=-107 dBm, SINR=1.5, TxPower=21.0; no NCell found."\n')
+    response = client.post('/api/non-qualified-calls/rca/import', files={'file': ('rca.csv', io.BytesIO(csv.encode()), 'text/csv')})
+    assert response.status_code == 200, response.text
+    assert json.loads(core.repository.get_workspace_state(nq.DTA_ERICSSON_STATE_KEY)) == ['0xc3']
+    evidence = detail(client, calls['0xC3'])['values']['dta_rca_evidence']
+    assert 'Radio (Ericsson RCA, before the failure): LTE PCell RSRP −118 dBm, SINR 1.5 dB, UE Tx Power 21 dBm' in evidence
+    assert not core.repository.get_workspace_state(nq.DTA_ERICSSON_STATE_KEY)
+    assert 'Ericsson RCA' not in detail(client, calls['0xA1'])['values']['dta_rca_evidence']
+    nq.clear_rca_results(core.repository, 'admin')
+    query(client)
+    assert 'Ericsson RCA' not in detail(client, calls['0xC3'])['values']['dta_rca_evidence']

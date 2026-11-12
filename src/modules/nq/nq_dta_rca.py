@@ -31,7 +31,7 @@ from typing import Any
 
 from src.modules.nq.nq_catalog import keyword_found, keywords, normalized_text
 
-ENGINE_VERSION = 4
+ENGINE_VERSION = 5
 SOURCE_LABEL = 'DT Analyzer RCA'
 RULES_STATE_KEY = 'nq_dta_rca_rules'
 FINGERPRINT_STATE_KEY = 'nq_dta_rca_fingerprint'
@@ -48,7 +48,7 @@ MATCHES = {'all': 'All conditions', 'any': 'Any condition'}
 MAX_RULES = 80
 MAX_CONDITIONS = 8
 MAX_TEXT = 120
-MAX_EVIDENCE = 600
+MAX_EVIDENCE = 1200
 # The last default rule, for the calls no other rule explains: shown, but never recommended.
 NOT_IDENTIFIED_KEY = 'not-identified'
 
@@ -138,6 +138,13 @@ INPUTS: dict[str, tuple[str, str, str, str]] = {
     'l3_lte_bler': ('LTE BLER before the failure (log)', 'number', '%', 'Layer3 Logs'),
     'l3_nr_bler': ('NR BLER before the failure (log)', 'number', '%', 'Layer3 Logs'),
     'l3_no_measurements': ('Records without measurements (log)', 'number', '', 'Layer3 Logs'),
+    # What the imported Ericsson RCA of the call measured in its logs before the failure (its evidence, ericsson_inputs):
+    # the PCell of LTE and NR and the UE transmit power, the worst of its sides.
+    'eri_lte_rsrp': ('LTE PCell RSRP before the failure (Ericsson RCA)', 'number', 'dBm', 'Ericsson RCA'),
+    'eri_lte_sinr': ('LTE PCell SINR before the failure (Ericsson RCA)', 'number', 'dB', 'Ericsson RCA'),
+    'eri_nr_rsrp': ('NR PCell RSRP before the failure (Ericsson RCA)', 'number', 'dBm', 'Ericsson RCA'),
+    'eri_nr_sinr': ('NR PCell SINR before the failure (Ericsson RCA)', 'number', 'dB', 'Ericsson RCA'),
+    'eri_tx_power': ('UE Tx Power before the failure (Ericsson RCA)', 'number', 'dBm', 'Ericsson RCA'),
 }
 # The inputs that are indexed fields of the call, and the failure fields its description joins (with two CDR inputs).
 CALL_INPUTS = ('result', 'test_name', 'technology', 'direction', 'environment', 'failure_phase', 'failure_technology')
@@ -146,7 +153,8 @@ FAILURE_TEXT_INPUTS = ('failure_events', 'scg_failures')
 # The inputs found from the others: the description of the failure, its signalling events alone (the events and SCG failures
 # of the CDR, without the provider's RCA), the technology at the failure (the Failure Technology, else the technology of
 # the call or the technologies it used) and its RSRP and SINR (those of NR when it failed in NR alone, else those of LTE,
-# the anchor, each one else the other), the radio measured (LTE and NR, by their RSRP or SINR) and the share of the
+# the anchor, each one else the other; of each technology the most precise one measured: its Layer3 Log at the failure,
+# else the Ericsson RCA before the failure, else the average of the CDR), the radio measured (LTE and NR, by their RSRP or SINR) and the share of the
 # resource blocks of the primary carrier the call used.
 DERIVED_INPUTS = ('failure_text', 'signalling_events', 'radio_technology', 'radio_rsrp', 'radio_sinr', 'radio_measured', 'lte_dl_rb_share',
                   'nr_dl_rb_share')
@@ -164,9 +172,15 @@ NUMBER_SOURCES = frozenset(('lte_dl_rbs', 'lte_dl_bandwidth', 'nr_dl_rbs', 'nr_d
 # ``l3_note`` tells what its log shows before the failure, for the evidence.
 L3_INPUTS = tuple(key for key in INPUTS if key.startswith('l3_'))
 L3_NOTE = 'l3_note'
+# The inputs of the Ericsson RCA imported for the call, which non_qualified_calls adds from its evidence.
+ERICSSON_INPUTS = tuple(key for key in INPUTS if key.startswith('eri_'))
+# Where the radio at the failure is read, the most precise first: (source, RSRP and SINR input of a technology).
+RADIO_SOURCES = (('Layer3 Log, at the failure', 'l3_{tech}_{measure}_end'), ('Ericsson RCA, before the failure', 'eri_{tech}_{measure}'),
+                 ('CDR, call average', '{tech}_{measure}'))
 # The inputs read from the CDR (the profile lists their columns).
 CDR_INPUTS = tuple(key for key in (*INPUTS, *FAILURE_TEXT_INPUTS, *RB_SOURCES)
-                   if key not in CALL_INPUTS and key not in DERIVED_INPUTS and key not in CONTEXT_INPUTS and key not in L3_INPUTS)
+                   if key not in CALL_INPUTS and key not in DERIVED_INPUTS and key not in CONTEXT_INPUTS and key not in L3_INPUTS
+                   and key not in ERICSSON_INPUTS)
 OPERATORS = {
     'lt': '<', 'le': '≤', 'gt': '>', 'ge': '≥', 'eq': '=', 'ne': '≠',
     'contains': 'contains', 'not_contains': 'does not contain', 'empty': 'is empty', 'not_empty': 'is not empty',
@@ -807,6 +821,107 @@ def failure_text(call: Any, inputs: dict[str, Any]) -> str:
     return ' · '.join(value for value in values if value)
 
 
+# The averages of the call the provider writes in its failure comment (NetCheck), a block per technology:
+# "(ENDC-5G)Mean RSRP, Mean SINR, %RSRP<=-115dBm, %SINR<=0dB : -71.54dBm 6.77dB 3% 10%" (decimals with a comma too).
+_NUMBER = r'-?\d+(?:[.,]\d+)?'
+_AVERAGES = re.compile(
+    rf'\(([^()]{{1,20}})\)\s*Mean RSRP,\s*Mean SINR,\s*%RSRP\s*<=\s*({_NUMBER})\s*dBm,\s*%SINR\s*<=\s*({_NUMBER})\s*dB\s*:\s*'
+    rf'({_NUMBER})\s*dBm\s+({_NUMBER})\s*dB(?:\s+({_NUMBER})\s*%)?(?:\s+({_NUMBER})\s*%)?', re.IGNORECASE)
+# The radio of the PCell the Ericsson RCA writes in its evidence, by side ("A: … | B: …"):
+# "LTE PCell RSRP=-82.8 dBm, SINR=5.2375, TxPower=-13.0; none of the … conditions matched."
+_ERICSSON_PCELL = re.compile(r'\b(LTE|NR) PCell RSRP\s*=\s*(-?\d+(?:\.\d+)?)', re.IGNORECASE)
+_ERICSSON_VALUE = {'sinr': re.compile(r'\bSINR\s*=\s*(-?\d+(?:\.\d+)?)'), 'tx_power': re.compile(r'\bTxPower\s*=\s*(-?\d+(?:\.\d+)?)')}
+
+
+def _decimal(text: str | None) -> float | None:
+    return _number(text.replace(',', '.')) if text else None
+
+
+def provider_averages(text: Any) -> list[dict[str, Any]]:
+    """The averages of the call in the provider's failure comment, a block per technology (its label as written, such as
+    ENDC-5G): mean RSRP and SINR and the share of the samples at or below the RSRP and SINR thresholds."""
+    blocks = []
+    for match in _AVERAGES.finditer(str(text or '')):
+        label, rsrp_limit, sinr_limit, rsrp, sinr, rsrp_share, sinr_share = match.groups()
+        blocks.append({'label': label.strip(), 'rsrp': _decimal(rsrp), 'sinr': _decimal(sinr), 'rsrp_limit': _decimal(rsrp_limit),
+                       'sinr_limit': _decimal(sinr_limit), 'rsrp_share': _decimal(rsrp_share), 'sinr_share': _decimal(sinr_share)})
+    return blocks
+
+
+def ericsson_inputs(evidence: Any) -> dict[str, float]:
+    """The radio the Ericsson RCA measured before the failure, from its evidence: the RSRP and SINR of the LTE and NR
+    PCell and the UE transmit power, the worst of its sides (the lowest RSRP and SINR, the highest power)."""
+    found: dict[str, list[float]] = {}
+    for part in str(evidence or '').split(' | '):
+        match = _ERICSSON_PCELL.search(part)
+        if not match:
+            continue
+        technology = match.group(1).lower()
+        found.setdefault(f'eri_{technology}_rsrp', []).append(float(match.group(2)))
+        sinr = _ERICSSON_VALUE['sinr'].search(part, match.end())
+        if sinr:
+            found.setdefault(f'eri_{technology}_sinr', []).append(float(sinr.group(1)))
+        power = _ERICSSON_VALUE['tx_power'].search(part, match.end())
+        if power:
+            found.setdefault('eri_tx_power', []).append(float(power.group(1)))
+    return {key: round(max(values) if key == 'eri_tx_power' else min(values), 2) for key, values in found.items()}
+
+
+def provider_description(call: Any, inputs: dict[str, Any]) -> str:
+    """The provider's description of the failure for the evidence: its failure fields, events and SCG failures, without
+    the averages of its comment (shown on their own line) and with a space after each technology label."""
+    values = []
+    for key in FAILURE_TEXT_FIELDS:
+        text = str(_field(call, key) or '')
+        if key == 'failure_comment':
+            text = _AVERAGES.sub(' ', text)
+        values.append(_clean(re.sub(r'\)(?=[^\s),.;:])', ') ', text), 300))
+    values += [_clean(inputs.get(key), 300) for key in FAILURE_TEXT_INPUTS]
+    return ' · '.join(dict.fromkeys(value for value in values if value))
+
+
+def _measure(value: Any, unit: str) -> str:
+    return f'{_shown(value)} {unit}'
+
+
+def averages_line(call: Any, inputs: dict[str, Any]) -> str:
+    """The averages of the whole call: those of the provider's comment, else those of the CDR."""
+    blocks = provider_averages(_field(call, 'failure_comment'))
+    if blocks:
+        parts = []
+        for block in blocks:
+            text = f"{block['label']} mean RSRP {_measure(block['rsrp'], 'dBm')}, mean SINR {_measure(block['sinr'], 'dB')}"
+            shares = [f"RSRP ≤ {_measure(block['rsrp_limit'], 'dBm')} in {_shown(block['rsrp_share'])} %" if block['rsrp_share'] is not None else '',
+                      f"SINR ≤ {_measure(block['sinr_limit'], 'dB')} in {_shown(block['sinr_share'])} %" if block['sinr_share'] is not None else '']
+            shares = [share for share in shares if share]
+            parts.append(text + (f" ({', '.join(shares)} of the samples)" if shares else ''))
+        return 'Call average (provider comment): ' + ' · '.join(parts)
+    parts = []
+    for technology in ('lte', 'nr'):
+        values = [f'{name} {_measure(number, unit)}' for name, key, unit in (('RSRP', f'{technology}_rsrp', 'dBm'), ('SINR', f'{technology}_sinr', 'dB'))
+                  if (number := _number(inputs.get(key))) is not None]
+        if values:
+            parts.append(f"{technology.upper()} {', '.join(values)}")
+    return 'Call average (CDR): ' + ' · '.join(parts) if parts else ''
+
+
+def radio_line(inputs: dict[str, Any]) -> str:
+    """The radio before the failure from the most precise source that measured it: the Layer3 Log of the call at the
+    failure, else the Ericsson RCA (its logs before the failure); empty when only the averages of the CDR have it."""
+    for source, template in RADIO_SOURCES[:2]:
+        parts = []
+        for technology in ('lte', 'nr'):
+            values = [f"{name} {_measure(number, unit)}" for name, measure, unit in (('RSRP', 'rsrp', 'dBm'), ('SINR', 'sinr', 'dB'))
+                      if (number := _number(inputs.get(template.format(tech=technology, measure=measure)))) is not None]
+            if values:
+                parts.append(f"{technology.upper()} PCell {', '.join(values)}")
+        if parts:
+            power = _number(inputs.get('l3_tx_max' if source.startswith('Layer3') else 'eri_tx_power'))
+            power_text = f", UE Tx Power {_measure(power, 'dBm')}" if power is not None else ''
+            return f"Radio ({source}): {' · '.join(parts)}{power_text}"
+    return ''
+
+
 def _holds(condition: dict[str, Any], kind: str, expected: Any, value: Any) -> bool:
     op = condition['op']
     if op == 'empty':
@@ -827,9 +942,15 @@ def _holds(condition: dict[str, Any], kind: str, expected: Any, value: Any) -> b
     return (text == expected) if op == 'eq' else (text != expected)
 
 
-def _evidence(condition: dict[str, Any], kind: str, expected: Any, value: Any) -> str:
+# The text inputs the provider's description shows on its own line of the evidence.
+_DESCRIBED = frozenset(('failure_text', 'signalling_events'))
+
+
+def _evidence(condition: dict[str, Any], kind: str, expected: Any, value: Any, source: str = '') -> str:
     label, _kind, unit = INPUTS[condition['input']][:3]
     unit = f' {unit}' if unit else ''
+    if source:
+        label = f'{label} ({source})'
     if condition['op'] in _VALUELESS:
         return f"{label} {OPERATORS[condition['op']]}"
     if kind == 'number':
@@ -837,7 +958,8 @@ def _evidence(condition: dict[str, Any], kind: str, expected: Any, value: Any) -
     text = _clean(value, 160)
     if condition['op'] == 'contains':
         found = next((term for term in expected if keyword_found([term], normalized_text(value), 'text')), expected[0])
-        return f"{label} contains “{found.replace('+', ' + ')}”: {text}"
+        shown = f"{label} contains “{found.replace('+', ' + ')}”"
+        return shown if condition['input'] in _DESCRIBED else f'{shown}: {text}'
     return f"{label} “{text or '—'}” ({OPERATORS[condition['op']]} {condition['value']})"
 
 
@@ -849,6 +971,8 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
     except (KeyError, IndexError, TypeError):
         service = ''
     values: dict[str, Any] = {}
+    # Where the radio at the failure was read (radio_rsrp, radio_sinr): its technology and source.
+    sources: dict[str, str] = {}
 
     def value_of(key: str) -> Any:
         if key not in values:
@@ -867,9 +991,14 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
                 measure = key.removeprefix('radio_')
                 technology = normalized_text(value_of('radio_technology'))
                 nr_alone = bool(re.search(r'(?<![a-z0-9])(5g|nr)', technology)) and not re.search(r'(?<![a-z0-9])(4g|lte)', technology)
-                first, second = ('nr', 'lte') if nr_alone else ('lte', 'nr')
-                values[key] = next((number for name in (f'{first}_{measure}', f'{second}_{measure}')
-                                    if (number := _number(inputs.get(name))) is not None), None)
+                found = next(((number, technology, source) for technology in (('nr', 'lte') if nr_alone else ('lte', 'nr'))
+                              for source, template in RADIO_SOURCES
+                              if (number := _number(inputs.get(template.format(tech=technology, measure=measure)))) is not None),
+                             (None, '', ''))
+                values[key] = found[0]
+                if found[1]:
+                    sources[key] = f'{found[1].upper()}, {found[2]}'
+
             elif key == 'radio_measured':
                 values[key] = ', '.join(name for name, keys in (('LTE', ('lte_rsrp', 'lte_sinr')), ('NR', ('nr_rsrp', 'nr_sinr')))
                                         if any(_number(inputs.get(item)) is not None for item in keys))
@@ -889,19 +1018,25 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
         for condition, kind, expected in entry['conditions']:
             value = value_of(condition['input'])
             if _holds(condition, kind, expected, value):
-                held.append(_evidence(condition, kind, expected, value))
+                held.append(_evidence(condition, kind, expected, value, sources.get(condition['input'], '')))
             elif entry['all']:
                 break
         else:
             if entry['conditions'] and not held:
                 continue
             rule = entry['rule']
-            evidence = '; '.join(held) if held else 'No earlier rule explains the failure.'
-            # The sites a rule of the network around the call read.
-            if inputs.get(NETWORK_NOTE) and any(condition['input'] in CONTEXT_INPUTS[1:] for condition, _kind, _value in entry['conditions']):
-                evidence = f'{evidence}. {inputs[NETWORK_NOTE]}'
-            # What the Layer3 Logs of the call show before the failure, when the rule read them.
-            if inputs.get(L3_NOTE) and any(condition['input'] in L3_INPUTS for condition, _kind, _value in entry['conditions']):
-                evidence = f'{evidence}. {inputs[L3_NOTE]}'
+            read = {condition['input'] for condition, _kind, _value in entry['conditions']}
+            # A line each: what held, the provider's description when the rule read it, the radio before the failure from
+            # the most precise source (Layer3 Log, else Ericsson RCA), the averages of the call, the sites a rule of the
+            # network around the call read and what the Layer3 Logs show before the failure when the rule read them.
+            lines = ['; '.join(held) if held else 'No earlier rule explains the failure.']
+            if read & _DESCRIBED and (description := provider_description(call, inputs)):
+                lines.append(f'Provider description: {description}')
+            lines += [radio_line(inputs), averages_line(call, inputs)]
+            if inputs.get(NETWORK_NOTE) and read & set(CONTEXT_INPUTS[1:]):
+                lines.append(str(inputs[NETWORK_NOTE]))
+            if inputs.get(L3_NOTE) and read & set(L3_INPUTS):
+                lines.append(str(inputs[L3_NOTE]))
+            evidence = '\n'.join(line for line in lines if line)
             return {'rule': rule['name'], 'rule_key': rule['key'], **entry['result'], 'evidence': evidence[:MAX_EVIDENCE]}
     return None
