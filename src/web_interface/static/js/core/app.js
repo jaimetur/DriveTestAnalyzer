@@ -6779,8 +6779,12 @@ function setupDropdownAlignment() {
 }
 
 // The tabs of the modules stay at the top of the screen while a page scrolls (sticky, app.css): --module-tabs-offset,
-// their height, keeps the bars and panels that stick to the top of the page below them. Tabs that would take more than
-// a third of a small screen do not stay. On small screens the bar of the menu stands in for the tabs (app.css).
+// the height they cover, keeps the bars and panels that stick to the top of the page below them. The application bar
+// stays above them too (has-sticky-header) while both take no more than a third of the screen; otherwise only the tabs
+// stay, and tabs that would take more than a third of a small screen do not stay either. On small screens the bar of
+// the menu stands in for the tabs (app.css).
+const STICKY_HEADER_TOP = 8;
+const STICKY_HEADER_GAP = 8;
 function moduleTabsOffset() {
   return parseFloat(document.documentElement.style.getPropertyValue('--module-tabs-offset')) || 0;
 }
@@ -6788,24 +6792,33 @@ function setupStickyModuleTabs() {
   const tabs = document.querySelector('main > .module-tabs');
   if (!tabs) return;
   const menuBar = document.querySelector('main > .mobile-menu-bar');
+  const header = document.querySelector('.shell > .topbar');
   const root = document.documentElement;
   let frame = 0;
   const shown = () => (menuBar && getComputedStyle(menuBar).display !== 'none' ? menuBar : tabs);
   const measure = () => {
     const bar = shown();
     const height = Math.ceil(bar.getBoundingClientRect().height);
-    const tall = height > window.innerHeight / 3;
+    const headerHeight = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
+    const third = window.innerHeight / 3;
+    const withHeader = header !== null && STICKY_HEADER_TOP + headerHeight + STICKY_HEADER_GAP + height <= third;
+    const tall = !withHeader && height > third;
+    const top = withHeader ? STICKY_HEADER_TOP + headerHeight + STICKY_HEADER_GAP : 0;
+    root.classList.toggle('has-sticky-header', withHeader);
+    root.style.setProperty('--sticky-header-top', `${STICKY_HEADER_TOP}px`);
+    root.style.setProperty('--module-tabs-top', `${top}px`);
     bar.classList.toggle('is-tall', tall);
-    root.style.setProperty('--module-tabs-offset', `${tall ? 0 : height}px`);
+    root.style.setProperty('--module-tabs-offset', `${tall ? 0 : top + height}px`);
   };
   const sync = () => {
     frame = 0;
     const bar = shown();
-    bar.classList.toggle('is-stuck', !bar.classList.contains('is-tall') && window.scrollY > 0 && bar.getBoundingClientRect().top <= 0.5);
+    const top = parseFloat(root.style.getPropertyValue('--module-tabs-top')) || 0;
+    bar.classList.toggle('is-stuck', !bar.classList.contains('is-tall') && window.scrollY > 0 && bar.getBoundingClientRect().top <= top + 0.5);
   };
   window.addEventListener('scroll', () => { if (!frame) frame = window.requestAnimationFrame(sync); }, {passive: true});
   window.addEventListener('resize', () => { measure(); sync(); });
-  if (typeof ResizeObserver === 'function') [tabs, menuBar].filter(Boolean).forEach((bar) => new ResizeObserver(measure).observe(bar));
+  if (typeof ResizeObserver === 'function') [tabs, menuBar, header].filter(Boolean).forEach((bar) => new ResizeObserver(() => { measure(); sync(); }).observe(bar));
   measure();
   sync();
 }

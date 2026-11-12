@@ -11525,8 +11525,13 @@ def test_the_module_tabs_stay_at_the_top_with_the_sticky_bars_below_them():
     assert '.module-tabs { position: sticky; top: 0; }' in stylesheet
     assert '.module-tabs.is-tall { position: relative; }' in stylesheet
     sticky = script[script.index('function setupStickyModuleTabs() {'):script.index('\nsetupStickyModuleTabs();')]
-    # Tabs that would take more than a third of the screen do not stay; their height offsets the other sticky bars.
-    assert 'const tall = height > window.innerHeight / 3;' in sticky
-    assert "root.style.setProperty('--module-tabs-offset', `${tall ? 0 : height}px`);" in sticky
+    # The application bar stays above the tabs while both take no more than a third of the screen; otherwise tabs
+    # that would take more than a third do not stay either. What stays offsets the other sticky bars.
+    assert 'const withHeader = header !== null && STICKY_HEADER_TOP + headerHeight + STICKY_HEADER_GAP + height <= third;' in sticky
+    assert 'const tall = !withHeader && height > third;' in sticky
+    assert "root.classList.toggle('has-sticky-header', withHeader);" in sticky
+    assert "root.style.setProperty('--module-tabs-offset', `${tall ? 0 : top + height}px`);" in sticky
+    assert ':root.has-sticky-header .shell > .topbar { position: sticky; top: var(--sticky-header-top, 8px); z-index: 31; }' in stylesheet
+    assert ':root.has-sticky-header main > :is(.module-tabs, .mobile-menu-bar) { top: var(--module-tabs-top, 0px); }' in stylesheet
     assert '.section-bar { --section-bar-accent: #0b6664; position: sticky; top: calc(var(--module-tabs-offset, 0px) + 8px);' in stylesheet
     assert "+ moduleTabsOffset();" in script and "+ moduleTabsOffset() + 24;" in script

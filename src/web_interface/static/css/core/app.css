@@ -4058,6 +4058,11 @@ body:has(.release-navigator) .help-navigator{top:37%}
 .module-tabs { position: sticky; top: 0; }
 .module-tabs.is-stuck { z-index: 30; background: rgba(243, 241, 236, .97); box-shadow: 0 0 0 100vmax rgba(243, 241, 236, .97); clip-path: inset(0 -100vmax); backdrop-filter: blur(10px); }
 .module-tabs.is-tall { position: relative; }
+/* While the application bar and the tabs take no more than a third of the screen (has-sticky-header, app.js), the bar
+   stays at the top of the screen too, above the tabs (--module-tabs-top), and their band also fills the space around it. */
+:root.has-sticky-header .shell > .topbar { position: sticky; top: var(--sticky-header-top, 8px); z-index: 31; }
+:root.has-sticky-header main > :is(.module-tabs, .mobile-menu-bar) { top: var(--module-tabs-top, 0px); }
+:root.has-sticky-header main > .module-tabs.is-stuck { clip-path: inset(calc(-1 * var(--module-tabs-top, 0px)) -100vmax 0); }
 @media (max-width: 760px) {
   .module-tabs { flex-direction: column; align-items: stretch; }
   .module-tabs-primary, .module-tabs-secondary { width: 100%; margin-left: 0; margin-right: 0; padding-left: 0; justify-content: flex-start; }
@@ -5452,6 +5457,7 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
     box-shadow: 0 8px 20px color-mix(in srgb, var(--mobile-menu-accent) 14%, transparent); }
   /* Stuck, it stands on a band as wide as the screen that also fills the gap above the bar of the sections. */
   .mobile-menu-bar.is-stuck { box-shadow: 0 0 0 100vmax rgba(243, 241, 236, .97); clip-path: inset(0 -100vmax -4px); }
+  :root.has-sticky-header main > .mobile-menu-bar.is-stuck { clip-path: inset(calc(-1 * var(--module-tabs-top, 0px)) -100vmax -4px); }
   .mobile-menu-current { display: flex; flex: 1 1 auto; align-items: center; gap: .5rem; min-width: 0; color: color-mix(in srgb, var(--mobile-menu-accent) 80%, #000);
     font-size: .95rem; font-weight: 850; line-height: 1.2; }
   .mobile-menu-current > :is(img, svg) { flex: 0 0 auto; width: 1.45rem; height: 1.45rem; }
