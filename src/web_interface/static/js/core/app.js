@@ -83,6 +83,18 @@ function normalizeVendorFilterValue(value) {
   return prefix ? text.slice(prefix.length + 1) : text;
 }
 window.normalizeVendorFilterValue = normalizeVendorFilterValue;
+// The search box of a list is never a sign-in field: without these hints Safari (and password managers) offer the saved
+// passwords of the server in it, covering the values of the list.
+window.markSearchNotCredential = (input) => {
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.setAttribute('autocorrect', 'off');
+  input.setAttribute('autocapitalize', 'off');
+  input.setAttribute('data-1p-ignore', '');
+  input.setAttribute('data-lpignore', 'true');
+  input.setAttribute('data-form-type', 'other');
+  return input;
+};
 
 function vendorOnlyFilterChoices(field, values, additionalOperators = []) {
   const identity = value => String(value ?? '').toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
@@ -5125,6 +5137,7 @@ function setupCustomMultiSelects() {
     search.className = 'multiselect-search';
     search.placeholder = 'Filter values…';
     search.setAttribute('aria-label', 'Filter available values');
+    window.markSearchNotCredential(search);
     menu.appendChild(search);
     // The Operator filters (and the choices with data-multiselect-patterns) take patterns: a filter with * (such as VF*)
     // is added as a pattern of its own, where * stands for any characters, so it also takes the values that appear later.
@@ -6450,6 +6463,7 @@ function setupNativeSelectMenus() {
       search.className = 'native-select-search';
       search.placeholder = 'Filter values…';
       search.setAttribute('aria-label', 'Filter values');
+      window.markSearchNotCredential(search);
       menu.appendChild(search);
     }
     for (const child of select.children) {

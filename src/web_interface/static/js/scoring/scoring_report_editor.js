@@ -168,6 +168,7 @@
     search.type = 'search';
     search.placeholder = 'Filter values…';
     search.setAttribute('aria-label', `Filter ${label} values`);
+    window.markSearchNotCredential?.(search);
     const valueRows = [];
     const valueBoxes = new Map();
     const patternBoxes = new Map();
