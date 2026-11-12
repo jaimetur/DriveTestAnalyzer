@@ -4062,7 +4062,6 @@ body:has(.release-navigator) .help-navigator{top:37%}
    stays at the top of the screen too, above the tabs (--module-tabs-top), and their band also fills the space around it. */
 :root.has-sticky-header .shell > .topbar { position: sticky; top: var(--sticky-header-top, 8px); z-index: 31; }
 :root.has-sticky-header main > :is(.module-tabs, .mobile-menu-bar) { top: var(--module-tabs-top, 0px); }
-:root.has-sticky-header main > .module-tabs.is-stuck { clip-path: inset(calc(-1 * var(--module-tabs-top, 0px)) -100vmax 0); }
 @media (max-width: 760px) {
   .module-tabs { flex-direction: column; align-items: stretch; }
   .module-tabs-primary, .module-tabs-secondary { width: 100%; margin-left: 0; margin-right: 0; padding-left: 0; justify-content: flex-start; }
@@ -5787,7 +5786,10 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
    the tabs of the main modules, whole (with their lower edge) and rounded alike at their four corners, like the
    buttons above them, light, with a line of the colour of their module on top and the open one filled with it. */
 .module-tabs { gap: .25rem; margin: 0 0 .9rem; padding: .4rem .45rem; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: var(--shadow); }
-.module-tabs.is-stuck { border-color: transparent; border-radius: 0; }
+/* Stuck, the tabs keep their white card, with its border and corners, on the band as wide as the screen that hides the
+   page scrolling below them (the band is a shadow, so it never covers the card). */
+.module-tabs.is-stuck { background: #fff; box-shadow: 0 1px 2px rgba(18, 32, 43, .05), 0 4px 10px rgba(18, 32, 43, .08), 0 0 0 100vmax rgba(243, 241, 236, .97); clip-path: inset(0 -100vmax -12px); }
+:root.has-sticky-header main > .module-tabs.is-stuck { clip-path: inset(calc(-1 * var(--module-tabs-top, 0px)) -100vmax -12px); }
 .module-tabs-primary, .module-tabs-secondary { gap: .25rem; padding-left: 0; padding-right: 0; }
 .module-tabs-secondary { padding-bottom: .35rem; border-bottom: 1px solid var(--line); }
 .module-tab, .module-tab.active { box-shadow: none; }

@@ -10,6 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- **Module tabs keep their card while they stay at the top:** when a page scrolls, the tabs of the modules keep their white card, with its border and rounded corners, on the band that hides the page below them.
 
 #### 🐛 Bug fixes:
 
