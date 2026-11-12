@@ -539,15 +539,11 @@ def _days_between(start: object, end: object) -> float | None:
 
 
 def _duration_text(days: float | None) -> str:
-    """A time in days (of 24 hours) as Ticket Center writes it, in calendar days, hours and minutes: ``13d 4h``,
-    ``7h 12m``, ``42m`` (``< 1m`` under a minute)."""
+    """A time in days (of 24 hours) as Ticket Center writes it, in hours and minutes: ``316h``, ``7h 12m``, ``42m``
+    (``< 1m`` under a minute)."""
     if days is None:
         return '—'
-    minutes = round(days * 1440)
-    whole_days, minutes = divmod(minutes, 1440)
-    hours, minutes = divmod(minutes, 60)
-    if whole_days:
-        return f'{whole_days}d {hours}h' if hours else f'{whole_days}d'
+    hours, minutes = divmod(round(days * 1440), 60)
     if hours:
         return f'{hours}h {minutes}m' if minutes else f'{hours}h'
     return f'{minutes}m' if minutes else '< 1m'

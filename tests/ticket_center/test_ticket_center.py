@@ -591,7 +591,7 @@ def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     glance = board['glance']
     assert [(part['key'], part['count']) for part in glance['ring']['segments']] == [('open', 3), ('done', 2), ('rejected', 1)]
     assert (glance['unassigned'], glance['total']) == (3, 6)
-    assert [row['median_resolve'] for row in board['types']] == ['2d 1h', '62d 1h', '—']
+    assert [row['median_resolve'] for row in board['types']] == ['49h', '1489h', '—']
     # Created vs resolved by period, Weekly by default: twelve weeks from Monday, the current one last, with what was
     # created and resolved (not rejected) in each and a label every three weeks.
     trends = {period: ticket_trend(tickets, today, period) for period in TREND_PERIODS}
@@ -624,7 +624,7 @@ def test_the_design_counts_tickets_by_type_status_priority_module_and_period():
     assert (october['range'], october['total'], october['glance']['opened'], october['glance']['resolved']) == ('October 2026', 4, 4, 1)
     assert (october['trend']['unit'], len(october['trend']['periods']), october['trend']['created'], october['trend']['resolved']) == ('day', 31, 4, 1)
     assert october['trend']['periods'][19]['future'] and october['trend']['periods'][2]['weekend']
-    assert [row['median_resolve'] for row in october['types']] == ['2d 1h', '—', '—']
+    assert [row['median_resolve'] for row in october['types']] == ['49h', '—', '—']
     assert [row['id'] for row in october['attention']['rows']] == [2, 4] and [item['id'] for item in october['attention']['resolved']] == [3]
     assert {entry['ticket_id'] for entry in october['feed']} == {2, 3, 4, 6}
 
@@ -643,11 +643,11 @@ def test_the_dashboard_draws_the_days_of_a_month_as_one_bar_each(client):
     assert 'is-dense' not in views['week'] and 'tickets-period-counts' not in views['week'] and '%"><b>1</b></span>' in views['week']
 
 
-def test_times_are_written_in_calendar_days_hours_and_minutes():
+def test_times_are_written_in_hours_and_minutes():
     from src.modules.ticket_center.ticket_center import _duration_text
 
     assert [_duration_text(days) for days in (None, 0, 0.03, 0.25, 0.3, 1, 2.0417, 13.2)] == [
-        '—', '< 1m', '43m', '6h', '7h 12m', '1d', '2d 1h', '13d 4h']
+        '—', '< 1m', '43m', '6h', '7h 12m', '24h', '49h', '316h 48m']
 
 
 def test_the_dashboard_shows_the_tickets_to_attend_and_the_latest_activity():
@@ -676,7 +676,7 @@ def test_the_dashboard_shows_the_tickets_to_attend_and_the_latest_activity():
         (2, '14 days', 'aging', 100.0, 'User E'), (4, 'Today', 'fresh', 4, '')]
     assert (attention['open'], attention['more'], attention['unassigned']) == (3, 1, 2)
     assert [(item['id'], item['fixed_version'], item['took'], item['ago']) for item in attention['resolved']] == [
-        (3, '0.10.0', '2d 1h', '5 days ago'), (5, '', '62d 1h', '1 Sep')]
+        (3, '0.10.0', '49h', '5 days ago'), (5, '', '1489h', '1 Sep')]
     # The newest entries: a change of status says the new one, another change the fields it changed.
     events = [
         {'ticket_id': 3, 'username': 'EJ', 'kind': 'change', 'changes_json': '{"status": ["new", "resolved"]}', 'created_at': '2026-10-14T10:00:00+01:00'},
@@ -730,12 +730,12 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
         ('This year', '2026')]
     # October: 5 tickets opened (3 of them resolved), and 3 resolved (6 h, 10 days and 2 days) against 1 in September.
     assert scopes['month']['health'] == {
-        'total': 5, 'done': 3, 'rate': 60, 'resolve_time': '2d', 'resolve_count': 3, 'resolve_previous': '12d',
+        'total': 5, 'done': 3, 'rate': 60, 'resolve_time': '48h', 'resolve_count': 3, 'resolve_previous': '288h',
         'resolve_change': -83, 'created': 5, 'created_change': 5, 'comments': 2.0, 'attachments': 0.4,
     }
     stats = scopes['all']
     assert stats['health'] == {
-        'total': 7, 'done': 4, 'rate': 57, 'resolve_time': '6d', 'resolve_count': 4, 'resolve_previous': '',
+        'total': 7, 'done': 4, 'rate': 57, 'resolve_time': '144h', 'resolve_count': 4, 'resolve_previous': '',
         'resolve_change': None, 'created': 7, 'created_change': None, 'comments': 2.0, 'attachments': 0.6,
     }
     assert [part['key'] for part in scopes['week']['mix'][0]['segments']] == [] and scopes['month']['mix'][0]['total'] == 5
@@ -748,15 +748,15 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     # Time to resolve by groups of days (the rejected ticket left out) and the age of the open ones.
     resolved = stats['durations']['resolved']
     assert [bucket['total'] for bucket in resolved['buckets']] == [1, 1, 0, 2, 0, 0, 0] and len(resolved['buckets']) == len(DURATION_BUCKETS)
-    assert (resolved['median'], resolved['average'], resolved['p90'], resolved['count']) == ('6d', '6d 1h', '12d', 4)
-    assert [(item['type'], item['median']) for item in resolved['by_type']] == [('bug', '6h'), ('improvement', '11d'), ('new_feature', '2d')]
+    assert (resolved['median'], resolved['average'], resolved['p90'], resolved['count']) == ('144h', '145h 30m', '288h', 4)
+    assert [(item['type'], item['median']) for item in resolved['by_type']] == [('bug', '6h'), ('improvement', '264h'), ('new_feature', '48h')]
     assert [(item['priority'], item['count']) for item in resolved['by_priority']] == [('P3', 4)]
     # Time Spent: that time added up, in all, on average, its median and the longest; where it goes; per week; and by
     # module, assignee and reporter (the most first), type and priority (in their order) and version (the latest first).
     # Of the tickets resolved or closed in each period, All time first shown; over it by day, week or month.
     time_spent = ticket_time_spent(tickets, events, today=today)
     spent_scopes = {scope['key']: scope for scope in time_spent['scopes']}
-    assert time_spent['scope'] == 'all' and (spent_scopes['month']['count'], spent_scopes['month']['total']) == (3, '12d 6h')
+    assert time_spent['scope'] == 'all' and (spent_scopes['month']['count'], spent_scopes['month']['total']) == (3, '294h')
     days = spent_scopes['month']['series']
     assert (days['title'], len(days['spans']), days['spans'][10]['count'], days['spans'][19]['future']) == ('Time spent per day', 31, 1, True)
     # The weekends of October 2026 (it starts on a Thursday), in every chart per day.
@@ -764,20 +764,20 @@ def test_the_statistics_measure_resolution_mix_backlog_versions_people_and_activ
     assert [entry['weekend'] for entry in scopes['month']['backlog']['periods'][:4]] == [False, False, True, True]
     spent = spent_scopes['all']
     assert (spent['total'], spent['count'], spent['average'], spent['median'], spent['longest']) == (
-        '24d 6h', 4, '6d 1h', '6d', {'id': 5, 'title': 'T5', 'took': '12d'})
+        '582h', 4, '145h 30m', '144h', {'id': 5, 'title': 'T5', 'took': '288h'})
     assert [(part['status'], part['percent']) for part in spent['where']] == [('new', 100), ('in_progress', 0), ('waiting_info', 0)]
     # Every ticket since the first one resolved (1 September): fewer than 8 months, by weeks.
     assert (spent['range'], spent['series']['title'], len(spent['series']['spans'])) == ('1 Sep 2026', 'Time spent per week', 8)
     assert [(span['label'], span['count']) for span in spent['series']['spans'] if span['count']] == [('31 Aug', 1), ('5 Oct', 1), ('12 Oct', 2)]
     groups = {group['key']: group['rows'] for group in spent['groups']}
-    assert [(row['key'], row['total'], row['count'], row['share']) for row in groups['module']] == [('', '24d 6h', 4, 100.0)]
+    assert [(row['key'], row['total'], row['count'], row['share']) for row in groups['module']] == [('', '582h', 4, 100.0)]
     assert [(row['key'], row['total'], row['average']) for row in groups['type']] == [
-        ('bug', '6h', '6h'), ('improvement', '22d', '11d'), ('new_feature', '2d', '2d')]
+        ('bug', '6h', '6h'), ('improvement', '528h', '264h'), ('new_feature', '48h', '48h')]
     assert [row['key'] for row in groups['priority']] == ['P3'] and groups['type'][0]['show'] == {'types': ['bug'], 'statuses': ['closed', 'resolved']}
     assert [(row['key'], row['label'], row['count']) for row in groups['assignee']] == [('', 'Unassigned', 3), ('ej', 'Ej', 1)]
     assert [(row['key'], row['count'], row['show']) for row in groups['reporter']] == [('ana', 4, {'reporter': 'ana', 'statuses': ['closed', 'resolved']})]
     assert [(row['label'], row['total'], row['show']) for row in groups['version']] == [
-        ('v0.10.0', '6h', None), ('v0.9.1', '22d', None), ('No version', '2d', None)]
+        ('v0.10.0', '6h', None), ('v0.9.1', '528h', None), ('No version', '48h', None)]
     # The time in each status follows the changes of status of the timeline of each ticket.
     timed = [{**tickets[0], 'id': 9, 'status': 'resolved', 'created_at': '2026-10-20T09:00:00+01:00', 'resolved_at': '2026-10-21T09:00:00+01:00'}]
     changes = [{'ticket_id': 9, 'kind': 'change', 'changes_json': '{"status": ["new", "in_progress"]}', 'created_at': '2026-10-20T15:00:00+01:00'},

@@ -69,7 +69,7 @@ The **Time Spent** tab adds up the time from opened to resolved or closed of the
 
 - The time of a ticket is the **calendar time** from the moment it was opened to the moment it was resolved or closed, 24 hours a day (nights and weekends included): the tool does not record working hours.
 - Only the tickets resolved or closed in the period count; the open and rejected ones are left out. The totals add up the time of those tickets; the average and the median are per ticket.
-- Times are written in days of 24 hours, hours and minutes (`13d 4h`, `7h 12m`, `42m`), as everywhere in Ticket Center.
+- Times are written in hours and minutes (`316h`, `7h 12m`, `42m`), never in days, as everywhere in Ticket Center.
 
 It shows:
 
