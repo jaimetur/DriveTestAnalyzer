@@ -87,6 +87,11 @@ select[multiple] { min-height: 10rem; border-radius: 18px; padding-right: 0.55re
 .multiselect-option.is-disabled { opacity: 0.48; cursor: not-allowed; }
 .multiselect-option.is-disabled:hover { background: transparent; }
 .multiselect-option.is-disabled span { color: var(--muted); }
+/* Phone screens: a list as wide as the screen keeps its search box and values inside it, the long values on several lines. */
+@media (max-width: 640px) {
+  .multiselect-menu { grid-template-columns: minmax(0, 1fr); }
+  .multiselect-option span { white-space: normal; overflow-wrap: anywhere; }
+}
 label { display: grid; gap: 0.45rem; color: var(--muted); }
 .shell { max-width: 1680px; margin: 0 auto; padding: 1.5rem; }
 .topbar { position: relative; display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1.8rem; }

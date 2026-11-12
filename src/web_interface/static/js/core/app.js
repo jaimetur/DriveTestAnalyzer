@@ -6543,14 +6543,22 @@ function setupNativeSelectMenus() {
 }
 
 // The lists of the application's own dropdowns are as wide as their values (each on one line): one that would leave
-// the screen on the right opens towards the left, whichever component shows it.
+// the screen on the right opens towards the left, whichever component shows it. One that would then leave it on the
+// left (a field of the left column of a phone screen, with a list wider than the field) moves back inside the screen.
 function setupDropdownAlignment() {
   const lists = '.multiselect-menu, .searchable-select-menu, .workspace-user-picker-menu';
+  const margin = 8;
   const align = (menu) => {
     menu.classList.remove('aligns-right');
+    menu.style.removeProperty('translate');
     if (menu.hidden || !menu.isConnected) return;
-    const bounds = menu.getBoundingClientRect();
-    if (bounds.width && bounds.right > window.innerWidth - 8) menu.classList.add('aligns-right');
+    let bounds = menu.getBoundingClientRect();
+    if (!bounds.width) return;
+    if (bounds.right > window.innerWidth - margin) {
+      menu.classList.add('aligns-right');
+      bounds = menu.getBoundingClientRect();
+    }
+    if (bounds.left < margin) menu.style.translate = `${Math.ceil(margin - bounds.left)}px 0`;
   };
   new MutationObserver((records) => {
     for (const {target} of records) {

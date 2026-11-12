@@ -11506,8 +11506,15 @@ def test_every_single_select_opens_the_application_list_below_its_field():
     assert ':is(.multiselect-menu, .searchable-select-menu, .workspace-user-picker-menu).aligns-right { left: auto; right: 0; }' in stylesheet
     alignment = script[script.index('function setupDropdownAlignment() {'):script.index('\nsetupDropdownAlignment();')]
     assert "const lists = '.multiselect-menu, .searchable-select-menu, .workspace-user-picker-menu';" in alignment
-    assert "if (bounds.width && bounds.right > window.innerWidth - 8) menu.classList.add('aligns-right');" in alignment
+    assert 'if (bounds.right > window.innerWidth - margin) {' in alignment
+    assert "menu.classList.add('aligns-right');" in alignment
+    # Opened towards the left, a list wider than its field (left column of a phone) moves back inside the screen.
+    assert "if (bounds.left < margin) menu.style.translate = `${Math.ceil(margin - bounds.left)}px 0`;" in alignment
+    assert "menu.style.removeProperty('translate');" in alignment
     assert "attributeFilter: ['hidden', 'open'], subtree: true" in alignment
+    # On a phone screen the list keeps its search box and values inside it, the long values on several lines.
+    assert '.multiselect-menu { grid-template-columns: minmax(0, 1fr); }' in stylesheet
+    assert '.multiselect-option span { white-space: normal; overflow-wrap: anywhere; }' in stylesheet
 
 
 def test_the_module_tabs_stay_at_the_top_with_the_sticky_bars_below_them():

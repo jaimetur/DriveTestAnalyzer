@@ -20,6 +20,7 @@
 
 #### 🐛 Bug fixes:
 - **Ticket Center — Text attachments keep their type on every server:** a `.log` attachment (and `.md`, `.yaml`) is a text file on the Linux server and in the Docker image too, not an unknown binary file, as it already was on macOS.
+- **Dropdown lists on phone screens:** a multiple-choice list wider than its field (a filter of the left column in NQ Calls, with long values) opens inside the screen instead of beyond its left edge, with its search box inside the list and the long values on several lines
 
 #### 📚 Documentation:
 
