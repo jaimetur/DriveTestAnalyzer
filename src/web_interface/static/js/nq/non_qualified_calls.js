@@ -3939,7 +3939,7 @@
       const all = node('input');
       all.type = 'checkbox';
       const calls = new Set(keyGroups.flat()).size;
-      all.title = `Select the ${number(calls)} waiting call${calls === 1 ? '' : 's'} of ${what || `the ${number(keyGroups.length)} rows of this table`} (or none)`;
+      all.title = `Select (or clear) the ${number(calls)} waiting call${calls === 1 ? '' : 's'} of ${what || `the ${number(keyGroups.length)} rows of this table`}`;
       all.setAttribute('aria-label', 'Select all');
       const sync = () => {
         const ticked = boxes().filter((box) => box.checked).length;
