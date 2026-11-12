@@ -1605,6 +1605,9 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-priority-issues-table { max-height: 30rem; overflow-y: auto; }
 .nq-priority-issues-table thead th { position: sticky; top: 0; z-index: 1; }
 .nq-failure-table { width: 100%; min-width: 0; border-collapse: separate; border-spacing: 0; font-size: .78rem; }
+/* A table that fits shows no scroll bar: as wide as a frame of fractional width, it went half a pixel beyond it, which
+   the scroll bars always shown (Windows) offered to scroll. */
+.nq-failure-wrap > .nq-failure-table { width: calc(100% - 1px); }
 .nq-failure-table th { padding: .4rem .5rem; background: var(--nq-soft); color: var(--nq-dark); font-weight: 800; text-align: right; white-space: nowrap; }
 .nq-failure-table th:first-child, .nq-failure-table td.nq-failure-name { text-align: left; }
 .nq-failure-table td { padding: .32rem .5rem; border-bottom: 1px solid rgba(0,0,0,.06); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
