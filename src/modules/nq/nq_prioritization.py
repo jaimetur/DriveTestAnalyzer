@@ -60,6 +60,8 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Iterable, Iterator
 
+from src.modules.core.kept_reads import kept
+from src.modules.core.repository import schema_in_place
 from src.modules.nq import nq_catalog
 from src.modules.nq.nq_catalog import IMPACT_HIGH, NO_RULE, PRIORITIZED, TRACK_ONLY
 
@@ -301,7 +303,9 @@ STRATEGY_COLUMNS = (('cluster_key', "TEXT NOT NULL DEFAULT ''"), ('cluster_size'
 
 def ensure_columns(connection: Any) -> None:
     """The tables of the NQ Prioritization with the columns of this version."""
-    connection.executescript(SCHEMA)
+    # Reading the NQ Prioritization takes no write lock once its tables exist.
+    if not schema_in_place(connection, SCHEMA):
+        connection.executescript(SCHEMA)
     present = {str(row[1]) for row in connection.execute(f'PRAGMA table_info({PRIORITY_TABLE})')}
     for column, definition in STRATEGY_COLUMNS:
         if column not in present:
@@ -2614,14 +2618,18 @@ def _operator_counts(repository: Any) -> list[tuple[Any, ...]]:
     Operator Maps."""
     from src.modules.nq import non_qualified_calls as nq
 
-    excluded = excluded_names(repository)
-    with repository.connection() as connection:
-        try:
+    def read() -> list[tuple[Any, ...]]:
+        excluded = excluded_names(repository)
+        with repository.connection() as connection:
             rows = [tuple(row) for row in connection.execute(f'SELECT operator, technology, nr_mode, COUNT(*) FROM {nq.NQ_CALL_LATEST_TABLE} '
                                                              'GROUP BY operator, technology, nr_mode')]
-        except Exception:  # noqa: BLE001 - before the calls are indexed.
-            return []
-    return [row for row in rows if str(row[0] or '').strip().casefold() not in excluded]
+        return [row for row in rows if str(row[0] or '').strip().casefold() not in excluded]
+
+    try:
+        # Asked for several times by every query of the module: counted once while the workspace stays as it is.
+        return list(kept(repository, 'nq_operator_counts', None, read, copied=False))
+    except Exception:  # noqa: BLE001 - before the calls are indexed.
+        return []
 
 
 def operators_using_sa(repository: Any, rows: list[tuple[Any, ...]] | None = None) -> set[str] | None:

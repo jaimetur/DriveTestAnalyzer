@@ -37,6 +37,7 @@ from src.modules.cdr.column_names import compact_campaign_value
 from src.modules.cdr.nr_mode import DEFAULT_NR_MODE, NSA_VS_SA, normalize_scoring_nr_mode, nr_mode_label
 from src.modules.scoring.scoring_reports import NR_CHARTS, NR_CHARTS_LABELS, NR_LAYOUT_LABELS, NR_LAYOUTS
 from src.modules.core.output_layout import REPORTING_JOBS_FOLDER, module_output_dir
+from src.modules.core.repository import schema_in_place
 from src.modules.core.email_delivery import DEFAULT_LINK_DAYS, WEBHOOK_MAX_BYTES, webhook_payload
 from src.modules.scoring.scoring_themes import DEFAULT_THEME, normalize_theme, themes_payload
 
@@ -225,7 +226,9 @@ def _reports_own_their_schedules(connection: Any) -> dict[str, Any]:
 
 def ensure_report_task_tables(task_repository: Any) -> None:
     with task_repository.connection() as connection:
-        connection.executescript(SCHEMA)
+        # The scheduler makes sure of the tables every few seconds: it takes no write lock once they exist.
+        if not schema_in_place(connection, SCHEMA):
+            connection.executescript(SCHEMA)
         database = str(getattr(task_repository, 'db_path', ''))
         changes = None
         # How a run is carried on (see execute_run); runs saved before it have none.

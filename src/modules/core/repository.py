@@ -7,6 +7,7 @@ import shutil
 import re
 import csv
 import io
+import os
 from datetime import datetime
 from contextlib import closing, contextmanager, nullcontext
 from contextvars import ContextVar
@@ -100,6 +101,49 @@ def workspace_write_lock(db_path: Path | str) -> RLock:
     key = str(Path(db_path).resolve())
     with _WORKSPACE_WRITE_LOCKS_GUARD:
         return _WORKSPACE_WRITE_LOCKS.setdefault(key, RLock())
+
+
+_SCHEMA_OBJECT = re.compile(r'CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\s+IF\s+NOT\s+EXISTS\s+["`]?(\w+)', re.IGNORECASE)
+
+
+def schema_in_place(connection: Any, script: str) -> bool:
+    """Whether every table and index a schema script creates (``CREATE … IF NOT EXISTS``) is already in the database.
+
+    Running such a script takes the write lock of the workspace even when it creates nothing, so whoever only reads
+    waits for the writer and counts as one: the code that makes sure of its schema on every read asks this first."""
+    names = {name.casefold() for name in _SCHEMA_OBJECT.findall(script)}
+    if not names:
+        return False
+    present = {str(row[0]).casefold() for row in connection.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'index')")}
+    return names <= present
+
+
+# How many times the connections of this process started or finished writing each Workspace database.
+_WORKSPACE_WRITE_COUNTS: dict[str, int] = {}
+
+
+def _count_workspace_write(key: str) -> None:
+    with _WORKSPACE_WRITE_LOCKS_GUARD:
+        _WORKSPACE_WRITE_COUNTS[key] = _WORKSPACE_WRITE_COUNTS.get(key, 0) + 1
+
+
+def workspace_data_stamp(db_path: Path | str) -> tuple[Any, ...]:
+    """What tells one state of a Workspace database from the next: it changes whenever something is written to the
+    database, so what was read from it can be kept while the stamp stays the same (read the stamp before the data).
+
+    The writes of this process are counted when they start and when they finish; those of other processes, and a
+    database put in its place (a restore), are told by the database file and its write-ahead log."""
+    key = str(Path(db_path).resolve())
+    with _WORKSPACE_WRITE_LOCKS_GUARD:
+        writes = _WORKSPACE_WRITE_COUNTS.get(key, 0)
+    files: list[Any] = []
+    for path in (key, f'{key}-wal'):
+        try:
+            found = os.stat(path)
+            files.append((found.st_ino, found.st_size, found.st_mtime_ns))
+        except OSError:
+            files.append(None)
+    return (writes, *files)
 
 
 # The table of rows of a CDR, by its dataset id.
@@ -269,6 +313,7 @@ class _CoordinatedConnection(sqlite3.Connection):
             acquired_at = monotonic()
             self._workspace_lock_acquired = True
             self._workspace_lock_acquired_at = acquired_at
+            _count_workspace_write(self._workspace_key)
             waited = acquired_at - wait_started
             if waited >= 1.0:
                 logger.warning('Workspace database writer waited %.3fs: %s', waited, self._workspace_key)
@@ -279,6 +324,7 @@ class _CoordinatedConnection(sqlite3.Connection):
             return
         held = monotonic() - self._workspace_lock_acquired_at
         self._workspace_lock_acquired = False
+        _count_workspace_write(self._workspace_key)
         assert self._workspace_lock is not None
         self._workspace_lock.release()
         if held >= 2.0:

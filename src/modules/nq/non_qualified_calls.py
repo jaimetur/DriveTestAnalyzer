@@ -51,6 +51,7 @@ from threading import Lock
 from typing import Any, Callable, Iterable, Iterator
 
 from src.modules.cdr import cdr_field_dictionary, l3_dt_logs
+from src.modules.core.kept_reads import kept
 from src.modules.cdr.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.cdr.cdr_stage import CDR_STAGE_LABELS, combined_inclusion, dataset_cdr_stage
 from src.modules.network.cell_identity import nr_cell_bits
@@ -3286,6 +3287,11 @@ MAX_FIELDS = nq_catalog.MAX_FIELDS
 
 def list_fields(task_repository: Any) -> list[dict[str, Any]]:
     """The fields of the workspace catalog, in order, with their section, source and options."""
+    # Every query of the module reads the catalog, several times each: it is read once while the workspace stays as it is.
+    return kept(task_repository, 'nq_fields', None, lambda: _read_fields(task_repository))
+
+
+def _read_fields(task_repository: Any) -> list[dict[str, Any]]:
     with task_repository.connection() as connection:
         rows = connection.execute(f'SELECT * FROM {NQ_FIELDS_TABLE} ORDER BY position, label COLLATE NOCASE').fetchall()
     fields = []
@@ -4332,6 +4338,33 @@ def _materialized(connection: Any, base: str, params: list[Any], scoped: bool) -
     return 'SELECT * FROM temp.nq_scoped_calls', []
 
 
+_EXTRA_COLUMN_READ = re.compile(r"""json_extract\(extra_json, '\$\."([^"']+)"'\)""")
+
+
+def _materialized_columns(connection: Any, base: str, params: list[Any], reading: Iterable[str]) -> tuple[str, list[Any]]:
+    """The calls read once into a temporary table of the connection with only the columns some SQL reads (``reading``:
+    the expressions and conditions that will run on them), for the several passes of one request.
+
+    Each call is put together once (its follow-up, RCA results, DT Analyzer RCA and priority are subqueries of every
+    column that reads them), and of the CDR columns kept with it (``extra_json``, most of the size of a call) only those
+    read are copied."""
+    text = '\n'.join(reading)
+    names = [str(column[0]) for column in connection.execute(f'SELECT * FROM ({base}) LIMIT 0', params).description]
+    wanted = [name for name in names if re.search(rf'\b{re.escape(name)}\b', text)]
+    columns = []
+    for name in wanted:
+        read = list(dict.fromkeys(_EXTRA_COLUMN_READ.findall(text)))
+        if name == 'extra_json' and read and len(_EXTRA_COLUMN_READ.findall(text)) == len(re.findall(r'\bextra_json\b', text)):
+            # Only some CDR columns are read, each by its name: a JSON object with those alone.
+            pairs = ', '.join(f"'{column}', json_extract(extra_json, '$.\"{column}\"')" for column in read)
+            columns.append(f'json_object({pairs}) AS extra_json')
+        else:
+            columns.append(name)
+    connection.execute('DROP TABLE IF EXISTS temp.nq_scoped_calls')
+    connection.execute(f"CREATE TEMP TABLE nq_scoped_calls AS SELECT {', '.join(columns) or '1 AS one'} FROM ({base})", params)
+    return 'SELECT * FROM temp.nq_scoped_calls', []
+
+
 def _scope(filters: dict[str, Any] | None) -> list[int]:
     """The CDRs chosen in the CDRs filter (none means every CDR)."""
     return [int(value) for value in _strings((filters or {}).get('datasets')) if value.lstrip('-').isdigit()]
@@ -5366,10 +5399,22 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
             call['latest_dataset_name'] = names.get(int(call['latest_dataset_id'] or call['dataset_id']), '')
         breakdowns = []
         mapping_settings = task_repository.chart_mapping_settings()
+        summary_fields = [field for field in definitions if with_breakdowns and field['in_summary']
+                          and field['source'] in {'user', 'derived', 'cdr', 'rca', 'priority'}]
+        counted, counted_params = filtered, all_params
+        if with_breakdowns:
+            # The Summary counts the filtered calls once per breakdown: what it counts is read once, into a table of the
+            # connection with one column per breakdown, instead of reading every call again for each of them.
+            columns = [*(f'{field} AS {field}' for field in dict.fromkeys(
+                [*(field for field, _label in BREAKDOWNS), 'status', 'team', 'analyst', 'attended_at', 'comment_count'])),
+                *(f'{field_sql(definition)} AS summary_field_{index}' for index, definition in enumerate(summary_fields))]
+            connection.execute('DROP TABLE IF EXISTS temp.nq_summary_calls')
+            connection.execute(f"CREATE TEMP TABLE nq_summary_calls AS SELECT {', '.join(columns)} FROM ({filtered})", all_params)
+            counted, counted_params = 'SELECT * FROM temp.nq_summary_calls', []
         for field, label in BREAKDOWNS if with_breakdowns else ():
             values = connection.execute(
-                f'SELECT {field} AS value, COUNT(*) AS count FROM ({filtered}) GROUP BY {field} ORDER BY count DESC, value LIMIT 12',
-                all_params,
+                f'SELECT {field} AS value, COUNT(*) AS count FROM ({counted}) GROUP BY {field} ORDER BY count DESC, value LIMIT 12',
+                counted_params,
             ).fetchall()
             items = [{'value': str(row['value'] or ''), 'count': int(row['count'])} for row in values]
             # The largest Operators and Vendors are listed in Operator Map and Vendor Map order,
@@ -5382,11 +5427,10 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
                 items.sort(key=lambda item: campaign_sort_key(item['value']))
             breakdowns.append({'field': field, 'label': label, 'items': items})
         # The catalog fields shown in the Summary, as one more breakdown each.
-        for definition in [field for field in definitions if with_breakdowns and field['in_summary']
-                           and field['source'] in {'user', 'derived', 'cdr', 'rca', 'priority'}]:
+        for index, definition in enumerate(summary_fields):
             values = connection.execute(
-                f"SELECT {field_sql(definition)} AS value, COUNT(*) AS count "
-                f"FROM ({filtered}) GROUP BY value ORDER BY count DESC, value LIMIT 12", all_params,
+                f"SELECT summary_field_{index} AS value, COUNT(*) AS count "
+                f"FROM ({counted}) GROUP BY value ORDER BY count DESC, value LIMIT 12", counted_params,
             ).fetchall()
             order = [option['name'] for option in definition['options']] or list(YES_NO)
             items = [{'value': str(row['value'] or ''), 'count': int(row['count'])} for row in values]
@@ -5402,8 +5446,8 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
             f"SUM(CASE WHEN {_ATTENDED_SQL} THEN 1 ELSE 0 END) AS attended, "
             f"SUM(CASE WHEN team <> '' THEN 1 ELSE 0 END) AS with_team, "
             f"SUM(CASE WHEN analyst <> '' THEN 1 ELSE 0 END) AS assigned "
-            f"FROM ({filtered})",
-            [*closed, *all_params],
+            f"FROM ({counted})",
+            [*closed, *counted_params],
         ).fetchone()
     summary_payload = {key: int(summary[key] or 0) for key in ('total', 'closed', 'attended', 'commented', 'with_team', 'assigned')}
     summary_payload['open'] = summary_payload['total'] - summary_payload['closed']
@@ -5418,6 +5462,10 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
 def filter_options(task_repository: Any, layout: dict[str, list[str]] | None = None) -> dict[str, list[str]]:
     """Distinct values of every indexed filter; Operators and Vendors with their mapped labels and the NetCheck RCA
     with the spelling of its values; the column filters of the table ``layout`` (that of the workspace by default)."""
+    return kept(task_repository, 'nq_filter_options', layout, lambda: _read_filter_options(task_repository, layout))
+
+
+def _read_filter_options(task_repository: Any, layout: dict[str, list[str]] | None = None) -> dict[str, list[str]]:
     values: dict[str, list[str]] = {}
     mapper = ValueMapper.from_repository(task_repository)
     maps = _value_maps(task_repository)
@@ -5481,16 +5529,25 @@ def _text_filter_options(task_repository: Any) -> dict[str, list[str]]:
             for key, found in zip(keys, row)}
 
 
-def _filter_expressions(task_repository: Any, definitions: list[dict[str, Any]]) -> dict[str, str]:
+def _filter_expressions(task_repository: Any, definitions: list[dict[str, Any]],
+                        layout: dict[str, list[str]] | None = None) -> dict[str, str]:
     """The SQL value, in the calls query, of every filter of the Filters panel listed with its values (CDRs and CDR
-    Version aside): the indexed and follow-up fields, the fields of the analysis and the columns of the table."""
+    Version aside): the indexed and follow-up fields, the fields of the analysis and the columns of the table (those of
+    a table ``layout`` and of the CDR Fields Filters, or every column that any layout may show)."""
     expressions = {field: field for field in (*FIELD_FILTERS, *TRACKING_FILTERS)}
     expressions['nr_mode'] = 'nr_mode'
     for definition in definitions:
         if nq_catalog.is_filter_field(definition):
             expressions[f"field:{definition['key']}"] = field_sql(definition)
-    # Every optional and indexed CDR column, as the table layout of each user may show it.
-    for key in [*COLUMN_FILTER_SQL, *(f'cdr:{name}' for name in indexed_cdr_columns(task_repository))]:
+    if layout is None:
+        # Every optional and indexed CDR column, as the table layout of each user may show it.
+        columns = [*COLUMN_FILTER_SQL, *(f'cdr:{name}' for name in indexed_cdr_columns(task_repository))]
+    else:
+        # The columns with a filter on the page of the user: those of their table and those of the CDR Fields Filters.
+        columns = list(dict.fromkeys([*(column for column in layout['builtin'] if column in COLUMN_FILTER_SQL),
+                                      *(f'cdr:{name}' for name in layout['cdr']),
+                                      *(f'cdr:{name}' for name in workspace_field_profile(task_repository).nq_filter_columns)]))
+    for key in columns:
         expressions[f'column:{key}'] = column_filter_sql(key)
     return expressions
 
@@ -5519,23 +5576,33 @@ def _without_filter(filters: dict[str, Any], key: str) -> dict[str, Any]:
 def available_filter_values(task_repository: Any, filters: Any, username: str) -> dict[str, list[str]]:
     """What the list of every filter offers: the values of the calls that match the other filters ('' for the calls
     without one), so a filter shows only the values left by the others and keeps its own. The CDRs are those with
-    some of these calls; CDR Version keeps its states."""
+    some of these calls; CDR Version keeps its states. Only the filters on the page of the user are answered: a table
+    column they do not show has no filter (its values, such as every JOIN_ID, were megabytes nobody read)."""
     options = list_options(task_repository)
     definitions = list_fields(task_repository)
     filters = _resolve_key_filters(task_repository, filters if isinstance(filters, dict) else {})
     closed = [item['name'] for item in options['statuses'] if item['closed']]
     default = untracked_status(task_repository, options)
-    expressions = _filter_expressions(task_repository, definitions)
+    expressions = _filter_expressions(task_repository, definitions, table_layouts(task_repository, username)['effective'])
+    # A column filter in use is answered even when the table no longer shows its column.
+    chosen_columns = filters.get('columns') if isinstance(filters.get('columns'), dict) else {}
+    for key in chosen_columns:
+        if f'column:{key}' not in expressions and _strings(chosen_columns[key]) and (expression := column_filter_sql(key)):
+            expressions[f'column:{key}'] = expression
     # The filters not chosen share the same other filters (all of them): one pass for all; one more for each chosen one.
     idle = [key for key in expressions if not _filter_chosen(filters, key)]
     passes = [(filters, idle), *((_without_filter(filters, key), [key]) for key in expressions if key not in idle)]
     values: dict[str, list[str]] = {}
     with task_repository.connection() as connection:
-        base, base_params = _materialized(connection, *_base_sql(default, task_repository, _scope(filters)), bool(_scope(filters)))
+        # Every pass reads the same calls: they are read once, with the columns the passes read.
+        wheres = {id(chosen): _filter_sql(chosen, username, closed, definitions) for chosen, keys in passes if keys}
+        base, base_params = _materialized_columns(
+            connection, *_base_sql(default, task_repository, _scope(filters)),
+            [*(expressions[key] for key in expressions), *(where for where, _params in wheres.values())])
         for chosen, keys in passes:
             if not keys:
                 continue
-            where, params = _filter_sql(chosen, username, closed, definitions)
+            where, params = wheres[id(chosen)]
             row = connection.execute(
                 f"WITH calls AS ({base}) SELECT {', '.join(f'json_group_array(DISTINCT {expressions[key]})' for key in keys)} "
                 f"FROM calls{where}", [*base_params, *params]).fetchone()
@@ -9740,6 +9807,12 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         ensure_nq_tables(repository)
         return repository
 
+    def kept_json(repository, name: str, key: Any, read: Callable[[], Any]) -> Response:
+        """The answer of a query of the calls, as it was given the last time while the workspace has not changed since:
+        going back to a page, a panel or the module itself does not read every call again."""
+        body = kept(repository, name, key, lambda: JSONResponse(read()).body, copied=False)
+        return Response(body, media_type='application/json')
+
     def can_edit(user) -> bool:
         return user.role in core.WORKSPACE_EDITOR_ROLES
 
@@ -10356,14 +10429,16 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse({'deleted': clear_rca_results(repository, user.username), 'rca_results': rca_results_summary(repository)})
 
     @core.app.post('/api/non-qualified-calls/lifecycle')
-    def nq_lifecycle(payload: ExportPayload, user=Depends(core.current_user)) -> JSONResponse:
+    def nq_lifecycle(payload: ExportPayload, user=Depends(core.current_user)) -> Response:
         repository = workspace_repository(user)
-        return JSONResponse(lifecycle_stats(repository, payload.filters, user.username))
+        return kept_json(repository, 'nq_lifecycle', [payload.filters, user.username],
+                         lambda: lifecycle_stats(repository, payload.filters, user.username))
 
     @core.app.post('/api/non-qualified-calls/rca/insights')
-    def nq_rca_insights(payload: ExportPayload, user=Depends(core.current_user)) -> JSONResponse:
+    def nq_rca_insights(payload: ExportPayload, user=Depends(core.current_user)) -> Response:
         repository = workspace_repository(user)
-        return JSONResponse(rca_insights(repository, payload.filters, user.username))
+        return kept_json(repository, 'nq_rca_insights', [payload.filters, user.username],
+                         lambda: rca_insights(repository, payload.filters, user.username))
 
     @core.app.put('/api/non-qualified-calls/table-columns')
     def nq_save_table_columns(payload: TableColumnsPayload, user=Depends(config_user)) -> JSONResponse:
@@ -10413,9 +10488,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse(nq_rates(repository, payload.filters))
 
     @core.app.post('/api/non-qualified-calls/failures')
-    def nq_failures_route(payload: ExportPayload, user=Depends(core.current_user)) -> JSONResponse:
+    def nq_failures_route(payload: ExportPayload, user=Depends(core.current_user)) -> Response:
         """How and where the filtered calls fail: result, technology, serving Vendor and host network, and sites."""
-        return JSONResponse(failure_breakdowns(workspace_repository(user), payload.filters, user.username))
+        repository = workspace_repository(user)
+        return kept_json(repository, 'nq_failures', [payload.filters, user.username],
+                         lambda: failure_breakdowns(repository, payload.filters, user.username))
 
     @core.app.put('/api/non-qualified-calls/filters')
     def nq_save_filters(payload: QueryPayload, user=Depends(core.current_user)) -> JSONResponse:
@@ -10428,15 +10505,22 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse({'filters': filters})
 
     @core.app.post('/api/non-qualified-calls/filters/values')
-    def nq_filter_values(payload: QueryPayload, user=Depends(core.current_user)) -> JSONResponse:
+    def nq_filter_values(payload: QueryPayload, user=Depends(core.current_user)) -> Response:
         """The values each filter offers among the calls of the other filters."""
-        return JSONResponse({'values': available_filter_values(workspace_repository(user), payload.filters, user.username)})
+        repository = workspace_repository(user)
+        return kept_json(repository, 'nq_filter_values', [payload.filters, user.username],
+                         lambda: {'values': available_filter_values(repository, payload.filters, user.username)})
 
     @core.app.post('/api/non-qualified-calls/calls')
-    def nq_calls(payload: QueryPayload, user=Depends(core.current_user)) -> JSONResponse:
+    def nq_calls(payload: QueryPayload, user=Depends(core.current_user)) -> Response:
         repository = workspace_repository(user)
-        result = query_calls(repository, payload.model_dump(), user.username)
-        return JSONResponse({**result, 'sync': nq_index_status(repository)})
+        read = lambda: {**query_calls(repository, payload.model_dump(), user.username), 'sync': nq_index_status(repository)}
+        # The indexing is told by the process, not by the workspace: an answer is kept only while none is queued or
+        # running, and for the outcome of the last one.
+        job = nq_index_job(repository.db_path) or {}
+        if job.get('status') in {'queued', 'processing'}:
+            return JSONResponse(read())
+        return kept_json(repository, 'nq_calls', [payload.model_dump(), user.username, job.get('status'), job.get('error')], read)
 
     @core.app.get('/api/non-qualified-calls/calls/{call_key}')
     def nq_call(call_key: str, user=Depends(core.current_user)) -> JSONResponse:
@@ -10736,14 +10820,16 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         return JSONResponse({**dta_rules_payload(repository), 'calculated': calculated})
 
     @core.app.post('/api/non-qualified-calls/root-causes/stats')
-    def nq_root_cause_stats(payload: RootCauseStatsPayload, user=Depends(core.current_user)) -> JSONResponse:
+    def nq_root_cause_stats(payload: RootCauseStatsPayload, user=Depends(core.current_user)) -> Response:
         repository = workspace_repository(user)
-        return JSONResponse(root_cause_stats(repository, payload.filters, user.username, payload.include_suggestions, payload.source))
+        return kept_json(repository, 'nq_root_cause_stats', [payload.model_dump(), user.username], lambda: root_cause_stats(
+            repository, payload.filters, user.username, payload.include_suggestions, payload.source))
 
     @core.app.post('/api/non-qualified-calls/progress')
-    def nq_progress(payload: ProgressPayload, user=Depends(core.current_user)) -> JSONResponse:
+    def nq_progress(payload: ProgressPayload, user=Depends(core.current_user)) -> Response:
         repository = workspace_repository(user)
-        return JSONResponse(progress_stats(repository, payload.filters, user.username, payload.granularity))
+        return kept_json(repository, 'nq_progress', [payload.model_dump(), user.username],
+                         lambda: progress_stats(repository, payload.filters, user.username, payload.granularity))
 
     @core.app.post('/api/non-qualified-calls/export/{export_format}')
     def nq_export_document(export_format: str, payload: ProgressPayload, user=Depends(core.current_user)) -> Response:

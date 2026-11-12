@@ -5369,6 +5369,14 @@ function setupCustomMultiSelects() {
       syncTrigger();
     };
 
+    // The option of each value (the first one with it), found at once: looking every value up among all the options
+    // took seconds in a list of thousands of values (the cells or the sites of the calls), on every change.
+    const optionsByValue = () => {
+      const found = new Map();
+      Array.from(select.options).forEach((option) => { if (!found.has(option.value)) found.set(option.value, option); });
+      return found;
+    };
+
     const selectAllOrNone = () => {
       cancelAutoClose();
       // Choices that stand alone (Latest campaign, Latest 2 campaigns) are not values: Select All checks every
@@ -5392,9 +5400,10 @@ function setupCustomMultiSelects() {
       if (dynamicAll && shouldSelectAll) select.dataset.multiselectDynamicAllSelected = 'true';
       else delete select.dataset.multiselectDynamicAllSelected;
       normalizeExportTargetSelection(select);
+      const optionOf = optionsByValue();
       Array.from(menu.querySelectorAll('input[type="checkbox"][data-option-value]')).forEach((checkbox) => {
         if (!checkbox.disabled) {
-          const option = Array.from(select.options).find((item) => item.value === checkbox.getAttribute('data-option-value'));
+          const option = optionOf.get(checkbox.getAttribute('data-option-value'));
           checkbox.checked = Boolean(option?.selected);
         }
       });
@@ -5584,8 +5593,9 @@ function setupCustomMultiSelects() {
     search.addEventListener('search', filterMultiSelect);
 
     const syncCheckboxes = () => {
+      const optionOf = optionsByValue();
       Array.from(menu.querySelectorAll('input[data-option-value]')).forEach((checkbox) => {
-        const option = Array.from(select.options).find((item) => item.value === checkbox.getAttribute('data-option-value'));
+        const option = optionOf.get(checkbox.getAttribute('data-option-value'));
         if (option) {
           checkbox.checked = option.selected;
           checkbox.disabled = option.disabled;

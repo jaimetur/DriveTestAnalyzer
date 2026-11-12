@@ -27,6 +27,7 @@ import pandas as pd
 
 from src.modules.network.cell_identity import lte_eci_series, nr_nci_series
 from src.modules.cdr.column_names import column_identity
+from src.modules.core.repository import schema_in_place
 
 INVENTORY_DATASET_KINDS = ('mapping_vodafone', 'mapping_three', 'network_inventory')
 MULTIVENDOR_MAPPING_KIND = 'multivendor_mapping'
@@ -346,18 +347,29 @@ def normalise_inventory(frame: pd.DataFrame, kind: str, dataset_operator: str | 
 # ---------------------------------------------------------------------------
 # Storage
 # ---------------------------------------------------------------------------
-def ensure_inventory_schema(connection: Any) -> None:
+def _inventory_schema() -> list[str]:
     columns = ', '.join(f'{name} {kind}' for name, kind in CELL_COLUMNS)
+    statements = []
     for cells, snapshots in ((INVENTORY_CELLS_TABLE, INVENTORY_SNAPSHOTS_TABLE), (MAPPING_CELLS_TABLE, MAPPING_SNAPSHOTS_TABLE)):
-        connection.execute(f'CREATE TABLE IF NOT EXISTS {cells} ({columns})')
-        connection.execute(f'CREATE INDEX IF NOT EXISTS idx_{cells}_snapshot ON {cells} (dataset_id, network_family, technology)')
-        connection.execute(f'CREATE INDEX IF NOT EXISTS idx_{cells}_identity ON {cells} (cell_identity)')
-        connection.execute(f'CREATE INDEX IF NOT EXISTS idx_{cells}_site ON {cells} (dataset_id, site_id)')
-        connection.execute(
+        statements += [
+            f'CREATE TABLE IF NOT EXISTS {cells} ({columns})',
+            f'CREATE INDEX IF NOT EXISTS idx_{cells}_snapshot ON {cells} (dataset_id, network_family, technology)',
+            f'CREATE INDEX IF NOT EXISTS idx_{cells}_identity ON {cells} (cell_identity)',
+            f'CREATE INDEX IF NOT EXISTS idx_{cells}_site ON {cells} (dataset_id, site_id)',
             f'CREATE TABLE IF NOT EXISTS {snapshots} ('
             'dataset_id INTEGER PRIMARY KEY, version INTEGER NOT NULL, revision TEXT NOT NULL, cells INTEGER NOT NULL, '
-            "sites INTEGER NOT NULL, summary_json TEXT NOT NULL DEFAULT '{}', built_at TEXT NOT NULL)"
-        )
+            "sites INTEGER NOT NULL, summary_json TEXT NOT NULL DEFAULT '{}', built_at TEXT NOT NULL)",
+        ]
+    return statements
+
+
+def ensure_inventory_schema(connection: Any) -> None:
+    statements = _inventory_schema()
+    # Whoever only reads the inventory takes no write lock once its tables exist.
+    if schema_in_place(connection, ';\n'.join(statements)):
+        return
+    for statement in statements:
+        connection.execute(statement)
 
 
 def dataset_revision(dataset: Any) -> str:
