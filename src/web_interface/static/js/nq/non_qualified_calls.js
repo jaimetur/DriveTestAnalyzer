@@ -4002,21 +4002,23 @@
         // Below, how many of them have an Analyst, and the calls of the queue in the hotspot that no longer wait: attended
         // and still open (in progress), or closed.
         waiting.append(count, node('small', `${number(item.assigned)} assigned`),
+          // Its Track only calls, which the hotspot takes along (ticket #126).
+          ...(item.tracked ? [node('small', `${number(item.tracked)} Track only`, 'is-tracked')] : []),
           ...(item.in_progress ? [node('small', `${number(item.in_progress)} in progress`, 'is-progress')] : []),
           ...(item.closed ? [node('small', `${number(item.closed)} closed`, 'is-closed')] : []));
         return [{text: number(item.position), className: 'nq-queue-position'},
           {node: id, pairs: [['hotspot', item.key]], reveal: 'section-nq-calls', className: 'nq-failure-name',
-            title: `${number(item.waiting)} waiting of the ${number(item.calls)} calls of this queue in the hotspot (${item.nr_mode || '—'}): click to see them`},
+            title: `${number(item.waiting)} waiting of the ${number(item.calls)} calls of the hotspot in this queue, its Track only calls too (${item.nr_mode || '—'}): click to see them`},
           {text: item.priority || '—', className: `nq-queue-priority is-${String(item.priority || '').toLowerCase()}`},
           ...stepCells(item), item.operator || '—', item.campaign || '—',
           {node: waiting, className: 'nq-queue-waiting',
-            title: `${number(item.waiting)} of its ${number(item.calls)} calls of this queue wait (open and not attended yet); ${number(item.assigned)} of them already have an Analyst; ${number(item.in_progress || 0)} in progress (attended, still open) and ${number(item.closed || 0)} closed`},
+            title: `${number(item.waiting)} of its ${number(item.calls)} calls in this queue wait (open and not attended yet); ${number(item.tracked || 0)} of its calls are Track only, which the hotspot takes along with their Priority; ${number(item.assigned)} of the waiting ones already have an Analyst; ${number(item.in_progress || 0)} in progress (attended, still open) and ${number(item.closed || 0)} closed`},
           {text: points(item.gain), className: 'nq-queue-number', title: 'Expected Gain of its waiting calls together'},
           item.level ? {text: item.level, className: 'nq-failure-name nq-priority-level', color: levelColors[item.level]} : '—',
           ...actionCells(item.call_keys || [], item.free_keys || [], `hotspot ${item.id}`)];
       })), 'nq-queue-table'), 'nq-hotspot-queue-table');
       withSelectAll(table, rows.map((item) => item.call_keys || []));
-      table.querySelector('th:nth-child(10)').title = 'The calls of the hotspot waiting in this queue (open and not attended yet), of the calls of the queue in the hotspot (waiting or not), and below how many of the waiting ones already have an Analyst';
+      table.querySelector('th:nth-child(10)').title = 'The calls of the hotspot waiting in this queue (open and not attended yet), of its calls in the queue (waiting or not, its Track only calls too), and below how many of the waiting ones already have an Analyst and how many of its calls are Track only';
       return table;
     };
     // An empty queue (or list) says so in a label of its own.
@@ -4129,7 +4131,7 @@
         data.tracked.rows.length ? queueTable(data.tracked.rows) : emptyLabel('No tracked call is waiting.'));
       queues.append(queueSubpanel('Tracked', '', [`${number(data.tracked.total)} waiting`], tracked));
     }
-    section('queues', 'Next to analyse', `Each queue in a subpanel, one above the other: its first ${data.settings.capacity} calls that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, in the last subpanel, folded. Click a call to open it. A queue listed by hotspots shows its first ${data.settings.capacity} hotspots of ${data.settings.min_hotspot_calls} or more failures of the queue, in the order of their first waiting call (click a hotspot to see its calls): Waiting tells how many of its calls wait, of the calls of the queue in the hotspot (3 of 5), and below how many of them already have an Analyst (assigned); its other waiting calls are folded below the hotspots. A call given a team or an analyst still waits until somebody attends it: the views show every waiting call, those nobody has, those waiting for an analyst of your teams (their team, or the team of their queue) and yours; Owner tells who has each call, Take makes you its analyst (every call without an analyst of a hotspot) and admins select calls or hotspots to assign them to a team or an analyst.`, ...content);
+    section('queues', 'Next to analyse', `Each queue in a subpanel, one above the other: its first ${data.settings.capacity} calls that are open and not attended yet, in the order the analysts of its team take them: Priority, the newest campaign first, the step of its list, the highest Expected Gain, then the oldest; the tracked calls, in no team queue, in the last subpanel, folded. Click a call to open it. A queue listed by hotspots shows its first ${data.settings.capacity} hotspots of ${data.settings.min_hotspot_calls} or more failures of the queue, in the order of their first waiting call (click a hotspot to see its calls): the calls of a hotspot are analysed together, so it takes along its Track only calls, which keep their Priority and leave the tracked calls; Waiting tells how many of its calls wait, of its calls in the queue (3 of 5), and below how many of them already have an Analyst (assigned) and how many of its calls are Track only; its other waiting calls are folded below the hotspots. A call given a team or an analyst still waits until somebody attends it: the views show every waiting call, those nobody has, those waiting for an analyst of your teams (their team, or the team of their queue) and yours; Owner tells who has each call, Take makes you its analyst (every call without an analyst of a hotspot) and admins select calls or hotspots to assign them to a team or an analyst.`, ...content);
     $('nq-priority').replaceChildren(...['steps', 'queues', 'impact'].map((key) => sections[key]).filter(Boolean));
   };
   let priorityToken = 0;

@@ -1867,6 +1867,7 @@ button.nq-step-pill.is-active { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--nq-s
 .nq-step-area.is-connecting-roads > span { background: #364fc7; }
 .nq-queue-waiting small.is-progress { color: #b35c00; }
 .nq-queue-waiting small.is-closed { color: #2b8a3e; }
+.nq-queue-waiting small.is-tracked { color: #5f6b7a; }
 .nq-priority-steps-summary td.nq-step-condition { min-width: 9rem; }
 :is(.nq-step-mode, .nq-step-type, .nq-step-queue) > span { display: inline-block; padding: .1rem .5rem; color: #fff; font-size: .72rem;
   font-weight: 800; white-space: nowrap; }

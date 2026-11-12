@@ -1484,7 +1484,7 @@ def test_the_data_queue_lists_its_hotspots_and_the_other_calls_apart(strategized
     for item in data['hotspots']:
         members = [rows[key] for key in item['call_keys']]
         assert len(members) == item['waiting'] and item['calls'] >= max(2, item['waiting'])
-        assert {row['cluster_key'] for row in members} == {item['key']} and {row['queue'] for row in members} == {'Data'}
+        assert {row['cluster_key'] for row in members} == {item['key']} and {row['queue'] for row in members} <= {'Data', ''}
         assert item['id'].startswith('H') and item['assigned'] <= item['waiting']
         # The calls of the queue in the hotspot that no longer wait: in progress or closed.
         assert item['waiting'] + item['in_progress'] + item['closed'] == item['calls']
@@ -1494,6 +1494,22 @@ def test_the_data_queue_lists_its_hotspots_and_the_other_calls_apart(strategized
 
     exported = [subtitle for component, subtitle, *_rest in non_qualified_calls_export.prioritization_tables(panel) if component == 'queue']
     assert 'Next to analyse · Data queue · hotspots' in exported and 'Next to analyse · Voice queue' in exported
+    # Ticket #126: the calls of a hotspot are analysed together, so its Track only calls go with it (keeping their
+    # Priority), count in its Waiting, are taken with it and leave the tracked calls.
+    spot_key = first['cluster_key']
+    listed = next(item for item in data['hotspots'] if item['key'] == spot_key)
+    # A waiting individual failure of the queue made a Track only call of the hotspot.
+    other = priority_rows()[data['singles'][0]['call_key']]
+    with core.repository.connection() as connection:
+        connection.execute(f"UPDATE {nq_prioritization.PRIORITY_TABLE} SET cluster_key = ?, cluster_size = 4, prioritization = ?, "
+                           "queue = '', suggested_priority = 'P8' WHERE call_key = ?",
+                           (spot_key, nq_prioritization.TRACK_ONLY, other['call_key']))
+    joined = client.post('/api/non-qualified-calls/prioritization', json={'filters': {}}).json()
+    spot_row = next(item for item in next(item for item in joined['queues'] if item['name'] == 'Data')['hotspots'] if item['key'] == spot_key)
+    assert other['call_key'] in spot_row['call_keys'] and spot_row['tracked'] == 1
+    assert (spot_row['waiting'], spot_row['calls']) == (listed['waiting'] + 1, listed['calls'] + 1)
+    assert other['call_key'] not in {row['call_key'] for row in joined['tracked']['rows']}
+    assert joined['tracked']['total'] == panel['tracked']['total'] and joined['totals']['next'] == panel['totals']['next']
     # The hotspot of a row filters the queues by its calls.
     first = data['hotspots'][0]
     narrowed = client.post('/api/non-qualified-calls/prioritization', json={'filters': {'hotspot': [first['key']]}}).json()

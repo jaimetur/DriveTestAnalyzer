@@ -3405,6 +3405,43 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
         except (TypeError, ValueError):
             values = {}
         return str(values.get(PRIORITY_FIELD) or row['suggested_priority'] or '')
+    # The queues listed by hotspots (ticket #123): each hotspot with at least the Minimum hotspot size of failures of the
+    # queue among the filtered calls, in the order of its first waiting call; the waiting calls of the queue out of such a
+    # hotspot are listed apart, one by one. The calls of a hotspot are analysed together (ticket #126): a hotspot with calls
+    # prioritized in such a queue takes along its Track only calls, which keep their Priority and leave the Tracked calls
+    # (a hotspot with prioritized calls in several of these queues goes to the one with most of them, then the first).
+    owners: dict[str, dict[str, int]] = {}
+    for row in rows:
+        if row['prioritization'] == PRIORITIZED and row['queue'] in settings['hotspot_queues'] and row['cluster_key']:
+            counts = owners.setdefault(row['cluster_key'], {})
+            counts[row['queue']] = counts.get(row['queue'], 0) + 1
+    spot_queue = {key: min(counts, key=lambda name: (-counts[name], QUEUE_ORDER.index(name) if name in QUEUE_ORDER else len(QUEUE_ORDER)))
+                  for key, counts in owners.items()}
+
+    def queue_of_spot(row: dict[str, Any]) -> str:
+        """The queue a call counts in for its hotspot: its own, or that of its hotspot for a Track only call."""
+        if row['prioritization'] == PRIORITIZED:
+            return str(row['queue'] or '')
+        return spot_queue.get(row['cluster_key'] or '', '') if row['prioritization'] == TRACK_ONLY else ''
+    queue_spots: dict[tuple[str, str], int] = {}
+    # The calls of the queue in each hotspot that no longer wait: attended and still open (in progress), or closed.
+    spot_states: dict[tuple[str, str], dict[str, int]] = {}
+    for row, opened, followed in zip(rows, is_open, attended):
+        name = queue_of_spot(row)
+        if name and row['cluster_key']:
+            spot = (name, row['cluster_key'])
+            queue_spots[spot] = queue_spots.get(spot, 0) + 1
+            counts = spot_states.setdefault(spot, {'progress': 0, 'closed': 0, 'tracked': 0})
+            counts['progress'] += bool(opened and followed)
+            counts['closed'] += not opened
+            counts['tracked'] += row['prioritization'] == TRACK_ONLY
+    # The waiting Track only calls a hotspot of a queue takes along, with the queue of their hotspot.
+    joined = [{**row, 'queue': spot_queue[row['cluster_key']]} for row in tracked
+              if row['cluster_key'] in spot_queue
+              and queue_spots.get((spot_queue[row['cluster_key']], row['cluster_key']), 0) >= settings['min_hotspot_calls']]
+    joined_keys = {row['call_key'] for row in joined}
+    tracked = [row for row in tracked if row['call_key'] not in joined_keys]
+    queue = [*queue, *joined]
     # A queue per team, in the order the analysts take its calls.
     queues = []
     names = priority_options(repository) or list(STRATEGY_PRIORITY_NAMES)
@@ -3456,20 +3493,6 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
     for entry in (*rules, unruled):
         entry['points'] = round(entry['points'], 2)
     level_order = [name for name, _color in nq_catalog.IMPACT_LEVELS]
-
-    # The queues listed by hotspots (ticket #123): each hotspot with at least the Minimum hotspot size of failures of the
-    # queue among the filtered calls, in the order of its first waiting call; the waiting calls of the queue out of such a
-    # hotspot are listed apart, one by one.
-    queue_spots: dict[tuple[str, str], int] = {}
-    # The calls of the queue in each hotspot that no longer wait: attended and still open (in progress), or closed.
-    spot_states: dict[tuple[str, str], dict[str, int]] = {}
-    for row, opened, followed in zip(rows, is_open, attended):
-        if row['prioritization'] == PRIORITIZED and row['queue'] and row['cluster_key']:
-            spot = (row['queue'], row['cluster_key'])
-            queue_spots[spot] = queue_spots.get(spot, 0) + 1
-            counts = spot_states.setdefault(spot, {'progress': 0, 'closed': 0})
-            counts['progress'] += bool(opened and followed)
-            counts['closed'] += not opened
     spot_info = {item['key']: item for item in spot_rows}
 
     def hotspot_queue(item: dict[str, Any]) -> dict[str, Any]:
@@ -3494,6 +3517,8 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
                 'step': first.get('queue_step'), 'list': first.get('queue_list') or '', 'rule': first['priority_rule'],
                 'waiting': len(members), 'calls': queue_spots[(item['name'], key)],
                 'in_progress': spot_states[(item['name'], key)]['progress'], 'closed': spot_states[(item['name'], key)]['closed'],
+                # Its Track only calls, which it takes along (ticket #126).
+                'tracked': spot_states[(item['name'], key)]['tracked'],
                 'assigned': sum(queue_state(row) == QUEUE_ANALYST for row in members),
                 'gain': round(sum(gains), 2) if gains else None,
                 'level': min(levels_of, key=lambda name: level_order.index(name) if name in level_order else len(level_order))
