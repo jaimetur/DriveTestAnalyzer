@@ -1346,6 +1346,58 @@ def test_calls_are_indexed_in_the_background_when_the_server_is_idle(client, tmp
     assert '"indexed_cdrs": 1' in next(row['details'] for row in core.repository.list_logs() if row['action'] == 'nq_calls_reindexed')
 
 
+def test_new_cdr_columns_of_a_layout_are_added_without_indexing_the_cdrs_again(client, tmp_path, monkeypatch):
+    from src.modules.cdr import cdr_store
+
+    enable_module()
+    rows = voice_rows()
+    rows['Drive_Route'] = ['R1', 'R2', 'R3']
+    rows['Drive_Team'] = ['T1', 'T2', 'T3']
+    dataset_id = add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', rows)
+    monkeypatch.setattr(cdr_store, 'free_space', lambda path: 1024 ** 4)
+    repository = core.Repository(core.active_workspace.database_path, global_db_path=core.repository.global_db_path)
+    cdr_store.start_store_sync(repository, lambda run: run(), lambda: cdr_store.included_cdrs(repository))
+    workspace_user('viewer', 'user-viewer')
+    login(client, 'viewer', 'viewer123')
+    assert client.get('/api/non-qualified-calls/state').json()['sync']['pending'] == 0
+    revision = nq._indexed_columns_state(core.repository)
+    assert revision is not None and 'Drive_Route' not in revision
+
+    def extras():
+        with core.repository.connection() as connection:
+            return {table: sorted(json.loads(row[0]).get('Drive_Route', '-') for row in connection.execute(
+                f'SELECT extra_json FROM {table} WHERE dataset_id = ?', (dataset_id,)))
+                for table in (nq.NQ_CALLS_TABLE, nq.NQ_CALL_LATEST_TABLE)}
+
+    # Any user adds a CDR column to their layout: only that column of the Non-Qualified rows is read, at once.
+    reindexed = []
+    monkeypatch.setattr(nq, '_dataset_calls', lambda *args, **kwargs: reindexed.append(args) or {'calls': [], 'population': [],
+                                                                                                    'data_date': ''})
+    saved = client.put('/api/non-qualified-calls/table-layout/mine', json={'cdr': ['Drive_Route', 'Drive_Team']})
+    assert saved.status_code == 200, saved.text
+    assert nq.nq_index_job(core.repository.db_path)['result']['columns_patched'] == 1 and not reindexed
+    assert extras() == {nq.NQ_CALLS_TABLE: ['R2', 'R3'], nq.NQ_CALL_LATEST_TABLE: ['R2', 'R3']}
+    assert client.get('/api/non-qualified-calls/index-status').json()['sync']['pending'] == 0
+    calls = client.post('/api/non-qualified-calls/calls', json={}).json()['calls']
+    assert sorted(call['extra']['Drive_Team'] for call in calls) == ['T2', 'T3']
+    # Nothing is left for the indexing of the night.
+    assert nq.sync_nq_calls(core.repository)['reindexed'] == 0 and not reindexed
+    # A column no layout keeps leaves the calls the same way.
+    with core.repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_CALLS_TABLE} SET extra_json = json_set(extra_json, '$.Gone_Column', 'x')")
+    monkeypatch.setattr(nq, 'indexed_cdr_columns', lambda task_repository: ['Drive_Route', 'Drive_Team'])
+    nq._set_indexed_columns_state(core.repository, ['Drive_Route', 'Drive_Team', 'Gone_Column'])
+    with core.repository.connection() as connection:
+        connection.execute(f'UPDATE {nq.NQ_CALL_SOURCES_TABLE} SET revision = ?',
+                           (nq._dataset_revision(core.repository.get_dataset(dataset_id),
+                                                 nq._columns_signature(['Drive_Route', 'Drive_Team', 'Gone_Column'])),))
+    assert nq.refresh_nq_columns(core.repository)['columns_patched'] == 1 and not reindexed
+    with core.repository.connection() as connection:
+        assert not connection.execute(f"SELECT 1 FROM {nq.NQ_CALLS_TABLE} WHERE json_extract(extra_json, '$.Gone_Column') "
+                                      'IS NOT NULL').fetchone()
+    assert nq.sync_nq_calls(core.repository)['reindexed'] == 0
+
+
 def test_page_polls_are_not_activity():
     # Pages poll the API on their own: only the pages opened and what someone sends count as activity.
     assert core.is_interactive_request('GET', '/non-qualified-calls', 'text/html,application/xhtml+xml')

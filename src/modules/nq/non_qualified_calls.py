@@ -2211,6 +2211,8 @@ COLUMN_ORDER_STATE_KEY = 'nq_calls_column_order'
 # The CDR columns the personal layouts showed: kept indexed when a user removes one, so the CDRs are not indexed again;
 # the next change of the workspace columns forgets those no personal layout shows.
 USER_CDR_COLUMNS_STATE_KEY = 'nq_calls_user_cdr_columns'
+# The CDR columns the calls hold in their extra values, for a change of columns to add or remove only them.
+INDEXED_COLUMNS_STATE_KEY = 'nq_calls_indexed_cdr_columns'
 LAYOUT_VIEWS = ('mine', 'workspace')
 MAX_ORDER_COLUMNS = 400
 
@@ -2830,11 +2832,124 @@ def _index_changes(task_repository: Any, force: bool = False) -> tuple[list[str]
     return cdr_columns, signature, datasets, removed, changed
 
 
+def _indexed_columns_state(task_repository: Any) -> list[str] | None:
+    """The CDR columns the indexed calls hold, or None when unknown (indexed before they were recorded)."""
+    stored = task_repository.get_workspace_state(INDEXED_COLUMNS_STATE_KEY)
+    if stored is None:
+        return None
+    try:
+        return _strings(json.loads(stored or '[]'))
+    except (TypeError, ValueError):
+        return None
+
+
+def _set_indexed_columns_state(task_repository: Any, cdr_columns: list[str]) -> None:
+    task_repository.set_workspace_state(INDEXED_COLUMNS_STATE_KEY, json.dumps(list(cdr_columns), ensure_ascii=False))
+
+
+def _dataset_extra_values(connection: Any, dataset: Any, names: list[str], profile: CdrFieldProfile) -> list[tuple[int, str]]:
+    """The values of the CDR columns ``names`` of the NQ rows of one CDR, by row, as JSON for the extra values of its
+    calls: read as _dataset_calls reads them, only these columns (from the columnar copy when it holds the CDR)."""
+    dataset_id = int(dataset['id'])
+    table = f'dataset_rows_{dataset_id}'
+    columns = [str(row[1]) for row in connection.execute(f'PRAGMA table_info({_quote(table)})').fetchall()]
+    qualification = _resolve_columns(columns, profile.nq_qualification_sources) if columns else []
+    extra = {name: column for name in names if (column := _resolve_column(columns, (name,)))}
+    if not qualification or not extra:
+        return []
+    result_column, qualified = qualification[0], profile.nq_qualified_value
+    selected = list(dict.fromkeys(extra.values()))
+    aliases = {column: f'c{index}' for index, column in enumerate(selected)}
+    normalized = f'LOWER(TRIM(CAST({_quote(result_column)} AS TEXT)))'
+    where = f"{normalized} > ? OR ({normalized} < ? AND {normalized} > '')"
+    query = (f"SELECT rowid AS source_row_id, {', '.join(f'{_quote(column)} AS {aliases[column]}' for column in selected)} "
+             f"FROM {_quote(table)} WHERE {where}")
+    rows = _cdr_rows(connection, dataset_id, str(dataset['dataset_kind']), query, [(aliases[column], column) for column in selected],
+                     where, (qualified, qualified), [result_column], 'source_row_id')
+    return [(int(row['source_row_id']), json.dumps({name: _text(row[aliases[column]]) for name, column in extra.items()},
+                                                   ensure_ascii=False))
+            for row in (rows if rows is not None else connection.execute(query, (qualified, qualified)).fetchall())]
+
+
+def _patch_indexed_columns(task_repository: Any) -> int:
+    """Add to the indexed calls the CDR columns added since they were indexed, and remove those no longer kept, reading
+    only those columns of their NQ rows instead of indexing every CDR again; the CDRs that changed otherwise wait for
+    their indexing. Returns how many CDRs it changed. The caller holds the sync lock."""
+    stored_columns = _indexed_columns_state(task_repository)
+    if stored_columns is None:
+        return 0
+    cdr_columns = indexed_cdr_columns(task_repository)
+    stored_ids = {column_identity(column) for column in stored_columns}
+    current_ids = {column_identity(column) for column in cdr_columns}
+    added = [column for column in cdr_columns if column_identity(column) not in stored_ids]
+    dropped = [column for column in stored_columns if column_identity(column) not in current_ids]
+    if not added and not dropped:
+        return 0
+    dictionary = cdr_field_dictionary.fingerprint(cdr_field_dictionary.load_overrides(task_repository))
+
+    def signature(columns: list[str]) -> str:
+        return f'{_columns_signature(columns)}:{dictionary}' if dictionary else _columns_signature(columns)
+
+    old_signature, new_signature = signature(stored_columns), signature(cdr_columns)
+    datasets = {int(row['id']): row for row in _cdr_datasets(task_repository)}
+    with task_repository.connection() as connection:
+        indexed = {int(row[0]): str(row[1]) for row in connection.execute(f'SELECT dataset_id, revision FROM {NQ_CALL_SOURCES_TABLE}')}
+    patched = [row for dataset_id, row in datasets.items() if indexed.get(dataset_id) == _dataset_revision(row, old_signature)]
+    if patched:
+        profile = workspace_field_profile(task_repository)
+        with task_repository.connection() as connection:
+            values = [(int(row['id']), source_row_id, extra) for row in patched
+                      for source_row_id, extra in _dataset_extra_values(connection, row, added, profile)]
+        maps = _value_maps(task_repository)
+        ids = [int(row['id']) for row in patched]
+        marks = ', '.join('?' for _ in ids)
+        paths = [f'$."{column.replace(chr(34), "")}"' for column in dropped]
+        with task_repository.connection() as connection:
+            latest_fresh = (_latest_fingerprint(connection, maps) == str(
+                (connection.execute('SELECT value FROM workspace_state WHERE key = ?', (LATEST_STATE_KEY,)).fetchone() or [''])[0]))
+            for table in (NQ_CALLS_TABLE, NQ_CALL_LATEST_TABLE):
+                if paths:
+                    connection.execute(f"UPDATE {table} SET extra_json = json_remove(extra_json, {', '.join('?' for _ in paths)}) "
+                                       f'WHERE dataset_id IN ({marks})', [*paths, *ids])
+            if values:
+                connection.execute('CREATE TEMP TABLE IF NOT EXISTS nq_extra_patch '
+                                   '(dataset_id INTEGER, source_row_id INTEGER, extra TEXT, PRIMARY KEY (dataset_id, source_row_id))')
+                connection.execute('DELETE FROM temp.nq_extra_patch')
+                connection.executemany('INSERT OR REPLACE INTO temp.nq_extra_patch VALUES (?, ?, ?)', values)
+                for table in (NQ_CALLS_TABLE, NQ_CALL_LATEST_TABLE):
+                    connection.execute(f'UPDATE {table} SET extra_json = json_patch(extra_json, p.extra) FROM temp.nq_extra_patch p '
+                                       f'WHERE p.dataset_id = {table}.dataset_id AND p.source_row_id = {table}.source_row_id')
+                connection.execute('DROP TABLE temp.nq_extra_patch')
+            connection.executemany(f'UPDATE {NQ_CALL_SOURCES_TABLE} SET revision = ? WHERE dataset_id = ?',
+                                   [(_dataset_revision(row, new_signature), int(row['id'])) for row in patched])
+            if latest_fresh:
+                # The latest versions got the same values: they stay up to date without being built again.
+                connection.execute('INSERT INTO workspace_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = '
+                                   'excluded.value', (LATEST_STATE_KEY, _latest_fingerprint(connection, maps)))
+    _set_indexed_columns_state(task_repository, cdr_columns)
+    return len(patched)
+
+
+def refresh_nq_columns(task_repository: Any) -> dict[str, Any]:
+    """Add or remove only the changed CDR columns of the indexed calls (see _patch_indexed_columns)."""
+    ensure_nq_tables(task_repository)
+    with _sync_lock(task_repository):
+        patched = _patch_indexed_columns(task_repository)
+        with task_repository.connection() as connection:
+            total = connection.execute(f'SELECT COUNT(DISTINCT call_key) FROM {NQ_CALLS_TABLE}').fetchone()[0]
+            synced_at = connection.execute(f'SELECT MAX(synced_at) FROM {NQ_CALL_SOURCES_TABLE}').fetchone()[0]
+    return {'datasets': patched, 'reindexed': 0, 'removed': 0, 'columns_patched': patched,
+            'calls': int(total or 0), 'synced_at': synced_at or ''}
+
+
 def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any]:
     """Index the NQ calls and the population of new or changed CDRs and forget removed ones; ``force`` indexes
     every CDR again (Reindex)."""
     ensure_nq_tables(task_repository)
     with _sync_lock(task_repository):
+        # A change of CDR columns only adds or removes them in the calls of the CDRs that did not change otherwise.
+        if not force:
+            _patch_indexed_columns(task_repository)
         cdr_columns, signature, datasets, removed, changed = _index_changes(task_repository, force)
         profile = workspace_field_profile(task_repository)
         if profile.nq_call_radio_from_samples and (removed or any(str(row['dataset_kind']) == 'speech' for row in changed)):
@@ -2903,6 +3018,8 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                                        [(rank, dataset_id) for dataset_id, rank in reranked.items()])
                 _rebuild_versions(connection, {str(row[0]) for row in connection.execute(
                     f'SELECT DISTINCT call_key FROM {NQ_CALL_POPULATION_TABLE} WHERE dataset_id IN ({marks})', list(reranked))})
+        # Every indexed CDR now holds these columns.
+        _set_indexed_columns_state(task_repository, cdr_columns)
         if migrating:
             task_repository.set_workspace_state(KEY_SCHEME_STATE_KEY, key_scheme)
             if moved and hasattr(task_repository, 'try_add_log'):
@@ -2952,23 +3069,25 @@ def nq_index_job(database_path: Any) -> dict[str, Any] | None:
         return dict(job) if job else None
 
 
-def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: bool = False, log_event: bool = False) -> dict[str, Any]:
-    """Queue the indexing of the workspace (every CDR again with ``force``), unless it is already queued or running;
-    ``log_event`` records in App Events what the indexing of the idle server did."""
+def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: bool = False, log_event: bool = False,
+                   columns_only: bool = False) -> dict[str, Any]:
+    """Queue the indexing of the workspace (every CDR again with ``force``; with ``columns_only`` only the CDR columns
+    added to or removed from the calls, see refresh_nq_columns), unless it is already queued or running; ``log_event``
+    records in App Events what the indexing of the idle server did."""
     key = _workspace_key(task_repository.db_path)
     with _index_jobs_guard:
         current = _index_jobs.get(key)
         if current and current['status'] in {'queued', 'processing'}:
             return dict(current)
-        job = {'status': 'queued', 'force': force, 'queued_at': time.time(), 'started_at': None, 'finished_at': None,
-               'error': '', 'result': None}
+        job = {'status': 'queued', 'force': force, 'columns_only': columns_only, 'queued_at': time.time(), 'started_at': None,
+               'finished_at': None, 'error': '', 'result': None}
         _index_jobs[key] = job
 
     def run() -> None:
         with _index_jobs_guard:
             job.update(status='processing', started_at=time.time())
         try:
-            result = sync_nq_calls(task_repository, force=force)
+            result = refresh_nq_columns(task_repository) if columns_only else sync_nq_calls(task_repository, force=force)
         except Exception as exc:  # The next idle period or a Reindex tries again.
             with _index_jobs_guard:
                 job.update(status='failed', error=str(exc), finished_at=time.time())
@@ -2987,7 +3106,10 @@ def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: b
 
 def nq_index_status(task_repository: Any) -> dict[str, Any]:
     """The indexed calls and CDRs, when they were last indexed, the CDRs waiting to be indexed and the running job."""
-    _columns, _signature, datasets, removed, changed = _index_changes(task_repository)
+    columns, _signature, datasets, removed, changed = _index_changes(task_repository)
+    if not removed and not changed and datasets and _indexed_columns_state(task_repository) is None:
+        # Indexed before the columns were recorded, and with the current ones: later column changes only patch them.
+        _set_indexed_columns_state(task_repository, columns)
     reranked = [dataset_id for dataset_id in _rank_changes(task_repository) if dataset_id not in {int(row['id']) for row in changed}]
     with task_repository.connection() as connection:
         total = connection.execute(f'SELECT COUNT(DISTINCT call_key) FROM {NQ_CALLS_TABLE}').fetchone()[0]
@@ -9444,7 +9566,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         job = nq_index_job(workspace.database_path)
         if not job or (job['status'] in {'ready', 'failed'} and time.time() - (job['finished_at'] or 0) > 5):
             return []
-        detail = 'Indexing the calls of every CDR again' if job['force'] else 'Indexing the calls of new or changed CDRs'
+        detail = ('Indexing the calls of every CDR again' if job['force'] else 'Adding the CDR columns of the table to the calls'
+                  if job.get('columns_only') else 'Indexing the calls of new or changed CDRs')
         return [{
             'id': f'nq-index:{workspace.id}', 'label': 'Non-Qualified Calls indexing',
             'detail': job['error'] or detail, 'status': job['status'], 'progress': None,
@@ -9645,12 +9768,6 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def can_configure(user) -> bool:
         """The NQ Analysis Configuration and the table layout of the workspace: admins and super-admins."""
         return user.role in {'admin', 'super-admin'}
-
-    def index_for_admins(repository: Any, user: Any) -> None:
-        """New CDR columns of a table layout are indexed at once for admins and super-admins (who can reindex); those
-        of other users wait for the indexing of the night."""
-        if can_configure(user):
-            start_nq_index(repository, core.submit_background_task)
 
     def config_user(user=Depends(core.current_user)):
         if not can_configure(user):
@@ -10254,8 +10371,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         columns = translate(lambda: save_table_columns(repository, payload.builtin, payload.cdr, user.username, payload.export_cdr,
                                                        defaults=payload.defaults))
-        # New CDR columns are indexed in the background.
-        start_nq_index(repository, core.submit_background_task)
+        # New CDR columns are added to the calls in the background, without indexing the CDRs again.
+        start_nq_index(repository, core.submit_background_task, columns_only=True)
         return JSONResponse({'table_columns': columns, 'sync': nq_index_status(repository)})
 
     @core.app.put('/api/non-qualified-calls/table-layout/mine')
@@ -10264,7 +10381,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         changes = payload.model_dump(exclude={'reason'})
         layouts = translate(lambda: save_user_layout(repository, user.username, changes, reason=payload.reason))
-        index_for_admins(repository, user)
+        start_nq_index(repository, core.submit_background_task, columns_only=True)
         return JSONResponse({'table_layout': layouts, 'sync': nq_index_status(repository)})
 
     @core.app.put('/api/non-qualified-calls/table-layout/view')
@@ -10272,7 +10389,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         """Whether the user sees their own layout or that of the workspace."""
         repository = workspace_repository(user)
         layouts = translate(lambda: set_layout_view(repository, user.username, payload.view))
-        index_for_admins(repository, user)
+        start_nq_index(repository, core.submit_background_task, columns_only=True)
         return JSONResponse({'table_layout': layouts, 'sync': nq_index_status(repository)})
 
     @core.app.post('/api/non-qualified-calls/table-layout/mine/copy')
@@ -10286,7 +10403,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         """Save the layout of the user for the workspace (admins and super-admins)."""
         repository = workspace_repository(user)
         layouts = translate(lambda: publish_user_layout(repository, user.username))
-        start_nq_index(repository, core.submit_background_task)
+        start_nq_index(repository, core.submit_background_task, columns_only=True)
         return JSONResponse({'table_layout': layouts, 'sync': nq_index_status(repository)})
 
     @core.app.post('/api/non-qualified-calls/rates')
