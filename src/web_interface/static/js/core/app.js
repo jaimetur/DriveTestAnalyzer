@@ -5140,7 +5140,7 @@ const refreshMultiSelectsWhenIdle = () => {
     const started = performance.now();
     for (const list of Array.from(multiSelectsToRefresh)) {
       multiSelectsToRefresh.delete(list);
-      if (list.shell.isConnected) list.refresh();
+      if (list.shell.isConnected !== false) list.refresh();
       const left = typeof deadline?.timeRemaining === 'function' && !deadline.didTimeout
         ? deadline.timeRemaining() : 8 - (performance.now() - started);
       if (left <= 1) break;
@@ -5150,8 +5150,11 @@ const refreshMultiSelectsWhenIdle = () => {
   if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, {timeout: 800});
   else window.setTimeout(run, 60);
 };
-if (typeof document !== 'undefined' && !window.multiSelectClicksHandled) {
-  window.multiSelectClicksHandled = true;
+// Set the first time the lists of a page are prepared (see setupCustomMultiSelects).
+let multiSelectClicksHandled = false;
+const handleMultiSelectClicks = () => {
+  if (multiSelectClicksHandled) return;
+  multiSelectClicksHandled = true;
   // The values of a list are listed before anything else handles the click that opens it.
   document.addEventListener('click', (event) => {
     event.target?.closest?.('.multiselect-trigger')?.parentElement?.multiselectListValues?.();
@@ -5159,15 +5162,16 @@ if (typeof document !== 'undefined' && !window.multiSelectClicksHandled) {
   document.addEventListener('click', (event) => {
     multiSelectLists.forEach((list) => {
       // A click on a menu rebuilt while it was handled (its options changed) is not a click outside.
-      if (!list.shell.isConnected || list.shell.contains(event.target) || event.target?.isConnected === false) return;
+      if (list.shell.isConnected === false || list.shell.contains(event.target) || event.target?.isConnected === false) return;
       if (list.isOpen()) list.close();
       else multiSelectsToRefresh.add(list);
     });
     refreshMultiSelectsWhenIdle();
   });
-}
+};
 
 function setupCustomMultiSelects() {
+  handleMultiSelectClicks();
   document.querySelectorAll('select[multiple]:not([data-native-multiselect])').forEach((select) => {
     if (select.dataset.multiselectReady === '1') return;
     select.dataset.multiselectReady = '1';
