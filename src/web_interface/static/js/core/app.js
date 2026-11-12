@@ -86,15 +86,49 @@ window.normalizeVendorFilterValue = normalizeVendorFilterValue;
 // The search box of a list is never a sign-in field: without these hints Safari (and password managers) offer the saved
 // passwords of the server in it, covering the values of the list.
 window.markSearchNotCredential = (input) => {
-  input.autocomplete = 'off';
+  markNotCredential(input);
   input.spellcheck = false;
   input.setAttribute('autocorrect', 'off');
   input.setAttribute('autocapitalize', 'off');
-  input.setAttribute('data-1p-ignore', '');
-  input.setAttribute('data-lpignore', 'true');
-  input.setAttribute('data-form-type', 'other');
   return input;
 };
+
+// No text field of the tool is a sign-in field, except those that say what they hold (autocomplete="username",
+// "current-password", "email"…, as the sign-in page, access requests and Change password do) and those of the sign-in
+// page: Safari and the password managers would otherwise offer the saved passwords of the server in the filters,
+// searches and names of every module. Every such field, also those added later, is marked as not a credential.
+const NOT_CREDENTIAL_TYPES = new Set(['', 'text', 'search', 'email', 'url', 'tel']);
+let notCredentialFields = 0;
+function markNotCredential(input) {
+  input.autocomplete = 'off';
+  input.setAttribute('data-1p-ignore', '');
+  input.setAttribute('data-lpignore', 'true');
+  input.setAttribute('data-bwignore', 'true');
+  input.setAttribute('data-protonpass-ignore', 'true');
+  input.setAttribute('data-form-type', 'other');
+  // Safari leaves out the fields whose id says they search; the search boxes of the lists have no name nor id.
+  if (input.type === 'search' && !input.id && !input.name) input.id = `dta-search-field-${++notCredentialFields}`;
+  return input;
+}
+function guardAgainstCredentials(root) {
+  const fields = root instanceof HTMLInputElement ? [root] : root.querySelectorAll?.('input') || [];
+  for (const input of fields) {
+    if (input.dataset.notCredential || !NOT_CREDENTIAL_TYPES.has((input.getAttribute('type') || '').toLowerCase())) continue;
+    input.dataset.notCredential = '';
+    const purpose = (input.getAttribute('autocomplete') || '').trim().toLowerCase();
+    if (purpose && purpose !== 'off') continue;
+    if (input.closest('.login-shell')) continue;
+    markNotCredential(input);
+  }
+}
+const startCredentialGuard = () => {
+  guardAgainstCredentials(document);
+  new MutationObserver((changes) => {
+    for (const change of changes) for (const node of change.addedNodes) if (node.nodeType === 1) guardAgainstCredentials(node);
+  }).observe(document.documentElement, {childList: true, subtree: true});
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startCredentialGuard, {once: true});
+else startCredentialGuard();
 
 function vendorOnlyFilterChoices(field, values, additionalOperators = []) {
   const identity = value => String(value ?? '').toLocaleLowerCase().replace(/[^a-z0-9]/g, '');

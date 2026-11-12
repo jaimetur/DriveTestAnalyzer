@@ -27,7 +27,7 @@
 - **Ticket Center — Text attachments keep their type on every server:** a `.log` attachment (and `.md`, `.yaml`) is a text file on the Linux server and in the Docker image too, not an unknown binary file, as it already was on macOS.
 - **Dropdown lists on phone screens:** a multiple-choice list wider than its field (a filter of the left column in NQ Calls, with long values) opens inside the screen instead of beyond its left edge, with its search box inside the list and the long values on several lines
 - **Non-Qualified Calls — No scroll bar on tables that fit:** the queue tables of NQ Prioritization (and the other failure tables) no longer show a horizontal scroll bar when everything fits in them
-- **No saved passwords over the dropdown lists ([ticket #131](https://108.132.147.165:8443/tickets/131)):** the search box of the dropdown lists (such as the Action filter of App Events) tells Safari and password managers it is not a sign-in field, so they no longer offer the saved passwords of the server over the values of the list.
+- **No saved passwords outside the sign-in page ([ticket #131](https://108.132.147.165:8443/tickets/131)):** every text field of the tool (the search boxes of the dropdown lists, such as the Action filter of App Events, filters, names and settings, also those added later) tells Safari and the password managers it is not a sign-in field, so they no longer offer the saved passwords of the server over its values; only the sign-in page, access requests, Change password and the email address of the account keep their autofill.
 
 #### 📚 Documentation:
 
