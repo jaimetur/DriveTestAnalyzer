@@ -1480,6 +1480,7 @@ def test_the_data_queue_lists_its_hotspots_and_the_other_calls_apart(strategized
     assert not voice.get('by_hotspots') and data['by_hotspots'] and data['hotspots']
     assert [item['position'] for item in data['hotspots']] == list(range(1, len(data['hotspots']) + 1))
     assert sum(item['waiting'] for item in data['hotspots']) + data['singles_total'] == data['total']
+    assert data['hotspot_calls'] + data['singles_total'] == data['total']
     rows = priority_rows()
     for item in data['hotspots']:
         members = [rows[key] for key in item['call_keys']]

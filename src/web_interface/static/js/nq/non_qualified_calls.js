@@ -4055,7 +4055,8 @@
       // The hotspots listed, of all those of the queue when Next to analyse leaves some out.
       const spotsBadge = item.hotspots.length < item.hotspot_total ? `${number(item.hotspots.length)} of ${plural(item.hotspot_total, 'hotspot')}`
         : plural(item.hotspot_total, 'hotspot');
-      return queueSubpanel(item.name, item.team, [spotsBadge, `${number(item.total)} waiting`],
+      // The waiting calls of all its hotspots (listed or not), the others being its individual failures.
+      return queueSubpanel(item.name, item.team, [spotsBadge, `${number(item.hotspot_calls ?? 0)} calls in hotspots`, `${number(item.total)} waiting`],
         item.hotspots.length ? hotspotQueueTable(item.hotspots, item.hotspot_total)
           : emptyLabel(`No hotspot of ${number(data.settings.min_hotspot_calls)} or more failures is waiting in the ${item.name} queue.`), singles);
     }));

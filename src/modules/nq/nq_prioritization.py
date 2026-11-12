@@ -3530,7 +3530,9 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
                 'call_keys': [row['call_key'] for row in members],
                 # Those without an analyst yet, which Take gives the user (ticket #122).
                 'free_keys': [row['call_key'] for row in members if not row['analyst']]})
-        return {'hotspots': listed[:settings['capacity']], 'hotspot_total': len(listed), 'singles': singles}
+        # The waiting calls of all its hotspots, those listed or not (ticket #126).
+        return {'hotspots': listed[:settings['capacity']], 'hotspot_total': len(listed), 'singles': singles,
+                'hotspot_calls': sum(item['waiting'] for item in listed)}
 
     def queue_row(row: dict[str, Any], position: int) -> dict[str, Any]:
         return {'position': position, 'call_key': row['call_key'], 'join_id': row['join_id'], 'operator': row['operator'],
@@ -3578,6 +3580,7 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
                     'rows': [queue_row(row, position) for position, row in enumerate(item['rows'][:settings['capacity']], start=1)],
                     # A queue listed by hotspots: its hotspots, and its other waiting calls one by one.
                     **({'by_hotspots': True, 'hotspots': grouped['hotspots'], 'hotspot_total': grouped['hotspot_total'],
+                        'hotspot_calls': grouped['hotspot_calls'],
                         'singles_total': len(grouped['singles']),
                         'singles': [queue_row(row, position)
                                     for position, row in enumerate(grouped['singles'][:settings['capacity']], start=1)]}
