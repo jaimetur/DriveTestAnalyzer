@@ -1761,7 +1761,7 @@
         const words = window.RichText.toPlainText(call.last_comment.body);
         preview.append(node('strong', call.last_comment.created_by), node('span', words));
         commentButton.append(preview);
-        commentButton.title = `${call.last_comment.created_by} · ${exactTime(call.last_comment.created_at)}\n${words}`;
+        commentButton.title = `${userName(call.last_comment.created_by)} · ${exactTime(call.last_comment.created_at)}\n${words}`;
       } else {
         // Without comments, the count alone keeps the column narrow; what a click does shows on hover.
         commentButton.title = state.user.can_edit ? 'Add a comment' : 'No comments';
@@ -4417,7 +4417,7 @@
     const head = node('header');
     const time = node('time', relativeTime(comment.created_at));
     time.title = exactTime(comment.created_at);
-    head.append(node('strong', comment.created_by), time);
+    head.append(node('strong', userName(comment.created_by)), time);
     if (comment.edited_at && !comment.deleted_at) {
       const edited = node('span', 'edited', 'nq-edited');
       edited.title = `Edited by ${comment.edited_by} · ${exactTime(comment.edited_at)}`;
@@ -4674,7 +4674,7 @@
       }
     }
     const updated = node('p', call.updated_by
-      ? `Last follow-up by ${call.updated_by} · ${exactTime(call.updated_at)}` : 'Not followed up yet.', 'nq-tracking-note');
+      ? `Last follow-up by ${userName(call.updated_by)} · ${exactTime(call.updated_at)}` : 'Not followed up yet.', 'nq-tracking-note');
     const rootField = node('div', undefined, 'nq-tracking-field nq-tracking-root');
     const domain = call.root_domain ? node('span', call.root_domain, 'nq-domain-tag') : null;
     if (domain) domain.style.setProperty('--nq-section', domainColor(call.root_domain) || '#7b8790');
@@ -5663,15 +5663,20 @@
     const team = row.querySelector('input[type="text"]').value.trim() || 'the new team';
     $('nq-members-title').textContent = `Members of ${team}`;
     const chosen = new Set(row.members.map((member) => member.toLocaleLowerCase()));
-    const users = [...new Set([...state.users, ...row.members])].sort((left, right) => left.localeCompare(right));
-    $('nq-members-list').replaceChildren(...users.map((user) => {
+    // By their first and last name like every list of users, the default users first and tagged; the filter also
+    // finds a user by the username, kept hidden beside the name.
+    const users = [...new Set([...state.users, ...row.members])].sort(byUserName);
+    $('nq-members-list').replaceChildren(...users.map((user, index) => {
       const item = node('li');
+      if (index && isDefaultUser(users[index - 1]) && !isDefaultUser(user)) item.classList.add('user-choice-divider');
       const label = node('label', undefined, 'nq-members-option');
       const box = node('input');
       box.type = 'checkbox';
       box.value = user;
       box.checked = chosen.has(user.toLocaleLowerCase());
-      label.append(box, node('span', user));
+      label.append(box, node('span', userName(user)));
+      if (isDefaultUser(user)) label.append(node('span', DEFAULT_USER_TAG, 'user-choice-tag'));
+      if (userName(user) !== user) label.append(node('span', user, 'sr-only'));
       item.append(label);
       return item;
     }));
