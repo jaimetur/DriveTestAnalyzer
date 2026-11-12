@@ -666,6 +666,7 @@ USER_ROLES = ('user-viewer', 'user-editor', 'admin', 'super-admin')
 DEFAULT_ACCOUNT_USERNAMES = ('super', 'admin', 'demo')
 # The colours of the Modules Profiles of a new deployment.
 PROFILE_COLOR_ALL_MODULES, PROFILE_COLOR_BENCHMARKING, PROFILE_COLOR_NON_QUALIFIED_CALLS = '#096767', '#1E61A3', '#D74B75'
+PROFILE_COLOR_REPORTING, PROFILE_COLOR_EXECUTIVE_REPORTING = '#2E8C58', '#7A4FB5'
 # The Modules Profiles of a new deployment: (name, description, modules, colour, default).
 DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], str, bool], ...] = (
     ('Non-Qualified Calls', 'Workspace, Non-Qualified Calls, Reporting, Builders, AI Assistant & Ticket Center.',
@@ -674,7 +675,15 @@ DEFAULT_MODULES_PROFILES: tuple[tuple[str, str, tuple[str, ...], str, bool], ...
     ('Benchmarking', 'Every main module except Non-Qualified Calls.',
      tuple(key for key, _name in MAIN_MODULES if key != 'non-qualified-calls'), PROFILE_COLOR_BENCHMARKING, False),
     ('All Modules', 'Every main module.', tuple(key for key, _name in MAIN_MODULES), PROFILE_COLOR_ALL_MODULES, True),
+    ('Reporting', 'Reporting, AI Assistant & Ticket Center.', ('reporting', 'assistant', 'ticket-center'),
+     PROFILE_COLOR_REPORTING, False),
+    ('Executive Reporting', 'Scoring & GAP Analysis, Reporting, AI Assistant & Ticket Center.',
+     ('scoring', 'reporting', 'assistant', 'ticket-center'), PROFILE_COLOR_EXECUTIVE_REPORTING, False),
 )
+# Default Modules Profiles that joined the tool after its first deployments: each one is added once to a deployment
+# that has no profile of its name, so one that is later deleted or changed keeps as it was left.
+PROFILES_ADDED_TO_EVERY_DEPLOYMENT: tuple[str, ...] = ('Reporting', 'Executive Reporting')
+PROFILES_ADDED_TO_DEPLOYMENTS_STATE_KEY = 'modules_profiles_added_profiles'
 
 
 # Main modules that joined every Modules Profile of a deployment when they were added to the tool; each one is added
@@ -1525,7 +1534,24 @@ class Repository:
                     'INSERT INTO modules_profiles (name, description, modules_json, color, is_default, created_at) VALUES (?, ?, ?, ?, ?, ?)',
                     (name, description, json.dumps(list(modules)), color, int(default), local_now_iso()),
                 )
+            conn.execute('INSERT OR REPLACE INTO application_state (key, value) VALUES (?, ?)',
+                         (PROFILES_ADDED_TO_DEPLOYMENTS_STATE_KEY, json.dumps(sorted(PROFILES_ADDED_TO_EVERY_DEPLOYMENT))))
             return
+        recorded = conn.execute('SELECT value FROM application_state WHERE key = ?', (PROFILES_ADDED_TO_DEPLOYMENTS_STATE_KEY,)).fetchone()
+        try:
+            added_profiles = set(json.loads(recorded['value'])) if recorded else set()
+        except (TypeError, ValueError):
+            added_profiles = set()
+        if set(PROFILES_ADDED_TO_EVERY_DEPLOYMENT) - added_profiles:
+            existing = {str(row['name']).casefold() for row in rows}
+            for name, description, modules, color, _default in DEFAULT_MODULES_PROFILES:
+                if name in PROFILES_ADDED_TO_EVERY_DEPLOYMENT and name not in added_profiles and name.casefold() not in existing:
+                    conn.execute(
+                        'INSERT INTO modules_profiles (name, description, modules_json, color, is_default, created_at) VALUES (?, ?, ?, ?, 0, ?)',
+                        (name, description, json.dumps(list(modules)), color, local_now_iso()),
+                    )
+            conn.execute('INSERT OR REPLACE INTO application_state (key, value) VALUES (?, ?)',
+                         (PROFILES_ADDED_TO_DEPLOYMENTS_STATE_KEY, json.dumps(sorted(added_profiles | set(PROFILES_ADDED_TO_EVERY_DEPLOYMENT)))))
         for row in rows:
             if not row['color']:
                 modules = json.loads(row['modules_json'] or '[]')

@@ -13,17 +13,39 @@ def profiles():
 
 def test_a_new_deployment_has_the_modules_profiles_of_each_team(client):
     available = profiles()
-    assert set(available) == {'Non-Qualified Calls', 'Benchmarking', 'All Modules'}
+    assert set(available) == {'Non-Qualified Calls', 'Benchmarking', 'All Modules', 'Reporting', 'Executive Reporting'}
+    assert available['Reporting']['modules'] == ['reporting', 'assistant', 'ticket-center']
+    assert available['Executive Reporting']['modules'] == ['scoring', 'reporting', 'assistant', 'ticket-center']
     assert available['Non-Qualified Calls']['modules'] == ['workspace', 'non-qualified-calls', 'reporting', 'builders', 'assistant',
                                                           'ticket-center']
     assert set(available['Benchmarking']['modules']) == set(core.FEATURE_KEYS) - {'non-qualified-calls'}
     assert set(available['All Modules']['modules']) == set(core.FEATURE_KEYS)
     assert [name for name, profile in available.items() if profile['is_default']] == ['All Modules']
-    assert {name: profile['color'] for name, profile in available.items()} == {'Non-Qualified Calls': '#D74B75', 'Benchmarking': '#1E61A3', 'All Modules': '#096767'}
+    assert {name: profile['color'] for name, profile in available.items()} == {
+        'Non-Qualified Calls': '#D74B75', 'Benchmarking': '#1E61A3', 'All Modules': '#096767', 'Reporting': '#2E8C58',
+        'Executive Reporting': '#7A4FB5'}
     # Created once per deployment: the later changes of an administrator are kept.
     core.repository.delete_modules_profile(available['Benchmarking']['id'])
+    core.repository.delete_modules_profile(available['Reporting']['id'])
     core.repository.initialize()
-    assert 'Benchmarking' not in profiles()
+    assert 'Benchmarking' not in profiles() and 'Reporting' not in profiles()
+
+
+def test_a_deployment_older_than_the_reporting_profiles_gets_them_once(client):
+    with core.repository.global_connection() as conn:
+        conn.execute("DELETE FROM modules_profiles WHERE name = 'Executive Reporting'")
+        conn.execute("UPDATE modules_profiles SET modules_json = '[\"reporting\"]', color = '#123456' WHERE name = 'Reporting'")
+        conn.execute("DELETE FROM application_state WHERE key = 'modules_profiles_added_profiles'")
+    core.repository.initialize()
+    available = profiles()
+    # The missing one is added, never as the default; a profile that already has the name is left as it is.
+    assert available['Executive Reporting']['modules'] == ['scoring', 'reporting', 'assistant', 'ticket-center']
+    assert not available['Executive Reporting']['is_default'] and available['All Modules']['is_default']
+    assert (available['Reporting']['modules'], available['Reporting']['color']) == (['reporting'], '#123456')
+    # Only once: deleted afterwards, it does not come back.
+    core.repository.delete_modules_profile(available['Executive Reporting']['id'])
+    core.repository.initialize()
+    assert 'Executive Reporting' not in profiles()
 
 
 def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client):
@@ -39,8 +61,9 @@ def test_access_request_creates_an_inactive_editor_with_the_chosen_access(client
     assert [group['name'] for group in options['workspace_groups']] == ['UK']
     assert options['workspace_groups'][0]['workspaces'] == [core.active_workspace.name]
     assert options['workspace_groups'][0]['description'] == ''
-    assert [profile['name'] for profile in options['modules_profiles']] == ['All Modules', 'Benchmarking', 'Non-Qualified Calls']
-    nq_calls = options['modules_profiles'][2]
+    assert [profile['name'] for profile in options['modules_profiles']] == ['All Modules', 'Benchmarking', 'Executive Reporting',
+                                                                            'Non-Qualified Calls', 'Reporting']
+    nq_calls = options['modules_profiles'][3]
     assert nq_calls['modules'] == ['Workspace', 'Non-Qualified Calls', 'Reporting', 'Builders', 'AI Assistant', 'Ticket Center']
     assert nq_calls['module_tabs'][0]['title'] == 'Workspace' and nq_calls['module_tabs'][0]['color'] and nq_calls['module_tabs'][0]['icon']
     request = {'username': 'eabcdef', 'first_name': ' Ana ', 'last_name': 'García', 'email': 'ana.garcia@ericsson.com', 'password': 'secret1',
