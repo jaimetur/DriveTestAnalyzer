@@ -5121,6 +5121,52 @@ const PATTERN_HELP = 'Type a pattern and press Enter: * stands for any character
   + 'exclusions leave out each one.';
 globalThis.valuePatterns.help = PATTERN_HELP;
 
+// A list with more values than this (the cells or the sites of thousands of calls) is a long list: its values are listed
+// when it is opened, this many at a time (its filter looks among all of them, and Show All lists every one). A page with
+// several of them held tens of thousands of elements nobody had asked to see, and every click paid for them.
+const MULTISELECT_LONG_LIST = 300;
+// Every dropdown list of the page, for the one click handler that closes the open ones. Each list used to have its own
+// handler on the document, which every click of the page ran for every list, also for those already replaced.
+const multiSelectLists = new Set();
+// The lists whose button is checked against their selection once the browser is idle: a selection changed without a
+// change event still reaches the button after the next click, without that click waiting for every list of the page.
+const multiSelectsToRefresh = new Set();
+let multiSelectRefreshScheduled = false;
+const refreshMultiSelectsWhenIdle = () => {
+  if (multiSelectRefreshScheduled || !multiSelectsToRefresh.size) return;
+  multiSelectRefreshScheduled = true;
+  const run = (deadline) => {
+    multiSelectRefreshScheduled = false;
+    const started = performance.now();
+    for (const list of Array.from(multiSelectsToRefresh)) {
+      multiSelectsToRefresh.delete(list);
+      if (list.shell.isConnected) list.refresh();
+      const left = typeof deadline?.timeRemaining === 'function' && !deadline.didTimeout
+        ? deadline.timeRemaining() : 8 - (performance.now() - started);
+      if (left <= 1) break;
+    }
+    refreshMultiSelectsWhenIdle();
+  };
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, {timeout: 800});
+  else window.setTimeout(run, 60);
+};
+if (typeof document !== 'undefined' && !window.multiSelectClicksHandled) {
+  window.multiSelectClicksHandled = true;
+  // The values of a list are listed before anything else handles the click that opens it.
+  document.addEventListener('click', (event) => {
+    event.target?.closest?.('.multiselect-trigger')?.parentElement?.multiselectListValues?.();
+  }, true);
+  document.addEventListener('click', (event) => {
+    multiSelectLists.forEach((list) => {
+      // A click on a menu rebuilt while it was handled (its options changed) is not a click outside.
+      if (!list.shell.isConnected || list.shell.contains(event.target) || event.target?.isConnected === false) return;
+      if (list.isOpen()) list.close();
+      else multiSelectsToRefresh.add(list);
+    });
+    refreshMultiSelectsWhenIdle();
+  });
+}
+
 function setupCustomMultiSelects() {
   document.querySelectorAll('select[multiple]:not([data-native-multiselect])').forEach((select) => {
     if (select.dataset.multiselectReady === '1') return;
@@ -5296,11 +5342,19 @@ function setupCustomMultiSelects() {
     const syncGroupActions = () => {
       menu.querySelectorAll('.multiselect-group-action').forEach((button) => {
         const options = enabledGroupOptions(button.dataset.multiselectGroup || '');
-        button.disabled = !options.length;
-        button.textContent = options.length && options.every((option) => option.selected) ? 'Select None' : 'Select All';
+        if (button.disabled !== !options.length) button.disabled = !options.length;
+        const text = options.length && options.every((option) => option.selected) ? 'Select None' : 'Select All';
+        if (button.textContent !== text) button.textContent = text;
       });
     };
 
+    // The button is written only when it changes: this runs for every list of the page, and writing the same text or
+    // attribute again made the browser lay the page out again.
+    const showLabel = (text) => { if (triggerLabel.textContent !== text) triggerLabel.textContent = text; };
+    const showExpanded = () => {
+      const expanded = String(!menu.hidden);
+      if (trigger.getAttribute('aria-expanded') !== expanded) trigger.setAttribute('aria-expanded', expanded);
+    };
     const syncTrigger = () => {
       syncGroupActions();
       if (modeSwitch) {
@@ -5314,8 +5368,8 @@ function setupCustomMultiSelects() {
       const isStandalone = (option) => option.dataset.campaignPreset === 'true' || option.dataset.standaloneChoice === 'true';
       const standaloneChoice = Array.from(select.options).find((option) => isStandalone(option) && option.selected);
       if (standaloneChoice) {
-        triggerLabel.textContent = standaloneChoice.textContent?.trim() || '';
-        trigger.setAttribute('aria-expanded', String(!menu.hidden));
+        showLabel(standaloneChoice.textContent?.trim() || '');
+        showExpanded();
         return;
       }
       const listedOptions = Array.from(select.options).filter((option) => !isStandalone(option)
@@ -5328,39 +5382,40 @@ function setupCustomMultiSelects() {
       if (chosenPatterns.length && !excluding()) {
         const leftOut = chosenPatterns.filter(valuePatterns.isExclusion);
         const shown = [...chosenPatterns, ...selectedOptions];
-        triggerLabel.textContent = leftOut.length === shown.length
+        showLabel(leftOut.length === shown.length
           ? `All except ${leftOut.map((value) => value.replace(VALUE_EXCLUSION, '').trim()).join(', ')}`
-          : shown.length <= 3 ? shown.join(', ') : `${shown.slice(0, 2).join(', ')} +${shown.length - 2}`;
-        trigger.setAttribute('aria-expanded', String(!menu.hidden));
+          : shown.length <= 3 ? shown.join(', ') : `${shown.slice(0, 2).join(', ')} +${shown.length - 2}`);
+        showExpanded();
         return;
       }
       const totalEnabled = enabledOptions.length;
       if (totalEnabled === 0) {
-        triggerLabel.textContent = select.dataset.multiselectNoValuesLabel || 'No values';
+        showLabel(select.dataset.multiselectNoValuesLabel || 'No values');
       } else if (selectedOptions.length === 0) {
-        triggerLabel.textContent = select.dataset.multiselectEmptyLabel || 'None Selected';
+        showLabel(select.dataset.multiselectEmptyLabel || 'None Selected');
       } else if (excluding()) {
         // The ticked values are left out.
-        triggerLabel.textContent = selectedOptions.length === 1 ? `All except ${selectedOptions[0]}`
-          : selectedOptions.length === totalEnabled ? 'All excluded' : `${selectedOptions.length}/${totalEnabled} excluded`;
+        showLabel(selectedOptions.length === 1 ? `All except ${selectedOptions[0]}`
+          : selectedOptions.length === totalEnabled ? 'All excluded' : `${selectedOptions.length}/${totalEnabled} excluded`);
       } else if (select.dataset.multiselectJoiner) {
         // A select that shows every value chosen, joined (VF & Three), by its short label when it has one (data-short-label),
         // with the full values on hover.
         const chosen = enabledOptions.filter((option) => option.selected);
-        triggerLabel.textContent = chosen.map((option) => option.dataset.shortLabel || option.textContent.trim()).join(select.dataset.multiselectJoiner);
-        trigger.title = selectedOptions.join(select.dataset.multiselectJoiner);
+        showLabel(chosen.map((option) => option.dataset.shortLabel || option.textContent.trim()).join(select.dataset.multiselectJoiner));
+        const title = selectedOptions.join(select.dataset.multiselectJoiner);
+        if (trigger.title !== title) trigger.title = title;
       } else if (dynamicAll && selectedOptions.length === totalEnabled) {
-        triggerLabel.textContent = 'All values';
+        showLabel('All values');
       } else if (selectedOptions.length === 1) {
         // A one-item Reporting source selector is already fully selected, but
         // its file name is more useful than the generic "All values" summary.
-        triggerLabel.textContent = selectedOptions[0];
+        showLabel(selectedOptions[0]);
       } else if (totalEnabled > 0 && selectedOptions.length === totalEnabled) {
-        triggerLabel.textContent = 'All values';
+        showLabel('All values');
       } else {
-        triggerLabel.textContent = `${selectedOptions.length}/${totalEnabled} selected`;
+        showLabel(`${selectedOptions.length}/${totalEnabled} selected`);
       }
-      trigger.setAttribute('aria-expanded', String(!menu.hidden));
+      showExpanded();
     };
 
     const dispatchNativeChange = () => {
@@ -5437,14 +5492,7 @@ function setupCustomMultiSelects() {
     let previousGroup = '';
     let previousSubgroup = '';
     const groupSizes = new Map();
-    Array.from(select.options).forEach((option) => {
-      const group = optionGroup(option);
-      if (group) groupSizes.set(group, (groupSizes.get(group) || 0) + 1);
-    });
-    // The patterns (VF*) of a choice that takes them come first, below the filter.
-    const listedOptions = Array.from(select.options);
-    if (patternButton) listedOptions.sort((left, right) => Number(valuePatterns.isPattern(right.value)) - Number(valuePatterns.isPattern(left.value)));
-    listedOptions.forEach((option) => {
+    const listOption = (option) => {
       const group = optionGroup(option);
       if (group && group !== previousGroup) {
         const heading = document.createElement('div');
@@ -5546,7 +5594,61 @@ function setupCustomMultiSelects() {
         }));
       }
       menu.appendChild(optionLabel);
-    });
+    };
+    // The values are listed at once, or when the list is opened where they are many (a long list): then only the first
+    // ones that its filter takes and the page offers (select.multiselectOffers), with those chosen, until Show All.
+    const longList = select.options.length > MULTISELECT_LONG_LIST;
+    let valuesListed = false;
+    let everyValueListed = false;
+    let listedQuery = '';
+    const optionText = (option) => (option.dataset.tag
+      ? `${option.dataset.name || option.textContent || option.value}${option.dataset.tag}` : (option.textContent || option.value));
+    const listValues = () => {
+      menu.querySelectorAll('.multiselect-option, .multiselect-group-label, .multiselect-subgroup-label, .multiselect-divider, .multiselect-more')
+        .forEach((element) => element.remove());
+      valuesListed = true;
+      previousGroup = '';
+      previousSubgroup = '';
+      groupSizes.clear();
+      Array.from(select.options).forEach((option) => {
+        const group = optionGroup(option);
+        if (group) groupSizes.set(group, (groupSizes.get(group) || 0) + 1);
+      });
+      // The patterns (VF*) of a choice that takes them come first, below the filter.
+      let listedOptions = Array.from(select.options);
+      if (patternButton) listedOptions.sort((left, right) => Number(valuePatterns.isPattern(right.value)) - Number(valuePatterns.isPattern(left.value)));
+      let found = listedOptions.length;
+      if (longList) {
+        const query = search.value.trim().toLocaleLowerCase();
+        listedQuery = query;
+        const offers = typeof select.multiselectOffers === 'function' ? select.multiselectOffers : null;
+        const matching = listedOptions.filter((option) => (!query || optionText(option).toLocaleLowerCase().includes(query))
+          && (!offers || option.selected || offers(option)));
+        found = matching.length;
+        listedOptions = everyValueListed ? matching : matching.filter((option, index) => index < MULTISELECT_LONG_LIST || option.selected);
+      }
+      listedOptions.forEach(listOption);
+      if (found > listedOptions.length) {
+        const more = document.createElement('div');
+        more.className = 'multiselect-more';
+        const text = document.createElement('span');
+        text.textContent = `Showing ${listedOptions.length.toLocaleString('en-US')} of ${found.toLocaleString('en-US')} values. Type in the filter to find the others.`;
+        const showAll = document.createElement('button');
+        showAll.type = 'button';
+        showAll.className = 'multiselect-more-action';
+        showAll.textContent = 'Show All';
+        showAll.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          cancelAutoClose();
+          everyValueListed = true;
+          shell.multiselectRelistValues();
+        });
+        more.append(text, showAll);
+        menu.appendChild(more);
+      }
+    };
+    if (!longList) listValues();
 
     const orderSelectedOptionsFirst = () => {
       if (!select.closest('[data-catalogue-editor]')) return;
@@ -5558,6 +5660,9 @@ function setupCustomMultiSelects() {
           || String(left.textContent || '').localeCompare(String(right.textContent || ''));
       });
       menu.append(...optionLabels);
+      // What a long list says of the values it does not show stays below them.
+      const more = menu.querySelector('.multiselect-more');
+      if (more) menu.append(more);
     };
 
     const filterMultiSelect = () => {
@@ -5569,6 +5674,11 @@ function setupCustomMultiSelects() {
         const taken = Array.from(select.options).filter((option) => !valuePatterns.isPattern(option.value) && chosen.accepts(option.value)).length;
         patternButton.hidden = !valuePatterns.isPattern(typed);
         patternButton.textContent = `＋ Add pattern “${typed}” · takes ${taken} now`;
+      }
+      if (longList) {
+        // A long list lists the values its filter takes among all of them, from the first one.
+        if (query !== listedQuery) shell.multiselectRelistValues({fromTop: true});
+        return;
       }
       Array.from(menu.querySelectorAll('.multiselect-option')).forEach((optionLabel) => {
         const text = optionLabel.textContent?.toLocaleLowerCase() || '';
@@ -5609,8 +5719,28 @@ function setupCustomMultiSelects() {
       syncTrigger();
     };
 
+    // Called before the list opens (see the click handler of every list) and by whoever needs its values listed.
+    shell.multiselectListValues = () => {
+      if (valuesListed) return;
+      listValues();
+      syncCheckboxes();
+    };
+    // A long list already listed is listed again: its filter changed, or what the page offers in it
+    // (select.multiselectOffers); it stays where it was scrolled to, with the same value focused.
+    shell.multiselectRelistValues = ({fromTop = false} = {}) => {
+      if (!longList || !valuesListed) return;
+      const scrollTop = menu.scrollTop;
+      const focused = menu.contains(document.activeElement) ? document.activeElement.getAttribute?.('data-option-value') : null;
+      listValues();
+      syncCheckboxes();
+      menu.scrollTop = fromTop ? 0 : scrollTop;
+      if (focused !== null && focused !== undefined) {
+        menu.querySelector(`input[data-option-value="${CSS.escape(focused)}"]`)?.focus({preventScroll: true});
+      }
+    };
     trigger.addEventListener('click', () => {
       cancelAutoClose();
+      if (menu.hidden) shell.multiselectListValues();
       menu.hidden = !menu.hidden;
       syncTrigger();
       if (!menu.hidden) search.focus();
@@ -5621,14 +5751,11 @@ function setupCustomMultiSelects() {
       shell.addEventListener('pointerleave', scheduleAutoClose);
     }
 
-    document.addEventListener('click', (event) => {
-      // A click on a menu rebuilt while it was handled (its options changed) is not a click outside.
-      if (!shell.contains(event.target) && event.target?.isConnected !== false) {
-        cancelAutoClose();
-        menu.hidden = true;
-        syncTrigger();
-      }
-    });
+    const listEntry = {
+      shell, isOpen: () => !menu.hidden, refresh: () => syncTrigger(),
+      close: () => { cancelAutoClose(); menu.hidden = true; syncTrigger(); },
+    };
+    multiSelectLists.add(listEntry);
 
     select.addEventListener('change', syncCheckboxes);
     const rebuildOnOptionUpdate = () => {
@@ -5640,6 +5767,8 @@ function setupCustomMultiSelects() {
           : menu.contains(document.activeElement) ? document.activeElement.getAttribute?.('data-option-value') : null,
       } : null;
       select.removeEventListener('multiselect:options-updated', rebuildOnOptionUpdate);
+      multiSelectLists.delete(listEntry);
+      multiSelectsToRefresh.delete(listEntry);
       shell.remove();
       select.classList.remove('multiselect-native');
       delete select.dataset.multiselectReady;

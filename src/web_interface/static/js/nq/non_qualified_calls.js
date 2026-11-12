@@ -363,19 +363,60 @@
     status: 'tracking:status', status_mode: 'tracking:status', state: 'tracking:status', team: 'tracking:team',
     analyst: 'tracking:analyst', reviewer: 'tracking:reviewer',
   };
-  const fillSelect = (select, entries) => {
-    const previous = new Set([...select.selectedOptions].map((option) => option.value));
+  // A filter with more values than a long list holds (the cells, the sites, the IDs of the NQ Prioritization) is given
+  // its first values, and those chosen, at once, and all of them right after: creating its thousands of options held the
+  // page while it loaded, before its calls were even asked for.
+  const LONG_FILTER = typeof MULTISELECT_LONG_LIST === 'number' ? MULTISELECT_LONG_LIST : 300;
+  // ``wanted``: values about to be chosen (those of the saved filters), which the select must hold at once.
+  const fillSelect = (select, entries, wanted = []) => {
     select.dataset.multiselectNoValuesLabel = 'No values available';
-    select.replaceChildren(...entries.map(([value, label]) => {
+    // A long list (thousands of values) lists only the values the other filters leave: see markAvailable.
+    select.multiselectOffers = (option) => offered(select.dataset.nqFilter, option.value);
+    // The values it already holds (the state is read again after every change of the configuration): the list stays as
+    // it is.
+    const preset = select.dataset.multiselectPresetValues || '';
+    if (!select.nqFinishFill && select.options.length === entries.length && select.nqPreset === preset
+      && [...select.options].every((option, index) => option.value === entries[index][0] && option.textContent === String(entries[index][1])
+        && !option.disabled)) return;
+    select.nqPreset = preset;
+    select.nqFinishFill = null;
+    const selection = () => new Set([...select.selectedOptions].map((option) => option.value));
+    const options = (listed, chosen) => listed.map(([value, label]) => {
       const option = node('option', label);
       option.value = value;
-      option.selected = previous.has(value);
+      option.selected = chosen.has(value);
       return option;
-    }));
+    });
+    if (entries.length <= LONG_FILTER + 1) {
+      select.replaceChildren(...options(entries, selection()));
+    } else {
+      const chosen = selection();
+      const held = new Set([...chosen, ...wanted]);
+      select.replaceChildren(...options(entries.filter(([value], index) => index <= LONG_FILTER || held.has(value)), chosen));
+      const finish = () => {
+        // Filled again meanwhile, or already finished (see finishFills).
+        if (select.nqFinishFill !== finish) return;
+        select.nqFinishFill = null;
+        select.replaceChildren(...options(entries, selection()));
+        select.dispatchEvent(new Event('multiselect:options-updated'));
+      };
+      // Finished once the calls are on screen (loadState), before anything chooses among the values (finishFills), or
+      // after a while whatever happens.
+      select.nqFinishFill = finish;
+      window.setTimeout(finish, 3000);
+    }
     select.dispatchEvent(new Event('multiselect:options-updated'));
   };
+  // Every filter holds all its values before anything chooses among them: whatever the user does next (a value of a
+  // chart, a starred filter, a column filter) finds them, but the list being opened, which follows on its own.
+  const finishFills = (except) => filterSelects().forEach((select) => { if (select !== except) select.nqFinishFill?.(); });
+  ['pointerdown', 'keydown'].forEach((type) => document.addEventListener(type, (event) => {
+    finishFills(event.target?.closest?.('.multiselect-shell')?.previousElementSibling);
+  }, true));
   const fillFilters = (payload) => {
     const values = payload.filter_options || {};
+    // The values the saved filters are about to choose, the first time.
+    const restoring = state.filtersRestored ? {} : (payload.saved_filters || {});
     const unassigned = [state.unassigned, 'Unassigned'];
     const entries = {
       datasets: state.datasets.map((dataset) => [String(dataset.id), `${dataset.name} (${number(dataset.calls)})`]),
@@ -484,16 +525,17 @@
     columnHost.hidden = !columnHost.querySelector('[data-nq-filter]');
     $('nq-column-filters-title').hidden = columnHost.hidden;
     columnHost.closest('.nq-filter-card').hidden = columnHost.hidden;
-    // New selects get the checkbox menu of every multi-select of the page.
-    if (typeof globalThis.setupCustomMultiSelects === 'function') globalThis.setupCustomMultiSelects();
     filterSelects().forEach((select) => {
       const field = select.dataset.nqFilter;
       if (field === 'city') {
         const present = new Set((values.city || []).map((value) => value.toLocaleLowerCase()));
         select.dataset.multiselectPresetValues = state.mainCities.filter((city) => present.has(city.toLocaleLowerCase())).join('|');
       }
-      fillSelect(select, entries[field] || (values[field] || []).map((value) => [value, field === 'campaign' ? campaignLabel(value) : value]));
+      fillSelect(select, entries[field] || (values[field] || []).map((value) => [value, field === 'campaign' ? campaignLabel(value) : value]),
+        filterValues(restoring, field) || []);
     });
+    // New selects get the checkbox menu of every multi-select of the page, once, with their values already in them.
+    if (typeof globalThis.setupCustomMultiSelects === 'function') globalThis.setupCustomMultiSelects();
   };
   const currentFilters = () => {
     const filters = {};
@@ -526,8 +568,16 @@
   const applySavedFilters = (saved) => {
     filterSelects().forEach((select) => {
       const values = new Set(filterValues(saved, select.dataset.nqFilter) || []);
-      [...select.options].forEach((option) => { option.selected = values.has(option.value); });
-      select.dispatchEvent(new Event('multiselect:options-updated'));
+      // Only the lists whose selection changes are drawn again (none of those without a saved value, as the page opens).
+      let changed = false;
+      [...select.options].forEach((option) => {
+        const selected = values.has(option.value);
+        if (option.selected !== selected) {
+          option.selected = selected;
+          changed = true;
+        }
+      });
+      if (changed) select.dispatchEvent(new Event('multiselect:options-updated'));
     });
     root.querySelectorAll('[data-nq-flag]').forEach((box) => { box.checked = saved[box.dataset.nqFlag] === true; });
     state.extraFilters = Object.fromEntries(EXTRA_FILTERS.filter((field) => (saved[field] || []).length).map((field) => [field, [...saved[field]]]));
@@ -569,8 +619,12 @@
         ...(quiet ? {headers: {'X-Background-Refresh': '1'}} : {})});
       if (signature !== state.availableSignature) return;
       state.available = Object.fromEntries(Object.entries(values).map(([field, list]) => [field, new Set(list)]));
-      // A list already open follows at once.
-      filterSelects().forEach((select) => { if (select.nextElementSibling?.querySelector('.multiselect-menu:not([hidden])')) markAvailable(select); });
+      // A list already open follows at once (a long one lists its values again).
+      filterSelects().forEach((select) => {
+        if (!select.nextElementSibling?.querySelector('.multiselect-menu:not([hidden])')) return;
+        select.nextElementSibling.multiselectRelistValues?.();
+        markAvailable(select);
+      });
     } catch (_error) {
       state.availableSignature = '';
     }
@@ -1979,12 +2033,39 @@
   };
   // The panels whose own data is being read.
   const panelsLoading = new Set();
+  // The panels read their data two at a time, in their order on the page. Asked for all at once they only waited for
+  // each other on the server (each one reads the calls of the filters), so the first ones arrived with the last, and
+  // the list of calls of the next filter behind all of them.
+  const PANELS_AT_ONCE = 2;
+  let panelsReading = 0;
+  const panelsWaiting = [];
+  const panelsQueued = new Map();
+  const readPanel = (name, read) => {
+    // A panel already waiting for its turn is not asked for again: it reads the filters as they are when it starts.
+    if (panelsQueued.has(name)) return panelsQueued.get(name);
+    let started = false;
+    const reading = new Promise((resolve, reject) => {
+      const start = () => {
+        started = true;
+        panelsQueued.delete(name);
+        panelsReading += 1;
+        Promise.resolve().then(read).then(resolve, reject).finally(() => {
+          panelsReading -= 1;
+          panelsWaiting.shift()?.();
+        });
+      };
+      if (panelsReading < PANELS_AT_ONCE) start();
+      else panelsWaiting.push(start);
+    });
+    if (!started) panelsQueued.set(name, reading);
+    return reading;
+  };
   const withLoadingBar = (name, load) => async (...args) => {
     const panel = panelOf(name);
     showPanelLoading(panel);
     panelsLoading.add(panel);
     try {
-      return await load(...args);
+      return await (args.length ? load(...args) : readPanel(name, load));
     } finally {
       panelsLoading.delete(panel);
       hidePanelLoading(panel);
@@ -2063,7 +2144,6 @@
     if (!quiet) keepViewWhileLoading();
     const filters = currentFilters();
     if (state.filtersRestored) saveFilters(filters);
-    loadAvailable(filters, quiet);
     // The filters are shown on every panel at once, before their data arrives.
     renderActiveFilters(filters);
     // The panels on screen wait for the calls and then for their own data.
@@ -2103,6 +2183,9 @@
       if (state.detail) renderDetailNav();
       $('nq-view-count').textContent = number(result.total);
       renderPanelCounts(result.total);
+      // The values each filter offers are asked for once the calls are on screen: the list and its count do not wait
+      // behind them on the server.
+      loadAvailable(filters, quiet);
       // Only the panels on screen (shown and unfolded) are calculated; the others when they are opened.
       Object.entries(PANEL_LOADERS).forEach(([name, load]) => {
         if (panelShown(name)) {
@@ -3123,6 +3206,8 @@
       fillBulkSelects();
       if ($('nq-bulk-history')) $('nq-bulk-history').hidden = !state.user.can_moderate;
       await loadCalls();
+      // The long filters take the rest of their values once the calls are painted.
+      window.setTimeout(finishFills, 120);
     } catch (error) {
       $('nq-sync').textContent = error.message;
       $('nq-count').textContent = error.message;
@@ -3803,32 +3888,55 @@
     const shares = (entries) => (entries.length > 1 ? entries.map(([name, count]) => `${name} ${number(count)}`).join(' · ') : (entries[0]?.[0] || '—'));
     // Each group: its ID (a click shows its calls) with what identifies it in parentheses (``describe``), its NR Modes,
     // campaigns, sites (the site of most of its calls, +N when they are at more) and when its first and last call started.
+    // A table lists its first groups (thousands of hotspots or issues, each with its bars and buttons, were hundreds of
+    // thousands of elements that every click on the page paid for) and all of them with Show All, or when one of its
+    // column filters is used or was left set: a column filter looks at every group.
+    const GROUP_ROWS = 100;
     const groupTable = (items, filter, noun, idLabel, describe) => {
-      const table = failureTable([idLabel, 'Operator', 'NR Mode', 'Campaign', 'Site(s)', 'From', 'To', 'Calls', 'Voice / WhatsApp / Data', 'Points lost', 'Open', 'Main Root Category'],
-        items.map((item) => {
-          // Its ID and what identifies it: the sites on its first line, the period on the next (both for a hotspot).
-          const id = node('button', undefined, 'nq-failure-drill nq-group-id');
-          const [first, ...more] = describe(item);
-          const line = node('span', undefined, 'nq-group-id-line');
-          line.append(node('strong', item.id), node('span', ` · ${first}`, 'nq-group-id-what'));
-          id.append(line, ...more.map((text) => node('span', text, 'nq-group-id-line nq-group-id-what nq-group-id-period')));
-          // A click filters the list by the group and takes the page to its calls.
-          return [{node: id, pairs: [[filter, item.key]], reveal: 'section-nq-calls', className: 'nq-failure-name', filterValue: item.id,
-            title: `${number(item.calls)} of the ${number(item.size)} calls of the ${noun}: click to see them`},
-          {text: item.operator || 'Unassigned'},
-          {text: shares(Object.entries(item.nr_modes || {})), filterValues: Object.keys(item.nr_modes || {})},
-          {text: shares(Object.entries(item.campaign_names || {})), filterValues: Object.keys(item.campaign_names || {})},
-          {text: groupSites(item), title: item.places > 1 ? `${number(item.places)} sites` : '', filterValue: item.place || 'No site'},
-          momentCell(item.first), momentCell(item.last), number(item.calls),
-          {node: kindsBar(item), className: 'nq-step-bar-cell', filterValues: HOTSPOT_KINDS.filter((kind) => item.kinds[kind])},
-          points(item.points), number(item.open), item.category || '—'];
-        }));
-      table.classList.add('nq-priority-issues-table', 'nq-priority-group-table');
+      const headers = [idLabel, 'Operator', 'NR Mode', 'Campaign', 'Site(s)', 'From', 'To', 'Calls', 'Voice / WhatsApp / Data', 'Points lost', 'Open', 'Main Root Category'];
+      const cells = (item) => {
+        // Its ID and what identifies it: the sites on its first line, the period on the next (both for a hotspot).
+        const id = node('button', undefined, 'nq-failure-drill nq-group-id');
+        const [first, ...more] = describe(item);
+        const line = node('span', undefined, 'nq-group-id-line');
+        line.append(node('strong', item.id), node('span', ` · ${first}`, 'nq-group-id-what'));
+        id.append(line, ...more.map((text) => node('span', text, 'nq-group-id-line nq-group-id-what nq-group-id-period')));
+        // A click filters the list by the group and takes the page to its calls.
+        return [{node: id, pairs: [[filter, item.key]], reveal: 'section-nq-calls', className: 'nq-failure-name', filterValue: item.id,
+          title: `${number(item.calls)} of the ${number(item.size)} calls of the ${noun}: click to see them`},
+        {text: item.operator || 'Unassigned'},
+        {text: shares(Object.entries(item.nr_modes || {})), filterValues: Object.keys(item.nr_modes || {})},
+        {text: shares(Object.entries(item.campaign_names || {})), filterValues: Object.keys(item.campaign_names || {})},
+        {text: groupSites(item), title: item.places > 1 ? `${number(item.places)} sites` : '', filterValue: item.place || 'No site'},
+        momentCell(item.first), momentCell(item.last), number(item.calls),
+        {node: kindsBar(item), className: 'nq-step-bar-cell', filterValues: HOTSPOT_KINDS.filter((kind) => item.kinds[kind])},
+        points(item.points), number(item.open), item.category || '—'];
+      };
       // Excel-style filters on every column, kept in this browser for each table of the workspace.
-      const filters = window.enableExcelColumnFilters?.(table.querySelector('table'), {
-        excludeLastColumn: false, persistKey: `nq-group-filters:${$('nq-table')?.dataset.workspace || ''}:${filter}`,
-      });
+      const persistKey = `nq-group-filters:${$('nq-table')?.dataset.workspace || ''}:${filter}`;
+      let filtered = false;
+      try { filtered = Boolean(window.localStorage.getItem(persistKey)); } catch (_error) { /* Storage is optional. */ }
+      const listed = filtered ? items.length : Math.min(items.length, GROUP_ROWS);
+      const table = failureTable(headers, items.slice(0, listed).map(cells));
+      table.classList.add('nq-priority-issues-table', 'nq-priority-group-table');
+      const filters = window.enableExcelColumnFilters?.(table.querySelector('table'), {excludeLastColumn: false, persistKey});
       filters?.apply();
+      if (listed < items.length) {
+        const more = node('p', undefined, 'nq-group-more');
+        const showAll = () => {
+          if (!more.isConnected) return;
+          more.remove();
+          table.querySelector('tbody').append(...failureTable(headers, items.slice(listed).map(cells)).querySelectorAll('tbody > tr'));
+          filters?.apply();
+        };
+        const button = node('button', `Show All ${number(items.length)}`, 'nq-group-more-action');
+        button.type = 'button';
+        button.addEventListener('click', showAll);
+        more.append(node('span', `Showing the first ${number(listed)} of ${number(items.length)}.`), button);
+        table.append(more);
+        // The filter of a column lists the values of every group.
+        table.querySelector('thead').addEventListener('click', showAll, true);
+      }
       return table;
     };
     // Each table with its title and what it lists.

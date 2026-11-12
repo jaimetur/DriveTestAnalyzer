@@ -16962,12 +16962,15 @@ def _workspace_background_tasks(workspace: Workspace) -> list[dict[str, Any]]:
                 # The Scoring & GAP Analysis calculations of the Saved Filters run in the background too, with their
                 # elapsed time.
                 recent = (datetime.now().astimezone() - timedelta(seconds=5)).isoformat()
-                for row in connection.execute(
-                    "SELECT id, nr_mode, status, progress, message, updated_at AS created_at, started_at, finished_at "
-                    "FROM saved_filters "
-                    "WHERE status IN ('queued', 'processing') OR (finished_at IS NOT NULL AND finished_at >= ?) ORDER BY id",
-                    (recent,),
-                ).fetchall():
+                # Asked for apart: those in progress by their status, and those that have just finished by the index of
+                # their date. The dates are stored after the result of each Saved Filter (megabytes), so one query for
+                # both read the results of every Saved Filter, seconds on each poll of every page open.
+                columns = 'id, nr_mode, status, progress, message, updated_at AS created_at, started_at, finished_at'
+                found = {int(row['id']): row for row in connection.execute(
+                    f"SELECT {columns} FROM saved_filters WHERE status IN ('queued', 'processing')")}
+                found.update({int(row['id']): row for row in connection.execute(
+                    f'SELECT {columns} FROM saved_filters WHERE finished_at >= ?', (recent,))})
+                for row in (found[row_id] for row_id in sorted(found)):
                     timestamps = {}
                     for key, column in (('queued_at', 'created_at'), ('started_at', 'started_at'), ('completed_at', 'finished_at')):
                         moment = parse_dataset_timestamp(row[column]) if row[column] else None

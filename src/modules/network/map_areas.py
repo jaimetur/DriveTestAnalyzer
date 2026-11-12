@@ -24,6 +24,7 @@ from typing import Any, Iterable
 import pandas as pd
 
 from src.config import PROJECT_ROOT
+from src.modules.core.repository import schema_in_place
 
 TABLE = 'map_area_layers'
 TABLE_TITLE = 'Map Area Layers'
@@ -52,14 +53,17 @@ _index_lock = Lock()
 
 
 def ensure_table(repository: Any) -> None:
+    schema = (
+        f'CREATE TABLE IF NOT EXISTS {TABLE} ('
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, country_code TEXT NOT NULL UNIQUE, country_name TEXT NOT NULL, '
+        'level TEXT NOT NULL, level_label TEXT NOT NULL, origin TEXT NOT NULL, source TEXT NOT NULL, '
+        'license TEXT NOT NULL, attribution TEXT NOT NULL, unit_count INTEGER NOT NULL, '
+        'boundaries BLOB NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL)'
+    )
     with repository.connection() as connection:
-        connection.execute(
-            f'CREATE TABLE IF NOT EXISTS {TABLE} ('
-            'id INTEGER PRIMARY KEY AUTOINCREMENT, country_code TEXT NOT NULL UNIQUE, country_name TEXT NOT NULL, '
-            'level TEXT NOT NULL, level_label TEXT NOT NULL, origin TEXT NOT NULL, source TEXT NOT NULL, '
-            'license TEXT NOT NULL, attribution TEXT NOT NULL, unit_count INTEGER NOT NULL, '
-            'boundaries BLOB NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL)'
-        )
+        # Asked for every half minute while the server is idle: it takes no write lock once the table exists.
+        if not schema_in_place(connection, schema):
+            connection.execute(schema)
 
 
 def _now() -> str:

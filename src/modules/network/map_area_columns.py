@@ -19,6 +19,7 @@ import pandas as pd
 
 from src.modules.cdr.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.cdr.column_names import resolve_column_name
+from src.modules.core.repository import schema_in_place
 
 MAP_AREA_COLUMN = 'Map_Area'
 # The country of the Map Areas of each test (the map draws the areas of its countries).
@@ -28,9 +29,12 @@ CDR_KINDS = ('data', 'voice', 'speech')
 
 
 def ensure_table(repository: Any) -> None:
+    schema = (f'CREATE TABLE IF NOT EXISTS {FILLS_TABLE} (dataset_id INTEGER PRIMARY KEY, '
+              'version TEXT NOT NULL, filled_at TEXT NOT NULL)')
     with repository.connection() as connection:
-        connection.execute(f'CREATE TABLE IF NOT EXISTS {FILLS_TABLE} (dataset_id INTEGER PRIMARY KEY, '
-                           'version TEXT NOT NULL, filled_at TEXT NOT NULL)')
+        # Asked for every half minute while the server is idle: it takes no write lock once the table exists.
+        if not schema_in_place(connection, schema):
+            connection.execute(schema)
 
 
 def areas_version(repository: Any) -> str:

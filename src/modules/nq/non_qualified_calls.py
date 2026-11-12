@@ -52,6 +52,7 @@ from typing import Any, Callable, Iterable, Iterator
 
 from src.modules.cdr import cdr_field_dictionary, l3_dt_logs
 from src.modules.core.kept_reads import kept
+from src.modules.core.repository import uncounted_workspace_writes
 from src.modules.cdr.cdr_field_profiles import NETCHECK_PROFILE, CdrFieldProfile, workspace_field_profile
 from src.modules.cdr.cdr_stage import CDR_STAGE_LABELS, combined_inclusion, dataset_cdr_stage
 from src.modules.network.cell_identity import nr_cell_bits
@@ -4933,7 +4934,10 @@ def saved_filters(repository: Any) -> dict[str, Any]:
 
 def save_filters(repository: Any, filters: Any) -> dict[str, Any]:
     saved = normalize_saved_filters(filters)
-    repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+    # Saved on every change of the Filters panel, and read by no answer kept of the workspace (only by the page as it
+    # opens): what was read stays kept.
+    with uncounted_workspace_writes():
+        repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
     return saved
 
 
@@ -7176,6 +7180,12 @@ def import_rca_results(task_repository: Any, content: bytes, file_name: str, use
 
 def rca_results_summary(task_repository: Any) -> dict[str, Any]:
     """The imported RCA results: how many, how many match a call, and each imported file."""
+    # Counting the results that match a call reads the JOIN_ID of every call, each time the module opens: counted
+    # once while the workspace stays as it is.
+    return kept(task_repository, 'nq_rca_results_summary', None, lambda: _read_rca_results_summary(task_repository))
+
+
+def _read_rca_results_summary(task_repository: Any) -> dict[str, Any]:
     with task_repository.connection() as connection:
         total = connection.execute(f'SELECT COUNT(*) FROM {NQ_RCA_RESULTS_TABLE}').fetchone()[0]
         # The JOIN_IDs of the calls are read once (a lookup of lower(join_id) per result scanned every call each time).
@@ -9810,8 +9820,12 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def kept_json(repository, name: str, key: Any, read: Callable[[], Any]) -> Response:
         """The answer of a query of the calls, as it was given the last time while the workspace has not changed since:
         going back to a page, a panel or the module itself does not read every call again."""
-        body = kept(repository, name, key, lambda: JSONResponse(read()).body, copied=False)
-        return Response(body, media_type='application/json')
+        def answer() -> bytes:
+            # Every read of the answer shares one connection: each new one parses the whole schema of the workspace.
+            with repository.shared_connection():
+                return JSONResponse(read()).body
+
+        return Response(kept(repository, name, key, answer, copied=False), media_type='application/json')
 
     def can_edit(user) -> bool:
         return user.role in core.WORKSPACE_EDITOR_ROLES
@@ -10055,69 +10069,72 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     @core.app.get('/api/non-qualified-calls/state')
     def nq_state(user=Depends(core.current_user)) -> JSONResponse:
         repository = workspace_repository(user)
-        sync = nq_index_status(repository)
-        if sync['pending'] and not sync['synced_at'] and not sync['indexing']:
-            # Nothing indexed yet (the first time the module opens): it is indexed at once, in the background.
-            start_nq_index(repository, core.submit_background_task)
+        # The whole state is read with one connection: each new one parses the whole schema of the workspace, and the
+        # state took over a hundred of them.
+        with repository.shared_connection():
             sync = nq_index_status(repository)
-        layouts = table_layouts(repository, user.username)
-        # The operators the steps of the strategies take by default: the Focus operators by name (the SA steps those with SA).
-        step_operators = nq_prioritization.default_step_operators(repository)
-        prioritization = nq_prioritization.load_settings(repository)
-        return JSONResponse({
-            'sync': sync, 'options': list_options(repository), 'filter_options': filter_options(repository, layouts['effective']),
-            'datasets': indexed_datasets(repository), 'users': workspace_users(), 'user_names': user_names(),
-            'default_users': list(DEFAULT_USERS),
-            'user': {'username': user.username, 'can_edit': can_edit(user), 'can_moderate': can_moderate(user),
-                     'can_configure_rule': can_configure_rule(user), 'can_configure': can_configure(user)},
-            'unassigned': UNASSIGNED, 'page_sizes': list(PAGE_SIZES),
-            'main_cities': list(repository.list_main_cities()),
-            # The page chooses the saved values in its lists, which hold them as they are shown.
-            'saved_filters': _mapped_filters(repository, saved_filters(repository)),
-            'root_causes': root_catalog_payload(repository), 'root_cause_defaults': nq_catalog.default_root_catalog(),
-            'root_cause_rule_fields': RULE_FIELDS, 'default_root_cause_rule': DEFAULT_ROOT_CAUSE_RULE,
-            'fields': provider_field_labels(list_fields(repository), repository),
-            'default_fields': provider_field_labels(nq_catalog.default_fields(), repository), 'field_types': FIELD_TYPES,
-            'field_sources': nq_catalog.FIELD_SOURCES,
-            # The CDR columns of the CDR Fields Filters (G_Level_1 to G_Level_4 of NetCheck CDRs).
-            'cdr_filter_columns': list(workspace_field_profile(repository).nq_filter_columns),
-            'tracking_refs': nq_catalog.TRACKING_REFS, 'rca_refs': nq_catalog.RCA_REFS, 'call_fields': list(CATALOG_CALL_FIELDS),
-            'sections': list_sections(repository), 'default_sections': nq_catalog.default_sections(), 'call_section': CALL_SECTION,
-            'status_rules': status_rules(repository), 'default_status_rules': nq_catalog.default_status_rules(),
-            'default_options': {'statuses': [{'name': name, 'color': color, 'closed': closed} for name, color, closed in DEFAULT_STATUSES],
-                                'teams': [{'name': name, 'color': color, 'members': []} for name, color in DEFAULT_TEAMS]},
-            'rule_operators': nq_catalog.RULE_OPERATORS, 'condition_fields': nq_catalog.condition_fields(list_fields(repository)),
-            'rca_results': rca_results_summary(repository), 'rca_sources': source_labels(repository),
-            'dta_refs': nq_catalog.DTA_REFS,
-            'dta_rca': {'inputs': nq_dta_rca.inputs_catalog(), 'operators': nq_dta_rca.OPERATORS,
-                        'kind_operators': nq_dta_rca.KIND_OPERATORS, 'services': nq_dta_rca.SERVICES,
-                        'matches': nq_dta_rca.MATCHES, 'max_rules': nq_dta_rca.MAX_RULES,
-                        'max_conditions': nq_dta_rca.MAX_CONDITIONS},
-            'table_columns': table_columns(repository), 'table_layout': layouts, 'optional_columns': OPTIONAL_COLUMNS,
-            'cdr_columns': available_cdr_columns(repository), 'max_cdr_columns': MAX_CDR_COLUMNS,
-            'version_labels': VERSION_LABELS,
-            'priority_refs': nq_catalog.PRIORITY_REFS, 'priority_types': nq_catalog.PRIORITY_TYPES,
-            'prioritization': prioritization,
-            'default_prioritization': nq_prioritization.default_settings(step_operators, nq_prioritization.map_excluded_modes(repository)),
-            'prioritization_strategies': nq_prioritization.STRATEGIES, 'prioritization_step_operators': step_operators,
-            'focus_operators': labels_with_role(repository, FOCUS),
-            'prioritization_operators': nq_prioritization.operator_choices(repository),
-            'prioritization_regions': nq_prioritization.region_choices(repository),
-            # The NR Mode · operator pairs always out of scope (the operators that are not Focus operators), and why.
-            'prioritization_fixed_modes': nq_prioritization.fixed_excluded_modes(repository),
-            'prioritization_fixed_reason': nq_prioritization.NOT_FOCUS_REASON,
-            # Those of the NR Modes of the Operator Maps (out of scope in every module), and why.
-            'prioritization_map_modes': nq_prioritization.map_excluded_modes(repository),
-            'prioritization_map_reason': nq_prioritization.MAP_MODES_REASON,
-            'prioritization_fields': {'nr_modes': nq_prioritization.STEP_NR_MODES, 'call_types': nq_prioritization.CALL_TYPES,
-                                      'areas': nq_prioritization.STEP_AREAS,
-                                      'conditions': {nq_prioritization.CAMPAIGN_LIST: nq_prioritization.CAMPAIGN_CONDITIONS,
-                                                     nq_prioritization.FINAL_LIST: nq_prioritization.FINAL_CONDITIONS},
-                                      'queues': nq_prioritization.STEP_QUEUES, 'condition_help': nq_prioritization.CONDITION_HELP,
-                                      'condition_kinds': nq_prioritization.CONDITION_KINDS},
-            'prioritization_steps': {key: nq_prioritization.strategy_steps(key, None, step_operators) for key in nq_prioritization.STRATEGIES},
-            'priority_options': nq_prioritization.priority_options(repository),
-        })
+            if sync['pending'] and not sync['synced_at'] and not sync['indexing']:
+                # Nothing indexed yet (the first time the module opens): it is indexed at once, in the background.
+                start_nq_index(repository, core.submit_background_task)
+                sync = nq_index_status(repository)
+            layouts = table_layouts(repository, user.username)
+            # The operators the steps of the strategies take by default: the Focus operators by name (the SA steps those with SA).
+            step_operators = nq_prioritization.default_step_operators(repository)
+            prioritization = nq_prioritization.load_settings(repository)
+            return JSONResponse({
+                'sync': sync, 'options': list_options(repository), 'filter_options': filter_options(repository, layouts['effective']),
+                'datasets': indexed_datasets(repository), 'users': workspace_users(), 'user_names': user_names(),
+                'default_users': list(DEFAULT_USERS),
+                'user': {'username': user.username, 'can_edit': can_edit(user), 'can_moderate': can_moderate(user),
+                         'can_configure_rule': can_configure_rule(user), 'can_configure': can_configure(user)},
+                'unassigned': UNASSIGNED, 'page_sizes': list(PAGE_SIZES),
+                'main_cities': list(repository.list_main_cities()),
+                # The page chooses the saved values in its lists, which hold them as they are shown.
+                'saved_filters': _mapped_filters(repository, saved_filters(repository)),
+                'root_causes': root_catalog_payload(repository), 'root_cause_defaults': nq_catalog.default_root_catalog(),
+                'root_cause_rule_fields': RULE_FIELDS, 'default_root_cause_rule': DEFAULT_ROOT_CAUSE_RULE,
+                'fields': provider_field_labels(list_fields(repository), repository),
+                'default_fields': provider_field_labels(nq_catalog.default_fields(), repository), 'field_types': FIELD_TYPES,
+                'field_sources': nq_catalog.FIELD_SOURCES,
+                # The CDR columns of the CDR Fields Filters (G_Level_1 to G_Level_4 of NetCheck CDRs).
+                'cdr_filter_columns': list(workspace_field_profile(repository).nq_filter_columns),
+                'tracking_refs': nq_catalog.TRACKING_REFS, 'rca_refs': nq_catalog.RCA_REFS, 'call_fields': list(CATALOG_CALL_FIELDS),
+                'sections': list_sections(repository), 'default_sections': nq_catalog.default_sections(), 'call_section': CALL_SECTION,
+                'status_rules': status_rules(repository), 'default_status_rules': nq_catalog.default_status_rules(),
+                'default_options': {'statuses': [{'name': name, 'color': color, 'closed': closed} for name, color, closed in DEFAULT_STATUSES],
+                                    'teams': [{'name': name, 'color': color, 'members': []} for name, color in DEFAULT_TEAMS]},
+                'rule_operators': nq_catalog.RULE_OPERATORS, 'condition_fields': nq_catalog.condition_fields(list_fields(repository)),
+                'rca_results': rca_results_summary(repository), 'rca_sources': source_labels(repository),
+                'dta_refs': nq_catalog.DTA_REFS,
+                'dta_rca': {'inputs': nq_dta_rca.inputs_catalog(), 'operators': nq_dta_rca.OPERATORS,
+                            'kind_operators': nq_dta_rca.KIND_OPERATORS, 'services': nq_dta_rca.SERVICES,
+                            'matches': nq_dta_rca.MATCHES, 'max_rules': nq_dta_rca.MAX_RULES,
+                            'max_conditions': nq_dta_rca.MAX_CONDITIONS},
+                'table_columns': table_columns(repository), 'table_layout': layouts, 'optional_columns': OPTIONAL_COLUMNS,
+                'cdr_columns': available_cdr_columns(repository), 'max_cdr_columns': MAX_CDR_COLUMNS,
+                'version_labels': VERSION_LABELS,
+                'priority_refs': nq_catalog.PRIORITY_REFS, 'priority_types': nq_catalog.PRIORITY_TYPES,
+                'prioritization': prioritization,
+                'default_prioritization': nq_prioritization.default_settings(step_operators, nq_prioritization.map_excluded_modes(repository)),
+                'prioritization_strategies': nq_prioritization.STRATEGIES, 'prioritization_step_operators': step_operators,
+                'focus_operators': labels_with_role(repository, FOCUS),
+                'prioritization_operators': nq_prioritization.operator_choices(repository),
+                'prioritization_regions': nq_prioritization.region_choices(repository),
+                # The NR Mode · operator pairs always out of scope (the operators that are not Focus operators), and why.
+                'prioritization_fixed_modes': nq_prioritization.fixed_excluded_modes(repository),
+                'prioritization_fixed_reason': nq_prioritization.NOT_FOCUS_REASON,
+                # Those of the NR Modes of the Operator Maps (out of scope in every module), and why.
+                'prioritization_map_modes': nq_prioritization.map_excluded_modes(repository),
+                'prioritization_map_reason': nq_prioritization.MAP_MODES_REASON,
+                'prioritization_fields': {'nr_modes': nq_prioritization.STEP_NR_MODES, 'call_types': nq_prioritization.CALL_TYPES,
+                                          'areas': nq_prioritization.STEP_AREAS,
+                                          'conditions': {nq_prioritization.CAMPAIGN_LIST: nq_prioritization.CAMPAIGN_CONDITIONS,
+                                                         nq_prioritization.FINAL_LIST: nq_prioritization.FINAL_CONDITIONS},
+                                          'queues': nq_prioritization.STEP_QUEUES, 'condition_help': nq_prioritization.CONDITION_HELP,
+                                          'condition_kinds': nq_prioritization.CONDITION_KINDS},
+                'prioritization_steps': {key: nq_prioritization.strategy_steps(key, None, step_operators) for key in nq_prioritization.STRATEGIES},
+                'priority_options': nq_prioritization.priority_options(repository),
+            })
 
     @core.app.post('/api/non-qualified-calls/reindex')
     def nq_reindex(user=Depends(core.current_user)) -> JSONResponse:
@@ -10133,7 +10150,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     @core.app.get('/api/non-qualified-calls/index-status')
     def nq_index_status_route(user=Depends(core.current_user)) -> JSONResponse:
         """Whether the indexing still runs, for the page to reload its calls once it ends."""
-        return JSONResponse({'sync': nq_index_status(workspace_repository(user))})
+        repository = workspace_repository(user)
+        with repository.shared_connection():
+            return JSONResponse({'sync': nq_index_status(repository)})
 
     @core.app.put('/api/non-qualified-calls/fields')
     def nq_save_fields(payload: FieldsPayload, user=Depends(config_user)) -> JSONResponse:
@@ -10215,7 +10234,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         if (nq_prioritization.outdated(repository) and not nq_index_status(repository)['indexing']
                 and not (current and current['status'] in {'queued', 'processing'}) and nq_prioritization.needs_calculation(repository)):
             nq_prioritization.start(repository, core.submit_background_task)
-        return JSONResponse(nq_prioritization.panel(repository, payload.filters, user.username, payload.view))
+        with repository.shared_connection():
+            return JSONResponse(nq_prioritization.panel(repository, payload.filters, user.username, payload.view))
 
     @core.app.post('/api/non-qualified-calls/prioritization/recalculate')
     def nq_prioritization_recalculate(user=Depends(editor_user)) -> JSONResponse:
@@ -10485,7 +10505,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def nq_rates_route(payload: ExportPayload, user=Depends(core.current_user)) -> JSONResponse:
         """Calls and Non-Qualified Calls of every campaign and operator."""
         repository = workspace_repository(user)
-        return JSONResponse(nq_rates(repository, payload.filters))
+        with repository.shared_connection():
+            return JSONResponse(nq_rates(repository, payload.filters))
 
     @core.app.post('/api/non-qualified-calls/failures')
     def nq_failures_route(payload: ExportPayload, user=Depends(core.current_user)) -> Response:
@@ -10519,12 +10540,15 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         # running, and for the outcome of the last one.
         job = nq_index_job(repository.db_path) or {}
         if job.get('status') in {'queued', 'processing'}:
-            return JSONResponse(read())
+            with repository.shared_connection():
+                return JSONResponse(read())
         return kept_json(repository, 'nq_calls', [payload.model_dump(), user.username, job.get('status'), job.get('error')], read)
 
     @core.app.get('/api/non-qualified-calls/calls/{call_key}')
     def nq_call(call_key: str, user=Depends(core.current_user)) -> JSONResponse:
-        detail = call_detail(workspace_repository(user), call_key)
+        repository = workspace_repository(user)
+        with repository.shared_connection():
+            detail = call_detail(repository, call_key)
         if detail is None:
             raise HTTPException(404, 'The call is no longer available. Refresh the list.')
         return JSONResponse(detail)

@@ -1,15 +1,14 @@
 """What is read from a workspace, kept while the workspace stays as it was.
 
 A read that takes long (the calls of some filters, the values a filter offers) gives the same result until something
-is written to the workspace database, so its result is kept and given again while the database, the application
-database (the users) and the day are the same. Nothing is kept for longer than ``KEPT_SECONDS``: some results depend on
-the time of day (the calls stalled for some days).
+is written to the workspace database, so its result is kept and given again while this process has written nothing to
+the database and the day is the same. Nothing is kept for longer than ``KEPT_SECONDS``: some results depend on the time
+of day (the calls stalled for some days), and what another process writes (a CDR being processed) is not seen.
 """
 from __future__ import annotations
 
 import copy
 import json
-import os
 import time
 from collections import OrderedDict
 from datetime import date
@@ -19,28 +18,16 @@ from typing import Any, Callable
 
 from src.modules.core.repository import workspace_data_stamp
 
-KEPT_SECONDS = 600.0
+KEPT_SECONDS = 300.0
 KEPT_RESULTS = 384
 
 _kept: OrderedDict[tuple[str, str, str], tuple[Any, float, Any]] = OrderedDict()
 _guard = Lock()
 
 
-def _file_stamp(path: Any) -> tuple[Any, ...]:
-    found = []
-    for name in (str(path), f'{path}-wal'):
-        try:
-            stat = os.stat(name)
-            found.append((stat.st_ino, stat.st_size, stat.st_mtime_ns))
-        except OSError:
-            found.append(None)
-    return tuple(found)
-
-
 def data_stamp(repository: Any) -> tuple[Any, ...]:
-    """The state of what a read of the workspace depends on: its database, the application database and the day."""
-    global_path = getattr(repository, 'global_db_path', None)
-    return (workspace_data_stamp(repository.db_path), _file_stamp(global_path) if global_path else None, date.today().toordinal())
+    """The state of what a read of the workspace depends on: its database as this process wrote it, and the day."""
+    return (workspace_data_stamp(repository.db_path), date.today().toordinal())
 
 
 def kept(repository: Any, name: str, key: Any, read: Callable[[], Any], *, copied: bool = True) -> Any:

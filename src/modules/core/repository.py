@@ -18,6 +18,7 @@ import logging
 import unicodedata
 from pathlib import Path
 from threading import Lock, RLock
+from threading import local as threading_local
 from time import monotonic
 from typing import Any, Callable, Iterable, Iterator, Literal
 from uuid import uuid4
@@ -120,30 +121,43 @@ def schema_in_place(connection: Any, script: str) -> bool:
 
 # How many times the connections of this process started or finished writing each Workspace database.
 _WORKSPACE_WRITE_COUNTS: dict[str, int] = {}
+_UNCOUNTED_WRITES = threading_local()
 
 
 def _count_workspace_write(key: str) -> None:
+    if getattr(_UNCOUNTED_WRITES, 'on', False):
+        return
     with _WORKSPACE_WRITE_LOCKS_GUARD:
         _WORKSPACE_WRITE_COUNTS[key] = _WORKSPACE_WRITE_COUNTS.get(key, 0) + 1
 
 
+@contextmanager
+def uncounted_workspace_writes() -> Iterator[None]:
+    """Writes of this thread that change nothing the reads kept of a workspace depend on (the last selection of a
+    filters panel, saved on every change of it): what was read stays kept (see workspace_data_stamp)."""
+    previous = getattr(_UNCOUNTED_WRITES, 'on', False)
+    _UNCOUNTED_WRITES.on = True
+    try:
+        yield
+    finally:
+        _UNCOUNTED_WRITES.on = previous
+
+
 def workspace_data_stamp(db_path: Path | str) -> tuple[Any, ...]:
-    """What tells one state of a Workspace database from the next: it changes whenever something is written to the
+    """What tells one state of a Workspace database from the next: it changes whenever this process writes to the
     database, so what was read from it can be kept while the stamp stays the same (read the stamp before the data).
 
-    The writes of this process are counted when they start and when they finish; those of other processes, and a
-    database put in its place (a restore), are told by the database file and its write-ahead log."""
+    The writes are counted when they start and when they finish; a database put in its place (a restore) is told by
+    its file. Its write-ahead log tells nothing: SQLite creates and removes it all the time while nobody writes. What
+    another process writes (a CDR being processed) is not seen, so nothing is kept for long (see kept_reads)."""
     key = str(Path(db_path).resolve())
     with _WORKSPACE_WRITE_LOCKS_GUARD:
         writes = _WORKSPACE_WRITE_COUNTS.get(key, 0)
-    files: list[Any] = []
-    for path in (key, f'{key}-wal'):
-        try:
-            found = os.stat(path)
-            files.append((found.st_ino, found.st_size, found.st_mtime_ns))
-        except OSError:
-            files.append(None)
-    return (writes, *files)
+    try:
+        file = os.stat(key).st_ino
+    except OSError:
+        file = None
+    return (writes, file)
 
 
 # The table of rows of a CDR, by its dataset id.
@@ -575,6 +589,11 @@ CREATE TABLE IF NOT EXISTS saved_filters (
 
 CREATE INDEX IF NOT EXISTS idx_saved_filters_order
 ON saved_filters(pinned DESC, last_used_at DESC);
+
+-- The Saved Filters that have just finished are found by their date: the date is stored after the result of each
+-- Saved Filter (megabytes), and looking at it in every row read all of them.
+CREATE INDEX IF NOT EXISTS idx_saved_filters_finished
+ON saved_filters(finished_at);
 
 """
 
@@ -3862,6 +3881,8 @@ class Repository:
         try:
             with closing(sqlite3.connect(self.db_path, timeout=timeout_seconds)) as conn, conn:
                 conn.execute(f"PRAGMA busy_timeout = {max(1, int(timeout_seconds * 1000))}")
+                # Written outside the coordinated connections: counted here for the reads kept of the workspace.
+                _count_workspace_write(str(Path(self.db_path).resolve()))
                 conn.execute(
                     'INSERT INTO workspace_state (key, value) VALUES (?, ?) '
                     'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
