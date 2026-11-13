@@ -415,6 +415,57 @@
     });
   }, 1000);
 
+  // -- server updates --------------------------------------------------------------------------------------------
+  // The page knows the code it was loaded with (base.html); when the server answers with other code it was updated, and
+  // its user is told to reload to see the latest changes. Nothing reloads by itself: the unsaved changes of the page stay
+  // in it and can still be saved (the sessions outlive the restart), and reloading with some left asks first. While the
+  // server does not answer (it restarts during an update), a page with unsaved changes is told to stay open.
+  const buildMeta = document.querySelector('meta[name="app-build"]');
+  const pageBuild = buildMeta?.getAttribute('content') || '';
+  const pageVersion = buildMeta?.dataset.version || '';
+  let updateNotice = null, updateDismissed = '', unreachableBanner = null, failedPolls = 0;
+  const reloadPage = async () => {
+    const unsaved = unsavedChanges();
+    if (unsaved.length) {
+      const message = `These changes are not saved yet: ${unsaved.join(', ')}. Reload anyway and lose them? Close this and save them first to keep them.`;
+      const confirmed = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog(message, {title: 'Unsaved changes', confirmLabel: 'Reload and lose them', tone: 'danger'})
+        : window.confirm(message);
+      if (!confirmed) return;
+    }
+    window.location.reload();
+  };
+  function showServerUpdate(reply) {
+    if (!pageBuild || !reply.build || reply.build === pageBuild || updateDismissed === reply.build) return;
+    const unsaved = unsavedChanges();
+    const version = reply.version && reply.version !== pageVersion ? ` to v${reply.version}` : '';
+    if (!updateNotice) {
+      updateNotice = el('div', {class: 'server-update-notice', role: 'alert'});
+      document.body.append(updateNotice);
+    }
+    updateNotice.replaceChildren(icon('<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>'),
+      el('div', {class: 'server-update-text'},
+        el('strong', {text: `DriveTest Analyzer was updated${version}.`}),
+        el('span', {text: unsaved.length
+          ? ` Your unsaved changes are kept on this page (${unsaved.join(', ')}): save them as usual, then reload the page to see the latest changes.`
+          : ' Reload the page (or sign in again) to see the latest changes.'})),
+      el('button', {type: 'button', class: 'server-update-reload', text: unsaved.length ? 'Reload' : 'Reload now', onclick: reloadPage}),
+      el('button', {type: 'button', class: 'server-update-close', 'aria-label': 'Close', title: 'Remind me later',
+        onclick: () => { updateDismissed = reply.build; updateNotice?.remove(); updateNotice = null; }}, '×'));
+  }
+  function showUnreachable(reachable) {
+    failedPolls = reachable ? 0 : failedPolls + 1;
+    const unsaved = reachable ? [] : unsavedChanges();
+    if (reachable || failedPolls < 2 || !unsaved.length) { unreachableBanner?.remove(); unreachableBanner = null; return; }
+    if (!unreachableBanner) {
+      unreachableBanner = el('div', {class: 'server-update-notice is-waiting', role: 'status'});
+      document.body.append(unreachableBanner);
+    }
+    unreachableBanner.replaceChildren(icon(ICONS.clock), el('div', {class: 'server-update-text'},
+      el('strong', {text: 'The server is not answering (it may be restarting for an update).'}),
+      el('span', {text: ` Keep this page open: your unsaved changes (${unsaved.join(', ')}) are kept, and you can save them once it answers again.`})));
+  }
+
   // -- the poll -------------------------------------------------------------------------------------------------
   async function poll(options = {}) {
     window.clearTimeout(pollTimer);
@@ -424,6 +475,8 @@
     } catch (_error) {
       reply = null;
     }
+    showUnreachable(Boolean(reply));
+    if (reply) showServerUpdate(reply);
     if (reply) {
       if (reply.signed_out || (reply.authenticated === false && (leaving || reply.active))) {
         window.location.assign(SIGNED_OUT_URL);
@@ -448,7 +501,8 @@
       if (reply.time_up) timeUp();
       fillTimes();
     }
-    const fast = leaving || (state.active && state.manage);
+    // (While the server does not answer, it is asked again sooner, to tell of its update as soon as it is back.)
+    const fast = leaving || (state.active && state.manage) || !reply;
     pollTimer = window.setTimeout(poll, fast ? FAST_POLL : NORMAL_POLL);
   }
 

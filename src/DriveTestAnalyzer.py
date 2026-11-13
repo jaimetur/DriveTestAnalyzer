@@ -3797,6 +3797,22 @@ UNCOMPRESSED_CONTENT_TYPES = GZIP_DEFAULT_EXCLUDED_CONTENT_TYPES + (
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6, exclude_content_types=UNCOMPRESSED_CONTENT_TYPES)
 
 
+def code_build() -> str:
+    """A fingerprint of the code this server runs (its Python, scripts, styles and pages): the open pages compare it with
+    the one they were loaded with to tell their users that the server was updated. A restart on the same code keeps it."""
+    digest = hashlib.blake2b(digest_size=8)
+    source = Path(__file__).resolve().parent
+    for path in sorted(source.rglob('*')):
+        if path.suffix in {'.py', '.js', '.mjs', '.css', '.html'} and '__pycache__' not in path.parts and path.is_file():
+            digest.update(path.relative_to(source).as_posix().encode())
+            with suppress(OSError):
+                digest.update(path.read_bytes())
+    return f'{__version__}-{digest.hexdigest()}'
+
+
+CODE_BUILD = code_build()
+
+
 def asset_version(relative_path: str) -> str:
     asset_path = settings.static_dir / relative_path
     if not asset_path.exists():
@@ -6608,6 +6624,7 @@ def render_template(request: Request, template_name: str, context: dict[str, Any
         'page_title': page_title(request.url.path, module_settings),
         'app_version': __version__,
         'app_release_date': __release_date__,
+        'app_build': CODE_BUILD,
         'app_author': __author__,
         'app_author_email': __author_email__,
         'nr_modes': NR_MODES,
@@ -16197,11 +16214,13 @@ def demo_mode_public() -> JSONResponse:
 
 @app.post('/api/demo-mode/heartbeat')
 async def demo_mode_heartbeat(request: Request) -> JSONResponse:
-    """The poll of every page: it tells the unsaved changes of the page and learns what Demo Mode asks of its user."""
+    """The poll of every page: it tells the unsaved changes of the page and learns what Demo Mode asks of its user, and
+    the code the server runs (a page loaded with other code tells its user that the server was updated)."""
     token = request.cookies.get(SESSION_COOKIE)
     user = session_user(token)
+    build = {'build': CODE_BUILD, 'version': __version__}
     if user is None:
-        return JSONResponse({'authenticated': False, **demo_mode_page_info(None)}, headers={'Cache-Control': 'no-store'})
+        return JSONResponse({'authenticated': False, **demo_mode_page_info(None), **build}, headers={'Cache-Control': 'no-store'})
     payload = await json_object(request)
     unsaved = payload.get('unsaved') if isinstance(payload.get('unsaved'), list) else []
     reply = await run_in_threadpool(
@@ -16215,7 +16234,7 @@ async def demo_mode_heartbeat(request: Request) -> JSONResponse:
         reply['started_by_name'] = person_name(reply['started_by'])
         for item in reply.get('departures') or []:
             item['name'] = person_name(item['username'])
-    response = JSONResponse(reply, headers={'Cache-Control': 'no-store'})
+    response = JSONResponse({**reply, **build}, headers={'Cache-Control': 'no-store'})
     if reply.get('signed_out'):
         response.delete_cookie(SESSION_COOKIE)
     return response

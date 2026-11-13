@@ -8,6 +8,7 @@
 #### ⚠️ Breaking Changes:
 
 #### 🌟 New Features:
+- **Server updates told to the users online:** every open page knows the code it was loaded with (a fingerprint of the code of the server, the version and the content of its files) and the poll it already makes every 20 seconds learns the code the server runs; once the server was updated, a notice tells its user to reload the page to see the latest changes. Nothing reloads by itself: the unsaved changes of the page (the ones Demo Mode knows of) stay on it, the notice names them and they can still be saved after the update; reloading with some left asks first. While the server does not answer (it restarts during an update), a page with unsaved changes says to keep it open.
 
 #### 🚀 Enhancements:
 - **Module tabs keep their card while they stay at the top:** when a page scrolls, the tabs of the modules keep their white card, with its border and rounded corners, on the band that hides the page below them.

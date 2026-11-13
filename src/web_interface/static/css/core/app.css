@@ -6191,3 +6191,12 @@ body { padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-
 /* The badge of the user in the app bar shows its role (or Modules Profile) colour as its left edge instead of a dot. */
 .topnav .topnav-user-badge { border-left: 4px solid var(--role); }
 .topnav .topnav-user-badge::before { content: none; }
+/* The server was updated (demo_mode.js): reload to see the latest changes; the unsaved changes stay on the page. */
+.server-update-notice { position: fixed; top: 12px; left: 50%; z-index: 2147482100; display: flex; align-items: center; gap: .65rem; width: min(760px, calc(100vw - 32px)); padding: .6rem .7rem .6rem .9rem; border: 1px solid #b9d3ea; border-radius: 12px; background: #eaf3fb; color: #12324d; box-shadow: 0 10px 30px rgba(11, 29, 43, .25); font-size: .84rem; transform: translateX(-50%); }
+.server-update-notice.is-waiting { border-color: #e6d3a3; background: #fff7e3; color: #5c4313; }
+.server-update-notice > svg { flex: 0 0 auto; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.server-update-text { flex: 1 1 auto; min-width: 0; line-height: 1.35; }
+.server-update-reload { flex: 0 0 auto; min-height: 2rem; padding: .25rem .8rem; border: 0; border-radius: 8px; background: #1f5f99; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.server-update-close { flex: 0 0 auto; width: 1.9rem; height: 1.9rem; border: 0; border-radius: 8px; background: transparent; color: inherit; font-size: 1.2rem; line-height: 1; cursor: pointer; }
+.server-update-close:hover, .server-update-close:focus-visible { background: rgba(18, 50, 77, .1); }
+@media (max-width: 640px) { .server-update-notice { flex-wrap: wrap; top: 8px; } .server-update-text { flex-basis: calc(100% - 3rem); } }

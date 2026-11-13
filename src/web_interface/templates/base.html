@@ -507,6 +507,8 @@
   <script src="{{ static_path('js/workspace/background_uploads.js') }}?v={{ asset_version('js/workspace/background_uploads.js') }}"></script>
   {% endif %}
   <script id="demo-mode-info" type="application/json">{{ demo_mode_info | default({}) | tojson }}</script>
+  {#- The code this page was loaded with: the poll of demo_mode.js tells the user when the server runs other code. -#}
+  <meta name="app-build" content="{{ app_build | default('') }}" data-version="{{ app_version }}">
   <script src="{{ static_path('js/core/demo_mode.js') }}?v={{ asset_version('js/core/demo_mode.js') }}"></script>
   {% block extra_scripts %}{% endblock %}
 </body>

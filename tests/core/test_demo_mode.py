@@ -243,3 +243,15 @@ def test_admins_are_told_which_users_are_online(accounts):
     assert heartbeat(client, tab='super-tab')['online'] == ['euser01', 'super']
     page = client.get('/super-admin')
     assert 'data-user-online="euser01"' in page.text and page.text.count('class="user-online-dot"') == len(core.repository.list_users())
+
+
+def test_every_page_knows_its_code_and_the_poll_tells_the_code_the_server_runs(accounts):
+    """A server update: the pages compare the code they were loaded with and the one the server answers with."""
+    client = accounts
+    assert heartbeat(client)['build'] == core.CODE_BUILD  # (The answer of a signed-out page carries it too.)
+    assert login(client, 'EUSER01', 'Secret123').status_code in {302, 303}
+    page = client.get('/').text
+    assert f'<meta name="app-build" content="{core.CODE_BUILD}" data-version="{core.__version__}">' in page
+    reply = heartbeat(client, unsaved=['PPT Design slides'])
+    assert reply['build'] == core.CODE_BUILD and reply['version'] == core.__version__
+    assert core.CODE_BUILD.startswith(f'{core.__version__}-') and core.code_build() == core.CODE_BUILD
