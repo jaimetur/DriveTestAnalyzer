@@ -423,7 +423,7 @@ TYPED_FILTERS = ('join_id',)
 TRACKING_FIELDS = ('status', 'team', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause', 'root_technology',
                    'status_mode')
 # Filters set by clicking the Progress View and Root Cause Analysis: NR mode, call type
-# (Classic, WhatsApp, Data), a timeline period ("month:2026-07"), the age of open calls,
+# (Voice, WhatsApp, Data), a timeline period ("month:2026-07"), the age of open calls,
 # a labelled root cause ("RF||Coverage"), the root domain or cause counting the suggested
 # ones, the eNB/gNB of the last cell ("EE||eNB 525176"), the place of the repeated issues of the NQ Prioritization
 # ("EE||Site S1"), its hotspots, time-window issues and clusters (their key).
@@ -5136,7 +5136,10 @@ def save_filters(repository: Any, filters: Any) -> dict[str, Any]:
 
 
 CALL_TYPE_SQL = ("CASE WHEN service = 'data' THEN 'Data' WHEN instr(lower(test_name), 'whatsapp') > 0 "
-                 "THEN 'WhatsApp' ELSE 'Classic' END")
+                 "THEN 'WhatsApp' ELSE 'Voice' END")
+# The call types in the order the panels show them; Classic is the former name of Voice (saved filters keep it).
+CALL_TYPES = ('Voice', 'WhatsApp', 'Data')
+CALL_TYPE_ALIASES = {'classic': 'Voice'}
 START_SQL = "replace(substr(start_time, 1, 19), 'T', ' ')"
 _AGE_DAYS = f"(julianday('now', 'localtime') - julianday({START_SQL}))"
 AGE_SQL = {
@@ -5429,7 +5432,7 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
     if nr_modes:
         clauses.append(f"nr_mode IN ({', '.join('?' for _ in nr_modes)})")
         params.extend(nr_modes)
-    call_types = _strings(filters.get('call_type'))
+    call_types = list(dict.fromkeys(CALL_TYPE_ALIASES.get(value.casefold(), value) for value in _strings(filters.get('call_type'))))
     if call_types:
         clauses.append(f"({CALL_TYPE_SQL}) IN ({', '.join('?' for _ in call_types)})")
         params.extend(call_types)
@@ -6079,10 +6082,10 @@ _node_sites_cache: dict[str, tuple[str, NodeSites]] = {}
 
 
 def call_type(service: str, test_name: str) -> str:
-    """Classic or WhatsApp for Voice and Speech calls; Data for the Data tests."""
+    """Voice or WhatsApp for Voice and Speech calls; Data for the Data tests."""
     if service == 'data':
         return 'Data'
-    return 'WhatsApp' if 'whatsapp' in str(test_name or '').casefold() else 'Classic'
+    return 'WhatsApp' if 'whatsapp' in str(test_name or '').casefold() else 'Voice'
 
 
 def serving_node(cell_id: Any) -> tuple[str, int] | None:
@@ -6227,7 +6230,7 @@ def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: st
                      include_suggestions: bool = True, source: str = 'analysts') -> dict[str, Any]:
     """Root Cause Analysis of the calls matching the filters.
 
-    Calls are counted per root domain, category and cause, Classic/WhatsApp/Data call type, NR
+    Calls are counted per root domain, category and cause, Voice/WhatsApp/Data call type, NR
     mode (NSA or SA), technology and the eNB/gNB of their last cell, with the site, host network and vendor most of
     its calls have in the inventory cells of the workspace (``node_site_lookup``). With the ``analysts`` source the
     calls count with the root cause the analysts chose, and those without one with their suggested one when ``include_suggestions`` is set; the
@@ -6321,7 +6324,8 @@ def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: st
                    for (domain, cause), count in sorted(causes.items(), key=lambda item: (-item[1], item[0][0], item[0][1]))
                    if domain != NOT_CLASSIFIED],
         'columns': columns,
-        'call_types': matrix('call_type'),
+        # Voice, WhatsApp and Data, always in that order.
+        'call_types': sorted(matrix('call_type'), key=lambda row: CALL_TYPES.index(row['name']) if row['name'] in CALL_TYPES else len(CALL_TYPES)),
         'nr_modes': matrix('nr_mode'),
         'technologies': matrix('technology', MAX_RATS),
         'nodes': top_nodes,

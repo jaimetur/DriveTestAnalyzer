@@ -2007,14 +2007,14 @@ def test_the_documents_leave_out_not_classified_and_empty_unless_asked(monkeypat
     stats = {'source': 'netcheck', 'summary': {'total': 10}, 'columns': ['RF', 'Not classified'],
              'domains': [{'value': 'RF', 'count': 4}, {'value': 'Not classified', 'count': 6}],
              'categories': [{'domain': 'RF', 'category': 'Coverage', 'count': 4}], 'causes': [],
-             'call_types': [{'name': 'Data', 'total': 7, 'counts': {'RF': 1, 'Not classified': 6}},
-                            {'name': 'Classic', 'total': 3, 'counts': {'RF': 3}}],
+             'call_types': [{'name': 'Voice', 'total': 3, 'counts': {'RF': 3}},
+                            {'name': 'Data', 'total': 7, 'counts': {'RF': 1, 'Not classified': 6}}],
              'nr_modes': [{'name': 'SA', 'total': 6, 'counts': {'Not classified': 6}}],
              'technologies': [{'name': 'LTE', 'total': 7, 'counts': {'RF': 1, 'Not classified': 6}},
                               {'name': 'NR', 'total': 3, 'counts': {'RF': 3}}], 'nodes': []}
     shown = export.classified_root_stats(stats)
     assert shown['columns'] == ['RF'] and [item['value'] for item in shown['domains']] == ['RF']
-    assert [(row['name'], row['total']) for row in shown['call_types']] == [('Data', 1), ('Classic', 3)]
+    assert [(row['name'], row['total']) for row in shown['call_types']] == [('Voice', 3), ('Data', 1)]
     assert shown['nr_modes'] == [] and [row['name'] for row in shown['technologies']] == ['NR', 'LTE']
     # The documents draw the panels from these, unless Show Not classified and Show Empty Status are asked for.
     drawn = {}

@@ -640,7 +640,7 @@ def test_root_causes_are_suggested_labelled_required_and_analysed(client, tmp_pa
     stats = client.post('/api/non-qualified-calls/root-causes/stats', json={'filters': {}, 'include_suggestions': False}).json()
     assert stats['summary'] == {'total': 4, 'labelled': 3, 'suggested': 0, 'unclassified': 1}
     assert {item['value']: item['count'] for item in stats['domains']} == {'Radio': 2, 'Operational': 1, 'Not classified': 1}
-    assert {row['name']: row['total'] for row in stats['call_types']} == {'Classic': 1, 'WhatsApp': 1, 'Data': 2}
+    assert {row['name']: row['total'] for row in stats['call_types']} == {'Voice': 1, 'WhatsApp': 1, 'Data': 2}
     assert {row['name'] for row in stats['nr_modes']} == {'NSA'}
     # The last cell of the chain gives the eNB (ECI / 256); small identities are 2G/3G cells.
     nodes = {row['node']: row['calls'] for row in stats['nodes']}
@@ -900,7 +900,7 @@ def test_progress_and_root_cause_values_filter_the_calls(client, tmp_path):
         return query(client, filters=filters)['total']
 
     assert total() == 4
-    assert total(call_type=['WhatsApp']) == 1 and total(call_type=['Data']) == 2 and total(call_type=['Classic']) == 1
+    assert total(call_type=['WhatsApp']) == 1 and total(call_type=['Data']) == 2 and total(call_type=['Voice']) == 1 and total(call_type=['Classic']) == 1
     assert total(nr_mode=['NSA']) == 4 and total(nr_mode=['SA']) == 0
     assert total(period=['month:2026-02']) == 4 and total(period=['week:2026-W09']) == 4 and total(period=['month:2026-03']) == 0
     assert total(age=['Over 90 days']) == 4 and total(age=['Under 7 days']) == 0
@@ -1148,7 +1148,7 @@ def test_root_cause_tables_keep_to_one_slide_with_the_first_rows_that_fit():
         return {'name': name, 'counts': {'RF': 1, 'IMS/E2E': 2}, 'total': 3}
 
     stats = {'domains': [{'value': 'RF', 'color': '#c8102e'}, {'value': 'IMS/E2E', 'color': '#b85c1e'}], 'columns': columns,
-             'call_types': [group('Data'), group('Classic'), group('WhatsApp')], 'nr_modes': [group('NSA'), group('SA')],
+             'call_types': [group('Voice'), group('WhatsApp'), group('Data')], 'nr_modes': [group('NSA'), group('SA')],
              'technologies': [group(f'Tech {index}') for index in range(40)]}
     assert Image.open(domain_donuts_panel(stats)).height == round(PANEL_HEIGHT * DPI)
     assert Image.open(technology_panel(stats)).height == round(PANEL_HEIGHT * DPI)
