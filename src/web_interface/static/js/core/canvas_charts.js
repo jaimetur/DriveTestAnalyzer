@@ -2698,6 +2698,8 @@
       if (state && colour) {
         state.colour = colour;
         if (item) item.colour = colour;
+        // A pie (or donut) draws its slices with their own colour: the slices of that name change with it.
+        (copy.pies || []).forEach(pie => (pie.slices || []).forEach(slice => { if (String(slice.name) === name) slice.colour = colour; }));
       } else if (original && colour && String(colour).toUpperCase() !== String(original).toUpperCase()) colours[String(original).toUpperCase()] = colour;
       for (const entry of [...named(name), ...(item ? [item] : [])]) {
         if (Number(series.width) > 0) entry.width = Number(series.width);
