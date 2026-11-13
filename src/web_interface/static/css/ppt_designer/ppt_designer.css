@@ -1832,9 +1832,12 @@
 #ds-filter-float .ds-data-panel > summary { padding-block: 0 .6rem; }
 #ds-filter-float .ds-data-panel > summary h2 { font-size: 1.15rem; }
 #ds-filter-overlay .ds-filter-column-title { display: none; }
-#ds-filter-overlay .ds-filter-columns { grid-template-columns: minmax(255px, .8fr) minmax(0, 3.2fr); gap: 16px; }
+#ds-filter-overlay .ds-filter-columns { gap: 16px; }
+@media (min-width: 901px) {
+  #ds-filter-overlay .ds-filter-columns { grid-template-columns: minmax(255px, .8fr) minmax(0, 3.2fr); }
+  #ds-filter-overlay .ds-source-filters { padding-right: 16px; }
+}
 #ds-filter-overlay :is(.ds-source-filters, .ds-filter-groups) { gap: 10px; }
-#ds-filter-overlay .ds-source-filters { padding-right: 16px; }
 #ds-filter-overlay .ds-filter-group { gap: 8px; padding: 10px 12px; border-radius: 12px; }
 #ds-filter-overlay .ds-filter-group-head { gap: 0; }
 #ds-filter-overlay .ds-filter-group-head .eyebrow { font-size: .6rem; }
@@ -1863,6 +1866,22 @@
 #ds-filter-float .ds-filter-help { margin: 10px 0 0; font-size: .72rem; }
 #ds-filter-overlay .ds-preparing[data-state="ready"] { display: none; }
 #ds-filter-overlay .ds-design-primary-actions:not(:has(> button:not([hidden]):not(.ds-filter-close-action))) { display: none; }
+/* Tablets and phones: one column of groups as wide as the dialog, long names and headings wrapping inside it, and Add
+   filter below the head of Additional Filters. */
+@media (max-width: 900px) {
+  #ds-filter-overlay .ds-filter-columns { grid-template-columns: minmax(0, 1fr); }
+  #ds-filter-overlay :is(.ds-filter-columns, .ds-source-filters, .ds-filter-groups, .ds-filter-group) { min-width: 0; }
+  #ds-filter-overlay .ds-filter-group-head h3 { white-space: normal; }
+  #ds-filter-float .ds-data-panel > summary :is(.eyebrow, h2) { overflow-wrap: anywhere; }
+  #ds-filter-overlay .ds-additional-filter-panel { grid-template-columns: minmax(0, 1fr); }
+  #ds-filter-overlay .ds-additional-filter-panel > .ds-custom { grid-column: 1; grid-row: auto; flex-wrap: wrap; }
+  #ds-filter-overlay .ds-additional-filter-panel > .ds-custom label { flex: 1 1 100%; flex-wrap: wrap; white-space: normal; }
+  #ds-filter-overlay .ds-additional-filter-panel > .ds-custom label > :not(select) { min-width: 0; }
+}
+@media (max-width: 640px) {
+  #ds-filter-overlay .ds-filter-dialog { padding: .7rem !important; }
+  #ds-filter-overlay .ds-facets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 /* PPT Templates, opened from the library: the templates of the workspace in a dialog. */
 .ppt-designer .ds-templates-dialog { width: min(1180px, 94vw) !important; max-width: none !important; max-height: 90vh; overflow: auto; padding: 18px 24px !important; }
