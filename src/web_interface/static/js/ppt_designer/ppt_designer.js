@@ -1281,9 +1281,10 @@
     // Queuing validates the universe and resolves the cover labels on the
     // server, which can take a few seconds on a busy server: show it.
     lastAutoComments = autoComments;
+    let queued = null;
     window.showLoadingOverlay?.('Queuing PPT', `Preparing the PowerPoint export for “${exportDefinition.name}”…`);
     try {
-      await api(`/${encodeURIComponent(id)}/export-ppt`, 'POST', {
+      queued = await api(`/${encodeURIComponent(id)}/export-ppt`, 'POST', {
         definition: exportDefinition,
         preparation_token: preparationToken,
         // Legend entries hidden in the viewer are exported hidden as well.
@@ -1301,9 +1302,105 @@
       window.hideLoadingOverlay?.();
     }
     status(`PPT export queued for “${exportDefinition.name}”.`);
-    await refreshDesignPptJobs();
+    if (queued?.job_id) openPptProgress(queued.job_id, exportDefinition.name);
+    await refreshDesignPptJobs({force: true});
     window.dispatchEvent(new Event('drivetest-analyzer:refresh-background-tasks'));
   }
+  // The progress panel of the PPT just queued: it follows the job in the PPT Jobs list, downloads the PPT when the
+  // job is ready while the panel is open (with a button to download it again), cancels the job, or closes and leaves
+  // the job running in the background.
+  const pptProgress = {jobId: '', designName: '', timer: 0, downloaded: false, job: null, cancelling: false, openedAt: 0};
+  const PPT_PROGRESS_STAGES = [[96, 'Writing the PowerPoint'], [90, 'Rendering the charts'], [24, 'Building the chart models'], [12, 'Preparing the data'], [1, 'Reading the campaigns'], [0, 'Waiting in the queue']];
+  const pptProgressOpen = () => !$('ds-ppt-progress-overlay').hidden;
+  const formatPptDuration = seconds => seconds < 60 ? `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+  const downloadPptJob = (job, automatic) => {
+    if (!job?.download_url) return;
+    const link = document.createElement('a');
+    link.href = job.download_url; link.download = ''; link.hidden = true;
+    document.body.append(link); link.click(); link.remove();
+    status(`${automatic ? 'Downloading' : 'Downloading again'} the PowerPoint of PPT Job ${job.id}.`);
+  };
+  const renderPptProgress = job => {
+    const panel = $('ds-ppt-progress-overlay').querySelector('[role=dialog]');
+    const state = String(job?.status || 'queued').toLowerCase();
+    const progress = Math.max(0, Math.min(100, Number(job?.progress) || 0));
+    const running = state === 'queued' || state === 'processing';
+    panel.dataset.state = state;
+    $('ds-ppt-progress-job').textContent = ` · Job ${pptProgress.jobId}`;
+    $('ds-ppt-progress-design').textContent = job?.design_name || pptProgress.designName;
+    $('ds-ppt-progress-title').textContent = {ready: 'PPT ready', failed: 'PPT failed', stopped: 'PPT cancelled'}[state] || 'Generating PPT';
+    $('ds-ppt-progress-bar').value = progress;
+    $('ds-ppt-progress-percent').textContent = `${progress}%`;
+    $('ds-ppt-progress-status').textContent = state;
+    $('ds-ppt-progress-charts').textContent = job?.charts ? String(job.charts) : '-';
+    $('ds-ppt-progress-slides').textContent = job?.slides ? String(job.slides) : '-';
+    const duration = Number(job?.duration_seconds);
+    // While the job runs, the time since it was queued; once it ends, the time the job took.
+    $('ds-ppt-progress-time').textContent = running ? formatPptDuration((performance.now() - pptProgress.openedAt) / 1000)
+      : Number.isFinite(duration) && job?.duration_seconds !== null ? formatPptDuration(duration) : '-';
+    $('ds-ppt-progress-stage').textContent = state === 'ready' ? 'The PowerPoint is ready.'
+      : state === 'failed' ? `The export failed: ${job?.error || 'unknown error'}`
+        : state === 'stopped' ? 'The export was cancelled.'
+          : state === 'queued' ? 'Waiting in the queue' : (PPT_PROGRESS_STAGES.find(([from]) => progress >= from) || [0, 'Generating'])[1];
+    $('ds-ppt-progress-message').textContent = running
+      ? 'Closing this panel does not stop the export: it keeps running in the background and stays in the PPT Jobs table and Background Tasks.'
+      : state === 'ready' ? (pptProgress.downloaded ? 'The PowerPoint was downloaded. It also stays in the PPT Jobs table.' : 'The PowerPoint stays in the PPT Jobs table.')
+        : 'The job stays in the PPT Jobs table, where it can be launched again.';
+    $('ds-ppt-progress-cancel').hidden = !running;
+    $('ds-ppt-progress-cancel').disabled = pptProgress.cancelling;
+    $('ds-ppt-progress-download').hidden = !(state === 'ready' && job?.download_url);
+    $('ds-ppt-progress-download').textContent = pptProgress.downloaded ? 'Download Again' : 'Download PPT';
+    $('ds-ppt-progress-close').textContent = running ? 'Run in Background' : 'Close';
+    $('ds-ppt-progress-close-x').setAttribute('aria-label', running ? 'Close and keep the PPT generating in the background' : 'Close');
+  };
+  const updatePptProgress = jobs => {
+    if (!pptProgress.jobId || !pptProgressOpen()) return;
+    const job = jobs.find(item => String(item.id) === pptProgress.jobId);
+    if (!job) return;
+    pptProgress.job = job;
+    const state = String(job.status || '').toLowerCase();
+    if (state === 'ready' && job.download_url && !pptProgress.downloaded) {
+      // The PPT is downloaded once, when it is ready while the panel is still open.
+      pptProgress.downloaded = true;
+      downloadPptJob(job, true);
+    }
+    renderPptProgress(job);
+    if (SETTLED_JOB_STATES.has(state)) { window.clearInterval(pptProgress.timer); pptProgress.timer = 0; }
+  };
+  function openPptProgress(jobId, designName) {
+    window.clearInterval(pptProgress.timer);
+    Object.assign(pptProgress, {jobId: String(jobId), designName: String(designName || ''), downloaded: false, job: null, cancelling: false, openedAt: performance.now()});
+    renderPptProgress({id: jobId, status: 'queued', progress: 0});
+    overlay('ds-ppt-progress-overlay', true);
+    // The panel reads its job every 1.5 seconds while it is open (the page reads the jobs every 2 seconds anyway).
+    pptProgress.timer = window.setInterval(() => { if (!document.hidden) void refreshDesignPptJobs(); }, 1500);
+  }
+  const closePptProgress = () => {
+    if (!pptProgressOpen()) return;
+    window.clearInterval(pptProgress.timer); pptProgress.timer = 0;
+    const job = pptProgress.job;
+    if (job && !SETTLED_JOB_STATES.has(String(job.status || '').toLowerCase())) status(`PPT Job ${pptProgress.jobId} keeps running in the background.`);
+    overlay('ds-ppt-progress-overlay', false);
+  };
+  bind('ds-ppt-progress-close', closePptProgress);
+  bind('ds-ppt-progress-close-x', closePptProgress);
+  bind('ds-ppt-progress-download', () => downloadPptJob(pptProgress.job, false));
+  bind('ds-ppt-progress-cancel', async () => {
+    if (!pptProgress.jobId || pptProgress.cancelling) return;
+    pptProgress.cancelling = true; $('ds-ppt-progress-cancel').disabled = true;
+    try {
+      await api(`/ppt-jobs/${pptProgress.jobId}/stop`, 'POST');
+      status(`PPT Job ${pptProgress.jobId} was cancelled.`);
+    } catch (error) {
+      // A job that has just finished can no longer be stopped: the panel shows its final state.
+      status(error.message || String(error));
+    } finally {
+      pptProgress.cancelling = false;
+      await refreshDesignPptJobs({force: true});
+      window.dispatchEvent(new Event('drivetest-analyzer:refresh-background-tasks'));
+    }
+  });
+  $('ds-ppt-progress-overlay').querySelector('[role=dialog]').addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); closePptProgress(); } });
   const updateDesignTemplate = async (id, item, nrMode, templateName) => {
     const selectedTemplate = templateName === BLANK_TEMPLATE && item.template === BLANK_TEMPLATE
       ? {name: BLANK_TEMPLATE} : templateRows().find(row => row.name === templateName);
@@ -2111,6 +2208,7 @@
       const payload = await api('/ppt-jobs');
       const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
       const signature = JSON.stringify(jobs);
+      updatePptProgress(jobs);
       if (!force && designPptJobsLoaded && signature === designPptJobsSignature) return;
       designPptJobsSignature = signature;
       const newlyReady = designPptJobsLoaded ? jobs.filter(job => {

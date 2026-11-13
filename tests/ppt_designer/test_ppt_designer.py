@@ -3986,3 +3986,45 @@ def test_designs_give_the_same_results_once_the_copies_are_the_only_store(client
     assert charts == with_tables[1]
     assert pages == with_tables[2]
     assert options == with_tables[3]
+
+
+def test_generate_ppt_opens_a_progress_panel_that_downloads_cancels_or_runs_in_background(client, monkeypatch):
+    payload = setup_design(client)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and core.repository.get_dataset(1)['status'] != 'ready':
+        time.sleep(0.05)
+    design_id = 'progress-panel-ppt'
+    assert client.put(f'/api/ppt-designer/{design_id}', json=payload).status_code == 200
+    # The job stays queued: the panel's Cancel Job stops it with the stop of the PPT jobs, recorded in App Events.
+    monkeypatch.setattr(core, 'submit_background_task', lambda callback, *args: None)
+    queued = client.post(f'/api/ppt-designer/{design_id}/export-ppt', json={'definition': payload})
+    assert queued.status_code == 202, queued.text
+    job_id = queued.json()['job_id']
+    job = next(item for item in client.get('/api/ppt-designer/ppt-jobs').json()['jobs'] if item['id'] == job_id)
+    assert job['status'] == 'queued' and job['stop_url'] == f'/api/ppt-designer/ppt-jobs/{job_id}/stop'
+    assert client.post(f'/api/ppt-designer/ppt-jobs/{job_id}/stop').status_code == 200
+    job = next(item for item in client.get('/api/ppt-designer/ppt-jobs').json()['jobs'] if item['id'] == job_id)
+    assert job['status'] == 'stopped' and job['stop_url'] is None
+    assert any(row['action'] == 'stop_design_ppt_job' and json.loads(row['details'])['job_id'] == job_id
+               for row in core.repository.list_logs(limit=20))
+    assert client.post(f'/api/ppt-designer/ppt-jobs/{job_id}/stop').status_code == 409
+
+    page = client.get('/ppt-designer').text
+    for element in ('ds-ppt-progress-overlay', 'ds-ppt-progress-bar', 'ds-ppt-progress-charts', 'ds-ppt-progress-slides',
+                    'ds-ppt-progress-cancel', 'ds-ppt-progress-download', 'ds-ppt-progress-close', 'ds-ppt-progress-close-x'):
+        assert f'id="{element}"' in page
+    assert '>Cancel Job<' in page and '>Run in Background<' in page
+    script = (Path(__file__).parents[2] / 'src/web_interface/static/js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
+    # Both Generate PPT buttons (viewer and Designs table) go through queueDesignPptExport, which opens the panel.
+    assert 'if (queued?.job_id) openPptProgress(queued.job_id, exportDefinition.name);' in script
+    assert "queueDesignPptExport(id, item, {chooseScope: true})" in script
+    # Every read of the PPT jobs updates the panel; the PPT is downloaded once, when ready while the panel is open.
+    assert 'updatePptProgress(jobs);' in script
+    assert "if (state === 'ready' && job.download_url && !pptProgress.downloaded) {" in script
+    assert "bind('ds-ppt-progress-download', () => downloadPptJob(pptProgress.job, false));" in script
+    assert "await api(`/ppt-jobs/${pptProgress.jobId}/stop`, 'POST');" in script
+    # Closing only hides the panel: the job is not stopped.
+    close = script[script.index('const closePptProgress = () => {'):script.index("bind('ds-ppt-progress-close', closePptProgress);")]
+    assert '/stop' not in close and "overlay('ds-ppt-progress-overlay', false);" in close
+    stylesheet = (Path(__file__).parents[2] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
+    assert '#ds-ppt-progress-overlay.ds-overlay { z-index: 9300 !important; }' in stylesheet

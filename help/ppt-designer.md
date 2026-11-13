@@ -547,6 +547,18 @@ Save Filters is enabled when the dialog differs from the saved defaults (the ven
 
 If required, the export prepares the CDRs of its campaigns first.
 
+### Follow the export
+
+As soon as the job is queued, from the library or from the viewer, a progress panel follows it: its progress bar and stage (waiting in the queue, preparing the data, building the chart models, rendering the charts, writing the PowerPoint), its status, the charts and slides done and the time it has taken.
+
+| Button | Effect |
+| --- | --- |
+| **Cancel Job** | Stop the job, as **Stop export** in [PPT Generation Jobs](#ppt-generation-jobs) |
+| **Run in Background** (or ×, Esc) | Close the panel: the job keeps running and stays in PPT Generation Jobs and Background Tasks |
+| **Download Again** | Download the PPT once more after it is ready |
+
+When the job ends while the panel is open, the PPT downloads by itself and the panel says it is ready (or why it failed or was cancelled); a job left to run in the background is downloaded from its row in PPT Generation Jobs.
+
 ### Presentation contents and files
 
 The PPT preserves template slides, layouts, chart proportions, titles, legends and saved comments. Every chart and table is laid out in the shape of its place, whatever the layout (one wide chart, four in two rows and two columns, a tall one beside two…), in the PPT, the Word and the viewer alike: nothing is stretched, pies, donuts and bubbles stay round, the maps fill their place showing more around their places, KPI cards take the grid that makes them largest (four cards: two rows of two in a 16:9 place, one row in a wide one, one column in a tall one) and Multi KPI CDF Lines places its CDFs side by side or one above the other. Chart subtitles use blue text; Title/Transition subtitles retain the template's yellow accent.
@@ -566,7 +578,7 @@ Operators, Vendors and Cities remain in the job Filters snapshot and are omitted
 
 ## PPT Generation Jobs
 
-Jobs continue on the server after you leave the page. The table records ID, creator, local date/time, NR Mode, Design, Scope, filters, slide/chart counts, status and progress.
+Jobs continue on the server after you leave the page or close the [progress panel](#follow-the-export). The table records ID, creator, local date/time, NR Mode, Design, Scope, filters, slide/chart counts, status and progress.
 
 | Action | Availability / purpose |
 | --- | --- |
