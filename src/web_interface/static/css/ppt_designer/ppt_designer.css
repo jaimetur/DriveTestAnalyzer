@@ -2039,3 +2039,16 @@
   .ppt-designer .ds-ppt-chart-set-controls > label { flex: 1 1 100%; }
   .ppt-designer .ds-ppt-chart-set-controls > button { flex: 0 0 auto; width: auto; min-height: 0; padding: .35rem .85rem; font-size: .8rem; }
 }
+
+/* Phones: the comment tools fold into one button at the left of the slide navigation, and open above it one under the
+   other (ppt_designer.js), so they take no row of their own. */
+.ppt-designer .ds-comment-tools-toggle { display: none !important; }
+@media (max-width: 640px) {
+  #ds-viewer:not(.ds-presentation-active) .ds-viewer-navigation-footer { position: relative; flex-wrap: nowrap; padding-left: 3.4rem; }
+  #ds-viewer:not(.ds-presentation-active) .ds-viewer-navigation-footer .ds-comment-tools { position: absolute; left: 0; bottom: .4rem; z-index: 6;
+    display: flex; flex-direction: column-reverse; flex-basis: auto; gap: .45rem; margin: 0; padding: 0; border: 0; }
+  #ds-viewer:not(.ds-presentation-active) .ds-comment-tools:not(.is-open) > :not(.ds-comment-tools-toggle) { display: none !important; }
+  #ds-viewer:not(.ds-presentation-active) .ds-comment-tools .ds-comment-tools-toggle { display: grid !important; }
+  #ds-viewer:not(.ds-presentation-active) .ds-comment-tools.is-open .ds-comment-tools-toggle { border-color: #7751b9; background: #f3edfb; }
+  #ds-viewer:not(.ds-presentation-active) .ds-comment-tools.is-open > .ds-comment-tool:not(.ds-comment-tools-toggle) { box-shadow: 0 6px 16px rgba(36, 22, 61, .22); }
+}

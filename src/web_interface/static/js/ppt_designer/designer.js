@@ -1134,7 +1134,7 @@
     if (!findElement(state.slide_set, elementId)) return;
     state.element = elementId;
     state.tab = 'element';
-    state.folded = false;
+    // (A panel folded on a phone stays folded: the chart keeps the room for what is changed on it, its axes and legend.)
     renderPanel();
     $('ds-charts')?.querySelectorAll('.ds-chart').forEach(card => card.classList.toggle('is-selected', card.dataset.elementId === elementId));
     revealAbovePanel(elementId);
@@ -1272,7 +1272,7 @@
       title: element ? 'Actions of this element' : 'Actions of this slide', 'aria-label': element ? 'Actions of this element' : 'Actions of this slide',
       onclick: event => openMenu(event.currentTarget, actions)}, icon('more'));
     const fold = h('button', {type: 'button', class: 'ds-design-fold', 'aria-expanded': String(!state.folded), title: state.folded ? 'Show the panel' : 'Fold the panel',
-      onclick: () => { state.folded = !state.folded; renderPanel(); }}, state.folded ? '▴' : '▾');
+      'aria-label': state.folded ? 'Show the panel' : 'Fold the panel', onclick: () => { state.folded = !state.folded; renderPanel(); }}, state.folded ? '▴' : '▾');
     const nodes = [h('div', {class: 'ds-design-panel-top'}, crumbs, more, fold), h('div', {class: 'ds-design-reach'}, scopeBadge(), originBadge(element || slide))];
     if (chart) {
       const title = textInput(shown.chart_title, debounced(value => setElementValues(element.id, {chart_title: value})), {id: 'ds-design-chart-title', placeholder: 'Chart title'});

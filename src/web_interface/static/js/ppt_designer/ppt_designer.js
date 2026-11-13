@@ -5396,3 +5396,19 @@
   window.addEventListener('drivetest-analyzer:refresh-background-tasks', () => { void refreshDesignStatuses(); void refreshDesignPptJobs(); });
   window.addEventListener('focus', () => { void refreshDesignStatuses(); void refreshDesignPptJobs(); });
 })();
+
+// Phones: the comment tools (generate comments, the comment writer) fold into one button at the left of the slide
+// navigation and open above it, one under the other, instead of taking a row of their own (ppt_designer.css).
+document.addEventListener('click', event => {
+  const toggle = event.target instanceof Element ? event.target.closest('.ds-comment-tools-toggle') : null;
+  const tools = document.querySelector('.ds-comment-tools');
+  if (!tools) return;
+  if (toggle) {
+    const open = !tools.classList.contains('is-open');
+    tools.classList.toggle('is-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+  } else if (tools.classList.contains('is-open') && !(event.target instanceof Element && event.target.closest('.ds-comment-tools, .ds-comment-menu'))) {
+    tools.classList.remove('is-open');
+    tools.querySelector('.ds-comment-tools-toggle')?.setAttribute('aria-expanded', 'false');
+  }
+});

@@ -752,6 +752,8 @@
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Ccircle cx='9' cy='10' r='2'/%3E%3Cpath d='m21 16-5-5L5 20'/%3E%3C/svg%3E") center / contain no-repeat; }
 /* On a phone the viewer actions that wait for the Designer to close leave their room to the slide. */
 @media (max-width: 900px) { #ds-viewer.ds-designing .is-design-locked { display: none !important; } }
+/* (The Presentation button hidden so, its separator, a line at the left of the slide navigation, goes with it.) */
+@media (max-width: 900px) { #ds-viewer.ds-designing .ds-presentation-navigation-separator:has(> .is-design-locked) { display: none !important; } }
 .ppt-designer .ds-design-pill-template { background: var(--ds-soft); color: var(--ds-design-ink); }
 
 /* Parameters: one line of help, a card per type to add the first one, a dashed Add under the list, and the field picker. */
@@ -790,12 +792,12 @@
 .ds-palette-swatch:hover, .ds-palette-swatch:focus-visible { outline: 2px solid #4b2c82; outline-offset: 1px; }
 .ds-palette-swatch.is-current { outline: 2px solid #1f2d3a; outline-offset: 2px; }
 .ppt-designer .ds-design-input-row:has(.ds-palette), .ds-design-input-row:has(.ds-palette) { flex-wrap: wrap; }
-/* Phones and narrow windows: room at the end of the viewer as tall as the floating panel, folded or open (its height,
+/* Phones and narrow windows: room at the end of the viewer as tall as the floating panel and its fold tab, folded or open (its height,
    --ds-panel-room, set by designer.js), so the end of the slide (the navigation and the comment tools) and the element
    chosen can be scrolled above it (revealAbovePanel) instead of staying behind it. */
 @media (max-width: 900px) {
   #ds-viewer.ds-designing:not(.ds-presentation-active) .ds-viewer-panel:has(> .ds-viewer-body > .ds-design-panel:not([hidden])) {
-    padding-bottom: calc(var(--ds-panel-room, 42vh) + 16px + env(safe-area-inset-bottom, 0px)) !important; }
+    padding-bottom: calc(var(--ds-panel-room, 42vh) + 2.6rem + env(safe-area-inset-bottom, 0px)) !important; }
   /* (The viewer scrolls instead of squeezing the slide: its parts keep their height, the slide at least 16:9.) */
   #ds-viewer.ds-designing:not(.ds-presentation-active) .ds-viewer-panel:has(> .ds-viewer-body > .ds-design-panel:not([hidden])) > :is(header, nav, .ds-design-bar),
   #ds-viewer.ds-designing:not(.ds-presentation-active) .ds-viewer-panel:has(> .ds-viewer-body > .ds-design-panel:not([hidden])) > .ds-viewer-body > .ds-slide-content { flex-shrink: 0; }
@@ -807,4 +809,11 @@
   #ds-viewer:not(.ds-presentation-active) .ds-viewer-navigation-footer { row-gap: .8rem; padding: .6rem 0 .4rem; }
   #ds-viewer:not(.ds-presentation-active) .ds-viewer-navigation-footer .ds-slide-navigation { gap: .75rem; }
   #ds-viewer:not(.ds-presentation-active) .ds-viewer-navigation-footer .ds-comment-tools { gap: 1rem; }
+}
+/* Phones and narrow windows: the panel folds and opens from a tab on its top edge, always in view (its row of crumbs can
+   be wider than the screen), to leave the chart its room for what is changed on it (axes, legend colours). */
+@media (max-width: 900px) {
+  #ds-viewer.ds-designing .ds-design-panel .ds-design-fold { display: grid; place-items: center; padding: 0; position: absolute; top: -1.55rem; left: 50%; z-index: 4; width: 4.4rem; height: 1.6rem;
+    border: 1px solid var(--ds-border); border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--ds-design-surface);
+    box-shadow: 0 -4px 12px rgba(36, 22, 61, .12); color: var(--ds-color); font-size: 1.35rem; line-height: 1; transform: translateX(-50%); }
 }
