@@ -861,7 +861,7 @@ def test_titles_and_text_boxes_name_the_selection_of_the_design(client):
     assert stored('design-a')['slide_overrides']['slides'][first['id']]['title']['value'] == '{Design}: {Operators} in {Cities}'
 
 
-def test_a_comments_layout_keeps_its_comments_area_visible_without_comments_or_with_free_places(client):
+def test_a_comments_layout_shows_its_comments_area_on_the_free_places_of_its_grid(client):
     from pptx import Presentation
     definition = setup(client)
     deadline = time.monotonic() + 30
@@ -886,14 +886,21 @@ def test_a_comments_layout_keeps_its_comments_area_visible_without_comments_or_w
         output = connection.execute('SELECT output_path FROM design_ppt_jobs WHERE id = ?', (job_id,)).fetchone()['output_path']
     grid, written = Presentation(output).slides
     comments = next(shape for shape in grid.shapes if shape.is_placeholder and shape.placeholder_format.idx == 10)
-    layout_comments = next(shape for shape in grid.slide_layout.placeholders if shape.placeholder_format.idx == 10)
-    # Without comments its area is drawn (a frame and a muted prompt) where the layout puts it, below the charts.
+    full_grid = next(layout for layout in grid.part.package.presentation_part.presentation.slide_layouts
+                     if layout.name == 'Title + 2 rows + 2 columns')
+    cells = sorted(((shape.top, shape.left), (shape.left, shape.top, shape.width, shape.height))
+                   for shape in full_grid.placeholders if shape.placeholder_format.idx != 0)
+    cells = [frame for _key, frame in cells]
+    # Without comments its area is drawn (a frame and a muted prompt), here on the free place of the grid: the fourth.
     assert comments.text_frame.text == 'Comments'
     assert comments.line.fill.type is not None
-    assert (comments.left, comments.top, comments.width, comments.height) == (
-        layout_comments.left, layout_comments.top, layout_comments.width, layout_comments.height)
-    pictures = [shape for shape in grid.shapes if shape.shape_type == 13]
-    assert len(pictures) == 3 and all(picture.top + picture.height <= comments.top for picture in pictures)
+    assert (comments.left, comments.top, comments.width, comments.height) == cells[3]
+    # The charts take the grid without comments, the room the comments had below included.
+    pictures = sorted((shape for shape in grid.shapes if shape.shape_type == 13), key=lambda shape: (shape.top, shape.left))
+    assert len(pictures) == 3
+    for picture, (left, top, width, height) in zip(pictures, cells):
+        assert left <= picture.left and top <= picture.top
+        assert picture.left + picture.width <= left + width + 1 and picture.top + picture.height <= top + height + 1
     # A slide with comments shows them alone, without the frame.
     written_comments = next(shape for shape in written.shapes if shape.is_placeholder and shape.placeholder_format.idx == 10)
     assert written_comments.text_frame.text == 'Kept as written'

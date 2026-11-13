@@ -843,6 +843,47 @@ def show_empty_commentary(slide) -> None:
     run.font.color.rgb = EMPTY_COMMENTS_COLOUR
 
 
+def comments_in_free_places(presentation, layout_name: str, used_places) -> tuple[list, tuple[int, int, int, int]] | None:
+    """Where the comments of a grid with comments go when the slide leaves places of the grid free: the frames of the
+    same grid without comments (the charts take the room of the comments too) and the largest rectangle of free places
+    (the lowest, then the rightmost, of the same size) for the comments. None when every place is used, the slide lays
+    its charts out on places of its own or the layout is not a grid with comments."""
+    grid = GRID_LAYOUT_PATTERN.fullmatch(canonical_layout_name(layout_name or ''))
+    if used_places is None or not grid or not grid.group(3):
+        return None
+    rows, columns = int(grid.group(1)), int(grid.group(2))
+    used = set(used_places)
+    if not used or len(used) >= rows * columns:
+        return None
+    best = None
+    for top in range(rows):
+        for left in range(columns):
+            for bottom in range(top, rows):
+                for right in range(left, columns):
+                    cells = [row * columns + column for row in range(top, bottom + 1) for column in range(left, right + 1)]
+                    if used.intersection(cells):
+                        continue
+                    key = (len(cells), bottom, right)
+                    if best is None or key > best[0]:
+                        best = (key, cells)
+    frames = _layout_chart_frames(_named_slide_layout(presentation, grid_layout_name(rows, columns)))
+    if best is None or len(frames) != rows * columns:
+        return None
+    chosen = [frames[cell] for cell in best[1]]
+    left, top = min(frame[0] for frame in chosen), min(frame[1] for frame in chosen)
+    right = max(frame[0] + frame[2] for frame in chosen)
+    bottom = max(frame[1] + frame[3] for frame in chosen)
+    return frames, (left, top, right - left, bottom - top)
+
+
+def move_commentary(slide, frame) -> None:
+    """Put the comments placeholder of a slide on ``frame`` (EMU)."""
+    placeholder = next((shape for shape in slide.shapes if getattr(shape, 'is_placeholder', False)
+                        and shape.placeholder_format.idx == 10 and getattr(shape, 'has_text_frame', False)), None)
+    if placeholder is not None:
+        placeholder.left, placeholder.top, placeholder.width, placeholder.height = (int(value) for value in frame)
+
+
 def normalized_frame_positions(frames) -> list[list[float]]:
     """Chart frames as percentages of their combined bounds, as the viewer lays them out."""
     if not frames:
@@ -1907,10 +1948,13 @@ def install_design_routes(core):
                 layout_name = reflowed_layouts.get(slide_number) or header.layout
                 layout = _named_slide_layout(presentation, layout_name)
                 placements = _layout_chart_frames(layout)
+                # The places of the layout the charts take (None when the slide lays them out on places of its own).
+                used_places = None
                 if slide_number in reflowed_cells:
                     if layout is None or len(placements) < len(chart_entries):
                         raise ValueError(f'Slide {slide_number}: the PowerPoint layout has insufficient chart placeholders.')
-                    placements = [placements[reflowed_cells[slide_number][index]] for index, _entry in chart_entries]
+                    used_places = [reflowed_cells[slide_number][index] for index, _entry in chart_entries]
+                    placements = [placements[place] for place in used_places]
                 elif layout is not None and placements and all(
                         isinstance(design_slides.row_format(entry).get('rect'), list) for _index, entry in chart_entries):
                     # Each chart in its own place (Repeat by), as the viewer lays them out.
@@ -1924,10 +1968,17 @@ def install_design_routes(core):
                     if places is not None:
                         place_of = {id(entry): place for entry, place in zip(slide_rows, places)}
                         placements = [places_frames[place_of[id(entry)]] for _index, entry in chart_entries]
+                        used_places = None if geometry else [place_of[id(entry)] for _index, entry in chart_entries]
                     else:
                         placements = places_frames
+                        used_places = None if geometry else list(range(min(len(chart_entries), len(placements))))
                 if layout is None or len(placements) < len(chart_entries):
                     raise ValueError(f'Slide {slide_number}: the PowerPoint layout has insufficient chart placeholders.')
+                # Places of the grid left free take the comments: the charts take the grid without comments.
+                comments_area = comments_in_free_places(presentation, layout_name, used_places)
+                if comments_area is not None:
+                    full_frames, comments_frame = comments_area
+                    placements = [full_frames[place] for place in used_places]
                 slide = presentation.slides.add_slide(layout)
                 _set_slide_header(slide, header.slide_title, header.slide_subtitle)
                 with use_theme(theme):
@@ -1947,6 +1998,8 @@ def install_design_routes(core):
                         auto_written[comment_key] = merged
                 _clear_commentary(slide)
                 _set_commentary(slide, comments)
+                if comments_area is not None:
+                    move_commentary(slide, comments_frame)
                 show_empty_commentary(slide)
                 _remove_template_chart_placeholders(slide)
                 compact_titles = compact_grid_layout(layout_name)
