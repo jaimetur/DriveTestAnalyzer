@@ -2052,3 +2052,9 @@
   #ds-viewer:not(.ds-presentation-active) .ds-comment-tools.is-open .ds-comment-tools-toggle { border-color: #7751b9; background: #f3edfb; }
   #ds-viewer:not(.ds-presentation-active) .ds-comment-tools.is-open > .ds-comment-tool:not(.ds-comment-tools-toggle) { box-shadow: 0 6px 16px rgba(36, 22, 61, .22); }
 }
+/* Phones: the folded Comments takes one slim line (it opens as before). */
+@media (max-width: 640px) {
+  #ds-viewer:not(.ds-presentation-active) .ds-slide-comments:not([open]) { padding: 0 !important; }
+  #ds-viewer:not(.ds-presentation-active) .ds-slide-comments:not([open]) > summary { min-height: 0; padding: .4rem .85rem !important; font-size: .84rem; }
+  #ds-viewer:not(.ds-presentation-active) .ds-slide-comments:not([open]) > summary #ds-comments-title { font-size: .84rem; }
+}
