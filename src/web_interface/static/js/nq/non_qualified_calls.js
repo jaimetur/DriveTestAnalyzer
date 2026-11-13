@@ -93,11 +93,13 @@
   const ROOT_SEPARATOR = '||';
   const REFRESH_INTERVAL_MS = 60000;
 
+  // The default order of the table: by Priority (P1 first), then by Scoring Points Lost (most first), then the most recent.
+  const DEFAULT_SORT = 'priority_order';
   const state = {
     options: {statuses: [], teams: []}, rootCauses: {domains: [], categories: [], causes: [], require_to_close: false}, users: [], userNames: {},
     defaultUsers: [], cdrFilterColumns: [],
     user: {username: '', can_edit: false, can_moderate: false},
-    unassigned: '__unassigned__', datasets: [], mainCities: [], sort: 'start_time', direction: 'desc', page: 1, pageSize: 10,
+    unassigned: '__unassigned__', datasets: [], mainCities: [], sort: DEFAULT_SORT, direction: 'desc', page: 1, pageSize: 10,
     result: null, selected: new Set(), detail: null, requestToken: 0, busy: false, extraFilters: {}, stale: new Set(),
     // The name of each hotspot and time-window issue the NQ Prioritization listed (its operator, site and time), for
     // the Hotspot and Time-Window Issue filters.
@@ -1870,6 +1872,9 @@
     }));
   };
   const renderSortHeaders = () => {
+    // Default order goes back to the order by Priority, Scoring Points Lost and time once a column sorts the calls.
+    const reset = $('nq-default-order');
+    if (reset) reset.hidden = state.sort === DEFAULT_SORT;
     $('nq-table').querySelectorAll('[data-sort]').forEach((header) => {
       const active = header.dataset.sort === state.sort;
       header.classList.toggle('is-sorted', active);
@@ -6057,6 +6062,12 @@
   });
   // Every page shows the rows of Rows, also the value a browser restores on reload.
   state.pageSize = Number($('nq-page-size').value) || state.pageSize;
+  $('nq-default-order')?.addEventListener('click', () => {
+    state.sort = DEFAULT_SORT;
+    state.direction = 'desc';
+    state.page = 1;
+    loadCalls();
+  });
   $('nq-page-size').addEventListener('change', (event) => { state.pageSize = Number(event.target.value) || 10; state.page = 1; loadCalls(); });
   // -- scroll position: a reload returns to where the page was being read (page_restore.js) -------------
   const VIEW_STORAGE = window.PageRestore.keyOf('nq-view', $('nq-table')?.dataset.workspace || '');

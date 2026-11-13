@@ -5336,6 +5336,32 @@ def l3_map_calls(task_repository: Any, filters: dict[str, Any], username: str, l
     return calls
 
 
+# The default order of the calls: by Priority (P1 first, in the order of its values; the Priority set by hand, else the one
+# the NQ Prioritization gives, calls without one last), then by the Scoring Points Lost (most first), then the most recent.
+DEFAULT_SORT = 'priority_order'
+
+
+def _default_order_sql(task_repository: Any) -> str:
+    field = next((item for item in list_fields(task_repository) if item['key'] == nq_prioritization.PRIORITY_FIELD), None)
+    names = [option['name'] for option in (field or {}).get('options') or [] if option.get('name')]
+    priority = (f"COALESCE(NULLIF(json_extract(field_values_json, '$.\"{nq_prioritization.PRIORITY_FIELD}\"'), ''), "
+                "suggested_priority, '')")
+    cases = ' '.join(f"WHEN '{name.replace(chr(39), chr(39) * 2)}' THEN {index}" for index, name in enumerate(names))
+    rank = f'(CASE {priority} {cases} ELSE {len(names)} END)' if cases else f"({priority} = ''), {priority}"
+    return f'{rank}, impact_points IS NULL, impact_points DESC, start_time DESC, call_key'
+
+
+def _order_clause(sort_key: str, direction: str, task_repository: Any) -> tuple[str, str]:
+    """The ORDER BY of the calls and the sort key it stands for: the default order, else the column chosen, empty values
+    last, then the most recent."""
+    if sort_key in ('', DEFAULT_SORT):
+        return _default_order_sql(task_repository), DEFAULT_SORT
+    sort = _order_sql(sort_key, task_repository)
+    shown = (sort_key if sort_key.startswith(('field:', 'cdr:')) and sort != 'start_time'
+             else next((key for key, column in SORT_COLUMNS.items() if column == sort), 'start_time'))
+    return f"{sort} = '', {sort} {direction}, start_time DESC, call_key", shown
+
+
 def _order_sql(sort: str, task_repository: Any) -> str:
     """The ORDER BY expression of a sort key: a column, an analysis field or a CDR column."""
     if sort.startswith('field:'):
@@ -5371,9 +5397,8 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
     closed = [item['name'] for item in options['statuses'] if item['closed']]
     base, base_params = _base_sql(untracked_status(task_repository, options), task_repository, _scope(filters))
     where, params = _filter_sql(filters, username, closed, definitions)
-    sort_key = str(request.get('sort') or '')
-    sort = _order_sql(sort_key, task_repository)
     direction = 'ASC' if str(request.get('direction') or '').lower() == 'asc' else 'DESC'
+    order_by, sort_key = _order_clause(str(request.get('sort') or ''), direction, task_repository)
     page_size = int(request.get('page_size') or DEFAULT_PAGE_SIZE)
     page_size = page_size if page_size in PAGE_SIZES else DEFAULT_PAGE_SIZE
     # The breakdowns of the Summary are left out while it is not shown.
@@ -5388,13 +5413,12 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
         # The page that holds the call to show (the call open beside the list, after the filters change), when it is listed.
         if locate := str(request.get('locate') or ''):
             found = connection.execute(
-                f"SELECT n FROM (SELECT call_key, ROW_NUMBER() OVER (ORDER BY {sort} = '', {sort} {direction}, start_time DESC, "
-                f"call_key) AS n FROM ({filtered})) WHERE call_key = ?", [*all_params, locate]).fetchone()
+                f"SELECT n FROM (SELECT call_key, ROW_NUMBER() OVER (ORDER BY {order_by}) AS n FROM ({filtered})) WHERE call_key = ?",
+                [*all_params, locate]).fetchone()
             if found:
                 page = math.ceil(int(found[0]) / page_size)
         rows = connection.execute(
-            f'SELECT * FROM ({filtered}) ORDER BY {sort} = \'\', {sort} {direction}, start_time DESC, call_key '
-            f'LIMIT ? OFFSET ?',
+            f'SELECT * FROM ({filtered}) ORDER BY {order_by} LIMIT ? OFFSET ?',
             [*all_params, page_size, (page - 1) * page_size],
         ).fetchall()
         calls = [_call_payload(row) for row in rows]
@@ -5467,8 +5491,7 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
     summary_payload['open'] = summary_payload['total'] - summary_payload['closed']
     return {
         'calls': calls, 'total': total, 'page': page, 'pages': pages, 'page_size': page_size,
-        'sort': sort_key if sort_key.startswith(('field:', 'cdr:')) and sort != 'start_time'
-        else next((key for key, column in SORT_COLUMNS.items() if column == sort), 'start_time'),
+        'sort': sort_key,
         'direction': direction.lower(), 'summary': summary_payload, 'breakdowns': breakdowns,
     }
 
@@ -9701,7 +9724,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     class QueryPayload(BaseModel):
         filters: dict[str, Any] = Field(default_factory=dict)
-        sort: str = 'start_time'
+        sort: str = DEFAULT_SORT
         direction: str = 'desc'
         page: int = 1
         page_size: int = DEFAULT_PAGE_SIZE

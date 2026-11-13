@@ -221,6 +221,7 @@
       <div class="nq-toolbar">
         <p class="nq-count" id="nq-count" role="status">Loading calls…</p>
         <div class="nq-toolbar-actions">
+          <button type="button" class="nq-secondary-action" id="nq-default-order" title="Sort the calls again by Priority (P1 first), then by Scoring Points Lost (most first), then the most recent first" hidden>Default order</button>
           <label class="nq-page-size">Rows per page<select id="nq-page-size">{% for size in nq_page_sizes %}<option value="{{ size }}"{% if size == nq_default_page_size %} selected{% endif %}>{{ size }}</option>{% endfor %}</select></label>
           {# A switch between the user's own layout (left) and that of the workspace (right). #}
           <div class="nq-layout-switch" role="group" aria-label="Table layout" title="Mine: your own columns and order, only for you. Workspace: those every user of the workspace sees">

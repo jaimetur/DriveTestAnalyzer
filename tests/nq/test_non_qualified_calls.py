@@ -855,6 +855,25 @@ def test_every_header_name_sorts_and_filters_the_calls(client, tmp_path):
     assert 'data-nq-filter="root_domain"' in page and 'data-nq-filter="status_mode"' in page
 
 
+def test_the_calls_are_listed_by_priority_then_points_lost_then_newest_by_default(client, tmp_path):
+    enable_module()
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', voice_rows())
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Data_2026_Q1.xlsx', 'data', data_rows())
+    login(client)
+    newest = query(client, sort='start_time', direction='desc')['calls']
+    keys = [call['call_key'] for call in newest]
+    # Without a Priority, the most recent first; the order by Priority puts P1 before P2 and both before the others.
+    result = query(client)
+    assert result['sort'] == nq.DEFAULT_SORT and [call['call_key'] for call in result['calls']] == keys
+    for key, priority in ((keys[3], 'P2'), (keys[2], 'P1')):
+        response = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'fields': {'priority': priority}}})
+        assert response.status_code == 200, response.text
+    assert [call['call_key'] for call in query(client, sort=nq.DEFAULT_SORT)['calls']] == [keys[2], keys[3], keys[0], keys[1]]
+    # The same Priority: the most Scoring Points Lost first, then the most recent.
+    order = nq._default_order_sql(core.repository)
+    assert order.index('impact_points DESC') < order.index('start_time DESC')
+
+
 def test_progress_and_root_cause_values_filter_the_calls(client, tmp_path):
     enable_module()
     voice = voice_rows()
