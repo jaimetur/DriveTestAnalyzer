@@ -2615,7 +2615,11 @@
         const key = value.toUpperCase();
         // A dark theme paints the white of the canvas, its panels and separators in its background.
         if (style.background && (key === '#FFFFFF' || key === '#FFF')) return style.background;
-        return style.colours?.[key] || value;
+        if (style.colours?.[key]) return style.colours[key];
+        // A colour drawn see-through (#RRGGBBAA: areas, map symbols and areas) takes the new colour with its opacity.
+        const base = /^#[0-9A-F]{8}$/.test(key) ? style.colours?.[key.slice(0, 7)] : null;
+        if (base) return /^#[0-9A-F]{6}$/i.test(base) ? `${base}${key.slice(7)}`.toUpperCase() : base;
+        return value;
       };
       ['fillStyle', 'strokeStyle'].forEach(name => {
         const base = descriptor(name);
@@ -2700,6 +2704,8 @@
         if (item) item.colour = colour;
         // A pie (or donut) draws its slices with their own colour: the slices of that name change with it.
         (copy.pies || []).forEach(pie => (pie.slices || []).forEach(slice => { if (String(slice.name) === name) slice.colour = colour; }));
+        // Areas draw the series of each pane with their own colour too.
+        (copy.panes || []).forEach(pane => (pane.series || []).forEach(series => { if (String(series.name) === name) series.colour = colour; }));
       } else if (original && colour && String(colour).toUpperCase() !== String(original).toUpperCase()) colours[String(original).toUpperCase()] = colour;
       for (const entry of [...named(name), ...(item ? [item] : [])]) {
         if (Number(series.width) > 0) entry.width = Number(series.width);
