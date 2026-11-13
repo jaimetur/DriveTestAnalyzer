@@ -66,6 +66,7 @@ from src.modules.nq.nq_catalog import (
     ATTENDED_FIELD, FIELD_TYPES, MAX_LONG_TEXT, YES_NO, evaluate_status, keyword_found, keywords as _keywords,
     normalized_text as _normalized_text,
 )
+from src.modules.nq import nq_app_events
 from src.modules.nq import nq_analyses, nq_analyses_rules, nq_call_map, nq_dta_rca, nq_map_levels, nq_prioritization, nq_rca, nq_root_migration
 from src.modules.nq.non_qualified_calls_visuals import series_colours
 
@@ -2243,6 +2244,10 @@ def indexed_cdr_columns(repository: Any) -> list[str]:
     return list(dict.fromkeys([*columns['cdr'], *columns['export_cdr'], *_user_cdr_columns(repository), *catalog, *filtered]))
 
 
+# The Additional Columns as App Events names them.
+TABLE_COLUMN_KINDS = {'builtin': 'call columns', 'cdr': 'CDR columns in the table', 'export_cdr': 'CDR columns in Excel only'}
+
+
 def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, export_cdr: Any = (), *,
                        imported: bool = False, defaults: bool = False) -> dict[str, list[str]]:
     unknown = [column for column in _strings(builtin) if column not in OPTIONAL_COLUMNS]
@@ -2256,6 +2261,7 @@ def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, e
                       if column not in cdr_columns]
     if len(export_columns) > MAX_EXPORT_CDR_COLUMNS:
         raise ValueError(f'Choose at most {MAX_EXPORT_CDR_COLUMNS} CDR columns for Excel only.')
+    before = table_columns(repository)
     repository.set_workspace_state(TABLE_COLUMNS_STATE_KEY, json.dumps(
         {'builtin': _strings(builtin), 'cdr': cdr_columns, 'export_cdr': export_columns}))
     # The calls are indexed again for the new columns: those no personal layout shows any more go too.
@@ -2263,7 +2269,10 @@ def save_table_columns(repository: Any, builtin: Any, cdr: Any, username: str, e
     if hasattr(repository, 'try_add_log'):
         repository.try_add_log(username, 'nq_table_columns', 'Non-Qualified Calls table columns taken from an imported '
                                'configuration.' if imported else 'Non-Qualified Calls table columns restored to the default '
-                               'columns.' if defaults else 'Non-Qualified Calls table columns updated.')
+                               'columns.' if defaults else nq_app_events.changes_sentence(
+                                   'Non-Qualified Calls table columns updated', [nq_app_events.changes_text(nq_app_events.value_changes(
+                                       *({TABLE_COLUMN_KINDS[kind]: columns for kind, columns in state.items()}
+                                         for state in (before, table_columns(repository)))))]))
     return table_columns(repository)
 
 
@@ -3275,6 +3284,7 @@ def save_options(
     if not lists['status']:
         raise ValueError('Keep at least one status.')
     existing_statuses = {item['name'].casefold() for item in current['statuses']}
+    renames: dict[str, dict[str, str]] = {}
     renamed_statuses = {item['previous'].casefold(): item['name'] for item in lists['status']
                         if item['previous'] and item['previous'].casefold() in existing_statuses}
     try:
@@ -3290,6 +3300,7 @@ def save_options(
             renamed.update({item['previous'].casefold(): item['name'] for item in lists[kind]
                             if item['previous'] and item['previous'].casefold() in existing})
             kept = {item['name'].casefold() for item in lists[kind]} | set(renamed)
+            renames[kind] = {existing[old_key]: new_name for old_key, new_name in renamed.items()}
             for old_key, old_name in existing.items():
                 if old_key in kept:
                     continue
@@ -3338,7 +3349,13 @@ def save_options(
         task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
     recompute_statuses(task_repository, username)
     if hasattr(task_repository, 'try_add_log'):
-        task_repository.try_add_log(username, 'nq_call_options', 'Non-Qualified Calls statuses and teams updated.')
+        after = list_options(task_repository)
+        task_repository.try_add_log(username, 'nq_call_options', nq_app_events.changes_sentence(
+            'Non-Qualified Calls statuses and teams updated', [
+                *nq_app_events.named_list_changes('status', current['statuses'], after['statuses'], ('color', 'closed'),
+                                                  renames.get('status')),
+                *nq_app_events.named_list_changes('team', current['teams'], after['teams'], ('color', 'members'),
+                                                  renames.get('team'))]))
     return list_options(task_repository)
 
 
@@ -3465,8 +3482,35 @@ def save_fields(task_repository: Any, items: Any, username: str, *, defaults: bo
     recompute_statuses(task_repository, username)
     if hasattr(task_repository, 'try_add_log'):
         task_repository.try_add_log(username, 'nq_analysis_fields', 'Non-Qualified Calls field catalog restored to the default '
-                                    'fields.' if defaults else 'Non-Qualified Calls field catalog updated.')
+                                    'fields.' if defaults else nq_app_events.changes_sentence(
+                                        'Non-Qualified Calls field catalog updated', _field_catalog_changes(
+                                            list(existing.values()), list_fields(task_repository), normalized)))
     return list_fields(task_repository)
+
+
+def _field_catalog_changes(before: list[dict[str, Any]], after: list[dict[str, Any]],
+                           given: list[dict[str, Any]]) -> list[str]:
+    """The fields added, removed and changed (their label, type, section, settings and list values), for App Events."""
+    attributes = sorted({key for field in [*before, *after] for key in field} - {'key', 'options', 'previous', 'position', 'label'})
+    old = {field['key']: field for field in before}
+    renamed_values = {field['key']: {option['previous']: option['name'] for option in field.get('options') or []
+                                     if option.get('previous')} for field in given}
+    parts = []
+    for field in after:
+        previous = old.get(field['key'])
+        if previous is None:
+            parts.append(f"field {field['label']} added")
+            continue
+        if previous['label'] != field['label']:
+            parts.append(f"field {previous['label']} renamed to {field['label']}")
+        changes = nq_app_events.value_changes({key: previous.get(key) for key in attributes}, {key: field.get(key) for key in attributes})
+        if changes:
+            parts.append(f"field {field['label']} {nq_app_events.changes_text(changes)}")
+        parts.extend(f"field {field['label']} {part}" for part in nq_app_events.named_list_changes(
+            'value', previous.get('options') or [], field.get('options') or [], ('color',), renamed_values.get(field['key'])))
+    keys = {field['key'] for field in after}
+    parts.extend(f"field {field['label']} removed" for field in before if field['key'] not in keys)
+    return parts
 
 
 def list_sections(task_repository: Any) -> list[dict[str, str]]:
@@ -3527,10 +3571,15 @@ def add_field_option(task_repository: Any, key: str, name: Any, username: str) -
 
 def save_sections(task_repository: Any, items: Any, username: str, *, defaults: bool = False) -> list[dict[str, str]]:
     sections = nq_catalog.normalize_sections(items if isinstance(items, list) else [])
+    before = list_sections(task_repository)
     task_repository.set_workspace_state(SECTIONS_STATE_KEY, json.dumps(sections, ensure_ascii=False))
     if hasattr(task_repository, 'try_add_log'):
+        # The sections are always the same six: each one by its position, with its name and colour.
         task_repository.try_add_log(username, 'nq_sections', 'Non-Qualified Calls sections restored to the default sections.'
-                                    if defaults else 'Non-Qualified Calls sections updated.')
+                                    if defaults else nq_app_events.changes_sentence('Non-Qualified Calls sections updated', [
+                                        f"section {index + 1} {nq_app_events.changes_text(changes)}"
+                                        for index, (old, new) in enumerate(zip(before, sections))
+                                        if (changes := nq_app_events.value_changes(old, new))]))
     return sections
 
 
@@ -3869,12 +3918,15 @@ def root_cause_rule(repository: Any) -> dict[str, Any]:
 
 def save_root_cause_rule(repository: Any, rule: Any, username: str) -> dict[str, Any]:
     """Save the suggestion rule; None restores the default one."""
+    before = root_cause_rule(repository)
     if rule is None:
         repository.set_workspace_state(ROOT_CAUSE_RULE_STATE_KEY, '')
     else:
         repository.set_workspace_state(ROOT_CAUSE_RULE_STATE_KEY, json.dumps(normalize_root_cause_rule(rule)))
     if hasattr(repository, 'try_add_log'):
-        repository.try_add_log(username, 'nq_root_cause_rule', 'Non-Qualified Calls root cause suggestion rule updated.')
+        repository.try_add_log(username, 'nq_root_cause_rule', nq_app_events.changes_sentence(
+            'Non-Qualified Calls root cause suggestion rule ' + ('restored to the default rule' if rule is None else 'updated'),
+            [nq_app_events.changes_text(nq_app_events.value_changes(before, root_cause_rule(repository)))]))
     return root_cause_rule(repository)
 
 
@@ -3968,8 +4020,19 @@ def save_root_causes(task_repository: Any, catalog: Any, require_to_close: bool,
         _refresh_root_domains(connection, normalized)
     task_repository.set_workspace_state(ROOT_CAUSE_SETTINGS_STATE_KEY, json.dumps({'require_to_close': bool(require_to_close)}))
     if hasattr(task_repository, 'try_add_log'):
+        after = list_root_causes(task_repository)
+        renamed_values = {plural: {item['previous']: item['name'] for item in normalized[plural] if item.get('previous')}
+                          for plural in columns}
+        parts = [part for plural, kind in (('domains', 'domain'), ('categories', 'Root Category'), ('causes', 'Root Cause'))
+                 for part in nq_app_events.named_list_changes(
+                     kind, current[plural], after[plural],
+                     sorted({key for item in [*current[plural], *after[plural]] for key in item} - {'name', 'previous', 'position'}),
+                     renamed_values[plural])]
+        if bool(current.get('require_to_close')) != bool(require_to_close):
+            parts.append(f"a Root Category {'required' if require_to_close else 'no longer required'} to close a call")
         task_repository.try_add_log(username, 'nq_root_causes', 'Non-Qualified Calls root cause catalog restored to the default '
-                                    'catalog.' if defaults else 'Non-Qualified Calls root cause catalog updated.')
+                                    'catalog.' if defaults else nq_app_events.changes_sentence(
+                                        'Non-Qualified Calls root cause catalog updated', parts))
     return list_root_causes(task_repository)
 
 
@@ -4375,10 +4438,21 @@ def status_rules(task_repository: Any) -> list[dict[str, Any]]:
 def save_status_rules(task_repository: Any, rules: Any, username: str) -> list[dict[str, Any]]:
     statuses = [item['name'] for item in list_options(task_repository)['statuses']]
     normalized = nq_catalog.normalize_status_rules(rules, statuses, list_fields(task_repository))
+    before = status_rules(task_repository)
     task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(normalized, ensure_ascii=False))
     changed = recompute_statuses(task_repository, username)
     if hasattr(task_repository, 'try_add_log'):
-        task_repository.try_add_log(username, 'nq_status_rules', f'Non-Qualified Calls status rules updated ({changed} calls changed).')
+        def rule_text(rule: dict[str, Any]) -> str:
+            return f"{rule.get('status')} when " + ' and '.join(
+                f"{condition.get('field')} {str(condition.get('op') or 'in').replace('_', ' ')}"
+                + (f" {', '.join(map(str, condition.get('values') or []))}" if condition.get('values') else '')
+                for condition in rule.get('conditions') or [])
+        old, new = [rule_text(rule) for rule in before], [rule_text(rule) for rule in normalized]
+        parts = [*(f'rule added: {text}' for text in new if text not in old), *(f'rule removed: {text}' for text in old if text not in new)]
+        if not parts and old != new:
+            parts.append('rules reordered')
+        task_repository.try_add_log(username, 'nq_status_rules', nq_app_events.changes_sentence(
+            f'Non-Qualified Calls status rules updated ({changed} calls changed status)', parts))
     return normalized
 
 
@@ -7152,9 +7226,10 @@ def recommendation_for(call: dict[str, Any], taxonomy: dict[str, Any], comments:
 
 def update_tracking(
     task_repository: Any, call_keys: list[str], changes: dict[str, Any], username: str, users: set[str],
-    expected_version: int | None = None,
+    expected_version: int | None = None, report: dict[str, dict[str, list[str]]] | None = None,
 ) -> list[str]:
-    """Apply follow-up and field changes; returns the calls that changed.
+    """Apply follow-up and field changes; returns the calls that changed (and fills ``report``, when given, with each
+    value every call changed, ``{call_key: {field: [before, after]}}``, for App Events).
 
     A team with members only accepts them as analysts: assigning anybody else is refused, and
     moving a call to such a team clears an analyst account that is not a member (an analyst without account, which
@@ -7275,6 +7350,9 @@ def update_tracking(
                 _record_history(connection, call_key, f'field:{key}', stored.get(key, ''), value, username, when)
             if 'status' in differences and automatic:
                 _record_history(connection, call_key, 'status_auto', str(row['status']), differences['status'], username, when)
+            if report is not None:
+                report[call_key] = {**{field: [str(row[field]), value] for field, value in differences.items()},
+                                    **{f'field:{key}': [stored.get(key, ''), value] for key, value in field_differences.items()}}
             changed.append(call_key)
     return changed
 
@@ -7298,7 +7376,8 @@ def delete_history(task_repository: Any, username: str, *, call_keys: list[str] 
                     f"DELETE FROM {NQ_CALL_HISTORY_TABLE} WHERE {column} IN ({', '.join('?' for _ in chunk)})", chunk,
                 ).rowcount
     if deleted and hasattr(task_repository, 'try_add_log'):
-        scope = f'{len(keys)} calls' if keys else f'{len(ids)} entries'
+        scope = (f"every entry of {len(keys)} calls (JOIN_ID {', '.join(nq_app_events.join_ids(task_repository, keys))})" if keys
+                 else f"entries {', '.join(str(entry) for entry in ids[:nq_app_events.LISTED])}")
         task_repository.try_add_log(username, 'nq_call_history_delete', f'Non-Qualified Calls history deleted ({scope}, {deleted} entries).')
     return deleted
 
@@ -10434,10 +10513,36 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def log_action(repository: Any, user: Any, action: str, details: dict[str, Any]) -> None:
         """Write a user action of the module to the App Events of the workspace."""
         if hasattr(repository, 'try_add_log'):
-            repository.try_add_log(user.username, action, json.dumps(details, ensure_ascii=False))
+            repository.try_add_log(user.username, action, json.dumps(details, ensure_ascii=False, default=str))
+
+    TRACKING_LABELS = {'status': 'Status', 'team': 'Team', 'analyst': 'Analyst', 'reviewer': 'Reviewer', 'root_domain': 'Root Domain',
+                       'root_category': 'Root Category', 'root_cause': 'Root Cause', 'root_technology': 'Root Technology',
+                       'status_mode': 'Status Mode'}
+
+    def change_labels(repository: Any) -> dict[str, str]:
+        """The name App Events gives each value a call can change: its follow-up and the fields of the catalog."""
+        return {**TRACKING_LABELS, **{f"field:{field['key']}": field['label'] for field in list_fields(repository)}}
+
+    def readable_changes(labels: dict[str, str], changes: dict[str, list[str]]) -> dict[str, list[str]]:
+        return {labels.get(name, name): values for name, values in changes.items()}
+
+    def comment_of(repository: Any, comment_id: int) -> dict[str, str] | None:
+        """The call, author and text of a comment, before it changes (for App Events)."""
+        with repository.connection() as connection:
+            row = connection.execute(f'SELECT call_key, created_by, body FROM {NQ_CALL_COMMENTS_TABLE} WHERE id = ?',
+                                     (int(comment_id),)).fetchone()
+        return None if row is None else {key: str(row[key] or '') for key in ('call_key', 'created_by', 'body')}
 
     @core.app.get('/non-qualified-calls', response_class=HTMLResponse)
     def non_qualified_calls_page(request: Request, user=Depends(core.current_user)):
+        try:
+            repository = workspace_repository(user) if core.active_workspace else None
+        except HTTPException:
+            repository = None
+        if repository is not None:
+            # The lists and maps read from this page are recorded again from the first one.
+            nq_app_events.REPEATED_READS.forget(repository, user.username)
+            log_action(repository, user, 'nq_page_opened', {'workspace': core.active_workspace.name})
         return core.render_template(request, 'non_qualified_calls.html', {
             'user': user, 'nq_can_edit': can_edit(user), 'nq_can_configure': can_configure(user), 'nq_can_prioritize': can_prioritize(user),
             'nq_can_import_analyses': can_moderate(user), 'nq_page_sizes': PAGE_SIZES, 'nq_default_page_size': DEFAULT_PAGE_SIZE,
@@ -10585,7 +10690,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                                                                  set(workspace_users()), payload.team or None))
         log_action(repository, user, 'nq_queue_take', {
             'selected': len(payload.call_keys), 'taken': len(result['taken']), 'team': result.get('team') or '',
-            'call_keys': result['taken'][:50],
+            'join_ids': nq_app_events.join_ids(repository, result['taken']),
             'skipped': result['skipped'][:50]})
         return JSONResponse(result)
 
@@ -10600,7 +10705,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                                                                    user.username, set(workspace_users())))
         log_action(repository, user, 'nq_queue_assign', {
             'selected': len(payload.call_keys), 'changed': len(result['changed']), 'changes': result['changes'],
-            'call_keys': result['changed'][:50], 'skipped': result['skipped'][:50]})
+            'join_ids': nq_app_events.join_ids(repository, result['changed']), 'skipped': result['skipped'][:50]})
         return JSONResponse({'changed': len(result['changed']), 'skipped': result['skipped']})
 
     @core.app.post('/api/non-qualified-calls/prioritization')
@@ -10688,7 +10793,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         content, name, form = await uploaded_file(request, 'workbook', 10)
         try:
             if str(form.get('preview') or '') == '1':
-                return JSONResponse(preview_catalog(repository, content))
+                preview = preview_catalog(repository, content)
+                log_action(repository, user, 'nq_catalog_import_preview', {'file': name})
+                return JSONResponse(preview)
             imported = import_catalog(repository, content, user.username, set(workspace_users()))
             log_action(repository, user, 'nq_catalog_import', {'file': name})
             return JSONResponse(imported)
@@ -10705,7 +10812,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.get('/api/non-qualified-calls/rca/template')
     def nq_rca_template(user=Depends(core.current_user)) -> Response:
-        workspace_repository(user)
+        log_action(workspace_repository(user), user, 'nq_template_download', {'template': 'Ericsson RCA results',
+                                                                              'file': 'NQ_RCA_results_template.csv'})
         return Response(nq_rca.rca_template(), media_type='text/csv',
                         headers={'Content-Disposition': 'attachment; filename="NQ_RCA_results_template.csv"'})
 
@@ -10716,10 +10824,14 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         repository = workspace_repository(user)
         content, name, form = await uploaded_file(request, 'file', 100)
         try:
-            return JSONResponse(import_rca_results(repository, content, name, user.username,
-                                                   replace=str(form.get('replace') or '') == '1',
-                                                   dry_run=str(form.get('preview') or '') == '1',
-                                                   add_to_catalog=str(form.get('add_to_catalog') or '') == '1'))
+            dry_run = str(form.get('preview') or '') == '1'
+            summary = import_rca_results(repository, content, name, user.username, replace=str(form.get('replace') or '') == '1',
+                                         dry_run=dry_run, add_to_catalog=str(form.get('add_to_catalog') or '') == '1')
+            if dry_run:
+                log_action(repository, user, 'nq_rca_import_preview', {
+                    'file': name, 'rows': summary['rows'], 'matched': summary['matched'], 'new': summary['new'],
+                    'unmapped': [item['name'] for item in summary['unmapped']][:nq_app_events.LISTED]})
+            return JSONResponse(summary)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         except Exception as exc:  # noqa: BLE001 - an unreadable file is a user error.
@@ -10732,7 +10844,10 @@ def install_non_qualified_calls_routes(core: Any) -> None:
 
     @core.app.get('/api/non-qualified-calls/analyses/template')
     def nq_analyses_template(user=Depends(core.current_user)) -> Response:
-        return Response(analyses_template(workspace_repository(user)), media_type='text/csv',
+        repository = workspace_repository(user)
+        log_action(repository, user, 'nq_template_download', {'template': 'analyses of the previous tool',
+                                                              'file': 'NQ_analyses_template.csv'})
+        return Response(analyses_template(repository), media_type='text/csv',
                         headers={'Content-Disposition': 'attachment; filename="NQ_analyses_template.csv"'})
 
     @core.app.post('/api/non-qualified-calls/analyses/import')
@@ -10746,6 +10861,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         users = set(workspace_users())
         options = {'overwrite': str(form.get('overwrite') or '') == '1', 'dry_run': str(form.get('preview') or '') == '1',
                    'names': user_names()}
+        if options['dry_run']:
+            log_action(repository, user, 'nq_analyses_import_preview', {'file': name, 'overwrite': options['overwrite']})
         if str(form.get('stream') or '') != '1':
             try:
                 return JSONResponse(import_analyses(repository, content, name, user.username, users, **options))
@@ -10913,6 +11030,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     @core.app.post('/api/non-qualified-calls/calls')
     def nq_calls(payload: QueryPayload, user=Depends(core.current_user)) -> Response:
         repository = workspace_repository(user)
+        # The calls the user lists: the same list read again (after a change of a call) is recorded once.
+        listed = {'filters': nq_app_events.filters_summary(payload.filters), 'sort': f'{payload.sort} {payload.direction}',
+                  'page': payload.page, 'page_size': payload.page_size, **({'located_call': payload.locate} if payload.locate else {})}
+        if nq_app_events.REPEATED_READS.first(repository, user.username, 'nq_calls', listed):
+            log_action(repository, user, 'nq_calls_listed', listed)
         read = lambda: {**query_calls(repository, payload.model_dump(), user.username), 'sync': nq_index_status(repository)}
         # The indexing is told by the process, not by the workspace: an answer is kept only while none is queued or
         # running, and for the outcome of the last one.
@@ -10929,6 +11051,11 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             detail = call_detail(repository, call_key)
         if detail is None:
             raise HTTPException(404, 'The call is no longer available. Refresh the list.')
+        tracking = detail.get('call') if isinstance(detail.get('call'), dict) else {}
+        log_action(repository, user, 'nq_call_opened', {
+            **nq_app_events.call_identity(repository, call_key),
+            **{label: tracking.get(name) for name, label in (('status', 'status'), ('analyst', 'analyst'), ('team', 'team'))
+               if tracking.get(name)}})
         return JSONResponse(detail)
 
     @core.app.get('/api/non-qualified-calls/calls/{call_key}/map')
@@ -11040,7 +11167,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                                                                [call.get('operator') for call in calls], site['site_id'], site['network'])
                                      if site and payload.with_calls else None)
         except Exception as error:  # noqa: BLE001 - App Events keeps what failed for its troubleshooting.
-            log_action(repository, user, 'nq_l3_maps_failed', {'zoom': payload.zoom, **({'site': site} if site else {}),
+            log_action(repository, user, 'nq_l3_maps_failed', {'zoom': payload.zoom, 'bbox': area_box, 'layers': payload.layers[:20],
+                                                               'filters': nq_app_events.filters_summary(payload.filters),
+                                                               **({'site': site} if site else {}),
                                                                'error': f'{type(error).__name__}: {error}'[:500]})
             raise HTTPException(500, 'NQ Maps could not be read. App Events keeps the error.') from error
         area['calls'] = calls if payload.with_calls else None
@@ -11055,8 +11184,19 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         area['zooms'] = {'grid': l3_dt_logs.GRID_ZOOM, 'events': l3_dt_logs.EVENT_ZOOM, 'sites': nq_call_map.AREA_SITES_ZOOM,
                          'tests': nq_call_map.AREA_TESTS_ZOOM}
         area['basemap'] = {'url_template': nq_call_map.OSM_TILES, 'attribution': nq_call_map.OSM_ATTRIBUTION}
+        # NQ Maps reads the area again at each move and zoom of the map: App Events records the map opened and each change
+        # of what it shows (its filters, layers, grid, routes, sites, samples or site), not every move (the failed reads always).
+        scope = 'calls around a call' if payload.join_ids is not None else 'map of a site' if site else 'filters of NQ Calls'
+        shown = {'filters': nq_app_events.filters_summary(payload.filters) if payload.join_ids is None else {},
+                 'around': payload.exclude, 'site': site, 'layers': sorted(payload.layers), 'grid': payload.grid,
+                 'route': payload.route, 'sites': payload.sites, 'tests': payload.tests}
+        changed_view = nq_app_events.REPEATED_READS.first(repository, user.username, f'nq_l3_maps:{scope}', shown)
+        if not changed_view and not payload.with_calls:
+            return JSONResponse(area)
         log_action(repository, user, 'nq_l3_maps', {
-            'scope': 'calls around a call' if payload.join_ids is not None else 'map of a site' if site else 'filters of NQ Calls',
+            'scope': scope,
+            **({'filters': shown['filters']} if shown['filters'] else {}),
+            **({'around_join_id': payload.exclude, 'nq_calls_around': len(join_ids)} if payload.join_ids is not None else {}),
             # The map of a site: which one, the NQ calls its CDRs give it and, once opened, whether the inventory places it.
             **({'site': site, 'nq_calls_of_the_site': nq_call_map.site_calls_count(calls, site['site_id'], site['network']),
                 **({'site_in_inventory': area['site_position'] is not None} if payload.with_calls else {})} if site else {}),
@@ -11065,7 +11205,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             'grid': (area.get('grid') or {}).get('layer', ''), 'points': sum(len(item['points']) for item in area['ues'].values()),
             'cells': len((area.get('grid') or {}).get('cells') or []), 'truncated': area['truncated'],
             'routes': len(area['routes']), 'sites': len((area['sites'] or {}).get('sites') or []),
-            'tests': len((area['tests'] or {}).get('rows') or []), 'seconds': round(time.monotonic() - started, 2)})
+            'tests': len((area['tests'] or {}).get('rows') or []), 'shows': {key: shown[key] for key in ('route', 'sites', 'tests')},
+            'seconds': round(time.monotonic() - started, 2)})
         return JSONResponse(area)
 
     @core.app.get('/api/non-qualified-calls/calls/{call_key}/l3/record')
@@ -11082,15 +11223,22 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         record = l3_dt_logs.source_row(session.get('source'), row)
         if l3_dt_logs.normalise_join_id(record.get('JoinID')) != l3_dt_logs.normalise_join_id(join_id):
             raise HTTPException(404, 'This record is not of a session of the call.')
+        log_action(repository, user, 'nq_call_l3_record_viewed', {
+            **nq_app_events.call_identity(repository, call_key), 'dataset_id': int(dataset_id), 'row': int(row),
+            **{name: nq_app_events.short_text(record.get(column), 120) for name, column in (
+                ('time', 'Time'), ('event', 'Event'), ('message', 'Message')) if record.get(column)}})
         return JSONResponse({'record': record})
 
     @core.app.patch('/api/non-qualified-calls/calls/{call_key}')
     def nq_update_call(call_key: str, payload: TrackingPayload, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
+        report: dict[str, dict[str, list[str]]] = {}
         changed = translate(lambda: update_tracking(repository, [call_key], payload.changes, user.username,
-                                                    set(workspace_users()), payload.version))
+                                                    set(workspace_users()), payload.version, report=report))
         if changed:
-            log_action(repository, user, 'nq_call_update', {'call_key': call_key, 'fields': sorted(payload.changes)})
+            log_action(repository, user, 'nq_call_update', {
+                **nq_app_events.call_identity(repository, call_key), 'fields': sorted(payload.changes),
+                'changes': readable_changes(change_labels(repository), report.get(call_key, {}))})
         return JSONResponse(call_detail(repository, call_key))
 
     @core.app.post('/api/non-qualified-calls/calls/bulk')
@@ -11100,33 +11248,50 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         if len(payload.call_keys) > 5000:
             raise HTTPException(400, 'Change at most 5000 calls at once.')
         repository = workspace_repository(user)
+        report: dict[str, dict[str, list[str]]] = {}
         changed = translate(lambda: update_tracking(repository, payload.call_keys, payload.changes, user.username,
-                                                    set(workspace_users())))
+                                                    set(workspace_users()), report=report))
         if changed:
+            # Each value changed, with how many calls went from each previous value to the new one.
+            labels = change_labels(repository)
+            moves: dict[str, Counter] = {}
+            for values in report.values():
+                for name, (old, new) in values.items():
+                    moves.setdefault(labels.get(name, name), Counter())[f"{old or 'none'} → {new or 'none'}"] += 1
             log_action(repository, user, 'nq_calls_bulk_update', {
                 'selected': len(payload.call_keys), 'changed': len(changed), 'fields': sorted(payload.changes),
-            })
+                'changes': {label: [f'{move} ({count} calls)' for move, count in counts.most_common(10)]
+                            for label, counts in moves.items()},
+                'join_ids': nq_app_events.join_ids(repository, changed)})
         return JSONResponse({'changed': len(changed)})
 
     @core.app.post('/api/non-qualified-calls/calls/{call_key}/comments')
     def nq_add_comment(call_key: str, payload: CommentPayload, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
         comment = translate(lambda: add_comment(repository, call_key, payload.body, user.username))
-        log_action(repository, user, 'nq_comment_add', {'call_key': call_key, 'comment_id': comment['id']})
+        log_action(repository, user, 'nq_comment_add', {**nq_app_events.call_identity(repository, call_key), 'comment_id': comment['id'],
+                                                         'text': nq_app_events.short_text(comment['body'])})
         return JSONResponse({'comment': comment})
 
     @core.app.patch('/api/non-qualified-calls/comments/{comment_id}')
     def nq_edit_comment(comment_id: int, payload: CommentPayload, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
+        before = comment_of(repository, comment_id)
         comment = translate(lambda: edit_comment(repository, comment_id, payload.body, user.username, can_moderate(user)))
-        log_action(repository, user, 'nq_comment_edit', {'comment_id': comment_id})
+        log_action(repository, user, 'nq_comment_edit', {
+            **(nq_app_events.call_identity(repository, before['call_key']) if before else {}), 'comment_id': comment_id,
+            **({'author': before['created_by'], 'before': nq_app_events.short_text(before['body'])} if before else {}),
+            'text': nq_app_events.short_text(comment['body'])})
         return JSONResponse({'comment': comment})
 
     @core.app.delete('/api/non-qualified-calls/comments/{comment_id}')
     def nq_delete_comment(comment_id: int, user=Depends(editor_user)) -> JSONResponse:
         repository = workspace_repository(user)
+        before = comment_of(repository, comment_id)
         comment = translate(lambda: delete_comment(repository, comment_id, user.username, can_moderate(user)))
-        log_action(repository, user, 'nq_comment_delete', {'comment_id': comment_id})
+        log_action(repository, user, 'nq_comment_delete', {
+            **(nq_app_events.call_identity(repository, before['call_key']) if before else {}), 'comment_id': comment_id,
+            **({'author': before['created_by'], 'text': nq_app_events.short_text(before['body'])} if before else {})})
         return JSONResponse({'comment': comment})
 
     @core.app.delete('/api/non-qualified-calls/history/{entry_id}')
@@ -11251,7 +11416,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
             content = destination.read_bytes()
         media_type = ('application/vnd.openxmlformats-officedocument.presentationml.presentation' if export_format == 'powerpoint'
                       else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-        log_action(repository, user, f'nq_summary_export_{export_format}', {'file': name})
+        log_action(repository, user, f'nq_summary_export_{export_format}', {
+            'file': name, 'filters': nq_app_events.filters_summary(payload.filters), 'granularity': payload.granularity,
+            'include_suggestions': payload.include_suggestions})
         return Response(content, media_type=media_type, headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @core.app.post('/api/non-qualified-calls/export')
@@ -11260,6 +11427,6 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         content = export_workbook(repository, payload.filters, user.username)
         stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
         name = re.sub(r'[^A-Za-z0-9._-]+', '_', f'{core.active_workspace.name}_non-qualified-calls_{stamp}.xlsx')
-        log_action(repository, user, 'nq_calls_export', {'file': name})
+        log_action(repository, user, 'nq_calls_export', {'file': name, 'filters': nq_app_events.filters_summary(payload.filters)})
         return Response(content, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                         headers={'Content-Disposition': f'attachment; filename="{name}"'})

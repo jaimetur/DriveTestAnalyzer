@@ -94,9 +94,15 @@ def indexing_runs_at_once(monkeypatch):
 
 
 def test_nq_analysis_center_actions_are_recorded(client, tmp_path, indexing_runs_at_once) -> None:
+    from src.modules.core.app_event_details import describe_app_event
+
     calls = setup_calls(client, tmp_path)
     call = calls['0xA1']
+    identity = {'call_key': call['call_key'], 'join_id': '0xA1', 'operator': call['operator'], 'campaign': call['campaign'],
+                'call_type': call['service'], 'nr_mode': call['nr_mode']}
 
+    assert client.get('/non-qualified-calls').status_code == 200
+    assert client.get(f"/api/non-qualified-calls/calls/{call['call_key']}").status_code == 200
     assert client.patch(f"/api/non-qualified-calls/calls/{call['call_key']}",
                         json={'changes': {'status': 'Under Planning'}}).status_code == 200
     keys = [item['call_key'] for item in calls.values()]
@@ -104,17 +110,38 @@ def test_nq_analysis_center_actions_are_recorded(client, tmp_path, indexing_runs
     comment = client.post(f"/api/non-qualified-calls/calls/{call['call_key']}/comments", json={'body': 'Traces requested.'}).json()['comment']
     assert client.patch(f"/api/non-qualified-calls/comments/{comment['id']}", json={'body': 'Traces received.'}).status_code == 200
     assert client.delete(f"/api/non-qualified-calls/comments/{comment['id']}").status_code == 200
-    assert client.post('/api/non-qualified-calls/export', json={'filters': {}}).status_code == 200
+    assert client.post('/api/non-qualified-calls/export', json={'filters': {'operator': [call['operator']]}}).status_code == 200
     assert client.get('/api/non-qualified-calls/catalog/export').status_code == 200
+    assert client.get('/api/non-qualified-calls/rca/template').status_code == 200
+    # The same list read again (after a change of a call) is recorded once; another page or filter again.
+    for _ in range(2):
+        assert client.post('/api/non-qualified-calls/calls', json={'filters': {'operator': [call['operator']]}}).status_code == 200
+    assert client.post('/api/non-qualified-calls/calls', json={'filters': {'operator': [call['operator']]}, 'page': 2}).status_code == 200
 
-    assert events('nq_call_update') == [{'call_key': call['call_key'], 'fields': ['status']}]
-    bulk = events('nq_calls_bulk_update')
-    assert bulk[0]['selected'] == len(keys) and bulk[0]['fields'] == ['team']
-    assert events('nq_comment_add') == [{'call_key': call['call_key'], 'comment_id': comment['id']}]
-    assert events('nq_comment_edit') == [{'comment_id': comment['id']}]
-    assert events('nq_comment_delete') == [{'comment_id': comment['id']}]
-    assert len(events('nq_calls_export')) == 1
+    assert events('nq_page_opened') == [{'workspace': core.active_workspace.name}]
+    assert events('nq_call_opened')[-1] == {**identity, 'status': call['status']}
+    [update] = events('nq_call_update')
+    # A status chosen by hand: its value and that it is no longer set by the Status Rules.
+    assert update == {**identity, 'fields': ['status'],
+                      'changes': {'Status': [call['status'], 'Under Planning'], 'Status Mode': ['auto', 'manual']}}
+    assert describe_app_event('nq_call_update', update) == (
+        f"NQ call JOIN_ID 0xA1 ({call['operator']}, {call['campaign']}, {call['service']}, {call['nr_mode']}) changed: "
+        f"Status {call['status']} → Under Planning; Status Mode auto → manual.")
+    [bulk] = events('nq_calls_bulk_update')
+    assert bulk['selected'] == len(keys) and bulk['fields'] == ['team'] and sorted(bulk['join_ids']) == sorted(calls)
+    # With the statuses the Status Rules gave the calls after it.
+    assert bulk['changes']['Team'] == [f'none → Operations ({len(keys)} calls)'] and set(bulk['changes']) == {'Team', 'Status'}
+    assert events('nq_comment_add') == [{**identity, 'comment_id': comment['id'], 'text': 'Traces requested.'}]
+    assert events('nq_comment_edit') == [{**identity, 'comment_id': comment['id'], 'author': 'super', 'before': 'Traces requested.',
+                                          'text': 'Traces received.'}]
+    assert events('nq_comment_delete') == [{**identity, 'comment_id': comment['id'], 'author': 'super', 'text': 'Traces received.'}]
+    assert describe_app_event('nq_comment_delete', events('nq_comment_delete')[0]).endswith('deleted: "Traces received.".')
+    assert events('nq_calls_export')[0]['filters'] == {'operator': [call['operator']]}
     assert len(events('nq_catalog_export')) == 1
+    assert events('nq_template_download') == [{'template': 'Ericsson RCA results', 'file': 'NQ_RCA_results_template.csv'}]
+    listed = [event for event in events('nq_calls_listed') if event['filters'] == {'operator': [call['operator']]}]
+    assert [event['page'] for event in listed] == [1, 2]
+    assert describe_app_event('nq_calls_listed', listed[0]).startswith(f"NQ calls listed with operator {call['operator']} (sorted by ")
 
 
 def test_app_events_export_import_and_back_up_on_their_own(client) -> None:

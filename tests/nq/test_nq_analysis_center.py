@@ -157,6 +157,11 @@ def test_status_follows_the_phase_fields_until_it_is_set_by_hand(client, tmp_pat
     rules = [{'status': 'Closed', 'conditions': [{'field': 'planned_status', 'op': 'in', 'values': ['Planned']}]}]
     assert client.put('/api/non-qualified-calls/status-rules', json={'rules': rules}).status_code == 200
     assert {item['join_id']: item for item in query(client)['calls']}['0xB2']['status'] == 'Closed'
+    # App Events tells the rules added and removed, and the values of a list renamed.
+    logged = [row['details'] for row in core.repository.list_logs() if row['action'] in {'nq_status_rules', 'nq_analysis_fields'}]
+    assert logged[0].startswith('Non-Qualified Calls status rules updated (') and (
+        'rule added: Closed when planned_status in Planned' in logged[0] and 'rule removed: ' in logged[0])
+    assert 'renamed to Done' in logged[1]
     bad = client.put('/api/non-qualified-calls/status-rules', json={'rules': [{'status': 'Nope', 'conditions': []}]})
     assert bad.status_code == 400
 
@@ -168,6 +173,8 @@ def test_default_statuses_replace_statuses_the_rules_gave_but_not_those_set_by_h
     renamed = [{**item, 'previous': item['name'], 'name': 'Analysis Started' if item['name'] == 'Under Analysis' else item['name']}
                for item in state['options']['statuses']]
     assert client.put('/api/non-qualified-calls/options', json={'statuses': renamed, 'teams': teams}).status_code == 200
+    assert next(row['details'] for row in core.repository.list_logs() if row['action'] == 'nq_call_options') == (
+        'Non-Qualified Calls statuses and teams updated: status Under Analysis renamed to Analysis Started.')
     by_rules = patch(client, calls['0xA1'], {'fields': {'analysis_status': 'Ongoing'}})
     by_hand = patch(client, calls['0xB2'], {'status': 'Analysis Started'})
     assert (by_rules['status'], by_rules['status_mode'], by_hand['status_mode']) == ('Analysis Started', 'auto', 'manual')
@@ -195,6 +202,9 @@ def test_each_configuration_goes_back_to_the_values_of_a_new_workspace(client, t
     reset = client.put('/api/non-qualified-calls/table-columns', json={'builtin': [], 'cdr': [], 'defaults': True})
     assert reset.json()['table_columns'] == {'builtin': [], 'cdr': [], 'export_cdr': []}
     assert events('nq_table_columns')[0] == 'Non-Qualified Calls table columns restored to the default columns.'
+    # App Events tells what each configuration change did.
+    assert events('nq_table_columns')[1] == ('Non-Qualified Calls table columns updated: call columns +join_id; '
+                                             'CDR columns in the table +City.')
     # Default Fields & Sections: a field that is not a default one stays while a call uses it.
     fields = [*state['fields'], {'label': 'Custom Note', 'section': 'analysis', 'type': 'text', 'source': 'user', 'options': []}]
     assert client.put('/api/non-qualified-calls/fields', json={'fields': fields}).status_code == 200
@@ -211,6 +221,10 @@ def test_each_configuration_goes_back_to_the_values_of_a_new_workspace(client, t
     assert after['sections'] == state['default_sections']
     assert events('nq_analysis_fields')[0] == 'Non-Qualified Calls field catalog restored to the default fields.'
     assert events('nq_sections')[0] == 'Non-Qualified Calls sections restored to the default sections.'
+    assert 'field Custom Note added' in events('nq_analysis_fields')[-1]
+    assert events('nq_sections')[1].startswith(
+        f"Non-Qualified Calls sections updated: section 1 label {state['default_sections'][0]['label']} → "
+        f"{state['default_sections'][0]['label']} X; section 2 ")
     # Default Catalog: a root category that is not a default one stays while a call uses it.
     root = client.get('/api/non-qualified-calls/root-causes').json()
     root['categories'] = [*({**item, 'previous': item['name']} for item in root['categories']),
@@ -226,6 +240,8 @@ def test_each_configuration_goes_back_to_the_values_of_a_new_workspace(client, t
     assert [item['name'] for item in saved.json()['categories']] == [item['name'] for item in state['root_cause_defaults']['categories']]
     assert saved.json()['require_to_close'] is False
     assert events('nq_root_causes')[0] == 'Non-Qualified Calls root cause catalog restored to the default catalog.'
+    assert events('nq_root_causes')[1] == ('Non-Qualified Calls root cause catalog updated: Root Category Custom Category added; '
+                                           'a Root Category required to close a call.')
     # Default Equivalences: the import uses only those of the tool again.
     repository.set_workspace_state(nq.ANALYSES_EQUIVALENCES_STATE_KEY, json.dumps(
         {'field:analysis_status': {'done': {'value': 'Done', 'to': 'Finished', 'domain': ''}}}))

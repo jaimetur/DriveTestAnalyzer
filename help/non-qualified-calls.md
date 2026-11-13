@@ -127,6 +127,15 @@ Selecting every value of a filter, or none, applies no restriction (**Select All
 > [!IMPORTANT]
 > **The selection is shared.** It is saved in the workspace, so every user finds the last filters applied, in any session and on any device. **Assigned to me** always refers to the user viewing the page. An Operator or Vendor saved with a name the [Operator Maps](workspace-config.md#operator-maps) now show differently keeps selecting its calls with the new name (Vodafone SM selects VF SM once it is mapped to it), as do the NetCheck RCA values saved with another spelling.
 
+## App Events of the module
+
+App Events (in [App Logs](app-logs.md#app-events)) records every action of the users of Non-Qualified Calls, each read as a sentence that tells what was done and to which calls, named by their `JOIN_ID`, operator, campaign, call type and NR Mode:
+
+- **Reading**: the module opened (`nq_page_opened`), the calls listed with their filters, sort and page (`nq_calls_listed`; the same list read again, as after a change of a call, is recorded once), a call opened with its status, team and analyst (`nq_call_opened`), a record of its Layer3 Logs viewed (`nq_call_l3_record_viewed`) and the maps (`nq_call_map`, `nq_call_l3_layers`, `nq_l3_maps`).
+- **Follow-up**: each value a call changed, from what to what (`nq_call_update`, such as *Status Not Attended → Under Planning; Status Mode auto → manual*, the Status the rules gave included); the changes of several calls, with how many calls went from each value to the new one and their `JOIN_ID`s (`nq_calls_bulk_update`); the calls taken or assigned in the queues (`nq_queue_take`, `nq_queue_assign`); the comments added, edited (the text before and after) and deleted (with their text and author), and the history deleted.
+- **Configuration**: what each save changed: the statuses and teams (added, removed, renamed, colours, members), the fields and sections (their label, settings and the values of their lists), the Status Rules (the rules added and removed), the Root Cause Catalog and its suggestion rule, the table columns and layouts, the Map Levels, the DT Analyzer RCA rules and the NQ Prioritization.
+- **Files**: the exports with their filters (`nq_calls_export`, `nq_summary_export_powerpoint`, `nq_summary_export_word`), the catalog workbook exported, previewed and imported, the templates downloaded (`nq_template_download`), and the Ericsson RCA results and analyses of the previous tool previewed and imported.
+
 ## Images of the panels
 
 Every panel, and its KPIs, charts and tables (a table with its title, such as a failure card or a section of Progress View, is one image), downloads as a PNG image or copies to the clipboard as a screenshot from the floating buttons at its top right corner (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_nq_calls_image`. The [map of a call](#map-of-the-call), in the call and larger, downloads and copies the same way, with its legend and the panel of the element chosen, without its buttons.
@@ -289,7 +298,7 @@ The **NQ Maps** panel, right below the NQ Prioritization & Queues (and in the se
 
 The map of each call shows the same information focused on it: its own log, and, with **Logs of the NQ calls around** in its card **LOGS Info**, those of the NQ calls of its map (its groups and its area), faded below its own.
 
-App Events records each map read (`nq_l3_maps`, with what it read, the zoom, the layers, the grid, the points or cells, the routes, sites and samples and how long it took) or that could not be read (`nq_l3_maps_failed`).
+App Events records the map opened and each change of what it shows (`nq_l3_maps`: its filters, layers, grid, routes, sites or samples), with the filters, the NQ calls and sessions found, the zoom, the layers, the grid, the points or cells, the routes, sites and samples and how long it took; moving or zooming the map is not recorded again. A map that could not be read is always recorded (`nq_l3_maps_failed`, with the filters, the zoom, the area, the layers and the error).
 
 ### Map of a site
 
@@ -303,7 +312,7 @@ The **map of a site** shows the NQ calls of one site and of the sites around it.
 
 Below the map, a table lists the NQ calls **of the site**, wherever they failed, and those of other sites (or without a site) **within the radius**, of the operators shown: the site first, then the nearest. For each one: its mark on the map, `JOIN_ID`, site (*This site* for those of the site), distance to the site, operator, call type, campaign, start, result, failure, status and root cause (the one decided, else that of the DT Analyzer RCA). A click on a column title sorts the table by it. A click on a `JOIN_ID` shows the call on the map with its panel and its **Signalling timeline**; **Open** opens the call (from Scoring & GAP Analysis in a tab of its own, so the map stays open; here the map closes and the call opens). **Copy the JOIN_IDs** copies the `JOIN_ID` of every call of the table, one per line. The map and the table download as images or copy as screenshots with their image buttons.
 
-App Events records each map of a site as a map read (`nq_l3_maps`, scope *map of a site*), with the site, its network, operator, campaigns, radius, the page it was opened from, how many NQ calls its CDRs give it and whether the Network Inventory places it. A link to a call (`/non-qualified-calls#call=<call key>`) opens that call.
+App Events records each map of a site opened, and each change of what it shows, as `nq_l3_maps` (scope *map of a site*), with the site, its network, operator, campaigns, radius, the page it was opened from, how many NQ calls its CDRs give it and, when it opens, whether the Network Inventory places it. A link to a call (`/non-qualified-calls#call=<call key>`) opens that call.
 
 ## NQ Rate by Campaign and Operator
 

@@ -303,6 +303,162 @@ def _demo_mode_changed(details: dict[str, Any]) -> str:
         'keep_super_admins': 'Every super-admin keeps access'})])
 
 
+# -- NQ Analysis Center ------------------------------------------------------------------------------------------------
+
+def _nq_call(details: dict[str, Any]) -> str:
+    """``NQ call JOIN_ID 0xA1 (EE, UK_Q3_2026, Voice, NSA)``: the call an event touched, by its key when it has no JOIN_ID."""
+    if not isinstance(details, dict):
+        return 'NQ call'
+    about = ', '.join(str(details[key]) for key in ('operator', 'campaign', 'call_type', 'nr_mode') if details.get(key))
+    name = f"JOIN_ID {details['join_id']}" if details.get('join_id') else f"key {details.get('call_key') or '?'}"
+    return f'NQ call {name}' + (f' ({about})' if about else '')
+
+
+def _nq_filters(filters: Any) -> str:
+    if not isinstance(filters, dict) or not filters:
+        return 'no filter'
+    return '; '.join(f'{field_label(name)} {value_text(value)}' for name, value in filters.items())
+
+
+def _quoted(text: Any) -> str:
+    return f'"{value_text(text)}"' if text else 'an empty text'
+
+
+def _nq_moves(changes: Any) -> str:
+    """``Status New → Under Planning; Team none → Ops``: each value a call changed, from what to what."""
+    if not isinstance(changes, dict):
+        return ''
+    parts = []
+    for name, values in changes.items():
+        if isinstance(values, (list, tuple)) and len(values) == 2 and not isinstance(values[0], (list, dict)):
+            parts.append(f"{name} {value_text(values[0]) if values[0] not in (None, '') else 'none'} → "
+                         f"{value_text(values[1]) if values[1] not in (None, '') else 'none'}")
+        else:
+            parts.append(f'{name} {value_text(values)}')
+    return '; '.join(parts)
+
+
+def _nq_call_update(details: dict[str, Any]) -> str:
+    moves = _nq_moves(details.get('changes'))
+    return (f'{_nq_call(details)} changed: {moves}.' if moves
+            else f"{_nq_call(details)} changed ({value_text(details.get('fields'))}).")
+
+
+def _nq_bulk_update(details: dict[str, Any]) -> str:
+    text = f"{details.get('changed')} of {details.get('selected')} selected NQ calls changed"
+    moves = '; '.join(f'{name}: {value_text(values)}' for name, values in (details.get('changes') or {}).items())
+    text += f': {moves}' if moves else f" ({value_text(details.get('fields'))})"
+    return text + (f". JOIN_IDs {value_text(details['join_ids'])}." if details.get('join_ids') else '.')
+
+
+def _nq_l3_maps(details: dict[str, Any]) -> str:
+    scope = details.get('scope') or ''
+    found = (f"{details.get('calls', 0)} NQ calls, {details.get('sessions', 0)} sessions of Layer3 Logs shown as "
+             f"{details.get('mode') or 'points'} at zoom {details.get('zoom')}")
+    layers = f"layers {value_text(details.get('layers'))}" + (f", grid of {details['grid']}" if details.get('grid') else '')
+    extra = ', '.join(f'{details[key]} {label}' for key, label in (('routes', 'routes'), ('sites', 'sites'), ('tests', 'RSRP / SINR samples'))
+                      if details.get(key))
+    took = f" ({details['seconds']} s)" if details.get('seconds') is not None else ''
+    if scope == 'calls around a call':
+        return (f"Map of the NQ call JOIN_ID {details.get('around_join_id') or '?'}: Layer3 Logs of the "
+                f"{details.get('nq_calls_around', 0)} NQ calls around it read ({layers}; {details.get('sessions', 0)} sessions){took}.")
+    if scope == 'map of a site':
+        site = details.get('site') if isinstance(details.get('site'), dict) else {}
+        about = ', '.join(f'{label} {site[key]}' for key, label in (('network', 'network'), ('operator', 'operator'), ('campaign', 'campaign'),
+                                                                     ('radius_km', 'radius km'), ('opened_from', 'opened from')) if site.get(key))
+        placed = ('' if 'site_in_inventory' not in details else
+                  '; placed by the inventory' if details['site_in_inventory'] else '; not in the inventory')
+        return (f"Map of the site {site.get('site_id') or '?'} shown in NQ Maps ({about}): {details.get('nq_calls_of_the_site', 0)} NQ calls "
+                f"of the site{placed}; {found}; {layers}" + (f'; {extra}' if extra else '') + f'{took}.')
+    return (f"NQ Maps shown for {_nq_filters(details.get('filters'))}: {found}; {layers}" + (f'; {extra}' if extra else '') + f'{took}.')
+
+
+def _nq_failed(subject: str) -> Callable[[dict[str, Any]], str]:
+    def describe(details: dict[str, Any]) -> str:
+        return f"{subject(details)} failed: {details.get('error') or 'unknown error'}."
+    return describe
+
+
+def _nq_export(kind: str) -> Callable[[dict[str, Any]], str]:
+    def describe(details: dict[str, Any]) -> str:
+        options = (f", by {details['granularity']}" if details.get('granularity') else '') + (
+            '' if details.get('include_suggestions') is not False else ', without the suggested root causes')
+        return f"{kind} exported to {details.get('file')} ({_nq_filters(details.get('filters'))}{options})."
+    return describe
+
+
+_NQ_DESCRIBERS: dict[str, Callable[[Any], str]] = {
+    'nq_page_opened': lambda details: f"Non-Qualified Calls opened (workspace {details.get('workspace')}).",
+    'nq_calls_listed': lambda details: (
+        f"NQ calls listed with {_nq_filters(details.get('filters'))} (sorted by {details.get('sort')}, page {details.get('page')} of "
+        f"{details.get('page_size')} calls" + (f", to show the call {details['located_call']}" if details.get('located_call') else '') + ').'),
+    'nq_calls_scope_only': lambda details: f"NQ Calls in Scope Only switched {'on' if details.get('in_scope') else 'off'}.",
+    'nq_call_opened': lambda details: f"{_nq_call(details)} opened" + (
+        f": {', '.join(f'{name} {details[name]}' for name in ('status', 'team', 'analyst') if details.get(name))}."
+        if any(details.get(name) for name in ('status', 'team', 'analyst')) else '.'),
+    'nq_call_update': _nq_call_update,
+    'nq_calls_bulk_update': _nq_bulk_update,
+    'nq_comment_add': lambda details: f"Comment added to the {_nq_call(details)}: {_quoted(details.get('text'))}.",
+    'nq_comment_edit': lambda details: (
+        f"Comment {details.get('comment_id')}" + (f" of {details['author']}" if details.get('author') else '')
+        + (f" on the {_nq_call(details)}" if details.get('call_key') else '') + ' edited'
+        + (f": {_quoted(details.get('before'))} → {_quoted(details.get('text'))}." if 'text' in details else '.')),
+    'nq_comment_delete': lambda details: (
+        f"Comment {details.get('comment_id')}" + (f" of {details['author']}" if details.get('author') else '')
+        + (f" on the {_nq_call(details)}" if details.get('call_key') else '') + ' deleted'
+        + (f": {_quoted(details.get('text'))}." if 'text' in details else '.')),
+    'nq_call_map': lambda details: (
+        f"Map of the area of the {_nq_call(details)} opened: radius {details.get('radius_km')} km"
+        f"{' (of its groups)' if details.get('radius_of_the_groups') else ''}, tests {details.get('tests')}, campaigns "
+        f"{value_text(details.get('selected_campaigns'))}; {details.get('sites', 0)} sites, {details.get('nq_calls_around', 0)} NQ calls and "
+        f"{details.get('tests_around', 0)} tests around" + (f"; to check: {value_text(details['to_check'])}" if details.get('to_check') else '')
+        + (f"; worth a look: {value_text(details['worth_a_look'])}" if details.get('worth_a_look') else '')
+        + (f" ({details['seconds']} s)." if details.get('seconds') is not None else '.')),
+    'nq_call_map_failed': _nq_failed(lambda details: f"Map of the area of the {_nq_call(details)}"),
+    'nq_call_l3_layers': lambda details: (
+        f"Layer3 Logs of the {_nq_call(details)} read for its map: "
+        + (f"UEs {value_text(details.get('ues'))}, {sum((details.get('points') or {}).values())} points"
+           if details.get('ues') else 'no session of the call') + (f" ({details['seconds']} s)." if details.get('seconds') is not None else '.')),
+    'nq_call_l3_layers_failed': _nq_failed(lambda details: f"Layer3 Logs of the {_nq_call(details)}"),
+    'nq_call_l3_record_viewed': lambda details: (
+        f"Record of the Layer3 Logs of the {_nq_call(details)} viewed (CDR {details.get('dataset_id')}, row {details.get('row')}"
+        + ''.join(f", {name} {details[name]}" for name in ('time', 'event', 'message') if details.get(name)) + ').'),
+    'nq_l3_maps': _nq_l3_maps,
+    'nq_l3_maps_failed': _nq_failed(lambda details: f"NQ Maps for {_nq_filters(details.get('filters'))} at zoom {details.get('zoom')}"),
+    'nq_queue_take': lambda details: (
+        f"{details.get('taken')} of {details.get('selected')} selected NQ calls of the queues taken as their analyst"
+        + (f" (team {details['team']})" if details.get('team') else '')
+        + (f": JOIN_IDs {value_text(details['join_ids'])}" if details.get('join_ids') else '')
+        + (f"; skipped {value_text(details['skipped'])}" if details.get('skipped') else '') + '.'),
+    'nq_queue_assign': lambda details: (
+        f"{details.get('changed')} of {details.get('selected')} selected NQ calls of the queues assigned ({value_text(details.get('changes'))})"
+        + (f": JOIN_IDs {value_text(details['join_ids'])}" if details.get('join_ids') else '')
+        + (f"; skipped {value_text(details['skipped'])}" if details.get('skipped') else '') + '.'),
+    'nq_prioritization_recalculate': lambda details: 'NQ Prioritization asked to be calculated again (in the background).',
+    'nq_prioritization_defaults': lambda details: f"NQ Prioritization Rules restored to their defaults (strategy {details.get('strategy')}).",
+    'nq_calls_reindex_queued': lambda details: 'NQ calls of every CDR asked to be indexed again (in the background).',
+    'nq_catalog_export': lambda details: f"NQ Analysis Center catalog exported to {details.get('file')}.",
+    'nq_catalog_import': lambda details: f"NQ Analysis Center catalog imported from {details.get('file')}.",
+    'nq_catalog_import_preview': lambda details: f"NQ Analysis Center catalog file {details.get('file')} previewed before importing it.",
+    'nq_template_download': lambda details: f"Template of the {details.get('template')} downloaded ({details.get('file')}).",
+    'nq_rca_import_preview': lambda details: (
+        f"Ericsson RCA results file {details.get('file')} previewed: {details.get('rows')} rows, {details.get('matched')} matching an NQ call, "
+        f"{details.get('new')} new" + (f"; not in the Root Cause Catalog: {value_text(details['unmapped'])}" if details.get('unmapped') else '') + '.'),
+    'nq_rca_import': lambda details: (
+        f"Ericsson RCA results imported from {details.get('file')}: {details.get('rows')} rows, {details.get('matched')} matching an NQ call"
+        + (', replacing the previous results' if details.get('replace') else '')
+        + (f"; added to the Root Cause Catalog: {value_text(details['added_to_catalog'])}" if details.get('added_to_catalog') else '') + '.'),
+    'nq_analyses_import_preview': lambda details: (
+        f"Analyses file {details.get('file')} of the previous tool previewed before importing it"
+        + (' (overwriting the values the calls have)' if details.get('overwrite') else '') + '.'),
+    'nq_calls_export': _nq_export('NQ calls'),
+    'nq_summary_export_powerpoint': _nq_export('Executive Summary, Progress Status and Root Cause Analysis (PowerPoint)'),
+    'nq_summary_export_word': _nq_export('Executive Summary, Progress Status and Root Cause Analysis (Word)'),
+    'nq_map_levels_saved': lambda details: f"Map Levels saved: {value_text(details.get('changes'))}.",
+    'nq_dta_rca_calculated': lambda details: f"DT Analyzer RCA calculated again for {details.get('rows')} rows after its rules were saved.",
+}
+
+
 _DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'demo_mode_started': lambda details: (f"Demo Mode started until {details.get('expected_end')}, with access for "
                                           f"{_demo_users(details)}."),
@@ -358,6 +514,7 @@ _DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'save_email_delivery': _settings('Email delivery'),
     'save_scheduled_backup_settings': _settings('Scheduled backups'),
     'save_backup_selection': _settings('Backup selection'),
+    **_NQ_DESCRIBERS,
 }
 
 

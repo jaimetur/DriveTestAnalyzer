@@ -512,13 +512,20 @@ def test_the_map_of_a_site_places_it_and_records_it_in_app_events(client, tmp_pa
     assert opened.json()['site_position']['latitude'] == 53.1 and opened.json()['calls_count'] == 1
     moved = client.post('/api/non-qualified-calls/l3-maps', json={**body, 'with_calls': False}).json()
     assert moved['site_position'] is None and moved['calls'] is None
-    # App Events records each read with the site, and the first one with whether the inventory places it.
-    events = [json.loads(row['details']) for row in repository.list_logs() if row['action'] == 'nq_l3_maps']
+    # App Events records the map opened with the site and whether the inventory places it; moving the map shows the same
+    # things (not recorded again), another layer does.
+    assert client.post('/api/non-qualified-calls/l3-maps', json={**body, 'with_calls': False, 'layers': ['event']}).status_code == 200
+    events = [json.loads(row['details']) for row in sorted(repository.list_logs(), key=lambda row: row['id'])
+              if row['action'] == 'nq_l3_maps']
     sites = [event for event in events if event['scope'] == 'map of a site']
     assert len(sites) == 2 and all(event['site']['site_id'] == '76305' and event['site']['radius_km'] == '2' for event in sites)
     assert all(event['site']['opened_from'] == 'Scoring & GAP Analysis · Sites to review' and event['nq_calls_of_the_site'] == 0
                for event in sites)
-    assert sorted(event.get('site_in_inventory') for event in sites if 'site_in_inventory' in event) == [True]
+    assert [event.get('site_in_inventory') for event in sites] == [True, None] and sites[1]['layers'] == ['event']
+    from src.modules.core.app_event_details import describe_app_event
+    assert describe_app_event('nq_l3_maps', sites[0]).startswith(
+        'Map of the site 76305 shown in NQ Maps (network Telefonica, operator O2 UK, campaign UK_Q3_SA_2026, radius km 2, opened from '
+        'Scoring & GAP Analysis · Sites to review): 0 NQ calls of the site; placed by the inventory;')
 
 
 def test_layer_3_maps_reads_the_samples_of_the_area_from_a_copy_of_each_cdr(client, monkeypatch) -> None:
