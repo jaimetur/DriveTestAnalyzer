@@ -37,7 +37,8 @@ def test_the_first_rule_that_holds_gives_the_root_cause_with_its_evidence():
     # The radio comes before the service: a DNS failure in poor coverage is a coverage problem.
     dns = {'failure_classification': 'Protocol Problems', 'failure_category': 'DNS', 'failure_subcategory': 'No response from DNS'}
     result = evaluate(dns, {'lte_rsrp': -118.4, 'lte_sinr': 4})
-    assert (result['rule'], result['category'], result['cause'], result['domain']) == ('Poor LTE coverage', 'Poor Coverage LTE', 'Coverage', 'RF')
+    assert (result['rule'], result['category'], result['cause'], result['domain'], result['technology']) == (
+        'Poor LTE coverage', 'Coverage', 'DL coverage', 'RF', '4G - LTE')
     assert result['evidence'] == 'LTE RSRP (average) −118.4 dBm (< −110 dBm)\nCall average (CDR): LTE RSRP −118.4 dBm, SINR 4 dB'
     result = evaluate(dns, {'lte_rsrp': -85, 'lte_sinr': 12})
     assert (result['rule'], result['cause'], result['domain']) == ('DNS', 'DNS', 'Protocol')
@@ -61,15 +62,20 @@ def test_good_radio_needs_the_radio_measured_and_reported_radio_takes_the_catego
     assert evaluate({'service': 'voice', 'result': 'Dropped'}, {'nr_sinr': 12})['cause'] == 'Potential E2E Issue'
     interference = {'failure_classification': 'RF Problems', 'failure_category': 'Interference problem',
                     'failure_subcategory': 'DL interference problems'}
-    for technology, category in (('5G', 'DL Interference NR'), ('5G/4G', 'DL Interference LTE'), ('2G', 'DL Interference 2G/3G'),
-                                 ('', 'DL Interference LTE')):
-        assert evaluate({**interference, 'failure_technology': technology}, {})['category'] == category, technology
+    # The category is generic; the technology of the call is a value of its own.
+    # Several technologies: the most recent one; none named: none (the analysts choose it).
+    for technology, found in (('5G', '5G - NR'), ('5G/4G', '5G - NR'), ('2G', '2G - GSM'), ('', '')):
+        result = evaluate({**interference, 'failure_technology': technology}, {})
+        assert (result['category'], result['cause'], result['technology']) == ('Interference', 'DL interference', found), technology
+    # A rule without a technology of its own gives that of the radio measured at the failure before the most recent one.
+    assert evaluate({**interference, 'failure_technology': '5G/4G'}, {'lte_rsrp': -95})['technology'] == '4G - LTE'
+    assert evaluate({**interference, 'failure_technology': '5G/4G'}, {'nr_rsrp': -90})['technology'] == '5G - NR'
     # Without a Failure Technology, the technology of the call decides.
-    assert evaluate({**interference, 'technology': 'NR SA'}, {})['category'] == 'DL Interference NR'
-    coverage = {'failure_category': 'Coverage gaps (PLMN lost)', 'failure_technology': '5G SA'}
-    assert (evaluate(coverage, {})['category'], evaluate(coverage, {})['cause']) == ('Poor Coverage NR', 'Coverage')
+    assert evaluate({**interference, 'technology': 'NR SA'}, {})['technology'] == '5G - NR'
+    coverage = evaluate({'failure_category': 'Coverage gaps (PLMN lost)', 'failure_technology': '5G SA'}, {})
+    assert (coverage['category'], coverage['cause'], coverage['technology']) == ('Coverage', 'DL coverage', '5G - NR')
     uplink = evaluate({'failure_subcategory': 'UL interference problems', 'failure_technology': '4G'}, {})
-    assert (uplink['category'], uplink['cause']) == ('UL Interference LTE', 'UL interference')
+    assert (uplink['category'], uplink['cause'], uplink['technology']) == ('Interference', 'UL interference', '4G - LTE')
 
 
 def test_rules_keep_to_their_services_and_disabled_rules_are_skipped():
@@ -82,7 +88,7 @@ def test_rules_keep_to_their_services_and_disabled_rules_are_skipped():
 
 
 def test_invalid_rules_say_what_is_wrong():
-    rule = {'name': 'Weak', 'services': ['data'], 'match': 'all', 'category': 'Poor Coverage LTE', 'cause': '',
+    rule = {'name': 'Weak', 'services': ['data'], 'match': 'all', 'category': 'Coverage', 'cause': '',
             'conditions': [{'input': 'lte_rsrp', 'op': 'lt', 'value': '-100'}]}
     assert nq_dta_rca.normalize_rules([rule], strict=True)[0]['conditions'][0]['value'] == -100
     for change, message in (({'conditions': [{'input': 'unknown', 'op': 'lt', 'value': 1}]}, 'choose the value'),
@@ -149,15 +155,15 @@ def test_every_call_gets_the_dta_rca_in_its_fields_recommendation_and_panels(cli
         'dta_rca_domain', 'dta_rca_category', 'dta_rca_cause', 'dta_rca_rule', 'dta_rca_evidence']
     assert state['dta_refs'] == nq_catalog.DTA_REFS and state['rca_sources']['dta'] == 'DT Analyzer RCA'
     assert (coverage['values']['dta_rca_domain'], coverage['values']['dta_rca_category'], coverage['values']['dta_rca_cause']) == (
-        'RF', 'Poor Coverage LTE', 'Coverage')
+        'RF', 'Coverage', 'DL coverage')
     assert coverage['values']['dta_rca_rule'] == 'Poor LTE coverage'
     assert '−121.5 dBm' in coverage['values']['dta_rca_evidence']
     assert core_failure['values']['dta_rca_cause'] == 'VoLTE core'
-    assert (good['values']['dta_rca_category'], good['values']['dta_rca_cause']) == ('E2E', 'Potential E2E Issue')
+    assert (good['values']['dta_rca_category'], good['values']['dta_rca_cause']) == ('End-to-End', 'Potential E2E Issue')
     # The recommendation has its card after the NetCheck RCA, with the rule and the evidence.
     sources = {source['source']: source for source in coverage['rca_recommendation']['sources']}
     assert sources['dta']['label'] == 'DT Analyzer RCA' and sources['dta']['raw_category'] == 'Poor LTE coverage'
-    assert sources['dta']['evidence'] and coverage['rca_recommendation']['recommendation']['category'] == 'Poor Coverage LTE'
+    assert sources['dta']['evidence'] and coverage['rca_recommendation']['recommendation']['category'] == 'Coverage'
     # The Root Cause Analysis counts the calls with it, and its root domain filters them.
     response = client.post('/api/non-qualified-calls/root-causes/stats', json={'filters': {}, 'source': 'dta'})
     assert response.status_code == 200, response.text
@@ -198,7 +204,7 @@ def test_admins_change_the_rules_and_every_call_follows_them(client, tmp_path):
     # Default Rules brings the default rules back.
     response = client.put('/api/non-qualified-calls/dta-rca/rules', json={'rules': [], 'defaults': True})
     assert response.status_code == 200 and response.json()['rules'] == nq_dta_rca.default_rules()
-    assert detail(client, calls['0xA1'])['values']['dta_rca_cause'] == 'Coverage'
+    assert detail(client, calls['0xA1'])['values']['dta_rca_cause'] == 'DL coverage'
     # Only admins and super-admins change them; every user reads them.
     workspace_user('analyst', 'user-editor')
     login(client, 'analyst', 'analyst123')
@@ -231,9 +237,9 @@ def test_a_change_of_the_catalog_calculates_the_calls_again(client, tmp_path):
         if item['name'] == 'RF':
             item['name'] = 'Radio'
     nq.save_root_causes(core.repository, catalog, False, 'super')
-    # The rule gives Poor Coverage LTE, whose domain is renamed.
+    # The rule gives Coverage, whose domain is renamed.
     values = detail(client, calls['0xA1'])['values']
-    assert (values['dta_rca_category'], values['dta_rca_domain']) == ('Poor Coverage LTE', 'Radio')
+    assert (values['dta_rca_category'], values['dta_rca_domain']) == ('Coverage', 'Radio')
     with core.repository.connection() as connection:
         tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert nq_dta_rca.RESULTS_TABLE in tables and nq.NQ_TABLE_TITLES[nq_dta_rca.RESULTS_TABLE] == 'NQ DT Analyzer RCA Results'
@@ -243,9 +249,9 @@ def test_the_catalog_keeps_the_values_the_rules_give(client, tmp_path):
     setup_calls(client, tmp_path)
     payload = client.get('/api/non-qualified-calls/root-causes').json()
     given = payload['dta_rules']
-    assert {'Poor LTE coverage', 'LTE uplink at maximum power'} <= set(given['categories']['Poor Coverage LTE'])
-    assert 'Device or test setup' in given['causes']['Device or test setup'] and 'AAA' in given['domains']
-    assert 'Procedure Overlap' not in given['categories']
+    assert {'Poor LTE coverage', 'LTE uplink at maximum power'} <= set(given['categories']['Coverage'])
+    assert 'Device or test setup' in given['causes']['Device or test setup'] and 'Device' in given['domains']
+    assert 'Configuration & Planning' not in given['categories']
     base = {kind: [{**item, 'previous': item['name']} for item in payload[kind]] for kind in ('domains', 'categories', 'causes')}
 
     def put(**changes):
@@ -255,33 +261,35 @@ def test_the_catalog_keeps_the_values_the_rules_give(client, tmp_path):
         return [dict(item, name=new_name) if item['name'] == name else item for item in base[kind]]
 
     # A category or cause a rule gives can be neither renamed nor removed, and a domain it gives cannot be removed.
-    refused = put(categories=renamed('categories', 'Poor Coverage LTE', 'LTE Coverage'))
+    refused = put(categories=renamed('categories', 'Radio Link Quality', 'Link Quality'))
     assert refused.status_code == 400
-    rules = given['categories']['Poor Coverage LTE']
-    assert refused.json()['detail'] == (f'The Root Category "Poor Coverage LTE" is given by the DT Analyzer RCA rules "{rules[0]}", '
+    rules = given['categories']['Radio Link Quality']
+    assert refused.json()['detail'] == (f'The Root Category "Radio Link Quality" is given by the DT Analyzer RCA rules "{rules[0]}", '
                                         f'"{rules[1]}", "{rules[2]}" and {len(rules) - 3} more; change those rules first to rename it.')
-    refused = put(domains=[item for item in base['domains'] if item['name'] != 'AAA'])
-    assert refused.status_code == 400 and refused.json()['detail'].startswith('The domain "AAA" is given by the DT Analyzer RCA rule ')
+    refused = put(domains=[item for item in base['domains'] if item['name'] != 'Device'])
+    assert refused.status_code == 400 and refused.json()['detail'].startswith('The domain "Device" is given by the DT Analyzer RCA rules ')
     # Also when the rule is disabled.
     nq_dta_rca.save_rules(core.repository, [dict(rule, enabled=rule['key'] != 'device') for rule in nq_dta_rca.load_rules(core.repository)], 'super')
     refused = put(causes=[item for item in base['causes'] if item['name'] != 'Device or test setup'])
-    assert refused.status_code == 400 and refused.json()['detail'].endswith(
-        '"Device or test setup", "No measurements in the drivetest log"; change those rules first to remove it.')
+    assert refused.status_code == 400 and refused.json()['detail'] == (
+        'The Root Cause "Device or test setup" is given by the DT Analyzer RCA rule "Device or test setup"; '
+        'change the rule first to remove it.')
     # Nothing changed; a change of case keeps the name the rules read, a domain is renamed with its categories and
     # causes, and a value no rule gives is renamed.
     assert nq.list_root_causes(core.repository)['domains'] == payload['domains']
-    saved = put(domains=renamed('domains', 'RF', 'Radio'), categories=renamed('categories', 'Procedure Overlap', 'Overlapping Procedures'),
+    saved = put(domains=renamed('domains', 'RF', 'Radio'),
+                categories=renamed('categories', 'Configuration & Planning', 'Configuration and Planning'),
                 causes=renamed('causes', 'Device or test setup', 'Device or Test Setup'))
     assert saved.status_code == 200, saved.text
-    assert saved.json()['dta_rules']['categories']['Poor Coverage LTE'] == given['categories']['Poor Coverage LTE']
-    assert {item['name']: item['domain'] for item in saved.json()['categories']}['Poor Coverage LTE'] == 'Radio'
+    assert saved.json()['dta_rules']['categories']['Radio Link Quality'] == given['categories']['Radio Link Quality']
+    assert {item['name']: item['domain'] for item in saved.json()['categories']}['Radio Link Quality'] == 'Radio'
     # Once no rule gives it, it can go.
-    rules = [dict(rule, category='Poor Coverage NR') if rule['category'] == 'Poor Coverage LTE' else rule
+    rules = [dict(rule, category='Coverage') if rule['category'] == 'Radio Link Quality' else rule
              for rule in nq_dta_rca.load_rules(core.repository)]
     nq_dta_rca.save_rules(core.repository, rules, 'super')
     payload = client.get('/api/non-qualified-calls/root-causes').json()
-    assert 'Poor Coverage LTE' not in payload['dta_rules']['categories']
-    categories = [{**item, 'previous': item['name']} for item in payload['categories'] if item['name'] != 'Poor Coverage LTE']
+    assert 'Radio Link Quality' not in payload['dta_rules']['categories']
+    categories = [{**item, 'previous': item['name']} for item in payload['categories'] if item['name'] != 'Radio Link Quality']
     assert client.put('/api/non-qualified-calls/root-causes', json={**payload, 'categories': categories}).status_code == 200
 
 
@@ -305,11 +313,12 @@ def test_every_rule_gives_a_root_category_and_workspaces_get_its_categories(clie
     compiled = nq_dta_rca.compile_rules(nq_dta_rca.default_rules(), nq_catalog.normalize_root_catalog(nq_catalog.default_root_catalog()))
     assert all(entry['result']['category'] for entry in compiled), [entry['rule']['name'] for entry in compiled if not entry['result']['category']]
     setup_calls(client, tmp_path)
-    # A catalog of before, without the categories of the DT Analyzer RCA and with DNS mapped to no category.
-    catalog = nq.list_root_causes(core.repository)
-    catalog['categories'] = [item for item in catalog['categories'] if item['name'] not in nq_catalog.DTA_CATEGORIES]
+    # A former catalog (before ticket #139) of before V29, without the categories of the DT Analyzer RCA and with DNS
+    # mapped to no category.
+    catalog = nq_catalog.legacy_root_catalog()
+    catalog['categories'] = [item for item in catalog['categories'] if item['name'] not in nq_catalog.LEGACY_DTA_CATEGORIES]
     for item in catalog['causes']:
-        if item['name'] in nq_catalog.DEFAULT_CAUSE_CATEGORIES:
+        if item['name'] in nq_catalog.LEGACY_CAUSE_CATEGORIES:
             item['category'] = ''
     # Stored as it was then: today the catalog keeps the categories the rules give.
     with core.repository.connection() as connection:
@@ -318,12 +327,24 @@ def test_every_rule_gives_a_root_category_and_workspaces_get_its_categories(clie
     core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
     nq.ensure_nq_tables(core.repository)
     root = nq.list_root_causes(core.repository)
-    assert set(nq_catalog.DTA_CATEGORIES) <= {item['name'] for item in root['categories']}
+    assert set(nq_catalog.LEGACY_DTA_CATEGORIES) <= {item['name'] for item in root['categories']}
     causes = {item['name']: item for item in root['causes']}
     assert causes['DNS']['category'] == 'Protocol / Server' and causes['DNS']['domain'] == 'Protocol'
     assert causes['Low throughput']['category'] == 'RAN Performance'
     log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_root_causes' and 'DT Analyzer' in row['details'])
-    assert json.loads(log['details'])['causes_mapped'] == len(nq_catalog.DEFAULT_CAUSE_CATEGORIES)
+    assert json.loads(log['details'])['causes_mapped'] == len(nq_catalog.LEGACY_CAUSE_CATEGORIES)
+    # V47 then moves the completed former catalog onto the current one.
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V47_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(core.repository)
+    causes = {item['name']: item for item in nq.list_root_causes(core.repository)['causes']}
+    assert causes['DNS']['category'] == 'Server & Protocol' and causes['Low throughput']['category'] == 'Capacity'
+    # A current catalog takes nothing from V29.
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V29_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    before = nq.list_root_causes(core.repository)
+    nq.ensure_nq_tables(core.repository)
+    assert nq.list_root_causes(core.repository)['categories'] == before['categories']
 
 
 def test_the_netcheck_values_find_their_root_category_in_the_catalog(client, tmp_path):
@@ -335,22 +356,23 @@ def test_the_netcheck_values_find_their_root_category_in_the_catalog(client, tmp
         return nq_rca.suggest_from_text({'failure_classification': classification, 'failure_category': category,
                                          'failure_subcategory': subcategory, 'failure_comment': comment, 'technology': technology,
                                          'failure_technology': ''}, root, rule)
-    # A cause of the catalog gives its Root Category; the keywords of the categories of the DT Analyzer RCA give theirs.
-    assert suggest('Protocol_Problems', 'DNS', 'No response from DNS')['category'] == 'Protocol / Server'
-    assert suggest('AAA Problems', 'Registration reject')['category'] == 'Authentication & Registration'
-    assert suggest('AAA Problems', 'Tracking Area Update', 'No response')['category'] == 'Authentication & Registration'
-    assert suggest('VoLTE Problems', 'VoLTE Core', 'VoLTE Core Failure')['category'] == 'IMS / VoLTE'
-    assert suggest('RAN_Problems', 'BLER Problems', 'High UL BLER')['category'] == 'RAN Performance'
+    # A cause of the catalog gives its Root Category (ticket #139: the category of the cause found).
+    assert suggest('Protocol_Problems', 'DNS', 'No response from DNS')['category'] == 'Server & Protocol'
+    found = suggest('AAA Problems', 'Registration reject')
+    assert (found['domain'], found['category'], found['cause']) == ('Core', 'Registration & Authentication', 'Registration or attach reject')
+    assert suggest('AAA Problems', 'Tracking Area Update', 'No response')['category'] == 'Session & Mobility Management'
+    assert suggest('VoLTE Problems', 'VoLTE Core', 'VoLTE Core Failure')['category'] == 'Voice Core (IMS)'
     # The Failure Comment counts only when the Failure Category and Subcategory give nothing.
     found = suggest('RAN Problems', 'RRC layer', 'No answer to RRC Connection Request', 'LTE(P): EARFCN 6300 / PCI 63')
-    assert (found['category'], found['cause']) == ('RAN Performance', 'RRC layer')
-    assert suggest('RAN Problems', '', '', 'no answer to RRC conn req')['cause'] == 'RRC layer'
+    assert (found['category'], found['cause'], found['technology']) == ('Radio Signalling', 'No answer to RRC connection request', '4G - LTE')
+    assert suggest('RAN Problems', '', '', 'no answer to RRC conn req')['cause'] == 'No answer to RRC connection request'
     # The Ericsson RCA too: a cause without a category of its own takes that of the catalog.
-    assert nq_rca.map_to_catalog('', 'DNS', root)['category'] == 'Protocol / Server'
-    # A workspace whose categories have no keywords gets the defaults once; those it gave them stay.
-    catalog = nq.list_root_causes(core.repository)
+    assert nq_rca.map_to_catalog('', 'DNS', root)['category'] == 'Server & Protocol'
+    # A former catalog (before ticket #139) whose categories have no keywords gets the defaults once (V32); those it gave
+    # them stay.
+    catalog = nq_catalog.legacy_root_catalog()
     for item in catalog['categories']:
-        if item['name'] in nq_catalog.DTA_CATEGORY_KEYWORDS:
+        if item['name'] in nq_catalog.LEGACY_DTA_CATEGORY_KEYWORDS:
             item['keywords'] = ['my words'] if item['name'] == 'Core Network' else []
     with core.repository.connection() as connection:
         nq._write_root_catalog(connection, nq_catalog.normalize_root_catalog(catalog))
@@ -358,10 +380,31 @@ def test_the_netcheck_values_find_their_root_category_in_the_catalog(client, tmp
     core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
     nq.ensure_nq_tables(core.repository)
     keywords = {item['name']: item['keywords'] for item in nq.list_root_causes(core.repository)['categories']}
-    assert keywords['Authentication & Registration'] == list(nq_catalog.DTA_CATEGORY_KEYWORDS['Authentication & Registration'])
+    assert keywords['Authentication & Registration'] == list(nq_catalog.LEGACY_DTA_CATEGORY_KEYWORDS['Authentication & Registration'])
     assert keywords['Core Network'] == ['my words']
     log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_root_causes' and 'Keywords' in row['details'])
     assert 'Core Network' not in json.loads(log['details'])['categories']
+    # The current catalog takes no keywords from V32.
+    with core.repository.connection() as connection:
+        nq._write_root_catalog(connection, nq_catalog.normalize_root_catalog(nq_catalog.default_root_catalog()))
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V32_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(core.repository)
+    assert {item['name']: item['keywords'] for item in nq.list_root_causes(core.repository)['categories']} == {
+        name: list(words) for name, _domain, words in nq_catalog.DEFAULT_CATEGORIES}
+
+
+def test_the_netcheck_bler_problems_of_the_ran_find_their_root_category(client, tmp_path):
+    # NetCheck classifies the BLER problems as RAN Problems; the catalog must still give them a Root Category.
+    setup_calls(client, tmp_path)
+    root = nq.list_root_causes(core.repository)
+    rule = {**(root.get('rule') or nq.DEFAULT_ROOT_CAUSE_RULE), 'comments': False, 'comment_domain': False}
+    found = nq_rca.suggest_from_text({'failure_classification': 'RAN_Problems', 'failure_category': 'BLER Problems',
+                                      'failure_subcategory': 'High UL BLER', 'failure_comment': '', 'technology': 'LTE',
+                                      'failure_technology': ''}, root, rule)
+    # No cause matches in the domain of the Failure Classification: the whole catalog is read, and the domain is that of
+    # the category found.
+    assert (found['domain'], found['category'], found['cause']) == ('RF', 'Radio Link Quality', 'High UL BLER'), found
 
 
 def test_it_learns_from_the_decisions_of_the_analysts_when_asked(client, tmp_path):
@@ -377,7 +420,7 @@ def test_it_learns_from_the_decisions_of_the_analysts_when_asked(client, tmp_pat
     calls = {call['join_id']: call for call in query(client)['calls']}
     for key in ('0xE0', '0xE1', '0xE2'):
         response = client.patch(f"/api/non-qualified-calls/calls/{calls[key]['call_key']}",
-                                json={'changes': {'root_category': 'Poor Coverage LTE', 'root_cause': 'LOS but weak signal'}})
+                                json={'changes': {'root_category': 'Coverage', 'root_cause': 'LOS but weak signal'}})
         assert response.status_code == 200, response.text
     # Off by default: the rule gives every call its root cause.
     assert detail(client, calls['0xE3'])['values']['dta_rca_cause'] == 'Potential E2E Issue'
@@ -389,11 +432,11 @@ def test_it_learns_from_the_decisions_of_the_analysts_when_asked(client, tmp_pat
     # two others only (its own decision never counts).
     learned = detail(client, calls['0xE3'])
     assert (learned['values']['dta_rca_category'], learned['values']['dta_rca_cause'], learned['values']['dta_rca_domain']) == (
-        'Poor Coverage LTE', 'LOS but weak signal', 'RF')
+        'Coverage', 'LOS but weak signal', 'RF')
     assert learned['values']['dta_rca_rule'] == 'Voice failure with good radio'
     assert learned['values']['dta_rca_evidence'].startswith('Learned from the analysts: 3 of the 3 other calls')
     source = next(item for item in learned['rca_recommendation']['sources'] if item['source'] == 'dta')
-    assert source['learned'] and source['category'] == 'Poor Coverage LTE'
+    assert source['learned'] and source['category'] == 'Coverage'
     assert detail(client, calls['0xE0'])['values']['dta_rca_evidence'].startswith('Learned from the analysts: 2 of the 2 other calls')
     assert client.get('/api/non-qualified-calls/dta-rca/rules').json()['learned'] == 4
     log = next(row for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_dta_rca_learning')
@@ -421,7 +464,7 @@ def test_what_it_learned_comes_back_after_a_reindex(client, tmp_path):
     calls = {call['join_id']: call for call in query(client)['calls']}
     for key in ('0xE0', '0xE1', '0xE2'):
         client.patch(f"/api/non-qualified-calls/calls/{calls[key]['call_key']}",
-                     json={'changes': {'root_category': 'Poor Coverage LTE', 'root_cause': 'LOS but weak signal'}})
+                     json={'changes': {'root_category': 'Coverage', 'root_cause': 'LOS but weak signal'}})
     rules = client.get('/api/non-qualified-calls/dta-rca/rules').json()['rules']
     client.put('/api/non-qualified-calls/dta-rca/rules', json={'rules': rules, 'learn': True})
     assert client.get('/api/non-qualified-calls/dta-rca/rules').json()['learned'] == 4
@@ -448,16 +491,16 @@ def test_what_it_learned_comes_back_after_a_reindex(client, tmp_path):
 def test_the_lack_of_resources_is_found_from_the_provider_and_from_the_cdr_itself():
     # The provider reports insufficient resources of the core: before the reject is taken for an authentication one.
     found = evaluate({'failure_category': 'PDU Session Establishment Reject', 'failure_subcategory': 'Insufficient resources'}, {})
-    assert (found['rule_key'], found['category'], found['cause']) == ('core-resources', 'Core Network', 'Insufficient resources')
+    assert (found['rule_key'], found['category'], found['cause']) == ('core-resources', 'Session & Mobility Management', 'Insufficient resources')
     # The signalling of the CDR itself, without any RCA of the provider: the network rejected the RRC connection.
     found = evaluate({}, {'failure_events': '[RRCConnectionRequest]->[RRCConnectionReject]'})
-    assert (found['rule_key'], found['category'], found['cause']) == ('access-rejected', 'RAN Capacity', 'Access rejected (no resources)')
+    assert (found['rule_key'], found['category'], found['cause']) == ('access-rejected', 'Capacity', 'Access rejected (no resources)')
     assert found['evidence'].startswith('Signalling events contains “rrcconnectionreject”')
     assert evaluate({}, {'failure_events': '[RRCConnectionReestablishmentReject]'})['rule_key'] != 'access-rejected'
     # A test cut off with good radio on a carrier that gave it few of its resource blocks: a loaded cell.
     radio = {'lte_rsrp': -85.0, 'lte_sinr': 15.0}
     found = evaluate({'result': 'Cutoff'}, {**radio, 'lte_dl_rbs': 12.0, 'lte_dl_bandwidth': 20.0})
-    assert (found['rule_key'], found['category'], found['cause']) == ('cell-load', 'RAN Capacity', 'Cell overload')
+    assert (found['rule_key'], found['category'], found['cause']) == ('cell-load', 'Capacity', 'Cell overload')
     assert 'LTE DL resource blocks used 12 % (< 25 %)' in found['evidence']
     assert evaluate({'result': 'Cutoff'}, {**radio, 'lte_dl_rbs': 80.0, 'lte_dl_bandwidth': 20.0})['rule_key'] == 'low-throughput'
     # The resource blocks of the carrier: LTE by its bandwidth, NR at 30 kHz in TDD bands and wide carriers, else 15 kHz.
@@ -471,38 +514,41 @@ def test_the_network_around_the_call_finds_holes_overshooting_pci_collisions_out
     weak = {'lte_rsrp': -116.0, 'lte_sinr': 1.0}
     note = 'Network Inventory: nearest site 12 (Vodafone) at 7.00 km'
     found = evaluate({}, {**weak, 'nearest_site_distance': 7.0, 'nearest_site_isd_ratio': 2.3, 'network_note': note})
-    assert (found['rule_key'], found['category'], found['cause']) == ('coverage-hole', 'Poor Coverage LTE', 'Large distance to the nearest site')
+    assert (found['rule_key'], found['category'], found['cause'], found['technology']) == (
+        'coverage-hole', 'Coverage', 'Large distance to the nearest site', '4G - LTE')
     assert found['evidence'].endswith(f'\n{note}')
     assert evaluate({}, {'nearest_site_isd_ratio': 2.3})['rule_key'] == 'no-service-hole'
     # Served from beyond twice the inter-site distance of its site: overshooting, in NR alone too; not where sites are far apart.
     far = {'serving_distance': 3.0, 'serving_isd_ratio': 2.5, 'nearest_site_isd_ratio': .4}
     found = evaluate({}, {**weak, **far})
-    assert (found['rule_key'], found['category'], found['cause']) == ('overshooting', 'DL Interference LTE', 'Overshooting or excessive cell overlap')
+    assert (found['rule_key'], found['category'], found['cause'], found['technology']) == (
+        'overshooting', 'Interference', 'Overshooting or excessive cell overlap', '4G - LTE')
     found = evaluate({'failure_technology': '5G SA'}, {'nr_rsrp': -100.0, 'nr_sinr': -2.0, **far})
-    assert (found['rule_key'], found['category']) == ('nr-overshooting', 'DL Interference NR')
+    assert (found['rule_key'], found['category'], found['technology']) == ('nr-overshooting', 'Interference', '5G - NR')
     assert evaluate({}, {**weak, **far, 'serving_isd_ratio': 1.2})['rule_key'] == 'lte-coverage'
     # A cell around with the PCI and channel of its own, with interference.
     found = evaluate({}, {'lte_rsrp': -95.0, 'lte_sinr': .5, 'pci_collisions': 2})
     assert (found['rule_key'], found['cause']) == ('pci-collision', 'PCI Collision/PCI MOD 3 Collision')
     # Cells out of service on its sites, when its radio suffered.
     found = evaluate({}, {'lte_rsrp': -108.0, 'lte_sinr': 8.0, 'cells_out_of_service': 3})
-    assert (found['rule_key'], found['category'], found['cause']) == ('cell-outage', 'Operational', 'Cell/Site Outage')
+    assert (found['rule_key'], found['category'], found['cause']) == ('cell-outage', 'Network Operations', 'Cell/Site Outage')
     assert evaluate({}, {'lte_rsrp': -90.0, 'lte_sinr': 12.0, 'cells_out_of_service': 3})['rule_key'] != 'cell-outage'
     # Back and forth between two cells, once the radio is not the cause.
     found = evaluate({'service': 'voice', 'result': 'Dropped'}, {'lte_rsrp': -90.0, 'lte_sinr': 12.0, 'ping_pong': 2})
-    assert (found['rule_key'], found['category'], found['cause']) == ('ping-pong', 'Mobility LTE', 'Ping-pong handover')
+    assert (found['rule_key'], found['category'], found['cause'], found['technology']) == ('ping-pong', 'Mobility', 'Ping-pong handover', '4G - LTE')
 
 
 def test_workspaces_with_rules_of_their_own_take_the_new_default_rules_and_catalog_values(client, tmp_path):
     setup_calls(client, tmp_path)
     added = nq_dta_rca.ADDED_RULES[2]
     custom = {'key': 'mine', 'name': 'My rule', 'enabled': True, 'services': [], 'match': 'all',
-              'conditions': [{'input': 'failure_text', 'op': 'contains', 'value': 'my failure'}], 'category': 'E2E', 'cause': ''}
+              'conditions': [{'input': 'failure_text', 'op': 'contains', 'value': 'my failure'}], 'category': 'End-to-End', 'cause': ''}
     before = [custom, *(rule for rule in nq_dta_rca.default_rules() if rule['key'] not in added)]
     core.repository.set_workspace_state(nq_dta_rca.RULES_STATE_KEY, json.dumps(before))
-    catalog = nq.list_root_causes(core.repository)
+    # A former catalog (before ticket #139) without the category and causes V31 adds to it.
+    catalog = nq_catalog.legacy_root_catalog()
     catalog['categories'] = [item for item in catalog['categories'] if item['name'] != 'RAN Capacity']
-    catalog['causes'] = [item for item in catalog['causes'] if item['name'] not in nq_catalog.DTA_CAUSES]
+    catalog['causes'] = [item for item in catalog['causes'] if item['name'] not in nq_catalog.LEGACY_DTA_CAUSES]
     with core.repository.connection() as connection:
         nq._write_root_catalog(connection, nq_catalog.normalize_root_catalog(catalog))
     core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V31_STATE_KEY, '')
@@ -532,7 +578,7 @@ def test_the_network_inventory_gives_the_calls_the_network_around_them(client, t
     # V1 started on a cell whose PCI and channel a cell of the next site has, and its SINR is low: a PCI collision.
     values = detail(client, calls['V1'])['values']
     assert (values['dta_rca_rule'], values['dta_rca_category'], values['dta_rca_cause']) == (
-        'PCI collision', 'DL Interference LTE', 'PCI Collision/PCI MOD 3 Collision')
+        'PCI collision', 'Interference', 'PCI Collision/PCI MOD 3 Collision')
     assert 'PCI collisions around 1 (≥ 1)' in values['dta_rca_evidence']
     assert 'Network Inventory: served from Site 70002 (Vodafone)' in values['dta_rca_evidence']
     # The cells of the call and its PCIs were indexed with it.
@@ -645,7 +691,8 @@ def test_the_radio_of_the_failed_and_the_other_side_decides_before_the_causes_th
     tau = {'service': 'voice', 'failure_classification': 'AAA Problems', 'failure_category': 'Tracking Area Update',
            'failure_subcategory': 'UE identity cannot be derived by the network', 'failure_comment': 'MO active 4G AAA TAU reject.'}
     found = evaluate(tau, {**ericsson, **lte_handover})
-    assert (found['rule_key'], found['category'], found['cause']) == ('side-lte-handover', 'Mobility LTE', 'Missing or late handover')
+    assert (found['rule_key'], found['category'], found['cause'], found['technology']) == (
+        'side-lte-handover', 'Mobility', 'Missing or late handover', '4G - LTE')
     lines = found['evidence'].split('\n')
     # The highest neighbour of both sources (the Ericsson RCA found one on another frequency), the SINR of the log.
     assert lines[0] == ('Strongest LTE neighbour above the PCell of the failed side (UE A, Ericsson RCA, before the failure) 15.5 dB '
@@ -658,7 +705,7 @@ def test_the_radio_of_the_failed_and_the_other_side_decides_before_the_causes_th
     sides = {'failure_side': 'MO', 'l3_sides': {'A': {'lte_rsrp': -68.08, 'lte_sinr': 3.66, 'tx_power': -10, 'lte_neighbour_delta': 0.35},
                                                 'B': {'lte_rsrp': -100.28, 'lte_sinr': -1.54, 'tx_power': 19, 'lte_neighbour_delta': -2.6}}}
     found = evaluate(qci1, sides)
-    assert (found['rule_key'], found['category'], found['cause']) == ('peer-lte-dominance', 'DL Interference LTE', 'Lack of dominant cell')
+    assert (found['rule_key'], found['category'], found['cause']) == ('peer-lte-dominance', 'Interference', 'Lack of dominant cell')
     assert 'strongest LTE neighbour 2.6 dB below the PCell' in found['evidence']
     # Without a neighbour as strong, a low SINR is interference; with good radio on both sides the provider's cause stays.
     sides['l3_sides']['B'].pop('lte_neighbour_delta')
@@ -703,7 +750,8 @@ def test_a_weak_signal_with_a_low_sinr_is_coverage_not_interference():
             'failure_subcategory': 'UE UL Max Power Reached'}
     weak = {'l3_sides': {'A': {'lte_rsrp': -107.37, 'lte_sinr': -3.3, 'tx_power': 16, 'lte_neighbour_delta': 0.05}}}
     found = evaluate(call, weak)
-    assert (found['rule_key'], found['category'], found['cause']) == ('side-lte-weak-coverage', 'Poor Coverage LTE', 'Coverage')
+    assert (found['rule_key'], found['category'], found['cause'], found['technology']) == (
+        'side-lte-weak-coverage', 'Coverage', 'Weak signal with low SINR', '4G - LTE')
     # With a good signal, the same SINR and neighbour are a lack of dominant cell, and without the neighbour interference.
     weak['l3_sides']['A']['lte_rsrp'] = -95.0
     assert evaluate(call, weak)['rule_key'] == 'side-lte-dominance'

@@ -36,6 +36,7 @@ NQ_FIELDS = {
     'failure_classification': 'l.failure_classification', 'failure_phase': 'l.failure_phase',
     'failure_technology': 'l.failure_technology', 'host_network': 'l.host_network',
     'status': 't.status', 'root_domain': 't.root_domain', 'root_category': 't.root_category', 'root_cause': 't.root_cause',
+    'root_technology': 't.root_technology',
     'dta_rca_domain': 'r.domain', 'dta_rca_category': 'r.category', 'dta_rca_cause': 'r.cause',
 }
 MAX_LIST_VALUES = 400

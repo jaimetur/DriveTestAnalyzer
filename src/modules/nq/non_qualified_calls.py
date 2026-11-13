@@ -66,7 +66,7 @@ from src.modules.nq.nq_catalog import (
     ATTENDED_FIELD, FIELD_TYPES, MAX_LONG_TEXT, YES_NO, evaluate_status, keyword_found, keywords as _keywords,
     normalized_text as _normalized_text,
 )
-from src.modules.nq import nq_analyses, nq_analyses_rules, nq_call_map, nq_dta_rca, nq_map_levels, nq_prioritization, nq_rca
+from src.modules.nq import nq_analyses, nq_analyses_rules, nq_call_map, nq_dta_rca, nq_map_levels, nq_prioritization, nq_rca, nq_root_migration
 from src.modules.nq.non_qualified_calls_visuals import series_colours
 
 NQ_CALLS_TABLE = 'nq_calls'
@@ -86,6 +86,8 @@ NQ_FIELDS_TABLE = 'nq_analysis_fields'
 NQ_FIELD_VALUES_TABLE = 'nq_analysis_field_values'
 NQ_USER_LAYOUTS_TABLE = 'nq_user_table_layouts'
 NQ_DTA_RESULTS_TABLE = nq_dta_rca.RESULTS_TABLE
+# The root values a workspace had before the generic Root Categories (ticket #139), kept to undo that change.
+NQ_ROOT_MIGRATION_TABLE = 'nq_root_migration_backup'
 NQ_DTA_LEARNED_TABLE = nq_dta_rca.LEARNED_TABLE
 # Database Management titles of the module tables.
 NQ_TABLE_TITLES = {
@@ -105,6 +107,7 @@ NQ_TABLE_TITLES = {
     NQ_FIELDS_TABLE: 'NQ Analysis Fields',
     NQ_FIELD_VALUES_TABLE: 'NQ Analysis Field Values',
     NQ_USER_LAYOUTS_TABLE: 'NQ User Table Layouts',
+    NQ_ROOT_MIGRATION_TABLE: 'NQ Root Catalog Migration Backup',
     **nq_prioritization.TABLE_TITLES,
     **nq_dta_rca.TABLE_TITLES,
 }
@@ -334,6 +337,11 @@ ANALYSIS_CENTER_V45_STATE_KEY = 'nq_analysis_center_v45'
 # A weak signal with a low SINR on a side is coverage (engine 9): a workspace with rules of its own takes the new rules and
 # the lack of dominant cell and interference of the sides need a good signal, where those rules are still as they were.
 ANALYSIS_CENTER_V46_STATE_KEY = 'nq_analysis_center_v46'
+# Generic Root Categories, specific Root Causes and the Root Technology of the call (ticket #139): the catalog, the
+# decisions of the analysts, their Initial Root Category and Cause, the DT Analyzer RCA rules, the status rules, the saved
+# filters and the reviewed equivalences go over to the current catalog once (nq_root_migration), the values they had kept
+# in NQ_ROOT_MIGRATION_TABLE to undo it.
+ANALYSIS_CENTER_V47_STATE_KEY = 'nq_analysis_center_v47'
 # The follow-up changes that only assign a call: they leave it waiting in its queue (not attended).
 ASSIGNMENT_FIELDS = ('team', 'analyst', 'reviewer')
 # The fields that only sort the queues (the Priority, which the NQ Prioritization also fills) do not attend a call either.
@@ -350,7 +358,7 @@ DTA_ERICSSON_STATE_KEY = 'nq_dta_rca_ericsson'
 DTA_ERICSSON_MAX_PENDING = 900
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-11-13.2'
+SCHEMA_VERSION = '2026-11-13.3'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -400,10 +408,12 @@ FIELD_FILTERS = (
     'service', 'campaign', 'operator', 'operator_vendor', 'vendor_operator', 'vendor', 'region', 'cluster', 'city',
     'technology', 'test_name', 'result', 'failure_classification', 'failure_category', 'failure_subcategory',
 )
-TRACKING_FILTERS = ('status', 'team', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause', 'status_mode')
+TRACKING_FILTERS = ('status', 'team', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause', 'root_technology',
+                    'status_mode')
 # Filters typed as a list of values rather than chosen among them (a JOIN_ID has too many values to list).
 TYPED_FILTERS = ('join_id',)
-TRACKING_FIELDS = ('status', 'team', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause', 'status_mode')
+TRACKING_FIELDS = ('status', 'team', 'analyst', 'reviewer', 'root_domain', 'root_category', 'root_cause', 'root_technology',
+                   'status_mode')
 # Filters set by clicking the Progress View and Root Cause Analysis: NR mode, call type
 # (Classic, WhatsApp, Data), a timeline period ("month:2026-07"), the age of open calls,
 # a labelled root cause ("RF||Coverage"), the root domain or cause counting the suggested
@@ -575,6 +585,7 @@ CREATE TABLE IF NOT EXISTS {NQ_CALL_TRACKING_TABLE} (
     root_cause TEXT NOT NULL DEFAULT '',
     version INTEGER NOT NULL DEFAULT 0,
     root_category TEXT NOT NULL DEFAULT '',
+    root_technology TEXT NOT NULL DEFAULT '',
     status_mode TEXT NOT NULL DEFAULT 'auto',
     updated_by TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT '',
@@ -651,6 +662,7 @@ CREATE TABLE IF NOT EXISTS {NQ_DTA_RESULTS_TABLE} (
     category TEXT NOT NULL DEFAULT '',
     cause TEXT NOT NULL DEFAULT '',
     evidence TEXT NOT NULL DEFAULT '',
+    technology TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (dataset_id, source_row_id)
 );
 -- The root causes the DT Analyzer RCA learns from the decisions of the analysts (only while it learns), for the rows whose
@@ -731,7 +743,7 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V38_STATE_KEY, ANALYSIS_CENTER_V39_STATE_KEY, ANALYSIS_CENTER_V40_STATE_KEY,
                 ANALYSIS_CENTER_V41_STATE_KEY, ANALYSIS_CENTER_V42_STATE_KEY, ANALYSIS_CENTER_V43_STATE_KEY,
                 ANALYSIS_CENTER_V44_STATE_KEY, ANALYSIS_CENTER_V45_STATE_KEY,
-                ANALYSIS_CENTER_V46_STATE_KEY)
+                ANALYSIS_CENTER_V46_STATE_KEY, ANALYSIS_CENTER_V47_STATE_KEY)
         states ={str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -759,7 +771,8 @@ def ensure_nq_tables(task_repository: Any) -> None:
             tracking = _columns_of(connection, NQ_CALL_TRACKING_TABLE)
         for column, definition in (('root_domain', "TEXT NOT NULL DEFAULT ''"), ('root_cause', "TEXT NOT NULL DEFAULT ''"),
                                    ('root_category', "TEXT NOT NULL DEFAULT ''"), ('status_mode', "TEXT NOT NULL DEFAULT 'auto'"),
-                                   ('attended_at', "TEXT NOT NULL DEFAULT ''"), ('reviewer', "TEXT NOT NULL DEFAULT ''")):
+                                   ('attended_at', "TEXT NOT NULL DEFAULT ''"), ('reviewer', "TEXT NOT NULL DEFAULT ''"),
+                                   ('root_technology', "TEXT NOT NULL DEFAULT ''")):
             if tracking and column not in tracking:
                 connection.execute(f'ALTER TABLE {NQ_CALL_TRACKING_TABLE} ADD COLUMN {column} {definition}')
         definitions = _columns_of(connection, NQ_FIELDS_TABLE)
@@ -784,6 +797,10 @@ def ensure_nq_tables(task_repository: Any) -> None:
         dta_results = _columns_of(connection, NQ_DTA_RESULTS_TABLE)
         if dta_results and 'rule_key' not in dta_results:
             connection.execute(f"ALTER TABLE {NQ_DTA_RESULTS_TABLE} ADD COLUMN rule_key TEXT NOT NULL DEFAULT ''")
+            connection.execute('DELETE FROM workspace_state WHERE key = ?', (nq_dta_rca.FINGERPRINT_STATE_KEY,))
+        if dta_results and 'technology' not in dta_results:
+            # The technology of the root cause (ticket #139); the rows are calculated again (engine 10).
+            connection.execute(f"ALTER TABLE {NQ_DTA_RESULTS_TABLE} ADD COLUMN technology TEXT NOT NULL DEFAULT ''")
             connection.execute('DELETE FROM workspace_state WHERE key = ?', (nq_dta_rca.FINGERPRINT_STATE_KEY,))
         # The root category each root cause is mapped to.
         catalog_columns = _columns_of(connection, NQ_ROOT_CATALOG_TABLE)
@@ -980,6 +997,9 @@ def ensure_nq_tables(task_repository: Any) -> None:
         nq_dta_rca.add_new_default_rules(task_repository, 9)
         nq_dta_rca.renew_changed_default_rules(task_repository, 9)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V46_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V47_STATE_KEY):
+        _upgrade_root_catalog_v47(task_repository)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V47_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
@@ -1324,22 +1344,24 @@ def _dta_fields_first(task_repository: Any) -> None:
 def _add_dta_categories(task_repository: Any) -> None:
     """The Root Categories and Root Causes of the DT Analyzer RCA the catalog lacks (by name), in their default domain when
     the catalog has it, and each default cause without a Root Category mapped to its own; the rest of the catalog stays
-    as it is."""
-    defaults = nq_catalog.default_root_catalog()
+    as it is. Written for the former catalog (before ticket #139): a catalog already current takes nothing."""
+    defaults = nq_catalog.legacy_root_catalog()
     with task_repository.connection() as connection:
         current = nq_catalog.stored_root_catalog(_read_root_catalog(connection))
+        if nq_catalog.is_current_catalog(current):
+            return
         names = {item['name'].casefold() for item in current['categories']}
         added = [{'name': item['name'], 'domain': item['domain'], 'keywords': list(item['keywords'])}
-                 for item in defaults['categories'] if item['name'] in nq_catalog.DTA_CATEGORIES and item['name'].casefold() not in names]
+                 for item in defaults['categories'] if item['name'] in nq_catalog.LEGACY_DTA_CATEGORIES and item['name'].casefold() not in names]
         current['categories'] += added
         names = {item['name'].casefold() for item in current['causes']}
         causes = [{'name': item['name'], 'domain': item['domain'], 'keywords': list(item['keywords'])}
-                  for item in defaults['causes'] if item['name'] in nq_catalog.DTA_CAUSES and item['name'].casefold() not in names]
+                  for item in defaults['causes'] if item['name'] in nq_catalog.LEGACY_DTA_CAUSES and item['name'].casefold() not in names]
         current['causes'] += causes
         known = {item['name'].casefold() for item in current['categories']}
         mapped = 0
         for cause in current['causes']:
-            category = next((value for name, value in nq_catalog.DEFAULT_CAUSE_CATEGORIES.items() if name.casefold() == cause['name'].casefold()), '')
+            category = next((value for name, value in nq_catalog.LEGACY_CAUSE_CATEGORIES.items() if name.casefold() == cause['name'].casefold()), '')
             if category and not cause.get('category') and category.casefold() in known:
                 cause['category'] = category
                 mapped += 1
@@ -1358,7 +1380,9 @@ def _add_dta_category_keywords(task_repository: Any) -> None:
     keywords a workspace gave them stay."""
     with task_repository.connection() as connection:
         current = nq_catalog.stored_root_catalog(_read_root_catalog(connection))
-        defaults = {name.casefold(): keywords for name, keywords in nq_catalog.DTA_CATEGORY_KEYWORDS.items()}
+        if nq_catalog.is_current_catalog(current):
+            return
+        defaults = {name.casefold(): keywords for name, keywords in nq_catalog.LEGACY_DTA_CATEGORY_KEYWORDS.items()}
         given = []
         for item in current['categories']:
             keywords = defaults.get(item['name'].casefold())
@@ -4158,6 +4182,133 @@ def _refresh_root_domains(connection: Any, catalog: dict[str, Any]) -> None:
             connection.execute(f'UPDATE {NQ_CALL_TRACKING_TABLE} SET root_domain = ? WHERE call_key = ?', (domain, row['call_key']))
 
 
+def _translated_filters(filters: Any) -> Any:
+    """Saved filters whose root domain, category and cause values (and their "domain||value" pairs) are the current ones."""
+    if not isinstance(filters, dict):
+        return filters
+    domains = {'core epsfb': 'Core', 'aaa': 'Core'}
+
+    def domain(value: str) -> str:
+        return domains.get(value.casefold(), value)
+
+    def category(value: str) -> str:
+        return nq_root_migration.translate(value, '')['category'] if nq_root_migration.is_former_category(value) else value
+
+    def pair(value: str, kind: str) -> str:
+        if '||' not in value:
+            return value
+        left, right = value.split('||', 1)
+        return f"{domain(left)}||{category(right) if kind == 'category' else nq_root_migration.translate_cause(right)}"
+
+    result = {}
+    for key, values in filters.items():
+        if key == 'fields' and isinstance(values, dict):
+            # The catalog fields that show the root category or cause.
+            result[key] = {field: [category(value) if field in {'selected_root_category', 'initial_root_category'}
+                                   else nq_root_migration.translate_cause(value) if field in {'selected_root_cause', 'initial_root_cause'}
+                                   else value for value in items if isinstance(value, str)] if isinstance(items, list) else items
+                           for field, items in values.items()}
+            continue
+        if not isinstance(values, list):
+            result[key] = values
+            continue
+        texts = [value for value in values if isinstance(value, str)]
+        if key == 'root_domain':
+            values = [domain(value) for value in texts]
+        elif key == 'root_category':
+            values = [category(value) for value in texts]
+        elif key == 'root_cause':
+            values = [nq_root_migration.translate_cause(value) for value in texts]
+        elif key in {'root_pair', 'effective_cause'} or key.endswith('_cause'):
+            values = [pair(value, 'cause') for value in texts]
+        elif key.endswith('_category'):
+            values = [pair(value, 'category') for value in texts]
+        elif key in {'effective_domain'} or key.endswith('_domain'):
+            values = [domain(value) for value in texts]
+        result[key] = list(dict.fromkeys(values))
+    return result
+
+
+def _upgrade_root_catalog_v47(task_repository: Any) -> dict[str, int]:
+    """Once (ticket #139): the catalog of the workspace, the root category, cause and technology of its calls, their
+    Initial Root Category and Cause, its DT Analyzer RCA rules, status rules, saved filters and reviewed equivalences on
+    the current catalog (nq_root_migration). The values they had are kept in NQ_ROOT_MIGRATION_TABLE; the history stays
+    as it was written. A workspace whose catalog is already the current one only gets its values of the former catalog
+    translated."""
+    when = now_iso()
+    counts = {'calls': 0, 'field_values': 0, 'rules': 0, 'catalog': 0}
+    with task_repository.connection() as connection:
+        connection.execute(f"""CREATE TABLE IF NOT EXISTS {NQ_ROOT_MIGRATION_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, item_key TEXT NOT NULL DEFAULT '',
+            value_json TEXT NOT NULL DEFAULT '', saved_at TEXT NOT NULL DEFAULT '')""")
+        backup: list[tuple[str, str, str, str]] = []
+        stored = nq_catalog.stored_root_catalog(_read_root_catalog(connection))
+        backup.append(('catalog', '', json.dumps(stored, ensure_ascii=False), when))
+        if nq_root_migration.is_former_catalog(stored):
+            _write_root_catalog(connection, nq_catalog.normalize_root_catalog(nq_root_migration.translate_catalog(stored)))
+            counts['catalog'] = 1
+        catalog = _read_root_catalog(connection)
+        for row in connection.execute(
+                f"SELECT call_key, root_domain, root_category, root_cause, root_technology FROM {NQ_CALL_TRACKING_TABLE} "
+                "WHERE root_category <> '' OR root_cause <> ''").fetchall():
+            before = dict(row)
+            after = nq_root_migration.translate_values(before)
+            if (after['root_category'], after['root_cause'], after.get('root_technology', '')) == (
+                    before['root_category'], before['root_cause'], before['root_technology']):
+                continue
+            backup.append(('tracking', str(row['call_key']), json.dumps(before, ensure_ascii=False), when))
+            connection.execute(
+                f'UPDATE {NQ_CALL_TRACKING_TABLE} SET root_category = ?, root_cause = ?, root_technology = ?, '
+                'root_domain = ? WHERE call_key = ?',
+                (after['root_category'], after['root_cause'], after.get('root_technology') or '',
+                 domain_of(catalog, after['root_category'], after['root_cause']) or str(row['root_domain'] or ''), row['call_key']))
+            counts['calls'] += 1
+        initial: dict[str, dict[str, str]] = {}
+        for row in connection.execute(
+                f"SELECT call_key, field_key, value FROM {NQ_FIELD_VALUES_TABLE} WHERE field_key IN "
+                f"({', '.join('?' for _ in ROOT_TEXT_FIELDS)}) AND value <> ''", list(ROOT_TEXT_FIELDS)).fetchall():
+            initial.setdefault(str(row['call_key']), {})[str(row['field_key'])] = str(row['value'])
+        for call_key, values in initial.items():
+            for key, value in _translated_initial(values).items():
+                if value == values.get(key, ''):
+                    continue
+                backup.append(('field_value', f'{call_key}|{key}', json.dumps(values.get(key, ''), ensure_ascii=False), when))
+                connection.execute(
+                    f'INSERT INTO {NQ_FIELD_VALUES_TABLE} (call_key, field_key, value, updated_by, updated_at) VALUES (?, ?, ?, ?, ?) '
+                    'ON CONFLICT(call_key, field_key) DO UPDATE SET value = excluded.value', (call_key, key, value, 'system', when))
+                counts['field_values'] += 1
+        for key, translate in ((nq_dta_rca.RULES_STATE_KEY, nq_dta_rca.translate_rules), (STATUS_RULES_STATE_KEY, _translated_status_rules),
+                               (SAVED_FILTERS_STATE_KEY, _translated_filters), (ANALYSES_EQUIVALENCES_STATE_KEY, _translated_equivalences)):
+            found = connection.execute('SELECT value FROM workspace_state WHERE key = ?', (key,)).fetchone()
+            try:
+                value = json.loads(found[0]) if found and found[0] else None
+            except (TypeError, ValueError):
+                value = None
+            if value is None:
+                continue
+            translated = translate(value)
+            if key == nq_dta_rca.RULES_STATE_KEY and isinstance(translated, list):
+                translated = nq_dta_rca.normalize_rules(translated)
+            if translated != value:
+                backup.append(('state', key, found[0], when))
+                connection.execute('UPDATE workspace_state SET value = ? WHERE key = ?', (json.dumps(translated, ensure_ascii=False), key))
+                counts['rules'] += key == nq_dta_rca.RULES_STATE_KEY
+        connection.executemany(f'INSERT INTO {NQ_ROOT_MIGRATION_TABLE} (kind, item_key, value_json, saved_at) VALUES (?, ?, ?, ?)', backup)
+        _refresh_root_domains(connection, catalog)
+    _key_filters_cache.clear()
+    fields = list_fields(task_repository)
+    if _add_default_fields(fields, {'selected_root_technology'}):
+        _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
+                                                                   CATALOG_CALL_FIELDS))
+    if hasattr(task_repository, 'try_add_log'):
+        task_repository.try_add_log('system', 'nq_root_catalog_migrated', json.dumps({
+            'message': 'Root cause catalog moved to generic Root Categories, specific Root Causes and the Root Technology (ticket #139).',
+            'catalog_replaced': bool(counts['catalog']), 'calls_translated': counts['calls'],
+            'initial_values_translated': counts['field_values'], 'dta_rules_translated': bool(counts['rules']),
+            'backup_table': NQ_ROOT_MIGRATION_TABLE}, ensure_ascii=False))
+    return counts
+
+
 def suggest_root_cause(call: Any, taxonomy: dict[str, Any], comments: str = '') -> dict[str, str] | None:
     """The domain, root category and root cause the CDR (or the comments) suggest, following the workspace rule."""
     return nq_rca.suggest_from_text(call, taxonomy, taxonomy.get('rule') or DEFAULT_ROOT_CAUSE_RULE, comments)
@@ -4494,11 +4645,12 @@ _DTA_COLUMNS = ('dataset_id', 'source_row_id', 'service', 'operator', 'latitude'
 # The result of the row of a call, as the calls query reads it (``s`` the call row): what it learned from the analysts,
 # else what its rule gives.
 DTA_JSON_SQL = (f"COALESCE((SELECT json_object('dta_domain', l.domain, 'dta_category', l.category, 'dta_cause', l.cause, "
-                f"'dta_rule', d.rule, 'dta_rule_key', d.rule_key, 'dta_evidence', l.evidence, 'dta_learned', 'Yes') "
+                f"'dta_rule', d.rule, 'dta_rule_key', d.rule_key, 'dta_evidence', l.evidence, 'dta_technology', d.technology, 'dta_learned', 'Yes') "
                 f"FROM {NQ_DTA_LEARNED_TABLE} l JOIN {NQ_DTA_RESULTS_TABLE} d ON d.dataset_id = l.dataset_id AND d.source_row_id = l.source_row_id "
                 "WHERE l.dataset_id = s.dataset_id AND l.source_row_id = s.source_row_id), "
                 f"(SELECT json_object('dta_domain', d.domain, 'dta_category', d.category, 'dta_cause', d.cause, "
-                f"'dta_rule', d.rule, 'dta_rule_key', d.rule_key, 'dta_evidence', d.evidence) FROM {NQ_DTA_RESULTS_TABLE} d "
+                f"'dta_rule', d.rule, 'dta_rule_key', d.rule_key, 'dta_evidence', d.evidence, 'dta_technology', d.technology) "
+                f"FROM {NQ_DTA_RESULTS_TABLE} d "
                 "WHERE d.dataset_id = s.dataset_id AND d.source_row_id = s.source_row_id), '{}')")
 
 
@@ -4633,7 +4785,8 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
         inputs.update(measured.get(str(row['join_id'] or '').strip().casefold(), {}))
         found = nq_dta_rca.evaluate(compiled, row, inputs) or {}
         results.append((int(row['dataset_id']), int(row['source_row_id']), found.get('rule', ''), found.get('rule_key', ''),
-                        found.get('domain', ''), found.get('category', ''), found.get('cause', ''), found.get('evidence', '')))
+                        found.get('domain', ''), found.get('category', ''), found.get('cause', ''), found.get('evidence', ''),
+                        found.get('technology', '')))
     with task_repository.connection() as connection:
         if everything:
             connection.execute(f'DELETE FROM {NQ_DTA_RESULTS_TABLE}')
@@ -4643,7 +4796,8 @@ def _refresh_dta_rca(task_repository: Any, *, force: bool = False) -> int:
                                f'WHERE c.dataset_id = {NQ_DTA_RESULTS_TABLE}.dataset_id '
                                f'AND c.source_row_id = {NQ_DTA_RESULTS_TABLE}.source_row_id)')
         connection.executemany(f'INSERT OR REPLACE INTO {NQ_DTA_RESULTS_TABLE} '
-                               '(dataset_id, source_row_id, rule, rule_key, domain, category, cause, evidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                               '(dataset_id, source_row_id, rule, rule_key, domain, category, cause, evidence, technology) '
+                               'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                                results)
         connection.execute('INSERT INTO workspace_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
                            (nq_dta_rca.FINGERPRINT_STATE_KEY, fingerprint))
@@ -4846,6 +5000,7 @@ def _base_sql(default: str, task_repository: Any, dataset_ids: list[int] | None 
                COALESCE(t.root_domain, '') AS root_domain,
                COALESCE(t.root_category, '') AS root_category,
                COALESCE(t.root_cause, '') AS root_cause,
+               COALESCE(t.root_technology, '') AS root_technology,
                COALESCE(t.status_mode, 'auto') AS status_mode,
                COALESCE(t.version, 0) AS version,
                COALESCE(t.updated_by, '') AS updated_by,
@@ -4883,6 +5038,7 @@ def _sample_sql(default: str, task_repository: Any) -> tuple[str, list[Any]]:
                COALESCE(NULLIF(t.status, ''), ?) AS status, COALESCE(t.team, '') AS team,
                COALESCE(t.analyst, '') AS analyst, COALESCE(t.reviewer, '') AS reviewer, COALESCE(t.root_domain, '') AS root_domain,
                COALESCE(t.root_category, '') AS root_category, COALESCE(t.root_cause, '') AS root_cause,
+               COALESCE(t.root_technology, '') AS root_technology,
                COALESCE(t.status_mode, 'auto') AS status_mode, COALESCE(t.version, 0) AS version,
                COALESCE(t.updated_by, '') AS updated_by, COALESCE(t.updated_at, '') AS updated_at,
                COALESCE(t.attended_at, '') AS attended_at,
@@ -6029,7 +6185,7 @@ def source_root(call: Any, source: str, taxonomy: dict[str, Any]) -> dict[str, s
     if source == 'dta':
         result = dta_of(call)
         return {'domain': str(result.get('dta_domain') or ''), 'category': str(result.get('dta_category') or ''),
-                'cause': str(result.get('dta_cause') or '')}
+                'cause': str(result.get('dta_cause') or ''), 'technology': str(result.get('dta_technology') or '')}
     if source == 'netcheck':
         if any(str(call[key] or '') for key in ('failure_classification', 'failure_category', 'failure_subcategory')):
             mapped = nq_rca.suggest_from_text(call, taxonomy, {**rule, 'comments': False, 'comment_domain': False})
@@ -6043,7 +6199,8 @@ def source_root(call: Any, source: str, taxonomy: dict[str, Any]) -> dict[str, s
         if any(raw):
             mapped = nq_rca.map_to_catalog(*raw, taxonomy, rule.get('match', 'words'))
     mapped = mapped or {}
-    return {'domain': mapped.get('domain') or '', 'category': mapped.get('category') or '', 'cause': mapped.get('cause') or ''}
+    return {'domain': mapped.get('domain') or '', 'category': mapped.get('category') or '', 'cause': mapped.get('cause') or '',
+            'technology': (mapped.get('technology') or '') if source == 'script' else nq_rca.call_technology(call) if mapped else ''}
 
 
 def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: str,
@@ -6902,6 +7059,13 @@ def _validate_changes(changes: dict[str, Any], options: dict[str, list[dict[str,
             if value and value.casefold() not in names:
                 raise ValueError(f'Choose one of the {title} of the root cause catalog.')
             validated[key] = names.get(value.casefold(), '')
+    if 'root_technology' in changes:
+        # The technology of the root cause (ticket #139): 5G - NR, 4G - LTE, 3G - UMTS, 2G - GSM (or LTE, NR...) or none.
+        value = str(changes.get('root_technology') or '').strip()
+        technology = nq_catalog.canonical_technology(value)
+        if value and not technology:
+            raise ValueError(f"Choose one of the technologies: {', '.join(nq_catalog.ROOT_TECHNOLOGIES)}.")
+        validated['root_technology'] = technology
     if changes.get('apply_recommendation') or changes.get('apply_suggestion'):
         validated['apply_recommendation'] = '1'
     if not validated and not changes.get('fields'):
@@ -7010,12 +7174,19 @@ def update_tracking(
                     recommended = recommendation_for(call, taxonomy, notes, learned)['recommendation']
                 if recommended:
                     current['root_category'], current['root_cause'] = recommended['category'], recommended['cause']
+                    if recommended.get('technology') and not current['root_technology']:
+                        current['root_technology'] = recommended['technology']
                 elif not validated and not field_changes:
                     # Nothing to accept: the call stays as it is.
                     continue
-            # A root cause chosen for a call without root category brings the category the cause is mapped to.
-            if validated.get('root_cause') and 'root_category' not in validated and not current['root_category']:
-                current['root_category'] = root_category_of(taxonomy, current['root_cause'])
+            # The Root Category follows the category of the Root Cause (ticket #139): a cause chosen brings its category, and
+            # a category chosen alone drops a cause of another category (a cause the catalog maps to none keeps the category).
+            cause_category = root_category_of(taxonomy, current['root_cause']) if current['root_cause'] else ''
+            if ('root_category' in validated and 'root_cause' not in validated and cause_category
+                    and cause_category.casefold() != current['root_category'].casefold()):
+                current['root_cause'] = ''
+            elif cause_category:
+                current['root_category'] = cause_category
             current['root_domain'] = domain_of(taxonomy, current['root_category'], current['root_cause'])
             # An analyst chosen alone brings the call to their team (the first one when they are in several),
             # unless the call already has a team they belong to.
@@ -7055,14 +7226,15 @@ def update_tracking(
                     raise ValueError(f'Fill {", ".join(missing)} before closing a call as {current["status"]}.')
             connection.execute(
                 f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, analyst, reviewer, root_domain, root_category, root_cause, '
-                'status_mode, version, updated_by, updated_at, attended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?) '
+                'root_technology, status_mode, version, updated_by, updated_at, attended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?) '
                 'ON CONFLICT(call_key) DO UPDATE SET '
                 'status = excluded.status, team = excluded.team, analyst = excluded.analyst, reviewer = excluded.reviewer, '
                 'root_domain = excluded.root_domain, root_category = excluded.root_category, root_cause = excluded.root_cause, '
-                'status_mode = excluded.status_mode, version = version + 1, '
+                'root_technology = excluded.root_technology, status_mode = excluded.status_mode, version = version + 1, '
                 'updated_by = excluded.updated_by, updated_at = excluded.updated_at, attended_at = excluded.attended_at',
                 (call_key, current['status'], current['team'], current['analyst'], current['reviewer'], current['root_domain'],
-                 current['root_category'], current['root_cause'], current['status_mode'], username, when, attended_at),
+                 current['root_category'], current['root_cause'], current['root_technology'], current['status_mode'], username, when,
+                 attended_at),
             )
             automatic = current['status_mode'] != 'manual'
             for field, value in differences.items():
@@ -7291,11 +7463,19 @@ def analyses_equivalences(task_repository: Any) -> dict[str, dict[str, dict[str,
 
 
 def builtin_equivalences() -> dict[str, dict[str, dict[str, str]]]:
-    """The equivalences of the analysis workbooks of the previous tool every workspace uses."""
+    """The equivalences of the analysis workbooks of the previous tool every workspace uses, their root categories and
+    causes on the current catalog (ticket #139; what a former category implied goes with the call, see
+    _AnalysesTranslator)."""
     rules: dict[str, dict[str, dict[str, str]]] = {}
     for target, value, to, domain in nq_analyses_rules.ANALYSES_RULES:
         rules.setdefault(target, {})[value.casefold()] = {'value': value, 'to': to, 'domain': domain}
-    return _normalize_equivalences(rules)
+    return _normalize_equivalences(_translated_equivalences(rules))
+
+
+# The former root category each built-in equivalence of the previous tool named, by workbook value: the technology and
+# cause it implied go with the call.
+BUILTIN_FORMER_CATEGORIES = {value.casefold(): to for target, value, to, _domain in nq_analyses_rules.ANALYSES_RULES
+                             if target == 'tracking:root_category' and nq_root_migration.is_former_category(to)}
 
 
 def workspace_equivalences(task_repository: Any) -> dict[str, dict[str, dict[str, str]]]:
@@ -7358,6 +7538,8 @@ class _AnalysesTranslator:
         self.new_options: dict[str, dict[str, Counter]] = {}
         self.new_teams: dict[str, Counter] = {}
         self.new_roots: dict[str, dict[str, dict[str, Any]]] = {'categories': {}, 'causes': {}}
+        # What the former categories the workbook values stood for implied (ticket #139): value -> technology, cause.
+        self.implied: dict[str, dict[str, str]] = {}
         # The domains the review gives root categories and causes of the catalog: name -> {'name', 'from', 'to': Counter}.
         self.domain_changes: dict[str, dict[str, dict[str, Any]]] = {'categories': {}, 'causes': {}}
         self.names: dict[str, str] = {}
@@ -7418,6 +7600,11 @@ class _AnalysesTranslator:
             # A domain the catalog has renamed since the review takes its new name.
             domain = BUILTIN_ANALYSES_VALUES['domain'].get(equivalence['domain'].casefold(), equivalence['domain'])
             domain = (nq_analyses.list_choice(domain, self.domains) or domain) if domain else ''
+            # A value of the former catalog (ticket #139) is its current one, in the domain of the current catalog; the
+            # technology and cause a former category implied go with the call.
+            current = self._current(plural, wanted, value)
+            if current != wanted:
+                wanted, domain = current, ''
             existing = nq_analyses.list_choice(wanted, names)
             if existing:
                 current = next(item for item in self.taxonomy[plural] if item['name'] == existing)
@@ -7430,7 +7617,23 @@ class _AnalysesTranslator:
             item['domain'] = item['domain'] or domain
             item['rows'] += 1
             return item['name']
+        value = self._current(plural, value, value)
         return next((name for name in names if name.casefold() == value.casefold()), None)
+
+    def _current(self, plural: str, name: str, written: str) -> str:
+        """The current name of a value of the former catalog (the same name otherwise), keeping what a former category
+        implied (its technology and cause) for the workbook value ``written``."""
+        former = name if nq_root_migration.is_former_category(name) else BUILTIN_FORMER_CATEGORIES.get(written.casefold(), '')
+        if plural == 'categories' and former:
+            translated = nq_root_migration.translate(former, '')
+            if former == name or translated['category'].casefold() == name.casefold():
+                self.implied[written.casefold()] = {'root_technology': translated['technology'], 'root_cause': translated['cause']}
+                return translated['category']
+        return nq_root_migration.translate_cause(name) if plural == 'causes' else name
+
+    def implied_by(self, written: str) -> dict[str, str]:
+        """The technology and cause the former category a workbook value stood for implied."""
+        return {ref: value for ref, value in self.implied.get(written.casefold(), {}).items() if value}
 
     def translate(self, target: tuple[str, str], value: str, direction: str = '') -> tuple[str, str, str] | None:
         """The (kind, ref, value) a value fills, or None when it is not a value of the field."""
@@ -7819,8 +8022,15 @@ def import_analyses(task_repository: Any, content: bytes, file_name: str, userna
                 and nq_analyses.identity(result[2]) != nq_analyses.identity(value)
             if partial or renamed:
                 lines.append(f'{translator.label(target)} (as written): {value}')
+        # What a former category implied (ticket #139): its technology and, without a cause of its own, its cause.
+        category_value = written.get(('tracking', 'root_category'))
+        if category_value is not None:
+            for ref, implied in translator.implied_by(category_value).items():
+                if ('tracking', ref) not in changes:
+                    changes[('tracking', ref)], written[('tracking', ref)] = implied, category_value
         # A call the analysts invalidated is an invalidated analysis.
-        if (changes.get(('tracking', 'root_category'), '').casefold() == 'invalidated' and ('field', 'analysis_status') not in changes
+        if ('invalidated' in {changes.get(('tracking', 'root_category'), '').casefold(), changes.get(('tracking', 'root_cause'), '').casefold()}
+                and ('field', 'analysis_status') not in changes
                 and nq_analyses.list_choice('Invalidated', [option['name'] for option in
                                                             translator.fields.get('analysis_status', {}).get('options') or []])):
             changes[('field', 'analysis_status')] = 'Invalidated'
@@ -7970,7 +8180,8 @@ def _write_analyses(task_repository: Any, plans: list[dict[str, Any]], username:
                 progress(number, len(plans))
             call_key = plan['call_key']
             current = tracking.get(call_key) or {'status': default, 'status_mode': 'auto', 'team': '', 'analyst': '', 'reviewer': '',
-                                                  'root_domain': '', 'root_category': '', 'root_cause': '', 'version': 0}
+                                                  'root_domain': '', 'root_category': '', 'root_cause': '', 'root_technology': '',
+                                                  'version': 0}
             stored = values.get(call_key, {})
             existing = {str(row['body']).strip() for row in comment_rows.get(call_key, []) if not row['deleted_at']} \
                 | {_comment_log(comment_rows.get(call_key, []))}
@@ -7979,11 +8190,11 @@ def _write_analyses(task_repository: Any, plans: list[dict[str, Any]], username:
                          and str(current.get(ref) or '') != value}
             fields = {ref: value for (kind, ref), value in plan['changes'].items() if kind == 'field'
                       and (overwrite or not stored.get(ref)) and stored.get(ref, '') != value}
-            # A root cause without root category brings the category it is mapped to, as when it is chosen in the call.
-            if follow_up.get('root_cause') and not follow_up.get('root_category') and not str(current.get('root_category') or ''):
-                mapped = root_category_of(taxonomy, follow_up['root_cause'])
-                if mapped:
-                    follow_up['root_category'] = mapped
+            # The root category follows the category of the root cause, as when it is chosen in the call (ticket #139).
+            cause = follow_up.get('root_cause') or (str(current.get('root_cause') or '') if follow_up.get('root_category') else '')
+            mapped = root_category_of(taxonomy, cause) if cause else ''
+            if mapped and mapped.casefold() != str(follow_up.get('root_category') or current.get('root_category') or '').casefold():
+                follow_up['root_category'] = mapped
             # A value the call keeps (it has another one) stays in the note as the file writes it; a text the import
             # added a column to (Findings Comments after the Findings) is the same value.
             lines = list(plan['lines'])
@@ -8027,14 +8238,15 @@ def _write_analyses(task_repository: Any, plans: list[dict[str, Any]], username:
                 attended_at = str(current.get('attended_at') or '') or (when if work else '')
                 connection.execute(
                     f'INSERT INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, team, analyst, reviewer, root_domain, root_category, '
-                    'root_cause, status_mode, version, updated_by, updated_at, attended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?) '
+                    'root_cause, root_technology, status_mode, version, updated_by, updated_at, attended_at) '
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?) '
                     'ON CONFLICT(call_key) DO UPDATE SET '
                     'status = excluded.status, team = excluded.team, analyst = excluded.analyst, reviewer = excluded.reviewer, '
                     'root_domain = excluded.root_domain, root_category = excluded.root_category, root_cause = excluded.root_cause, '
-                    'status_mode = excluded.status_mode, version = version + 1, updated_by = excluded.updated_by, '
-                    'updated_at = excluded.updated_at, attended_at = excluded.attended_at',
+                    'root_technology = excluded.root_technology, status_mode = excluded.status_mode, version = version + 1, '
+                    'updated_by = excluded.updated_by, updated_at = excluded.updated_at, attended_at = excluded.attended_at',
                     (call_key, row['status'], row['team'], row['analyst'], row['reviewer'], row['root_domain'], row['root_category'],
-                     row['root_cause'], row['status_mode'], username, last, attended_at))
+                     row['root_cause'], str(row.get('root_technology') or ''), row['status_mode'], username, last, attended_at))
                 for ref, value in follow_up.items():
                     _record_history(connection, call_key, ref, str(current.get(ref) or ''), value, username, when)
             for ref, value in fields.items():
@@ -8871,6 +9083,7 @@ def _excel_value(value: Any) -> Any:
 HISTORY_LABELS = {
     'status': 'Status', 'status_auto': 'Status (automatic)', 'status_mode': 'Status set', 'team': 'Team', 'analyst': 'Analyst',
     'reviewer': 'Reviewer', 'root_domain': 'Root Domain', 'root_category': 'Root Category', 'root_cause': 'Root Cause',
+    'root_technology': 'Root Technology',
     'comment_edit': 'Comment edited', 'comment_delete': 'Comment deleted',
 }
 
@@ -8921,7 +9134,7 @@ def export_tracking_document(task_repository: Any) -> bytes:
     ensure_nq_tables(task_repository)
     with task_repository.connection() as connection:
         tracking = [dict(row) for row in connection.execute(
-            f'SELECT call_key, status, status_mode, team, analyst, reviewer, root_domain, root_category, root_cause, version, '
+            f'SELECT call_key, status, status_mode, team, analyst, reviewer, root_domain, root_category, root_cause, root_technology, version, '
             f'updated_by, updated_at, attended_at FROM {NQ_CALL_TRACKING_TABLE} ORDER BY call_key')]
         rca_results = [dict(row) for row in connection.execute(
             f'SELECT original_join_id AS join_id, values_json, source_file, imported_by, imported_at '
@@ -8965,9 +9178,107 @@ def export_configuration_document(task_repository: Any) -> bytes:
 
 
 def upgrade_legacy_document(document: Any) -> Any:
-    """A tracking or configuration document of an earlier version as this version writes it (see _upgrade_assignee and
-    _upgrade_reviewer). Other documents are given back as they are."""
-    return _upgrade_reviewer(_upgrade_assignee(document))
+    """A tracking or configuration document of an earlier version as this version writes it (see _upgrade_assignee,
+    _upgrade_reviewer and _upgrade_root_catalog). Other documents are given back as they are."""
+    return _upgrade_root_catalog(_upgrade_reviewer(_upgrade_assignee(document)))
+
+
+def _upgrade_root_catalog(document: Any) -> Any:
+    """A tracking or configuration document with the former root cause catalog (before ticket #139) on the current one:
+    its catalog, the root category, cause and technology of its calls, its Initial Root Category and Cause, the rules
+    of its DT Analyzer RCA, the conditions of its status rules and its reviewed equivalences, all through
+    nq_root_migration (the history stays as it was written)."""
+    if not isinstance(document, dict):
+        return document
+    # The catalog workbook (catalog_document) holds it in ``root`` and its status rules in ``rules``.
+    key = next((name for name in ('root_causes', 'root') if nq_root_migration.is_former_catalog(document.get(name))), None)
+    if key is None:
+        return document
+    document = json.loads(json.dumps(document))
+    catalog = nq_root_migration.translate_catalog(document[key])
+    document[key] = {**document[key], **catalog}
+    if key == 'root' and isinstance(document.get('rules'), list):
+        document['rules'] = _translated_status_rules(document['rules'])
+    domains = _default_category_domains(catalog)
+    for row in document.get('tracking') or []:
+        if isinstance(row, dict):
+            row.update(nq_root_migration.translate_values(row))
+            row['root_domain'] = domains.get(str(row.get('root_category') or '').casefold(), row.get('root_domain') or '')
+    initial: dict[str, dict[str, dict[str, Any]]] = {}
+    for item in document.get('field_values') or []:
+        if isinstance(item, dict) and item.get('field_key') in ROOT_TEXT_FIELDS and isinstance(item.get('value'), str):
+            initial.setdefault(_text(item.get('call_key')), {})[item['field_key']] = item
+    for call_key, items in initial.items():
+        translated = _translated_initial({key: item['value'] for key, item in items.items()})
+        for key, value in translated.items():
+            if key in items:
+                items[key]['value'] = value
+            elif value:
+                document['field_values'].append({**next(iter(items.values())), 'field_key': key, 'value': value})
+    if isinstance(document.get('dta_rca_rules'), list):
+        document['dta_rca_rules'] = nq_dta_rca.translate_rules(document['dta_rca_rules'])
+    if isinstance(document.get('status_rules'), list):
+        document['status_rules'] = _translated_status_rules(document['status_rules'])
+    if isinstance(document.get('analyses_equivalences'), dict):
+        document['analyses_equivalences'] = _translated_equivalences(document['analyses_equivalences'])
+    return document
+
+
+# The fields of the analysts that hold a root category or cause of the catalog as text (the Initial Classification).
+ROOT_TEXT_FIELDS = {'initial_root_category': 'category', 'initial_root_cause': 'cause'}
+
+
+def _translated_initial(values: dict[str, str]) -> dict[str, str]:
+    """The Initial Root Category and Cause of a call on the current catalog, translated together as a decision is (a
+    former category that implied a cause gives it when the call has none)."""
+    category, cause = values.get('initial_root_category', ''), values.get('initial_root_cause', '')
+    if not category.strip() and not cause.strip():
+        return dict(values)
+    # A former category written as the cause stands for the cause it implied (Other LTE: Unclear).
+    if nq_root_migration.is_former_category(cause):
+        cause = nq_root_migration.translate(cause, '')['cause']
+    translated = nq_root_migration.translate(category, cause)
+    result = dict(values)
+    if category.strip():
+        result['initial_root_category'] = translated['category']
+    if values.get('initial_root_cause', '').strip() or (translated['cause'] and nq_root_migration.is_former_category(category)):
+        result['initial_root_cause'] = translated['cause']
+    return result
+
+
+def _default_category_domains(catalog: dict[str, Any]) -> dict[str, str]:
+    return {str(item.get('name') or '').casefold(): str(item.get('domain') or '') for item in catalog.get('categories') or []
+            if isinstance(item, dict)}
+
+
+def _translated_status_rules(rules: list[Any]) -> list[Any]:
+    """Status rules whose conditions on the root category or cause name the current values."""
+    result = []
+    for rule in rules:
+        if isinstance(rule, dict):
+            rule = {**rule, 'conditions': [
+                {**condition, 'values': list(dict.fromkeys(
+                    (nq_root_migration.translate(value, '')['category'] if condition.get('field') == '@root_category'
+                     else nq_root_migration.translate_cause(value)) for value in condition.get('values') or []))}
+                if isinstance(condition, dict) and condition.get('field') in {'@root_category', '@root_cause'} else condition
+                for condition in rule.get('conditions') or []]}
+        result.append(rule)
+    return result
+
+
+def _translated_equivalences(equivalences: dict[str, Any]) -> dict[str, Any]:
+    """Reviewed equivalences whose root categories and causes are the current ones (the domain of a former category
+    gives way to that of the current catalog)."""
+    result = json.loads(json.dumps(equivalences))
+    for target, kind in (('tracking:root_category', 'category'), ('tracking:root_cause', 'cause')):
+        for item in (result.get(target) or {}).values():
+            if not isinstance(item, dict) or not str(item.get('to') or '').strip():
+                continue
+            translated = (nq_root_migration.translate(item['to'], '')['category'] if kind == 'category'
+                          else nq_root_migration.translate_cause(item['to']))
+            if translated != item['to']:
+                item['to'], item['domain'] = translated, ''
+    return result
 
 
 def _upgrade_reviewer(document: Any) -> Any:
@@ -9487,10 +9798,12 @@ def import_tracking_document(task_repository: Any, payload: bytes | str) -> int:
                 'status_mode' not in item and _text(item.get('status')) not in {'', 'Open'}) else 'auto'
             connection.execute(
                 f'INSERT OR REPLACE INTO {NQ_CALL_TRACKING_TABLE} (call_key, status, status_mode, team, analyst, reviewer, root_domain, '
-                'root_category, root_cause, version, updated_by, updated_at, attended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'root_category, root_cause, root_technology, version, updated_by, updated_at, attended_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (call_key, _text(item.get('status')), mode, _text(item.get('team')), _text(item.get('analyst')),
                  reviewer_account(_text(item.get('reviewer')), accounts) or _text(item.get('reviewer')),
                  _text(item.get('root_domain')), _text(item.get('root_category')), _text(item.get('root_cause')),
+                 _text(item.get('root_technology')),
                  int(item.get('version') or 1), _text(item.get('updated_by')), incoming_at,
                  # Exports of before ticket #122 counted any change as attending the call.
                  _text(item.get('attended_at')) if 'attended_at' in item else incoming_at),
@@ -9604,7 +9917,7 @@ def predicted_tracking_document(before: Any, package: Any) -> Any:
             'call_key': call_key, 'status': _text(item.get('status')), 'status_mode': mode, 'team': _text(item.get('team')),
             'analyst': _text(item.get('analyst')), 'reviewer': _text(item.get('reviewer')), 'root_domain': _text(item.get('root_domain')),
             'root_category': _text(item.get('root_category')), 'root_cause': _text(item.get('root_cause')),
-            'version': int(item.get('version') or 1), 'updated_by': _text(item.get('updated_by')), 'updated_at': incoming_at,
+            'root_technology': _text(item.get('root_technology')), 'version': int(item.get('version') or 1), 'updated_by': _text(item.get('updated_by')), 'updated_at': incoming_at,
         }
 
     comments = records(before, 'comments')

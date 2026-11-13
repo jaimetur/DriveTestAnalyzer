@@ -353,7 +353,7 @@ def test_the_dt_analyzer_rca_reads_the_layer_3_dt_logs_of_the_campaign_of_the_ca
     with_log = dta()
     # The radio of the failed side (the worst of its UEs) at the failure, from the log.
     assert with_log['dta_rule_key'] == 'side-lte-coverage', with_log
-    assert (with_log['dta_category'], with_log['dta_cause']) == ('Poor Coverage LTE', 'Coverage')
+    assert (with_log['dta_category'], with_log['dta_cause'], with_log.get('dta_technology')) == ('Coverage', 'DL coverage', '4G - LTE')
     assert 'LTE RSRP of the failed side (Layer3 Log, at the failure)' in with_log['dta_evidence']
     assert 'Layer3 Logs: 5G EN-DC - SCG Failure NR SCG 2 s before the end' in with_log['dta_evidence']
     # Deleting the log calculates the calls of its campaign again, without it.

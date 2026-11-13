@@ -29,9 +29,9 @@ import json
 import re
 from typing import Any
 
-from src.modules.nq.nq_catalog import keyword_found, keywords, normalized_text
+from src.modules.nq.nq_catalog import canonical_technology, keyword_found, keywords, normalized_text, technology_of
 
-ENGINE_VERSION = 9
+ENGINE_VERSION = 10
 SOURCE_LABEL = 'DT Analyzer RCA'
 RULES_STATE_KEY = 'nq_dta_rca_rules'
 FINGERPRINT_STATE_KEY = 'nq_dta_rca_fingerprint'
@@ -228,28 +228,27 @@ def _side_rules(prefix: str, where: str, services: tuple[str, ...]) -> tuple[tup
     for tech, label in (('lte', 'LTE'), ('nr', 'NR')):
         rules += [
             (f'{prefix}-{tech}-coverage', f'Weak {label} coverage on the {where}', services, 'all',
-             ((f'{prefix}_{tech}_rsrp', 'lt', -110),), f'Poor Coverage {label}', 'Coverage'),
+             ((f'{prefix}_{tech}_rsrp', 'lt', -110),), 'Coverage', 'DL coverage', label),
         ]
     for tech, label in (('lte', 'LTE'), ('nr', 'NR')):
         rules += [
             (f'{prefix}-{tech}-handover', f'Stronger {label} neighbour on the {where}', services, 'all',
-             ((f'{prefix}_{tech}_neighbour_delta', 'ge', 3), (f'{prefix}_{tech}_sinr', 'lt', 3)), f'Mobility {label}',
-             'Missing or late handover'),
+             ((f'{prefix}_{tech}_neighbour_delta', 'ge', 3), (f'{prefix}_{tech}_sinr', 'lt', 3)), 'Mobility', 'Missing or late handover', label),
             # A weak signal (below −105 dBm) with a low SINR is limited by the noise: coverage, not interference.
             (f'{prefix}-{tech}-weak-coverage', f'Weak {label} signal with a low SINR on the {where}', services, 'all',
-             ((f'{prefix}_{tech}_rsrp', 'lt', -105), (f'{prefix}_{tech}_sinr', 'lt', 0)), f'Poor Coverage {label}', 'Coverage'),
+             ((f'{prefix}_{tech}_rsrp', 'lt', -105), (f'{prefix}_{tech}_sinr', 'lt', 0)), 'Coverage', 'Weak signal with low SINR', label),
             (f'{prefix}-{tech}-dominance', f'No dominant {label} cell on the {where}', services, 'all',
              ((f'{prefix}_{tech}_sinr', 'lt', 0), (f'{prefix}_{tech}_neighbour_delta', 'ge', -3), (f'{prefix}_{tech}_rsrp', 'ge', -105)),
-             f'DL Interference {label}', 'Lack of dominant cell'),
+             'Interference', 'Lack of dominant cell', label),
             (f'{prefix}-{tech}-interference', f'{label} interference on the {where}', services, 'all',
-             ((f'{prefix}_{tech}_sinr', 'lt', 0), (f'{prefix}_{tech}_rsrp', 'ge', -105)), f'DL Interference {label}', 'DL interference'),
+             ((f'{prefix}_{tech}_sinr', 'lt', 0), (f'{prefix}_{tech}_rsrp', 'ge', -105)), 'Interference', 'DL interference', label),
         ]
     if prefix == 'side':
         rules += [
             ('side-uplink-coverage', 'UE at high power with weak coverage on the failed side', services, 'all',
-             (('side_tx_power', 'ge', 21), ('side_lte_rsrp', 'lt', -100)), 'Poor Coverage LTE', 'Coverage'),
+             (('side_tx_power', 'ge', 21), ('side_lte_rsrp', 'lt', -100)), 'Coverage', 'UL coverage (UE at maximum power)', 'LTE'),
             ('side-uplink-interference', 'UE at high power with good coverage on the failed side', services, 'all',
-             (('side_tx_power', 'ge', 21), ('side_lte_rsrp', 'ge', -95)), 'UL Interference LTE', 'UL interference'),
+             (('side_tx_power', 'ge', 21), ('side_lte_rsrp', 'ge', -95)), 'Interference', 'UL interference', 'LTE'),
         ]
     return tuple(rules)
 
@@ -263,187 +262,326 @@ NETWORK_RULE_KEYS = ('cell-outage', 'cell-outage-interference', 'nr-coverage-hol
 # The default rules, in order: (key, name, services, match, conditions, Root Category, Root Cause). A text condition
 # holds when the text contains one of its comma-separated terms ("a+b" needs both); a rule without conditions takes
 # every call of its services that reaches it.
-_DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str, Any], ...], str, str], ...] = (
+_DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str, Any], ...], str, str, str], ...] = (
     # What the provider reports outside the radio: the device, the subscription, the core and IMS.
     ('device', 'Device or test setup', (), 'any',
      (('failure_text', 'contains', 'modem, device, test setup, ue crash, at command, script error, battery'),),
-     'UE / Test Setup Issue', 'Device or test setup'),
+     'Device & Test Setup', 'Device or test setup', ''),
     # A log whose UE measured nothing: the device or the logging of the test.
     ('l3-no-measurements', 'No measurements in the drivetest log', (), 'all',
      (('l3_no_measurements', 'ge', 1), ('l3_lte_rsrp_end', 'empty', ''), ('l3_nr_rsrp_end', 'empty', '')),
-     'UE / Test Setup Issue', 'Device or test setup'),
+     'Device & Test Setup', 'No measurements in the log', ''),
     # A lack of resources: the insufficient resources or congestion the provider reports of the core, and the access the
     # network rejects in the signalling of the CDR itself (or as the provider reports it).
     ('core-resources', 'Insufficient resources of the core', (), 'any',
-     (('failure_text', 'contains', 'insufficient resources, service reject+congestion'),), 'Core Network', 'Insufficient resources'),
+     (('failure_text', 'contains', 'insufficient resources, service reject+congestion'),), 'Session & Mobility Management', 'Insufficient resources', ''),
     ('access-rejected', 'Access rejected by the network', (), 'any',
      (('signalling_events', 'contains', 'rrcconnectionreject, rrcreject, immediate assignment reject'),
       ('failure_text', 'contains', 'rrc connection reject'), ('l3_signalling', 'contains', 'rrcconnectionreject, rrcreject')),
-     'RAN Capacity', 'Access rejected (no resources)'),
+     'Capacity', 'Access rejected (no resources)', ''),
     ('authentication', 'Authentication or registration rejected', (), 'any',
      (('failure_text', 'contains', 'authentication, authorization, registration reject, attach reject, '
                                    'pdu session establishment reject'),
       ('l3_signalling', 'contains', 'authentication reject, registration reject, attach reject, pdu session establishment reject')),
-     'Authentication & Registration', 'Authentication/Authorization'),
+     'Registration & Authentication', 'Authentication/Authorization', ''),
     # Cells of its sites out of service in the Network Inventory, when its radio suffered.
     ('cell-outage', 'Cells out of service on its sites', (), 'all', (('cells_out_of_service', 'ge', 1), ('radio_rsrp', 'lt', -105)),
-     'Operational', 'Cell/Site Outage'),
+     'Network Operations', 'Cell/Site Outage', ''),
     ('cell-outage-interference', 'Cells out of service on its sites with interference', (), 'all',
-     (('cells_out_of_service', 'ge', 1), ('radio_sinr', 'lt', 3)), 'Operational', 'Cell/Site Outage'),
+     (('cells_out_of_service', 'ge', 1), ('radio_sinr', 'lt', 3)), 'Network Operations', 'Cell/Site Outage', ''),
     # The network around the call (Network Inventory), before the coverage and interference it brings: no site near it (the
     # nearest one beyond 1.5 times its inter-site distance), a serving site beyond twice its inter-site distance, a cell
     # around with the PCI and channel of one of its own.
     ('nr-coverage-hole', 'NR coverage hole', (), 'all', (('nearest_site_isd_ratio', 'ge', 1.5), ('nr_rsrp', 'lt', -110), *_NR),
-     'Poor Coverage NR', 'Large distance to the nearest site'),
+     'Coverage', 'Large distance to the nearest site', 'NR'),
     ('coverage-hole', 'Coverage hole', (), 'all', (('nearest_site_isd_ratio', 'ge', 1.5), ('lte_rsrp', 'lt', -110)),
-     'Poor Coverage LTE', 'Large distance to the nearest site'),
+     'Coverage', 'Large distance to the nearest site', 'LTE'),
     ('no-service-hole', 'Coverage hole without service', (), 'all', (('nearest_site_isd_ratio', 'ge', 1.5), ('radio_measured', 'empty', '')),
-     'Poor Coverage LTE', 'Large distance to the nearest site'),
+     'Coverage', 'Coverage hole (no service)', ''),
     ('nr-overshooting', 'NR overshooting', (), 'all',
      (('serving_isd_ratio', 'ge', 2), ('serving_distance', 'ge', 1), ('nr_sinr', 'lt', 3), *_NR),
-     'DL Interference NR', 'Overshooting or excessive cell overlap'),
+     'Interference', 'Overshooting or excessive cell overlap', 'NR'),
     ('overshooting', 'Overshooting', (), 'all', (('serving_isd_ratio', 'ge', 2), ('serving_distance', 'ge', 1), ('lte_sinr', 'lt', 3)),
-     'DL Interference LTE', 'Overshooting or excessive cell overlap'),
+     'Interference', 'Overshooting or excessive cell overlap', 'LTE'),
     ('nr-overshooting-coverage', 'NR overshooting with weak coverage', (), 'all',
      (('serving_isd_ratio', 'ge', 2), ('serving_distance', 'ge', 1), ('nr_rsrp', 'lt', -105), *_NR),
-     'Poor Coverage NR', 'Overshooting or excessive cell overlap'),
+     'Coverage', 'Served from a far site (overshooting)', 'NR'),
     ('overshooting-coverage', 'Overshooting with weak coverage', (), 'all',
      (('serving_isd_ratio', 'ge', 2), ('serving_distance', 'ge', 1), ('lte_rsrp', 'lt', -105)),
-     'Poor Coverage LTE', 'Overshooting or excessive cell overlap'),
+     'Coverage', 'Served from a far site (overshooting)', 'LTE'),
     ('nr-pci-collision', 'NR PCI collision', (), 'all', (('pci_collisions', 'ge', 1), ('nr_sinr', 'lt', 3), *_NR),
-     'DL Interference NR', 'PCI Collision/PCI MOD 3 Collision'),
+     'Interference', 'PCI Collision/PCI MOD 3 Collision', 'NR'),
     ('pci-collision', 'PCI collision', (), 'all', (('pci_collisions', 'ge', 1), ('lte_sinr', 'lt', 3)),
-     'DL Interference LTE', 'PCI Collision/PCI MOD 3 Collision'),
+     'Interference', 'PCI Collision/PCI MOD 3 Collision', 'LTE'),
     *_SIDE_RULES,
     ('subscriber-identity', 'Subscriber identity', (), 'any',
-     (('failure_text', 'contains', 'imsi, ue identity cannot be derived'),), 'IMSI Issue', ''),
+     (('failure_text', 'contains', 'imsi, ue identity cannot be derived'),), 'Registration & Authentication', 'Subscriber identity (IMSI)', ''),
     ('tracking-area-update', 'Tracking area update', (), 'any',
      (('failure_text', 'contains', 'tracking area update'), ('l3_signalling', 'contains', 'tracking area update reject')),
-     'Core Network', 'TAU reject'),
+     'Session & Mobility Management', 'TAU reject', ''),
     ('bearer-deactivation', 'Bearer deactivated by the network', (), 'any',
-     (('failure_text', 'contains', 'bearer deactivation, deregistered, detach request'),), 'Core Network', 'EPS bearer deactivation'),
-    ('qci1', 'No QCI1 bearer for the call', _VOICE, 'any', (('failure_text', 'contains', 'qci1, qci 1'),), 'IMS / VoLTE',
-     'No QCI1 established'),
+     (('failure_text', 'contains', 'bearer deactivation, deregistered, detach request'),), 'Session & Mobility Management', 'EPS bearer deactivation', ''),
+    ('qci1', 'No QCI1 bearer for the call', _VOICE, 'any', (('failure_text', 'contains', 'qci1, qci 1'),), 'Voice Core (IMS)', 'No QCI1 established', ''),
     ('ims-core', 'VoLTE or IMS core', _VOICE, 'any',
      (('failure_text', 'contains', 'volte core, ims core, ims registration, sip, server internal error'),
-      ('l3_sip_error', 'ge', 400)), 'IMS / VoLTE', 'VoLTE core'),
-    ('eps-fallback', 'EPS fallback', _VOICE, 'any', (('failure_text', 'contains', 'epsfb, eps fallback'),), 'EPS Fallback',
-     'EPS fallback failure'),
-    ('paging', 'Paging', (), 'any', (('failure_text', 'contains', 'paging'),), 'RAN Performance', 'Paging'),
-    ('session-in-gsm', 'Session in GSM', (), 'any', (('failure_text', 'contains', 'session in gsm'),), 'Core Network',
-     'WhatsApp session in GSM'),
+      ('l3_sip_error', 'ge', 400)), 'Voice Core (IMS)', 'VoLTE core', ''),
+    ('eps-fallback', 'EPS fallback', _VOICE, 'any', (('failure_text', 'contains', 'epsfb, eps fallback'),), 'Fallback & Legacy', 'EPS fallback failure', ''),
+    ('paging', 'Paging', (), 'any', (('failure_text', 'contains', 'paging'),), 'Radio Signalling', 'Paging', ''),
+    ('session-in-gsm', 'Session in GSM', (), 'any', (('failure_text', 'contains', 'session in gsm'),), 'Fallback & Legacy', 'WhatsApp session in GSM', ''),
     # What the Layer3 Logs of the call show at its failure, more precise than the averages of the CDR: the radio of
     # its last seconds and what failed before it (a call without a log goes on to the rules of its CDR).
     ('l3-scg-failure-coverage', 'SCG failure with weak NR coverage (drivetest log)', (), 'all',
-     (('l3_scg_failures', 'ge', 1), ('l3_nr_rsrp_end', 'lt', -110)), 'Poor Coverage NR', 'Coverage'),
+     (('l3_scg_failures', 'ge', 1), ('l3_nr_rsrp_end', 'lt', -110)), 'Coverage', 'DL coverage', 'NR'),
     ('l3-reestablishment-coverage', 'Re-establishment with weak LTE coverage (drivetest log)', (), 'all',
-     (('l3_reestablishments', 'ge', 1), ('l3_lte_rsrp_end', 'lt', -110)), 'Poor Coverage LTE', 'Coverage'),
+     (('l3_reestablishments', 'ge', 1), ('l3_lte_rsrp_end', 'lt', -110)), 'Coverage', 'DL coverage', 'LTE'),
     ('l3-missing-handover', 'Stronger neighbour without a handover (drivetest log)', (), 'all',
      (('l3_neighbour_delta', 'ge', 6), ('l3_neighbour_seconds', 'ge', 3), ('l3_handovers', 'eq', 0)),
-     'Mobility LTE', 'Missing or late handover'),
+     'Mobility', 'Missing or late handover', 'LTE'),
     ('l3-lte-coverage', 'Weak LTE coverage at the failure (drivetest log)', (), 'all', (('l3_lte_rsrp_end', 'lt', -115),),
-     'Poor Coverage LTE', 'Coverage'),
+     'Coverage', 'DL coverage', 'LTE'),
     ('l3-nr-coverage', 'Weak NR coverage at the failure (drivetest log)', (), 'all',
-     (('l3_nr_rsrp_end', 'lt', -115), ('l3_ran_end', 'contains', '5g sa')), 'Poor Coverage NR', 'Coverage'),
+     (('l3_nr_rsrp_end', 'lt', -115), ('l3_ran_end', 'contains', '5g sa')), 'Coverage', 'DL coverage', 'NR'),
     ('l3-uplink', 'UE at maximum power before the failure (drivetest log)', (), 'all',
-     (('l3_tx_high_share', 'ge', 50), ('l3_lte_rsrp_end', 'lt', -100)), 'Poor Coverage LTE', 'Coverage'),
+     (('l3_tx_high_share', 'ge', 50), ('l3_lte_rsrp_end', 'lt', -100)), 'Coverage', 'UL coverage (UE at maximum power)', 'LTE'),
     ('l3-lte-interference', 'LTE interference at the failure (drivetest log)', (), 'all',
-     (('l3_lte_sinr_end', 'lt', -3), ('l3_lte_rsrp_end', 'ge', -105)), 'DL Interference LTE', 'DL interference'),
+     (('l3_lte_sinr_end', 'lt', -3), ('l3_lte_rsrp_end', 'ge', -105)), 'Interference', 'DL interference', 'LTE'),
     ('l3-nr-interference', 'NR interference at the failure (drivetest log)', (), 'all',
-     (('l3_nr_sinr_end', 'lt', -3), ('l3_nr_rsrp_end', 'ge', -105), ('l3_ran_end', 'contains', '5g')), 'DL Interference NR',
-     'DL interference'),
+     (('l3_nr_sinr_end', 'lt', -3), ('l3_nr_rsrp_end', 'ge', -105), ('l3_ran_end', 'contains', '5g')), 'Interference', 'DL interference', 'NR'),
     ('l3-scg-failure', 'SCG failure before the failure (drivetest log)', (), 'all', (('l3_scg_failures', 'ge', 1),),
-     'RAN Performance', 'RRC layer'),
+     'Mobility', 'SCG failure', 'NR'),
     ('l3-reestablishment', 'RRC re-establishment before the failure (drivetest log)', (), 'all', (('l3_reestablishments', 'ge', 1),),
-     'RAN Performance', 'RRC layer'),
-    ('l3-lte-bler', 'High LTE BLER before the failure (drivetest log)', (), 'all', (('l3_lte_bler', 'gt', 30),), 'BLER LTE', 'BLER'),
-    ('l3-nr-bler', 'High NR BLER before the failure (drivetest log)', (), 'all', (('l3_nr_bler', 'gt', 30),), 'BLER NR', 'BLER'),
+     'Radio Signalling', 'Radio link failure', ''),
+    ('l3-lte-bler', 'High LTE BLER before the failure (drivetest log)', (), 'all', (('l3_lte_bler', 'gt', 30),), 'Radio Link Quality', 'High DL BLER', 'LTE'),
+    ('l3-nr-bler', 'High NR BLER before the failure (drivetest log)', (), 'all', (('l3_nr_bler', 'gt', 30),), 'Radio Link Quality', 'High DL BLER', 'NR'),
     # The radio of the call: the anchor (LTE) before NR, the A side before the B side.
-    ('lte-coverage', 'Poor LTE coverage', (), 'all', (('lte_rsrp', 'lt', -110),), 'Poor Coverage LTE', 'Coverage'),
-    ('nr-coverage', 'Poor NR coverage', (), 'all', (('nr_rsrp', 'lt', -110),), 'Poor Coverage NR', 'Coverage'),
+    ('lte-coverage', 'Poor LTE coverage', (), 'all', (('lte_rsrp', 'lt', -110),), 'Coverage', 'DL coverage', 'LTE'),
+    ('nr-coverage', 'Poor NR coverage', (), 'all', (('nr_rsrp', 'lt', -110),), 'Coverage', 'DL coverage', 'NR'),
     ('lte-uplink', 'LTE uplink at maximum power', (), 'all', (('lte_tx_power', 'ge', 23), ('lte_rsrp', 'lt', -100)),
-     'Poor Coverage LTE', 'Coverage'),
-    ('lte-interference', 'LTE downlink interference', (), 'all', (('lte_sinr', 'lt', 0),), 'DL Interference LTE', 'DL interference'),
-    ('nr-interference', 'NR downlink interference', (), 'all', (('nr_sinr', 'lt', 0),), 'DL Interference NR', 'DL interference'),
-    ('lte-dominance', 'No dominant LTE cell', (), 'all', (('lte_rsrq', 'lt', -15),), 'DL Interference LTE', 'Lack of dominant cell'),
-    ('b-lte-coverage', 'Poor LTE coverage of the B side', _VOICE, 'all', (('b_lte_rsrp', 'lt', -110),), 'Poor Coverage LTE', 'Coverage'),
-    ('b-nr-coverage', 'Poor NR coverage of the B side', _VOICE, 'all', (('b_nr_rsrp', 'lt', -110),), 'Poor Coverage NR', 'Coverage'),
+     'Coverage', 'UL coverage (UE at maximum power)', 'LTE'),
+    ('lte-interference', 'LTE downlink interference', (), 'all', (('lte_sinr', 'lt', 0),), 'Interference', 'DL interference', 'LTE'),
+    ('nr-interference', 'NR downlink interference', (), 'all', (('nr_sinr', 'lt', 0),), 'Interference', 'DL interference', 'NR'),
+    ('lte-dominance', 'No dominant LTE cell', (), 'all', (('lte_rsrq', 'lt', -15),), 'Interference', 'Lack of dominant cell', 'LTE'),
+    ('b-lte-coverage', 'Poor LTE coverage of the B side', _VOICE, 'all', (('b_lte_rsrp', 'lt', -110),), 'Coverage', 'DL coverage', 'LTE'),
+    ('b-nr-coverage', 'Poor NR coverage of the B side', _VOICE, 'all', (('b_nr_rsrp', 'lt', -110),), 'Coverage', 'DL coverage', 'NR'),
     ('b-lte-interference', 'LTE interference on the B side', _VOICE, 'all', (('b_lte_sinr', 'lt', 0),),
-     'DL Interference LTE', 'DL interference'),
+     'Interference', 'DL interference', 'LTE'),
     ('legacy-technology', 'Fallback to 2G or 3G', (), 'any',
-     (('rat', 'contains', 'gsm, umts, wcdma, hspa, 2g, 3g'),), 'Poor Coverage 2G/3G', 'Inter-RAT transition'),
-    ('lte-bler', 'High LTE BLER', (), 'all', (('lte_bler', 'gt', 10),), 'BLER LTE', 'BLER'),
-    ('nr-bler', 'High NR BLER', (), 'all', (('nr_bler', 'gt', 10),), 'BLER NR', 'BLER'),
+     (('rat', 'contains', 'gsm, umts, wcdma, hspa, 2g, 3g'),), 'Mobility', 'Inter-RAT transition', ''),
+    ('lte-bler', 'High LTE BLER', (), 'all', (('lte_bler', 'gt', 10),), 'Radio Link Quality', 'High DL BLER', 'LTE'),
+    ('nr-bler', 'High NR BLER', (), 'all', (('nr_bler', 'gt', 10),), 'Radio Link Quality', 'High DL BLER', 'NR'),
     # Its handovers: back and forth between two cells, then the handover failures.
-    ('nr-ping-pong', 'NR ping-pong handovers', (), 'all', (('ping_pong', 'ge', 1), *_NR), 'Mobility NR', 'Ping-pong handover'),
-    ('ping-pong', 'Ping-pong handovers', (), 'all', (('ping_pong', 'ge', 1),), 'Mobility LTE', 'Ping-pong handover'),
+    ('nr-ping-pong', 'NR ping-pong handovers', (), 'all', (('ping_pong', 'ge', 1), *_NR), 'Mobility', 'Ping-pong handover', 'NR'),
+    ('ping-pong', 'Ping-pong handovers', (), 'all', (('ping_pong', 'ge', 1),), 'Mobility', 'Ping-pong handover', 'LTE'),
     ('nr-handover', 'NR handover failure', (), 'all',
-     (('failure_text', 'contains', 'handover'), ('failure_technology', 'contains', '5g, nr')), 'Mobility NR', 'Handover failure'),
+     (('failure_text', 'contains', 'handover'), ('failure_technology', 'contains', '5g, nr')), 'Mobility', 'Handover failure', 'NR'),
     ('handover', 'Handover failure', (), 'any',
-     (('failure_text', 'contains', 'handover'), ('l3_signalling', 'contains', 'handover failure')), 'Mobility LTE', 'Handover failure'),
+     (('failure_text', 'contains', 'handover'), ('l3_signalling', 'contains', 'handover failure')), 'Mobility', 'Handover failure', 'LTE'),
     ('radio-link', 'Radio link failure', (), 'any',
      (('failure_text', 'contains', 'radio link failure, t310, reestablishment, random access, rach, scg failure, scgfailure, rrc'),
-      ('l3_signalling', 'contains', 'radio link failure, rlf')), 'RAN Performance', 'RRC layer'),
+      ('l3_signalling', 'contains', 'radio link failure, rlf')), 'Radio Signalling', 'Radio link failure', ''),
     ('inter-rat', 'Inter-RAT transition', (), 'any',
      (('failure_text', 'contains', 'inter-rat, irat, redirection, 4g -> 5g, 5g -> 4g'), ('l3_irat', 'ge', 1)),
-     'RAN Performance', 'Inter-RAT transition'),
+     'Mobility', 'Inter-RAT transition', ''),
     # What the provider reports about the radio, on the technology at the failure (LTE, the anchor, when it is not NR alone,
     # 2G or 3G alone).
     ('reported-coverage-nr', 'NR coverage reported by the provider', (), 'all', (('failure_text', 'contains', _COVERAGE), *_NR),
-     'Poor Coverage NR', 'Coverage'),
+     'Coverage', 'DL coverage', ''),
     ('reported-coverage-legacy', '2G or 3G coverage reported by the provider', (), 'all',
-     (('failure_text', 'contains', _COVERAGE), *_LEGACY), 'Poor Coverage 2G/3G', 'Coverage'),
+     (('failure_text', 'contains', _COVERAGE), *_LEGACY), 'Coverage', 'DL coverage', ''),
     ('reported-coverage', 'Coverage reported by the provider', (), 'any', (('failure_text', 'contains', _COVERAGE),),
-     'Poor Coverage LTE', 'Coverage'),
+     'Coverage', 'DL coverage', ''),
     ('reported-ul-interference-nr', 'NR uplink interference reported by the provider', (), 'all',
-     (('failure_text', 'contains', 'ul interference, uplink interference'), *_NR), 'UL Interference NR', 'UL interference'),
+     (('failure_text', 'contains', 'ul interference, uplink interference'), *_NR), 'Interference', 'UL interference', ''),
     ('reported-ul-interference', 'Uplink interference reported by the provider', (), 'any',
-     (('failure_text', 'contains', 'ul interference, uplink interference'),), 'UL Interference LTE', 'UL interference'),
+     (('failure_text', 'contains', 'ul interference, uplink interference'),), 'Interference', 'UL interference', ''),
     ('reported-interference-nr', 'NR interference reported by the provider', (), 'all',
-     (('failure_text', 'contains', 'interference'), *_NR), 'DL Interference NR', 'DL interference'),
+     (('failure_text', 'contains', 'interference'), *_NR), 'Interference', 'DL interference', ''),
     ('reported-interference-legacy', '2G or 3G interference reported by the provider', (), 'all',
-     (('failure_text', 'contains', 'interference'), *_LEGACY), 'DL Interference 2G/3G', 'DL interference'),
+     (('failure_text', 'contains', 'interference'), *_LEGACY), 'Interference', 'DL interference', ''),
     ('reported-interference', 'Interference reported by the provider', (), 'any',
-     (('failure_text', 'contains', 'interference'),), 'DL Interference LTE', 'DL interference'),
+     (('failure_text', 'contains', 'interference'),), 'Interference', 'DL interference', ''),
     # The service, once the radio is not the cause.
     ('dns', 'DNS', ('data',), 'any',
-     (('failure_text', 'contains', 'dns'), ('dns_success', 'lt', 100), ('dns_time', 'gt', 1000)), 'Protocol / Server', 'DNS'),
+     (('failure_text', 'contains', 'dns'), ('dns_success', 'lt', 100), ('dns_time', 'gt', 1000)), 'Server & Protocol', 'DNS', ''),
     ('http', 'HTTP or server error', ('data',), 'any',
-     (('failure_text', 'contains', 'http, server error, 200 ok'),), 'Protocol / Server', 'HTTP'),
+     (('failure_text', 'contains', 'http, server error, 200 ok'),), 'Server & Protocol', 'HTTP', ''),
     ('tcp', 'TCP connection', ('data',), 'any',
-     (('failure_text', 'contains', 'tcp, handshake'), ('tcp_rtt', 'gt', 1000)), 'Protocol / Server', 'TCP connection errors'),
-    ('no-dl-packets', 'No downlink packets', ('data',), 'any', (('failure_text', 'contains', 'no dl packets'),), 'Protocol / Server',
-     'No DL packets'),
+     (('failure_text', 'contains', 'tcp, handshake'), ('tcp_rtt', 'gt', 1000)), 'Server & Protocol', 'TCP connection errors', ''),
+    ('no-dl-packets', 'No downlink packets', ('data',), 'any', (('failure_text', 'contains', 'no dl packets'),), 'Data Transport', 'No DL packets', ''),
     ('packet-loss', 'Packet loss', ('data',), 'any',
      (('failure_text', 'contains', 'packet loss, no answer to ping, retransmission, no answer to hello'), ('packet_loss', 'gt', 5)),
-     'Protocol / Server', 'Packet loss'),
-    ('latency', 'High latency', ('data',), 'any', (('failure_text', 'contains', 'latency'), ('rtt', 'gt', 150)), 'Protocol / Server',
-     'Latency'),
-    ('timeout', 'Data transfer timeout', ('data',), 'any', (('failure_text', 'contains', 'timeout'),), 'Protocol / Server',
-     'Data transfer timeout'),
+     'Data Transport', 'Packet loss', ''),
+    ('latency', 'High latency', ('data',), 'any', (('failure_text', 'contains', 'latency'), ('rtt', 'gt', 150)), 'Data Transport', 'Latency', ''),
+    ('timeout', 'Data transfer timeout', ('data',), 'any', (('failure_text', 'contains', 'timeout'),), 'Data Transport', 'Data transfer timeout', ''),
     # A test cut off with good radio on a carrier that gave it few of its resource blocks: a loaded cell.
     ('nr-cell-load', 'NR cell short of resource blocks', ('data',), 'all',
-     (('result', 'contains', 'cutoff'), _MEASURED, ('nr_dl_rb_share', 'lt', 25)), 'RAN Capacity', 'Cell overload'),
+     (('result', 'contains', 'cutoff'), _MEASURED, ('nr_dl_rb_share', 'lt', 25)), 'Capacity', 'Cell overload', ''),
     ('cell-load', 'Cell short of resource blocks', ('data',), 'all',
-     (('result', 'contains', 'cutoff'), _MEASURED, ('lte_dl_rb_share', 'lt', 25)), 'RAN Capacity', 'Cell overload'),
+     (('result', 'contains', 'cutoff'), _MEASURED, ('lte_dl_rb_share', 'lt', 25)), 'Capacity', 'Cell overload', ''),
     ('reported-low-throughput', 'Low throughput reported by the provider', ('data',), 'any',
-     (('failure_text', 'contains', 'low throughput'),), 'RAN Performance', 'Low throughput'),
+     (('failure_text', 'contains', 'low throughput'),), 'Capacity', 'Low throughput', ''),
     # The radio measured and none of the rules above: a test cut off for its time, a call that failed with good radio.
     ('low-throughput', 'Low throughput with good radio', ('data',), 'all', (('result', 'contains', 'cutoff'), _MEASURED),
-     'RAN Performance', 'Low throughput'),
-    ('rtp-loss', 'RTP packet loss', ('speech',), 'any', (('rtp_packet_loss', 'gt', 5),), 'Protocol / Server', 'Packet loss'),
-    ('voice-e2e', 'Voice failure with good radio', _VOICE, 'all', (_MEASURED,), 'E2E', 'Potential E2E Issue'),
-    ('reported-e2e', 'End-to-end trace required', (), 'any', (('failure_text', 'contains', 'e2e'),), 'E2E', 'E2E trace required'),
-    ('not-identified', 'Not identified', (), 'all', (), 'Unclear', ''),
+     'Capacity', 'Low throughput', ''),
+    ('rtp-loss', 'RTP packet loss', ('speech',), 'any', (('rtp_packet_loss', 'gt', 5),), 'Data Transport', 'Packet loss', ''),
+    ('voice-e2e', 'Voice failure with good radio', _VOICE, 'all', (_MEASURED,), 'End-to-End', 'Potential E2E Issue', ''),
+    ('reported-e2e', 'End-to-end trace required', (), 'any', (('failure_text', 'contains', 'e2e'),), 'End-to-End', 'E2E trace required', ''),
+    ('not-identified', 'Not identified', (), 'all', (), 'Validation', 'Unclear', ''),
 )
 
+
+
+# The Root Category and Root Cause each default rule gave with the former catalog (before ticket #139): a rule of a
+# workspace still giving them takes those of the current default rule; any other is translated (nq_root_migration).
+FORMER_DEFAULT_RESULTS = {
+    'device': ('UE / Test Setup Issue', 'Device or test setup'),
+     'l3-no-measurements': ('UE / Test Setup Issue', 'Device or test setup'),
+     'core-resources': ('Core Network', 'Insufficient resources'),
+     'access-rejected': ('RAN Capacity', 'Access rejected (no resources)'),
+     'authentication': ('Authentication & Registration', 'Authentication/Authorization'),
+     'cell-outage': ('Operational', 'Cell/Site Outage'),
+     'cell-outage-interference': ('Operational', 'Cell/Site Outage'),
+     'nr-coverage-hole': ('Poor Coverage NR', 'Large distance to the nearest site'),
+     'coverage-hole': ('Poor Coverage LTE', 'Large distance to the nearest site'),
+     'no-service-hole': ('Poor Coverage LTE', 'Large distance to the nearest site'),
+     'nr-overshooting': ('DL Interference NR', 'Overshooting or excessive cell overlap'),
+     'overshooting': ('DL Interference LTE', 'Overshooting or excessive cell overlap'),
+     'nr-overshooting-coverage': ('Poor Coverage NR', 'Overshooting or excessive cell overlap'),
+     'overshooting-coverage': ('Poor Coverage LTE', 'Overshooting or excessive cell overlap'),
+     'nr-pci-collision': ('DL Interference NR', 'PCI Collision/PCI MOD 3 Collision'),
+     'pci-collision': ('DL Interference LTE', 'PCI Collision/PCI MOD 3 Collision'),
+     'side-lte-coverage': ('Poor Coverage LTE', 'Coverage'),
+     'side-nr-coverage': ('Poor Coverage NR', 'Coverage'),
+     'side-lte-handover': ('Mobility LTE', 'Missing or late handover'),
+     'side-lte-weak-coverage': ('Poor Coverage LTE', 'Coverage'),
+     'side-lte-dominance': ('DL Interference LTE', 'Lack of dominant cell'),
+     'side-lte-interference': ('DL Interference LTE', 'DL interference'),
+     'side-nr-handover': ('Mobility NR', 'Missing or late handover'),
+     'side-nr-weak-coverage': ('Poor Coverage NR', 'Coverage'),
+     'side-nr-dominance': ('DL Interference NR', 'Lack of dominant cell'),
+     'side-nr-interference': ('DL Interference NR', 'DL interference'),
+     'side-uplink-coverage': ('Poor Coverage LTE', 'Coverage'),
+     'side-uplink-interference': ('UL Interference LTE', 'UL interference'),
+     'peer-lte-coverage': ('Poor Coverage LTE', 'Coverage'),
+     'peer-nr-coverage': ('Poor Coverage NR', 'Coverage'),
+     'peer-lte-handover': ('Mobility LTE', 'Missing or late handover'),
+     'peer-lte-weak-coverage': ('Poor Coverage LTE', 'Coverage'),
+     'peer-lte-dominance': ('DL Interference LTE', 'Lack of dominant cell'),
+     'peer-lte-interference': ('DL Interference LTE', 'DL interference'),
+     'peer-nr-handover': ('Mobility NR', 'Missing or late handover'),
+     'peer-nr-weak-coverage': ('Poor Coverage NR', 'Coverage'),
+     'peer-nr-dominance': ('DL Interference NR', 'Lack of dominant cell'),
+     'peer-nr-interference': ('DL Interference NR', 'DL interference'),
+     'subscriber-identity': ('IMSI Issue', ''),
+     'tracking-area-update': ('Core Network', 'TAU reject'),
+     'bearer-deactivation': ('Core Network', 'EPS bearer deactivation'),
+     'qci1': ('IMS / VoLTE', 'No QCI1 established'),
+     'ims-core': ('IMS / VoLTE', 'VoLTE core'),
+     'eps-fallback': ('EPS Fallback', 'EPS fallback failure'),
+     'paging': ('RAN Performance', 'Paging'),
+     'session-in-gsm': ('Core Network', 'WhatsApp session in GSM'),
+     'l3-scg-failure-coverage': ('Poor Coverage NR', 'Coverage'),
+     'l3-reestablishment-coverage': ('Poor Coverage LTE', 'Coverage'),
+     'l3-missing-handover': ('Mobility LTE', 'Missing or late handover'),
+     'l3-lte-coverage': ('Poor Coverage LTE', 'Coverage'),
+     'l3-nr-coverage': ('Poor Coverage NR', 'Coverage'),
+     'l3-uplink': ('Poor Coverage LTE', 'Coverage'),
+     'l3-lte-interference': ('DL Interference LTE', 'DL interference'),
+     'l3-nr-interference': ('DL Interference NR', 'DL interference'),
+     'l3-scg-failure': ('RAN Performance', 'RRC layer'),
+     'l3-reestablishment': ('RAN Performance', 'RRC layer'),
+     'l3-lte-bler': ('BLER LTE', 'BLER'),
+     'l3-nr-bler': ('BLER NR', 'BLER'),
+     'lte-coverage': ('Poor Coverage LTE', 'Coverage'),
+     'nr-coverage': ('Poor Coverage NR', 'Coverage'),
+     'lte-uplink': ('Poor Coverage LTE', 'Coverage'),
+     'lte-interference': ('DL Interference LTE', 'DL interference'),
+     'nr-interference': ('DL Interference NR', 'DL interference'),
+     'lte-dominance': ('DL Interference LTE', 'Lack of dominant cell'),
+     'b-lte-coverage': ('Poor Coverage LTE', 'Coverage'),
+     'b-nr-coverage': ('Poor Coverage NR', 'Coverage'),
+     'b-lte-interference': ('DL Interference LTE', 'DL interference'),
+     'legacy-technology': ('Poor Coverage 2G/3G', 'Inter-RAT transition'),
+     'lte-bler': ('BLER LTE', 'BLER'),
+     'nr-bler': ('BLER NR', 'BLER'),
+     'nr-ping-pong': ('Mobility NR', 'Ping-pong handover'),
+     'ping-pong': ('Mobility LTE', 'Ping-pong handover'),
+     'nr-handover': ('Mobility NR', 'Handover failure'),
+     'handover': ('Mobility LTE', 'Handover failure'),
+     'radio-link': ('RAN Performance', 'RRC layer'),
+     'inter-rat': ('RAN Performance', 'Inter-RAT transition'),
+     'reported-coverage-nr': ('Poor Coverage NR', 'Coverage'),
+     'reported-coverage-legacy': ('Poor Coverage 2G/3G', 'Coverage'),
+     'reported-coverage': ('Poor Coverage LTE', 'Coverage'),
+     'reported-ul-interference-nr': ('UL Interference NR', 'UL interference'),
+     'reported-ul-interference': ('UL Interference LTE', 'UL interference'),
+     'reported-interference-nr': ('DL Interference NR', 'DL interference'),
+     'reported-interference-legacy': ('DL Interference 2G/3G', 'DL interference'),
+     'reported-interference': ('DL Interference LTE', 'DL interference'),
+     'dns': ('Protocol / Server', 'DNS'),
+     'http': ('Protocol / Server', 'HTTP'),
+     'tcp': ('Protocol / Server', 'TCP connection errors'),
+     'no-dl-packets': ('Protocol / Server', 'No DL packets'),
+     'packet-loss': ('Protocol / Server', 'Packet loss'),
+     'latency': ('Protocol / Server', 'Latency'),
+     'timeout': ('Protocol / Server', 'Data transfer timeout'),
+     'nr-cell-load': ('RAN Capacity', 'Cell overload'),
+     'cell-load': ('RAN Capacity', 'Cell overload'),
+     'reported-low-throughput': ('RAN Performance', 'Low throughput'),
+     'low-throughput': ('RAN Performance', 'Low throughput'),
+     'rtp-loss': ('Protocol / Server', 'Packet loss'),
+     'voice-e2e': ('E2E', 'Potential E2E Issue'),
+     'reported-e2e': ('E2E', 'E2E trace required'),
+     'not-identified': ('Unclear', '')
+}
+
+
+def translate_rules(rules: Any) -> Any:
+    """Rules of the former catalog on the current one: a default rule still giving its former values takes the current
+    values of that rule, any other its category and cause translated (with the technology its former category named)."""
+    if not isinstance(rules, list):
+        return rules
+    from src.modules.nq import nq_root_migration
+
+    defaults = {rule['key']: rule for rule in default_rules()}
+    result = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            result.append(rule)
+            continue
+        rule = dict(rule)
+        former = FORMER_DEFAULT_RESULTS.get(str(rule.get('key') or ''))
+        current = defaults.get(str(rule.get('key') or ''))
+        if former and current and (str(rule.get('category') or ''), str(rule.get('cause') or '')) == former:
+            rule.update(category=current['category'], cause=current['cause'],
+                        technology=rule.get('technology') or current['technology'])
+        elif nq_root_migration.is_former_category(rule.get('category')) or nq_root_migration.translate_cause(rule.get('cause')) != (rule.get('cause') or ''):
+            translated = nq_root_migration.translate(rule.get('category'), rule.get('cause'), rule.get('technology'))
+            rule.update(category=translated['category'], cause=translated['cause'], technology=translated['technology'])
+        result.append(rule)
+    return result
+
+
+def translate_stored_rules(repository: Any) -> int:
+    """Translate the rules a workspace keeps of its own (the default ones need nothing); how many changed."""
+    try:
+        stored = json.loads(repository.get_workspace_state(RULES_STATE_KEY) or 'null')
+    except (TypeError, ValueError):
+        stored = None
+    if not isinstance(stored, list) or not stored:
+        return 0
+    translated = translate_rules(stored)
+    changed = sum(1 for before, after in zip(stored, translated) if before != after)
+    if changed:
+        repository.set_workspace_state(RULES_STATE_KEY, json.dumps(normalize_rules(translated), ensure_ascii=False))
+    return changed
 
 def default_rules() -> list[dict[str, Any]]:
     """The default rules, the same in every workspace."""
     return [{'key': key, 'name': name, 'enabled': True, 'services': list(services), 'match': match,
              'conditions': [{'input': input_key, 'op': op, 'value': value} for input_key, op, value in conditions],
-             'category': category, 'cause': cause}
-            for key, name, services, match, conditions, category, cause in _DEFAULT_RULES]
+             'category': category, 'cause': cause, 'technology': canonical_technology(technology)}
+            for key, name, services, match, conditions, category, cause, technology in _DEFAULT_RULES]
 
 
 def inputs_catalog() -> list[dict[str, str]]:
@@ -554,8 +692,10 @@ def normalize_rules(value: Any, *, strict: bool = False) -> list[dict[str, Any]]
             continue
         keys.add(key)
         names.add(name.casefold())
+        # The technology it gives (5G - NR, 4G - LTE, 3G - UMTS, 2G - GSM); empty, that of the call at the failure.
+        technology = canonical_technology(item.get('technology'))
         rules.append({'key': key, 'name': name, 'enabled': bool(item.get('enabled', True)), 'services': services,
-                      'match': match, 'conditions': cleaned, 'category': category, 'cause': cause})
+                      'match': match, 'conditions': cleaned, 'category': category, 'cause': cause, 'technology': technology})
     if strict and not rules:
         raise ValueError('Keep at least one rule.')
     return rules
@@ -800,7 +940,7 @@ def describe_rule(rule: dict[str, Any]) -> str:
     services = ', '.join(SERVICES[service] for service in rule.get('services') or []) or 'Every service'
     joint = ' and ' if rule.get('match') == 'all' else ' or '
     conditions = joint.join(describe_condition(condition) for condition in rule.get('conditions') or []) or 'every call'
-    result = ' · '.join(value for value in (rule.get('category'), rule.get('cause')) if value)
+    result = ' · '.join(value for value in (rule.get('category'), rule.get('cause'), rule.get('technology')) if value)
     return f"{services}: {conditions} → {result}{'' if rule.get('enabled', True) else ' (disabled)'}"
 
 
@@ -884,7 +1024,8 @@ def compile_rules(rules: list[dict[str, Any]], taxonomy: dict[str, Any]) -> list
                 value = normalized_text(condition['value'])
             conditions.append((condition, kind, value))
         compiled.append({'rule': rule, 'services': frozenset(rule['services']), 'all': rule['match'] == 'all',
-                         'conditions': conditions, 'result': resolve_result(rule['category'], rule['cause'], taxonomy)})
+                         'conditions': conditions, 'result': resolve_result(rule['category'], rule['cause'], taxonomy),
+                         'technology': rule.get('technology') or ''})
     return compiled
 
 
@@ -1276,5 +1417,12 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
             if inputs.get(L3_NOTE) and read & {*L3_INPUTS, *SIDE_INPUTS}:
                 lines.append(str(inputs[L3_NOTE]))
             evidence = '\n'.join(line for line in lines if line)
-            return {'rule': rule['name'], 'rule_key': rule['key'], **entry['result'], 'evidence': evidence[:MAX_EVIDENCE]}
+            # The technology of the rule, else that of the radio measured at the failure (the RSRP the rules read: of the
+            # Layer3 Log, the Ericsson RCA or the CDR), else the most recent one the call failed in.
+            technology = entry.get('technology')
+            if not technology and value_of('radio_rsrp') is not None:
+                technology = canonical_technology(sources.get('radio_rsrp', '').split(',')[0])
+            technology = technology or technology_of(value_of('radio_technology'))
+            return {'rule': rule['name'], 'rule_key': rule['key'], **entry['result'], 'technology': technology,
+                    'evidence': evidence[:MAX_EVIDENCE]}
     return None

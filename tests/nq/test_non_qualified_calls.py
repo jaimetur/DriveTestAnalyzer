@@ -583,22 +583,26 @@ def test_root_causes_are_suggested_labelled_required_and_analysed(client, tmp_pa
     assert list(domains)[:2] == ['RF', 'RAN'] and state['root_causes']['require_to_close'] is False
     calls = {(call['service'], call['result']): call for call in query(client)['calls']}
     # The CDR failure classification suggests the domain, and its category or comment the cause.
-    assert calls['voice', 'Failed']['suggested_root_cause'] == {'domain': 'RF', 'category': '', 'cause': 'Coverage', 'source': 'netcheck'}
-    # "Interference on PCI 80" does not say whether it is DL or UL: only the RF domain is suggested.
-    assert calls['data', 'Cutoff']['suggested_root_cause'] == {'domain': 'RF', 'category': '', 'cause': '', 'source': 'netcheck'}
-    # "VoLTE Problems / IMS" finds the IMS / VoLTE category by its keywords.
-    assert calls['voice', 'Dropped']['suggested_root_cause'] == {'domain': 'IMS/E2E', 'category': 'IMS / VoLTE', 'cause': '', 'source': 'netcheck'}
+    # A cause found gives its Root Category (ticket #139).
+    assert calls['voice', 'Failed']['suggested_root_cause'] == {'domain': 'RF', 'category': 'Coverage', 'cause': 'DL coverage',
+                                                                'technology': '', 'source': 'netcheck'}
+    # "Interference on PCI 80" does not say whether it is DL or UL: the generic DL interference is suggested.
+    assert calls['data', 'Cutoff']['suggested_root_cause'] == {'domain': 'RF', 'category': 'Interference', 'cause': 'DL interference',
+                                                               'technology': '', 'source': 'netcheck'}
+    # "VoLTE Problems / IMS" finds the Voice Core (IMS) category by its keywords.
+    assert calls['voice', 'Dropped']['suggested_root_cause'] == {'domain': 'IMS/E2E', 'category': 'Voice Core (IMS)', 'cause': '',
+                                                                 'technology': '', 'source': 'netcheck'}
     assert calls['data', 'Failed']['suggested_root_cause'] is None
 
     key = calls['voice', 'Dropped']['call_key']
     response = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'root_cause': 'Not a cause'}})
     assert response.status_code == 400 and 'Root Causes of the root cause catalog' in response.text
-    detail = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'root_category': 'E2E', 'root_cause': 'No QCI1 established'}}).json()
-    assert (detail['call']['root_domain'], detail['call']['root_category'], detail['call']['root_cause']) == ('IMS/E2E', 'E2E', 'No QCI1 established')
+    detail = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'root_category': 'Voice Core (IMS)', 'root_cause': 'No QCI1 established'}}).json()
+    assert (detail['call']['root_domain'], detail['call']['root_category'], detail['call']['root_cause']) == ('IMS/E2E', 'Voice Core (IMS)', 'No QCI1 established')
     # The domain follows the category; the first change attends the call, which opens it.
     assert {entry['field'] for entry in detail['history']} == {'root_category', 'root_cause', 'status_auto'}
     assert query(client, filters={'root_domain': ['IMS/E2E']})['total'] == 1
-    assert query(client, filters={'root_category': ['E2E']})['total'] == 1
+    assert query(client, filters={'root_category': ['Voice Core (IMS)']})['total'] == 1
     assert query(client, filters={'root_domain': [nq.UNASSIGNED]})['total'] == 3
 
     # Bulk: the recommendations label the calls without a root cause and keep the labelled ones (the DT Analyzer RCA
@@ -608,9 +612,9 @@ def test_root_causes_are_suggested_labelled_required_and_analysed(client, tmp_pa
     changed = client.post('/api/non-qualified-calls/calls/bulk', json={'call_keys': keys, 'changes': {'apply_recommendation': True}})
     assert changed.json()['changed'] == 2
     labelled = labelled_calls(client)
-    assert labelled['voice', 'Dropped'] == ('IMS/E2E', 'E2E', 'No QCI1 established')
-    assert labelled['voice', 'Failed'] == ('RF', 'Poor Coverage LTE', 'Coverage')
-    assert labelled['data', 'Cutoff'] == ('RF', 'DL Interference LTE', 'DL interference') and labelled['data', 'Failed'] == ('', '', '')
+    assert labelled['voice', 'Dropped'] == ('IMS/E2E', 'Voice Core (IMS)', 'No QCI1 established')
+    assert labelled['voice', 'Failed'] == ('RF', 'Coverage', 'DL coverage')
+    assert labelled['data', 'Cutoff'] == ('RF', 'Interference', 'DL interference') and labelled['data', 'Failed'] == ('', '', '')
 
     # Renaming follows on every call; a cause in use cannot be removed.
     taxonomy = client.get('/api/non-qualified-calls/root-causes').json()
@@ -620,9 +624,9 @@ def test_root_causes_are_suggested_labelled_required_and_analysed(client, tmp_pa
     next(item for item in taxonomy['domains'] if item['name'] == 'RF')['name'] = 'Radio'
     saved = client.put('/api/non-qualified-calls/root-causes', json={**taxonomy, 'require_to_close': True})
     assert saved.status_code == 200, saved.text
-    assert labelled_calls(client)['voice', 'Failed'] == ('Radio', 'Poor Coverage LTE', 'Coverage')
+    assert labelled_calls(client)['voice', 'Failed'] == ('Radio', 'Coverage', 'DL coverage')
     current = saved.json()
-    current['causes'] = [cause for cause in current['causes'] if cause['name'] != 'Coverage']
+    current['causes'] = [cause for cause in current['causes'] if cause['name'] != 'DL coverage']
     refused = client.put('/api/non-qualified-calls/root-causes', json={**current, 'require_to_close': True})
     assert refused.status_code == 400 and 'in use' in refused.text
 
@@ -630,7 +634,7 @@ def test_root_causes_are_suggested_labelled_required_and_analysed(client, tmp_pa
     client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'root_category': '', 'root_cause': ''}})
     blocked = client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'status': 'Closed'}})
     assert blocked.status_code == 400 and 'root category before closing' in blocked.text
-    client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'root_category': 'Operational'}})
+    client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'root_category': 'Network Operations'}})
     assert client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'status': 'Closed'}}).status_code == 200
 
     stats = client.post('/api/non-qualified-calls/root-causes/stats', json={'filters': {}, 'include_suggestions': False}).json()
@@ -644,7 +648,7 @@ def test_root_causes_are_suggested_labelled_required_and_analysed(client, tmp_pa
 
     tracking = json.loads(nq.export_tracking_document(core.repository))
     assert tracking['root_causes']['require_to_close'] is True
-    assert {(item['root_domain'], item['root_cause']) for item in tracking['tracking']} >= {('Radio', 'Coverage'), ('Operational', '')}
+    assert {(item['root_domain'], item['root_cause']) for item in tracking['tracking']} >= {('Radio', 'DL coverage'), ('Operational', '')}
     page = client.get('/non-qualified-calls').text
     assert 'id="nq-root-dialog"' in page and 'data-nq-filter="root_domain"' in page and 'id="nq-root-nodes"' in page
 
@@ -753,23 +757,31 @@ def test_admins_delete_single_history_entries_or_the_history_of_calls(client, tm
     assert 'id="nq-bulk-history"' in page and 'id="nq-history-clear"' in page
 
 
+def unresolved_data_rows():
+    """The data rows whose Cutoff call the CDR classifies as RF without any cause: its comment names no interference
+    (the catalog takes a bare interference for the DL one)."""
+    data = data_rows()
+    data['Failure_Comment'] = ['', 'Issue on PCI 80', '']
+    return data
+
+
 def test_root_cause_suggestions_fall_back_to_comments_and_match_whole_words(client, tmp_path):
     enable_module()
-    add_cdr(tmp_path, 'NetCheck_UK_CDR_Data_2026_Q1.xlsx', 'data', data_rows())
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Data_2026_Q1.xlsx', 'data', unresolved_data_rows())
     login(client)
     calls = {call['result']: call for call in query(client)['calls']}
     # The CDR gives RF but no DL or UL: a comment of the engineers resolves the cause.
     cutoff = calls['Cutoff']['call_key']
     client.post(f'/api/non-qualified-calls/calls/{cutoff}/comments', json={'body': 'Strong UL interference seen on the eNB counters.'})
     assert query(client, filters={'result': ['Cutoff']})['calls'][0]['suggested_root_cause'] == {
-        'domain': 'RF', 'category': '', 'cause': 'UL interference', 'source': 'comments'}
+        'domain': 'RF', 'category': 'Interference', 'cause': 'UL interference', 'source': 'comments'}
     # Without any CDR classification, a comment can choose the domain; keywords are whole words.
     failed = calls['Failed']['call_key']
     client.post(f'/api/non-qualified-calls/calls/{failed}/comments', json={'body': 'Poor performance, grant issue.'})
     assert client.get(f'/api/non-qualified-calls/calls/{failed}').json()['call']['suggested_root_cause'] is None
     client.post(f'/api/non-qualified-calls/calls/{failed}/comments', json={'body': 'Looks like an AAA rejection.'})
     assert client.get(f'/api/non-qualified-calls/calls/{failed}').json()['call']['suggested_root_cause'] == {
-        'domain': 'AAA', 'category': 'Authentication & Registration', 'cause': '', 'source': 'comments'}
+        'domain': 'Core', 'category': 'Registration & Authentication', 'cause': '', 'source': 'comments'}
     stats = client.post('/api/non-qualified-calls/root-causes/stats', json={'filters': {}}).json()
     assert {(item['domain'], item['cause']) for item in stats['causes']} >= {('RF', 'UL interference')}
     defaults = client.get('/api/non-qualified-calls/state').json()['root_cause_defaults']
@@ -782,7 +794,7 @@ def test_everybody_sees_the_suggestion_rule_and_admins_edit_it(client, tmp_path)
     workspace_user('manager', 'admin')
     workspace_user('viewer', 'user-viewer')
     add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q1.xlsx', 'voice', voice_rows())
-    add_cdr(tmp_path, 'NetCheck_UK_CDR_Data_2026_Q1.xlsx', 'data', data_rows())
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Data_2026_Q1.xlsx', 'data', unresolved_data_rows())
     login(client)
     state = client.get('/api/non-qualified-calls/state').json()
     assert state['root_causes']['rule'] == nq.DEFAULT_ROOT_CAUSE_RULE and state['user']['can_configure_rule'] is True
@@ -791,7 +803,8 @@ def test_everybody_sees_the_suggestion_rule_and_admins_edit_it(client, tmp_path)
     def suggestion(service, result):
         return next(call for call in query(client)['calls'] if call['service'] == service and call['result'] == result)['suggested_root_cause']
 
-    assert suggestion('voice', 'Failed') == {'domain': 'RF', 'category': '', 'cause': 'Coverage', 'source': 'netcheck'}
+    assert suggestion('voice', 'Failed') == {'domain': 'RF', 'category': 'Coverage', 'cause': 'DL coverage', 'technology': '',
+                                             'source': 'netcheck'}
     # Everybody sees the rule (the dialog is on the page); editors and viewers cannot change it.
     for username, password in (('editor', 'editor123'), ('viewer', 'viewer123')):
         login(client, username, password)
@@ -814,7 +827,7 @@ def test_everybody_sees_the_suggestion_rule_and_admins_edit_it(client, tmp_path)
     assert suggestion('data', 'Cutoff') == {'domain': 'RF', 'category': '', 'cause': '', 'source': 'netcheck'}
     key = next(call['call_key'] for call in query(client)['calls'] if call['service'] == 'data' and call['result'] == 'Cutoff')
     client.post(f'/api/non-qualified-calls/calls/{key}/comments', json={'body': 'Strong UL interference on the eNB counters'})
-    assert suggestion('data', 'Cutoff') == {'domain': 'RF', 'category': '', 'cause': 'UL interference', 'source': 'comments'}
+    assert suggestion('data', 'Cutoff') == {'domain': 'RF', 'category': 'Interference', 'cause': 'UL interference', 'source': 'comments'}
     client.put('/api/non-qualified-calls/root-causes/rule', json={'rule': {**rule, 'comments': False}})
     assert suggestion('data', 'Cutoff') == {'domain': 'RF', 'category': '', 'cause': '', 'source': 'netcheck'}
     # Partial matching finds keywords inside words: "rf" in "performance".
@@ -842,11 +855,11 @@ def test_every_header_name_sorts_and_filters_the_calls(client, tmp_path):
     add_cdr(tmp_path, 'NetCheck_UK_CDR_Data_2026_Q1.xlsx', 'data', data_rows())
     login(client)
     keys = [call['call_key'] for call in query(client)['calls']]
-    client.patch(f'/api/non-qualified-calls/calls/{keys[0]}', json={'changes': {'root_category': 'Poor Coverage LTE', 'root_cause': 'Coverage'}})
+    client.patch(f'/api/non-qualified-calls/calls/{keys[0]}', json={'changes': {'root_category': 'Coverage', 'root_cause': 'DL coverage'}})
     for sort in ('cause', 'vendor', 'technology', 'campaign', 'service', 'result', 'analyst'):
         result = query(client, sort=sort, direction='asc')
         assert result['sort'] == sort and result['total'] == 4, sort
-    assert query(client, sort='cause', direction='desc')['calls'][0]['root_cause'] == 'Coverage'
+    assert query(client, sort='cause', direction='desc')['calls'][0]['root_cause'] == 'DL coverage'
     page = client.get('/non-qualified-calls').text
     for field in ('service', 'vendor', 'campaign', 'technology', 'result', 'failure_classification', 'team', 'analyst',
                   'root_category', 'root_cause'):
@@ -894,10 +907,10 @@ def test_progress_and_root_cause_values_filter_the_calls(client, tmp_path):
     # The root domain counting the suggestions, as the Root Cause Analysis does; the labelled pair.
     assert total(effective_domain=['RF']) == 2 and total(effective_domain=['IMS/E2E']) == 1
     assert total(effective_domain=[nq.UNASSIGNED]) == 1
-    assert total(effective_cause=['RF||Coverage']) == 1 and total(root_pair=['RF||Coverage']) == 0
+    assert total(effective_cause=['RF||DL coverage']) == 1 and total(root_pair=['RF||DL coverage']) == 0
     key = next(call['call_key'] for call in query(client)['calls'] if call['result'] == 'Failed' and call['service'] == 'voice')
-    client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'root_domain': 'RF', 'root_cause': 'Coverage'}})
-    assert total(root_pair=['RF||Coverage']) == 1
+    client.patch(f'/api/non-qualified-calls/calls/{key}', json={'changes': {'root_domain': 'RF', 'root_cause': 'DL coverage'}})
+    assert total(root_pair=['RF||DL coverage']) == 1
     # The eNB of the last cell (ECI / 256) of each operator.
     # Nodes carry the mapped Operator: Vodafone UK is VF in the Operator Maps.
     assert total(node=['EE||eNB 525176']) == 1 and total(node=['VF||Cell 24219']) == 1
@@ -933,7 +946,7 @@ def test_indicator_cards_filter_by_follow_up_state(client, tmp_path):
     first, second = calls[0]['call_key'], calls[1]['call_key']
     client.patch(f'/api/non-qualified-calls/calls/{first}', json={'changes': {'status': 'Closed', 'team': 'Operations'}})
     client.post(f'/api/non-qualified-calls/calls/{second}/comments', json={'body': 'Checked.'})
-    client.patch(f'/api/non-qualified-calls/calls/{second}', json={'changes': {'root_category': 'Poor Coverage LTE'}})
+    client.patch(f'/api/non-qualified-calls/calls/{second}', json={'changes': {'root_category': 'Coverage'}})
 
     def total(**filters):
         return query(client, filters=filters)['total']

@@ -87,7 +87,7 @@ def is_filter_field(field: dict[str, Any]) -> bool:
 # Follow-up values a tracking field shows.
 TRACKING_REFS = {
     'status': 'NQ Call Status', 'team': 'Team', 'analyst': 'Analyst', 'reviewer': 'Reviewer', 'updated_at': 'Last modification',
-    'comments': 'Comments', 'root_category': 'Root Category', 'root_cause': 'Root Cause',
+    'comments': 'Comments', 'root_category': 'Root Category', 'root_cause': 'Root Cause', 'root_technology': 'Root Technology',
 }
 # Values of the imported Ericsson RCA results; any other column of the file is kept as well.
 RCA_REFS = {
@@ -100,7 +100,7 @@ RCA_REFS = {
 DTA_REFS = {
     'dta_domain': 'DT Analyzer RCA Root Domain', 'dta_category': 'DT Analyzer RCA Root Category',
     'dta_cause': 'DT Analyzer RCA Root Cause', 'dta_rule': 'DT Analyzer RCA Rule',
-    'dta_evidence': 'DT Analyzer RCA Evidence',
+    'dta_evidence': 'DT Analyzer RCA Evidence', 'dta_technology': 'DT Analyzer RCA Root Technology',
 }
 # Values of the NQ Prioritization (see nq_prioritization): their name and type, and the values of its lists.
 PRIORITY_REFS = {
@@ -230,6 +230,8 @@ DEFAULT_FIELDS = (
            description='Final root category of the call, from the Root Categories of the root cause catalog.'),
     _field('selected_root_cause', 'Selected Root Cause', 'rca', 'list', 'tracking', 'root_cause', in_table=True,
            description='Final root cause of the call, from the Root Causes of the root cause catalog.'),
+    _field('selected_root_technology', 'Selected Root Technology', 'rca', 'list', 'tracking', 'root_technology',
+           description='Technology of the final root cause of the call: 5G - NR, 4G - LTE, 3G - UMTS or 2G - GSM.'),
     _field('nq_call_status', 'NQ Call Status', 'general', 'list', 'tracking', 'status', in_table=True,
            description='Set by the status rules from the phase fields, or by hand.'),
     _field('priority', 'Priority', 'general', 'list', options=tuple(_option(f'P{number}', color) for number, color in enumerate(PRIORITY_COLORS, start=1)),
@@ -386,8 +388,163 @@ DEFAULT_STATUS_RULES = (
 )
 
 # -- root cause catalog -----------------------------------------------------------------------
+# Generic Root Categories and specific Root Causes (ticket #139): a category groups the technologies and directions, a
+# cause says why (DL or UL when that is all a source says), and the technology is a value of the call of its own.
 # Domains: (name, colour, keywords looked for in the CDR failure classification).
 DEFAULT_DOMAINS = (
+    ('RF', '#3a7fc1', ('rf',)),
+    ('RAN', '#e08a1e', ('ran', 'paging')),
+    ('Core', '#6941a4', ('core', 'gsm', 'aaa', 'epsfb', 'eps fallback', 'cs problems')),
+    ('IMS/E2E', '#b85b20', ('volte', 'vonr', 'ims')),
+    ('Protocol', '#0f6f7d', ('protocol',)),
+    ('Device', '#7b8790', ('device',)),
+    ('Operational', '#5b6b2e', ()),
+)
+# Root Categories: (name, domain, keywords). "a+b" needs both words. A source value that names a cause takes the
+# category of that cause; the keywords of a category only count when no cause matches.
+DEFAULT_CATEGORIES = (
+    ('Coverage', 'RF', ('coverage', 'plmn lost', 'no service', 'out of service', 'ul max power')),
+    ('Interference', 'RF', ('interference',)),
+    ('Radio Link Quality', 'RF', ('bler',)),
+    ('Mobility', 'RAN', ('handover', 'mobility', 'inter-rat', 'irat', 'ping-pong', 'ping pong', 'scg failure')),
+    ('Radio Signalling', 'RAN', ('rrc', 'rab', 'paging', 'radio link failure')),
+    ('Capacity', 'RAN', ('capacity', 'prb', 'congestion', 'overload', 'low throughput')),
+    ('Configuration & Planning', 'RAN', ('configuration', 'planning', 'procedure overlap', 'mocn')),
+    ('Registration & Authentication', 'Core', ('aaa', 'authentication', 'authorization', 'registration', 'attach', 'imsi',
+                                                'security', 'service reject')),
+    ('Session & Mobility Management', 'Core', ('area update', 'tau', 'deregistered', 'bearer deactivation', 'pdu session', 'nas',
+                                                'mme', 'pcrf', 'tunnel', 'core network', 'insufficient resources')),
+    ('Fallback & Legacy', 'Core', ('epsfb', 'eps fallback', 'csfb', 'srvcc', 'session in gsm', 'legacy core')),
+    ('Voice Core (IMS)', 'IMS/E2E', ('volte', 'vonr', 'ims', 'sip', 'qci1', 'qci 1')),
+    ('End-to-End', 'IMS/E2E', ('e2e', 'end to end', 'whatsapp')),
+    ('Server & Protocol', 'Protocol', ('protocol', 'dns', 'http', 'tcp', 'server', 'service unavailable')),
+    ('Data Transport', 'Protocol', ('packet loss', 'latency', 'timeout', 'no dl packets', 'tcp stream', 'ping', 'retransmission')),
+    ('Device & Test Setup', 'Device', ('device', 'modem', 'test setup', 'not initiated')),
+    ('Network Operations', 'Operational', ('outage', 'alarm', 'incident', 'crq', 'kpi degradation')),
+    ('Validation', 'Operational', ('invalidated', 'unclear', 'no failure', 'normal release', 'further investigation')),
+)
+# Root Causes: (name, Root Category, keywords), the most specific first within a category (the first one whose keywords
+# appear is taken). Their domain is that of their category.
+DEFAULT_CAUSE_ENTRIES = (
+    # Coverage: why the signal was weak; DL coverage when a source only says the downlink coverage was poor.
+    ('Coverage hole (no service)', 'Coverage', ('plmn lost', 'no service', 'nservice', 'out of service', 'coverage gap', 'coverage hole')),
+    ('UL coverage (UE at maximum power)', 'Coverage', ('ul max power', 'max power reached', 'ul coverage', 'uplink coverage', 'ul tx power')),
+    ('Weak signal with low SINR', 'Coverage', ('noise limited', 'noise-limited', 'weak signal with low sinr')),
+    ('NLOS due to clutter or terrain profile', 'Coverage', ('nlos', 'clutter', 'terrain')),
+    ('LOS but weak signal', 'Coverage', ('los but weak signal',)),
+    ('Large distance to the nearest site', 'Coverage', ('distance to',)),
+    ('Road constrains', 'Coverage', ('road',)),
+    ('Served from a far site (overshooting)', 'Coverage', ('served from a far', 'far site')),
+    ('Antenna or site RF issue', 'Coverage', ('antenna', 'vswr')),
+    ('DL coverage', 'Coverage', ('dl coverage', 'downlink coverage', 'coverage')),
+    # Interference: its source; DL or UL interference when a source only says which link suffered.
+    ('Lack of dominant cell', 'Interference', ('lack of dominant', 'pilot pollution', 'dominance')),
+    ('Overshooting or excessive cell overlap', 'Interference', ('overshoot', 'overshooting', 'cell overlap')),
+    ('PCI Collision/PCI MOD 3 Collision', 'Interference', ('pci collision', 'pci mod', 'pci confusion')),
+    ('External UL interference', 'Interference', ('external interference', 'external ul interference')),
+    ('Internal UL interference', 'Interference', ('internal interference', 'internal ul interference', 'pim')),
+    ('UL interference', 'Interference', ('ul interference', 'uplink interference')),
+    ('DL interference', 'Interference', ('dl interference', 'downlink interference', 'interference')),
+    ('High UL BLER', 'Radio Link Quality', ('ul bler',)),
+    ('High DL BLER', 'Radio Link Quality', ('dl bler', 'bler')),
+    ('Missing or late handover', 'Mobility', ('late handover', 'missing handover', 'missing neighbour', 'missing neighbor')),
+    ('Ping-pong handover', 'Mobility', ('ping-pong', 'ping pong')),
+    ('SCG failure', 'Mobility', ('scg failure', 'scgfailure')),
+    ('Inter-RAT transition', 'Mobility', ('inter-rat', 'irat', 'redirection')),
+    ('Handover failure', 'Mobility', ('handover',)),
+    ('No answer to RRC connection request', 'Radio Signalling', ('no answer to rrc', 'rrc connection request')),
+    ('Unexpected RRC release', 'Radio Signalling', ('unexpected rrc', 'rrc connection release')),
+    ('RAB setup failure', 'Radio Signalling', ('rab',)),
+    ('Paging', 'Radio Signalling', ('paging',)),
+    ('Radio link failure', 'Radio Signalling', ('radio link failure', 'rlf', 't310', 'reestablishment', 'random access', 'rach')),
+    ('Access rejected (no resources)', 'Capacity', ('rrc connection reject', 'immediate assignment reject')),
+    ('Cell overload', 'Capacity', ('overload', 'prb', 'congestion')),
+    ('Low throughput', 'Capacity', ('low throughput',)),
+    ('Radio configuration inconsistency', 'Configuration & Planning', ('configuration inconsistency',)),
+    ('Procedure overlap', 'Configuration & Planning', ('procedure overlap',)),
+    ('MOCN configuration', 'Configuration & Planning', ('mocn',)),
+    ('VoNR not enabled in source/neighbor site', 'Configuration & Planning', ('vonr not enabled',)),
+    ('Subscriber identity (IMSI)', 'Registration & Authentication', ('imsi', 'ue identity cannot be derived')),
+    ('Security failure', 'Registration & Authentication', ('security failure', 'security mode')),
+    ('Authentication/Authorization', 'Registration & Authentication', ('authentication', 'authorization')),
+    ('Registration or attach reject', 'Registration & Authentication', ('registration reject', 'attach reject', 'service reject')),
+    ('TAU reject', 'Session & Mobility Management', ('tracking area update', 'routing area update', 'location area update', 'tau')),
+    ('PDU session reject or release', 'Session & Mobility Management', ('pdu session',)),
+    ('EPS bearer deactivation', 'Session & Mobility Management', ('bearer deactivation', 'eps mobility management', 'deregistered')),
+    ('NAS mobility management', 'Session & Mobility Management', ('nnas', 'nas')),
+    ('Insufficient resources', 'Session & Mobility Management', ('insufficient resources',)),
+    ('MME/PCRF/IMS issue', 'Session & Mobility Management', ('mme', 'pcrf')),
+    ('Tunnel Issue', 'Session & Mobility Management', ('tunnel',)),
+    ('EPS fallback failure', 'Fallback & Legacy', ('epsfb', 'eps fallback')),
+    ('CSFB or SRVCC failure', 'Fallback & Legacy', ('csfb', 'srvcc')),
+    ('WhatsApp session in GSM', 'Fallback & Legacy', ('session in gsm',)),
+    ('Legacy core failure', 'Fallback & Legacy', ('legacy core',)),
+    ('No QCI1 established', 'Voice Core (IMS)', ('qci1', 'qci 1')),
+    ('SIP 500 Server Internal Error', 'Voice Core (IMS)', ('server internal error', 'sip 500')),
+    ('No INVITE at MT side', 'Voice Core (IMS)', ('no invite',)),
+    ('Mobility collision and double dedicated bearer', 'Voice Core (IMS)', ('double dedicated bearer', 'mobility collision')),
+    ('VoLTE core', 'Voice Core (IMS)', ('volte core', 'vonr core', 'core services failure')),
+    ('WhatsApp app/server issue', 'End-to-End', ('whatsapp',)),
+    ('E2E trace required', 'End-to-End', ('cause cannot be identified', 'unspecified reason', 'e2e trace')),
+    ('Potential E2E Issue', 'End-to-End', ('potential e2e',)),
+    ('Service unavailable', 'Server & Protocol', ('service unavailable',)),
+    ('DNS', 'Server & Protocol', ('dns',)),
+    ('HTTP', 'Server & Protocol', ('http', 'https')),
+    ('TCP connection errors', 'Server & Protocol', ('tcp connection', 'handshake', 'tcp rst')),
+    ('TCP stream interrupted', 'Data Transport', ('tcp stream',)),
+    ('No DL packets', 'Data Transport', ('no dl packets',)),
+    ('Packet loss', 'Data Transport', ('packet loss', 'no answer to ping', 'retransmission', 'no answer to hello')),
+    ('Latency', 'Data Transport', ('latency',)),
+    ('Data transfer timeout', 'Data Transport', ('timeout',)),
+    ('No measurements in the log', 'Device & Test Setup', ('no measurements',)),
+    ('Call not initiated', 'Device & Test Setup', ('not initiated',)),
+    ('Device or test setup', 'Device & Test Setup', ('device', 'modem', 'test setup')),
+    ('Cell/Site Outage', 'Network Operations', ('outage', 'site down', 'cell down')),
+    ('Open alarms', 'Network Operations', ('alarm', 'alarms')),
+    ('Incident', 'Network Operations', ('incident',)),
+    ('CRQ implementation on Site or Neighbour', 'Network Operations', ('crq',)),
+    ('Performance ticket (KPI degradation)', 'Network Operations', ('kpi degradation',)),
+    ('Invalidated', 'Validation', ('invalidated',)),
+    ('Normal release', 'Validation', ('normal release', 'no failure')),
+    ('Further investigation required', 'Validation', ('further investigation', 'additional investigation')),
+    ('Unclear', 'Validation', ('unclear',)),
+)
+_CATEGORY_DOMAINS = {name: domain for name, domain, _keywords in DEFAULT_CATEGORIES}
+DEFAULT_CAUSES = tuple((name, _CATEGORY_DOMAINS[category], keywords) for name, category, keywords in DEFAULT_CAUSE_ENTRIES)
+DEFAULT_CAUSE_CATEGORIES = {name: category for name, category, _keywords in DEFAULT_CAUSE_ENTRIES}
+# The technology of the root cause of a call, a value of its own next to its Root Category and Root Cause, with the words
+# of the sources that name it ("a+b" needs both).
+ROOT_TECHNOLOGIES = ('5G - NR', '4G - LTE', '3G - UMTS', '2G - GSM')
+TECHNOLOGY_KEYWORDS = {
+    '5G - NR': ('nr', '5g', 'vonr', 'en-dc', 'ne-dc', 'endc'),
+    '4G - LTE': ('lte', '4g', 'volte'),
+    '3G - UMTS': ('umts', 'wcdma', 'hspa', '3g'),
+    '2G - GSM': ('gsm', 'gprs', 'edge', '2g'),
+}
+# The short names a value can be given by (the rules, the API, the former catalog): LTE, NR, 3G, 2G...
+_TECHNOLOGY_ALIASES = {alias: name for name in ROOT_TECHNOLOGIES
+                       for alias in (name.casefold(), *(part.strip().casefold() for part in name.split(' - ')))}
+
+
+def canonical_technology(value: Any) -> str:
+    """The Root Technology a value names (5G - NR, 4G - LTE, 3G - UMTS or 2G - GSM, also by LTE, 4G, NR...); empty
+    when it names none."""
+    return _TECHNOLOGY_ALIASES.get(str(value or '').strip().casefold(), '')
+
+
+def technology_of(*texts: Any) -> str:
+    """The technology the texts name (5G - NR, 4G - LTE, 3G - UMTS or 2G - GSM); the most recent one when they name
+    several (5G/4G and EN-DC: 5G - NR); empty when they name none."""
+    text = normalized_text(' | '.join(str(value or '') for value in texts)).replace('/', ' ')
+    return next((name for name, words in TECHNOLOGY_KEYWORDS.items() if keyword_found(list(words), text)), '')
+
+
+# -- root cause catalog (former, up to v0.12.4) ----------------------------------------------------
+# The catalog before the generic Root Categories (ticket #139): the one-time migrations written for it (V29, V31, V32) read
+# it, and nq_root_migration translates its values onto the current catalog.
+# -- former root cause catalog -----------------------------------------------------------------------
+# Domains: (name, colour, keywords looked for in the CDR failure classification).
+LEGACY_DOMAINS = (
     ('RF', '#3a7fc1', ('rf',)),
     ('RAN', '#e08a1e', ('ran', 'paging')),
     ('Core', '#6941a4', ('core', 'gsm')),
@@ -401,7 +558,7 @@ DEFAULT_DOMAINS = (
 # The keywords of the Root Categories of the DT Analyzer RCA (a workspace whose categories have none takes them, see
 # non_qualified_calls): the NetCheck values of each domain they translate onto the catalog, such as DNS, HTTP, Registration
 # reject or RRC layer. A domain chosen by the Failure Classification keeps them in it.
-DTA_CATEGORY_KEYWORDS = {
+LEGACY_DTA_CATEGORY_KEYWORDS = {
     'Protocol / Server': ('protocol', 'dns', 'http', 'tcp', 'ftp', 'server'),
     'RAN Performance': ('rrc', 'rab', 'paging', 'scg', 'bler problems', 'ran problems'),
     'Core Network': ('core network', 'core problems', 'legacy core', 'cs problems', 'nas', 'pdn'),
@@ -413,7 +570,7 @@ DTA_CATEGORY_KEYWORDS = {
     'BLER NR': ('bler+nr', 'bler+5g'),
 }
 # Root Categories of the meeting workbook: (name, domain, keywords). "a+b" needs both words.
-DEFAULT_CATEGORIES = (
+LEGACY_CATEGORIES = (
     ('E2E', 'IMS/E2E', ('e2e',)),
     ('Poor Coverage LTE', 'RF', ('coverage+lte', 'coverage+4g')),
     ('DL Interference LTE', 'RF', ('dl interference+lte', 'dl interference+4g')),
@@ -438,18 +595,18 @@ DEFAULT_CATEGORIES = (
     ('VONR not Enabled in Source/Neighbor Site', 'IMS/E2E', ('vonr',)),
     # The categories of the causes the DT Analyzer RCA finds outside the radio coverage and interference (nq_dta_rca),
     # with the words of the Failure Classification, Category and Subcategory of NetCheck that they stand for.
-    ('Protocol / Server', 'Protocol', DTA_CATEGORY_KEYWORDS['Protocol / Server']),
-    ('RAN Performance', 'RAN', DTA_CATEGORY_KEYWORDS['RAN Performance']),
-    ('Core Network', 'Core', DTA_CATEGORY_KEYWORDS['Core Network']),
-    ('Authentication & Registration', 'AAA', DTA_CATEGORY_KEYWORDS['Authentication & Registration']),
-    ('IMS / VoLTE', 'IMS/E2E', DTA_CATEGORY_KEYWORDS['IMS / VoLTE']),
-    ('EPS Fallback', 'Core EPSFB', DTA_CATEGORY_KEYWORDS['EPS Fallback']),
-    ('BLER LTE', 'RF', DTA_CATEGORY_KEYWORDS['BLER LTE']),
-    ('BLER NR', 'RF', DTA_CATEGORY_KEYWORDS['BLER NR']),
+    ('Protocol / Server', 'Protocol', LEGACY_DTA_CATEGORY_KEYWORDS['Protocol / Server']),
+    ('RAN Performance', 'RAN', LEGACY_DTA_CATEGORY_KEYWORDS['RAN Performance']),
+    ('Core Network', 'Core', LEGACY_DTA_CATEGORY_KEYWORDS['Core Network']),
+    ('Authentication & Registration', 'AAA', LEGACY_DTA_CATEGORY_KEYWORDS['Authentication & Registration']),
+    ('IMS / VoLTE', 'IMS/E2E', LEGACY_DTA_CATEGORY_KEYWORDS['IMS / VoLTE']),
+    ('EPS Fallback', 'Core EPSFB', LEGACY_DTA_CATEGORY_KEYWORDS['EPS Fallback']),
+    ('BLER LTE', 'RF', LEGACY_DTA_CATEGORY_KEYWORDS['BLER LTE']),
+    ('BLER NR', 'RF', LEGACY_DTA_CATEGORY_KEYWORDS['BLER NR']),
     ('RAN Capacity', 'RAN', ('capacity',)),
 )
 # The Root Category of the default causes of the DT Analyzer RCA categories.
-DEFAULT_CAUSE_CATEGORIES = {
+LEGACY_CAUSE_CATEGORIES = {
     **{cause: 'Protocol / Server' for cause in ('DNS', 'HTTP', 'TCP connection errors', 'Packet loss', 'Latency', 'Data transfer timeout',
                                                 'No DL packets')},
     **{cause: 'RAN Performance' for cause in ('Low throughput', 'RRC layer', 'Paging', 'Inter-RAT transition')},
@@ -460,12 +617,12 @@ DEFAULT_CAUSE_CATEGORIES = {
     'Access rejected (no resources)': 'RAN Capacity', 'Cell overload': 'RAN Capacity',
     'Insufficient resources': 'Core Network', 'Ping-pong handover': 'Mobility LTE',
 }
-DTA_CATEGORIES = ('Protocol / Server', 'RAN Performance', 'Core Network', 'Authentication & Registration', 'IMS / VoLTE', 'EPS Fallback',
+LEGACY_DTA_CATEGORIES = ('Protocol / Server', 'RAN Performance', 'Core Network', 'Authentication & Registration', 'IMS / VoLTE', 'EPS Fallback',
                   'BLER LTE', 'BLER NR', 'RAN Capacity')
 # Root Causes the DT Analyzer RCA added to the catalog (a workspace without them takes them, see non_qualified_calls).
-DTA_CAUSES = ('Access rejected (no resources)', 'Insufficient resources', 'Ping-pong handover')
+LEGACY_DTA_CAUSES = ('Access rejected (no resources)', 'Insufficient resources', 'Ping-pong handover')
 # Root Causes: those of the meeting workbook, then the causes of the first catalog, each in its domain.
-DEFAULT_CAUSES = (
+LEGACY_CAUSES = (
     ('NLOS due to clutter or terrain profile', 'RF', ('nlos', 'clutter', 'terrain')),
     ('LOS but weak signal', 'RF', ('weak signal',)),
     ('Large distance to the nearest site', 'RF', ('distance to',)),
@@ -521,6 +678,22 @@ DEFAULT_CAUSES = (
 )
 ROOT_KINDS = ('domain', 'category', 'cause')
 ROOT_KIND_LABELS = {'domain': 'Domains', 'category': 'Root Categories', 'cause': 'Root Causes'}
+
+
+def legacy_root_catalog() -> dict[str, list[dict[str, Any]]]:
+    """The default catalog before ticket #139, which the one-time migrations written for it (V29, V31, V32) complete."""
+    return {
+        'domains': [{'name': name, 'color': color, 'keywords': list(keywords)} for name, color, keywords in LEGACY_DOMAINS],
+        'categories': [{'name': name, 'domain': domain, 'keywords': list(keywords)} for name, domain, keywords in LEGACY_CATEGORIES],
+        'causes': [{'name': name, 'domain': domain, 'keywords': list(keywords), 'category': LEGACY_CAUSE_CATEGORIES.get(name, '')}
+                   for name, domain, keywords in LEGACY_CAUSES],
+    }
+
+
+def is_current_catalog(catalog: dict[str, Any]) -> bool:
+    """Whether a catalog has the generic Root Categories of ticket #139 (any of them)."""
+    names = {str(item.get('name') or '').casefold() for item in catalog.get('categories') or [] if isinstance(item, dict)}
+    return bool(names & {name.casefold() for name, _domain, _keywords in DEFAULT_CATEGORIES})
 
 
 def default_root_catalog() -> dict[str, list[dict[str, Any]]]:

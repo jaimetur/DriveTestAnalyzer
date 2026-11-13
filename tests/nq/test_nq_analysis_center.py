@@ -65,13 +65,14 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     # The 37 fields of the meeting workbook, with the Auto RCA fields, the Last Cell ID and Failure Comment of the CDR and
     # the fields of the analyses of the previous tool, of the DT Analyzer RCA and of the NQ Prioritization, each next to the
     # field it goes with in the Excel export.
-    assert len(fields) == 71
+    assert len(fields) == 72
     keys = [field['key'] for field in fields]
     # One Analyst (the user account, or the name of an analyst without account): the Asignee is gone (ticket #124).
     assert 'assignee' not in keys and next(field for field in fields if field['key'] == 'analyst')['source'] == 'tracking'
     for before, after in (('nq_call_status', 'priority'), ('priority', 'prioritization'), ('team_responsible', 'analyst'), ('analyst', 'reviewer'),
                           ('planned_date', 'planned_fy'), ('implementation_status', 'implementation_team'),
                           ('initial_root_category', 'initial_root_cause'),
+                          ('selected_root_category', 'selected_root_cause'), ('selected_root_cause', 'selected_root_technology'),
                           ('vendor_when_failure', 'vendor_2_when_failure'), ('reviewer', 'unique_id'),
                           ('solution_location', 'polygon_area'), ('polygon_area', 'description')):
         assert keys.index(after) == keys.index(before) + 1, (before, after)
@@ -105,10 +106,14 @@ def test_new_workspaces_get_the_catalog_of_the_meeting_workbook(client, tmp_path
     assert [item['name'] for item in state['options']['statuses']][:3] == ['Not Attended', 'Assigned', 'Under Analysis']
     assert 'RAN Planning Coverage' in [item['name'] for item in state['options']['teams']]
     root = state['root_causes']
-    assert 'Poor Coverage LTE' in [item['name'] for item in root['categories']]
+    # The generic Root Categories and specific Root Causes of ticket #139, each cause in a category and a domain.
+    assert [item['name'] for item in root['categories']] == [name for name, _domain, _keywords in nq_catalog.DEFAULT_CATEGORIES]
+    assert [item['name'] for item in root['domains']] == [name for name, _color, _keywords in nq_catalog.DEFAULT_DOMAINS]
     causes = {item['name']: item for item in root['causes']}
-    # The causes of the meeting and those of the first catalog, each in a domain.
+    assert len(causes) == len(nq_catalog.DEFAULT_CAUSE_ENTRIES)
     assert causes['NLOS due to clutter or terrain profile']['domain'] == 'RF' and causes['DNS']['domain'] == 'Protocol'
+    assert causes['DNS']['category'] == 'Server & Protocol' and causes['DL coverage']['category'] == 'Coverage'
+    assert by_key['selected_root_technology']['source_ref'] == 'root_technology'
     assert state['status_rules'][0]['status'] == 'Closed'
 
 
@@ -384,23 +389,30 @@ def test_transfers_take_the_layouts_and_settings_of_the_package(client, tmp_path
 
 
 def test_root_category_and_cause_are_independent_and_set_the_domain(client, tmp_path):
-    call = setup_calls(client, tmp_path)['0xA1']
-    updated = patch(client, call, {'root_category': 'UL Interference 2G/3G', 'root_cause': 'Tunnel Issue'})
-    assert (updated['root_category'], updated['root_cause'], updated['root_domain']) == ('UL Interference 2G/3G', 'Tunnel Issue', 'RF')
+    calls = setup_calls(client, tmp_path)
+    call = calls['0xA1']
+    updated = patch(client, call, {'root_category': 'Configuration & Planning', 'root_cause': 'Procedure overlap'})
+    assert (updated['root_category'], updated['root_cause'], updated['root_domain']) == ('Configuration & Planning', 'Procedure overlap', 'RAN')
     assert client.patch(f"/api/non-qualified-calls/calls/{call['call_key']}", json={'changes': {'root_cause': 'Unknown cause'}}).status_code == 400
     # Renamed catalog values follow on the calls (a value no DT Analyzer RCA rule gives); values in use cannot be removed.
     root = client.get('/api/non-qualified-calls/root-causes').json()
     for item in root['categories']:
         item['previous'] = item['name']
-        if item['name'] == 'UL Interference 2G/3G':
-            item['name'], item['domain'] = '2G/3G UL Interference', 'RAN'
+        if item['name'] == 'Configuration & Planning':
+            item['name'], item['domain'] = 'Planning & Configuration', 'RF'
     response = client.put('/api/non-qualified-calls/root-causes', json=root)
     assert response.status_code == 200, response.text
     updated = client.get(f"/api/non-qualified-calls/calls/{call['call_key']}").json()['call']
-    assert (updated['root_category'], updated['root_domain']) == ('2G/3G UL Interference', 'RAN')
+    assert (updated['root_category'], updated['root_domain']) == ('Planning & Configuration', 'RF')
     root = client.get('/api/non-qualified-calls/root-causes').json()
-    root['causes'] = [item for item in root['causes'] if item['name'] != 'Tunnel Issue']
+    root['causes'] = [item for item in root['causes'] if item['name'] != 'Procedure overlap']
     assert client.put('/api/non-qualified-calls/root-causes', json=root).status_code == 400
+    # The category follows the cause: a cause brings its category over a chosen one, and a category alone clears a cause
+    # of another category.
+    other = patch(client, calls['0xB2'], {'root_category': 'Coverage', 'root_cause': 'Tunnel Issue'})
+    assert (other['root_category'], other['root_cause'], other['root_domain']) == ('Session & Mobility Management', 'Tunnel Issue', 'Core')
+    other = patch(client, other, {'root_category': 'Coverage'})
+    assert (other['root_category'], other['root_cause'], other['root_domain']) == ('Coverage', '', 'RF')
 
 
 def test_rca_script_results_are_imported_by_join_id_and_recommend_the_root_cause(client, tmp_path):
@@ -420,22 +432,22 @@ def test_rca_script_results_are_imported_by_join_id_and_recommend_the_root_cause
     assert call['values']['session_type'] == 'CALL'
     recommendation = call['rca_recommendation']
     sources = {source['source']: source for source in recommendation['sources']}
-    # The RCA script and NetCheck (mapped by keywords) agree on the category.
-    assert sources['script']['category'] == 'Poor Coverage LTE' and sources['netcheck']['category'] == 'Poor Coverage LTE'
-    assert recommendation['recommendation']['category'] == 'Poor Coverage LTE'
+    # The RCA script and NetCheck (mapped onto the catalog) agree on the category.
+    assert sources['script']['category'] == 'Coverage' and sources['netcheck']['category'] == 'Coverage'
+    assert recommendation['recommendation']['category'] == 'Coverage'
     # NetCheck weighs more, so its cause wins among the sources that agree on the category.
-    assert recommendation['recommendation']['cause'] == sources['netcheck']['cause'] == 'Coverage'
+    assert recommendation['recommendation']['cause'] == sources['netcheck']['cause'] == 'DL coverage'
     assert recommendation['recommendation']['confidence'] == 'high'
     # Accepting the recommendations of several calls at once.
     keys = [calls['0xA1']['call_key'], calls['0xB2']['call_key']]
     assert client.post('/api/non-qualified-calls/calls/bulk', json={'call_keys': keys, 'changes': {'apply_recommendation': True}}).json() == {'changed': 2}
     decided = {item['join_id']: item for item in query(client)['calls']}
-    assert decided['0xA1']['root_category'] == 'Poor Coverage LTE'
-    assert decided['0xB2']['root_category'] == 'DL Interference LTE' and decided['0xB2']['root_cause'] == 'DL interference'
+    assert decided['0xA1']['root_category'] == 'Coverage'
+    assert decided['0xB2']['root_category'] == 'Interference' and decided['0xB2']['root_cause'] == 'DL interference'
     # Previous decisions teach the recommendation of calls with the same NetCheck values.
     learned = nq.learned_decisions(sqlite3.connect(core.repository.db_path, factory=_RowConnection))
     assert learned[nq_rca.learned_key('netcheck', 'Coverage problem', 'DL coverage problems')] == {
-        ('Poor Coverage LTE', 'Coverage'): {calls['0xA1']['call_key']}}
+        ('Coverage', 'DL coverage'): {calls['0xA1']['call_key']}}
     # A decision never teaches the call that made it.
     assert 'learned' not in {source['source'] for source in decided['0xA1']['rca_recommendation']['sources']}
     # Filtering and sorting by catalog fields of any source.
@@ -458,8 +470,8 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     calls = setup_calls(client, tmp_path)
     csv = 'JOIN_ID,RCA_Suggested_Category,RCA_Suggested_Cause\n0xA1,Poor Coverage LTE,LOS but weak signal\n0xB2,E2E,Potential E2E Issue\n'
     client.post('/api/non-qualified-calls/rca/import', files={'file': ('rca.csv', io.BytesIO(csv.encode()), 'text/csv')})
-    patch(client, calls['0xA1'], {'root_category': 'Poor Coverage LTE', 'root_cause': 'LOS but weak signal'})
-    patch(client, calls['0xB2'], {'root_category': 'DL Interference LTE', 'fields': {'analysis_status': 'Ongoing'}})
+    patch(client, calls['0xA1'], {'root_category': 'Coverage', 'root_cause': 'LOS but weak signal'})
+    patch(client, calls['0xB2'], {'root_category': 'Interference', 'fields': {'analysis_status': 'Ongoing'}})
     insights = client.post('/api/non-qualified-calls/rca/insights', json={'filters': {}}).json()
     assert insights['coverage'] == {'total': 3, 'script': 2, 'netcheck': 3, 'dta': 3, 'selected': 2}
     assert insights['agreement']['selected_script'] == {'agree': 1, 'compared': 2, 'rate': 50.0}
@@ -471,11 +483,11 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     assert insights['hierarchies']['netcheck'][0]['causes']
     # Each category of a hierarchy names the root domains its calls fall in.
     selected = {group['category']: group['domains'] for group in insights['hierarchies']['selected']}
-    assert [item['domain'] for item in selected['Poor Coverage LTE']] == ['RF']
+    assert [item['domain'] for item in selected['Coverage']] == ['RF']
     assert all(group['domains'] for name in ('netcheck', 'script') for group in insights['hierarchies'][name])
     # And so does each category of the catalog a source translates its own onto.
     assert {item['category']: [domain['domain'] for domain in item['domains']] for item in insights['mapped']['script']}[
-        'Poor Coverage LTE'] == ['RF']
+        'Coverage'] == ['RF']
     lifecycle = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
     pipeline = {item['status']: item['count'] for item in lifecycle['pipeline']}
     assert pipeline['Under Analysis'] == 2 and 'Open' not in pipeline and pipeline['Not Attended'] == 1
@@ -606,7 +618,7 @@ def test_catalog_workbook_round_trip_and_the_meeting_layout(client, tmp_path):
     assert imported.status_code == 200, imported.text
     route = next(field for field in imported.json()['fields'] if field['label'] == 'Drive Route')
     assert [option['name'] for option in route['options']] == ['M25', 'A1'] and route['section'] == 'analysis' and route['in_table']
-    assert len(imported.json()['fields']) == 72
+    assert len(imported.json()['fields']) == 73
     # The workbook of the meeting: sections in the first row, fields in the second, values below.
     meeting = Workbook()
     sheet = meeting.active
@@ -631,21 +643,21 @@ def test_tracking_document_carries_the_analysis_center(client, tmp_path):
     calls = setup_calls(client, tmp_path)
     client.post('/api/non-qualified-calls/rca/import',
                 files={'file': ('rca.csv', io.BytesIO(b'JOIN_ID,RCA_Suggested_Category\n0xA1,E2E\n'), 'text/csv')})
-    patch(client, calls['0xA1'], {'root_category': 'E2E', 'status': 'Under Planning'})
+    patch(client, calls['0xA1'], {'root_category': 'End-to-End', 'status': 'Under Planning'})
     sections = client.get('/api/non-qualified-calls/state').json()['sections']
     sections[0]['label'] = 'Overview'
     assert client.put('/api/non-qualified-calls/sections', json={'sections': sections}).status_code == 200
     document = json.loads(nq.export_tracking_document(core.repository))
     assert document['version'] == nq.TRACKING_FORMAT_VERSION and document['sections'][0]['label'] == 'Overview'
     assert document['rca_results'][0]['join_id'] == '0xA1' and document['status_rules']
-    assert document['tracking'][0]['status_mode'] == 'manual' and document['tracking'][0]['root_category'] == 'E2E'
+    assert document['tracking'][0]['status_mode'] == 'manual' and document['tracking'][0]['root_category'] == 'End-to-End'
     with core.repository.connection() as connection:
         connection.execute(f'DELETE FROM {nq.NQ_RCA_RESULTS_TABLE}')
         connection.execute(f'DELETE FROM {nq.NQ_CALL_TRACKING_TABLE}')
     core.repository.set_workspace_state(nq.SECTIONS_STATE_KEY, '[]')
     assert nq.import_tracking_document(core.repository, json.dumps(document)) >= 1
     call = {item['join_id']: item for item in query(client)['calls']}['0xA1']
-    assert (call['status'], call['status_mode'], call['root_category']) == ('Under Planning', 'manual', 'E2E')
+    assert (call['status'], call['status_mode'], call['root_category']) == ('Under Planning', 'manual', 'End-to-End')
     assert call['values']['rca_suggested_category'] == 'E2E'
     assert nq.list_sections(core.repository)[0]['label'] == 'Overview'
 
@@ -710,7 +722,7 @@ def test_first_version_workspaces_move_to_the_analysis_center(client, tmp_path):
     assert [item['name'] for item in nq.list_options(repository)['statuses']][0] == 'Not Attended'
     # The workspace's field keeps its key and values and takes its place in the catalog.
     findings = next(field for field in nq.list_fields(repository) if field['label'] == 'Findings')
-    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 71
+    assert findings['key'] == 'findings' and findings['section'] == 'analysis' and len(nq.list_fields(repository)) == 72
 
 
 def test_recommendation_engine_maps_each_source_onto_the_catalog():
@@ -723,24 +735,24 @@ def test_recommendation_engine_maps_each_source_onto_the_catalog():
     call = {'failure_classification': 'RF_Problems', 'failure_category': 'Interference problem',
             'failure_subcategory': 'DL interference problems', 'technology': 'NR', 'failure_technology': '5G', 'failure_comment': ''}
     suggestion = nq_rca.suggest_from_text(call, root, rule)
-    assert suggestion == {'domain': 'RF', 'category': 'DL Interference NR', 'cause': 'DL interference', 'source': 'netcheck'}
+    assert suggestion == {'domain': 'RF', 'category': 'Interference', 'cause': 'DL interference', 'technology': '5G - NR', 'source': 'netcheck'}
     # "a+b" keywords need every word, as whole words.
     assert nq_catalog.keyword_found(['coverage+lte'], 'dl coverage problems | lte')
     assert not nq_catalog.keyword_found(['coverage+lte'], 'dl coverage problems | nr')
-    result = nq_rca.recommend(call, {'rca_category': 'UL Interference NR', 'rca_cause': 'External UL interference'}, root, rule)
+    script = {'rca_category': 'Coverage', 'rca_cause': 'LOS but weak signal'}
+    result = nq_rca.recommend(call, script, root, rule)
     # NetCheck (weight 3) wins over the script (weight 2) when they disagree, with medium confidence; the script alone
     # gives a low one.
-    assert result['recommendation']['category'] == 'DL Interference NR' and result['recommendation']['confidence'] == 'medium'
-    alone = nq_rca.recommend({'technology': 'NR'}, {'rca_category': 'UL Interference NR', 'rca_cause': 'External UL interference'}, root, rule)
-    assert alone['recommendation']['category'] == 'UL Interference NR' and alone['recommendation']['confidence'] == 'low'
+    assert result['recommendation']['category'] == 'Interference' and result['recommendation']['confidence'] == 'medium'
+    alone = nq_rca.recommend({'technology': 'NR'}, script, root, rule)
+    assert alone['recommendation']['category'] == 'Coverage' and alone['recommendation']['confidence'] == 'low'
     # Two other calls with the same NetCheck values chose a category: it is proposed once per call, never for the call itself.
-    choice = ('DL Interference NR', 'DL interference')
+    choice = ('Interference', 'DL interference')
     learned = {nq_rca.learned_key('netcheck', 'Interference problem', 'DL interference problems'): {choice: {'k1', 'k2', 'own'}},
-               nq_rca.learned_key('script', 'UL Interference NR', 'External UL interference'): {choice: {'k1'}}}
-    taught = nq_rca.recommend({**call, 'call_key': 'own'}, {'rca_category': 'UL Interference NR', 'rca_cause': 'External UL interference'},
-                              root, rule, learned=learned)
+               nq_rca.learned_key('script', 'Coverage', 'LOS but weak signal'): {choice: {'k1'}}}
+    taught = nq_rca.recommend({**call, 'call_key': 'own'}, script, root, rule, learned=learned)
     sources = {source['source']: source for source in taught['sources']}
-    assert sources['learned']['count'] == 2 and sources['learned']['category'] == 'DL Interference NR'
+    assert sources['learned']['count'] == 2 and sources['learned']['category'] == 'Interference'
     assert nq_catalog.evaluate_status(nq_catalog.default_status_rules(), {'analysis_status': 'Finished'}, 'Not Attended') == 'Closed'
     assert nq_catalog.evaluate_status(nq_catalog.default_status_rules(), {'@attended': 'Yes'}, 'Not Attended') == 'Under Analysis'
 
@@ -763,8 +775,8 @@ def test_calls_are_read_from_their_latest_versions_kept_up_to_date(client, tmp_p
     assert client.get('/api/non-qualified-calls/state').json()['saved_filters']['operator'] == ['VF Lab', 'EE']
     assert query(client, filters={'operator': ['Vodafone UK']})['total'] == query(client, filters={'operator': ['VF Lab']})['total'] > 0
     # The follow-up is read as it is now.
-    updated = patch(client, calls['0xC3'], {'root_category': 'E2E'})
-    assert {item['join_id']: item for item in query(client)['calls']}['0xC3']['root_category'] == updated['root_category'] == 'E2E'
+    updated = patch(client, calls['0xC3'], {'root_category': 'End-to-End'})
+    assert {item['join_id']: item for item in query(client)['calls']}['0xC3']['root_category'] == updated['root_category'] == 'End-to-End'
     # A choice of CDRs reads their own latest versions.
     dataset = str(query(client)['calls'][0]['dataset_id'])
     assert query(client, filters={'datasets': [dataset]})['total'] == 3
@@ -976,7 +988,7 @@ def test_workspaces_before_the_ericsson_rca_name_get_netcheck_first(client, tmp_
     upgraded = nq.list_fields(repository)
     rca = [field['key'] for field in upgraded if field['section'] == 'rca']
     assert rca[5:9] == ['netcheck_failure_classification', 'netcheck_suggested_category', 'netcheck_suggested_cause', 'auto_rca_category_a']
-    assert rca[-2:] == ['selected_root_category', 'selected_root_cause'] and len(upgraded) == len(fields)
+    assert rca[-3:] == ['selected_root_category', 'selected_root_cause', 'selected_root_technology'] and len(upgraded) == len(fields)
     assert next(field for field in upgraded if field['key'] == 'auto_rca_category_a')['description'] == \
         'Root cause category of the A side found by the Ericsson RCA (imported by JOIN_ID).'
 
@@ -996,7 +1008,7 @@ def test_workspaces_with_the_dt_analyzer_rca_after_the_others_get_it_first(clien
     rca = [field['key'] for field in nq.list_fields(repository) if field['section'] == 'rca']
     assert rca[:6] == ['dta_rca_domain', 'dta_rca_category', 'dta_rca_cause', 'dta_rca_rule', 'dta_rca_evidence',
                        'netcheck_failure_classification']
-    assert rca[-2:] == ['selected_root_category', 'selected_root_cause'] and len(nq.list_fields(repository)) == len(fields)
+    assert rca[-3:] == ['selected_root_category', 'selected_root_cause', 'selected_root_technology'] and len(nq.list_fields(repository)) == len(fields)
 
 
 def test_the_own_category_and_cause_of_each_rca_filter_the_calls(client, tmp_path):
@@ -1060,14 +1072,14 @@ def test_auto_rca_summary_fills_each_side_combines_rows_and_completes_the_catalo
     assert detail['call']['rca']['extra:Log_Day'] == '2026-09-03'
     recommendation = calls['0xA1']['rca_recommendation']
     script = next(source for source in recommendation['sources'] if source['source'] == 'script')
-    assert (script['category'], script['cause']) == ('Poor Coverage LTE', 'Coverage')
+    assert (script['category'], script['cause']) == ('Coverage', 'DL coverage')
 
 
 def test_root_cause_analysis_counts_each_source_apart_and_filters_by_it(client, tmp_path):
     calls = setup_calls(client, tmp_path)
     csv = ('JOIN_ID,RCA_Suggested_Category\n0xA1,Poor Coverage LTE\n0xC3,DL Interference LTE\n').encode()
     assert client.post('/api/non-qualified-calls/rca/import', files={'file': ('rca.csv', io.BytesIO(csv), 'text/csv')}).status_code == 200
-    patch(client, calls['0xB2'], {'root_category': 'E2E'})
+    patch(client, calls['0xB2'], {'root_category': 'End-to-End'})
 
     def stats(source):
         return client.post('/api/non-qualified-calls/root-causes/stats',
@@ -1079,10 +1091,10 @@ def test_root_cause_analysis_counts_each_source_apart_and_filters_by_it(client, 
     # The RCA script counts the two calls it has results for, mapped onto the catalog.
     assert (script['summary']['labelled'], script['summary']['unclassified']) == (2, 1)
     assert {item['value']: item['count'] for item in script['domains']} == {'RF': 2, 'Not classified': 1}
-    # The root categories keep the technology of the script values.
+    # The script values map onto the generic root categories (ticket #139).
     assert {(item['domain'], item['category']): item['count'] for item in script['categories']} == {
-        ('RF', 'Poor Coverage LTE'): 1, ('RF', 'DL Interference LTE'): 1}
-    assert [(item['domain'], item['category']) for item in analysts['categories']] == [('IMS/E2E', 'E2E')]
+        ('RF', 'Coverage'): 1, ('RF', 'Interference'): 1}
+    assert [(item['domain'], item['category']) for item in analysts['categories']] == [('IMS/E2E', 'End-to-End')]
     # NetCheck counts every call by its Failure Classification, Category and Subcategory, never by the analysts.
     assert netcheck['summary']['labelled'] == 3 and netcheck['summary']['suggested'] == 0
     assert {item['value'] for item in netcheck['domains']} >= {'RF'}
@@ -1090,14 +1102,14 @@ def test_root_cause_analysis_counts_each_source_apart_and_filters_by_it(client, 
     joins = lambda filters: sorted(item['join_id'] for item in query(client, filters=filters)['calls'])
     assert joins({'script_domain': ['RF']}) == ['0xA1', '0xC3']
     assert joins({'script_domain': [nq.UNASSIGNED]}) == ['0xB2']
-    assert joins({'script_category': ['RF||DL Interference LTE']}) == ['0xC3']
-    cause = next(item for item in netcheck['causes'] if item['domain'] == 'RF' and item['value'] == 'Coverage')
+    assert joins({'script_category': ['RF||Interference']}) == ['0xC3']
+    cause = next(item for item in netcheck['causes'] if item['domain'] == 'RF' and item['value'] == 'DL coverage')
     assert joins({'netcheck_cause': [f"RF||{cause['value']}"]}) == ['0xA1']
 
 
 def test_lifecycle_counts_the_rca_identification(client, tmp_path):
     calls = setup_calls(client, tmp_path)
-    patch(client, calls['0xA1'], {'root_category': 'Poor Coverage LTE'})
+    patch(client, calls['0xA1'], {'root_category': 'Coverage'})
     life = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
     assert life['rca'] == {'identified': 1, 'not_identified': 2}
     assert [item['join_id'] for item in query(client, filters={'state': ['identified']})['calls']] == ['0xA1']
@@ -1127,7 +1139,7 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     result = send().json()
     assert (result['changed'], result['pending'], result['comments'], result['notes'], result['failures']) == (2, 1, 1, 2, [])
     imported = {call['join_id']: call for call in query(client)['calls']}
-    assert imported['0xA1']['values']['analysis_status'] == 'Finished' and imported['0xA1']['root_category'] == 'Poor Coverage LTE'
+    assert imported['0xA1']['values']['analysis_status'] == 'Finished' and imported['0xA1']['root_category'] == 'Coverage'
     assert imported['0xA1']['team'] == 'RAN Planning Coverage'
     assert imported['0xA1']['values']['findings'] == 'Hill behind the site\nNo dominant cell'
     assert imported['0xB2']['values']['analysis_status'] == 'Ongoing' and imported['0xB2']['values']['findings'] == 'Interference'
@@ -1308,11 +1320,12 @@ def test_analyses_of_the_previous_tool_keep_everything_through_reviewed_equivale
     assert rows[('Team Responsible', 'Transport Stream')][5] == 'New value'
     for row in sheet.iter_rows(min_row=2):
         if row[1].value == 'Additional Investigation LTE':
-            row[3].value, row[4].value = 'Additional Investigation LTE', 'Additional Investigation'
+            # A new root category (not a former one, which would land on its current value) in a new domain.
+            row[3].value, row[4].value = 'Further Analysis', 'Additional Investigation'
         if row[1].value == 'Pending Investigation':
             row[3].value = None
         if row[1].value == 'Poor LTE Coverage':
-            row[3].value = 'Poor Coverage LTE'
+            row[3].value = 'Coverage'
     output = io.BytesIO()
     workbook.save(output)
     content, reviewed = output.getvalue(), content
@@ -1324,7 +1337,7 @@ def test_analyses_of_the_previous_tool_keep_everything_through_reviewed_equivale
     assert (preview['calls'], preview['matched'], preview['pending'], preview['duplicates'], preview['skipped']) == (5, 4, 1, 1, 0)
     # A second column of the Analyst (the Asignee after the Team) stays in the import note.
     assert preview['noted'] == ['Asignee', 'Campaign'] and preview['cdr_columns'] == 5
-    assert preview['new_categories'] == [{'value': 'Additional Investigation LTE', 'domain': 'Additional Investigation', 'rows': 1}]
+    assert preview['new_categories'] == [{'value': 'Further Analysis', 'domain': 'Additional Investigation', 'rows': 1}]
     assert preview['new_teams'] == [{'value': 'Transport Stream', 'rows': 1}]
     assert preview['analysts_without_account'] == [{'value': 'Raj Kumar', 'rows': 2}, {'value': 'Sujay', 'rows': 1}]
     assert query(client, filters={'fields': {'analysis_status': ['Finished']}})['total'] == 0
@@ -1333,7 +1346,7 @@ def test_analyses_of_the_previous_tool_keep_everything_through_reviewed_equivale
     imported = {call['join_id']: call for call in query(client)['calls']}
     first = imported['0xA1']
     assert (first['root_category'], first['root_domain'], first['root_cause'], first['team']) == (
-        'Additional Investigation LTE', 'Additional Investigation', '', 'RAN Planning Coverage')
+        'Further Analysis', 'Additional Investigation', '', 'RAN Planning Coverage')
     values = first['values']
     # The analysts no account is named as keep their name as the Analyst of their calls.
     assert (values['priority'], first['analyst'], values['analysis_status'], values['failed_party']) == ('P2', 'Raj Kumar', 'Finished', 'UE_A (MT)')
@@ -1354,18 +1367,19 @@ def test_analyses_of_the_previous_tool_keep_everything_through_reviewed_equivale
     bodies = sorted(comment['body'] for comment in client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['comments'])
     assert (values['unique_id'], values['polygon_area']) == ('U1', 'Leeds North')
     assert bodies == ['Imported from MTL.xlsx · Vodafone NSA, row 2\n'
+                      'Selected Root Category (as written): Additional Investigation LTE\n'
                       'Selected Root Cause (not a value of the field): Pending Investigation\nPlanned Date (as written): FY27\nFY28',
                       'Old tool comment', '[Comments only to fill out by BNP NQ stream] Stream comment']
     # The analysis of an area goes to each of its calls; the hidden sheet is not read.
     assert imported['0xB2']['values']['priority'] == imported['0xC3']['values']['priority'] == 'P3'
-    assert imported['0xC3']['root_category'] == 'Poor Coverage LTE'
+    assert imported['0xC3']['root_category'] == 'Coverage'
     # The note keeps how the file names a root category the equivalences turn into another one, the values of another
     # row of the same call and a copy of the CDR that does not say what the CDR of the call says (the other is left out).
     assert ('Imported from MTL.xlsx · MBB Data Analysis, row 2; MBB Data Analysis, row 3\n'
             'Priority (MBB Data Analysis, row 3): P1\nCampaign: UK_Q2_2026\nSelected Root Category (as written): Poor LTE Coverage'
             in [comment['body'] for comment in client.get(f"/api/non-qualified-calls/calls/{calls['0xC3']['call_key']}").json()['comments']])
     by_key = {call['call_key']: call for call in query(client)['calls']}
-    assert (by_key[whatsapp_key]['root_category'], by_key[whatsapp_key]['values']['findings']) == ('E2E', 'No answer from the server')
+    assert (by_key[whatsapp_key]['root_category'], by_key[whatsapp_key]['values']['findings']) == ('End-to-End', 'No answer from the server')
     # Three vendors: the first two fill Vendor 1 and 2 and the note keeps the cell.
     assert (by_key[whatsapp_key]['values']['vendor_when_failure'], by_key[whatsapp_key]['values']['vendor_2_when_failure']) == ('Samsung', 'NSN')
     assert any('Vendor (as written): Samsung/NSN/Huawei' in comment['body'] and 'Date last modification: last week' in comment['body']
@@ -1439,30 +1453,30 @@ def test_root_causes_map_to_their_category_and_take_their_domain_by_hand_or_auto
     assert all(item['domain_from'] == 'manual' for item in root['categories'] + root['causes'])
     payload = {'domains': root['domains'], 'require_to_close': False,
                'categories': [{'name': item['name'], 'previous': item['name'], 'keywords': item['keywords'],
-                               'domain': '' if item['name'] in {'E2E', 'Procedure Overlap'} else item['manual_domain']} for item in root['categories']],
+                               'domain': '' if item['name'] in {'End-to-End', 'Configuration & Planning'} else item['manual_domain']} for item in root['categories']],
                'causes': [{'name': item['name'], 'previous': item['name'], 'keywords': item['keywords'],
                            'domain': '' if item['name'] in {'Tunnel Issue', 'Paging'} else item['manual_domain'],
-                           'category': 'Procedure Overlap' if item['name'] == 'Tunnel Issue' else ''} for item in root['causes']]}
+                           'category': 'Configuration & Planning' if item['name'] == 'Tunnel Issue' else ''} for item in root['causes']]}
     saved = client.put('/api/non-qualified-calls/root-causes', json=payload)
     assert saved.status_code == 200, saved.text
     catalog = saved.json()
     categories = {item['name']: item for item in catalog['categories']}
     causes = {item['name']: item for item in catalog['causes']}
-    # E2E has no domain keyword in its name or keywords; Procedure Overlap neither: they have no domain.
-    assert (categories['E2E']['domain'], categories['E2E']['domain_from']) == ('', '')
+    # End-to-End has no domain keyword in its name or keywords; Configuration & Planning neither: they have no domain.
+    assert (categories['End-to-End']['domain'], categories['End-to-End']['domain_from']) == ('', '')
     # A cause takes the domain of its root category, else the keywords of the domains (paging is a RAN keyword).
-    assert (causes['Tunnel Issue']['category'], causes['Tunnel Issue']['domain_from']) == ('Procedure Overlap', '')
+    assert (causes['Tunnel Issue']['category'], causes['Tunnel Issue']['domain_from']) == ('Configuration & Planning', '')
     assert (causes['Paging']['domain'], causes['Paging']['domain_from']) == ('RAN', 'keywords')
-    payload['categories'] = [dict(item, domain='RAN' if item['name'] == 'Procedure Overlap' else item['domain']) for item in payload['categories']]
+    payload['categories'] = [dict(item, domain='RAN' if item['name'] == 'Configuration & Planning' else item['domain']) for item in payload['categories']]
     causes = {item['name']: item for item in client.put('/api/non-qualified-calls/root-causes', json=payload).json()['causes']}
     assert (causes['Tunnel Issue']['domain'], causes['Tunnel Issue']['domain_from']) == ('RAN', 'category')
-    # Choosing a cause for a call without root category gives it the category of the cause, never over a chosen one.
+    # Choosing a cause gives the call the category of the cause, also over a chosen one.
     updated = patch(client, calls['0xA1'], {'root_cause': 'Tunnel Issue'})
-    assert (updated['root_category'], updated['root_cause'], updated['root_domain']) == ('Procedure Overlap', 'Tunnel Issue', 'RAN')
-    updated = patch(client, calls['0xB2'], {'root_category': 'Poor Coverage LTE'})
-    assert patch(client, updated, {'root_cause': 'Tunnel Issue'})['root_category'] == 'Poor Coverage LTE'
+    assert (updated['root_category'], updated['root_cause'], updated['root_domain']) == ('Configuration & Planning', 'Tunnel Issue', 'RAN')
+    updated = patch(client, calls['0xB2'], {'root_category': 'Coverage'})
+    assert patch(client, updated, {'root_cause': 'Tunnel Issue'})['root_category'] == 'Configuration & Planning'
     # A category renamed or given another domain carries its causes and the domain of their calls.
-    payload['categories'] = [dict(item, name='Overlapping Procedures', domain='Core') if item['name'] == 'Procedure Overlap' else item
+    payload['categories'] = [dict(item, name='Overlapping Procedures', domain='Core') if item['name'] == 'Configuration & Planning' else item
                              for item in payload['categories']]
     causes = {item['name']: item for item in client.put('/api/non-qualified-calls/root-causes', json=payload).json()['causes']}
     assert (causes['Tunnel Issue']['category'], causes['Tunnel Issue']['domain']) == ('Overlapping Procedures', 'Core')
@@ -1490,7 +1504,7 @@ def test_reviewed_domains_change_the_catalog_and_new_causes_take_the_domain_of_t
     workbook = load_workbook(io.BytesIO(upload('/api/non-qualified-calls/analyses/equivalences').content))
     for row in workbook['Equivalences'].iter_rows(min_row=2):
         if row[1].value == 'Poor LTE Coverage':
-            row[3].value, row[4].value = 'Poor Coverage LTE', 'RAN'
+            row[3].value, row[4].value = 'Coverage', 'RAN'
         if row[1].value == 'Waiting for paging':
             row[3].value, row[4].value = 'Waiting for paging', None
     output = io.BytesIO()
@@ -1499,38 +1513,45 @@ def test_reviewed_domains_change_the_catalog_and_new_causes_take_the_domain_of_t
     assert upload('/api/non-qualified-calls/analyses/equivalences', 'put').json()['saved'] == 2
     content = analyses
     preview = upload('/api/non-qualified-calls/analyses/import', preview='1').json()
-    assert preview['domain_changes'] == [{'kind': 'Root Category', 'value': 'Poor Coverage LTE', 'from': 'RF', 'to': 'RAN', 'rows': 1, 'others': []}]
+    assert preview['domain_changes'] == [{'kind': 'Root Category', 'value': 'Coverage', 'from': 'RF', 'to': 'RAN', 'rows': 1, 'others': []}]
     assert preview['new_causes'] == [{'value': 'Waiting for paging', 'domain': '', 'rows': 1}]
     assert upload('/api/non-qualified-calls/analyses/import').status_code == 200
     root = nq.list_root_causes(core.repository)
-    category = next(item for item in root['categories'] if item['name'] == 'Poor Coverage LTE')
+    category = next(item for item in root['categories'] if item['name'] == 'Coverage')
     cause = next(item for item in root['causes'] if item['name'] == 'Waiting for paging')
     assert (category['domain'], category['domain_from']) == ('RAN', 'manual')
     assert (cause['domain'], cause['domain_from']) == ('RAN', 'keywords')
     call = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()['call']
-    assert (call['root_category'], call['root_cause'], call['root_domain']) == ('Poor Coverage LTE', 'Waiting for paging', 'RAN')
+    assert (call['root_category'], call['root_cause'], call['root_domain']) == ('Coverage', 'Waiting for paging', 'RAN')
 
 
 def test_calls_with_a_cause_and_no_category_take_the_category_of_their_cause_on_demand(client, tmp_path):
     calls = setup_calls(client, tmp_path)
+
+    def save(category):
+        root = client.get('/api/non-qualified-calls/root-causes').json()
+        payload = {'domains': root['domains'], 'require_to_close': False,
+                   'categories': [{'name': item['name'], 'previous': item['name'], 'domain': item['manual_domain'],
+                                   'keywords': item['keywords']} for item in root['categories']],
+                   'causes': [{'name': item['name'], 'previous': item['name'], 'domain': item['manual_domain'], 'keywords': item['keywords'],
+                               'category': category if item['name'] == 'Handover failure' else item.get('category', '')}
+                              for item in root['causes']]}
+        assert client.put('/api/non-qualified-calls/root-causes', json=payload).status_code == 200
+
+    # A cause without a Root Category (every default cause has one since ticket #139).
+    save('')
     patch(client, calls['0xA1'], {'root_cause': 'Handover failure'})
-    patch(client, calls['0xB2'], {'root_category': 'E2E', 'root_cause': 'Handover failure'})
+    patch(client, calls['0xB2'], {'root_category': 'End-to-End', 'root_cause': 'Handover failure'})
     apply = lambda preview: client.post('/api/non-qualified-calls/root-causes/apply-categories', json={'preview': preview}).json()['calls']
     assert apply(True) == 0
-    root = client.get('/api/non-qualified-calls/root-causes').json()
-    payload = {'domains': root['domains'], 'require_to_close': False,
-               'categories': [{'name': item['name'], 'previous': item['name'], 'domain': item['manual_domain'], 'keywords': item['keywords']}
-                              for item in root['categories']],
-               'causes': [{'name': item['name'], 'previous': item['name'], 'domain': item['manual_domain'], 'keywords': item['keywords'],
-                           'category': 'Mobility LTE' if item['name'] == 'Handover failure' else ''} for item in root['causes']]}
-    assert client.put('/api/non-qualified-calls/root-causes', json=payload).status_code == 200
+    save('Mobility')
     # Only the call without root category takes it; the preview changes nothing.
     assert apply(True) == 1 and apply(True) == 1
     assert apply(False) == 1 and apply(True) == 0
     detail = client.get(f"/api/non-qualified-calls/calls/{calls['0xA1']['call_key']}").json()
-    assert (detail['call']['root_category'], detail['call']['root_domain']) == ('Mobility LTE', 'RAN')
-    assert any(entry.get('field') == 'root_category' and entry.get('new_value') == 'Mobility LTE' for entry in detail['history'])
-    assert client.get(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}").json()['call']['root_category'] == 'E2E'
+    assert (detail['call']['root_category'], detail['call']['root_domain']) == ('Mobility', 'RAN')
+    assert any(entry.get('field') == 'root_category' and entry.get('new_value') == 'Mobility' for entry in detail['history'])
+    assert client.get(f"/api/non-qualified-calls/calls/{calls['0xB2']['call_key']}").json()['call']['root_category'] == 'End-to-End'
 
 
 def test_the_second_vendor_of_earlier_upgrades_keeps_its_values_as_vendor_2(client, tmp_path):
@@ -1561,12 +1582,15 @@ def test_the_rules_of_the_tool_import_the_previous_workbooks_without_uploading_e
            '0xA1,E2E Issue,Poor LTE Coverage,Operation Team,B\n'
            '0xB2,Additional Investigation LTE,,E2E stream,1\n').encode()
     result = client.post('/api/non-qualified-calls/analyses/import', files={'file': ('mtl.csv', io.BytesIO(csv), 'text/csv')}).json()
-    assert result['new_categories'] == [{'value': 'Additional Investigation LTE', 'domain': 'Additional Investigation', 'rows': 1}]
+    # The former categories the rules give land on the current catalog (ticket #139): nothing new is added.
+    assert result['new_categories'] == []
     imported = {call['join_id']: call for call in query(client)['calls']}
     first, second = imported['0xA1'], imported['0xB2']
-    assert (first['root_category'], first['root_cause'], first['team'], first['values']['priority']) == ('E2E', 'Coverage', 'Operations', 'P2')
-    assert (second['root_category'], second['root_domain'], second['team'], second['values']['priority']) == (
-        'Additional Investigation LTE', 'Additional Investigation', 'E2E Team', 'P1')
+    # The category follows the category of the cause (DL coverage is a cause of Coverage).
+    assert (first['root_category'], first['root_cause'], first['team'], first['values']['priority']) == (
+        'Coverage', 'DL coverage', 'Operations', 'P2')
+    assert (second['root_category'], second['root_cause'], second['root_domain'], second['team'], second['values']['priority']) == (
+        'Validation', 'Further investigation required', 'Operational', 'E2E Team', 'P1')
     # The rules, with the values each cell takes, can be downloaded without a file; uploaded as they are, the workspace
     # keeps nothing of its own.
     response = client.get('/api/non-qualified-calls/analyses/equivalences')
@@ -1579,8 +1603,8 @@ def test_the_rules_of_the_tool_import_the_previous_workbooks_without_uploading_e
     # A rule without a domain of its own shows the domain the catalog gives the value of Maps to (it follows Maps to),
     # in grey while it is that one.
     coverage = next(row for row in workbook['Equivalences'].iter_rows(min_row=2) if row[1].value == 'Poor LTE Coverage')
-    assert coverage[3].value == 'Coverage' and coverage[4].value == f'=IFERROR(VLOOKUP($D{coverage[4].row},CauseDomains,2,FALSE),"")'
-    assert ('Coverage', 'RF') in [(row[3], row[4]) for row in workbook['Catalog'].iter_rows(min_row=2, values_only=True)]
+    assert coverage[3].value == 'DL coverage' and coverage[4].value == f'=IFERROR(VLOOKUP($D{coverage[4].row},CauseDomains,2,FALSE),"")'
+    assert ('DL coverage', 'RF') in [(row[3], row[4]) for row in workbook['Catalog'].iter_rows(min_row=2, values_only=True)]
     assert workbook['Equivalences'].conditional_formatting
     assert workbook['Equivalences'].data_validations.dataValidation
     saved = client.put('/api/non-qualified-calls/analyses/equivalences', files={'file': ('rules.xlsx', io.BytesIO(response.content))})
@@ -1598,7 +1622,7 @@ def test_the_rules_of_the_tool_import_the_previous_workbooks_without_uploading_e
     equivalences = nq.analyses_equivalences(core.repository)
     assert equivalences['tracking:root_category']['e2e issue']['to'] == 'Unclear'
     assert (equivalences['tracking:root_cause']['poor lte coverage']['to'], equivalences['tracking:root_cause']['poor lte coverage']['domain']) == (
-        'Coverage', 'RAN')
+        'DL coverage', 'RAN')
     rows = load_workbook(io.BytesIO(client.get('/api/non-qualified-calls/analyses/equivalences').content))['Equivalences']
     assert [row[5] for row in rows.iter_rows(min_row=2, values_only=True) if row[1] == 'E2E Issue'] == ['Reviewed in this workspace']
 

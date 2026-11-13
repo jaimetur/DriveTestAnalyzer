@@ -26,7 +26,7 @@ from collections import Counter
 from threading import Lock
 from typing import Any
 
-from src.modules.nq.nq_catalog import RCA_REFS, keyword_found, normalized_text
+from src.modules.nq.nq_catalog import RCA_REFS, keyword_found, normalized_text, technology_of
 from src.modules.nq.nq_dta_rca import NOT_IDENTIFIED_KEY
 
 RCA_FILE_FORMAT_HELP = (
@@ -312,9 +312,14 @@ def _map_to_catalog(category: str, cause: str, root: dict[str, list[dict[str, An
         root['categories'], ' | '.join(normalized_text(value) for value in (category, cause, extra_text) if value), match)
     found_cause = _by_name(root['causes'], cause) or _first_match(root['causes'], normalized_text(cause), match) \
         or _first_match(root['causes'], normalized_text(category), match)
+    # A cause found brings its own category (ticket #139: the categories are generic, the causes say which one), unless
+    # the source names a category of the catalog itself.
+    if found_cause and not _by_name(root['categories'], category):
+        found_category = _category_of(root, found_cause) or found_category
     found_category = found_category or _category_of(root, found_cause)
     domain = (found_category or {}).get('domain') or (found_cause or {}).get('domain') or ''
-    return {'domain': domain, 'category': (found_category or {}).get('name', ''), 'cause': (found_cause or {}).get('name', '')}
+    return {'domain': domain, 'category': (found_category or {}).get('name', ''), 'cause': (found_cause or {}).get('name', ''),
+            'technology': technology_of(category, cause, extra_text)}
 
 
 def suggest_from_text(call: Any, root: dict[str, list[dict[str, Any]]], rule: dict[str, Any],
@@ -359,12 +364,18 @@ def _suggest(domain_text: str, cause_texts: tuple[str, str], technology: str, co
     primary, comment = cause_texts
     texts = [primary, ' | '.join(value for value in (primary, comment) if value)] if comment else [primary]
     cause = next((found for found in (_first_match(root['causes'], value, match, scope) for value in texts if value) if found), None)
-    category = next((found for found in (_first_match(root['categories'], ' | '.join(part for part in (domain_text, value, technology) if part),
-                                                      match, scope) for value in texts) if found), None) or _category_of(root, cause)
+    if cause is None and scope:
+        # A cause the provider files under another domain (NetCheck's RAN Problems · BLER Problems: Radio Link Quality, RF).
+        cause = next((found for found in (_first_match(root['causes'], value, match) for value in texts if value) if found), None)
+    # The category of the cause found, else the one the words name (ticket #139).
+    category = _category_of(root, cause) or next((found for found in (_first_match(
+        root['categories'], ' | '.join(part for part in (domain_text, value, technology) if part), match, scope) for value in texts)
+        if found), None)
     if category or cause:
-        found_domain = (domain or {}).get('name') or (category or {}).get('domain') or (cause or {}).get('domain') or ''
+        # The domain of the category found (that of the catalog), else the one the Failure Classification names.
+        found_domain = (category or {}).get('domain') or (domain or {}).get('name') or (cause or {}).get('domain') or ''
         return {'domain': found_domain, 'category': (category or {}).get('name', ''), 'cause': (cause or {}).get('name', ''),
-                'source': 'netcheck'}
+                'technology': technology_of(technology), 'source': 'netcheck'}
     notes = normalized_text(comments) if rule.get('comments', True) else ''
     if notes:
         cause = _first_match(root['causes'], notes, match, scope)
@@ -406,7 +417,8 @@ def recommend(call: Any, rca: dict[str, str], root: dict[str, list[dict[str, Any
     if netcheck_category or netcheck_cause or (suggestion and suggestion['source'] == 'netcheck'):
         mapped = suggestion if suggestion and suggestion['source'] == 'netcheck' else {'domain': '', 'category': '', 'cause': ''}
         sources.append({'source': 'netcheck', 'raw_category': netcheck_category, 'raw_cause': netcheck_cause,
-                        'domain': mapped['domain'], 'category': mapped['category'], 'cause': mapped['cause']})
+                        'domain': mapped['domain'], 'category': mapped['category'], 'cause': mapped['cause'],
+                        'technology': call_technology(call)})
     script_category = rca.get('rca_category') or rca.get('auto_rca_category_a') or ''
     script_cause = rca.get('rca_cause') or rca.get('auto_rca_subcategory_a') or ''
     if script_category or script_cause:
@@ -423,7 +435,8 @@ def recommend(call: Any, rca: dict[str, str], root: dict[str, list[dict[str, Any
                         'evidence': str(dta.get('dta_evidence') or ''), 'learned': bool(dta.get('dta_learned')),
                         'domain': str(dta.get('dta_domain') or ''),
                         'category': dta_category if _by_name(root['categories'], dta_category) else '',
-                        'cause': dta_cause if _by_name(root['causes'], dta_cause) else ''})
+                        'cause': dta_cause if _by_name(root['causes'], dta_cause) else '',
+                        'technology': str(dta.get('dta_technology') or '')})
     if suggestion and suggestion['source'] == 'comments':
         sources.append({'source': 'comments', 'raw_category': '', 'raw_cause': '', 'domain': suggestion['domain'],
                         'category': suggestion['category'], 'cause': suggestion['cause']})
@@ -480,6 +493,17 @@ def _consensus(sources: list[dict[str, Any]], root: dict[str, list[dict[str, Any
         confidence = 'low'
     category = _by_name(root['categories'], best_category)
     cause = _by_name(root['causes'], best_cause)
+    # The technology most of the agreeing sources name (ticket #139).
+    technology_votes: Counter = Counter()
+    for source in sources:
+        if source['source'] in agreeing and source.get('technology'):
+            technology_votes[source['technology']] += SOURCE_WEIGHTS[source['source']]
     return {'category': best_category, 'cause': best_cause,
             'domain': (category or {}).get('domain') or (cause or {}).get('domain') or '',
+            'technology': technology_votes.most_common(1)[0][0] if technology_votes else '',
             'sources': agreeing, 'confidence': confidence}
+
+
+def call_technology(call: Any) -> str:
+    """The one technology the call failed in, as the CDR tells it (its Failure Technology, else its technology)."""
+    return technology_of(_value(call, 'failure_technology')) or technology_of(_value(call, 'technology'))

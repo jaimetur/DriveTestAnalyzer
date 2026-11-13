@@ -32,7 +32,8 @@
     region: 'Region', cluster: 'Cluster', city: 'City', dataset_id: 'CDR', join_id: 'Join ID',
     technology: 'Technology', test_name: 'Test Name', result: 'Result', failure_classification: 'Failure Classification',
     failure_category: 'Failure Category', failure_subcategory: 'Failure Subcategory', status: 'Global Status', team: 'Team', analyst: 'Analyst', reviewer: 'Reviewer', datasets: 'CDR',
-    root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause', status_mode: 'Status Set',
+    root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause', root_technology: 'Root Technology',
+    status_mode: 'Status Set',
     nr_mode: 'NR Mode', call_type: 'Call Type', period: 'Period',
     age: 'Age of Open Calls', root_pair: 'Root Domain · Cause', effective_domain: 'Root Domain (with suggestions)',
     effective_cause: 'Root Domain · Cause (with suggestions)', node: 'eNB / gNB', place: 'Repetition Place', hotspot: 'Hotspot',
@@ -72,12 +73,17 @@
   const FOLLOW_UP_STATES = ['attended', 'not_attended', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
   const HISTORY_LABELS = {status: 'Status', status_auto: 'Status (automatic)', status_mode: 'Status Set', team: 'Team',
-    analyst: 'Analyst', reviewer: 'Reviewer', root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause'};
+    analyst: 'Analyst', reviewer: 'Reviewer', root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause',
+    root_technology: 'Root Technology'};
   // The label of a changed field: a follow-up field or a catalog field ("field:key").
   const historyLabel = (field) => (field.startsWith('field:')
     ? (state.fields.find((item) => item.key === field.slice(6))?.label || field.slice(6)) : (HISTORY_LABELS[field] || field));
   const NOT_CLASSIFIED = 'Not classified';
   const NO_CAUSE = 'No cause';
+  // The technology of the root cause of a call (ticket #139), a value of its own beside its Root Category and Cause.
+  const NO_TECHNOLOGY = 'No technology';
+  const ROOT_TECHNOLOGIES = ['5G - NR', '4G - LTE', '3G - UMTS', '2G - GSM'];
+  const TECHNOLOGY_COLORS = {'5G - NR': '#8e24aa', '4G - LTE': '#245a96', '3G - UMTS': '#2e8b57', '2G - GSM': '#7b8790'};
   // Whether the NQ Call Status follows the Status Rules or was chosen by hand.
   const STATUS_MODE_LABELS = {auto: 'Automatic', manual: 'By hand'};
   // The status selects offer this value to give the status back to the Status Rules.
@@ -214,6 +220,7 @@
   const optionColor = (kind, name) => {
     if (kind === 'root_domain') return domainColor(name);
     if (kind === 'root_category' || kind === 'root_cause') return rootItem(kind, name)?.color || '';
+    if (kind === 'root_technology') return TECHNOLOGY_COLORS[name] || '';
     const list = kind === 'status' ? state.options.statuses : state.options.teams;
     return list.find((item) => item.name === name)?.color || '';
   };
@@ -431,6 +438,7 @@
       root_domain: [[state.unassigned, NOT_CLASSIFIED], ...state.rootCauses.domains.map((item) => [item.name, item.name])],
       root_category: [[state.unassigned, NOT_CLASSIFIED], ...state.rootCauses.categories.map((item) => [item.name, item.name])],
       root_cause: [[state.unassigned, NO_CAUSE], ...state.rootCauses.causes.map((item) => [item.name, item.name])],
+      root_technology: [[state.unassigned, NO_TECHNOLOGY], ...ROOT_TECHNOLOGIES.map((name) => [name, name])],
       status_mode: Object.entries(STATUS_MODE_LABELS),
       state: FOLLOW_UP_STATES.map((value) => [value, STATE_LABELS[value]]),
       version: Object.entries(state.versionLabels),
@@ -1151,13 +1159,27 @@
         domainColor(mapped[0].domain), ' is-proposed');
       groups.push([element, mapped.map((item) => option(item.name, item.name, 'mapped'))]);
     }
-    // A cause follows the domain of the chosen category; a category the domain of the chosen cause.
-    const affinity = kind === 'root_cause' ? rootItem('root_category', call.root_category)?.domain
-      : rootItem('root_cause', call.root_cause)?.domain;
-    rootGroups(items, affinity || '').forEach(([domain, group]) => {
-      const title = domain ? `${domain}${domain === affinity ? ' · same domain' : ''}` : 'Without a domain';
-      const element = heading(title, domainColor(domain));
-      groups.push([element, group.map((item) => option(item.name, item.name, domain))]);
+    // Every domain in the order of the catalog, the same for every call (what fits the chosen value is listed above).
+    rootGroups(items).forEach(([domain, group]) => {
+      const title = domain || 'Without a domain';
+      if (kind !== 'root_cause') {
+        const element = heading(title, domainColor(domain));
+        groups.push([element, group.map((item) => option(item.name, item.name, domain))]);
+        return;
+      }
+      // The causes of a domain by their Root Category (RF · Coverage, RF · Interference…), in the order of the catalog;
+      // those of the chosen category are listed above, under its name, and not again.
+      const byCategory = new Map();
+      group.forEach((item) => {
+        const category = item.category || '';
+        if (mapped.length && category.toLowerCase() === (call.root_category || '').toLowerCase()) return;
+        if (!byCategory.has(category)) byCategory.set(category, []);
+        byCategory.get(category).push(item);
+      });
+      byCategory.forEach((causes, category) => {
+        const element = heading(category ? `${title} · ${category}` : `${title} · without a category`, domainColor(domain));
+        groups.push([element, causes.map((item) => option(item.name, item.name, `${domain} ${category}`))]);
+      });
     });
     search.addEventListener('input', () => {
       const text = search.value.trim().toLowerCase();
@@ -1349,6 +1371,20 @@
     });
     return button;
   };
+  // The technology of the root cause of a call (LTE, NR, 3G, 2G or none), chosen beside its category and cause.
+  const technologyPicker = (call) => {
+    const select = node('select', undefined, 'nq-pill-select nq-root-select nq-technology-select');
+    select.setAttribute('aria-label', 'Root Technology of the call');
+    select.title = 'Root Technology: the technology of the root cause (5G - NR, 4G - LTE, 3G - UMTS or 2G - GSM)';
+    select.append(node('option', 'Technology…'), ...ROOT_TECHNOLOGIES.map((name) => node('option', name)));
+    select.options[0].value = '';
+    select.value = call.root_technology || '';
+    paintPill(select, optionColor('root_technology', select.value));
+    select.classList.toggle('is-empty', !select.value);
+    select.addEventListener('click', (event) => event.stopPropagation());
+    select.addEventListener('change', () => patchCall(call, {root_technology: select.value}, select, 'Root Technology updated.'));
+    return select;
+  };
   // The recommended root category and cause of a call without them, to accept with one click.
   const recommendationChip = (call) => {
     const recommendation = recommendationOf(call);
@@ -1369,7 +1405,9 @@
       chip.type = 'button';
       chip.addEventListener('click', (event) => {
         event.stopPropagation();
-        patchCall(call, {root_category: recommendation.category, root_cause: recommendation.cause}, chip, 'Recommendation accepted.');
+        patchCall(call, {root_category: recommendation.category, root_cause: recommendation.cause,
+          ...(recommendation.technology && !call.root_technology ? {root_technology: recommendation.technology} : {})},
+        chip, 'Recommendation accepted.');
       });
     }
     return chip;
@@ -1378,10 +1416,11 @@
   // domain, and the recommended ones while it has none.
   const rootCauseControl = (call) => {
     const wrapper = node('div', undefined, 'nq-root-cell');
-    if (state.user.can_edit) wrapper.append(rootPickerButton('root_category', call), rootPickerButton('root_cause', call));
+    if (state.user.can_edit) wrapper.append(rootPickerButton('root_category', call), rootPickerButton('root_cause', call), technologyPicker(call));
     else {
       wrapper.append(pill('root_category', call.root_category, NOT_CLASSIFIED));
       if (call.root_cause) wrapper.append(pill('root_cause', call.root_cause, NO_CAUSE));
+      if (call.root_technology) wrapper.append(pill('root_technology', call.root_technology, NO_TECHNOLOGY));
     }
     const chip = recommendationChip(call);
     if (chip) wrapper.append(chip);
@@ -5291,11 +5330,12 @@
   const rootDecisionCard = (call) => {
     const card = node('section', undefined, 'nq-decision');
     const head = node('header');
-    head.append(node('h3', 'Final Root Cause Decision', 'nq-decision-title'), node('p', 'The Root Category and Root Cause of the call, chosen independently from the catalog. Accept the recommendation, use what one source proposes or choose any other value.', 'form-note'));
+    head.append(node('h3', 'Final Root Cause Decision', 'nq-decision-title'), node('p', 'The Root Category, Root Cause and Root Technology of the call; the Root Category follows the category of the Root Cause. Accept the recommendation, use what one source proposes or choose any other value.', 'form-note'));
     const current = node('div', undefined, 'nq-decision-current');
     const pickers = node('div', undefined, 'nq-root-cell');
-    if (state.user.can_edit) pickers.append(rootPickerButton('root_category', call), rootPickerButton('root_cause', call));
-    else pickers.append(pill('root_category', call.root_category, NOT_CLASSIFIED), pill('root_cause', call.root_cause, NO_CAUSE));
+    if (state.user.can_edit) pickers.append(rootPickerButton('root_category', call), rootPickerButton('root_cause', call), technologyPicker(call));
+    else pickers.append(pill('root_category', call.root_category, NOT_CLASSIFIED), pill('root_cause', call.root_cause, NO_CAUSE),
+      pill('root_technology', call.root_technology, NO_TECHNOLOGY));
     current.append(node('span', 'Selected', 'nq-decision-label'), pickers);
     if (call.root_domain) {
       const domain = node('span', call.root_domain, 'nq-domain-tag');
@@ -5311,15 +5351,16 @@
       const body = node('div');
       const values = node('p');
       values.append(node('strong', 'Recommended: '), recommendation.category ? pill('root_category', recommendation.category) : '',
-        ' ', recommendation.cause ? pill('root_cause', recommendation.cause) : '');
+        ' ', recommendation.cause ? pill('root_cause', recommendation.cause) : '',
+        ' ', recommendation.technology ? pill('root_technology', recommendation.technology) : '');
       body.append(values, node('span', `${CONFIDENCE_LABELS[recommendation.confidence] || ''} · ${sourceNames(recommendation.sources)}`, 'nq-muted'));
       banner.append(node('span', '★', 'nq-recommendation-icon'), body);
       if (chosen) banner.append(node('span', 'Selected', 'nq-recommendation-state'));
       else if (state.user.can_edit) {
         const accept = node('button', 'Accept', 'nq-primary-action');
         accept.type = 'button';
-        accept.addEventListener('click', () => patchCall(call, {root_category: recommendation.category, root_cause: recommendation.cause},
-          accept, 'Recommendation accepted.'));
+        accept.addEventListener('click', () => patchCall(call, {root_category: recommendation.category, root_cause: recommendation.cause,
+          ...(recommendation.technology ? {root_technology: recommendation.technology} : {})}, accept, 'Recommendation accepted.'));
         banner.append(accept);
       }
       card.append(banner);
@@ -5342,7 +5383,6 @@
       } else if (source.raw_category || source.raw_cause) {
         item.append(node('p', [source.raw_category, source.raw_cause].filter(Boolean).join(' → '), 'nq-source-raw'));
       }
-      // Its evidence is shown once, in the panel of the source below: a link takes there.
       // The link to its evidence (shown once, in the panel of the source below), centred just above the divider of the
       // footer, so the dividers of every card stay aligned.
       const evidence = evidenceLink(call, source);
@@ -5351,6 +5391,7 @@
       if (source.category || source.cause) {
         if (source.category) mapped.append(pill('root_category', source.category));
         if (source.cause) mapped.append(' ', pill('root_cause', source.cause));
+        if (source.technology) mapped.append(' ', pill('root_technology', source.technology));
       } else {
         mapped.append(node('span', source.domain ? `${source.domain} (no category or cause matches)` : 'Not in the catalog yet: add keywords to map it', 'nq-muted'));
       }
@@ -5358,6 +5399,7 @@
       const changes = {};
       if (source.category) changes.root_category = source.category;
       if (source.cause) changes.root_cause = source.cause;
+      if (source.technology && (source.category || source.cause)) changes.root_technology = source.technology;
       const same = Object.entries(changes).every(([key, value]) => (call[key] || '') === value);
       if (state.user.can_edit && Object.keys(changes).length && !same) {
         const use = node('button', 'Use as Final Decision', 'nq-use-final');
@@ -7823,7 +7865,7 @@
     if (value && !names.includes(value)) entries.push([value, `${value} (not in the catalog)`]);
     return entries;
   };
-  const dtaRuleBlock = (rule = {key: '', name: '', enabled: true, services: [], match: 'all', conditions: [{}], category: '', cause: ''}) => {
+  const dtaRuleBlock = (rule = {key: '', name: '', enabled: true, services: [], match: 'all', conditions: [{}], category: '', cause: '', technology: ''}) => {
     const block = node('li', undefined, 'nq-root-domain nq-status-rule nq-dta-rule');
     block.dataset.key = rule.key || '';
     const head = node('div', undefined, 'nq-option-row');
@@ -7859,13 +7901,19 @@
     const result = node('div', undefined, 'nq-option-row nq-dta-result');
     const category = selectOf('nq-dta-category nq-pill-select', 'Root Category', dtaCatalogEntries('categories', rule.category, 'No category'), rule.category || '');
     const cause = selectOf('nq-dta-cause nq-pill-select', 'Root Cause', dtaCatalogEntries('causes', rule.cause, 'No cause'), rule.cause || '');
+    // The technology it gives; none, the one the call failed in.
+    const technology = selectOf('nq-dta-technology nq-pill-select', 'Root Technology',
+      [['', 'Technology of the call'], ...ROOT_TECHNOLOGIES.map((name) => [name, name])], rule.technology || '');
     const paint = () => {
       paintPill(category, optionColor('root_category', category.value));
       paintPill(cause, optionColor('root_cause', cause.value));
+      paintPill(technology, optionColor('root_technology', technology.value));
     };
     category.addEventListener('change', paint);
     cause.addEventListener('change', paint);
-    result.append(node('span', 'gives the Root Category', 'nq-rule-word'), category, node('span', 'and the Root Cause', 'nq-rule-word'), cause);
+    technology.addEventListener('change', paint);
+    result.append(node('span', 'gives the Root Category', 'nq-rule-word'), category, node('span', 'and the Root Cause', 'nq-rule-word'), cause,
+      node('span', 'in', 'nq-rule-word'), technology);
     block.append(head, scope, conditions, add, result);
     paint();
     return block;
@@ -7879,6 +7927,7 @@
       input: row.querySelector('.nq-dta-input').value, op: row.querySelector('.nq-dta-op').value, value: row.querySelector('.nq-dta-value').value,
     })),
     category: block.querySelector('.nq-dta-category').value, cause: block.querySelector('.nq-dta-cause').value,
+    technology: block.querySelector('.nq-dta-technology').value,
   }));
   const fillDtaRules = (rules) => {
     $('nq-dta-rules').replaceChildren(...rules.map((rule) => dtaRuleBlock(rule)));
