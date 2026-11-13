@@ -1028,6 +1028,40 @@ def test_design_ppt_dialog_selections_override_saved_design_filters(client, monk
     assert {field: values for field, values in saved_filters.items() if field != 'Campaign'} == payload['filters']
 
 
+def test_design_ppt_dialog_main_cities_choice_resolves_to_the_workspace_main_cities(client, monkeypatch):
+    payload = setup_design(client)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and core.repository.get_dataset(1)['status'] != 'ready':
+        time.sleep(0.05)
+    assert core.repository.get_dataset(1)['status'] == 'ready'
+    design_id = 'dialog-main-cities'
+    payload['filters'] = {'Operator': ['A', 'B']}
+    assert client.put(f'/api/ppt-designer/{design_id}', json=payload).status_code == 200
+    core.repository.replace_cdr_catalogue(1, vendors=[], regions=[], cities=['Leeds', 'London', 'York'])
+    core.repository.set_main_cities(['London', 'Leeds'])
+    monkeypatch.setattr(core, 'submit_background_task', lambda callback, *args: callback(*args))
+
+    # The Select PPT Scope and Filters dialog sends the Main Cities choice itself, never its cities.
+    queued = client.post(f'/api/ppt-designer/{design_id}/export-ppt', json={
+        'definition': payload, 'selected_cities': ['@main-cities'],
+    })
+
+    assert queued.status_code == 202, queued.text
+    job_id = queued.json()['job_id']
+    job = next(item for item in client.get('/api/ppt-designer/ppt-jobs').json()['jobs'] if item['id'] == job_id)
+    assert job['status'] == 'ready', job
+    assert 'City: London, Leeds' in job['filters'], job['filters']
+    assert job['cover']['cities'] == 'Cities: London, Leeds'
+    with core.repository.connection() as connection:
+        selections = json.loads(connection.execute(
+            'SELECT selections_json FROM design_ppt_jobs WHERE id = ?', (job_id,),
+        ).fetchone()['selections_json'])
+    assert selections['City'] == ['London', 'Leeds']
+    charts = client.get(f'/api/ppt-designer/ppt-jobs/{job_id}/charts.json')
+    if charts.status_code == 200:
+        assert '@main-cities' not in charts.text
+
+
 def test_design_ppt_all_labels_only_consider_the_selected_cdrs(client):
     payload = setup_design(client)
     # A CDR of the other NR Mode carries an extra Operator and City that the

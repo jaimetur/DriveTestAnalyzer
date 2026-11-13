@@ -3136,6 +3136,10 @@ def install_design_routes(core):
                             del raw_filters[existing]
                     if selected:
                         raw_filters[field] = selected
+                # The Main Cities chosen in the dialog are those of the workspace now, like a saved City filter.
+                raw_filters = with_main_cities(raw_filters, task_repository)
+                if 'City' in explicit_selections:
+                    explicit_selections = {**explicit_selections, 'City': list(raw_filters.get(city_filter_key(raw_filters)) or [])}
                 raw_definition['filters'] = raw_filters
             snapshot_definition = DesignDefinition.model_validate(raw_definition)
             # A reused snapshot carries resolved calendar dates; the job Filters
