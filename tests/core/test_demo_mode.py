@@ -255,3 +255,18 @@ def test_every_page_knows_its_code_and_the_poll_tells_the_code_the_server_runs(a
     reply = heartbeat(client, unsaved=['PPT Design slides'])
     assert reply['build'] == core.CODE_BUILD and reply['version'] == core.__version__
     assert core.CODE_BUILD.startswith(f'{core.__version__}-') and core.code_build() == core.CODE_BUILD
+
+
+def test_the_sessions_outlive_a_restart_for_every_user_so_unsaved_changes_can_still_be_saved(accounts):
+    """After a server update (a restart) the open pages save with the session they had: every user, not only the one
+    with a long session (EJAITUR, 90 days); the others last an hour from their last request, which the poll renews."""
+    client = accounts
+    for username in ('EUSER01', 'ADMIN01'):
+        assert login(client, username, 'Secret123').status_code in {302, 303}
+        token = client.cookies.get(core.SESSION_COOKIE)
+        core.SESSIONS.clear()
+        core.SESSION_CHECKS.clear()
+        reply = heartbeat(client)
+        assert reply.get('authenticated', True) is True and not reply.get('signed_out')
+        assert core.session_user(token).username == username
+        assert core.session_lifetime(username) == core.SESSION_IDLE_TIMEOUT

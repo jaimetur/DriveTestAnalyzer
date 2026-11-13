@@ -1137,6 +1137,21 @@
     state.folded = false;
     renderPanel();
     $('ds-charts')?.querySelectorAll('.ds-chart').forEach(card => card.classList.toggle('is-selected', card.dataset.elementId === elementId));
+    revealAbovePanel(elementId);
+  }
+  // Phones and narrow windows: the panel floats over the bottom of the viewer, so the element chosen is scrolled to the
+  // room above it (whole when it fits, else from its top); the viewer keeps room at its end for that (designer.css).
+  function revealAbovePanel(elementId) {
+    if (!window.matchMedia('(max-width: 900px)').matches) return;
+    requestAnimationFrame(() => {
+      const card = [...($('ds-charts')?.querySelectorAll('.ds-chart') || [])].find(item => item.dataset.elementId === elementId);
+      const panel = $('ds-design-panel'), scroller = card?.closest('.ds-viewer-panel');
+      if (!card || !panel || panel.hidden || !scroller) return;
+      const box = card.getBoundingClientRect(), room = scroller.getBoundingClientRect(), panelTop = panel.getBoundingClientRect().top;
+      const fromTop = box.top - room.top - 8, overlap = box.bottom - (panelTop - 8);
+      const delta = overlap > 0 ? Math.min(overlap, fromTop) : Math.min(0, fromTop);
+      if (Math.abs(delta) > 1) scroller.scrollBy({top: delta, behavior: 'smooth'});
+    });
   }
   function elementActions(elementId) {
     const found = findElement(state.slide_set, elementId);

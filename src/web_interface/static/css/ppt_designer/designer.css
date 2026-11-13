@@ -790,3 +790,14 @@
 .ds-palette-swatch:hover, .ds-palette-swatch:focus-visible { outline: 2px solid #4b2c82; outline-offset: 1px; }
 .ds-palette-swatch.is-current { outline: 2px solid #1f2d3a; outline-offset: 2px; }
 .ppt-designer .ds-design-input-row:has(.ds-palette), .ds-design-input-row:has(.ds-palette) { flex-wrap: wrap; }
+/* Phones and narrow windows: room at the end of the viewer as tall as the floating panel, so the element chosen can be
+   scrolled above it (designer.js revealAbovePanel) instead of staying behind it. */
+@media (max-width: 900px) {
+  #ds-viewer.ds-designing:not(.ds-presentation-active) .ds-viewer-panel:has(> .ds-viewer-body > .ds-design-panel:not([hidden]):not(.is-folded)) {
+    padding-bottom: calc(42vh + 24px + env(safe-area-inset-bottom, 0px)) !important; }
+  /* (The viewer scrolls instead of squeezing the slide: its parts keep their height, the slide at least 16:9.) */
+  #ds-viewer.ds-designing:not(.ds-presentation-active) .ds-viewer-panel:has(> .ds-viewer-body > .ds-design-panel:not([hidden]):not(.is-folded)) > :is(header, nav, .ds-design-bar),
+  #ds-viewer.ds-designing:not(.ds-presentation-active) .ds-viewer-panel:has(> .ds-viewer-body > .ds-design-panel:not([hidden]):not(.is-folded)) > .ds-viewer-body > .ds-slide-content { flex-shrink: 0; }
+  #ds-viewer.ds-designing:not(.ds-presentation-active) .ds-viewer-panel:has(> .ds-viewer-body > .ds-design-panel:not([hidden]):not(.is-folded)) .ds-chart-stage {
+    flex: 0 0 auto; min-height: calc((100vw - 2rem) * 9 / 16); }
+}
