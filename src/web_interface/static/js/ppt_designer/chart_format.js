@@ -146,7 +146,15 @@
     function openAxisRange(anchor, elementId, axis, event) {
       closeMenus();
       const key = axis.axis === 'y' ? 'axis_y_range' : 'axis_x_range';
-      const automatic = !String(host.element(elementId)?.[key] || '').trim();
+      // The right axis (Bars and Line, Dual Lines) keeps its range in the Format of the chart (ticket #144): the rows of a
+      // template hold only the X and Y ranges.
+      const right = axis.axis === 'y2';
+      const automatic = right ? !String(styleOf(host.element(elementId)).axes?.y2?.range || '').trim() : !String(host.element(elementId)?.[key] || '').trim();
+      const writeRange = value => (right ? setStyle(elementId, style => {
+        style.axes = {...(style.axes || {})};
+        style.axes.y2 = {...(style.axes.y2 || {})};
+        if (value) style.axes.y2.range = value; else delete style.axes.y2.range;
+      }) : host.write(elementId, {[key]: value}));
       const low = Math.min(axis.extent[0], axis.domain[0]), high = Math.max(axis.extent[1], axis.domain[1]);
       const span = high - low || 1;
       const decimals = axis.percent ? 0 : Math.max(0, Math.min(4, 2 - Math.floor(Math.log10(span))));
@@ -169,14 +177,14 @@
       let timer = 0;
       const commit = () => {
         clearTimeout(timer);
-        timer = setTimeout(() => guarded(() => host.write(elementId, {[key]: `[${start},${end}]`}))(), 150);
+        timer = setTimeout(() => guarded(() => writeRange(`[${start},${end}]`))(), 150);
       };
       from.addEventListener('input', () => { start = Math.min(round(from.value), end - step); from.value = String(start); paint(); });
       to.addEventListener('input', () => { end = Math.max(round(to.value), start + step); to.value = String(end); paint(); });
       from.addEventListener('change', commit); to.addEventListener('change', commit);
       fromNumber.addEventListener('change', () => { start = Math.min(round(fromNumber.value), end - step); from.value = String(start); paint(); commit(); });
       toNumber.addEventListener('change', () => { end = Math.max(round(toNumber.value), start + step); to.value = String(end); paint(); commit(); });
-      const card = axisCard(axis.axis === 'y' ? 'Y axis' : 'X axis', `Range${unit ? ` (${unit})` : ''}`, 'Range of the axis', [
+      const card = axisCard(right ? 'Right Y axis' : axis.axis === 'y' ? 'Y axis' : 'X axis', `Range${unit ? ` (${unit})` : ''}`, 'Range of the axis', [
         h('div', {class: 'ds-axis-readout'},
           h('label', {class: 'ds-axis-bound'}, h('span', {text: 'From'}), fromNumber),
           h('span', {class: 'ds-axis-dash', 'aria-hidden': 'true'}, '→'),
@@ -186,7 +194,7 @@
           h('span', {class: 'ds-axis-scale-note', text: 'values of the chart'}), h('span', {text: `${round(high)}${unit}`})),
       ], [
         h('button', {type: 'button', class: 'ds-axis-secondary', disabled: automatic, title: 'The range the chart takes from its values',
-          onclick: () => { closeMenus(); guarded(() => host.write(elementId, {[key]: ''}))(); }}, 'Automatic'),
+          onclick: () => { closeMenus(); guarded(() => writeRange(''))(); }}, 'Automatic'),
         h('button', {type: 'button', class: 'ds-axis-primary', onclick: closeMenus}, 'Close'),
       ], automatic ? h('span', {class: 'ds-axis-badge', text: 'Automatic'}) : h('span', {class: 'ds-axis-badge is-set', text: 'Set here'}));
       placePopover(card, anchor, event);
@@ -276,7 +284,7 @@
         Series: items.length ? `${items.length} series${changedSeries ? ` · ${changedSeries} changed` : ''}` : '',
         Legend: [named(LEGEND_PLACES, style.legend?.position), style.legend?.size ? `${style.legend.size} text` : '', style.legend?.colour ? 'Coloured' : '', style.legend?.bold === false ? 'Not bold' : ''].filter(Boolean).join(' · '),
         Labels: [named(LABEL_POSITIONS, style.labels?.position), style.labels?.size ? `${style.labels.size} text` : '', style.labels?.colour ? 'Coloured' : '', style.labels?.bold ? 'Bold' : ''].filter(Boolean).join(' · '),
-        Axes: [style.axes?.x?.title ? `X: ${style.axes.x.title}` : '', style.axes?.y?.title ? `Y: ${style.axes.y.title}` : '', style.axes?.x?.decimals !== undefined && style.axes?.x?.decimals !== '' ? `${style.axes.x.decimals} decimals` : ''].filter(Boolean).join(' · ') || 'As the chart names them',
+        Axes: [style.axes?.x?.title ? `X: ${style.axes.x.title}` : '', style.axes?.y?.title ? `Y: ${style.axes.y.title}` : '', style.axes?.x?.decimals !== undefined && style.axes?.x?.decimals !== '' ? `${style.axes.x.decimals} decimals` : '', style.axes?.y2?.range ? `Right Y: ${style.axes.y2.range}` : ''].filter(Boolean).join(' · ') || 'As the chart names them',
       };
       // The groups open are kept for the next chart (all of them at first); several can be open at once.
       own.formatOpen = own.formatOpen || new Set(['Series', 'Legend', 'Labels', 'Axes']);

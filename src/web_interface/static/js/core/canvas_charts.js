@@ -1650,6 +1650,8 @@
     });
     if (title) verticalLabel(context, title, side === 'left' ? Math.max(18, left - 64) : Math.min(LOGICAL_WIDTH - 18, right + 70), (top + bottom) / 2, options.colour || '#405765', 19);
     if (side === 'left') registerNumericAxis(state, transform, 'y', domain, left - 80, top, 80, bottom - top, options.percent);
+    // The right axis (Bars and Line, Dual Lines) takes its own range, kept in the Format of the chart (ticket #144).
+    else registerNumericAxis(state, transform, 'y2', domain, right, top, 80, bottom - top, options.percent);
     return toY;
   }
   // The labels of the rows of a chart, one column per level, each value once beside the rows it spans.
@@ -2662,6 +2664,22 @@
   // the colour of a series replaced wherever it is drawn (bars, lines, points and legend), its line width and dash, the
   // place and size of the legend, the place and text of the labels, the axis titles and decimals, and the title. The PPT
   // export draws the same model with this renderer, so it shows the same format.
+  // A domain with a range written as the Axis X/Y Range of a template ([min,max], [min,] or [,max]): a missing limit keeps
+  // the automatic one; a wrong range leaves the domain as it is.
+  function rangedDomain(domain, range) {
+    const match = /^\[\s*([^,\]]*)\s*,\s*([^\]]*)\s*\]$/.exec(String(range).trim());
+    if (!match) return domain;
+    const limit = text => (text.trim() === '' ? null : Number(text));
+    const requestedLow = limit(match[1]), requestedHigh = limit(match[2]);
+    let low = requestedLow ?? Number(domain[0]), high = requestedHigh ?? Number(domain[1]);
+    if (!Number.isFinite(low) || !Number.isFinite(high)) return domain;
+    if (low >= high) {
+      const span = Math.max(Math.abs(low), Math.abs(high), 1) * .05;
+      if (requestedHigh === null) high = low + span; else low = high - span;
+    }
+    return [low, high];
+  }
+
   function formattedPayload(payload) {
     const format = payload?.format_overrides;
     if (!format || typeof format !== 'object' || payload?.type === 'empty') return {payload, colours: null};
@@ -2705,6 +2723,8 @@
     if (yTitle) { if (copy.type === 'mean_bar') copy.metric = yTitle; else copy.y_label = yTitle; }
     if (Number.isInteger(format.axes?.x?.decimals)) copy.x_decimals = format.axes.x.decimals;
     if (Number.isInteger(format.axes?.y?.decimals)) copy.y_decimals = format.axes.y.decimals;
+    // The range of the right axis ([min,max], [min,] or [,max]): the template rows hold only the X and Y ranges.
+    if (format.axes?.y2?.range && Array.isArray(copy.domain?.y2)) copy.domain.y2 = rangedDomain(copy.domain.y2, format.axes.y2.range);
     if (format.title) copy.title = format.title;
     return {payload: copy, colours: Object.keys(colours).length ? colours : null};
   }
