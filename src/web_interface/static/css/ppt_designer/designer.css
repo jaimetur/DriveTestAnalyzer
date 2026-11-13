@@ -782,3 +782,11 @@
   color: #2f2540; font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
 .ds-design-field-picker-group button:hover, .ds-design-field-picker-group button:focus-visible { background: #f1ecf8; outline: none; }
 .ds-design-field-picker-group button.is-chosen { background: #4b2c82; color: #fff; }
+/* Discrete colour palettes (ticket #145): the palette chosen above its swatches, a click gives a colour. */
+.ds-palette { display: grid; gap: .35rem; flex: 1 1 100%; min-width: 0; }
+.ds-palette select { min-height: 1.9rem; padding: .15rem .4rem; border: 1px solid #d9d1e6; border-radius: 7px; font: inherit; font-size: .76rem; }
+.ds-palette-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: .25rem; }
+.ds-palette-swatch { aspect-ratio: 1; min-width: 0; min-height: 0; padding: 0; border: 1px solid rgba(0, 0, 0, .28); border-radius: 4px; cursor: pointer; box-shadow: none; }
+.ds-palette-swatch:hover, .ds-palette-swatch:focus-visible { outline: 2px solid #4b2c82; outline-offset: 1px; }
+.ds-palette-swatch.is-current { outline: 2px solid #1f2d3a; outline-offset: 2px; }
+.ppt-designer .ds-design-input-row:has(.ds-palette), .ds-design-input-row:has(.ds-palette) { flex-wrap: wrap; }

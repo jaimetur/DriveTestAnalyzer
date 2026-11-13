@@ -51,6 +51,56 @@
   const LABEL_POSITIONS = [['', 'Default'], ['none', 'None'], ['top', 'Top'], ['up', 'Up'], ['middle', 'Middle'], ['down', 'Down']];
   const SIZES = [['', 'Default'], ['Small', 'Small'], ['Medium', 'Medium'], ['Large', 'Large']];
   const DASH_NAMES = [['', 'Default'], ['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted']];
+  // Discrete colour palettes to pick a colour from with one click, as in Tableau (ticket #145); the colour input stays for
+  // any other colour. Each palette has 24 to 30 colours: a categorical one its 10 colours, then a lighter and a darker row
+  // of them; a sequential or diverging one 24 steps. The palette chosen last is offered first again.
+  const hexOf = rgb => `#${rgb.map(channel => Math.round(Math.max(0, Math.min(255, channel))).toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+  const rgbOf = hex => [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16));
+  const mix = (hex, other, amount) => hexOf(rgbOf(hex).map((channel, index) => channel + (rgbOf(other)[index] - channel) * amount));
+  const categorical = bases => [...bases, ...bases.map(colour => mix(colour, '#FFFFFF', .45)), ...bases.map(colour => mix(colour, '#000000', .3))];
+  const ramp = (stops, count = 24) => Array.from({length: count}, (_, step) => {
+    const position = step / (count - 1) * (stops.length - 1), index = Math.min(Math.floor(position), stops.length - 2);
+    return mix(stops[index], stops[index + 1], position - index);
+  });
+  const hues = (count, saturation, lightness) => Array.from({length: count}, (_, step) => {
+    const hue = step / count, q = lightness < .5 ? lightness * (1 + saturation) : lightness + saturation - lightness * saturation, p = 2 * lightness - q;
+    const channel = t => { t = (t + 1) % 1; return 255 * (t < 1 / 6 ? p + (q - p) * 6 * t : t < .5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p); };
+    return hexOf([channel(hue + 1 / 3), channel(hue), channel(hue - 1 / 3)]);
+  });
+  const PALETTES = [
+    ['Classic', categorical(['#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F', '#EDC948', '#B07AA1', '#FF9DA7', '#9C755F', '#BAB0AC'])],
+    ['Colour blind', categorical(['#1170AA', '#FC7D0B', '#A3ACB9', '#57606C', '#5FA2CE', '#C85200', '#7B848F', '#A3CCE9', '#FFBC79', '#C8D0D9'])],
+    ['Jewel bright', categorical(['#EB1E2C', '#FD6F30', '#F9A729', '#F9D23C', '#5FBB68', '#64CDCC', '#91DCEA', '#A4A4D5', '#7C4D79', '#E9729B'])],
+    ['Stone', categorical(['#4F6980', '#849DB1', '#A2CEAA', '#638B66', '#BFBB60', '#F47942', '#FBB04E', '#B66353', '#D7CE9F', '#B9AA97'])],
+    ['Summer', categorical(['#BFB202', '#F9C440', '#F2A7A6', '#FC7A67', '#E35E5F', '#A4D7D9', '#5A9CB6', '#9B78B3', '#83C878', '#F6C6A0'])],
+    ['Winter', categorical(['#90728F', '#B9A0B4', '#9D983D', '#CECB76', '#E15759', '#FF9888', '#6B6B6B', '#BAB2AE', '#AA8780', '#DAD6CA'])],
+    ['Hue circle', [...hues(15, .7, .45), ...hues(15, .75, .7)]],
+    ['Traffic light', [...ramp(['#0B5D2A', '#59A14F', '#B8E0A8'], 8), ...ramp(['#9C6B00', '#EDC948', '#FFF0B3'], 8), ...ramp(['#7F1D1D', '#E15759', '#FFC9C9'], 8)]],
+    ['Blues', ramp(['#08306B', '#2171B5', '#6BAED6', '#DEEBF7'])],
+    ['Greens', ramp(['#00441B', '#238B45', '#74C476', '#E5F5E0'])],
+    ['Oranges', ramp(['#7F2704', '#D94801', '#FD8D3C', '#FEE6CE'])],
+    ['Reds', ramp(['#67000D', '#CB181D', '#FB6A4A', '#FEE0D2'])],
+    ['Purples', ramp(['#3F007D', '#6A51A3', '#9E9AC8', '#EFEDF5'])],
+    ['Red-Green diverging', ramp(['#A50026', '#F46D43', '#FFFFBF', '#66BD63', '#006837'])],
+    ['Red-Blue diverging', ramp(['#67001F', '#D6604D', '#F7F7F7', '#4393C3', '#053061'])],
+    ['Greys', ramp(['#000000', '#405765', '#B5C0C8', '#FFFFFF'])],
+  ];
+  const CATEGORICAL_PALETTES = new Set(PALETTES.slice(0, 6).map(([name]) => name));
+  let chosenPalette = PALETTES[0][0];
+  const paletteColours = name => (PALETTES.find(([key]) => key === name) || PALETTES[0])[1];
+  // The swatches of a palette, with its choice above them: a click on a swatch gives its colour (pick(colour)).
+  function palettePicker(value, pick, label) {
+    const grid = h('div', {class: 'ds-palette-grid', role: 'listbox', 'aria-label': `${label}: palette colours`});
+    // Rows of 10 for a categorical palette (its colours, lighter, darker), of 8 for the 24 steps of the others.
+    const paint = () => (grid.style.gridTemplateColumns = `repeat(${paletteColours(chosenPalette).length % 10 ? 8 : 10}, minmax(0, 1fr))`) && grid.replaceChildren(...paletteColours(chosenPalette).map(colour => h('button', {
+      type: 'button', class: `ds-palette-swatch${String(value || '').toUpperCase() === colour ? ' is-current' : ''}`, role: 'option',
+      title: colour, 'aria-label': colour, 'aria-selected': String(String(value || '').toUpperCase() === colour), style: {background: colour},
+      onclick: () => pick(colour)})));
+    const select = selectInput(PALETTES.map(([name]) => [name, name]), chosenPalette, name => { chosenPalette = name; paint(); });
+    select.setAttribute('aria-label', 'Colour palette');
+    paint();
+    return h('div', {class: 'ds-palette'}, select, grid);
+  }
 
   /** The Format of the charts of a host: {element(id): the values of a chart (its style, axis ranges and filters),
    *  write(id, values): changes them (a promise), canvas(id): the canvas the chart is drawn on, status(text), report(error),
@@ -107,6 +157,22 @@
       const popover = h('div', {class: 'ds-design-popover ds-design-series', role: 'dialog', 'aria-label': `Format of ${name}`},
         h('h4', {text: name}),
         h('label', {class: 'ds-design-format-row'}, 'Colour', colour),
+        palettePicker(current.colour || original, picked => { closeMenus(); guarded(() => setSeries(elementId, name, {colour: picked}))(); }, `Colour of ${name}`),
+        // Every series of the chart takes the colours of the palette in the order of its legend, as Assign Palette in Tableau.
+        h('div', {class: 'ds-design-format-actions'},
+          h('button', {type: 'button', title: 'Give every series of this chart the colours of the palette, in the order of the legend',
+            onclick: () => {
+              closeMenus();
+              const colours = paletteColours(chosenPalette), names = legendItems(elementId).map(item => item.label);
+              // A categorical palette gives its colours in order; a scale (sequential, diverging, hue circle) spreads the
+              // series over the whole of it, so neighbouring steps do not look alike.
+              const scale = !CATEGORICAL_PALETTES.has(chosenPalette) && names.length > 1 && names.length <= colours.length;
+              const colourAt = index => (scale ? colours[Math.round(index * (colours.length - 1) / (names.length - 1))] : colours[index % colours.length]);
+              guarded(() => setStyle(elementId, style => {
+                style.series = style.series || {};
+                names.forEach((label, index) => { style.series[label] = {...(style.series[label] || {}), colour: colourAt(index)}; });
+              }))();
+            }}, 'Assign palette to all series')),
         h('label', {class: 'ds-design-format-row'}, 'Line width', width),
         h('label', {class: 'ds-design-format-row'}, 'Line', dash),
         h('label', {class: 'ds-design-format-row'}, 'Opacity', opacity),
@@ -275,7 +341,8 @@
       // The colour of a text, with a button back to the default one.
       const textColour = (what, value, write) => field('Text colour', h('div', {class: 'ds-design-input-row'},
         h('input', {type: 'color', value: value || '#263B4A', 'aria-label': `${what} text colour`, onchange: event => write(event.target.value.toUpperCase())}),
-        h('button', {type: 'button', class: 'ds-design-token', title: `Default ${what.toLowerCase()} text colour`, onclick: () => write('')}, '↺')));
+        h('button', {type: 'button', class: 'ds-design-token', title: `Default ${what.toLowerCase()} text colour`, onclick: () => write('')}, '↺'),
+        palettePicker(value, write, `${what} text colour`)));
       // A closed group says what it holds.
       const named = (list, value) => list.find(([key]) => key === (value || ''))?.[1] || value;
       const LEGEND_PLACES = [['', 'Default'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right'], ['none', 'Hidden']];

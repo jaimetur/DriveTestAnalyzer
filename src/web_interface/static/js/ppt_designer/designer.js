@@ -520,6 +520,43 @@
   // Elements
   // ------------------------------------------------------------------
   const elementLabel = element => element?.chart_title || ({text: 'Text box', image: 'Image', kpi: 'KPI card'}[element?.kind]) || element?.kpi || 'Chart';
+  // The colours of the values of a field are the same in every chart of the slides, as in Tableau (ticket #145): a chart
+  // coloured by a field (its Legend, else its Columns, else its Rows) shares the colours of the series it was given with
+  // every other chart coloured by that field, and a chart that comes to be coloured by a field takes the colours the
+  // others give its values.
+  const colourField = element => String(element?.legend || element?.columns_split || element?.rows_split || '').trim().toLowerCase();
+  const chartElements = slide_set => (slide_set?.slides || []).flatMap(slide => slide.elements || [])
+    .filter(element => !element.kind || element.kind === 'chart');
+  const seriesColour = element => Object.fromEntries(Object.entries(element?.style?.series || {})
+    .filter(([, series]) => series?.colour).map(([name, series]) => [name, series.colour]));
+  function setSeriesColour(element, name, colour) {
+    const style = element.style && typeof element.style === 'object' ? clone(element.style) : {};
+    const series = {...(style.series || {})};
+    const rest = {...(series[name] || {})};
+    if (colour) rest.colour = colour; else delete rest.colour;
+    if (Object.keys(rest).length) series[name] = rest; else delete series[name];
+    if (Object.keys(series).length) style.series = series; else delete style.series;
+    element.style = style;
+  }
+  function shareSeriesColours(slide_set, element, before) {
+    const field = colourField(element);
+    if (!field) return;
+    const after = seriesColour(element);
+    const changed = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(name => before[name] !== after[name]);
+    if (!changed.length) return;
+    chartElements(slide_set).filter(other => other !== element && colourField(other) === field)
+      .forEach(other => changed.forEach(name => setSeriesColour(other, name, after[name] || '')));
+  }
+  function inheritSeriesColours(slide_set, element) {
+    const field = colourField(element);
+    if (!field) return;
+    const own = seriesColour(element);
+    chartElements(slide_set).filter(other => other !== element && colourField(other) === field)
+      .forEach(other => Object.entries(seriesColour(other)).forEach(([name, colour]) => {
+        if (!own[name]) { own[name] = colour; setSeriesColour(element, name, colour); }
+      }));
+  }
+  const COLOUR_FIELD_KEYS = ['legend', 'columns_split', 'rows_split'];
   function setElementValues(elementId, values) {
     return edit(slide_set => {
       const found = findElement(slide_set, elementId);
@@ -527,7 +564,10 @@
         report(new Error('This element is only in this Design: change it in This Design scope, or apply it to the template first.'));
         return false;
       }
+      const field = colourField(found.element), before = seriesColour(found.element);
       Object.assign(found.element, values);
+      if (colourField(found.element) !== field && COLOUR_FIELD_KEYS.some(key => key in values)) inheritSeriesColours(slide_set, found.element);
+      else if ('style' in values) shareSeriesColours(slide_set, found.element, before);
     });
   }
   // A new element of a kind: a chart (like the one chosen), a KPI card, a text box or a picture.
