@@ -2044,17 +2044,25 @@
    other (ppt_designer.js), so they take no row of their own. */
 .ppt-designer .ds-comment-tools-toggle { display: none !important; }
 @media (max-width: 640px) {
-  #ds-viewer:not(.ds-presentation-active) .ds-viewer-navigation-footer { position: relative; flex-wrap: nowrap; padding-left: 3.4rem; }
-  #ds-viewer:not(.ds-presentation-active) .ds-viewer-navigation-footer .ds-comment-tools { position: absolute; left: 0; bottom: .4rem; z-index: 6;
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-viewer-navigation-footer { position: relative; flex-wrap: nowrap; padding-left: 3.4rem; }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-viewer-navigation-footer .ds-comment-tools { position: absolute; left: 0; bottom: 0; z-index: 6;
     display: flex; flex-direction: column-reverse; flex-basis: auto; gap: .45rem; margin: 0; padding: 0; border: 0; }
-  #ds-viewer:not(.ds-presentation-active) .ds-comment-tools:not(.is-open) > :not(.ds-comment-tools-toggle) { display: none !important; }
-  #ds-viewer:not(.ds-presentation-active) .ds-comment-tools .ds-comment-tools-toggle { display: grid !important; }
-  #ds-viewer:not(.ds-presentation-active) .ds-comment-tools.is-open .ds-comment-tools-toggle { border-color: #7751b9; background: #f3edfb; }
-  #ds-viewer:not(.ds-presentation-active) .ds-comment-tools.is-open > .ds-comment-tool:not(.ds-comment-tools-toggle) { box-shadow: 0 6px 16px rgba(36, 22, 61, .22); }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-comment-tools:not(.is-open) > :not(.ds-comment-tools-toggle) { display: none !important; }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-comment-tools .ds-comment-tools-toggle { display: grid !important; }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-comment-tools.is-open .ds-comment-tools-toggle { border-color: #7751b9; background: #f3edfb; }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-comment-tools.is-open > .ds-comment-tool:not(.ds-comment-tools-toggle) { box-shadow: 0 6px 16px rgba(36, 22, 61, .22); }
 }
 /* Phones: the folded Comments takes one slim line (it opens as before). */
 @media (max-width: 640px) {
-  #ds-viewer:not(.ds-presentation-active) .ds-slide-comments:not([open]) { padding: 0 !important; }
-  #ds-viewer:not(.ds-presentation-active) .ds-slide-comments:not([open]) > summary { min-height: 0; padding: .4rem .85rem !important; font-size: .84rem; }
-  #ds-viewer:not(.ds-presentation-active) .ds-slide-comments:not([open]) > summary #ds-comments-title { font-size: .84rem; }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-slide-comments:not([open]) { padding: 0 !important; }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-slide-comments:not([open]) > summary { min-height: 0; padding: .4rem .85rem !important; font-size: .84rem; }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-slide-comments:not([open]) > summary #ds-comments-title { font-size: .84rem; }
+}
+/* Phones: the comment tools button, the Presentation button and its separator and the four slide buttons share one
+   row (44 px buttons, the least comfortable to tap); while designing (no Presentation button) they keep more room. */
+@media (max-width: 640px) {
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-viewer-navigation-footer { justify-content: flex-end; padding-left: 3.25rem; padding-bottom: 0; }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-viewer-navigation-footer :is(.ds-slide-nav-button, .ds-comment-tools-toggle) { width: 2.75rem; min-width: 2.75rem; height: 2.75rem; min-height: 2.75rem; }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active):not(.ds-designing) .ds-viewer-navigation-footer .ds-slide-navigation { gap: .5rem; }
+  #ds-viewer.ppt-designer:not(.ds-presentation-active) .ds-viewer-navigation-footer .ds-presentation-navigation-separator { margin-right: .35rem; padding-right: .6rem; }
 }
