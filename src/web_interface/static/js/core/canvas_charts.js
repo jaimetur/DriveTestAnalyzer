@@ -1330,6 +1330,9 @@
       context.textAlign = 'right'; context.fillText(yValue.toFixed(1), left - 12, y - 9);
     }
     context.fillStyle = '#405765'; context.textAlign = 'center'; font(context, 20, true); context.fillText(payload.x_label || '', left + width / 2, top + height + 30);
+    // Both value axes, for the range of the Designer (ticket #144).
+    registerNumericAxis(state, transform, 'x', xDomain, left, top + height, width, 50);
+    registerNumericAxis(state, transform, 'y', yDomain, left - 80, top, 80, height);
     context.textAlign = 'left'; context.fillText(payload.y_label || '', layout.position === 'left' ? left - 28 : 28, top - 5); drawLegend(context, payload.legend, {fontSize: 14, sideX: layout.position === 'right' ? left + width + 25 : undefined});
   }
 
