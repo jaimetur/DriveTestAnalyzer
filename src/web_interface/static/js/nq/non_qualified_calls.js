@@ -2734,14 +2734,26 @@
       if (token === rootToken) $('nq-root-kpis').replaceChildren(node('p', error.message, 'nq-muted'));
     }
   }
+  // The suggestion rule translates the NetCheck RCA alone: enabled with its source only.
+  function syncRuleButton() {
+    const ruleButton = $('nq-root-rule-button');
+    if (!ruleButton) return;
+    ruleButton.dataset.title ||= ruleButton.title;
+    ruleButton.disabled = state.rootSource !== 'netcheck';
+    ruleButton.title = ruleButton.disabled
+      ? `Only for the ${PROVIDER_RCA}: it translates the ${PROVIDER_RCA} of the CDR onto the catalog. Choose ${PROVIDER_RCA} to open it.`
+      : ruleButton.dataset.title;
+  }
   $('nq-root-source').querySelectorAll('[data-nq-root-source]').forEach((tab) => tab.addEventListener('click', () => {
     state.rootSource = tab.dataset.nqRootSource;
     $('nq-root-source').querySelectorAll('[data-nq-root-source]').forEach((other) => {
       other.classList.toggle('is-active', other === tab);
       other.setAttribute('aria-selected', String(other === tab));
     });
+    syncRuleButton();
     loadRootCauses();
   }));
+  syncRuleButton();
 
   // -- lifecycle & phases (Analysis Center) ---------------------------------------------------
   // A Status Rule in words: "Analysis Status is Finished and Planned Status is not Planned".
