@@ -881,6 +881,8 @@
         const value = yDomain[0] + ySpan * tick / 5, y = top + height - tick / 5 * height; line(context, left - 20, y, left + width, y, '#E4E9ED');
         context.fillStyle = '#4E6271'; context.textAlign = 'right'; font(context, 18, true); context.fillText(`${(value * 100).toFixed(0)}%`, left - 14, y - 10);
       }
+      // Its percentages, for the range of the Designer (ticket #144).
+      registerNumericAxis(state, transform, 'y', yDomain, left - 80, top, 80, height, true);
       drawLegend(context, payload.legend, {fontSize: 16}); return;
     }
 
@@ -971,6 +973,8 @@
         pushAxisHit('column', key.length - 1, key.at(-1), centre - columnWidth / 2, chartTop + chartHeight + 4, columnWidth, leafPlan.height + 10);
       });
     }
+    // The percentages beside the panes, for the range of the Designer (ticket #144).
+    registerNumericAxis(state, transform, 'y', yDomain, chartLeft - 56, chartTop, 56, chartHeight, true);
     drawLegend(context, payload.legend);
   }
 
@@ -991,6 +995,8 @@
           running = segmentHigh;
         });
       });
+      // The counts under the bars, for the range of the Designer (ticket #144).
+      registerNumericAxis(state, transform, 'x', xDomain, barLeft, layout.bottom - 50, maximumBarWidth, 50);
       drawLegend(context, payload.legend, {fontSize: 13}); context.fillStyle = '#4E6271'; context.textAlign = 'left'; font(context, 19, true); context.fillText('# of failed / dropped sessions', barLeft, layout.bottom - 20); return;
     }
     const rowKeys = payload.row_keys || [[]], columnKeys = payload.column_keys || [];
@@ -1060,6 +1066,8 @@
         if (outside.length) { const label = outside.join(' / '), labelX = lastSegmentEnd + 3; context.fillStyle = '#34495A'; context.textAlign = 'left'; context.textBaseline = 'top'; font(context, 16, true); if (labelX + textWidth(context, label) <= cellLeft + columnWidth - 3) context.fillText(label, labelX, y + 1); }
       });
     });
+    // The counts under the panes, for the range of the Designer (ticket #144).
+    registerNumericAxis(state, transform, 'x', xDomain, chartLeft, chartTop + chartHeight, chartWidth, 30);
     line(context, chartLeft + chartWidth, headerTop, chartLeft + chartWidth, chartTop + chartHeight + 25, '#AEBBC4', 2); drawLegend(context, payload.legend, {fontSize: 13, sideX: layout.position === 'right' ? chartLeft + chartWidth + 18 : undefined});
   }
 
@@ -1100,6 +1108,8 @@
     });
     drawTopColumnSeparators(context, keys, payload.axis_columns || [], left, width, top, top + height, axis);
     drawHierarchicalAxisLabels(context, keys, left, width, top, top + height, payload.legend_format, axis); drawLegend(context, payload.legend);
+    // Its percentages, for the range of the Designer (ticket #144).
+    registerNumericAxis(state, transform, 'y', yDomain, left - 80, top, 80, height, true);
   }
 
   function cdfGeometry(legend) {
@@ -1265,6 +1275,8 @@
         drawAxisLabel(context, leafPlan, columnKey.at(-1), chartLeft + (columnIndex + .5) * columnWidth, chartTop + chartHeight + 4, columnWidth, '#4E6271', payload.legend_format);
         pushAxisHit('column', columnKey.length - 1, columnKey.at(-1), chartLeft + columnIndex * columnWidth, chartTop + chartHeight + 2, columnWidth, leafPlan.height + 6);
       });
+      // The gutter beside the panes takes the range of the Y axis in the Designer, as line charts and CDFs (ticket #144).
+      registerNumericAxis(state, transform, 'y', yDomain, chartLeft - 56, chartTop, 56, chartHeight);
       drawLegend(context, payload.legend); return;
     }
     const bars = payload.bars || [], keys = bars.map(bar => bar.key);
@@ -1289,6 +1301,8 @@
       pushRectangleHit(state, transform, {x, y, width: barWidth, height}, {label: displayKey(bar.key), series: bar.legend, value: Number(bar.value).toFixed(2)});
     });
     drawTopColumnSeparators(context, keys, payload.axis_columns || [], left, width, top, baseline, axis);
+    // The gutter left of the bars takes the range of the Y axis in the Designer, as line charts and CDFs (ticket #144).
+    registerNumericAxis(state, transform, 'y', yDomain, left - 80, top, 80, plotHeight);
     drawHierarchicalAxisLabels(context, keys, left, width, top, baseline, payload.legend_format, axis); verticalLabel(context, payload.metric || '', layout.position === 'left' ? left - 28 : 42, (top + baseline) / 2, '#405765', 21); drawLegend(context, payload.legend, {sideX: layout.position === 'right' ? left + width + 25 : undefined});
   }
 
