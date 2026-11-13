@@ -20,6 +20,7 @@
 
 #### 🐛 Bug fixes:
 - **PPT Scope & Filters fits small screens ([ticket #141](https://108.132.147.165:8443/tickets/141)):** the filters dialog opened from the PPT Designer viewer shows its groups in one column as wide as the screen on tablets and phones, with long Design names and headings wrapping inside it, instead of two columns cut at the right.
+- **App Events readable to the last row on phones ([ticket #143](https://108.132.147.165:8443/tickets/143)):** on a phone, the App Events table is at most as high as the room between the header at the top and the bars floating at the bottom, so its last events no longer stay hidden under the floating bars.
 
 #### 📚 Documentation:
 

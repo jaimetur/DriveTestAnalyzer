@@ -2378,9 +2378,10 @@ th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background
 }
 .app-logs-table th:nth-child(7) { min-width: 18rem; }
 .app-logs-panel .table-wrap { height: 45rem; overflow-y: scroll; overscroll-behavior: contain; }
-/* On phones the events take at most 70% of the screen, with their pages right below them. */
-@media (max-width: 640px) {
-  .app-logs-panel .table-wrap { height: auto; max-height: 70vh; }
+/* On phones the events fit between what stays at the top of the screen (the header and the tabs) and the bars floating
+   at the bottom (the sections and the modules), so that the last ones can be read, with their pages right below them. */
+@media (max-width: 640px), (orientation: landscape) and (max-width: 1024px) and (max-height: 600px) {
+  .app-logs-panel .table-wrap { height: auto; max-height: max(14rem, calc(100dvh - var(--module-tabs-offset, 0px) - var(--bottom-floaters, 0px) - 1.25rem)); }
 }
 .execution-log-panel { margin-top: 1.25rem; }
 .execution-log-frame { position: relative; }
