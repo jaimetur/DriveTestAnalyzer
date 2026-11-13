@@ -1000,6 +1000,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-evidence-side.is-failed { border-left-color: #c8102e; }
 .nq-evidence-side-head { display: flex; align-items: center; gap: .4rem; margin-bottom: .1rem; }
 .nq-evidence-side-tag { font-weight: 800; letter-spacing: .02em; }
+.nq-evidence-side-role { color: var(--nq-muted, #7b8790); font-size: .78em; font-weight: 600; }
 .nq-evidence-failed-tag { padding: 0 .4rem; border-radius: 999px; background: #c8102e; color: #fff; font-size: .7rem; font-weight: 700; }
 .nq-evidence-findings { margin: 0; padding-left: 1.2rem; }
 .nq-evidence-findings li + li { margin-top: .1rem; }

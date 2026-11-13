@@ -31,7 +31,7 @@ from typing import Any
 
 from src.modules.nq.nq_catalog import keyword_found, keywords, normalized_text
 
-ENGINE_VERSION = 7
+ENGINE_VERSION = 8
 SOURCE_LABEL = 'DT Analyzer RCA'
 RULES_STATE_KEY = 'nq_dta_rca_rules'
 FINGERPRINT_STATE_KEY = 'nq_dta_rca_fingerprint'
@@ -45,7 +45,7 @@ TABLE_TITLES = {RESULTS_TABLE: 'NQ DT Analyzer RCA Results', LEARNED_TABLE: 'NQ 
 LEARNING_MIN_DECISIONS = 2
 SERVICES = {'voice': 'Voice', 'speech': 'Speech', 'data': 'Data'}
 MATCHES = {'all': 'All conditions', 'any': 'Any condition'}
-MAX_RULES = 80
+MAX_RULES = 120
 MAX_CONDITIONS = 8
 MAX_TEXT = 120
 MAX_EVIDENCE = 1200
@@ -146,6 +146,18 @@ INPUTS: dict[str, tuple[str, str, str, str]] = {
     'eri_nr_sinr': ('NR PCell SINR before the failure (Ericsson RCA)', 'number', 'dB', 'Ericsson RCA'),
     'eri_tx_power': ('UE Tx Power before the failure (Ericsson RCA)', 'number', 'dBm', 'Ericsson RCA'),
     'eri_neighbour_delta': ('Neighbour above the PCell before the failure (Ericsson RCA)', 'number', 'dB', 'Ericsson RCA'),
+    # The radio of each side of a voice call (UE A calls, MO; UE B is called, MT) at the failure, from its Layer3 Log, else
+    # its Ericsson RCA: that of the side that failed (the Failure Side, else the failure description naming MO or MT
+    # alone) and of the other side; the worst of both sides (or of the test) when the side that failed is unknown.
+    'failed_side': ('Failed side (A = MO, B = MT)', 'text', '', 'Failed side radio'),
+    **{f'{prefix}_{key}': (f'{label} of the {where}', kind, unit, group)
+       for prefix, where, group in (('side', 'failed side', 'Failed side radio'), ('peer', 'other side', 'Other side radio'))
+       for key, (label, kind, unit) in (
+           ('lte_rsrp', ('LTE RSRP', 'number', 'dBm')), ('lte_sinr', ('LTE SINR', 'number', 'dB')),
+           ('nr_rsrp', ('NR RSRP', 'number', 'dBm')), ('nr_sinr', ('NR SINR', 'number', 'dB')),
+           ('tx_power', ('UE Tx Power', 'number', 'dBm')),
+           ('lte_neighbour_delta', ('Strongest LTE neighbour above the PCell', 'number', 'dB')),
+           ('nr_neighbour_delta', ('Strongest NR neighbour above the PCell', 'number', 'dB')))},
 }
 # The inputs that are indexed fields of the call, and the failure fields its description joins (with two CDR inputs).
 CALL_INPUTS = ('result', 'test_name', 'technology', 'direction', 'environment', 'failure_phase', 'failure_technology')
@@ -158,7 +170,9 @@ FAILURE_TEXT_INPUTS = ('failure_events', 'scg_failures')
 # else the Ericsson RCA before the failure, else the average of the CDR), the radio measured (LTE and NR, by their RSRP or SINR) and the share of the
 # resource blocks of the primary carrier the call used.
 DERIVED_INPUTS = ('failure_text', 'signalling_events', 'radio_technology', 'radio_rsrp', 'radio_sinr', 'radio_measured', 'lte_dl_rb_share',
-                  'nr_dl_rb_share')
+                  'nr_dl_rb_share', 'failed_side')
+# The radio of the side that failed and of the other side (from the Layer3 Logs and the Ericsson RCA of the call).
+SIDE_INPUTS = tuple(key for key in INPUTS if key.startswith(('side_', 'peer_')))
 # The inputs of the network around the call (ran_context) and its ping-pongs, which non_qualified_calls adds from the
 # Network Inventory and the cells of the call; a ``network_note`` names its serving and nearest sites for the evidence.
 CONTEXT_INPUTS = ('ping_pong', 'serving_distance', 'serving_isd', 'serving_isd_ratio', 'nearest_site_distance',
@@ -187,7 +201,7 @@ _SIDE_NAMES = {'a': 'A', 'mo': 'A', 'b': 'B', 'mt': 'B'}
 # The inputs read from the CDR (the profile lists their columns).
 CDR_INPUTS = tuple(key for key in (*INPUTS, *FAILURE_TEXT_INPUTS, *RB_SOURCES)
                    if key not in CALL_INPUTS and key not in DERIVED_INPUTS and key not in CONTEXT_INPUTS and key not in L3_INPUTS
-                   and key not in ERICSSON_INPUTS)
+                   and key not in ERICSSON_INPUTS and key not in SIDE_INPUTS)
 OPERATORS = {
     'lt': '<', 'le': '≤', 'gt': '>', 'ge': '≥', 'eq': '=', 'ne': '≠',
     'contains': 'contains', 'not_contains': 'does not contain', 'empty': 'is empty', 'not_empty': 'is not empty',
@@ -203,6 +217,46 @@ _NR = (('radio_technology', 'contains', '5g, nr'), ('radio_technology', 'not_con
 _LEGACY = (('radio_technology', 'contains', '2g, 3g, gsm, umts, wcdma'), ('radio_technology', 'not_contains', '4g, lte, 5g, nr'))
 _MEASURED = ('radio_measured', 'not_empty', '')
 
+# What the radio of a side of the call measured at the failure (Layer3 Log, else Ericsson RCA) tells, the most specific first:
+# weak coverage, a stronger neighbour it did not hand over to, a neighbour as strong as the PCell with a low SINR (no
+# dominant cell), a low SINR without one (interference) and the UE at high power (uplink). It comes before the causes
+# the provider names (IMSI, TAU, QCI1, SIP, paging…), which a radio this poor can bring about, after the device and the
+# rejects of the network; the other side of a voice call next, as the setup of a call needs both sides (the QCI1 bearer
+# of the caller waits for the answer of the called side).
+def _side_rules(prefix: str, where: str, services: tuple[str, ...]) -> tuple[tuple[Any, ...], ...]:
+    rules = []
+    for tech, label in (('lte', 'LTE'), ('nr', 'NR')):
+        rules += [
+            (f'{prefix}-{tech}-coverage', f'Weak {label} coverage on the {where}', services, 'all',
+             ((f'{prefix}_{tech}_rsrp', 'lt', -110),), f'Poor Coverage {label}', 'Coverage'),
+        ]
+    for tech, label in (('lte', 'LTE'), ('nr', 'NR')):
+        rules += [
+            (f'{prefix}-{tech}-handover', f'Stronger {label} neighbour on the {where}', services, 'all',
+             ((f'{prefix}_{tech}_neighbour_delta', 'ge', 3), (f'{prefix}_{tech}_sinr', 'lt', 3)), f'Mobility {label}',
+             'Missing or late handover'),
+            (f'{prefix}-{tech}-dominance', f'No dominant {label} cell on the {where}', services, 'all',
+             ((f'{prefix}_{tech}_sinr', 'lt', 0), (f'{prefix}_{tech}_neighbour_delta', 'ge', -3)), f'DL Interference {label}',
+             'Lack of dominant cell'),
+            (f'{prefix}-{tech}-interference', f'{label} interference on the {where}', services, 'all',
+             ((f'{prefix}_{tech}_sinr', 'lt', 0), (f'{prefix}_{tech}_rsrp', 'ge', -110)), f'DL Interference {label}', 'DL interference'),
+        ]
+    if prefix == 'side':
+        rules += [
+            ('side-uplink-coverage', 'UE at high power with weak coverage on the failed side', services, 'all',
+             (('side_tx_power', 'ge', 21), ('side_lte_rsrp', 'lt', -100)), 'Poor Coverage LTE', 'Coverage'),
+            ('side-uplink-interference', 'UE at high power with good coverage on the failed side', services, 'all',
+             (('side_tx_power', 'ge', 21), ('side_lte_rsrp', 'ge', -95)), 'UL Interference LTE', 'UL interference'),
+        ]
+    return tuple(rules)
+
+
+_SIDE_RULES = (*_side_rules('side', 'failed side', ()), *_side_rules('peer', 'other side', _VOICE))
+SIDE_RULE_KEYS = tuple(rule[0] for rule in _SIDE_RULES)
+# The rules of the network around the call (Network Inventory), which come before the radio of the sides.
+NETWORK_RULE_KEYS = ('cell-outage', 'cell-outage-interference', 'nr-coverage-hole', 'coverage-hole', 'no-service-hole', 'nr-overshooting',
+                     'overshooting', 'nr-overshooting-coverage', 'overshooting-coverage', 'nr-pci-collision', 'pci-collision')
+
 # The default rules, in order: (key, name, services, match, conditions, Root Category, Root Cause). A text condition
 # holds when the text contains one of its comma-separated terms ("a+b" needs both); a rule without conditions takes
 # every call of its services that reaches it.
@@ -215,8 +269,6 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
     ('l3-no-measurements', 'No measurements in the drivetest log', (), 'all',
      (('l3_no_measurements', 'ge', 1), ('l3_lte_rsrp_end', 'empty', ''), ('l3_nr_rsrp_end', 'empty', '')),
      'UE / Test Setup Issue', 'Device or test setup'),
-    ('subscriber-identity', 'Subscriber identity', (), 'any',
-     (('failure_text', 'contains', 'imsi, ue identity cannot be derived'),), 'IMSI Issue', ''),
     # A lack of resources: the insufficient resources or congestion the provider reports of the core, and the access the
     # network rejects in the signalling of the CDR itself (or as the provider reports it).
     ('core-resources', 'Insufficient resources of the core', (), 'any',
@@ -230,21 +282,6 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
                                    'pdu session establishment reject'),
       ('l3_signalling', 'contains', 'authentication reject, registration reject, attach reject, pdu session establishment reject')),
      'Authentication & Registration', 'Authentication/Authorization'),
-    ('tracking-area-update', 'Tracking area update', (), 'any',
-     (('failure_text', 'contains', 'tracking area update'), ('l3_signalling', 'contains', 'tracking area update reject')),
-     'Core Network', 'TAU reject'),
-    ('bearer-deactivation', 'Bearer deactivated by the network', (), 'any',
-     (('failure_text', 'contains', 'bearer deactivation, deregistered, detach request'),), 'Core Network', 'EPS bearer deactivation'),
-    ('qci1', 'No QCI1 bearer for the call', _VOICE, 'any', (('failure_text', 'contains', 'qci1, qci 1'),), 'IMS / VoLTE',
-     'No QCI1 established'),
-    ('ims-core', 'VoLTE or IMS core', _VOICE, 'any',
-     (('failure_text', 'contains', 'volte core, ims core, ims registration, sip, server internal error'),
-      ('l3_sip_error', 'ge', 400)), 'IMS / VoLTE', 'VoLTE core'),
-    ('eps-fallback', 'EPS fallback', _VOICE, 'any', (('failure_text', 'contains', 'epsfb, eps fallback'),), 'EPS Fallback',
-     'EPS fallback failure'),
-    ('paging', 'Paging', (), 'any', (('failure_text', 'contains', 'paging'),), 'RAN Performance', 'Paging'),
-    ('session-in-gsm', 'Session in GSM', (), 'any', (('failure_text', 'contains', 'session in gsm'),), 'Core Network',
-     'WhatsApp session in GSM'),
     # Cells of its sites out of service in the Network Inventory, when its radio suffered.
     ('cell-outage', 'Cells out of service on its sites', (), 'all', (('cells_out_of_service', 'ge', 1), ('radio_rsrp', 'lt', -105)),
      'Operational', 'Cell/Site Outage'),
@@ -274,6 +311,24 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
      'DL Interference NR', 'PCI Collision/PCI MOD 3 Collision'),
     ('pci-collision', 'PCI collision', (), 'all', (('pci_collisions', 'ge', 1), ('lte_sinr', 'lt', 3)),
      'DL Interference LTE', 'PCI Collision/PCI MOD 3 Collision'),
+    *_SIDE_RULES,
+    ('subscriber-identity', 'Subscriber identity', (), 'any',
+     (('failure_text', 'contains', 'imsi, ue identity cannot be derived'),), 'IMSI Issue', ''),
+    ('tracking-area-update', 'Tracking area update', (), 'any',
+     (('failure_text', 'contains', 'tracking area update'), ('l3_signalling', 'contains', 'tracking area update reject')),
+     'Core Network', 'TAU reject'),
+    ('bearer-deactivation', 'Bearer deactivated by the network', (), 'any',
+     (('failure_text', 'contains', 'bearer deactivation, deregistered, detach request'),), 'Core Network', 'EPS bearer deactivation'),
+    ('qci1', 'No QCI1 bearer for the call', _VOICE, 'any', (('failure_text', 'contains', 'qci1, qci 1'),), 'IMS / VoLTE',
+     'No QCI1 established'),
+    ('ims-core', 'VoLTE or IMS core', _VOICE, 'any',
+     (('failure_text', 'contains', 'volte core, ims core, ims registration, sip, server internal error'),
+      ('l3_sip_error', 'ge', 400)), 'IMS / VoLTE', 'VoLTE core'),
+    ('eps-fallback', 'EPS fallback', _VOICE, 'any', (('failure_text', 'contains', 'epsfb, eps fallback'),), 'EPS Fallback',
+     'EPS fallback failure'),
+    ('paging', 'Paging', (), 'any', (('failure_text', 'contains', 'paging'),), 'RAN Performance', 'Paging'),
+    ('session-in-gsm', 'Session in GSM', (), 'any', (('failure_text', 'contains', 'session in gsm'),), 'Core Network',
+     'WhatsApp session in GSM'),
     # What the Layer3 Logs of the call show at its failure, more precise than the averages of the CDR: the radio of
     # its last seconds and what failed before it (a call without a log goes on to the rules of its CDR).
     ('l3-scg-failure-coverage', 'SCG failure with weak NR coverage (drivetest log)', (), 'all',
@@ -536,7 +591,14 @@ ADDED_RULES = {
     4: ('l3-no-measurements', 'l3-scg-failure-coverage', 'l3-reestablishment-coverage', 'l3-missing-handover', 'l3-lte-coverage',
         'l3-nr-coverage', 'l3-uplink', 'l3-lte-interference', 'l3-nr-interference', 'l3-scg-failure', 'l3-reestablishment',
         'l3-lte-bler', 'l3-nr-bler'),
+    # The radio of the failed side and of the other side (Layer3 Logs and Ericsson RCA).
+    8: SIDE_RULE_KEYS,
 }
+# The default rules each version of the engine moved: (rules, the rule they followed, the rule they now follow). A
+# workspace whose rules are still together right after the one they followed (as the default rules had them) takes the new
+# place, once, before the new rules of that version are added.
+MOVED_RULES = {8: ((NETWORK_RULE_KEYS, 'session-in-gsm', 'authentication'),
+                   (('subscriber-identity',), 'l3-no-measurements', SIDE_RULE_KEYS[-1]))}
 # The default rules each version of the engine changed, with their conditions before it: a workspace whose rule is still
 # as it was takes the new conditions, a rule an admin changed is kept as it is.
 CHANGED_RULES = {
@@ -571,6 +633,39 @@ def with_added_rules(rules: list[dict[str, Any]], keys: tuple[str, ...]) -> tupl
         result.insert(place, rule)
         added.append(rule['name'])
     return result, added
+
+
+def move_default_rules(repository: Any, version: int) -> list[str]:
+    """Move the default rules of ``version`` in the rules of a workspace (with rules of its own) to their new place,
+    where they are still right after the rule they followed; App Events says which."""
+    try:
+        stored = json.loads(repository.get_workspace_state(RULES_STATE_KEY) or 'null')
+    except (TypeError, ValueError):
+        stored = None
+    if not isinstance(stored, list) or not stored:
+        return []
+    rules = normalize_rules(stored)
+    moved = []
+    for block, before, after in MOVED_RULES.get(version, ()):
+        keys = [rule['key'] for rule in rules]
+        if before not in keys or after not in keys or any(key not in keys for key in block):
+            continue
+        first = keys.index(before) + 1
+        if keys[first:first + len(block)] != list(block):
+            continue
+        taken = rules[first:first + len(block)]
+        del rules[first:first + len(block)]
+        place = [item['key'] for item in rules].index(after) + 1
+        rules[place:place] = taken
+        moved += [rule['name'] for rule in taken]
+    if moved:
+        repository.set_workspace_state(RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
+        if hasattr(repository, 'try_add_log'):
+            repository.try_add_log('system', 'nq_dta_rca_rules', json.dumps(
+                {'message': 'Default rules of the DT Analyzer RCA moved in the rules of the workspace.', 'rules': len(rules),
+                 'enabled': sum(rule['enabled'] for rule in rules),
+                 'changes': [f'Rule moved: {name}' for name in moved]}, ensure_ascii=False))
+    return moved
 
 
 def add_new_default_rules(repository: Any, version: int) -> list[str]:
@@ -880,9 +975,9 @@ def ericsson_inputs(evidence: Any) -> dict[str, Any]:
             # A stronger neighbour it found than the PCell (RSRP diff, of the same frequency or another).
             delta = _ERICSSON_VALUE['neighbour_delta'].search(part, match.end(), end)
             if delta:
-                values['neighbour_delta'] = float(delta.group(1))
+                values[f'{technology}_neighbour_delta'] = float(delta.group(1))
             for key, value in values.items():
-                found.setdefault(f'eri_{key}', []).append(value)
+                found.setdefault('eri_neighbour_delta' if key.endswith('neighbour_delta') else f'eri_{key}', []).append(value)
                 side.setdefault(key, round(value, 2))
     result: dict[str, Any] = {key: round(max(values) if key in {'eri_tx_power', 'eri_neighbour_delta'} else min(values), 2)
                               for key, values in found.items()}
@@ -900,6 +995,45 @@ def failed_side(call: Any, inputs: dict[str, Any]) -> str:
     text = failure_text(call, inputs)
     named = {_SIDE_NAMES[word.lower()] for word in re.findall(r'\b(MO|MT)\b', text)}
     return named.pop() if len(named) == 1 else ''
+
+
+# The values of the radio of a side (SIDE_INPUTS without their prefix), the inputs of the worst of the sides of the call
+# that stand for each one when the side that failed is unknown (Layer3 Log, Ericsson RCA) and whether the highest is the
+# worst. The strongest neighbour is the highest the sources found (the log measures the channel of the PCell, the
+# Ericsson RCA the other frequencies too).
+_SIDE_VALUES = {
+    'lte_rsrp': (('l3_lte_rsrp_end', 'eri_lte_rsrp'), False), 'lte_sinr': (('l3_lte_sinr_end', 'eri_lte_sinr'), False),
+    'nr_rsrp': (('l3_nr_rsrp_end', 'eri_nr_rsrp'), False), 'nr_sinr': (('l3_nr_sinr_end', 'eri_nr_sinr'), False),
+    'tx_power': (('l3_tx_max', 'eri_tx_power'), True), 'lte_neighbour_delta': (('l3_neighbour_delta',), True),
+    'nr_neighbour_delta': ((), True),
+}
+
+
+def side_value(inputs: dict[str, Any], side: str, key: str) -> tuple[float | None, str]:
+    """A value of the radio of one side of the call (``side`` A or B), or of the worst of its sides (``side`` empty),
+    from the Layer3 Log, else the Ericsson RCA, with where it was read."""
+    aggregated, highest = _SIDE_VALUES[key]
+    pick = max if highest else min
+    if key.endswith('neighbour_delta'):
+        # Every source: they measure different neighbours.
+        found = [(number, source) for source, sides_key in SIDE_SOURCES
+                 for name, values in (inputs.get(sides_key) or {}).items() if isinstance(inputs.get(sides_key), dict)
+                 and (not side or name == side) and (number := _number((values or {}).get(key))) is not None]
+        found += [(number, source) for source, input_key in zip((item[0] for item in SIDE_SOURCES), aggregated)
+                  if not side and (number := _number(inputs.get(input_key))) is not None]
+        if not found:
+            return None, ''
+        number, source = pick(found, key=lambda item: item[0])
+        return number, (f'UE {side}, {source}' if side else source)
+    for (source, sides_key), input_key in zip(SIDE_SOURCES, (*aggregated, None, None)):
+        sides = inputs.get(sides_key) if isinstance(inputs.get(sides_key), dict) else {}
+        numbers = [number for name, values in sides.items() if (not side or name == side)
+                   and (number := _number((values or {}).get(key))) is not None]
+        if not numbers and not side and input_key and (number := _number(inputs.get(input_key))) is not None:
+            numbers = [number]
+        if numbers:
+            return pick(numbers), (f'UE {side}, {source}' if side else source)
+    return None, ''
 
 
 def side_radio(inputs: dict[str, Any], side: str, technology: str, measure: str) -> tuple[float | None, str]:
@@ -961,24 +1095,28 @@ def _side_text(values: dict[str, Any], logged: bool) -> str:
     power = _number(values.get('tx_power'))
     if power is not None:
         parts.append(f"UE Tx Power{' (maximum)' if logged else ''} {_measure(power, 'dBm')}")
-    delta = _number(values.get('neighbour_delta'))
-    if delta is not None:
-        parts.append(f"neighbour {_measure(delta, 'dB')} above the PCell")
+    for technology in ('lte', 'nr'):
+        delta = _number(values.get(f'{technology}_neighbour_delta'))
+        if delta is not None:
+            parts.append(f"strongest {technology.upper()} neighbour {_measure(abs(delta), 'dB')} "
+                         f"{'above' if delta >= 0 else 'below'} the PCell")
     # A finding each, as the Ericsson RCA separates them: the page shows them as bullets.
     return '; '.join(parts)
 
 
 def radio_line(inputs: dict[str, Any], failed: str = '') -> str:
-    """The radio before the failure from the most precise source that measured it: the Layer3 Log of the call at the
-    failure, else the Ericsson RCA (its logs before the failure); empty when only the averages of the CDR have it. With
-    both sides of the call measured, each side on its own ("A (failed side): … | B: …")."""
+    """The radio before the failure from each source that measured it, a line each, the most precise first: the Layer3
+    Log of the call at the failure and the Ericsson RCA (its logs before the failure); empty when only the averages of
+    the CDR have it. With both sides of the call measured, each side on its own ("A (failed side): … | B: …")."""
+    lines = []
     for (source, template), (_source, key) in zip(RADIO_SOURCES[:2], SIDE_SOURCES):
         logged = source.startswith('Layer3')
         sides = inputs.get(key) if isinstance(inputs.get(key), dict) else {}
         texts = [(side, text) for side in SIDES if (text := _side_text(sides.get(side) or {}, logged))]
         if len(texts) > 1 or (texts and failed):
-            return f"Radio ({source}): " + ' | '.join(f"{side}{' (failed side)' if side == failed else ''}: {text}"
-                                                      for side, text in texts)
+            lines.append(f"Radio ({source}): " + ' | '.join(f"{side}{' (failed side)' if side == failed else ''}: {text}"
+                                                            for side, text in texts))
+            continue
         parts = []
         for technology in ('lte', 'nr'):
             values = [f"{name} {_measure(number, unit)}" for name, measure, unit in (('RSRP', 'rsrp', 'dBm'), ('SINR', 'sinr', 'dB'))
@@ -989,8 +1127,8 @@ def radio_line(inputs: dict[str, Any], failed: str = '') -> str:
             power = _number(inputs.get('l3_tx_max' if logged else 'eri_tx_power'))
             # The log gives the highest UE Tx Power of its last seconds, the Ericsson RCA that of its window.
             power_text = f", UE Tx Power{' (maximum)' if logged else ''} {_measure(power, 'dBm')}" if power is not None else ''
-            return f"Radio ({source}): {' · '.join(parts)}{power_text}"
-    return ''
+            lines.append(f"Radio ({source}): {' · '.join(parts)}{power_text}")
+    return '\n'.join(lines)
 
 
 def _holds(condition: dict[str, Any], kind: str, expected: Any, value: Any) -> bool:
@@ -1076,6 +1214,17 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
                 if found[1]:
                     sources[key] = f'{found[1].upper()}, {found[2]}'
 
+            elif key == 'failed_side':
+                values[key] = failed_side(call, inputs)
+            elif key in SIDE_INPUTS:
+                prefix, name = key.split('_', 1)
+                side = failed_side(call, inputs)
+                if prefix == 'peer':
+                    side = {'A': 'B', 'B': 'A'}.get(side, '')
+                number, source = side_value(inputs, side, name) if side or prefix == 'side' else (None, '')
+                values[key] = number
+                if source:
+                    sources[key] = source
             elif key == 'radio_measured':
                 values[key] = ', '.join(name for name, keys in (('LTE', ('lte_rsrp', 'lte_sinr')), ('NR', ('nr_rsrp', 'nr_sinr')))
                                         if any(_number(inputs.get(item)) is not None for item in keys))
@@ -1107,12 +1256,13 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
             # the most precise source (Layer3 Log, else Ericsson RCA), the averages of the call, the sites a rule of the
             # network around the call read and what the Layer3 Logs show before the failure when the rule read them.
             lines = ['; '.join(held) if held else 'No earlier rule explains the failure.']
-            if read & _DESCRIBED and (description := provider_description(call, inputs)):
+            # The provider's description also when the radio of a side explains the failure it reports.
+            if read & (_DESCRIBED | set(SIDE_INPUTS)) and (description := provider_description(call, inputs)):
                 lines.append(f'Provider description: {description}')
             lines += [radio_line(inputs, failed_side(call, inputs)), averages_line(call, inputs)]
             if inputs.get(NETWORK_NOTE) and read & set(CONTEXT_INPUTS[1:]):
                 lines.append(str(inputs[NETWORK_NOTE]))
-            if inputs.get(L3_NOTE) and read & set(L3_INPUTS):
+            if inputs.get(L3_NOTE) and read & {*L3_INPUTS, *SIDE_INPUTS}:
                 lines.append(str(inputs[L3_NOTE]))
             evidence = '\n'.join(line for line in lines if line)
             return {'rule': rule['name'], 'rule_key': rule['key'], **entry['result'], 'evidence': evidence[:MAX_EVIDENCE]}

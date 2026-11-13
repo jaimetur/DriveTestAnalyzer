@@ -1040,7 +1040,7 @@ def call_evidence(sessions: list[dict[str, Any]]) -> dict[str, Any]:
     for ue, evidence in items:
         values = {key: float(evidence[source]) for key, source in (('lte_rsrp', 'lte_rsrp_end'), ('lte_sinr', 'lte_sinr_end'),
                                                                    ('nr_rsrp', 'nr_rsrp_end'), ('nr_sinr', 'nr_sinr_end'), ('tx_power', 'tx_max'),
-                                                                   ('neighbour_delta', 'neighbour_delta'))
+                                                                   ('lte_neighbour_delta', 'neighbour_delta'))
                   if evidence.get(source) is not None}
         if ue in {'A', 'B'} and values:
             sides[ue] = values

@@ -4997,6 +4997,8 @@
   // The evidence of an RCA source (Ericsson RCA, DT Analyzer RCA): a line each, and the sides of the call it names
   // ("A: … | B: …", after a label or alone) each in a block of its own, its findings one below the other.
   const isEvidenceField = (field) => ['dta', 'ericsson', 'netcheck'].includes(fieldOrigin(field)) && /evidence/i.test(field.key);
+  // UE A is the device that calls (Mobile Originated), UE B the device it calls (Mobile Terminated).
+  const EVIDENCE_SIDE_ROLES = {A: 'Caller (MO)', B: 'Called side (MT)'};
   const EVIDENCE_SIDE = /^(?:UE\s*)?([AB])(\s*\(failed side\))?\s*:\s*/i;
   const evidenceSides = (text) => {
     const parts = text.split(/\s+\|\s+/);
@@ -5007,7 +5009,10 @@
       const [, side, failed] = EVIDENCE_SIDE.exec(part);
       const block = node('div', undefined, `nq-evidence-side${failed ? ' is-failed' : ''}`);
       const head = node('span', undefined, 'nq-evidence-side-head');
-      head.append(node('span', `UE ${side.toUpperCase()}`, 'nq-evidence-side-tag'));
+      const name = side.toUpperCase();
+      const tag = node('span', `UE ${name}`, 'nq-evidence-side-tag');
+      head.append(tag, node('span', EVIDENCE_SIDE_ROLES[name], 'nq-evidence-side-role'));
+      block.title = `UE ${name}: ${EVIDENCE_SIDE_ROLES[name]} of the call`;
       if (failed) head.append(node('span', 'Failed side', 'nq-evidence-failed-tag'));
       const findings = node('ul', undefined, 'nq-evidence-findings');
       part.replace(EVIDENCE_SIDE, '').split(/;\s+/).map((item) => item.trim()).filter(Boolean)

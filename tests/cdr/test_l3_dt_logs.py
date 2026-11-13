@@ -351,9 +351,10 @@ def test_the_dt_analyzer_rca_reads_the_layer_3_dt_logs_of_the_campaign_of_the_ca
     client.post('/datasets-analysis/upload', files={'dataset_files': ('logs.csv', io.BytesIO(csv_bytes(rows, header)), 'text/csv')},
                 data={'dataset_kinds': 'l3_dt_logs'}, follow_redirects=False)
     with_log = dta()
-    assert with_log['dta_rule_key'] == 'l3-lte-coverage', with_log
+    # The radio of the failed side (the worst of its UEs) at the failure, from the log.
+    assert with_log['dta_rule_key'] == 'side-lte-coverage', with_log
     assert (with_log['dta_category'], with_log['dta_cause']) == ('Poor Coverage LTE', 'Coverage')
-    assert 'LTE RSRP at the failure (log)' in with_log['dta_evidence']
+    assert 'LTE RSRP of the failed side (Layer3 Log, at the failure)' in with_log['dta_evidence']
     assert 'Layer3 Logs: 5G EN-DC - SCG Failure NR SCG 2 s before the end' in with_log['dta_evidence']
     # Deleting the log calculates the calls of its campaign again, without it.
     dataset = next(item for item in l3_datasets())

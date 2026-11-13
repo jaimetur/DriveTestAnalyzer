@@ -511,7 +511,7 @@ def test_workspaces_with_rules_of_their_own_take_the_new_default_rules_and_catal
     keys = [rule['key'] for rule in nq_dta_rca.load_rules(core.repository)]
     # Its own rule stays first; each new rule follows the default rule before it.
     assert keys[0] == 'mine' and set(added) <= set(keys)
-    assert keys[keys.index('subscriber-identity') + 1:keys.index('authentication')] == ['core-resources', 'access-rejected']
+    assert keys[keys.index('l3-no-measurements') + 1:keys.index('authentication')] == ['core-resources', 'access-rejected']
     assert keys[keys.index('timeout') + 1:keys.index('timeout') + 3] == ['nr-cell-load', 'cell-load']
     root = nq.list_root_causes(core.repository)
     causes = {item['name']: item for item in root['causes']}
@@ -601,13 +601,13 @@ def test_the_radio_of_each_side_is_read_and_shown_apart():
         'A: LTE PCell RSRP=-108.5 dBm < RSRP_Low=-107 dBm; stronger inter-freq LTE NCell: EARFCN=1363.0, PCI=455.0, RSRP diff=15.5 dB '
         '> thr=10 dB. | B: NR PCell RSRP=-105.8 dBm >= RSRP_Low, SINR=-0.8 dB < SINR_Low=0 dB; no stronger intra-frequency NR NCell found.')
     assert ericsson['eri_neighbour_delta'] == 15.5
-    assert ericsson['eri_sides'] == {'A': {'lte_rsrp': -108.5, 'neighbour_delta': 15.5}, 'B': {'nr_rsrp': -105.8, 'nr_sinr': -0.8}}
+    assert ericsson['eri_sides'] == {'A': {'lte_rsrp': -108.5, 'lte_neighbour_delta': 15.5}, 'B': {'nr_rsrp': -105.8, 'nr_sinr': -0.8}}
     # The Failure Side of the CDR (MO = A, MT = B), else the failure description when it names one side only.
     assert nq_dta_rca.failed_side({}, {'failure_side': 'MT'}) == 'B'
     assert nq_dta_rca.failed_side({'failure_comment': 'MO active 4G AAA TAU reject. MO during call'}, {}) == 'A'
     assert nq_dta_rca.failed_side({'failure_comment': 'MO and MT dropped'}, {}) == ''
     assert nq_dta_rca.radio_line(ericsson, 'A') == ('Radio (Ericsson RCA, before the failure): A (failed side): LTE PCell RSRP −108.5 dBm; '
-                                                    'neighbour 15.5 dB above the PCell | B: NR PCell RSRP −105.8 dBm, SINR −0.8 dB')
+                                                    'strongest LTE neighbour 15.5 dB above the PCell | B: NR PCell RSRP −105.8 dBm, SINR −0.8 dB')
     # The Layer3 Log of each UE goes first; the RSRP at the failure is that of the side that failed, not the worst of both.
     sides = {'l3_sides': {'A': {'lte_rsrp': -95.0}, 'B': {'lte_rsrp': -120.0}}, 'l3_lte_rsrp_end': -120.0, 'cells_out_of_service': 1}
     assert evaluate({}, {**sides, 'failure_side': 'MO'})['rule_key'] != 'cell-outage'
@@ -634,3 +634,63 @@ def test_importing_or_deleting_the_ericsson_rca_calculates_its_calls_again(clien
     nq.clear_rca_results(core.repository, 'admin')
     query(client)
     assert 'Ericsson RCA' not in detail(client, calls['0xC3'])['values']['dta_rca_evidence']
+
+
+def test_the_radio_of_the_failed_and_the_other_side_decides_before_the_causes_the_provider_reports():
+    lte_handover = {'l3_sides': {'A': {'lte_rsrp': -108.48, 'lte_sinr': -3.57, 'tx_power': 17.7, 'lte_neighbour_delta': 4.9},
+                                 'B': {'nr_rsrp': -105.84, 'nr_sinr': -0.83, 'tx_power': 21.5}}}
+    ericsson = nq_dta_rca.ericsson_inputs('A: LTE PCell RSRP=-108.5 dBm < RSRP_Low=-107 dBm; stronger inter-freq LTE NCell: EARFCN=1363.0, '
+                                          'PCI=455.0, RSRP diff=15.5 dB > thr=10 dB. | B: NR PCell RSRP=-105.8 dBm >= RSRP_Low, SINR=-0.8 dB')
+    # A TAU reject on the caller (MO) whose radio had a much stronger neighbour: a missing handover, before the IMSI issue.
+    tau = {'service': 'voice', 'failure_classification': 'AAA Problems', 'failure_category': 'Tracking Area Update',
+           'failure_subcategory': 'UE identity cannot be derived by the network', 'failure_comment': 'MO active 4G AAA TAU reject.'}
+    found = evaluate(tau, {**ericsson, **lte_handover})
+    assert (found['rule_key'], found['category'], found['cause']) == ('side-lte-handover', 'Mobility LTE', 'Missing or late handover')
+    lines = found['evidence'].split('\n')
+    # The highest neighbour of both sources (the Ericsson RCA found one on another frequency), the SINR of the log.
+    assert lines[0] == ('Strongest LTE neighbour above the PCell of the failed side (UE A, Ericsson RCA, before the failure) 15.5 dB '
+                        '(≥ 3 dB); LTE SINR of the failed side (UE A, Layer3 Log, at the failure) −3.57 dB (< 3 dB)')
+    assert lines[1].startswith('Provider description: AAA Problems · Tracking Area Update')
+    assert lines[2].startswith('Radio (Layer3 Log, at the failure): A (failed side): ') and lines[3].startswith('Radio (Ericsson RCA')
+    # No QCI1 on the caller with good radio, the called side (B) with a neighbour as strong as its PCell and a low SINR.
+    qci1 = {'service': 'voice', 'failure_classification': 'VoLTE Problems', 'failure_category': 'VoLTE Core',
+            'failure_subcategory': 'No QCI1 bearer activation'}
+    sides = {'failure_side': 'MO', 'l3_sides': {'A': {'lte_rsrp': -68.08, 'lte_sinr': 3.66, 'tx_power': -10, 'lte_neighbour_delta': 0.35},
+                                                'B': {'lte_rsrp': -100.28, 'lte_sinr': -1.54, 'tx_power': 19, 'lte_neighbour_delta': -2.6}}}
+    found = evaluate(qci1, sides)
+    assert (found['rule_key'], found['category'], found['cause']) == ('peer-lte-dominance', 'DL Interference LTE', 'Lack of dominant cell')
+    assert 'strongest LTE neighbour 2.6 dB below the PCell' in found['evidence']
+    # Without a neighbour as strong, a low SINR is interference; with good radio on both sides the provider's cause stays.
+    sides['l3_sides']['B'].pop('lte_neighbour_delta')
+    assert evaluate(qci1, sides)['rule_key'] == 'peer-lte-interference'
+    sides['l3_sides']['B'].update(lte_sinr=6.0)
+    assert evaluate(qci1, sides)['rule_key'] == 'qci1'
+    # The other side only counts when the failed side is known; a Data test reads the worst of its sides.
+    assert evaluate(qci1, {'l3_sides': {'B': {'lte_rsrp': -100.0, 'lte_sinr': -1.5}}})['rule_key'] == 'side-lte-interference'
+    assert evaluate({'service': 'data'}, {'l3_lte_rsrp_end': -112.0})['rule_key'] == 'side-lte-coverage'
+    # The UE at high power with good coverage: uplink interference.
+    assert evaluate({}, {'failure_side': 'MT', 'l3_sides': {'B': {'lte_rsrp': -90.0, 'lte_sinr': 8.0, 'tx_power': 23.0}}})['rule_key'] == (
+        'side-uplink-interference')
+
+
+def test_workspaces_with_rules_of_their_own_take_the_radio_of_the_sides_in_the_default_order(client, tmp_path):
+    setup_calls(client, tmp_path)
+    defaults = nq_dta_rca.default_rules()
+    # The rules as the default rules were before engine 8: the network after Session in GSM, the identity after the log rule.
+    former = [rule for rule in defaults if rule['key'] not in nq_dta_rca.SIDE_RULE_KEYS]
+    keys = [rule['key'] for rule in former]
+    network = [rule for rule in former if rule['key'] in nq_dta_rca.NETWORK_RULE_KEYS]
+    former = [rule for rule in former if rule['key'] not in nq_dta_rca.NETWORK_RULE_KEYS]
+    gsm = [rule['key'] for rule in former].index('session-in-gsm') + 1
+    former[gsm:gsm] = network
+    identity = former.pop([rule['key'] for rule in former].index('subscriber-identity'))
+    former.insert([rule['key'] for rule in former].index('l3-no-measurements') + 1, identity)
+    assert [rule['key'] for rule in former] != keys
+    core.repository.set_workspace_state(nq_dta_rca.RULES_STATE_KEY, json.dumps(former))
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V45_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(core.repository)
+    assert [rule['key'] for rule in nq_dta_rca.load_rules(core.repository)] == [rule['key'] for rule in defaults]
+    messages = [json.loads(row['details'])['message'] for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_dta_rca_rules']
+    assert 'Default rules of the DT Analyzer RCA moved in the rules of the workspace.' in messages
+    assert 'New default rules of the DT Analyzer RCA added to the rules of the workspace.' in messages
