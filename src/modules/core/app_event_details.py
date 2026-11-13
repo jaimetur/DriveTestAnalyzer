@@ -459,6 +459,105 @@ _NQ_DESCRIBERS: dict[str, Callable[[Any], str]] = {
 }
 
 
+# -- PPT Designer --------------------------------------------------------------------------------------------------------
+
+def _design(details: dict[str, Any]) -> str:
+    name = details.get('name') or details.get('design') or details.get('id') or ''
+    return f'PPT Design "{name}"'
+
+
+def _listed_changes(changes: Any) -> str:
+    """The changes of a slide set, one after the other (each already a text)."""
+    if isinstance(changes, dict):
+        return changes_text(changes)
+    return '; '.join(str(item) for item in changes or [])
+
+
+def _save_design(subject: str) -> Callable[[dict[str, Any]], str]:
+    def describe(details: dict[str, Any]) -> str:
+        about = ', '.join(part for part in (f"NR Mode {details['nr_mode']}" if details.get('nr_mode') else '',
+                                            f"template {details['template']}" if details.get('template') else '') if part)
+        name = f'{subject} "{details.get("name") or details.get("id") or ""}"'
+        if details.get('created'):
+            return f'{name} created' + (f' ({about}).' if about else '.')
+        if 'changes' not in details:
+            return f'{name} saved' + (f' ({about}).' if about else '.')
+        changes = changes_text(details.get('changes'))
+        return f'{name} saved' + (f': {changes}.' if changes else ' with no change of its selection.')
+    return describe
+
+
+def _design_slides_saved(details: dict[str, Any]) -> str:
+    parts = []
+    if 'changes' in details:
+        parts.append(_listed_changes(details['changes']) or 'no change of its slides')
+    template = details.get('template') if isinstance(details.get('template'), dict) else None
+    if template:
+        parts.append(f'its template "{template.get("name")}" saved too, followed by {template.get("designs", 0)} PPT Designs'
+                     + (f': {_listed_changes(template["changes"])}' if template.get('changes') else ''))
+    if not parts and isinstance(details.get('overrides'), dict):
+        parts.append(f"overrides {value_text(details['overrides'])}")
+    return f'Slides of the {_design(details)} saved in the Designer' + (f": {'; '.join(parts)}." if parts else '.')
+
+
+def _design_comments(details: dict[str, Any]) -> str:
+    changes = details.get('changes')
+    if not isinstance(changes, dict):
+        return f'Comments of the {_design(details)} saved.'
+    parts = []
+    for slide, change in changes.items():
+        items = [*(f'+"{value_text(text)}"' for text in (change or {}).get('added') or []),
+                 *(f'−"{value_text(text)}"' for text in (change or {}).get('removed') or [])]
+        parts.append(f"slide {slide} {', '.join(items) or 'reordered'}")
+    return _sentence(f'Comments of the {_design(details)}', parts, 'saved with no changes')
+
+
+def _designer_opened(details: dict[str, Any]) -> str:
+    rights = [part for part in ('This Design' if details.get('can_change_design') else '',
+                                'its Template' if details.get('can_change_template') else '') if part]
+    where = (' (detached from its template)' if details.get('detached')
+             else f" (template {details['template']})" if details.get('template') else '')
+    return f"Designer opened on the {_design(details)}{where}: can change {', '.join(rights) or 'nothing (read only)'}."
+
+
+def _chart_added(details: dict[str, Any], target: str) -> str:
+    return (f'{details.get("chart_type") or "Chart"} "{details.get("chart")}" ({details.get("source")}) added to '
+            f'{"a new slide" if details.get("new_slide") else "the slide"} "{details.get("slide")}" of the {target}')
+
+
+_PPT_DESIGNER_DESCRIBERS: dict[str, Callable[[Any], str]] = {
+    'save_design': _save_design('PPT Design'),
+    'save_template_preview': _save_design('PPT Template preview'),
+    'design_opened': lambda details: (
+        f"{_design(details)} opened in the viewer" + (f" on slide {details['slide']}" if details.get('slide') else '')
+        + (f" with {details['charts']} charts" if details.get('charts') else '')
+        + (' (restored)' if details.get('restored') else '')
+        + (f", prepared in {details['prepared_seconds']} s" if details.get('prepared_seconds') is not None else '') + '.'),
+    'design_designer_opened': _designer_opened,
+    'design_edited': lambda details: (
+        f"{_design(details)} edited in the Designer ({'Template' if details.get('scope') == 'template' else 'This Design'} scope, "
+        f"not saved yet): {_listed_changes(details.get('changes'))}."),
+    'design_slides_saved': _design_slides_saved,
+    'report_template_saved_from_designer': lambda details: (
+        f'PPT Template "{details.get("name")}" saved from the Designer, followed by {details.get("designs", 0)} PPT Designs'
+        + (f': {_listed_changes(details["changes"])}.' if details.get('changes') else '.')),
+    'design_draft_discarded': lambda details: f"Unsaved changes of the {_design(details)} discarded in the Designer.",
+    'rename_design': lambda details: (f'PPT Design "{details["previous_name"]}" renamed to "{details.get("name")}".'
+                                      if details.get('previous_name') else f'PPT Design {details.get("id")} renamed to "{details.get("name")}".'),
+    'delete_design': lambda details: f"{_design(details)} deleted" + (f" (template {details['template']})." if details.get('template') else '.'),
+    'change_design_template': lambda details: _sentence(_design(details), [
+        f"NR Mode {details.get('previous_nr_mode')} → {details.get('nr_mode')}" if details.get('previous_nr_mode') != details.get('nr_mode') else '',
+        f"template {details.get('previous_template')} → {details.get('template')}" if details.get('previous_template') != details.get('template') else '',
+        'its own slide changes dropped' if details.get('dropped_slide_overrides') or details.get('detached_before') else '']),
+    'design_chart_added': lambda details: _chart_added(details, _design(details)) + '.',
+    'template_chart_added': lambda details: (
+        _chart_added(details, f'PPT Template "{details.get("template")}"') + f', followed by {details.get("designs", 0)} PPT Designs.'),
+    'design_chart_refreshed': lambda details: (
+        f'Chart "{details.get("chart")}" ({details.get("chart_type")}) of the slide {details.get("slide")} of the {_design(details)} refreshed.'),
+    'save_design_comments': _design_comments,
+}
+
+
 _DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'demo_mode_started': lambda details: (f"Demo Mode started until {details.get('expected_end')}, with access for "
                                           f"{_demo_users(details)}."),
@@ -515,6 +614,7 @@ _DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'save_scheduled_backup_settings': _settings('Scheduled backups'),
     'save_backup_selection': _settings('Backup selection'),
     **_NQ_DESCRIBERS,
+    **_PPT_DESIGNER_DESCRIBERS,
 }
 
 

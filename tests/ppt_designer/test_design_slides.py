@@ -236,6 +236,9 @@ def test_the_designer_reads_saves_and_previews_a_design_slides(client):
     # Reading it gave the template ids of its own (the positional ones it was read with).
     assert b',Format\n' in core.repository.report_template_content('Design test').split(b'\n', 1)[0] + b'\n'
     assert logged('report_template_slide_ids_assigned')[-1]['template'] == 'Design test'
+    # App Events records the Designer opened, with what the user can change.
+    assert logged('design_designer_opened')[0] == {'id': 'design-a', 'name': definition['name'], 'template': 'Design test',
+                                                     'detached': False, 'can_change_design': True, 'can_change_template': True}
 
     prepared = client.post('/api/ppt-designer/prepare', json=definition)
     assert prepared.status_code == 200, prepared.text
@@ -250,12 +253,27 @@ def test_the_designer_reads_saves_and_previews_a_design_slides(client):
     chart = client.get(f"/api/ppt-designer/chart/{preview.json()['token']}/0")
     assert chart.status_code == 200, chart.text
 
+    # Each edit kept as a draft is recorded with what it changed since the previous one (the first since the saved slides).
+    retitled = copy.deepcopy(body['slide_set'])
+    retitled['slides'][0]['title'] = 'Comparison in London'
+    assert client.put('/api/ppt-designer/design-a/slides/draft', json={'state': {'slide_set': retitled, 'scope': 'design'}}).status_code == 200
+    assert client.put('/api/ppt-designer/design-a/slides/draft', json={'state': {'slide_set': edited, 'scope': 'design'}}).status_code == 200
+    second, first = logged('design_edited')[:2]  # newest first
+    assert first['first_edit'] and first['changes'] == ['slide 1 "Comparison in London": title Comparison → Comparison in London']
+    assert not second['first_edit'] and second['changes'] == ['slide 2 "Next": hidden']
+    from src.modules.core.app_event_details import describe_app_event
+    assert describe_app_event('design_edited', second) == (
+        f'PPT Design "{definition["name"]}" edited in the Designer (This Design scope, not saved yet): slide 2 "Next": hidden.')
+
     saved = client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited, 'overrides': body['overrides']})
     assert saved.status_code == 200, saved.text
     assert saved.json()['summary']['slide_properties'] == 1 and saved.json()['summary']['hidden_slides'] == 1
     assert logged('design_slides_saved')[-1]['overrides']['hidden_slides'] == 1
+    assert logged('design_slides_saved')[0]['changes'] == [
+        'slide 1 "Comparison in London": title Comparison → Comparison in London', 'slide 2 "Next": hidden']
     # Saving its filters from a viewer opened before keeps its Design; its sibling follows the template as it is.
     assert client.put('/api/ppt-designer/design-a', json={**definition, 'filters': {'City': ['London']}}).status_code == 200
+    assert logged('save_design')[0]['changes']['filters.City'] == [None, ['London']]
     assert stored('design-a')['slide_overrides']['hidden_slides']
     mine = client.post('/api/ppt-designer/prepare', json={**definition, 'slide_overrides': stored('design-a')['slide_overrides']})
     assert [slide['title'] for slide in mine.json()['slides']] == ['Comparison in London']

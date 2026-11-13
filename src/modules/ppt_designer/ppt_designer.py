@@ -28,6 +28,7 @@ from uuid import uuid4
 import pandas as pd
 from src.modules.cdr.column_names import campaign_sort_key, column_identity, compact_campaign_value, sort_vendor_values, vendor_filter_column, vendor_filter_value, vendor_filter_values, vendor_match_values
 from src.modules.ppt_designer import ppt_design_cache
+from src.modules.core.app_event_details import changed_values
 from src.modules.reporting import report_structure
 from src.modules.core.deletion_rights import (
     PPT_DESIGNER, can_change_owned, change_refusal, creator_of, creators, forget_creator, record_creator,
@@ -3614,6 +3615,15 @@ def install_design_routes(core):
         }))
         return {'id': design_id, 'definition': {**stored, 'template_preview': True, 'created_by': user.username}}
 
+    # The parts of a Design its selection does not save (its slides, comments and their notes), left out of its changes.
+    SELECTION_SKIPPED = ('slide_overrides', 'own_slides', 'slide_comments', 'slide_comment_meta', 'datasets')
+
+    def design_selection_changes(previous, saved) -> dict[str, list[Any]]:
+        """What a save of a Design changed of its selection (NR Mode, campaigns, filters, dates, scope…), ``{name: [before,
+        after]}`` for App Events; its slides and comments have events of their own."""
+        strip = lambda item: {key: value for key, value in (item or {}).items() if key not in SELECTION_SKIPPED}
+        return changed_values(strip(previous), strip(saved))
+
     @app.put('/api/ppt-designer/{design_id}')
     def save_design(design_id: str, definition: DesignDefinition, user=Depends(design_editor_user)):
         workspace_key()
@@ -3656,7 +3666,8 @@ def install_design_routes(core):
             update_fields = {} if preview else design_update_of(task_repository, design_id)
             task_repository.add_log(user.username, 'save_template_preview' if preview else 'save_design', json.dumps({
                 'id': design_id, 'name': definition.name, 'nr_mode': definition.nr_mode, 'template': definition.template,
-            }))
+                **({'created': True} if created else {'changes': design_selection_changes(previous, saved_definition)}),
+            }, ensure_ascii=False, default=str))
         # As the list gives it, with who created it (and that the user changes it): the page compares it with the Design
         # it has open.
         return {'id': design_id, 'definition': {**saved_definition, 'created_by': creator, 'can_change': True}, **update_fields}
@@ -3673,10 +3684,12 @@ def install_design_routes(core):
                 raise HTTPException(404, 'Design not found.')
             ensure_design_changeable(user, design_id, task_repository)
             ensure_unique_design_name(designs, design_id, name)
+            previous_name = str(designs[design_id].get('name') or '')
             designs[design_id]['name'] = name
             task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
             record_design_update(task_repository, [design_id], user.username)
-            task_repository.add_log(user.username, 'rename_design', json.dumps({'id': design_id, 'name': name}))
+            task_repository.add_log(user.username, 'rename_design', json.dumps({'id': design_id, 'name': name, 'previous_name': previous_name},
+                                                                                ensure_ascii=False))
             update_fields = design_update_of(task_repository, design_id)
         return {'id': design_id, 'name': name, **update_fields}
 
@@ -3741,11 +3754,14 @@ def install_design_routes(core):
             if design_id not in designs:
                 raise HTTPException(404, 'Design not found.')
             ensure_design_changeable(user, design_id, task_repository, 'delete')
+            deleted_name = str(designs[design_id].get('name') or '')
+            deleted_template = str(designs[design_id].get('template') or '')
             del designs[design_id]
             task_repository.set_workspace_state(STATE_KEY, json.dumps(designs))
             forget_creator(task_repository, PPT_DESIGNER, design_id)
             forget_design_update(task_repository, design_id)
-            task_repository.add_log(user.username, 'delete_design', json.dumps({'id': design_id}))
+            task_repository.add_log(user.username, 'delete_design', json.dumps({'id': design_id, 'name': deleted_name,
+                                                                                'template': deleted_template}, ensure_ascii=False))
         return {'deleted': True}
 
     @app.post('/api/ppt-designer/order')
@@ -4085,6 +4101,12 @@ def install_design_routes(core):
                 template, _entries = template_slide_set(definition.template, task_repository)
             if template is None:
                 raise HTTPException(400, 'The selected template is no longer available.')
+        if edit:
+            task_repository.add_log(user.username, 'design_designer_opened', json.dumps({
+                'id': design_id, 'name': definition.name, 'template': definition.template, 'detached': bool(definition.own_slides),
+                'can_change_design': can_edit_design_slides(user, design_id, task_repository),
+                'can_change_template': bool(template_row is not None and can_edit_template_slides(user, template_row)),
+            }, ensure_ascii=False))
         return slide_set_payload(design_id, definition, task_repository, user, template=template, template_row=template_row)
 
     @app.post('/api/ppt-designer/slides/preview')
@@ -4184,6 +4206,7 @@ def install_design_routes(core):
             details['template'] = {
                 'name': definition.template, 'before': design_slides.slides_summary(previous_slide_set),
                 'after': design_slides.slides_summary(template),
+                'changes': design_slides.slide_set_changes(previous_slide_set, template),
                 'designs': sum(1 for item in read_designs(task_repository).values()
                                   if isinstance(item, dict) and not item.get('own_slides') and item.get('template') == definition.template),
             }
@@ -4214,12 +4237,13 @@ def install_design_routes(core):
                     write_design_slides(design_id, task_repository, user.username, slide_overrides=stored))
                 details['overrides'] = design_slides.overrides_summary(stored)
             _base, after, _report = design_slides_state(definition, task_repository, template)
+            details['changes'] = design_slides.slide_set_changes(before, after)
             # Its slides retitled here keep their comments.
             reconcile_template_slide_comments(definition.template, design_slides.entries_from_slides(before),
                                               design_slides.entries_from_slides(after), task_repository,
                                               design_ids={design_id})
         if len(details) > 2:
-            task_repository.add_log(user.username, 'design_slides_saved', json.dumps(details))
+            task_repository.add_log(user.username, 'design_slides_saved', json.dumps(details, ensure_ascii=False))
         # Saved: the draft of this user is the slide set now.
         ensure_design_drafts(task_repository)
         with task_repository.connection() as connection:
@@ -4464,15 +4488,43 @@ def install_design_routes(core):
             state = None
         return {'draft': state, 'updated_at': str(row['updated_at'])}
 
+    def log_design_edit(task_repository, username: str, design_id: str, definition, previous_state, state) -> None:
+        """App Event of an edit in the Designer (not saved yet): the changes of its slide set since the previous edit, or
+        since the slides saved for the first edit."""
+        try:
+            previous = json.loads(previous_state) if isinstance(previous_state, str) else None
+            new_slides = state.get('slide_set') if isinstance(state, dict) else None
+            if not isinstance(new_slides, dict):
+                return
+            old_slides = previous.get('slide_set') if isinstance(previous, dict) else None
+            if not isinstance(old_slides, dict):
+                old_slides = design_slides_state(definition, task_repository)[1]
+            changes = design_slides.slide_set_changes(old_slides, new_slides)
+            if not changes:
+                return
+            task_repository.add_log(username, 'design_edited', json.dumps({
+                'id': design_id, 'name': definition.name, 'template': definition.template,
+                'scope': 'template' if state.get('scope') == 'template' else 'design',
+                'first_edit': previous is None, 'changes': changes,
+            }, ensure_ascii=False))
+        except (HTTPException, ValueError, TypeError, KeyError, AttributeError, sqlite3.Error):
+            pass  # The draft is kept; only its App Event is missing.
+
     @app.put('/api/ppt-designer/{design_id}/slides/draft')
     def save_design_slides_draft(design_id: str, payload: DesignSlidesDraft, user=Depends(design_editor_user)):
+        """Keep the unsaved slide set of the Designer, a moment after each change: App Events records each edit with what
+        it changed since the previous one (or since the slides saved)."""
         task_repository = bound_repository()
-        stored_design(design_id, task_repository)
+        definition = stored_design(design_id, task_repository)
         encoded = json.dumps(payload.state)
         if len(encoded) > 8_000_000:
             raise HTTPException(413, 'The slides are too large to keep as a draft.')
         ensure_design_drafts(task_repository)
         now = datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')
+        with task_repository.connection() as connection:
+            row = connection.execute(f'SELECT state FROM {DESIGN_DRAFTS_TABLE} WHERE design_id = ? AND username = ?',
+                                     (design_id, user.username)).fetchone()
+        log_design_edit(task_repository, user.username, design_id, definition, row['state'] if row else None, payload.state)
         with task_repository.connection() as connection:
             connection.execute(
                 f'INSERT INTO {DESIGN_DRAFTS_TABLE} (design_id, username, state, updated_at) VALUES (?, ?, ?, ?) '
@@ -4533,7 +4585,13 @@ def install_design_routes(core):
             store_design_entry(task_repository, design_id, designs[design_id])
             if not is_template_preview(design_id) and saved != previous_comments:
                 record_design_update(task_repository, [design_id], user.username)
-            task_repository.add_log(user.username, 'save_design_comments', json.dumps({'id': design_id}))
+            task_repository.add_log(user.username, 'save_design_comments', json.dumps({
+                'id': design_id, 'name': designs[design_id].get('name', ''),
+                'changes': {slide: {'added': [text for text in saved.get(slide, []) if text not in (previous_comments.get(slide) or [])][:10],
+                                    'removed': [text for text in previous_comments.get(slide) or [] if text not in saved.get(slide, [])][:10]}
+                            for slide in dict.fromkeys([*previous_comments, *saved])
+                            if (previous_comments.get(slide) or []) != saved.get(slide, [])},
+            }, ensure_ascii=False))
             if payload.generated_added and payload.generated_slide:
                 task_repository.add_log(user.username, 'add_generated_design_comments', json.dumps({
                     'id': design_id, 'name': designs[design_id].get('name', ''), 'slide': payload.generated_slide,

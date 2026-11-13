@@ -497,7 +497,14 @@ Pictures are kept in the table **PPT Images** and travel with the PPT Designs an
 
 The Designs and templates of another admin or super-admin (and the starter ones, which belong to `super`) are changed only by their creator and super-admins (see [Who changes a Design](#who-changes-a-design)).
 
-App Events record `design_slides_saved` (what changed: slides and charts of the template, differences of the Design), `report_template_saved_from_designer`, `report_template_slide_ids_assigned`, `design_detached`, `report_template_saved_from_design`, `design_draft_discarded` and `design_image_uploaded`.
+App Events record what each user does in the Designer, each event read as a sentence:
+
+- `design_designer_opened`: the Designer opened on a Design, with its template and what the user can change (This Design, its Template).
+- `design_edited`: each edit while it is not saved yet (kept as a draft a moment after the change), with what it changed since the previous edit (the first one since the slides saved): slides added, removed, moved, hidden or shown, their title, subtitle and layout; charts, tables, KPI cards, texts and pictures added, removed and moved; and each property from what to what (chart type, KPI, filters, splits, legend, labels, axes, style, text). For example *slide 2 "Voice": chart "CSSR" chart type bar → line*.
+- `design_slides_saved`: the slides saved, with every change against what was saved before (of the Design, and of its template when the Template scope was saved too); `report_template_saved_from_designer` names the Designs that follow that template.
+- `design_draft_discarded`, `report_template_slide_ids_assigned`, `design_detached`, `report_template_saved_from_design` and `design_image_uploaded`.
+
+The other changes of a Design are recorded with what they changed as well: `save_design` (Save Filters: each part of its selection from what to what, such as its NR Mode, Campaign, filters and dates), `rename_design` (the name before and after), `change_design_template`, `delete_design` (its name and template), `design_chart_added`, `design_chart_refreshed` and `save_design_comments` (the comments added and removed on each slide). Opening a Design in the viewer is recorded as `design_opened`.
 
 ### Template parameters
 

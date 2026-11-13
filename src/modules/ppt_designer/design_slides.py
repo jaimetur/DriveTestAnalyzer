@@ -813,6 +813,107 @@ def apply_parameters(entries: list[CatalogEntry], parameters: list[dict[str, Any
     return result
 
 
+# What App Events says of a slide set that changed: at most this many changes, and texts and values cut to this length.
+MAX_LISTED_CHANGES = 40
+CHANGE_TEXT_LENGTH = 120
+# Marks the Designer and the resolution add to a slide set, which are not changes of their own.
+_RESOLVED_MARKS = {'origin', 'overridden', 'id', 'elements', 'place'}
+
+
+def _change_text(value: Any) -> str:
+    if value is None or value == '' or value == [] or value == {}:
+        return 'none'
+    if isinstance(value, bool):
+        return 'yes' if value else 'no'
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, sort_keys=True)
+    text = ' '.join(str(text).split())
+    return text if len(text) <= CHANGE_TEXT_LENGTH else text[:CHANGE_TEXT_LENGTH - 1] + '…'
+
+
+def _slide_name(slide: dict[str, Any], number: int) -> str:
+    title = ' '.join(str(slide.get('title') or '').split())
+    return f'slide {number} "{title}"' if title else f"slide {number} ({slide.get('kind') or 'content'})"
+
+
+def _element_name(element: dict[str, Any]) -> str:
+    kind = str(element.get('kind') or 'chart')
+    title = ' '.join(str(element.get('chart_title') or element.get('kpi') or '').split())
+    if not title and isinstance(element.get('content'), str):
+        title = _change_text(element['content'])[:40]
+    return f'{kind} "{title}"' if title else kind
+
+
+def _property_changes(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    """``chart type bar → line``: the properties that differ, by name (styles compared one value at a time)."""
+    parts = []
+    for name in sorted((set(before) | set(after)) - _RESOLVED_MARKS):
+        old, new = before.get(name), after.get(name)
+        if isinstance(old, dict) and isinstance(new, dict) and name == 'style':
+            parts.extend(f"style {key} {_change_text(old.get(key))} → {_change_text(new.get(key))}"
+                         for key in sorted(set(old) | set(new)) if old.get(key) != new.get(key))
+        elif (old or None) != (new or None) and old != new:
+            if name == 'hidden':
+                parts.append('hidden' if new else 'shown again')
+            elif name == 'optional_off':
+                parts.append('optional slide left out' if new else 'optional slide shown')
+            else:
+                parts.append(f"{name.replace('_', ' ')} {_change_text(old)} → {_change_text(new)}")
+    return parts
+
+
+def slide_set_changes(before: dict[str, Any] | None, after: dict[str, Any] | None) -> list[str]:
+    """What changed between two slide sets, one readable text each, for App Events: the slides added, removed, moved
+    and changed (title, layout, hidden…), their charts, tables, texts and images added, removed, moved and changed (each
+    property from what to what) and the parameters."""
+    before, after = before or {}, after or {}
+    old_slides = [slide for slide in before.get('slides') or [] if isinstance(slide, dict)]
+    new_slides = [slide for slide in after.get('slides') or [] if isinstance(slide, dict)]
+    old_by_id = {slide.get('id'): (number, slide) for number, slide in enumerate(old_slides, 1)}
+    new_ids = {slide.get('id') for slide in new_slides}
+    changes: list[str] = []
+    for number, slide in enumerate(new_slides, 1):
+        name = _slide_name(slide, number)
+        if slide.get('id') not in old_by_id:
+            changes.append(f'{name} added' + (f" with {len(slide.get('elements') or [])} elements" if slide.get('elements') else ''))
+            continue
+        old_number, old_slide = old_by_id[slide.get('id')]
+        kept_before = [item.get('id') for item in old_slides if item.get('id') in new_ids]
+        kept_after = [item.get('id') for item in new_slides if item.get('id') in old_by_id]
+        if kept_before.index(slide.get('id')) != kept_after.index(slide.get('id')):
+            changes.append(f'{name} moved from position {old_number}')
+        changes.extend(f'{name}: {part}' for part in _property_changes(old_slide, slide))
+        old_elements = {item.get('id'): item for item in old_slide.get('elements') or [] if isinstance(item, dict)}
+        new_elements = [item for item in slide.get('elements') or [] if isinstance(item, dict)]
+        for element in new_elements:
+            previous = old_elements.get(element.get('id'))
+            if previous is None:
+                details = ', '.join(part for part in (
+                    f"type {element['chart_type']}" if element.get('chart_type') and element.get('kind', 'chart') == 'chart' else '',
+                    f"KPI {element['kpi']}" if element.get('kpi') else '', f"source {element['cdr_source']}" if element.get('cdr_source') else '')
+                    if part)
+                changes.append(f'{name}: {_element_name(element)} added' + (f' ({details})' if details else ''))
+                continue
+            if previous.get('place') != element.get('place') and previous.get('place') is not None:
+                changes.append(f'{name}: {_element_name(element)} moved to place {element.get("place")}')
+            changes.extend(f'{name}: {_element_name(element)} {part}' for part in _property_changes(previous, element))
+        new_element_ids = {item.get('id') for item in new_elements}
+        changes.extend(f'{name}: {_element_name(item)} removed' for key, item in old_elements.items() if key not in new_element_ids)
+    changes.extend(f'{_slide_name(slide, number)} removed' for number, slide in enumerate(old_slides, 1) if slide.get('id') not in new_ids)
+    old_parameters = {str(item.get('name') or item.get('id') or index): item for index, item in enumerate(before.get('parameters') or [])
+                      if isinstance(item, dict)}
+    new_parameters = {str(item.get('name') or item.get('id') or index): item for index, item in enumerate(after.get('parameters') or [])
+                      if isinstance(item, dict)}
+    for key, item in new_parameters.items():
+        if key not in old_parameters:
+            changes.append(f'parameter {key} added')
+        else:
+            changes.extend(f'parameter {key}: {part}' for part in _property_changes(old_parameters[key], item))
+    changes.extend(f'parameter {key} removed' for key in old_parameters if key not in new_parameters)
+    if len(changes) > MAX_LISTED_CHANGES:
+        changes = changes[:MAX_LISTED_CHANGES] + [f'{len(changes) - MAX_LISTED_CHANGES} more changes']
+    return changes
+
+
 def slides_summary(slide_set: dict[str, Any]) -> dict[str, int]:
     slides = slide_set.get('slides') or []
     return {'slides': len(slides), 'elements': sum(len(slide.get('elements') or []) for slide in slides),
