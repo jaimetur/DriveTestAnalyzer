@@ -2362,4 +2362,11 @@
     guarded(async () => { if (await exitDesigner()) { syncDesignerButton(); $('ds-viewer-close').click(); } })();
   }, true);
   window.addEventListener('beforeunload', event => { if (state.active && dirty()) { event.preventDefault(); event.returnValue = ''; } });
+  // The height of the panel (folded or open), for the room the viewer keeps under the slide on phones (designer.css).
+  if ($('ds-design-panel') && typeof ResizeObserver === 'function') {
+    new ResizeObserver(() => {
+      const height = $('ds-design-panel').offsetHeight;
+      $('ds-viewer')?.style.setProperty('--ds-panel-room', `${height}px`);
+    }).observe($('ds-design-panel'));
+  }
 })();
