@@ -536,12 +536,14 @@ _PPT_DESIGNER_DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'design_designer_opened': _designer_opened,
     'design_edited': lambda details: (
         f"{_design(details)} edited in the Designer ({'Template' if details.get('scope') == 'template' else 'This Design'} scope, "
-        f"not saved yet): {_listed_changes(details.get('changes'))}."),
+        f"not saved yet" + (f", changes of the last {details['minutes_since_previous']} minutes" if details.get('minutes_since_previous')
+                            else '') + f"): {_listed_changes(details.get('changes'))}."),
     'design_slides_saved': _design_slides_saved,
     'report_template_saved_from_designer': lambda details: (
         f'PPT Template "{details.get("name")}" saved from the Designer, followed by {details.get("designs", 0)} PPT Designs'
         + (f': {_listed_changes(details["changes"])}.' if details.get('changes') else '.')),
-    'design_draft_discarded': lambda details: f"Unsaved changes of the {_design(details)} discarded in the Designer.",
+    'design_draft_discarded': lambda details: f"Unsaved changes of the {_design(details)} discarded in the Designer" + (
+        f": {_listed_changes(details['changes'])}." if details.get('changes') else '.'),
     'rename_design': lambda details: (f'PPT Design "{details["previous_name"]}" renamed to "{details.get("name")}".'
                                       if details.get('previous_name') else f'PPT Design {details.get("id")} renamed to "{details.get("name")}".'),
     'delete_design': lambda details: f"{_design(details)} deleted" + (f" (template {details['template']})." if details.get('template') else '.'),

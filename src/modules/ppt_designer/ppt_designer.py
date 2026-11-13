@@ -4102,6 +4102,7 @@ def install_design_routes(core):
             if template is None:
                 raise HTTPException(400, 'The selected template is no longer available.')
         if edit:
+            forget_design_edits(task_repository, user.username, design_id)
             task_repository.add_log(user.username, 'design_designer_opened', json.dumps({
                 'id': design_id, 'name': definition.name, 'template': definition.template, 'detached': bool(definition.own_slides),
                 'can_change_design': can_edit_design_slides(user, design_id, task_repository),
@@ -4244,6 +4245,7 @@ def install_design_routes(core):
                                               design_ids={design_id})
         if len(details) > 2:
             task_repository.add_log(user.username, 'design_slides_saved', json.dumps(details, ensure_ascii=False))
+        forget_design_edits(task_repository, user.username, design_id)
         # Saved: the draft of this user is the slide set now.
         ensure_design_drafts(task_repository)
         with task_repository.connection() as connection:
@@ -4488,32 +4490,55 @@ def install_design_routes(core):
             state = None
         return {'draft': state, 'updated_at': str(row['updated_at'])}
 
+    # The edits of the Designer are recorded in App Events as they go, but not each one: the first edit after opening the
+    # Designer, then at most one summary every DESIGN_EDIT_LOG_SECONDS with everything changed since the previous one; the
+    # save (or the discard) records the rest. What each user and Design was last recorded with, and when.
+    DESIGN_EDIT_LOG_SECONDS = 300
+    design_edit_logs: dict[tuple[str, str, str], tuple[float, dict]] = {}
+    design_edit_logs_lock = Lock()
+
+    def forget_design_edits(task_repository, username: str, design_id: str) -> None:
+        with design_edit_logs_lock:
+            design_edit_logs.pop((str(task_repository.db_path), username.casefold(), design_id), None)
+
     def log_design_edit(task_repository, username: str, design_id: str, definition, previous_state, state) -> None:
-        """App Event of an edit in the Designer (not saved yet): the changes of its slide set since the previous edit, or
-        since the slides saved for the first edit."""
+        """App Event of the edits in the Designer not saved yet (``design_edited``): the first one after opening the Designer,
+        then at most every DESIGN_EDIT_LOG_SECONDS, each with everything its slide set changed since the previous event (the
+        first since the slides saved, or since the draft restored)."""
         try:
-            previous = json.loads(previous_state) if isinstance(previous_state, str) else None
             new_slides = state.get('slide_set') if isinstance(state, dict) else None
             if not isinstance(new_slides, dict):
                 return
-            old_slides = previous.get('slide_set') if isinstance(previous, dict) else None
-            if not isinstance(old_slides, dict):
-                old_slides = design_slides_state(definition, task_repository)[1]
+            key, now = (str(task_repository.db_path), username.casefold(), design_id), monotonic()
+            with design_edit_logs_lock:
+                recorded = design_edit_logs.get(key)
+            if recorded is not None and now - recorded[0] < DESIGN_EDIT_LOG_SECONDS:
+                return
+            if recorded is not None:
+                old_slides = recorded[1]
+            else:
+                previous = json.loads(previous_state) if isinstance(previous_state, str) else None
+                old_slides = previous.get('slide_set') if isinstance(previous, dict) else None
+                if not isinstance(old_slides, dict):
+                    old_slides = design_slides_state(definition, task_repository)[1]
             changes = design_slides.slide_set_changes(old_slides, new_slides)
             if not changes:
                 return
             task_repository.add_log(username, 'design_edited', json.dumps({
                 'id': design_id, 'name': definition.name, 'template': definition.template,
                 'scope': 'template' if state.get('scope') == 'template' else 'design',
-                'first_edit': previous is None, 'changes': changes,
+                'first_edit': recorded is None,
+                **({'minutes_since_previous': round((now - recorded[0]) / 60)} if recorded is not None else {}),
+                'changes': changes,
             }, ensure_ascii=False))
+            with design_edit_logs_lock:
+                design_edit_logs[key] = (now, copy.deepcopy(new_slides))
         except (HTTPException, ValueError, TypeError, KeyError, AttributeError, sqlite3.Error):
             pass  # The draft is kept; only its App Event is missing.
 
     @app.put('/api/ppt-designer/{design_id}/slides/draft')
     def save_design_slides_draft(design_id: str, payload: DesignSlidesDraft, user=Depends(design_editor_user)):
-        """Keep the unsaved slide set of the Designer, a moment after each change: App Events records each edit with what
-        it changed since the previous one (or since the slides saved)."""
+        """Keep the unsaved slide set of the Designer, a moment after each change (App Events: see log_design_edit)."""
         task_repository = bound_repository()
         definition = stored_design(design_id, task_repository)
         encoded = json.dumps(payload.state)
@@ -4539,14 +4564,28 @@ def install_design_routes(core):
         task_repository = bound_repository()
         ensure_design_drafts(task_repository)
         with task_repository.connection() as connection:
+            draft = connection.execute(f'SELECT state FROM {DESIGN_DRAFTS_TABLE} WHERE design_id = ? AND username = ?',
+                                       (design_id, user.username)).fetchone() if discarded else None
             deleted = connection.execute(
                 f'DELETE FROM {DESIGN_DRAFTS_TABLE} WHERE design_id = ? AND username = ?',
                 (design_id, user.username),
             ).rowcount
+        forget_design_edits(task_repository, user.username, design_id)
         if discarded:
-            task_repository.add_log(user.username, 'design_draft_discarded', json.dumps({
-                'id': design_id, 'draft': bool(deleted),
-            }))
+            details: dict[str, Any] = {'id': design_id, 'draft': bool(deleted)}
+            try:
+                # What was discarded: the changes of the draft against the slides saved.
+                definition = stored_design(design_id, task_repository)
+                details['name'] = definition.name
+                state = json.loads(draft['state']) if draft is not None else None
+                if isinstance(state, dict) and isinstance(state.get('slide_set'), dict):
+                    details['changes'] = design_slides.slide_set_changes(design_slides_state(definition, task_repository)[1],
+                                                                         state['slide_set'])
+            except (HTTPException, ValueError, TypeError, sqlite3.Error):
+                pass
+            if not details.get('changes'):
+                details.pop('changes', None)
+            task_repository.add_log(user.username, 'design_draft_discarded', json.dumps(details, ensure_ascii=False))
         return {'deleted': bool(deleted)}
 
     @app.patch('/api/ppt-designer/{design_id}/comments')

@@ -222,7 +222,7 @@ def stored(design_id):
     return json.loads(core.repository.get_workspace_state('ppt_designs_v2'))[design_id]
 
 
-def test_the_designer_reads_saves_and_previews_a_design_slides(client):
+def test_the_designer_reads_saves_and_previews_a_design_slides(client, monkeypatch):
     definition = setup(client)
     assert client.get('/api/ppt-designer/design-a/slides').status_code == 200
     # Reading it alone leaves the template as it is; entering Design gives it ids of its own.
@@ -253,17 +253,29 @@ def test_the_designer_reads_saves_and_previews_a_design_slides(client):
     chart = client.get(f"/api/ppt-designer/chart/{preview.json()['token']}/0")
     assert chart.status_code == 200, chart.text
 
-    # Each edit kept as a draft is recorded with what it changed since the previous one (the first since the saved slides).
+    # The edits kept as drafts are recorded as they go but not each one: the first after opening the Designer, then at
+    # most one summary every 5 minutes with everything changed since the previous one.
+    from src.modules.ppt_designer import ppt_designer as designer_module
+    clock = [1000.0]
+    monkeypatch.setattr(designer_module, 'monotonic', lambda: clock[0])
     retitled = copy.deepcopy(body['slide_set'])
     retitled['slides'][0]['title'] = 'Comparison in London'
-    assert client.put('/api/ppt-designer/design-a/slides/draft', json={'state': {'slide_set': retitled, 'scope': 'design'}}).status_code == 200
-    assert client.put('/api/ppt-designer/design-a/slides/draft', json={'state': {'slide_set': edited, 'scope': 'design'}}).status_code == 200
-    second, first = logged('design_edited')[:2]  # newest first
+    draft = lambda slides: client.put('/api/ppt-designer/design-a/slides/draft', json={'state': {'slide_set': slides, 'scope': 'design'}})
+    assert draft(retitled).status_code == 200
+    unhidden = copy.deepcopy(edited)
+    unhidden['slides'][1].pop('hidden')
+    clock[0] += 60
+    assert draft(edited).status_code == 200 and draft(unhidden).status_code == 200 and draft(edited).status_code == 200
+    [first] = logged('design_edited')
     assert first['first_edit'] and first['changes'] == ['slide 1 "Comparison in London": title Comparison → Comparison in London']
-    assert not second['first_edit'] and second['changes'] == ['slide 2 "Next": hidden']
+    clock[0] += 300
+    assert draft(edited).status_code == 200
+    second = logged('design_edited')[0]  # newest first
+    assert not second['first_edit'] and second['minutes_since_previous'] == 6 and second['changes'] == ['slide 2 "Next": hidden']
     from src.modules.core.app_event_details import describe_app_event
     assert describe_app_event('design_edited', second) == (
-        f'PPT Design "{definition["name"]}" edited in the Designer (This Design scope, not saved yet): slide 2 "Next": hidden.')
+        f'PPT Design "{definition["name"]}" edited in the Designer (This Design scope, not saved yet, changes of the last 6 '
+        'minutes): slide 2 "Next": hidden.')
 
     saved = client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited, 'overrides': body['overrides']})
     assert saved.status_code == 200, saved.text
@@ -368,7 +380,15 @@ def test_drafts_layouts_and_previews_after_detaching(client):
     assert client.put('/api/ppt-designer/design-a/slides/draft', json={'state': {'slide_set': body['slide_set']}}).status_code == 200
     assert client.get('/api/ppt-designer/design-a/slides/draft').json()['draft']['slide_set'] == body['slide_set']
     assert client.delete('/api/ppt-designer/design-a/slides/draft?discarded=1').json() == {'deleted': True}
-    assert logged('design_draft_discarded')[-1] == {'id': 'design-a', 'draft': True}
+    # A discarded draft records what it discarded.
+    retitled = copy.deepcopy(body['slide_set'])
+    retitled['slides'][0]['title'] = 'Discarded title'
+    assert client.put('/api/ppt-designer/design-a/slides/draft', json={'state': {'slide_set': retitled}}).status_code == 200
+    assert client.delete('/api/ppt-designer/design-a/slides/draft?discarded=1').json() == {'deleted': True}
+    discarded = [json.loads(row['details']) for row in core.repository.list_logs() if row['action'] == 'design_draft_discarded'][0]
+    assert discarded['changes'] == [f'slide 1 "Discarded title": title {body["slide_set"]["slides"][0]["title"]} → Discarded title']
+    # The first one (oldest) discarded a draft without changes.
+    assert logged('design_draft_discarded')[-1] == {'id': 'design-a', 'draft': True, 'name': 'Design one'}
     # A preview starts from the Design saved now, even on a selection prepared before it was detached.
     prepared = client.post('/api/ppt-designer/prepare', json=definition).json()
     assert client.post('/api/ppt-designer/design-a/detach').status_code == 200
