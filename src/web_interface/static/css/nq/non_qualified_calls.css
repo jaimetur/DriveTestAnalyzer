@@ -983,7 +983,23 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .nq-source-card.is-comments { border-left-color: #6a63c9; }
 .nq-source-card.is-learned { border-left-color: #2e8b57; }
 .nq-source-card.is-dta { border-left-color: #8e24aa; }
-.nq-source-evidence { margin: 0; font-size: .76rem; line-height: 1.35; }
+/* The link of a source card to its evidence in the panel of the source below, and the field it flashes. */
+.nq-drawer .nq-source-card .nq-evidence-link { align-self: flex-start; min-height: 0; padding: .15rem .45rem; border: 1px solid var(--nq-border); border-radius: 6px; background: transparent; color: var(--nq-text); font-size: .72rem; font-weight: 650; text-transform: none; cursor: pointer; }
+.nq-drawer .nq-source-card .nq-evidence-link:hover { border-color: currentColor; }
+.nq-analysis-field.is-flashing { animation: nq-evidence-flash 1.6s ease-out; border-radius: 8px; }
+@keyframes nq-evidence-flash { 0%, 35% { box-shadow: 0 0 0 3px rgba(199, 119, 0, .55); } 100% { box-shadow: 0 0 0 3px transparent; } }
+/* The evidence of an RCA source: a line each, and each side of the call (UE A, UE B) in a block of its own. */
+.nq-evidence { display: grid; gap: .4rem; line-height: 1.4; }
+.nq-evidence-label { font-weight: 700; }
+.nq-evidence-sides { display: grid; gap: .35rem; margin-top: .25rem; }
+.nq-evidence-line > .nq-evidence-sides:first-child { margin-top: 0; }
+.nq-evidence-side { padding: .3rem .55rem .35rem; border-left: 3px solid #7b8790; border-radius: 0 6px 6px 0; background: color-mix(in srgb, var(--nq-softer) 75%, transparent); }
+.nq-evidence-side.is-failed { border-left-color: #c8102e; }
+.nq-evidence-side-head { display: flex; align-items: center; gap: .4rem; margin-bottom: .1rem; }
+.nq-evidence-side-tag { font-weight: 800; letter-spacing: .02em; }
+.nq-evidence-failed-tag { padding: 0 .4rem; border-radius: 999px; background: #c8102e; color: #fff; font-size: .7rem; font-weight: 700; }
+.nq-evidence-findings { margin: 0; padding-left: 1.2rem; }
+.nq-evidence-findings li + li { margin-top: .1rem; }
 .nq-source-card header { display: flex; justify-content: space-between; gap: .4rem; font-size: .84rem; }
 .nq-source-card header strong { color: var(--nq-dark); }
 .nq-source-raw { margin: 0; color: var(--nq-text); font-size: .8rem; font-weight: 650; }

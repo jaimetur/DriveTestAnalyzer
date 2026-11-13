@@ -570,7 +570,8 @@ def test_the_evidence_shows_the_radio_of_each_source_on_its_own_line():
     # Both sides: the worst radio of each technology, the highest power; no value of a side without measurements.
     assert nq_dta_rca.ericsson_inputs('A: NR PCell RSRP=-110.0 dBm < RSRP_Low=-107 dBm; no NCell found. | B: LTE PCell RSRP=-90.8 dBm, '
                                       'SINR=5.25, TxPower=nan; none matched. | C: Anchor Access = GSM; no radio') == {
-        'eri_nr_rsrp': -110.0, 'eri_lte_rsrp': -90.8, 'eri_lte_sinr': 5.25}
+        'eri_nr_rsrp': -110.0, 'eri_lte_rsrp': -90.8, 'eri_lte_sinr': 5.25,
+        'eri_sides': {'A': {'nr_rsrp': -110.0}, 'B': {'lte_rsrp': -90.8, 'lte_sinr': 5.25}}}
     assert nq_dta_rca.ericsson_inputs('') == {} and nq_dta_rca.provider_averages('No SYNCACK') == []
     # The Layer3 Log at the failure comes before the Ericsson RCA, which comes before the average of the CDR.
     logged = evaluate({}, {'l3_lte_rsrp_end': -119.0, 'l3_tx_max': 23.0, 'eri_lte_rsrp': -100.0, 'lte_rsrp': -90.0})
@@ -590,8 +591,32 @@ def test_the_rsrp_at_the_failure_reads_the_most_precise_source():
     # The Ericsson RCA values are inputs of the rules editor, never read from the CDR.
     groups = {item['key']: item['group'] for item in nq_dta_rca.inputs_catalog()}
     assert {key for key, group in groups.items() if group == 'Ericsson RCA'} == set(nq_dta_rca.ERICSSON_INPUTS) == {
-        'eri_lte_rsrp', 'eri_lte_sinr', 'eri_nr_rsrp', 'eri_nr_sinr', 'eri_tx_power'}
+        'eri_lte_rsrp', 'eri_lte_sinr', 'eri_nr_rsrp', 'eri_nr_sinr', 'eri_tx_power', 'eri_neighbour_delta'}
     assert not set(nq_dta_rca.ERICSSON_INPUTS) & set(nq_dta_rca.CDR_INPUTS)
+
+
+def test_the_radio_of_each_side_is_read_and_shown_apart():
+    # The Ericsson RCA writes each side of the call apart: A failed in LTE with a stronger neighbour, B measured NR.
+    ericsson = nq_dta_rca.ericsson_inputs(
+        'A: LTE PCell RSRP=-108.5 dBm < RSRP_Low=-107 dBm; stronger inter-freq LTE NCell: EARFCN=1363.0, PCI=455.0, RSRP diff=15.5 dB '
+        '> thr=10 dB. | B: NR PCell RSRP=-105.8 dBm >= RSRP_Low, SINR=-0.8 dB < SINR_Low=0 dB; no stronger intra-frequency NR NCell found.')
+    assert ericsson['eri_neighbour_delta'] == 15.5
+    assert ericsson['eri_sides'] == {'A': {'lte_rsrp': -108.5, 'neighbour_delta': 15.5}, 'B': {'nr_rsrp': -105.8, 'nr_sinr': -0.8}}
+    # The Failure Side of the CDR (MO = A, MT = B), else the failure description when it names one side only.
+    assert nq_dta_rca.failed_side({}, {'failure_side': 'MT'}) == 'B'
+    assert nq_dta_rca.failed_side({'failure_comment': 'MO active 4G AAA TAU reject. MO during call'}, {}) == 'A'
+    assert nq_dta_rca.failed_side({'failure_comment': 'MO and MT dropped'}, {}) == ''
+    assert nq_dta_rca.radio_line(ericsson, 'A') == ('Radio (Ericsson RCA, before the failure): A (failed side): LTE PCell RSRP −108.5 dBm, '
+                                                    'neighbour 15.5 dB above the PCell | B: NR PCell RSRP −105.8 dBm, SINR −0.8 dB')
+    # The Layer3 Log of each UE goes first; the RSRP at the failure is that of the side that failed, not the worst of both.
+    sides = {'l3_sides': {'A': {'lte_rsrp': -95.0}, 'B': {'lte_rsrp': -120.0}}, 'l3_lte_rsrp_end': -120.0, 'cells_out_of_service': 1}
+    assert evaluate({}, {**sides, 'failure_side': 'MO'})['rule_key'] != 'cell-outage'
+    found = evaluate({}, {**sides, 'failure_side': 'MT'})
+    assert found['rule_key'] == 'cell-outage'
+    assert 'RSRP at the failure (LTE, UE B, Layer3 Log, at the failure) −120 dBm' in found['evidence']
+    assert 'Radio (Layer3 Log, at the failure): A: LTE PCell RSRP −95 dBm | B (failed side): LTE PCell RSRP −120 dBm' in found['evidence']
+    # Without a known side, the worst of both as before.
+    assert evaluate({}, sides)['rule_key'] == 'cell-outage'
 
 
 def test_importing_or_deleting_the_ericsson_rca_calculates_its_calls_again(client, tmp_path):

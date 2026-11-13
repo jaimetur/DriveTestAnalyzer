@@ -4994,6 +4994,48 @@
     control.setAttribute('aria-label', field.label);
     return control;
   };
+  // The evidence of an RCA source (Ericsson RCA, DT Analyzer RCA): a line each, and the sides of the call it names
+  // ("A: … | B: …", after a label or alone) each in a block of its own, its findings one below the other.
+  const isEvidenceField = (field) => ['dta', 'ericsson', 'netcheck'].includes(fieldOrigin(field)) && /evidence/i.test(field.key);
+  const EVIDENCE_SIDE = /^(?:UE\s*)?([AB])(\s*\(failed side\))?\s*:\s*/i;
+  const evidenceSides = (text) => {
+    const parts = text.split(/\s+\|\s+/);
+    if (parts.length < 2 && !EVIDENCE_SIDE.test(text)) return null;
+    if (!parts.every((part) => EVIDENCE_SIDE.test(part))) return null;
+    const blocks = node('div', undefined, 'nq-evidence-sides');
+    parts.forEach((part) => {
+      const [, side, failed] = EVIDENCE_SIDE.exec(part);
+      const block = node('div', undefined, `nq-evidence-side${failed ? ' is-failed' : ''}`);
+      const head = node('span', undefined, 'nq-evidence-side-head');
+      head.append(node('span', `UE ${side.toUpperCase()}`, 'nq-evidence-side-tag'));
+      if (failed) head.append(node('span', 'Failed side', 'nq-evidence-failed-tag'));
+      const findings = node('ul', undefined, 'nq-evidence-findings');
+      part.replace(EVIDENCE_SIDE, '').split(/;\s+/).map((item) => item.trim()).filter(Boolean)
+        .forEach((item) => findings.append(node('li', item)));
+      block.append(head, findings);
+      blocks.append(block);
+    });
+    return blocks;
+  };
+  const evidenceValue = (text) => {
+    const box = node('div', undefined, 'nq-evidence');
+    text.split('\n').map((line) => line.trim()).filter(Boolean).forEach((line) => {
+      const row = node('div', undefined, 'nq-evidence-line');
+      const sides = evidenceSides(line);
+      if (sides) { row.append(sides); box.append(row); return; }
+      // "Label (source): A: … | B: …" or "Label: text".
+      const labelled = /^([^:|]{2,70}):\s+(.*)$/.exec(line);
+      const labelledSides = labelled && evidenceSides(labelled[2]);
+      if (labelled && (labelledSides || !EVIDENCE_SIDE.test(line))) {
+        row.append(node('strong', `${labelled[1]}:`, 'nq-evidence-label'), ' ');
+        row.append(labelledSides || labelled[2]);
+      } else {
+        row.append(line);
+      }
+      box.append(row);
+    });
+    return box;
+  };
   // A field from the CDR, the Ericsson RCA, the follow-up or derived from the call: shown, never edited.
   const readonlyValue = (field, value) => {
     const box = node('div', undefined, 'nq-readonly-value');
@@ -5004,6 +5046,8 @@
       const element = node('span', text, 'nq-pill');
       paintPill(element, field.type === 'yes_no' ? YES_NO_COLORS[text] || '' : optionColorOf(field, text));
       box.append(element);
+    } else if (isEvidenceField(field) && text) {
+      box.append(evidenceValue(text));
     } else if (field.type === 'long_text' && text) {
       box.append(bulletList(text));
     } else {
@@ -5139,6 +5183,7 @@
     title.append(name);
     // Where the value comes from, in a label of its own colour (ticket #121); the fields of the analysts are framed.
     wrapper.dataset.origin = fieldSource;
+    wrapper.dataset.fieldBlock = field.key;
     // A value of the CDR proposed for the field (a list only proposes one of its values).
     let proposal = editable ? call.proposals?.[field.key] : '';
     if (proposal && field.type === 'list') proposal = field.options.find((option) => option.name.toLowerCase() === proposal.toLowerCase())?.name;
@@ -5207,6 +5252,25 @@
       if (button) button.disabled = false;
     }
   };
+  // The button of a source card that takes to its evidence in the panel of the source below (none when it has none).
+  const SOURCE_ORIGINS = {dta: 'dta', script: 'ericsson', netcheck: 'netcheck'};
+  const evidenceLink = (call, source) => {
+    const origin = SOURCE_ORIGINS[source.source];
+    const field = origin && state.fields.find((item) => isEvidenceField(item) && fieldOrigin(item) === origin && call.values?.[item.key]);
+    if (!field) return null;
+    const button = node('button', 'See the evidence ↓', 'nq-evidence-link');
+    button.type = 'button';
+    button.title = `Go to ${field.label} below`;
+    button.addEventListener('click', () => {
+      const target = drawer.querySelector(`[data-field-block="${CSS.escape(field.key)}"]`);
+      if (!target) { toast(`${field.label} is not in the RCA tab: add it in NQ Analysis Configuration › Fields & Sections.`); return; }
+      target.scrollIntoView({behavior: 'smooth', block: 'center'});
+      target.classList.remove('is-flashing');
+      void target.offsetWidth;
+      target.classList.add('is-flashing');
+    });
+    return button;
+  };
   // The Final Root Cause Decision of the RCA section, the analysts' own: the selected Root Category and Cause, the recommendation
   // merged from every source, and what each source (NetCheck, Ericsson RCA, DT Analyzer RCA, comments, previous
   // decisions) proposes.
@@ -5261,10 +5325,12 @@
         // Its values are those of the catalog: the rule that found them (or what the analysts decided for its pattern) and why.
         if (source.learned) title.append(node('span', 'Learned from the analysts', 'nq-muted'));
         if (source.raw_category) item.append(node('p', `Rule: ${source.raw_category}`, 'nq-source-raw'));
-        if (source.evidence) item.append(node('p', source.evidence, 'nq-source-evidence nq-muted'));
       } else if (source.raw_category || source.raw_cause) {
         item.append(node('p', [source.raw_category, source.raw_cause].filter(Boolean).join(' → '), 'nq-source-raw'));
       }
+      // Its evidence is shown once, in the panel of the source below: a link takes there.
+      const evidence = evidenceLink(call, source);
+      if (evidence) item.append(evidence);
       const mapped = node('p', undefined, 'nq-source-mapped');
       if (source.category || source.cause) {
         if (source.category) mapped.append(pill('root_category', source.category));

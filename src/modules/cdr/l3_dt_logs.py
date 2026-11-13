@@ -983,7 +983,8 @@ def _shown_number(value: Any, digits: int = 1) -> str:
 
 def call_evidence(sessions: list[dict[str, Any]]) -> dict[str, Any]:
     """The inputs of the DT Analyzer RCA of a call from the evidence of its sessions (one per UE): counts added, the
-    worst radio of its UEs, its signalling before the failure and a note for the evidence."""
+    worst radio of its UEs, the radio of each side (``l3_sides``), its signalling before the failure and a note for the
+    evidence."""
     items = []
     for session in sessions:
         try:
@@ -1034,10 +1035,22 @@ def call_evidence(sessions: list[dict[str, Any]]) -> dict[str, Any]:
             notes.append(f"{prefix}LTE neighbour PCI {evidence.get('neighbour_pci')} {_shown_number(evidence['neighbour_delta'])} dB above "
                          f"the serving PCI {evidence.get('neighbour_serving_pci')}")
     inputs[L3_NOTE] = ('Layer3 Logs: ' + '; '.join(notes)) if notes else ''
+    # The radio of each side of a call (UE A, UE B) at the failure, for the DT Analyzer RCA to read the side that failed.
+    sides = {}
+    for ue, evidence in items:
+        values = {key: float(evidence[source]) for key, source in (('lte_rsrp', 'lte_rsrp_end'), ('lte_sinr', 'lte_sinr_end'),
+                                                                   ('nr_rsrp', 'nr_rsrp_end'), ('nr_sinr', 'nr_sinr_end'), ('tx_power', 'tx_max'),
+                                                                   ('neighbour_delta', 'neighbour_delta'))
+                  if evidence.get(source) is not None}
+        if ue in {'A', 'B'} and values:
+            sides[ue] = values
+    if sides:
+        inputs[L3_SIDES] = sides
     return {key: value for key, value in inputs.items() if value is not None}
 
 
 L3_NOTE = 'l3_note'
+L3_SIDES = 'l3_sides'
 
 
 def rca_inputs(repository: Any, join_ids: Iterable[object]) -> dict[str, dict[str, Any]]:
