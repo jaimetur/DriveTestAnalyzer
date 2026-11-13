@@ -5333,10 +5333,10 @@
         item.append(node('p', [source.raw_category, source.raw_cause].filter(Boolean).join(' → '), 'nq-source-raw'));
       }
       // Its evidence is shown once, in the panel of the source below: a link takes there.
-      // In a footer of its own below a divider, apart from the values the source proposes: the link to its evidence
-      // (shown once, in the panel of the source below) above Use as Final Decision, both centred.
+      // The link to its evidence (shown once, in the panel of the source below), centred just above the divider of the
+      // footer, so the dividers of every card stay aligned.
       const evidence = evidenceLink(call, source);
-      const actions = evidence ? [evidence] : [];
+      const actions = [];
       const mapped = node('p', undefined, 'nq-source-mapped');
       if (source.category || source.cause) {
         if (source.category) mapped.append(pill('root_category', source.category));
@@ -5355,6 +5355,11 @@
         use.title = `Set ${Object.values(changes).join(' · ')}`;
         use.addEventListener('click', () => patchCall(call, changes, use, `${label} applied.`));
         actions.push(use);
+      }
+      if (evidence) {
+        const link = node('div', undefined, 'nq-source-card-evidence');
+        link.append(evidence);
+        item.append(link);
       }
       if (actions.length) {
         const footer = node('div', undefined, 'nq-source-card-actions');

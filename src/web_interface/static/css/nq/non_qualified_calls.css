@@ -986,6 +986,8 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 /* The link of a source card to its evidence in the panel of the source below, and the field it flashes. */
 .nq-drawer .nq-source-card .nq-evidence-link { min-height: 0; padding: .15rem .45rem; border: 1px solid var(--nq-border); border-radius: 6px; background: transparent; color: var(--nq-text); font-size: .72rem; font-weight: 650; text-transform: none; cursor: pointer; }
 .nq-drawer .nq-source-card .nq-evidence-link:hover { border-color: currentColor; }
+.nq-source-card-evidence { display: flex; justify-content: center; margin-top: auto; padding-bottom: .45rem; }
+.nq-source-card-evidence + .nq-source-card-actions { margin-top: 0; }
 .nq-analysis-field.is-flashing { animation: nq-evidence-flash 1.6s ease-out; border-radius: 8px; }
 @keyframes nq-evidence-flash { 0%, 35% { box-shadow: 0 0 0 3px rgba(199, 119, 0, .55); } 100% { box-shadow: 0 0 0 3px transparent; } }
 /* The evidence of an RCA source: a line each, and each side of the call (UE A, UE B) in a block of its own. */
@@ -1008,7 +1010,7 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 /* Use as Final Decision, centred in the footer of each card below a divider: an action button (square corners, a check icon, solid
    green of the analysts' decision), never a rounded pill like the values the sources propose. */
 .nq-source-card { display: flex; flex-direction: column; }
-.nq-source-card-actions { display: flex; flex-direction: column; align-items: center; gap: .4rem; margin-top: auto; padding-top: .55rem; border-top: 1px solid var(--nq-border); }
+.nq-source-card-actions { display: flex; justify-content: center; margin-top: auto; padding-top: .55rem; border-top: 1px solid var(--nq-border); }
 .nq-source-card .nq-source-mapped { margin-bottom: .45rem; }
 .nq-drawer .nq-source-card .nq-use-final { display: inline-flex; align-items: center; gap: .4rem; min-height: 0; padding: .4rem .75rem; border: 0; border-radius: 6px; background: linear-gradient(180deg, #1c9a55, #13793f); color: #fff; font-size: .76rem; font-weight: 700; letter-spacing: .01em; text-transform: none; box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 2px 5px rgba(19, 121, 63, .35); cursor: pointer; transition: transform .12s, box-shadow .12s; }
 .nq-drawer .nq-source-card .nq-use-final::before { content: ""; width: .85rem; height: .85rem; background: currentColor;
