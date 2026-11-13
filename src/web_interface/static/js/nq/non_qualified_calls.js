@@ -1150,14 +1150,13 @@
       const element = heading('Proposed by the RCA sources', '#b0234f', ' is-proposed');
       groups.push([element, proposed.map((item) => option(item.name, item.name, 'proposed'))]);
     }
-    // The causes mapped to the chosen category, or the category the chosen cause is mapped to.
-    const mapped = kind === 'root_cause'
-      ? (call.root_category ? items.filter((item) => (item.category || '').toLowerCase() === call.root_category.toLowerCase()) : [])
-      : [rootItem('root_category', rootItem('root_cause', call.root_cause)?.category)].filter(Boolean);
+    // The causes mapped to the chosen category (the category follows the cause, so the list of categories has none: its
+    // value is ticked in its domain).
+    const mapped = kind === 'root_cause' && call.root_category
+      ? items.filter((item) => (item.category || '').toLowerCase() === call.root_category.toLowerCase()) : [];
     if (mapped.length) {
-      // Named as in the domain lists below (Operational · Validation), first because it is the chosen category (or that of the
-      // chosen cause).
-      const chosen = kind === 'root_cause' ? rootItem('root_category', call.root_category) : mapped[0];
+      // Named as in the domain lists below (Operational · Network Operations), first because it is the chosen category.
+      const chosen = rootItem('root_category', call.root_category);
       const name = [chosen?.domain, chosen?.name || call.root_category].filter(Boolean).join(' · ');
       const element = heading(name, domainColor(mapped[0].domain), ' is-proposed');
       groups.push([element, mapped.map((item) => option(item.name, item.name, 'mapped'))]);
