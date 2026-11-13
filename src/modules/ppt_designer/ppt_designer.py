@@ -843,13 +843,14 @@ def show_empty_commentary(slide) -> None:
     run.font.color.rgb = EMPTY_COMMENTS_COLOUR
 
 
-def comments_in_free_places(presentation, layout_name: str, used_places) -> tuple[list, tuple[int, int, int, int]] | None:
-    """Where the comments of a grid with comments go when the slide leaves places of the grid free: the frames of the
-    same grid without comments (the charts take the room of the comments too) and the largest rectangle of free places
-    (the lowest, then the rightmost, of the same size) for the comments. None when every place is used, the slide lays
-    its charts out on places of its own or the layout is not a grid with comments."""
+def comments_in_free_places(presentation, layout_name: str, used_places) -> tuple[list, tuple[int, int, int, int], Any] | None:
+    """Where the comments go when a slide leaves places of its grid free: the frames of the grid without comments (the
+    charts take the room of the comments too), the largest rectangle of free places (the lowest, then the rightmost, of
+    the same size) for the comments, and the layout of the slide: the grid itself when it has comments, else the same
+    grid with comments down, whose comments placeholder is moved there. None when every place is used, the slide lays
+    its charts out on places of its own or the layout is not a grid."""
     grid = GRID_LAYOUT_PATTERN.fullmatch(canonical_layout_name(layout_name or ''))
-    if used_places is None or not grid or not grid.group(3):
+    if used_places is None or not grid:
         return None
     rows, columns = int(grid.group(1)), int(grid.group(2))
     used = set(used_places)
@@ -869,11 +870,14 @@ def comments_in_free_places(presentation, layout_name: str, used_places) -> tupl
     frames = _layout_chart_frames(_named_slide_layout(presentation, grid_layout_name(rows, columns)))
     if best is None or len(frames) != rows * columns:
         return None
+    layout = _named_slide_layout(presentation, grid_layout_name(rows, columns, grid.group(3) or 'down'))
+    if layout is None:
+        return None
     chosen = [frames[cell] for cell in best[1]]
     left, top = min(frame[0] for frame in chosen), min(frame[1] for frame in chosen)
     right = max(frame[0] + frame[2] for frame in chosen)
     bottom = max(frame[1] + frame[3] for frame in chosen)
-    return frames, (left, top, right - left, bottom - top)
+    return frames, (left, top, right - left, bottom - top), layout
 
 
 def move_commentary(slide, frame) -> None:
@@ -1977,7 +1981,7 @@ def install_design_routes(core):
                 # Places of the grid left free take the comments: the charts take the grid without comments.
                 comments_area = comments_in_free_places(presentation, layout_name, used_places)
                 if comments_area is not None:
-                    full_frames, comments_frame = comments_area
+                    full_frames, comments_frame, layout = comments_area
                     placements = [full_frames[place] for place in used_places]
                 slide = presentation.slides.add_slide(layout)
                 _set_slide_header(slide, header.slide_title, header.slide_subtitle)

@@ -308,7 +308,7 @@ In grids with three or more rows or four or more columns, each chart's title app
 
 Axis labels and aggregation headers are never truncated, in the viewer or in the PPT. Each axis level wraps onto two lines, uses a smaller size or turns vertical, and the chart reserves the room it needs.
 
-Layouts ending in **comments right** place comments beside the charts; **comments down** places them below. Their comments area is always kept in the PPT. When the slide leaves places of its grid free (for example three charts on a 2 x 2 grid), the comments take the largest block of free places (the lowest, then the rightmost) and the charts take the same grid without comments, so they also use the room of the comments. A slide without comments shows the area with a dashed frame and a muted *Comments* prompt to write over. Layouts without comments use the full chart area. Narrow screens wrap actions and adapt navigation to the available space.
+Layouts ending in **comments right** place comments beside the charts; **comments down** places them below; layouts without comments use the full chart area. When a slide leaves places of its grid free (for example three charts on a 2 x 2 grid), the PPT puts its comments area on the largest block of free places (the lowest, then the rightmost), also in a grid without comments, and the charts keep the cells of the grid without comments, so they also use the room of the comments. A slide without comments shows the area with a dashed frame and a muted *Comments* prompt to write over. Narrow screens wrap actions and adapt navigation to the available space.
 
 ### Live and expanded chart controls
 
