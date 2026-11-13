@@ -859,3 +859,42 @@ def test_titles_and_text_boxes_name_the_selection_of_the_design(client):
     assert overview['title'] == 'Design one: B in All Cities'
     # The Design keeps the tokens: each Design writes its own.
     assert stored('design-a')['slide_overrides']['slides'][first['id']]['title']['value'] == '{Design}: {Operators} in {Cities}'
+
+
+def test_a_comments_layout_keeps_its_comments_area_visible_without_comments_or_with_free_places(client):
+    from pptx import Presentation
+    definition = setup(client)
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and core.repository.get_dataset(1)['status'] != 'ready':
+        time.sleep(0.05)
+    edited = copy.deepcopy(client.get('/api/ppt-designer/design-a/slides?edit=1').json()['slide_set'])
+    first = edited['slides'][0]
+    chart = first['elements'][0]
+    # A 2 x 2 grid with comments below and only three charts: the fourth place stays free.
+    first['layout'] = 'Title + 2 rows + 2 columns + comments down'
+    first['elements'] = [{**copy.deepcopy(chart), 'id': f'grid{place}', 'place': place, 'chart_title': f'Rate {place}'} for place in range(3)]
+    assert client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited}).status_code == 200
+    payload = {**definition, 'slide_overrides': stored('design-a')['slide_overrides'], 'slide_comments': {'2': ['Kept as written']}}
+    job_id = client.post('/api/ppt-designer/design-a/export-ppt', json={'definition': payload}).json()['job_id']
+    while time.monotonic() < deadline:
+        job = next(item for item in client.get('/api/ppt-designer/ppt-jobs').json()['jobs'] if item['id'] == job_id)
+        if job['status'] in {'ready', 'failed'}:
+            break
+        time.sleep(0.05)
+    assert job['status'] == 'ready', job
+    with core.repository.connection() as connection:
+        output = connection.execute('SELECT output_path FROM design_ppt_jobs WHERE id = ?', (job_id,)).fetchone()['output_path']
+    grid, written = Presentation(output).slides
+    comments = next(shape for shape in grid.shapes if shape.is_placeholder and shape.placeholder_format.idx == 10)
+    layout_comments = next(shape for shape in grid.slide_layout.placeholders if shape.placeholder_format.idx == 10)
+    # Without comments its area is drawn (a frame and a muted prompt) where the layout puts it, below the charts.
+    assert comments.text_frame.text == 'Comments'
+    assert comments.line.fill.type is not None
+    assert (comments.left, comments.top, comments.width, comments.height) == (
+        layout_comments.left, layout_comments.top, layout_comments.width, layout_comments.height)
+    pictures = [shape for shape in grid.shapes if shape.shape_type == 13]
+    assert len(pictures) == 3 and all(picture.top + picture.height <= comments.top for picture in pictures)
+    # A slide with comments shows them alone, without the frame.
+    written_comments = next(shape for shape in written.shapes if shape.is_placeholder and shape.placeholder_format.idx == 10)
+    assert written_comments.text_frame.text == 'Kept as written'
+    assert written_comments.line.fill.type is None

@@ -55,6 +55,7 @@ from src.modules.ppt_designer.ppt_naming import renamed_design
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.enum.dml import MSO_LINE_DASH_STYLE
 from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.util import Inches, Pt
 from starlette.background import BackgroundTask
@@ -817,6 +818,29 @@ def frame_from_rect(rect, frames) -> tuple[int, int, int, int]:
     height = max(frame[1] + frame[3] for frame in frames) - top
     x, y, w, h = (float(value) for value in rect)
     return int(left + x / 100 * width), int(top + y / 100 * height), int(w / 100 * width), int(h / 100 * height)
+
+
+EMPTY_COMMENTS_PROMPT = 'Comments'
+EMPTY_COMMENTS_COLOUR = RGBColor(0x8C, 0x8C, 0x8C)
+
+
+def show_empty_commentary(slide) -> None:
+    """Keep the comments area of a "+ comments" layout visible on a slide without comments: an empty placeholder is not
+    drawn outside PowerPoint's edit mode, so it gets a light frame and a muted "Comments" prompt to write over."""
+    if 'comments' not in slide.slide_layout.name.casefold():
+        return
+    placeholder = next((shape for shape in slide.shapes if getattr(shape, 'is_placeholder', False)
+                        and shape.placeholder_format.idx == 10 and getattr(shape, 'has_text_frame', False)), None)
+    if placeholder is None or placeholder.text_frame.text.strip():
+        return
+    placeholder.line.color.rgb = EMPTY_COMMENTS_COLOUR
+    placeholder.line.width = Pt(0.75)
+    placeholder.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+    paragraph = placeholder.text_frame.paragraphs[0]
+    run = paragraph.add_run()
+    run.text = EMPTY_COMMENTS_PROMPT
+    run.font.italic = True
+    run.font.color.rgb = EMPTY_COMMENTS_COLOUR
 
 
 def normalized_frame_positions(frames) -> list[list[float]]:
@@ -1923,6 +1947,7 @@ def install_design_routes(core):
                         auto_written[comment_key] = merged
                 _clear_commentary(slide)
                 _set_commentary(slide, comments)
+                show_empty_commentary(slide)
                 _remove_template_chart_placeholders(slide)
                 compact_titles = compact_grid_layout(layout_name)
                 for chart_number, ((index, entry), placement) in enumerate(zip(chart_entries, placements, strict=False), 1):
