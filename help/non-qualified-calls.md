@@ -690,8 +690,8 @@ The automatic status changes as soon as a field, a comment, the team, the analys
 
 | Tab | Content |
 | --- | --- |
-| **Domains** (shown when the catalog opens) | The technical domains with their colour: RF, RAN, Core, IMS/E2E, Protocol, Device and Operational. |
-| **Root Categories** | The generic categories of the analysts, 17 by default, which group the technologies and the directions: Coverage, Interference and Radio Link Quality (RF); Mobility, Radio Signalling, Capacity and Configuration & Planning (RAN); Registration & Authentication, Session & Mobility Management and Fallback & Legacy (Core); Voice Core (IMS) and End-to-End (IMS/E2E); Server & Protocol and Data Transport (Protocol); Device & Test Setup (Device); Network Operations and Validation (Operational). |
+| **Domains** (shown when the catalog opens) | The domains with their colour: the technical ones (RF, RAN, Core, IMS/E2E, Protocol, Device and Operational) and those of the calls without a root cause of the network: **Indeterminate** (its cause is not known yet) and **Invalid** (the call does not count as a failure). |
+| **Root Categories** | The generic categories of the analysts, 18 by default, which group the technologies and the directions: Coverage, Interference and Radio Link Quality (RF); Mobility, Radio Signalling, Capacity and Configuration & Planning (RAN); Registration & Authentication, Session & Mobility Management and Fallback & Legacy (Core); Voice Core (IMS) and End-to-End (IMS/E2E); Server & Protocol and Data Transport (Protocol); Device & Test Setup (Device); Network Operations (Operational); Indeterminate (Indeterminate: Unclear and Further investigation required) and Invalid (Invalid: Invalid and Normal release). |
 | **Root Causes** | The specific causes, 80 by default, each mapped to its category: why the coverage was poor (NLOS due to clutter or terrain profile, LOS but weak signal, Large distance to the nearest site, Coverage hole (no service), Weak signal with low SINR, UL coverage (UE at maximum power)…), the source of the interference (Lack of dominant cell, Overshooting or excessive cell overlap, PCI collision, External or Internal UL interference…), the handover, signalling, core, IMS and protocol causes (Missing or late handover, No answer to RRC connection request, TAU reject, No QCI1 established, DNS…). When a source only says which link suffered, the cause says it: **DL coverage**, **DL interference**, **UL interference**. |
 | **Mapping** | One table with every root cause, the root category it is mapped to and its domain, and one with every root category and its domain, to map the whole catalog at once (the tab counts the causes mapped to a category). **Apply to Calls** saves the catalog and, after confirming how many, gives the calls that have a root cause and no root category the category of their cause (recorded in their history). |
 
@@ -727,8 +727,9 @@ Until v0.12.4 the categories joined the problem with its technology and directio
 | BLER LTE / NR (cause BLER) | Radio Link Quality · High DL BLER · 4G - LTE / 5G - NR |
 | Mobility LTE / NR | Mobility · 4G - LTE / 5G - NR |
 | Protocol / Server, RAN Performance, RAN Capacity, Core Network, Authentication & Registration, IMS / VoLTE, E2E | The category of their cause (*Packet loss* → Data Transport, *Paging* → Radio Signalling, *SIP 500 Server Internal Error* → Voice Core (IMS)…) |
-| IMSI Issue, EPS Fallback, High PRB Utilization, Invalidated, Unclear, No Failure/ Drop, Procedure Overlap, Radio Configuration Inconsistency | Their category with the cause they named (Registration & Authentication · Subscriber identity (IMSI), Fallback & Legacy · EPS fallback failure, Capacity · Cell overload, Validation · Invalidated…) |
-| Additional Investigation LTE / NR, Other LTE / NR / GSM | Validation · Further investigation required / Unclear, with their technology |
+| IMSI Issue, EPS Fallback, High PRB Utilization, Invalidated, Unclear, No Failure/ Drop, Procedure Overlap, Radio Configuration Inconsistency | Their category with the cause they named (Registration & Authentication · Subscriber identity (IMSI), Fallback & Legacy · EPS fallback failure, Capacity · Cell overload, Invalid · Invalid, Indeterminate · Unclear…) |
+| Additional Investigation LTE / NR, Other LTE / NR / GSM | Indeterminate · Further investigation required / Unclear, with their technology |
+| Validation (between the first and the second step of this change) | Indeterminate or Invalid, by its cause (*Invalidated* is now *Invalid*) |
 
 The history of the calls keeps the values as they were written, and the former values are kept in **NQ Root Catalog Migration Backup** (Database Management) to undo it; App Events records how many calls changed. Exports, transfers and backups of before (NQ Calls Configuration, NQ Call Tracking, the catalog workbook and the Previous NQ Analyses) are translated the same way when imported or restored.
 
@@ -952,7 +953,7 @@ The default rules of the DT Analyzer RCA, the same in every workspace, in the or
 | 97 | Voice failure with good radio | Voice, Speech | Radio measured is not empty | End-to-End · Potential E2E Issue | IMS/E2E |
 | 98 | End-to-end trace required | All | Failure description contains `e2e` | End-to-End · E2E trace required | IMS/E2E |
 | | **The calls none of them explains** | | | | |
-| 99 | Not identified | All | Every call that reaches it | Validation · Unclear | Operational |
+| 99 | Not identified | All | Every call that reaches it | Indeterminate · Unclear | Indeterminate |
 
 ### Root domains, categories and causes
 
@@ -966,7 +967,8 @@ The values the default rules give, by root domain of the [Root Cause Catalog](#r
 | IMS/E2E | End-to-End, Voice Core (IMS) | E2E trace required, No QCI1 established, Potential E2E Issue, VoLTE core |
 | Protocol | Data Transport, Server & Protocol | DNS, Data transfer timeout, HTTP, Latency, No DL packets, Packet loss, TCP connection errors |
 | Device | Device & Test Setup | Device or test setup, No measurements in the log |
-| Operational | Network Operations, Validation | Cell/Site Outage, Unclear |
+| Operational | Network Operations | Cell/Site Outage |
+| Indeterminate | Indeterminate | Unclear |
 
 ## Map Levels
 

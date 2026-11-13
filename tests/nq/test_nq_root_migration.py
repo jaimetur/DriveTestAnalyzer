@@ -25,8 +25,13 @@ def indexing_runs_at_once(monkeypatch):
     ('DL Interference LTE', '', '', ('Interference', 'DL interference', '4G - LTE')),
     ('UL Interference 2G/3G', '', '', ('Interference', 'UL interference', '')),
     ('BLER NR', 'BLER', '', ('Radio Link Quality', 'High DL BLER', '5G - NR')),
-    ('Other GSM', '', '', ('Validation', 'Unclear', '2G - GSM')),
-    ('Additional Investigation LTE', '', '', ('Validation', 'Further investigation required', '4G - LTE')),
+    ('Other GSM', '', '', ('Indeterminate', 'Unclear', '2G - GSM')),
+    ('Additional Investigation LTE', '', '', ('Indeterminate', 'Further investigation required', '4G - LTE')),
+    ('Invalidated', '', '', ('Invalid', 'Invalid', '')),
+    # The Validation category of the first step of ticket #139: the category of its cause.
+    ('Validation', 'Invalidated', '', ('Invalid', 'Invalid', '')),
+    ('Validation', 'Unclear', '', ('Indeterminate', 'Unclear', '')),
+    ('Validation', '', '', ('Indeterminate', '', '')),
     # A category split by the cause of the decision: the category of the cause, else the fallback.
     ('IMS / VoLTE', 'No QCI1 established', '', ('Voice Core (IMS)', 'No QCI1 established', '')),
     ('Core Network', 'Insufficient resources', '', ('Session & Mobility Management', 'Insufficient resources', '')),
@@ -125,7 +130,7 @@ def test_a_workspace_with_the_former_catalog_moves_to_the_current_one_once(clien
     root = nq.list_root_causes(repository)
     assert [item['name'] for item in root['categories']] == [name for name, _domain, _keywords in nq_catalog.DEFAULT_CATEGORIES]
     assert 'AAA' not in {item['name'] for item in root['domains']}
-    assert {'field': '@root_category', 'op': 'in', 'values': ['Validation']} in nq.status_rules(repository)[0]['conditions']
+    assert {'field': '@root_category', 'op': 'in', 'values': ['Indeterminate', 'Invalid']} in nq.status_rules(repository)[0]['conditions']
     mine = next(rule for rule in nq_dta_rca.load_rules(repository) if rule['key'] == 'mine')
     assert (mine['category'], mine['cause'], mine.get('technology')) == ('Coverage', 'DL coverage', '5G - NR')
     assert 'selected_root_technology' in {field['key'] for field in nq.list_fields(repository)}
@@ -175,3 +180,36 @@ def test_a_tracking_document_of_the_former_catalog_imports_on_the_current_one(cl
     assert initial_values(keys['0xA1']) == {'initial_root_category': 'Interference', 'initial_root_cause': 'DL interference'}
     root = nq.list_root_causes(core.repository)
     assert 'Poor Coverage NR' not in {item['name'] for item in root['categories']} and 'Coverage' in {item['name'] for item in root['categories']}
+
+
+def test_a_workspace_with_the_validation_category_takes_the_indeterminate_and_invalid_domains_once(client, tmp_path):
+    calls = setup_calls(client, tmp_path)
+    keys = {join_id: call['call_key'] for join_id, call in calls.items()}
+    repository = core.repository
+    # A workspace the first step of ticket #139 moved: its Validation category of the Operational domain with the cause
+    # Invalidated, and decisions on them.
+    catalog = nq_catalog.default_root_catalog()
+    catalog['domains'] = [item for item in catalog['domains'] if item['name'] not in {'Indeterminate', 'Invalid'}]
+    catalog['categories'] = [item for item in catalog['categories'] if item['name'] not in {'Indeterminate', 'Invalid'}]
+    catalog['categories'].append({'name': 'Validation', 'domain': 'Operational', 'keywords': []})
+    catalog['causes'] = [{**item, 'category': 'Validation', 'domain': ''} if item['category'] in {'Indeterminate', 'Invalid'} else item
+                         for item in catalog['causes'] if item['name'] != 'Invalid']
+    catalog['causes'].append({'name': 'Invalidated', 'domain': '', 'keywords': ['invalidated'], 'category': 'Validation'})
+    with repository.connection() as connection:
+        nq._write_root_catalog(connection, nq_catalog.normalize_root_catalog(catalog))
+        for join_id, cause in (('0xA1', 'Invalidated'), ('0xB2', 'Unclear'), ('0xC3', '')):
+            connection.execute(
+                f"INSERT INTO {nq.NQ_CALL_TRACKING_TABLE} (call_key, status, status_mode, root_domain, root_category, root_cause, version, "
+                "updated_by, updated_at) VALUES (?, 'Not Attended', 'auto', 'Operational', 'Validation', ?, 1, 'super', '2026-11-13T04:00:00') "
+                "ON CONFLICT(call_key) DO UPDATE SET root_domain = excluded.root_domain, root_category = excluded.root_category, "
+                "root_cause = excluded.root_cause", (keys[join_id], cause))
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V48_STATE_KEY, '')
+    repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    assert tracking_of(keys) == {'0xA1': ('Invalid', 'Invalid', 'Invalid', ''), '0xB2': ('Indeterminate', 'Indeterminate', 'Unclear', ''),
+                                 '0xC3': ('Indeterminate', 'Indeterminate', '', '')}
+    root = nq.list_root_causes(repository)
+    assert {'Indeterminate', 'Invalid'} <= {item['name'] for item in root['domains']}
+    assert 'Validation' not in {item['name'] for item in root['categories']}
+    causes = {item['name']: item['category'] for item in root['causes']}
+    assert 'Invalidated' not in causes and causes['Invalid'] == 'Invalid' and causes['Unclear'] == 'Indeterminate'

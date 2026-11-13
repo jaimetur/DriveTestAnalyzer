@@ -96,8 +96,8 @@
       "id": "domains",
       "image": "slide-14.png",
       "section": "Configuration",
-      "title": "Seven root domains, generic categories",
-      "notes": "The default rules give values of the seven root domains of the Root Cause Catalog: generic Root Categories (Coverage, Interference, Mobility…) and specific Root Causes, with the Root Technology of the call (5G - NR, 4G - LTE, 3G - UMTS or 2G - GSM) beside them, which the rule names, else is the technology of the radio measured at the failure, else the most recent technology the call failed in. The Help lists every rule with its conditions and result, and every root domain with the categories and causes it gives: Non-Qualified Calls, DT Analyzer RCA, Default rules."
+      "title": "Nine root domains, generic categories",
+      "notes": "The default rules give values of the nine root domains of the Root Cause Catalog (Indeterminate and Invalid for the calls without a root cause of the network): generic Root Categories (Coverage, Interference, Mobility…) and specific Root Causes, with the Root Technology of the call (5G - NR, 4G - LTE, 3G - UMTS or 2G - GSM) beside them, which the rule names, else is the technology of the radio measured at the failure, else the most recent technology the call failed in. The Help lists every rule with its conditions and result, and every root domain with the categories and causes it gives: Non-Qualified Calls, DT Analyzer RCA, Default rules."
     }
   ]
 }

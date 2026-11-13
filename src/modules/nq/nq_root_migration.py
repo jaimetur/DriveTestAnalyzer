@@ -26,15 +26,17 @@ CATEGORY_MAP: dict[str, tuple[str | None, str, str, str]] = {
     'Mobility LTE': ('Mobility', '', 'LTE', ''),
     'Mobility NR': ('Mobility', '', 'NR', ''),
     'UE / Test Setup Issue': ('Device & Test Setup', '', '', ''),
-    'Unclear': ('Validation', '', '', 'Unclear'),
-    'UNKNOWN': ('Validation', '', '', 'Unclear'),
+    'Unclear': ('Indeterminate', '', '', 'Unclear'),
+    'UNKNOWN': ('Indeterminate', '', '', 'Unclear'),
     'Operational': ('Network Operations', '', '', ''),
-    'Invalidated': ('Validation', '', '', 'Invalidated'),
+    'Invalidated': ('Invalid', '', '', 'Invalid'),
     'Procedure Overlap': ('Configuration & Planning', '', '', 'Procedure overlap'),
     'Radio Configuration Inconsistency': ('Configuration & Planning', '', '', 'Radio configuration inconsistency'),
     'RAN Planning & Design': ('Configuration & Planning', '', '', ''),
     'High PRB Utilization': ('Capacity', '', '', 'Cell overload'),
-    'No Failure/ Drop': ('Validation', '', '', 'Normal release'),
+    'No Failure/ Drop': ('Invalid', '', '', 'Normal release'),
+    # The category of v0.12.4 before its two domains (Indeterminate, Invalid): the category of its cause.
+    'Validation': (_SPLIT, 'Indeterminate', '', ''),
     'IMSI Issue': ('Registration & Authentication', '', '', 'Subscriber identity (IMSI)'),
     'VONR not Enabled in Source/Neighbor Site': ('Configuration & Planning', '', 'NR', 'VoNR not enabled in source/neighbor site'),
     'EPS Fallback': ('Fallback & Legacy', '', '', 'EPS fallback failure'),
@@ -46,15 +48,16 @@ CATEGORY_MAP: dict[str, tuple[str | None, str, str, str]] = {
     'IMS / VoLTE': (_SPLIT, 'Voice Core (IMS)', '', ''),
     'E2E': (_SPLIT, 'End-to-End', '', ''),
     # The categories a workspace made of the Ericsson RCA values without a cause and of the analyses still open.
-    **{f'Additional Investigation {suffix}': ('Validation', '', technology, 'Further investigation required')
+    **{f'Additional Investigation {suffix}': ('Indeterminate', '', technology, 'Further investigation required')
        for suffix, technology in (('LTE', 'LTE'), ('NR', 'NR'), ('UMTS/GSM', ''))},
-    **{f'Other {suffix}': ('Validation', '', technology, 'Unclear') for suffix, technology in (('LTE', 'LTE'), ('NR', 'NR'), ('GSM', '2G'))},
+    **{f'Other {suffix}': ('Indeterminate', '', technology, 'Unclear') for suffix, technology in (('LTE', 'LTE'), ('NR', 'NR'), ('GSM', '2G'))},
 }
 # Former Root Cause -> current one (the others keep their name).
 CAUSE_MAP = {
     'Coverage': 'DL coverage',
     'BLER': 'High DL BLER',
     'RRC layer': 'Radio link failure',
+    'Invalidated': 'Invalid',
 }
 _CATEGORIES = {key.casefold(): value for key, value in CATEGORY_MAP.items()}
 _CAUSES = {key.casefold(): value for key, value in CAUSE_MAP.items()}
@@ -110,12 +113,13 @@ def translate_values(values: dict[str, Any], category_key: str = 'root_category'
 
 
 def is_former_catalog(catalog: Any) -> bool:
-    """Whether a catalog (as exported or transferred) is a former one: it names former categories and none of the
-    current generic ones."""
+    """Whether a catalog (as stored, exported or transferred) holds values of a former catalog: former categories (also
+    the Validation of v0.12.4) or causes."""
     if not isinstance(catalog, dict):
         return False
     names = {str((item or {}).get('name') or '').strip().casefold() for item in catalog.get('categories') or [] if isinstance(item, dict)}
-    return bool(names & FORMER_CATEGORIES) and not names & set(_CURRENT_CATEGORIES)
+    causes = {str((item or {}).get('name') or '').strip().casefold() for item in catalog.get('causes') or [] if isinstance(item, dict)}
+    return bool(names & FORMER_CATEGORIES or causes & FORMER_CAUSES)
 
 
 def translate_catalog(catalog: dict[str, Any]) -> dict[str, Any]:

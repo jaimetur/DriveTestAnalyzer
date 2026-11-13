@@ -399,6 +399,9 @@ DEFAULT_DOMAINS = (
     ('Protocol', '#0f6f7d', ('protocol',)),
     ('Device', '#7b8790', ('device',)),
     ('Operational', '#5b6b2e', ()),
+    # The calls without a root cause of the network: those whose cause is not known yet, and those that do not count.
+    ('Indeterminate', '#b08a3e', ()),
+    ('Invalid', '#4b5563', ()),
 )
 # Root Categories: (name, domain, keywords). "a+b" needs both words. A source value that names a cause takes the
 # category of that cause; the keywords of a category only count when no cause matches.
@@ -421,7 +424,8 @@ DEFAULT_CATEGORIES = (
     ('Data Transport', 'Protocol', ('packet loss', 'latency', 'timeout', 'no dl packets', 'tcp stream', 'ping', 'retransmission')),
     ('Device & Test Setup', 'Device', ('device', 'modem', 'test setup', 'not initiated')),
     ('Network Operations', 'Operational', ('outage', 'alarm', 'incident', 'crq', 'kpi degradation')),
-    ('Validation', 'Operational', ('invalidated', 'unclear', 'no failure', 'normal release', 'further investigation')),
+    ('Indeterminate', 'Indeterminate', ('unclear', 'further investigation', 'additional investigation', 'indeterminate')),
+    ('Invalid', 'Invalid', ('invalidated', 'invalid', 'no failure', 'normal release')),
 )
 # Root Causes: (name, Root Category, keywords), the most specific first within a category (the first one whose keywords
 # appear is taken). Their domain is that of their category.
@@ -504,10 +508,10 @@ DEFAULT_CAUSE_ENTRIES = (
     ('Incident', 'Network Operations', ('incident',)),
     ('CRQ implementation on Site or Neighbour', 'Network Operations', ('crq',)),
     ('Performance ticket (KPI degradation)', 'Network Operations', ('kpi degradation',)),
-    ('Invalidated', 'Validation', ('invalidated',)),
-    ('Normal release', 'Validation', ('normal release', 'no failure')),
-    ('Further investigation required', 'Validation', ('further investigation', 'additional investigation')),
-    ('Unclear', 'Validation', ('unclear',)),
+    ('Further investigation required', 'Indeterminate', ('further investigation', 'additional investigation')),
+    ('Unclear', 'Indeterminate', ('unclear',)),
+    ('Invalid', 'Invalid', ('invalidated', 'invalid')),
+    ('Normal release', 'Invalid', ('normal release', 'no failure')),
 )
 _CATEGORY_DOMAINS = {name: domain for name, domain, _keywords in DEFAULT_CATEGORIES}
 DEFAULT_CAUSES = tuple((name, _CATEGORY_DOMAINS[category], keywords) for name, category, keywords in DEFAULT_CAUSE_ENTRIES)

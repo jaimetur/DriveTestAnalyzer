@@ -426,7 +426,7 @@ _DEFAULT_RULES: tuple[tuple[str, str, tuple[str, ...], str, tuple[tuple[str, str
     ('rtp-loss', 'RTP packet loss', ('speech',), 'any', (('rtp_packet_loss', 'gt', 5),), 'Data Transport', 'Packet loss', ''),
     ('voice-e2e', 'Voice failure with good radio', _VOICE, 'all', (_MEASURED,), 'End-to-End', 'Potential E2E Issue', ''),
     ('reported-e2e', 'End-to-end trace required', (), 'any', (('failure_text', 'contains', 'e2e'),), 'End-to-End', 'E2E trace required', ''),
-    ('not-identified', 'Not identified', (), 'all', (), 'Validation', 'Unclear', ''),
+    ('not-identified', 'Not identified', (), 'all', (), 'Indeterminate', 'Unclear', ''),
 )
 
 

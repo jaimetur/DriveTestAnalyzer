@@ -1590,7 +1590,7 @@ def test_the_rules_of_the_tool_import_the_previous_workbooks_without_uploading_e
     assert (first['root_category'], first['root_cause'], first['team'], first['values']['priority']) == (
         'Coverage', 'DL coverage', 'Operations', 'P2')
     assert (second['root_category'], second['root_cause'], second['root_domain'], second['team'], second['values']['priority']) == (
-        'Validation', 'Further investigation required', 'Operational', 'E2E Team', 'P1')
+        'Indeterminate', 'Further investigation required', 'Indeterminate', 'E2E Team', 'P1')
     # The rules, with the values each cell takes, can be downloaded without a file; uploaded as they are, the workspace
     # keeps nothing of its own.
     response = client.get('/api/non-qualified-calls/analyses/equivalences')
