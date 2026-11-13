@@ -1155,8 +1155,11 @@
       ? (call.root_category ? items.filter((item) => (item.category || '').toLowerCase() === call.root_category.toLowerCase()) : [])
       : [rootItem('root_category', rootItem('root_cause', call.root_cause)?.category)].filter(Boolean);
     if (mapped.length) {
-      const element = heading(kind === 'root_cause' ? `Causes of ${call.root_category}` : `Category of ${call.root_cause}`,
-        domainColor(mapped[0].domain), ' is-proposed');
+      // Named as in the domain lists below (Operational · Validation), first because it is the chosen category (or that of the
+      // chosen cause).
+      const chosen = kind === 'root_cause' ? rootItem('root_category', call.root_category) : mapped[0];
+      const name = [chosen?.domain, chosen?.name || call.root_category].filter(Boolean).join(' · ');
+      const element = heading(name, domainColor(mapped[0].domain), ' is-proposed');
       groups.push([element, mapped.map((item) => option(item.name, item.name, 'mapped'))]);
     }
     // Every domain in the order of the catalog, the same for every call (what fits the chosen value is listed above).
