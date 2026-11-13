@@ -987,6 +987,8 @@
       (payload.rows || []).forEach((row, index) => {
         const y = layout.top + 28 + index * 42; let running = 0;
         context.fillStyle = '#263B4A'; context.textAlign = 'left'; font(context, 17, true); context.fillText(displayKey(row.key).slice(0, 42), rowOrigin, y + 4);
+        // The label of a row opens the values of its first field to choose the ones shown (ticket #144).
+        pushAxisHit('row', 0, row.key?.[0], rowOrigin, y, barLeft - rowOrigin - 10, 30);
         states.forEach((series, seriesIndex) => {
           const value = Number(row.values?.[seriesIndex] || 0), segmentLow = running, segmentHigh = running + value;
           const visibleLow = Math.max(segmentLow, xDomain[0]), visibleHigh = Math.min(segmentHigh, xDomain[1]);
@@ -3145,6 +3147,7 @@
       if (Array.isArray(payload.pie_row_keys)) return unique(payload.pie_row_keys.map(key => key?.[level]));
       if (payload.type === 'sankey') return unique((payload.nodes?.[level] || []).map(node => node.name));
       if (payload.type === 'treemap') return unique(atDepth(payload.nodes, level).map(node => node.name));
+      if (payload.type === 'failure_count' && Array.isArray(payload.rows)) return unique(payload.rows.map(row => row.key?.[level]));
       return unique(named(payload.pies || payload.panes));
     }
     if (axis === 'table-row') return unique((payload.rows || []).map(row => row?.[level]));
