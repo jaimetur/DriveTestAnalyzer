@@ -31,7 +31,7 @@ from typing import Any
 
 from src.modules.nq.nq_catalog import keyword_found, keywords, normalized_text
 
-ENGINE_VERSION = 6
+ENGINE_VERSION = 7
 SOURCE_LABEL = 'DT Analyzer RCA'
 RULES_STATE_KEY = 'nq_dta_rca_rules'
 FINGERPRINT_STATE_KEY = 'nq_dta_rca_fingerprint'
@@ -964,7 +964,8 @@ def _side_text(values: dict[str, Any], logged: bool) -> str:
     delta = _number(values.get('neighbour_delta'))
     if delta is not None:
         parts.append(f"neighbour {_measure(delta, 'dB')} above the PCell")
-    return ', '.join(parts)
+    # A finding each, as the Ericsson RCA separates them: the page shows them as bullets.
+    return '; '.join(parts)
 
 
 def radio_line(inputs: dict[str, Any], failed: str = '') -> str:

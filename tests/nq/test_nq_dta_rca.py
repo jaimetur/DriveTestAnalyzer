@@ -606,7 +606,7 @@ def test_the_radio_of_each_side_is_read_and_shown_apart():
     assert nq_dta_rca.failed_side({}, {'failure_side': 'MT'}) == 'B'
     assert nq_dta_rca.failed_side({'failure_comment': 'MO active 4G AAA TAU reject. MO during call'}, {}) == 'A'
     assert nq_dta_rca.failed_side({'failure_comment': 'MO and MT dropped'}, {}) == ''
-    assert nq_dta_rca.radio_line(ericsson, 'A') == ('Radio (Ericsson RCA, before the failure): A (failed side): LTE PCell RSRP −108.5 dBm, '
+    assert nq_dta_rca.radio_line(ericsson, 'A') == ('Radio (Ericsson RCA, before the failure): A (failed side): LTE PCell RSRP −108.5 dBm; '
                                                     'neighbour 15.5 dB above the PCell | B: NR PCell RSRP −105.8 dBm, SINR −0.8 dB')
     # The Layer3 Log of each UE goes first; the RSRP at the failure is that of the side that failed, not the worst of both.
     sides = {'l3_sides': {'A': {'lte_rsrp': -95.0}, 'B': {'lte_rsrp': -120.0}}, 'l3_lte_rsrp_end': -120.0, 'cells_out_of_service': 1}
