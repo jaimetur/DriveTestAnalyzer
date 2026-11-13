@@ -2098,3 +2098,6 @@
   .ppt-designer .ds-ppt-progress-actions button { min-height: 2.6rem; }
   .ppt-designer .ds-ppt-progress-actions .danger-button { margin-right: 0; }
 }
+
+/* A slide whose layout has no comments shows no comments area, as in its PPT. */
+.ds-slide-comments[hidden] { display: none !important; }

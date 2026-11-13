@@ -824,6 +824,11 @@ EMPTY_COMMENTS_PROMPT = 'Comments'
 EMPTY_COMMENTS_COLOUR = RGBColor(0x8C, 0x8C, 0x8C)
 
 
+def layout_has_comments(layout_name) -> bool:
+    """Whether a layout has a comments area (+ comments down or + comments right): only those slides have comments."""
+    return bool(re.search(r'\bcomments\b', str(layout_name or ''), re.I))
+
+
 def show_empty_commentary(slide) -> None:
     """Keep the comments area of a "+ comments" layout visible on a slide without comments: an empty placeholder is not
     drawn outside PowerPoint's edit mode, so it gets a light frame and a muted "Comments" prompt to write over."""
@@ -843,14 +848,13 @@ def show_empty_commentary(slide) -> None:
     run.font.color.rgb = EMPTY_COMMENTS_COLOUR
 
 
-def comments_in_free_places(presentation, layout_name: str, used_places) -> tuple[list, tuple[int, int, int, int], Any] | None:
-    """Where the comments go when a slide leaves places of its grid free: the frames of the grid without comments (the
-    charts take the room of the comments too), the largest rectangle of free places (the lowest, then the rightmost, of
-    the same size) for the comments, and the layout of the slide: the grid itself when it has comments, else the same
-    grid with comments down, whose comments placeholder is moved there. None when every place is used, the slide lays
-    its charts out on places of its own or the layout is not a grid."""
+def comments_in_free_places(presentation, layout_name: str, used_places) -> tuple[list, tuple[int, int, int, int]] | None:
+    """Where the comments of a grid with comments go when the slide leaves places of the grid free: the frames of the
+    same grid without comments (the charts take the room of the comments too) and the largest rectangle of free places
+    (the lowest, then the rightmost, of the same size) for the comments. None when every place is used, the slide lays
+    its charts out on places of its own or the layout is not a grid with comments."""
     grid = GRID_LAYOUT_PATTERN.fullmatch(canonical_layout_name(layout_name or ''))
-    if used_places is None or not grid:
+    if used_places is None or not grid or not grid.group(3):
         return None
     rows, columns = int(grid.group(1)), int(grid.group(2))
     used = set(used_places)
@@ -870,14 +874,11 @@ def comments_in_free_places(presentation, layout_name: str, used_places) -> tupl
     frames = _layout_chart_frames(_named_slide_layout(presentation, grid_layout_name(rows, columns)))
     if best is None or len(frames) != rows * columns:
         return None
-    layout = _named_slide_layout(presentation, grid_layout_name(rows, columns, grid.group(3) or 'down'))
-    if layout is None:
-        return None
     chosen = [frames[cell] for cell in best[1]]
     left, top = min(frame[0] for frame in chosen), min(frame[1] for frame in chosen)
     right = max(frame[0] + frame[2] for frame in chosen)
     bottom = max(frame[1] + frame[3] for frame in chosen)
-    return frames, (left, top, right - left, bottom - top), layout
+    return frames, (left, top, right - left, bottom - top)
 
 
 def move_commentary(slide, frame) -> None:
@@ -1981,13 +1982,13 @@ def install_design_routes(core):
                 # Places of the grid left free take the comments: the charts take the grid without comments.
                 comments_area = comments_in_free_places(presentation, layout_name, used_places)
                 if comments_area is not None:
-                    full_frames, comments_frame, layout = comments_area
+                    full_frames, comments_frame = comments_area
                     placements = [full_frames[place] for place in used_places]
                 slide = presentation.slides.add_slide(layout)
                 _set_slide_header(slide, header.slide_title, header.slide_subtitle)
                 with use_theme(theme):
                     style_title(slide)
-                if auto_mode != 'off':
+                if auto_mode != 'off' and layout_has_comments(layout_name):
                     comment_key = design_slide_comment_key([entry for _index, entry in slide_entries])
                     automatic, writer = auto_slide_comments(
                         snapshot, [item for item in chart_entries if item[1].chart_type.casefold() not in ELEMENT_CHART_TYPES],
@@ -4866,7 +4867,8 @@ def install_design_routes(core):
                 raise HTTPException(410, 'PPT preview expired. Refresh the Design.')
             requested = {item.number: item for item in payload.slides}
             slides = [slide for slide in snapshot.payload.get('slides', [])
-                      if not slide.get('structural_type') and (not requested or slide.get('number') in requested)]
+                      if not slide.get('structural_type') and layout_has_comments(slide.get('layout'))
+                      and (not requested or slide.get('number') in requested)]
             written: dict[str, list[str]] = {}
             writers: dict[str, dict] = {}
             legacy: dict[str, str] = {}
@@ -4929,7 +4931,7 @@ def install_design_routes(core):
         ensure_design_changeable(user, design_id, task_repository)
         snapshot = comment_snapshot(payload.token, user)
         total = sum(1 for slide in snapshot.payload.get('slides', []) if not slide.get('structural_type')
-                    and (not payload.slides or slide.get('number') in {item.number for item in payload.slides}))
+                    and layout_has_comments(slide.get('layout')) and (not payload.slides or slide.get('number') in {item.number for item in payload.slides}))
         job_id = uuid4().hex
         with lock:
             comment_jobs[job_id] = {
@@ -4959,7 +4961,8 @@ def install_design_routes(core):
                 raise HTTPException(410, 'PPT preview expired. Refresh the Design.')
             requested = {item.number: item for item in payload.slides}
             slides = [slide for slide in snapshot.payload.get('slides', [])
-                      if not slide.get('structural_type') and (not requested or slide.get('number') in requested)]
+                      if not slide.get('structural_type') and layout_has_comments(slide.get('layout'))
+                      and (not requested or slide.get('number') in requested)]
             focus = focus_operators(task_repository)
             briefed = []
             for position, slide in enumerate(slides, 1):
@@ -5001,7 +5004,8 @@ def install_design_routes(core):
         if design_id not in read_designs(bound_repository()):
             raise HTTPException(404, 'Design not found.')
         snapshot = comment_snapshot(payload.token, user)
-        total = sum(1 for slide in snapshot.payload.get('slides', []) if not slide.get('structural_type'))
+        total = sum(1 for slide in snapshot.payload.get('slides', [])
+                    if not slide.get('structural_type') and layout_has_comments(slide.get('layout')))
         job_id = uuid4().hex
         with lock:
             comment_jobs[job_id] = {'state': 'processing', 'owner': user.username, 'workspace': workspace_key(), 'done': 0, 'total': total}

@@ -861,7 +861,7 @@ def test_titles_and_text_boxes_name_the_selection_of_the_design(client):
     assert stored('design-a')['slide_overrides']['slides'][first['id']]['title']['value'] == '{Design}: {Operators} in {Cities}'
 
 
-def test_a_grid_shows_its_comments_area_on_its_free_places(client):
+def test_a_comments_layout_shows_its_comments_area_on_the_free_places_of_its_grid(client):
     from pptx import Presentation
     definition = setup(client)
     deadline = time.monotonic() + 30
@@ -873,8 +873,6 @@ def test_a_grid_shows_its_comments_area_on_its_free_places(client):
     # A 2 x 2 grid with comments below and only three charts: the fourth place stays free.
     first['layout'] = 'Title + 2 rows + 2 columns + comments down'
     first['elements'] = [{**copy.deepcopy(chart), 'id': f'grid{place}', 'place': place, 'chart_title': f'Rate {place}'} for place in range(3)]
-    # A grid without comments with a free place: it gets the comments area there too.
-    edited['slides'][1]['layout'] = 'Title + 1 rows + 2 columns'
     assert client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited}).status_code == 200
     payload = {**definition, 'slide_overrides': stored('design-a')['slide_overrides'], 'slide_comments': {'2': ['Kept as written']}}
     job_id = client.post('/api/ppt-designer/design-a/export-ppt', json={'definition': payload}).json()['job_id']
@@ -903,15 +901,21 @@ def test_a_grid_shows_its_comments_area_on_its_free_places(client):
     for picture, (left, top, width, height) in zip(pictures, cells):
         assert left <= picture.left and top <= picture.top
         assert picture.left + picture.width <= left + width + 1 and picture.top + picture.height <= top + height + 1
-    # A slide with comments shows them alone, without the frame: on a grid without comments, the same grid with
-    # comments down gives its comments placeholder, put on the free place, and the chart keeps its cell.
-    assert written.slide_layout.name == 'Title + 1 rows + 2 columns + comments down'
-    halves = sorted((shape.left, shape.top, shape.width, shape.height) for shape in next(
-        layout for layout in grid.part.package.presentation_part.presentation.slide_layouts
-        if layout.name == 'Title + 1 rows + 2 columns').placeholders if shape.placeholder_format.idx != 0)
+    # A slide with comments shows them alone, without the frame.
     written_comments = next(shape for shape in written.shapes if shape.is_placeholder and shape.placeholder_format.idx == 10)
     assert written_comments.text_frame.text == 'Kept as written'
     assert written_comments.line.fill.type is None
-    assert (written_comments.left, written_comments.top, written_comments.width, written_comments.height) == halves[1]
-    picture = next(shape for shape in written.shapes if shape.shape_type == 13)
-    assert picture.left + picture.width <= halves[0][0] + halves[0][2] + 1
+
+
+def test_only_slides_whose_layout_has_comments_show_or_write_comments():
+    from src.modules.ppt_designer.ppt_designer import layout_has_comments
+    assert layout_has_comments('Title + 2 rows + 2 columns + comments down')
+    assert layout_has_comments('2 rows + dynamic columns, comments right')
+    assert not layout_has_comments('Title + 2 rows + 2 columns') and not layout_has_comments('Title Page')
+    root = Path(__file__).parents[2] / 'src/web_interface/static'
+    script = (root / 'js/ppt_designer/ppt_designer.js').read_text(encoding='utf-8')
+    # The viewer and the Designer hide the comments of a slide whose layout has none, and write none for it.
+    assert 'if (panel) panel.hidden = !withArea;' in script
+    assert "if (!layoutHasComments(slide)) throw new Error('The layout of this slide has no comments" in script
+    assert script.count('!slide.structural_type && layoutHasComments(slide)') == 2
+    assert '.ds-slide-comments[hidden] { display: none !important; }' in (root / 'css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')

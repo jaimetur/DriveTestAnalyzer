@@ -4457,13 +4457,17 @@
     });
     renderComments();
   });
+  // A slide has comments only when its layout has them (+ comments down or + comments right), as in the PPT.
+  const layoutHasComments = slide => /\bcomments\b/i.test(slide?.layout || '');
   function renderComments() {
     const list = $('ds-comments-list');
     const viewer = viewerDefinition();
     if (!list || !viewer) return;
     renderCommentSuggestions();
-    const comments = currentSlideComments(viewer);
     const panel = list.closest('.ds-slide-comments');
+    const withArea = layoutHasComments(prepared?.slides?.[slideIndex]);
+    if (panel) panel.hidden = !withArea;
+    const comments = withArea ? currentSlideComments(viewer) : [];
     panel?.classList.toggle('ds-has-comments', comments.length > 0);
     if (panel && presentation.active) panel.open = presentation.showComments && comments.length > 0;
     list.replaceChildren();
@@ -5088,7 +5092,8 @@
     if (!definition || pptDesignViewer || !activeId || !prepared?.token) return;
     const id = activeId, button = $('ds-comment-kiro-brief');
     closeCommentMenu();
-    const slides = (prepared.slides || []).filter(slide => !slide.structural_type).map(slide => ({number: slide.number, charts: commentCharts(slide)}));
+    const slides = (prepared.slides || []).filter(slide => !slide.structural_type && layoutHasComments(slide)).map(slide => ({number: slide.number, charts: commentCharts(slide)}));
+    if (!slides.length) throw new Error('No slide of this Design has a layout with comments.');
     button.disabled = true;
     try {
       const job = await followCommentJob(await api(`/${id}/comments/kiro-brief`, 'POST', {token: prepared.token, slides}), 'Preparing the Kiro brief');
@@ -5124,7 +5129,8 @@
     const mode = await askCommentMode('Generate comments for all slides',
       'Write the comments of every slide of this Design from the figures of its charts. Which comments should they replace?');
     if (!mode) return;
-    const slides = (prepared.slides || []).filter(slide => !slide.structural_type).map(slide => ({number: slide.number, charts: commentCharts(slide)}));
+    const slides = (prepared.slides || []).filter(slide => !slide.structural_type && layoutHasComments(slide)).map(slide => ({number: slide.number, charts: commentCharts(slide)}));
+    if (!slides.length) throw new Error('No slide of this Design has a layout with comments.');
     const id = activeId, button = $('ds-comment-generate-all');
     button.disabled = true;
     try {
@@ -5141,6 +5147,7 @@
   bind('ds-comment-generate', async () => {
     const slide = prepared?.slides?.[slideIndex];
     if (!definition || pptDesignViewer || !activeId || !prepared?.token || !slide) return;
+    if (!layoutHasComments(slide)) throw new Error('The layout of this slide has no comments: choose a layout with comments to write them.');
     const charts = commentCharts(slide);
     if (!charts.length) throw new Error('This slide has no charts to write comments from.');
     const key = currentSlideCommentKey(), id = activeId, button = $('ds-comment-generate'), state = $('ds-comments-status');
@@ -5376,7 +5383,7 @@
   async function exportSlideImage(button, copy) {
     if (!imageButtons) return;
     const comments = document.querySelector('#ds-slide-content .ds-slide-comments');
-    const withComments = Boolean(comments?.classList.contains('ds-has-comments'));
+    const withComments = Boolean(comments?.classList.contains('ds-has-comments')) && !comments.hidden;
     if (!withComments) { await imageButtons.exportImage($('ds-charts'), button, copy); return; }
     const wasOpen = comments.open;
     const plain = node('ol', undefined, 'ds-capture-comments');
