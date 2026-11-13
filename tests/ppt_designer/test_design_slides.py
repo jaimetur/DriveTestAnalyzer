@@ -872,7 +872,10 @@ def test_a_comments_layout_shows_its_comments_area_on_the_free_places_of_its_gri
     chart = first['elements'][0]
     # A 2 x 2 grid with comments below and only three charts: the fourth place stays free.
     first['layout'] = 'Title + 2 rows + 2 columns + comments down'
-    first['elements'] = [{**copy.deepcopy(chart), 'id': f'grid{place}', 'place': place, 'chart_title': f'Rate {place}'} for place in range(3)]
+    first['elements'] = [{**copy.deepcopy(chart), 'id': f'grid{place}', 'place': place, 'chart_title': f'Rate {place}'} for place in (0, 2, 1)]
+    # A chart still being built on the fourth place draws nothing: that place is free for the comments too.
+    first['elements'].append({**dict.fromkeys(dd.ELEMENT_FIELDS, ''), 'exclude_null_empty': False, 'exclude_zero': False, 'id': 'grid3',
+                              'kind': 'chart', 'place': 3, 'chart_type': 'Scatter', 'cdr_source': 'CDR-Data', 'chart_title': 'New chart'})
     assert client.put('/api/ppt-designer/design-a/slides', json={'slide_set': edited}).status_code == 200
     payload = {**definition, 'slide_overrides': stored('design-a')['slide_overrides'], 'slide_comments': {'2': ['Kept as written']}}
     job_id = client.post('/api/ppt-designer/design-a/export-ppt', json={'definition': payload}).json()['job_id']

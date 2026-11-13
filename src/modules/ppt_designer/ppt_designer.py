@@ -1980,7 +1980,11 @@ def install_design_routes(core):
                 if layout is None or len(placements) < len(chart_entries):
                     raise ValueError(f'Slide {slide_number}: the PowerPoint layout has insufficient chart placeholders.')
                 # Places of the grid left free take the comments: the charts take the grid without comments.
-                comments_area = comments_in_free_places(presentation, layout_name, used_places)
+                # A chart still being built leaves its place empty: it is free for the comments too.
+                drawn_places = None if used_places is None else [
+                    place for place, (_index, entry) in zip(used_places, chart_entries)
+                    if entry.chart_type.casefold() != design_slides.DRAFT_CHART_TYPE.casefold()]
+                comments_area = comments_in_free_places(presentation, layout_name, drawn_places)
                 if comments_area is not None:
                     full_frames, comments_frame = comments_area
                     placements = [full_frames[place] for place in used_places]
