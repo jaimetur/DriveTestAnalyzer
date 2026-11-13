@@ -13,8 +13,8 @@
   :root {
     --ink: #0b1220; --panel: #131d33; --panel2: #1a2742; --line: #2a3a5c; --text: #eef2f9; --muted: #9fb0cc; --soft: #c9d4e6;
     --dta: #b46be8; --dta2: #7c3aed; --dta-soft: #2a1d45;
-    --rf: #3a7fc1; --ran: #e08a1e; --core: #7b52c0; --epsfb: #2f6db3; --ims: #c8682b; --aaa: #2e8b57; --protocol: #138597;
-    --device: #7b8790; --operational: #6f8236;
+    --rf: #3a7fc1; --ran: #e08a1e; --core: #7b52c0; --epsfb: #2f6db3; --ims: #d6409f; --aaa: #2e8b57; --protocol: #138597;
+    --device: #7b8790; --operational: #6f8236; --indeterminate: #d4b106; --invalid: #e04848;
     /* The Layer3 Logs, in the teal of their cards on the maps of NQ Calls. */
     --l3: #1fb5cf; --l3-soft: #0f3442;
   }
@@ -501,8 +501,8 @@
     <div class="card" style="padding:22px 24px;border-top:8px solid var(--protocol)"><h3 style="font-size:27px">Protocol</h3><p style="font-size:19px">Server &amp; Protocol · Data Transport — DNS, HTTP, TCP, packet loss, latency, timeouts, no DL packets</p></div>
     <div class="card" style="padding:22px 24px;border-top:8px solid var(--device)"><h3 style="font-size:27px">Device</h3><p style="font-size:19px">Device &amp; Test Setup — device or test setup, no measurements in the log</p></div>
     <div class="card" style="padding:22px 24px;border-top:8px solid var(--operational)"><h3 style="font-size:27px">Operational</h3><p style="font-size:19px">Network Operations — cell/site outage, alarms, incidents, CRQs</p></div>
-    <div class="card" style="padding:22px 24px;border-top:8px solid #b08a3e"><h3 style="font-size:27px">Indeterminate</h3><p style="font-size:19px">No root cause known yet — Unclear (the calls no rule explains), further investigation required</p></div>
-    <div class="card" style="padding:22px 24px;border-top:8px solid #6b7280"><h3 style="font-size:27px">Invalid</h3><p style="font-size:19px">The call does not count as a failure — invalid, normal release</p></div>
+    <div class="card" style="padding:22px 24px;border-top:8px solid var(--indeterminate)"><h3 style="font-size:27px">Indeterminate</h3><p style="font-size:19px">No root cause known yet — Unclear (the calls no rule explains), further investigation required</p></div>
+    <div class="card" style="padding:22px 24px;border-top:8px solid var(--invalid)"><h3 style="font-size:27px">Invalid</h3><p style="font-size:19px">The call does not count as a failure — invalid, normal release</p></div>
   </div>
   <div class="card" style="margin-top:22px;padding:16px 26px;display:flex;align-items:center;gap:22px;border-left:8px solid var(--dta)"><b style="font-size:24px;white-space:nowrap">Root Technology</b><span style="font-size:21px;color:var(--soft)">Not a domain: a value of its own beside the category and cause — 5G - NR, 4G - LTE, 3G - UMTS or 2G - GSM; the rule names it, else the radio measured at the failure</span></div>
   <p style="font-size:24px;color:var(--muted);margin-top:18px">Every rule, with its conditions and result, is in the Help: Non-Qualified Calls → DT Analyzer RCA → Default rules.</p>

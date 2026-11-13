@@ -213,3 +213,20 @@ def test_a_workspace_with_the_validation_category_takes_the_indeterminate_and_in
     assert 'Validation' not in {item['name'] for item in root['categories']}
     causes = {item['name']: item['category'] for item in root['causes']}
     assert 'Invalidated' not in causes and causes['Invalid'] == 'Invalid' and causes['Unclear'] == 'Indeterminate'
+
+
+def test_every_default_domain_has_a_colour_of_its_own_and_former_defaults_take_it_once(client, tmp_path):
+    colors = [color.casefold() for _name, color, _keywords in nq_catalog.DEFAULT_DOMAINS]
+    assert len(set(colors)) == len(colors)
+    setup_calls(client, tmp_path)
+    repository = core.repository
+    with repository.connection() as connection:
+        connection.execute(f"UPDATE {nq.NQ_ROOT_CATALOG_TABLE} SET color = '#b85b20' WHERE kind = 'domain' AND name = 'IMS/E2E'")
+        connection.execute(f"UPDATE {nq.NQ_ROOT_CATALOG_TABLE} SET color = '#123456' WHERE kind = 'domain' AND name = 'Invalid'")
+    repository.set_workspace_state(nq.ANALYSIS_CENTER_V49_STATE_KEY, '')
+    repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(repository)
+    domains = {item['name']: item['color'] for item in nq.list_root_causes(repository)['domains']}
+    # The former default colour takes the new one; a colour chosen by hand stays.
+    assert domains['IMS/E2E'] == dict((name, color) for name, color, _keywords in nq_catalog.DEFAULT_DOMAINS)['IMS/E2E']
+    assert domains['Invalid'] == '#123456'

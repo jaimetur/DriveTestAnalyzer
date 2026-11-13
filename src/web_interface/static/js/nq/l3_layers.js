@@ -367,7 +367,7 @@
   };
   // The colours of the domains of the root causes (the NQ calls of the maps coloured by them).
   const DOMAIN_COLOURS = {RF: '#e8590c', RAN: '#1c7ed6', Core: '#7048e8', 'Core EPSFB': '#9c36b5', 'IMS/E2E': '#c2255c', AAA: '#2b8a3e',
-    Protocol: '#0b7285', Device: '#5c636a', Operational: '#868e96'};
+    Protocol: '#0b7285', Device: '#5c636a', Operational: '#868e96', Indeterminate: '#fcc419', Invalid: '#212529'};
   const drawArea = (context, data, {project, hits, width, height}) => {
     const grid = data.grid;
     if (grid && state.master) {

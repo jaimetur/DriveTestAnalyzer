@@ -346,6 +346,10 @@ ANALYSIS_CENTER_V47_STATE_KEY = 'nq_analysis_center_v47'
 # Further investigation required) and Invalid (Invalid, formerly Invalidated, and Normal release), in place of the
 # Validation category of the Operational domain; the workspaces that had it go over once, as in V47.
 ANALYSIS_CENTER_V48_STATE_KEY = 'nq_analysis_center_v48'
+# Every domain in a colour of its own (ticket #139): IMS/E2E, Indeterminate and Invalid take their new colours where they
+# still have their former default ones, once: (domain, former colour).
+ANALYSIS_CENTER_V49_STATE_KEY = 'nq_analysis_center_v49'
+V49_FORMER_COLORS = (('IMS/E2E', '#b85b20'), ('Indeterminate', '#b08a3e'), ('Invalid', '#4b5563'))
 # The follow-up changes that only assign a call: they leave it waiting in its queue (not attended).
 ASSIGNMENT_FIELDS = ('team', 'analyst', 'reviewer')
 # The fields that only sort the queues (the Priority, which the NQ Prioritization also fills) do not attend a call either.
@@ -362,7 +366,7 @@ DTA_ERICSSON_STATE_KEY = 'nq_dta_rca_ericsson'
 DTA_ERICSSON_MAX_PENDING = 900
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-11-13.4'
+SCHEMA_VERSION = '2026-11-13.5'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -747,7 +751,8 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V38_STATE_KEY, ANALYSIS_CENTER_V39_STATE_KEY, ANALYSIS_CENTER_V40_STATE_KEY,
                 ANALYSIS_CENTER_V41_STATE_KEY, ANALYSIS_CENTER_V42_STATE_KEY, ANALYSIS_CENTER_V43_STATE_KEY,
                 ANALYSIS_CENTER_V44_STATE_KEY, ANALYSIS_CENTER_V45_STATE_KEY,
-                ANALYSIS_CENTER_V46_STATE_KEY, ANALYSIS_CENTER_V47_STATE_KEY, ANALYSIS_CENTER_V48_STATE_KEY)
+                ANALYSIS_CENTER_V46_STATE_KEY, ANALYSIS_CENTER_V47_STATE_KEY, ANALYSIS_CENTER_V48_STATE_KEY,
+                ANALYSIS_CENTER_V49_STATE_KEY)
         states ={str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -1008,6 +1013,13 @@ def ensure_nq_tables(task_repository: Any) -> None:
         # A workspace V47 already moved (the same correspondence now gives Validation and Invalidated their place).
         _upgrade_root_catalog_v47(task_repository)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V48_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V49_STATE_KEY):
+        colors = {name: color for name, color, _keywords in nq_catalog.DEFAULT_DOMAINS}
+        with task_repository.connection() as connection:
+            for name, former in V49_FORMER_COLORS:
+                connection.execute(f"UPDATE {NQ_ROOT_CATALOG_TABLE} SET color = ? WHERE kind = 'domain' AND name = ? COLLATE NOCASE "
+                                   'AND lower(color) = ?', (colors[name], name, former))
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V49_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 

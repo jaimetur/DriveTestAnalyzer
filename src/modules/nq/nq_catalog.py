@@ -390,18 +390,18 @@ DEFAULT_STATUS_RULES = (
 # -- root cause catalog -----------------------------------------------------------------------
 # Generic Root Categories and specific Root Causes (ticket #139): a category groups the technologies and directions, a
 # cause says why (DL or UL when that is all a source says), and the technology is a value of the call of its own.
-# Domains: (name, colour, keywords looked for in the CDR failure classification).
+# Domains: (name, colour, keywords looked for in the CDR failure classification), each in a colour of its own.
 DEFAULT_DOMAINS = (
     ('RF', '#3a7fc1', ('rf',)),
     ('RAN', '#e08a1e', ('ran', 'paging')),
     ('Core', '#6941a4', ('core', 'gsm', 'aaa', 'epsfb', 'eps fallback', 'cs problems')),
-    ('IMS/E2E', '#b85b20', ('volte', 'vonr', 'ims')),
+    ('IMS/E2E', '#d6409f', ('volte', 'vonr', 'ims')),
     ('Protocol', '#0f6f7d', ('protocol',)),
     ('Device', '#7b8790', ('device',)),
     ('Operational', '#5b6b2e', ()),
     # The calls without a root cause of the network: those whose cause is not known yet, and those that do not count.
-    ('Indeterminate', '#b08a3e', ()),
-    ('Invalid', '#4b5563', ()),
+    ('Indeterminate', '#d4b106', ()),
+    ('Invalid', '#c62828', ()),
 )
 # Root Categories: (name, domain, keywords). "a+b" needs both words. A source value that names a cause takes the
 # category of that cause; the keywords of a category only count when no cause matches.
