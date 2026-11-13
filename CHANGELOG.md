@@ -11,7 +11,7 @@
 
 #### 🚀 Enhancements:
 - **Module tabs keep their card while they stay at the top:** when a page scrolls, the tabs of the modules keep their white card, with its border and rounded corners, on the band that hides the page below them.
-- **RCA evidence by side of the call:** in the RCA tab of a Non-Qualified Call, the evidence of the Ericsson RCA and of the DT Analyzer RCA shows each side (UE A, UE B) in an indented block of its own, the failed side marked; the DT Analyzer RCA reads the radio of the side that failed (Failure Side, MO = A, MT = B) from the Layer3 Logs or the Ericsson RCA, shows both sides in its evidence and takes the stronger neighbour the Ericsson RCA found as a new rule input; the source cards of the Final Root Cause Decision link to their evidence with **See the evidence ↓** instead of repeating it.
+- **RCA evidence by side of the call ([ticket #136](https://108.132.147.165:8443/tickets/136)):** in the RCA tab of a Non-Qualified Call, the evidence of the Ericsson RCA and of the DT Analyzer RCA shows each side (UE A, UE B) in an indented block of its own, the failed side marked; the DT Analyzer RCA reads the radio of the side that failed (Failure Side, MO = A, MT = B) from the Layer3 Logs or the Ericsson RCA, shows both sides in its evidence and takes the stronger neighbour the Ericsson RCA found as a new rule input; the source cards of the Final Root Cause Decision link to their evidence with **See the evidence ↓** instead of repeating it.
 
 #### 🐛 Bug fixes:
 
