@@ -688,9 +688,45 @@ def test_workspaces_with_rules_of_their_own_take_the_radio_of_the_sides_in_the_d
     assert [rule['key'] for rule in former] != keys
     core.repository.set_workspace_state(nq_dta_rca.RULES_STATE_KEY, json.dumps(former))
     core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V45_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V46_STATE_KEY, '')
     core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
     nq.ensure_nq_tables(core.repository)
     assert [rule['key'] for rule in nq_dta_rca.load_rules(core.repository)] == [rule['key'] for rule in defaults]
     messages = [json.loads(row['details'])['message'] for row in core.repository.list_logs(limit=50) if row['action'] == 'nq_dta_rca_rules']
     assert 'Default rules of the DT Analyzer RCA moved in the rules of the workspace.' in messages
     assert 'New default rules of the DT Analyzer RCA added to the rules of the workspace.' in messages
+
+
+def test_a_weak_signal_with_a_low_sinr_is_coverage_not_interference():
+    # NetCheck: coverage problem, UE at maximum power; the log of the caller: −107.37 dBm, SINR −3.3 dB, a neighbour as strong.
+    call = {'service': 'voice', 'failure_classification': 'RF Problems', 'failure_category': 'Coverage problem',
+            'failure_subcategory': 'UE UL Max Power Reached'}
+    weak = {'l3_sides': {'A': {'lte_rsrp': -107.37, 'lte_sinr': -3.3, 'tx_power': 16, 'lte_neighbour_delta': 0.05}}}
+    found = evaluate(call, weak)
+    assert (found['rule_key'], found['category'], found['cause']) == ('side-lte-weak-coverage', 'Poor Coverage LTE', 'Coverage')
+    # With a good signal, the same SINR and neighbour are a lack of dominant cell, and without the neighbour interference.
+    weak['l3_sides']['A']['lte_rsrp'] = -95.0
+    assert evaluate(call, weak)['rule_key'] == 'side-lte-dominance'
+    weak['l3_sides']['A'].pop('lte_neighbour_delta')
+    assert evaluate(call, weak)['rule_key'] == 'side-lte-interference'
+
+
+def test_workspaces_with_rules_of_their_own_take_the_weak_coverage_of_the_sides(client, tmp_path):
+    setup_calls(client, tmp_path)
+    defaults = nq_dta_rca.default_rules()
+    former = {key: [{'input': item, 'op': op, 'value': value} for item, op, value in conditions]
+              for key, conditions in nq_dta_rca.CHANGED_RULES[9].items()}
+    rules = [{**rule, 'conditions': former.get(rule['key'], rule['conditions'])} for rule in defaults
+             if not rule['key'].endswith('-weak-coverage')]
+    # An admin's own threshold is kept.
+    mine = next(rule for rule in rules if rule['key'] == 'peer-nr-interference')
+    mine['conditions'] = [{'input': 'peer_nr_sinr', 'op': 'lt', 'value': -2}]
+    core.repository.set_workspace_state(nq_dta_rca.RULES_STATE_KEY, json.dumps(rules))
+    core.repository.set_workspace_state(nq.ANALYSIS_CENTER_V46_STATE_KEY, '')
+    core.repository.set_workspace_state(nq.SCHEMA_STATE_KEY, '')
+    nq.ensure_nq_tables(core.repository)
+    loaded = nq_dta_rca.load_rules(core.repository)
+    assert [rule['key'] for rule in loaded] == [rule['key'] for rule in defaults]
+    by_key = {rule['key']: rule for rule in loaded}
+    assert by_key['side-lte-dominance']['conditions'] == next(rule for rule in defaults if rule['key'] == 'side-lte-dominance')['conditions']
+    assert by_key['peer-nr-interference']['conditions'] == [{'input': 'peer_nr_sinr', 'op': 'lt', 'value': -2}]

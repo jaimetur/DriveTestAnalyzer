@@ -31,7 +31,7 @@ from typing import Any
 
 from src.modules.nq.nq_catalog import keyword_found, keywords, normalized_text
 
-ENGINE_VERSION = 8
+ENGINE_VERSION = 9
 SOURCE_LABEL = 'DT Analyzer RCA'
 RULES_STATE_KEY = 'nq_dta_rca_rules'
 FINGERPRINT_STATE_KEY = 'nq_dta_rca_fingerprint'
@@ -235,11 +235,14 @@ def _side_rules(prefix: str, where: str, services: tuple[str, ...]) -> tuple[tup
             (f'{prefix}-{tech}-handover', f'Stronger {label} neighbour on the {where}', services, 'all',
              ((f'{prefix}_{tech}_neighbour_delta', 'ge', 3), (f'{prefix}_{tech}_sinr', 'lt', 3)), f'Mobility {label}',
              'Missing or late handover'),
+            # A weak signal (below −105 dBm) with a low SINR is limited by the noise: coverage, not interference.
+            (f'{prefix}-{tech}-weak-coverage', f'Weak {label} signal with a low SINR on the {where}', services, 'all',
+             ((f'{prefix}_{tech}_rsrp', 'lt', -105), (f'{prefix}_{tech}_sinr', 'lt', 0)), f'Poor Coverage {label}', 'Coverage'),
             (f'{prefix}-{tech}-dominance', f'No dominant {label} cell on the {where}', services, 'all',
-             ((f'{prefix}_{tech}_sinr', 'lt', 0), (f'{prefix}_{tech}_neighbour_delta', 'ge', -3)), f'DL Interference {label}',
-             'Lack of dominant cell'),
+             ((f'{prefix}_{tech}_sinr', 'lt', 0), (f'{prefix}_{tech}_neighbour_delta', 'ge', -3), (f'{prefix}_{tech}_rsrp', 'ge', -105)),
+             f'DL Interference {label}', 'Lack of dominant cell'),
             (f'{prefix}-{tech}-interference', f'{label} interference on the {where}', services, 'all',
-             ((f'{prefix}_{tech}_sinr', 'lt', 0), (f'{prefix}_{tech}_rsrp', 'ge', -110)), f'DL Interference {label}', 'DL interference'),
+             ((f'{prefix}_{tech}_sinr', 'lt', 0), (f'{prefix}_{tech}_rsrp', 'ge', -105)), f'DL Interference {label}', 'DL interference'),
         ]
     if prefix == 'side':
         rules += [
@@ -592,7 +595,9 @@ ADDED_RULES = {
         'l3-nr-coverage', 'l3-uplink', 'l3-lte-interference', 'l3-nr-interference', 'l3-scg-failure', 'l3-reestablishment',
         'l3-lte-bler', 'l3-nr-bler'),
     # The radio of the failed side and of the other side (Layer3 Logs and Ericsson RCA).
-    8: SIDE_RULE_KEYS,
+    8: tuple(key for key in SIDE_RULE_KEYS if not key.endswith('-weak-coverage')),
+    # A weak signal with a low SINR is coverage, before the lack of dominant cell and the interference.
+    9: tuple(key for key in SIDE_RULE_KEYS if key.endswith('-weak-coverage')),
 }
 # The default rules each version of the engine moved: (rules, the rule they followed, the rule they now follow). A
 # workspace whose rules are still together right after the one they followed (as the default rules had them) takes the new
@@ -602,6 +607,12 @@ MOVED_RULES = {8: ((NETWORK_RULE_KEYS, 'session-in-gsm', 'authentication'),
 # The default rules each version of the engine changed, with their conditions before it: a workspace whose rule is still
 # as it was takes the new conditions, a rule an admin changed is kept as it is.
 CHANGED_RULES = {
+    9: {
+        **{f'{prefix}-{tech}-dominance': ((f'{prefix}_{tech}_sinr', 'lt', 0), (f'{prefix}_{tech}_neighbour_delta', 'ge', -3))
+           for prefix in ('side', 'peer') for tech in ('lte', 'nr')},
+        **{f'{prefix}-{tech}-interference': ((f'{prefix}_{tech}_sinr', 'lt', 0), (f'{prefix}_{tech}_rsrp', 'ge', -110))
+           for prefix in ('side', 'peer') for tech in ('lte', 'nr')},
+    },
     4: {
         'access-rejected': (('signalling_events', 'contains', 'rrcconnectionreject, rrcreject, immediate assignment reject'),
                             ('failure_text', 'contains', 'rrc connection reject')),

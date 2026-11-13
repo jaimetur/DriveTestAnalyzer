@@ -331,6 +331,9 @@ ANALYSIS_CENTER_V44_STATE_KEY = 'nq_analysis_center_v44'
 # rules of its own moves the rules of the network around the call after the authentication and the Subscriber identity
 # after the radio of the sides (where they are still as the default rules had them) and takes the new rules, once.
 ANALYSIS_CENTER_V45_STATE_KEY = 'nq_analysis_center_v45'
+# A weak signal with a low SINR on a side is coverage (engine 9): a workspace with rules of its own takes the new rules and
+# the lack of dominant cell and interference of the sides need a good signal, where those rules are still as they were.
+ANALYSIS_CENTER_V46_STATE_KEY = 'nq_analysis_center_v46'
 # The follow-up changes that only assign a call: they leave it waiting in its queue (not attended).
 ASSIGNMENT_FIELDS = ('team', 'analyst', 'reviewer')
 # The fields that only sort the queues (the Priority, which the NQ Prioritization also fills) do not attend a call either.
@@ -347,7 +350,7 @@ DTA_ERICSSON_STATE_KEY = 'nq_dta_rca_ericsson'
 DTA_ERICSSON_MAX_PENDING = 900
 # Set once the tables and columns of this version exist, so the requests check the schema without writing.
 SCHEMA_STATE_KEY = 'nq_calls_schema'
-SCHEMA_VERSION = '2026-11-13.1'
+SCHEMA_VERSION = '2026-11-13.2'
 # Indexed call fields that the suggestion rule can read, with their labels.
 RULE_FIELDS = {
     'failure_classification': 'Failure Classification', 'failure_category': 'Failure Category',
@@ -727,7 +730,8 @@ def _schema_ready(task_repository: Any) -> bool:
                 ANALYSIS_CENTER_V35_STATE_KEY, ANALYSIS_CENTER_V36_STATE_KEY, ANALYSIS_CENTER_V37_STATE_KEY,
                 ANALYSIS_CENTER_V38_STATE_KEY, ANALYSIS_CENTER_V39_STATE_KEY, ANALYSIS_CENTER_V40_STATE_KEY,
                 ANALYSIS_CENTER_V41_STATE_KEY, ANALYSIS_CENTER_V42_STATE_KEY, ANALYSIS_CENTER_V43_STATE_KEY,
-                ANALYSIS_CENTER_V44_STATE_KEY, ANALYSIS_CENTER_V45_STATE_KEY)
+                ANALYSIS_CENTER_V44_STATE_KEY, ANALYSIS_CENTER_V45_STATE_KEY,
+                ANALYSIS_CENTER_V46_STATE_KEY)
         states ={str(row[0]): str(row[1]) for row in connection.execute(
             f"SELECT key, value FROM workspace_state WHERE key IN ({', '.join('?' for _ in keys)})", keys)}
     return states.get(SCHEMA_STATE_KEY) == SCHEMA_VERSION and all(states.get(key) for key in keys[1:])
@@ -972,6 +976,10 @@ def ensure_nq_tables(task_repository: Any) -> None:
         nq_dta_rca.add_new_default_rules(task_repository, 8)
         nq_dta_rca.move_default_rules(task_repository, 8)
         task_repository.set_workspace_state(ANALYSIS_CENTER_V45_STATE_KEY, '1')
+    if not task_repository.get_workspace_state(ANALYSIS_CENTER_V46_STATE_KEY):
+        nq_dta_rca.add_new_default_rules(task_repository, 9)
+        nq_dta_rca.renew_changed_default_rules(task_repository, 9)
+        task_repository.set_workspace_state(ANALYSIS_CENTER_V46_STATE_KEY, '1')
     task_repository.set_workspace_state(SCHEMA_STATE_KEY, SCHEMA_VERSION)
 
 
