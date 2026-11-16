@@ -7254,6 +7254,9 @@
       label.textContent = campaign;
       svg.append(label);
     });
+    // The score of every point but the last of its line, per campaign, and the score at the end of each line.
+    const pointLabels = campaigns.map(() => []);
+    const ends = [];
     area.rows.forEach((item, seriesIndex) => {
       const color = safeHexColor(item.color) || insightFallbackColors[seriesIndex % insightFallbackColors.length];
       const points = item.trend.map((value, index) => (value === null || value === undefined ? null : [x(index), y(Number(value)), value]));
@@ -7267,12 +7270,34 @@
         setChartTooltip(marker, `${item.label} · ${campaigns[index]}: ${insightNumber(point[2], 1)} points`, true);
         svg.append(marker);
       });
-      const last = points.filter(Boolean).at(-1);
-      if (last) {
-        const label = svgElement(svg, 'text', {x: last[0] + 5, y: last[1] + 3, 'font-size': 9, 'font-weight': 700, fill: color});
-        label.textContent = insightNumber(last[2]);
+      const lastIndex = points.reduce((found, point, index) => (point ? index : found), -1);
+      points.forEach((point, index) => {
+        if (point && index !== lastIndex) pointLabels[index].push({x: point[0], y: point[1], text: insightNumber(point[2]), color});
+      });
+      if (lastIndex >= 0) ends.push({x: points[lastIndex][0], y: points[lastIndex][1], text: insightNumber(points[lastIndex][2]), color});
+    });
+    // Each score above its point; one too close to the score above it goes below its point, then lower if needed.
+    for (const labels of pointLabels) {
+      labels.sort((first, second) => first.y - second.y);
+      let previous = -Infinity;
+      for (const item of labels) {
+        let labelY = item.y - 6;
+        if (labelY < previous + 10) labelY = Math.max(item.y + 12, previous + 10);
+        previous = labelY;
+        const label = svgElement(svg, 'text', {x: item.x, y: labelY, 'text-anchor': 'middle', 'font-size': 8, 'font-weight': 700,
+          fill: item.color, stroke: '#ffffff', 'stroke-width': 2.5, 'paint-order': 'stroke'});
+        label.textContent = item.text;
         svg.append(label);
       }
+    }
+    // The scores at the end of the lines, moved apart (those ending at the same campaign) so they never overlap.
+    ends.sort((first, second) => first.x - second.x || first.y - second.y);
+    ends.forEach((end, index) => {
+      const before = ends[index - 1];
+      if (before && Math.abs(before.x - end.x) < 1) end.y = Math.max(end.y, before.y + 10);
+      const label = svgElement(svg, 'text', {x: end.x + 5, y: end.y + 3, 'font-size': 9, 'font-weight': 700, fill: end.color});
+      label.textContent = end.text;
+      svg.append(label);
     });
     figure.append(caption, svg);
     // Each chart enlarges on its own with a double click (not the whole National & Geographical Areas card).
