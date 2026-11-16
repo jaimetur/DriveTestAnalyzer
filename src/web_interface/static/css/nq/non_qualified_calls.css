@@ -2205,7 +2205,7 @@ details.nq-priority-info:not([open]) { padding-block: .55rem; }
 .nq-map-types-option { display: flex; align-items: center; gap: .5rem; padding: .35rem .55rem; border-radius: 7px; color: var(--nq-text); font-size: .82rem; font-weight: 700; letter-spacing: 0; text-transform: none; white-space: nowrap; cursor: pointer; }
 .nq-map-types-option:hover { background: var(--nq-softer); }
 .nq-map-types-option.is-all { border-bottom: 1px solid var(--nq-border); border-radius: 7px 7px 0 0; }
-.nq-map-types-option input { margin: 0; accent-color: var(--nq-color); }
+.nq-map-types-option input { flex: none; width: auto; min-width: 0; margin: 0; accent-color: var(--nq-color); }
 /* And Group, a switch beside Colour NQ calls by; the controls above the larger map too. */
 .nq-map-control.nq-map-check { justify-items: center; cursor: pointer; }
 /* (Its switch centred under its title, in the middle of the height of the selects beside it.) */
