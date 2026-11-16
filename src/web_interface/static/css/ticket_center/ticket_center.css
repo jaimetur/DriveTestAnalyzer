@@ -400,6 +400,8 @@ div.tickets-spent-row { cursor: default; }
 .tickets-spent-row:is([data-spent="assignee"], [data-spent="reporter"]) { --part-color: #1e61a3; }
 .tickets-spent-row[data-spent="version"] { --part-color: #b91c1c; }
 .tickets-spent-row strong { white-space: nowrap; }
+/* The h and m of a duration stand a little apart from their numbers, so the hours read at a glance. */
+.tickets-unit { margin-left: 0.12em; font-size: 0.82em; font-weight: 600; opacity: 0.72; }
 .tickets-switch-view { display: grid; align-content: start; gap: .65rem; }
 /* Donuts: a part per type, status or priority, with a legend of buttons that list their tickets. */
 .tickets-donuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .8rem 1.4rem; }
