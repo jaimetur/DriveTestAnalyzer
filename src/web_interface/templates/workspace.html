@@ -274,7 +274,7 @@
     </div>
     {% macro queue_timestamp(value) %}{% set parts = (value or '').replace('T', ' ').split(' ', 1) %}<span class="queue-date">{{ parts[0] }}</span>{% if parts | length > 1 %} <span class="queue-time">{{ parts[1] }}</span>{% endif %}{% endmacro %}
     {% macro dataset_row(dataset, layout) %}
-          <tr class="{% if layout == 'cdr' and dataset.is_ready %}{{ 'queue-row-in-combined' if dataset.combined_included else 'queue-row-not-combined' }}{% endif %}" data-dataset-row data-dataset-id="{{ dataset.id }}" data-dataset-kind="{{ dataset.dataset_kind or 'generic' }}" data-queue-status="{{ dataset.status }}"{% if layout == 'cdr' %} data-flex-campaign="{{ 'true' if dataset.flex_campaign else 'false' }}"{% endif %}>
+          <tr class="{% if layout == 'cdr' and dataset.is_ready %}{{ 'queue-row-in-combined' if dataset.combined_included else 'queue-row-not-combined' }}{% endif %}" data-dataset-row data-dataset-id="{{ dataset.id }}" data-dataset-kind="{{ dataset.dataset_kind or 'generic' }}" data-queue-status="{{ dataset.status }}"{% if layout == 'cdr' %} data-flex-campaign="{{ 'true' if dataset.flex_campaign else 'false' }}" data-cdr-first-date="{{ dataset.cdr_first_date or '' }}" data-cdr-last-date="{{ dataset.cdr_last_date or '' }}"{% endif %}>
             <td data-label="ID" data-queue-id data-queue-sort-value="{{ dataset.id }}" data-queue-sort-cell="id">{{ dataset.id }}</td>
             <td data-label="Dataset" data-queue-sort-value="{{ dataset.file_name }}" data-queue-sort-cell="dataset">
               <div class="queue-dataset-name" data-queue-file-name>{{ dataset.file_name }}</div>

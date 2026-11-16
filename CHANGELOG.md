@@ -10,7 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
-- **CDR campaign groups fold ([ticket #149](https://108.132.147.165:8443/tickets/149)):** in Workspace, each campaign group of the Final, Weekly, Daily and Flex CDR tables folds and unfolds from its header; every table opens with only its latest campaign unfolded, and a group folded or unfolded by hand stays so while the browser tab is open.
+- **CDR campaign groups fold ([ticket #149](https://108.132.147.165:8443/tickets/149)):** in Workspace, each campaign group of the Final, Weekly, Daily and Flex CDR tables folds and unfolds from its header, and within each campaign the Weekly CDRs are grouped by ISO week and the Daily CDRs by day (of their last call), also foldable; every table opens with only its latest campaign, and its latest week or day, unfolded, and a group folded or unfolded by hand stays so while the browser tab is open.
 
 #### 🐛 Bug fixes:
 

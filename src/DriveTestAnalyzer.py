@@ -4179,6 +4179,9 @@ def add_combined_inclusion(datasets: list[dict[str, Any]], task_repository: Repo
         dataset['combined_included'] = bool(item and item['included'])
         dataset['combined_reason'] = item['reason'] if item else (
             'Included when the CDR is ready' if dataset.get('dataset_kind') in CDR_DATASET_KINDS else '')
+        # The first and last call dates (yyyy-mm-dd) group the Daily CDRs by day and the Weekly CDRs by week.
+        dataset['cdr_first_date'] = str((item or {}).get('first_date') or '')[:10]
+        dataset['cdr_last_date'] = str((item or {}).get('data_date') or '')[:10]
 
 
 def add_l3_nq_calls(datasets: list[dict[str, Any]], task_repository: Repository | None = None) -> None:
