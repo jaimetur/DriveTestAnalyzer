@@ -9842,7 +9842,9 @@
     tables: `${IMAGE_TABLES}, .scoring-expanded-holder:has(table)`, charts: `${IMAGE_CHARTS}, .scoring-expanded-holder`,
     exclude: IMAGE_EXCLUDED, obstacles: '.scoring-map-zoom', title: imageTitle, fallbackName: 'Scoring',
     // The larger view of a chart, map or table keeps its title, with the pills of its area, operators and vendors.
-    header: target => (target.matches('.scoring-expanded-holder') ? expandedChartTitle?.parentElement || null : null),
+    // The chart of an area keeps the title of its card (Best Network Trends — National & Geographical Areas) above it.
+    header: target => (target.matches('.scoring-expanded-holder') ? expandedChartTitle?.parentElement || null
+      : target.matches('.scoring-area-trend') ? target.closest('.scoring-chart-card')?.querySelector(':scope > h4') || null : null),
     // Below the floating section bar and the tab bar of the results.
     topInset: () => {
       const tabs = root.querySelector('.scoring-result-tabs')?.getBoundingClientRect();
