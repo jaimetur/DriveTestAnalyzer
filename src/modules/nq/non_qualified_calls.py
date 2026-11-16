@@ -2931,12 +2931,15 @@ _VERSIONS_INSERT_SQL = f"""
                 FROM {NQ_CALLS_TABLE} c WHERE c.call_key = k.call_key) > 1,
                (SELECT COUNT(*) FROM {NQ_CALL_POPULATION_TABLE} n WHERE n.call_key = k.call_key)
         FROM ({{keys}}) k
-        JOIN {NQ_CALL_POPULATION_TABLE} l ON l.call_key = k.call_key AND l.is_latest = 1
+        JOIN {NQ_CALL_POPULATION_TABLE} l ON l.call_key = k.call_key AND +l.is_latest = 1
     """
 
 
 def _rebuild_final_coverage(connection: Any) -> None:
-    """Whether a Final CDR covers the campaign of each call whose latest version is in a Weekly or Daily CDR."""
+    """Whether a Final CDR covers the campaign of each call whose latest version is in a Weekly or Daily CDR.
+
+    Each call is looked up by its key (``+p.is_latest`` keeps SQLite from the index of is_latest, which would read every
+    latest row for each call when the population has no statistics, as after a Reindex rebuilt its indexes)."""
     # A Final CDR covers the campaigns (of its service and NR Mode) it contains.
     connection.execute('CREATE TEMP TABLE IF NOT EXISTS nq_final_campaigns (service TEXT, nr_mode TEXT, campaign TEXT)')
     connection.execute('DELETE FROM nq_final_campaigns')
@@ -2949,7 +2952,7 @@ def _rebuild_final_coverage(connection: Any) -> None:
         UPDATE {NQ_CALL_VERSIONS_TABLE} SET final_covered = CASE WHEN in_final = 0 AND EXISTS (
             SELECT 1 FROM {NQ_CALL_POPULATION_TABLE} p JOIN nq_final_campaigns f
               ON f.service = p.service AND f.nr_mode = p.nr_mode AND f.campaign = lower(p.campaign)
-            WHERE p.call_key = {NQ_CALL_VERSIONS_TABLE}.call_key AND p.is_latest = 1) THEN 1 ELSE 0 END
+            WHERE p.call_key = {NQ_CALL_VERSIONS_TABLE}.call_key AND +p.is_latest = 1) THEN 1 ELSE 0 END
     """)
 
 
@@ -3423,6 +3426,9 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                 for index_sql in dropped_indexes:
                     _raise_if_stopped(task_repository)
                     connection.execute(index_sql)
+                if dropped_indexes:
+                    # (Indexes built again have no statistics: the queries of the versions and of the pages need them.)
+                    connection.execute(f'ANALYZE {NQ_CALL_POPULATION_TABLE}')
                 if old_rows:
                     moved = _move_follow_up(connection, old_rows, [call for content in fresh.values() for call in content['calls']])
                 _raise_if_stopped(task_repository)
