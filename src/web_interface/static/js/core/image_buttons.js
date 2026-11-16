@@ -111,7 +111,7 @@
     root, targets, within = '', tables = '', charts = '', exclude = '', obstacles = '', cardOnEdge = true,
     singleParts = '', partRow = '', hiddenCards = '',
     topInset = floatingBarsBottom,
-    title = null, fileName = null, details = () => ({}), module = '', fallbackName = 'Image',
+    title = null, fileName = null, details = () => ({}), module = '', fallbackName = 'Image', header = null,
     record = imageDetails => recordImageExport('/api/image-export', {module, ...imageDetails}),
   }) {
     if (!root || !targets) return null;
@@ -323,7 +323,9 @@
       button.classList.add('is-busy');
       button.setAttribute('aria-busy', 'true');
       try {
-        const image = copy ? await draw(target, {exclude}) : await draw(target, file, {exclude});
+        // (A header of the page drawn above the target, such as the title of a chart in its larger view.)
+        const options = {exclude, header: header ? header(target) : null};
+        const image = copy ? await draw(target, options) : await draw(target, file, options);
         const format = image.format || (image.blob ? 'png' : 'svg');
         record({...recorded, file_name: image.fileName || file, format, width: image.width, height: image.height});
         if (copy && !clipboard) {

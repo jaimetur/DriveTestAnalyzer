@@ -9813,6 +9813,8 @@
     root, targets: IMAGE_TARGETS, within: '[data-result-pane], [data-scoring-chart-overlay]',
     tables: `${IMAGE_TABLES}, .scoring-expanded-holder:has(table)`, charts: `${IMAGE_CHARTS}, .scoring-expanded-holder`,
     exclude: IMAGE_EXCLUDED, obstacles: '.scoring-map-zoom', title: imageTitle, fallbackName: 'Scoring',
+    // The larger view of a chart, map or table keeps its title, with the pills of its area, operators and vendors.
+    header: target => (target.matches('.scoring-expanded-holder') ? expandedChartTitle?.parentElement || null : null),
     // Below the floating section bar and the tab bar of the results.
     topInset: () => {
       const tabs = root.querySelector('.scoring-result-tabs')?.getBoundingClientRect();

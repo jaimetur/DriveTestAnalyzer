@@ -114,7 +114,10 @@ def test_scoring_results_place_one_download_button_over_the_chart_or_table_under
     # The zoom buttons are left out of the image, and every download or copy (or failure) is recorded with the Saved Filter.
     assert "const IMAGE_EXCLUDED = '.scoring-map-zoom, .scoring-map-zoom-rect, .scoring-content-zoom-rect';" in script
     assert 'exclude: IMAGE_EXCLUDED,' in script
-    assert 'const image = copy ? await draw(target, {exclude}) : await draw(target, file, {exclude});' in buttons
+    assert 'const options = {exclude, header: header ? header(target) : null};' in buttons
+    assert 'const image = copy ? await draw(target, options) : await draw(target, file, options);' in buttons
+    # The larger view keeps its title, with its pills, above the chart, map or table.
+    assert "header: target => (target.matches('.scoring-expanded-holder') ? expandedChartTitle?.parentElement || null : null)," in script
     assert "...(copy ? {destination: clipboard ? 'clipboard' : 'copy-dialog'} : {})," in buttons
     # Where the browser does not let the page copy images (an address that is not secure), the screenshot shows in a
     # dialog to copy it from the menu of the image, or to download it; the page behind does not scroll while it is open.
@@ -150,7 +153,8 @@ def test_element_image_draws_the_element_as_shown_with_its_scrolled_content_whol
     assert "for (const [name, value] of [['min-height', `${least}px`], ['height', 'auto'], ['max-height', 'none']]) {" in script
     assert "rows.replace(/(\\d*\\.?\\d+)px/g, 'minmax($1px, auto)')" in script
     assert '&& source.scrollHeight <= source.clientHeight + 1) growWithContent(copy);' in script
-    assert 'height = Math.max(height, Math.ceil(copy.getBoundingClientRect().height));' in script
+    assert 'height = Math.max(height, Math.ceil(copy.getBoundingClientRect().height)) + headerHeight;' in script
+    assert 'holder.append(sheet, ...(headerCopy ? [headerCopy] : []), copy);' in script
     assert 'for (const [node, left, top] of scrolled)' in script
     # Sharp in every browser, within the largest canvas Safari draws, and an SVG where a PNG cannot be saved.
     assert 'const MAX_PIXELS = 16e6;' in script

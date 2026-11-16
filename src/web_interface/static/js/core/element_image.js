@@ -246,14 +246,16 @@
   // Draws ``element``, leaving out its parts that match ``exclude``: resolves to its PNG (``null`` where the browser does not
   // let a page save what it drew), its SVG and its size in pixels of the page. The element is copied before the first
   // wait, so a caller can start it within a click.
-  async function drawElementImage(element, {exclude = ''} = {}) {
+  // ``header``: an element of the page drawn above it, at its width (the title of a chart shown apart, for example).
+  async function drawElementImage(element, {exclude = '', header = null} = {}) {
     const context = {exclude, rules: [], images: []};
-    let copy, width, height;
+    let copy, width, height, headerCopy = null;
     const restore = showScrolledContent(element);
     try {
       width = Math.ceil(element.offsetWidth);
       height = Math.ceil(element.offsetHeight);
       copy = copyNode(element, null, context);
+      if (header?.isConnected) headerCopy = copyNode(header, null, context);
     } finally {
       restore();
       sandbox?.remove();
@@ -269,12 +271,18 @@
     holder.style.cssText = `display:block;width:${width}px`;
     const sheet = document.createElement('style');
     sheet.textContent = [RESET, ...context.rules].join('\n');
-    holder.append(sheet, copy);
+    if (headerCopy) {
+      for (const [name, value] of [['margin', '0 0 10px'], ['width', 'auto'], ['position', 'static'], ['transform', 'none']]) {
+        headerCopy.style.setProperty(name, value);
+      }
+    }
+    holder.append(sheet, ...(headerCopy ? [headerCopy] : []), copy);
     await Promise.all(context.images);
-    // The image is as tall as the copy laid out (in the sandbox, without the styles of the page).
+    // The image is as tall as the copy laid out (in the sandbox, without the styles of the page), and its header.
     const view = sandboxWindow();
     view.document.body.append(holder);
-    height = Math.max(height, Math.ceil(copy.getBoundingClientRect().height));
+    const headerHeight = headerCopy ? Math.ceil(headerCopy.getBoundingClientRect().height) + 10 : 0;
+    height = Math.max(height, Math.ceil(copy.getBoundingClientRect().height)) + headerHeight;
     holder.remove();
     sandbox?.remove();
     sandbox = null;
@@ -304,8 +312,8 @@
 
   // Saves ``element`` as ``fileName`` (a PNG, or an SVG where the browser does not let a page save what it drew), leaving
   // out its parts that match ``exclude``. Resolves to the file saved and its size in pixels of the page.
-  async function downloadElementImage(element, fileName, {exclude = ''} = {}) {
-    const {blob, svg, width, height} = await drawElementImage(element, {exclude});
+  async function downloadElementImage(element, fileName, {exclude = '', header = null} = {}) {
+    const {blob, svg, width, height} = await drawElementImage(element, {exclude, header});
     const png = Boolean(blob);
     const name = fileName.replace(/\.(png|svg)$/i, '') + (png ? '.png' : '.svg');
     saveFile(blob || new Blob([svg], {type: 'image/svg+xml'}), name);
@@ -315,11 +323,11 @@
   // Copies ``element`` to the clipboard as a PNG image (a screenshot of it, to paste elsewhere), leaving out its parts that
   // match ``exclude``. The clipboard is given the image while it is still being drawn, within the click (as Safari
   // requires). Resolves to its size in pixels of the page.
-  async function copyElementImage(element, {exclude = ''} = {}) {
+  async function copyElementImage(element, {exclude = '', header = null} = {}) {
     if (!navigator.clipboard?.write || typeof ClipboardItem !== 'function') {
       throw new Error('This browser does not let the page copy images (it needs a secure address: https or this computer).');
     }
-    const drawing = drawElementImage(element, {exclude});
+    const drawing = drawElementImage(element, {exclude, header});
     const png = drawing.then(({blob}) => {
       if (!blob) throw new Error('The browser does not let the page copy what it drew.');
       return blob;
