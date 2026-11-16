@@ -1619,16 +1619,19 @@ def test_the_reindex_keeps_the_population_that_did_not_change(client, tmp_path, 
     assert indexed_tables() == indexed
     nq.sync_nq_calls(core.repository, force=True)
     assert indexed_tables() == indexed and kept == [False, True]
-    # A CDR indexed again with other calls changes its population: the next Reindex writes it again.
+    # A new CDR indexed on its own keeps its population recorded: the next Reindex keeps it too. (A Reindex writes the
+    # CDRs in another order than the indexing of each new one: the rows are compared whatever their order.)
     add_cdr(tmp_path, 'voice-2.csv', 'voice', voice_rows().assign(Session_ID_A=[2001, 2002, 2003]))
     index_cdrs()
-    changed = indexed_tables()
+    unordered = lambda tables: {table: sorted(rows, key=repr) for table, rows in tables.items()}
+    changed = unordered(indexed_tables())
     nq.sync_nq_calls(core.repository, force=True)
-    assert indexed_tables() == changed and kept[-1] is True
+    assert unordered(indexed_tables()) == changed and kept[-1] is True
+    # A population that is not the one recorded is written again.
     with core.repository.connection() as connection:
         connection.execute(f'DELETE FROM {nq.NQ_CALL_POPULATION_TABLE} WHERE rowid = (SELECT MAX(rowid) FROM {nq.NQ_CALL_POPULATION_TABLE})')
     nq.sync_nq_calls(core.repository, force=True)
-    assert indexed_tables() == changed and kept[-1] is False
+    assert unordered(indexed_tables()) == changed and kept[-1] is False
 
 
 def test_the_indexing_stops_from_its_card(client, tmp_path, monkeypatch):
