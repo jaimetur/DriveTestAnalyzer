@@ -4,7 +4,7 @@ non_qualified_calls._read_cdrs_apart).
 Several of these processes read the CDRs of an indexing at once, at a low priority so the application keeps the
 processor for its users. The parent sends the inputs pickled on stdin; the process leaves what it read of each CDR
 (non_qualified_calls._dataset_calls) pickled in its own file of the folder it was given, and says so on stdout (one
-line per CDR, after ``MESSAGE``).
+line per CDR, after ``MESSAGE``, with its fingerprint: non_qualified_calls._index_fingerprint).
 """
 from __future__ import annotations
 
@@ -60,7 +60,8 @@ def main() -> int:
                 with open(temporary, 'wb') as handle:
                     pickle.dump(content, handle, protocol=pickle.HIGHEST_PROTOCOL)
                 temporary.replace(result)
-                _send({'dataset_id': int(dataset['id'])})
+                # Its fingerprint, worked out here while the other processes read theirs.
+                _send({'dataset_id': int(dataset['id']), 'fingerprint': nq._index_fingerprint(content)})
     except Exception as exc:  # The parent reads the CDRs left in its own process.
         traceback.print_exc()
         _send({'error': str(exc) or type(exc).__name__})

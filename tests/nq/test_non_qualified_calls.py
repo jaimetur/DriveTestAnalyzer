@@ -1645,9 +1645,12 @@ def test_the_cdrs_are_read_in_processes_of_their_own(client, tmp_path, monkeypat
     # Read by two processes at once, each CDR gives the same calls, in the order of the CDRs.
     monkeypatch.setattr(nq, 'NQ_INDEX_WORKERS', 2)
     monkeypatch.setattr(nq, 'NQ_INDEX_WORKERS_FROM', 2)
+    fingerprints: dict = {}
     with core.repository.connection() as connection:
-        apart = nq._read_cdrs(connection, core.repository, rows, ['City'], profile, None)
+        apart = nq._read_cdrs(connection, core.repository, rows, ['City'], profile, None, fingerprints)
     assert list(apart) == datasets and apart == here
+    # The processes work out the fingerprint of each CDR they read, the same as here.
+    assert fingerprints == {dataset_id: nq._index_fingerprint(content) for dataset_id, content in here.items()}
     assert nq._read_cdrs_apart(core.repository, rows, ['City'], profile, None) == here
     # A CDR a process could not read is read here.
     monkeypatch.setattr(nq, '_read_cdrs_apart', lambda *args: {datasets[0]: here[datasets[0]]})

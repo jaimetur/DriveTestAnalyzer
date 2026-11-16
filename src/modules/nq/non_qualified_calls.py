@@ -3354,12 +3354,14 @@ NQ_INDEX_WORKERS_FROM = 4
 
 
 def _read_cdrs(connection: Any, task_repository: Any, changed: list[Any], cdr_columns: list[str], profile: CdrFieldProfile,
-               sample_radio: dict[tuple[str, str, str], dict[str, float]] | None) -> dict[int, dict[str, Any]]:
+               sample_radio: dict[tuple[str, str, str], dict[str, float]] | None,
+               fingerprints: dict[int, list[str]] | None = None) -> dict[int, dict[str, Any]]:
     """What _dataset_calls gives for each CDR of ``changed``, in their order: read in processes of their own when there
-    are several (see _read_cdrs_apart), the CDRs a process could not read then read here."""
+    are several (see _read_cdrs_apart), the CDRs a process could not read then read here. ``fingerprints`` receives the
+    _index_fingerprint of the CDRs those processes read (worked out there, at once)."""
     read: dict[int, dict[str, Any]] = {}
     if NQ_INDEX_WORKERS > 1 and len(changed) >= NQ_INDEX_WORKERS_FROM:
-        read = _read_cdrs_apart(task_repository, changed, cdr_columns, profile, sample_radio)
+        read = _read_cdrs_apart(task_repository, changed, cdr_columns, profile, sample_radio, fingerprints)
     missing = [row for row in changed if int(row['id']) not in read]
     for position, row in enumerate(missing, start=1):
         _raise_if_stopped(task_repository)
@@ -3370,7 +3372,8 @@ def _read_cdrs(connection: Any, task_repository: Any, changed: list[Any], cdr_co
 
 
 def _read_cdrs_apart(task_repository: Any, changed: list[Any], cdr_columns: list[str], profile: CdrFieldProfile,
-                     sample_radio: dict[tuple[str, str, str], dict[str, float]] | None) -> dict[int, dict[str, Any]]:
+                     sample_radio: dict[tuple[str, str, str], dict[str, float]] | None,
+                     fingerprints: dict[int, list[str]] | None = None) -> dict[int, dict[str, Any]]:
     """The CDRs read by NQ_INDEX_WORKERS processes at once, the largest first, each process given about the same rows;
     the processes end at once when the indexing is stopped. A CDR a process did not read is left out (read by the
     caller)."""
@@ -3430,6 +3433,8 @@ def _read_cdrs_apart(task_repository: Any, changed: list[Any], cdr_columns: list
                     with open(result, 'rb') as handle:
                         read[int(message['dataset_id'])] = pickle.load(handle)
                     result.unlink(missing_ok=True)
+                    if fingerprints is not None and isinstance(message.get('fingerprint'), list):
+                        fingerprints[int(message['dataset_id'])] = message['fingerprint']
                     _progress(task_repository, f'Reading CDR {min(len(read) + 1, len(changed))} of {len(changed)}',
                               2 + 58 * len(read) / len(changed))
         finally:
@@ -3477,7 +3482,9 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                 _stop_on_request(connection, task_repository)
                 _progress(task_repository, 'Reading the radio of the Speech samples', 1)
                 sample_radio = _sample_radio(connection, datasets.values(), profile) if profile.nq_call_radio_from_samples else None
-                fresh = _read_cdrs(connection, task_repository, changed, cdr_columns, profile, sample_radio)
+                # The processes that read the CDRs work out their fingerprints too (see _index_unchanged).
+                read_fingerprints: dict[int, list[str]] = {}
+                fresh = _read_cdrs(connection, task_repository, changed, cdr_columns, profile, sample_radio, read_fingerprints)
                 touched = [*removed, *fresh]
                 # Every CDR indexed again (Reindex): the tables are emptied and filled at once.
                 everything = force and not set(_indexed_dataset_ids(connection)) - set(touched)
@@ -3492,7 +3499,8 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                     datasets[dataset_id]['cdr_stage'] if 'cdr_stage' in datasets[dataset_id].keys() else None,
                     datasets[dataset_id]['file_name']) == 'final') for dataset_id in fresh}
                 _progress(task_repository, 'Comparing the calls with the ones written', 60)
-                fingerprints = {dataset_id: _index_fingerprint(content) for dataset_id, content in fresh.items()}
+                fingerprints = {dataset_id: read_fingerprints.get(dataset_id) or _index_fingerprint(content)
+                                for dataset_id, content in fresh.items()}
                 # A Reindex that finds the population of every CDR as it was written, with the same ranks, keeps it (and
                 # its latest versions) instead of writing it again; finding the same Non-Qualified rows too, it keeps
                 # them, with their versions and their DT Analyzer RCA.
@@ -3501,20 +3509,26 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                     {dataset_id: (ranks.get(dataset_id, -1), stage_ranks[dataset_id], fresh[dataset_id]['data_date'])
                      for dataset_id in fresh}) if everything else (False, False)
                 calls_kept = calls_kept and not old_rows
+                # A population kept keeps its latest versions, so its counts too: those stored, when they are of it.
+                stored_counts = connection.execute(
+                    f"SELECT {', '.join(POPULATION_COUNTS_GROUPS)}, total, nq FROM {NQ_POPULATION_COUNTS_TABLE} ORDER BY rowid"
+                ).fetchall() if population_kept and task_repository.get_workspace_state(
+                    POPULATION_COUNTS_STATE_KEY) == _population_counts_signature(connection) else None
             _raise_if_stopped(task_repository)
             columns = ', '.join(_CALL_COLUMNS)
             placeholders = ', '.join('?' for _ in _CALL_COLUMNS)
             population_columns = f"dataset_id, call_key, service, campaign, operator, nr_mode, is_nq, {', '.join(POPULATION_FIELDS)}"
             population_marks = ', '.join('?' for _ in range(7 + len(POPULATION_FIELDS)))
             latest: dict[str, int] = {}
-            if everything:
+            if everything and not (population_kept and calls_kept and stored_counts is not None):
                 # The latest version of each call, as _rebuild_versions orders them: the CDR the combined tables
                 # include, then the Final one, then the newest data, then the newest CDR.
                 for dataset_id in sorted(fresh, key=lambda item: (ranks.get(item, -1), stage_ranks[item],
                                                                   fresh[item]['data_date'], item), reverse=True):
                     for entry in fresh[dataset_id]['population']:
                         latest.setdefault(entry[1], dataset_id)
-                counted = _population_counts_of(fresh, latest)
+            if everything:
+                counted = stored_counts if stored_counts is not None else _population_counts_of(fresh, latest)
             # A Reindex works out the versions of the calls from the rows read, before the writes of the workspace wait for
             # it (in SQL, under the lock of the workspace, they took minutes on a cloud disk).
             versions = None
