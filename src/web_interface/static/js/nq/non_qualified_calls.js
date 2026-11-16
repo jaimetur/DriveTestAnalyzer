@@ -2176,10 +2176,12 @@
     if (!sync) return;
     const when = sync.synced_at ? ` · indexed ${relativeTime(sync.synced_at)}` : '';
     const pending = sync.indexing ? (sync.reindexing ? ' · reindexing every CDR…' : ' · indexing…')
+      : sync.reindex_pending ? ' · Reindex waiting for the idle server'
       : sync.pending ? ` · ${number(sync.pending)} CDR${sync.pending === 1 ? '' : 's'} waiting to be indexed` : '';
     $('nq-sync').textContent = `${number(sync.calls)} Non-Qualified Calls in ${number(sync.datasets)} CDRs${when}${pending}`;
     $('nq-sync').title = [sync.synced_at ? `CDRs last indexed ${exactTime(sync.synced_at)}` : '',
-      sync.pending && !sync.indexing ? `New or changed CDRs are indexed at night, once the server is idle${$('nq-refresh') ? ', or now with Reindex' : ''}` : '',
+      sync.reindex_pending && !sync.indexing ? `The stopped Reindex runs at night, once the server is idle${$('nq-refresh') ? ', or now with Reindex' : ''}` : '',
+      sync.pending && !sync.indexing && !sync.reindex_pending ? `New or changed CDRs are indexed at night, once the server is idle${$('nq-refresh') ? ', or now with Reindex' : ''}` : '',
       sync.error ? `The last indexing failed: ${sync.error}` : ''].filter(Boolean).join('\n');
     if ($('nq-refresh')) $('nq-refresh').disabled = Boolean(sync.indexing);
     if (sync.indexing && watch) watchIndexing();

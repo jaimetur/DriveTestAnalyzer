@@ -2325,10 +2325,19 @@ def query_cdr_rows(database_path: Any, kind: str, dataset_id: int, query: str, s
     """The rows ``query`` (``SELECT [rowid AS <rowid_alias>,] <physical> AS <alias> ... FROM dataset_rows_<id> [WHERE
     <where>]``) gives on the workspace database, read from the copy of the CDR: one dict per row with the Python value
     sqlite3 gives for each alias, in the same order. None when the copy cannot give them."""
-    physical = list(dict.fromkeys(column for _alias, column in selected))
     rowids = _plan_rowids(database_path, kind, dataset_id, query, where, params, filter_columns) if where else None
     if where and rowids is None:
         return None
+    return cdr_rows_by_rowids(database_path, kind, dataset_id, selected, rowids, rowid_alias)
+
+
+def cdr_rows_by_rowids(database_path: Any, kind: str, dataset_id: int, selected: list[tuple[str, str]],
+                       rowids: list[int] | None, rowid_alias: str | None = None) -> list[dict[str, Any]]:
+    """The rows of a CDR with these row ids (every row, in row id order, with None), in the order given, read from its
+    copy: one dict per row with the Python value sqlite3 gives for each alias (and the row id as ``rowid_alias``)."""
+    physical = list(dict.fromkeys(column for _alias, column in selected))
+    if rowids is not None and not len(rowids):
+        return []
     values, length = _raw(database_path, kind, dataset_id, [ROWID, *physical], rowids)
     columns = {column: _python_values(values[column]) for column in [ROWID, *physical]}
     order = range(length)

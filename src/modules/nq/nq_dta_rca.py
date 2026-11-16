@@ -1283,6 +1283,25 @@ def radio_line(inputs: dict[str, Any], failed: str = '') -> str:
     return '\n'.join(lines)
 
 
+def _number_holds(op: str, number: float | None, expected: Any) -> bool:
+    """Whether a number condition holds for the number of a value (None when it has none), as _holds tells."""
+    if number is None:
+        return False
+    if op == 'lt':
+        return number < expected
+    if op == 'le':
+        return number <= expected
+    if op == 'gt':
+        return number > expected
+    if op == 'ge':
+        return number >= expected
+    if op == 'eq':
+        return number == expected
+    if op == 'ne':
+        return number != expected
+    raise KeyError(op)
+
+
 def _holds(condition: dict[str, Any], kind: str, expected: Any, value: Any) -> bool:
     op = condition['op']
     if op == 'empty':
@@ -1334,6 +1353,14 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
     values: dict[str, Any] = {}
     # Where the radio at the failure was read (radio_rsrp, radio_sinr): its technology and source.
     sources: dict[str, str] = {}
+    # The failed side and the number of each value are worked out once per call, however many rules read them.
+    side_found: list[str] = []
+    numbers: dict[str, float | None] = {}
+
+    def failed_side_of() -> str:
+        if not side_found:
+            side_found.append(failed_side(call, inputs))
+        return side_found[0]
 
     def value_of(key: str) -> Any:
         if key not in values:
@@ -1354,7 +1381,7 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
                 nr_alone = bool(re.search(r'(?<![a-z0-9])(5g|nr)', technology)) and not re.search(r'(?<![a-z0-9])(4g|lte)', technology)
                 order = ('nr', 'lte') if nr_alone else ('lte', 'nr')
                 # The side that failed when the logs measured it, else the worst of the sides (or the CDR average).
-                side = failed_side(call, inputs)
+                side = failed_side_of()
                 found = next(((number, tech, f'UE {side}, {source}') for tech in order
                               for number, source in [side_radio(inputs, side, tech, measure)] if number is not None),
                              (None, '', '')) if side else (None, '', '')
@@ -1367,10 +1394,10 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
                     sources[key] = f'{found[1].upper()}, {found[2]}'
 
             elif key == 'failed_side':
-                values[key] = failed_side(call, inputs)
+                values[key] = failed_side_of()
             elif key in SIDE_INPUTS:
                 prefix, name = key.split('_', 1)
-                side = failed_side(call, inputs)
+                side = failed_side_of()
                 if prefix == 'peer':
                     side = {'A': 'B', 'B': 'A'}.get(side, '')
                 number, source = side_value(inputs, side, name) if side or prefix == 'side' else (None, '')
@@ -1395,7 +1422,13 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
         held = []
         for condition, kind, expected in entry['conditions']:
             value = value_of(condition['input'])
-            if _holds(condition, kind, expected, value):
+            if kind == 'number' and condition['op'] not in {'empty', 'not_empty'}:
+                if condition['input'] not in numbers:
+                    numbers[condition['input']] = _number(value)
+                holds = _number_holds(condition['op'], numbers[condition['input']], expected)
+            else:
+                holds = _holds(condition, kind, expected, value)
+            if holds:
                 held.append(_evidence(condition, kind, expected, value, sources.get(condition['input'], '')))
             elif entry['all']:
                 break
@@ -1411,7 +1444,7 @@ def evaluate(compiled: list[dict[str, Any]], call: Any, inputs: dict[str, Any]) 
             # The provider's description also when the radio of a side explains the failure it reports.
             if read & (_DESCRIBED | set(SIDE_INPUTS)) and (description := provider_description(call, inputs)):
                 lines.append(f'Provider description: {description}')
-            lines += [radio_line(inputs, failed_side(call, inputs)), averages_line(call, inputs)]
+            lines += [radio_line(inputs, failed_side_of()), averages_line(call, inputs)]
             if inputs.get(NETWORK_NOTE) and read & set(CONTEXT_INPUTS[1:]):
                 lines.append(str(inputs[NETWORK_NOTE]))
             if inputs.get(L3_NOTE) and read & {*L3_INPUTS, *SIDE_INPUTS}:

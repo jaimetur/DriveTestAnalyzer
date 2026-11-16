@@ -17472,6 +17472,12 @@ def stop_background_task(
         if not callable(stop_warmup) or not stop_warmup(workspace.database_path, raw_identifier):
             raise HTTPException(status_code=409, detail='The warm-up of the PPT Designs can no longer be stopped.')
         task_repository.try_add_log(user.username, 'stop_design_warmup', json.dumps({'task_id': raw_identifier}))
+    elif prefix == 'nq-index':
+        # The indexing of the Non-Qualified Calls stops before it writes the indexed calls (see stop_nq_index).
+        stop_index = getattr(sys.modules[__name__], 'nq_index_stop', None)
+        if raw_identifier != workspace_id or not callable(stop_index) or not stop_index(workspace.database_path):
+            raise HTTPException(status_code=409, detail='The Non-Qualified Calls indexing can no longer be stopped.')
+        task_repository.try_add_log(user.username, 'nq_calls_index_stop_requested', json.dumps({'task_id': task_id}))
     elif prefix == 'design-prepare':
         stop_design = getattr(sys.modules[__name__], 'ppt_design_stop_task', None)
         if not callable(stop_design) or not stop_design(workspace.database_path, raw_identifier):

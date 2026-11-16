@@ -2604,6 +2604,70 @@ def _cdr_rows(connection: Any, dataset_id: int, kind: str, query: str, selected:
     return cdr_store.query_cdr_rows(database, kind, dataset_id, query, selected, where, params, filter_columns, rowid_alias)
 
 
+_ASCII_LOWER = str.maketrans('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')
+
+
+def _nq_where(result_column: str) -> str:
+    """The condition of the Non-Qualified rows of a CDR (its result is neither empty nor the qualified value), written as
+    two ranges so SQLite reads them through the normalized index of the result column."""
+    normalized = f'LOWER(TRIM(CAST({_quote(result_column)} AS TEXT)))'
+    return f"{normalized} > ? OR ({normalized} < ? AND {normalized} > '')"
+
+
+def _sql_normalized(value: Any) -> str | None | bool:
+    """``LOWER(TRIM(CAST(value AS TEXT)))`` as SQLite gives it (False for a value it is not worked out for here)."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value.strip(' ').translate(_ASCII_LOWER)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    return False
+
+
+def _nq_rows(connection: Any, dataset_id: int, kind: str, query: str, selected: list[tuple[str, str]], result_column: str,
+             qualified: str) -> list[Any] | None:
+    """The rows ``query`` (``SELECT rowid AS source_row_id, ... FROM dataset_rows_<id> WHERE <_nq_where>``) gives, in the
+    same order, read from the columnar copy of the CDR: its result column tells which rows are Non-Qualified and only
+    those rows are read. SQLite plans that condition as two ranges of the result index (MULTI-INDEX OR), which the
+    general copy reads (cdr_store.query_cdr_rows) do not follow. None when the CDR is not in its copy as it is."""
+    from src.modules.cdr import cdr_store
+
+    database = _main_database(connection)
+    if not database or int(dataset_id) not in cdr_store.fresh_copies(database, [dataset_id]):
+        return None
+    table = f'dataset_rows_{int(dataset_id)}'
+    details = [str(row[3]) for row in connection.execute(f'EXPLAIN QUERY PLAN {query}', (qualified, qualified)).fetchall()]
+    own = [detail for detail in details if re.search(rf'\b(SCAN|SEARCH) {re.escape(table)}\b', detail)]
+    if own == [f'SCAN {table}']:
+        by_index = False
+    else:
+        # Both ranges through one index of the normalized result: first the results above the qualified value, then
+        # those below it, each in the order of the index (its value, then the row id).
+        names = {match.group(1) for detail in own
+                 if (match := re.fullmatch(rf'SEARCH {re.escape(table)} USING (?:COVERING )?INDEX (\S+) \(.*\)', detail))}
+        if len(own) != 2 or len(names) != 1 or not any(detail == 'MULTI-INDEX OR' for detail in details):
+            return None
+        index_sql = connection.execute("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+                                       (next(iter(names)).strip('"'),)).fetchone()
+        expected = f'LOWER(TRIM(CAST({_quote(result_column)} AS TEXT)))'
+        keys = cdr_store._index_columns(str(index_sql[0]), table) if index_sql else None
+        if not keys or len(keys) != 1 or re.sub(r'\s+', '', keys[0]).casefold() != re.sub(r'\s+', '', expected).casefold():
+            return None
+        by_index = True
+    values = cdr_store.cdr_columns(database, kind, dataset_id, [cdr_store.ROWID, result_column])
+    normalized = {value: _sql_normalized(value) for value in set(values[result_column])}
+    if any(value is False for value in normalized.values()):
+        return None
+    kept = [(text, int(rowid)) for rowid, value in zip(values[cdr_store.ROWID], values[result_column], strict=True)
+            if (text := normalized[value]) and text != qualified]
+    if by_index:
+        kept = sorted(kept, key=lambda item: (item[0] < qualified, item[0], item[1]))
+    else:
+        kept.sort(key=lambda item: item[1])
+    return cdr_store.cdr_rows_by_rowids(database, kind, dataset_id, selected, [rowid for _text, rowid in kept], 'source_row_id')
+
+
 def _main_database(connection: Any) -> str:
     return next((str(row[2]) for row in connection.execute('PRAGMA database_list').fetchall() if row[1] == 'main'), '')
 
@@ -2693,6 +2757,7 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
         *(column for field in (*_KEY_FIELDS, *POPULATION_FIELDS) for column in resolved[field])) if column))
     key_aliases = {column: f'c{index}' for index, column in enumerate(key_selected)}
     population: dict[str, list[Any]] = {}
+    keys: dict[tuple[str, ...], str] = {}
     data_date = ''
     key_query = f"SELECT {', '.join(f'{_quote(column)} AS {key_aliases[column]}' for column in key_selected)} FROM {_quote(table)}"
     for chunk in _cdr_column_chunks(connection, dataset_id, service, key_query, [(key_aliases[column], column) for column in key_selected]):
@@ -2711,9 +2776,14 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
             if not result:
                 continue
             join_id = joins[position]
-            # The fields of the call identify it only without a JOIN_ID.
-            key = call_key_for(service, {} if join_id else {field: fields[field][position] for field in _KEY_FIELDS},
-                               identifiers[position], subscribers[position], join_id)
+            # The fields of the call identify it only without a JOIN_ID; the rows of a call (its Speech samples) share it.
+            identity_values = (join_id,) if join_id else (
+                *(fields[field][position] for field in _KEY_FIELDS), identifiers[position], subscribers[position])
+            key = keys.get(identity_values)
+            if key is None:
+                key = keys[identity_values] = call_key_for(
+                    service, {} if join_id else {field: fields[field][position] for field in _KEY_FIELDS},
+                    identifiers[position], subscribers[position], join_id)
             is_nq = int(result != qualified)
             entry = population.get(key)
             if entry is None:
@@ -2732,16 +2802,18 @@ def _dataset_calls(connection: Any, dataset: Any, cdr_columns: tuple[str, ...] =
         if column
     ))
     aliases = {column: f'c{index}' for index, column in enumerate(selected)}
-    normalized = f'LOWER(TRIM(CAST({_quote(result_column)} AS TEXT)))'
     # Range conditions use the CDR's normalized status index when it exists.
-    where = f"{normalized} > ? OR ({normalized} < ? AND {normalized} > '')"
+    where = _nq_where(result_column)
     query = (
         f"SELECT rowid AS source_row_id, {', '.join(f'{_quote(column)} AS {aliases[column]}' for column in selected)} "
         f"FROM {_quote(table)} WHERE {where}"
     )
     calls = []
-    nq_rows = _cdr_rows(connection, dataset_id, service, query, [(aliases[column], column) for column in selected],
-                        where, (qualified, qualified), [result_column], 'source_row_id')
+    nq_rows = _nq_rows(connection, dataset_id, service, query, [(aliases[column], column) for column in selected],
+                       result_column, qualified)
+    if nq_rows is None:
+        nq_rows = _cdr_rows(connection, dataset_id, service, query, [(aliases[column], column) for column in selected],
+                            where, (qualified, qualified), [result_column], 'source_row_id')
     for row in nq_rows if nq_rows is not None else connection.execute(query, (qualified, qualified)).fetchall():
         values: dict[str, Any] = {}
         for field, candidates in resolved.items():
@@ -2809,13 +2881,19 @@ def _move_follow_up(connection: Any, old_rows: list[Any], calls: list[tuple[Any,
     return len(mapping)
 
 
-def _rebuild_versions(connection: Any, affected: set[str]) -> None:
+def _rebuild_versions(connection: Any, affected: set[str], *, everything: bool = False) -> None:
     """Which CDR holds the latest version of each call and how the versions differ.
 
     The latest version is the one of a Final CDR before the Daily ones, then of the CDR with the
     newest data. Only the calls of the changed CDRs are recalculated, except whether a Final CDR
-    covers the campaign of the calls that are only in Weekly or Daily CDRs.
+    covers the campaign of the calls that are only in Weekly or Daily CDRs. With ``everything`` (every
+    CDR indexed again, the latest version of each call already marked in its population) every call is.
     """
+    if everything:
+        connection.execute(f'DELETE FROM {NQ_CALL_VERSIONS_TABLE}')
+        connection.execute(_VERSIONS_INSERT_SQL.format(keys=f'SELECT DISTINCT call_key FROM {NQ_CALLS_TABLE}'))
+        _rebuild_final_coverage(connection)
+        return
     connection.execute('CREATE TEMP TABLE IF NOT EXISTS nq_affected_keys (call_key TEXT PRIMARY KEY)')
     connection.execute('DELETE FROM nq_affected_keys')
     keys = list(affected)
@@ -2836,7 +2914,13 @@ def _rebuild_versions(connection: Any, affected: set[str]) -> None:
             ) WHERE rn = 1)
     """)
     connection.execute(f'DELETE FROM {NQ_CALL_VERSIONS_TABLE} WHERE call_key IN (SELECT call_key FROM nq_affected_keys)')
-    connection.execute(f"""
+    connection.execute(_VERSIONS_INSERT_SQL.format(
+        keys=f'SELECT DISTINCT call_key FROM {NQ_CALLS_TABLE} WHERE call_key IN (SELECT call_key FROM nq_affected_keys)'))
+    _rebuild_final_coverage(connection)
+
+
+# The versions of the calls (``keys``: a query of their call keys), their latest version marked in the population.
+_VERSIONS_INSERT_SQL = f"""
         INSERT INTO {NQ_CALL_VERSIONS_TABLE} (call_key, latest_dataset_id, latest_is_nq, in_final, changed, cdr_count)
         SELECT k.call_key, l.dataset_id, l.is_nq,
                EXISTS (SELECT 1 FROM {NQ_CALL_POPULATION_TABLE} f JOIN {NQ_CALL_SOURCES_TABLE} s ON s.dataset_id = f.dataset_id
@@ -2845,9 +2929,13 @@ def _rebuild_versions(connection: Any, affected: set[str]) -> None:
                                             || '|' || replace(replace(c.failure_category, '_', ''), ' ', '')))
                 FROM {NQ_CALLS_TABLE} c WHERE c.call_key = k.call_key) > 1,
                (SELECT COUNT(*) FROM {NQ_CALL_POPULATION_TABLE} n WHERE n.call_key = k.call_key)
-        FROM (SELECT DISTINCT call_key FROM {NQ_CALLS_TABLE} WHERE call_key IN (SELECT call_key FROM nq_affected_keys)) k
+        FROM ({{keys}}) k
         JOIN {NQ_CALL_POPULATION_TABLE} l ON l.call_key = k.call_key AND l.is_latest = 1
-    """)
+    """
+
+
+def _rebuild_final_coverage(connection: Any) -> None:
+    """Whether a Final CDR covers the campaign of each call whose latest version is in a Weekly or Daily CDR."""
     # A Final CDR covers the campaigns (of its service and NR Mode) it contains.
     connection.execute('CREATE TEMP TABLE IF NOT EXISTS nq_final_campaigns (service TEXT, nr_mode TEXT, campaign TEXT)')
     connection.execute('DELETE FROM nq_final_campaigns')
@@ -2933,12 +3021,14 @@ def _dataset_extra_values(connection: Any, dataset: Any, names: list[str], profi
     result_column, qualified = qualification[0], profile.nq_qualified_value
     selected = list(dict.fromkeys(extra.values()))
     aliases = {column: f'c{index}' for index, column in enumerate(selected)}
-    normalized = f'LOWER(TRIM(CAST({_quote(result_column)} AS TEXT)))'
-    where = f"{normalized} > ? OR ({normalized} < ? AND {normalized} > '')"
+    where = _nq_where(result_column)
     query = (f"SELECT rowid AS source_row_id, {', '.join(f'{_quote(column)} AS {aliases[column]}' for column in selected)} "
              f"FROM {_quote(table)} WHERE {where}")
-    rows = _cdr_rows(connection, dataset_id, str(dataset['dataset_kind']), query, [(aliases[column], column) for column in selected],
-                     where, (qualified, qualified), [result_column], 'source_row_id')
+    pairs = [(aliases[column], column) for column in selected]
+    rows = _nq_rows(connection, dataset_id, str(dataset['dataset_kind']), query, pairs, result_column, qualified)
+    if rows is None:
+        rows = _cdr_rows(connection, dataset_id, str(dataset['dataset_kind']), query, pairs, where, (qualified, qualified),
+                         [result_column], 'source_row_id')
     return [(int(row['source_row_id']), json.dumps({name: _text(row[aliases[column]]) for name, column in extra.items()},
                                                    ensure_ascii=False))
             for row in (rows if rows is not None else connection.execute(query, (qualified, qualified)).fetchall())]
@@ -3015,6 +3105,79 @@ def refresh_nq_columns(task_repository: Any) -> dict[str, Any]:
             'calls': int(total or 0), 'synced_at': synced_at or ''}
 
 
+class NqIndexStopped(Exception):
+    """The indexing was stopped from its card before it wrote the indexed calls: nothing it did is kept."""
+
+
+def _stop_requested(task_repository: Any) -> bool:
+    with _index_jobs_guard:
+        job = _index_jobs.get(_workspace_key(task_repository.db_path))
+        return bool(job and job['status'] == 'processing' and job.get('stop_requested'))
+
+
+def _raise_if_stopped(task_repository: Any) -> None:
+    if _stop_requested(task_repository):
+        raise NqIndexStopped('Non-Qualified Calls indexing stopped.')
+
+
+def _stop_on_request(connection: Any, task_repository: Any) -> None:
+    """Interrupt the SQL of ``connection`` once the indexing is asked to stop (a long statement does not wait for it to
+    end), which rolls back what the connection wrote."""
+    connection.set_progress_handler(lambda: int(_stop_requested(task_repository)), 200_000)
+
+
+# What the population of each indexed CDR holds, as it was written (see _population_unchanged).
+POPULATION_FINGERPRINTS_STATE_KEY = 'nq_population_fingerprints'
+
+
+def _population_fingerprint(population: list[Any]) -> str:
+    return hashlib.sha1(repr(population).encode('utf-8')).hexdigest()
+
+
+def _population_unchanged(connection: Any, task_repository: Any, fresh: dict[int, dict[str, Any]], fingerprints: dict[int, str],
+                          versions: dict[int, tuple[int, int, str]]) -> bool:
+    """Whether the population written holds the rows of ``fresh`` of every CDR, in their order, with their latest versions:
+    every CDR wrote the same rows (its fingerprint) and orders its versions as before (its rank, stage and data date)."""
+    try:
+        stored = json.loads(task_repository.get_workspace_state(POPULATION_FINGERPRINTS_STATE_KEY) or 'null')
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(stored, dict) or stored != {str(dataset_id): value for dataset_id, value in fingerprints.items()}:
+        return False
+    sources = {int(row[0]): (int(row[1]), int(row[2]), str(row[3]), int(row[4])) for row in connection.execute(
+        f'SELECT dataset_id, combined_rank, stage_rank, data_date, population_count FROM {NQ_CALL_SOURCES_TABLE}')}
+    if sources != {dataset_id: (*versions[dataset_id], len(content['population'])) for dataset_id, content in fresh.items()}:
+        return False
+    total = connection.execute(f'SELECT COUNT(*) FROM {NQ_CALL_POPULATION_TABLE}').fetchone()[0]
+    return int(total or 0) == sum(len(content['population']) for content in fresh.values())
+
+
+def _store_population_fingerprints(connection: Any, fingerprints: dict[int, str], removed: list[int], everything: bool) -> None:
+    """Keep, with the indexed calls, the fingerprint of the population of each CDR written (see _population_unchanged): all
+    of them after a Reindex, else those of the CDRs indexed (once they were all recorded by a Reindex)."""
+    if everything:
+        stored: dict[str, str] | None = {}
+    else:
+        row = connection.execute('SELECT value FROM workspace_state WHERE key = ?', (POPULATION_FINGERPRINTS_STATE_KEY,)).fetchone()
+        try:
+            stored = json.loads(row[0]) if row and row[0] else None
+        except (TypeError, ValueError):
+            stored = None
+        if not isinstance(stored, dict):
+            return
+        for dataset_id in removed:
+            stored.pop(str(dataset_id), None)
+    stored.update({str(dataset_id): value for dataset_id, value in fingerprints.items()})
+    connection.execute('INSERT INTO workspace_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+                       (POPULATION_FINGERPRINTS_STATE_KEY, json.dumps(stored, sort_keys=True)))
+
+
+def _indexed_dataset_ids(connection: Any) -> list[int]:
+    """Every CDR indexed (its population is written with it), and any other the indexed calls hold rows of."""
+    return [int(row[0]) for row in connection.execute(
+        f'SELECT dataset_id FROM {NQ_CALL_SOURCES_TABLE} UNION SELECT DISTINCT dataset_id FROM {NQ_CALLS_TABLE}').fetchall()]
+
+
 def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any]:
     """Index the NQ calls and the population of new or changed CDRs and forget removed ones; ``force`` indexes
     every CDR again (Reindex)."""
@@ -3038,50 +3201,108 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
         migrating = stored_scheme != key_scheme
         moved = 0
         ranks = _combined_ranks(task_repository)
+        # The counts of the population a Reindex works out as it writes it (see refresh_population_counts).
+        counted = None
         if removed or changed:
             # Read every changed CDR before taking the write transaction.
             with task_repository.connection() as connection:
+                _stop_on_request(connection, task_repository)
                 sample_radio = _sample_radio(connection, datasets.values(), profile) if profile.nq_call_radio_from_samples else None
-                fresh = {int(row['id']): _dataset_calls(connection, row, tuple(cdr_columns), profile, sample_radio) for row in changed}
+                fresh = {}
+                for row in changed:
+                    _raise_if_stopped(task_repository)
+                    fresh[int(row['id'])] = _dataset_calls(connection, row, tuple(cdr_columns), profile, sample_radio)
                 touched = [*removed, *fresh]
+                # Every CDR indexed again (Reindex): the tables are emptied and filled at once.
+                everything = force and not set(_indexed_dataset_ids(connection)) - set(touched)
                 marks = ', '.join('?' for _ in touched)
-                affected = {str(row[0]) for row in connection.execute(
+                affected = set() if everything else {str(row[0]) for row in connection.execute(
                     f'SELECT DISTINCT call_key FROM {NQ_CALL_POPULATION_TABLE} WHERE dataset_id IN ({marks})', touched)}
                 old_rows = connection.execute(
                     f'SELECT rowid, dataset_id, source_row_id, call_key FROM {NQ_CALLS_TABLE} WHERE dataset_id IN ({marks})',
                     touched).fetchall() if migrating else []
+                stage_ranks = {dataset_id: int(dataset_cdr_stage(
+                    datasets[dataset_id]['dataset_kind'],
+                    datasets[dataset_id]['cdr_stage'] if 'cdr_stage' in datasets[dataset_id].keys() else None,
+                    datasets[dataset_id]['file_name']) == 'final') for dataset_id in fresh}
+                fingerprints = {dataset_id: _population_fingerprint(content['population']) for dataset_id, content in fresh.items()}
+                # A Reindex that finds the population of every CDR as it was written, with the same ranks, keeps it (and
+                # its latest versions) instead of writing it again.
+                population_kept = everything and _population_unchanged(
+                    connection, task_repository, fresh, fingerprints,
+                    {dataset_id: (ranks.get(dataset_id, -1), stage_ranks[dataset_id], fresh[dataset_id]['data_date'])
+                     for dataset_id in fresh})
+            _raise_if_stopped(task_repository)
             columns = ', '.join(_CALL_COLUMNS)
             placeholders = ', '.join('?' for _ in _CALL_COLUMNS)
+            population_columns = f"dataset_id, call_key, service, campaign, operator, nr_mode, is_nq, {', '.join(POPULATION_FIELDS)}"
+            population_marks = ', '.join('?' for _ in range(7 + len(POPULATION_FIELDS)))
+            latest: dict[str, int] = {}
+            if everything:
+                # The latest version of each call, as _rebuild_versions orders them: the CDR the combined tables
+                # include, then the Final one, then the newest data, then the newest CDR.
+                for dataset_id in sorted(fresh, key=lambda item: (ranks.get(item, -1), stage_ranks[item],
+                                                                  fresh[item]['data_date'], item), reverse=True):
+                    for entry in fresh[dataset_id]['population']:
+                        latest.setdefault(entry[1], dataset_id)
+                counted = _population_counts_of(fresh, latest)
             with task_repository.connection() as connection:
-                for dataset_id in touched:
-                    connection.execute(f'DELETE FROM {NQ_CALLS_TABLE} WHERE dataset_id = ?', (dataset_id,))
-                    connection.execute(f'DELETE FROM {NQ_DTA_RESULTS_TABLE} WHERE dataset_id = ?', (dataset_id,))
-                    connection.execute(f'DELETE FROM {NQ_DTA_LEARNED_TABLE} WHERE dataset_id = ?', (dataset_id,))
-                    connection.execute(f'DELETE FROM {NQ_CALL_SOURCES_TABLE} WHERE dataset_id = ?', (dataset_id,))
-                    connection.execute(f'DELETE FROM {NQ_CALL_POPULATION_TABLE} WHERE dataset_id = ?', (dataset_id,))
+                _stop_on_request(connection, task_repository)
+                dropped_indexes: list[str] = []
+                if everything:
+                    tables = [NQ_CALLS_TABLE, NQ_DTA_RESULTS_TABLE, NQ_DTA_LEARNED_TABLE, NQ_CALL_SOURCES_TABLE]
+                    if not population_kept:
+                        # The population is emptied and written without its indexes, built again once it is in place.
+                        indexes = connection.execute(
+                            "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL "
+                            'ORDER BY rowid', (NQ_CALL_POPULATION_TABLE,)).fetchall()
+                        for name, index_sql in indexes:
+                            connection.execute(f'DROP INDEX {_quote(str(name))}')
+                            dropped_indexes.append(str(index_sql))
+                        tables.append(NQ_CALL_POPULATION_TABLE)
+                    for table in tables:
+                        connection.execute(f'DELETE FROM {table}')
+                else:
+                    for dataset_id in touched:
+                        connection.execute(f'DELETE FROM {NQ_CALLS_TABLE} WHERE dataset_id = ?', (dataset_id,))
+                        connection.execute(f'DELETE FROM {NQ_DTA_RESULTS_TABLE} WHERE dataset_id = ?', (dataset_id,))
+                        connection.execute(f'DELETE FROM {NQ_DTA_LEARNED_TABLE} WHERE dataset_id = ?', (dataset_id,))
+                        connection.execute(f'DELETE FROM {NQ_CALL_SOURCES_TABLE} WHERE dataset_id = ?', (dataset_id,))
+                        connection.execute(f'DELETE FROM {NQ_CALL_POPULATION_TABLE} WHERE dataset_id = ?', (dataset_id,))
                 # What their rows learned is gone: the DT Analyzer RCA learns again once they are indexed.
                 connection.execute('DELETE FROM workspace_state WHERE key = ?', (nq_dta_rca.LEARNED_FINGERPRINT_STATE_KEY,))
                 for dataset_id, content in fresh.items():
+                    _raise_if_stopped(task_repository)
                     row = datasets[dataset_id]
                     connection.executemany(f'INSERT OR REPLACE INTO {NQ_CALLS_TABLE} ({columns}) VALUES ({placeholders})',
                                            content['calls'])
-                    connection.executemany(
-                        f'INSERT OR REPLACE INTO {NQ_CALL_POPULATION_TABLE} '
-                        f"(dataset_id, call_key, service, campaign, operator, nr_mode, is_nq, {', '.join(POPULATION_FIELDS)}) "
-                        f"VALUES ({', '.join('?' for _ in range(7 + len(POPULATION_FIELDS)))})",
-                        content['population'])
-                    stage = dataset_cdr_stage(row['dataset_kind'], row['cdr_stage'] if 'cdr_stage' in row.keys() else None,
-                                              row['file_name'])
+                    if everything and not population_kept:
+                        connection.executemany(
+                            f'INSERT INTO {NQ_CALL_POPULATION_TABLE} ({population_columns}, is_latest) '
+                            f'VALUES ({population_marks}, ?)',
+                            ((*entry, int(latest[entry[1]] == dataset_id)) for entry in content['population']))
+                    elif not everything:
+                        connection.executemany(
+                            f'INSERT OR REPLACE INTO {NQ_CALL_POPULATION_TABLE} ({population_columns}) VALUES ({population_marks})',
+                            content['population'])
+                        affected.update(entry[1] for entry in content['population'])
                     connection.execute(
                         f'INSERT INTO {NQ_CALL_SOURCES_TABLE} (dataset_id, revision, call_count, synced_at, stage_rank, '
                         'data_date, population_count, combined_rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (dataset_id, _dataset_revision(row, signature), len({call[2] for call in content['calls']}), now_iso(),
-                         int(stage == 'final'), content['data_date'], len(content['population']), ranks.get(dataset_id, -1)),
+                         stage_ranks[dataset_id], content['data_date'], len(content['population']), ranks.get(dataset_id, -1)),
                     )
-                    affected.update(entry[1] for entry in content['population'])
+                for index_sql in dropped_indexes:
+                    _raise_if_stopped(task_repository)
+                    connection.execute(index_sql)
                 if old_rows:
                     moved = _move_follow_up(connection, old_rows, [call for content in fresh.values() for call in content['calls']])
-                _rebuild_versions(connection, affected)
+                _raise_if_stopped(task_repository)
+                _rebuild_versions(connection, affected, everything=everything)
+                _store_population_fingerprints(connection, fingerprints, removed, everything)
+                # Nothing is stopped once the indexed calls are written.
+                _raise_if_stopped(task_repository)
+                connection.set_progress_handler(None, 0)
         # A CDR that the combined tables include or leave out now changes the version of its calls, without reading it.
         reranked = _rank_changes(task_repository, ranks)
         if reranked:
@@ -3105,7 +3326,7 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
         refresh_latest_calls(task_repository)
         _refresh_dta_rca(task_repository)
         # The failure panels read the counts of this indexing.
-        refresh_population_counts(task_repository)
+        refresh_population_counts(task_repository, None if reranked else counted)
         with task_repository.connection() as connection:
             total = connection.execute(f'SELECT COUNT(DISTINCT call_key) FROM {NQ_CALLS_TABLE}').fetchone()[0]
             synced_at = connection.execute(f'SELECT MAX(synced_at) FROM {NQ_CALL_SOURCES_TABLE}').fetchone()[0]
@@ -3123,6 +3344,8 @@ NQ_INDEX_IDLE_SECONDS = 15 * 60
 # The NQ Prioritization is calculated after the indexing (see nq_prioritization).
 NQ_PRIORITIZATION_IDLE_SECONDS = 3 * 60
 _index_jobs: dict[str, dict[str, Any]] = {}
+# A Reindex stopped from its card, done by the idle server at night.
+REINDEX_PENDING_STATE_KEY = 'nq_reindex_pending'
 _index_jobs_guard = Lock()
 
 
@@ -3156,15 +3379,42 @@ def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: b
                'finished_at': None, 'error': '', 'result': None}
         _index_jobs[key] = job
 
+    def stopped() -> None:
+        with _index_jobs_guard:
+            job.update(status='stopped', error='', finished_at=time.time())
+        if force:
+            # The Reindex stopped is done by the idle server at night.
+            task_repository.set_workspace_state(REINDEX_PENDING_STATE_KEY, '1')
+        if hasattr(task_repository, 'try_add_log'):
+            task_repository.try_add_log('system', 'nq_calls_index_stopped', json.dumps(
+                {'reindex': bool(force), 'seconds': round(time.time() - (job['started_at'] or time.time()), 1)}))
+
     def run() -> None:
         with _index_jobs_guard:
-            job.update(status='processing', started_at=time.time())
+            if job.get('stop_requested'):
+                job.update(status='stopped', finished_at=time.time())
+                stop_before_start = True
+            else:
+                job.update(status='processing', started_at=time.time())
+                stop_before_start = False
+        if stop_before_start:
+            if force:
+                task_repository.set_workspace_state(REINDEX_PENDING_STATE_KEY, '1')
+            return
         try:
             result = refresh_nq_columns(task_repository) if columns_only else sync_nq_calls(task_repository, force=force)
+        except NqIndexStopped:
+            stopped()
+            return
         except Exception as exc:  # The next idle period or a Reindex tries again.
+            if isinstance(exc, sqlite3.OperationalError) and job.get('stop_requested'):
+                stopped()  # A statement interrupted by the stop (see _stop_on_request).
+                return
             with _index_jobs_guard:
                 job.update(status='failed', error=str(exc), finished_at=time.time())
             return
+        if force:
+            task_repository.set_workspace_state(REINDEX_PENDING_STATE_KEY, '')
         with _index_jobs_guard:
             job.update(status='ready', result=result, finished_at=time.time())
         if log_event and hasattr(task_repository, 'try_add_log'):
@@ -3175,6 +3425,22 @@ def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: b
     submit(run)
     with _index_jobs_guard:
         return dict(job)
+
+
+def stop_nq_index(database_path: Any) -> bool:
+    """Ask the queued or running indexing of a workspace to stop; whether there was one to stop. It stops before it
+    writes the indexed calls, keeping them as they were (a stopped Reindex is done by the idle server at night)."""
+    with _index_jobs_guard:
+        job = _index_jobs.get(_workspace_key(database_path))
+        if not job or job['status'] not in {'queued', 'processing'}:
+            return False
+        job['stop_requested'] = True
+        return True
+
+
+def reindex_pending(task_repository: Any) -> bool:
+    """Whether a Reindex was stopped and waits for the idle server."""
+    return str(task_repository.get_workspace_state(REINDEX_PENDING_STATE_KEY) or '') == '1'
 
 
 def nq_index_status(task_repository: Any) -> dict[str, Any]:
@@ -3191,6 +3457,7 @@ def nq_index_status(task_repository: Any) -> dict[str, Any]:
     running = bool(job and job['status'] in {'queued', 'processing'})
     return {'datasets': len(datasets), 'calls': int(total or 0), 'synced_at': synced_at or '',
             'pending': len(removed) + len(changed) + len(reranked), 'indexing': running, 'reindexing': running and bool(job['force']),
+            'reindex_pending': not running and reindex_pending(task_repository),
             'error': job['error'] if job and job['status'] == 'failed' else ''}
 
 
@@ -6525,9 +6792,10 @@ def _population_counts_signature(connection: Any) -> str:
         f'SELECT dataset_id, revision, synced_at, combined_rank FROM {NQ_CALL_SOURCES_TABLE} ORDER BY dataset_id')]])
 
 
-def refresh_population_counts(task_repository: Any) -> bool:
+def refresh_population_counts(task_repository: Any, counted: list[tuple[Any, ...]] | None = None) -> bool:
     """Count the latest versions of the calls by POPULATION_COUNTS_GROUPS again when the indexed calls changed (once
-    per indexing, after it, or by the first panel that needs them); whether the counts are those of the indexed calls."""
+    per indexing, after it, or by the first panel that needs them); whether the counts are those of the indexed calls.
+    ``counted``: the counts the indexing worked out as it wrote the population (see _population_counts_of)."""
     groups = ', '.join(POPULATION_COUNTS_GROUPS)
     with _population_counts_lock:
         with task_repository.connection() as connection:
@@ -6539,7 +6807,7 @@ def refresh_population_counts(task_repository: Any) -> bool:
                     _write_population_counts_copy(copy, connection.execute(
                         f'SELECT {groups}, total, nq FROM {NQ_POPULATION_COUNTS_TABLE} ORDER BY rowid').fetchall())
                 return True
-            rows = connection.execute(
+            rows = counted if counted is not None else connection.execute(
                 f'SELECT {groups}, COUNT(*), SUM(is_nq) FROM {NQ_CALL_POPULATION_TABLE} NOT INDEXED WHERE is_latest = 1 '
                 f'GROUP BY {groups}').fetchall()
             if _population_counts_signature(connection) != signature:
@@ -6553,6 +6821,25 @@ def refresh_population_counts(task_repository: Any) -> bool:
         task_repository.set_workspace_state(POPULATION_COUNTS_STATE_KEY, signature)
         _write_population_counts_copy(_population_counts_path(task_repository, signature), rows)
     return True
+
+
+def _population_counts_of(fresh: dict[int, dict[str, Any]], latest: dict[str, int]) -> list[tuple[Any, ...]]:
+    """What refresh_population_counts counts in the population, from the population of every CDR as it is written
+    (``latest``: the CDR of the latest version of each call), in the order SQLite groups them (the text of each field)."""
+    names = ('dataset_id', 'call_key', 'service', 'campaign', 'operator', 'nr_mode', 'is_nq', *POPULATION_FIELDS)
+    positions = [names.index(field) for field in POPULATION_COUNTS_GROUPS]
+    counts: dict[tuple[Any, ...], list[int]] = {}
+    for dataset_id, content in fresh.items():
+        for entry in content['population']:
+            if latest[entry[1]] != dataset_id:
+                continue
+            group = tuple(entry[position] for position in positions)
+            if (count := counts.get(group)) is None:
+                counts[group] = [1, int(entry[6])]
+            else:
+                count[0] += 1
+                count[1] += int(entry[6])
+    return [(*group, total, nq) for group, (total, nq) in sorted(counts.items())]
 
 
 def _population_counts_path(task_repository: Any, signature: str) -> Path:
@@ -10093,20 +10380,31 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                                       (NQ_CALL_SOURCES_TABLE,)).fetchone():
                 return
         status = nq_index_status(repository)
-        if status['pending'] and not status['indexing']:
+        if status['reindex_pending']:
+            start_nq_index(repository, core.submit_background_task, force=True, log_event=True)
+        elif status['pending'] and not status['indexing']:
             start_nq_index(repository, core.submit_background_task, log_event=True)
 
     def index_tasks(workspace: Any) -> list[dict[str, Any]]:
         job = nq_index_job(workspace.database_path)
-        if not job or (job['status'] in {'ready', 'failed'} and time.time() - (job['finished_at'] or 0) > 5):
+        if not job or (job['status'] in {'ready', 'failed', 'stopped'} and time.time() - (job['finished_at'] or 0) > 5):
             return []
         detail = ('Indexing the calls of every CDR again' if job['force'] else 'Adding the CDR columns of the table to the calls'
                   if job.get('columns_only') else 'Indexing the calls of new or changed CDRs')
-        return [{
+        if job['status'] == 'stopped':
+            detail = ('Stopped: the calls of every CDR are indexed again at night, once the server is idle' if job['force']
+                      else 'Stopped: the new or changed CDRs are indexed at night, once the server is idle')
+        elif job.get('stop_requested'):
+            detail = 'Stopping…'
+        task = {
             'id': f'nq-index:{workspace.id}', 'label': 'Non-Qualified Calls indexing',
             'detail': job['error'] or detail, 'status': job['status'], 'progress': None,
             'queued_at': job['queued_at'], 'started_at': job['started_at'], 'completed_at': job['finished_at'],
-        }]
+        }
+        if job['status'] in {'queued', 'processing'} and not job.get('stop_requested'):
+            # Stopped from its card (see stop_background_task): the indexed calls stay as they were.
+            task.update(stop_task_id=task['id'], stop_url=f'/api/background-tasks/{workspace.id}/stop')
+        return [task]
 
     def prioritize_when_idle() -> None:
         """Calculate the NQ Prioritization of the active workspace once the server is idle, after the indexing of the
@@ -10142,6 +10440,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     core.register_idle_task(index_when_idle, NQ_INDEX_IDLE_SECONDS)
     core.register_idle_task(prioritize_when_idle, NQ_PRIORITIZATION_IDLE_SECONDS)
     core.BACKGROUND_TASK_PROVIDERS.append(index_tasks)
+    core.nq_index_stop = stop_nq_index
     core.BACKGROUND_TASK_PROVIDERS.append(prioritization_tasks)
     from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
     from pydantic import BaseModel, Field

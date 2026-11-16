@@ -1577,15 +1577,107 @@ def test_the_reindex_reads_the_same_calls_from_the_columnar_copies(client, tmp_p
     reads = []
     # The reads of this test only (the background tasks of the application read the copies too).
     reader = threading.get_ident()
-    for name in ('cdr_columns', 'query_cdr_rows'):
+    for name in ('cdr_columns', 'cdr_rows_by_rowids', 'provide_rows'):
         monkeypatch.setattr(cdr_store, name, lambda *args, _read=getattr(cdr_store, name), _name=name, **kwargs: (
-            threading.get_ident() == reader and reads.append((_name, args[2]))) or _read(*args, **kwargs))
+            threading.get_ident() == reader and reads.append((_name, args[2] if _name != 'provide_rows' else args[1]))
+        ) or _read(*args, **kwargs))
 
     from_copies = {dataset_id: calls_of(dataset_id) for dataset_id in datasets}
 
-    # Both passes of each CDR (every call, then its Non-Qualified rows) read the copy and give the same calls.
-    assert sorted(reads) == sorted((name, dataset_id) for dataset_id in datasets for name in ('cdr_columns', 'query_cdr_rows'))
+    # Both passes of each CDR (every call, then its Non-Qualified rows, found from its result column) read the copy, never
+    # the rows put back in SQLite, and give the same calls.
+    assert sorted(reads) == sorted((name, dataset_id) for dataset_id in datasets
+                                   for name in ('cdr_columns', 'cdr_columns', 'cdr_rows_by_rowids'))
     assert from_copies == from_sqlite and all(result['calls'] for result in from_copies.values())
+
+
+def indexed_tables() -> dict[str, list[tuple]]:
+    """Every row of the indexed tables, in their order, without the times of the indexing."""
+    tables = {}
+    with core.repository.connection() as connection:
+        for table in (nq.NQ_CALLS_TABLE, nq.NQ_CALL_POPULATION_TABLE, nq.NQ_CALL_VERSIONS_TABLE, nq.NQ_CALL_LATEST_TABLE,
+                      nq.NQ_DTA_RESULTS_TABLE, nq.NQ_POPULATION_COUNTS_TABLE):
+            columns = [row[1] for row in connection.execute(f'PRAGMA table_info({table})') if not str(row[1]).endswith('_at')]
+            tables[table] = [tuple(row) for row in connection.execute(f"SELECT {', '.join(columns)} FROM {table} ORDER BY rowid")]
+        tables['sources'] = [tuple(row) for row in connection.execute(
+            f'SELECT dataset_id, revision, call_count, stage_rank, data_date, population_count, combined_rank '
+            f'FROM {nq.NQ_CALL_SOURCES_TABLE} ORDER BY rowid')]
+    return tables
+
+
+def test_the_reindex_keeps_the_population_that_did_not_change(client, tmp_path, monkeypatch):
+    add_cdr(tmp_path, 'voice.csv', 'voice', voice_rows())
+    add_cdr(tmp_path, 'data.csv', 'data', data_rows())
+    index_cdrs()
+    indexed = indexed_tables()
+    assert indexed[nq.NQ_CALLS_TABLE] and indexed[nq.NQ_CALL_POPULATION_TABLE] and indexed[nq.NQ_CALL_VERSIONS_TABLE]
+    kept = []
+    monkeypatch.setattr(nq, '_population_unchanged', lambda *args, _check=nq._population_unchanged: kept.append(_check(*args)) or kept[-1])
+    # The first Reindex writes every table again, the same, and records the population of each CDR; the next one finds it
+    # as it was written and keeps it, with the same tables.
+    nq.sync_nq_calls(core.repository, force=True)
+    assert indexed_tables() == indexed
+    nq.sync_nq_calls(core.repository, force=True)
+    assert indexed_tables() == indexed and kept == [False, True]
+    # A CDR indexed again with other calls changes its population: the next Reindex writes it again.
+    add_cdr(tmp_path, 'voice-2.csv', 'voice', voice_rows().assign(Session_ID_A=[2001, 2002, 2003]))
+    index_cdrs()
+    changed = indexed_tables()
+    nq.sync_nq_calls(core.repository, force=True)
+    assert indexed_tables() == changed and kept[-1] is True
+    with core.repository.connection() as connection:
+        connection.execute(f'DELETE FROM {nq.NQ_CALL_POPULATION_TABLE} WHERE rowid = (SELECT MAX(rowid) FROM {nq.NQ_CALL_POPULATION_TABLE})')
+    nq.sync_nq_calls(core.repository, force=True)
+    assert indexed_tables() == changed and kept[-1] is False
+
+
+def test_the_indexing_stops_from_its_card(client, tmp_path, monkeypatch):
+    enable_module()
+    add_cdr(tmp_path, 'voice.csv', 'voice', voice_rows())
+    login(client)
+    assert client.get('/api/non-qualified-calls/state').json()['sync']['pending'] == 0
+    indexed = indexed_tables()
+    workspace_id = core.active_workspace.id
+    # Nothing to stop.
+    stop = lambda: client.post(f'/api/background-tasks/{workspace_id}/stop', data={'task_id': f'nq-index:{workspace_id}'})
+    assert stop().status_code == 409
+    # A queued Reindex shows Stop on its card; stopped, it does not run and waits for the idle server.
+    queued = []
+    monkeypatch.setattr(core, 'submit_background_task', lambda callback, *args: queued.append((callback, args)))
+    client.post('/api/non-qualified-calls/reindex')
+    card = next(task for task in core._workspace_background_tasks(core.active_workspace) if task['id'].startswith('nq-index:'))
+    assert card['stop_task_id'] == f'nq-index:{workspace_id}' and card['stop_url'].endswith(f'/{workspace_id}/stop')
+    assert stop().status_code == 200
+    callback, args = queued.pop()
+    callback(*args)
+    assert nq.nq_index_job(core.repository.db_path)['status'] == 'stopped' and indexed_tables() == indexed
+    assert client.get('/api/non-qualified-calls/index-status').json()['sync']['reindex_pending']
+    # Stopped while it reads the CDRs, or while it writes the indexed calls, the indexed calls stay as they were.
+    for stage in ('_dataset_calls', '_rebuild_versions'):
+        monkeypatch.setattr(nq, stage, lambda *args, _run=getattr(nq, stage), **kwargs: (
+            nq.stop_nq_index(core.repository.db_path), _run(*args, **kwargs))[1])
+        client.post('/api/non-qualified-calls/reindex')
+        callback, args = queued.pop()
+        callback(*args)
+        job = nq.nq_index_job(core.repository.db_path)
+        assert job['status'] == 'stopped' and not job['error'] and indexed_tables() == indexed
+        card = next(task for task in core._workspace_background_tasks(core.active_workspace) if task['id'].startswith('nq-index:'))
+        assert card['status'] == 'stopped' and 'stop_url' not in card and card['detail'].startswith('Stopped: ')
+        monkeypatch.undo()
+        monkeypatch.setattr(core, 'submit_background_task', lambda callback, *args: queued.append((callback, args)))
+    actions = [row['action'] for row in core.repository.list_logs()]
+    assert actions.count('nq_calls_index_stop_requested') == 1 and actions.count('nq_calls_index_stopped') == 2
+    # The idle server runs the stopped Reindex at night; once done, nothing waits.
+    monkeypatch.setattr(nq, 'nq_index_night', lambda now=None: True)
+    monkeypatch.setattr(core, '_server_busy', lambda: False)
+    idle_task = next(callback for seconds, callback in core.IDLE_TASK_CALLBACKS
+                     if seconds == nq.NQ_INDEX_IDLE_SECONDS and callback.__name__ == 'index_when_idle')
+    idle_task()
+    callback, args = queued.pop()
+    assert nq.nq_index_job(core.repository.db_path)['force']
+    callback(*args)
+    status = client.get('/api/non-qualified-calls/index-status').json()['sync']
+    assert not status['reindex_pending'] and status['pending'] == 0 and indexed_tables() == indexed
 
 
 def test_the_view_stays_in_place_while_the_calls_reload():
