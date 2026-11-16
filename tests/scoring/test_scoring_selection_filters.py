@@ -40,8 +40,10 @@ def test_each_user_keeps_their_own_panel_selection(scoring_api):
     assert save_scoring_selection(repository, south, username='userb')
     assert load_scoring_selection(repository, 'usera')[0]['context_filters']['Region'] == ['North']
     assert load_scoring_selection(repository, 'USERB')[0]['context_filters']['Region'] == ['South']
-    # A user without a selection of their own starts from the latest one saved in the workspace.
-    assert load_scoring_selection(repository, 'userc')[0]['context_filters']['Region'] == ['South']
+    # A user without a selection of their own starts from the default one, never from another user's.
+    assert not load_scoring_selection(repository, 'userc')[0]['context_filters'].get('Region')
+    from src.modules.scoring.scoring_selection import has_own_scoring_selection
+    assert has_own_scoring_selection(repository, 'USERA') and not has_own_scoring_selection(repository, 'userc')
     # Each tab of a user still rejects its own delayed writes.
     assert save_scoring_selection(repository, south, client_id='tab', client_revision=2, username='usera')
     assert not save_scoring_selection(repository, north, client_id='tab', client_revision=1, username='usera')

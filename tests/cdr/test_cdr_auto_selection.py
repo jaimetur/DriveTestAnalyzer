@@ -176,6 +176,49 @@ def test_flex_campaigns_are_used_only_when_checked_by_hand(workspace):
     assert is_flex_cdr([], '2025-Q2-Flex') and not is_flex_cdr([], '') and not is_flex_cdr(['UK_Q2_2026', 'UK_Flex_2026'])
 
 
+
+def test_campaigns_in_progress_are_used_only_when_checked_by_hand(workspace):
+    from src.modules.cdr.cdr_auto_selection import campaign_identity, in_progress_campaigns
+    from src.modules.scoring.scoring_selection import expand_scoring_campaigns, scoring_auto_cdrs
+    add = workspace['add']
+    repository = workspace['repository']
+    kinds = ('data', 'voice', 'speech')
+    [add(name=f'UK_Q2_2026_{kind}.csv', kind=kind, campaign='UK_Q2_2026') for kind in kinds]
+    [add(name=f'UK_Q3_2026_{kind}.csv', kind=kind, campaign='UK_Q3_2026') for kind in kinds]
+    # The first Daily CDRs of 2026-Q4: the campaign is in progress until its Final CDRs arrive.
+    london = [{'Operator': 'EE', 'Operator_Vendor': 'EE_Nokia', 'Vendor': 'Nokia', 'Campaign': 'UK_Q4_2026', 'region': 'London',
+               'city': 'London', 'JOIN_ID': 'q4-1'}]
+    daily = [add(name=f'UK_Q4_2026_Daily_{kind}.csv', kind=kind, campaign='UK_Q4_2026', stage='daily', rows=london)
+             for kind in kinds]
+    assert in_progress_campaigns(repository, 'NSA') == {campaign_identity('UK_Q4_2026')}
+    assert campaign_values(repository, 'NSA')[-1] == 'UK_Q4_2026'
+    # Latest, Latest N, Previous and All available campaigns leave it out, in every module and in Scoring.
+    assert resolve_campaign_filter(repository, 'NSA', [LATEST_CAMPAIGN]) == ['UK_Q3_2026']
+    assert resolve_campaign_filter(repository, 'NSA', [PREVIOUS_CAMPAIGN]) == ['UK_Q2_2026']
+    assert resolve_campaign_filter(repository, 'NSA', [ALL_CAMPAIGNS]) == ['UK_Q2_2026', 'UK_Q3_2026']
+    assert expand_scoring_campaigns(repository, 'NSA', [LATEST_CAMPAIGN]) == ['UK_Q3_2026']
+    chosen = scoring_auto_cdrs(repository, 'NSA', {'Campaign': [ALL_CAMPAIGNS]})
+    assert chosen['campaign_presets'][ALL_CAMPAIGNS] == ['UK_Q2_2026', 'UK_Q3_2026']
+    assert not set(daily) & set(chosen['dataset_ids'])
+    assert chosen['campaigns_in_progress'] == ['UK_Q4_2026']
+    # The Campaign filter lists every campaign whatever the other filters, telling those they leave no test of.
+    leeds = scoring_auto_cdrs(repository, 'NSA', {'Campaign': [ALL_CAMPAIGNS], 'City': ['Leeds']})
+    assert leeds['options']['Campaign'] == ['UK_Q2_2026', 'UK_Q3_2026', 'UK_Q4_2026']
+    assert leeds['campaigns_without_tests'] == ['UK_Q4_2026']
+    assert 'Leeds' in leeds['options']['City'] and not chosen['campaigns_without_tests']
+    # Checked by hand it is used.
+    assert sorted(scoring_auto_cdrs(repository, 'NSA', {'Campaign': ['UK_Q4_2026']})['dataset_ids']) == sorted(daily)
+    # A calculation tells the chosen campaigns the other filters leave no test of.
+    from src.modules.scoring.saved_filters import _campaigns_without_tests_warning
+    warning = _campaigns_without_tests_warning({'nr_mode': 'NSA'}, {'Campaign': ['UK_Q3_2026', 'UK_Q4_2026'], 'City': ['Leeds']},
+                                               {'campaigns': ['UK_Q3_2026']})
+    assert warning == '26-Q4: no tests with the City filter of this calculation; it adds nothing to the results.'
+    assert _campaigns_without_tests_warning({'nr_mode': 'NSA'}, {'Campaign': ['UK_Q3_2026']}, {'campaigns': ['UK_Q3_2026']}) is None
+    # Its Final CDRs end it: the automatic choices take it again.
+    [add(name=f'UK_Q4_2026_{kind}.csv', kind=kind, campaign='UK_Q4_2026') for kind in kinds]
+    assert not in_progress_campaigns(repository, 'NSA')
+    assert resolve_campaign_filter(repository, 'NSA', [LATEST_CAMPAIGN]) == ['UK_Q4_2026']
+
 def test_filters_cascade_over_every_cdr_of_the_nr_mode_without_reading_rows(workspace, monkeypatch):
     add = workspace['add']
     repository = workspace['repository']

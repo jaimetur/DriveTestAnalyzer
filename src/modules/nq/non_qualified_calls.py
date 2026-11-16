@@ -10898,7 +10898,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     def resolve_report_campaigns(repository, filters: dict[str, list[str]]) -> dict[str, list[str]]:
         """The filters of a Reporting Job with an automatic Campaign choice (Latest campaign, Previous campaign, Latest 2
         campaigns or All available campaigns) as the campaigns of its NR Modes it stands for at this run."""
-        from src.modules.cdr.cdr_auto_selection import NO_PREVIOUS_CAMPAIGN, campaign_groups, campaign_presets, preset_campaign_groups
+        from src.modules.cdr.cdr_auto_selection import (
+            NO_PREVIOUS_CAMPAIGN, campaign_groups, campaign_presets, in_progress_campaigns, preset_campaign_groups,
+        )
 
         presets = campaign_presets(filters.get('campaign'))
         if not presets:
@@ -10907,7 +10909,9 @@ def install_non_qualified_calls_routes(core: Any) -> None:
         with repository.connection() as connection:
             pairs = connection.execute(f"SELECT DISTINCT nr_mode, campaign FROM {NQ_CALLS_TABLE} WHERE campaign <> ''").fetchall()
         campaigns = [str(campaign) for nr_mode, campaign in pairs if not modes or str(nr_mode or '').casefold() in modes]
-        chosen = [value for group in preset_campaign_groups(campaign_groups(campaigns), presets[:1]) for value in group]
+        # (The campaigns in progress, without a Final CDR yet, only when checked by hand.)
+        in_progress = in_progress_campaigns(repository)
+        chosen = [value for group in preset_campaign_groups(campaign_groups(campaigns), presets[:1], in_progress) for value in group]
         # A choice that stands for no campaign (Previous campaign with only one) chooses no call, not every one.
         return {**filters, 'campaign': chosen or [NO_PREVIOUS_CAMPAIGN]}
 

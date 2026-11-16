@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Iterable
 
 from src.branding import canonical_format
 from src.modules.cdr.column_names import campaign_sort_key, column_identity
 from src.modules.cdr.cdr_auto_selection import (
     CAMPAIGN_PRESETS, CDR_KIND_LABELS, LATEST_CAMPAIGN, NO_PREVIOUS_CAMPAIGN, campaign_groups, campaign_identity, campaign_presets,
-    candidate_cdrs, cdr_campaigns, campaign_values, complete_campaign_cdrs, preset_campaign_groups,
+    candidate_cdrs, cdr_campaigns, campaign_values, complete_campaign_cdrs, in_progress_campaigns, preset_campaign_groups,
 )
 from src.modules.cdr.cdr_facets import cascading_options
 from src.modules.cdr.cdr_stage import combined_dataset_ids
@@ -127,9 +127,10 @@ def _flatten_groups(groups: list[list[str]]) -> list[str]:
     return sorted((value for values in groups for value in values), key=lambda value: (value.casefold(), value))
 
 
-def _preset_scoring_campaigns(groups: list[list[str]], presets: list[str]) -> list[str]:
-    """The complete campaigns (groups newest first) that automatic choices stand for, or what stands for none."""
-    return _flatten_groups(preset_campaign_groups(groups, presets)) or ([NO_PREVIOUS_CAMPAIGN] if groups else [])
+def _preset_scoring_campaigns(groups: list[list[str]], presets: list[str], in_progress: Iterable[str] = ()) -> list[str]:
+    """The complete campaigns (groups newest first) that automatic choices stand for, without the campaigns in progress
+    (Daily or Weekly CDRs only), or what stands for none."""
+    return _flatten_groups(preset_campaign_groups(groups, presets, in_progress)) or ([NO_PREVIOUS_CAMPAIGN] if groups else [])
 
 
 def expand_scoring_campaigns(repository: Repository, nr_mode: str, values: object) -> list[str]:
@@ -138,7 +139,10 @@ def expand_scoring_campaigns(repository: Repository, nr_mode: str, values: objec
     campaigns = [str(value).strip() for value in (values if isinstance(values, (list, tuple, set)) else [values] if values else [])
                  if str(value or '').strip()]
     presets = campaign_presets(campaigns)
-    return _preset_scoring_campaigns(_complete_campaign_groups(repository, nr_mode), presets[:1]) if presets else campaigns
+    if not presets:
+        return campaigns
+    return _preset_scoring_campaigns(_complete_campaign_groups(repository, nr_mode), presets[:1],
+                                     in_progress_campaigns(repository, nr_mode))
 
 
 def expand_scoring_context_filters(repository: Repository, nr_mode: str, filters: object) -> dict[str, Any]:
@@ -162,7 +166,9 @@ def scoring_auto_cdrs(repository: Repository, nr_mode: object, context_filters: 
     """The CDRs chosen for an NR Mode and Campaign filter, and the cascading values of every context filter.
 
     The filters list the values of every CDR of the NR Mode that the combined tables include, each one
-    only those the other filters leave.
+    only those the other filters leave, but Campaign, which lists every campaign (it chooses the CDRs, as the NR Mode
+    does): ``campaigns_without_tests`` are those the other filters leave no test of, ``campaigns_in_progress`` those
+    with Daily or Weekly CDRs only, which the automatic choices leave out.
     """
     rows = _available_cdr_rows(repository)
     modes = _scoring_nr_modes(rows)
@@ -177,7 +183,8 @@ def scoring_auto_cdrs(repository: Repository, nr_mode: object, context_filters: 
     complete_groups = _complete_campaign_groups(repository, mode)
     chosen = [str(value).strip() for value in (filters.get('Campaign') or []) if str(value or '').strip()]
     presets = campaign_presets(chosen)
-    filters['Campaign'] = _preset_scoring_campaigns(complete_groups, presets[:1]) if presets else chosen
+    in_progress = in_progress_campaigns(repository, mode)
+    filters['Campaign'] = _preset_scoring_campaigns(complete_groups, presets[:1], in_progress) if presets else chosen
     campaigns = filters['Campaign']
     dataset_ids, incomplete = complete_campaign_cdrs(repository, mode, campaigns)
     dataset_ids = [dataset_id for dataset_id in dataset_ids if repository.dataset_rows_table_exists(dataset_id)]
@@ -185,6 +192,16 @@ def scoring_auto_cdrs(repository: Repository, nr_mode: object, context_filters: 
     by_id = {row['id']: row for row in candidates}
     campaigns_by_id = cdr_campaigns(repository, dataset_ids)
     fields = fields or ['Campaign', 'Operator', 'Operator_Vendor', 'Vendor_Operator', 'Vendor', 'Region', 'Cluster', 'City']
+    candidate_ids = [row['id'] for row in candidates]
+    options = cascading_options(repository, candidate_ids, filters, fields)
+    without_tests: list[str] = []
+    in_progress_values: list[str] = []
+    if 'Campaign' in fields:
+        # Every campaign, whatever the other filters (those they leave no test of are told apart).
+        with_tests = {campaign_identity(value) for value in options.get('Campaign') or []}
+        options['Campaign'] = cascading_options(repository, candidate_ids, {}, ['Campaign'])['Campaign']
+        without_tests = [value for value in options['Campaign'] if campaign_identity(value) not in with_tests]
+        in_progress_values = [value for value in options['Campaign'] if campaign_identity(value) in in_progress]
     return {
         'nr_mode': mode,
         'nr_modes': modes,
@@ -198,8 +215,10 @@ def scoring_auto_cdrs(repository: Repository, nr_mode: object, context_filters: 
         # The Campaign choice as made (Latest campaign…), for the Campaign filter.
         'campaign_selection': presets[:1] if presets else campaigns,
         # The campaigns each Latest choice stands for now (a calculation uses them).
-        'campaign_presets': {preset: _preset_scoring_campaigns(complete_groups, [preset]) for preset in CAMPAIGN_PRESETS},
-        'options': cascading_options(repository, [row['id'] for row in candidates], filters, fields),
+        'campaign_presets': {preset: _preset_scoring_campaigns(complete_groups, [preset], in_progress) for preset in CAMPAIGN_PRESETS},
+        'options': options,
+        'campaigns_without_tests': without_tests,
+        'campaigns_in_progress': in_progress_values,
     }
 
 
@@ -418,8 +437,9 @@ def _user_key(username: str | None) -> str:
 def load_scoring_selection(repository: Repository, username: str | None = None) -> tuple[dict[str, Any], list[str]]:
     """Return the normalized selection of the user's panel without reading CDR rows.
 
-    Each user keeps their own selection in the workspace; a user who has none yet starts from the latest selection saved
-    in it (the one every user shared before each user kept their own).
+    Each user keeps their own selection in the workspace; a user who has none yet starts from the default selection, never
+    from another user's (the selection every user shared before each user kept their own is read only while no user has
+    one of their own, or without a user).
     """
     raw = repository.get_workspace_state(SCORING_SELECTION_STATE_KEY)
     if raw is None:
@@ -433,12 +453,30 @@ def load_scoring_selection(repository: Repository, username: str | None = None) 
     if canonical_format(document.get('format')) == SCORING_SELECTION_FORMAT and document.get('version') == SCORING_SELECTION_VERSION:
         users = document.get('users') if isinstance(document.get('users'), dict) else {}
         own = users.get(_user_key(username)) if _user_key(username) else None
-        selection = own if isinstance(own, dict) else document.get('selection')
+        if isinstance(own, dict):
+            selection = own
+        elif _user_key(username) and users:
+            # (Another user's selection is never theirs; the shared one only migrates a workspace saved before each
+            # user kept their own.)
+            return _default_selection(repository), []
+        else:
+            selection = document.get('selection')
     else:
         # Accept a flat selection document to ease recovery from early versions.
         selection = document
     defaults = _fallback_selection(repository)
     return normalize_scoring_selection(repository, selection, defaults=defaults)
+
+
+def has_own_scoring_selection(repository: Repository, username: str | None) -> bool:
+    """Whether the user has saved a selection of their own in the workspace."""
+    raw = repository.get_workspace_state(SCORING_SELECTION_STATE_KEY)
+    try:
+        document = json.loads(raw) if raw else None
+    except (TypeError, json.JSONDecodeError):
+        return False
+    users = document.get('users') if isinstance(document, dict) else None
+    return bool(_user_key(username)) and isinstance(users, dict) and isinstance(users.get(_user_key(username)), dict)
 
 
 def normalize_scoring_selection(

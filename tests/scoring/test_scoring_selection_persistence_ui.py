@@ -432,7 +432,8 @@ def test_a_saved_filter_opened_from_the_saved_filters_panel_shows_its_results():
 
 def test_a_restored_selection_keeps_its_filters_until_the_lists_of_its_nr_mode_arrive():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    functions = '\n'.join(_function_source(script, name) for name in ('refreshContextFilterOptions', 'selectedContextFilters'))
+    functions = '\n'.join(_function_source(script, name) for name in (
+        'refreshContextFilterOptions', 'selectedContextFilters', 'campaignOptionTag', 'applyCampaignOptionTag'))
     program = r"""
 let selectedIds = [];
 // The lists of the selection before: empty, as in a workspace whose filter catalogues are not ready yet.

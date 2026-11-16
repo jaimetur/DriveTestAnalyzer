@@ -71,8 +71,9 @@ def test_a_final_cdr_of_a_small_area_is_suggested_as_flex_and_daily_cdrs_never(c
     assert exceptions['26-Q4-London-Flex'] == ['UK_AdHoc_Q4_2026']
     assert is_flex_cdr(cdr_campaigns(core.repository, [local])[local])
     assert flex_suggestions(core.repository) == {}
-    # Latest campaign leaves the Flex campaign out: it is used only when checked by hand.
-    assert resolve_cdrs(core.repository, 'NSA', [LATEST_CAMPAIGN], ('voice',))['voice'] == [daily]
+    # Latest campaign leaves the Flex campaign out, and the campaign in progress (Daily CDRs only): they are used only
+    # when checked by hand.
+    assert resolve_cdrs(core.repository, 'NSA', [LATEST_CAMPAIGN], ('voice',))['voice'] == [country]
     events = [row for row in core.repository.list_logs(limit=50) if row['action'] == 'update_dataset_flex']
     assert events and '"action": "mark"' in events[0]['details']
 

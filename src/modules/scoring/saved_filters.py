@@ -26,7 +26,7 @@ from src.modules.scoring.scoring_area_summary import (
     WARNING_PREFIXES, area_summary_levels, calculate_area_summary, calculate_area_summary_from_history,
     calculate_geographical, calculate_geographical_from_history, geographical_levels, has_area_filters,
     whole_country_filters,
-    add_filtered_trend, detach_area_summary, normalize_area_summary_request, resolve_main_cities,
+    detach_area_summary, normalize_area_summary_request, resolve_main_cities,
 )
 from src.modules.scoring.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.cdr.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_identity, campaign_presets
@@ -910,9 +910,6 @@ def _prepare_saved_filter(
     # Results calculated before the Geographical Areas followed the Breakdown and Separate cities on the whole country
     # are calculated again; with Main Cities, the result changes with the Main Cities of the workspace.
     key_area_summary = {**key_area_summary, 'geographical_version': GEOGRAPHICAL_AREAS_VERSION}
-    if area_trends is not None and (has_area_filters(normalized_context_filters) or has_area_filters(resolved_context_filters)):
-        # Results whose Scoring Trend ignored the Region, Cluster and City filters (before v0.12.5) are calculated again.
-        key_area_summary['trend_scope'] = 'filtered'
     if normalized_area_summary.get('main_cities'):
         key_area_summary['main_cities'] = _shared(cache, ('main cities',), lambda: _workspace_main_cities(repository))
     result_key, _canonical = _result_key(
@@ -2160,6 +2157,8 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
                                           update_progress)
             result['warnings'] = [*(result.get('warnings') or []), *summary.pop('warnings', [])]
             result['area_summary'] = summary
+        if warning := _campaigns_without_tests_warning(saved_filter, context_filters, result):
+            result['warnings'] = [*(result.get('warnings') or []), warning]
         # The calls the Excluded Calls lists leave out of its CDRs.
         from src.modules.scoring.scoring_exclusions import load_scope, summary_warning
         excluded_calls = load_scope(repository).summary(dataset_ids)
@@ -2191,14 +2190,32 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
     return get_saved_filter(repository, filter_id, include_result=True)
 
 
+def _campaigns_without_tests_warning(saved_filter: dict[str, Any], context_filters: dict[str, list[str]],
+                                     result: dict[str, Any]) -> str | None:
+    """The warning of the chosen campaigns the other filters leave no test of (26-Q4 without tests in the City
+    chosen): the Campaign filter lists every campaign, so it tells why they add nothing to the results."""
+    from src.modules.cdr.column_names import format_campaign
+
+    chosen = [str(value) for value in context_filters.get('Campaign') or [] if str(value or '').strip()
+              and not str(value).startswith('@')]
+    if not chosen or _compares_nr_modes(saved_filter) or not isinstance(result.get('campaigns'), list):
+        return None
+    measured = {campaign_identity(value) for value in result['campaigns']}
+    missing = list(dict.fromkeys(format_campaign(value) or value for value in chosen if campaign_identity(value) not in measured))
+    if not missing:
+        return None
+    fields = [field for field, values in context_filters.items() if field != 'Campaign' and values]
+    which = f"the {', '.join(fields)} filter{'s' if len(fields) > 1 else ''}" if fields else 'the filters'
+    return (f"{', '.join(missing)}: no tests with {which} of this calculation; "
+            f"{'they add' if len(missing) > 1 else 'it adds'} nothing to the results.")
+
+
 def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], trends: dict[str, Any],
                         configuration: dict[str, Any], context_filters: dict[str, list[str]], engine: Any,
                         update_progress: Callable[[int, str], None]) -> dict[str, Any]:
     """National & Geographical Areas Trends with campaigns of their own: the CDRs of those campaigns scored with the job's filters
     (its campaigns aside) and methodology (each campaign with its own By campaign), split by Operator and Campaign. The
-    National & Geographical Areas calculations are of the whole country; a job with Region, Cluster or City filters also
-    keeps the calculation with them, its Scoring Trend. The trends of the same CDRs, methodology and options calculated
-    before (by this Saved Filter or another one) are reused."""
+    trends of the same CDRs, methodology and options calculated before (by this Saved Filter or another one) are reused."""
     area_summary = saved_filter['area_summary']
     dataset_ids = [int(value) for value in trends.get('dataset_ids') or []]
     sources, _campaigns, fingerprint = _source_snapshot(repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'])
@@ -2206,11 +2223,8 @@ def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], tr
         raise ValueError('A CDR of the National & Geographical Areas Trends changed after this calculation was queued. Calculate it again.')
     # Split as the National calculation of the summary, which then reuses this one.
     levels = ['Operator'] if area_summary.get('time_split') == 'All' else ['Operator', 'Campaign']
-    # Scored with the job's filters (its Scoring Trend), the National & Geographical Areas on the whole country (see
-    # _scoring_result); the Geographical views are the job's own.
-    filtered = has_area_filters(context_filters)
-    filters = {**(context_filters if filtered else whole_country_filters(context_filters)),
-               'Campaign': list(trends.get('campaigns') or [])}
+    # Scored on the whole country, whatever the job's area filters; the Geographical views are the job's own.
+    filters = {**whole_country_filters(context_filters), 'Campaign': list(trends.get('campaigns') or [])}
     from src.modules.scoring import scoring as scoring_engine
     from src.modules.scoring import scoring_cache
     key = None
@@ -2243,8 +2257,7 @@ def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], tr
             part, _from_history = _scoring_result(
                 repository, {**trend_filter, 'configuration': group_configuration}, group_configuration, dataset_ids,
                 [dict(source) for source in sources], {**filters, 'Campaign': list(group['campaigns'])}, engine, progress)
-            part = detach_area_summary(part)
-            parts.append((group, add_filtered_trend(part, levels) if filtered else part))
+            parts.append((group, detach_area_summary(part)))
         result = merge_results(parts)
         summary = result.get('area_summary') or {}
         summary['methodology_groups'] = result.get('methodology_groups')
@@ -2253,8 +2266,7 @@ def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], tr
                                else configuration)
         result, _from_history = _scoring_result(repository, trend_filter, trend_configuration, dataset_ids, sources,
                                                 filters, engine, progress)
-        result = detach_area_summary(result)
-        summary = (add_filtered_trend(result, levels) if filtered else result).get('area_summary') or {}
+        summary = detach_area_summary(result).get('area_summary') or {}
     summary = {'breakdown': area_summary.get('breakdown'), 'cities': list(area_summary.get('cities') or []),
                'time_split': area_summary.get('time_split') or 'Campaign', 'passes': [], **summary}
     # The warnings of the summary join those of the job (its other warnings repeat the job's).

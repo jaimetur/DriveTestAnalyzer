@@ -5385,6 +5385,10 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 .user-choice-tag.user-choice-tag-time { border-color: #a8dccf; background: #e3f4f0; color: #0b6b66; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
 /* A pattern of a choice of values (VF*), which takes every value it matches. */
 .user-choice-tag.user-choice-tag-pattern { border-color: #c9c3ef; background: #efedfb; color: #4b3fa0; }
+/* Campaign lists: a campaign in progress (Daily or Weekly CDRs only) and one the other filters leave no test of. */
+.user-choice-tag.campaign-in-progress-tag { border-color: #f5d48a; background: #fff6df; color: #8a5a00; }
+.user-choice-tag.campaign-no-tests-tag { border-color: #d5dbe1; background: #f1f4f6; color: #5f6b76; }
+.multiselect-option.campaign-no-tests > span:not(.user-choice-tag) { color: #8a96a1; }
 /* Content whose import replaces a whole database (the Export / Transfer selector). */
 .user-choice-tag.user-choice-tag-database { display: inline-flex; align-items: center; gap: .25rem; border-color: #efc26b; background: #fff0cf; color: #8a4b00; }
 .user-choice-tag.user-choice-tag-database::before { content: '\26A0'; font-size: .8rem; line-height: 1; }

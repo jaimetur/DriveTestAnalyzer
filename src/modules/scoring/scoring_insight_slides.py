@@ -731,8 +731,11 @@ def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_labe
     """A line chart of each operator's scoring across the campaigns of every group, with the score of every point, each
     line ending in the name and latest score of its operator."""
     for trend in trends[:MAX_GROUP_SLIDES]:
-        slide = new_slide(presentation, f'{scoring_label} Scoring Trend',
-                          ' · '.join(part for part in (_with_scope(subtitle, scope), trend['title']) if part))
+        # With campaigns of its own it is of the whole country, whatever the Region, Cluster and City filters.
+        national = bool(trend.get('national'))
+        scope_labels = (scope(None, whole_country=True) if national else scope(None)) if scope else ()
+        slide = new_slide(presentation, f"{scoring_label} Scoring Trend{' Nationwide' if national else ''}",
+                          ' · '.join(part for part in (subtitle, *scope_labels, trend['title']) if part))
         data = CategoryChartData()
         data.categories = trend['campaigns']
         for series in trend['series']:

@@ -142,6 +142,13 @@ A **Flex campaign** is a local campaign: a complete campaign, but localised in o
 - the [NQ Prioritization](non-qualified-calls.md#nq-prioritization) never takes it as the campaign whose Final CDR gives the Expected Gain of the calls of other campaigns;
 - checking it in a Campaign filter uses it like any other campaign.
 
+#### Campaigns in progress
+
+A campaign whose CDRs are all Weekly or Daily CDRs, without a Final CDR yet (a quarter that has just started, such as `26-Q4` with its first Daily CDRs), is **in progress**. As its few days of tests would replace the latest complete campaign:
+
+- **Latest campaign**, **Latest 2, 3 and 4 campaigns**, **Previous campaign** and **All available campaigns** never count it, in every module and in the reports of [Reporting](reporting.md), until its first Final CDR arrives (a campaign that never gets one is used only when checked by hand);
+- the Campaign lists of [Scoring & GAP Analysis](scoring-gap-analysis.md) tag it **In progress**, and checking it in any Campaign filter uses it like any other campaign (to follow its calls in [Non-Qualified Calls](non-qualified-calls.md), for example).
+
 The Final, Weekly and Daily CDR cards list their CDRs of Flex campaigns apart, in a **Flex CDRs** card of their own inside them, dashed in amber, with its count, badges and the notice that says how they are used; it shows only when the stage has such CDRs, and a CDR moves in or out of it at once when its stage changes.
 
 Ad-hoc campaigns do not always say Flex, so the tool recognises the **Final CDRs that look local** and suggests them as Flex. A Final CDR that is not Flex yet is suggested when:

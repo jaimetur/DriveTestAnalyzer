@@ -12,7 +12,9 @@ choices made again each time they are used, so they follow the campaigns that ar
 **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous
 campaign** (the one before the latest) and **All available campaigns**. Network Insights analyses one campaign: only
 Latest campaign, Previous campaign or one campaign (see ``one_campaign``). These choices leave the Flex campaigns out
-(``is_flex_campaign``): a Flex campaign is used only where it is checked by hand.
+(``is_flex_campaign``): a Flex campaign is used only where it is checked by hand. They also leave out the campaigns in
+progress, those with Daily or Weekly CDRs but no Final CDR yet (``in_progress_campaigns``), which are used only where
+they are checked by hand too.
 """
 
 from __future__ import annotations
@@ -184,10 +186,28 @@ def campaign_groups(campaigns: Iterable[object]) -> list[list[str]]:
     return list(groups.values())
 
 
-def preset_campaign_groups(groups: list[Any], presets: Iterable[str]) -> list[Any]:
-    """The campaign groups (newest first) that some automatic choices stand for, without the Flex campaigns: they never
-    count among the latest ones (nor as the previous one), so a Flex campaign is used only when it is checked by hand."""
-    groups = [kept for group in groups if (kept := [value for value in group if not is_flex_campaign(value)])]
+def in_progress_campaigns(repository: Any, nr_mode: object = None, kinds: Iterable[str] = CDR_KINDS) -> set[str]:
+    """The campaigns in progress of the NR Mode (of every mode with None): those whose CDRs that the combined tables
+    include are all Daily or Weekly CDRs, without a Final CDR yet (as ``campaign_identity``)."""
+    rows = candidate_cdrs(repository, nr_mode, kinds)
+    index = cdr_campaigns(repository, [row['id'] for row in rows])
+    found: set[str] = set()
+    final: set[str] = set()
+    for row in rows:
+        identities = {campaign_identity(value) for value in index.get(row['id']) or []} - {''}
+        found |= identities
+        if row['stage'] == 'final':
+            final |= identities
+    return found - final
+
+
+def preset_campaign_groups(groups: list[Any], presets: Iterable[str], in_progress: Iterable[str] = ()) -> list[Any]:
+    """The campaign groups (newest first) that some automatic choices stand for, without the Flex campaigns nor the
+    campaigns ``in_progress`` (identities, see ``in_progress_campaigns``): they never count among the latest ones (nor
+    as the previous one), so such a campaign is used only when it is checked by hand."""
+    skipped = set(in_progress)
+    groups = [kept for group in groups if (kept := [value for value in group if not is_flex_campaign(value)
+                                                    and campaign_identity(value) not in skipped])]
     chosen: set[int] = set()
     for preset in presets:
         start, stop = CAMPAIGN_PRESETS[preset]
@@ -202,14 +222,16 @@ def latest_campaigns(campaigns: Iterable[object], count: int | None) -> list[str
     return [value for value in sort_campaigns(campaigns) if value in chosen]
 
 
-def expand_campaign_filter(values: Iterable[object] | None, campaigns: Iterable[object]) -> list[str]:
-    """A Campaign filter with its automatic choices replaced by the campaigns they stand for now."""
+def expand_campaign_filter(values: Iterable[object] | None, campaigns: Iterable[object],
+                           in_progress: Iterable[str] = ()) -> list[str]:
+    """A Campaign filter with its automatic choices replaced by the campaigns they stand for now (never the campaigns
+    ``in_progress``)."""
     selected = [str(value).strip() for value in values or [] if str(value or '').strip()]
     presets = campaign_presets(selected)
     if not presets:
         return selected
     campaigns = list(campaigns)
-    chosen = {value for group in preset_campaign_groups(campaign_groups(campaigns), presets) for value in group}
+    chosen = {value for group in preset_campaign_groups(campaign_groups(campaigns), presets, in_progress) for value in group}
     explicit = [value for value in selected if not is_campaign_preset(value)]
     expanded = list(dict.fromkeys([*explicit, *(value for value in sort_campaigns(campaigns) if value in chosen)]))
     return expanded or ([NO_PREVIOUS_CAMPAIGN] if campaigns else [])
@@ -225,7 +247,8 @@ def resolve_campaign_filter(repository: Any, nr_mode: object, values: Iterable[o
     selected = [str(value).strip() for value in values or [] if str(value or '').strip()]
     if not campaign_presets(selected):
         return selected
-    return expand_campaign_filter(selected, campaign_values(repository, nr_mode, kinds))
+    return expand_campaign_filter(selected, campaign_values(repository, nr_mode, kinds),
+                                  in_progress_campaigns(repository, nr_mode, kinds))
 
 
 def resolve_cdrs(repository: Any, nr_mode: object, campaigns: Iterable[object] | None = None,

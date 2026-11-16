@@ -629,8 +629,10 @@
         .map(choice => ({...choice, color: ''}));
     }
     if (key === 'Campaign') {
-      // Shown as everywhere (2026-Q2-SA) and in chronological order; the filter keeps the full value.
-      return catalogueValues.map(value => ({value, label: hierarchyDisplayValue({level: 'Campaign', value}), color: ''}))
+      // Shown as everywhere (2026-Q2-SA) and in chronological order; the filter keeps the full value. A campaign without
+      // tests for the other filters is greyed, one in progress tagged.
+      return catalogueValues.map(value => ({value, label: hierarchyDisplayValue({level: 'Campaign', value}), color: '',
+        ...campaignOptionTag(value)}))
         .sort((left, right) => insightCampaignKey(left.value) - insightCampaignKey(right.value) || left.label.localeCompare(right.label));
     }
     if (key !== 'Operator') {
@@ -652,6 +654,26 @@
       .map(value => ({value, label: value, color: ''}))
       .sort((left, right) => left.label.localeCompare(right.label, undefined, {sensitivity: 'base'}));
     return [...options, ...unknown];
+  }
+
+  function campaignOptionTag(value) {
+    if (autoCdrs.withoutTests?.has(value)) {
+      return {tag: 'No tests with these filters', tagClass: 'campaign-no-tests-tag', optionClass: 'campaign-no-tests'};
+    }
+    if (autoCdrs.inProgress?.has(value)) return {tag: 'In progress', tagClass: 'campaign-in-progress-tag', optionClass: ''};
+    return {};
+  }
+
+  // A campaign option with its tag (In progress, No tests with these filters) beside its name.
+  function applyCampaignOptionTag(option, entry) {
+    if (!entry?.tag) return;
+    option.dataset.name = entry.label;
+    option.dataset.tag = entry.tag;
+    option.dataset.tagClass = entry.tagClass || '';
+    if (entry.optionClass) option.dataset.optionClass = entry.optionClass;
+    option.title = entry.tag === 'In progress'
+      ? 'Daily or Weekly CDRs only, without a Final CDR yet: Latest campaign, Previous campaign and All available campaigns leave it out'
+      : 'The other filters leave no test of this campaign: it adds nothing to the results';
   }
 
   function decorateOperatorOptions(select) {
@@ -711,7 +733,7 @@
       const presetCities = key === 'City'
         ? nextOptions.filter(option => mainCityIdentities.has(option.value.trim().toLocaleLowerCase())).map(option => option.value) : [];
       const signature = JSON.stringify({
-        options: nextOptions.map(option => [option.value, option.label, option.color]),
+        options: nextOptions.map(option => [option.value, option.label, option.color, option.tag || '']),
         presetCities, preset,
       });
       if (select.dataset.scoringCatalogueSignature === signature) continue;
@@ -745,6 +767,7 @@
           option.textContent = entry.label;
           option.selected = !preset && (allSelected || selectedValues.has(identity(entry.value)));
           if (key === 'Campaign' && index === 0) option.dataset.dividerBefore = 'true';
+          if (key === 'Campaign') applyCampaignOptionTag(option, entry);
           if (entry.color) {
             option.dataset.operatorColor = entry.color;
             option.style.color = entry.color;
@@ -768,7 +791,7 @@
     if (!trendCampaigns || !campaignSelect) return;
     const chosen = [...trendCampaigns.selectedOptions].map(option => option.value).filter(Boolean);
     const options = [...campaignSelect.options].filter(option => option.value && !isCampaignPreset(option.value))
-      .map(option => [option.value, option.textContent]);
+      .map(option => [option.value, option.textContent, {label: option.textContent, ...campaignOptionTag(option.value)}]);
     const known = new Set(options.map(([value]) => value.toLocaleLowerCase()));
     chosen.filter(value => !isCampaignPreset(value) && !known.has(value.toLocaleLowerCase()))
       .forEach(value => options.push([value, hierarchyDisplayValue({level: 'Campaign', value})]));
@@ -784,9 +807,10 @@
       option.dataset.optionClass = 'campaign-preset';
       entries.push(option);
     }
-    options.forEach(([value, label], index) => {
+    options.forEach(([value, label, entry], index) => {
       const option = new Option(label, value, false, !preset && selected.has(value.toLocaleLowerCase()));
       if (index === 0) option.dataset.dividerBefore = 'true';
+      applyCampaignOptionTag(option, entry);
       entries.push(option);
     });
     trendCampaigns.replaceChildren(...entries);
@@ -1301,6 +1325,10 @@
       options: body?.options && typeof body.options === 'object' ? body.options : {},
       incomplete: Array.isArray(body?.incomplete_campaigns) ? body.incomplete_campaigns.map(String) : [],
       presets: body?.campaign_presets && typeof body.campaign_presets === 'object' ? body.campaign_presets : {},
+      // Campaign lists every campaign: those the other filters leave no test of, and those in progress (Daily or Weekly
+      // CDRs only, which the automatic choices leave out), are tagged.
+      withoutTests: new Set((Array.isArray(body?.campaigns_without_tests) ? body.campaigns_without_tests : []).map(String)),
+      inProgress: new Set((Array.isArray(body?.campaigns_in_progress) ? body.campaigns_in_progress : []).map(String)),
     };
     if (pinnedCdrs) return;
     const ids = new Set((Array.isArray(body?.dataset_ids) ? body.dataset_ids : []).map(String));
@@ -7251,12 +7279,27 @@
     pane.replaceChildren();
     if (!environment) return;
     const trends = insightItems(payload, 'campaign_trends', environment);
+    if (trends.some(trend => trend.national) || insightItems(payload, 'area_summaries', environment).length) {
+      const notice = wholeCountryNotice(trends.some(trend => trend.national) ? 'This tab is'
+        : 'The National & Geographical Areas Trends are');
+      if (notice) pane.append(notice);
+    }
     if (trends.length) {
       const {wrapper, value} = insightSelect('trend', trends.map((trend, index) => [String(index), trend.title || 'All series']), 'Series');
       const trend = trends[Number(value)] || trends[0];
-      const card = makeExpandableChartCard(`${scoringLabel()} Scoring Trend`,
-        [environmentLabel(environment), trend.title].filter(Boolean).join(' · '), makeTrendChart(trend));
+      // With campaigns of its own, the Scoring Trend is of the whole country, whatever the Region, Cluster and City filters.
+      const card = makeExpandableChartCard(`${scoringLabel()} Scoring Trend${trend.national ? ' Nationwide' : ''}`,
+        [environmentLabel(environment), trend.title].filter(Boolean).join(' · '), makeTrendChart(trend), null,
+        {wholeCountry: Boolean(trend.national)});
       if (trends.length > 1) card.insertBefore(wrapper, card.children[1]);
+      if (trend.national) {
+        const note = document.createElement('p');
+        note.className = 'scoring-chart-footnote';
+        note.textContent = 'Scored on the whole country with the Campaigns of the Scoring Trends, whatever the Region, Cluster '
+          + 'and City filters (the other filters apply); the National & Geographical Areas Trends below follow the Breakdown '
+          + 'and Separate cities of the Geographical Areas & Scoring Trends panel.';
+        card.append(note);
+      }
       if (trend.series.some(series => series.nr_mode)) card.append(nrModeLinesNote());
       pane.append(card);
     }
@@ -8300,6 +8343,21 @@
   const GEOGRAPHICAL_LEVEL_ORDER = {National: 0, Region: 1, Cluster: 2, City: 3};
   const geographicalLevelRank = level => GEOGRAPHICAL_LEVEL_ORDER[level] ?? 4;
 
+  // The notice of a tab scored on the whole country (Geographical Areas, Scoring Trends) in a calculation with Region,
+  // Cluster or City filters: the filters it leaves out, and where its areas are chosen.
+  function wholeCountryNotice(what) {
+    const filters = ['City', 'Cluster', 'Region'].map(level => {
+      const raw = resultScopeFilters?.[level] ?? resultScopeFilters?.[level.toLowerCase()];
+      const values = (Array.isArray(raw) ? raw : [raw]).map(value => String(value ?? '').trim()).filter(Boolean);
+      return values.length ? `${level}: ${values.join(', ')}` : '';
+    }).filter(Boolean);
+    if (!filters.length) return null;
+    return insightParagraph('scoring-insight-note scoring-whole-country-note', insightStrong('Whole country. '),
+      `${what} scored on the whole country: the ${filters.join(' · ')} filter of this calculation does not apply here `
+      + '(the other filters do). Its areas are the Breakdown and Separate cities chosen in Geographical Areas & Scoring '
+      + `Trends; the other tabs show ${filters.join(' · ')} only.`);
+  }
+
   function renderGeographicalAreas(pane, payload, environment) {
     pane.replaceChildren();
     if (!environment) return;
@@ -8311,6 +8369,11 @@
       groups = groups.filter(group => !group.campaign || group.campaign === latest);
     }
     const position = mappedOperatorPosition(payload);
+    // (Cards of the whole country: those of a calculation split by an area are its own, with its filters.)
+    if (groups.some(group => group.level === 'National')) {
+      const notice = wholeCountryNotice('This tab is');
+      if (notice) pane.append(notice);
+    }
     for (const group of groups) {
       // The scoring Nationwide (the card of the whole country) comes first, then each Region, Cluster and City. They are
       // calculated on the whole country, so their pills name no City, Cluster or Region filter; split by Vendor, those

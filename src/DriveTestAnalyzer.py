@@ -130,7 +130,7 @@ from src.modules.scoring.saved_filters import (
 )
 from src.modules.cdr.cdr_facets import fill_missing_facets
 from src.modules.scoring.scoring_selection import (
-    SCORING_SELECTION_STATE_KEY,
+    has_own_scoring_selection,
     load_scoring_selection,
     normalize_scoring_selection,
     save_scoring_selection,
@@ -21062,7 +21062,8 @@ def scoring_theme_put(payload: ScoringThemeRequest, user: SessionUser = Depends(
 @app.get('/api/scoring/selection')
 def scoring_selection_get(user: SessionUser = Depends(current_user)) -> dict[str, Any]:
     task_repository = scoring_repository(user)
-    persisted = task_repository.get_workspace_state(SCORING_SELECTION_STATE_KEY) is not None
+    # (A user without a selection of their own starts from the default one, saved then as theirs.)
+    persisted = has_own_scoring_selection(task_repository, user.username)
     selection, warnings = load_scoring_selection(task_repository, user.username)
     return {'selection': selection, 'warnings': warnings, 'persisted': persisted}
 
