@@ -665,3 +665,29 @@ def test_the_legend_of_the_bands_looks_as_their_cells_in_every_theme():
     assert 'swatch.dataset.band = label;' in script
     assert '[data-scoring-workspace] .scoring-legend-swatch[data-band="Medium"] { --band-dot: var(--st-band-medium); }' in css
     assert 'background: linear-gradient(90deg, var(--band-dot), color-mix(in srgb, var(--band-dot) 14%, #fff)) !important; }' in css
+
+
+def test_the_trend_slides_show_the_score_of_every_point():
+    from pptx import Presentation as NewPresentation
+    from pptx.enum.chart import XL_DATA_LABEL_POSITION
+
+    from src.modules.cdr_analysis.cdr_reporting import _remove_all_slides
+    from src.modules.scoring.scoring_insight_slides import _point_label_sides, add_trend_slides
+
+    presentation = NewPresentation(TEMPLATE)
+    _remove_all_slides(presentation)
+    trend = {'title': '', 'campaigns': ['2026-Q1', '2026-Q2', '2026-Q3'], 'maximum': 1000, 'series': [
+        {'label': 'VF', 'color': '#E60000', 'points': [866.6, 827.2, 860.4]},
+        {'label': 'Three', 'color': '#1A1A1A', 'points': [657.1, None, 855.0]},
+        {'label': 'EE', 'color': '#00A6A6', 'points': [925.4, 924.0, 933.1], 'is_reference': True}]}
+    add_trend_slides(presentation, [trend], scoring_label='Most Reliable Network', subtitle='',
+                     new_slide=lambda target, _title, _subtitle: target.slides.add_slide(target.slide_layouts[0]))
+    chart = next(shape.chart for shape in presentation.slides[0].shapes if shape.has_chart)
+    texts = {series.name: [series.points[index].data_label.text_frame.text if series.points[index].data_label.has_text_frame
+                           else '' for index in range(3)] for series in chart.plots[0].series}
+    # Every point but the last of each line (named at its end) shows its score, without decimals.
+    assert texts == {'VF': ['867', '827', 'VF 860'], 'Three': ['657', '', 'Three 855'], 'EE': ['925', '924', 'EE 933']}
+    # A score too close to the one above it goes below its point.
+    sides = _point_label_sides([{'points': [850.0]}, {'points': [846.0]}, {'points': [700.0]}], label_span=8)
+    assert sides == {(0, 0): XL_DATA_LABEL_POSITION.ABOVE, (1, 0): XL_DATA_LABEL_POSITION.BELOW,
+                     (2, 0): XL_DATA_LABEL_POSITION.ABOVE}

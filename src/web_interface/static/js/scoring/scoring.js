@@ -7015,6 +7015,8 @@
       svg.append(label);
     });
     const ends = [];
+    // The score of every point but the last of its line (named at its end), per campaign.
+    const pointLabels = trend.campaigns.map(() => []);
     trend.series.forEach((series, seriesIndex) => {
       const color = safeHexColor(series.color) || insightFallbackColors[seriesIndex % insightFallbackColors.length];
       const points = series.points.map((value, index) => (value === null || value === undefined ? null : [x(index), y(value), value]));
@@ -7029,9 +7031,24 @@
           fill: index === last ? color : '#ffffff', stroke: color, 'stroke-width': 1.75});
         setChartTooltip(marker, `${series.label} · ${trend.campaigns[index]}: ${insightNumber(point[2], 1)} points`, true);
         svg.append(marker);
+        if (index !== last) pointLabels[index].push({x: point[0], y: point[1], text: insightNumber(point[2]), color});
       });
       if (last >= 0) ends.push({y: points[last][1], text: `${series.label} ${insightNumber(points[last][2])}`, color});
     });
+    // Each score above its point; one too close to the score above it goes below its point, then lower if needed.
+    for (const labels of pointLabels) {
+      labels.sort((first, second) => first.y - second.y);
+      let previous = -Infinity;
+      for (const item of labels) {
+        let labelY = item.y - 8;
+        if (labelY < previous + 13) labelY = Math.max(item.y + 16, previous + 13);
+        previous = labelY;
+        const label = svgElement(svg, 'text', {x: item.x, y: labelY, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700,
+          fill: item.color, stroke: '#ffffff', 'stroke-width': 3, 'paint-order': 'stroke', class: 'scoring-trend-point-value'});
+        label.textContent = item.text;
+        svg.append(label);
+      }
+    }
     // The names at the end of the lines, moved apart so they never overlap.
     ends.sort((first, second) => first.y - second.y);
     for (let index = 1; index < ends.length; index += 1) ends[index].y = Math.max(ends[index].y, ends[index - 1].y + 15);

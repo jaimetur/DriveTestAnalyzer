@@ -728,8 +728,8 @@ def _label_side(series: list[dict[str, Any]], index: int, last: int, *, label_sp
 
 def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
                      new_slide: Callable, scope: ScopeLabels | None = None) -> None:
-    """A line chart of each operator's scoring across the campaigns of every group, each line ending in the name and
-    latest score of its operator."""
+    """A line chart of each operator's scoring across the campaigns of every group, with the score of every point, each
+    line ending in the name and latest score of its operator."""
     for trend in trends[:MAX_GROUP_SLIDES]:
         slide = new_slide(presentation, f'{scoring_label} Scoring Trend',
                           ' · '.join(part for part in (_with_scope(subtitle, scope), trend['title']) if part))
@@ -756,6 +756,8 @@ def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_labe
         # The plot keeps a fixed place in the chart (room on the right for the names), so the labels can be kept apart.
         _plot_layout(chart, TREND_PLOT)
         labels: list[tuple[int, float, Any]] = []
+        label_span = (trend['maximum'] - chart.value_axis.minimum_scale) * LABEL_HEIGHT_PT / (5.3 * 72 * TREND_PLOT[3])
+        sides = _point_label_sides(trend['series'], label_span)
         for index, (plot_series, series) in enumerate(zip(chart.series, trend['series'])):
             color = series.get('color') or FALLBACK_COLORS[index % len(FALLBACK_COLORS)]
             plot_series.format.line.color.rgb = _rgb(color)
@@ -771,6 +773,18 @@ def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_labe
             last = max((position for position, value in enumerate(series['points']) if value is not None), default=None)
             if last is None:
                 continue
+            # The score of every other point, above it or, too close to the score above it, below it.
+            for position, value in enumerate(series['points'][:last]):
+                if value is None:
+                    continue
+                value_label = plot_series.points[position].data_label
+                value_label.position = sides[(index, position)]
+                value_label.text_frame.text = f'{value:,.0f}'
+                for paragraph in value_label.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.size = Pt(9)
+                        run.font.bold = True
+                        run.font.color.rgb = _rgb(color)
             point = plot_series.points[last]
             point.marker.size = 9
             point.marker.format.fill.solid()
@@ -779,8 +793,7 @@ def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_labe
             final = last == len(trend['campaigns']) - 1
             # A line that ends before the latest campaign is named where the other lines leave it most room.
             label.position = XL_DATA_LABEL_POSITION.RIGHT if final else _label_side(
-                trend['series'], index, last, label_span=(trend['maximum'] - chart.value_axis.minimum_scale) * LABEL_HEIGHT_PT
-                / (5.3 * 72 * TREND_PLOT[3]))
+                trend['series'], index, last, label_span=label_span)
             label.text_frame.text = f"{series['label']} {series['points'][last]:,.0f}"
             for paragraph in label.text_frame.paragraphs:
                 for run in paragraph.runs:
@@ -790,6 +803,25 @@ def add_trend_slides(presentation, trends: list[dict[str, Any]], *, scoring_labe
             if final:
                 labels.append((last, series['points'][last], label))
         _spread_labels(labels, chart.value_axis.minimum_scale, trend['maximum'], TREND_PLOT, chart_height=5.3)
+
+
+def _point_label_sides(series: list[dict[str, Any]], label_span: float) -> dict[tuple[int, int], Any]:
+    """Where the score of each point stands, per (line, campaign): above its point, or below it when the score of a
+    higher point of the same campaign would overlap it (``label_span``: the height of a label in points of the axis)."""
+    sides: dict[tuple[int, int], Any] = {}
+    campaigns = max((len(item['points']) for item in series), default=0)
+    for position in range(campaigns):
+        values = sorted(((item['points'][position], index) for index, item in enumerate(series)
+                         if position < len(item['points']) and item['points'][position] is not None), reverse=True)
+        bottom = float('inf')
+        for value, index in values:
+            if value + label_span <= bottom:
+                sides[(index, position)] = XL_DATA_LABEL_POSITION.ABOVE
+                bottom = value
+            else:
+                sides[(index, position)] = XL_DATA_LABEL_POSITION.BELOW
+                bottom = value - label_span
+    return sides
 
 
 def _delta_color(value: float | None, scale: float) -> str:

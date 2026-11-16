@@ -587,3 +587,55 @@ def test_the_scoring_nationwide_comes_first_on_the_page_and_in_the_slides():
     assert 'makeLocationCardChart(card, group.maximum, {wide: true, width: available})' in script
     assert '.scoring-location-cards.is-national { grid-template-columns: 1fr; }' in template
     assert '.scoring-insight-note.scoring-location-note { margin: 0 0 .75rem;' in template
+
+
+def test_the_scoring_trend_of_a_job_with_area_filters_keeps_them(monkeypatch):
+    from src.modules.scoring import saved_filters
+    from src.modules.scoring.scoring_area_summary import FILTERED_AREAS, build_national_trends
+
+    configuration = _reliable_configuration()
+    kwargs = {'baseline_operator': 'EE', 'configuration': configuration}
+    rows = [*ROWS, *({**row, 'Campaign': '2026-Q1', 'Call_Status': 'Completed'} for row in ROWS)]
+    levels = ['Operator', 'Campaign']
+    seen = []
+
+    def score(frame):
+        return scoring_engine.calculate_scoring({'voice': frame.reset_index(drop=True)}, levels, **kwargs)
+
+    def scoring_result(_repository, saved_filter, _configuration, _dataset_ids, _sources, filters, _engine, _progress):
+        seen.append(filters)
+        frame = pd.DataFrame(rows)
+        filtered = bool(filters.get('City'))
+        result = score(frame[frame['City'].isin(filters['City'])] if filtered else frame)
+        # The National calculation of the summary is of the whole country (the job's own without area filters).
+        national = {'kind': 'National', 'field': None, 'levels': levels, 'reuses_job': not filtered}
+        if filtered:
+            national['result'] = score(frame)
+        result['area_summary'] = {'breakdown': None, 'cities': [], 'time_split': 'Campaign', 'passes': [national]}
+        return result, False
+
+    monkeypatch.setattr(saved_filters, '_scoring_result', scoring_result)
+    monkeypatch.setattr(saved_filters, '_source_snapshot', lambda *_args, **_kwargs: ([], [], 'fingerprint'))
+    saved_filter = {'area_summary': {'breakdown': None, 'cities': [], 'time_split': 'Campaign'}, 'nr_mode': 'NSA',
+                    'baseline_operator': 'EE'}
+    trends = {'dataset_ids': [1], 'source_fingerprint': 'fingerprint', 'campaigns': ['2026-Q1', '2026-Q2']}
+    job = {'levels': ['Operator'], 'aggregation_levels': ['Operator'], 'aggregation_contract_version': 2,
+           'baseline_operator': 'EE', 'configuration': configuration}
+
+    def trend_of(context_filters):
+        summary = saved_filters._trend_area_summary(None, saved_filter, trends, configuration, context_filters, object(),
+                                                    lambda *_args: None)
+        found = build_national_trends(job, {'area_summary': summary, 'configuration': configuration})
+        return summary, {series['label']: series['points'] for series in found[0]['series']}
+
+    country_summary, country = trend_of({'Operator': ['EE', 'Three UK']})
+    london_summary, london = trend_of({'Operator': ['EE', 'Three UK'], 'City': ['London']})
+    # The trend campaigns are scored with the City filter, the National calculation on the whole country.
+    assert seen[1] == {'Operator': ['EE', 'Three UK'], 'City': ['London'], 'Campaign': ['2026-Q1', '2026-Q2']}
+    assert 'City' not in seen[0]
+    assert [item['kind'] for item in country_summary['passes']] == ['National']
+    assert [item['kind'] for item in london_summary['passes']] == ['National', FILTERED_AREAS]
+    # The Scoring Trend of the job filtered by London is London's (every EE call completed in 2026-Q2), not the whole
+    # country's (an EE call failed in Leeds).
+    assert london != country
+    assert country['EE'][1] < london['EE'][1]

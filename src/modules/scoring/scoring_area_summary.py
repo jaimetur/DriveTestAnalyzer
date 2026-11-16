@@ -36,6 +36,9 @@ GEOGRAPHIC_FILTER_FIELDS = ('Region', 'Cluster', 'City')
 OTHER_POSTAL_MAPS = ('place', 'own')
 AREA_SUMMARY_TIME_SPLITS = ('All', 'Campaign', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly')
 NATIONAL = 'National'
+# The trend campaigns of a job with Region, Cluster or City filters scored with those filters too: its Scoring Trend
+# (the National & Geographical Areas Trends keep the whole country).
+FILTERED_AREAS = 'Filtered areas'
 # The prefix of the warnings of the summary (summaries calculated before name it National & Areas Trends or National
 # & Area Summary).
 WARNING_PREFIXES = ('National & Geographical Areas Trends:', 'National & Areas Trends:', 'National & Area Summary:')
@@ -426,6 +429,18 @@ def most_reliable_area_summary(summary: Any, transform: Callable[[dict], dict | 
     return {**summary, 'passes': passes}
 
 
+def add_filtered_trend(result: dict[str, Any], levels: list[str]) -> dict[str, Any]:
+    """The result of the trend campaigns of a job with area filters (scored with them, split by ``levels``, its area
+    summary on the whole country) with its own calculation kept in the summary as the calculation of its Scoring Trend."""
+    summary = result.get('area_summary') if isinstance(result, dict) else None
+    if not isinstance(summary, dict):
+        return result
+    own = {key: result[key] for key in _PASS_RESULT_KEYS if key in result}
+    passes = [item for item in summary.get('passes') or [] if not (isinstance(item, dict) and item.get('kind') == FILTERED_AREAS)]
+    passes.append({'kind': FILTERED_AREAS, 'field': None, 'levels': list(levels), 'reuses_job': False, 'result': own})
+    return {**result, 'area_summary': {**summary, 'passes': passes}}
+
+
 def _single_value(rows: list[dict[str, Any]], field: str) -> Any:
     values = {row.get(field) for row in rows if row.get(field) not in (None, '')}
     return next(iter(values)) if len(values) == 1 else None
@@ -435,7 +450,8 @@ def _summary_areas(job: dict[str, Any], result: dict[str, Any], summary: dict[st
                    operator_mapping_groups: list[dict] | None, vendor_mapping_groups: list[dict] | None,
                    kinds: set[str] | None = None) -> list[dict[str, Any]]:
     """The areas of a summary in order (National, the areas of the breakdown, then the cities), each with the score
-    tables of every campaign or period; ``kinds`` keeps only the calculations of those kinds."""
+    tables of every campaign or period; ``kinds`` keeps only the calculations of those kinds (by default every one but
+    the Scoring Trend of a job with area filters)."""
     from src.modules.scoring.scoring_insights import _scopes
     from src.modules.scoring.scoring_views import build_scoring_views
 
@@ -444,7 +460,8 @@ def _summary_areas(job: dict[str, Any], result: dict[str, Any], summary: dict[st
     chosen = [city.casefold() for city in summary.get('cities') or []]
     areas: list[dict[str, Any]] = []
     for item in summary['passes']:
-        if kinds is not None and item.get('kind') not in kinds:
+        kind = item.get('kind')
+        if (kind not in kinds) if kinds is not None else kind == FILTERED_AREAS:
             continue
         if item.get('reuses_job'):
             source, source_job = result, job
@@ -521,7 +538,8 @@ def build_national_trends(job: dict[str, Any], result: dict[str, Any], operator_
                           *, vendor_mapping_groups: list[dict] | None = None) -> list[dict[str, Any]] | None:
     """The scoring trend of each environment from the National calculation of National & Geographical Areas Trends with campaigns
     of their own (every campaign or period of the summary, from two on), in the form of the job's campaign trends; None
-    when the summary has no campaigns of its own (the trends then come from the job's campaigns)."""
+    when the summary has no campaigns of its own (the trends then come from the job's campaigns). A job with Region,
+    Cluster or City filters takes the calculation of its trend campaigns with those filters (see add_filtered_trend)."""
     from src.modules.scoring.scoring_insights import MIN_TREND_CAMPAIGNS, _display, _scope_summary
 
     summary = result.get('area_summary') if isinstance(result, dict) else None
@@ -529,8 +547,10 @@ def build_national_trends(job: dict[str, Any], result: dict[str, Any], operator_
         return None
     if not summary.get('passes'):
         return []
+    kind = FILTERED_AREAS if any(isinstance(item, dict) and item.get('kind') == FILTERED_AREAS
+                                 for item in summary['passes']) else NATIONAL
     national = next(iter(_summary_areas(job, result, summary, operator_mapping_groups, vendor_mapping_groups,
-                                        kinds={NATIONAL})), None)
+                                        kinds={kind})), None)
     if national is None:
         return []
     campaigns = sorted((campaign for campaign in national['campaigns'] if campaign not in (None, '')), key=campaign_sort_key)
