@@ -2920,6 +2920,74 @@ def _rebuild_versions(connection: Any, affected: set[str], *, everything: bool =
     _rebuild_final_coverage(connection)
 
 
+_ASCII_LOWER = str.maketrans('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')
+
+
+def _versions_of(fresh: dict[int, dict[str, Any]], latest: dict[str, int], stage_ranks: dict[int, int]) -> list[tuple]:
+    """The rows of the versions of every call of a Reindex, worked out from the rows read, as _rebuild_versions works them
+    out in SQL (``latest``: the CDR of the latest version of each call; SQLite's lower() changes ASCII letters only)."""
+    key_at, result_at, classification_at, category_at = (_CALL_COLUMNS.index(name) for name in (
+        'call_key', 'result', 'failure_classification', 'failure_category'))
+    squeeze = lambda text: str(text).replace('_', '').replace(' ', '')  # noqa: E731
+    outcomes: dict[Any, set[str]] = {}
+    for content in fresh.values():
+        for call in content['calls']:
+            found = outcomes.setdefault(call[key_at], set())
+            # (A missing part leaves the outcome out, as NULL leaves it out of COUNT(DISTINCT).)
+            if call[result_at] is not None and call[classification_at] is not None and call[category_at] is not None:
+                found.add(f'{call[result_at]}|{squeeze(call[classification_at])}|{squeeze(call[category_at])}'.translate(_ASCII_LOWER))
+    counts: Counter = Counter()
+    in_final: set[Any] = set()
+    final_campaigns: set[tuple[Any, Any, str]] = set()
+    latest_entry: dict[Any, tuple] = {}
+    # The population rows: dataset_id, call_key, service, campaign, operator, nr_mode, is_nq…
+    for dataset_id, content in fresh.items():
+        final = stage_ranks[dataset_id] == 1
+        for entry in content['population']:
+            key = entry[1]
+            counts[key] += 1
+            if final:
+                in_final.add(key)
+                if entry[2] is not None and entry[3] is not None and entry[5] is not None:
+                    final_campaigns.add((entry[2], entry[5], str(entry[3]).translate(_ASCII_LOWER)))
+            if latest.get(key) == dataset_id:
+                latest_entry.setdefault(key, entry)
+    rows = []
+    for key, found in outcomes.items():
+        entry = latest_entry.get(key)
+        if entry is None:
+            continue
+        final = key in in_final
+        covered = (not final and entry[2] is not None and entry[3] is not None and entry[5] is not None
+                   and (entry[2], entry[5], str(entry[3]).translate(_ASCII_LOWER)) in final_campaigns)
+        rows.append((key, entry[0], entry[6], int(final), int(covered), int(len(found) > 1), counts[key]))
+    # (In the order of their keys, as SQL wrote them.)
+    rows.sort(key=itemgetter(0))
+    return rows
+
+
+def _stage_reindex(connection: Any, task_repository: Any, fresh: dict[int, dict[str, Any]], latest: dict[str, int],
+                   columns: str, population_columns: str, *, calls: bool, population: bool) -> None:
+    """The calls and population of a Reindex written to temporary tables of the connection, which take no lock of the
+    workspace, to be copied at once into the indexed calls (``calls``, ``population``: those written again)."""
+    connection.execute('DROP TABLE IF EXISTS temp.nq_stage_calls')
+    connection.execute('DROP TABLE IF EXISTS temp.nq_stage_population')
+    connection.execute(f'CREATE TEMP TABLE nq_stage_calls AS SELECT {columns} FROM main.{NQ_CALLS_TABLE} WHERE 0')
+    connection.execute(f'CREATE TEMP TABLE nq_stage_population AS SELECT {population_columns}, is_latest '
+                       f'FROM main.{NQ_CALL_POPULATION_TABLE} WHERE 0')
+    call_marks = ', '.join('?' for _ in columns.split(', '))
+    population_marks = ', '.join('?' for _ in population_columns.split(', '))
+    for position, (dataset_id, content) in enumerate(fresh.items(), start=1):
+        _raise_if_stopped(task_repository)
+        _progress(task_repository, f'Preparing the calls of CDR {position} of {len(fresh)}', 62 + 18 * (position - 1) / len(fresh))
+        if calls:
+            connection.executemany(f'INSERT INTO temp.nq_stage_calls ({columns}) VALUES ({call_marks})', content['calls'])
+        if population:
+            connection.executemany(
+                f'INSERT INTO temp.nq_stage_population ({population_columns}, is_latest) VALUES ({population_marks}, ?)',
+                ((*entry, int(latest[entry[1]] == dataset_id)) for entry in content['population']))
+
+
 # The versions of the calls (``keys``: a query of their call keys), their latest version marked in the population.
 _VERSIONS_INSERT_SQL = f"""
         INSERT INTO {NQ_CALL_VERSIONS_TABLE} (call_key, latest_dataset_id, latest_is_nq, in_final, changed, cdr_count)
@@ -3370,9 +3438,20 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                     for entry in fresh[dataset_id]['population']:
                         latest.setdefault(entry[1], dataset_id)
                 counted = _population_counts_of(fresh, latest)
-            _progress(task_repository, 'Waiting for the other writes of the workspace and emptying the indexed calls', 62)
+            # A Reindex works out the versions of the calls from the rows read, before the writes of the workspace wait for
+            # it (in SQL, under the lock of the workspace, they took minutes on a cloud disk).
+            versions = None
+            if everything and not calls_kept:
+                _progress(task_repository, 'Working out the versions of the calls', 61)
+                versions = _versions_of(fresh, latest, stage_ranks)
             with task_repository.connection() as connection:
                 _stop_on_request(connection, task_repository)
+                if everything:
+                    # A Reindex prepares the rows to write in temporary tables, which take no lock of the workspace: its
+                    # writes then wait for it only while the indexed calls are replaced at once.
+                    _stage_reindex(connection, task_repository, fresh, latest, columns, population_columns,
+                                   calls=not calls_kept, population=not population_kept)
+                _progress(task_repository, 'Waiting for the other writes of the workspace and replacing the indexed calls', 80)
                 dropped_indexes: list[str] = []
                 if everything:
                     tables = [NQ_CALL_SOURCES_TABLE] if calls_kept else [
@@ -3398,19 +3477,23 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                 if not calls_kept:
                     # What their rows learned is gone: the DT Analyzer RCA learns again once they are indexed.
                     connection.execute('DELETE FROM workspace_state WHERE key = ?', (nq_dta_rca.LEARNED_FINGERPRINT_STATE_KEY,))
+                if everything:
+                    if not calls_kept:
+                        connection.execute(f'INSERT OR REPLACE INTO {NQ_CALLS_TABLE} ({columns}) '
+                                           f'SELECT {columns} FROM temp.nq_stage_calls ORDER BY rowid')
+                    if not population_kept:
+                        connection.execute(f'INSERT INTO {NQ_CALL_POPULATION_TABLE} ({population_columns}, is_latest) '
+                                           f'SELECT {population_columns}, is_latest FROM temp.nq_stage_population ORDER BY rowid')
                 for position, (dataset_id, content) in enumerate(fresh.items(), start=1):
                     _raise_if_stopped(task_repository)
-                    _progress(task_repository, f'Writing the calls of CDR {position} of {len(fresh)}', 63 + 17 * (position - 1) / len(fresh))
                     row = datasets[dataset_id]
-                    if not calls_kept:
-                        connection.executemany(f'INSERT OR REPLACE INTO {NQ_CALLS_TABLE} ({columns}) VALUES ({placeholders})',
-                                               content['calls'])
-                    if everything and not population_kept:
-                        connection.executemany(
-                            f'INSERT INTO {NQ_CALL_POPULATION_TABLE} ({population_columns}, is_latest) '
-                            f'VALUES ({population_marks}, ?)',
-                            ((*entry, int(latest[entry[1]] == dataset_id)) for entry in content['population']))
-                    elif not everything:
+                    # (A Reindex copied its calls and population from the temporary tables above.)
+                    if not everything:
+                        _progress(task_repository, f'Writing the calls of CDR {position} of {len(fresh)}',
+                                  80 + 4 * (position - 1) / len(fresh))
+                        if not calls_kept:
+                            connection.executemany(f'INSERT OR REPLACE INTO {NQ_CALLS_TABLE} ({columns}) VALUES ({placeholders})',
+                                                   content['calls'])
                         connection.executemany(
                             f'INSERT OR REPLACE INTO {NQ_CALL_POPULATION_TABLE} ({population_columns}) VALUES ({population_marks})',
                             content['population'])
@@ -3422,7 +3505,7 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                          stage_ranks[dataset_id], content['data_date'], len(content['population']), ranks.get(dataset_id, -1)),
                     )
                 if dropped_indexes:
-                    _progress(task_repository, 'Building the indexes of the population', 80)
+                    _progress(task_repository, 'Building the indexes of the population', 82)
                 for index_sql in dropped_indexes:
                     _raise_if_stopped(task_repository)
                     connection.execute(index_sql)
@@ -3432,11 +3515,19 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                 if old_rows:
                     moved = _move_follow_up(connection, old_rows, [call for content in fresh.values() for call in content['calls']])
                 _raise_if_stopped(task_repository)
-                if not calls_kept:
+                if versions is not None:
+                    _progress(task_repository, 'Writing the versions of the calls', 85)
+                    connection.execute(f'DELETE FROM {NQ_CALL_VERSIONS_TABLE}')
+                    connection.executemany(
+                        f'INSERT INTO {NQ_CALL_VERSIONS_TABLE} (call_key, latest_dataset_id, latest_is_nq, in_final, '
+                        'final_covered, changed, cdr_count) VALUES (?, ?, ?, ?, ?, ?, ?)', versions)
+                elif not calls_kept:
                     # (The same calls and population keep their versions.)
                     _progress(task_repository, 'Working out the versions of the calls', 85)
                     _rebuild_versions(connection, affected, everything=everything)
                 _store_index_fingerprints(connection, fingerprints, removed, everything)
+                connection.execute('DROP TABLE IF EXISTS temp.nq_stage_calls')
+                connection.execute('DROP TABLE IF EXISTS temp.nq_stage_population')
                 # Nothing is stopped once the indexed calls are written.
                 _raise_if_stopped(task_repository)
                 connection.set_progress_handler(None, 0)

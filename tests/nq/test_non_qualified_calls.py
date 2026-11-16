@@ -1677,7 +1677,7 @@ def test_the_indexing_stops_from_its_card(client, tmp_path, monkeypatch):
     assert nq.nq_index_job(core.repository.db_path)['status'] == 'stopped' and indexed_tables() == indexed
     assert client.get('/api/non-qualified-calls/index-status').json()['sync']['reindex_pending']
     # Stopped while it reads the CDRs, or while it writes the indexed calls, the indexed calls stay as they were.
-    for stage in ('_dataset_calls', '_rebuild_versions'):
+    for stage in ('_dataset_calls', '_store_index_fingerprints'):
         monkeypatch.setattr(nq, stage, lambda *args, _run=getattr(nq, stage), **kwargs: (
             nq.stop_nq_index(core.repository.db_path), _run(*args, **kwargs))[1])
         client.post('/api/non-qualified-calls/reindex')
