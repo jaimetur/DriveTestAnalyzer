@@ -134,7 +134,10 @@ def test_workspace_shows_and_changes_the_campaign_of_each_cdr(client, tmp_path):
     assert 'data-datasets-size title="Size of the source files of every dataset">0 MB</span>' in page
     # The rows are grouped by campaign and sorted by Campaign, NR Mode and CDR Type in the page.
     script = (Path(__file__).parents[2] / 'src/web_interface/static/js/core/app.js').read_text(encoding='utf-8')
-    assert "header.dataset.campaignGroupRow = key;" in script and "size.dataset.campaignGroupSize = '';" in script and "label.textContent = key || 'No campaign';" in script
+    assert "header.setAttribute(level === 1 ? 'data-campaign-group-row' : 'data-period-group-row', foldKey);" in script
+    assert "size.dataset.campaignGroupSize = '';" in script and "label: key || 'No campaign'" in script
+    # Weekly CDRs by ISO week and Daily CDRs by day within each campaign, every group foldable.
+    assert "const periodOf = (row, kind) =>" in script and "const applyGroupFolds = (body) =>" in script
     assert "? {key: 'campaign', direction: 'desc'}" in script and "['nr-mode', 'kind'].reduce(" in script
 
     response = client.post(f'/workspace/datasets/{unnamed}/campaign', json={'campaign': '2026 q3 sa'})

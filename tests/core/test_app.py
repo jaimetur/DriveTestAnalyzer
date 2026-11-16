@@ -10843,7 +10843,9 @@ def test_workspace_dataset_table_defaults_to_descending_ids_and_has_sortable_col
     table = page.text.split('<table class="queue-table" data-queue-sortable-table>', 1)[1].split('</table>', 1)[0]
 
     assert table.index('data-dataset-id="2"') < table.index('data-dataset-id="1"')
-    assert '<th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">' in table
+    # The ID header holds the box that selects every dataset of the table before its sort button.
+    assert '<th aria-sort="descending"><span class="queue-select-head"><input type="checkbox" class="queue-select" data-queue-select-all' in table
+    assert '<button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">' in table
     for key in ('dataset', 'campaign', 'kind', 'rows', 'columns', 'size', 'status', 'progress', 'uploaded', 'updated'):
         assert f'data-queue-sort-key="{key}"' in table
     script = client.get('/static/js/core/app.js').text
