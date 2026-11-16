@@ -2126,7 +2126,7 @@ def test_the_area_charts_take_the_height_of_the_table_and_tilt_crowded_labels():
     assert 'if (part?.expandPart) part.expandPart();' in card
     # The table beside the charts enlarges on its own too.
     assert 'tableWrap.expandPart = () => openExpandedView(' in _function_source(script, 'makeAreaSummaryView')
-    assert "openExpandedView(large, `${scoringLabel()} — ${area.label}`, 'National & Geographical Areas Trends', figure, 'Area trend');" in chart
+    assert "openExpandedView(large, figure.dataset.imageTitle, 'National & Geographical Areas Trends', figure, 'Area trend');" in chart
 
 
 

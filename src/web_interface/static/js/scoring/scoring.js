@@ -7303,9 +7303,11 @@
     // Each chart enlarges on its own with a double click (not the whole National & Geographical Areas card).
     figure.title = 'Double-click to enlarge this chart';
     figure.classList.add('scoring-expandable-part');
+    // Its own title (Best Network Trends — Cardiff), for its larger view and its images.
+    figure.dataset.imageTitle = `${scoringLabel()} Trends — ${area.label}`;
     figure.expandPart = () => {
       const large = makeAreaTrendChart(area, campaigns, low, high, step, Math.max(height, 240)).querySelector('svg');
-      openExpandedView(large, `${scoringLabel()} — ${area.label}`, 'National & Geographical Areas Trends', figure, 'Area trend');
+      openExpandedView(large, figure.dataset.imageTitle, 'National & Geographical Areas Trends', figure, 'Area trend');
       appendExpandedScope(caption);
     };
     return figure;
@@ -9824,6 +9826,8 @@
   // Its own title, after the title of the card it is part of (``Points Lost Map — EE``); a table beside the map of a route
   // has its title just above it, and the larger view the title of its header.
   function imageTitle(target) {
+    // (The chart of an area: its own title, Best Network Trends — Cardiff.)
+    if (target.dataset?.imageTitle) return target.dataset.imageTitle;
     if (target.matches('.scoring-expanded-holder')) {
       return [...(expandedChartTitle?.childNodes || [])].filter(node => node.nodeType === Node.TEXT_NODE)
         .map(node => node.textContent).join('').trim();
@@ -9837,14 +9841,29 @@
     return [...new Set([card ? titleOf(card) : '', titleOf(target)].filter(Boolean))].join(' — ') || inner;
   }
 
+  // The title drawn above the image of the chart of an area: a heading of a chart card, out of sight, with its title.
+  let areaImageHolder = null;
+  function areaImageHeader(figure) {
+    if (!areaImageHolder?.isConnected) {
+      areaImageHolder = document.createElement('article');
+      areaImageHolder.className = 'scoring-chart-card scoring-image-title-holder';
+      areaImageHolder.setAttribute('aria-hidden', 'true');
+      areaImageHolder.append(document.createElement('h4'));
+      root.append(areaImageHolder);
+    }
+    areaImageHolder.style.cssText = `position:fixed;left:-10000px;top:0;width:${Math.ceil(figure.offsetWidth)}px;padding:0;border:0;margin:0`;
+    areaImageHolder.firstElementChild.textContent = figure.dataset.imageTitle || '';
+    return areaImageHolder.firstElementChild;
+  }
+
   window.attachImageButtons?.({
     root, targets: IMAGE_TARGETS, within: '[data-result-pane], [data-scoring-chart-overlay]',
     tables: `${IMAGE_TABLES}, .scoring-expanded-holder:has(table)`, charts: `${IMAGE_CHARTS}, .scoring-expanded-holder`,
     exclude: IMAGE_EXCLUDED, obstacles: '.scoring-map-zoom', title: imageTitle, fallbackName: 'Scoring',
     // The larger view of a chart, map or table keeps its title, with the pills of its area, operators and vendors.
-    // The chart of an area keeps the title of its card (Best Network Trends — National & Geographical Areas) above it.
+    // The chart of an area has its own title above it (Best Network Trends — National, or — Cardiff).
     header: target => (target.matches('.scoring-expanded-holder') ? expandedChartTitle?.parentElement || null
-      : target.matches('.scoring-area-trend') ? target.closest('.scoring-chart-card')?.querySelector(':scope > h4') || null : null),
+      : target.matches('.scoring-area-trend') ? areaImageHeader(target) : null),
     // Below the floating section bar and the tab bar of the results.
     topInset: () => {
       const tabs = root.querySelector('.scoring-result-tabs')?.getBoundingClientRect();

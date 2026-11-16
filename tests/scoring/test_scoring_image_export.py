@@ -118,8 +118,10 @@ def test_scoring_results_place_one_download_button_over_the_chart_or_table_under
     assert 'const image = copy ? await draw(target, options) : await draw(target, file, options);' in buttons
     # The larger view keeps its title, with its pills, above the chart, map or table.
     assert "header: target => (target.matches('.scoring-expanded-holder') ? expandedChartTitle?.parentElement || null" in script
-    # The chart of an area keeps the title of its card above it.
-    assert ": target.matches('.scoring-area-trend') ? target.closest('.scoring-chart-card')?.querySelector(':scope > h4') || null : null)," in script
+    # The chart of an area has its own title above it (Best Network Trends — London), also in its larger view.
+    assert ": target.matches('.scoring-area-trend') ? areaImageHeader(target) : null)," in script
+    assert 'figure.dataset.imageTitle = `${scoringLabel()} Trends — ${area.label}`;' in script
+    assert "openExpandedView(large, figure.dataset.imageTitle, 'National & Geographical Areas Trends', figure, 'Area trend');" in script
     assert "...(copy ? {destination: clipboard ? 'clipboard' : 'copy-dialog'} : {})," in buttons
     # Where the browser does not let the page copy images (an address that is not secure), the screenshot shows in a
     # dialog to copy it from the menu of the image, or to download it; the page behind does not scroll while it is open.
