@@ -618,7 +618,10 @@ def _environment_summary(areas: list[dict[str, Any]], environment: str,
             if not current:
                 continue
         before = points.get(previous) if previous is not None and measured else None
-        reference = next((item for item in current.values() if item['is_reference']), None)
+        # Each operator is compared with the best of the area (the highest score of its operators shown).
+        shown = [item for operator, item in current.items()
+                 if include_operator is None or item['is_reference'] or include_operator(operator, item['label'])]
+        best = max(shown, key=lambda item: item['total'], default=None)
         rows = []
         for operator, item in current.items():
             if include_operator is not None and not item['is_reference'] and not include_operator(operator, item['label']):
@@ -630,14 +633,15 @@ def _environment_summary(areas: list[dict[str, Any]], environment: str,
                 'operator': operator, 'label': item['label'], 'color': item['color'],
                 'is_reference': item['is_reference'], 'points': item['total'] if measured else None,
                 'complete': item['complete'] or not measured, 'order': item['total'],
-                'gap': None if reference is None or item['is_reference'] or not measured else item['total'] - reference['total'],
+                'gap': None if best is None or not measured else item['total'] - best['total'],
+                'is_best': measured and item is best,
                 'delta': None if prior is None else item['total'] - prior['total'],
                 'trend': [((points.get(campaign) or {}).get(operator) or {}).get('total') for campaign in campaigns],
             })
         if not rows:
             continue
-        # The reference first, then the operators from the highest score.
-        rows.sort(key=lambda row: (not row['is_reference'], -row.pop('order')))
+        # From the highest score (the best first).
+        rows.sort(key=lambda row: (not row['is_best'], -row.pop('order')))
         rows_by_area.append({'label': area['label'], 'kind': area['kind'], 'measured': measured, 'rows': rows})
     # National alone summarises nothing.
     if len(rows_by_area) < 2:
@@ -646,5 +650,6 @@ def _environment_summary(areas: list[dict[str, Any]], environment: str,
     return {
         'environment': environment, 'maximum': maximum, 'scaled': scaled,
         'campaigns': campaigns, 'latest_campaign': latest, 'previous_campaign': previous,
-        'reference_label': reference, 'operators': styles, 'areas': rows_by_area,
+        # (The GAP of each operator is to the best of its area.)
+        'reference_label': reference, 'gap_to': 'best', 'operators': styles, 'areas': rows_by_area,
     }

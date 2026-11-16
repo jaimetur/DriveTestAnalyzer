@@ -195,9 +195,13 @@ def test_the_summary_lists_national_the_chosen_cities_and_the_breakdown():
     # National, the breakdown, then the cities.
     assert [area['label'] for area in combined['areas']] == ['National', 'Vendor A', 'VMO2 North', 'London']
     national = {row['operator']: row for row in combined['areas'][0]['rows']}
-    # The reference first; the GAP is each operator's points minus the reference's.
-    assert combined['areas'][0]['rows'][0]['operator'] == 'EE' and national['EE']['gap'] is None
-    assert national['Three UK']['gap'] == pytest.approx(national['Three UK']['points'] - national['EE']['points'])
+    # From the highest score; the GAP is each operator's points minus those of the best of the area.
+    for area in combined['areas']:
+        points = [row['points'] for row in area['rows']]
+        assert points == sorted(points, reverse=True) and area['rows'][0]['is_best']
+        assert not any(row['is_best'] for row in area['rows'][1:]) and area['rows'][0]['gap'] == 0
+        assert all(row['gap'] == pytest.approx(row['points'] - points[0]) for row in area['rows'])
+    assert combined['gap_to'] == 'best' and combined['reference_label'] == 'EE'
     # One campaign: no change from a previous campaign.
     assert combined['previous_campaign'] is None and national['EE']['delta'] is None
     # The Most Reliable scoring rates the area calculations with its own points.
@@ -301,7 +305,7 @@ def test_report_adds_the_national_and_areas_slide():
     assert len(slides) == 1
     table = next(shape.table for shape in slides[0].shapes if shape.has_table)
     assert [table.cell(0, column).text for column in range(len(table.columns))] == [
-        'Area', 'Operator', 'Score\n26-Q2', 'Δ vs\n26-Q1', 'Δ vs\nEE']
+        'Area', 'Operator', 'Score\n26-Q2', 'Δ vs\n26-Q1', 'Δ vs\nbest']
     areas = [table.cell(row, 0).text for row in range(1, len(table.rows)) if table.cell(row, 0).text]
     assert areas == ['National', 'Vendor A', 'VMO2 North', 'London']
     # Every operator: the Focus operators choose none of the trends.

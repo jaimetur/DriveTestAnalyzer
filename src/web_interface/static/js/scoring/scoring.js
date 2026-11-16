@@ -7101,7 +7101,9 @@
       : Number(value) > 0 ? 'scoring-area-gain' : 'scoring-area-loss');
     const headers = ['Area', 'Operator', summary.latest_campaign ? `Score ${period(summary.latest_campaign)}` : 'Score'];
     if (summary.previous_campaign) headers.push(`Δ vs ${period(summary.previous_campaign)}`);
-    headers.push(`Δ vs ${summary.reference_label || 'reference'}`);
+    // Each operator against the best of its area (results of before: against the reference).
+    const toBest = summary.gap_to === 'best';
+    headers.push(toBest ? 'Δ vs best' : `Δ vs ${summary.reference_label || 'reference'}`);
     const rows = [];
     // Each area is a band of rows: its first row starts it, and every other area is shaded.
     const rowClasses = [];
@@ -7121,13 +7123,14 @@
           {text: index ? '' : area.label, title: index ? '' : missing,
             className: `scoring-area-name is-${category}${measured ? '' : ' is-unmeasured'}`},
           {text: item.label, style: color ? {color} : {},
-            className: `scoring-area-operator${item.is_reference ? ' scoring-area-reference' : ''}`},
+            className: `scoring-area-operator${(toBest ? item.is_best : item.is_reference) ? ' scoring-area-reference' : ''}`},
           {text: item.points === null || item.points === undefined ? '—' : `${insightNumber(item.points, 1)}${item.complete ? '' : '*'}`,
             style: color ? {color} : {}, className: 'scoring-area-score',
             title: missing || (item.complete ? '' : 'Incomplete KPI coverage')},
         ];
         if (summary.previous_campaign) cells.push({text: signed(item.delta), className: tone(item.delta)});
-        cells.push(item.is_reference ? '' : {text: signed(item.gap), className: tone(item.gap)});
+        if (toBest) cells.push(item.is_best ? {text: 'Best', className: 'scoring-area-best'} : {text: signed(item.gap), className: tone(item.gap)});
+        else cells.push(item.is_reference ? '' : {text: signed(item.gap), className: tone(item.gap)});
         rows.push(cells);
         rowClasses.push(`${index ? '' : 'is-area-start'}${!index && newCategory ? ' is-category-start' : ''}${areaIndex % 2 ? ' is-area-shaded' : ''}`.trim());
       });

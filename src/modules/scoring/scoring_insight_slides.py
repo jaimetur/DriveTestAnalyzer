@@ -943,12 +943,15 @@ AREA_CATEGORY_COLORS = {0: '#B07400', 1: '#1450A8', 2: '#8E3FB5'}
 
 def _area_summary_table(slide, summary: dict[str, Any], areas: list[dict[str, Any]], *, left: float,
                         width: float) -> bool:
-    """The score of each operator per area, with its GAP to the reference and its change from the previous campaign."""
+    """The score of each operator per area, with its GAP to the best of the area (results of before: to the reference)
+    and its change from the previous campaign."""
     from src.modules.scoring.scoring_area_summary import area_category
     from src.modules.scoring.scoring_insights import _display
     from src.modules.scoring.scoring_pptx_scorecard import border
     latest, previous = summary['latest_campaign'], summary['previous_campaign']
-    reference = summary.get('reference_label') or 'reference'
+    to_best = summary.get('gap_to') == 'best'
+    reference = 'best' if to_best else summary.get('reference_label') or 'reference'
+    leader = 'is_best' if to_best else 'is_reference'
     headers = ['Area', 'Operator', f"Score\n{_display('Campaign', latest)}" if latest else 'Score']
     if previous:
         headers.append(f"Δ vs\n{_display('Campaign', previous)}")
@@ -981,12 +984,16 @@ def _area_summary_table(slide, summary: dict[str, Any], areas: list[dict[str, An
             color = item.get('color') or '#263746'
             marker = '' if item['complete'] else '*'
             incomplete = incomplete or not item['complete']
-            _cell(table.cell(row, 1), item['label'], size=size, bold=item['is_reference'], color=color, fill=fill)
+            _cell(table.cell(row, 1), item['label'], size=size, bold=bool(item.get(leader)), color=color, fill=fill)
             _cell(table.cell(row, 2), _summary_number(item['points']) + marker, size=size, bold=True, color=color,
                   fill=fill, align=PP_ALIGN.CENTER)
-            values = ([item['delta']] if previous else []) + [None if item['is_reference'] else item['gap']]
+            values = ([item['delta']] if previous else []) + [None if item.get(leader) else item['gap']]
             for offset, value in enumerate(values, start=3):
-                _cell(table.cell(row, offset), '' if item['is_reference'] and offset == len(headers) - 1
+                last = offset == len(headers) - 1
+                if last and item.get(leader) and to_best:
+                    _cell(table.cell(row, offset), 'BEST', size=size, bold=True, color='#1F7A3D', fill=fill, align=PP_ALIGN.CENTER)
+                    continue
+                _cell(table.cell(row, offset), '' if item.get(leader) and last
                       else _summary_number(value, signed=True), size=size, color=_signed_color(value), fill=fill,
                       align=PP_ALIGN.CENTER)
             row += 1
