@@ -23661,6 +23661,40 @@ def update_dataset_in_combined(
     return JSONResponse({'dataset_id': dataset_id, 'in_combined': choice, 'combined': combined_inclusion_payload()})
 
 
+@app.post('/workspace/datasets/in-combined')
+def update_datasets_in_combined(
+    dataset_ids: Annotated[list[int] | None, Form()] = None,
+    in_combined: str = Form(''),
+    user: SessionUser = Depends(combined_choice_user),
+) -> JSONResponse:
+    """Choose Active? (Auto, Yes or No) for the CDRs selected in the Workspace tables, with one update of the combined tables."""
+    if active_workspace:
+        require_workspace_access(user, active_workspace.id)
+    choice = normalize_in_combined(in_combined)
+    if choice is None:
+        raise HTTPException(status_code=422, detail='Choose Auto, Yes or No.')
+    selected_ids = list(dict.fromkeys(dataset_ids or []))
+    if not selected_ids:
+        raise HTTPException(status_code=400, detail='Select at least one CDR.')
+    changed: list[int] = []
+    for dataset_id in selected_ids:
+        dataset = repository.get_dataset(dataset_id)
+        if not dataset or str(dataset['dataset_kind'] or '').casefold() not in CDR_DATASET_KINDS:
+            continue
+        previous = normalize_in_combined(dataset['in_combined']) or 'auto'
+        if previous == choice:
+            continue
+        repository.update_dataset_profile(dataset_id, in_combined=choice)
+        repository.add_log(user.username, 'update_dataset_in_combined', json.dumps({
+            'dataset_id': dataset_id, 'file': dataset['file_name'], 'previous_in_combined': previous, 'in_combined': choice,
+            'selection': True,
+        }))
+        changed.append(dataset_id)
+    if changed:
+        queue_combined_cdr_inclusion_sync(user.username)
+    return JSONResponse({'dataset_ids': changed, 'in_combined': choice, 'combined': combined_inclusion_payload()})
+
+
 class DatasetFlexUpdate(BaseModel):
     action: str
     label: str = ''
@@ -24205,15 +24239,18 @@ def stop_dataset(
 @app.post('/workspace/stop-datasets')
 def stop_workspace_datasets(
     return_to: str = Form(''),
+    dataset_ids: Annotated[list[int] | None, Form()] = None,
     user: SessionUser = Depends(workspace_editor_user),
 ) -> Response:
+    """Stop every queued or processing dataset or, with ``dataset_ids``, those of the datasets selected in the Workspace."""
     if not active_workspace:
         raise HTTPException(status_code=400, detail='Open a workspace before stopping datasets')
     require_workspace_access(user, active_workspace.id)
+    selected_ids = set(dataset_ids or [])
     active_datasets = [
         serialize_dataset_row(row)
         for row in repository.list_datasets()
-        if str(row['status']) in {'queued', 'processing'}
+        if str(row['status']) in {'queued', 'processing'} and (not selected_ids or int(row['id']) in selected_ids)
     ]
     if not active_datasets:
         raise HTTPException(status_code=409, detail='No datasets are currently queued or processing')
@@ -24231,12 +24268,16 @@ def stop_workspace_datasets(
             'dataset_id': dataset_id,
             'file': dataset['file_name'],
             'batch': True,
+            'selection': bool(selected_ids),
         }))
-    notice = (
-        'The queued or processing dataset has been stopped.'
-        if len(active_datasets) == 1
-        else f'All {len(active_datasets)} queued or processing datasets have been stopped.'
-    )
+    if selected_ids:
+        notice = f"{len(active_datasets)} selected dataset{'s' if len(active_datasets) != 1 else ''} stopped."
+    else:
+        notice = (
+            'The queued or processing dataset has been stopped.'
+            if len(active_datasets) == 1
+            else f'All {len(active_datasets)} queued or processing datasets have been stopped.'
+        )
     if return_to == 'admin':
         return RedirectResponse('/admin', status_code=status.HTTP_303_SEE_OTHER)
     return RedirectResponse(
@@ -24248,16 +24289,21 @@ def stop_workspace_datasets(
 @app.post('/workspace/delete-datasets')
 def delete_workspace_datasets(
     return_to: str = Form(''),
+    dataset_ids: Annotated[list[int] | None, Form()] = None,
     user: SessionUser = Depends(workspace_editor_user),
 ) -> Response:
+    """Remove every dataset of the workspace or, with ``dataset_ids``, the datasets selected in the Workspace."""
     if not active_workspace:
         raise HTTPException(status_code=400, detail='Open a workspace before removing datasets')
     require_workspace_access(user, active_workspace.id)
-    datasets = [serialize_dataset_row(row) for row in repository.list_datasets()]
+    selected_ids = set(dataset_ids or [])
+    datasets = [serialize_dataset_row(row) for row in repository.list_datasets()
+                if not selected_ids or int(row['id']) in selected_ids]
     if not datasets:
         raise HTTPException(status_code=409, detail='No datasets are available to remove')
     if any(dataset['status'] == 'processing' for dataset in datasets):
-        raise HTTPException(status_code=409, detail='Stop every processing dataset before removing all datasets')
+        raise HTTPException(status_code=409, detail='Stop every processing dataset before removing it'
+                            if selected_ids else 'Stop every processing dataset before removing all datasets')
 
     deleted_count = 0
     deleted_paths: list[Path] = []
@@ -24278,6 +24324,7 @@ def delete_workspace_datasets(
             'dataset_id': dataset_id,
             'file': deleted['file_name'],
             'batch': True,
+            'selection': bool(selected_ids),
         }))
 
     repository.remove_orphaned_dataset_row_tables()

@@ -275,7 +275,7 @@
     {% macro queue_timestamp(value) %}{% set parts = (value or '').replace('T', ' ').split(' ', 1) %}<span class="queue-date">{{ parts[0] }}</span>{% if parts | length > 1 %} <span class="queue-time">{{ parts[1] }}</span>{% endif %}{% endmacro %}
     {% macro dataset_row(dataset, layout) %}
           <tr class="{% if layout == 'cdr' and dataset.is_ready %}{{ 'queue-row-in-combined' if dataset.combined_included else 'queue-row-not-combined' }}{% endif %}" data-dataset-row data-dataset-id="{{ dataset.id }}" data-dataset-kind="{{ dataset.dataset_kind or 'generic' }}" data-queue-status="{{ dataset.status }}"{% if layout == 'cdr' %} data-flex-campaign="{{ 'true' if dataset.flex_campaign else 'false' }}" data-cdr-first-date="{{ dataset.cdr_first_date or '' }}" data-cdr-last-date="{{ dataset.cdr_last_date or '' }}"{% endif %}>
-            <td data-label="ID" data-queue-id data-queue-sort-value="{{ dataset.id }}" data-queue-sort-cell="id">{{ dataset.id }}</td>
+            <td data-label="ID" data-queue-id data-queue-sort-value="{{ dataset.id }}" data-queue-sort-cell="id">{% if user.role in ['user-editor', 'admin', 'super-admin'] %}<label class="queue-select-cell"><input type="checkbox" class="queue-select" data-queue-select value="{{ dataset.id }}" aria-label="Select {{ dataset.file_name }}"><span>{{ dataset.id }}</span></label>{% else %}{{ dataset.id }}{% endif %}</td>
             <td data-label="Dataset" data-queue-sort-value="{{ dataset.file_name }}" data-queue-sort-cell="dataset">
               <div class="queue-dataset-name" data-queue-file-name>{{ dataset.file_name }}</div>
               <div class="queue-dataset-path" data-queue-file-path title="{{ dataset.stored_path }}">{{ dataset.stored_path }}</div>
@@ -419,7 +419,7 @@
               <table class="queue-table{{ ' ' ~ table_class if table_class }}" data-queue-sortable-table>
                 <thead>
                   <tr>
-            <th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button></th>
+            <th aria-sort="descending">{% if user.role in ['user-editor', 'admin', 'super-admin'] %}<span class="queue-select-head"><input type="checkbox" class="queue-select" data-queue-select-all aria-label="Select every dataset of this table" title="Select every dataset of this table">{% endif %}<button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button>{% if user.role in ['user-editor', 'admin', 'super-admin'] %}</span>{% endif %}</th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="dataset" data-queue-sort-type="text">Dataset<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="campaign" data-queue-sort-type="text">Campaign<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="nr-mode" data-queue-sort-type="text">NR Mode<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -487,7 +487,7 @@
     {% macro l3_dataset_row(dataset) %}
           {% set l3 = dataset.l3 or {} %}
           <tr data-dataset-row data-dataset-id="{{ dataset.id }}" data-dataset-kind="{{ dataset.dataset_kind }}" data-queue-status="{{ dataset.status }}">
-            <td data-label="ID" data-queue-id data-queue-sort-value="{{ dataset.id }}" data-queue-sort-cell="id">{{ dataset.id }}</td>
+            <td data-label="ID" data-queue-id data-queue-sort-value="{{ dataset.id }}" data-queue-sort-cell="id">{% if user.role in ['user-editor', 'admin', 'super-admin'] %}<label class="queue-select-cell"><input type="checkbox" class="queue-select" data-queue-select value="{{ dataset.id }}" aria-label="Select {{ dataset.file_name }}"><span>{{ dataset.id }}</span></label>{% else %}{{ dataset.id }}{% endif %}</td>
             <td data-label="Dataset" data-queue-sort-value="{{ dataset.file_name }}" data-queue-sort-cell="dataset">
               <div class="queue-dataset-name" data-queue-file-name>{{ dataset.file_name }}</div>
               <div class="queue-dataset-kind" data-queue-kind>{{ dataset.input_kind_label }}{% if l3.days %} · {{ l3.days }} day{{ '' if l3.days == 1 else 's' }}, {{ l3.first_day }}{% if l3.last_day != l3.first_day %} – {{ l3.last_day }}{% endif %}{% endif %}</div>
@@ -510,7 +510,7 @@
     {% endmacro %}
     {% macro compact_dataset_row(dataset, geospatial=False) %}
           <tr data-dataset-row data-dataset-id="{{ dataset.id }}" data-dataset-kind="{{ dataset.dataset_kind or 'generic' }}" data-queue-status="{{ dataset.status }}">
-            <td data-label="ID" data-queue-id data-queue-sort-value="{{ dataset.id }}" data-queue-sort-cell="id">{{ dataset.id }}</td>
+            <td data-label="ID" data-queue-id data-queue-sort-value="{{ dataset.id }}" data-queue-sort-cell="id">{% if user.role in ['user-editor', 'admin', 'super-admin'] %}<label class="queue-select-cell"><input type="checkbox" class="queue-select" data-queue-select value="{{ dataset.id }}" aria-label="Select {{ dataset.file_name }}"><span>{{ dataset.id }}</span></label>{% else %}{{ dataset.id }}{% endif %}</td>
             <td data-label="Dataset" data-queue-sort-value="{{ dataset.file_name }}" data-queue-sort-cell="dataset">
               <div class="queue-dataset-name" data-queue-file-name>{{ dataset.file_name }}</div>
               {% if not geospatial %}<div class="queue-dataset-kind" data-queue-kind data-queue-sort-value="{{ dataset.input_kind_label }}">{{ dataset.input_kind_label }}</div>{% endif %}
@@ -577,7 +577,7 @@
           <table class="queue-table" data-queue-sortable-table>
             <thead>
               <tr>
-            <th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button></th>
+            <th aria-sort="descending">{% if user.role in ['user-editor', 'admin', 'super-admin'] %}<span class="queue-select-head"><input type="checkbox" class="queue-select" data-queue-select-all aria-label="Select every dataset of this table" title="Select every dataset of this table">{% endif %}<button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button>{% if user.role in ['user-editor', 'admin', 'super-admin'] %}</span>{% endif %}</th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="dataset" data-queue-sort-type="text">Dataset<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="campaign" data-queue-sort-type="text">Campaign<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="nr-mode" data-queue-sort-type="text">NR Mode<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -610,7 +610,7 @@
           <table class="queue-table queue-table-weekly" data-queue-sortable-table>
             <thead>
               <tr>
-            <th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button></th>
+            <th aria-sort="descending">{% if user.role in ['user-editor', 'admin', 'super-admin'] %}<span class="queue-select-head"><input type="checkbox" class="queue-select" data-queue-select-all aria-label="Select every dataset of this table" title="Select every dataset of this table">{% endif %}<button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button>{% if user.role in ['user-editor', 'admin', 'super-admin'] %}</span>{% endif %}</th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="dataset" data-queue-sort-type="text">Dataset<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="campaign" data-queue-sort-type="text">Campaign<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="nr-mode" data-queue-sort-type="text">NR Mode<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -643,7 +643,7 @@
           <table class="queue-table queue-table-daily" data-queue-sortable-table>
             <thead>
               <tr>
-            <th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button></th>
+            <th aria-sort="descending">{% if user.role in ['user-editor', 'admin', 'super-admin'] %}<span class="queue-select-head"><input type="checkbox" class="queue-select" data-queue-select-all aria-label="Select every dataset of this table" title="Select every dataset of this table">{% endif %}<button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button>{% if user.role in ['user-editor', 'admin', 'super-admin'] %}</span>{% endif %}</th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="dataset" data-queue-sort-type="text">Dataset<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="campaign" data-queue-sort-type="text">Campaign<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="nr-mode" data-queue-sort-type="text">NR Mode<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -677,7 +677,7 @@
           <table class="queue-table queue-table-compact queue-table-l3" data-queue-sortable-table>
             <thead>
               <tr>
-            <th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button></th>
+            <th aria-sort="descending">{% if user.role in ['user-editor', 'admin', 'super-admin'] %}<span class="queue-select-head"><input type="checkbox" class="queue-select" data-queue-select-all aria-label="Select every dataset of this table" title="Select every dataset of this table">{% endif %}<button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button>{% if user.role in ['user-editor', 'admin', 'super-admin'] %}</span>{% endif %}</th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="dataset" data-queue-sort-type="text">Dataset<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="campaign" data-queue-sort-type="text">Campaign<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="nr-mode" data-queue-sort-type="text">NR Mode<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -715,7 +715,7 @@
             <table class="queue-table queue-table-compact" data-queue-sortable-table>
               <thead>
                 <tr>
-            <th aria-sort="descending"><button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button></th>
+            <th aria-sort="descending">{% if user.role in ['user-editor', 'admin', 'super-admin'] %}<span class="queue-select-head"><input type="checkbox" class="queue-select" data-queue-select-all aria-label="Select every dataset of this table" title="Select every dataset of this table">{% endif %}<button type="button" class="queue-sort-button" data-queue-sort-key="id" data-queue-sort-type="number">ID<span aria-hidden="true" data-queue-sort-indicator>↓</span></button>{% if user.role in ['user-editor', 'admin', 'super-admin'] %}</span>{% endif %}</th>
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="dataset" data-queue-sort-type="text">Dataset<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
             {% if card_key == 'geospatial' %}
             <th><button type="button" class="queue-sort-button" data-queue-sort-key="type" data-queue-sort-type="text">Type<span aria-hidden="true" data-queue-sort-indicator>↕</span></button></th>
@@ -824,6 +824,26 @@
       </div>
     </section>
   </details>
+
+  {# The actions of the datasets selected in the Workspace tables: each one applies to the selected datasets it is
+     available for (the same rules as the buttons of each row). #}
+  {% if user.role in ['user-editor', 'admin', 'super-admin'] %}
+  <div class="queue-selection-bar" data-queue-selection-bar role="toolbar" aria-label="Actions of the selected datasets" hidden>
+    <span class="queue-selection-count" data-queue-selection-count>0 selected</span>
+    <button type="button" class="queue-selection-action" data-queue-selection-action="map">Map Vendor, Region &amp; Cluster</button>
+    <button type="button" class="queue-selection-action" data-queue-selection-action="clear-mapping">Clear Mapping</button>
+    {% if user.role in ['admin', 'super-admin'] %}
+    <span class="queue-selection-group" role="group" aria-label="Active? of the selected CDRs">
+      <span class="queue-selection-group-label">Active?</span>
+      {% for value, label in in_combined_options %}<button type="button" class="queue-selection-action" data-queue-selection-action="in-combined" data-in-combined="{{ value }}">{{ label }}</button>{% endfor %}
+    </span>
+    {% endif %}
+    <button type="button" class="queue-selection-action is-warning" data-queue-selection-action="reprocess">Reprocess</button>
+    <button type="button" class="queue-selection-action is-warning" data-queue-selection-action="stop">Stop</button>
+    <button type="button" class="queue-selection-action is-danger" data-queue-selection-action="delete">Delete</button>
+    <button type="button" class="queue-selection-clear" data-queue-selection-clear title="Clear the selection" aria-label="Clear the selection">&times;</button>
+  </div>
+  {% endif %}
 
   <dialog class="vendor-mapping-dialog dataset-reprocess-dialog" data-dataset-reprocess-dialog aria-labelledby="dataset-reprocess-title">
     <form method="post" action="/workspace/reprocess-datasets">
@@ -1633,6 +1653,167 @@
 })();
 </script>
 <script>
+// Several datasets selected in the Workspace tables (a box on each row, one in the ID header of each table and one in
+// each campaign, week or day group of the CDR tables) share the actions of the selection bar. Each action applies to
+// the selected datasets it is available for, by the same rules as the buttons of their rows.
+(() => {
+  const bar = document.querySelector('[data-queue-selection-bar]');
+  if (!bar) return;
+  const rowBoxes = () => [...document.querySelectorAll('tr[data-dataset-id] [data-queue-select]')];
+  // A row hidden by the type filter is not part of the selection.
+  const selectedRows = () => rowBoxes().filter((box) => box.checked && !box.closest('tr').hidden).map((box) => box.closest('tr'));
+  const groupRows = (header) => {
+    const rows = [];
+    const level = Number(header.dataset.groupLevel || 0);
+    for (let row = header.nextElementSibling; row && !(Number(row.dataset.groupLevel || 0) && Number(row.dataset.groupLevel) <= level); row = row.nextElementSibling) {
+      if (row.hasAttribute('data-dataset-id') && !row.hidden) rows.push(row);
+    }
+    return rows;
+  };
+  const syncBox = (box, rows) => {
+    const checked = rows.filter((row) => row.querySelector('[data-queue-select]')?.checked).length;
+    box.checked = rows.length > 0 && checked === rows.length;
+    box.indeterminate = checked > 0 && checked < rows.length;
+    box.disabled = rows.length === 0;
+  };
+  // What each action can do with a selected row: the buttons its row offers now (they follow its status).
+  const ELIGIBLE = {
+    map: (row) => Boolean(row.querySelector('[data-mapping-map-open]')),
+    'clear-mapping': (row) => Boolean(row.querySelector('[data-mapping-clear-open]')),
+    'in-combined': (row) => Boolean(row.querySelector('[data-dataset-combined-select]:not([disabled])')),
+    reprocess: (row) => Boolean(row.querySelector('.action-link-reprocess:not([disabled])')),
+    stop: (row) => Boolean(row.querySelector('.action-link-stop')),
+    delete: (row) => Boolean(row.querySelector('form[action^="/datasets-analysis/delete/"] button:not([disabled])')),
+  };
+  const ACTION_NAMES = {
+    map: 'map', 'clear-mapping': 'clear the mapping of', 'in-combined': 'change Active? of', reprocess: 'reprocess', stop: 'stop', delete: 'delete',
+  };
+  const eligibleRows = (action) => selectedRows().filter(ELIGIBLE[action]);
+  const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+  const sync = () => {
+    document.querySelectorAll('[data-queue-select-all]').forEach((box) => {
+      syncBox(box, [...(box.closest('table')?.tBodies[0]?.querySelectorAll('tr[data-dataset-id]') || [])].filter((row) => !row.hidden));
+    });
+    document.querySelectorAll('tr[data-group-level] [data-queue-group-select]').forEach((box) => syncBox(box, groupRows(box.closest('tr'))));
+    const rows = selectedRows();
+    bar.hidden = rows.length === 0;
+    bar.querySelector('[data-queue-selection-count]').textContent = `${plural(rows.length, 'dataset')} selected`;
+    bar.querySelectorAll('[data-queue-selection-action]').forEach((button) => {
+      const action = button.dataset.queueSelectionAction;
+      const count = rows.filter(ELIGIBLE[action]).length;
+      button.disabled = count === 0;
+      button.title = count
+        ? `${button.textContent.trim()}: ${count} of the ${plural(rows.length, 'selected dataset')}`
+        : `None of the selected datasets can be ${action === 'in-combined' ? 'changed' : 'used for this action'}`;
+    });
+  };
+  // Each group header of the CDR tables gets its own box (the groups are built again after each sort).
+  const addGroupBoxes = () => {
+    document.querySelectorAll('tr[data-group-level]').forEach((header) => {
+      if (header.querySelector('[data-queue-group-select]')) return;
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.className = 'queue-select queue-group-select';
+      box.dataset.queueGroupSelect = '';
+      box.setAttribute('aria-label', 'Select every dataset of this group');
+      box.title = 'Select every dataset of this group';
+      header.querySelector('td')?.prepend(box);
+    });
+  };
+  document.addEventListener('change', (event) => {
+    const box = event.target;
+    if (!(box instanceof HTMLInputElement)) return;
+    if (box.matches('[data-queue-select-all]')) {
+      [...(box.closest('table')?.tBodies[0]?.querySelectorAll('tr[data-dataset-id]') || [])]
+        .filter((row) => !row.hidden).forEach((row) => { const rowBox = row.querySelector('[data-queue-select]'); if (rowBox) rowBox.checked = box.checked; });
+    } else if (box.matches('[data-queue-group-select]')) {
+      groupRows(box.closest('tr')).forEach((row) => { const rowBox = row.querySelector('[data-queue-select]'); if (rowBox) rowBox.checked = box.checked; });
+    } else if (!box.matches('[data-queue-select]')) {
+      return;
+    }
+    sync();
+  });
+  bar.querySelector('[data-queue-selection-clear]')?.addEventListener('click', () => {
+    rowBoxes().forEach((box) => { box.checked = false; });
+    sync();
+  });
+  const confirmAction = async (action, rows, extra = '') => {
+    const selected = selectedRows().length;
+    const skipped = selected - rows.length;
+    const names = rows.slice(0, 8).map((row) => `• ${row.querySelector('[data-queue-file-name]')?.textContent.trim() || `Dataset ${row.dataset.datasetId}`}`).join('\n');
+    const more = rows.length > 8 ? `\n• … and ${rows.length - 8} more` : '';
+    const skippedNote = skipped ? `\n\n${plural(skipped, 'selected dataset')} cannot be used for this action and ${skipped === 1 ? 'is' : 'are'} left as ${skipped === 1 ? 'it is' : 'they are'}.` : '';
+    return showConfirmDialog(`${ACTION_NAMES[action][0].toUpperCase()}${ACTION_NAMES[action].slice(1)} ${plural(rows.length, 'dataset')}${extra}?\n\n${names}${more}${skippedNote}`, {
+      title: `${action === 'in-combined' ? 'Active?' : bar.querySelector(`[data-queue-selection-action="${action}"]`)?.textContent.trim() || 'Apply'} — selected datasets`,
+      confirmLabel: action === 'delete' ? 'Delete' : 'Apply',
+    });
+  };
+  const postForm = (action, ids) => {
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = action;
+    ids.forEach((id) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'dataset_ids';
+      input.value = id;
+      form.append(input);
+    });
+    document.body.append(form);
+    form.submit();
+  };
+  // Opens the dialog of an existing action (Map, Clear Mapping, Reprocess) with the selected datasets checked.
+  const openDialog = (attribute, ids) => {
+    const opener = document.createElement('button');
+    opener.type = 'button';
+    opener.hidden = true;
+    opener.setAttribute(attribute, '');
+    opener.dataset.datasetIds = ids.join(',');
+    document.body.append(opener);
+    opener.click();
+    opener.remove();
+  };
+  bar.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-queue-selection-action]');
+    if (!button || button.disabled) return;
+    const action = button.dataset.queueSelectionAction;
+    const rows = eligibleRows(action);
+    const ids = rows.map((row) => row.dataset.datasetId);
+    if (!ids.length) return;
+    if (action === 'map') openDialog('data-mapping-map-open', ids);
+    else if (action === 'clear-mapping') openDialog('data-mapping-clear-open', ids);
+    else if (action === 'reprocess') openDialog('data-reprocess-all-open', ids);
+    else if (action === 'stop') {
+      if (await confirmAction(action, rows)) postForm('/workspace/stop-datasets', ids);
+    } else if (action === 'delete') {
+      if (await confirmAction(action, rows, ` and ${rows.length === 1 ? 'its original source file' : 'their original source files'} (this cannot be undone)`)) postForm('/workspace/delete-datasets', ids);
+    } else if (action === 'in-combined') {
+      const choice = button.dataset.inCombined || 'auto';
+      if (!await confirmAction(action, rows, ` to ${button.textContent.trim()}`)) return;
+      const body = new FormData();
+      ids.forEach((id) => body.append('dataset_ids', id));
+      body.append('in_combined', choice);
+      bar.querySelectorAll('button').forEach((node) => { node.disabled = true; });
+      try {
+        const response = await fetch('/workspace/datasets/in-combined', {method: 'POST', body, credentials: 'same-origin'});
+        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || `Active? was not changed (${response.status}).`);
+        window.location.reload();
+      } catch (error) {
+        sync();
+        showConfirmDialog(error.message || 'Active? was not changed.', {title: 'Active?', confirmLabel: 'Close', hideCancel: true});
+      }
+    }
+  });
+  // The groups of the CDR tables are built again after a sort or a campaign change, and rows change status while they
+  // are processed: the boxes and the actions follow.
+  document.addEventListener('queue-groups-rebuilt', () => { addGroupBoxes(); sync(); });
+  document.addEventListener('workspace-dataset-status-updated', () => window.requestAnimationFrame(sync));
+  document.querySelector('[data-queue-type-filter]')?.addEventListener('change', () => window.requestAnimationFrame(sync));
+  addGroupBoxes();
+  sync();
+})();
+</script>
+<script>
 (() => {
   const dialog = document.querySelector('[data-dataset-reprocess-dialog]');
   const form = dialog?.querySelector('form[action="/workspace/reprocess-datasets"]');
@@ -1654,8 +1835,11 @@
     if (selectionStatus) selectionStatus.textContent = `${selected} of ${availableChoices.length} available datasets selected.`;
   };
   document.addEventListener('click', (event) => {
-    if (!event.target.closest?.('[data-reprocess-all-open]')) return;
-    choices.forEach((choice) => { choice.checked = !choice.disabled; });
+    const button = event.target.closest?.('[data-reprocess-all-open]');
+    if (!button) return;
+    // Every available dataset, or those selected in the tables (data-dataset-ids).
+    const selectedIds = button.dataset.datasetIds ? new Set(button.dataset.datasetIds.split(',')) : null;
+    choices.forEach((choice) => { choice.checked = !choice.disabled && (!selectedIds || selectedIds.has(choice.value)); });
     updateSelection();
     dialog.showModal();
   });
@@ -1700,8 +1884,9 @@
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.('[data-mapping-map-open],[data-mapping-map-all-open]');
     if (!button) return;
-    const selectedId = button.dataset.datasetId || '';
-    cdrChoices.forEach((choice) => { choice.checked = button.hasAttribute('data-mapping-map-all-open') || choice.value === selectedId; });
+    // One CDR (its row), the CDRs selected in the tables (data-dataset-ids) or all of them.
+    const selectedIds = new Set((button.dataset.datasetIds || button.dataset.datasetId || '').split(',').filter(Boolean));
+    cdrChoices.forEach((choice) => { choice.checked = button.hasAttribute('data-mapping-map-all-open') || selectedIds.has(choice.value); });
     dialog.showModal();
     fitCdrLists();
   });
@@ -1781,8 +1966,8 @@
   document.addEventListener('click', (event) => {
     const button = event.target.closest?.('[data-mapping-clear-open],[data-mapping-clear-all-open]');
     if (!button) return;
-    const selectedId = button.dataset.datasetId || '';
-    cdrChoices.forEach((choice) => { choice.checked = button.hasAttribute('data-mapping-clear-all-open') || choice.value === selectedId; });
+    const selectedIds = new Set((button.dataset.datasetIds || button.dataset.datasetId || '').split(',').filter(Boolean));
+    cdrChoices.forEach((choice) => { choice.checked = button.hasAttribute('data-mapping-clear-all-open') || selectedIds.has(choice.value); });
     dialog.showModal();
   });
   dialog.querySelector('[data-vendor-clear-cancel]')?.addEventListener('click', (event) => {

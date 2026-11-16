@@ -234,11 +234,22 @@ The **Datasets** panel shows in its header, before Collapse, how many campaigns 
 
 - **Final CDRs**, **Weekly CDRs** and **Daily CDRs** (the last two fold and are shown only when there are CDRs of their type), at full width, grouped by campaign, with the Campaign, NR Mode, CDR Type, CDR Stage and Active? columns; Rows sit above Columns and Uploaded above Updated in one column each, and each of them keeps its own sort button in the header.
 - **Multivendor Mappings** (the cells that give the CDRs their Vendor, with the **Operators** and the **Snapshot** date of each one), **Network Inventories** (the network inventory of each operator: every cell with its vendor, site and configuration, with its **Operator** and **Snapshot** date; the VFUK and 3UK files of earlier versions are here too) and **Geographic Datasets** (Region, Cluster and Vendor polygons, with their **Type**), in one row on a wide window, with compact rows: the dataset with its type and rows, its status with its progress and last update, and its actions. Reference datasets have no analysis or mappings to apply, so their actions are **Preview**, **Reprocess** and **Delete**.
-- **Layer3 Logs**, at full width: one dataset per campaign and NR Mode, with its Campaign (and the Campaign of its rows), NR Mode, Operators, Sessions (over its JoinIDs and the NQ calls of the workspace that have a session in it), Rows, Size, status, last update and actions; the header counts their campaigns and sessions and gives their size.
+- **Layer3 Logs**, at full width: one dataset per campaign and NR Mode, with its Campaign (and the Campaign of its rows), NR Mode, Operators, Sessions (over its JoinIDs and the NQ calls of the workspace that have a session in it), Rows, Size, status, last update (its time under its date) and actions, in the font sizes of the other cards so the table fits a laptop window; the header counts their campaigns and sessions and gives their size.
 - **Other Datasets** (other supported datasets), when there are any.
 - **Combined CDR tables**, the generated read-only query sources, with their Rows over Columns, status (**Ready**, **Updating**, **Recalculating**, **Queued**, **Missing Rows** or **Recalc Needed**), progress and last update; they mix NR Modes and come from no file, so they have no NR Mode, Size or Uploaded columns.
 
 The **Dataset Type** filter and the bulk actions above the cards apply to every card; a filter hides the cards without datasets of that type.
+
+#### Selecting several datasets
+
+Users who can edit the workspace select datasets with the box beside the ID of each row (before the dataset name in the reference data cards), the box in the ID header of a table (every dataset of that table the Dataset Type filter shows) or the box in a campaign, week or day group of the CDR tables (every CDR of that group, folded or not). A floating bar then counts the selected datasets and offers the actions they share; each one applies only to the selected datasets it is available for (the same rules as the buttons of their rows), and its tooltip says how many of them:
+
+- **Map Vendor, Region & Cluster**, **Clear Mapping** and **Reprocess** open their usual dialog with the selected datasets checked.
+- **Active?** **Auto**, **Yes** or **No** (admins and super-admins) changes Active? of the selected CDRs at once, with a single update of the combined tables.
+- **Stop** stops the selected datasets that are queued or processing, and **Delete** removes the selected datasets and their source files after a confirmation that lists them.
+- **×** clears the selection.
+
+Every change is recorded in the App Events for each dataset, as the action of its row, marked as made on a selection.
 
 ### Combined Table Recreation
 

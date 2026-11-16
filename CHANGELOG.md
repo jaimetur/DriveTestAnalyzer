@@ -11,6 +11,8 @@
 
 #### 🚀 Enhancements:
 - **CDR campaign groups fold ([ticket #149](https://108.132.147.165:8443/tickets/149)):** in Workspace, each campaign group of the Final, Weekly, Daily and Flex CDR tables folds and unfolds from its header, and within each campaign the Weekly CDRs are grouped by ISO week and the Daily CDRs by day (of their last call), also foldable; every table opens with only its latest campaign, and its latest week or day, unfolded, and a group folded or unfolded by hand stays so while the browser tab is open.
+- **Select several datasets ([ticket #150](https://108.132.147.165:8443/tickets/150)):** in Workspace, a box on each dataset row, in the ID header of each table and in each campaign, week or day group of the CDR tables selects datasets of any type, and a floating bar applies the actions they share: Map Vendor, Region & Cluster, Clear Mapping, Active? (Auto, Yes, No), Reprocess, Stop and Delete, each to the selected datasets it is available for.
+- **Layer3 Logs table fits the window:** the Layer3 Logs card uses the font sizes and compact columns of the other dataset cards, with no horizontal scroll on a laptop window.
 
 #### 🐛 Bug fixes:
 

@@ -12475,6 +12475,7 @@ if (queueNode) {
     });
     applyGroupFolds(body);
     syncCampaignGroupVisibility(body);
+    body.dispatchEvent(new CustomEvent('queue-groups-rebuilt', {bubbles: true}));
   };
   const applyQueueSort = (sortableQueueTable = sortableQueueTables[0]) => {
     const body = sortableQueueTable?.tBodies?.[0];
