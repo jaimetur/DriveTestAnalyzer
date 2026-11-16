@@ -35,6 +35,7 @@ import hashlib
 import io
 import json
 import math
+import os
 import queue
 import re
 import sqlite3
@@ -3141,39 +3142,49 @@ def _stop_on_request(connection: Any, task_repository: Any) -> None:
     connection.set_progress_handler(lambda: int(_stop_requested(task_repository)), 200_000)
 
 
-# What the population of each indexed CDR holds, as it was written (see _population_unchanged).
-POPULATION_FINGERPRINTS_STATE_KEY = 'nq_population_fingerprints'
+# What the population and the Non-Qualified rows of each indexed CDR hold, as they were written (see _index_unchanged).
+INDEX_FINGERPRINTS_STATE_KEY = 'nq_index_fingerprints'
+_LEGACY_FINGERPRINTS_STATE_KEY = 'nq_population_fingerprints'
 
 
-def _population_fingerprint(population: list[Any]) -> str:
-    return hashlib.sha1(repr(population).encode('utf-8')).hexdigest()
+def _index_fingerprint(content: dict[str, Any]) -> list[str]:
+    """The fingerprint of the population of a CDR and that of its Non-Qualified rows (see _dataset_calls)."""
+    return [hashlib.sha1(repr(content['population']).encode('utf-8')).hexdigest(),
+            hashlib.sha1(repr(content['calls']).encode('utf-8')).hexdigest()]
 
 
-def _population_unchanged(connection: Any, task_repository: Any, fresh: dict[int, dict[str, Any]], fingerprints: dict[int, str],
-                          versions: dict[int, tuple[int, int, str]]) -> bool:
-    """Whether the population written holds the rows of ``fresh`` of every CDR, in their order, with their latest versions:
-    every CDR wrote the same rows (its fingerprint) and orders its versions as before (its rank, stage and data date)."""
+def _index_unchanged(connection: Any, task_repository: Any, fresh: dict[int, dict[str, Any]], fingerprints: dict[int, list[str]],
+                     versions: dict[int, tuple[int, int, str]]) -> tuple[bool, bool]:
+    """Whether the population written holds the rows of ``fresh`` of every CDR, in their order, with their latest versions
+    (every CDR wrote the same rows, its fingerprint, and orders its versions as before, its rank, stage and data date), and
+    whether the indexed Non-Qualified rows are those of ``fresh`` too."""
     try:
-        stored = json.loads(task_repository.get_workspace_state(POPULATION_FINGERPRINTS_STATE_KEY) or 'null')
+        stored = json.loads(task_repository.get_workspace_state(INDEX_FINGERPRINTS_STATE_KEY) or 'null')
     except (TypeError, ValueError):
-        return False
-    if not isinstance(stored, dict) or stored != {str(dataset_id): value for dataset_id, value in fingerprints.items()}:
-        return False
+        return False, False
+    if not isinstance(stored, dict) or set(stored) != {str(dataset_id) for dataset_id in fingerprints} or any(
+            not isinstance(stored[str(dataset_id)], list) or stored[str(dataset_id)][:1] != value[:1]
+            for dataset_id, value in fingerprints.items()):
+        return False, False
     sources = {int(row[0]): (int(row[1]), int(row[2]), str(row[3]), int(row[4])) for row in connection.execute(
         f'SELECT dataset_id, combined_rank, stage_rank, data_date, population_count FROM {NQ_CALL_SOURCES_TABLE}')}
     if sources != {dataset_id: (*versions[dataset_id], len(content['population'])) for dataset_id, content in fresh.items()}:
-        return False
+        return False, False
     total = connection.execute(f'SELECT COUNT(*) FROM {NQ_CALL_POPULATION_TABLE}').fetchone()[0]
-    return int(total or 0) == sum(len(content['population']) for content in fresh.values())
+    if int(total or 0) != sum(len(content['population']) for content in fresh.values()):
+        return False, False
+    calls = connection.execute(f'SELECT COUNT(*) FROM {NQ_CALLS_TABLE}').fetchone()[0]
+    return True, (int(calls or 0) == sum(len(content['calls']) for content in fresh.values())
+                  and all(stored[str(dataset_id)] == value for dataset_id, value in fingerprints.items()))
 
 
-def _store_population_fingerprints(connection: Any, fingerprints: dict[int, str], removed: list[int], everything: bool) -> None:
-    """Keep, with the indexed calls, the fingerprint of the population of each CDR written (see _population_unchanged): all
-    of them after a Reindex, else those of the CDRs indexed (once they were all recorded by a Reindex)."""
+def _store_index_fingerprints(connection: Any, fingerprints: dict[int, list[str]], removed: list[int], everything: bool) -> None:
+    """Keep, with the indexed calls, the fingerprints of each CDR written (see _index_unchanged): all of them after a
+    Reindex, else those of the CDRs indexed (once they were all recorded by a Reindex)."""
     if everything:
-        stored: dict[str, str] | None = {}
+        stored: dict[str, Any] | None = {}
     else:
-        row = connection.execute('SELECT value FROM workspace_state WHERE key = ?', (POPULATION_FINGERPRINTS_STATE_KEY,)).fetchone()
+        row = connection.execute('SELECT value FROM workspace_state WHERE key = ?', (INDEX_FINGERPRINTS_STATE_KEY,)).fetchone()
         try:
             stored = json.loads(row[0]) if row and row[0] else None
         except (TypeError, ValueError):
@@ -3183,8 +3194,102 @@ def _store_population_fingerprints(connection: Any, fingerprints: dict[int, str]
         for dataset_id in removed:
             stored.pop(str(dataset_id), None)
     stored.update({str(dataset_id): value for dataset_id, value in fingerprints.items()})
+    connection.execute('DELETE FROM workspace_state WHERE key = ?', (_LEGACY_FINGERPRINTS_STATE_KEY,))
     connection.execute('INSERT INTO workspace_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-                       (POPULATION_FINGERPRINTS_STATE_KEY, json.dumps(stored, sort_keys=True)))
+                       (INDEX_FINGERPRINTS_STATE_KEY, json.dumps(stored, sort_keys=True)))
+
+
+# The processes that read the CDRs of an indexing at once, at a low priority (see nq_index_worker): at most half the
+# processors, and only for several CDRs (DRIVETEST_ANALYZER_NQ_INDEX_WORKERS sets how many; 1 reads them here).
+NQ_INDEX_WORKERS = int(os.environ.get('DRIVETEST_ANALYZER_NQ_INDEX_WORKERS') or min(4, max(1, (os.cpu_count() or 2) // 2)))
+NQ_INDEX_WORKERS_FROM = 4
+
+
+def _read_cdrs(connection: Any, task_repository: Any, changed: list[Any], cdr_columns: list[str], profile: CdrFieldProfile,
+               sample_radio: dict[tuple[str, str, str], dict[str, float]] | None) -> dict[int, dict[str, Any]]:
+    """What _dataset_calls gives for each CDR of ``changed``, in their order: read in processes of their own when there
+    are several (see _read_cdrs_apart), the CDRs a process could not read then read here."""
+    read: dict[int, dict[str, Any]] = {}
+    if NQ_INDEX_WORKERS > 1 and len(changed) >= NQ_INDEX_WORKERS_FROM:
+        read = _read_cdrs_apart(task_repository, changed, cdr_columns, profile, sample_radio)
+    missing = [row for row in changed if int(row['id']) not in read]
+    for position, row in enumerate(missing, start=1):
+        _raise_if_stopped(task_repository)
+        done = len(changed) - len(missing) + position - 1
+        _progress(task_repository, f'Reading CDR {done + 1} of {len(changed)}', 2 + 58 * done / len(changed))
+        read[int(row['id'])] = _dataset_calls(connection, row, tuple(cdr_columns), profile, sample_radio)
+    return {int(row['id']): read[int(row['id'])] for row in changed}
+
+
+def _read_cdrs_apart(task_repository: Any, changed: list[Any], cdr_columns: list[str], profile: CdrFieldProfile,
+                     sample_radio: dict[tuple[str, str, str], dict[str, float]] | None) -> dict[int, dict[str, Any]]:
+    """The CDRs read by NQ_INDEX_WORKERS processes at once, the largest first, each process given about the same rows;
+    the processes end at once when the indexing is stopped. A CDR a process did not read is left out (read by the
+    caller)."""
+    import pickle
+    import subprocess
+    import sys
+    import tempfile
+    from src.config import PROJECT_ROOT
+    from src.modules.nq import nq_index_worker
+
+    groups: list[list[dict[str, Any]]] = [[] for _ in range(min(NQ_INDEX_WORKERS, len(changed)))]
+    sizes = [0] * len(groups)
+    for row in sorted(changed, key=lambda item: -int(item['row_count'] or 0) if 'row_count' in item.keys() else 0):
+        smallest = sizes.index(min(sizes))
+        groups[smallest].append({key: row[key] for key in row.keys()})
+        sizes[smallest] += int(row['row_count'] or 0) if 'row_count' in row.keys() else 1
+    registry = getattr(task_repository, 'workspace_registry_db_path', None)
+    read: dict[int, dict[str, Any]] = {}
+    with tempfile.TemporaryDirectory(prefix='nq-index-') as folder:
+        messages: queue.Queue = queue.Queue()
+        processes = []
+        try:
+            for group in groups:
+                errors = open(Path(folder) / f'errors-{len(processes)}.txt', 'wb')
+                process = subprocess.Popen([sys.executable, '-m', 'src.modules.nq.nq_index_worker'], cwd=str(PROJECT_ROOT),
+                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
+                errors.close()
+                processes.append(process)
+
+                def follow(process: Any = process) -> None:
+                    for line in process.stdout:
+                        text = line.decode('utf-8', 'replace')
+                        if text.startswith(nq_index_worker.MESSAGE):
+                            messages.put(json.loads(text[len(nq_index_worker.MESSAGE):]))
+                    messages.put(None)
+
+                threading.Thread(target=follow, name='nq-index-progress', daemon=True).start()
+                process.stdin.write(pickle.dumps({
+                    'db_path': str(Path(task_repository.db_path).resolve()),
+                    'global_db_path': str(Path(getattr(task_repository, 'global_db_path', None) or task_repository.db_path).resolve()),
+                    'registry_db_path': str(Path(registry).resolve()) if registry else '', 'folder': folder,
+                    'datasets': group, 'cdr_columns': list(cdr_columns), 'profile': profile, 'sample_radio': sample_radio,
+                }, protocol=pickle.HIGHEST_PROTOCOL))
+                process.stdin.close()
+            _progress(task_repository, f'Reading CDR 1 of {len(changed)}', 2)
+            running = len(processes)
+            while running:
+                _raise_if_stopped(task_repository)
+                try:
+                    message = messages.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                if message is None:
+                    running -= 1
+                elif 'dataset_id' in message:
+                    result = Path(folder) / f"cdr-{int(message['dataset_id'])}.pickle"
+                    with open(result, 'rb') as handle:
+                        read[int(message['dataset_id'])] = pickle.load(handle)
+                    result.unlink(missing_ok=True)
+                    _progress(task_repository, f'Reading CDR {min(len(read) + 1, len(changed))} of {len(changed)}',
+                              2 + 58 * len(read) / len(changed))
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.wait()
+    return read
 
 
 def _indexed_dataset_ids(connection: Any) -> list[int]:
@@ -3224,12 +3329,7 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                 _stop_on_request(connection, task_repository)
                 _progress(task_repository, 'Reading the radio of the Speech samples', 1)
                 sample_radio = _sample_radio(connection, datasets.values(), profile) if profile.nq_call_radio_from_samples else None
-                fresh = {}
-                for position, row in enumerate(changed, start=1):
-                    _raise_if_stopped(task_repository)
-                    _progress(task_repository, f'Reading CDR {position} of {len(changed)}', 2 + 58 * (position - 1) / len(changed))
-                    fresh[int(row['id'])] = _dataset_calls(connection, row, tuple(cdr_columns), profile, sample_radio)
-                _progress(task_repository, 'Comparing the population with the one written', 60)
+                fresh = _read_cdrs(connection, task_repository, changed, cdr_columns, profile, sample_radio)
                 touched = [*removed, *fresh]
                 # Every CDR indexed again (Reindex): the tables are emptied and filled at once.
                 everything = force and not set(_indexed_dataset_ids(connection)) - set(touched)
@@ -3243,13 +3343,16 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                     datasets[dataset_id]['dataset_kind'],
                     datasets[dataset_id]['cdr_stage'] if 'cdr_stage' in datasets[dataset_id].keys() else None,
                     datasets[dataset_id]['file_name']) == 'final') for dataset_id in fresh}
-                fingerprints = {dataset_id: _population_fingerprint(content['population']) for dataset_id, content in fresh.items()}
+                _progress(task_repository, 'Comparing the calls with the ones written', 60)
+                fingerprints = {dataset_id: _index_fingerprint(content) for dataset_id, content in fresh.items()}
                 # A Reindex that finds the population of every CDR as it was written, with the same ranks, keeps it (and
-                # its latest versions) instead of writing it again.
-                population_kept = everything and _population_unchanged(
+                # its latest versions) instead of writing it again; finding the same Non-Qualified rows too, it keeps
+                # them, with their versions and their DT Analyzer RCA.
+                population_kept, calls_kept = _index_unchanged(
                     connection, task_repository, fresh, fingerprints,
                     {dataset_id: (ranks.get(dataset_id, -1), stage_ranks[dataset_id], fresh[dataset_id]['data_date'])
-                     for dataset_id in fresh})
+                     for dataset_id in fresh}) if everything else (False, False)
+                calls_kept = calls_kept and not old_rows
             _raise_if_stopped(task_repository)
             columns = ', '.join(_CALL_COLUMNS)
             placeholders = ', '.join('?' for _ in _CALL_COLUMNS)
@@ -3269,7 +3372,8 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                 _stop_on_request(connection, task_repository)
                 dropped_indexes: list[str] = []
                 if everything:
-                    tables = [NQ_CALLS_TABLE, NQ_DTA_RESULTS_TABLE, NQ_DTA_LEARNED_TABLE, NQ_CALL_SOURCES_TABLE]
+                    tables = [NQ_CALL_SOURCES_TABLE] if calls_kept else [
+                        NQ_CALLS_TABLE, NQ_DTA_RESULTS_TABLE, NQ_DTA_LEARNED_TABLE, NQ_CALL_SOURCES_TABLE]
                     if not population_kept:
                         # The population is emptied and written without its indexes, built again once it is in place.
                         indexes = connection.execute(
@@ -3288,14 +3392,16 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                         connection.execute(f'DELETE FROM {NQ_DTA_LEARNED_TABLE} WHERE dataset_id = ?', (dataset_id,))
                         connection.execute(f'DELETE FROM {NQ_CALL_SOURCES_TABLE} WHERE dataset_id = ?', (dataset_id,))
                         connection.execute(f'DELETE FROM {NQ_CALL_POPULATION_TABLE} WHERE dataset_id = ?', (dataset_id,))
-                # What their rows learned is gone: the DT Analyzer RCA learns again once they are indexed.
-                connection.execute('DELETE FROM workspace_state WHERE key = ?', (nq_dta_rca.LEARNED_FINGERPRINT_STATE_KEY,))
+                if not calls_kept:
+                    # What their rows learned is gone: the DT Analyzer RCA learns again once they are indexed.
+                    connection.execute('DELETE FROM workspace_state WHERE key = ?', (nq_dta_rca.LEARNED_FINGERPRINT_STATE_KEY,))
                 for position, (dataset_id, content) in enumerate(fresh.items(), start=1):
                     _raise_if_stopped(task_repository)
                     _progress(task_repository, f'Writing the calls of CDR {position} of {len(fresh)}', 63 + 17 * (position - 1) / len(fresh))
                     row = datasets[dataset_id]
-                    connection.executemany(f'INSERT OR REPLACE INTO {NQ_CALLS_TABLE} ({columns}) VALUES ({placeholders})',
-                                           content['calls'])
+                    if not calls_kept:
+                        connection.executemany(f'INSERT OR REPLACE INTO {NQ_CALLS_TABLE} ({columns}) VALUES ({placeholders})',
+                                               content['calls'])
                     if everything and not population_kept:
                         connection.executemany(
                             f'INSERT INTO {NQ_CALL_POPULATION_TABLE} ({population_columns}, is_latest) '
@@ -3320,9 +3426,11 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                 if old_rows:
                     moved = _move_follow_up(connection, old_rows, [call for content in fresh.values() for call in content['calls']])
                 _raise_if_stopped(task_repository)
-                _progress(task_repository, 'Working out the versions of the calls', 85)
-                _rebuild_versions(connection, affected, everything=everything)
-                _store_population_fingerprints(connection, fingerprints, removed, everything)
+                if not calls_kept:
+                    # (The same calls and population keep their versions.)
+                    _progress(task_repository, 'Working out the versions of the calls', 85)
+                    _rebuild_versions(connection, affected, everything=everything)
+                _store_index_fingerprints(connection, fingerprints, removed, everything)
                 # Nothing is stopped once the indexed calls are written.
                 _raise_if_stopped(task_repository)
                 connection.set_progress_handler(None, 0)

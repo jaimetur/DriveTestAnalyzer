@@ -1612,13 +1612,13 @@ def test_the_reindex_keeps_the_population_that_did_not_change(client, tmp_path, 
     indexed = indexed_tables()
     assert indexed[nq.NQ_CALLS_TABLE] and indexed[nq.NQ_CALL_POPULATION_TABLE] and indexed[nq.NQ_CALL_VERSIONS_TABLE]
     kept = []
-    monkeypatch.setattr(nq, '_population_unchanged', lambda *args, _check=nq._population_unchanged: kept.append(_check(*args)) or kept[-1])
+    monkeypatch.setattr(nq, '_index_unchanged', lambda *args, _check=nq._index_unchanged: kept.append(_check(*args)) or kept[-1])
     # The first Reindex writes every table again, the same, and records the population of each CDR; the next one finds it
     # as it was written and keeps it, with the same tables.
     nq.sync_nq_calls(core.repository, force=True)
     assert indexed_tables() == indexed
     nq.sync_nq_calls(core.repository, force=True)
-    assert indexed_tables() == indexed and kept == [False, True]
+    assert indexed_tables() == indexed and kept == [(False, False), (True, True)]
     # A new CDR indexed on its own keeps its population recorded: the next Reindex keeps it too. (A Reindex writes the
     # CDRs in another order than the indexing of each new one: the rows are compared whatever their order.)
     add_cdr(tmp_path, 'voice-2.csv', 'voice', voice_rows().assign(Session_ID_A=[2001, 2002, 2003]))
@@ -1626,12 +1626,32 @@ def test_the_reindex_keeps_the_population_that_did_not_change(client, tmp_path, 
     unordered = lambda tables: {table: sorted(rows, key=repr) for table, rows in tables.items()}
     changed = unordered(indexed_tables())
     nq.sync_nq_calls(core.repository, force=True)
-    assert unordered(indexed_tables()) == changed and kept[-1] is True
+    assert unordered(indexed_tables()) == changed and kept[-1] == (True, True)
     # A population that is not the one recorded is written again.
     with core.repository.connection() as connection:
         connection.execute(f'DELETE FROM {nq.NQ_CALL_POPULATION_TABLE} WHERE rowid = (SELECT MAX(rowid) FROM {nq.NQ_CALL_POPULATION_TABLE})')
     nq.sync_nq_calls(core.repository, force=True)
-    assert unordered(indexed_tables()) == changed and kept[-1] is False
+    assert unordered(indexed_tables()) == changed and kept[-1] == (False, False)
+
+
+def test_the_cdrs_are_read_in_processes_of_their_own(client, tmp_path, monkeypatch):
+    datasets = [add_cdr(tmp_path, f'voice-{index}.csv', 'voice', voice_rows().assign(Session_ID_A=[index * 10 + 1, index * 10 + 2, index * 10 + 3]))
+                for index in range(3)] + [add_cdr(tmp_path, 'data.csv', 'data', data_rows())]
+    rows = [core.repository.get_dataset(dataset_id) for dataset_id in datasets]
+    profile = nq.workspace_field_profile(core.repository)
+    with core.repository.connection() as connection:
+        here = {dataset_id: nq._dataset_calls(connection, row, ('City',), profile) for dataset_id, row in zip(datasets, rows)}
+    # Read by two processes at once, each CDR gives the same calls, in the order of the CDRs.
+    monkeypatch.setattr(nq, 'NQ_INDEX_WORKERS', 2)
+    monkeypatch.setattr(nq, 'NQ_INDEX_WORKERS_FROM', 2)
+    with core.repository.connection() as connection:
+        apart = nq._read_cdrs(connection, core.repository, rows, ['City'], profile, None)
+    assert list(apart) == datasets and apart == here
+    assert nq._read_cdrs_apart(core.repository, rows, ['City'], profile, None) == here
+    # A CDR a process could not read is read here.
+    monkeypatch.setattr(nq, '_read_cdrs_apart', lambda *args: {datasets[0]: here[datasets[0]]})
+    with core.repository.connection() as connection:
+        assert nq._read_cdrs(connection, core.repository, rows, ['City'], profile, None) == here
 
 
 def test_the_indexing_stops_from_its_card(client, tmp_path, monkeypatch):
