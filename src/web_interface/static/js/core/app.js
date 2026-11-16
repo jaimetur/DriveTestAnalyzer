@@ -12307,8 +12307,39 @@ if (queueNode) {
       if (size) size.textContent = `${(sizeBytes / (1024 * 1024)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} MB`;
     });
   };
+  // Each campaign group folds: the latest campaign of each table (Final, Weekly, Daily and their Flex CDRs) opens
+  // unfolded, the older ones and the CDRs without a campaign folded; a group the user folds or unfolds stays so in
+  // this tab (sessionStorage, per table), also after a sort, a filter or a reload.
+  const campaignFoldStorageKey = (body) => `queue-campaign-folds:${body.closest('[data-dataset-card]')?.dataset.datasetCard || ''}`;
+  const readCampaignFolds = (body) => {
+    try {
+      return new Map(Object.entries(JSON.parse(window.sessionStorage.getItem(campaignFoldStorageKey(body)) || '{}')));
+    } catch (error) {
+      return new Map();
+    }
+  };
+  const writeCampaignFolds = (body, folds) => {
+    try {
+      window.sessionStorage.setItem(campaignFoldStorageKey(body), JSON.stringify(Object.fromEntries(folds)));
+    } catch (error) {
+      // Without storage the folds last until the page is reloaded.
+    }
+  };
+  const campaignFoldStates = new WeakMap();
+  const campaignFolds = (body) => {
+    if (!campaignFoldStates.has(body)) campaignFoldStates.set(body, readCampaignFolds(body));
+    return campaignFoldStates.get(body);
+  };
+  const applyCampaignGroupFold = (header, collapsed) => {
+    header.classList.toggle('is-collapsed', collapsed);
+    header.querySelector('[data-campaign-group-toggle]')?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    for (let row = header.nextElementSibling; row && !row.hasAttribute('data-campaign-group-row'); row = row.nextElementSibling) {
+      row.toggleAttribute('data-campaign-collapsed', collapsed);
+    }
+  };
   const groupQueueRowsByCampaign = (body, rows) => {
     body.querySelectorAll('[data-campaign-group-row]').forEach((header) => header.remove());
+    const folds = campaignFolds(body);
     const groups = new Map();
     rows.forEach((row) => {
       const key = campaignQuarter(row);
@@ -12316,7 +12347,9 @@ if (queueNode) {
       groups.get(key).push(row);
     });
     const columns = body.closest('table')?.tHead?.rows[0]?.cells.length || 1;
-    [...groups.keys()].sort((left, right) => (!left ? 1 : !right ? -1 : right.localeCompare(left))).forEach((key) => {
+    const keys = [...groups.keys()].sort((left, right) => (!left ? 1 : !right ? -1 : right.localeCompare(left)));
+    const latest = keys.find(Boolean) ?? keys[0];
+    keys.forEach((key) => {
       const header = document.createElement('tr');
       header.className = 'queue-campaign-group-row';
       header.dataset.campaignGroupRow = key;
@@ -12332,9 +12365,26 @@ if (queueNode) {
       const size = document.createElement('span');
       size.className = 'queue-campaign-group-size';
       size.dataset.campaignGroupSize = '';
-      cell.append(label, count, size);
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'queue-campaign-group-toggle';
+      toggle.dataset.campaignGroupToggle = '';
+      toggle.title = 'Fold or unfold the CDRs of this campaign';
+      const chevron = document.createElement('span');
+      chevron.className = 'queue-campaign-group-chevron';
+      chevron.setAttribute('aria-hidden', 'true');
+      toggle.append(chevron, label, count, size);
+      cell.append(toggle);
       header.append(cell);
+      header.addEventListener('click', (event) => {
+        if (event.target.closest('a, input, select, textarea')) return;
+        const collapsed = !header.classList.contains('is-collapsed');
+        folds.set(key, collapsed);
+        writeCampaignFolds(body, folds);
+        applyCampaignGroupFold(header, collapsed);
+      });
       body.append(header, ...groups.get(key));
+      applyCampaignGroupFold(header, folds.has(key) ? Boolean(folds.get(key)) : key !== latest);
     });
     syncCampaignGroupVisibility(body);
   };

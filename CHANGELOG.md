@@ -10,6 +10,7 @@
 #### 🌟 New Features:
 
 #### 🚀 Enhancements:
+- Workspace: the campaign groups of the Final, Weekly, Daily and Flex CDR tables fold and unfold from their header; each table opens with only its latest campaign unfolded.
 
 #### 🐛 Bug fixes:
 
