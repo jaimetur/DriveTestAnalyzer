@@ -633,6 +633,9 @@ def add_points_per_kpi_slides(presentation, profiles: list[dict[str, Any]], *, s
 TREND_PLOT = (.06, .05, .8, .84)
 # The height of a label (10 pt bold) and the gap kept between two labels, in points.
 LABEL_HEIGHT_PT = 13
+# Where the plot of a chart of an area stands in it, and the height of its labels (7 pt bold), in points.
+AREA_PLOT = (.12, .06, .74, .8)
+AREA_LABEL_HEIGHT_PT = 9
 
 
 def _plot_layout(chart, plot: tuple[float, float, float, float]) -> None:
@@ -654,13 +657,13 @@ def _plot_layout(chart, plot: tuple[float, float, float, float]) -> None:
 
 
 def _spread_labels(labels: list[tuple[int, float, Any]], minimum: float, maximum: float, plot: tuple[float, float, float, float],
-                   *, chart_height: float) -> None:
+                   *, chart_height: float, label_height: float = LABEL_HEIGHT_PT) -> None:
     """Move apart the labels of the same category closer than a line of text: each keeps its order and moves the
     least, up or down, by a manual offset of its data label."""
     from pptx.oxml.ns import qn
 
     span = (maximum - minimum) or 1
-    step = LABEL_HEIGHT_PT / (chart_height * 72)
+    step = label_height / (chart_height * 72)
     by_category: dict[int, list[tuple[float, Any]]] = {}
     for category, value, label in labels:
         # Where the label stands: a share of the chart height from its top.
@@ -1034,6 +1037,12 @@ def _area_summary_chart(slide, area: dict[str, Any], campaigns: list[str], *, le
     chart.value_axis.format.line.fill.background()
     chart.category_axis.major_tick_mark = XL_TICK_MARK.NONE
     chart.category_axis.format.line.color.rgb = _rgb('#BFC6CC')
+    # The plot keeps a fixed place in the chart (room on the right for the scores), so the labels can be kept apart.
+    _plot_layout(chart, AREA_PLOT)
+    chart_height = height - .22
+    label_span = (high - low) * AREA_LABEL_HEIGHT_PT / (chart_height * 72 * AREA_PLOT[3])
+    sides = _point_label_sides([{'points': item['trend']} for item in area['rows']], label_span)
+    ends: list[tuple[int, float, Any]] = []
     for index, (plot_series, item) in enumerate(zip(chart.series, area['rows'])):
         color = item.get('color') or FALLBACK_COLORS[index % len(FALLBACK_COLORS)]
         plot_series.smooth = False
@@ -1045,17 +1054,32 @@ def _area_summary_chart(slide, area: dict[str, Any], campaigns: list[str], *, le
         plot_series.marker.format.fill.solid()
         plot_series.marker.format.fill.fore_color.rgb = _rgb('#FFFFFF' if item.get('dashed') else color)
         plot_series.marker.format.line.color.rgb = _rgb(color)
-        # The latest points labelled at the end of each line, as the Crowd charts do.
+        # The latest points labelled at the end of each line, as the Crowd charts do, and every other point with its score.
         last = max((position for position, value in enumerate(item['trend']) if value is not None), default=None)
-        if last is not None:
-            label = plot_series.points[last].data_label
-            label.position = XL_DATA_LABEL_POSITION.RIGHT
-            label.text_frame.text = f"{item['trend'][last]:,.0f}"
-            for paragraph in label.text_frame.paragraphs:
+        if last is None:
+            continue
+        for position, value in enumerate(item['trend'][:last]):
+            if value is None:
+                continue
+            point_label = plot_series.points[position].data_label
+            point_label.position = sides[(index, position)]
+            point_label.text_frame.text = f'{value:,.0f}'
+            for paragraph in point_label.text_frame.paragraphs:
                 for run in paragraph.runs:
-                    run.font.size = Pt(7)
+                    run.font.size = Pt(6)
                     run.font.bold = True
                     run.font.color.rgb = _rgb(color)
+        label = plot_series.points[last].data_label
+        label.position = XL_DATA_LABEL_POSITION.RIGHT
+        label.text_frame.text = f"{item['trend'][last]:,.0f}"
+        for paragraph in label.text_frame.paragraphs:
+            for run in paragraph.runs:
+                run.font.size = Pt(7)
+                run.font.bold = True
+                run.font.color.rgb = _rgb(color)
+        ends.append((last, item['trend'][last], label))
+    # The scores at the end of the lines (of the same campaign) moved apart so they never overlap.
+    _spread_labels(ends, low, high, AREA_PLOT, chart_height=chart_height, label_height=AREA_LABEL_HEIGHT_PT)
 
 
 def add_area_summary_slides(presentation, summaries: list[dict[str, Any]], *, scoring_label: str, subtitle: str,

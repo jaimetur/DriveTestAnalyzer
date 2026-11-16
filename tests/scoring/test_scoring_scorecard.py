@@ -691,3 +691,32 @@ def test_the_trend_slides_show_the_score_of_every_point():
     sides = _point_label_sides([{'points': [850.0]}, {'points': [846.0]}, {'points': [700.0]}], label_span=8)
     assert sides == {(0, 0): XL_DATA_LABEL_POSITION.ABOVE, (1, 0): XL_DATA_LABEL_POSITION.BELOW,
                      (2, 0): XL_DATA_LABEL_POSITION.ABOVE}
+
+
+def test_the_area_trend_charts_of_the_slides_show_every_score_and_keep_the_last_ones_apart():
+    from pptx import Presentation as NewPresentation
+
+    from src.modules.cdr_analysis.cdr_reporting import _remove_all_slides
+    from src.modules.scoring.scoring_insight_slides import _area_summary_chart
+
+    presentation = NewPresentation(TEMPLATE)
+    _remove_all_slides(presentation)
+    slide = presentation.slides.add_slide(presentation.slide_layouts[0])
+    area = {'label': 'Cardiff', 'kind': 'City', 'rows': [
+        {'label': 'EE', 'color': '#7AB0A9', 'trend': [974.0, 955.0, 941.0]},
+        {'label': 'VF', 'color': '#E05555', 'trend': [886.0, 944.0, 952.0]},
+        {'label': 'O2', 'color': '#6CB4EE', 'trend': [946.0, None, 935.0]}]}
+    _area_summary_chart(slide, area, ['2026-Q1', '2026-Q2', '2026-Q3'], left=.5, top=1, width=4, height=2.4,
+                        low=800, high=1000, unit=50)
+    chart = next(shape.chart for shape in slide.shapes if shape.has_chart)
+    texts = {series.name: [series.points[index].data_label.text_frame.text if series.points[index].data_label.has_text_frame
+                           else '' for index in range(3)] for series in chart.plots[0].series}
+    assert texts == {'EE': ['974', '955', '941'], 'VF': ['886', '944', '952'], 'O2': ['946', '', '935']}
+    # The scores at the end of the lines, 11 points apart at most, are moved apart.
+    offsets = {}
+    for series in chart.plots[0].series:
+        label = series.points[2].data_label._dLbl
+        layout = None if label is None else label.find(qn('c:layout'))
+        offsets[series.name] = 0.0 if layout is None else float(layout.find(qn('c:manualLayout')).find(qn('c:y')).get('val'))
+    # (VF 952 highest moves up, O2 935 lowest moves down, keeping their order.)
+    assert offsets['VF'] < offsets['EE'] < offsets['O2'] and offsets['VF'] < 0 < offsets['O2']
