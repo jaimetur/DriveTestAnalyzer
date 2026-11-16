@@ -1719,3 +1719,25 @@ def test_the_view_stays_in_place_while_the_calls_reload():
     assert 'if (window.scrollY > expected || window.scrollY < end - 1) {' in keeper
     # Where the filters were changed leads, else what is read a third of the way down the window.
     assert 'const used = lastUse && Date.now() - lastUse.time < 10000' in script and 'const y = window.innerHeight / 3;' in script
+
+
+def test_a_reindex_stopped_while_it_replaces_the_population_leaves_nothing_apart(client, tmp_path):
+    add_cdr(tmp_path, 'voice.csv', 'voice', voice_rows())
+    index_cdrs()
+    indexed = indexed_tables()
+    with core.repository.connection() as connection:
+        index_names = {row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?", (nq.NQ_CALL_POPULATION_TABLE,))}
+        # As if a restart stopped it once the population was swapped: the one replaced still holds the indexes.
+        connection.execute(f'ALTER TABLE {nq.NQ_CALL_POPULATION_TABLE} RENAME TO {nq._POPULATION_OLD}')
+        connection.execute(f'CREATE TABLE {nq.NQ_CALL_POPULATION_TABLE} AS SELECT * FROM {nq._POPULATION_OLD}')
+        connection.execute(f'CREATE TABLE {nq._POPULATION_NEXT} (dataset_id INTEGER)')
+    nq._clean_reindex_leftovers(core.repository)
+    with core.repository.connection() as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        rebuilt = {row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?", (nq.NQ_CALL_POPULATION_TABLE,))}
+    assert nq._POPULATION_NEXT not in tables and nq._POPULATION_OLD not in tables
+    # The indexes of the population are built again (the key of a table made from a query aside).
+    assert {name for name in index_names if not name.startswith('sqlite_autoindex')} <= rebuilt
+    assert indexed_tables()[nq.NQ_CALLS_TABLE] == indexed[nq.NQ_CALLS_TABLE]

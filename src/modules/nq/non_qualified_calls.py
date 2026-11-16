@@ -34,6 +34,7 @@ import csv
 import hashlib
 import io
 import json
+import logging
 import math
 import os
 import queue
@@ -71,6 +72,7 @@ from src.modules.nq import nq_app_events
 from src.modules.nq import nq_analyses, nq_analyses_rules, nq_call_map, nq_dta_rca, nq_map_levels, nq_prioritization, nq_rca, nq_root_migration
 from src.modules.nq.non_qualified_calls_visuals import series_colours
 
+logger = logging.getLogger(__name__)
 NQ_CALLS_TABLE = 'nq_calls'
 NQ_CALL_SOURCES_TABLE = 'nq_call_sources'
 NQ_CALL_TRACKING_TABLE = 'nq_call_tracking'
@@ -832,6 +834,8 @@ def ensure_nq_tables(task_repository: Any) -> None:
         if latest and set(LATEST_COLUMNS) - latest:
             connection.execute(f'DROP TABLE {NQ_CALL_LATEST_TABLE}')
             connection.execute('DELETE FROM workspace_state WHERE key = ?', (LATEST_STATE_KEY,))
+        # (A Reindex stopped by a restart while it replaced the population leaves its tables apart: they go.)
+        _drop_reindex_leftovers(connection)
         connection.executescript(SCHEMA)
         nq_prioritization.ensure_columns(connection)
         if not existed:
@@ -2966,6 +2970,79 @@ def _versions_of(fresh: dict[int, dict[str, Any]], latest: dict[str, int], stage
     return rows
 
 
+# The population a Reindex writes again, filled apart, and the one it replaces, dropped once the new one is in place.
+_POPULATION_NEXT = f'{NQ_CALL_POPULATION_TABLE}_next'
+_POPULATION_OLD = f'{NQ_CALL_POPULATION_TABLE}_old'
+# The rows of the population written by each short write of a Reindex.
+_POPULATION_CHUNK_ROWS = 200_000
+
+
+def _drop_reindex_leftovers(connection: Any) -> None:
+    """The population filled apart by a Reindex that stopped or failed, or the one it replaced, dropped; the indexes of the
+    population built again where they are missing."""
+    tables = {str(row[0]) for row in connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (?, ?)", (_POPULATION_NEXT, _POPULATION_OLD))}
+    for table in tables:
+        connection.execute(f'DROP TABLE IF EXISTS {table}')
+    if _POPULATION_OLD in tables:
+        for statement in SCHEMA.split(';'):
+            sql = '\n'.join(line for line in statement.splitlines() if not line.strip().startswith('--')).strip()
+            if sql.startswith('CREATE INDEX') and f'ON {NQ_CALL_POPULATION_TABLE}(' in ' '.join(sql.split()):
+                connection.execute(sql)
+
+
+def _fill_next_population(connection: Any, task_repository: Any, population_columns: str) -> None:
+    """The population prepared by a Reindex (temp.nq_stage_population) written to a table of its own, without its
+    indexes, a short write of the workspace at a time (the other writes go on between them); it is left out if stopped."""
+    connection.execute(f'DROP TABLE IF EXISTS {_POPULATION_NEXT}')
+    connection.execute(f'DROP TABLE IF EXISTS {_POPULATION_OLD}')
+    schema = connection.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+                                (NQ_CALL_POPULATION_TABLE,)).fetchone()[0]
+    connection.execute(re.sub(rf'^CREATE TABLE (IF NOT EXISTS )?"?{NQ_CALL_POPULATION_TABLE}"?',
+                              f'CREATE TABLE {_POPULATION_NEXT}', str(schema), count=1))
+    connection.commit()
+    last = connection.execute('SELECT MAX(rowid) FROM temp.nq_stage_population').fetchone()[0] or 0
+    try:
+        for start in range(1, last + 1, _POPULATION_CHUNK_ROWS):
+            _raise_if_stopped(task_repository)
+            _progress(task_repository, f'Writing the population of the calls ({min(100, round(100 * start / last))}%)', 80)
+            connection.execute(f'INSERT INTO {_POPULATION_NEXT} ({population_columns}, is_latest) '
+                               f'SELECT {population_columns}, is_latest FROM temp.nq_stage_population '
+                               'WHERE rowid BETWEEN ? AND ? ORDER BY rowid', (start, start + _POPULATION_CHUNK_ROWS - 1))
+            connection.commit()
+    except BaseException:
+        connection.rollback()
+        connection.execute(f'DROP TABLE IF EXISTS {_POPULATION_NEXT}')
+        connection.commit()
+        raise
+
+
+def _clean_reindex_leftovers(task_repository: Any) -> None:
+    """_drop_reindex_leftovers after a Reindex that stopped or failed (never failing in turn)."""
+    try:
+        with task_repository.connection() as connection:
+            _drop_reindex_leftovers(connection)
+    except Exception:  # noqa: BLE001 - the next start of the application drops them.
+        logger.warning('The tables left by a stopped Non-Qualified Calls Reindex could not be dropped.', exc_info=True)
+
+
+def _finish_population_swap(task_repository: Any, indexes: list[tuple[str, str]]) -> None:
+    """After a Reindex put its population in place: the one it replaced dropped and the indexes built on the new one, each
+    a write of its own so that the other writes of the workspace go on between them."""
+    _progress(task_repository, 'Building the indexes of the population', 86)
+    for name, _index_sql in indexes:
+        with task_repository.connection() as connection:
+            connection.execute(f'DROP INDEX IF EXISTS {_quote(name)}')
+    with task_repository.connection() as connection:
+        connection.execute(f'DROP TABLE IF EXISTS {_POPULATION_OLD}')
+    for _name, index_sql in indexes:
+        with task_repository.connection() as connection:
+            connection.execute(index_sql)
+    with task_repository.connection() as connection:
+        # (Indexes built again have no statistics: the queries of the pages need them.)
+        connection.execute(f'ANALYZE {NQ_CALL_POPULATION_TABLE}')
+
+
 def _stage_reindex(connection: Any, task_repository: Any, fresh: dict[int, dict[str, Any]], latest: dict[str, int],
                    columns: str, population_columns: str, *, calls: bool, population: bool) -> None:
     """The calls and population of a Reindex written to temporary tables of the connection, which take no lock of the
@@ -3451,22 +3528,23 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                     # writes then wait for it only while the indexed calls are replaced at once.
                     _stage_reindex(connection, task_repository, fresh, latest, columns, population_columns,
                                    calls=not calls_kept, population=not population_kept)
+                # A population written again fills a table of its own, a short write at a time, which then replaces it.
+                swapped_indexes: list[tuple[str, str]] = []
+                if everything and not population_kept:
+                    _fill_next_population(connection, task_repository, population_columns)
                 _progress(task_repository, 'Waiting for the other writes of the workspace and replacing the indexed calls', 80)
-                dropped_indexes: list[str] = []
                 if everything:
                     tables = [NQ_CALL_SOURCES_TABLE] if calls_kept else [
                         NQ_CALLS_TABLE, NQ_DTA_RESULTS_TABLE, NQ_DTA_LEARNED_TABLE, NQ_CALL_SOURCES_TABLE]
-                    if not population_kept:
-                        # The population is emptied and written without its indexes, built again once it is in place.
-                        indexes = connection.execute(
-                            "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL "
-                            'ORDER BY rowid', (NQ_CALL_POPULATION_TABLE,)).fetchall()
-                        for name, index_sql in indexes:
-                            connection.execute(f'DROP INDEX {_quote(str(name))}')
-                            dropped_indexes.append(str(index_sql))
-                        tables.append(NQ_CALL_POPULATION_TABLE)
                     for table in tables:
                         connection.execute(f'DELETE FROM {table}')
+                    if not population_kept:
+                        # (Its indexes are built on the new one once it is in place, see _finish_population_swap.)
+                        swapped_indexes = [(str(name), str(index_sql)) for name, index_sql in connection.execute(
+                            "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL "
+                            'ORDER BY rowid', (NQ_CALL_POPULATION_TABLE,)).fetchall()]
+                        connection.execute(f'ALTER TABLE {NQ_CALL_POPULATION_TABLE} RENAME TO {_POPULATION_OLD}')
+                        connection.execute(f'ALTER TABLE {_POPULATION_NEXT} RENAME TO {NQ_CALL_POPULATION_TABLE}')
                 else:
                     for dataset_id in touched:
                         connection.execute(f'DELETE FROM {NQ_CALLS_TABLE} WHERE dataset_id = ?', (dataset_id,))
@@ -3477,13 +3555,9 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                 if not calls_kept:
                     # What their rows learned is gone: the DT Analyzer RCA learns again once they are indexed.
                     connection.execute('DELETE FROM workspace_state WHERE key = ?', (nq_dta_rca.LEARNED_FINGERPRINT_STATE_KEY,))
-                if everything:
-                    if not calls_kept:
-                        connection.execute(f'INSERT OR REPLACE INTO {NQ_CALLS_TABLE} ({columns}) '
-                                           f'SELECT {columns} FROM temp.nq_stage_calls ORDER BY rowid')
-                    if not population_kept:
-                        connection.execute(f'INSERT INTO {NQ_CALL_POPULATION_TABLE} ({population_columns}, is_latest) '
-                                           f'SELECT {population_columns}, is_latest FROM temp.nq_stage_population ORDER BY rowid')
+                if everything and not calls_kept:
+                    connection.execute(f'INSERT OR REPLACE INTO {NQ_CALLS_TABLE} ({columns}) '
+                                       f'SELECT {columns} FROM temp.nq_stage_calls ORDER BY rowid')
                 for position, (dataset_id, content) in enumerate(fresh.items(), start=1):
                     _raise_if_stopped(task_repository)
                     row = datasets[dataset_id]
@@ -3504,14 +3578,6 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                         (dataset_id, _dataset_revision(row, signature), len({call[2] for call in content['calls']}), now_iso(),
                          stage_ranks[dataset_id], content['data_date'], len(content['population']), ranks.get(dataset_id, -1)),
                     )
-                if dropped_indexes:
-                    _progress(task_repository, 'Building the indexes of the population', 82)
-                for index_sql in dropped_indexes:
-                    _raise_if_stopped(task_repository)
-                    connection.execute(index_sql)
-                if dropped_indexes:
-                    # (Indexes built again have no statistics: the queries of the versions and of the pages need them.)
-                    connection.execute(f'ANALYZE {NQ_CALL_POPULATION_TABLE}')
                 if old_rows:
                     moved = _move_follow_up(connection, old_rows, [call for content in fresh.values() for call in content['calls']])
                 _raise_if_stopped(task_repository)
@@ -3531,6 +3597,8 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                 # Nothing is stopped once the indexed calls are written.
                 _raise_if_stopped(task_repository)
                 connection.set_progress_handler(None, 0)
+            if swapped_indexes:
+                _finish_population_swap(task_repository, swapped_indexes)
         # A CDR that the combined tables include or leave out now changes the version of its calls, without reading it.
         reranked = _rank_changes(task_repository, ranks)
         if reranked:
@@ -3641,9 +3709,11 @@ def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: b
         try:
             result = refresh_nq_columns(task_repository) if columns_only else sync_nq_calls(task_repository, force=force)
         except NqIndexStopped:
+            _clean_reindex_leftovers(task_repository)
             stopped()
             return
         except Exception as exc:  # The next idle period or a Reindex tries again.
+            _clean_reindex_leftovers(task_repository)
             if isinstance(exc, sqlite3.OperationalError) and job.get('stop_requested'):
                 stopped()  # A statement interrupted by the stop (see _stop_on_request).
                 return
