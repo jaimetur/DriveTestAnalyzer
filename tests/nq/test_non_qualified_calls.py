@@ -2,6 +2,7 @@ import io
 import json
 import threading
 import time
+from types import SimpleNamespace
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -1656,6 +1657,19 @@ def test_the_cdrs_are_read_in_processes_of_their_own(client, tmp_path, monkeypat
     monkeypatch.setattr(nq, '_read_cdrs_apart', lambda *args: {datasets[0]: here[datasets[0]]})
     with core.repository.connection() as connection:
         assert nq._read_cdrs(connection, core.repository, rows, ['City'], profile, None) == here
+
+
+def test_the_app_event_counts_the_parts_of_a_phase_as_one(client, monkeypatch):
+    key = nq._workspace_key(core.repository.db_path)
+    monkeypatch.setitem(nq._index_jobs, key, {'status': 'processing'})
+    clock = iter([10.0, 11.0, 12.5, 13.0, 15.0, 16.0])
+    # (Only the clock of the module, not that of the rest of the application.)
+    monkeypatch.setattr(nq, 'time', SimpleNamespace(time=lambda: next(clock), perf_counter=time.perf_counter, monotonic=time.monotonic, sleep=time.sleep))
+    for phase in ('Reading CDR 1 of 2', 'Reading CDR 2 of 2', 'Writing the population of the calls (0%)',
+                  'Writing the population of the calls (50%)', 'Counting the population', 'Done'):
+        nq._progress(core.repository, phase, 0)
+    assert nq._index_jobs[key]['phases'] == {'Reading CDR': 2.5, 'Writing the population of the calls': 2.5,
+                                             'Counting the population': 1.0}
 
 
 def test_the_indexing_stops_from_its_card(client, tmp_path, monkeypatch):

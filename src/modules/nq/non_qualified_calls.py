@@ -3273,8 +3273,9 @@ def _progress(task_repository: Any, phase: str, percent: float) -> None:
             return
         phases = job.setdefault('phases', {})
         if job.get('phase'):
-            # The phases of each CDR count as one ("Reading CDR 3 of 40" counts as "Reading CDR").
-            name = re.sub(r' \d+ of \d+$', '', job['phase'])
+            # The phases of each CDR, or of each part, count as one ("Reading CDR 3 of 40" counts as "Reading CDR",
+            # "Writing the population of the calls (40%)" as "Writing the population of the calls").
+            name = re.sub(r' (\d+ of \d+|\(\d+%\))$', '', job['phase'])
             phases[name] = round(phases.get(name, 0.0) + now - job.get('phase_started', now), 1)
         job.update(phase=phase, phase_started=now, progress=round(percent))
 
