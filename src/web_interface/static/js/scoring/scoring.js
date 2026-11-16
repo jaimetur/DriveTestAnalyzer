@@ -7214,7 +7214,11 @@
     const caption = document.createElement('figcaption');
     // National, the areas of the breakdown and the cities each have their own colour.
     caption.className = `is-${areaCategory(area)}`;
-    caption.textContent = area.label;
+    // (Its name, which its images leave out: they are titled with it, Best Network Trends — London.)
+    const name = document.createElement('span');
+    name.className = 'scoring-area-trend-name';
+    name.textContent = area.label;
+    caption.append(name);
     // The pills of its area (scored on the whole country: its own area, or National), operators and vendors, as the
     // Scoring Trend shows them.
     appendResultScope(caption, area.kind === 'National' ? {} : {[area.kind]: area.label}, {wholeCountry: true});
@@ -7305,9 +7309,12 @@
     figure.classList.add('scoring-expandable-part');
     // Its own title (Best Network Trends — Cardiff), for its larger view and its images.
     figure.dataset.imageTitle = `${scoringLabel()} Trends — ${area.label}`;
+    figure.dataset.imageArea = area.label;
+    figure.dataset.imageCategory = areaCategory(area);
     figure.expandPart = () => {
       const large = makeAreaTrendChart(area, campaigns, low, high, step, Math.max(height, 240)).querySelector('svg');
       openExpandedView(large, figure.dataset.imageTitle, 'National & Geographical Areas Trends', figure, 'Area trend');
+      writeAreaTitle(expandedChartTitle, figure);
       appendExpandedScope(caption);
     };
     return figure;
@@ -9821,7 +9828,8 @@
     .scoring-best-network-layout, .scoring-insight-section, .scoring-expanded-holder`;
   const IMAGE_TITLES = ':scope > :is(h4, h5, .scoring-insight-banner, .scoring-position-title, figcaption)';
   // The zoom buttons are left out of the image.
-  const IMAGE_EXCLUDED = '.scoring-map-zoom, .scoring-map-zoom-rect, .scoring-content-zoom-rect';
+  // (The name of an area before the pills of its chart: its images are titled with it.)
+  const IMAGE_EXCLUDED = '.scoring-map-zoom, .scoring-map-zoom-rect, .scoring-content-zoom-rect, .scoring-area-trend-name';
 
   // Its own title, after the title of the card it is part of (``Points Lost Map — EE``); a table beside the map of a route
   // has its title just above it, and the larger view the title of its header.
@@ -9829,7 +9837,7 @@
     // (The chart of an area: its own title, Best Network Trends — Cardiff.)
     if (target.dataset?.imageTitle) return target.dataset.imageTitle;
     if (target.matches('.scoring-expanded-holder')) {
-      return [...(expandedChartTitle?.childNodes || [])].filter(node => node.nodeType === Node.TEXT_NODE)
+      return [...(expandedChartTitle?.childNodes || [])].filter(node => !node.classList?.contains('scoring-scope-pill'))
         .map(node => node.textContent).join('').trim();
     }
     const caption = target.previousElementSibling?.matches('.scoring-route-table-title') ? target.previousElementSibling : null;
@@ -9852,8 +9860,17 @@
       root.append(areaImageHolder);
     }
     areaImageHolder.style.cssText = `position:fixed;left:-10000px;top:0;width:${Math.ceil(figure.offsetWidth)}px;padding:0;border:0;margin:0`;
-    areaImageHolder.firstElementChild.textContent = figure.dataset.imageTitle || '';
+    writeAreaTitle(areaImageHolder.firstElementChild, figure);
     return areaImageHolder.firstElementChild;
+  }
+
+  // The title of the chart of an area (Best Network Trends — London), its area in the colour of its group.
+  function writeAreaTitle(heading, figure) {
+    if (!heading) return;
+    const area = document.createElement('span');
+    area.className = `scoring-area-title-name is-${figure.dataset.imageCategory || 'city'}`;
+    area.textContent = figure.dataset.imageArea || '';
+    heading.replaceChildren(`${scoringLabel()} Trends — `, area);
   }
 
   window.attachImageButtons?.({

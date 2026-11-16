@@ -112,7 +112,10 @@ def test_scoring_results_place_one_download_button_over_the_chart_or_table_under
     assert 'const draw = !copy ? window.downloadElementImage : clipboard ? window.copyElementImage : window.drawElementImage;' in buttons
     assert '.element-image-button.element-image-copy.is-copied {' in styles
     # The zoom buttons are left out of the image, and every download or copy (or failure) is recorded with the Saved Filter.
-    assert "const IMAGE_EXCLUDED = '.scoring-map-zoom, .scoring-map-zoom-rect, .scoring-content-zoom-rect';" in script
+    # (The name of an area before the pills of its chart is left out: its image is titled with it.)
+    assert ("const IMAGE_EXCLUDED = '.scoring-map-zoom, .scoring-map-zoom-rect, .scoring-content-zoom-rect, "
+            ".scoring-area-trend-name';") in script
+    assert "heading.replaceChildren(`${scoringLabel()} Trends — `, area);" in script
     assert 'exclude: IMAGE_EXCLUDED,' in script
     assert 'const options = {exclude, header: header ? header(target) : null};' in buttons
     assert 'const image = copy ? await draw(target, options) : await draw(target, file, options);' in buttons
