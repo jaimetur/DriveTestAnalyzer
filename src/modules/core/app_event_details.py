@@ -438,6 +438,7 @@ _NQ_DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'nq_prioritization_defaults': lambda details: f"NQ Prioritization Rules restored to their defaults (strategy {details.get('strategy')}).",
     'nq_calls_reindex_queued': lambda details: 'NQ calls of every CDR asked to be indexed again (in the background).',
     'nq_calls_index_stop_requested': lambda details: 'Non-Qualified Calls indexing asked to stop from its card.',
+    'nq_calls_index_failed': lambda details: f"Non-Qualified Calls indexing failed: {details.get('error')}.",
     'nq_calls_index_stopped': lambda details: (
         f"Non-Qualified Calls indexing stopped after {details.get('seconds')} s, the indexed calls kept as they were"
         + ('; the Reindex is done at night once the server is idle' if details.get('reindex') else '') + '.'),
@@ -658,7 +659,7 @@ _SERVER_ACTIONS = {
                 'assign_unknown_creators', 'assign_unknown_creators_failed', 'resume_reporting_job_run',
                 'stop_interrupted_reporting_job_run', 'fail_interrupted_reporting_job_run', 'workspace_cache_folders_moved',
                 'retired_report_jobs_dropped', 'reporting_jobs_became_report_schedules'},
-    'background': {'nq_calls_index_stopped', 'process_dataset', 'process_dataset_failed', 'l3_dt_logs_processed', 'analyze_dataset_failed', 'analyze_dataset_warning',
+    'background': {'nq_calls_index_stopped', 'nq_calls_index_failed', 'process_dataset', 'process_dataset_failed', 'l3_dt_logs_processed', 'analyze_dataset_failed', 'analyze_dataset_warning',
                    'map_dataset_vendors', 'map_dataset_vendors_failed', 'map_dataset_regions', 'map_dataset_regions_failed',
                    'vendor_mapping_skipped', 'clear_dataset_vendors', 'clear_dataset_vendors_failed', 'chart_set_rendering_completed',
                    'chart_set_rendering_warning', 'chart_set_published', 'chart_set_generation_failed', 'export_design_ppt_failed',

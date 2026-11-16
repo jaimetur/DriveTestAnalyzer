@@ -3115,6 +3115,21 @@ def _stop_requested(task_repository: Any) -> bool:
         return bool(job and job['status'] == 'processing' and job.get('stop_requested'))
 
 
+def _progress(task_repository: Any, phase: str, percent: float) -> None:
+    """Show on the card of the indexing what it does, and keep how long each phase took (for its App Event)."""
+    now = time.time()
+    with _index_jobs_guard:
+        job = _index_jobs.get(_workspace_key(task_repository.db_path))
+        if not job or job['status'] != 'processing':
+            return
+        phases = job.setdefault('phases', {})
+        if job.get('phase'):
+            # The phases of each CDR count as one ("Reading CDR 3 of 40" counts as "Reading CDR").
+            name = re.sub(r' \d+ of \d+$', '', job['phase'])
+            phases[name] = round(phases.get(name, 0.0) + now - job.get('phase_started', now), 1)
+        job.update(phase=phase, phase_started=now, progress=round(percent))
+
+
 def _raise_if_stopped(task_repository: Any) -> None:
     if _stop_requested(task_repository):
         raise NqIndexStopped('Non-Qualified Calls indexing stopped.')
@@ -3207,11 +3222,14 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
             # Read every changed CDR before taking the write transaction.
             with task_repository.connection() as connection:
                 _stop_on_request(connection, task_repository)
+                _progress(task_repository, 'Reading the radio of the Speech samples', 1)
                 sample_radio = _sample_radio(connection, datasets.values(), profile) if profile.nq_call_radio_from_samples else None
                 fresh = {}
-                for row in changed:
+                for position, row in enumerate(changed, start=1):
                     _raise_if_stopped(task_repository)
+                    _progress(task_repository, f'Reading CDR {position} of {len(changed)}', 2 + 58 * (position - 1) / len(changed))
                     fresh[int(row['id'])] = _dataset_calls(connection, row, tuple(cdr_columns), profile, sample_radio)
+                _progress(task_repository, 'Comparing the population with the one written', 60)
                 touched = [*removed, *fresh]
                 # Every CDR indexed again (Reindex): the tables are emptied and filled at once.
                 everything = force and not set(_indexed_dataset_ids(connection)) - set(touched)
@@ -3246,6 +3264,7 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                     for entry in fresh[dataset_id]['population']:
                         latest.setdefault(entry[1], dataset_id)
                 counted = _population_counts_of(fresh, latest)
+            _progress(task_repository, 'Waiting for the other writes of the workspace and emptying the indexed calls', 62)
             with task_repository.connection() as connection:
                 _stop_on_request(connection, task_repository)
                 dropped_indexes: list[str] = []
@@ -3271,8 +3290,9 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                         connection.execute(f'DELETE FROM {NQ_CALL_POPULATION_TABLE} WHERE dataset_id = ?', (dataset_id,))
                 # What their rows learned is gone: the DT Analyzer RCA learns again once they are indexed.
                 connection.execute('DELETE FROM workspace_state WHERE key = ?', (nq_dta_rca.LEARNED_FINGERPRINT_STATE_KEY,))
-                for dataset_id, content in fresh.items():
+                for position, (dataset_id, content) in enumerate(fresh.items(), start=1):
                     _raise_if_stopped(task_repository)
+                    _progress(task_repository, f'Writing the calls of CDR {position} of {len(fresh)}', 63 + 17 * (position - 1) / len(fresh))
                     row = datasets[dataset_id]
                     connection.executemany(f'INSERT OR REPLACE INTO {NQ_CALLS_TABLE} ({columns}) VALUES ({placeholders})',
                                            content['calls'])
@@ -3292,12 +3312,15 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                         (dataset_id, _dataset_revision(row, signature), len({call[2] for call in content['calls']}), now_iso(),
                          stage_ranks[dataset_id], content['data_date'], len(content['population']), ranks.get(dataset_id, -1)),
                     )
+                if dropped_indexes:
+                    _progress(task_repository, 'Building the indexes of the population', 80)
                 for index_sql in dropped_indexes:
                     _raise_if_stopped(task_repository)
                     connection.execute(index_sql)
                 if old_rows:
                     moved = _move_follow_up(connection, old_rows, [call for content in fresh.values() for call in content['calls']])
                 _raise_if_stopped(task_repository)
+                _progress(task_repository, 'Working out the versions of the calls', 85)
                 _rebuild_versions(connection, affected, everything=everything)
                 _store_population_fingerprints(connection, fingerprints, removed, everything)
                 # Nothing is stopped once the indexed calls are written.
@@ -3323,8 +3346,11 @@ def sync_nq_calls(task_repository: Any, *, force: bool = False) -> dict[str, Any
                                             f'Non-Qualified Calls follow-up of {moved} calls moved to {reason}.')
         # The latest versions of the calls and the DT Analyzer RCA of the new ones are calculated here, in the
         # background, rather than by the next page.
+        _progress(task_repository, 'Building the latest versions of the calls', 90)
         refresh_latest_calls(task_repository)
+        _progress(task_repository, 'Calculating the DT Analyzer RCA', 92)
         _refresh_dta_rca(task_repository)
+        _progress(task_repository, 'Counting the population', 98)
         # The failure panels read the counts of this indexing.
         refresh_population_counts(task_repository, None if reranked else counted)
         with task_repository.connection() as connection:
@@ -3379,7 +3405,13 @@ def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: b
                'finished_at': None, 'error': '', 'result': None}
         _index_jobs[key] = job
 
+    def phases() -> dict[str, float]:
+        """How long each phase took, the last one closed now."""
+        _progress(task_repository, '', 100)
+        return dict(job.get('phases') or {})
+
     def stopped() -> None:
+        taken = phases()
         with _index_jobs_guard:
             job.update(status='stopped', error='', finished_at=time.time())
         if force:
@@ -3387,7 +3419,7 @@ def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: b
             task_repository.set_workspace_state(REINDEX_PENDING_STATE_KEY, '1')
         if hasattr(task_repository, 'try_add_log'):
             task_repository.try_add_log('system', 'nq_calls_index_stopped', json.dumps(
-                {'reindex': bool(force), 'seconds': round(time.time() - (job['started_at'] or time.time()), 1)}))
+                {'reindex': bool(force), 'seconds': round(time.time() - (job['started_at'] or time.time()), 1), 'phases': taken}))
 
     def run() -> None:
         with _index_jobs_guard:
@@ -3410,17 +3442,24 @@ def start_nq_index(task_repository: Any, submit: Callable[..., Any], *, force: b
             if isinstance(exc, sqlite3.OperationalError) and job.get('stop_requested'):
                 stopped()  # A statement interrupted by the stop (see _stop_on_request).
                 return
+            taken = phases()
             with _index_jobs_guard:
                 job.update(status='failed', error=str(exc), finished_at=time.time())
+            if hasattr(task_repository, 'try_add_log'):
+                task_repository.try_add_log('system', 'nq_calls_index_failed', json.dumps(
+                    {'reindex': bool(force), 'error': str(exc)[:500], 'phases': taken}))
             return
+        taken = phases()
         if force:
             task_repository.set_workspace_state(REINDEX_PENDING_STATE_KEY, '')
         with _index_jobs_guard:
             job.update(status='ready', result=result, finished_at=time.time())
-        if log_event and hasattr(task_repository, 'try_add_log'):
+        # Every indexing of the idle server and every Reindex, with how long each phase took.
+        if (log_event or force) and hasattr(task_repository, 'try_add_log'):
             task_repository.try_add_log('system', 'nq_calls_reindexed', json.dumps(
                 {'indexed_cdrs': result['reindexed'], 'removed_cdrs': result['removed'], 'calls': result['calls'],
-                 'seconds': round(time.time() - (job['started_at'] or time.time()), 1)}))
+                 'reindex': bool(force), 'seconds': round(time.time() - (job['started_at'] or time.time()), 1),
+                 'phases': taken}))
 
     submit(run)
     with _index_jobs_guard:
@@ -10396,9 +10435,12 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                       else 'Stopped: the new or changed CDRs are indexed at night, once the server is idle')
         elif job.get('stop_requested'):
             detail = 'Stopping…'
+        if job['status'] == 'processing' and job.get('phase') and not job.get('stop_requested'):
+            detail = f"{detail} · {job['phase']}"
         task = {
             'id': f'nq-index:{workspace.id}', 'label': 'Non-Qualified Calls indexing',
-            'detail': job['error'] or detail, 'status': job['status'], 'progress': None,
+            'detail': job['error'] or detail, 'status': job['status'],
+            'progress': job.get('progress') if job['status'] == 'processing' else None,
             'queued_at': job['queued_at'], 'started_at': job['started_at'], 'completed_at': job['finished_at'],
         }
         if job['status'] in {'queued', 'processing'} and not job.get('stop_requested'):
