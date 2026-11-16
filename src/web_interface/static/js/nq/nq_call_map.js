@@ -236,6 +236,74 @@
     wrapper.append(node('span', 'Map'), element);
     return wrapper;
   };
+  // Call types, a control above both maps beside Operators: a list of check boxes, one for each call type of the NQ calls
+  // (Voice, WhatsApp, Data… never Ping), every one checked until unchecked; only the NQ calls of those checked are drawn,
+  // counted and listed. ``hidden()`` gives the call types unchecked (kept with the other settings of the map), ``kinds()``
+  // those to list and ``onChange`` takes the new ones. At least one stays checked. Its list stays open while boxes are
+  // checked; every Call types control of the page follows (``refresh``), each from its own map.
+  const CALL_TYPE_ORDER = Object.keys(KIND_LABELS).filter((kind) => kind !== 'ping');
+  const callTypeKinds = (failures, hidden) => {
+    const present = new Set([...(failures || []).map((failure) => failure.kind), ...hidden].filter((kind) => kind && kind !== 'ping'));
+    if (!present.size) ['voice', 'whatsapp', 'data'].forEach((kind) => present.add(kind));
+    return [...present].sort((first, second) => (CALL_TYPE_ORDER.indexOf(first) + 1 || 99) - (CALL_TYPE_ORDER.indexOf(second) + 1 || 99)
+      || String(first).localeCompare(String(second)));
+  };
+  const callTypesControl = ({kinds, hidden, onChange, title}) => {
+    const wrapper = node('div', undefined, 'nq-map-control nq-map-types');
+    wrapper.title = title;
+    const button = node('button', undefined, 'nq-map-types-button');
+    button.type = 'button';
+    button.setAttribute('aria-haspopup', 'true');
+    button.setAttribute('aria-expanded', 'false');
+    const menu = node('div', undefined, 'nq-map-types-menu');
+    menu.hidden = true;
+    const labelOf = (kind) => KIND_LABELS[kind] || kind;
+    const render = () => {
+      const all = kinds(), off = new Set(hidden()), shown = all.filter((kind) => !off.has(kind));
+      button.textContent = shown.length === all.length ? 'Every call type' : shown.map(labelOf).join(', ') || 'None';
+      const box = (text, checked, onToggle, className = '') => {
+        const item = node('label', undefined, `nq-map-types-option ${className}`.trim());
+        const input = node('input');
+        input.type = 'checkbox';
+        input.checked = checked;
+        input.addEventListener('change', () => onToggle(input.checked));
+        item.append(input, node('span', text));
+        return item;
+      };
+      const apply = (next) => {
+        onChange(all.filter((kind) => next.has(kind)));
+        document.querySelectorAll('.nq-map-types').forEach((control) => control.refresh?.());
+      };
+      menu.replaceChildren(
+        box('Every call type', shown.length === all.length, () => apply(new Set()), 'is-all'),
+        ...all.map((kind) => box(labelOf(kind), !off.has(kind), (checked) => {
+          const next = new Set(off);
+          if (checked) next.delete(kind);
+          else if (shown.length > 1) next.add(kind);
+          apply(next);
+        })));
+    };
+    const outside = (event) => { if (!wrapper.contains(event.target)) close(); };
+    const escape = (event) => { if (event.key === 'Escape') { close(); button.focus(); } };
+    const close = () => {
+      menu.hidden = true;
+      button.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('pointerdown', outside, true);
+      document.removeEventListener('keydown', escape, true);
+    };
+    button.addEventListener('click', () => {
+      if (!menu.hidden) { close(); return; }
+      render();
+      menu.hidden = false;
+      button.setAttribute('aria-expanded', 'true');
+      document.addEventListener('pointerdown', outside, true);
+      document.addEventListener('keydown', escape, true);
+    });
+    wrapper.refresh = () => { if (wrapper.isConnected) render(); else close(); };
+    wrapper.append(node('span', 'Call types'), button, menu);
+    render();
+    return wrapper;
+  };
   const tileUrl = (zoom, x, y) => {
     const map = BASEMAPS[basemap.key];
     const subdomains = map.subdomains || '';
@@ -2370,6 +2438,8 @@
       // left for them).
       operators: stored.v >= 2 && ['own', 'all', 'focus'].includes(stored.operators) ? stored.operators : 'focus',
       failureColour: FAILURE_COLOURS[stored.failureColour] ? stored.failureColour : 'site',
+      // Call types: those unchecked (every one shown until unchecked).
+      hiddenTypes: Array.isArray(stored.hiddenTypes) ? stored.hiddenTypes.filter((kind) => typeof kind === 'string') : [],
       // And Group: a circle around each NQ call of the groups of the call, in the colour of each group.
       perGroup: stored.perGroup !== false,
       // The layers of CDR Info (``cdr`` the whole card).
@@ -2380,7 +2450,7 @@
     };
     delete settings.layers.tests;
     const save = () => storeSettings({v: 2, tests: settings.tests, measures: settings.measures, operators: settings.operators,
-      failureColour: settings.failureColour, perGroup: settings.perGroup, layers: settings.layers});
+      failureColour: settings.failureColour, hiddenTypes: settings.hiddenTypes, perGroup: settings.perGroup, layers: settings.layers});
     let callKey = '', loadedKey = '', controller = null, expandedView = null, expandedTimeline = null, expandedToolbar = null;
     const toolbar = node('div', undefined, 'nq-map-toolbar');
     const status = node('p', '', 'nq-map-status');
@@ -2425,6 +2495,8 @@
       if (!call || failure.self) return true;
       // Not the Ping tests, nor those of another NR Mode (NSA and SA fail along different paths).
       if (failure.kind === 'ping' || failure.nr_mode !== call.nr_mode) return false;
+      // Those of the call types checked in Call types.
+      if (settings.hiddenTypes.includes(failure.kind)) return false;
       // Those of the campaigns chosen in CDR Info, as everything else from the CDRs.
       if (settings.tests === 'campaign' && (failure.campaign !== call.campaign || failure.nr_mode !== call.nr_mode)) return false;
       if (settings.tests === 'selected' && !selectedCampaign(failure)) return false;
@@ -3121,6 +3193,9 @@
           settings.operators = value; save(); redrawAll(); renderFailures();
         }, 'The samples and Non-Qualified Calls of the operator of the call, of the Focus operators of the Operator Maps'
           + `${data?.focus_labels?.length ? ` (${data.focus_labels.join(', ')})` : ''} or of every operator (its repetitions and hotspot always show)`),
+        callTypesControl({kinds: () => callTypeKinds(shared.data?.failures, settings.hiddenTypes), hidden: () => settings.hiddenTypes,
+          onChange: (hidden) => { settings.hiddenTypes = hidden; save(); redrawAll(); renderFailures(); },
+          title: 'The Non-Qualified Calls around of the call types checked (Voice, WhatsApp, Data…), every one by default: only they are drawn, counted and listed (the call itself always shows)'}),
         basemapControl()];
     };
 
@@ -3410,12 +3485,14 @@
     // operator.
     operators: site ? (['own', 'focus', 'all'].includes(stored.operators) ? stored.operators : 'own')
       : stored.v >= 4 && stored.operators === 'all' ? 'all' : 'focus',
+    // Call types: those unchecked (every one shown until unchecked), as on the map of a call.
+    hiddenTypes: Array.isArray(stored.hiddenTypes) ? stored.hiddenTypes.filter((kind) => typeof kind === 'string') : [],
     radius_km: site ? (SITE_RADII_KM.includes(stored.radius_km) ? stored.radius_km : SITE_RADIUS_KM) : 0, failures: 'every'};
     const save = () => {
       try {
         localStorage.setItem(settingsKey, JSON.stringify({v: 4, layers: {cdr: settings.layers.cdr, failures: settings.layers.failures,
           sites: settings.layers.sites, route: settings.layers.route}, measures: settings.measures, failureColour: settings.failureColour,
-        operators: settings.operators, ...(site ? {radius_km: settings.radius_km} : {})}));
+        operators: settings.operators, hiddenTypes: settings.hiddenTypes, ...(site ? {radius_km: settings.radius_km} : {})}));
       } catch (_error) { /* A private window keeps them for the page. */ }
     };
     // ``calls``: the NQ calls of the filters, read again only when the filters change.
@@ -3430,8 +3507,8 @@
       const choice = shared.operatorChoice(), value = String(name || '').trim().toLowerCase();
       return choice === 'all' || (choice === 'own' ? siteOperators.has(value) : focusNames.has(value));
     };
-    // (As on the map of a call, not the Ping tests.)
-    shared.showsFailure = (failure) => failure.kind !== 'ping' && shared.operatorShown(failure.operator);
+    // (As on the map of a call, not the Ping tests, and only the call types checked in Call types.)
+    shared.showsFailure = (failure) => failure.kind !== 'ping' && !settings.hiddenTypes.includes(failure.kind) && shared.operatorShown(failure.operator);
     // The colour of an NQ call (AREA_FAILURE_COLOURS) and the lines of the legend that explain it: only what they show.
     // (By site, the site of the map in burgundy.)
     const ownSite = site ? `${site.network || ''}|${site.site_id}` : '';
@@ -3660,6 +3737,9 @@
           ...(focusNames.size ? [['focus', 'Focus operators only']] : []), ['all', 'Every operator']], shared.operatorChoice(), (value) => {
           settings.operators = value; save(); redrawAll(); renderTable();
         }, `The NQ calls and RSRP / SINR samples ${site ? 'of the operator of the site, ' : ''}of every operator, or of the Focus operators of the Operator Maps${focusLabels.length ? ` (${focusLabels.join(', ')})` : ''}`),
+        callTypesControl({kinds: () => callTypeKinds(shared.data?.failures, settings.hiddenTypes), hidden: () => settings.hiddenTypes,
+          onChange: (hidden) => { settings.hiddenTypes = hidden; save(); redrawAll(); renderTable(); },
+          title: `The NQ calls of the call types checked (Voice, WhatsApp, Data…), every one by default: only they are drawn and counted${site ? ' and listed in the table' : ''}`}),
         basemapControl()];
 
     // -- reading the area shown -------------------------------------------------------------------------------------
