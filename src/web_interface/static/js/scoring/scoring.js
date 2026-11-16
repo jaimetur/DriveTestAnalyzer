@@ -7021,13 +7021,15 @@
     const minimum = Math.max(0, Math.floor((Math.min(...values) - 25) / 50) * 50);
     const maximum = Number(trend.maximum) || Math.max(...values);
     const count = trend.campaigns.length;
-    const x = index => left + (width - left - right) * (count > 1 ? index / (count - 1) : .5);
+    // (The first campaign a little away from the axis, so the scores of its points never cover the values of the axis.)
+    const pad = 22;
+    const x = index => left + pad + (width - left - right - pad) * (count > 1 ? index / (count - 1) : .5);
     const y = value => top + (height - top - bottom) * (1 - (value - minimum) / Math.max(1, maximum - minimum));
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('class', 'scoring-trend-chart');
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', `${scoringLabel()} scoring trend`);
-    const step = count > 1 ? (width - left - right) / (count - 1) : width - left - right;
+    const step = count > 1 ? (width - left - right - pad) / (count - 1) : width - left - right - pad;
     svg.append(svgElement(svg, 'rect', {x: x(count - 1) - step / 2, y: top, width: step / 2 + 14, height: height - top - bottom, fill: '#f1f5f9'}));
     const gridStep = [25, 50, 100, 200, 250].find(item => (maximum - minimum) / item <= 8) || 500;
     for (let value = minimum; value <= maximum + .001; value += gridStep) {
@@ -7235,7 +7237,9 @@
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', `${area.label} scoring trend`);
-    const x = index => left + (width - left - right) * (campaigns.length > 1 ? index / (campaigns.length - 1) : .5);
+    // (The first campaign a little away from the axis, so the scores of its points never cover the values of the axis.)
+    const pad = 16;
+    const x = index => left + pad + (width - left - right - pad) * (campaigns.length > 1 ? index / (campaigns.length - 1) : .5);
     const y = value => top + (height - top - bottom) * (1 - (value - low) / Math.max(1, high - low));
     // The latest campaign or period shaded, as in the Scoring Trend.
     if (campaigns.length) {
