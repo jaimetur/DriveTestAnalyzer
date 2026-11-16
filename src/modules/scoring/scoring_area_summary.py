@@ -114,6 +114,32 @@ def resolve_main_cities(area_summary: Any, main_cities: list[str]) -> Any:
     return {**resolved, 'cities': list(cities.values())}
 
 
+def with_breakdown_cities(area_summary: Any, context_filters: dict[str, Any] | None) -> Any:
+    """The Geographical Areas & Scoring Trends of a job as they are calculated: with a City breakdown and a City filter,
+    the breakdown scores the cities of the filter and the Separate cities only (``breakdown_cities``), not every city."""
+    if not isinstance(area_summary, dict) or str(area_summary.get('breakdown') or '') != 'City':
+        return area_summary
+    values = (context_filters or {}).get('City') or []
+    chosen: dict[str, str] = {}
+    for city in values if isinstance(values, (list, tuple, set)) else [values]:
+        text = str(city or '').strip()
+        if text and not text.startswith('@'):
+            chosen.setdefault(text.casefold(), text)
+    return {**area_summary, 'breakdown_cities': list(chosen.values())} if chosen else area_summary
+
+
+def _breakdown_pass(breakdown: str, base: list[str], areas: dict[str, Any], cities: list[str]) -> dict[str, Any]:
+    """The calculation of a breakdown: with ``breakdown_cities`` (see with_breakdown_cities), a City breakdown scores the
+    Separate cities and those of the City filter only."""
+    item = {'kind': breakdown, 'field': breakdown.lower(), 'levels': [*base, breakdown]}
+    if breakdown == 'City' and areas.get('breakdown_cities'):
+        chosen: dict[str, str] = {}
+        for city in [*cities, *areas['breakdown_cities']]:
+            chosen.setdefault(str(city).strip().casefold(), str(city).strip())
+        item['cities'] = list(chosen.values())
+    return item
+
+
 def has_area_filters(context_filters: dict[str, list[str]] | None) -> bool:
     """Whether a job leaves out part of the country with Region, Cluster or City filters."""
     return any((context_filters or {}).get(field) for field in GEOGRAPHIC_FILTER_FIELDS)
@@ -147,7 +173,7 @@ def _passes(levels: list[str], area_summary: dict[str, Any], job_filtered: bool 
     if area_summary.get('cities') and breakdown != 'City':
         passes.append({'kind': 'City', 'field': 'city', 'levels': [*base, 'City'], 'cities': area_summary['cities']})
     if breakdown:
-        passes.append({'kind': breakdown, 'field': breakdown.lower(), 'levels': [*base, breakdown]})
+        passes.append(_breakdown_pass(breakdown, base, area_summary, list(area_summary.get('cities') or [])))
     identities = {column_identity(level) for level in levels}
     # A calculation split by period is never the job's own, which splits Campaign by campaign; nor is one of a job
     # with area filters, which scores part of the country.
@@ -254,7 +280,7 @@ def geographical_passes(levels: list[str], areas: dict[str, Any] | None = None) 
     base = [level for level in levels if column_identity(level) not in _AREA_IDENTITIES]
     passes = [{'kind': NATIONAL, 'field': None, 'levels': list(base)}]
     if breakdown:
-        passes.append({'kind': breakdown, 'field': breakdown.lower(), 'levels': [*base, breakdown]})
+        passes.append(_breakdown_pass(breakdown, base, areas if isinstance(areas, dict) else {}, cities))
     if cities and breakdown != 'City':
         passes.append({'kind': 'City', 'field': 'city', 'levels': [*base, 'City'], 'cities': cities})
     return passes

@@ -26,7 +26,7 @@ from src.modules.scoring.scoring_area_summary import (
     WARNING_PREFIXES, area_summary_levels, calculate_area_summary, calculate_area_summary_from_history,
     calculate_geographical, calculate_geographical_from_history, geographical_levels, has_area_filters,
     whole_country_filters,
-    detach_area_summary, normalize_area_summary_request, resolve_main_cities,
+    detach_area_summary, normalize_area_summary_request, resolve_main_cities, with_breakdown_cities,
 )
 from src.modules.scoring.scoring_vendors import scoring_vendor_name, scoring_vendor_operators
 from src.modules.cdr.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_identity, campaign_presets
@@ -912,6 +912,10 @@ def _prepare_saved_filter(
     key_area_summary = {**key_area_summary, 'geographical_version': GEOGRAPHICAL_AREAS_VERSION}
     if normalized_area_summary.get('main_cities'):
         key_area_summary['main_cities'] = _shared(cache, ('main cities',), lambda: _workspace_main_cities(repository))
+    # A City breakdown with a City filter scores those cities and the Separate cities only.
+    breakdown_cities = (with_breakdown_cities(normalized_area_summary, normalized_context_filters) or {}).get('breakdown_cities')
+    if breakdown_cities:
+        key_area_summary['breakdown_cities'] = breakdown_cities
     result_key, _canonical = _result_key(
         normalized_levels, selected_mode, baseline, version, source_fingerprint, config_hash, baseline_aliases,
         normalized_context_filters, resolved_context_filters, operator_mappings, profile_id, profile_name,
@@ -2104,8 +2108,11 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
         )
 
     try:
-        # Its Main Cities are those of the workspace when it is calculated.
-        saved_filter['area_summary'] = resolve_main_cities(saved_filter.get('area_summary'), _workspace_main_cities(repository))
+        # Its Main Cities are those of the workspace when it is calculated; a City breakdown scores the cities of its City
+        # filter and its Separate cities only.
+        saved_filter['area_summary'] = with_breakdown_cities(
+            resolve_main_cities(saved_filter.get('area_summary'), _workspace_main_cities(repository)),
+            saved_filter.get('context_filters'))
         configuration = saved_filter.get('configuration')
         if configuration is None:
             raise ValueError(

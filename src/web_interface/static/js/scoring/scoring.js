@@ -8365,8 +8365,8 @@
     if (!filters.length) return null;
     return insightParagraph('scoring-insight-note scoring-whole-country-note', insightStrong('Not filtered by area. '),
       `${what} not filtered by ${filters.join(' · ')}: it shows the National scoring and the Breakdown and Separate cities `
-      + 'chosen in Geographical Areas & Scoring Trends (the other filters apply). The other tabs show '
-      + `${filters.join(' · ')} only.`);
+      + 'chosen in Geographical Areas & Scoring Trends (the other filters apply; a City breakdown shows the cities of the '
+      + `City filter and the Separate cities only). The other tabs show ${filters.join(' · ')} only.`);
   }
 
   function renderGeographicalAreas(pane, payload, environment) {

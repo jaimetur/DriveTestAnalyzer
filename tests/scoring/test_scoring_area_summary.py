@@ -588,3 +588,33 @@ def test_the_scoring_nationwide_comes_first_on_the_page_and_in_the_slides():
     assert '.scoring-location-cards.is-national { grid-template-columns: 1fr; }' in template
     assert '.scoring-insight-note.scoring-location-note { margin: 0 0 .75rem;' in template
 
+
+
+def test_a_city_breakdown_with_a_city_filter_scores_those_cities_and_the_separate_ones():
+    from src.modules.scoring.scoring_area_summary import with_breakdown_cities
+
+    rows = [*ROWS, *_calls('Cardiff', 'VMO2 South', {'EE': ['Completed', 'Failed'], 'Three UK': ['Completed', 'Completed']})]
+    frames = {'voice': pd.DataFrame(rows)}
+    configuration = _reliable_configuration()
+    kwargs = {'baseline_operator': 'EE', 'configuration': configuration}
+    request = normalize_area_summary_request({'breakdown': 'City', 'cities': ['London']}, {'City': ['Cardiff']})
+    # The request keeps its form (the Saved Filters keep their identity); the calculation adds the cities of the filter.
+    assert 'breakdown_cities' not in request
+    areas = with_breakdown_cities(request, {'City': ['Cardiff', 'cardiff', '']})
+    assert areas['breakdown_cities'] == ['Cardiff']
+    assert with_breakdown_cities(request, {}) is request
+    assert with_breakdown_cities({**request, 'breakdown': 'Region'}, {'City': ['Cardiff']})['breakdown'] == 'Region'
+    assert 'breakdown_cities' not in with_breakdown_cities({**request, 'breakdown': 'Region'}, {'City': ['Cardiff']})
+    summary = calculate_area_summary(scoring_engine.calculate_scoring, frames, ['Operator'], areas, kwargs, job_filtered=True)
+    breakdown = next(item for item in summary['passes'] if item['kind'] == 'City')
+    assert breakdown['cities'] == ['London', 'Cardiff']
+    assert {row['city'] for row in breakdown['result']['scoring']} == {'London', 'Cardiff'}
+    # National keeps the whole country; without a City filter every city is scored.
+    national = next(item for item in summary['passes'] if item['kind'] == 'National')
+    assert national['result']['totals']
+    every = calculate_area_summary(scoring_engine.calculate_scoring, frames, ['Operator'], request, kwargs, job_filtered=True)
+    assert {row['city'] for row in next(item for item in every['passes'] if item['kind'] == 'City')['result']['scoring']} == {
+        'London', 'Leeds', 'Cardiff'}
+    # The Geographical views follow the same cities.
+    geographical = geographical_passes(['Operator'], areas)
+    assert next(item for item in geographical if item['kind'] == 'City')['cities'] == ['London', 'Cardiff']
