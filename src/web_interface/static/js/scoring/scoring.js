@@ -7212,6 +7212,9 @@
     // National, the areas of the breakdown and the cities each have their own colour.
     caption.className = `is-${areaCategory(area)}`;
     caption.textContent = area.label;
+    // The pills of its area (scored on the whole country: its own area, or National), operators and vendors, as the
+    // Scoring Trend shows them.
+    appendResultScope(caption, area.kind === 'National' ? {} : {[area.kind]: area.label}, {wholeCountry: true});
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const width = 360, right = 34, top = 10;
     // Campaign or period labels that do not fit side by side are tilted, with room for them below the axis and,
@@ -7227,6 +7230,13 @@
     svg.setAttribute('aria-label', `${area.label} scoring trend`);
     const x = index => left + (width - left - right) * (campaigns.length > 1 ? index / (campaigns.length - 1) : .5);
     const y = value => top + (height - top - bottom) * (1 - (value - low) / Math.max(1, high - low));
+    // The latest campaign or period shaded, as in the Scoring Trend.
+    if (campaigns.length) {
+      const half = campaigns.length > 1 ? (x(1) - x(0)) / 2 : (width - left - right) / 2;
+      const start = x(campaigns.length - 1) - half;
+      svg.append(svgElement(svg, 'rect', {x: start, y: top, width: Math.min(width - start, half * 2),
+        height: height - top - bottom, fill: '#f1f5f9'}));
+    }
     for (let value = low; value <= high + .001; value += step) {
       svg.append(svgElement(svg, 'line', {x1: left, x2: width - right, y1: y(value), y2: y(value), stroke: '#e3e6e9'}));
       const label = svgElement(svg, 'text', {x: left - 6, y: y(value) + 3, 'text-anchor': 'end', 'font-size': 9, fill: '#4a5b65'});
@@ -7268,6 +7278,7 @@
     figure.expandPart = () => {
       const large = makeAreaTrendChart(area, campaigns, low, high, step, Math.max(height, 240)).querySelector('svg');
       openExpandedView(large, `${scoringLabel()} — ${area.label}`, 'National & Geographical Areas Trends', figure, 'Area trend');
+      appendExpandedScope(caption);
     };
     return figure;
   }
@@ -8352,10 +8363,10 @@
       return values.length ? `${level}: ${values.join(', ')}` : '';
     }).filter(Boolean);
     if (!filters.length) return null;
-    return insightParagraph('scoring-insight-note scoring-whole-country-note', insightStrong('Whole country. '),
-      `${what} scored on the whole country: the ${filters.join(' · ')} filter of this calculation does not apply here `
-      + '(the other filters do). Its areas are the Breakdown and Separate cities chosen in Geographical Areas & Scoring '
-      + `Trends; the other tabs show ${filters.join(' · ')} only.`);
+    return insightParagraph('scoring-insight-note scoring-whole-country-note', insightStrong('Not filtered by area. '),
+      `${what} not filtered by ${filters.join(' · ')}: it shows the National scoring and the Breakdown and Separate cities `
+      + 'chosen in Geographical Areas & Scoring Trends (the other filters apply). The other tabs show '
+      + `${filters.join(' · ')} only.`);
   }
 
   function renderGeographicalAreas(pane, payload, environment) {
@@ -9809,7 +9820,8 @@
     },
     fileName: (target, title) => window.imageFileName([title, selectedEnvironment ? environmentLabel(selectedEnvironment) : ''], 'Scoring'),
     details: target => {
-      const tab = root.querySelector(`[data-result-tab="${activeResultTab}"]`)?.textContent.trim() || activeResultTab || '';
+      // (The name of the tab, without its icon of the tabs not filtered by area.)
+      const tab = root.querySelector(`[data-result-tab="${activeResultTab}"] > span:not(.scoring-tab-scope)`)?.textContent.trim() || activeResultTab || '';
       return {
         saved_filter_id: Number(currentResultsSavedFilterId) || null,
         tab: target.matches('.scoring-expanded-holder') ? `${tab} (larger view)` : tab,
