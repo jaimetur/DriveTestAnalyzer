@@ -269,7 +269,8 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
         ('Attended', _number(summary.get('attended')),
          f"{_share(summary.get('queued_attended') or 0, int(summary.get('queued') or 0))} of the calls in a queue", 'open'),
         ('Not Attended', _number(summary.get('not_attended')),
-         f"In a queue{f' ({_number(assigned)} assigned)' if (assigned := summary.get('not_attended_assigned')) else ''}"
+         f"{_number(int(summary.get('not_attended') or 0) - int(summary.get('not_attended_assigned') or 0))} In Queues"
+         f" · {_number(summary.get('not_attended_assigned'))} Assigned"
          f" · {_number(summary.get('not_attended_out_of_queue'))} more tracked", 'total'),
         ('Closure Rate', f"{float(summary.get('closure_rate') or 0):.1f}%",
          f"{_number(summary.get('queued_closed'))} of {_number(summary.get('queued'))} in a queue closed", 'closed'),

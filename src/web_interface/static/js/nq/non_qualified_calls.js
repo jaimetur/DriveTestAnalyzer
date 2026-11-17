@@ -2469,7 +2469,7 @@
     $('nq-progress-kpis').replaceChildren(
       // The rates count only the calls in a queue: the tracked calls (in no queue) are shown apart.
       drillCard(kpiCard('Attended', number(summary.attended), `${percent(summary.queued_attended, summary.queued)} of the calls in a queue`, 'open'), {pairs: [['state', 'attended']]}),
-      drillCard(kpiCard('Not Attended', number(summary.not_attended), `In a queue${summary.not_attended_assigned ? ` (${number(summary.not_attended_assigned)} assigned)` : ''} · ${number(summary.not_attended_out_of_queue)} more tracked`, 'total'), {pairs: [['state', 'queued_not_attended']]}),
+      drillCard(kpiCard('Not Attended', number(summary.not_attended), `${number(summary.not_attended - (summary.not_attended_assigned || 0))} In Queues · ${number(summary.not_attended_assigned || 0)} Assigned · ${number(summary.not_attended_out_of_queue)} more tracked`, 'total'), {pairs: [['state', 'queued_not_attended']]}),
       drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.queued_closed)} of ${number(summary.queued)} in a queue closed`, 'closed'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('First Follow-up', days(summary.avg_days_to_first_follow_up), 'Average from the call', 'team'), {pairs: [['state', 'attended']]}),
       drillCard(kpiCard('Time to Close', days(summary.avg_days_to_close), 'Average from the call', 'commented'), {pairs: [['state', 'closed']]}),
