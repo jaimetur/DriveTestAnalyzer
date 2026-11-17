@@ -1857,7 +1857,7 @@
   .scoring-strip-label { margin: 0; }
   .scoring-strip-top .saved-filter-selector { grid-column: auto; grid-row: auto; justify-self: auto; flex: 1 1 26rem; width: auto; }
   .scoring-strip-top .saved-filter-selector > summary::after { content: none; }
-  .scoring-strip-top .scoring-strip-actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-left: auto; }
+  .scoring-config-strip > .scoring-strip-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .45rem; }
   .scoring-strip-actions button { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; min-height: 2.35rem; padding: .3rem .8rem; font-size: .78rem; }
   .scoring-strip-actions button svg { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; }
   .scoring-strip-actions button[hidden] { display: none; }
@@ -1892,8 +1892,7 @@
     .scoring-strip-top .saved-filter-selector { flex-basis: 100%; max-width: 100%; min-width: 0; }
     .scoring-strip-top .scoring-strip-label { flex-basis: 100%; }
     .scoring-strip-top:has(.saved-filter-tabs) .scoring-strip-label { margin-bottom: 1.4rem; }
-    .scoring-strip-top .scoring-strip-actions { width: 100%; margin-left: 0; }
-    .scoring-strip-top .scoring-strip-actions button { flex: 1 1 auto; }
+    .scoring-config-strip > .scoring-strip-actions button { flex: 1 1 auto; }
     button.scoring-config-pill { width: 100%; }
     .scoring-config-pill-value { flex: 1 1 auto; min-width: 0; max-width: none; }
     .scoring-config-pending button { margin-left: 0; }
@@ -2288,11 +2287,6 @@
                 <div class="saved-filter-list" data-saved-filter-list aria-label="Saved Filters" aria-live="polite"><div class="scoring-empty">Loading Saved Filters…</div></div>
               </div>
             </details>
-            <div class="scoring-actions scoring-strip-actions">
-              <button type="button" data-calculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="1" width="12" height="18" rx="2"/><path d="M7 4h6v3H7zM7 11h1m4 0h1m-6 4h1m4 0h1"/></svg><span>Calculate Scoring</span></button>
-              <button type="button" class="scoring-force-button" data-recalculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M16 7a7 7 0 0 0-12-2L2 7m0-5v5h5M4 13a7 7 0 0 0 12 2l2-2m0 5v-5h-5"/></svg><span>Recalculate</span></button>
-              <button type="button" class="scoring-close-button" data-close-scoring disabled title="Close the scoring shown (its Saved Filter stays)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7.5 8l5 5M12.5 8l-5 5"/></svg><span>Close Scoring</span></button>
-            </div>
           </div>
           <div class="scoring-config-pills" role="group" aria-label="Configuration of the scoring">
             <button type="button" class="scoring-config-pill is-setup" data-scoring-config-open="setup" title="Methodology, GAP reference, Points Lost and Environment: the whole panel"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 1">1</span>Scoring Setup</span><span class="scoring-config-pill-value" data-scoring-config-summary="setup"></span><span class="scoring-config-card-lines" data-scoring-config-details="setup"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
@@ -2306,6 +2300,12 @@
               <button type="button" class="scoring-config-pill is-trends" data-scoring-config-open="trends"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 5">5</span>Trends</span><span class="scoring-config-pill-value" data-scoring-config-summary="trends"></span><span class="scoring-config-card-lines" data-scoring-config-details="trends"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
               <label class="scoring-config-pill-switch" title="Include Scoring Trends: switched off, it is not calculated and its tab hides"><input type="checkbox" role="switch" data-scoring-part-switch="trends" checked aria-label="Include Scoring Trends"><span aria-hidden="true"></span></label>
             </div>
+          </div>
+          {# Calculate, after the steps. #}
+          <div class="scoring-actions scoring-strip-actions">
+            <button type="button" data-calculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="1" width="12" height="18" rx="2"/><path d="M7 4h6v3H7zM7 11h1m4 0h1m-6 4h1m4 0h1"/></svg><span>Calculate Scoring</span></button>
+            <button type="button" class="scoring-force-button" data-recalculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M16 7a7 7 0 0 0-12-2L2 7m0-5v5h5M4 13a7 7 0 0 0 12 2l2-2m0 5v-5h-5"/></svg><span>Recalculate</span></button>
+            <button type="button" class="scoring-close-button" data-close-scoring disabled title="Close the scoring shown (its Saved Filter stays)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7.5 8l5 5M12.5 8l-5 5"/></svg><span>Close Scoring</span></button>
           </div>
           <div class="scoring-config-pending" data-scoring-config-pending role="status" hidden>
             <strong>⚠ <span data-scoring-config-pending-text>Changes not calculated yet.</span></strong>
