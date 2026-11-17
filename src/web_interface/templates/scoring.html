@@ -1887,12 +1887,18 @@
   .scoring-results-view .scoring-results-controls { flex-direction: row; flex-wrap: wrap; align-items: stretch; width: auto; min-width: 0; }
   .scoring-results-panel .scoring-results-tools { justify-content: flex-end; flex-wrap: wrap; width: auto; margin-left: auto; overflow: visible; padding: 0; }
   @media(max-width:640px) {
-    .scoring-main-actions, .scoring-main-action:not(.is-small) { width: 100%; }
-    .scoring-main-action:not(.is-small) { justify-content: center; }
+    /* The two main buttons share one line. */
+    .scoring-main-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .45rem; width: 100%; }
+    .scoring-main-action:not(.is-small) { justify-content: center; gap: .25rem; min-width: 0; padding: .6rem .3rem; font-size: .74rem; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; }
+    .scoring-main-action:not(.is-small) svg { width: 1rem; height: 1rem; }
+    .scoring-main-count { min-width: 1.1rem; padding: .02rem .3rem; font-size: .66rem; }
     .scoring-strip-top .saved-filter-selector { flex-basis: 100%; max-width: 100%; min-width: 0; }
     .scoring-strip-top .scoring-strip-label { flex-basis: 100%; }
-    .scoring-strip-top:has(.saved-filter-tabs) .scoring-strip-label { margin-bottom: 1.4rem; }
-    .scoring-config-strip > .scoring-strip-actions button { flex: 1 1 auto; }
+    .scoring-config-strip.is-showing-details .scoring-strip-top:has(.saved-filter-tabs) .scoring-showing { margin-bottom: 1.4rem; }
+    /* Its buttons two by two (Update and Save as new, Recalculate and Close Scoring). */
+    .scoring-config-strip > .scoring-strip-actions { display: grid; grid-template-columns: 1fr 1fr; }
+    .scoring-config-strip > .scoring-strip-actions button { gap: .3rem; min-width: 0; padding-left: .3rem; padding-right: .3rem; font-size: .72rem; letter-spacing: -.01em; white-space: nowrap; }
+    .scoring-config-strip > .scoring-strip-actions button svg { width: .9rem; height: .9rem; }
     button.scoring-config-pill { width: 100%; }
     .scoring-config-pill-value { flex: 1 1 auto; min-width: 0; max-width: none; }
     .scoring-config-pending button { margin-left: 0; }
@@ -1983,6 +1989,29 @@
   }
   /* The blocks are numbered: the steps to configure a scoring. */
   .scoring-config-step { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; margin-right: .4rem; border-radius: 50%; background: var(--pill); color: #fff; font-size: .7rem; font-weight: 800; letter-spacing: 0; vertical-align: middle; }
+  /* The scoring shown on one line; Details unfolds its whole card. */
+  .scoring-showing { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem .6rem; flex: 1 1 20rem; min-width: 0; }
+  button.scoring-showing-star { padding: 0; border: 0; background: none; box-shadow: none; color: #9aa3b2; font-size: 1.35rem; line-height: 1; }
+  button.scoring-showing-star[aria-pressed="true"] { color: #e0a400; }
+  button.scoring-showing-star:disabled { opacity: 1; cursor: default; }
+  button.scoring-showing-name { min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; box-shadow: none; color: var(--text); font-size: 1.05rem; font-weight: 800; text-align: left; overflow-wrap: anywhere; }
+  button.scoring-showing-name:hover { text-decoration: underline; }
+  .scoring-showing-status { padding: .15rem .55rem; border-radius: 999px; background: var(--green-2, #e3f5ec); color: #1d8a5b; font-size: .74rem; font-weight: 750; white-space: nowrap; }
+  .scoring-showing-status[data-kind="pending"] { background: #fff3dc; color: #8a5a00; }
+  .scoring-showing-status[data-kind="busy"] { background: #e7f0fc; color: #1f5fbf; }
+  .scoring-showing-status[hidden] { display: none; }
+  button.scoring-showing-details { margin-left: auto; padding: .3rem .7rem; border: 1px solid var(--line-strong); background: #fff; color: var(--text); font-size: .76rem; font-weight: 700; box-shadow: none; }
+  button.scoring-showing-details[aria-expanded="true"] { background: #eef1f6; }
+  .scoring-strip-top .saved-filter-selector { display: none; }
+  .scoring-config-strip.is-showing-details .scoring-strip-top .saved-filter-selector { display: block; flex-basis: 100%; }
+  .scoring-strip-actions .scoring-update-favourite { border: 1px solid #2f5f99; background: linear-gradient(135deg,#3d72b3,#2a5a94); color: #fff; }
+  .scoring-strip-actions .scoring-save-favourite { border: 1px solid #d99c00; background: linear-gradient(135deg,#f6bb1c,#e39a00); color: #2b2000; }
+  .scoring-strip-actions :is(.scoring-update-favourite, .scoring-save-favourite):disabled { opacity: .45; box-shadow: none; }
+  .scoring-strip-actions button[hidden] { display: none !important; }
+  @media(max-width:640px) {
+    .scoring-showing { flex-basis: 100%; }
+    button.scoring-showing-name { font-size: .95rem; }
+  }
   /* The dialog of one block. */
   .scoring-config-dialog { display: none; flex-direction: column; width: min(56rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); max-height: calc(100dvh - 2rem); padding: 0; overflow: hidden; border: 0; border-radius: 18px; background: var(--panel-strong); box-shadow: var(--shadow-strong); }
   .scoring-config-dialog[open] { display: flex; }
@@ -2280,6 +2309,14 @@
         <div class="scoring-config-strip" data-scoring-config-strip>
           <div class="scoring-strip-top">
             <span class="eyebrow scoring-strip-label">Showing</span>
+            {# The scoring shown on one line: its star, its name (it opens the Filter Navigator), its status and Details,
+               which unfolds its whole card (the selector below). #}
+            <div class="scoring-showing" data-scoring-showing>
+              <button type="button" class="scoring-showing-star" data-scoring-showing-star aria-pressed="false" title="Keep it as a Favourite Scoring">☆</button>
+              <button type="button" class="scoring-showing-name" data-scoring-showing-name data-saved-filter-navigator-open title="Choose another Favourite Scoring in the Filter Navigator">No scoring is shown</button>
+              <span class="scoring-showing-status" data-scoring-showing-status hidden></span>
+              <button type="button" class="scoring-showing-details" data-scoring-showing-details aria-expanded="false" title="Show or hide the whole card of the scoring shown: its filters, CDRs, Filter ID and buttons">Details</button>
+            </div>
             <details class="saved-filter-selector" data-saved-filter-selector>
               <summary class="saved-filter-item" title="Choose a Saved Filter">
                 <span class="selected-saved-filter" data-selected-saved-filter-card>Loading Saved Filters…</span>
@@ -2306,6 +2343,9 @@
           </div>
           {# Calculate, after the steps. #}
           <div class="scoring-actions scoring-strip-actions">
+            {# With changes not calculated yet: give them to the Favourite Scoring shown, or keep them as a new one. #}
+            <button type="button" class="scoring-update-favourite" data-scoring-update-favourite disabled title="Give the changes to the Favourite Scoring shown (same name, star and place) and calculate it again"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 10.5l4 4 8-9"/></svg><span>Update Favourite</span></button>
+            <button type="button" class="scoring-save-favourite" data-scoring-save-favourite disabled title="Keep the configuration as a new Favourite Scoring, right after this one, which stays as it is"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 1.8l2.5 5.2 5.7.8-4.1 4 1 5.7L10 14.8l-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/></svg><span>Save as new Favourite</span></button>
             <button type="button" data-calculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="1" width="12" height="18" rx="2"/><path d="M7 4h6v3H7zM7 11h1m4 0h1m-6 4h1m4 0h1"/></svg><span>Calculate Scoring</span></button>
             <button type="button" class="scoring-force-button" data-recalculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M16 7a7 7 0 0 0-12-2L2 7m0-5v5h5M4 13a7 7 0 0 0 12 2l2-2m0 5v-5h-5"/></svg><span>Recalculate</span></button>
             <button type="button" class="scoring-close-button" data-close-scoring disabled title="Close the scoring shown (its Saved Filter stays)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7.5 8l5 5M12.5 8l-5 5"/></svg><span>Close Scoring</span></button>

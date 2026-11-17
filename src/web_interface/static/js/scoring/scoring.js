@@ -12565,6 +12565,7 @@
       }
     }
     calculateButton?.classList.toggle('is-pending', pending);
+    renderShowing(pending);
     // The fields of Country Areas and of the Scoring Trends fade while they are switched off.
     for (const [input, part] of [[countryAreasEnabled, 'country_areas'], [trendsEnabled, 'trends']]) {
       // (The Areas and Cities on their own also make the National & Country Areas Trends: they fade only when the
@@ -12612,6 +12613,117 @@
     const viewRow = root.querySelector('.scoring-results-view');
     viewRow?.classList.toggle('is-empty', nothingShown);
   }
+
+  // The scoring shown on one line (its star, name and status) and the buttons that keep changes not calculated yet:
+  // Update Favourite gives them to the Favourite Scoring shown, Save as new Favourite keeps them as a new one.
+  const showingStar = root.querySelector('[data-scoring-showing-star]');
+  const showingName = root.querySelector('[data-scoring-showing-name]');
+  const showingStatus = root.querySelector('[data-scoring-showing-status]');
+  const showingDetails = root.querySelector('[data-scoring-showing-details]');
+  const updateFavouriteButton = root.querySelector('[data-scoring-update-favourite]');
+  const saveFavouriteButton = root.querySelector('[data-scoring-save-favourite]');
+  const canEditFavourites = document.body.dataset.authenticatedRole !== 'user-viewer';
+
+  // The name of a Saved Filter: the one given, else what it filters (area, NR Mode and campaigns), as the Navigator.
+  function savedFilterDisplayName(savedFilter) {
+    if (savedFilter?.name) return savedFilter.name;
+    try {
+      const entry = savedFilterNavigatorEntry(savedFilter);
+      const area = entry.areas.map(scope => scope.text).join(', ') || 'Nationwide';
+      return [area, entry.modeLabel, entry.campaign].filter(Boolean).join(' · ');
+    } catch {
+      return `Filter ID ${savedFilterIdOf(savedFilter)}`;
+    }
+  }
+
+  function renderShowing(pending) {
+    const shown = shownSavedFilterId() ? selectedSavedFilter : null;
+    const starred = Boolean(shown?.pinned);
+    if (showingStar) {
+      showingStar.hidden = !shown;
+      showingStar.textContent = starred ? '★' : '☆';
+      showingStar.setAttribute('aria-pressed', String(starred));
+      showingStar.disabled = !canEditFavourites;
+      showingStar.title = starred ? 'A Favourite Scoring: click to take it out of the Favourite Scorings'
+        : 'Keep it as a Favourite Scoring';
+    }
+    if (showingName) showingName.textContent = shown ? savedFilterDisplayName(shown) : 'No scoring is shown';
+    if (showingStatus) {
+      let text = '';
+      let kind = '';
+      if (shown && isActive(shown)) {
+        const progress = Number(valueOf(shown, ['progress'], 0)) || 0;
+        text = `Calculating ${Math.round(progress)} %`;
+        kind = 'busy';
+      } else if (shown && pending) {
+        text = 'Changed · not calculated';
+        kind = 'pending';
+      } else if (shown) {
+        const finished = Date.parse(valueOf(shown, ['finished_at'], '') || '');
+        text = Number.isFinite(finished)
+          ? `Calculated ${new Date(finished).toLocaleString(undefined, {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}`
+          : 'Calculated';
+      }
+      showingStatus.hidden = !text;
+      showingStatus.textContent = text;
+      showingStatus.dataset.kind = kind;
+    }
+    if (showingDetails) showingDetails.hidden = !shown;
+    if (!shown) {
+      configStrip.classList.remove('is-showing-details');
+      showingDetails?.setAttribute('aria-expanded', 'false');
+    }
+    if (updateFavouriteButton) {
+      updateFavouriteButton.hidden = !canEditFavourites || !starred;
+      updateFavouriteButton.disabled = !pending || submittingCalculation || isActive(shown);
+    }
+    if (saveFavouriteButton) {
+      saveFavouriteButton.hidden = !canEditFavourites || !shown;
+      saveFavouriteButton.disabled = !pending || submittingCalculation;
+    }
+  }
+
+  showingDetails?.addEventListener('click', () => {
+    const open = !configStrip.classList.contains('is-showing-details');
+    configStrip.classList.toggle('is-showing-details', open);
+    showingDetails.setAttribute('aria-expanded', String(open));
+  });
+  showingStar?.addEventListener('click', async () => {
+    const shown = shownSavedFilterId() ? selectedSavedFilter : null;
+    if (!shown) return;
+    try {
+      await requestJson(`${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(shown))}`,
+        {method: 'PATCH', body: JSON.stringify({pinned: !shown.pinned})});
+      await refreshSavedFilters();
+    } catch (error) {
+      setMessage(error.message || 'The Favourite Scoring could not be updated.', 'error');
+    }
+  });
+  updateFavouriteButton?.addEventListener('click', async () => {
+    const shown = shownSavedFilterId() ? selectedSavedFilter : null;
+    if (!shown) return;
+    const name = savedFilterDisplayName(shown);
+    const message = `“${name}” takes the configuration of the strip and is calculated again, with the same name, star and `
+      + 'place. Its configuration changes for every user of the workspace.';
+    const confirmed = typeof showConfirmDialog === 'function'
+      ? await showConfirmDialog(message, {title: 'Update Favourite Scoring', confirmLabel: 'Update Favourite', cancelLabel: 'Cancel'})
+      : window.confirm(message);
+    if (confirmed !== true && confirmed !== 'confirm') return;
+    await createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(shown))}/edit`});
+  });
+  saveFavouriteButton?.addEventListener('click', async () => {
+    const shown = shownSavedFilterId() ? selectedSavedFilter : null;
+    if (!shown) return;
+    const name = await showTextInputDialog('Name of the new Favourite Scoring', {
+      eyebrow: 'Favourite Scorings', title: 'Save as new Favourite',
+      value: shown.name ? `${shown.name} (copy)` : '', placeholder: 'For example 2026-Q3 London', maxLength: 120,
+      confirmLabel: 'Save as new Favourite',
+      note: 'The configuration of the strip is saved as a new Favourite Scoring, right after the one shown (which stays as it is), and calculated.',
+    });
+    if (name === null || name === undefined) return;
+    await createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(shown))}/duplicate`,
+      extra: {name: String(name)}});
+  });
 
   // The fields of the open block that differ from the scoring shown, and whether the dialog changed anything.
   function markConfigDialog() {

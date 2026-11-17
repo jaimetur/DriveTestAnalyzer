@@ -467,8 +467,9 @@ def test_filter_navigator_opens_from_the_favourites_panel_and_both_selectors():
         assert 'data-selected-saved-filter-card' in summary and 'data-saved-filter-navigator-open' in summary
     panel = template.split('<details class="panel collapsible-panel saved-filters-panel" data-panel-state-key="scoring:favourites-filters" data-saved-filters-panel>', 1)[1].split('data-saved-filters-bulk', 1)[0]
     assert 'data-saved-filter-navigator-open' in panel and 'Filter Navigator' in panel
-    # The selector, the panel, the Favourite Scorings main button and the step of the start guide.
-    assert template.count('data-saved-filter-navigator-open') == 4
+    # The selector, the panel, the Favourite Scorings main button, the step of the start guide and the name of the
+    # scoring shown.
+    assert template.count('data-saved-filter-navigator-open') == 5
     dialog = template.split('<dialog class="saved-filter-navigator"', 1)[1].split('</dialog>', 1)[0]
     for marker in ('data-saved-filter-navigator-search', 'role="tree"', 'data-saved-filter-navigator-tree',
                    'data-saved-filter-navigator-count', 'data-saved-filter-navigator-close', 'data-saved-filter-navigator-manage'):
