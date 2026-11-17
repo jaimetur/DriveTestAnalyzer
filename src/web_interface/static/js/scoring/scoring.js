@@ -13016,35 +13016,43 @@
     else if (event.target.closest('[data-scoring-config-apply]')) closeConfigBlock('apply');
     else if (event.target.closest('[data-scoring-config-apply-calculate]')) closeConfigBlock('calculate');
   });
-  // A list opened in a dialog (Context Filters near its foot, for example) shows whole without moving the dialog: it
-  // opens downwards when it fits, else towards the side with more room, as tall as the room it has.
+  // A list opened in a dialog always opens downwards without moving the dialog: it floats over it (it may go past the
+  // foot of the dialog), shows a few values at most and scrolls through the rest; it follows its field while the
+  // dialog scrolls.
+  const DIALOG_LIST_HEIGHT = 320;
   function fitDialogList(menu) {
-    const box = menu.closest('.scoring-config-dialog-body, .scoring-edit-dialog');
-    if (!box || menu.hidden) return;
-    menu.classList.remove('opens-upwards');
-    menu.style.removeProperty('max-height');
+    if (!menu.closest('.scoring-config-dialog-body, .scoring-edit-dialog')) return;
+    if (menu.hidden) {
+      menu.classList.remove('is-floating');
+      for (const property of ['top', 'left', 'min-width', 'max-height']) menu.style.removeProperty(property);
+      return;
+    }
     const margin = 8;
-    const bounds = box.getBoundingClientRect();
-    const overflow = menu.getBoundingClientRect().bottom - (bounds.bottom - margin);
-    if (overflow <= 0) return;
     const field = (menu.parentElement || menu).getBoundingClientRect();
-    const below = bounds.bottom - margin - field.bottom - 7;
-    const above = field.top - 7 - bounds.top - margin;
-    if (above > below) {
-      menu.classList.add('opens-upwards');
-      menu.style.maxHeight = `${Math.max(160, above)}px`;
-    } else menu.style.maxHeight = `${Math.max(160, below)}px`;
+    menu.classList.remove('aligns-right', 'opens-upwards');
+    menu.style.removeProperty('translate');
+    menu.classList.add('is-floating');
+    menu.style.minWidth = `${Math.round(field.width)}px`;
+    const top = field.bottom + 7;
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.maxHeight = `${Math.round(Math.max(140, Math.min(DIALOG_LIST_HEIGHT, window.innerHeight - margin - top)))}px`;
+    const width = menu.getBoundingClientRect().width;
+    menu.style.left = `${Math.round(Math.max(margin, Math.min(field.left, window.innerWidth - margin - width)))}px`;
   }
+  const openDialogLists = () => root.querySelectorAll(':is(.scoring-config-dialog, .scoring-edit-dialog) :is(.multiselect-menu, .searchable-select-menu).is-floating:not([hidden])');
   for (const dialog of [configDialog, editDialog]) {
     if (!dialog) continue;
     new MutationObserver(records => {
       for (const {target} of records) {
-        if (target instanceof Element && target.matches('.multiselect-menu, .searchable-select-menu') && !target.hidden) {
+        if (target instanceof Element && target.matches('.multiselect-menu, .searchable-select-menu')) {
           window.setTimeout(() => fitDialogList(target), 0);
         }
       }
     }).observe(dialog, {attributes: true, attributeFilter: ['hidden'], subtree: true});
+    // An open list follows its field while the dialog scrolls.
+    dialog.addEventListener('scroll', () => openDialogLists().forEach(fitDialogList), true);
   }
+  window.addEventListener('resize', () => openDialogLists().forEach(fitDialogList));
   // The values change through the lists of the app too: the marks follow once they have been applied.
   for (const type of ['change', 'input']) {
     configDialog?.addEventListener(type, () => window.setTimeout(markConfigDialog, 0));
