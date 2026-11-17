@@ -1960,6 +1960,9 @@
   }
   /* Country Areas and Scoring Trends can be switched off: their fields fade and their card says Off. */
   .scoring-config-switch { display: flex; align-items: flex-start; gap: .55rem; margin-bottom: .8rem; padding: .6rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: .82rem; cursor: pointer; }
+  .scoring-config-switch[hidden] { display: none; }
+  .scoring-trend-areas-off { display: block; margin-top: .2rem; color: #8a5a00; font-style: normal; font-weight: 650; }
+  .scoring-trend-areas-off[hidden] { display: none; }
   .scoring-config-switch input { width: 1.1rem; height: 1.1rem; margin: .1rem 0 0; flex: 0 0 auto; }
   .scoring-config-switch span { display: grid; gap: .1rem; color: var(--muted); }
   .scoring-config-switch strong { color: var(--text); }
@@ -2012,6 +2015,8 @@
     .scoring-showing { flex-basis: 100%; }
     button.scoring-showing-name { font-size: .95rem; }
   }
+  /* The areas of the trends follow Country Areas while Same as Country Areas is ticked. */
+  [data-scoring-trend-areas-fields].is-same { opacity: .55; pointer-events: none; }
   /* The dialog of one block. */
   .scoring-config-dialog { display: none; flex-direction: column; width: min(56rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); max-height: calc(100dvh - 2rem); padding: 0; overflow: hidden; border: 0; border-radius: 18px; background: var(--panel-strong); box-shadow: var(--shadow-strong); }
   .scoring-config-dialog[open] { display: flex; }
@@ -2225,8 +2230,8 @@
        Filters do not apply. #}
     <section class="scoring-config-section" data-scoring-config-section="areas" data-scoring-trends aria-labelledby="scoring-config-areas-title">
       <h3 class="scoring-config-section-title" id="scoring-config-areas-title">Country Areas</h3>
-      {# Switched off, Country Areas is not calculated and its tab hides from the results. #}
-      <label class="scoring-config-switch" data-scoring-config-key="country_areas"><input type="checkbox" data-scoring-country-areas-enabled checked> <span><strong>Include Country Areas</strong> Calculated with the scoring and shown in its own tab of the results; off, the tab hides and the scoring is quicker.</span></label>
+      {# Switched off (with the switch of its card, which this hidden box follows), Country Areas is not calculated and its tab hides from the results. #}
+      <label class="scoring-config-switch" data-scoring-config-key="country_areas" hidden><input type="checkbox" data-scoring-country-areas-enabled checked> <span><strong>Include Country Areas</strong> Calculated with the scoring and shown in its own tab of the results; off, the tab hides and the scoring is quicker.</span></label>
       <div class="scoring-picker scoring-area-summary" data-scoring-area-summary data-scoring-part-fields="country_areas">
         <div class="scoring-picker-head" title="Always the whole country: the Region, Cluster and City of the Context Filters do not apply"><strong>Areas of the country</strong><span>Whole country</span></div>
         <div class="scoring-area-grid">
@@ -2241,13 +2246,13 @@
                 </select>
               </label>
         </div>
-        <p class="scoring-context-filter-note">Each area of the Areas level gets its own score; the Cities on their own are scored as extra areas next to them. They are shown in the Country Areas tab, and the National &amp; Country Areas Trends of Scoring Trends use them too (also with Country Areas switched off).</p>
+        <p class="scoring-context-filter-note">Each area of the Areas level gets its own score; the Cities on their own are scored as extra areas next to them, in the Country Areas tab. The National &amp; Country Areas Trends of Scoring Trends use the same ones by default (<strong>Same as Country Areas</strong> in step 5), or areas of their own.</p>
       </div>
     </section>
     <section class="scoring-config-section" data-scoring-config-section="trends" aria-labelledby="scoring-config-trends-title">
       <h3 class="scoring-config-section-title" id="scoring-config-trends-title">Scoring Trends</h3>
-      {# Switched off, the Scoring Trends are not calculated and their tab hides from the results. #}
-      <label class="scoring-config-switch" data-scoring-config-key="trends"><input type="checkbox" data-scoring-trends-enabled checked> <span><strong>Include Scoring Trends</strong> Calculated with the scoring and shown in their own tab of the results; off, the tab hides and the scoring is quicker.</span></label>
+      {# Switched off (with the switch of their card, which this hidden box follows), the Scoring Trends are not calculated and their tab hides from the results. #}
+      <label class="scoring-config-switch" data-scoring-config-key="trends" hidden><input type="checkbox" data-scoring-trends-enabled checked> <span><strong>Include Scoring Trends</strong> Calculated with the scoring and shown in their own tab of the results; off, the tab hides and the scoring is quicker.</span></label>
       <div class="scoring-picker scoring-area-summary scoring-trends-options" data-scoring-part-fields="trends">
         <div class="scoring-picker-head" title="The Scoring Trends tab only: with these campaigns, whatever the Campaign filter (without campaigns, those of the Campaign filter)"><strong>Scoring Trends</strong><span>Independent of the Campaign of the Context Filters</span></div>
         <div class="scoring-area-grid scoring-trends-grid">
@@ -2262,6 +2267,24 @@
                 </select>
               </label>
         </div>
+      </div>
+      {# The areas of the National & Country Areas Trends: those of Country Areas by default, or their own. #}
+      <div class="scoring-picker scoring-area-summary scoring-trend-areas" data-scoring-part-fields="trends" data-scoring-trend-areas>
+        <div class="scoring-picker-head"><strong>Areas of the National &amp; Country Areas Trends</strong><span>Whole country</span></div>
+        <label class="scoring-config-switch scoring-trend-areas-same" data-scoring-config-key="trend_same"><input type="checkbox" data-scoring-trend-areas-same checked> <span><strong>Same as Country Areas</strong> The trends follow the Areas and Cities on their own of step 4; untick it to choose areas of their own for the trends only.<em class="scoring-trend-areas-off" data-scoring-trend-areas-off hidden>Country Areas is switched off (step 4): the trends use the areas below, of their own.</em></span></label>
+        <div class="scoring-area-grid" data-scoring-trend-areas-fields>
+          <label data-scoring-config-key="trend_breakdown">Areas
+            <select data-scoring-trend-breakdown aria-label="Areas of the National &amp; Country Areas Trends" title="Each Region, Cluster or City of the country gets its own trend; None: only the Cities on their own">
+                  {% for value in ['None', 'Region', 'Cluster', 'City'] %}<option value="{{ value }}"{% if value == 'Region' %} selected{% endif %}>{{ 'None (only the Cities on their own)' if value == 'None' else value }}</option>{% endfor %}
+                </select>
+          </label>
+          <label data-scoring-config-key="trend_cities">Cities on their own
+            <select multiple size="1" data-scoring-trend-cities data-multiselect-auto-close="1000" data-multiselect-empty-label="None" aria-label="Cities on their own of the National &amp; Country Areas Trends">
+              <option value="London" selected>London</option>
+            </select>
+          </label>
+        </div>
+        <p class="scoring-context-filter-note">The Scoring Trends tab shows the National scoring, then the trend of each of these areas and cities. With <strong>Same as Country Areas</strong> they change with step 4; without it, each tab keeps its own: for example every Region in Country Areas and only London and Manchester in the trends.</p>
       </div>
     </section>
     {# Shown in the dialog of a Saved Filter being edited or duplicated. #}

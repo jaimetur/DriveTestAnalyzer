@@ -128,6 +128,9 @@ def _normalize_area_summary(raw: Any) -> dict[str, Any]:
         'campaigns': normalize_trend_campaigns(raw['campaigns']) if 'campaigns' in raw else [ALL_CAMPAIGNS],
         # Country Areas and Scoring Trends switched off (only said when off).
         **{part: False for part in ('country_areas', 'trends') if raw.get(part) is False},
+        # The Areas and Cities on their own of the trends, when they are not those of Country Areas.
+        **({'trend_breakdown': str(raw.get('trend_breakdown') or 'None'), 'trend_cities': _strings(raw.get('trend_cities')),
+            **({'trend_main_cities': True} if raw.get('trend_main_cities') else {})} if 'trend_cities' in raw else {}),
     }
 
 

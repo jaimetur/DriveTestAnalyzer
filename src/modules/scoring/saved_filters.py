@@ -23,7 +23,7 @@ import pandas as pd
 from src.modules.network import postal_areas
 from src.modules.cdr.column_names import campaign_sort_key, column_identity, resolve_column_name
 from src.modules.scoring.scoring_area_summary import (
-    WARNING_PREFIXES, area_summary_levels, area_summary_part_enabled, calculate_area_summary, calculate_area_summary_from_history,
+    WARNING_PREFIXES, area_summary_levels, area_summary_part_enabled, country_area_summary, trend_area_summary, calculate_area_summary, calculate_area_summary_from_history,
     calculate_geographical, calculate_geographical_from_history, geographical_levels, has_area_filters,
     whole_country_filters,
     detach_area_summary, normalize_area_summary_request, resolve_main_cities, with_breakdown_cities,
@@ -2111,9 +2111,15 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
     try:
         # Its Main Cities are those of the workspace when it is calculated; a City breakdown scores the cities of its City
         # filter and its Separate cities only.
+        # The National & Country Areas Trends score their own Areas and Cities on their own when they have some; the
+        # Country Areas tab those of Country Areas.
+        requested = saved_filter.get('area_summary')
+        main_cities = _workspace_main_cities(repository)
         saved_filter['area_summary'] = with_breakdown_cities(
-            resolve_main_cities(saved_filter.get('area_summary'), _workspace_main_cities(repository)),
-            saved_filter.get('context_filters'))
+            resolve_main_cities(trend_area_summary(requested), main_cities), saved_filter.get('context_filters'))
+        if isinstance(requested, dict) and 'trend_cities' in requested:
+            saved_filter['geographical_areas'] = with_breakdown_cities(
+                resolve_main_cities(country_area_summary(requested), main_cities), saved_filter.get('context_filters'))
         configuration = saved_filter.get('configuration')
         if configuration is None:
             raise ValueError(
@@ -2139,7 +2145,8 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
         trends = saved_filter.get('area_trends') if saved_filter.get('area_summary') and trends_on else None
         # National & Geographical Areas Trends with campaigns of their own are scored apart, from the CDRs of those
         # campaigns; the Geographical Areas of the job keep their Breakdown and Separate cities.
-        job_filter = ({**saved_filter, 'area_summary': None, 'geographical_areas': saved_filter.get('area_summary')}
+        job_filter = ({**saved_filter, 'area_summary': None,
+                       'geographical_areas': saved_filter.get('geographical_areas') or saved_filter.get('area_summary')}
                       if trends or not trends_on else saved_filter)
         if not areas_on:
             job_filter = {**job_filter, 'geographical': False}

@@ -639,3 +639,25 @@ def test_country_areas_and_scoring_trends_can_be_switched_off():
     # The selection of the page keeps them too.
     assert _normalize_area_summary({'trends': False})['trends'] is False
     assert 'country_areas' not in _normalize_area_summary({'country_areas': True})
+
+
+def test_the_scoring_trends_can_have_areas_of_their_own():
+    from src.modules.scoring.scoring_area_summary import (
+        country_area_summary, normalize_area_summary_request, trend_area_summary,
+    )
+    from src.modules.scoring.scoring_reports import _normalize_area_summary
+
+    # The same areas as Country Areas are not said: Saved Filters of before keep their identity.
+    same = normalize_area_summary_request({'breakdown': 'Region', 'cities': ['London'],
+                                           'trend_breakdown': 'Region', 'trend_cities': ['London']})
+    assert 'trend_cities' not in same and trend_area_summary(same) == country_area_summary(same)
+    own = normalize_area_summary_request({'breakdown': 'Region', 'cities': ['London'],
+                                          'trend_breakdown': 'None', 'trend_cities': ['Leeds', '@main-cities']})
+    assert own['trend_breakdown'] == 'None' and own['trend_cities'] == ['Leeds'] and own['trend_main_cities'] is True
+    # The trends score their own areas; the Country Areas tab keeps its own.
+    assert trend_area_summary(own)['breakdown'] is None and trend_area_summary(own)['cities'] == ['Leeds']
+    assert trend_area_summary(own)['main_cities'] is True
+    assert country_area_summary(own) == {'breakdown': 'Region', 'cities': ['London'], 'time_split': 'Campaign'}
+    # The selection of the page keeps them too.
+    kept = _normalize_area_summary({'breakdown': 'Region', 'cities': ['London'], 'trend_breakdown': 'City', 'trend_cities': ['Leeds']})
+    assert kept['trend_breakdown'] == 'City' and kept['trend_cities'] == ['Leeds']

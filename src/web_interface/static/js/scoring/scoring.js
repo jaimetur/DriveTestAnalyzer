@@ -424,6 +424,11 @@
   // Country Areas and the Scoring Trends switched off are not calculated and their tabs hide.
   const countryAreasEnabled = root.querySelector('[data-scoring-country-areas-enabled]');
   const trendsEnabled = root.querySelector('[data-scoring-trends-enabled]');
+  // The areas of the National & Country Areas Trends: those of Country Areas (Same as Country Areas), or their own.
+  const trendAreasSame = root.querySelector('[data-scoring-trend-areas-same]');
+  const trendBreakdownSelect = root.querySelector('[data-scoring-trend-breakdown]');
+  const trendCitiesSelect = root.querySelector('[data-scoring-trend-cities]');
+  const trendAreasFields = root.querySelector('[data-scoring-trend-areas-fields]');
   const message = root.querySelector('[data-scoring-message]');
   const savedFilterLists = [...root.querySelectorAll('[data-saved-filter-list]')];
   const savedFilterPanelList = savedFilterLists.find(list => list.closest('.saved-filters-panel')) || null;
@@ -852,6 +857,12 @@
   // The separate cities: Main Cities first (kept as such, the Main Cities of the workspace when the scoring is
   // calculated), then the cities of the selected CDRs, plus the cities chosen before.
   function refreshAreaSummaryCities(selectedIds = new Set(selectedDatasetIds())) {
+    refreshCityChoices(areaSummaryCities, selectedIds);
+    // (The Cities on their own of the trends list the same cities.)
+    if (typeof trendCitiesSelect !== 'undefined') refreshCityChoices(trendCitiesSelect, selectedIds);
+  }
+
+  function refreshCityChoices(areaSummaryCities, selectedIds) {
     if (!areaSummaryCities) return;
     const chosen = [...areaSummaryCities.selectedOptions].map(option => option.value).filter(Boolean);
     const catalogueKey = filterCatalogueKeys.get('City');
@@ -893,7 +904,57 @@
       campaigns: selectedTrendCampaigns(),
       country_areas: typeof countryAreasEnabled !== 'undefined' && countryAreasEnabled ? countryAreasEnabled.checked : true,
       trends: typeof trendsEnabled !== 'undefined' && trendsEnabled ? trendsEnabled.checked : true,
+      ...(typeof selectedTrendAreas === 'function' ? selectedTrendAreas() : {}),
     };
+  }
+
+  // Whether the trends take the areas of Country Areas: Same as Country Areas ticked, and Country Areas switched on.
+  function trendAreasFollowCountry() {
+    if (typeof trendAreasSame === 'undefined' || !trendAreasSame) return true;
+    return trendAreasSame.checked && !(countryAreasEnabled && !countryAreasEnabled.checked);
+  }
+
+  // The areas of the trends when they are their own (none when they follow Country Areas).
+  function selectedTrendAreas() {
+    if (trendAreasFollowCountry() || !trendBreakdownSelect || !trendCitiesSelect) return {};
+    const chosen = [...trendCitiesSelect.selectedOptions].map(option => option.value).filter(Boolean);
+    return {trend_breakdown: String(trendBreakdownSelect.value || 'Region'),
+      trend_cities: chosen.filter(value => value !== MAIN_CITIES_TOKEN),
+      ...(chosen.includes(MAIN_CITIES_TOKEN) ? {trend_main_cities: true} : {})};
+  }
+
+  // The areas of the trends shown as those of Country Areas.
+  function mirrorTrendAreas() {
+    if (typeof trendBreakdownSelect === 'undefined' || !trendBreakdownSelect || !trendCitiesSelect) return;
+    if (areaSummaryBreakdown) trendBreakdownSelect.value = areaSummaryBreakdown.value;
+    const wanted = new Set(chosenAreaCities().map(value => value.toLocaleLowerCase()));
+    const known = new Set([...trendCitiesSelect.options].map(option => option.value.toLocaleLowerCase()));
+    for (const option of areaSummaryCities?.options || []) {
+      if (option.value && !known.has(option.value.toLocaleLowerCase())) trendCitiesSelect.append(option.cloneNode(true));
+    }
+    for (const option of trendCitiesSelect.options) option.selected = wanted.has(option.value.toLocaleLowerCase());
+    delete trendCitiesSelect.dataset.scoringCatalogueSignature;
+    trendCitiesSelect.dispatchEvent(new Event('multiselect:options-updated'));
+  }
+
+  // Same as Country Areas: the fields of the trends follow those of Country Areas and fade; with Country Areas switched
+  // off the trends keep areas of their own (the box is then unavailable).
+  function syncTrendAreas() {
+    if (typeof trendAreasSame === 'undefined' || !trendAreasSame) return;
+    const countryOn = !countryAreasEnabled || countryAreasEnabled.checked;
+    trendAreasSame.disabled = !countryOn;
+    trendAreasSame.closest('label')?.setAttribute('title', countryOn ? ''
+      : 'Country Areas is switched off: the trends keep areas of their own');
+    const offNote = trendAreasSame.closest('label')?.querySelector('[data-scoring-trend-areas-off]');
+    if (offNote) offNote.hidden = countryOn;
+    const follow = trendAreasFollowCountry();
+    if (follow) mirrorTrendAreas();
+    trendAreasFields?.classList.toggle('is-same', follow);
+    // None (only the Cities on their own) needs one of them.
+    const cities = trendCitiesSelect ? [...trendCitiesSelect.selectedOptions].filter(option => option.value).length : 0;
+    const none = trendBreakdownSelect ? [...trendBreakdownSelect.options].find(option => option.value === 'None') : null;
+    if (none) none.disabled = !cities;
+    if (!cities && trendBreakdownSelect?.value === 'None') trendBreakdownSelect.value = 'Region';
   }
 
   // Without a Breakdown the Separate cities are the only areas: None is offered only with some of them, and the Breakdown
@@ -908,6 +969,7 @@
       none.title = cities ? '' : 'Choose a City on its own first';
     }
     if (!cities && areaSummaryBreakdown.value === 'None') areaSummaryBreakdown.value = 'Region';
+    if (typeof syncTrendAreas === 'function') syncTrendAreas();
   }
 
   function applyHierarchy(hierarchy) {
@@ -1126,6 +1188,8 @@
         postal_codes: Boolean(postalCodes),
         postal_map: postalCodes ? String(postalMap || 'full') : '',
         country_areas: countryAreas !== false, trends: trends !== false,
+        trend_areas: Array.isArray(selection?.area_summary?.trend_cities) ? [String(selection.area_summary.trend_breakdown || ''),
+          selection.area_summary.trend_cities.map(String), Boolean(selection.area_summary.trend_main_cities)] : null,
       }))(selection?.area_summary || {}),
     });
   }
@@ -1266,6 +1330,25 @@
         refreshAreaSummaryCities();
       }
       applyTrendCampaigns(summary.campaigns);
+      // The areas of the trends: their own when the selection has some, else those of Country Areas.
+      if (typeof trendAreasSame !== 'undefined' && trendAreasSame) {
+        const own = Array.isArray(summary.trend_cities);
+        trendAreasSame.checked = !own;
+        mirrorTrendAreas();
+        if (own && trendBreakdownSelect && trendCitiesSelect) {
+          const cities = [...(summary.trend_main_cities ? [MAIN_CITIES_TOKEN] : []), ...summary.trend_cities.map(String)];
+          const known = new Set([...trendCitiesSelect.options].map(option => option.value.toLocaleLowerCase()));
+          for (const city of cities) {
+            if (known.has(city.toLocaleLowerCase())) continue;
+            trendCitiesSelect.append(Object.assign(document.createElement('option'), {value: city, textContent: city === MAIN_CITIES_TOKEN ? MAIN_CITIES_LABEL : city}));
+          }
+          const wanted = new Set(cities.map(city => city.toLocaleLowerCase()));
+          for (const option of trendCitiesSelect.options) option.selected = wanted.has(option.value.toLocaleLowerCase());
+          delete trendCitiesSelect.dataset.scoringCatalogueSignature;
+          trendCitiesSelect.dispatchEvent(new Event('multiselect:options-updated'));
+          if ([...trendBreakdownSelect.options].some(option => option.value === summary.trend_breakdown)) trendBreakdownSelect.value = summary.trend_breakdown;
+        }
+      }
       syncAreaSummary();
       updateSelection();
       if (unavailableFilters.length) {
@@ -1308,6 +1391,8 @@
           enabled: true}
         : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedFilter.area_summary?.time_split || 'Campaign',
           country_areas: savedFilter.area_summary?.country_areas, trends: savedFilter.area_summary?.trends,
+          ...(Array.isArray(savedFilter.area_summary?.trend_cities) ? {trend_breakdown: savedFilter.area_summary.trend_breakdown,
+            trend_cities: savedFilter.area_summary.trend_cities, trend_main_cities: savedFilter.area_summary.trend_main_cities} : {}),
           campaigns: savedFilter.area_summary?.campaigns || [], ...(savedFilter.area_summary?.postal_codes ? {postal_codes: true, postal_map: savedFilter.area_summary.postal_map} : {})},
     });
     scheduleSelectionSave();
@@ -1571,7 +1656,9 @@
       ...(summary.main_cities ? {main_cities: true} : {}), ...(summary.postal_codes ? {postal_codes: true} : {}),
       ...(summary.postal_codes && summary.postal_map !== 'full' ? {postal_map: summary.postal_map} : {}),
       ...(summary.campaigns.length ? {campaigns: summary.campaigns} : {}),
-      ...(summary.country_areas === false ? {country_areas: false} : {}), ...(summary.trends === false ? {trends: false} : {})};
+      ...(summary.country_areas === false ? {country_areas: false} : {}), ...(summary.trends === false ? {trends: false} : {}),
+      ...('trend_cities' in summary ? {trend_breakdown: summary.trend_breakdown, trend_cities: summary.trend_cities,
+        ...(summary.trend_main_cities ? {trend_main_cities: true} : {})} : {})};
   }
 
   // Calculate Scoring, or Open Scoring (a folder open) when the selection is a Saved Filter with its result up to date.
@@ -2512,7 +2599,18 @@
       if (savedFilter?.area_summary?.trends === false) {
         trendValue.textContent = 'Off';
         trendMeta.append('Scoring Trends: ', trendValue);
-      } else trendMeta.append('Scoring Trends: Campaigns: ', trendValue, ' · Time split: ', timeValue);
+      } else {
+        trendMeta.append('Scoring Trends: Campaigns: ', trendValue, ' · Time split: ', timeValue);
+        // Their own areas, when they are not those of Country Areas.
+        const trendSummary = savedFilter?.area_summary || {};
+        if (Array.isArray(trendSummary.trend_cities)) {
+          const areasValue = document.createElement('strong');
+          areasValue.className = 'saved-filter-area-summary saved-filter-area-summary-breakdown';
+          areasValue.textContent = [trendSummary.trend_breakdown && trendSummary.trend_breakdown !== 'None' ? trendSummary.trend_breakdown : '',
+            [...(trendSummary.trend_main_cities ? ['Main Cities'] : []), ...trendSummary.trend_cities].join(', ')].filter(Boolean).join(' + ') || 'None';
+          trendMeta.append(' · Areas: ', areasValue);
+        }
+      }
       const cdrNames = savedFilterCdrNames(savedFilter);
       const cdrButton = document.createElement('button');
       cdrButton.type = 'button';
@@ -11390,11 +11488,12 @@
     if (partSwitch) {
       const input = partSwitch.dataset.scoringPartSwitch === 'country_areas' ? countryAreasEnabled : trendsEnabled;
       if (input) input.checked = partSwitch.checked;
+      syncAreaSummary();
       updateSelection();
       scheduleSelectionSave();
       return;
     }
-    if (event.target.matches?.('[data-scoring-area-summary] select, [data-scoring-area-postal-codes], [data-scoring-area-time-split], [data-scoring-trend-campaigns], [data-scoring-country-areas-enabled], [data-scoring-trends-enabled]')) {
+    if (event.target.matches?.('[data-scoring-area-summary] select, [data-scoring-area-postal-codes], [data-scoring-area-time-split], [data-scoring-trend-campaigns], [data-scoring-country-areas-enabled], [data-scoring-trends-enabled], [data-scoring-trend-areas-same], [data-scoring-trend-breakdown], [data-scoring-trend-cities]')) {
       syncAreaSummary();
       updateSelection();
       scheduleSelectionSave();
@@ -12437,7 +12536,8 @@
       split: {aggregation_levels: value.aggregation_levels},
       areas: {country_areas: summary.country_areas !== false, breakdown: summary.breakdown, cities: summary.cities,
         main_cities: Boolean(summary.main_cities)},
-      trends: {trends: summary.trends !== false, campaigns: summary.campaigns, time_split: summary.time_split},
+      trends: {trends: summary.trends !== false, campaigns: summary.campaigns, time_split: summary.time_split,
+        areas: Array.isArray(summary.trend_cities) ? [summary.trend_breakdown, summary.trend_cities, Boolean(summary.trend_main_cities)] : null},
     };
   }
 
@@ -12449,6 +12549,9 @@
     if (key === 'postal_map') return summary.postal_codes ? summary.postal_map : '';
     if (key === 'cities') return [summary.cities, Boolean(summary.main_cities)];
     if (key === 'country_areas' || key === 'trends') return summary[key] !== false;
+    if (key === 'trend_same') return !Array.isArray(summary.trend_cities);
+    if (key === 'trend_breakdown') return Array.isArray(summary.trend_cities) ? summary.trend_breakdown : null;
+    if (key === 'trend_cities') return Array.isArray(summary.trend_cities) ? [summary.trend_cities, Boolean(summary.trend_main_cities)] : null;
     if (['breakdown', 'campaigns', 'time_split', 'postal_codes'].includes(key)) return summary[key];
     return value[key];
   }
@@ -12502,8 +12605,12 @@
     const cities = configOptionTexts(areaSummaryCities);
     const areasLines = [['Areas', breakdown], ['On their own', cities.length ? cities.join(', ') : 'None']];
     const trendCampaignTexts = configOptionTexts(trendCampaigns);
+    const trendCityTexts = configOptionTexts(trendCitiesSelect);
+    const trendAreasText = trendAreasFollowCountry() ? 'Same as Country Areas'
+      : [trendBreakdownSelect?.value === 'None' ? '' : configSelectText(trendBreakdownSelect),
+        trendCityTexts.length ? trendCityTexts.join(', ') : ''].filter(Boolean).join(' + ') || 'None';
     const trends = [['Campaigns', trendCampaignTexts.length ? trendCampaignTexts.join(', ') : 'Same as the Campaign filter'],
-      ['Time split', configSelectText(areaSummaryTimeSplit) || 'Campaign']];
+      ['Time split', configSelectText(areaSummaryTimeSplit) || 'Campaign'], ['Areas', trendAreasText]];
     const blocks = {setup, context, split,
       areas: countryAreasEnabled && !countryAreasEnabled.checked ? [['Country Areas', 'Off: not calculated']] : areasLines,
       trends: trendsEnabled && !trendsEnabled.checked ? [['Scoring Trends', 'Off: not calculated']] : trends};
@@ -12528,7 +12635,7 @@
       const off = lines.length === 1 && String(lines[0][1]).startsWith('Off');
       const text = off ? 'Off' : key === 'areas'
         ? [lines[0]?.[1] === 'None' ? '' : lines[0]?.[1], lines[1]?.[1] === 'None' ? '' : `+ ${lines[1]?.[1]}`].filter(Boolean).join(' ').replace(/^\+ /, '') || 'None'
-        : key === 'trends' ? `${lines[0]?.[1] || ''} · Time split: ${lines[1]?.[1] || ''}`
+        : key === 'trends' ? `${lines[0]?.[1] || ''} · Time split: ${lines[1]?.[1] || ''}${lines[2] && lines[2][1] !== 'Same as Country Areas' ? ` · Areas: ${lines[2][1]}` : ''}`
         : lines.map(([label, value]) => (['Methodology', 'NR Mode', 'Campaign', 'Area', 'Levels'].includes(label) ? value
           : label === 'GAP reference' ? `GAP vs ${value}` : label === 'Postal Codes' ? `Postal Codes (${value})`
           : label === 'Environment' || label === 'CDRs' ? value.replace(/ \((automatic|chosen by hand)\)$/, '') : `${label}: ${value}`)).join(' · ');
@@ -12568,10 +12675,9 @@
     renderShowing(pending);
     // The fields of Country Areas and of the Scoring Trends fade while they are switched off.
     for (const [input, part] of [[countryAreasEnabled, 'country_areas'], [trendsEnabled, 'trends']]) {
-      // (The Areas and Cities on their own also make the National & Country Areas Trends: they fade only when the
-      // Scoring Trends are switched off too.)
-      const off = Boolean(input) && !input.checked && (part !== 'country_areas' || !trendsEnabled || !trendsEnabled.checked);
-      root.querySelector(`[data-scoring-part-fields="${part}"]`)?.classList.toggle('is-part-off', off);
+      // (Country Areas switched off: the trends keep areas of their own, so its fields fade too.)
+      const off = Boolean(input) && !input.checked;
+      for (const fields of root.querySelectorAll(`[data-scoring-part-fields="${part}"]`)) fields.classList.toggle('is-part-off', off);
       // The switch of its card follows it.
       const cardSwitch = root.querySelector(`[data-scoring-part-switch="${part}"]`);
       if (cardSwitch && input) cardSwitch.checked = input.checked;
@@ -12732,6 +12838,8 @@
     const now = calculationSelectionFromControls();
     let differing = 0;
     for (const field of section.querySelectorAll('[data-scoring-config-key]')) {
+      // (A hidden box, such as the switch the card holds, is not counted.)
+      if (field.closest('[hidden]')) continue;
       const key = field.dataset.scoringConfigKey;
       const changed = Boolean(shownSelection) && shownSavedFilterId() !== ''
         && JSON.stringify(configFieldValue(now, key)) !== JSON.stringify(configFieldValue(shownSelection, key));

@@ -38,6 +38,8 @@ AREA_SUMMARY_TIME_SPLITS = ('All', 'Campaign', 'Daily', 'Weekly', 'Monthly', 'Qu
 NATIONAL = 'National'
 # The parts of the Country Areas & Scoring Trends of a job that can be switched off.
 AREA_SUMMARY_PARTS = ('country_areas', 'trends')
+# The Areas and Cities on their own of the National & Country Areas Trends, when they are not those of Country Areas.
+TREND_AREA_KEYS = ('trend_breakdown', 'trend_cities', 'trend_main_cities')
 # The prefix of the warnings of the summary (summaries calculated before name it National & Areas Trends or National
 # & Area Summary).
 WARNING_PREFIXES = ('National & Country Areas Trends:', 'National & Geographical Areas Trends:', 'National & Areas Trends:',
@@ -76,16 +78,8 @@ def normalize_area_summary_request(area_summary: Any, context_filters: dict[str,
     (see ``whole_country_filters``).
     """
     area_summary = area_summary if isinstance(area_summary, dict) else {}
-    # Main Cities (the flag, or its token among the cities) stand for the Main Cities of the workspace when it is calculated.
-    main_cities = bool(area_summary.get('main_cities')) or any(
-        str(city).strip() == MAIN_CITIES_TOKEN for city in area_summary.get('cities') or [])
-    explicit = {**area_summary, 'cities': [city for city in area_summary.get('cities') or [] if str(city).strip() != MAIN_CITIES_TOKEN]}
-    if main_cities:
-        # (They are Separate cities: no breakdown is then a choice, not one saved without areas.)
-        breakdown = geographical_areas({**explicit, 'cities': ['-']})[0]
-        cities = geographical_areas({'breakdown': 'Region', 'cities': explicit['cities']})[1] if explicit['cities'] else []
-    else:
-        breakdown, cities = geographical_areas(explicit)
+    breakdown, cities, main_cities = _normalized_areas(area_summary.get('breakdown'), area_summary.get('cities'),
+                                                       area_summary.get('main_cities'))
     split = str(area_summary.get('time_split') or '').strip().casefold()
     time_split = next((name for name in AREA_SUMMARY_TIME_SPLITS if name.casefold() == split), 'Campaign')
     normalized = {'breakdown': breakdown, 'cities': cities, 'time_split': time_split}
@@ -101,12 +95,58 @@ def normalize_area_summary_request(area_summary: Any, context_filters: dict[str,
     # (Without campaigns of its own, the request keeps the form of the summaries saved before they had any.)
     if campaigns:
         normalized['campaigns'] = campaigns
+    # The Areas and Cities on their own of the National & Country Areas Trends: those of Country Areas unless the request
+    # gives its own (only kept when they differ, so a request of before keeps its identity).
+    if any(key in area_summary for key in TREND_AREA_KEYS):
+        trend = _normalized_areas(area_summary.get('trend_breakdown'), area_summary.get('trend_cities'),
+                                  area_summary.get('trend_main_cities'))
+        if trend != (breakdown, cities, main_cities):
+            normalized['trend_breakdown'], normalized['trend_cities'] = trend[0] or 'None', trend[1]
+            if trend[2]:
+                normalized['trend_main_cities'] = True
     # Country Areas and Scoring Trends can be switched off: they are then not calculated and their tabs hide. (Only
     # said when off: every other request keeps the form, and the identity, it had.)
     for part in AREA_SUMMARY_PARTS:
         if area_summary.get(part) is False:
             normalized[part] = False
     return normalized
+
+
+def _normalized_areas(breakdown: Any, cities: Any, main_cities: Any) -> tuple[str | None, list[str], bool]:
+    """A Breakdown (Areas) and its Cities on their own as a request keeps them: Main Cities (the flag, or its token among
+    the cities) stand for the Main Cities of the workspace when it is calculated."""
+    cities = list(cities) if isinstance(cities, (list, tuple)) else []
+    main = bool(main_cities) or any(str(city).strip() == MAIN_CITIES_TOKEN for city in cities)
+    explicit = {'breakdown': breakdown, 'cities': [city for city in cities if str(city).strip() != MAIN_CITIES_TOKEN]}
+    if main:
+        # (They are Separate cities: no breakdown is then a choice, not one saved without areas.)
+        chosen = geographical_areas({**explicit, 'cities': ['-']})[0]
+        listed = geographical_areas({'breakdown': 'Region', 'cities': explicit['cities']})[1] if explicit['cities'] else []
+        return chosen, listed, True
+    chosen, listed = geographical_areas(explicit)
+    return chosen, listed, False
+
+
+def country_area_summary(area_summary: Any) -> Any:
+    """The Areas and Cities on their own of the Country Areas tab (the request without those of the trends)."""
+    if not isinstance(area_summary, dict):
+        return area_summary
+    return {key: value for key, value in area_summary.items() if key not in TREND_AREA_KEYS}
+
+
+def trend_area_summary(area_summary: Any) -> Any:
+    """The request as the National & Country Areas Trends score it: with their own Areas and Cities on their own when
+    they have some, else those of Country Areas."""
+    if not isinstance(area_summary, dict) or 'trend_cities' not in area_summary:
+        return country_area_summary(area_summary)
+    trend = country_area_summary(area_summary)
+    breakdown = area_summary.get('trend_breakdown')
+    trend['breakdown'] = None if breakdown in (None, 'None') else breakdown
+    trend['cities'] = list(area_summary.get('trend_cities') or [])
+    trend.pop('main_cities', None)
+    if area_summary.get('trend_main_cities'):
+        trend['main_cities'] = True
+    return trend
 
 
 def area_summary_part_enabled(area_summary: Any, part: str) -> bool:
