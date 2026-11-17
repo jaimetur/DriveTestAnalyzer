@@ -45,6 +45,14 @@ def calls_frame() -> pd.DataFrame:
     })
 
 
+def queue_calls(calls: dict[str, dict], queue: str = 'Voice') -> None:
+    """Put the calls in a queue of the NQ Prioritization: Lifecycle & Phases and Progress View count only those."""
+    with core.repository.connection() as connection:
+        for call in calls.values():
+            connection.execute(f"INSERT INTO {nq.nq_prioritization.PRIORITY_TABLE} (call_key, queue) VALUES (?, ?) "
+                               "ON CONFLICT(call_key) DO UPDATE SET queue = excluded.queue", (call['call_key'], queue))
+
+
 def setup_calls(client, tmp_path) -> dict[str, dict]:
     enable_module()
     add_cdr(tmp_path, 'UK_Voice_Q3.xlsx', 'voice', calls_frame())
@@ -507,10 +515,14 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     # And so does each category of the catalog a source translates its own onto.
     assert {item['category']: [domain['domain'] for domain in item['domains']] for item in insights['mapped']['script']}[
         'Coverage'] == ['RF']
+    queue_calls(calls)
     lifecycle = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
     # The pipeline counts the calls in a queue and adds the tracked ones (in no queue) apart.
     pipeline = {item['status']: item['count'] + item['tracked'] for item in lifecycle['pipeline']}
     assert lifecycle['queued'] == sum(item['count'] for item in lifecycle['pipeline'])
+    # The phases and RCA Identification count only the calls in a queue, as the pipeline.
+    assert lifecycle['rca']['identified'] + lifecycle['rca']['not_identified'] == lifecycle['queued']
+    assert all(sum(item['count'] for item in phase['items']) + phase['empty'] == lifecycle['queued'] for phase in lifecycle['phases'])
     assert pipeline['Under Analysis'] == 2 and 'Open' not in pipeline and pipeline['Not Attended'] == 1
     # Open is the sum of the statuses of the calls somebody has (assigned or attended) not closed yet.
     assert lifecycle['open_statuses'] == ['Assigned', 'Under Analysis', 'Under Implementation', 'Under Planning']
@@ -1133,6 +1145,9 @@ def test_root_cause_analysis_counts_each_source_apart_and_filters_by_it(client, 
 def test_lifecycle_counts_the_rca_identification(client, tmp_path):
     calls = setup_calls(client, tmp_path)
     patch(client, calls['0xA1'], {'root_category': 'Coverage'})
+    assert query(client)['in_queue'] == 0
+    queue_calls(calls)
+    assert query(client)['in_queue'] == query(client)['total'] == 3
     life = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
     assert life['rca'] == {'identified': 1, 'not_identified': 2}
     assert [item['join_id'] for item in query(client, filters={'state': ['identified']})['calls']] == ['0xA1']
@@ -1947,10 +1962,7 @@ def test_the_progress_view_counts_the_statuses_the_rules_set(client, tmp_path):
     patch(client, calls['0xA1'], {'fields': {'implementation_status': 'Implemented'}})
     patch(client, calls['0xB2'], {'fields': {'implementation_status': 'Under evaluation'}})
     # The Progress View counts the calls in a queue (the tracked ones apart): the calls wait in the Voice queue.
-    with core.repository.connection() as connection:
-        for call in calls.values():
-            connection.execute(f"INSERT INTO {nq.nq_prioritization.PRIORITY_TABLE} (call_key, queue) VALUES (?, 'Voice') "
-                               "ON CONFLICT(call_key) DO UPDATE SET queue = 'Voice'", (call['call_key'],))
+    queue_calls(calls)
     progress = client.post('/api/non-qualified-calls/progress', json={'filters': {}, 'granularity': 'week'}).json()
     assert progress['tracked']['total'] == 0
     assert sum(period['closed'] for period in progress['periods']) == 1

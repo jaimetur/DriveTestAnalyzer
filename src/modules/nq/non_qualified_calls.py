@@ -6296,7 +6296,9 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
         base, base_params = _materialized(connection, base, base_params, bool(_scope(filters)))
         filtered = f'WITH calls AS ({base}) SELECT * FROM calls{where}'
         all_params = [*base_params, *params]
-        total = int(connection.execute(f'SELECT COUNT(*) FROM ({filtered})', all_params).fetchone()[0])
+        # The calls that match the filters, and those of them in a queue of the NQ Prioritization (not tracked).
+        counted = connection.execute(f"SELECT COUNT(*), SUM(queue <> '') FROM ({filtered})", all_params).fetchone()
+        total, in_queue = int(counted[0] or 0), int(counted[1] or 0)
         pages = max(1, math.ceil(total / page_size))
         page = min(max(1, int(request.get('page') or 1)), pages)
         # The page that holds the call to show (the call open beside the list, after the filters change), when it is listed.
@@ -6379,7 +6381,7 @@ def query_calls(task_repository: Any, request: dict[str, Any], username: str) ->
     summary_payload = {key: int(summary[key] or 0) for key in ('total', 'closed', 'attended', 'commented', 'with_team', 'assigned')}
     summary_payload['open'] = summary_payload['total'] - summary_payload['closed']
     return {
-        'calls': calls, 'total': total, 'page': page, 'pages': pages, 'page_size': page_size,
+        'calls': calls, 'total': total, 'in_queue': in_queue, 'page': page, 'pages': pages, 'page_size': page_size,
         'sort': sort_key,
         'direction': direction.lower(), 'summary': summary_payload, 'breakdowns': breakdowns,
     }
@@ -9438,12 +9440,14 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     pipeline += [{'status': name, 'color': '', 'closed': False, 'count': queued.get(name, 0), 'tracked': count - queued.get(name, 0),
                   'avg_age_days': None}
                  for name, count in counts.items() if name not in {item['name'] for item in statuses}]
+    # The phases and RCA Identification count only the calls in a queue, as the pipeline (the tracked calls apart).
+    in_queue = [row for row in rows if str(row['queue'] or '')]
     phases = []
     for field in definitions:
         if field['section'] not in PHASE_SECTIONS or field['type'] != 'list' or field['source'] not in {'user', 'derived'}:
             continue
         values: Counter = Counter()
-        for row in rows:
+        for row in in_queue:
             try:
                 stored = json.loads(row['field_values_json'] or '{}') or {}
             except (TypeError, ValueError):
@@ -9476,7 +9480,7 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     order = [item['name'] for item in statuses]
     time_in_status.sort(key=lambda item: order.index(item['status']) if item['status'] in order else len(order))
     stalled.sort(key=lambda item: -item['days'])
-    identified = sum(1 for row in rows if row['root_category'] or row['root_cause'])
+    identified = sum(1 for row in in_queue if row['root_category'] or row['root_cause'])
     # Open: the calls somebody has (assigned or attended) not closed yet, every status between the first one (nobody has
     # them) and the closed ones.
     open_statuses = [item['status'] for item in pipeline if not item['closed'] and item['status'] != first]
@@ -9488,7 +9492,7 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
         # In Queues: the calls in a queue in the first status, waiting for somebody (nobody has them yet).
         'not_attended': {'status': waiting['status'], 'count': waiting['count'], 'tracked': waiting['tracked'],
                          'color': waiting['color']} if waiting else None,
-        'rca': {'identified': identified, 'not_identified': len(rows) - identified},
+        'rca': {'identified': identified, 'not_identified': len(in_queue) - identified},
         'phases': phases, 'time_in_status': time_in_status,
         'moves': [{'from': old, 'to': new, 'count': count} for (old, new), count in moves.most_common(12)],
         'stalled_days': STALLED_DAYS, 'stalled_total': len(stalled), 'stalled': stalled[:15],

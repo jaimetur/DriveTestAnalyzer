@@ -1064,7 +1064,8 @@ def _phase_head(panel: Panel, left: float, width: float, section: dict[str, Any]
     panel.text(left + 0.12, 0.36, title, 9, bold=True, color=DARK, width=inner)
     if base == total:
         return 0.62
-    panel.text(left + 0.12, 0.62, f'{_number(base)} of {_number(total)} with a value', 6.5, bold=True, color=MUTED, width=inner)
+    panel.text(left + 0.12, 0.62, f'{_number(base)} of {_number(total)} in a queue with a value', 6.5, bold=True, color=MUTED,
+               width=inner)
     return 0.8
 
 
@@ -1091,8 +1092,9 @@ def _phase_value(panel: Panel, left: float, y: float, width: float, label: str, 
 def _phases_panels(lifecycle: dict[str, Any], sections: dict[str, dict[str, Any]]) -> list[tuple[str, BytesIO]]:
     """The phase cards of the page: RCA Identification and each list field of the Analysis, Implementation and Planning
     sections in one row, with the share of each value (of the calls with a value, unless Empty is shown); a field with more
-    than WIDE_PHASE_VALUES values on a panel of its own, its values in columns from the most frequent."""
-    total = int(lifecycle.get('total') or 0)
+    than WIDE_PHASE_VALUES values on a panel of its own, its values in columns from the most frequent. They count only the
+    calls in a queue, as the pipeline."""
+    total = int(lifecycle.get('queued', lifecycle.get('total')) or 0)
     cards = []
     if lifecycle.get('rca'):
         cards.append(('rca', 'RCA Identification', [('Identified', lifecycle['rca'].get('identified', 0), '#2e8b57'),
