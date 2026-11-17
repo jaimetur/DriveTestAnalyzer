@@ -4131,6 +4131,12 @@ def install_design_routes(core):
         categories.update({identity(dimension.name): 'Auto-calculated Fields' for dimension in dimensions})
         # NR Mode, the NR Mode of the CDR of each row, goes with Campaign (never an Auto-calculated Field named after it).
         categories[identity(NR_MODE_FIELD)] = categories.get(identity('Campaign'), 'Other fields')
+        # The fields the CDR tests take from a CA Appendix (see ca_appendix) have a section of their own.
+        from src.modules.cdr.ca_appendix import LABEL as CA_APPENDIX_LABEL, is_ca_field
+
+        def category_of(column: str) -> str:
+            return categories.get(identity(column), CA_APPENDIX_LABEL if is_ca_field(column) else 'Other fields')
+
         internal = {identity(name) for name in ('dataset_kind', 'source_file', '__rowid', '__dataset_id')}
         fields: dict[str, list[dict[str, str]]] = {}
         all_types: dict[str, str] = {}
@@ -4138,12 +4144,12 @@ def install_design_routes(core):
             types = stored_column_types(snapshot, kind, task_repository)
             all_types.update({key: value for key, value in types.items() if all_types.get(key) != 'text'})
             fields[f'cdr-{kind}'] = [
-                {'name': column, 'type': types.get(identity(column), 'text'), 'category': categories.get(identity(column), 'Other fields')}
+                {'name': column, 'type': types.get(identity(column), 'text'), 'category': category_of(column)}
                 for column in columns_by_source.get(f'cdr-{kind}', []) if identity(column) not in internal
             ]
         fields['cdr-all'] = [
             {'name': column, 'type': all_types.get(identity(column), 'number' if identity(column) in {identity(field) for field in RF_CATALOG_FIELDS} else 'text'),
-             'category': categories.get(identity(column), 'Other fields')}
+             'category': category_of(column)}
             for column in columns_by_source.get('cdr-all', []) if identity(column) not in internal
         ]
         return {'columns_by_source': columns_by_source, 'fields': fields,

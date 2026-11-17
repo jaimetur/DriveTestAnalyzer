@@ -368,7 +368,7 @@
    *            chartTypes (false: Chart Type is drawn apart, with renderTypes), repeat (One chart per where the source is chosen
    *            elsewhere, as in Chart Builder)} */
   // The groups of fields in the order they are used most: the main fields first, the fields of no section last.
-  const GROUP_ORDER = ['CDR-Main fields', 'Normalised fields', 'Network Insights', 'Non-Qualified Calls', 'DT Analyzer RCA', 'Vendor Mapping', 'Auto-calculated Fields', 'Distribution classes'];
+  const GROUP_ORDER = ['CDR-Main fields', 'Normalised fields', 'Network Insights', 'Non-Qualified Calls', 'DT Analyzer RCA', 'Vendor Mapping', 'CA Appendix', 'Auto-calculated Fields', 'Distribution classes'];
   const groupRank = group => (group === 'Other fields' ? 1000 : GROUP_ORDER.includes(group) ? GROUP_ORDER.indexOf(group) : 500);
   function render(host, options) {
     const context = analyse(options);
