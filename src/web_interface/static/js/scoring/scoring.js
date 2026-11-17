@@ -13066,6 +13066,16 @@
       const section = doc?.getElementById('scoring-gap-analysis-setup') || environments;
       if (!doc || !section) return;
       if (environments?.tagName === 'DETAILS') environments.open = true;
+      // The embedded page keeps its body from scrolling (made for the template editor): here the editor scrolls
+      // inside the panel, and never the page below it.
+      if (!doc.getElementById('scoring-methodologies-scroll')) {
+        const style = doc.createElement('style');
+        style.id = 'scoring-methodologies-scroll';
+        style.textContent = 'html, body { height: 100% !important; overflow: hidden !important; }'
+          + ' body { overflow-y: auto !important; overscroll-behavior: contain; }'
+          + ' .shell, main { height: auto !important; overflow: visible !important; }';
+        doc.head.append(style);
+      }
       // Only the editor and the elements that hold it stay in sight.
       for (let node = section; node && node !== doc.body; node = node.parentElement) {
         for (const sibling of node.parentElement?.children || []) {
@@ -13087,8 +13097,11 @@
     if (!methodologiesFrame.getAttribute('src')) methodologiesFrame.setAttribute('src', METHODOLOGIES_URL);
     else showMethodologyEditorOnly();
     methodologiesDialog.showModal();
+    // The page below stays where it is while the editor is open.
+    document.documentElement.classList.add('scoring-methodologies-open');
   });
   methodologiesDialog?.querySelector('[data-scoring-methodologies-close]')?.addEventListener('click', () => methodologiesDialog.close());
+  methodologiesDialog?.addEventListener('close', () => document.documentElement.classList.remove('scoring-methodologies-open'));
 
   // The values change through the lists of the app too: the marks follow once they have been applied.
   for (const type of ['change', 'input']) {

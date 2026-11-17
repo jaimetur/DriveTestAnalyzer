@@ -2035,6 +2035,8 @@
   /* The methodology editor of Workspace Config, floating over the page (96 % of its width). */
   .scoring-methodologies-dialog { display: none; flex-direction: column; box-sizing: border-box; width: 96vw; max-width: 96vw; height: 94vh; height: 94dvh; max-height: 94dvh; margin: auto; padding: 0; overflow: hidden; border: 0; border-radius: 16px; background: var(--panel-strong); box-shadow: var(--shadow-strong); }
   .scoring-methodologies-dialog[open] { display: flex; }
+  html.scoring-methodologies-open, html.scoring-methodologies-open body { overflow: hidden; }
+  .scoring-methodologies-dialog { overscroll-behavior: contain; }
   .scoring-methodologies-dialog::backdrop { background: rgba(14,26,38,.5); }
   .scoring-methodologies-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; padding: .7rem 1rem; border-bottom: 1px solid var(--line); border-top: 6px solid #087c83; }
   .scoring-methodologies-head h3 { margin: .1rem 0 0; color: #087c83; }
