@@ -406,15 +406,14 @@ MODULE_SECTIONS: dict[str, list[tuple[Any, ...] | None]] = {
     'ppt-designer': [('PPT Designs', 'PPT Designs', 'presentation'),
                        ('PPT Generation Jobs', 'PPT Generation Jobs', 'jobs'),
                        ('Charts Panel', 'Charts Panel', 'chart')],
-    'scoring': [('Select NR Mode, Campaign, filters, Split by & GAP reference', 'Scoring Calculation', 'sliders'),
-                ('Scoring & GAP Results', 'Scoring & GAP Results', 'chart', [
+    'scoring': [('Scoring & GAP Analysis', 'Scoring & GAP Analysis', 'chart', [
                     ('scoring-results-summary', 'Summary', 'summary'), ('scoring-results-charts', 'Scoring Charts', 'chart'),
-                    ('scoring-results-tables', 'Scoring Tables', 'table'), ('scoring-results-geographical-areas', 'Geographical Areas', 'pin'),
+                    ('scoring-results-tables', 'Scoring Tables', 'table'), ('scoring-results-geographical-areas', 'Country Areas', 'pin'),
                     ('scoring-results-trends', 'Scoring Trends', 'activity'), ('scoring-results-gap', 'GAP Analysis', 'gap'),
                     ('scoring-results-points-lost', 'Points Lost', 'map'),
                     ('scoring-results-methodology-impact', 'Methodology Impact', 'sliders')]),
                 ('Excluded Calls', 'Excluded Calls', 'ban'),
-                ('Favourites Filters', 'Favourites Filters', 'filter')],
+                ('Manage Favourite Scorings', 'Favourite Scorings', 'filter')],
     # In the order of the page (templates/network_insights.html): its category panels, each with its panels as parts.
     'network-insights': [('Launch Analysis', 'Launch Analysis', 'select'),
                          ('Summary', 'Summary', 'summary', [

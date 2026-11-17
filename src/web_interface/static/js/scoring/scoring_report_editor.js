@@ -18,11 +18,11 @@
     ['breakdown', 'Scoring per Category (Breakdown)'],
   ];
   const GEOGRAPHICAL_AREA_OPTIONS = [
-    ['cards', 'Scoring Nationwide and per City / Cluster / Region cards'], ['ranking', 'Geographical Areas ranked'],
+    ['cards', 'Scoring Nationwide and per City / Cluster / Region cards'], ['ranking', 'Country Areas ranked'],
     ['versus', 'Each operator against the reference per geographical area'],
   ];
   // The Scoring Trends, of the campaigns of the Scoring Trends of the scenario.
-  const TREND_OPTIONS = [['trend', 'Scoring Trend (two campaigns or more)'], ['areas', 'National & Geographical Areas Trends']];
+  const TREND_OPTIONS = [['trend', 'Scoring Trend (two campaigns or more)'], ['areas', 'National & Country Areas Trends']];
   const POINTS_OPTIONS = [
     ['stake', 'Where the points go'], ['kpis', 'Points lost per KPI'], ['map', 'Points lost per City / Region map, by points and per 1,000 tests'],
     ['postal_map', 'Points lost per Postal Code map (Saved Filters with Postal Codes)'], ['vendors', 'Points lost per Vendor'],
@@ -415,7 +415,7 @@
       optionGroup('Scoring Charts', CHART_OPTIONS.map(([option, text]) => [option, text.startsWith('Scoring per') ? `${label} ${text}` : text]),
         options.charts, (option, checked) => { options.charts[option] = checked; }, `scoring:${key}:charts`, 'charts'),
       group('Scoring Tables', TABLE_OPTIONS, 'tables'),
-      group('Geographical Areas', GEOGRAPHICAL_AREA_OPTIONS.map(([option, text]) => [option, option === 'cards' ? `${label} ${text}` : text]), 'geographical_areas'),
+      group('Country Areas', GEOGRAPHICAL_AREA_OPTIONS.map(([option, text]) => [option, option === 'cards' ? `${label} ${text}` : text]), 'geographical_areas'),
       group('Scoring Trends', TREND_OPTIONS.map(([option, text]) => [option, `${label} ${text}`]), 'trends'),
     );
     // (The individual GAP comparisons of the PowerPoint and Word are those of the Focus operators of the Operator Maps.)
@@ -493,7 +493,7 @@
       filters.append(pickers[field]);
     }
     const levels = el('div', 'scoring-report-levels');
-    levels.append(el('span', 'scoring-report-label', 'Split by:'));
+    levels.append(el('span', 'scoring-report-label', 'Break down by:'));
     for (const level of LEVELS) {
       const box = checkbox(level, scenario.aggregation_levels.includes(level), (checked) => {
         scenario.aggregation_levels = LEVELS.filter((item) => item === 'Operator'
@@ -512,23 +512,23 @@
     scenario.area_summary.enabled = true;
     const trendsPanel = el('fieldset', 'scoring-report-subpanel scoring-report-trends');
     trendsPanel.title = 'Always the whole country: the Region, Cluster, City and Main Cities filters of the scenario do not apply to '
-      + 'Geographical Areas and Scoring Trends';
-    trendsPanel.append(el('legend', 'scoring-report-label', 'Geographical Areas & Scoring Trends'));
+      + 'Country Areas and Scoring Trends';
+    trendsPanel.append(el('legend', 'scoring-report-label', 'Country Areas & Scoring Trends'));
     const areaPanel = el('fieldset', 'scoring-report-subpanel');
-    areaPanel.append(el('legend', 'scoring-report-label', 'Geographical Areas'));
+    areaPanel.append(el('legend', 'scoring-report-label', 'Country Areas'));
     const areaRow = el('div', 'scoring-report-subpanel-row');
     const breakdown = el('select');
-    breakdown.setAttribute('aria-label', 'Breakdown of the Geographical Areas and the National & Geographical Areas Trends');
+    breakdown.setAttribute('aria-label', 'Breakdown of the Country Areas and the National & Country Areas Trends');
     for (const value of AREA_BREAKDOWNS) {
       const option = el('option', '', value === 'None' ? 'Breakdown: None' : `Breakdown: ${value}`);
       option.value = value;
-      option.title = value === 'None' ? 'Only the Separate cities' : '';
+      option.title = value === 'None' ? 'Only the Cities on their own' : '';
       breakdown.append(option);
     }
     breakdown.value = scenario.area_summary.breakdown;
     breakdown.addEventListener('change', () => { scenario.area_summary.breakdown = breakdown.value; });
     breakdown.dataset.diffKey = 'area:breakdown';
-    const cities = checklist('Separate cities', context.filterOptions?.City || [], scenario.area_summary.cities, (values) => {
+    const cities = checklist('Cities on their own', context.filterOptions?.City || [], scenario.area_summary.cities, (values) => {
       scenario.area_summary.cities = values;
       syncBreakdown();
     }, {
@@ -557,7 +557,7 @@
     const trendRow = el('div', 'scoring-report-subpanel-row');
     const trendChoice = el('select');
     trendChoice.setAttribute('aria-label', 'Campaigns of the Scoring Trends');
-    trendChoice.title = 'The campaigns of the Scoring Trend and the National & Geographical Areas Trends, whatever the Campaign filter of the scenario';
+    trendChoice.title = 'The campaigns of the Scoring Trend and the National & Country Areas Trends, whatever the Campaign filter of the scenario';
     for (const [value, text] of [...TREND_PRESETS, ['', 'Same as the scenario'], ['chosen', 'Chosen campaigns']]) {
       const option = el('option', '', `Campaigns: ${text}`);
       option.value = value;
@@ -580,8 +580,8 @@
     syncTrendCampaigns();
     trendRow.append(trendChoice, trendCampaigns);
     const time = el('select');
-    time.setAttribute('aria-label', 'Time split of the National & Geographical Areas Trends');
-    time.title = 'Only for the National & Geographical Areas Trends. All selected CDRs aggregates every selected CDR into one value; '
+    time.setAttribute('aria-label', 'Time split of the National & Country Areas Trends');
+    time.title = 'Only for the National & Country Areas Trends. All selected CDRs aggregates every selected CDR into one value; '
       + 'Campaign splits by campaign; Daily to Yearly split by the period of the start time of each test, '
       + 'whatever the CDRs (daily, weekly or per campaign)';
     for (const [value, text] of TIME_SPLITS) {
@@ -604,7 +604,7 @@
       // From the Scoring & GAP Analysis page every scenario takes the filters, Split by and Geographical Areas & Scoring
       // Trends of its Calculation panel (as its GAP reference and methodology): here it chooses its content.
       card.append(el('p', 'scoring-report-muted scoring-report-page-scope',
-        'Filters, Split by, Geographical Areas & Scoring Trends, GAP reference and methodology: those of the Calculation panel.'),
+        'Filters, Break down by, Country Areas & Scoring Trends, GAP reference and methodology: those of the Scoring & GAP Analysis strip.'),
       scorings);
       return card;
     }
@@ -867,7 +867,7 @@
           state.scenarios = defaultConfiguration(context.defaults).scenarios;
           state.theme = knownTheme(context.theme) ? context.theme : 'netcheck';
           state.all_operators = false;
-          setStatus('Default configuration: one scenario with the calculation filters and Split by levels.', 'success');
+          setStatus('Default configuration: one scenario with the calculation filters and Break down by levels.', 'success');
         } else {
           const item = savedConfigurations.find((entry) => entry.name === value);
           if (!item) return;

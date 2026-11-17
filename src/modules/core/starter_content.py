@@ -23,7 +23,7 @@ New deployments and new workspaces, and existing workspaces once, receive the co
   ``query_sql`` on the ``selected_data``, ``selected_voice`` and ``selected_speech`` views);
 - ``assets/bundle-report-template-favourites/*.json``: the reports of Reporting (``name`` and ``definition``, as
   their export carries them), which find the shipped PPT Designs by their name; they start without a schedule;
-- ``assets/scoring-favourites-filters/*.json``: Scoring & GAP Favourites Filters (an entry of their export without its
+- ``assets/scoring-favourites-filters/*.json``: Scoring & GAP Favourite Scorings (an entry of their export without its
   CDRs), each with a Campaign choice (Latest campaign…) whose CDRs it takes once the workspace has them.
 
 The Vendor Maps of a new workspace come from ``assets/labels-vendors/default-vendor-maps.json`` (see ``repository``);
@@ -336,7 +336,7 @@ def _seed_favourites_filters(repository: Any) -> int:
     entries = _shipped_entries('scoring-favourites-filters', {item['name'].casefold() for item in list_saved_filters(repository)})
     if not entries:
         return 0
-    # (After the Favourites Filters the workspace has, whatever their place among the starter ones.)
+    # (After the Favourite Scorings the workspace has, whatever their place among the starter ones.)
     return import_saved_filters(repository, {'format': SAVED_FILTERS_FORMAT, 'version': SAVED_FILTERS_VERSION,
                                              'saved_filters': entries}, takes_order=False)
 

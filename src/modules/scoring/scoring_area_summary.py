@@ -36,9 +36,12 @@ GEOGRAPHIC_FILTER_FIELDS = ('Region', 'Cluster', 'City')
 OTHER_POSTAL_MAPS = ('place', 'own')
 AREA_SUMMARY_TIME_SPLITS = ('All', 'Campaign', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly')
 NATIONAL = 'National'
+# The parts of the Country Areas & Scoring Trends of a job that can be switched off.
+AREA_SUMMARY_PARTS = ('country_areas', 'trends')
 # The prefix of the warnings of the summary (summaries calculated before name it National & Areas Trends or National
 # & Area Summary).
-WARNING_PREFIXES = ('National & Geographical Areas Trends:', 'National & Areas Trends:', 'National & Area Summary:')
+WARNING_PREFIXES = ('National & Country Areas Trends:', 'National & Geographical Areas Trends:', 'National & Areas Trends:',
+                    'National & Area Summary:')
 _CITY_COLUMNS = ('City', 'G_Level_4')
 # The Geographical Areas & Scoring Trends of a job that chooses neither a Breakdown nor Separate cities (one saved when
 # they could be left out): each Region and London.
@@ -98,7 +101,17 @@ def normalize_area_summary_request(area_summary: Any, context_filters: dict[str,
     # (Without campaigns of its own, the request keeps the form of the summaries saved before they had any.)
     if campaigns:
         normalized['campaigns'] = campaigns
+    # Country Areas and Scoring Trends can be switched off: they are then not calculated and their tabs hide. (Only
+    # said when off: every other request keeps the form, and the identity, it had.)
+    for part in AREA_SUMMARY_PARTS:
+        if area_summary.get(part) is False:
+            normalized[part] = False
     return normalized
+
+
+def area_summary_part_enabled(area_summary: Any, part: str) -> bool:
+    """Whether the Country Areas (``country_areas``) or the Scoring Trends (``trends``) of a job are calculated."""
+    return not (isinstance(area_summary, dict) and area_summary.get(part) is False)
 
 
 def resolve_main_cities(area_summary: Any, main_cities: list[str]) -> Any:
@@ -218,7 +231,7 @@ def calculate_area_summary(calculate: Callable[..., dict], frames: dict[str, pd.
             rows = result.get('scoring') if isinstance(result, dict) else None
             if not rows or (item['field'] and not any(row.get(item['field']) not in (None, '') for row in rows)):
                 what = ', '.join(item['cities']) if 'cities' in item else item['kind']
-                warnings.append(f'National & Geographical Areas Trends: the selected CDRs have no {what} measurements.')
+                warnings.append(f'National & Country Areas Trends: the selected CDRs have no {what} measurements.')
                 continue
             saved['result'] = {key: result[key] for key in _PASS_RESULT_KEYS if key in result}
         passes.append(saved)
@@ -248,7 +261,7 @@ def calculate_area_summary_from_history(calculate: Callable[..., dict], levels: 
             rows = result.get('scoring') if isinstance(result, dict) else None
             if not rows or (item['field'] and not any(row.get(item['field']) not in (None, '') for row in rows)):
                 what = ', '.join(item['cities']) if 'cities' in item else item['kind']
-                warnings.append(f'National & Geographical Areas Trends: the selected CDRs have no {what} measurements.')
+                warnings.append(f'National & Country Areas Trends: the selected CDRs have no {what} measurements.')
                 continue
             saved['result'] = {key: result[key] for key in _PASS_RESULT_KEYS if key in result}
         passes.append(saved)

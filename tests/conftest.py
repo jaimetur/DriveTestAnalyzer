@@ -190,7 +190,7 @@ def client_workspace_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
             app_module.register_workspace_template_files(app_module.active_workspace)
             # The test CDRs are NetCheck UK CDRs: the workspace is one of the United Kingdom, with its operators.
             set_workspace_country(app_module.repository, 'GBR')
-            # The starter favourites (favourite Bundle Report Templates and Favourites Filters) are seeded explicitly by
+            # The starter favourites (favourite Bundle Report Templates and Favourite Scorings) are seeded explicitly by
             # the tests that need them; the others start without favourites.
             remove_starter_favourites(app_module.repository)
         wait_for_background_dataset_work()

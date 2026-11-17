@@ -86,8 +86,8 @@
   .scoring-hierarchy-list { display: grid; gap: .4rem; margin: 0; padding: 0; list-style: none; counter-reset: scoring-hierarchy; }
   .scoring-hierarchy-list li { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; border: 1px solid rgba(11,122,117,.25); border-radius: 10px; background: rgba(11,122,117,.06); counter-increment: scoring-hierarchy; }
   .scoring-hierarchy-list li::before { content: counter(scoring-hierarchy) '.'; min-width: 1.3rem; color: var(--muted); font-weight: 800; }
-  /* Filter Navigator: the Favourites Filters as a tree (Area → NR Mode → Campaign) with a search, in a dialog opened from
-     the Favourites Filters panel and from the button of each Saved Filter selector. */
+  /* Filter Navigator: the Favourite Scorings as a tree (Area → NR Mode → Campaign) with a search, in a dialog opened from
+     the Favourite Scorings panel and from the button of each Saved Filter selector. */
   .saved-filter-navigator-open { display: inline-flex; align-items: center; gap: .35rem; min-height: 2rem; padding: .3rem .7rem; border: 1px solid rgba(11,122,117,.45); border-radius: 999px; background: #fff; color: #0b6a66; font-size: .78rem; font-weight: 800; white-space: nowrap; box-shadow: none; }
   .saved-filter-navigator-open svg { flex: none; width: 1rem; height: 1rem; }
   .saved-filter-navigator-open:hover { border-color: var(--brand); background: #e6f4f2; box-shadow: none; transform: none; }
@@ -292,7 +292,7 @@
      and Delete.) */
   /* The selection of Saved Filters in the Saved Filters panel, to update them together. */
   .saved-filters-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: -.35rem 0 .6rem; }
-  /* While the Favourites Filters are scrolled, this bar stays at the top, under the bar of the sections, until the end of
+  /* While the Favourite Scorings are scrolled, this bar stays at the top, under the bar of the sections, until the end of
      the panel; held there, a solid band as wide as the panel covers the page from the top of the window (below the tabs
      of the modules) down to below the bar, so the cards scroll under it and the bar of the sections stays on top. */
   .saved-filters-bulk { position: sticky; top: calc(var(--module-tabs-offset, 0px) + var(--section-top-offset, 0px)); z-index: 4; }
@@ -425,7 +425,7 @@
   .saved-filter-selector[open] > summary::after { content: '▴'; }
   .saved-filter-selector > summary:focus-visible { outline: 3px solid rgba(11,122,117,.3); outline-offset: 3px; }
   .selected-saved-filter { display: grid; gap: .35rem; min-width: 0; }
-  /* A selection that is no Saved Filter: the card asks to choose a Favourites Filter or to calculate it. */
+  /* A selection that is no Saved Filter: the card asks to choose a Favourite Scoring or to calculate it. */
   .saved-filter-selector.is-unmatched > summary { border-style: dashed; border-color: #c79a1e; background: #fffbea; box-shadow: none; }
   .saved-filter-selector.is-unmatched > summary::after { color: #9a7412; }
   .saved-filter-unmatched { display: grid; gap: .2rem; min-width: 0; color: #5c4a12; line-height: 1.35; }
@@ -1791,6 +1791,230 @@
   [data-scoring-workspace][data-scoring-theme="paper"] .scoring-insight-databar { top: auto; bottom: 10%; height: 2px; border: 0;
     background: repeating-linear-gradient(90deg, var(--databar-color) 0 3px, transparent 3px 5px); }
   [data-scoring-workspace][data-scoring-theme="heatmap"] .scoring-insight-databar { top: 0; bottom: 0; left: 0; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--databar-color) 35%, #fff); }
+  /* Scoring & GAP Analysis: the configuration lives in the strip of the results panel, one dialog per block. */
+  .scoring-config-host { display: none; }
+  .scoring-edit-dialog > .scoring-config-host { display: grid; gap: 1rem; padding: 1.1rem 1.2rem 1.2rem; background: var(--panel-strong); }
+  .scoring-config-edit-foot .scoring-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .scoring-config-edit-foot .scoring-actions button { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; min-height: 2.45rem; padding: .35rem 1rem; font-size: .82rem; }
+  .scoring-config-edit-foot .scoring-actions button svg { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; }
+  .scoring-config-edit-foot .scoring-actions button[hidden] { display: none; }
+  .scoring-edit-dialog .scoring-config-section { display: grid; gap: .8rem; }
+  .scoring-edit-dialog [data-scoring-config-view-only] { display: none; }
+  .scoring-config-section-title { margin: .2rem 0 0; font-size: 1.02rem; color: var(--brand-3); }
+  .scoring-config-dialog .scoring-config-section-title { display: none; }
+  .scoring-config-edit-foot { display: none; }
+  .scoring-edit-dialog .scoring-config-edit-foot { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; position: sticky; bottom: -1.2rem; margin: 0 -1.2rem -1.2rem; padding: .8rem 1.2rem; border-top: 1px solid var(--line); background: #f7f9fc; }
+  .scoring-config-edit-foot .scoring-calculation-message { flex: 1 1 18rem; margin: 0; }
+  .scoring-config-section .scoring-picker + .scoring-picker { margin-top: .8rem; }
+  .scoring-config-section .scoring-picker-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .4rem .8rem; }
+  .scoring-config-section .scoring-config-shortcuts a { display: inline-flex; align-items: center; gap: .35rem; padding: .32rem .62rem; border-radius: 999px; background: linear-gradient(135deg,#087c83,#11505f); color: #fff; font-size: .74rem; font-weight: 750; }
+  .scoring-config-section .scoring-config-shortcuts svg { width: 1rem; height: 1rem; }
+  .scoring-config-section .scoring-picker-head .scoring-config-shortcuts a, .scoring-config-section .scoring-picker-head .scoring-config-shortcuts a span { color: #fff; }
+  .scoring-config-section .scoring-config-shortcuts svg * { fill: none; stroke: currentColor; }
+  .scoring-config-section .scoring-config-row { display: flex; flex-wrap: wrap; gap: .7rem; }
+  .scoring-config-section .scoring-config-row > label { flex: 1 1 16rem; min-width: 0; }
+  .scoring-config-section [data-result-environment-control] { display: grid; gap: .3rem; }
+  .scoring-config-section [data-result-environment-control] select { width: 100%; }
+  /* A value of the dialog that differs from the scoring shown. */
+  .scoring-config-section .is-config-changed { position: relative; border-radius: 10px; outline: 2px solid #e0a43a; outline-offset: 3px; background: #fff6e2; }
+  .scoring-config-section .is-config-changed::after { content: 'changed'; position: absolute; top: -.55rem; right: .4rem; padding: 0 .35rem; border-radius: 6px; background: #e0a43a; color: #3d2700; font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+
+  .scoring-results-panel .scoring-results-head { display: flex; flex-direction: column; align-items: stretch; gap: .85rem; }
+  .scoring-results-head > * { min-width: 0; }
+  .scoring-results-title-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .8rem 1.2rem; }
+  .scoring-results-title-row h2 { margin: .1rem 0 0; }
+  .scoring-main-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+  .scoring-main-action { display: inline-flex; align-items: center; gap: .5rem; padding: .72rem 1.15rem; border-radius: 12px; font-size: .95rem; font-weight: 800; box-shadow: 0 6px 16px rgba(18,32,43,.14); }
+  .scoring-main-action svg { width: 1.15rem; height: 1.15rem; flex: 0 0 auto; }
+  .scoring-main-favourites { background: linear-gradient(135deg,#f6bb1c,#e39a00); color: #2b2000; }
+  .scoring-main-context { background: linear-gradient(135deg,#2f6fc4,#1c4f96); color: #fff; }
+  .scoring-main-action.is-small { padding: .5rem .85rem; font-size: .82rem; box-shadow: none; }
+  .scoring-main-count { min-width: 1.5rem; padding: .08rem .45rem; border-radius: 999px; background: rgba(255,255,255,.6); font-size: .78rem; text-align: center; }
+  .scoring-main-action.is-highlighted { animation: scoring-main-pulse 1.7s ease-out infinite; }
+  .scoring-main-context.is-highlighted { animation-name: scoring-main-pulse-blue; }
+  @keyframes scoring-main-pulse { 0% { box-shadow: 0 0 0 0 rgba(230,160,0,.7); } 70% { box-shadow: 0 0 0 12px rgba(230,160,0,0); } 100% { box-shadow: 0 0 0 0 rgba(230,160,0,0); } }
+  @keyframes scoring-main-pulse-blue { 0% { box-shadow: 0 0 0 0 rgba(47,111,196,.7); } 70% { box-shadow: 0 0 0 12px rgba(47,111,196,0); } 100% { box-shadow: 0 0 0 0 rgba(47,111,196,0); } }
+  @media (prefers-reduced-motion: reduce) { .scoring-main-action.is-highlighted { animation: none; outline: 3px solid rgba(230,160,0,.6); outline-offset: 2px; } }
+
+  .scoring-start-guide { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 1rem; padding: 1rem 1.1rem; border: 1px solid #bcd3f3; border-radius: 14px; background: linear-gradient(180deg,#f2f7ff,#fff); }
+  .scoring-start-guide[hidden] { display: none; }
+  .scoring-start-guide-icon { display: grid; place-items: center; width: 2.8rem; height: 2.8rem; border-radius: 12px; background: #e3eefc; color: #1f5fbf; }
+  .scoring-start-guide-icon svg { width: 1.6rem; height: 1.6rem; }
+  .scoring-start-guide-title { display: block; font-size: 1.05rem; }
+  .scoring-start-guide-body > p { margin: .25rem 0 .7rem; color: var(--muted); }
+  .scoring-start-guide-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%,17rem),1fr)); gap: .7rem; }
+  .scoring-start-guide-step { display: grid; align-content: start; justify-items: start; gap: .45rem; padding: .8rem .9rem; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  .scoring-start-guide-step[hidden] { display: none; }
+  .scoring-start-guide-step p { margin: 0; font-size: .84rem; color: var(--muted); }
+  .scoring-start-guide-step em { color: var(--muted); font-weight: 600; font-size: .8rem; }
+  .scoring-start-guide-number { display: inline-grid; place-items: center; width: 1.3rem; height: 1.3rem; margin-right: .3rem; border-radius: 50%; background: var(--brand-3); color: #fff; font-size: .72rem; }
+  @media(max-width:600px) { .scoring-start-guide { grid-template-columns: minmax(0,1fr); } .scoring-start-guide-icon { display: none; } }
+
+  .scoring-config-strip { display: grid; gap: .55rem; padding: .7rem .8rem; border: 1px solid #d6dfea; border-radius: 14px; background: #f7f9fc; }
+  .scoring-strip-top { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem .8rem; min-width: 0; }
+  .scoring-config-strip > * { min-width: 0; }
+  button.scoring-config-pill { overflow: hidden; }
+  .scoring-strip-label { margin: 0; }
+  .scoring-strip-top .saved-filter-selector { grid-column: auto; grid-row: auto; justify-self: auto; flex: 1 1 26rem; width: auto; }
+  .scoring-strip-top .saved-filter-selector > summary::after { content: none; }
+  .scoring-strip-top .scoring-strip-actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-left: auto; }
+  .scoring-strip-actions button { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; min-height: 2.35rem; padding: .3rem .8rem; font-size: .78rem; }
+  .scoring-strip-actions button svg { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; }
+  .scoring-strip-actions button[hidden] { display: none; }
+  .scoring-strip-actions [data-calculate-scoring].is-pending:not(:disabled) { box-shadow: 0 0 0 3px rgba(224,164,58,.55); }
+  .scoring-config-pills { display: flex; flex-wrap: wrap; gap: .4rem; }
+  button.scoring-config-pill { --pill: #3a4a63; display: inline-flex; align-items: center; gap: .4rem; max-width: 100%; min-width: 0; padding: .32rem .6rem .32rem .55rem; border: 1px solid var(--line-strong); border-left: 4px solid var(--pill); border-radius: 9px; background: #fff; color: var(--text); font-size: .78rem; font-weight: 600; box-shadow: none; text-align: left; }
+  button.scoring-config-pill:hover { border-color: var(--pill); box-shadow: 0 2px 8px rgba(18,32,43,.1); }
+  button.scoring-config-pill:focus-visible { outline: 2px solid var(--pill); outline-offset: 2px; }
+  .scoring-config-pill.is-setup { --pill: #3a4a63; background: #eef1f6; }
+  .scoring-config-pill.is-context { --pill: #1f5fbf; }
+  .scoring-config-pill.is-split { --pill: #0d7c86; }
+  .scoring-config-pill.is-areas { --pill: #6b3fb8; }
+  .scoring-config-pill.is-trends { --pill: #1d8a5b; }
+  .scoring-config-pill-label { flex: 0 0 auto; color: var(--pill); font-weight: 800; white-space: nowrap; }
+  .scoring-config-pill-value { min-width: 0; max-width: 30rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scoring-config-pill-scope { flex: 0 0 auto; padding: .02rem .35rem; border-radius: 5px; background: #efe8fb; color: #6b3fb8; font-size: .66rem; font-weight: 800; white-space: nowrap; }
+  .scoring-config-pill-edit { flex: 0 0 auto; color: var(--muted); }
+  .scoring-config-pill.is-changed { background: #fff3dc; border-color: #e0a43a; }
+  .scoring-config-pill.is-changed .scoring-config-pill-edit::before { content: '● '; color: #b86e00; }
+  .scoring-config-pending { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem .7rem; padding: .5rem .7rem; border: 1px solid #f0c674; border-radius: 10px; background: #fff3dc; color: #6a4300; font-size: .82rem; }
+  .scoring-config-pending[hidden] { display: none; }
+  .scoring-config-pending button { margin-left: auto; padding: .38rem .8rem; border: 1px solid #d8a54a; background: #fff; color: #6a4300; font-size: .78rem; font-weight: 750; }
+  .scoring-config-strip .scoring-calculation-message { margin: 0; font-size: .8rem; }
+  .scoring-config-strip.is-in-sync > .scoring-calculation-message, .scoring-strip-actions [data-calculate-scoring].is-redundant { display: none; }
+  .scoring-results-view.is-empty > :is(.scoring-strip-label, .scoring-results-controls) { display: none; }
+  .scoring-results-panel .scoring-results-view { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .7rem; }
+  .scoring-results-view .scoring-results-controls { flex-direction: row; flex-wrap: wrap; align-items: stretch; width: auto; min-width: 0; }
+  .scoring-results-panel .scoring-results-tools { justify-content: flex-end; flex-wrap: wrap; width: auto; margin-left: auto; overflow: visible; padding: 0; }
+  @media(max-width:640px) {
+    .scoring-main-actions, .scoring-main-action:not(.is-small) { width: 100%; }
+    .scoring-main-action:not(.is-small) { justify-content: center; }
+    .scoring-strip-top .saved-filter-selector { flex-basis: 100%; max-width: 100%; min-width: 0; }
+    .scoring-strip-top .scoring-strip-label { flex-basis: 100%; }
+    .scoring-strip-top:has(.saved-filter-tabs) .scoring-strip-label { margin-bottom: 1.4rem; }
+    .scoring-strip-top .scoring-strip-actions { width: 100%; margin-left: 0; }
+    .scoring-strip-top .scoring-strip-actions button { flex: 1 1 auto; }
+    button.scoring-config-pill { width: 100%; }
+    .scoring-config-pill-value { flex: 1 1 auto; min-width: 0; max-width: none; }
+    .scoring-config-pending button { margin-left: 0; }
+  }
+
+  /* Large screens: each block is a card with one line per value; small screens keep the one-line pills. */
+  .scoring-config-card-lines { display: none; }
+  @media(min-width:1200px) {
+    /* Two rows: Scoring Setup, Context and Break down by (a third each, one value per line), then Country Areas and
+       Trends (a half each, their two values on one line). */
+    .scoring-config-pills { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); align-items: stretch; gap: .55rem; }
+    .scoring-config-pills > button.scoring-config-pill { grid-column: span 2; }
+    .scoring-config-pills > button.scoring-config-pill:is(.is-areas, .is-trends) { grid-column: span 3; }
+    button.scoring-config-pill { display: grid; grid-template-columns: auto minmax(0,1fr) auto; grid-template-areas: "label scope edit" "lines lines lines"; align-content: start; align-items: center; gap: .3rem .4rem; padding: .55rem .7rem .6rem; border-left-width: 5px; border-radius: 11px; }
+    .scoring-config-pill-label { grid-area: label; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .72rem; letter-spacing: .05em; text-transform: uppercase; }
+    .scoring-config-pill-scope { grid-area: scope; justify-self: start; }
+    .scoring-config-pill-edit { grid-area: edit; padding: .05rem .45rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: .7rem; }
+    .scoring-config-pill-edit::after { content: ' Edit'; }
+    .scoring-config-pill-value { display: none; }
+    .scoring-config-card-lines { grid-area: lines; display: grid; gap: .15rem; min-width: 0; }
+    .scoring-config-card-lines { grid-template-columns: auto minmax(0,1fr); column-gap: .7rem; row-gap: .22rem; }
+    .scoring-config-pill:is(.is-areas, .is-trends) .scoring-config-card-lines { grid-template-columns: auto minmax(0,max-content) auto minmax(0,1fr); column-gap: .7rem; }
+    .scoring-config-pill:is(.is-areas, .is-trends) .scoring-config-card-line:nth-child(2) b { margin-left: 1.2rem; }
+    .scoring-config-card-line { display: contents; font-size: .78rem; line-height: 1.35; }
+    .scoring-config-card-line b { color: var(--muted); font-size: .74rem; font-weight: 650; white-space: nowrap; }
+    .scoring-config-card-line span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; font-weight: 600; }
+  }
+  /* One report button: export the scoring shown, or a custom report from the configuration. */
+  .scoring-report-menu { position: relative; }
+  .scoring-report-menu > summary { display: inline-flex; align-items: center; gap: .4rem; min-height: 2.35rem; padding: .4rem .85rem; border-radius: 999px; background: linear-gradient(135deg,#db7823,#a6420d); color: #fff; font-size: .78rem; font-weight: 750; cursor: pointer; list-style: none; }
+  .scoring-report-menu > summary::-webkit-details-marker { display: none; }
+  .scoring-report-menu > summary::after { content: '▾'; }
+  .scoring-report-menu > summary svg { width: 1.1rem; height: 1.1rem; }
+  .scoring-report-menu > summary svg * { fill: none; stroke: currentColor; }
+  .scoring-report-menu-list { position: absolute; right: 0; top: calc(100% + .35rem); z-index: 40; display: grid; gap: .3rem; width: min(22rem, calc(100vw - 2rem)); padding: .45rem; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 10px 28px rgba(18,32,43,.18); }
+  .scoring-results-tools .scoring-report-menu-list a { display: flex; align-items: flex-start; gap: .55rem; min-height: 0; padding: .55rem .65rem; border: 0; border-radius: 9px; background: none; color: var(--text); font-size: .8rem; font-weight: 600; white-space: normal; box-shadow: none; }
+  .scoring-results-tools .scoring-report-menu-list a:hover:not([aria-disabled="true"]) { background: #fdf0e4; filter: none; }
+  .scoring-report-menu-list a svg { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; margin-top: .1rem; color: #b85a17; }
+  .scoring-report-menu-list a > span { display: grid; gap: .1rem; }
+  .scoring-report-menu-list small { color: var(--muted); font-weight: 500; }
+  /* Phones: the Scoring choice and a compact Report button share one line. */
+  @media(max-width:640px) {
+    .scoring-results-panel .scoring-results-view { flex-wrap: nowrap; align-items: center; gap: .5rem; }
+    .scoring-results-view > .scoring-strip-label { display: none; }
+    .scoring-results-view .scoring-results-controls { flex: 0 1 auto; min-width: 0; }
+    .scoring-results-view .scoring-results-selector-row { width: auto; padding: .3rem .45rem; }
+    .scoring-results-panel .scoring-results-view .scoring-results-tools { margin-left: auto; }
+    .scoring-results-view .scoring-results-selector-row select { min-width: 0; }
+    /* Best Network or Most Reliable shows whole and smaller beside the Report button, without the word Scoring (the value
+       says what it is): the select keeps the 16px that stops Mobile Safari from zooming when it is tapped, and is drawn
+       at 82 % (its box shrinks with it). */
+    .scoring-results-view [data-result-scoring-control] { gap: 0; font-size: 0; }
+    /* As wide as its longest choice (width auto); its box shrinks with the drawing by the width the page measures. */
+    .scoring-results-view [data-result-scoring-control] select { flex: 0 0 auto; width: auto; min-width: 0; max-width: none; transform: scale(.82); transform-origin: left center; margin: -.23rem calc(var(--scoring-select-width, 11rem) * -.18) -.23rem 0; }
+    .scoring-results-panel .scoring-results-view .scoring-results-tools { flex: 0 0 auto; }
+    .scoring-report-menu > summary { min-height: 2.35rem; padding: .35rem .75rem; font-size: .76rem; box-shadow: none; }
+    .scoring-report-menu-formats { display: none; }
+    .scoring-report-menu-list { right: 0; left: auto; }
+  }
+  /* Country Areas and Scoring Trends can be switched off: their fields fade and their card says Off. */
+  .scoring-config-switch { display: flex; align-items: flex-start; gap: .55rem; margin-bottom: .8rem; padding: .6rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: .82rem; cursor: pointer; }
+  .scoring-config-switch input { width: 1.1rem; height: 1.1rem; margin: .1rem 0 0; flex: 0 0 auto; }
+  .scoring-config-switch span { display: grid; gap: .1rem; color: var(--muted); }
+  .scoring-config-switch strong { color: var(--text); }
+  [data-scoring-part-fields].is-part-off { opacity: .45; pointer-events: none; }
+  .scoring-config-pill.is-off { background: repeating-linear-gradient(135deg,#fff,#fff 6px,#f4f5f7 6px,#f4f5f7 12px); }
+  .scoring-config-pill.is-off .scoring-config-pill-value, .scoring-config-pill.is-off .scoring-config-card-line span { color: var(--muted); font-style: italic; }
+  .scoring-result-tab[hidden] { display: none !important; }
+  /* The switch of the Country Areas and Scoring Trends cards, in their top right corner. */
+  .scoring-config-pill-wrap { position: relative; display: flex; min-width: 0; }
+  .scoring-config-pill-wrap > button.scoring-config-pill { flex: 1 1 auto; padding-right: 3.3rem; }
+  .scoring-config-pill-switch { position: absolute; top: 50%; right: .55rem; transform: translateY(-50%); display: inline-flex; cursor: pointer; }
+  .scoring-config-pill-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .scoring-config-pill-switch span { position: relative; width: 2.1rem; height: 1.2rem; border-radius: 999px; background: #c3cad4; transition: background .15s; }
+  .scoring-config-pill-switch span::after { content: ''; position: absolute; top: .15rem; left: .15rem; width: .9rem; height: .9rem; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s; }
+  .scoring-config-pill-switch input:checked + span { background: var(--brand); }
+  .scoring-config-pill-wrap.is-areas .scoring-config-pill-switch input:checked + span { background: #6b3fb8; }
+  .scoring-config-pill-wrap.is-trends .scoring-config-pill-switch input:checked + span { background: #1d8a5b; }
+  .scoring-config-pill-switch input:checked + span::after { transform: translateX(.9rem); }
+  .scoring-config-pill-switch input:focus-visible + span { outline: 2px solid var(--brand-3); outline-offset: 2px; }
+  @media(max-width:640px) { .scoring-config-pill-wrap { width: 100%; } }
+  @media(min-width:1200px) {
+    .scoring-config-pills > .scoring-config-pill-wrap { grid-column: span 3; }
+    .scoring-config-pill-switch { top: .5rem; transform: none; }
+  }
+  /* The blocks are numbered: the steps to configure a scoring. */
+  .scoring-config-step { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; margin-right: .4rem; border-radius: 50%; background: var(--pill); color: #fff; font-size: .7rem; font-weight: 800; letter-spacing: 0; vertical-align: middle; }
+  /* The dialog of one block. */
+  .scoring-config-dialog { display: none; flex-direction: column; width: min(56rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); max-height: calc(100dvh - 2rem); padding: 0; overflow: hidden; border: 0; border-radius: 18px; background: var(--panel-strong); box-shadow: var(--shadow-strong); }
+  .scoring-config-dialog[open] { display: flex; }
+  .scoring-config-dialog::backdrop { background: rgba(14,26,38,.45); }
+  .scoring-config-dialog-head { --block: #1f5fbf; display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem 1.2rem .8rem; border-top: 6px solid var(--block); border-bottom: 1px solid var(--line); }
+  .scoring-config-dialog-head[data-block="setup"] { --block: #3a4a63; }
+  .scoring-config-dialog-head[data-block="split"] { --block: #0d7c86; }
+  .scoring-config-dialog-head[data-block="areas"] { --block: #6b3fb8; }
+  .scoring-config-dialog-head[data-block="trends"] { --block: #1d8a5b; }
+  .scoring-config-dialog-head h3 { margin: .15rem 0 0; color: var(--block); }
+  button.scoring-config-dialog-close { flex: 0 0 auto; width: 2.2rem; height: 2.2rem; padding: 0; border: 1px solid var(--line); background: #fff; color: var(--text); font-size: 1.3rem; line-height: 1; box-shadow: none; }
+  .scoring-config-dialog-source, .scoring-config-dialog-scope { margin: .8rem 1.2rem 0; padding: .5rem .75rem; border-radius: 9px; font-size: .82rem; }
+  .scoring-config-dialog-source { background: #e7f0fc; color: #123c78; }
+  .scoring-config-dialog-scope { background: #efe8fb; color: #45247e; }
+  .scoring-config-dialog-scope[hidden] { display: none; }
+  .scoring-config-dialog-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 1rem 1.2rem 1.2rem; overscroll-behavior: contain; }
+  .scoring-config-dialog-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem 1rem; padding: .8rem 1.2rem; border-top: 1px solid var(--line); background: #f7f9fc; }
+  .scoring-config-dialog-hint { flex: 1 1 14rem; color: var(--muted); font-size: .8rem; }
+  .scoring-config-dialog-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .scoring-config-dialog-actions button { min-height: 2.45rem; }
+  button.scoring-config-dialog-cancel, button.scoring-config-dialog-apply { border: 1px solid var(--line-strong); background: #fff; color: var(--text); box-shadow: none; }
+  button.scoring-config-dialog-calculate { background: linear-gradient(135deg,#228a5d,#156b46); }
+  @media(max-width:640px) {
+    .scoring-config-dialog { width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); border-radius: 14px; }
+    .scoring-config-dialog-head, .scoring-config-dialog-body, .scoring-config-dialog-foot { padding-left: .85rem; padding-right: .85rem; }
+    .scoring-config-dialog-source, .scoring-config-dialog-scope { margin-left: .85rem; margin-right: .85rem; }
+    .scoring-config-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+    .scoring-config-dialog-actions button { width: 100%; padding-left: .5rem; padding-right: .5rem; }
+    .scoring-config-dialog-actions .scoring-config-dialog-calculate { grid-column: 1 / -1; }
+    .scoring-edit-dialog > .scoring-config-host { padding: .85rem; }
+    .scoring-edit-dialog .scoring-config-edit-foot { margin: 0 -.85rem -.85rem; padding: .7rem .85rem; bottom: -.85rem; }
+  }
+  .saved-filter-navigator-footer { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; }
+  .saved-filter-navigator-manage { color: var(--brand); font-weight: 750; text-decoration: underline; }
 </style>
 
 <section class="dashboard-stack spacious-stack scoring-stack" data-scoring-workspace data-scoring-workspace-id="{{ active_workspace.id if active_workspace else '' }}" data-configuration-error="{{ scoring_configuration_error or '' }}" data-saved-filters-url="/api/scoring/saved-filters" data-selection-url="/api/scoring/selection" data-export-base="/scoring/saved-filters" data-scoring-theme="{{ scoring_theme or 'netcheck' }}">
@@ -1802,223 +2026,296 @@
         <h2>Scoring &amp; GAP Analysis</h2>
       </div>
     </div>
-    <p class="lede">Calculate and review NetCheck scoring across one or more CDR datasets. Choose how to split the results of this run (Split by), then inspect the saved scoring tables, charts and GAP analysis.</p>
+    <p class="lede">Calculate and review NetCheck scoring across one or more CDR datasets. Choose how to break down the results (Break down by), then inspect the saved scoring tables, charts and GAP analysis.</p>
   </article>
 
-  <details class="panel collapsible-panel scoring-controls" open data-panel-state-key="scoring:calculation" aria-labelledby="scoring-run-title">
-    <summary class="collapsible-summary">
-      <div class="scoring-controls-title"><p class="eyebrow">Scoring Calculation</p><h2 id="scoring-run-title">Select NR Mode, Campaign, filters, Split by &amp; GAP reference</h2></div>
-      <div class="summary-inline-actions scoring-controls-meta"><span class="scoring-hero-badge"><span aria-hidden="true">◉</span> CDR benchmark workspace</span><span class="pill" data-selected-count>0 CDRs used</span><span class="collapse-chip">Collapse</span></div>
-    </summary>
-    <div class="collapsible-panel-body scoring-controls-body">
-    <div class="section-head tight-head scoring-controls-head">
-      {# Where to start, beside the Saved Filter selector. #}
-      <div class="scoring-start-tip" role="note">
-        <strong class="scoring-start-tip-title">Tip</strong>
-        <p>You can start by choosing one of the <strong>Saved Filters</strong> in the selector (<strong>Use Filter</strong>), or by setting your own filter in the panel below and pressing <strong>Calculate Scoring</strong>.</p>
-      </div>
-      {# The Saved Filter selector of the module, as in Scoring & GAP Results. #}
-      <details class="saved-filter-selector" data-saved-filter-selector>
-        <summary class="saved-filter-item" title="Choose a Saved Filter">
-          <span class="selected-saved-filter" data-selected-saved-filter-card>Loading Saved Filters…</span>
-          <button type="button" class="saved-filter-navigator-open" data-saved-filter-navigator-open title="Find a Favourites Filter in the Filter Navigator: a tree by Area, NR Mode and Campaign, with a search" aria-label="Open the Filter Navigator"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="2.5" width="5" height="4" rx="1"/><rect x="12" y="8" width="6" height="4" rx="1"/><rect x="12" y="14" width="6" height="4" rx="1"/><path d="M4.5 6.5V16H12M4.5 10H12"/></svg><span class="saved-filter-navigator-open-text">Navigator</span></button>
-        </summary>
-        <div class="saved-filter-picker">
-          <div class="section-head tight-head"><strong>Saved Filters</strong><span class="pill" data-saved-filter-count>0 Favourites Filters</span></div>
-          <div class="saved-filter-list" data-saved-filter-list aria-label="Saved Filters" aria-live="polite"><div class="scoring-empty">Loading Saved Filters…</div></div>
-        </div>
-      </details>
-    </div>
-    {# A Saved Filter edited from its pencil: Save Changes gives it the selection of the panel (from its ⧉, Save as New
+  {# The configuration of the scoring, in five blocks: each one opens in its own dialog from the strip of Scoring &amp; GAP
+     Analysis, with the values of the scoring shown, and every block together in the dialog of a Saved Filter edited or
+     duplicated (the host moves into it). Out of a dialog the blocks are not shown: the strip shows their values. #}
+  <div class="scoring-controls scoring-config-host" data-scoring-config-host>
+    {# A Saved Filter edited from its pencil: Save Changes gives it the selection of the blocks (from its ⧉, Save as New
        Filter saves the selection as a copy). #}
     <div class="scoring-edit-banner" data-saved-filter-editing role="status" hidden>
-      <div><strong data-saved-filter-editing-title>Editing a Saved Filter</strong><span data-saved-filter-editing-text>Change its NR Mode, Campaign, filters, Split by, GAP reference, Scoring Trends or methodology: its CDRs follow the NR Mode and Campaign. Save Changes calculates it again, with the same name and star; Cancel Editing (or Escape) leaves it as it was.</span></div>
+      <div><strong data-saved-filter-editing-title>Editing a Saved Filter</strong><span data-saved-filter-editing-text>Change its Scoring Setup, Context Filters, Break down by, Country Areas or Scoring Trends: its CDRs follow the NR Mode and Campaign. Save Changes calculates it again, with the same name and star; Cancel Editing (or Escape) leaves it as it was.</span></div>
     </div>
-    <div class="scoring-picker scoring-scope-picker">
-      <div class="scoring-picker-head"><strong>NR Mode, Campaign, GAP reference &amp; Methodology</strong><span>The CDRs are chosen from the NR Mode and Campaign</span></div>
-      <div class="scoring-scope-row">
-        <label class="scoring-scope-control">NR Mode
-          <select data-nr-filter aria-label="NR Mode">
-            {% set scoring_nr_modes = scoring_datasets | map(attribute='nr_mode') | reject('equalto', none) | reject('equalto', '') | unique | sort | list %}
-            {% for mode in scoring_nr_modes %}
-            <option value="{{ mode }}" {% if mode == 'NSA' %}selected{% endif %}>{{ mode }}</option>
-            {% endfor %}
-            {# NSA vs SA scores the NSA and SA CDRs of the campaigns, each campaign with its NR Mode, side by side. #}
-            {% if scoring_nr_modes | length > 1 %}<option value="NSA+SA" title="The NSA and SA CDRs of the chosen campaigns, side by side: each campaign with its NR Mode (always split by Campaign)">NSA vs SA</option>{% endif %}
-          </select>
-        </label>
-        <label class="scoring-scope-control scoring-scope-campaign">Campaign
-          <select multiple size="1" data-scoring-context-filter="Campaign" data-multiselect-auto-close="1000" data-multiselect-empty-label="All complete campaigns" aria-label="Filter by Campaign">
-            <option value="" disabled>No values</option>
-          </select>
-        </label>
-        {# The GAP reference of the calculation, beside the Campaign. #}
-        <label class="scoring-scope-control" aria-labelledby="scoring-gap-reference-title"><span id="scoring-gap-reference-title">GAP reference operator</span>
-          <select data-baseline-operator aria-labelledby="scoring-gap-reference-title" title="KPI GAP = compared operator weighted points minus reference weighted points for each KPI. Category and final GAP rows show the arithmetic mean of valid KPI GAPs.">
-            {% set scoring_options = scoring_operator_options | default([], true) %}
-            {% if scoring_options %}
-              {% for operator in scoring_options %}<option value="{{ operator.value }}" data-operator-color="{{ operator.color or '' }}" {% if operator.value | lower == 'ee' %}selected{% endif %}>{{ operator.label }}</option>{% endfor %}
-            {% else %}<option value="EE" selected>EE</option>{% endif %}
-            {# NSA vs SA only: each operator in SA compared with itself in NSA (SA minus NSA). #}
-            <option value="@same-operator-nsa" data-nsa-vs-sa-reference hidden disabled title="NSA vs SA: the GAP of each operator in SA to itself in the NSA campaign of the same quarter">Same operator in NSA</option>
-          </select>
-        </label>
-        {# The methodology of the calculation, after the GAP reference. #}
-        <label class="scoring-scope-control">Scoring Methodology
-          <select data-scoring-profile aria-label="Choose the scoring methodology for this calculation">
-            {% set scoring_profile_options = scoring_profiles | default([], true) %}
-            {% if scoring_profile_options %}<option value="by-campaign" selected>By campaign (each campaign with its methodology)</option>{% endif %}
-            {% for profile in scoring_profile_options %}
-            <option value="{{ profile.id }}">{{ profile.name }}</option>
-            {% else %}
-            <option value="{{ scoring_active_profile_id | default('', true) }}" selected>{{ scoring_active_profile_name | default('Default', true) }}</option>
-            {% endfor %}
-          </select>
-        </label>
-      </div>
-      <section class="scoring-auto-cdrs" data-scoring-auto-cdrs aria-labelledby="scoring-auto-cdrs-title" aria-live="polite">
-        <div class="scoring-auto-cdrs-head">
-          <strong id="scoring-auto-cdrs-title">CDRs used</strong>
-          <span class="scoring-auto-cdrs-source" data-auto-cdrs-source>Chosen automatically</span>
-          <button type="button" class="scoring-auto-cdrs-reset" data-auto-cdrs-reset hidden title="Choose the CDRs again from the NR Mode and Campaign">Use automatic CDRs</button>
-        </div>
-        <div class="scoring-auto-cdr-groups" data-auto-cdr-groups></div>
-        <p class="scoring-picker-note" data-auto-cdrs-note>The CDRs of the NR Mode and campaigns that the combined CDR tables include: the Final CDR of each campaign, else its newest Weekly or Daily CDRs, or the Active? choice of Workspace. Without a Campaign, every campaign with Data, Voice and Speech CDRs.</p>
-      </section>
-      {# The CDRs of the calculation, checked automatically from the NR Mode and Campaign (or those of an opened Saved Filter). #}
-      <div class="scoring-dataset-groups" data-dataset-list hidden>
-        {% for kind, kind_label in [('data', 'Data'), ('voice', 'Voice'), ('speech', 'Speech')] %}
-        {% set kind_datasets = scoring_datasets | selectattr('dataset_kind', 'equalto', kind) | list %}
-        <section class="scoring-dataset-group" data-dataset-group="{{ kind }}">
-          <span data-kind-count="{{ kind }}">{{ kind_datasets | length }} available</span>
-          <div class="scoring-dataset-list" data-kind-list="{{ kind }}">
-            {% for dataset in kind_datasets %}
-            <label class="scoring-dataset-option" data-dataset-option data-dataset-kind="{{ dataset.dataset_kind }}" data-cdr-stage="{{ dataset.cdr_stage or 'final' }}" data-dataset-name="{{ dataset.original_name }}" data-nr-mode="{{ dataset.nr_mode or '' }}" data-uploaded-at="{{ dataset.uploaded_at or dataset.created_at or '' }}" data-catalogue="{{ dataset.catalogue | default({}, true) | tojson | forceescape }}">
-              <input type="checkbox" value="{{ dataset.id }}" data-dataset-id>
-              <span class="scoring-dataset-copy"><strong>{{ dataset.original_name }}</strong></span>
-            </label>
-            {% endfor %}
-            <p class="scoring-empty" data-kind-empty hidden>No ready {{ kind_label }} CDR datasets are available for this NR Mode.</p>
-          </div>
-        </section>
-        {% endfor %}
-      </div>
-    </div>
-    {% if scoring_incomplete_catalogue_datasets %}
-    <div class="scoring-warning-box" role="status">
-      <strong>Some CDR filter catalogues are incomplete. Reprocess these datasets to refresh their cached filter values.</strong>
-      <ul class="scoring-warnings">
-        {% for dataset_name in scoring_incomplete_catalogue_datasets %}<li>{{ dataset_name }}</li>{% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-    <div class="scoring-picker" aria-labelledby="scoring-context-filters-title">
-      <div class="scoring-picker-head"><strong id="scoring-context-filters-title">Context filters</strong><span>Every CDR of the NR Mode · each filter lists what the others leave</span></div>
-      <div class="scoring-context-filter-grid" data-scoring-context-filters>
-        {% for level in aggregation_levels if level != 'Campaign' %}{% for field in (['Operator_Vendor', 'Vendor_Operator', 'Vendor'] if level == 'Vendor' else [level]) %}
-        <label>{{ field }}
-          <select multiple size="1" data-scoring-context-filter="{{ field }}"{% if field in ['Operator_Vendor', 'Vendor_Operator'] %} data-operator-vendor-pair="{{ field | lower }}"{% endif %} data-multiselect-auto-close="1000" data-multiselect-empty-label="All values" aria-label="Filter by {{ field }}">
-            <option value="" disabled>No values</option>
-          </select>
-        </label>
-        {% endfor %}{% endfor %}
-      </div>
-      <p class="scoring-context-filter-note">Values come from every CDR of the NR Mode, with the labels of the Operator and Vendor Maps; each filter lists only the values the other filters leave. Leaving a filter empty includes all values. Main Cities uses the workspace city list.</p>
-      {# How to score some Vendors of one operator: Vendor alone applies to every operator. #}
-      <div class="scoring-start-tip scoring-vendor-tip" role="note">
-        <strong class="scoring-start-tip-title">Vendors of one operator</strong>
-        <p><strong>Vendor</strong> applies to every operator. Choose the operator in <strong>Operator</strong> to score only it, or its Vendors in <strong>Operator_Vendor</strong> to keep the other operators.</p>
-      </div>
-    </div>
-    <div class="scoring-picker">
-      <div class="scoring-picker-head"><strong>Split by</strong></div>
-      <div class="scoring-levels-row">
-        <div class="scoring-levels" data-aggregation-levels>
-          {% for level in aggregation_levels %}
-          <label class="scoring-level-option{% if level == 'Operator' %} is-required{% endif %}">
-            <input type="checkbox" value="{{ level }}" data-aggregation-level {% if level == 'Operator' %}checked disabled{% elif level == 'Campaign' %}checked{% endif %}>
-            <span>{{ level }}</span>
+    <section class="scoring-config-section" data-scoring-config-section="setup" aria-labelledby="scoring-config-setup-title">
+      <h3 class="scoring-config-section-title" id="scoring-config-setup-title">Scoring Setup</h3>
+      <div class="scoring-picker scoring-config-group">
+        <div class="scoring-picker-head"><strong>Methodology</strong><span class="scoring-config-shortcuts"><a data-config-shortcut="kpi" href="/workspace-config#scoring-methodology-environments"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 17h16M3 17V7h5v10M5 10h1M5 13h1M12 3l-2 14M16 3l2 14M14 4v2m0 3v2m0 3v2"/></svg><span>Scoring Methodologies</span></a></span></div>
+        <div class="scoring-scope-row scoring-config-row">
+          <label class="scoring-scope-control" data-scoring-config-key="scoring_profile_id">Scoring Methodology
+            <select data-scoring-profile aria-label="Choose the scoring methodology for this calculation">
+              {% set scoring_profile_options = scoring_profiles | default([], true) %}
+              {% if scoring_profile_options %}<option value="by-campaign" selected>By campaign (each campaign with its methodology)</option>{% endif %}
+              {% for profile in scoring_profile_options %}
+              <option value="{{ profile.id }}">{{ profile.name }}</option>
+              {% else %}
+              <option value="{{ scoring_active_profile_id | default('', true) }}" selected>{{ scoring_active_profile_name | default('Default', true) }}</option>
+              {% endfor %}
+            </select>
           </label>
+        </div>
+      </div>
+      <div class="scoring-picker scoring-config-group">
+        <div class="scoring-picker-head"><strong>GAP Analysis</strong></div>
+        <div class="scoring-scope-row scoring-config-row">
+          <label class="scoring-scope-control" data-scoring-config-key="baseline_operator" aria-labelledby="scoring-gap-reference-title"><span id="scoring-gap-reference-title">GAP reference operator</span>
+            <select data-baseline-operator aria-labelledby="scoring-gap-reference-title" title="KPI GAP = compared operator weighted points minus reference weighted points for each KPI. Category and final GAP rows show the arithmetic mean of valid KPI GAPs.">
+              {% set scoring_options = scoring_operator_options | default([], true) %}
+              {% if scoring_options %}
+                {% for operator in scoring_options %}<option value="{{ operator.value }}" data-operator-color="{{ operator.color or '' }}" {% if operator.value | lower == 'ee' %}selected{% endif %}>{{ operator.label }}</option>{% endfor %}
+              {% else %}<option value="EE" selected>EE</option>{% endif %}
+              {# NSA vs SA only: each operator in SA compared with itself in NSA (SA minus NSA). #}
+              <option value="@same-operator-nsa" data-nsa-vs-sa-reference hidden disabled title="NSA vs SA: the GAP of each operator in SA to itself in the NSA campaign of the same quarter">Same operator in NSA</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="scoring-picker scoring-config-group">
+        <div class="scoring-picker-head"><strong>Points Lost</strong></div>
+        <div class="scoring-area-grid scoring-config-row">
+          <label class="scoring-area-option" data-scoring-config-key="postal_codes" title="Adds Postal Code to Maps per of the Points Lost Map: the table and the map per postal code. Off by default: use it when you need it, for example once per quarter. The postal code areas are approximate, worked out from GeoNames postal code points.">
+                <input type="checkbox" data-scoring-area-postal-codes> Postal Codes in the Points Lost Map
+              </label>
+          <label data-scoring-config-key="postal_map" data-scoring-area-postal-map-field hidden title="The map of the Postal Codes of this Saved Filter: the ones the workspace has are in Workspace Config → Map Areas. A map it lacks is downloaded when the scoring is calculated. With another map it is the same Saved Filter: its result is replaced.">Postal Codes map
+                <select data-scoring-area-postal-map aria-label="Map of the Postal Codes in the Points Lost Map">
+                  <option value="full" selected>Full postcodes</option>
+                  <option value="place">One point per place</option>
+                  <option value="own">Own file</option>
+                </select>
+              </label>
+        </div>
+      </div>
+      {# The Environment of the results: it filters what is shown at once (nothing is calculated again). #}
+      <div class="scoring-picker scoring-config-group" data-scoring-config-view-only>
+        <div class="scoring-picker-head"><strong>Environment</strong><span>Shown at once: nothing is calculated again</span></div>
+        <div class="scoring-scope-row scoring-config-row">
+          <label class="scoring-scope-control" data-result-environment-control>Environment
+                <select data-result-environment aria-label="Filter scoring tables, charts and GAP analysis by environment; defaults to the first complete environment when all environments are incomplete" disabled><option value="all">All Environments</option></select>
+              </label>
+        </div>
+      </div>
+    </section>
+    <section class="scoring-config-section" data-scoring-config-section="context" aria-labelledby="scoring-config-context-title">
+      <h3 class="scoring-config-section-title" id="scoring-config-context-title">Context Filters</h3>
+      <div class="scoring-picker scoring-scope-picker">
+        <div class="scoring-picker-head"><strong>NR Mode &amp; Campaign</strong><span>The CDRs are chosen from the NR Mode and Campaign</span></div>
+        <div class="scoring-scope-row">
+          <label class="scoring-scope-control" data-scoring-config-key="nr_mode">NR Mode
+            <select data-nr-filter aria-label="NR Mode">
+              {% set scoring_nr_modes = scoring_datasets | map(attribute='nr_mode') | reject('equalto', none) | reject('equalto', '') | unique | sort | list %}
+              {% for mode in scoring_nr_modes %}
+              <option value="{{ mode }}" {% if mode == 'NSA' %}selected{% endif %}>{{ mode }}</option>
+              {% endfor %}
+              {# NSA vs SA scores the NSA and SA CDRs of the campaigns, each campaign with its NR Mode, side by side. #}
+              {% if scoring_nr_modes | length > 1 %}<option value="NSA+SA" title="The NSA and SA CDRs of the chosen campaigns, side by side: each campaign with its NR Mode (always split by Campaign)">NSA vs SA</option>{% endif %}
+            </select>
+          </label>
+          <label class="scoring-scope-control scoring-scope-campaign" data-scoring-config-key="context_filters.Campaign">Campaign
+            <select multiple size="1" data-scoring-context-filter="Campaign" data-multiselect-auto-close="1000" data-multiselect-empty-label="All complete campaigns" aria-label="Filter by Campaign">
+              <option value="" disabled>No values</option>
+            </select>
+          </label>
+        </div>
+        <section class="scoring-auto-cdrs" data-scoring-auto-cdrs aria-labelledby="scoring-auto-cdrs-title" aria-live="polite">
+          <div class="scoring-auto-cdrs-head">
+            <strong id="scoring-auto-cdrs-title">CDRs used</strong>
+            <span class="scoring-auto-cdrs-source" data-auto-cdrs-source>Chosen automatically</span>
+            <button type="button" class="scoring-auto-cdrs-reset" data-auto-cdrs-reset hidden title="Choose the CDRs again from the NR Mode and Campaign">Use automatic CDRs</button>
+          </div>
+          <div class="scoring-auto-cdr-groups" data-auto-cdr-groups></div>
+          <p class="scoring-picker-note" data-auto-cdrs-note>The CDRs of the NR Mode and campaigns that the combined CDR tables include: the Final CDR of each campaign, else its newest Weekly or Daily CDRs, or the Active? choice of Workspace. Without a Campaign, every campaign with Data, Voice and Speech CDRs.</p>
+        </section>
+        {# The CDRs of the calculation, checked automatically from the NR Mode and Campaign (or those of an opened Saved Filter). #}
+        <div class="scoring-dataset-groups" data-dataset-list hidden>
+          {% for kind, kind_label in [('data', 'Data'), ('voice', 'Voice'), ('speech', 'Speech')] %}
+          {% set kind_datasets = scoring_datasets | selectattr('dataset_kind', 'equalto', kind) | list %}
+          <section class="scoring-dataset-group" data-dataset-group="{{ kind }}">
+            <span data-kind-count="{{ kind }}">{{ kind_datasets | length }} available</span>
+            <div class="scoring-dataset-list" data-kind-list="{{ kind }}">
+              {% for dataset in kind_datasets %}
+              <label class="scoring-dataset-option" data-dataset-option data-dataset-kind="{{ dataset.dataset_kind }}" data-cdr-stage="{{ dataset.cdr_stage or 'final' }}" data-dataset-name="{{ dataset.original_name }}" data-nr-mode="{{ dataset.nr_mode or '' }}" data-uploaded-at="{{ dataset.uploaded_at or dataset.created_at or '' }}" data-catalogue="{{ dataset.catalogue | default({}, true) | tojson | forceescape }}">
+                <input type="checkbox" value="{{ dataset.id }}" data-dataset-id>
+                <span class="scoring-dataset-copy"><strong>{{ dataset.original_name }}</strong></span>
+              </label>
+              {% endfor %}
+              <p class="scoring-empty" data-kind-empty hidden>No ready {{ kind_label }} CDR datasets are available for this NR Mode.</p>
+            </div>
+          </section>
           {% endfor %}
         </div>
-        <span class="scoring-config-shortcuts scoring-levels-shortcut"><a data-config-shortcut="hierarchy" href="#" role="button" data-scoring-hierarchy-open title="Order the aggregation hierarchy of the application"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="7" y="2" width="6" height="4" rx="1"/><path d="M10 6v4M4 14v-4h12v4"/><rect x="1" y="14" width="6" height="4" rx="1"/><rect x="13" y="14" width="6" height="4" rx="1"/></svg><span>Aggregation hierarchy</span></a></span>
       </div>
-      <p class="scoring-context-filter-note scoring-levels-note">Operator is required. To compare the operators of each City (or Region or Cluster) side by side, move that level above Operator in the Aggregation hierarchy.</p>
-    </div>
-    <div class="scoring-picker scoring-trends-picker" data-scoring-trends aria-labelledby="scoring-trends-title">
-      <div class="scoring-picker-head" title="Always the whole country: the Region, Cluster and City filters of the calculation do not apply to Geographical Areas and Scoring Trends."><strong id="scoring-trends-title">Geographical Areas &amp; Scoring Trends</strong></div>
-      <div class="scoring-trends-columns">
-        <div class="scoring-picker scoring-area-summary" data-scoring-area-summary>
-          <div class="scoring-picker-head" title="The areas of the Geographical Areas and Scoring Trends tabs"><strong>Geographical Areas</strong></div>
-          <div class="scoring-area-grid">
-            <label>Breakdown
-              <select data-scoring-area-breakdown aria-label="Breakdown of the Geographical Areas and the National &amp; Geographical Areas Trends" title="Each Region, Cluster or City of the Geographical Areas and the trends; None: the Separate cities only">
-                {% for value in ['None', 'Region', 'Cluster', 'City'] %}<option value="{{ value }}"{% if value == 'Region' %} selected{% endif %}>{{ 'None (Separate cities only)' if value == 'None' else value }}</option>{% endfor %}
-              </select>
-            </label>
-            <label>Separate cities
-              <select multiple size="1" data-scoring-area-cities data-multiselect-auto-close="1000" data-multiselect-empty-label="None" aria-label="Separate cities of the Geographical Areas and the National &amp; Geographical Areas Trends">
-                <option value="London" selected>London</option>
-              </select>
-            </label>
-            <label class="scoring-area-option" title="Adds Postal Code to Maps per of the Points Lost Map: the table and the map per postal code. Off by default: use it when you need it, for example once per quarter. The postal code areas are approximate, worked out from GeoNames postal code points.">
-              <input type="checkbox" data-scoring-area-postal-codes> Postal Codes in the Points Lost Map
-            </label>
-            <label data-scoring-area-postal-map-field hidden title="The map of the Postal Codes of this Saved Filter: the ones the workspace has are in Workspace Config → Map Areas. A map it lacks is downloaded when the scoring is calculated. With another map it is the same Saved Filter: its result is replaced.">Postal Codes map
-              <select data-scoring-area-postal-map aria-label="Map of the Postal Codes in the Points Lost Map">
-                <option value="full" selected>Full postcodes</option>
-                <option value="place">One point per place</option>
-                <option value="own">Own file</option>
-              </select>
-            </label>
-          </div>
+      {% if scoring_incomplete_catalogue_datasets %}
+      <div class="scoring-warning-box" role="status">
+        <strong>Some CDR filter catalogues are incomplete. Reprocess these datasets to refresh their cached filter values.</strong>
+        <ul class="scoring-warnings">
+          {% for dataset_name in scoring_incomplete_catalogue_datasets %}<li>{{ dataset_name }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      <div class="scoring-picker" aria-labelledby="scoring-context-filters-title">
+        <div class="scoring-picker-head"><strong id="scoring-context-filters-title">Context filters</strong><span>Every CDR of the NR Mode · each filter lists what the others leave</span></div>
+        <div class="scoring-context-filter-grid" data-scoring-context-filters>
+          {% for level in aggregation_levels if level != 'Campaign' %}{% for field in (['Operator_Vendor', 'Vendor_Operator', 'Vendor'] if level == 'Vendor' else [level]) %}
+          <label data-scoring-config-key="context_filters.{{ field }}">{{ field }}
+            <select multiple size="1" data-scoring-context-filter="{{ field }}"{% if field in ['Operator_Vendor', 'Vendor_Operator'] %} data-operator-vendor-pair="{{ field | lower }}"{% endif %} data-multiselect-auto-close="1000" data-multiselect-empty-label="All values" aria-label="Filter by {{ field }}">
+              <option value="" disabled>No values</option>
+            </select>
+          </label>
+          {% endfor %}{% endfor %}
         </div>
-        <div class="scoring-picker scoring-area-summary scoring-trends-options">
-          <div class="scoring-picker-head" title="The Scoring Trends tab only: with these campaigns, whatever the Campaign filter (without campaigns, those of the Campaign filter)"><strong>Scoring Trends</strong></div>
-          <div class="scoring-area-grid scoring-trends-grid">
-            <label>Campaigns
-              <select multiple size="1" data-scoring-trend-campaigns data-multiselect-auto-close="1000" data-multiselect-empty-label="Same as the Campaign filter" aria-label="Campaigns of the Scoring Trends">
-                <option value="" disabled>No values</option>
-              </select>
-            </label>
-            <label>Time split
-              <select data-scoring-area-time-split aria-label="Time split of the National &amp; Geographical Areas Trends" title="All selected CDRs aggregates every selected CDR into one value; Campaign splits by campaign; Daily to Yearly split by the period of the start time of each test">
-                {% for value, label in [('All', 'All selected CDRs'), ('Campaign', 'Campaign'), ('Daily', 'Daily'), ('Weekly', 'Weekly'), ('Monthly', 'Monthly'), ('Quarterly', 'Quarterly'), ('Yearly', 'Yearly')] %}<option value="{{ value }}"{% if value == 'Campaign' %} selected{% endif %}>{{ label }}</option>{% endfor %}
-              </select>
-            </label>
-          </div>
+        <p class="scoring-context-filter-note">Values come from every CDR of the NR Mode, with the labels of the Operator and Vendor Maps; each filter lists only the values the other filters leave. Leaving a filter empty includes all values. Main Cities uses the workspace city list.</p>
+        {# How to score some Vendors of one operator: Vendor alone applies to every operator. #}
+        <div class="scoring-start-tip scoring-vendor-tip" role="note">
+          <strong class="scoring-start-tip-title">Vendors of one operator</strong>
+          <p><strong>Vendor</strong> applies to every operator. Choose the operator in <strong>Operator</strong> to score only it, or its Vendors in <strong>Operator_Vendor</strong> to keep the other operators.</p>
         </div>
       </div>
-    </div>
-    <div class="scoring-controls-foot scoring-calculation-actions">
-      <div class="scoring-methodology-actions">
+    </section>
+    <section class="scoring-config-section" data-scoring-config-section="split" aria-labelledby="scoring-config-split-title">
+      <h3 class="scoring-config-section-title" id="scoring-config-split-title">Break down by</h3>
+      <div class="scoring-picker">
+        <div class="scoring-picker-head"><strong>Break down by</strong></div>
+        <div class="scoring-levels-row" data-scoring-config-key="aggregation_levels">
+          <div class="scoring-levels" data-aggregation-levels>
+            {% for level in aggregation_levels %}
+            <label class="scoring-level-option{% if level == 'Operator' %} is-required{% endif %}">
+              <input type="checkbox" value="{{ level }}" data-aggregation-level {% if level == 'Operator' %}checked disabled{% elif level == 'Campaign' %}checked{% endif %}>
+              <span>{{ level }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          <span class="scoring-config-shortcuts scoring-levels-shortcut"><a data-config-shortcut="hierarchy" href="#" role="button" data-scoring-hierarchy-open title="Order the aggregation hierarchy of the application"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="7" y="2" width="6" height="4" rx="1"/><path d="M10 6v4M4 14v-4h12v4"/><rect x="1" y="14" width="6" height="4" rx="1"/><rect x="13" y="14" width="6" height="4" rx="1"/></svg><span>Aggregation hierarchy</span></a></span>
+        </div>
+        <p class="scoring-context-filter-note scoring-levels-note">Operator is required. To compare the operators of each City (or Region or Cluster) side by side, move that level above Operator in the Aggregation hierarchy.</p>
+      </div>
+    </section>
+    {# Country Areas (formerly Geographical Areas): always the whole country, the Region, Cluster and City of the Context
+       Filters do not apply. #}
+    <section class="scoring-config-section" data-scoring-config-section="areas" data-scoring-trends aria-labelledby="scoring-config-areas-title">
+      <h3 class="scoring-config-section-title" id="scoring-config-areas-title">Country Areas</h3>
+      {# Switched off, Country Areas is not calculated and its tab hides from the results. #}
+      <label class="scoring-config-switch" data-scoring-config-key="country_areas"><input type="checkbox" data-scoring-country-areas-enabled checked> <span><strong>Include Country Areas</strong> Calculated with the scoring and shown in its own tab of the results; off, the tab hides and the scoring is quicker.</span></label>
+      <div class="scoring-picker scoring-area-summary" data-scoring-area-summary data-scoring-part-fields="country_areas">
+        <div class="scoring-picker-head" title="Always the whole country: the Region, Cluster and City of the Context Filters do not apply"><strong>Areas of the country</strong><span>Whole country</span></div>
+        <div class="scoring-area-grid">
+          <label data-scoring-config-key="breakdown">Areas
+                <select data-scoring-area-breakdown aria-label="Areas of the Country Areas and the National &amp; Country Areas Trends" title="Each Region, Cluster or City of the country gets its own score in the Country Areas and the trends; None: only the Cities on their own">
+                  {% for value in ['None', 'Region', 'Cluster', 'City'] %}<option value="{{ value }}"{% if value == 'Region' %} selected{% endif %}>{{ 'None (only the Cities on their own)' if value == 'None' else value }}</option>{% endfor %}
+                </select>
+              </label>
+          <label data-scoring-config-key="cities">Cities on their own
+                <select multiple size="1" data-scoring-area-cities data-multiselect-auto-close="1000" data-multiselect-empty-label="None" aria-label="Cities on their own of the Country Areas and the National &amp; Country Areas Trends">
+                  <option value="London" selected>London</option>
+                </select>
+              </label>
+        </div>
+        <p class="scoring-context-filter-note">Each area of the Areas level gets its own score; the Cities on their own are scored as extra areas next to them. They are shown in the Country Areas tab, and the National &amp; Country Areas Trends of Scoring Trends use them too (also with Country Areas switched off).</p>
+      </div>
+    </section>
+    <section class="scoring-config-section" data-scoring-config-section="trends" aria-labelledby="scoring-config-trends-title">
+      <h3 class="scoring-config-section-title" id="scoring-config-trends-title">Scoring Trends</h3>
+      {# Switched off, the Scoring Trends are not calculated and their tab hides from the results. #}
+      <label class="scoring-config-switch" data-scoring-config-key="trends"><input type="checkbox" data-scoring-trends-enabled checked> <span><strong>Include Scoring Trends</strong> Calculated with the scoring and shown in their own tab of the results; off, the tab hides and the scoring is quicker.</span></label>
+      <div class="scoring-picker scoring-area-summary scoring-trends-options" data-scoring-part-fields="trends">
+        <div class="scoring-picker-head" title="The Scoring Trends tab only: with these campaigns, whatever the Campaign filter (without campaigns, those of the Campaign filter)"><strong>Scoring Trends</strong><span>Independent of the Campaign of the Context Filters</span></div>
+        <div class="scoring-area-grid scoring-trends-grid">
+          <label data-scoring-config-key="campaigns">Campaigns
+                <select multiple size="1" data-scoring-trend-campaigns data-multiselect-auto-close="1000" data-multiselect-empty-label="Same as the Campaign filter" aria-label="Campaigns of the Scoring Trends">
+                  <option value="" disabled>No values</option>
+                </select>
+              </label>
+          <label data-scoring-config-key="time_split">Time split
+                <select data-scoring-area-time-split aria-label="Time split of the Scoring Trends" title="All selected CDRs aggregates every selected CDR into one value; Campaign splits by campaign; Daily to Yearly split by the period of the start time of each test">
+                  {% for value, label in [('All', 'All selected CDRs'), ('Campaign', 'Campaign'), ('Daily', 'Daily'), ('Weekly', 'Weekly'), ('Monthly', 'Monthly'), ('Quarterly', 'Quarterly'), ('Yearly', 'Yearly')] %}<option value="{{ value }}"{% if value == 'Campaign' %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+              </label>
+        </div>
+      </div>
+    </section>
+    {# Shown in the dialog of a Saved Filter being edited or duplicated. #}
+    <div class="scoring-config-edit-foot" data-scoring-config-edit-foot>
       <div class="scoring-actions">
-        <button type="button" data-calculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="1" width="12" height="18" rx="2"/><path d="M7 4h6v3H7zM7 11h1m4 0h1m-6 4h1m4 0h1"/></svg><span>Calculate Scoring</span></button>
-        <button type="button" class="scoring-force-button" data-recalculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M16 7a7 7 0 0 0-12-2L2 7m0-5v5h5M4 13a7 7 0 0 0 12 2l2-2m0 5v-5h-5"/></svg><span>Recalculate</span></button>
-        <button type="button" class="scoring-close-button" data-close-scoring disabled title="Close the scoring shown in Scoring &amp; GAP Results (its Saved Filter stays)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7.5 8l5 5M12.5 8l-5 5"/></svg><span>Close Scoring</span></button>
         <button type="button" class="scoring-edit-cancel" data-saved-filter-edit-cancel hidden><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg><span>Cancel Editing</span></button>
         <button type="button" class="scoring-edit-save" data-saved-filter-edit-save hidden><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 10.5l4 4 8-9"/></svg><span>Save Changes</span></button>
       </div>
-      </div>
-
-      <div class="scoring-results-tools scoring-calculation-shortcuts">
-        <nav class="scoring-config-shortcuts scoring-results-config-shortcuts" aria-label="Scoring configuration sections">
-          <a data-config-shortcut="kpi" href="/workspace-config#scoring-methodology-environments"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 17h16M3 17V7h5v10M5 10h1M5 13h1M12 3l-2 14M16 3l2 14M14 4v2m0 3v2m0 3v2"/></svg><span>Scoring Methodologies</span></a>
-        </nav>
-        <div class="scoring-export-actions" aria-label="Generate a scoring report">
-          <a href="#" data-generate-report role="button" title="Choose the report content and generate it from the CDRs, NR Mode, methodology and GAP reference selected above"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 3h16M10 3V1M10 14v4m-3 0h6"/><rect x="3" y="3" width="14" height="11" rx="1"/><path d="m8 6 5 3-5 3z"/></svg><span>Generate Scoring Report (PPT/Word)</span></a>
-        </div>
-      </div>
-      <p class="scoring-note scoring-calculation-message" data-scoring-message role="status" aria-live="polite">Choose at least one CDR to calculate scoring.</p>
     </div>
-    </div>
-  </details>
+  </div>
 
   <section class="saved-filters-layout" aria-label="Saved Filters and results">
-    <article class="panel scoring-results-panel" aria-labelledby="scoring-results-title">
+    <article class="panel scoring-results-panel" id="section-scoring-gap-analysis" aria-labelledby="scoring-results-title">
       <div class="scoring-results-head">
-        <div class="scoring-results-primary">
-          <div><p class="eyebrow">Calculated Scoring &amp; GAP Results</p><h3 id="scoring-results-title">Scoring &amp; GAP Results</h3></div>
+        <div class="scoring-results-title-row">
+          <div><p class="eyebrow">Scoring, GAP, areas and trends</p><h2 id="scoring-results-title">Scoring &amp; GAP Analysis</h2></div>
+          {# The two ways to start: a Favourite Scoring (Filter Navigator) or the Context Filters. #}
+          <div class="scoring-main-actions">
+            <button type="button" class="scoring-main-action scoring-main-favourites" data-saved-filter-navigator-open data-scoring-main-favourites title="Choose a Favourite Scoring in the Filter Navigator: a tree by Area, NR Mode and Campaign, with a search"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 1.8l2.5 5.2 5.7.8-4.1 4 1 5.7L10 14.8l-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/></svg><span>Favourite Scorings</span><span class="scoring-main-count" data-scoring-favourites-count>0</span></button>
+            <button type="button" class="scoring-main-action scoring-main-context" data-scoring-config-open="context" data-scoring-main-context title="NR Mode, Campaign, Region, Cluster, City, Operator, Vendor… and the CDRs used"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 4.5h14l-5.5 6.5v5l-3 1.5V11z"/></svg><span>Context Filters</span></button>
+          </div>
+        </div>
+        {# Where to start, while no scoring is shown. #}
+        <div class="scoring-start-guide" data-scoring-start-guide role="note" hidden>
+          <div class="scoring-start-guide-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10" cy="10" r="8"/><path d="M10 9v5M10 6.2v.2"/></svg></div>
+          <div class="scoring-start-guide-body">
+            <strong class="scoring-start-guide-title">No scoring is shown yet</strong>
+            <p data-scoring-start-guide-text>Start by choosing one of your Favourite Scorings, or set the Context Filters to calculate a new scoring.</p>
+            <div class="scoring-start-guide-steps">
+              <div class="scoring-start-guide-step" data-scoring-start-guide-favourites>
+                <strong><span class="scoring-start-guide-number">1</span> Reuse a Favourite Scoring <em>(recommended)</em></strong>
+                <p>Opens a scoring as it was saved: its Context Filters, Break down by, Scoring Setup, Country Areas and Scoring Trends.</p>
+                <button type="button" class="scoring-main-action scoring-main-favourites is-small" data-saved-filter-navigator-open><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 1.8l2.5 5.2 5.7.8-4.1 4 1 5.7L10 14.8l-5.1 2.7 1-5.7-4.1-4 5.7-.8z"/></svg><span>Open the Filter Navigator</span></button>
+              </div>
+              <div class="scoring-start-guide-step">
+                <strong><span class="scoring-start-guide-number" data-scoring-start-guide-context-number>2</span> Or set new Context Filters</strong>
+                <p>Choose the NR Mode, Campaign and the area (Region, Cluster, City…). The other blocks keep their defaults and can be changed afterwards; then Calculate Scoring. Star (☆) a scoring to keep it as a Favourite Scoring.</p>
+                <button type="button" class="scoring-main-action scoring-main-context is-small" data-scoring-config-open="context"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 4.5h14l-5.5 6.5v5l-3 1.5V11z"/></svg><span>Open Context Filters</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+        {# What is shown: its Saved Filter, the actions and one pill per block of the configuration (the values of the
+           scoring shown; a block changed and not calculated yet is marked). #}
+        <div class="scoring-config-strip" data-scoring-config-strip>
+          <div class="scoring-strip-top">
+            <span class="eyebrow scoring-strip-label">Showing</span>
+            <details class="saved-filter-selector" data-saved-filter-selector>
+              <summary class="saved-filter-item" title="Choose a Saved Filter">
+                <span class="selected-saved-filter" data-selected-saved-filter-card>Loading Saved Filters…</span>
+                <button type="button" class="saved-filter-navigator-open" data-saved-filter-navigator-open title="Find a Favourite Scoring in the Filter Navigator: a tree by Area, NR Mode and Campaign, with a search" aria-label="Open the Filter Navigator"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="2.5" width="5" height="4" rx="1"/><rect x="12" y="8" width="6" height="4" rx="1"/><rect x="12" y="14" width="6" height="4" rx="1"/><path d="M4.5 6.5V16H12M4.5 10H12"/></svg><span class="saved-filter-navigator-open-text">Navigator</span></button>
+              </summary>
+              <div class="saved-filter-picker">
+                <div class="section-head tight-head"><strong>Saved Filters</strong><span class="pill" data-saved-filter-count>0 Favourite Scorings</span></div>
+                <div class="saved-filter-list" data-saved-filter-list aria-label="Saved Filters" aria-live="polite"><div class="scoring-empty">Loading Saved Filters…</div></div>
+              </div>
+            </details>
+            <div class="scoring-actions scoring-strip-actions">
+              <button type="button" data-calculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4" y="1" width="12" height="18" rx="2"/><path d="M7 4h6v3H7zM7 11h1m4 0h1m-6 4h1m4 0h1"/></svg><span>Calculate Scoring</span></button>
+              <button type="button" class="scoring-force-button" data-recalculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M16 7a7 7 0 0 0-12-2L2 7m0-5v5h5M4 13a7 7 0 0 0 12 2l2-2m0 5v-5h-5"/></svg><span>Recalculate</span></button>
+              <button type="button" class="scoring-close-button" data-close-scoring disabled title="Close the scoring shown (its Saved Filter stays)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7.5 8l5 5M12.5 8l-5 5"/></svg><span>Close Scoring</span></button>
+            </div>
+          </div>
+          <div class="scoring-config-pills" role="group" aria-label="Configuration of the scoring">
+            <button type="button" class="scoring-config-pill is-setup" data-scoring-config-open="setup" title="Methodology, GAP reference, Points Lost and Environment: the whole panel"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 1">1</span>Scoring Setup</span><span class="scoring-config-pill-value" data-scoring-config-summary="setup"></span><span class="scoring-config-card-lines" data-scoring-config-details="setup"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
+            <button type="button" class="scoring-config-pill is-context" data-scoring-config-open="context"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 2">2</span>Context</span><span class="scoring-config-pill-value" data-scoring-config-summary="context"></span><span class="scoring-config-card-lines" data-scoring-config-details="context"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
+            <button type="button" class="scoring-config-pill is-split" data-scoring-config-open="split"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 3">3</span>Break down by</span><span class="scoring-config-pill-value" data-scoring-config-summary="split"></span><span class="scoring-config-card-lines" data-scoring-config-details="split"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
+            <div class="scoring-config-pill-wrap is-areas">
+              <button type="button" class="scoring-config-pill is-areas" data-scoring-config-open="areas" title="Always the whole country: the Region, Cluster and City of the Context Filters do not apply"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 4">4</span>Country Areas</span><span class="scoring-config-pill-scope">whole country</span><span class="scoring-config-pill-value" data-scoring-config-summary="areas"></span><span class="scoring-config-card-lines" data-scoring-config-details="areas"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
+              <label class="scoring-config-pill-switch" title="Include Country Areas: switched off, it is not calculated and its tab hides"><input type="checkbox" role="switch" data-scoring-part-switch="country_areas" checked aria-label="Include Country Areas"><span aria-hidden="true"></span></label>
+            </div>
+            <div class="scoring-config-pill-wrap is-trends">
+              <button type="button" class="scoring-config-pill is-trends" data-scoring-config-open="trends"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 5">5</span>Trends</span><span class="scoring-config-pill-value" data-scoring-config-summary="trends"></span><span class="scoring-config-card-lines" data-scoring-config-details="trends"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
+              <label class="scoring-config-pill-switch" title="Include Scoring Trends: switched off, it is not calculated and its tab hides"><input type="checkbox" role="switch" data-scoring-part-switch="trends" checked aria-label="Include Scoring Trends"><span aria-hidden="true"></span></label>
+            </div>
+          </div>
+          <div class="scoring-config-pending" data-scoring-config-pending role="status" hidden>
+            <strong>⚠ <span data-scoring-config-pending-text>Changes not calculated yet.</span></strong>
+            <span>The results below still show the previous selection: Calculate Scoring, or Discard the changes.</span>
+            <button type="button" class="scoring-config-discard" data-scoring-config-discard>Discard changes</button>
+          </div>
+          <p class="scoring-note scoring-calculation-message" data-scoring-message role="status" aria-live="polite">Choose at least one CDR to calculate scoring.</p>
+        </div>
+        <div class="scoring-results-primary scoring-results-view">
+          <span class="eyebrow scoring-strip-label">View</span>
           <div class="scoring-results-controls">
             <div class="scoring-results-selector-row" data-scoring-results-selector-row>
               <label class="scoring-environment-filter" data-result-scoring-control hidden>Scoring
@@ -2031,9 +2328,6 @@
                 <select data-scoring-theme-select aria-label="Colour theme of the Scoring &amp; GAP Analysis charts, tables and exports">
                   {% for theme in scoring_themes.themes %}<option value="{{ theme.id }}" title="{{ theme.description }}"{% if theme.id == scoring_theme %} selected{% endif %}>{{ theme.label }}</option>{% endfor %}
                 </select>
-              </label>
-              <label class="scoring-environment-filter" data-result-environment-control>Environment
-                <select data-result-environment aria-label="Filter scoring tables, charts and GAP analysis by environment; defaults to the first complete environment when all environments are incomplete" disabled><option value="all">All Environments</option></select>
               </label>
               {# NSA vs SA: each panel of NSA followed by the same panel of SA, or every panel of NSA and then every panel of SA. #}
               <label class="scoring-environment-filter" data-result-nr-layout-control hidden title="NSA vs SA: each panel of NSA followed by the same panel of SA, or every panel of NSA and then every panel of SA">NSA vs SA
@@ -2060,25 +2354,16 @@
               </label>
             </div>
           </div>
-        </div>
-        <div class="scoring-results-tools">
-          <nav class="scoring-config-shortcuts scoring-results-config-shortcuts" aria-label="Scoring configuration sections">
-            <a data-config-shortcut="kpi" href="/workspace-config#scoring-methodology-environments"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 17h16M3 17V7h5v10M5 10h1M5 13h1M12 3l-2 14M16 3l2 14M14 4v2m0 3v2m0 3v2"/></svg><span>Scoring Methodologies</span></a>
-          </nav>
-          <div class="scoring-export-actions" aria-label="Export the selected Saved Filter">
-            <a href="#" data-export-ppt aria-disabled="true" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 3h16M10 3V1M10 14v4m-3 0h6"/><rect x="3" y="3" width="14" height="11" rx="1"/><path d="m8 6 5 3-5 3z"/></svg><span>Export Selected Scoring Report (PPT/Word)</span></a>
+          <div class="scoring-results-tools">
+            <details class="scoring-report-menu" data-scoring-report-menu>
+            <summary class="scoring-report-menu-button" title="PowerPoint or Word report of the scoring"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 3h16M10 3V1M10 14v4m-3 0h6"/><rect x="3" y="3" width="14" height="11" rx="1"/><path d="m8 6 5 3-5 3z"/></svg><span>Report<span class="scoring-report-menu-formats"> (PPT/Word)</span></span></summary>
+            <div class="scoring-report-menu-list" role="menu" aria-label="Scoring reports">
+              <a href="#" data-export-ppt aria-disabled="true" tabindex="-1"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 3h16M10 3V1M10 14v4m-3 0h6"/><rect x="3" y="3" width="14" height="11" rx="1"/><path d="m8 6 5 3-5 3z"/></svg><span><strong>Export this scoring</strong><small>The results shown, with their CDRs, filters and Break down by</small></span></a>
+              <a href="#" data-generate-report role="button" title="Choose the report content and generate it from the Context Filters and Scoring Setup of the strip"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 3h16M10 3V1M10 14v4m-3 0h6"/><rect x="3" y="3" width="14" height="11" rx="1"/><path d="m8 6 5 3-5 3z"/></svg><span><strong>Custom report…</strong><small>Choose scenarios and sections; calculated from the configuration of the strip</small></span></a>
+            </div>
+          </details>
           </div>
         </div>
-        <details class="saved-filter-selector" data-saved-filter-selector>
-          <summary class="saved-filter-item" title="Choose a Saved Filter">
-            <span class="selected-saved-filter" data-selected-saved-filter-card>Loading Saved Filters…</span>
-            <button type="button" class="saved-filter-navigator-open" data-saved-filter-navigator-open title="Find a Favourites Filter in the Filter Navigator: a tree by Area, NR Mode and Campaign, with a search" aria-label="Open the Filter Navigator"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="2.5" width="5" height="4" rx="1"/><rect x="12" y="8" width="6" height="4" rx="1"/><rect x="12" y="14" width="6" height="4" rx="1"/><path d="M4.5 6.5V16H12M4.5 10H12"/></svg><span class="saved-filter-navigator-open-text">Navigator</span></button>
-          </summary>
-          <div class="saved-filter-picker">
-            <div class="section-head tight-head"><strong>Saved Filters</strong><span class="pill" data-saved-filter-count>0 Favourites Filters</span></div>
-            <div class="saved-filter-list" data-saved-filter-list aria-label="Saved Filters" aria-live="polite"><div class="scoring-empty">Loading Saved Filters…</div></div>
-          </div>
-        </details>
       <div class="scoring-notes-stack">
       <div class="scoring-notice-box" data-notice-box role="status" aria-live="polite" hidden><svg class="scoring-notice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg><strong>Scaled results</strong><ul class="scoring-notices" data-notice-list></ul></div>
       <div class="scoring-warning-box" data-warning-box role="status" aria-live="polite" hidden><svg class="scoring-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 4.5a2 2 0 0 1 3.4 0l8 13.5a2 2 0 0 1-1.7 3H4a2 2 0 0 1-1.7-3z"/><path d="M12 9v4m0 4h.01"/></svg><strong>Calculation notes</strong><ul class="scoring-warnings" data-warning-list></ul></div>
@@ -2089,8 +2374,8 @@
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="true" aria-controls="scoring-summary-pane" data-result-tab="summary"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3.5" width="6" height="5" rx="1"/><rect x="11" y="3.5" width="6" height="5" rx="1"/><path d="M3 12.5h14M3 16h9"/></svg><span>Summary</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-chart-pane" data-result-tab="charts"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17h14M5.5 14V9M10 14V5M14.5 14v-3"/></svg><span>Scoring Charts</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-table-pane" data-result-tab="scoring"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M3 8h14M3 12h14M8 4v12"/></svg><span>Scoring Tables</span></button>
-        <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-geographical-areas-pane" data-result-tab="geographical-areas" title="Not filtered by Region, Cluster or City: the National scoring and the Breakdown and Separate cities of Geographical Areas &amp; Scoring Trends (the other filters apply; a City breakdown shows the cities of the City filter and the Separate cities only)."><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17.5s5.5-5 5.5-9.5a5.5 5.5 0 0 0-11 0c0 4.5 5.5 9.5 5.5 9.5z"/><circle cx="10" cy="8" r="2"/></svg><span>Geographical Areas</span><span class="scoring-tab-scope" role="img" aria-label="Not filtered by Region, Cluster or City"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5z"/><path d="M3 17 17 3"/></svg></span></button>
-        <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-trends-pane" data-result-tab="trends" title="Not filtered by Region, Cluster or City: the National scoring and the Breakdown and Separate cities of Geographical Areas &amp; Scoring Trends, with the Campaigns of the Scoring Trends (the other filters apply; a City breakdown shows the cities of the City filter and the Separate cities only)."><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16.5h14"/><path d="m3.5 13 4-4.5 3 2.5 5.5-6.5"/><path d="M13 4.5h3v3"/></svg><span>Scoring Trends</span><span class="scoring-tab-scope" role="img" aria-label="Not filtered by Region, Cluster or City"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5z"/><path d="M3 17 17 3"/></svg></span></button>
+        <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-geographical-areas-pane" data-result-tab="geographical-areas" title="Not filtered by Region, Cluster or City: the National scoring and the Areas and Cities on their own of Country Areas (the other filters apply; a City breakdown shows the cities of the City filter and the Cities on their own only)."><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17.5s5.5-5 5.5-9.5a5.5 5.5 0 0 0-11 0c0 4.5 5.5 9.5 5.5 9.5z"/><circle cx="10" cy="8" r="2"/></svg><span>Country Areas</span><span class="scoring-tab-scope" role="img" aria-label="Not filtered by Region, Cluster or City"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5z"/><path d="M3 17 17 3"/></svg></span></button>
+        <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-trends-pane" data-result-tab="trends" title="Not filtered by Region, Cluster or City: the National scoring and the Areas and Cities on their own of Country Areas, with the Campaigns of the Scoring Trends (the other filters apply; a City breakdown shows the cities of the City filter and the Cities on their own only)."><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 16.5h14"/><path d="m3.5 13 4-4.5 3 2.5 5.5-6.5"/><path d="M13 4.5h3v3"/></svg><span>Scoring Trends</span><span class="scoring-tab-scope" role="img" aria-label="Not filtered by Region, Cluster or City"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13l-5 6v5l-3 1.5v-6.5z"/><path d="M3 17 17 3"/></svg></span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-gap-pane" data-result-tab="gap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 21h20"/><path d="M3 21V5h4v16"/><path d="M17 21v-9h4v9"/><path d="M7 5h3.5M13.5 12H17"/><path d="M12 5.5v6"/><path d="m10 7.5 2-2 2 2"/><path d="m10 9.5 2 2 2-2"/></svg><span>GAP Analysis</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-points-pane" data-result-tab="points"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5l4.5-2 5 2 4.5-2v11l-4.5 2-5-2-4.5 2z"/><path d="M7.5 3.5v11M12.5 5.5v11"/></svg><span>Points Lost</span></button>
         <button type="button" class="scoring-result-tab" role="tab" aria-selected="false" aria-controls="scoring-impact-pane" data-result-tab="impact"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3v14M6 17h8M4 5.5h12"/><path d="m4 5.5-2.5 6a2.6 2.6 0 0 0 5 0zM16 5.5l-2.5 6a2.6 2.6 0 0 0 5 0z"/></svg><span>Methodology Impact</span></button>
@@ -2099,7 +2384,7 @@
       <div class="scoring-result-pane" id="scoring-summary-pane" role="tabpanel" data-result-pane="summary"><div class="scoring-empty">No scoring summary is selected.</div></div>
       <div class="scoring-result-pane" id="scoring-chart-pane" role="tabpanel" data-result-pane="charts" hidden><div class="scoring-empty">No scoring charts are selected.</div></div>
       <div class="scoring-result-pane" id="scoring-table-pane" role="tabpanel" data-result-pane="scoring" hidden><div class="scoring-table-export" data-table-export="scoring"><a href="#" data-export-scoring aria-disabled="true" tabindex="-1" title="The scoring table shown below as CSV"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 2H5.5A1.5 1.5 0 0 0 4 3.5v13A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2v4.5H16"/><path d="M10 9.5v5.5M7.6 12.6 10 15l2.4-2.4"/></svg><span>Export to CSV</span></a></div><div class="scoring-empty">No scoring table is selected.</div></div>
-      <div class="scoring-result-pane" id="scoring-geographical-areas-pane" role="tabpanel" data-result-pane="geographical-areas" hidden><div class="scoring-empty">No Geographical Areas are selected.</div></div>
+      <div class="scoring-result-pane" id="scoring-geographical-areas-pane" role="tabpanel" data-result-pane="geographical-areas" hidden><div class="scoring-empty">No Country Areas is selected.</div></div>
       <div class="scoring-result-pane" id="scoring-trends-pane" role="tabpanel" data-result-pane="trends" hidden><div class="scoring-empty">No Scoring Trends are selected.</div></div>
       <div class="scoring-result-pane" id="scoring-gap-pane" role="tabpanel" data-result-pane="gap" hidden><div class="scoring-table-export" data-table-export="gap"><a href="#" data-export-gap aria-disabled="true" tabindex="-1" title="The GAP table shown below as CSV"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.5 2H5.5A1.5 1.5 0 0 0 4 3.5v13A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5V6.5z"/><path d="M11.5 2v4.5H16"/><path d="M10 9.5v5.5M7.6 12.6 10 15l2.4-2.4"/></svg><span>Export to CSV</span></a></div><div class="scoring-empty">No GAP analysis is selected.</div></div>
       <div class="scoring-result-pane" id="scoring-points-pane" role="tabpanel" data-result-pane="points" hidden><div class="scoring-empty">No Points Lost are selected.</div></div>
@@ -2109,12 +2394,12 @@
 
     </article>
     {% include 'scoring_exclusions_panel.html' %}
-    <details class="panel collapsible-panel saved-filters-panel" open data-panel-state-key="scoring:favourites-filters">
-      <summary class="collapsible-summary"><div><p class="eyebrow">Reusable selections</p><h2>Favourites Filters</h2></div><div class="summary-inline-actions saved-filters-panel-tools"><button type="button" class="saved-filter-navigator-open" data-saved-filter-navigator-open title="Find a Favourites Filter in the Filter Navigator: a tree by Area, NR Mode and Campaign, with a search"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="2.5" width="5" height="4" rx="1"/><rect x="12" y="8" width="6" height="4" rx="1"/><rect x="12" y="14" width="6" height="4" rx="1"/><path d="M4.5 6.5V16H12M4.5 10H12"/></svg><span>Filter Navigator</span></button><span class="pill" data-saved-filter-count>0 Favourites Filters</span><span class="collapse-chip">Collapse</span></div></summary>
+    <details class="panel collapsible-panel saved-filters-panel" data-panel-state-key="scoring:favourites-filters" data-saved-filters-panel>
+      <summary class="collapsible-summary"><div><p class="eyebrow">Reusable selections</p><h2>Manage Favourite Scorings</h2></div><div class="summary-inline-actions saved-filters-panel-tools"><button type="button" class="saved-filter-navigator-open" data-saved-filter-navigator-open title="Find a Favourite Scoring in the Filter Navigator: a tree by Area, NR Mode and Campaign, with a search"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2" y="2.5" width="5" height="4" rx="1"/><rect x="12" y="8" width="6" height="4" rx="1"/><rect x="12" y="14" width="6" height="4" rx="1"/><path d="M4.5 6.5V16H12M4.5 10H12"/></svg><span>Filter Navigator</span></button><span class="pill" data-saved-filter-count>0 Favourite Scorings</span><span class="collapse-chip">Collapse</span></div></summary>
       <div class="collapsible-panel-body saved-filters-panel-body">
       <div class="saved-filters-bulk" data-saved-filters-bulk hidden>
         <label class="saved-filters-select-all"><input type="checkbox" data-saved-filters-select-all> Select all</label>
-        <div class="bulk-toolbar" role="toolbar" aria-label="Selected Favourites Filters">
+        <div class="bulk-toolbar" role="toolbar" aria-label="Selected Favourite Scorings">
           <button type="button" class="bulk-action bulk-action-up" data-saved-filters-move="up" disabled title="Move the selected Saved Filters one place up in the list">Move Up</button>
           <button type="button" class="bulk-action bulk-action-down" data-saved-filters-move="down" disabled title="Move the selected Saved Filters one place down in the list">Move Down</button>
           <span class="bulk-toolbar-separator" aria-hidden="true"></span>
@@ -2137,23 +2422,42 @@
     </section>
   </div>
   {% set can_edit_hierarchy = user and user.role in ['user-editor', 'admin', 'super-admin'] %}
-  {# Filter Navigator: the Favourites Filters as a tree, Area → NR Mode → Campaign, with a search; choosing one uses it. #}
+  {# Filter Navigator: the Favourite Scorings as a tree, Area → NR Mode → Campaign, with a search; choosing one uses it. #}
   <dialog class="saved-filter-navigator" data-saved-filter-navigator tabindex="-1" aria-labelledby="saved-filter-navigator-title">
     <div class="saved-filter-navigator-head">
-      <div><p class="eyebrow">Favourites Filters</p><h3 id="saved-filter-navigator-title">Filter Navigator</h3></div>
-      <span class="pill" data-saved-filter-navigator-count>0 Favourites Filters</span>
+      <div><p class="eyebrow">Favourite Scorings</p><h3 id="saved-filter-navigator-title">Filter Navigator</h3></div>
+      <span class="pill" data-saved-filter-navigator-count>0 Favourite Scorings</span>
     </div>
-    <label class="saved-filter-navigator-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input type="search" data-saved-filter-navigator-search placeholder="Words of a Saved Filter, for example london sa latest 2" autocomplete="off" spellcheck="false" aria-label="Search the Favourites Filters" aria-controls="saved-filter-navigator-tree"></label>
+    <label class="saved-filter-navigator-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input type="search" data-saved-filter-navigator-search placeholder="Words of a Saved Filter, for example london sa latest 2" autocomplete="off" spellcheck="false" aria-label="Search the Favourite Scorings" aria-controls="saved-filter-navigator-tree"></label>
     <p class="saved-filter-navigator-hint">Area → NR Mode → Campaign. Choose a Saved Filter to use it.</p>
-    <div class="saved-filter-navigator-tree" id="saved-filter-navigator-tree" role="tree" aria-label="Favourites Filters by Area, NR Mode and Campaign" data-saved-filter-navigator-tree></div>
-    <div class="saved-filter-navigator-footer"><button type="button" data-saved-filter-navigator-close>Close</button></div>
+    <div class="saved-filter-navigator-tree" id="saved-filter-navigator-tree" role="tree" aria-label="Favourite Scorings by Area, NR Mode and Campaign" data-saved-filter-navigator-tree></div>
+    <div class="saved-filter-navigator-footer"><a href="#" class="saved-filter-navigator-manage" data-saved-filter-navigator-manage role="button">Manage Favourite Scorings</a><button type="button" data-saved-filter-navigator-close>Close</button></div>
   </dialog>
-  {# The Calculation panel moves into this dialog while a Saved Filter is edited, and back when it closes. #}
-  <dialog class="scoring-edit-dialog" data-saved-filter-edit-dialog aria-labelledby="scoring-run-title"></dialog>
+  {# One block of the configuration (Scoring Setup, Context Filters, Break down by, Country Areas, Scoring Trends): it opens with
+     the values of the scoring shown, the values that differ from it marked. #}
+  <dialog class="scoring-config-dialog" data-scoring-config-dialog aria-labelledby="scoring-config-dialog-title">
+    <div class="scoring-config-dialog-head" data-scoring-config-dialog-head>
+      <div><p class="eyebrow" data-scoring-config-dialog-eyebrow>Scoring configuration</p><h3 id="scoring-config-dialog-title" data-scoring-config-dialog-title>Context Filters</h3></div>
+      <button type="button" class="scoring-config-dialog-close" data-scoring-config-cancel aria-label="Cancel" title="Cancel">×</button>
+    </div>
+    <p class="scoring-config-dialog-source" data-scoring-config-dialog-source></p>
+    <p class="scoring-config-dialog-scope" data-scoring-config-dialog-scope hidden>Always the <strong>whole country</strong>: the Region, Cluster and City of the Context Filters do not apply here. The other Context Filters (NR Mode, Campaign, Operator, Vendor…) do apply.</p>
+    <div class="scoring-config-dialog-body" data-scoring-config-dialog-body></div>
+    <div class="scoring-config-dialog-foot">
+      <span class="scoring-config-dialog-hint" data-scoring-config-dialog-hint role="status" aria-live="polite"></span>
+      <div class="scoring-config-dialog-actions">
+        <button type="button" class="scoring-config-dialog-cancel" data-scoring-config-cancel>Cancel</button>
+        <button type="button" class="scoring-config-dialog-apply" data-scoring-config-apply>Apply (calculate later)</button>
+        <button type="button" class="scoring-config-dialog-calculate" data-scoring-config-apply-calculate>Apply &amp; Calculate</button>
+      </div>
+    </div>
+  </dialog>
+  {# The blocks of the configuration move into this dialog while a Saved Filter is edited, and back when it closes. #}
+  <dialog class="scoring-edit-dialog" data-saved-filter-edit-dialog aria-labelledby="scoring-edit-dialog-title"><h2 class="sr-only" id="scoring-edit-dialog-title">Edit Saved Filter</h2></dialog>
   <dialog class="scoring-hierarchy-dialog" data-scoring-hierarchy-dialog data-can-edit="{{ 'true' if can_edit_hierarchy else 'false' }}" aria-labelledby="scoring-hierarchy-title">
     <form method="dialog" class="scoring-hierarchy-form" data-scoring-hierarchy-form>
       <h3 id="scoring-hierarchy-title">Aggregation hierarchy</h3>
-      <p class="scoring-hierarchy-copy">Order used to group the scoring results and to list the filters. It is an application setting shared by every workspace and methodology. Operator is always one of the Split by levels; the levels above it group the operators, so City above Operator shows every operator of each city together.{% if not can_edit_hierarchy %} Only editors can change it.{% endif %}</p>
+      <p class="scoring-hierarchy-copy">Order used to group the scoring results and to list the filters. It is an application setting shared by every workspace and methodology. Operator is always one of the Break down by levels; the levels above it group the operators, so City above Operator shows every operator of each city together.{% if not can_edit_hierarchy %} Only editors can change it.{% endif %}</p>
       <ol class="scoring-hierarchy-list" data-scoring-hierarchy-list></ol>
       <p class="scoring-hierarchy-status" data-scoring-hierarchy-status role="status" aria-live="polite"></p>
       <div class="scoring-hierarchy-actions">

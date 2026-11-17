@@ -251,7 +251,7 @@ def test_a_new_workspace_starts_with_the_favourites_of_the_uk_workspace(client):
         checked = [designs[item['key']] for item in items if item['enabled']]
         assert checked and all(design['nr_mode'] == nr_mode for design in checked)
         assert f'{nr_mode} - NetCheck CDR Report (Main Cities)' in [design['name'] for design in checked]
-    # The Favourites Filters, in their order, wait for the CDRs of their Campaign choice.
+    # The Favourite Scorings, in their order, wait for the CDRs of their Campaign choice.
     filters = [item for item in saved_filters.list_saved_filters(repository) if item['pinned']]
     assert [item['name'] for item in filters] == [item['name'] for item in sorted(
         shipped('scoring-favourites-filters'), key=lambda item: item['position'])]

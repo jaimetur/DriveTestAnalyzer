@@ -678,7 +678,7 @@ def _scoring_filter_subtitle(job: dict[str, Any], environment: str | None = None
         selected = ', '.join(plan['values'][field])
         return selected + (', ...' if selected else '...') if plan['omitted'][field] else selected
     return '\n'.join([mode_label, *[
-        f"{'Split by' if field == 'aggregation' else field.title()}: {display(field)}"
+        f"{'Break down by' if field == 'aggregation' else field.title()}: {display(field)}"
         for field in ('aggregation', 'operator', 'vendor', 'region', 'city')
     ]])
 
@@ -852,7 +852,7 @@ def _add_scenario_transition(presentation, name: str, job: dict[str, Any]) -> No
     slide = presentation.slides.add_slide(layout)
     _tag_slides(presentation, len(presentation.slides) - 1, 'cover')
     lines = _scoring_filter_subtitle(job).splitlines()
-    chosen = [line for line in lines[1:] if not line.startswith('Split by') and ': ' in line
+    chosen = [line for line in lines[1:] if not line.startswith('Break down by') and ': ' in line
               and line.split(': ', 1)[1].strip() and not line.split(': ', 1)[1].startswith('All')]
     _set_structural_slide_text(slide, name, ' · '.join([lines[0], *chosen]) if lines else '')
     report_structure.mark(slide, 1)

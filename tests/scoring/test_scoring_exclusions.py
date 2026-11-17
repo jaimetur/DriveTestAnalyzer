@@ -246,7 +246,7 @@ def test_the_panel_imports_changes_and_deletes_lists_and_records_them_in_app_eve
     voice, speech = _name(repository, ids['voice']), _name(repository, ids['speech'])
     page = client.get('/scoring').text
     assert 'data-scoring-exclusions' in page and 'js/scoring/scoring_exclusions.js' in page and '<h2>Excluded Calls</h2>' in page
-    # The panel sits below the Scoring & GAP Results and above the Favourites Filters.
+    # The panel sits below the Scoring & GAP Results and above the Favourite Scorings.
     assert page.index('id="scoring-results-title"') < page.index('id="scoring-excluded-calls"') < page.index('class="panel collapsible-panel saved-filters-panel"')
     state = client.get('/api/scoring/excluded-calls').json()
     assert state['lists'] == [] and state['can_edit'] and {cdr['name'] for cdr in state['cdrs']} == {voice, speech}

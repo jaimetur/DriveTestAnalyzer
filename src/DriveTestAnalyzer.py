@@ -7484,7 +7484,7 @@ BACKUP_WORKSPACE_CONTENT: tuple[tuple[str, str, str], ...] = (
      'network-insights-favourites'),
     ('bundle_report_template_favourites', 'Report Definitions (one JSON file with what each report of Reporting includes, with its schedule and email)',
      'bundle-report-template-favourites'),
-    ('scoring_favourites_filters', 'Scoring & GAP Favourites Filters (one JSON file with the Favourites Filters, without their results)',
+    ('scoring_favourites_filters', 'Scoring & GAP Favourite Scorings (one JSON file with the Favourite Scorings, without their results)',
      'scoring-favourites-filters'),
     ('scoring_report_templates', 'Scoring & GAP Report Templates (one JSON file with the saved configurations of '
                                       'the Scoring report editor)', 'scoring-report-templates'),
@@ -8291,7 +8291,7 @@ def create_recurring_database_backup(
                     report_progress(f'Exporting Report Definitions for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_bundle_report_template_favourites(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'scoring_favourites_filters' in components:
-                    report_progress(f'Exporting Scoring & GAP Favourites Filters for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
+                    report_progress(f'Exporting Scoring & GAP Favourite Scorings for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
                     _archive_workspace_favourites_filters(archive, workspace, archive_workspace_root, archived_bytes)
                 if 'scoring_report_templates' in components:
                     report_progress(f'Exporting Scoring & GAP Report Templates for {workspace.name}', max(5.0, completed_bytes * 96.0 / max(total_bytes, 1)))
@@ -9192,9 +9192,9 @@ def restore_database_backup(
                 member = f'{prefix}{FAVOURITES_FILTERS_ARCHIVE_NAME}'
                 if member in names:
                     if progress_callback:
-                        progress_callback(f'Restoring Scoring & GAP Favourites Filters for {workspace_name}', completed_steps, total_steps)
+                        progress_callback(f'Restoring Scoring & GAP Favourite Scorings for {workspace_name}', completed_steps, total_steps)
                     _restore_workspace_favourites_filters(workspace, archive.read(member), importing_user)
-                    advance(f'Scoring & GAP Favourites Filters restored for {workspace_name}')
+                    advance(f'Scoring & GAP Favourite Scorings restored for {workspace_name}')
             if 'scoring_report_templates' in selected:
                 member = f'{prefix}{SCORING_REPORT_TEMPLATES_ARCHIVE_NAME}'
                 if member in names:
@@ -9606,8 +9606,8 @@ def _archive_workspace_scoring_configuration(
 ) -> None:
     payload = _scoring_configuration_archive_payload(workspace)
     archive.writestr(f'{archive_prefix}/scoring-configuration/scoring-configuration.json', payload)
-    # The report configurations and the Favourites Filters travel as elements of their own (Scoring & GAP Report
-    # Configurations and Scoring & GAP Favourites Filters); packages made before still restore what they carried.
+    # The report configurations and the Favourite Scorings travel as elements of their own (Scoring & GAP Report
+    # Configurations and Scoring & GAP Favourite Scorings); packages made before still restore what they carried.
     if progress_callback:
         progress_callback(len(payload))
 
@@ -9784,7 +9784,7 @@ def _scoring_report_configurations_member(member: str) -> str:
     return member.rsplit('/', 1)[0] + '/' + SCORING_REPORT_CONFIGURATIONS_MEMBER
 
 
-# The Saved Filters that Scoring & GAP Analysis Methodologies packages carried before the Favourites Filters travelled on
+# The Saved Filters that Scoring & GAP Analysis Methodologies packages carried before the Favourite Scorings travelled on
 # their own.
 SAVED_FILTERS_MEMBER = 'saved-filters.json'
 
@@ -10273,7 +10273,7 @@ FAVOURITES_FILTERS_ARCHIVE_NAME = 'scoring-favourites-filters/scoring-favourites
 
 
 def _favourites_filters_payload(workspace: Workspace) -> bytes:
-    """The Favourites Filters of a workspace without their results, their CDRs named by the SHA-256 of their files."""
+    """The Favourite Scorings of a workspace without their results, their CDRs named by the SHA-256 of their files."""
     from src.modules.scoring.saved_filters import saved_filters_document
 
     task_repository = Repository(workspace.database_path, repository.global_db_path, workspace_registry.registry_path)
@@ -10294,7 +10294,7 @@ def _restore_workspace_favourites_filters(
     workspace: Workspace, payload: bytes, importing_user: str = 'import',
     progress: Callable[[str, float], None] | None = None,
 ) -> int:
-    """Add the Favourites Filters of a package to a workspace (they find their CDRs there by file), each belonging to its
+    """Add the Favourite Scorings of a package to a workspace (they find their CDRs there by file), each belonging to its
     creator when that user is active here (otherwise to ``importing_user``); one the workspace already has is replaced
     by the imported one, and ``progress(phase, share done)`` follows them. Returns how many were added."""
     from src.modules.scoring.saved_filters import import_saved_filters
@@ -10304,7 +10304,7 @@ def _restore_workspace_favourites_filters(
         return import_saved_filters(task_repository, json.loads(payload.decode('utf-8')), progress=progress,
                                     creator=lambda package, local: transfer_creator(package, local, importing_user))
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
-        raise ValueError(f'Scoring & GAP Favourites Filters for "{workspace.name}" are invalid: {exc}') from exc
+        raise ValueError(f'Scoring & GAP Favourite Scorings for "{workspace.name}" are invalid: {exc}') from exc
 
 
 def _reporting_jobs_payload(workspace: Workspace) -> bytes:
@@ -10850,7 +10850,7 @@ def _build_single_export_archive_file(
             label, archive_name, write = {
                 'bundle-report-template-favourites': ('Report Definitions', BRT_FAVOURITES_ARCHIVE_NAME,
                                                _archive_workspace_bundle_report_template_favourites),
-                'scoring-favourites-filters': ('Scoring & GAP Favourites Filters', FAVOURITES_FILTERS_ARCHIVE_NAME, _archive_workspace_favourites_filters),
+                'scoring-favourites-filters': ('Scoring & GAP Favourite Scorings', FAVOURITES_FILTERS_ARCHIVE_NAME, _archive_workspace_favourites_filters),
                 'scoring-report-templates': ('Scoring & GAP Report Templates', SCORING_REPORT_TEMPLATES_ARCHIVE_NAME,
                                                   _archive_workspace_scoring_report_templates),
                 'scoring-export-panels': ('Scoring Export Panels', SCORING_EXPORT_PANELS_ARCHIVE_NAME,
@@ -11295,7 +11295,7 @@ def _recovered_transfer_details(manifest: dict[str, Any]) -> tuple[str, list[str
                        'scoring-excluded-calls'}:
         source = manifest.get('source_workspace')
         name = str(source.get('name') or '') if isinstance(source, dict) else ''
-        return ({'bundle-report-template-favourites': 'Report Definitions', 'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
+        return ({'bundle-report-template-favourites': 'Report Definitions', 'scoring-favourites-filters': 'Scoring & GAP Favourite Scorings',
                  'scoring-report-templates': 'Scoring & GAP Report Templates', 'scoring-export-panels': 'Scoring Export Panels',
                  'scoring-excluded-calls': 'Scoring Excluded Calls'}[kind],
                 [name] if name else [])
@@ -12868,7 +12868,7 @@ def _preview_package(archive: zipfile.ZipFile, manifest: dict[str, Any], destina
                  for workspace in destinations if plural and changes[workspace.id].new]
         reordered = [workspace for workspace in destinations
                      if kind == 'scoring-favourites-filters' and favourites_order_changes(package, before[workspace.id])]
-        order = [f'Favourites Filters of "{workspace.name}" take the order of the package.' for workspace in reordered]
+        order = [f'Favourite Scorings of "{workspace.name}" take the order of the package.' for workspace in reordered]
         return _preview_wording(message), [*added, *lines, *order], bool(reordered) or any(item.new or item.updated for item in changes.values())
     if kind == 'users-access':
         if USERS_ACCESS_ARCHIVE_PATH not in archive.namelist():
@@ -13397,7 +13397,7 @@ def _apply_import_archive(
             favourites = kind == 'bundle-report-template-favourites'
             label, archive_name = {
                 'bundle-report-template-favourites': ('Report Definitions', BRT_FAVOURITES_ARCHIVE_NAME),
-                'scoring-favourites-filters': ('Scoring & GAP Favourites Filters', FAVOURITES_FILTERS_ARCHIVE_NAME),
+                'scoring-favourites-filters': ('Scoring & GAP Favourite Scorings', FAVOURITES_FILTERS_ARCHIVE_NAME),
                 'scoring-report-templates': ('Scoring & GAP Report Templates', SCORING_REPORT_TEMPLATES_ARCHIVE_NAME),
                 'scoring-export-panels': ('Scoring Export Panels', SCORING_EXPORT_PANELS_ARCHIVE_NAME),
                 'scoring-excluded-calls': ('Scoring Excluded Calls', SCORING_EXCLUDED_CALLS_ARCHIVE_NAME),
@@ -13438,7 +13438,7 @@ def _apply_import_archive(
                                              imported_count)
             from src.modules.core.import_changes import favourites_order_changes
 
-            order = [f'Favourites Filters of "{workspace.name}" took the order of the package.' for workspace in destinations
+            order = [f'Favourite Scorings of "{workspace.name}" took the order of the package.' for workspace in destinations
                      if kind == 'scoring-favourites-filters' and before is not None
                      and favourites_order_changes(_json_document(payload), before[workspace.id])]
             return told(message, [*renamed, *lines, *order])
@@ -13775,7 +13775,7 @@ def _transfer_content_label(target: str | Iterable[str]) -> str:
         'network-insights-favourites': 'Network Insights Favourites',
         'assistant-glossary': 'AI Assistant Glossary',
         'bundle-report-template-favourites': 'Report Definitions',
-        'scoring-favourites-filters': 'Scoring & GAP Favourites Filters',
+        'scoring-favourites-filters': 'Scoring & GAP Favourite Scorings',
         'scoring-report-templates': 'Scoring & GAP Report Templates',
         'scoring-export-panels': 'Scoring Export Panels',
         'scoring-excluded-calls': 'Scoring Excluded Calls',
@@ -14981,7 +14981,7 @@ def render_admin_template(
         {'value': 'query-builder-queries', 'label': 'Query Builder Queries (from active workspace)', 'disabled': not active_workspace},
         {'value': 'network-insights-favourites', 'label': 'Network Insights Favourites (from active workspace)', 'disabled': not active_workspace},
         {'value': 'bundle-report-template-favourites', 'label': 'Report Definitions (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'scoring-favourites-filters', 'label': 'Scoring & GAP Favourites Filters (from active workspace)', 'disabled': not active_workspace},
+        {'value': 'scoring-favourites-filters', 'label': 'Scoring & GAP Favourite Scorings (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-report-templates', 'label': 'Scoring & GAP Report Templates (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-export-panels', 'label': 'Scoring Export Panels (from active workspace)', 'disabled': not active_workspace},
         {'value': 'scoring-excluded-calls', 'label': 'Scoring Excluded Calls (from active workspace)', 'disabled': not active_workspace},
@@ -14989,7 +14989,7 @@ def render_admin_template(
         {'value': 'nq-calls-configuration', 'label': 'NQ Calls Configuration (from active workspace)', 'disabled': not active_workspace},
         {'value': 'app-events', 'label': 'App Events (from active workspace)', 'disabled': not active_workspace},
         {'value': 'assistant-glossary', 'label': 'AI Assistant Glossary (from active workspace)', 'disabled': not active_workspace},
-        {'value': 'full-environment', 'label': 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Report Definitions + Scoring & GAP Favourites Filters + Scoring & GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)',
+        {'value': 'full-environment', 'label': 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings & Reference Data + Scoring & GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Report Definitions + Scoring & GAP Favourite Scorings + Scoring & GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)',
          'tag': 'Whole application and workspace databases', 'tag_class': 'user-choice-tag-database'},
         *[
             {'value': f'workspace:{workspace.id}', 'label': f'Full Workspace: {workspace.name}', 'tag': 'Whole workspace database',
@@ -21207,7 +21207,7 @@ def _points_loss_submitters(task_repository: Repository, filter_id: int):
     return submit_points_loss, work_waiting
 
 
-# While nobody uses the application, the Favourites Filters of the open workspace whose result no longer matches their
+# While nobody uses the application, the Favourite Scorings of the open workspace whose result no longer matches their
 # CDRs, methodology or Operator Maps (such as those of Latest campaign once a new campaign arrives), or that have none
 # yet, are calculated one after another with their Points Lost Maps, so they open at once (after the Scoring History
 # indexing of the idle server, which their calculations read).
@@ -21796,7 +21796,7 @@ class SavedFiltersDeleteRequest(BaseModel):
 @app.post('/api/scoring/saved-filters/delete')
 def saved_filters_delete_many(payload: SavedFiltersDeleteRequest,
                               user: SessionUser = Depends(workspace_editor_user)) -> dict[str, Any]:
-    """Delete the Saved Filters checked in the Favourites Filters panel, with their results; their CDRs and the
+    """Delete the Saved Filters checked in the Favourite Scorings panel, with their results; their CDRs and the
     Scoring History stay."""
     from src.modules.core.deletion_rights import can_delete, deletion_refusal
     task_repository = scoring_repository(user)

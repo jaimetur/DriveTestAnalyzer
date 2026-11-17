@@ -308,7 +308,7 @@
     // The Geographical Areas & Scoring Trends, always included: the areas of both tabs (the Breakdown and the Separate
     // cities) and the campaigns and time split of the Scoring Trends, on the whole country.
     const trends = node('fieldset', undefined, 'brt-choice-group brt-trends');
-    trends.append(node('legend', 'Geographical Areas & Scoring Trends'));
+    trends.append(node('legend', 'Country Areas & Scoring Trends'));
     const presets = Object.entries(options.campaign_presets || {});
     const campaignValues = () => [...(options.campaigns?.[box.nrMode()] || [])]
       .sort((left, right) => (pickers().campaignCompare ? pickers().campaignCompare(left, right) : 0));
@@ -316,7 +316,7 @@
     let trendCampaigns = null;
     const renderTrendCampaigns = (selected) => {
       trendCampaigns = multiField('Campaigns', campaignValues(), selected, {exclusive: presets, allLabel: 'Same as the module'});
-      trendCampaigns.title = 'The campaigns of the Scoring Trend and the National & Geographical Areas Trends (none: the campaigns of the module)';
+      trendCampaigns.title = 'The campaigns of the Scoring Trend and the National & Country Areas Trends (none: the campaigns of the module)';
       trendCampaigns.classList.add('brt-campaigns-field');
       trendHost.replaceChildren(trendCampaigns);
     };
@@ -326,14 +326,14 @@
     };
     nrModeHandlers.push(refreshTrendCampaigns);
     nsaVsSa.box.addEventListener('change', () => { syncReference(); syncNrViews(); refreshTrendCampaigns(); box.onNrModeChange?.(); });
-    trends.title = 'Always the whole country: the Region, Cluster and City filters do not apply to Geographical Areas and Scoring Trends';
+    trends.title = 'Always the whole country: the Region, Cluster and City filters do not apply to Country Areas and Scoring Trends';
     const area = node('fieldset', undefined, 'brt-choice-group brt-area');
-    area.append(node('legend', 'Geographical Areas'));
-    area.title = 'The areas of the Geographical Areas and Scoring Trends tabs';
-    const breakdown = selectField('Breakdown', brtOptions.area_summary_breakdowns.map((value) => [value, value === 'None' ? 'None (Separate cities only)' : value]),
+    area.append(node('legend', 'Country Areas'));
+    area.title = 'The areas of the Country Areas and Scoring Trends tabs';
+    const breakdown = selectField('Breakdown', brtOptions.area_summary_breakdowns.map((value) => [value, value === 'None' ? 'None (Cities on their own only)' : value]),
       saved.area_summary.breakdown);
     const savedCities = saved.area_summary.cities || [];
-    const cities = multiField('Separate cities', [...new Set([...(options.values?.City || []), ...savedCities])], savedCities, {
+    const cities = multiField('Cities on their own', [...new Set([...(options.values?.City || []), ...savedCities])], savedCities, {
       allLabel: 'None', list: true,
       preset: {label: 'Main Cities (workspace list at each export)', values: options.main_cities || [], checked: saved.area_summary.main_cities, dynamic: true},
     });

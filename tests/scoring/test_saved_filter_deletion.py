@@ -132,6 +132,6 @@ def test_the_checked_saved_filters_are_deleted_together(client):
     details = next(json.loads(row['details']) for row in repository.list_logs() if row['action'] == 'delete_saved_filters')
     assert [item['name'] for item in details['deleted']] == ['First', second['name']] and details['missing'] == [999999]
 
-    # The Favourites Filters panel offers the Delete button beside Use newer CDRs.
+    # The Favourite Scorings panel offers the Delete button beside Use newer CDRs.
     page = client.get('/scoring').text
     assert 'data-saved-filters-delete' in page

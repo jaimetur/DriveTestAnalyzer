@@ -791,7 +791,7 @@ def test_powerpoint_exports_one_reference_style_scoring_matrix_with_signed_gaps_
     assert [slide.slide_layout.name for slide in intro_slides] == ['Title Page', 'Title Page']
     cover_text = _slide_text(presentation.slides[0]).replace('\x0b', '\n')
     transition_text = _slide_text(presentation.slides[1]).replace('\x0b', '\n')
-    expected_filter_text = 'Campaigns: 26-Q2\nSplit by: Operator\nOperator: All Operators\nVendor: All Vendors\nRegion: All Regions\nCity: All Cities'
+    expected_filter_text = 'Campaigns: 26-Q2\nBreak down by: Operator\nOperator: All Operators\nVendor: All Vendors\nRegion: All Regions\nCity: All Cities'
     for text in (cover_text, transition_text):
         assert 'Non-Standalone' in text and expected_filter_text in text
 
@@ -1055,7 +1055,7 @@ def test_cover_campaigns_prefer_scored_contexts_and_include_context_filters():
     presentation = _export(result, levels=('Operator',), job_fields=job_fields)
     for slide in (presentation.slides[index] for index in range(2)):
         text = _slide_text(slide).replace('\x0b', '\n')
-        assert 'Standalone' in text and 'Split by: Operator, City' in text
+        assert 'Standalone' in text and 'Break down by: Operator, City' in text
         assert 'City: London' in text
         assert 'Campaigns: 26-Q2' in text
         assert 'Wrong_source_campaign' not in text
@@ -1096,7 +1096,7 @@ def test_intro_slides_show_all_canonical_scope_filters_without_overlapping_campa
         # The Campaigns, then the Split by and each filter, under the line of the layout.
         filters_shape = next(shape for shape in slide.shapes if shape.name == 'Scoring Aggregations and Filters')
         assert filters_shape.top > Inches(5.77) and filters_shape.top + filters_shape.height <= Inches(7.5)
-        ordered_labels = ['Campaigns: 26-Q2', 'Split by: Operator', 'Operator: O2 UK', 'Vendor: All Vendors',
+        ordered_labels = ['Campaigns: 26-Q2', 'Break down by: Operator', 'Operator: O2 UK', 'Vendor: All Vendors',
                           'Region: North, South', 'City: All Cities']
         assert [line for line in filters_shape.text.splitlines()] == [label for label in ordered_labels] or \
             [filters_shape.text.index(label) for label in ordered_labels] == sorted(filters_shape.text.index(label) for label in ordered_labels)
@@ -1226,7 +1226,7 @@ def test_intro_dimension_lines_keep_requested_order_independent_of_hierarchy_con
     }
     presentation = _export(_result(), job_fields=job_fields)
     expected = [
-        'Split by: Operator', 'Operator: O2 UK', 'Vendor: Telefonica',
+        'Break down by: Operator', 'Operator: O2 UK', 'Vendor: Telefonica',
         'Region: North', 'City: London',
     ]
     for index in (0, 1):

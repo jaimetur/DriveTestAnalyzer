@@ -206,7 +206,7 @@ def test_reports_saved_before_the_scoring_trends_keep_their_trend_after_the_loca
     # The campaigns of the Scoring Trends: an automatic choice stands alone.
     assert scoring['options']['area_summary']['campaigns'] == ['@all-campaigns']
     lines = bundle_report_templates._option_lines(scoring, None, None)
-    assert lines[-1] == 'Scoring Trends: All available campaigns · Geographical Areas: each Region and London · time split Campaign'
+    assert lines[-1] == 'Scoring Trends: All available campaigns · Country Areas: each Region and London · time split Campaign'
 
 
 def test_section_lines_and_filters_describe_the_report():
@@ -660,7 +660,7 @@ def test_favourites_are_saved_listed_and_travel_as_their_own_element(client):
         core._archive_workspace_bundle_report_template_favourites(archive, core.active_workspace, 'workspaces/Default')
     assert zipfile.ZipFile(BytesIO(output.getvalue())).namelist() == [f'workspaces/Default/{core.BRT_FAVOURITES_ARCHIVE_NAME}']
     page = client.get('/admin').text
-    assert 'Report Definitions (from active workspace)' in page and 'Scoring &amp; GAP Favourites Filters (from active workspace)' in page
+    assert 'Report Definitions (from active workspace)' in page and 'Scoring &amp; GAP Favourite Scorings (from active workspace)' in page
 
 
 def test_word_pages_do_not_repeat_the_title_of_components_that_share_it():
@@ -1205,7 +1205,7 @@ def test_favourite_elements_are_exported_and_imported_on_their_own(client):
     configurations = [item['name'] for item in load_report_state(core.repository)['configurations']]
     # The message names one item or several (``1 Report``, ``2 Reports``).
     for target, label in (('bundle-report-template-favourites', 'Imported 1 Report Definition into'),
-                          ('scoring-favourites-filters', 'Scoring & GAP Favourites Filter'),
+                          ('scoring-favourites-filters', 'Scoring & GAP Favourite Scoring'),
                           ('scoring-report-templates', 'Scoring & GAP Report Template')):
         exported = client.get(f'/admin/import-export/export?export_target={target}')
         assert exported.status_code == 200, exported.text

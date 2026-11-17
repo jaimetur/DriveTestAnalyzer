@@ -1,4 +1,4 @@
-"""National & Geographical Areas Trends: the National scoring next to chosen cities and each Region, Cluster or City."""
+"""National & Country Areas Trends: the National scoring next to chosen cities and each Region, Cluster or City."""
 from __future__ import annotations
 
 import json
@@ -24,7 +24,7 @@ from tests.scoring.test_scoring_exports import TEMPLATE
 from tests.scoring.test_scoring_api import scoring_api  # noqa: F401  (fixture)
 from tests.scoring.test_scoring_most_reliable import _reliable_configuration
 
-SUMMARY_TITLE = 'Best Network Trends — National & Geographical Areas'
+SUMMARY_TITLE = 'Best Network Trends — National & Country Areas'
 
 
 def _calls(city, region, statuses):
@@ -100,7 +100,7 @@ def test_each_area_is_scored_with_its_own_measurements():
     missing = calculate_area_summary(scoring_engine.calculate_scoring, frames, job['levels'],
                                      {'breakdown': None, 'cities': ['Bristol']}, kwargs)
     assert [item['kind'] for item in missing['passes']] == ['National']
-    assert missing['warnings'] == ['National & Geographical Areas Trends: the selected CDRs have no Bristol measurements.']
+    assert missing['warnings'] == ['National & Country Areas Trends: the selected CDRs have no Bristol measurements.']
 
 
 def test_a_job_with_area_filters_never_reuses_its_rows_for_the_summary():
@@ -174,7 +174,7 @@ def test_a_job_split_by_no_area_has_its_geographical_areas():
     # Not one split by period, nor of other cities.
     assert len(calculate_geographical(counting, frames, job['levels'], kwargs, summary={**summary, 'time_split': 'Weekly'})['passes']) == 3
     assert len(calls) == 3
-    # The separate cities of the National & Geographical Areas Trends are scored apart instead of London.
+    # The separate cities of the National & Country Areas Trends are scored apart instead of London.
     assert geographical_passes(['Operator', 'Campaign'], {'breakdown': 'Region', 'cities': ['Leeds', ' ']})[2]['cities'] == ['Leeds']
     chosen = calculate_geographical(scoring_engine.calculate_scoring, frames, job['levels'], kwargs,
                                     areas={'breakdown': 'Region', 'cities': ['Leeds', 'London']})
@@ -502,8 +502,8 @@ def test_the_calculation_selection_keeps_the_national_and_area_summary(scoring_a
                                                   'campaigns': ['@latest-2-campaigns']}
     assert client.get('/api/scoring/selection').json()['selection']['area_summary']['time_split'] == 'Weekly'
     page = client.get('/scoring').text
-    # The Geographical Areas & Scoring Trends: the areas of both tabs, then the campaigns and time split of the trends.
-    for marker in ('data-scoring-trends', 'Geographical Areas &amp; Scoring Trends', 'data-scoring-area-breakdown',
+    # Country Areas: the areas of both tabs, then the campaigns and time split of the Scoring Trends.
+    for marker in ('data-scoring-trends', 'Country Areas', 'Cities on their own', 'data-scoring-area-breakdown',
                    'data-scoring-area-cities', 'data-scoring-trend-campaigns', 'data-scoring-area-time-split',
                    'data-result-tab="trends"', 'data-result-pane="trends"'):
         assert marker in page
@@ -622,3 +622,20 @@ def test_a_city_breakdown_with_a_city_filter_scores_those_cities_and_the_separat
     # The Geographical views follow the same cities.
     geographical = geographical_passes(['Operator'], areas)
     assert next(item for item in geographical if item['kind'] == 'City')['cities'] == ['London', 'Cardiff']
+
+
+def test_country_areas_and_scoring_trends_can_be_switched_off():
+    from src.modules.scoring.scoring_area_summary import area_summary_part_enabled, normalize_area_summary_request
+    from src.modules.scoring.scoring_reports import _normalize_area_summary
+
+    on = normalize_area_summary_request({'breakdown': 'Region', 'cities': ['London'], 'country_areas': True, 'trends': True})
+    # Switched on (the default) they are not said: Saved Filters of before keep their identity.
+    assert 'country_areas' not in on and 'trends' not in on
+    assert area_summary_part_enabled(on, 'country_areas') and area_summary_part_enabled(on, 'trends')
+    off = normalize_area_summary_request({'breakdown': 'Region', 'cities': ['London'], 'country_areas': False, 'trends': False})
+    assert off['country_areas'] is False and off['trends'] is False
+    assert not area_summary_part_enabled(off, 'country_areas') and not area_summary_part_enabled(off, 'trends')
+    assert area_summary_part_enabled(None, 'trends')
+    # The selection of the page keeps them too.
+    assert _normalize_area_summary({'trends': False})['trends'] is False
+    assert 'country_areas' not in _normalize_area_summary({'country_areas': True})

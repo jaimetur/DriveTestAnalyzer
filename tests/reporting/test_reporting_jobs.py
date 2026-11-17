@@ -663,7 +663,7 @@ def test_reporting_options_list_the_filter_values_of_the_cdrs(client):
 
 
 def test_reports_are_labelled_with_their_area_operators_nr_mode_and_campaigns(client):
-    # As the Favourites Filters of Scoring & GAP Analysis: the Region, Cluster or City filtered (Nationwide when none), then
+    # As the Favourite Scorings of Scoring & GAP Analysis: the Region, Cluster or City filtered (Nationwide when none), then
     # the Operator or Vendor; the checked modules in their order, the NR Mode and each choice of campaigns once.
     nationwide = bundle_report_templates.report_labels({})
     assert nationwide['scopes'] == [{'dimension': 'all', 'text': 'Nationwide', 'title': 'No Region, Cluster or City is filtered'}]

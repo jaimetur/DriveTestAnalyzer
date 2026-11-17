@@ -12,13 +12,13 @@ module.exports = {
     { id: 'calculate', type: 'steps', section: 'Calculation', footer: 'Calculate and review', kicker: 'Calculate and review', title: 'Four steps to a scoring',
       steps: [
         { icon: 'TbDatabase', title: 'Inputs', text: 'Processed CDRs and a methodology of the workspace.' },
-        { icon: 'TbCalendarStats', title: 'NR Mode & Campaign', text: 'They choose the CDRs: there is no CDR selector.' },
-        { icon: 'TbFilter', title: 'Filters & Split by', text: 'Filters choose the rows, Split by the groups, and the GAP reference.' },
+        { icon: 'TbStar', title: 'Favourite Scorings', text: 'Start from one: it opens as it was saved.' },
+        { icon: 'TbFilter', title: 'Context Filters & blocks', text: 'NR Mode, Campaign and filters; Scoring Setup, Break down by, Country Areas and Trends.' },
         { icon: 'TbCalculator', title: 'Calculate', text: 'Every selection becomes a Saved Filter that the workspace shares.' },
       ],
       highlight: 3,
       note: 'The Scoring History keeps the components of every KPI of every ready CDR, so a calculation never reads the CDR rows again.',
-      notes: 'The NR Mode and Campaign choose the CDRs, filters choose the rows and Split by the groups. Every calculation becomes a Saved Filter, shared by the users of the workspace and fast to recalculate thanks to the Scoring History.' },
+      notes: 'Start from a Favourite Scoring, or set the Context Filters: the NR Mode and Campaign choose the CDRs, filters choose the rows and Break down by the groups; each block of the strip opens in its own dialog with the values of the scoring shown. Every calculation becomes a Saved Filter, shared by the users of the workspace and fast to recalculate thanks to the Scoring History.' },
     { id: 'who-wins', type: 'split', section: 'Results', footer: 'Who wins', kicker: 'Results', title: 'Who wins', visual: 'table',
       points: [
         { icon: 'TbLayoutDashboard', title: 'Summary', text: 'The points lost against the maximum of each KPI, and where to act.' },
@@ -31,10 +31,10 @@ module.exports = {
       points: [
         { icon: 'TbTargetArrow', title: 'GAP Analysis', text: 'GAP = compared operator weighted points − reference operator weighted points.' },
         { icon: 'TbArrowsDiff', title: 'Points Lost', text: 'Each KPI loses its points in one kind, from its formula and its Type.' },
-        { icon: 'TbMap2', title: 'Geographical Areas', text: 'Rankings of every Region, Cluster and City after the scoring Nationwide.' },
+        { icon: 'TbMap2', title: 'Country Areas', text: 'Rankings of every Region, Cluster and City after the scoring Nationwide.' },
         { icon: 'TbTrendingUp', title: 'Scoring Trends', text: 'The campaigns and time split of the trends, for the country and its areas.' },
       ],
-      notes: 'GAP Analysis compares the weighted points of each operator with those of the reference. Points Lost explains why each KPI lost its points, and Geographical Areas and Scoring Trends show where and when.' },
+      notes: 'GAP Analysis compares the weighted points of each operator with those of the reference. Points Lost explains why each KPI lost its points, and Country Areas and Scoring Trends show where and when.' },
     { id: 'methodology', type: 'split', section: 'Methodology', footer: 'Methodology', kicker: 'Methodology', title: 'Your methodology, your rules', visual: 'weights',
       points: [
         { icon: 'TbJson', title: 'Named methodologies', text: 'NetCheck 2026 and 2026-Q3 shipped, editable, exchanged as portable JSON.' },
@@ -48,9 +48,9 @@ module.exports = {
         { icon: 'TbPalette', title: 'Themes', text: 'Ericsson, NetCheck, Midnight and more, for the page and its exports.' },
         { icon: 'TbTag', title: 'Pills', text: 'Every chart and table names its area, operators and vendors.' },
         { icon: 'TbFileTypePpt', title: 'Report scenarios', text: 'National, London, the Main Cities or by Vendor, in PowerPoint and Word.' },
-        { icon: 'TbStar', title: 'Favourites Filters', text: 'Their packages carry the Saved Filters to other workspaces.' },
+        { icon: 'TbStar', title: 'Favourite Scorings', text: 'Their packages carry the Saved Filters to other workspaces.' },
       ],
-      notes: 'The theme colours every chart, table and export. Titles name what they show, the reports hold one or more scenarios, and the Favourites Filters move the Saved Filters between workspaces.' },
+      notes: 'The theme colours every chart, table and export. Titles name what they show, the reports hold one or more scenarios, and the Favourite Scorings move the Saved Filters between workspaces.' },
     { id: 'summary', type: 'closing', section: 'Summary', footer: 'Summary', kicker: 'Summary', title: 'Win the next campaign',
       lead: 'Know where the points are lost, against whom and how many there are to win.',
       links: [

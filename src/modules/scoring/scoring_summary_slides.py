@@ -800,7 +800,7 @@ def add_serving_loss_slides(presentation, items: list[dict[str, Any]], *, title:
                          'own tests, which compare directly with the other Vendors.' if any(item.get('by_vendor') for item in group) else
                          'Each call or test belongs to the network that hosts all its serving cells and to their RAN '
                          'Vendor, MIX when they differ (Not identified: no serving cell in the inventories). Per 1,000 tests: from 100.'
-                         + (' Split by Vendor: each Vendor counts in proportion to its tests (Total: their average weighted by tests).'
+                         + (' Break down by Vendor: each Vendor counts in proportion to its tests (Total: their average weighted by tests).'
                             if any(item.get('vendors_together') for item in group) else
                             ' In red, a share of the points lost well above the share of the tests.') if hosted else
                          'Each call or test belongs to the class of all its serving cells, MIX when they differ (Not '

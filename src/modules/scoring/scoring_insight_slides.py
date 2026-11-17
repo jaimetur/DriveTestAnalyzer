@@ -1104,7 +1104,7 @@ def add_area_summary_slides(presentation, summaries: list[dict[str, Any]], *, sc
         high = ceil((highest + padding) / unit) * unit
         for number, page in enumerate(pages, start=1):
             suffix = f' · {number}/{len(pages)}' if len(pages) > 1 else ''
-            slide = new_slide(presentation, f'{scoring_label} Trends — National & Geographical Areas', subtitle + suffix)
+            slide = new_slide(presentation, f'{scoring_label} Trends — National & Country Areas', subtitle + suffix)
             width = 6.3 if trend else 8.4
             incomplete = _area_summary_table(slide, summary, page, left=.45 if trend else 2.45, width=width)
             split = summary.get('time_split') or 'Campaign'
@@ -1468,7 +1468,7 @@ def _points_loss_slide(presentation, ranking: dict[str, Any], field: str, layer:
     ] if per_tests else [
         ('National points', True, None),
         (f": the part of {ranking['label']}'s National loss in the tests of each place (they add up to it), not the "
-         "place's own score, which the National & Geographical Areas Trends show.", False, None),
+         "place's own score, which the National & Country Areas Trends show.", False, None),
         *([(f' Approximate areas, not official borders. {postal_note}', False, None)] if field == 'Postal Code' else []),
     ], size=8.5, color='#4A5B65')
     map_top, map_height, map_width = 2.35, 4.5, 6.0

@@ -68,15 +68,16 @@ def test_scoring_calculation_panel_orders_nr_mode_campaign_cdrs_filters_and_gap_
     parser.feed(template)
     elements = parser.elements
 
-    assert 'Select NR Mode, Campaign, filters, Split by &amp; GAP reference' in template
+    # The blocks of the configuration, each opened in its own dialog from the strip.
+    for block in ('setup', 'context', 'split', 'areas', 'trends'):
+        assert f'data-scoring-config-section="{block}"' in template
     # NR Mode and Campaign choose the CDRs, listed read-only below them; the CDR checklist is hidden.
     assert template.index('data-nr-filter') < template.index('data-scoring-context-filter="Campaign"')
     assert template.index('data-scoring-context-filter="Campaign"') < template.index('data-scoring-auto-cdrs')
     assert template.index('data-scoring-auto-cdrs') < template.index('id="scoring-context-filters-title"')
-    assert template.index('id="scoring-context-filters-title"') < template.index('<strong>Split by</strong>')
-    # The GAP reference beside the Campaign.
-    assert template.index('data-scoring-context-filter="Campaign"') < template.index('id="scoring-gap-reference-title"') < template.index(
-        'data-scoring-auto-cdrs')
+    assert template.index('id="scoring-context-filters-title"') < template.index('<strong>Break down by</strong>')
+    # The GAP reference is in Scoring Setup, before the Context Filters.
+    assert template.index('id="scoring-gap-reference-title"') < template.index('<select data-nr-filter')
     assert 'data-scoring-select-datasets' not in template
     dataset_list = next(attrs for tag, attrs, _ancestors in elements if 'data-dataset-list' in attrs)
     assert 'hidden' in dataset_list
@@ -408,7 +409,7 @@ def test_included_area_summary_keeps_the_area_filters():
 
     # The summary is scored on the whole country: the Region, Cluster and City filters stay usable.
     assert 'data-scoring-area-filter-lock' not in template and 'is-area-locked' not in script
-    assert 'Always the whole country: the Region, Cluster and City filters of the calculation do not apply to Geographical Areas and Scoring Trends.' in template
+    assert 'Always the whole country: the Region, Cluster and City of the Context Filters do not apply' in template
 
 
 def test_an_opened_saved_filter_queued_again_keeps_its_progress_over_an_earlier_list():

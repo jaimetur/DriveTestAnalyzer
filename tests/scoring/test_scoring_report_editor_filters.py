@@ -177,9 +177,9 @@ const labelled = text => nodes.find(node => node.tagName === 'LABEL' && node.tex
 const selects = nodes.filter(node => node.tagName === 'SELECT');
 const [breakdown, trendChoice, time] = selects;
 const result = {defaults: defaultScenario().area_summary, scenarioTime: 'time_split' in defaultScenario(),
-  cities: picker('Separate cities:').textContent, tables: scenario.scorings.best_network.tables.area_summary, time: time.value,
+  cities: picker('Cities on their own:').textContent, tables: scenario.scorings.best_network.tables.area_summary, time: time.value,
   // Saved unchecked: included now, with the area filters as they are (it is scored on the whole country).
-  after: {region: details('Region:').dataset.disabled, cities: details('Separate cities:').dataset.disabled,
+  after: {region: details('Region:').dataset.disabled, cities: details('Cities on their own:').dataset.disabled,
     breakdown: breakdown.disabled, time: time.disabled, filters: scenario.context_filters, enabled: scenario.area_summary.enabled,
     summary: picker('Region:').textContent},
   legends: nodes.filter(node => node.tagName === 'LEGEND').map(node => node.textContent),
@@ -202,12 +202,12 @@ console.log(JSON.stringify(result));
     assert result['defaults'] == {'enabled': True, 'time_split': 'Campaign', 'breakdown': 'Region', 'cities': ['London'],
                                   'main_cities': False, 'campaigns': ['@all-campaigns']}
     assert result['scenarioTime'] is False and result['time'] == 'Campaign'
-    assert result['cities'] == 'Separate cities: London' and 'tables' not in result
+    assert result['cities'] == 'Cities on their own: London' and 'tables' not in result
     # Always included, in two subpanels; the area filters stay as they are. None needs Separate cities (London here).
     assert result['after'] == {'breakdown': False, 'time': False, 'filters': {'Region': ['Vendor A']},
                                'enabled': True, 'summary': 'Region: Vendor A'}
-    start = result['legends'].index('Geographical Areas & Scoring Trends')
-    assert result['legends'][start:start + 3] == ['Geographical Areas & Scoring Trends', 'Geographical Areas', 'Scoring Trends']
+    start = result['legends'].index('Country Areas & Scoring Trends')
+    assert result['legends'][start:start + 3] == ['Country Areas & Scoring Trends', 'Country Areas', 'Scoring Trends']
     assert result['none'] is False
     assert result['weekly'] == {'levels': ['Operator', 'Campaign'], 'split': 'Weekly', 'value': 'Weekly'}
     assert 'disabledValue' not in result

@@ -13,20 +13,21 @@ def test_job_dropdown_is_inside_results_header_and_constrained_to_button_column(
     header = template.split('<div class="scoring-results-head">', 1)[1].split(
         '<div class="scoring-result-tabs"', 1,
     )[0]
-    assert template.count('data-saved-filter-list') == 3
-    # The same selector is on top of the Calculation panel, beside its title, and its list scrolls on its own.
-    calculation_head = template.split('<details class="panel collapsible-panel scoring-controls" open data-panel-state-key="scoring:calculation"', 1)[1].split('data-saved-filter-editing', 1)[0]
-    assert 'class="scoring-start-tip"' in calculation_head and 'data-saved-filter-selector' in calculation_head
-    assert 'grid-template-areas: "tip selector";' in template
-    assert 'data-selected-saved-filter-card' in calculation_head and 'data-saved-filter-list' in calculation_head
+    # One selector, in the strip of Scoring & GAP Analysis (Showing), plus the list of the Favourite Scorings panel.
+    assert template.count('data-saved-filter-list') == 2
+    assert template.count('data-saved-filter-selector>') == 1
+    strip = header.split('data-scoring-config-strip', 1)[1].split('data-scoring-config-pills', 1)[0]
+    assert 'Showing' in strip and 'data-saved-filter-selector' in strip
+    assert 'data-selected-saved-filter-card' in strip and 'data-saved-filter-list' in strip
     assert '.saved-filter-picker .saved-filter-list { max-height: min(28rem,55vh); overscroll-behavior: contain; }' in template
     assert template.index('class="panel scoring-results-panel"') < template.index('class="panel collapsible-panel saved-filters-panel"')
-    assert header.index('class="scoring-results-tools"') < header.index('data-saved-filter-selector')
+    # The two main buttons come first, the strip next and the view and reports after it.
+    assert header.index('data-scoring-main-favourites') < header.index('data-saved-filter-selector') < header.index('class="scoring-results-tools"')
     assert '<summary class="saved-filter-item"' in header
-    assert 'data-selected-saved-filter-card' in header and 'data-saved-filter-list' in header
     assert re.search(r'\.saved-filter-selector\s*\{[^}]*grid-column: 2;[^}]*grid-row: 2;'
                      r'[^}]*justify-self: end;[^}]*width: 100%;[^}]*min-width: 0;'
                      r'[^}]*contain: inline-size;', template)
+    assert '.scoring-strip-top .saved-filter-selector { grid-column: auto; grid-row: auto; justify-self: auto; flex: 1 1 26rem; width: auto; }' in template
     assert '.scoring-results-panel { position: relative; z-index: 2; overflow: visible; }' in template
     assert '.saved-filter-item-top strong { flex: 1 1 auto; min-width: 0; font-size: .83rem; white-space: normal; overflow-wrap: anywhere; }' in template
 
@@ -163,7 +164,7 @@ savedFilters[1].pinned = false;
 renderSavedFilters();
 const unstarred = {listed: savedFilterList.children.map(row => cardOf(row).dataset.savedFilterId),
   card: selectedSavedFilterCard.textContent, counts: [countBadge.textContent, historyCountBadge.textContent]};
-// A selection that is no Saved Filter: the card asks to choose a Favourites Filter or to calculate it.
+// A selection that is no Saved Filter: the card asks to choose a Favourite Scoring or to calculate it.
 selectionUnmatched = true;
 renderSavedFilters();
 const unmatchedCard = selectedSavedFilterCard.textContent;
@@ -199,14 +200,14 @@ process.stdout.write(JSON.stringify({latest, copied, earlier, earlierUse, cards,
     assert result['selectedFolded'] == [True, '20', 'false'] and result['unmatchedFolded'] is False
     assert 'Filter ID: 20Latest' not in result['latest']
     assert result['unfolded'] == [[[False, 'false'], [False, 'false']], [[False, 'false'], [True, 'true']]]
-    assert result['historyCounts'] == ['2 Favourites Filters', '2 Favourites Filters']
+    assert result['historyCounts'] == ['2 Favourite Scorings', '2 Favourite Scorings']
     assert result['unstarred']['listed'] == ['20'] and 'Earlier savedFilter' in result['unstarred']['card']
-    assert result['unstarred']['counts'] == ['1 Favourites Filter', '1 Favourites Filter']
-    assert "No Saved Filter matches the Calculation panel's filters" in result['unmatchedCard']
+    assert result['unstarred']['counts'] == ['1 Favourite Scoring', '1 Favourite Scoring']
+    assert 'No Saved Filter matches the configuration' in result['unmatchedCard']
     assert 'Calculate Scoring' in result['unmatchedCard'] and 'Earlier savedFilter' not in result['unmatchedCard']
     assert result['closeEnabled'] is True
     assert result['closed']['card'].startswith('No scoring is open') and result['closed']['closeDisabled'] is True
-    assert 'No Favourites Filters yet' in result['emptyHistory']
+    assert 'No Favourite Scorings yet' in result['emptyHistory']
     assert result['empty'] == 'No Saved Filters yet'
 
 
@@ -460,22 +461,25 @@ process.stdout.write(JSON.stringify(context.orders));
 
 def test_filter_navigator_opens_from_the_favourites_panel_and_both_selectors():
     template = SCORING_TEMPLATE.read_text(encoding='utf-8')
-    # The tree button of each selector sits in its summary, beside the selected card; the panel has it beside its title.
+    # The tree button of the selector sits in its summary, beside the selected card; the panel has it beside its title.
     for selector in template.split('<details class="saved-filter-selector" data-saved-filter-selector>')[1:]:
         summary = selector.split('</summary>', 1)[0]
         assert 'data-selected-saved-filter-card' in summary and 'data-saved-filter-navigator-open' in summary
-    panel = template.split('<details class="panel collapsible-panel saved-filters-panel" open data-panel-state-key="scoring:favourites-filters">', 1)[1].split('data-saved-filters-bulk', 1)[0]
+    panel = template.split('<details class="panel collapsible-panel saved-filters-panel" data-panel-state-key="scoring:favourites-filters" data-saved-filters-panel>', 1)[1].split('data-saved-filters-bulk', 1)[0]
     assert 'data-saved-filter-navigator-open' in panel and 'Filter Navigator' in panel
-    assert template.count('data-saved-filter-navigator-open') == 3
+    # The selector, the panel, the Favourite Scorings main button and the step of the start guide.
+    assert template.count('data-saved-filter-navigator-open') == 4
     dialog = template.split('<dialog class="saved-filter-navigator"', 1)[1].split('</dialog>', 1)[0]
     for marker in ('data-saved-filter-navigator-search', 'role="tree"', 'data-saved-filter-navigator-tree',
-                   'data-saved-filter-navigator-count', 'data-saved-filter-navigator-close'):
+                   'data-saved-filter-navigator-count', 'data-saved-filter-navigator-close', 'data-saved-filter-navigator-manage'):
         assert marker in dialog
     assert '.saved-filter-selector > summary { display: grid; grid-template-columns: minmax(0,1fr) auto auto;' in template
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
-    # Choosing a Favourites Filter uses it as Use Filter on its card does, and App Events say where it was chosen.
+    # Choosing a Favourite Scoring uses it as Use Filter on its card does, and App Events say where it was chosen.
     assert "useSavedFilter(savedFilter, {fromDropdown: origin, source: 'navigator'});" in script
     assert "await useSavedFilter(savedFilter, {fromDropdown: savedFilterSelectors.find(selector => selector.contains(button))});" in script
+    # A click on the selected card opens the Filter Navigator, not the dropdown.
+    assert 'openSavedFilterNavigator(selector);' in script
 
 
 def test_filter_navigator_search_finds_every_word_and_keeps_words_typed_together():
@@ -507,7 +511,7 @@ process.stdout.write(JSON.stringify(context.results));
              'savedFilterNavigatorFound')
     results = _run_node_json(program, {'snippets': [_function_source(script, name) for name in names]})
     assert results['words'] == ['latest', '2', 'campaigns', 'nsa', 'vs', 'sa', 'sao', 'paulo']
-    # Words typed together stay together when a Favourites Filter has them together; otherwise they are found anywhere.
+    # Words typed together stay together when a Favourite Scoring has them together; otherwise they are found anywhere.
     assert results['latestCamp'] == results['latestCam'] == ['1', '3']
     assert results['latest'] == ['1', '2', '3', '4'] and results['latest2'] == ['2', '4']
     assert results['scattered'] == ['4'] and results['reversed'] == ['1', '2', '3', '4']
@@ -551,7 +555,7 @@ vm.runInContext(payload.snippets.join('\n') + `
 process.stdout.write(JSON.stringify(context.results));
 """
     results = _run_node_json(program, {'snippets': [_function_source(script, 'savedFilterNavigatorTree')]})
-    # Areas in the order of the list, NR Modes NSA, SA, NSA vs SA, Favourites Filters in the order of the list.
+    # Areas in the order of the list, NR Modes NSA, SA, NSA vs SA, Favourite Scorings in the order of the list.
     assert results['areas'] == ['London', 'Nationwide']
     assert results['modes'] == [['NSA:4,5,6,7,8', 'SA:1', 'NSA+SA:3'], ['NSA:2,9']]
     # Alike leaves show what tells them apart (their Filter ID when nothing does); the others show nothing.

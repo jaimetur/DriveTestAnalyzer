@@ -5467,7 +5467,7 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 .role-warning p { margin: 0; line-height: 1.45; }
 .role-warning strong { color: #5c3700; }
 
-/* The buttons that act on the checked items of a table or a list (Reporting Jobs, Run History, Favourites Filters): one
+/* The buttons that act on the checked items of a table or a list (Reporting Jobs, Run History, Favourite Scorings): one
    group like the buttons of each row, an icon and a label per action, each lit in its colour when it can act. */
 .bulk-toolbar { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .15rem; padding: .2rem; border: 1px solid #dbe3e8; border-radius: 10px; background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, .06); }
 .bulk-toolbar-separator { align-self: stretch; width: 1px; margin: .25rem .2rem; background: #e4e9ed; }

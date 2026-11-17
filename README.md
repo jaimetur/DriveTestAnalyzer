@@ -94,7 +94,7 @@ Reporting keeps **reports**, each one PowerPoint and Word document with the chos
 
 Calculate scoring from ready Data, Voice and Speech CDRs of one NR Mode, or of both side by side with **NSA vs SA** (each campaign with its NR Mode), grouped by Operator and optional Vendor, Region, City or Campaign in a configurable hierarchy. The latest CDR of each type is preselected; automatic and dataset recalculations include compatible companions.
 
-Filter the selected CDRs by Operator, Vendor, Region, City (including Main Cities) and Campaign using cached values, in the configured hierarchy order. Persisted jobs retain their filters, scoring configuration, coverage and GAP reference comparisons. Results offer reference-style KPI matrices, optional measured values, environment filtering, threshold/GAP colors and labeled charts with an enlarged view, in eight tabs: Summary, Scoring Charts, Scoring Tables, Geographical Areas, Scoring Trends, GAP Analysis, Points Lost (where the points go, per KPI, per area and per Vendor, kind of site, site and route stretch of the serving cells) and Methodology Impact (two methodologies face to face), in the colour theme each user chooses (Ericsson by default, NetCheck, Umlaut, Vodafone, Midnight, Paper or Heatmap), also in the exports. Operator Maps control operator order and colors.
+Filter the selected CDRs by Operator, Vendor, Region, City (including Main Cities) and Campaign using cached values, in the configured hierarchy order. Persisted jobs retain their filters, scoring configuration, coverage and GAP reference comparisons. Results offer reference-style KPI matrices, optional measured values, environment filtering, threshold/GAP colors and labeled charts with an enlarged view, in eight tabs: Summary, Scoring Charts, Scoring Tables, Country Areas, Scoring Trends, GAP Analysis, Points Lost (where the points go, per KPI, per area and per Vendor, kind of site, site and route stretch of the serving cells) and Methodology Impact (two methodologies face to face), in the colour theme each user chooses (Ericsson by default, NetCheck, Umlaut, Vodafone, Midnight, Paper or Heatmap), also in the exports. Operator Maps control operator order and colors.
 
 Scoring Calculation lets each job select a saved methodology while defaulting to the workspace default methodology. Workspace Config manages named scoring methodologies with a default selection, editable category-grouped KPI formulas/filters, additions/deletions, thresholds, weights, score mappings, aggregation hierarchy and GAP priority.
 
@@ -405,7 +405,7 @@ DriveTestAnalyzer/
 ├── assets/scoring-report-configurations/     # Scoring report configurations added to every workspace
 ├── assets/query-builder-queries/             # Query Builder queries added to every workspace
 ├── assets/bundle-report-template-favourites/ # Reports of Reporting added to every workspace
-├── assets/scoring-favourites-filters/        # Scoring & GAP Favourites Filters added to every workspace
+├── assets/scoring-favourites-filters/        # Scoring & GAP Favourite Scorings added to every workspace
 ├── assets/labels-operators/                  # Operators of the 50 main countries for new workspaces
 ├── assets/labels-vendors/                    # Vendor Maps of a new workspace
 ├── assets/labels-campaigns/                  # Default Campaign Maps of every workspace

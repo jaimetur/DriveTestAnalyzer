@@ -124,7 +124,7 @@ def test_scoring_results_place_one_download_button_over_the_chart_or_table_under
     # The chart of an area has its own title above it (Best Network Trends — London), also in its larger view.
     assert ": target.matches('.scoring-area-trend') ? areaImageHeader(target) : null)," in script
     assert 'figure.dataset.imageTitle = `${scoringLabel()} Trends — ${area.label}`;' in script
-    assert "openExpandedView(large, figure.dataset.imageTitle, 'National & Geographical Areas Trends', figure, 'Area trend');" in script
+    assert "openExpandedView(large, figure.dataset.imageTitle, 'National & Country Areas Trends', figure, 'Area trend');" in script
     assert "...(copy ? {destination: clipboard ? 'clipboard' : 'copy-dialog'} : {})," in buttons
     # Where the browser does not let the page copy images (an address that is not secure), the screenshot shows in a
     # dialog to copy it from the menu of the image, or to download it; the page behind does not scroll while it is open.

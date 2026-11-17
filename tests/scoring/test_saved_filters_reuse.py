@@ -1,4 +1,4 @@
-"""Saved Filters: reused selections that travel as Favourites Filters, find their CDRs by file in
+"""Saved Filters: reused selections that travel as Favourite Scorings, find their CDRs by file in
 another workspace, tell when newer CDRs replace theirs, and keep their result when their CDRs are gone."""
 from __future__ import annotations
 
@@ -330,7 +330,7 @@ def test_favourites_filters_travel_with_their_own_backup_element(client, tmp_pat
     # The Scoring & GAP Analysis Methodologies no longer carries them.
     app_module.restore_database_backup(backup_path, ['scoring_configuration'])
     assert saved_filters.list_saved_filters(repository) == []
-    # The Favourites Filters (not the others) travel as an element of their own.
+    # The Favourite Scorings (not the others) travel as an element of their own.
     app_module.restore_database_backup(backup_path, ['scoring_favourites_filters'])
     [restored] = saved_filters.list_saved_filters(repository)
     assert restored['name'] == 'Weekly view' and restored['pinned'] and sorted(restored['dataset_ids']) == sorted(ids)
@@ -389,7 +389,7 @@ def _starred_names(repository: Repository) -> list[str]:
 
 
 def _favourites_in_two_orders(tmp_path: Path) -> tuple[dict[str, Any], Repository]:
-    """The document of the Favourites Filters West, North, East and South, and a workspace with three of them, in
+    """The document of the Favourite Scorings West, North, East and South, and a workspace with three of them, in
     another order, ahead of one only it has."""
     source = _workspace(tmp_path, 'source')
     source_ids = _three_cdrs(source, tmp_path / 'source')
@@ -434,7 +434,7 @@ def test_the_favourites_filters_exported_after_a_transfer_keep_its_order(tmp_pat
 def test_favourites_filters_without_an_order_leave_those_of_the_workspace_where_they_are(tmp_path, takes_order):
     document, target = _favourites_in_two_orders(tmp_path)
     if takes_order:
-        # A document of an earlier version; else, the starter Favourites Filters, which follow those of the workspace.
+        # A document of an earlier version; else, the starter Favourite Scorings, which follow those of the workspace.
         document = {**document, 'saved_filters': [{key: value for key, value in entry.items() if key != 'position'}
                                                   for entry in document['saved_filters']]}
         assert not favourites_order_changes(document, saved_filters.saved_filters_document(target, favourites_only=True))
@@ -552,7 +552,7 @@ def test_favourites_filters_with_a_campaign_choice_take_the_cdrs_it_stands_for_i
     used, _ = saved_filters.save_saved_filter(source, [], ['Operator'], 'NSA', context_filters={'Campaign': ['@latest-campaign']})
     saved_filters.update_saved_filter(source, used['id'], name='Latest campaign', pinned=True)
     document = json.loads(json.dumps(saved_filters.saved_filters_document(source, favourites_only=True)))
-    # Another workspace with other files: the Favourites Filter waits until it has CDRs of the campaign it stands for.
+    # Another workspace with other files: the Favourite Scoring waits until it has CDRs of the campaign it stands for.
     target = _workspace(tmp_path, 'target')
     saved_filters.import_saved_filters(target, document)
     assert saved_filters.list_saved_filters(target)[0]['dataset_ids'] == []
@@ -560,7 +560,7 @@ def test_favourites_filters_with_a_campaign_choice_take_the_cdrs_it_stands_for_i
                   for kind in ('data', 'voice', 'speech')]
     [resolved] = saved_filters.list_saved_filters(target)
     assert sorted(resolved['dataset_ids']) == sorted(target_ids) and resolved['name'] == 'Latest campaign' and resolved['pinned']
-    # The starter Favourites Filters have no CDRs: they wait for those of their Campaign choice.
+    # The starter Favourite Scorings have no CDRs: they wait for those of their Campaign choice.
     entry = {key: value for key, value in document['saved_filters'][0].items() if key != 'cdrs'}
     fresh = _workspace(tmp_path, 'fresh')
     assert saved_filters.import_saved_filters(fresh, {**document, 'saved_filters': [entry]}) == 1
@@ -594,7 +594,7 @@ def test_favourites_filters_out_of_date_are_calculated_while_the_application_is_
     # Up to date: nothing is calculated.
     app_module._calculate_favourites_filters_when_idle()
     assert queued == []
-    # Out of date (here, an older calculation): the Favourites Filter is calculated again, not the others.
+    # Out of date (here, an older calculation): the Favourite Scoring is calculated again, not the others.
     with repository.connection() as connection:
         connection.execute("UPDATE saved_filters SET result_key = 'older' WHERE id IN (?, ?)", (favourite['id'], other['id']))
     app_module._calculate_favourites_filters_when_idle()

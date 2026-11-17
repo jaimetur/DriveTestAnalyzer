@@ -156,7 +156,7 @@ CDR Analysis analyses one processed CDR at a time.
 
 ## Scoring & GAP Analysis
 
-Scoring & GAP Analysis calculates NetCheck scores from the ready Data, Voice and Speech CDRs of one NR Mode, or of both side by side with **NSA vs SA**, grouped by Operator and optional Vendor, Region, City or Campaign, and compares every operator with a reference operator (the GAP). Results are saved with the workspace and offer eight tabs: Summary, Scoring Charts, Scoring Tables, Geographical Areas, Scoring Trends, GAP Analysis, Points Lost (where the points go, per KPI, area, Vendor and site) and Methodology Impact (two methodologies face to face), in the colour theme each user chooses, also in the CSV, PowerPoint and Word exports. Named scoring methodologies are managed in Workspace Config. See [Scoring & GAP Analysis](scoring-gap-analysis.md).
+Scoring & GAP Analysis calculates NetCheck scores from the ready Data, Voice and Speech CDRs of one NR Mode, or of both side by side with **NSA vs SA**, grouped by Operator and optional Vendor, Region, City or Campaign, and compares every operator with a reference operator (the GAP). Results are saved with the workspace and offer eight tabs: Summary, Scoring Charts, Scoring Tables, Country Areas, Scoring Trends, GAP Analysis, Points Lost (where the points go, per KPI, area, Vendor and site) and Methodology Impact (two methodologies face to face), in the colour theme each user chooses, also in the CSV, PowerPoint and Word exports. Named scoring methodologies are managed in Workspace Config. See [Scoring & GAP Analysis](scoring-gap-analysis.md).
 
 ## Network Insights
 

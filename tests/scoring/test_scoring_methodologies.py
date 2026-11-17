@@ -136,7 +136,7 @@ def test_a_saved_filter_by_campaign_scores_each_campaign_with_its_methodology(tm
     dataset_ids = [add_campaign_dataset(repository, f'UK_{quarter}_2026_NSA_{kind.title()}.csv', f'2026-{quarter}', kind)
                    for quarter in ('Q2', 'Q3') for kind in ('data', 'voice', 'speech')]
 
-    with pytest.raises(ValueError, match='needs Campaign in the Split by'):
+    with pytest.raises(ValueError, match='needs Campaign in the Break down by'):
         saved_filters.save_saved_filter(repository, dataset_ids, ['Region'], 'NSA', scoring_profile_id=BY_CAMPAIGN)
 
     saved, _reused = saved_filters.save_saved_filter(repository, dataset_ids, ['Campaign'], 'NSA',

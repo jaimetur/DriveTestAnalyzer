@@ -175,7 +175,7 @@ def add_owner_card_slides(presentation, items: list[dict[str, Any]], *, subtitle
                 _text(slide, f'{value:,.1f}', left + width - .6, y, .45, .22, size=8.5, bold=True, color=INK,
                       align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
         note = ('Performance owner: the Region of the tests. Points lost: the National points of the scoring lost against the '
-                'maximum in its tests, not the own score of its Region (see the National & Geographical Areas Trends). '
+                'maximum in its tests, not the own score of its Region (see the National & Country Areas Trends). '
                 'High site: 1+ point lost and losses on the same site in an earlier campaign.')
         if item.get('unidentified', 0) > .05:
             note += f" {item['unidentified']:,.1f} points have no Region."

@@ -438,7 +438,7 @@ def _option_lines(section: dict[str, Any], design_names: dict[str, str] | None,
                                     for value in area.get('campaigns') or []) or 'the campaigns of the module'
         cities = ', '.join([*(['Main Cities'] if area.get('main_cities') else []), *(area.get('cities') or [])])
         rows = ' and '.join(part for part in ('' if area['breakdown'] == 'None' else 'each ' + area['breakdown'], cities) if part)
-        areas = (f" · Geographical Areas: {rows or 'each Region and London'}"
+        areas = (f" · Country Areas: {rows or 'each Region and London'}"
                  f" · time split {'All selected CDRs' if area['time_split'] == 'All' else area['time_split']}")
         every = ' · All Operators in the Focus Operators panels' if options.get('all_operators') else ''
         every += (f" · NSA vs SA ({NR_LAYOUT_LABELS[options['nr_layout']]}, {NR_CHARTS_LABELS[options['nr_charts']]})"
@@ -647,7 +647,7 @@ def _campaigns_label(values: Any) -> str:
 def report_labels(definition: Any) -> dict[str, Any]:
     """What a report includes, for its card and its runs: 'modules', the keys of its checked sections in order;
     'nr_mode'; 'scopes', the Region, Cluster or City it filters (Nationwide when none) and the Operator or Vendor
-    ({'dimension', 'text', 'title'}, in the colours of the Favourites Filters of Scoring & GAP Analysis); and
+    ({'dimension', 'text', 'title'}, in the colours of the Favourite Scorings of Scoring & GAP Analysis); and
     'campaigns', each choice of campaigns once with the sections that make it ({'campaigns', 'modules'})."""
     definition = normalize_definition(definition)
     filters, sections = definition['filters'], enabled_sections(definition)
@@ -681,7 +681,7 @@ DEFINITION_LABELS = {
     **FILTER_LABELS, 'nr_mode': 'NR Mode', 'main_cities': 'Main Cities', 'chart_pictures': 'Chart Pictures',
     'scorings': 'Scorings', 'kpi_values': 'Show KPI values', 'gap_values': 'Show GAP values',
     'all_operators': 'Export All Operators in Focus panels', 'nsa_vs_sa': 'Compare NSA vs SA', 'nr_layout': 'NSA vs SA',
-    'nr_charts': 'NSA & SA charts', 'baseline_operator': 'GAP reference', 'geographical_areas': 'Geographical Areas',
+    'nr_charts': 'NSA & SA charts', 'baseline_operator': 'GAP reference', 'geographical_areas': 'Country Areas',
     'trends': 'Scoring Trends', 'breakdown': 'Breakdown', 'time_split': 'Time split', 'group': 'Split by',
     'coverage_threshold': 'LTE coverage below (dBm)', 'interference_threshold': 'LTE interference below (dB)',
     'nr_coverage_threshold': 'NR coverage below (dBm)', 'nr_interference_threshold': 'NR interference below (dB)',
@@ -1767,7 +1767,7 @@ class SectionGenerator:
         }]}
         base = {'dataset_ids': dataset_ids, 'nr_mode': nr_mode, 'baseline_operator': options['baseline_operator'],
                 'scoring_profile_id': options['methodology'] or None,
-                # A Saved Filter already calculated for these CDRs and filters (such as a Favourites Filter) is used as it is.
+                # A Saved Filter already calculated for these CDRs and filters (such as a Favourite Scoring) is used as it is.
                 'reuse_saved_filters': True}
         self.progress('Calculating Scoring & GAP Analysis')
         try:

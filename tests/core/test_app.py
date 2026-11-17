@@ -2525,7 +2525,7 @@ def test_admin_import_export_packages_detect_configuration_and_workspaces(client
     assert 'Mappings &amp; Reference Data (from active workspace)</option>' in admin_response.text
     assert admin_response.text.index('Main Cities (from active workspace)</option>') < admin_response.text.index('Mappings &amp; Reference Data (from active workspace)</option>')
     assert 'Scoring &amp; GAP Analysis Methodologies (from active workspace)' in admin_response.text
-    assert 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Report Definitions + Scoring &amp; GAP Favourites Filters + Scoring &amp; GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)' in admin_response.text
+    assert 'Full Environment (Application Config + PPT Designs + PPT Templates + Main Cities + Mappings &amp; Reference Data + Scoring &amp; GAP Analysis Methodologies + Auto-calculated Fields + Query Builder Queries + Network Insights Favourites + Report Definitions + Scoring &amp; GAP Favourite Scorings + Scoring &amp; GAP Report Templates + Scoring Export Panels + Scoring Excluded Calls + NQ Call Tracking + AI Assistant Glossary + Selected Workspaces)' in admin_response.text
     # The backups, in the Database Management of Super Admin.
     backups_page = client.get('/super-admin').text
     assert backups_page.index('Main Cities (workspace city selection)') < backups_page.index('Mappings &amp; Reference Data (Operator and Vendor aliases, order and theme colors')
@@ -4353,7 +4353,7 @@ def test_admin_export_and_transfer_are_limited_to_templates_and_accessible_works
     assert 'PPT Templates (from active workspace)</option>' in panel.text
     assert 'Main Cities (from active workspace)</option>' in panel.text
     # Admins export the favourites of the active workspace too.
-    for label in ('Network Insights Favourites', 'Report Definitions', 'Scoring &amp; GAP Favourites Filters',
+    for label in ('Network Insights Favourites', 'Report Definitions', 'Scoring &amp; GAP Favourite Scorings',
                   'Scoring &amp; GAP Report Templates'):
         assert f'{label} (from active workspace)</option>' in panel.text, label
     assert client.get('/admin/import-export/export?export_target=bundle-report-template-favourites').status_code == 200
@@ -11380,10 +11380,10 @@ def test_every_tab_lists_its_sections_with_icons_in_the_colour_of_its_module(cli
         assert key in menus, key
         assert f'data-module-sections="{key}"' in page, key
     # Each entry has its icon, and the menu the colour of its module.
-    assert menus['scoring'].count('class="menu-item-icon"') == 12
-    # Excluded Calls, after Scoring & GAP Results and before Favourites Filters as on the page.
-    assert menus['scoring'].index('href="/scoring#section-scoring-gap-results"') \
-        < menus['scoring'].index('href="/scoring#section-excluded-calls"') < menus['scoring'].index('href="/scoring#section-favourites-filters"')
+    assert menus['scoring'].count('class="menu-item-icon"') == 11
+    # Excluded Calls, after Scoring & GAP Analysis and before the Favourite Scorings as on the page.
+    assert menus['scoring'].index('href="/scoring#section-scoring-gap-analysis"') \
+        < menus['scoring'].index('href="/scoring#section-excluded-calls"') < menus['scoring'].index('href="/scoring#section-manage-favourite-scorings"')
     assert 'data-module-sections-for="scoring" aria-label="Scoring &amp; GAP Analysis sections" style="--menu-accent: ' in page
     # Scoring Results lists its result tabs beside it.
     for tab in ('summary', 'charts', 'tables', 'geographical-areas', 'trends', 'gap', 'points-lost'):

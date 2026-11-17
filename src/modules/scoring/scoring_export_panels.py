@@ -38,13 +38,13 @@ EXPORT_PANELS: tuple[tuple[str, str, tuple[tuple[str, str, str], ...]], ...] = (
         ('summary', 'Category table', ALL_OPERATORS),
         ('breakdown', 'Breakdown table', ALL_OPERATORS),
         ('campaign_comparison', 'Campaign comparison (two latest campaigns)', FOCUS_OPERATORS))),
-    ('geographical_areas', 'Geographical Areas', (
+    ('geographical_areas', 'Country Areas', (
         ('cards', 'Scoring Nationwide and per City / Cluster / Region cards', ALL_OPERATORS),
-        ('ranking', 'Geographical Areas ranked', FOCUS_OPERATORS),
+        ('ranking', 'Country Areas ranked', FOCUS_OPERATORS),
         ('versus', 'Each operator against the reference per geographical area', FOCUS_OPERATORS))),
     ('trends', 'Scoring Trends', (
         ('trend', 'Scoring Trend (two campaigns or more)', ALL_OPERATORS),
-        ('areas', 'National & Geographical Areas Trends', ALL_OPERATORS))),
+        ('areas', 'National & Country Areas Trends', ALL_OPERATORS))),
     ('gap', 'GAP Analysis', (
         ('all_operators', 'Table comparing all the chosen operators', ALL_OPERATORS),
         ('individual', 'Individual tables against the reference', FOCUS_OPERATORS),

@@ -604,7 +604,7 @@ def history_gap(repository: Any, dataset_ids: Iterable[int], levels: Iterable[st
     try:
         _dimensions(levels)
     except HistoryUnavailable:
-        return 'the Scoring History does not keep this Split by'
+        return 'the Scoring History does not keep this Break down by'
     if any(values and field not in FILTER_DIMENSIONS for field, values in (context_filters or {}).items()):
         return 'the Scoring History does not keep these filters'
     ensure_history_tables(repository)

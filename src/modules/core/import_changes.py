@@ -29,7 +29,7 @@ FIELD_LABELS = {
     'assigned_to': 'Assignee', 'cdrs': 'CDRs', 'nr_mode': 'NR Mode', 'access_requested_at': 'Access Request',
     'last_login_at': 'Last Log-in',
     'send_email': 'Send Email', 'scoring_profile_id': 'Scoring Methodology', 'context_filters': 'Filters',
-    'area_summary': 'Geographical Areas & Scoring Trends', 'operator_mappings': 'Operator Maps',
+    'area_summary': 'Country Areas & Scoring Trends', 'operator_mappings': 'Operator Maps',
     'operator_name_comments': 'Comments of the Operator Names', 'vendor_mappings': 'Vendor Maps',
     'rca_result': 'RCA Result', 'prioritization': 'NQ Prioritization',
 }
@@ -495,7 +495,7 @@ def _selection_key(entry: dict[str, Any]) -> str:
 
 
 def kept_postal_codes(values: dict[str, Any], previous: dict[str, Any]) -> dict[str, Any]:
-    """A Favourites Filter as an import saves it over the one it finds: Postal Codes stay, as a star and with their map,
+    """A Favourite Scoring as an import saves it over the one it finds: Postal Codes stay, as a star and with their map,
     when the package does not bring them."""
     summary = previous.get('area_summary') or {}
     if summary.get('postal_codes') and isinstance(values.get('area_summary'), dict) and not values['area_summary'].get('postal_codes'):
@@ -505,7 +505,7 @@ def kept_postal_codes(values: dict[str, Any], previous: dict[str, Any]) -> dict[
 
 
 def favourites_order_changes(package: Any, before: Any) -> bool:
-    """Whether importing a Saved Filters document moves the Favourites Filters of a workspace (``before``, its document):
+    """Whether importing a Saved Filters document moves the Favourite Scorings of a workspace (``before``, its document):
     those of the package go in its order, ahead of those only the workspace has (see saved_filters.import_saved_filters)."""
     def starred(document: Any) -> list[Item]:
         items = [item for item in favourites_filter_items(document) if item.values.get('pinned')]
@@ -520,7 +520,7 @@ def favourites_order_changes(package: Any, before: Any) -> bool:
 
 
 def favourites_filter_items(document: Any) -> list[Item]:
-    """The Favourites Filters of a Saved Filters document, found by what they select, then by their name. Those with a
+    """The Favourite Scorings of a Saved Filters document, found by what they select, then by their name. Those with a
     Campaign choice are compared without their CDRs, as the import takes those the choice stands for here."""
     return [Item(name=str(entry.get('name') or ''), uid=_selection_key(entry),
                  values={key: value for key, value in entry.items() if key != 'cdrs'} if _campaign_choice(entry) else entry)
@@ -610,7 +610,7 @@ ELEMENT_NAMES = {
     'query-builder-queries': ('Query Builder query', 'Query Builder queries', ''),
     'network-insights-favourites': ('Network Insights Favourite', 'Network Insights Favourites', ''),
     'bundle-report-template-favourites': ('Report Definition', 'Report Definitions', ''),
-    'scoring-favourites-filters': ('Scoring & GAP Favourites Filter', 'Scoring & GAP Favourites Filters', ''),
+    'scoring-favourites-filters': ('Scoring & GAP Favourite Scoring', 'Scoring & GAP Favourite Scorings', ''),
     'scoring-report-templates': ('Scoring & GAP Report Template', 'Scoring & GAP Report Templates', ''),
     'scoring-excluded-calls': ('list of Scoring Excluded Calls', 'lists of Scoring Excluded Calls', ''),
     'reporting-jobs': ('Report Schedule', 'Report Schedules', ''),

@@ -209,24 +209,23 @@ def test_results_controls_are_grouped_with_icons_and_unique_environment_heading(
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     from lxml import html
     tree = html.fromstring(template)
-    shortcut_navs = tree.xpath('//nav[@aria-label="Scoring configuration sections"]')
-    assert len(shortcut_navs) == 2
-    for nav in shortcut_navs:
-        kpi_shortcut = nav.xpath('./a[@data-config-shortcut="kpi"]')[0]
-        assert kpi_shortcut.get('href') == '/workspace-config#scoring-methodology-environments'
-        assert kpi_shortcut.xpath('./span')[0].text == 'Scoring Methodologies'
-        # The Calculation toolbar generates a report from the selection; the Results toolbar exports the selected job.
-        report = nav.xpath('following-sibling::div[@class="scoring-export-actions"]/a[@data-generate-report or @data-export-ppt]')
-        assert report and report[0].xpath('./span')[0].text in {
-            'Generate Scoring Report (PPT/Word)', 'Export Selected Scoring Report (PPT/Word)'}
-        assert kpi_shortcut.xpath('./svg/path/@d') == [
-            'M2 17h16M3 17V7h5v10M5 10h1M5 13h1M12 3l-2 14M16 3l2 14M14 4v2m0 3v2m0 3v2',
-        ]
-        # Only Methodology stays here: KPI Priorities is gone and the hierarchy lives in Split by.
-        assert not nav.xpath('./a[@data-config-shortcut="gap"]')
-        assert not nav.xpath('./a[@data-config-shortcut="hierarchy"]')
-    labels = [link.xpath('./span')[0].text for link in tree.xpath('//div[@class="scoring-export-actions"]/a')]
-    assert labels == ['Generate Scoring Report (PPT/Word)', 'Export Selected Scoring Report (PPT/Word)']
+    # Scoring Methodologies opens the methodology editor from the Methodology group of Scoring Setup.
+    kpi_shortcuts = tree.xpath('//a[@data-config-shortcut="kpi"]')
+    assert len(kpi_shortcuts) == 1
+    kpi_shortcut = kpi_shortcuts[0]
+    assert kpi_shortcut.get('href') == '/workspace-config#scoring-methodology-environments'
+    assert kpi_shortcut.xpath('./span')[0].text == 'Scoring Methodologies'
+    assert kpi_shortcut.xpath('./svg/path/@d') == [
+        'M2 17h16M3 17V7h5v10M5 10h1M5 13h1M12 3l-2 14M16 3l2 14M14 4v2m0 3v2m0 3v2',
+    ]
+    assert kpi_shortcut.xpath('ancestor::section[@data-scoring-config-section="setup"]')
+    assert not tree.xpath('//a[@data-config-shortcut="gap"]')
+    # One Report (PPT/Word) button: export the scoring shown, or a custom report from the configuration.
+    menu = tree.xpath('//details[@data-scoring-report-menu]')[0]
+    assert menu.xpath('./summary/span')[0].text_content() == 'Report (PPT/Word)'
+    labels = [link.xpath('./span/strong')[0].text for link in menu.xpath('.//a')]
+    assert labels == ['Export this scoring', 'Custom report…']
+    assert menu.xpath('.//a[@data-export-ppt]') and menu.xpath('.//a[@data-generate-report]')
     # The former PowerPoint and Word buttons of the Calculation panel are gone.
     assert 'data-scoring-document-export' not in template
     hierarchy = tree.xpath('//a[@data-config-shortcut="hierarchy"]')
@@ -237,40 +236,31 @@ def test_results_controls_are_grouped_with_icons_and_unique_environment_heading(
     assert not dialog.xpath('.//*[@data-scoring-hierarchy-methodology]')
     # On the line of the Split by levels, at its right, with the note below the levels.
     panel = hierarchy[0].xpath('ancestor::div[@class="scoring-levels-row"]/parent::div')[0]
-    assert panel.xpath('./div[@class="scoring-picker-head"]/strong')[0].text == 'Split by'
+    assert panel.xpath('./div[@class="scoring-picker-head"]/strong')[0].text == 'Break down by'
     assert panel.xpath('./p[contains(@class, "scoring-levels-note")]')[0].text.startswith('Operator is required. To compare the operators of each City')
     header = re.search(r'<div class="scoring-results-head">(.*?)<div class="scoring-results-tabbed">', template, re.S)
     assert header
     markup = header.group(1)
-    primary = re.search(r'<div class="scoring-results-primary">(.*?)</div>\s*<div class="scoring-results-tools">', markup, re.S)
-    tools = re.search(r'<div class="scoring-results-tools">(.*)</div>\s*$', markup, re.S)
-    assert primary and tools
-    left_markup = primary.group(1)
-    right_markup = tools.group(1)
-    assert left_markup.index('data-result-environment-control') < left_markup.index('data-scoring-results-value-row')
-    assert left_markup.index('data-show-kpi-values') < left_markup.index('data-show-gap-values')
-    assert right_markup.index('data-config-shortcut="kpi"') < right_markup.index('data-export-ppt')
-    assert 'data-export-scoring' not in right_markup and 'data-export-gap' not in right_markup
-    for marker in ('data-config-shortcut="kpi"', 'data-export-ppt'):
-        anchor = re.search(rf'<a\b[^>]*{re.escape(marker)}[^>]*>(.*?)</a>', right_markup, re.S)
-        assert anchor and '<svg ' in anchor.group(1) and 'viewBox="0 0 20 20"' in anchor.group(1)
-    assert re.search(r'<a\b[^>]*data-export-ppt[^>]*>.*?<span>Export Selected Scoring Report \(PPT/Word\)</span></a>', right_markup, re.S)
+    view = markup.split('<div class="scoring-results-primary scoring-results-view">', 1)[1]
+    assert view.index('data-scoring-results-selector-row') < view.index('data-scoring-results-value-row') < view.index('class="scoring-results-tools"')
+    assert view.index('data-show-kpi-values') < view.index('data-show-gap-values')
+    # The Environment is in Scoring Setup, with the other choices of the whole panel.
+    environment = tree.xpath('//*[@data-result-environment-control]')[0]
+    assert environment.xpath('ancestor::section[@data-scoring-config-section="setup"]')
+    tools = view.split('class="scoring-results-tools"', 1)[1]
+    assert 'data-export-scoring' not in tools and 'data-export-gap' not in tools
+    anchor = re.search(r'<a\b[^>]*data-export-ppt[^>]*>(.*?)</a>', tools, re.S)
+    assert anchor and '<svg ' in anchor.group(1) and 'viewBox="0 0 20 20"' in anchor.group(1)
     # Export to CSV sits above the Scoring and GAP tables, in the GAP export colour.
     for pane, marker in (('scoring', 'data-export-scoring'), ('gap', 'data-export-gap')):
         toolbar = re.search(rf'<div class="scoring-table-export" data-table-export="{pane}">(.*?)</div>', template, re.S)
         assert toolbar and marker in toolbar.group(1) and '<span>Export to CSV</span>' in toolbar.group(1)
         assert template.index(f'data-result-pane="{pane}"') < template.index(f'data-table-export="{pane}"')
     assert '.scoring-table-export a {' in template and 'linear-gradient(135deg,#1688bb,#145584)' in template
-    # The job selector takes the width the controls leave, not the width of the buttons row.
-    assert '.scoring-results-head { display: grid; grid-template-columns: fit-content(38rem) minmax(0,1fr);' in template
-    assert '.scoring-results-tools { grid-column: 2; grid-row: 1; display: flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap;' in template
+    # The head of the panel is a column: title and main buttons, the start guide, the strip, the view and reports.
+    assert '.scoring-results-panel .scoring-results-head { display: flex; flex-direction: column; align-items: stretch; gap: .85rem; }' in template
     assert '.scoring-results-config-shortcuts svg, .scoring-export-actions svg {' in template
     assert 'fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;' in template
-    assert '.scoring-results-config-shortcuts, .scoring-results-tools > .scoring-export-actions { justify-content: flex-end; }' in template
-    # The buttons of the Calculation panel and of Scoring & GAP Results have one height, and no other page's style for
-    # buttons in a .scoring-export-actions box (such as Workspace Config's) moves them.
-    assert ('.scoring-results-tools :is(.scoring-results-config-shortcuts, .scoring-export-actions) a { box-sizing: border-box; '
-            'min-height: 2.45rem; }') in template
     stylesheet = (Path(__file__).resolve().parents[2] / 'src/web_interface/static/css/core/app.css').read_text(encoding='utf-8')
     assert '\n.scoring-export-actions' not in stylesheet and '.scoring-export-panels-actions {' in stylesheet
 
@@ -980,8 +970,11 @@ def test_environment_selector_precedes_value_toggles_and_gap_layout_is_condition
     selector_row = re.search(r'<div class="scoring-results-selector-row"[^>]*>(.*?)</div>', template, re.S)
     value_row = re.search(r'<div class="scoring-results-value-row"[^>]*>(.*?)</div>', template, re.S)
     assert selector_row and value_row
-    environment_index = selector_row.group(1).index('data-result-environment-control')
+    # The Environment is chosen in Scoring Setup (shown at once), before the values of the tables.
+    setup = template.split('data-scoring-config-section="setup"', 1)[1].split('data-scoring-config-section="context"', 1)[0]
+    assert 'data-result-environment-control' in setup
     assert 'data-scoring-table-mode' not in template
+    assert template.index('data-result-environment-control') < template.index('data-show-kpi-values')
     assert template.index('data-scoring-results-selector-row') < template.index('data-show-kpi-values')
     assert 'data-scoring-gap-layout-control hidden' in template
     assert 'if (gapLayoutControl) gapLayoutControl.hidden = !showGapValues();' in script
@@ -1101,7 +1094,7 @@ const results = [];
 })().catch(error => { console.error(error); process.exitCode = 1; });
 """
     without_cdrs, with_cdrs = _run_node_json(program, payload)
-    assert without_cdrs['request'] is None and 'Select the CDRs' in without_cdrs['warning']
+    assert without_cdrs['request'] is None and 'Choose the CDRs' in without_cdrs['warning']
     assert with_cdrs['request']['url'] == '/api/scoring/report/word' and with_cdrs['request']['label'] == 'Word'
     body = with_cdrs['request']['body']
     assert (body['dataset_ids'], body['nr_mode'], body['baseline_operator'], body['scoring_profile_id']) == (
@@ -1787,7 +1780,7 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
 """
     result = _run_node_json(program, payload)
     assert result['pending'] == [True, True]
-    assert result['noMatch'] == [False, True, 'Ready to calculate the scoring of these filters.']
+    assert result['noMatch'] == [False, True, 'Ready to calculate the scoring with the configuration above.']
     # Filters used before: Calculate opens them (calculated again when out of date), Recalculate calculates them again;
     # with their result up to date the button reads Open Scoring.
     assert result['completed'] == [False, False, True,
@@ -2074,7 +2067,7 @@ def test_scoring_jobs_show_their_scoring_trends():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     cards = _function_source(script, 'renderSavedFilters')
     # As the panel: the Geographical Areas (Breakdown and Separate cities), then the campaigns and time split of the Scoring Trends.
-    assert "areaMeta.textContent = 'Geographical Areas: ';" in cards
+    assert "areaMeta.textContent = 'Country Areas: ';" in cards
     assert "trendMeta.append('Scoring Trends: Campaigns: ', trendValue, ' · Time split: ', timeValue);" in cards
     assert cards.index('areaMeta') < cards.index('trendMeta')
     # Each value in its own colour, after its label.
@@ -2090,8 +2083,8 @@ process.stdout.write(JSON.stringify([
 '''
     shown = json.loads(subprocess.run(['node', '-e', program], capture_output=True, text=True, check=True).stdout)
     # One saved without areas shows those it is calculated with: each Region and London.
-    default = [['breakdown', 'Breakdown', 'Region'], ['cities', 'Separate cities', 'London']]
-    assert shown == [default, [['breakdown', 'Breakdown', 'None'], ['cities', 'Separate cities', 'London, Leeds']], default, default,
+    default = [['breakdown', 'Areas', 'Region'], ['cities', 'Cities on their own', 'London']]
+    assert shown == [default, [['breakdown', 'Areas', 'None'], ['cities', 'Cities on their own', 'London, Leeds']], default, default,
                      'All selected CDRs', 'Campaign']
 
 
@@ -2102,10 +2095,10 @@ def test_the_scoring_trend_comes_before_the_national_and_areas():
     # the scoring per location.
     assert trends.index("insightItems(payload, 'campaign_trends', environment)") < trends.index(
         "insightItems(payload, 'area_summaries', environment)")
-    assert "`${scoringLabel()} Trends — National & Geographical Areas`" in trends
+    assert "`${scoringLabel()} Trends — National & Country Areas`" in trends
     locations = _function_source(script, 'renderGeographicalAreas')
     assert "'area_summaries'" not in locations and "insightItems(payload, 'location_cards', environment)" in locations
-    assert 'No Geographical Areas views: calculate the scoring again to see them per Region and for London' in locations
+    assert 'No Country Areas views: calculate the scoring again to see them per Region and for London' in locations
     # The titles of the area charts: National, the breakdown and the cities in their own colours.
     chart = _function_source(SCORING_SCRIPT.read_text(encoding='utf-8'), 'makeAreaTrendChart')
     assert "caption.className = `is-${areaCategory(area)}`;" in chart
@@ -2126,7 +2119,7 @@ def test_the_area_charts_take_the_height_of_the_table_and_tilt_crowded_labels():
     assert 'if (part?.expandPart) part.expandPart();' in card
     # The table beside the charts enlarges on its own too.
     assert 'tableWrap.expandPart = () => openExpandedView(' in _function_source(script, 'makeAreaSummaryView')
-    assert "openExpandedView(large, figure.dataset.imageTitle, 'National & Geographical Areas Trends', figure, 'Area trend');" in chart
+    assert "openExpandedView(large, figure.dataset.imageTitle, 'National & Country Areas Trends', figure, 'Area trend');" in chart
 
 
 
@@ -2248,8 +2241,9 @@ def test_saved_filters_are_edited_in_a_dialog_with_the_calculation_panel():
     stop = _function_source(script, 'stopSavedFilterEdit')
     assert 'editPanelPlaceholder.replaceWith(calculationPanel);' in stop
     assert 'applySavedCalculationSelection(before.selection);' in stop
-    # Cancel Editing comes before Save Changes, both in place of Calculate Scoring and Recalculate.
-    actions = template[template.index('data-recalculate-scoring'):]
+    # Cancel Editing comes before Save Changes, at the foot of the blocks in the dialog (Calculate Scoring and
+    # Recalculate, in the strip, hide while editing).
+    actions = template[template.index('data-scoring-config-edit-foot'):]
     assert actions.index('data-saved-filter-edit-cancel') < actions.index('data-saved-filter-edit-save')
     assert '<span>Cancel Editing</span>' in actions and '<span>Save Changes</span>' in actions
     sync = _function_source(script, 'syncSavedFilterEditing')

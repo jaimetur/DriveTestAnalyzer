@@ -367,7 +367,7 @@ async function scoring(pres) {
 
   // The seven tabs of every result.
   text(slide, 'SEVEN VIEWS OF EVERY RESULT, ALSO IN POWERPOINT AND WORD', { x: 0.6, y: 5.74, w: 9, h: 0.26, fontSize: 10.5, bold: true, color: K.grey, charSpacing: 1 });
-  const tabs = [['TbLayoutDashboard', 'Summary'], ['TbChartBar', 'Scoring Charts'], ['TbTable', 'Scoring Tables'], ['TbMap2', 'Geographical Areas'],
+  const tabs = [['TbLayoutDashboard', 'Summary'], ['TbChartBar', 'Scoring Charts'], ['TbTable', 'Scoring Tables'], ['TbMap2', 'Country Areas'],
     ['TbTrendingUp', 'Scoring Trends'], ['TbScale', 'GAP Analysis'], ['TbTargetArrow', 'Points Lost']];
   for (const [index, [name, label]] of tabs.entries()) {
     const x = 0.6 + index * 1.735;

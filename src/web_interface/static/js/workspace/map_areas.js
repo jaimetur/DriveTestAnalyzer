@@ -112,7 +112,7 @@
     const {layer} = await api('/api/workspace-config/map-areas/postal/download', {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({country_code: country.code, full}),
     });
-    message(`${layer.country_name}: ${POSTAL_MAPS[layer.map_key]} saved, ${number(layer.unit_count)} areas. Choose it in the Geographical Areas of the Scoring calculation to use it.`, 'success');
+    message(`${layer.country_name}: ${POSTAL_MAPS[layer.map_key]} saved, ${number(layer.unit_count)} areas. Choose it in the Country Areas of the Scoring calculation to use it.`, 'success');
   }
 
   // A file of the workspace is chosen in the import form, ready for this country.

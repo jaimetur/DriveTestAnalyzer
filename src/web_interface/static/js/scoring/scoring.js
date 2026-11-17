@@ -257,7 +257,7 @@
   window.addEventListener('pagehide', persistScoringViewState);
 
   // The tab bar of the results stays at the top while they are scrolled (scoring.html), and so does the bar of Select all
-  // to Delete while the Favourites Filters are: marked then, to draw them with the colour of the panel behind them.
+  // to Delete while the Favourite Scorings are: marked then, to draw them with the colour of the panel behind them.
   const resultTabsBar = root.querySelector('.scoring-result-tabs');
   const stickyBars = [resultTabsBar, root.querySelector('[data-saved-filters-bulk]')].filter(Boolean);
   let resultTabsFrame = 0;
@@ -398,6 +398,12 @@
   // The selection of the panel before the editing (given back when it is cancelled) and the place of the panel.
   let selectionBeforeEdit = null;
   let editPanelPlaceholder = null;
+  // The strip of Scoring & GAP Analysis (drawn once per frame), the selection of the scoring shown (taken when the
+  // selection is its Saved Filter), whether the selection is still that one, and Apply & Calculate waiting for the check.
+  let configStripFrame = 0;
+  let shownSelection = null;
+  let selectionMatchesShown = true;
+  let calculateWhenReady = false;
   // The Geographical Areas & Scoring Trends of the calculation, always included: the Breakdown and Separate cities of both
   // tabs, and the time split and campaigns of the trends.
   const areaSummaryPanel = root.querySelector('[data-scoring-area-summary]');
@@ -415,6 +421,9 @@
   const POSTAL_MAP_LABELS = {full: 'Full postcodes', place: 'One point per place', own: 'Own file'};
   // The campaigns of the Scoring Trends tab, whatever the Campaign filter of the rest of the scoring.
   const trendCampaigns = root.querySelector('[data-scoring-trend-campaigns]');
+  // Country Areas and the Scoring Trends switched off are not calculated and their tabs hide.
+  const countryAreasEnabled = root.querySelector('[data-scoring-country-areas-enabled]');
+  const trendsEnabled = root.querySelector('[data-scoring-trends-enabled]');
   const message = root.querySelector('[data-scoring-message]');
   const savedFilterLists = [...root.querySelectorAll('[data-saved-filter-list]')];
   const savedFilterPanelList = savedFilterLists.find(list => list.closest('.saved-filters-panel')) || null;
@@ -436,8 +445,8 @@
   // The Saved Filter selectors of the module, on top of the Calculation panel and of Scoring & GAP Results: the selected
   // card of the first one is drawn and the others are its copies.
   const savedFilterSelectors = [...root.querySelectorAll('[data-saved-filter-selector]')];
-  // The Filter Navigator: the Favourites Filters as a tree (Area → NR Mode → Campaign) with a search, opened from the
-  // Favourites Filters panel and from the button of each selector. The branches opened stay open while the page is open;
+  // The Filter Navigator: the Favourite Scorings as a tree (Area → NR Mode → Campaign) with a search, opened from the
+  // Favourite Scorings panel and from the button of each selector. The branches opened stay open while the page is open;
   // while searching, every branch with a match is open but the ones closed meanwhile.
   const navigatorDialog = root.querySelector('[data-saved-filter-navigator]');
   const navigatorTree = navigatorDialog?.querySelector('[data-saved-filter-navigator-tree]') || null;
@@ -445,7 +454,7 @@
   const navigatorCount = navigatorDialog?.querySelector('[data-saved-filter-navigator-count]') || null;
   const navigatorExpanded = new Set();
   const navigatorSearchCollapsed = new Set();
-  // The selector the Filter Navigator was opened from (null: the Favourites Filters panel).
+  // The selector the Filter Navigator was opened from (null: the Favourite Scorings panel).
   let navigatorOrigin = null;
   const selectedSavedFilterCards = [...root.querySelectorAll('[data-selected-saved-filter-card]')];
   const selectedSavedFilterCard = selectedSavedFilterCards[0];
@@ -882,6 +891,8 @@
       postal_codes: Boolean(areaSummaryPostalCodes?.checked),
       postal_map: String(areaSummaryPostalMap?.value || 'full'),
       campaigns: selectedTrendCampaigns(),
+      country_areas: typeof countryAreasEnabled !== 'undefined' && countryAreasEnabled ? countryAreasEnabled.checked : true,
+      trends: typeof trendsEnabled !== 'undefined' && trendsEnabled ? trendsEnabled.checked : true,
     };
   }
 
@@ -894,7 +905,7 @@
     const none = [...areaSummaryBreakdown.options].find(option => option.value === 'None');
     if (none) {
       none.disabled = !cities;
-      none.title = cities ? '' : 'Choose a Separate city first';
+      none.title = cities ? '' : 'Choose a City on its own first';
     }
     if (!cities && areaSummaryBreakdown.value === 'None') areaSummaryBreakdown.value = 'Region';
   }
@@ -1108,11 +1119,13 @@
       baseline_operator: String(selection?.baseline_operator || ''),
       scoring_profile_id: String(selection?.scoring_profile_id || ''),
       context_filters: normalizedFilters,
-      area_summary: (({enabled, time_split: timeSplit, breakdown, cities, campaigns, postal_codes: postalCodes, postal_map: postalMap} = {}) => ({
+      area_summary: (({enabled, time_split: timeSplit, breakdown, cities, campaigns, postal_codes: postalCodes, postal_map: postalMap,
+        country_areas: countryAreas, trends} = {}) => ({
         enabled: Boolean(enabled), time_split: String(timeSplit || 'Campaign'), breakdown: String(breakdown || 'Region'),
         cities: (Array.isArray(cities) ? cities : []).map(String), campaigns: (Array.isArray(campaigns) ? campaigns : []).map(String),
         postal_codes: Boolean(postalCodes),
         postal_map: postalCodes ? String(postalMap || 'full') : '',
+        country_areas: countryAreas !== false, trends: trends !== false,
       }))(selection?.area_summary || {}),
     });
   }
@@ -1233,6 +1246,8 @@
         areaSummaryBreakdown.value = summary.breakdown;
       }
       if (areaSummaryPostalCodes) areaSummaryPostalCodes.checked = Boolean(summary.postal_codes);
+      if (typeof countryAreasEnabled !== 'undefined' && countryAreasEnabled) countryAreasEnabled.checked = summary.country_areas !== false;
+      if (typeof trendsEnabled !== 'undefined' && trendsEnabled) trendsEnabled.checked = summary.trends !== false;
       if (areaSummaryPostalMap) areaSummaryPostalMap.value = summary.postal_map || 'full';
       if (areaSummaryPostalMapField) areaSummaryPostalMapField.hidden = !summary.postal_codes;
       if (areaSummaryCities && Array.isArray(summary.cities)) {
@@ -1292,6 +1307,7 @@
         ? {...savedFilter.area_summary, breakdown: savedFilter.area_summary.breakdown || 'None', campaigns: savedFilter.area_summary.campaigns || [],
           enabled: true}
         : {enabled: true, breakdown: 'Region', cities: ['London'], time_split: savedFilter.area_summary?.time_split || 'Campaign',
+          country_areas: savedFilter.area_summary?.country_areas, trends: savedFilter.area_summary?.trends,
           campaigns: savedFilter.area_summary?.campaigns || [], ...(savedFilter.area_summary?.postal_codes ? {postal_codes: true, postal_map: savedFilter.area_summary.postal_map} : {})},
     });
     scheduleSelectionSave();
@@ -1528,6 +1544,7 @@
     if (!message) return;
     message.textContent = text;
     message.dataset.kind = kind;
+    if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
   }
 
   function calculationPayload() {
@@ -1553,7 +1570,8 @@
     return {time_split: summary.time_split, breakdown: summary.breakdown, cities: summary.cities,
       ...(summary.main_cities ? {main_cities: true} : {}), ...(summary.postal_codes ? {postal_codes: true} : {}),
       ...(summary.postal_codes && summary.postal_map !== 'full' ? {postal_map: summary.postal_map} : {}),
-      ...(summary.campaigns.length ? {campaigns: summary.campaigns} : {})};
+      ...(summary.campaigns.length ? {campaigns: summary.campaigns} : {}),
+      ...(summary.country_areas === false ? {country_areas: false} : {}), ...(summary.trends === false ? {trends: false} : {})};
   }
 
   // Calculate Scoring, or Open Scoring (a folder open) when the selection is a Saved Filter with its result up to date.
@@ -1605,7 +1623,7 @@
         const existing = response.saved_filter;
         calculateButton.disabled = Boolean(existing) && isActive(existing);
         recalculateButton.disabled = !existing || isActive(existing);
-        let text = 'Ready to calculate the scoring of these filters.';
+        let text = 'Ready to calculate the scoring with the configuration above.';
         let kind = '';
         if (existing && isActive(existing)) {
           const verb = recalculatingSavedFilters.has(String(savedFilterIdOf(existing))) ? 'Recalculating' : 'Calculating';
@@ -1619,7 +1637,7 @@
         if (editingSavedFilter && duplicateName !== null) {
           // Save as New Filter saves a selection that is no Saved Filter yet.
           const copiedId = String(savedFilterIdOf(editingSavedFilter));
-          text = !existing ? 'Save as New Filter saves this selection as a new Favourites Filter and calculates it.'
+          text = !existing ? 'Save as New Filter saves this selection as a new Favourite Scoring and calculates it.'
             : String(savedFilterIdOf(existing)) === copiedId ? 'This is still the selection of the Saved Filter being duplicated: change it to save the copy.'
             : `Saved Filter ${savedFilterIdOf(existing)} already has this selection: change it to save the copy.`;
           kind = '';
@@ -1635,6 +1653,14 @@
         }
         showCalculateAction(Boolean(existing?.up_to_date) && !isActive(existing) && !editingSavedFilter);
         showUnmatchedSelection(!existing && !editingSavedFilter);
+        if (!editingSavedFilter && typeof shownSavedFilterId === 'function') {
+          // The blocks of the strip are compared with the selection of the scoring shown.
+          const shownId = shownSavedFilterId();
+          const same = Boolean(existing) && Boolean(shownId) && String(savedFilterIdOf(existing)) === shownId;
+          selectionMatchesShown = !shownId || same;
+          if (same) shownSelection = calculationSelectionFromControls();
+        }
+        if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
         selectionStatus = {key, text, kind};
         setMessage(text, kind);
       } catch (error) {
@@ -1649,14 +1675,15 @@
             calculationMatchRefresh = true;
             updateCalculationMatch(true);
           }
+          if (typeof calculateConfigWhenReady === 'function') calculateConfigWhenReady();
         }
       }
     }, 180);
   }
 
-  // A selection that is no Saved Filter hides the results of the opened one (they belong to other filters) and its
-  // card, which asks instead to choose a Favourites Filter or to calculate the selection; they come back with a
-  // selection that is a Saved Filter, or when one is opened or calculated.
+  // A selection that is no Saved Filter keeps the results of the opened one in sight, the strip saying that its changes
+  // are not calculated yet; without results shown, the card asks instead to choose a Favourite Scoring or to calculate
+  // the selection.
   function showUnmatchedSelection(unmatched) {
     if (selectionUnmatched === unmatched) return;
     selectionUnmatched = unmatched;
@@ -1665,12 +1692,13 @@
 
   // The results and the selected card show while a scoring is open whose selection is that of the Calculation panel.
   function syncResultsShown() {
-    const hidden = selectionUnmatched || scoringClosed;
+    const hidden = scoringClosed || (selectionUnmatched && !currentResultsSavedFilterId);
     if (resultsTabbed) resultsTabbed.hidden = hidden;
     if (resultNotesStack) resultNotesStack.hidden = hidden;
     for (const selector of savedFilterSelectors) selector.classList.toggle('is-unmatched', hidden);
     setExportLinks(currentResultsSavedFilterId || '', Boolean(currentResultsSavedFilterId));
     renderSavedFilters();
+    if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
   }
 
   // Close Scoring: the Saved Filter shown is closed (it stays saved) and the card asks to open or calculate one.
@@ -1701,11 +1729,11 @@
     const notice = document.createElement('span');
     notice.className = 'saved-filter-unmatched';
     const title = document.createElement('strong');
-    title.textContent = scoringClosed ? 'No scoring is open' : "No Saved Filter matches the Calculation panel's filters";
+    title.textContent = scoringClosed ? 'No scoring is open' : 'No Saved Filter matches the configuration';
     const text = document.createElement('span');
     text.textContent = scoringClosed
-      ? 'Choose a Favourites Filter saved before, or calculate or open the scoring of the filters above.'
-      : 'Choose a Favourites Filter saved before, or calculate a new scoring with the filters above (Calculate Scoring).';
+      ? 'Choose a Favourite Scoring in the Filter Navigator, or set the Context Filters and Calculate Scoring.'
+      : 'Choose a Favourite Scoring in the Filter Navigator, or calculate a new scoring with this configuration (Calculate Scoring).';
     notice.append(title, text);
     return notice;
   }
@@ -1753,6 +1781,7 @@
     } else if (message.dataset.kind !== 'error' && message.dataset.kind !== 'success') {
       setMessage(`${selectedCount} CDR${selectedCount === 1 ? '' : 's'} used across Data, Voice and Speech. Results are always split by Operator.`);
     }
+    if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
   }
 
   function datasetNameDate(name) {
@@ -1992,7 +2021,7 @@
     let cities = [...(summary.main_cities ? ['Main Cities'] : []), ...(Array.isArray(summary.cities) ? summary.cities : []).filter(Boolean)];
     let breakdown = summary.breakdown && summary.breakdown !== 'None' ? summary.breakdown : null;
     if (!breakdown && !cities.length) [breakdown, cities] = ['Region', ['London']];
-    return [['breakdown', 'Breakdown', breakdown || 'None'], ['cities', 'Separate cities', cities.length ? cities.join(', ') : 'None'],
+    return [['breakdown', 'Areas', breakdown || 'None'], ['cities', 'Cities on their own', cities.length ? cities.join(', ') : 'None'],
       ...(summary.postal_codes ? [['postal', 'Postal Codes', POSTAL_MAP_LABELS[summary.postal_map] || POSTAL_MAP_LABELS.full]] : [])];
   }
 
@@ -2386,7 +2415,7 @@
     // can be starred.
     const starred = ordered.filter(savedFilter => savedFilter.pinned);
     for (const countBadge of root.querySelectorAll('[data-saved-filter-count]')) {
-      countBadge.textContent = `${starred.length} Favourites Filter${starred.length === 1 ? '' : 's'}`;
+      countBadge.textContent = `${starred.length} Favourite Scoring${starred.length === 1 ? '' : 's'}`;
     }
     savedFilterList.replaceChildren();
     selectedSavedFilterCard.textContent = ordered.length ? 'Select a Saved Filter' : 'No Saved Filters yet';
@@ -2394,7 +2423,7 @@
     if (!starred.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No Favourites Filters yet: star (☆) a scoring to keep its filters here.';
+      empty.textContent = 'No Favourite Scorings yet: star (☆) a scoring to keep its filters here.';
       savedFilterList.append(empty);
     }
     for (const savedFilter of ordered) {
@@ -2449,7 +2478,7 @@
       const aggregation = document.createElement('span');
       aggregation.className = 'saved-filter-aggregation';
       const aggregationLabel = document.createElement('span');
-      aggregationLabel.textContent = 'Split by:';
+      aggregationLabel.textContent = 'Break down by:';
       const aggregationLevels = document.createElement('strong');
       aggregationLevels.textContent = savedFilterLevels(savedFilter);
       aggregation.append(aggregationLabel, aggregationLevels);
@@ -2465,8 +2494,8 @@
       // campaigns and time split of the trends, each value in its own colour.
       const areaMeta = document.createElement('span');
       areaMeta.className = 'saved-filter-meta';
-      areaMeta.textContent = 'Geographical Areas: ';
-      savedFilterAreaSummaryParts(savedFilter).forEach(([kind, label, value], index) => {
+      areaMeta.textContent = 'Country Areas: ';
+      (savedFilter?.area_summary?.country_areas === false ? [['off', 'Included', 'Off']] : savedFilterAreaSummaryParts(savedFilter)).forEach(([kind, label, value], index) => {
         const areaValue = document.createElement('strong');
         areaValue.className = `saved-filter-area-summary saved-filter-area-summary-${kind}`;
         areaValue.textContent = value;
@@ -2480,7 +2509,10 @@
       const timeValue = document.createElement('strong');
       timeValue.className = 'saved-filter-area-summary saved-filter-area-summary-time';
       timeValue.textContent = savedFilterTimeSplit(savedFilter);
-      trendMeta.append('Scoring Trends: Campaigns: ', trendValue, ' · Time split: ', timeValue);
+      if (savedFilter?.area_summary?.trends === false) {
+        trendValue.textContent = 'Off';
+        trendMeta.append('Scoring Trends: ', trendValue);
+      } else trendMeta.append('Scoring Trends: Campaigns: ', trendValue, ' · Time split: ', timeValue);
       const cdrNames = savedFilterCdrNames(savedFilter);
       const cdrButton = document.createElement('button');
       cdrButton.type = 'button';
@@ -2632,7 +2664,7 @@
       duplicate.className = 'saved-filter-duplicate';
       duplicate.dataset.savedFilterDuplicate = id;
       duplicate.textContent = '⧉';
-      duplicate.title = 'Duplicate this Saved Filter: change the filters of a copy and save it as a new Favourites Filter';
+      duplicate.title = 'Duplicate this Saved Filter: change the filters of a copy and save it as a new Favourite Scoring';
       duplicate.setAttribute('aria-label', `Duplicate Saved Filter ${id}`);
       const remove = document.createElement('button');
       remove.type = 'button';
@@ -2718,7 +2750,7 @@
         selectedCardShown = true;
       }
     }
-    if (selectionUnmatched || scoringClosed) {
+    if (scoringClosed || (selectionUnmatched && !(typeof currentResultsSavedFilterId !== 'undefined' && currentResultsSavedFilterId))) {
       selectedSavedFilterCard.replaceChildren(unmatchedSelectionNotice());
       selectedCardShown = false;
     }
@@ -2731,8 +2763,9 @@
     // Close Scoring closes the Saved Filter shown, when there is one.
     if (closeScoringButton) closeScoringButton.disabled = scoringClosed || !selectedSavedFilterId;
     syncSavedFilterLists();
-    // An open Filter Navigator follows the Favourites Filters (their status, a new one, one deleted).
+    // An open Filter Navigator follows the Favourite Scorings (their status, a new one, one deleted).
     if (navigatorDialog?.open) renderSavedFilterNavigator();
+    if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
   }
 
   async function requestJson(url, options = {}) {
@@ -2869,7 +2902,7 @@
     if (!window.ScoringReportEditor) return;
     const selection = calculationPayload();
     if (!selection.dataset_ids.length) {
-      const message = 'Select the CDRs of the report in the Calculation panel.';
+      const message = 'Choose the CDRs of the report in the Context Filters.';
       if (typeof showInfoDialog === 'function') showInfoDialog(message, {tone: 'warning', title: 'No CDRs selected'});
       else window.alert(message);
       return;
@@ -2914,7 +2947,7 @@
   }
 
   // Export Selected Scoring Report (Results panel) exports the selected Saved Filter as it was calculated (its
-  // CDRs, Split by levels and filters): it only asks for PowerPoint or Word.
+  // CDRs, Break down by levels and filters): it only asks for PowerPoint or Word.
   // The scorings and environments the export offers: Best Network and All Environments are ticked; Most Reliable only
   // when the Saved Filter has it, and each environment of its results.
   function scoringExportChoices() {
@@ -2972,7 +3005,7 @@
   }
 
   async function exportSelectedScoringReport(link) {
-    const message = 'Export the selected scoring report with the CDRs, Split by levels and filters it was calculated with. '
+    const message = 'Export the selected scoring report with the CDRs, Break down by levels and filters it was calculated with. '
       + 'Choose the scorings and the environments to include.';
     const choices = scoringExportChoices();
     const choice = typeof showConfirmDialog === 'function'
@@ -7141,8 +7174,8 @@
     tableWrap.className = 'scoring-insight-table-wrap scoring-expandable-part';
     // The table enlarges on its own with a double click, as each chart does.
     tableWrap.title = 'Double-click to enlarge this table';
-    tableWrap.expandPart = () => openExpandedView(tableWrap.querySelector('table'), `${scoringLabel()} Trends — National & Geographical Areas`,
-      'National & Geographical Areas Trends table', tableWrap, 'Table');
+    tableWrap.expandPart = () => openExpandedView(tableWrap.querySelector('table'), `${scoringLabel()} Trends — National & Country Areas`,
+      'National & Country Areas Trends table', tableWrap, 'Table');
     const table = insightTable(headers, rows, {className: 'scoring-area-summary-table'});
     [...table.tBodies[0].rows].forEach((row, index) => { if (rowClasses[index]) row.className = rowClasses[index]; });
     tableWrap.append(table);
@@ -7317,7 +7350,7 @@
     figure.dataset.imageCategory = areaCategory(area);
     figure.expandPart = () => {
       const large = makeAreaTrendChart(area, campaigns, low, high, step, Math.max(height, 240)).querySelector('svg');
-      openExpandedView(large, figure.dataset.imageTitle, 'National & Geographical Areas Trends', figure, 'Area trend');
+      openExpandedView(large, figure.dataset.imageTitle, 'National & Country Areas Trends', figure, 'Area trend');
       writeAreaTitle(expandedChartTitle, figure);
       appendExpandedScope(caption);
     };
@@ -7333,7 +7366,7 @@
     const trends = insightItems(payload, 'campaign_trends', environment);
     if (trends.some(trend => trend.national) || insightItems(payload, 'area_summaries', environment).length) {
       const notice = wholeCountryNotice(trends.some(trend => trend.national) ? 'This tab is'
-        : 'The National & Geographical Areas Trends are');
+        : 'The National & Country Areas Trends are');
       if (notice) pane.append(notice);
     }
     if (trends.length) {
@@ -7348,8 +7381,8 @@
         const note = document.createElement('p');
         note.className = 'scoring-chart-footnote';
         note.textContent = 'Scored on the whole country with the Campaigns of the Scoring Trends, whatever the Region, Cluster '
-          + 'and City filters (the other filters apply); the National & Geographical Areas Trends below follow the Breakdown '
-          + 'and Separate cities of the Geographical Areas & Scoring Trends panel.';
+          + 'and City filters (the other filters apply); the National & Country Areas Trends below follow the Areas '
+          + 'and Cities on their own of the Country Areas.';
         card.append(note);
       }
       if (trend.series.some(series => series.nr_mode)) card.append(nrModeLinesNote());
@@ -7358,7 +7391,7 @@
     for (const summary of insightItems(payload, 'area_summaries', environment)) {
       const split = summary.time_split === 'All' ? 'All selected CDRs' : summary.time_split === 'Campaign' ? 'Per campaign'
         : `${summary.time_split} periods`;
-      const card = makeExpandableChartCard(`${scoringLabel()} Trends — National & Geographical Areas`,
+      const card = makeExpandableChartCard(`${scoringLabel()} Trends — National & Country Areas`,
         [environmentLabel(environment), `Time split: ${split}`].filter(Boolean).join(' · '), makeAreaSummaryView(summary), false);
       if ((summary.areas || []).some(area => area.rows.some(item => item.nr_mode))) card.append(nrModeLinesNote(true));
       pane.append(card);
@@ -7367,7 +7400,7 @@
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
       empty.textContent = 'No Scoring Trends are available: a trend needs two campaigns or more. Choose the campaigns of the '
-        + 'Scoring Trends (and include the National & Geographical Areas Trends) in the Scoring Calculation panel.';
+        + 'Scoring Trends in its pill of the strip (Trends).';
       pane.append(empty);
     }
   }
@@ -8055,7 +8088,7 @@
         where.className = 'scoring-owner-where';
         where.append(insightParagraph('scoring-owner-where-title', 'Where its points are'));
         // Results calculated before the points of each owner were kept per City or route have none.
-        if (!card.settings) where.append(insightParagraph('scoring-insight-note', 'Recalculate the Saved Filter (Scoring Calculation) to see them.'));
+        if (!card.settings) where.append(insightParagraph('scoring-insight-note', 'Recalculate the Saved Filter to see them.'));
         for (const [setting, value] of Object.entries(card.settings || {})) {
           const row = document.createElement('div');
           const bar = document.createElement('i');
@@ -8069,7 +8102,7 @@
         grid.append(box);
       }
       section.append(grid, insightParagraph('scoring-insight-note', 'Performance owner: the Region of the tests (such as Vendor A, Vendor B, VMO2 North or VMO2 South). ',
-        'Points lost: the National points of the scoring lost against the maximum in its tests (each place by its share of the tests), not the own score of its Region (see the National & Geographical Areas Trends in Scoring Trends). ',
+        'Points lost: the National points of the scoring lost against the maximum in its tests (each place by its share of the tests), not the own score of its Region (see the National & Country Areas Trends in Scoring Trends). ',
         `High site: ${insightNumber(1, 0)}+ point lost and losses on the same site in an earlier campaign.${ownerItem.unidentified > .05 ? ` ${insightNumber(ownerItem.unidentified, 1)} points have no Region.` : ''}`));
     }
     // The Cities, Towns, Roads and Railways ranked, for every operator chosen with operator buttons of their own (as the
@@ -8405,9 +8438,9 @@
     }).filter(Boolean);
     if (!filters.length) return null;
     return insightParagraph('scoring-insight-note scoring-whole-country-note', insightStrong('Not filtered by area. '),
-      `${what} not filtered by ${filters.join(' · ')}: it shows the National scoring and the Breakdown and Separate cities `
-      + 'chosen in Geographical Areas & Scoring Trends (the other filters apply; a City breakdown shows the cities of the '
-      + `City filter and the Separate cities only). The other tabs show ${filters.join(' · ')} only.`);
+      `${what} not filtered by ${filters.join(' · ')}: it shows the National scoring and the Areas and Cities on their own `
+      + 'chosen in Country Areas (the other filters apply; a City breakdown shows the cities of the '
+      + `City filter and the Cities on their own only). The other tabs show ${filters.join(' · ')} only.`);
   }
 
   function renderGeographicalAreas(pane, payload, environment) {
@@ -8439,7 +8472,7 @@
       // From the largest level to the smallest (Region, Cluster, City), the largest chosen by default.
       const levels = [...new Set(rankings.map(item => item.level))]
         .sort((left, right) => geographicalLevelRank(left) - geographicalLevelRank(right));
-      const {wrapper: levelControl, value: storedLevel} = insightSelect('ranking-level', levels.map(level => [level, level]), 'Geographical Areas');
+      const {wrapper: levelControl, value: storedLevel} = insightSelect('ranking-level', levels.map(level => [level, level]), 'Country Areas');
       const level = levels.includes(storedLevel) ? storedLevel : levels[0];
       const ofLevel = rankings.filter(item => item.level === level);
       const titles = [...new Set(ofLevel.map(item => item.title || ''))];
@@ -8464,9 +8497,9 @@
       // The location views split the scoring by location: without one in the Split by there is nothing to show.
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
-      empty.textContent = 'No Geographical Areas views: calculate the scoring again to see them per Region and for London '
-        + '(results calculated before them do not have them), or add Region, Cluster or City to the Split by. '
-        + 'The National & Geographical Areas Trends are in the Scoring Trends tab.';
+      empty.textContent = 'No Country Areas views: calculate the scoring again to see them per Region and for London '
+        + '(results calculated before them do not have them), or add Region, Cluster or City to the Break down by. '
+        + 'The National & Country Areas Trends are in the Scoring Trends tab.';
       pane.append(empty);
     }
   }
@@ -9361,7 +9394,7 @@
     for (const option of viewSelect.options) {
       option.disabled = !views.includes(option.value);
       if (option.disabled) option.title = option.value === 'Postal Code'
-        ? 'Choose Postal Codes in the Points Lost Map in the Geographical Areas of the calculation and calculate it'
+        ? 'Choose Postal Codes in the Points Lost Map in Scoring Setup and calculate it'
         : `These results have no ${option.value} data`;
     }
     selectors.append(viewControl);
@@ -9522,7 +9555,7 @@
           : ' loses per 1,000 of its tests ', ...total());
         note.append(listedText, ` (those with ${insightNumber(ranking.rate_minimum, 0)} tests or more) rank by the points lost per 1,000 of their Voice calls and Data tests, so a place does not rank high only because it was measured more; they hold `,
           bold(`${ranking.total ? Math.round(listed / ranking.total * 100) : 0}%`), ' of the points lost. ',
-          bold('National points'), ': the part of the National loss in the tests of each place, not its own score (see the National & Geographical Areas Trends in Scoring Trends).');
+          bold('National points'), ': the part of the National loss in the tests of each place, not its own score (see the National & Country Areas Trends in Scoring Trends).');
         return;
       }
       if (byRows && colourMode === 'losses' && realData) {
@@ -9535,7 +9568,7 @@
         note.append('The map shows where ', operator, ` loses its National ${scoringLabel()} points (`, bold(insightNumber(ranking.total, 1)), ' in total). ');
       }
       note.append(listedText, ' account for ', bold(`${ranking.total ? Math.round(listed / ranking.total * 100) : 0}%`), ' of them. ',
-        bold('National points'), ': the part of the National loss in the tests of each place, not its own score (see the National & Geographical Areas Trends in Scoring Trends).');
+        bold('National points'), ': the part of the National loss in the tests of each place, not its own score (see the National & Country Areas Trends in Scoring Trends).');
     };
     writeNote(mode);
     const content = document.createElement('div');
@@ -10446,7 +10479,7 @@
       visible.push(message);
       return visible;
     }
-    let message = `${environmentLabel(environment)} has incomplete coverage in ${incomplete.length} of ${totals.length} scoring groups (operator and selected Split by levels).`;
+    let message = `${environmentLabel(environment)} has incomplete coverage in ${incomplete.length} of ${totals.length} scoring groups (operator and selected Break down by levels).`;
     if (missing.size) message += ` Missing weighted environments in one or more groups: ${[...missing].map(environmentLabel).join(', ')}.`;
     if (partial.size) message += ` Environments with missing valid KPI measurements: ${[...partial].map(environmentLabel).join(', ')}.`;
     if (!missing.size && !partial.size) message += ' One or more required KPI measurements are missing or have no valid samples.';
@@ -10462,7 +10495,7 @@
       message += ` The saved City filter is ${cities.join(', ')}. Only matching City names are included; road routes with different City names are excluded.`;
     }
     if (environment === 'Combined' && (payload.aggregation_levels || savedFilter?.aggregation_levels || []).includes('City')) {
-      message += ' City is a Split by level: cities and road routes are scored separately, and environment coverage is checked within each group.';
+      message += ' City is a Break down by level: cities and road routes are scored separately, and environment coverage is checked within each group.';
     }
     message += ' Available points keep their original weights; missing contributions are not scaled up to a complete benchmark.';
     visible.push(message);
@@ -10547,6 +10580,7 @@
   }
 
   function renderResult(savedPayload, savedFilter, panesToRender = [activeResultTab]) {
+    if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
     const held = panesToRender.map(name => root.querySelector(`[data-result-pane="${name}"]`))
       .filter(pane => pane && pane.childElementCount && pane.offsetHeight).map(pane => [pane, pane.offsetHeight]);
     // The card of the panes that fills most of the window, by its pane, position and class.
@@ -11351,7 +11385,16 @@
       scheduleSelectionSave();
       return;
     }
-    if (event.target.matches?.('[data-scoring-area-summary] select, [data-scoring-area-postal-codes], [data-scoring-area-time-split], [data-scoring-trend-campaigns]')) {
+    // The switch of a card (Country Areas, Scoring Trends) switches its block on or off without opening it.
+    const partSwitch = event.target.closest?.('[data-scoring-part-switch]');
+    if (partSwitch) {
+      const input = partSwitch.dataset.scoringPartSwitch === 'country_areas' ? countryAreasEnabled : trendsEnabled;
+      if (input) input.checked = partSwitch.checked;
+      updateSelection();
+      scheduleSelectionSave();
+      return;
+    }
+    if (event.target.matches?.('[data-scoring-area-summary] select, [data-scoring-area-postal-codes], [data-scoring-area-time-split], [data-scoring-trend-campaigns], [data-scoring-country-areas-enabled], [data-scoring-trends-enabled]')) {
       syncAreaSummary();
       updateSelection();
       scheduleSelectionSave();
@@ -11474,8 +11517,8 @@
     }
     if (editText && editing) {
       editText.textContent = duplicating
-        ? 'Change the NR Mode, Campaign, filters, Split by, GAP reference, Scoring Trends or methodology of the copy: its CDRs '
-          + `follow the NR Mode and Campaign. Save as New Filter calculates it as a new Favourites Filter${duplicateName.trim() ? ` named “${duplicateName.trim()}”` : ''}; `
+        ? 'Change the NR Mode, Campaign, filters, Break down by, GAP reference, Scoring Trends or methodology of the copy: its CDRs '
+          + `follow the NR Mode and Campaign. Save as New Filter calculates it as a new Favourite Scoring${duplicateName.trim() ? ` named “${duplicateName.trim()}”` : ''}; `
           + 'the Saved Filter copied stays as it was. Cancel Editing (or Escape) leaves without a copy.'
         : editTextDefault;
     }
@@ -11512,6 +11555,8 @@
       editDialog.append(calculationPanel);
       calculationPanelWasClosed = !calculationPanel.open;
       calculationPanel.open = true;
+      // The message of the selection goes with the blocks, above Cancel Editing and Save Changes.
+      if (typeof editFoot !== 'undefined' && message && editFoot) editFoot.prepend(message);
       editDialog.showModal();
       editDialog.scrollTop = 0;
     }
@@ -11529,6 +11574,7 @@
       if (calculationPanelWasClosed) calculationPanel.open = false;
     }
     if (editDialog?.open) editDialog.close();
+    if (typeof messageHome !== 'undefined' && message && messageHome && message.parentElement !== messageHome) messageHome.append(message);
     syncSavedFilterEditing();
     if (restore && before) {
       pinnedCdrs = before.pinned;
@@ -11601,7 +11647,7 @@
           eyebrow: 'Saved Filter', title: 'Duplicate Saved Filter', value: savedFilter.name ? `${savedFilter.name} (copy)` : '',
           placeholder: 'For example 2026-Q3 London', maxLength: 120, confirmLabel: 'Edit Filters of the Copy',
           note: 'The copy opens with the filters of this Saved Filter in a dialog: change them (for example its Campaign) and '
-            + 'Save as New Filter saves it as a new Favourites Filter, right after this one, which stays as it is.',
+            + 'Save as New Filter saves it as a new Favourite Scoring, right after this one, which stays as it is.',
         });
         if (name === null || name === undefined) return true;
         startSavedFilterEdit(savedFilter, {duplicateName: String(name)});
@@ -11627,7 +11673,7 @@
           placeholder: 'For example 2026-Q3 London', maxLength: 120, confirmLabel: 'Save Name',
           secondaryLabel: 'Edit Filters',
           note: 'The name is shown as a badge on top of its card (empty: its filters only). Edit Filters changes its NR '
-            + 'Mode, Campaign, filters, Split by, GAP reference and methodology in a dialog; its CDRs follow the NR Mode and Campaign.',
+            + 'Mode, Campaign, filters, Break down by, GAP reference and methodology in a dialog; its CDRs follow the NR Mode and Campaign.',
         });
         if (!answer) return null;
         edit = answer.choice === 'secondary';
@@ -11683,6 +11729,10 @@
     userSelectedSavedFilter = true;
     selectedSavedFilterId = savedFilterIdOf(savedFilter);
     selectedSavedFilter = savedFilter;
+    if (typeof shownSelection !== 'undefined') {
+      shownSelection = null;
+      selectionMatchesShown = true;
+    }
     restoreCalculationSelectionFromSavedFilter(savedFilter);
     showUnmatchedSelection(false);
     reopenScoring();
@@ -11724,9 +11774,9 @@
     return savedFilterNavigatorWords(query).every(typed => words.some(word => savedFilterNavigatorWordMatches(word, typed)));
   }
 
-  // The Favourites Filters the search finds: those with every word typed, where two words typed one after the other stay
+  // The Favourite Scorings the search finds: those with every word typed, where two words typed one after the other stay
   // together when some of them hold them one after the other in one of their texts (latest camp finds Latest campaign,
-  // not Latest 2 campaigns); words that no Favourites Filter holds together are found anywhere.
+  // not Latest 2 campaigns); words that no Favourite Scoring holds together are found anywhere.
   function savedFilterNavigatorFound(entries, query) {
     const typed = savedFilterNavigatorWords(query);
     let found = entries.filter(entry => savedFilterNavigatorMatches(entry.words, query));
@@ -11738,7 +11788,7 @@
     return found;
   }
 
-  // What the Filter Navigator shows of a Favourites Filter, from its filters (not from its name): its branches (the areas
+  // What the Filter Navigator shows of a Favourite Scoring, from its filters (not from its name): its branches (the areas
   // it filters, or Nationwide, then its NR Mode), its leaf (its Campaign: the automatic choice with the campaigns it stood
   // for last time, or its campaigns), the Operator and Vendor it filters, and its other fields, which tell it apart from
   // another one on the same leaf. Its words are those the search looks in.
@@ -11763,11 +11813,13 @@
     const details = [
       ['operator', 'Operator', filteredValue('operator') || 'All Operators'],
       ['vendor', 'Vendor', filteredValue('vendor') || 'All Vendors'],
-      ['', 'Split by', savedFilterLevels(savedFilter)],
+      ['', 'Break down by', savedFilterLevels(savedFilter)],
       ['', 'GAP Reference', reference],
       ['', 'Scoring Methodology', methodology],
-      ['', 'Geographical Areas', savedFilterAreaSummaryParts(savedFilter).map(([, label, value]) => `${label}: ${value}`).join(' · ')],
-      ['', 'Scoring Trends', `${savedFilterTrendCampaigns(savedFilter)} · Time split: ${savedFilterTimeSplit(savedFilter)}`],
+      ['', 'Country Areas', savedFilter?.area_summary?.country_areas === false ? 'Off'
+        : savedFilterAreaSummaryParts(savedFilter).map(([, label, value]) => `${label}: ${value}`).join(' · ')],
+      ['', 'Scoring Trends', savedFilter?.area_summary?.trends === false ? 'Off'
+        : `${savedFilterTrendCampaigns(savedFilter)} · Time split: ${savedFilterTimeSplit(savedFilter)}`],
       ['', 'CDRs', savedFilterCdrNames(savedFilter).join(', ') || savedFilterCdrSummary(savedFilter)],
     ];
     const areaKey = areas.map(scope => `${scope.dimension}:${scope.text}`).join('|');
@@ -11782,7 +11834,7 @@
   }
 
   // The tree of the Filter Navigator from its entries (in the order of the list): each area in the order of its first
-  // Favourites Filter, its NR Modes (NSA, SA, NSA vs SA) and their Favourites Filters. Those that would read alike on a
+  // Favourite Scoring, its NR Modes (NSA, SA, NSA vs SA) and their Favourite Scorings. Those that would read alike on a
   // leaf get, in ``distinct``, the fields that tell them apart (their Filter ID when nothing does).
   function savedFilterNavigatorTree(entries) {
     const modeOrder = mode => (index => (index < 0 ? 3 : index))(['NSA', 'SA', 'NSA+SA'].indexOf(mode));
@@ -11835,7 +11887,7 @@
     return nodes.filter(node => node !== '');
   }
 
-  // A branch of the tree (an area or an NR Mode), with the number of its Favourites Filters, and the group of its children.
+  // A branch of the tree (an area or an NR Mode), with the number of its Favourite Scorings, and the group of its children.
   function savedFilterNavigatorBranch(key, level, content, count, open) {
     const item = document.createElement('div');
     item.setAttribute('role', 'treeitem');
@@ -11853,7 +11905,7 @@
     const badge = document.createElement('span');
     badge.className = 'saved-filter-navigator-count';
     badge.textContent = String(count);
-    badge.title = `${count} Favourites Filter${count === 1 ? '' : 's'}`;
+    badge.title = `${count} Favourite Scoring${count === 1 ? '' : 's'}`;
     label.append(chevron, ...content, badge);
     const group = document.createElement('div');
     group.setAttribute('role', 'group');
@@ -11863,7 +11915,7 @@
     return {item, group};
   }
 
-  // A Favourites Filter on its leaf: its Campaign, the campaigns it stands for, what it filters and what tells it apart,
+  // A Favourite Scoring on its leaf: its Campaign, the campaigns it stands for, what it filters and what tells it apart,
   // its status when it is not calculated, In Use for the one in use, and its name below.
   function savedFilterNavigatorLeaf(entry, query, inUse) {
     const item = document.createElement('div');
@@ -11932,7 +11984,7 @@
     const query = navigatorSearch?.value || '';
     const searching = savedFilterNavigatorWords(query).length > 0;
     const entries = sortedSavedFilters(savedFilters).filter(savedFilter => savedFilter.pinned).map(savedFilterNavigatorEntry);
-    // What tells two Favourites Filters apart is found among all of them, so it does not change while searching.
+    // What tells two Favourite Scorings apart is found among all of them, so it does not change while searching.
     const tree = savedFilterNavigatorTree(entries);
     const found = new Set(savedFilterNavigatorFound(entries, query).map(entry => entry.id));
     const inUseId = selectedSavedFilterId && !selectionUnmatched && !scoringClosed ? selectedSavedFilterId : '';
@@ -11975,14 +12027,14 @@
     if (!items.length) {
       const empty = document.createElement('div');
       empty.className = 'saved-filter-navigator-empty';
-      empty.textContent = entries.length ? 'No Favourites Filter has every word typed.'
-        : 'No Favourites Filters yet: star (☆) a scoring to keep its filters here.';
+      empty.textContent = entries.length ? 'No Favourite Scoring has every word typed.'
+        : 'No Favourite Scorings yet: star (☆) a scoring to keep its filters here.';
       items.push(empty);
     }
     navigatorTree.replaceChildren(...items);
     if (navigatorCount) {
-      navigatorCount.textContent = searching ? `${found.size} of ${entries.length} Favourites Filters`
-        : `${entries.length} Favourites Filter${entries.length === 1 ? '' : 's'}`;
+      navigatorCount.textContent = searching ? `${found.size} of ${entries.length} Favourite Scorings`
+        : `${entries.length} Favourite Scoring${entries.length === 1 ? '' : 's'}`;
     }
     // The tree is one stop of Tab: on the item focused before, else the one in use, else the first one.
     const visible = visibleNavigatorItems();
@@ -12043,13 +12095,13 @@
     else navigatorDialog.focus();
   }
 
-  // Choosing a Favourites Filter in the Filter Navigator uses it, as Use Filter on its card (the one in use only closes it).
+  // Choosing a Favourite Scoring in the Filter Navigator uses it, as Use Filter on its card (the one in use only closes it).
   function useNavigatorFilter(id) {
     const savedFilter = savedFilters.find(record => savedFilterIdOf(record) === String(id));
     if (!savedFilter) return;
     const origin = navigatorOrigin;
     navigatorDialog.close();
-    if (String(id) === selectedSavedFilterId && !selectionUnmatched && !scoringClosed) return;
+    if (String(id) === selectedSavedFilterId && !selectionUnmatched && (typeof selectionMatchesShown === 'undefined' || selectionMatchesShown) && !scoringClosed) return;
     useSavedFilter(savedFilter, {fromDropdown: origin, source: 'navigator'});
   }
 
@@ -12072,7 +12124,7 @@
       event.preventDefault();
       focusNavigatorItem(first);
     } else if (event.key === 'Enter') {
-      // Enter uses the Favourites Filter found when the words typed find only one.
+      // Enter uses the Favourite Scoring found when the words typed find only one.
       event.preventDefault();
       const leaves = [...navigatorTree.querySelectorAll('[data-saved-filter-navigator-use]')];
       if (leaves.length === 1) useNavigatorFilter(leaves[0].dataset.savedFilterNavigatorUse);
@@ -12096,7 +12148,7 @@
     focusNavigatorItem(item);
   });
   // The keys of a tree: ↑ ↓ Home End move, → opens a branch (or goes into it), ← closes it (or goes to its parent),
-  // Enter or Space opens and closes a branch and uses a Favourites Filter.
+  // Enter or Space opens and closes a branch and uses a Favourite Scoring.
   navigatorTree?.addEventListener('keydown', event => {
     const item = event.target.closest?.('[role="treeitem"]');
     if (!item) return;
@@ -12328,6 +12380,395 @@
       chartDialog.focus();
     }
   });
+
+  // Scoring & GAP Analysis: the strip of the configuration and the dialog of each block. The blocks (Scoring Setup,
+  // Context Filters, Split by, Country Areas, Scoring Trends) live in the hidden host of the page; one opens in the
+  // dialog with the values of the scoring shown (the controls follow the Saved Filter opened), marking the values that
+  // differ from it. Apply keeps the changes for a later Calculate Scoring; Apply & Calculate calculates them at once;
+  // Cancel (or Escape) gives the block back the values it had when it opened.
+  const configHost = root.querySelector('[data-scoring-config-host]');
+  const configDialog = root.querySelector('[data-scoring-config-dialog]');
+  const configDialogHead = configDialog?.querySelector('[data-scoring-config-dialog-head]') || null;
+  const configDialogBody = configDialog?.querySelector('[data-scoring-config-dialog-body]') || null;
+  const configDialogTitle = configDialog?.querySelector('[data-scoring-config-dialog-title]') || null;
+  const configDialogEyebrow = configDialog?.querySelector('[data-scoring-config-dialog-eyebrow]') || null;
+  const configDialogSource = configDialog?.querySelector('[data-scoring-config-dialog-source]') || null;
+  const configDialogScope = configDialog?.querySelector('[data-scoring-config-dialog-scope]') || null;
+  const configDialogHint = configDialog?.querySelector('[data-scoring-config-dialog-hint]') || null;
+  const configApplyButton = configDialog?.querySelector('[data-scoring-config-apply]') || null;
+  const configCalculateButton = configDialog?.querySelector('[data-scoring-config-apply-calculate]') || null;
+  const configSections = new Map([...root.querySelectorAll('[data-scoring-config-section]')]
+    .map(section => [section.dataset.scoringConfigSection, section]));
+  const configPending = root.querySelector('[data-scoring-config-pending]');
+  const configPendingText = root.querySelector('[data-scoring-config-pending-text]');
+  const configStartGuide = root.querySelector('[data-scoring-start-guide]');
+  const configStartGuideText = root.querySelector('[data-scoring-start-guide-text]');
+  const configStartGuideFavourites = root.querySelector('[data-scoring-start-guide-favourites]');
+  const configStartGuideContextNumber = root.querySelector('[data-scoring-start-guide-context-number]');
+  const configStrip = root.querySelector('[data-scoring-config-strip]');
+  const mainFavouritesButton = root.querySelector('[data-scoring-main-favourites]');
+  const mainContextButton = root.querySelector('[data-scoring-main-context]');
+  const favouritesCount = root.querySelector('[data-scoring-favourites-count]');
+  const messageHome = message?.parentElement || null;
+  const editFoot = configHost?.querySelector('[data-scoring-config-edit-foot]') || null;
+  const CONFIG_BLOCKS = {
+    setup: {step: 1, title: 'Scoring Setup', eyebrow: 'Applies to the whole panel', color: 'setup'},
+    context: {step: 2, title: 'Context Filters', eyebrow: 'What is scored', color: 'context'},
+    split: {step: 3, title: 'Break down by', eyebrow: 'How the results are broken down', color: 'split'},
+    areas: {step: 4, title: 'Country Areas', eyebrow: 'Whole country · Country Areas tab', color: 'areas', scope: true},
+    trends: {step: 5, title: 'Scoring Trends', eyebrow: 'Scoring Trends tab only', color: 'trends'},
+  };
+  let configOpenBlock = null;
+  let configBefore = null;
+  let configPlaceholder = null;
+
+  // The values of a selection by block, to tell which blocks differ from the scoring shown.
+  function configBlockValues(selection) {
+    const value = selection || {};
+    const summary = value.area_summary || {};
+    const filters = value.context_filters || {};
+    return {
+      setup: {scoring_profile_id: value.scoring_profile_id, baseline_operator: value.baseline_operator,
+        postal_codes: Boolean(summary.postal_codes), postal_map: summary.postal_codes ? summary.postal_map : ''},
+      context: {nr_mode: value.nr_mode, context_filters: filters, auto_cdrs: value.auto_cdrs,
+        dataset_ids: value.auto_cdrs ? [] : value.dataset_ids},
+      split: {aggregation_levels: value.aggregation_levels},
+      areas: {country_areas: summary.country_areas !== false, breakdown: summary.breakdown, cities: summary.cities,
+        main_cities: Boolean(summary.main_cities)},
+      trends: {trends: summary.trends !== false, campaigns: summary.campaigns, time_split: summary.time_split},
+    };
+  }
+
+  // The value of one field of a selection (a data-scoring-config-key), to mark it in the dialog.
+  function configFieldValue(selection, key) {
+    const value = selection || {};
+    const summary = value.area_summary || {};
+    if (key.startsWith('context_filters.')) return (value.context_filters || {})[key.slice('context_filters.'.length)] || [];
+    if (key === 'postal_map') return summary.postal_codes ? summary.postal_map : '';
+    if (key === 'cities') return [summary.cities, Boolean(summary.main_cities)];
+    if (key === 'country_areas' || key === 'trends') return summary[key] !== false;
+    if (['breakdown', 'campaigns', 'time_split', 'postal_codes'].includes(key)) return summary[key];
+    return value[key];
+  }
+
+  // The Saved Filter whose results are shown, or calculated to be shown (none while the scoring is closed).
+  function shownSavedFilterId() {
+    if (scoringClosed) return '';
+    if (currentResultsSavedFilterId) return String(currentResultsSavedFilterId);
+    return selectedSavedFilter && isActive(selectedSavedFilter) ? String(selectedSavedFilterId || '') : '';
+  }
+
+  // Whether the blocks differ from the scoring shown (their changes are not calculated yet).
+  function configChangedBlocks() {
+    if (!shownSavedFilterId() || editingSavedFilter || selectionMatchesShown) return new Set();
+    if (!shownSelection) return new Set(['?']);
+    const now = configBlockValues(calculationSelectionFromControls());
+    const shown = configBlockValues(shownSelection);
+    const changed = Object.keys(now).filter(key => JSON.stringify(now[key]) !== JSON.stringify(shown[key]));
+    // Changed outside the blocks compared (the CDRs chosen automatically, for example): changed all the same.
+    return new Set(changed.length ? changed : ['?']);
+  }
+
+  function configOptionTexts(select) {
+    return select ? [...select.selectedOptions].filter(option => option.value && !option.disabled)
+      .map(option => option.textContent.trim()).filter(Boolean) : [];
+  }
+
+  function configSelectText(select) {
+    return select?.selectedOptions?.[0]?.textContent.trim() || '';
+  }
+
+  // The values of each block, as the controls hold them: [label, value] lines, shown as the lines of a card on large
+  // screens and joined in one line on small ones.
+  function configSummaries() {
+    const methodology = configSelectText(scoringProfileSelect).replace(/\s*\(.*\)\s*$/, '');
+    const reference = configSelectText(baselineInput);
+    const environment = configSelectText(environmentSelect);
+    const setup = [['Methodology', methodology], ['GAP reference', reference], ['Environment', environment],
+      ['Postal Codes', areaSummaryPostalCodes?.checked ? (POSTAL_MAP_LABELS[areaSummaryPostalMap?.value] || 'Full postcodes') : '']];
+    const campaigns = configOptionTexts(contextFilterSelects.get('Campaign'));
+    const areas = ['Region', 'Cluster', 'City'].flatMap(key => configOptionTexts(contextFilterSelects.get(key)));
+    const others = selectionFieldOrder.filter(key => !['Region', 'Cluster', 'City', 'Campaign'].includes(key))
+      .map(key => [key, configOptionTexts(contextFilterSelects.get(key)).join(', ')]);
+    const cdrs = usedDatasetIds().length;
+    const context = [['NR Mode', configSelectText(nrFilter)],
+      ['Campaign', campaigns.length ? campaigns.join(', ') : (contextFilterSelects.get('Campaign')?.dataset.multiselectEmptyLabel || 'All complete campaigns')],
+      ['Area', areas.length ? areas.join(', ') : 'Whole country'], ...others,
+      ['CDRs', `${cdrs} CDR${cdrs === 1 ? '' : 's'} (${pinnedCdrs ? 'chosen by hand' : 'automatic'})`]];
+    const split = [['Levels', aggregationInputs.filter(input => input.checked).map(input => input.value).join(' › ')]];
+    const breakdown = areaSummaryBreakdown?.value === 'None' ? 'None' : configSelectText(areaSummaryBreakdown);
+    const cities = configOptionTexts(areaSummaryCities);
+    const areasLines = [['Areas', breakdown], ['On their own', cities.length ? cities.join(', ') : 'None']];
+    const trendCampaignTexts = configOptionTexts(trendCampaigns);
+    const trends = [['Campaigns', trendCampaignTexts.length ? trendCampaignTexts.join(', ') : 'Same as the Campaign filter'],
+      ['Time split', configSelectText(areaSummaryTimeSplit) || 'Campaign']];
+    const blocks = {setup, context, split,
+      areas: countryAreasEnabled && !countryAreasEnabled.checked ? [['Country Areas', 'Off: not calculated']] : areasLines,
+      trends: trendsEnabled && !trendsEnabled.checked ? [['Scoring Trends', 'Off: not calculated']] : trends};
+    return Object.fromEntries(Object.entries(blocks).map(([key, lines]) => [key, lines.filter(([, value]) => value)]));
+  }
+
+  // The strip, the pending changes, the main buttons and the guide of where to start.
+  function scheduleConfigStrip() {
+    if (configStripFrame) return;
+    // (A timer, not an animation frame: a page in a background tab still keeps its strip up to date.)
+    configStripFrame = window.setTimeout(() => {
+      configStripFrame = 0;
+      renderConfigStrip();
+    }, 0);
+  }
+
+  function renderConfigStrip() {
+    if (!configStrip) return;
+    const summaries = configSummaries();
+    const changed = configChangedBlocks();
+    for (const [key, lines] of Object.entries(summaries)) {
+      const off = lines.length === 1 && String(lines[0][1]).startsWith('Off');
+      const text = off ? 'Off' : key === 'areas'
+        ? [lines[0]?.[1] === 'None' ? '' : lines[0]?.[1], lines[1]?.[1] === 'None' ? '' : `+ ${lines[1]?.[1]}`].filter(Boolean).join(' ').replace(/^\+ /, '') || 'None'
+        : key === 'trends' ? `${lines[0]?.[1] || ''} · Time split: ${lines[1]?.[1] || ''}`
+        : lines.map(([label, value]) => (['Methodology', 'NR Mode', 'Campaign', 'Area', 'Levels'].includes(label) ? value
+          : label === 'GAP reference' ? `GAP vs ${value}` : label === 'Postal Codes' ? `Postal Codes (${value})`
+          : label === 'Environment' || label === 'CDRs' ? value.replace(/ \((automatic|chosen by hand)\)$/, '') : `${label}: ${value}`)).join(' · ');
+      const value = root.querySelector(`[data-scoring-config-summary="${key}"]`);
+      if (value) value.textContent = text;
+      // The lines of the card (large screens).
+      const details = root.querySelector(`[data-scoring-config-details="${key}"]`);
+      if (details) {
+        details.replaceChildren(...lines.map(([label, lineValue]) => {
+          const item = document.createElement('span');
+          item.className = 'scoring-config-card-line';
+          const name = document.createElement('b');
+          name.textContent = label;
+          const content = document.createElement('span');
+          content.textContent = lineValue;
+          item.append(name, content);
+          return item;
+        }));
+      }
+      const pill = root.querySelector(`.scoring-config-pill[data-scoring-config-open="${key}"]`);
+      if (pill) {
+        pill.title = `${CONFIG_BLOCKS[key].title}: ${text}${changed.has(key) ? ' (changed, not calculated yet)' : ''}`;
+        pill.classList.toggle('is-changed', changed.has(key));
+        pill.classList.toggle('is-off', off);
+      }
+    }
+    const pending = changed.size > 0;
+    if (configPending) {
+      configPending.hidden = !pending;
+      const count = [...changed].filter(key => key !== '?').length;
+      if (configPendingText) {
+        configPendingText.textContent = count ? `${count} block${count === 1 ? '' : 's'} changed, not calculated yet.`
+          : 'The configuration changed, not calculated yet.';
+      }
+    }
+    calculateButton?.classList.toggle('is-pending', pending);
+    // The fields of Country Areas and of the Scoring Trends fade while they are switched off.
+    for (const [input, part] of [[countryAreasEnabled, 'country_areas'], [trendsEnabled, 'trends']]) {
+      // (The Areas and Cities on their own also make the National & Country Areas Trends: they fade only when the
+      // Scoring Trends are switched off too.)
+      const off = Boolean(input) && !input.checked && (part !== 'country_areas' || !trendsEnabled || !trendsEnabled.checked);
+      root.querySelector(`[data-scoring-part-fields="${part}"]`)?.classList.toggle('is-part-off', off);
+      // The switch of its card follows it.
+      const cardSwitch = root.querySelector(`[data-scoring-part-switch="${part}"]`);
+      if (cardSwitch && input) cardSwitch.checked = input.checked;
+    }
+    // The tabs of Country Areas and of the Scoring Trends hide when the scoring shown has them switched off.
+    const shownSummary = shownSavedFilterId() && selectedSavedFilter?.area_summary ? selectedSavedFilter.area_summary : {};
+    for (const [tab, part] of [['geographical-areas', 'country_areas'], ['trends', 'trends']]) {
+      const button = root.querySelector(`[data-result-tab="${tab}"]`);
+      if (!button) continue;
+      const hide = shownSummary[part] === false;
+      button.hidden = hide;
+      if (hide && button.getAttribute('aria-selected') === 'true') root.querySelector('[data-result-tab="summary"]')?.click();
+    }
+    // The scoring shown is the configuration and its result is up to date: Open Scoring and its message say nothing new.
+    const inSync = Boolean(shownSavedFilterId()) && selectionMatchesShown && !pending && !editingSavedFilter;
+    calculateButton?.classList.toggle('is-redundant', inSync && calculateButton.dataset.action === 'open');
+    configStrip.classList.toggle('is-in-sync', inSync && !['error', 'warning', 'busy'].includes(message?.dataset.kind || ''));
+    // Where to start, while no scoring is shown: a Favourite Scoring when there are some, else the Context Filters.
+    const starred = savedFilters.filter(savedFilter => savedFilter.pinned).length;
+    if (favouritesCount) favouritesCount.textContent = String(starred);
+    // Nothing is shown: no scoring open, or a selection that is no Saved Filter without results to show.
+    const nothingShown = scoringClosed || (!shownSavedFilterId() && (selectionUnmatched || !selectedSavedFilterId));
+    if (configStartGuide) {
+      configStartGuide.hidden = !nothingShown;
+      if (configStartGuideFavourites) configStartGuideFavourites.hidden = !starred;
+      if (configStartGuideContextNumber) configStartGuideContextNumber.textContent = starred ? '2' : '1';
+      if (configStartGuideText) {
+        configStartGuideText.textContent = starred
+          ? 'Start by choosing one of your Favourite Scorings in the Filter Navigator, or set the Context Filters to calculate a new scoring.'
+          : 'There are no Favourite Scorings yet: start by setting the Context Filters (NR Mode, Campaign and area) and Calculate Scoring. Star (☆) the scoring to reuse it next time.';
+      }
+    }
+    mainFavouritesButton?.classList.toggle('is-highlighted', nothingShown && starred > 0);
+    mainContextButton?.classList.toggle('is-highlighted', nothingShown && !starred);
+    if (resultsTabbed && nothingShown) resultsTabbed.hidden = true;
+    fitScoringKindSelect();
+    const viewRow = root.querySelector('.scoring-results-view');
+    viewRow?.classList.toggle('is-empty', nothingShown);
+  }
+
+  // The fields of the open block that differ from the scoring shown, and whether the dialog changed anything.
+  function markConfigDialog() {
+    if (!configOpenBlock) return;
+    const section = configSections.get(configOpenBlock);
+    const now = calculationSelectionFromControls();
+    let differing = 0;
+    for (const field of section.querySelectorAll('[data-scoring-config-key]')) {
+      const key = field.dataset.scoringConfigKey;
+      const changed = Boolean(shownSelection) && shownSavedFilterId() !== ''
+        && JSON.stringify(configFieldValue(now, key)) !== JSON.stringify(configFieldValue(shownSelection, key));
+      field.classList.toggle('is-config-changed', changed);
+      if (changed) differing += 1;
+    }
+    const edited = JSON.stringify(calculationPayload()) !== configBefore?.payload;
+    if (configApplyButton) configApplyButton.disabled = !edited;
+    if (configCalculateButton) configCalculateButton.disabled = !edited && !configChangedBlocks().size && Boolean(shownSavedFilterId());
+    if (configDialogHint) {
+      configDialogHint.textContent = differing
+        ? `${differing} value${differing === 1 ? '' : 's'} differ${differing === 1 ? 's' : ''} from the scoring shown (marked).`
+        : (shownSavedFilterId() ? 'The values of the scoring shown.' : 'No scoring is shown: these values are used when you Calculate Scoring.');
+    }
+  }
+
+  function openConfigBlock(key) {
+    const section = configSections.get(key);
+    const block = CONFIG_BLOCKS[key];
+    if (!section || !block || !configDialog || !configDialogBody || editingSavedFilter) return;
+    if (configDialog.open) closeConfigBlock('cancel');
+    for (const selector of savedFilterSelectors) selector.open = false;
+    calculateWhenReady = false;
+    configOpenBlock = key;
+    configBefore = {selection: calculationSelectionFromControls(), pinned: pinnedCdrs, payload: JSON.stringify(calculationPayload())};
+    configPlaceholder = document.createComment('scoring-config-block');
+    section.before(configPlaceholder);
+    configDialogBody.replaceChildren(section);
+    if (configDialogTitle) configDialogTitle.textContent = block.title;
+    if (configDialogEyebrow) configDialogEyebrow.textContent = `Step ${block.step} · ${block.eyebrow}`;
+    if (configDialogHead) configDialogHead.dataset.block = block.color;
+    configDialog.dataset.block = key;
+    if (configDialogScope) configDialogScope.hidden = !block.scope;
+    if (configDialogSource) {
+      const shown = shownSavedFilterId() && selectedSavedFilter;
+      configDialogSource.textContent = shown
+        ? `Values of the scoring shown: ${selectedSavedFilter.name ? `“${selectedSavedFilter.name}” · ` : ''}Filter ID ${savedFilterIdOf(selectedSavedFilter)}${configChangedBlocks().size ? ' (with the changes not calculated yet, marked)' : ''}`
+        : 'No scoring is shown: set the values and Calculate Scoring.';
+    }
+    markConfigDialog();
+    configDialog.showModal();
+    configDialogBody.scrollTop = 0;
+  }
+
+  // ``action``: cancel (the values before), apply (kept for later) or calculate (kept and calculated).
+  function closeConfigBlock(action) {
+    const key = configOpenBlock;
+    if (!key) return;
+    const before = configBefore;
+    configOpenBlock = null;
+    configBefore = null;
+    for (const field of configSections.get(key).querySelectorAll('.is-config-changed')) field.classList.remove('is-config-changed');
+    configPlaceholder?.replaceWith(configSections.get(key));
+    configPlaceholder = null;
+    if (configDialog.open) configDialog.close();
+    if (action === 'cancel' && before && JSON.stringify(calculationPayload()) !== before.payload) {
+      pinnedCdrs = before.pinned;
+      keepRestoredContextValues(before.selection?.context_filters);
+      applySavedCalculationSelection(before.selection);
+      scheduleSelectionSave();
+      scheduleAutoCdrRefresh({delay: 0});
+    }
+    if (action === 'calculate') {
+      calculateWhenReady = true;
+      window.setTimeout(calculateConfigWhenReady, 0);
+    }
+    scheduleConfigStrip();
+  }
+
+  // Apply & Calculate: Calculate Scoring (or Open Scoring) once the selection has been checked.
+  function calculateConfigWhenReady() {
+    if (!calculateWhenReady || calculationMatchPending || configOpenBlock) return;
+    if (calculateButton.disabled) return;
+    calculateWhenReady = false;
+    calculateButton.click();
+  }
+
+  root.addEventListener('click', event => {
+    const opener = event.target.closest('[data-scoring-config-open]');
+    if (opener) {
+      event.preventDefault();
+      openConfigBlock(opener.dataset.scoringConfigOpen);
+      return;
+    }
+    if (event.target.closest('[data-scoring-config-discard]')) {
+      event.preventDefault();
+      calculateWhenReady = false;
+      const shown = savedFilters.find(record => savedFilterIdOf(record) === shownSavedFilterId()) || selectedSavedFilter;
+      if (shown) restoreCalculationSelectionFromSavedFilter(shown);
+      return;
+    }
+    const manage = event.target.closest('[data-saved-filter-navigator-manage]');
+    if (manage) {
+      // The Favourite Scorings panel, below the results, opens and comes into sight.
+      event.preventDefault();
+      navigatorDialog?.close();
+      const panel = root.querySelector('[data-saved-filters-panel]');
+      if (!panel) return;
+      panel.open = true;
+      if (typeof showSectionAtTop === 'function') showSectionAtTop(panel);
+      else panel.scrollIntoView({block: 'start'});
+    }
+  });
+  configDialog?.addEventListener('click', event => {
+    if (event.target.closest('[data-scoring-config-cancel]')) closeConfigBlock('cancel');
+    else if (event.target.closest('[data-scoring-config-apply]')) closeConfigBlock('apply');
+    else if (event.target.closest('[data-scoring-config-apply-calculate]')) closeConfigBlock('calculate');
+  });
+  // The values change through the lists of the app too: the marks follow once they have been applied.
+  for (const type of ['change', 'input']) {
+    configDialog?.addEventListener(type, () => window.setTimeout(markConfigDialog, 0));
+  }
+  // Escape closes an open menu of the dialog first, and then cancels the block.
+  let configEscapeClosedMenu = false;
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && configDialog?.open) {
+      configEscapeClosedMenu = Boolean(configDialog.querySelector('.multiselect-menu:not([hidden])'));
+    }
+  }, true);
+  configDialog?.addEventListener('cancel', event => {
+    event.preventDefault();
+    if (configEscapeClosedMenu) {
+      configEscapeClosedMenu = false;
+      configDialog.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+      return;
+    }
+    closeConfigBlock('cancel');
+  });
+  // The selected card shows the Saved Filter shown: a click on it opens the Filter Navigator (its buttons keep their
+  // own action), where the Favourite Scorings are chosen.
+  for (const selector of savedFilterSelectors) {
+    selector.querySelector(':scope > summary')?.addEventListener('click', event => {
+      if (event.target.closest('button, a, input, select, label')) return;
+      event.preventDefault();
+      openSavedFilterNavigator(selector);
+    });
+  }
+  // The report menu closes once a report is chosen, or with a click elsewhere.
+  const reportMenu = root.querySelector('[data-scoring-report-menu]');
+  document.addEventListener('click', event => {
+    if (!reportMenu?.open) return;
+    if (!reportMenu.contains(event.target) || event.target.closest('.scoring-report-menu-list a')) reportMenu.open = false;
+  });
+  // On phones the Scoring choice is drawn smaller (see the template): its box shrinks by the width it has, that of its
+  // longest choice.
+  // (Measured while it shows: it is hidden until a result with both scorings is drawn.)
+  function fitScoringKindSelect() {
+    if (scoringKindSelect?.offsetWidth) scoringKindSelect.style.setProperty('--scoring-select-width', `${scoringKindSelect.offsetWidth}px`);
+  }
+  window.addEventListener('resize', fitScoringKindSelect);
+  window.setTimeout(fitScoringKindSelect, 0);
+  for (const type of ['change', 'input']) root.addEventListener(type, scheduleConfigStrip);
+  scheduleConfigStrip();
   window.addEventListener('pagehide', flushSelectionSaveOnPageHide);
   syncGapValueControls();
   syncResultTableControls();

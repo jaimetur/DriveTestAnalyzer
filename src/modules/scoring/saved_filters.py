@@ -23,7 +23,7 @@ import pandas as pd
 from src.modules.network import postal_areas
 from src.modules.cdr.column_names import campaign_sort_key, column_identity, resolve_column_name
 from src.modules.scoring.scoring_area_summary import (
-    WARNING_PREFIXES, area_summary_levels, calculate_area_summary, calculate_area_summary_from_history,
+    WARNING_PREFIXES, area_summary_levels, area_summary_part_enabled, calculate_area_summary, calculate_area_summary_from_history,
     calculate_geographical, calculate_geographical_from_history, geographical_levels, has_area_filters,
     whole_country_filters,
     detach_area_summary, normalize_area_summary_request, resolve_main_cities, with_breakdown_cities,
@@ -563,7 +563,7 @@ def _normalize_levels(
         else:
             resolved = None
         if not resolved:
-            raise ValueError(f"Split by level '{requested}' is not available in the selected CDR datasets.")
+            raise ValueError(f"Break down by level '{requested}' is not available in the selected CDR datasets.")
         resolved_identity = column_identity(resolved)
         if resolved_identity not in seen:
             resolved_levels.append(resolved)
@@ -853,7 +853,7 @@ def _prepare_saved_filter(
                      if not wanted or campaign.casefold() in wanted]
         groups = methodology_groups(_shared(cache, ('profiles',), repository.get_scoring_profiles), campaigns or [''])
         if len(groups) > 1 and 'Campaign' not in normalized_levels:
-            raise ValueError('Scoring By campaign with campaigns of different methodologies needs Campaign in the Split by.')
+            raise ValueError('Scoring By campaign with campaigns of different methodologies needs Campaign in the Break down by.')
         configuration_key = ('by campaign', tuple((group['profile_id'], tuple(group['campaigns'])) for group in groups))
         configuration = _shared(cache, configuration_key, lambda: validate_scoring_configuration(
             groups[0]['configuration'] if len(groups) == 1 else display_configuration(groups)))
@@ -900,9 +900,10 @@ def _prepare_saved_filter(
     version = _shared(cache, ('version', configuration_key), lambda: _method_version(configuration))
     profile_id = str(scoring_profile.get('id') or '')
     profile_name = str(scoring_profile.get('name') or '')
-    area_trends = _shared(cache, ('trends', selected_mode, json.dumps(normalized_area_summary, sort_keys=True, default=str),
-                                  scoring_profile_id), lambda: _area_trends(repository, selected_mode, normalized_area_summary,
-                                                                            scoring_profile_id))
+    # (Scoring Trends switched off need no campaigns of their own.)
+    area_trends = None if not area_summary_part_enabled(normalized_area_summary, 'trends') else _shared(
+        cache, ('trends', selected_mode, json.dumps(normalized_area_summary, sort_keys=True, default=str), scoring_profile_id),
+        lambda: _area_trends(repository, selected_mode, normalized_area_summary, scoring_profile_id))
     # The result changes with the CDRs and methodologies of the campaigns of the trends too.
     key_area_summary = normalized_area_summary if area_trends is None else {**normalized_area_summary, 'trends': {
         'campaigns': area_trends['campaigns'], 'source_fingerprint': area_trends['source_fingerprint'],
@@ -987,7 +988,7 @@ def _area_trends(repository: Repository, nr_mode: str, area_summary: dict[str, A
     campaigns = expand_scoring_campaigns(repository, nr_mode, area_summary['campaigns'])
     dataset_ids = auto_scoring_cdr_ids(repository, nr_mode, area_summary['campaigns'])
     if not dataset_ids:
-        raise ValueError('National & Geographical Areas Trends: the chosen campaigns have no Data, Voice and Speech CDRs of '
+        raise ValueError('National & Country Areas Trends: the chosen campaigns have no Data, Voice and Speech CDRs of '
                          f'{nr_mode_label(nr_mode)} now.')
     sources, _campaigns, fingerprint = _source_snapshot(repository, dataset_ids, expected_nr_mode=nr_mode)
     trends: dict[str, Any] = {'campaigns': list(campaigns), 'dataset_ids': list(dataset_ids), 'source_fingerprint': fingerprint}
@@ -998,7 +999,7 @@ def _area_trends(repository: Repository, nr_mode: str, area_summary: dict[str, A
                  if not wanted or campaign.casefold() in wanted]
         groups = methodology_groups(repository.get_scoring_profiles(), found or [''])
         if len(groups) > 1 and area_summary.get('time_split') == 'All':
-            raise ValueError('National & Geographical Areas Trends of campaigns with different methodologies cannot aggregate every '
+            raise ValueError('National & Country Areas Trends of campaigns with different methodologies cannot aggregate every '
                              'selected CDR: choose another time split.')
         trends['configuration'] = validate_scoring_configuration(
             groups[0]['configuration'] if len(groups) == 1 else display_configuration(groups))
@@ -1287,7 +1288,7 @@ def duplicate_saved_filter(
     area_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Save a copy of a Saved Filter, with the selection it was given, as a new starred Saved Filter queued to be
-    calculated; the copied one stays as it was, and the copy goes right after it among the Favourites Filters (first
+    calculated; the copied one stays as it was, and the copy goes right after it among the Favourite Scorings (first
     when the copied one is not starred).
 
     Returns ``None`` when the copied Saved Filter does not exist. A selection that is already a Saved Filter (the copied
@@ -1541,7 +1542,7 @@ def _update_saved_filter(repository: Repository, filter_id: int, **fields: Any) 
 
 
 # -- Export, import, transfers and backups -----------------------------------------------------------------------
-# A Favourites Filter travels as the Scoring & GAP Favourites Filters element, without its result: its CDRs are named by the SHA-256 of
+# A Favourite Scoring travels as the Scoring & GAP Favourite Scorings element, without its result: its CDRs are named by the SHA-256 of
 # their files, so the workspace that receives it finds them whatever their name or id there.
 
 SAVED_FILTERS_FORMAT = 'drivetest-analyzer-saved-filters'
@@ -1571,7 +1572,7 @@ def _cdr_hashes(repository: Repository) -> dict[int, dict[str, str]]:
 
 
 def saved_filters_document(repository: Repository, *, favourites_only: bool = False) -> dict[str, Any]:
-    """Every Saved Filter of the workspace (``favourites_only``: the Favourites Filters, the Scoring & GAP Favourites Filters
+    """Every Saved Filter of the workspace (``favourites_only``: the Favourite Scorings, the Scoring & GAP Favourite Scorings
     element of Import / Export / Transfer, workspace transfers and backups), without its result, with its CDRs named
     by their file."""
     hashes: dict[int, dict[str, str]] | None = None
@@ -1646,7 +1647,7 @@ def import_saved_filters(repository: Repository, document: Any,
         context_filters = _normalize_context_filters(entry.get('context_filters') or {})
         campaign_choice = (campaign_presets(context_filters['Campaign']) or [''])[0]
         if not refs and campaign_choice:
-            # Without CDRs (the starter Favourites Filters), those its Campaign choice stands for in the workspace.
+            # Without CDRs (the starter Favourite Scorings), those its Campaign choice stands for in the workspace.
             refs = [{'sha256': '', 'name': f'{CAMPAIGN_PRESET_LABELS[campaign_choice]} CDRs', 'kind': ''}]
         if not refs or not levels or nr_mode is None:
             raise ValueError('The Saved Filters are invalid.')
@@ -2132,11 +2133,16 @@ def calculate_saved_filter(repository: Repository, filter_id: int,
         engine = _scoring_engine()
         context_filters = saved_filter.get('resolved_context_filters', saved_filter.get('context_filters', {}))
         groups = saved_filter.get('methodology_groups') or []
-        trends = saved_filter.get('area_trends') if saved_filter.get('area_summary') else None
+        # Country Areas and Scoring Trends switched off are not calculated (nor the rows of the whole country read for them).
+        areas_on = area_summary_part_enabled(saved_filter.get('area_summary'), 'country_areas')
+        trends_on = area_summary_part_enabled(saved_filter.get('area_summary'), 'trends')
+        trends = saved_filter.get('area_trends') if saved_filter.get('area_summary') and trends_on else None
         # National & Geographical Areas Trends with campaigns of their own are scored apart, from the CDRs of those
         # campaigns; the Geographical Areas of the job keep their Breakdown and Separate cities.
         job_filter = ({**saved_filter, 'area_summary': None, 'geographical_areas': saved_filter.get('area_summary')}
-                      if trends else saved_filter)
+                      if trends or not trends_on else saved_filter)
+        if not areas_on:
+            job_filter = {**job_filter, 'geographical': False}
         if len(groups) > 1:
             # By campaign: the campaigns of each methodology are scored with it, then put together.
             from src.modules.scoring.scoring_methodologies import merge_results
@@ -2227,7 +2233,7 @@ def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], tr
     dataset_ids = [int(value) for value in trends.get('dataset_ids') or []]
     sources, _campaigns, fingerprint = _source_snapshot(repository, dataset_ids, expected_nr_mode=saved_filter['nr_mode'])
     if fingerprint != trends.get('source_fingerprint'):
-        raise ValueError('A CDR of the National & Geographical Areas Trends changed after this calculation was queued. Calculate it again.')
+        raise ValueError('A CDR of the National & Country Areas Trends changed after this calculation was queued. Calculate it again.')
     # Split as the National calculation of the summary, which then reuses this one.
     levels = ['Operator'] if area_summary.get('time_split') == 'All' else ['Operator', 'Campaign']
     # Scored on the whole country, whatever the job's area filters; the Geographical views are the job's own.
@@ -2248,13 +2254,13 @@ def _trend_area_summary(repository: Repository, saved_filter: dict[str, Any], tr
         })
         cached = scoring_cache.read(repository, 'trends', key)
         if cached is not None:
-            update_progress(95, 'National & Geographical Areas Trends: reused from a calculation of the same CDRs and methodology')
+            update_progress(95, 'National & Country Areas Trends: reused from a calculation of the same CDRs and methodology')
             return cached
     trend_filter = {**saved_filter, 'dataset_ids': dataset_ids, 'levels': levels, 'source_fingerprint': fingerprint,
                     'geographical': False}
 
     def progress(value: int, message: str) -> None:
-        update_progress(88 + round(value * 7 / 100), f'National & Geographical Areas Trends: {message}')
+        update_progress(88 + round(value * 7 / 100), f'National & Country Areas Trends: {message}')
     groups = trends.get('methodology_groups') or []
     if len(groups) > 1:
         from src.modules.scoring.scoring_methodologies import merge_results
@@ -2332,7 +2338,7 @@ def _scoring_result(repository: Repository, saved_filter: dict[str, Any], config
     # The Geographical Areas & Scoring Trends are scored on the whole country: a job with area filters reads its rows apart.
     country_frames = frames
     if job_filtered and (saved_filter.get('area_summary') or saved_filter.get('geographical', True)):
-        update_progress(87, 'Reading the CDR rows of the whole country for the Geographical Areas & Scoring Trends')
+        update_progress(87, 'Reading the CDR rows of the whole country for the Country Areas & Scoring Trends')
         country_frames = _load_source_frames(repository, [dict(source) for source in sources], lambda *_args: None,
                                              required_columns, whole_country_filters(context_filters),
                                              nr_mode_campaigns=nr_mode_campaigns)

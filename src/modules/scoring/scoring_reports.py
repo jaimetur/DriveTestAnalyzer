@@ -126,6 +126,8 @@ def _normalize_area_summary(raw: Any) -> dict[str, Any]:
         **({'postal_map': raw['postal_map']} if raw.get('postal_codes') and raw.get('postal_map') in OTHER_POSTAL_MAPS else {}),
         # (Saved before the Scoring Trends had campaigns: the default.)
         'campaigns': normalize_trend_campaigns(raw['campaigns']) if 'campaigns' in raw else [ALL_CAMPAIGNS],
+        # Country Areas and Scoring Trends switched off (only said when off).
+        **{part: False for part in ('country_areas', 'trends') if raw.get(part) is False},
     }
 
 
