@@ -347,11 +347,14 @@ setExportLinks('21', true);
 const available = links.map(link => ({hidden: link.hidden, disabled: link.attributes['aria-disabled'], tabIndex: link.tabIndex, href: link.href}));
 setExportLinks('', false);
 const reset = links.map(link => link.attributes['aria-disabled']);
-// The results hidden by a selection that is no Saved Filter are not exported either.
+// The scoring shown stays exportable with changes not calculated yet (its results stay in sight); not once closed.
 selectionUnmatched = true;
 setExportLinks('21', true);
 const unmatched = links.map(link => link.attributes['aria-disabled']);
-process.stdout.write(JSON.stringify({unavailable, available, reset, unmatched}));
+var scoringClosed = true;
+setExportLinks('21', true);
+const closed = links.map(link => link.attributes['aria-disabled']);
+process.stdout.write(JSON.stringify({unavailable, available, reset, unmatched, closed}));
 '''
     result = _run_node_json(program, {})
     assert all(link == {'hidden': False, 'disabled': 'true', 'tabIndex': -1, 'href': '#'}
@@ -359,7 +362,8 @@ process.stdout.write(JSON.stringify({unavailable, available, reset, unmatched}))
     assert all(link['hidden'] is False and link['disabled'] == 'false' and link['tabIndex'] == 0
                and link['href'].startswith('/scoring/saved-filters/21/export/') for link in result['available'])
     assert result['reset'] == ['true', 'true', 'true']
-    assert result['unmatched'] == ['true', 'true', 'true']
+    assert result['unmatched'] == ['false', 'false', 'false']
+    assert result['closed'] == ['true', 'true', 'true']
 
 
 def test_reload_opens_scoring_dimmed_at_the_saved_position_until_it_is_drawn():

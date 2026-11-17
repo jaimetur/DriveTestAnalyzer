@@ -1022,19 +1022,26 @@ const results = [];
       currentResults: {scorings: item.reliable ? {most_reliable: {}} : {}},
       showConfirmDialog: async (message, options) => {
         dialog = {message, ...options};
-        inputs = [...options.copyHtml.matchAll(/data-scoring-export-([\w-]+) value="([^"]*)"( checked)?( disabled)?/g)]
-          .map(([, group, value, checked, disabled]) => ({group, value, checked: Boolean(checked), disabled: Boolean(disabled)}));
+        // The scorings and environments are options of multiselect lists; All Operators is a checkbox.
+        const lists = [...options.copyHtml.matchAll(/<select multiple size="1" data-scoring-export-([\w-]+)[^>]*>(.*?)<\/select>/g)]
+          .flatMap(([, group, body]) => [...body.matchAll(/<option value="([^"]*)"( selected)?( disabled)?>/g)]
+            .map(([, value, checked, disabled]) => ({tag: 'select', group, value, checked: Boolean(checked), disabled: Boolean(disabled)})));
+        const boxes = [...options.copyHtml.matchAll(/<input type="checkbox" data-scoring-export-([\w-]+) value="([^"]*)"( checked)?( disabled)?/g)]
+          .map(([, group, value, checked, disabled]) => ({tag: 'input', group, value, checked: Boolean(checked), disabled: Boolean(disabled)}));
+        inputs = [...lists, ...boxes];
         for (const input of inputs) if (item.toggle.includes(input.value) && !input.disabled) input.checked = !input.checked;
+        for (const input of inputs) input.selected = input.checked;
         return item.choice;
       },
-      document: {querySelectorAll: selector => inputs.filter(input => selector.includes(`data-scoring-export-${input.group}`))},
+      document: {querySelectorAll: selector => inputs.filter(input => selector.startsWith(input.tag)
+        && selector.includes(`data-scoring-export-${input.group}]`))},
       showInfoDialog: message => { warning = message; },
       downloadScoringDocument: async (url, label) => { downloaded = {url, label}; },
     };
     vm.createContext(context);
     vm.runInContext(Object.values(payload.snippets).join('\n'), context);
     await vm.runInContext("exportSelectedScoringReport({href: 'https://example.test/scoring/saved-filters/7/export/ppt?environment=all'})", context);
-    results.push({downloaded, warning, inputs, title: dialog?.title, labels: [dialog?.confirmLabel, dialog?.secondaryLabel]});
+    results.push({downloaded, warning, inputs: inputs.map(({value, checked, disabled}) => ({value, checked, disabled})), title: dialog?.title, labels: [dialog?.confirmLabel, dialog?.secondaryLabel]});
   }
   process.stdout.write(JSON.stringify(results));
 })().catch(error => { console.error(error); process.exitCode = 1; });
@@ -1052,7 +1059,7 @@ const results = [];
         'url': 'https://example.test/scoring/saved-filters/7/export/word?environment=all&scorings=best_network'
                '&scorings=most_reliable&environments=Drive+-+City', 'label': 'Word'}
     assert ('most_reliable', False, True) in [(item['value'], item['checked'], item['disabled']) for item in nothing['inputs']]
-    assert nothing['downloaded'] is None and 'Tick at least one scoring' in nothing['warning']
+    assert nothing['downloaded'] is None and 'Choose at least one scoring' in nothing['warning']
     assert cancelled['downloaded'] is None
     # The operators enabled in the sections of the page travel with the export (only the sections changed).
     assert operators['downloaded']['url'] == (
