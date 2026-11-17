@@ -528,7 +528,9 @@ def test_teams_members_progress_shared_filters_and_reporting_artifact(client, tm
     assert summary['not_attended'] + summary['not_attended_out_of_queue'] == summary['total'] - summary['attended']
     assert all(0 <= period['queued_backlog'] <= period['open_backlog'] for period in progress['periods'])
     waiting = client.post('/api/non-qualified-calls/progress', json={'filters': {'state': ['queued_not_attended']}}).json()
-    assert waiting['summary']['total'] == summary['not_attended']
+    assert waiting['summary']['total'] == summary['not_attended'] == summary['in_queues'] + summary['not_attended_assigned']
+    for state, key in (('in_queues', 'in_queues'), ('queued_assigned', 'not_attended_assigned')):
+        assert client.post('/api/non-qualified-calls/progress', json={'filters': {'state': [state]}}).json()['summary']['total'] == summary[key]
 
     # The Filters panel is shared by every user and session of the workspace.
     filters = {'service': ['voice'], 'city': ['Leeds'], 'open_only': True, 'search': 'drop', 'unknown': ['x']}

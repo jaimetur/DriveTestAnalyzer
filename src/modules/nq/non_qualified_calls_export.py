@@ -120,9 +120,10 @@ def breakdown_table(breakdown: dict[str, Any], total: int) -> tuple[list[str], l
 
 def progress_summary_table(summary: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
     return ['Indicator', 'Value'], [
-        ['Attended (followed up or commented)', f"{summary['attended']:,}"],
         ['Calls in a queue', f"{summary.get('queued', 0):,}"],
-        ['Not attended yet in a queue', f"{summary['not_attended']:,}"],
+        ['In queues (not attended, not assigned yet)', f"{summary.get('in_queues', summary['not_attended']):,}"],
+        ['Assigned, not attended yet (in a queue)', f"{summary.get('not_attended_assigned', 0):,}"],
+        ['Attended (followed up or commented)', f"{summary['attended']:,}"],
         ['Not attended yet, tracked (in no queue)', f"{summary.get('not_attended_out_of_queue', 0):,}"],
         ['Open', f"{summary['open']:,}"],
         ['Closed', f"{summary['closed']:,}"],

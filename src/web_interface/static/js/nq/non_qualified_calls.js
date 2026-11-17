@@ -55,7 +55,7 @@
     not_in_final: 'Only in Weekly or Daily CDRs, while a Final CDR covers its campaign',
     qualified: 'Completed in a more recent CDR',
   };
-  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', in_queue: 'In a queue', queued_not_attended: 'Not attended in a queue', with_team: 'With team',
+  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', in_queue: 'In a queue', queued_not_attended: 'Not attended in a queue', in_queues: 'In Queues', queued_assigned: 'Assigned, not attended yet', with_team: 'With team',
     assigned: 'Assigned', commented: 'Commented', labelled: 'With a root cause', suggested: 'Suggested root cause',
     identified: 'RCA identified', not_identified: 'RCA not identified', open: 'Open', stalled: 'Stalled'};
   // Filters set by clicking the Progress View and the Root Cause Analysis; they have no select of their own.
@@ -70,7 +70,7 @@
   // The map of the open call paints the group that filters the list (set once the map is mounted).
   let refreshCallMap = () => {};
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
-  const FOLLOW_UP_STATES = ['attended', 'not_attended', 'queued_not_attended', 'in_queue', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
+  const FOLLOW_UP_STATES = ['attended', 'not_attended', 'in_queues', 'queued_assigned', 'in_queue', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
   const HISTORY_LABELS = {status: 'Status', status_auto: 'Status (automatic)', status_mode: 'Status Set', team: 'Team',
     analyst: 'Analyst', reviewer: 'Reviewer', root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause',
@@ -2468,8 +2468,11 @@
     const summary = progress.summary;
     $('nq-progress-kpis').replaceChildren(
       // The rates count only the calls in a queue: the tracked calls (in no queue) are shown apart.
+      // The calls in a queue not attended yet: In Queues (nobody has them) and Assigned (given a team or an analyst),
+      // as Lifecycle & Phases counts them; the tracked ones not attended are told apart.
+      drillCard(kpiCard('In Queues', number(summary.in_queues ?? summary.not_attended), `${percent(summary.in_queues ?? summary.not_attended, summary.queued)} of the calls in a queue · ${number(summary.not_attended_out_of_queue)} more tracked`, 'total'), {pairs: [['state', 'in_queues']]}),
+      drillCard(kpiCard('Assigned', number(summary.not_attended_assigned || 0), `${percent(summary.not_attended_assigned || 0, summary.queued)} given a team or an analyst, not attended yet`, 'team'), {pairs: [['state', 'queued_assigned']]}),
       drillCard(kpiCard('Attended', number(summary.attended), `${percent(summary.queued_attended, summary.queued)} of the calls in a queue`, 'open'), {pairs: [['state', 'attended']]}),
-      drillCard(kpiCard('Not Attended', number(summary.not_attended), `${number(summary.not_attended - (summary.not_attended_assigned || 0))} In Queues · ${number(summary.not_attended_assigned || 0)} Assigned · ${number(summary.not_attended_out_of_queue)} more tracked`, 'total'), {pairs: [['state', 'queued_not_attended']]}),
       drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.queued_closed)} of ${number(summary.queued)} in a queue closed`, 'closed'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('First Follow-up', days(summary.avg_days_to_first_follow_up), 'Average from the call', 'team'), {pairs: [['state', 'attended']]}),
       drillCard(kpiCard('Time to Close', days(summary.avg_days_to_close), 'Average from the call', 'commented'), {pairs: [['state', 'closed']]}),

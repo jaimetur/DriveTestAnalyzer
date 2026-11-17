@@ -266,12 +266,15 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
     colours = _option_colours(options)
     cards = [
         # The rates count only the calls in a queue: the tracked calls (in no queue) are shown apart.
+        # The calls in a queue not attended yet, In Queues and Assigned as Lifecycle & Phases counts them, then the attended.
+        ('In Queues', _number(summary.get('in_queues', summary.get('not_attended'))),
+         f"{_share(summary.get('in_queues', summary.get('not_attended')) or 0, int(summary.get('queued') or 0))} of the calls in a queue"
+         f" · {_number(summary.get('not_attended_out_of_queue'))} more tracked", 'total'),
+        ('Assigned', _number(summary.get('not_attended_assigned')),
+         f"{_share(summary.get('not_attended_assigned') or 0, int(summary.get('queued') or 0))} given a team or an analyst, not attended yet",
+         'team'),
         ('Attended', _number(summary.get('attended')),
          f"{_share(summary.get('queued_attended') or 0, int(summary.get('queued') or 0))} of the calls in a queue", 'open'),
-        ('Not Attended', _number(summary.get('not_attended')),
-         f"{_number(int(summary.get('not_attended') or 0) - int(summary.get('not_attended_assigned') or 0))} In Queues"
-         f" · {_number(summary.get('not_attended_assigned'))} Assigned"
-         f" · {_number(summary.get('not_attended_out_of_queue'))} more tracked", 'total'),
         ('Closure Rate', f"{float(summary.get('closure_rate') or 0):.1f}%",
          f"{_number(summary.get('queued_closed'))} of {_number(summary.get('queued'))} in a queue closed", 'closed'),
         ('First Follow-up', _days(summary.get('avg_days_to_first_follow_up')), 'Average from the call', 'team'),

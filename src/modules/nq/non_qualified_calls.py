@@ -447,7 +447,10 @@ _ATTENDED_SQL = "(attended_at <> '' OR comment_count > 0)"
 STATE_SQL = {
     'attended': _ATTENDED_SQL, 'not_attended': f'NOT {_ATTENDED_SQL}', 'in_queue': "queue <> ''",
     # Not attended in a queue: the calls waiting in a queue of the NQ Prioritization (the tracked ones are in none).
-    'queued_not_attended': f"(queue <> '' AND NOT {_ATTENDED_SQL})", 'with_team': "team <> ''",
+    'queued_not_attended': f"(queue <> '' AND NOT {_ATTENDED_SQL})",
+    # In Queues: those not given a team or an analyst yet; Assigned in a queue: those given one, not attended yet.
+    'in_queues': f"(queue <> '' AND NOT {_ATTENDED_SQL} AND team = '' AND analyst = '')",
+    'queued_assigned': f"(queue <> '' AND NOT {_ATTENDED_SQL} AND (team <> '' OR analyst <> ''))", 'with_team': "team <> ''",
     'assigned': "analyst <> ''", 'commented': 'comment_count > 0', 'labelled': "root_domain <> ''",
     # RCA Identification: a root category or cause is selected.
     'identified': "(root_category <> '' OR root_cause <> '')", 'not_identified': "(root_category = '' AND root_cause = '')",
@@ -6753,6 +6756,7 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         'summary': {
             'total': total, 'attended': len(attended), 'queued': len(queued), 'queued_attended': queued_attended,
             'not_attended': len(queued) - queued_attended, 'not_attended_assigned': queued_assigned,
+            'in_queues': len(queued) - queued_attended - queued_assigned,
             'not_attended_out_of_queue': (total - len(queued)) - (len(attended) - queued_attended),
             'open': len(open_calls), 'closed': closed_total, 'queued_closed': queued_closed,
             'closure_rate': round(queued_closed * 100 / len(queued), 1) if queued else 0.0,
