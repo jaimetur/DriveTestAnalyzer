@@ -2025,6 +2025,23 @@
   [data-scoring-trend-areas-fields].is-same { opacity: .55; pointer-events: none; }
   /* A list of a dialog floats below its field, over the dialog (see fitDialogList). */
   :is(.scoring-config-dialog, .scoring-edit-dialog) :is(.multiselect-menu, .searchable-select-menu).is-floating { position: fixed; right: auto; bottom: auto; z-index: 1000; }
+  /* Each subpanel of a dialog with a line of its own colour on its left, its title in the same colour. */
+  :is(.scoring-config-dialog, .scoring-edit-dialog) .scoring-config-section > .scoring-picker { --subpanel: #3a4a63; border-left: 5px solid var(--subpanel); }
+  :is(.scoring-config-dialog, .scoring-edit-dialog) .scoring-config-section > .scoring-picker:nth-child(1 of .scoring-picker) { --subpanel: #1f5fbf; }
+  :is(.scoring-config-dialog, .scoring-edit-dialog) .scoring-config-section > .scoring-picker:nth-child(2 of .scoring-picker) { --subpanel: #0d7c86; }
+  :is(.scoring-config-dialog, .scoring-edit-dialog) .scoring-config-section > .scoring-picker:nth-child(3 of .scoring-picker) { --subpanel: #b86e00; }
+  :is(.scoring-config-dialog, .scoring-edit-dialog) .scoring-config-section > .scoring-picker:nth-child(4 of .scoring-picker) { --subpanel: #6b3fb8; }
+  :is(.scoring-config-dialog, .scoring-edit-dialog) .scoring-config-section > .scoring-picker:nth-child(5 of .scoring-picker) { --subpanel: #c0392b; }
+  :is(.scoring-config-dialog, .scoring-edit-dialog) .scoring-config-section > .scoring-picker > .scoring-picker-head strong { color: var(--subpanel); }
+  /* The methodology editor of Workspace Config, floating over the page (96 % of its width). */
+  .scoring-methodologies-dialog { display: none; flex-direction: column; box-sizing: border-box; width: 96vw; max-width: 96vw; height: 94vh; height: 94dvh; max-height: 94dvh; margin: auto; padding: 0; overflow: hidden; border: 0; border-radius: 16px; background: var(--panel-strong); box-shadow: var(--shadow-strong); }
+  .scoring-methodologies-dialog[open] { display: flex; }
+  .scoring-methodologies-dialog::backdrop { background: rgba(14,26,38,.5); }
+  .scoring-methodologies-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; padding: .7rem 1rem; border-bottom: 1px solid var(--line); border-top: 6px solid #087c83; }
+  .scoring-methodologies-head h3 { margin: .1rem 0 0; color: #087c83; }
+  .scoring-methodologies-head-actions { display: flex; align-items: center; gap: .6rem; }
+  .scoring-methodologies-head-actions a { color: var(--brand); font-size: .8rem; font-weight: 700; text-decoration: underline; }
+  .scoring-methodologies-dialog iframe { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--bg, #f5f1e8); }
   /* The dialog of one block. */
   .scoring-config-dialog { display: none; flex-direction: column; width: min(56rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); max-height: calc(100dvh - 2rem); padding: 0; overflow: hidden; border: 0; border-radius: 18px; background: var(--panel-strong); box-shadow: var(--shadow-strong); }
   .scoring-config-dialog[open] { display: flex; }
@@ -2510,6 +2527,18 @@
   </dialog>
   {# One block of the configuration (Scoring Setup, Context Filters, Break down by, Country Areas, Scoring Trends): it opens with
      the values of the scoring shown, the values that differ from it marked. #}
+  {# The methodology editor (Workspace Config → Scoring & GAP Analysis Setup), opened from Scoring Methodologies of Scoring
+     Setup over the page; the methodologies saved there are those of the next calculation. #}
+  <dialog class="scoring-methodologies-dialog" data-scoring-methodologies-dialog aria-labelledby="scoring-methodologies-title">
+    <div class="scoring-methodologies-head">
+      <div><p class="eyebrow">Workspace Config</p><h3 id="scoring-methodologies-title">Scoring Methodologies</h3></div>
+      <div class="scoring-methodologies-head-actions">
+        <a href="/workspace-config#scoring-methodology-environments" target="_blank" rel="noopener">Open in Workspace Config</a>
+        <button type="button" class="scoring-config-dialog-close" data-scoring-methodologies-close aria-label="Close" title="Close">×</button>
+      </div>
+    </div>
+    <iframe title="Scoring Methodologies" data-scoring-methodologies-frame></iframe>
+  </dialog>
   <dialog class="scoring-config-dialog" data-scoring-config-dialog aria-labelledby="scoring-config-dialog-title">
     <div class="scoring-config-dialog-head" data-scoring-config-dialog-head>
       <div><p class="eyebrow" data-scoring-config-dialog-eyebrow>Scoring configuration</p><h3 id="scoring-config-dialog-title" data-scoring-config-dialog-title>Context Filters</h3></div>

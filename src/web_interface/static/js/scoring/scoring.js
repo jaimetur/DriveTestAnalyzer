@@ -13053,6 +13053,43 @@
     dialog.addEventListener('scroll', () => openDialogLists().forEach(fitDialogList), true);
   }
   window.addEventListener('resize', () => openDialogLists().forEach(fitDialogList));
+  // Scoring Methodologies opens the methodology editor of Workspace Config over the page, without its bars and with that
+  // section only (the link still opens Workspace Config with a modifier key or from another tab).
+  const methodologiesDialog = root.querySelector('[data-scoring-methodologies-dialog]');
+  const methodologiesFrame = methodologiesDialog?.querySelector('[data-scoring-methodologies-frame]') || null;
+  const METHODOLOGIES_URL = '/workspace-config?embedded_template_editor=1#scoring-methodology-environments';
+  function showMethodologyEditorOnly() {
+    try {
+      const doc = methodologiesFrame.contentDocument;
+      // The whole Scoring & GAP Analysis Setup: the methodology to edit, its environments and its KPI priorities.
+      const environments = doc?.getElementById('scoring-methodology-environments');
+      const section = doc?.getElementById('scoring-gap-analysis-setup') || environments;
+      if (!doc || !section) return;
+      if (environments?.tagName === 'DETAILS') environments.open = true;
+      // Only the editor and the elements that hold it stay in sight.
+      for (let node = section; node && node !== doc.body; node = node.parentElement) {
+        for (const sibling of node.parentElement?.children || []) {
+          if (sibling !== node && !['SCRIPT', 'STYLE', 'DIALOG', 'TEMPLATE'].includes(sibling.tagName)) sibling.style.display = 'none';
+        }
+      }
+      if (section.tagName === 'DETAILS') section.open = true;
+      section.scrollIntoView({block: 'start'});
+    } catch {
+      // Another origin (never here): the page shows as it is.
+    }
+  }
+  methodologiesFrame?.addEventListener('load', showMethodologyEditorOnly);
+  root.addEventListener('click', event => {
+    const link = event.target.closest('a[data-config-shortcut="kpi"]');
+    if (!link || !methodologiesDialog || event.ctrlKey || event.metaKey || event.shiftKey || event.button) return;
+    event.preventDefault();
+    // (Over the dialog of Scoring Setup when it is open: closing the editor goes back to it.)
+    if (!methodologiesFrame.getAttribute('src')) methodologiesFrame.setAttribute('src', METHODOLOGIES_URL);
+    else showMethodologyEditorOnly();
+    methodologiesDialog.showModal();
+  });
+  methodologiesDialog?.querySelector('[data-scoring-methodologies-close]')?.addEventListener('click', () => methodologiesDialog.close());
+
   // The values change through the lists of the app too: the marks follow once they have been applied.
   for (const type of ['change', 'input']) {
     configDialog?.addEventListener(type, () => window.setTimeout(markConfigDialog, 0));
