@@ -3530,6 +3530,16 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
     level_order = [name for name, _color in nq_catalog.IMPACT_LEVELS]
     spot_info = {item['key']: item for item in spot_rows}
 
+    def hotspot_owners(members: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        counts: dict[tuple[str, str], int] = {}
+        for row in members:
+            if row['analyst']:
+                counts[(QUEUE_ANALYST, str(row['analyst']))] = counts.get((QUEUE_ANALYST, str(row['analyst'])), 0) + 1
+            elif row['team']:
+                counts[(QUEUE_TEAM, str(row['team']))] = counts.get((QUEUE_TEAM, str(row['team'])), 0) + 1
+        ordered = sorted(counts.items(), key=lambda pair: (pair[0][0] != QUEUE_ANALYST, -pair[1], pair[0][1].casefold()))
+        return [{'kind': kind, 'name': name, 'count': count} for (kind, name), count in ordered]
+
     def hotspot_queue(item: dict[str, Any]) -> dict[str, Any]:
         spots_of: dict[str, list[dict[str, Any]]] = {}
         singles = []
@@ -3555,6 +3565,8 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
                 # Its Track only calls, which it takes along (ticket #126).
                 'tracked': spot_states[(item['name'], key)]['tracked'],
                 'assigned': sum(queue_state(row) == QUEUE_ANALYST for row in members),
+                # Who has its waiting calls: each analyst, else each team, with how many calls, the most first.
+                'owners': hotspot_owners(members),
                 'gain': round(sum(gains), 2) if gains else None,
                 'level': min(levels_of, key=lambda name: level_order.index(name) if name in level_order else len(level_order))
                 if levels_of else '',

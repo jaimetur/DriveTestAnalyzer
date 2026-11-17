@@ -2032,6 +2032,11 @@ span.nq-condition-value { display: inline-block; padding: .05rem .45rem; border-
 .nq-queue-empty::before { content: '✓'; color: #2b8a3e; font-weight: 900; }
 .nq-hotspot-queue-table td.nq-queue-waiting { text-align: right; font-variant-numeric: tabular-nums; }
 .nq-hotspot-queue-table td.nq-queue-waiting :is(span, small) { white-space: nowrap; }
+/* Who has the waiting calls of a hotspot, below them: long names cut, the whole name on hover. */
+.nq-hotspot-queue-table td.nq-queue-waiting small.nq-hotspot-owner { max-width: 7.5rem; margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
+.nq-queue-waiting small.nq-hotspot-owner.is-analyst { color: var(--nq-text, #1f2933); font-weight: 600; }
+.nq-queue-waiting small.nq-hotspot-owner.is-team { color: #3d5a73; }
+.nq-queue-waiting small.nq-hotspot-owner.is-more { text-decoration: underline dotted; cursor: help; }
 /* Each table of groups with its title and the calls it holds in a badge beside it. */
 .nq-priority-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; margin: 0 0 .2rem; }
 .nq-priority-group-head .nq-priority-group-title { margin: 0; }

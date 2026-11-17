@@ -1515,6 +1515,11 @@ def test_the_data_queue_lists_its_hotspots_and_the_other_calls_apart(strategized
         assert len(members) == item['waiting'] and item['calls'] >= max(2, item['waiting'])
         assert {row['cluster_key'] for row in members} == {item['key']} and {row['queue'] for row in members} <= {'Data', ''}
         assert item['id'].startswith('H') and item['assigned'] <= item['waiting']
+        # Who has its waiting calls: each analyst (the assigned ones), else each team, the analysts first.
+        owners = item['owners']
+        assert sum(owner['count'] for owner in owners if owner['kind'] == 'analyst') == item['assigned']
+        assert sum(owner['count'] for owner in owners) <= item['waiting'] and all(owner['name'] for owner in owners)
+        assert [owner['kind'] for owner in owners] == sorted((owner['kind'] for owner in owners), key=lambda kind: kind != 'analyst')
         # The calls of the queue in the hotspot that no longer wait: in progress or closed.
         assert item['waiting'] + item['in_progress'] + item['closed'] == item['calls']
     assert not {row['call_key'] for row in data['singles']} & {key for item in data['hotspots'] for key in item['call_keys']}
@@ -1538,6 +1543,14 @@ def test_the_data_queue_lists_its_hotspots_and_the_other_calls_apart(strategized
     assert other['call_key'] in spot_row['call_keys'] and spot_row['tracked'] == 1
     assert (spot_row['waiting'], spot_row['calls']) == (listed['waiting'] + 1, listed['calls'] + 1)
     assert other['call_key'] not in {row['call_key'] for row in joined['tracked']['rows']}
+    # Who has its waiting calls (ticket #122): the analysts first, then the teams, with how many calls each.
+    assign = '/api/non-qualified-calls/queues/assign'
+    assert client.post(assign, json={'call_keys': spot_row['call_keys'][:1], 'team': 'Operations'}).status_code == 200
+    assert client.post(assign, json={'call_keys': spot_row['call_keys'][1:3], 'analyst': 'super'}).status_code == 200
+    owned = client.post('/api/non-qualified-calls/prioritization', json={'filters': {}}).json()
+    owned_row = next(item for item in next(item for item in owned['queues'] if item['name'] == 'Data')['hotspots'] if item['key'] == spot_key)
+    assert owned_row['owners'][0] == {'kind': 'analyst', 'name': 'super', 'count': 2} and owned_row['assigned'] == 2
+    assert owned_row['owners'][1:] == [{'kind': 'team', 'name': 'Operations', 'count': 1}]
     assert joined['tracked']['total'] == panel['tracked']['total'] and joined['totals']['next'] == panel['totals']['next']
     # Each view tells its waiting calls in each queue.
     assert {name: sum(counts.values()) for name, counts in joined['view_queues'].items()} == joined['views']
