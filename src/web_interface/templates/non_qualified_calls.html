@@ -274,7 +274,11 @@
       <div class="nq-active-filters" data-nq-active-filters="rates" hidden></div>
       <div class="nq-progress-head">
         <p class="nq-hint">How many calls of each campaign and operator are Non-Qualified, out of every call of the CDRs. Each call counts once, in the CDR the combined CDR tables include (a Final CDR before the Weekly and Daily ones). Only the NR Mode, Campaign, Service, Operator and CDR filters and NQ Calls in Scope Only apply. Click a cell to drill down into its calls.</p>
-        <div class="nq-rate-tabs" id="nq-rate-tabs" role="tablist" aria-label="Service"></div>
+        <span class="nq-rate-head-actions">
+          {# With NQ Calls in Scope Only on: also the operators out of scope for not being Focus operators, to compare them. #}
+          <label class="nq-scope-switch nq-rate-all-operators" id="nq-rate-all-operators" hidden title="Also the operators that are not Focus operators, with their calls in the regions and NR Modes in scope, to compare them; Overall and Total keep the operators in scope only, and their cells cannot be drilled into"><input type="checkbox" role="switch" id="nq-rate-all-operators-input"><span class="nq-scope-track" aria-hidden="true"><span class="nq-scope-knob"></span></span><span class="nq-scope-label">Show operators out of scope</span></label>
+          <span class="nq-rate-tabs" id="nq-rate-tabs" role="tablist" aria-label="Service"></span>
+        </span>
       </div>
       <div class="nq-rate-overview" id="nq-rate-overview"></div>
       <div class="nq-table-wrap nq-rate-wrap"><table class="nq-rate-table" id="nq-rate-table"></table></div>

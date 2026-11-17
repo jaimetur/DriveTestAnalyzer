@@ -325,6 +325,7 @@ The **NQ Rate by Campaign and Operator** panel, below the NQ Prioritization, is 
 - Cards with the overall rate and the rate of each operator, each operator named in its Operator Maps colour.
 - A heat map: each cell shows the rate and *Non-Qualified / all calls*, coloured in pastel tones from soft mint (none) through apricot to dusty rose (the highest rate of the table); the Total column and row sum each campaign and operator.
 - A click on a cell or card shows only those calls in the other panels; a second click removes the filter.
+- With **NQ Calls in Scope Only** on, the **Show operators out of scope** switch beside the service tabs also shows the operators that are not Focus operators of the [Operator Maps](workspace-config.md#operator-maps) (such as EE and O2), with their calls in the regions and NR Modes in scope, to compare them with the Focus operators. They are marked *Out of scope*, their cells and cards cannot be clicked, and **Overall** and the **Total in scope** column count only the operators in scope. The switch is remembered in the browser; the exports keep the operators in scope only.
 
 > [!NOTE]
 > Only the **NR Mode**, **Campaign**, **Service**, **Operator** and **CDR** filters and **NQ Calls in Scope Only** apply: the other filters describe Non-Qualified Calls only, so changing them does not recalculate the panel, and its counts are reused until the CDRs are indexed again.

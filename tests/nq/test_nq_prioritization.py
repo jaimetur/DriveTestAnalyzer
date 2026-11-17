@@ -359,6 +359,24 @@ def test_nq_calls_in_scope_only_leaves_the_calls_out_of_scope_out_of_the_module(
     assert response.status_code == 200 and response.json()['filters'] == {'in_scope': True}
     log = next(row for row in core.repository.list_logs(limit=20) if row['action'] == 'nq_calls_scope_only')
     assert json.loads(log['details']) == {'in_scope': True}
+    # Show operators out of scope (ticket #165): the operators that are not Focus operators come back, in the regions and
+    # NR Modes in scope, apart: the totals keep the operators in scope only.
+    with monkeypatch.context() as patch:
+        patch.setattr(nq_prioritization, 'focus_names', lambda repository: {'vf'})
+        nq._rate_counts_cache.clear()
+        focused = nq.nq_rates(core.repository, {'in_scope': True})
+        wide = client.post('/api/non-qualified-calls/rates', json={'filters': {'in_scope': True, 'all_operators': True}}).json()
+        ignored = nq.nq_rates(core.repository, {'all_operators': True})
+    assert wide['all_operators'] is True and ignored['all_operators'] is False
+    narrow_of = {matrix['service']: matrix for matrix in focused['matrices']}
+    for broad in wide['matrices']:
+        narrow = narrow_of.get(broad['service'], {'total': {'total': 0, 'nq': 0, 'rate': None}, 'campaign_totals': {},
+                                                  'operators': [], 'out_of_scope_operators': []})
+        assert narrow['total'] == broad['total'] and narrow['campaign_totals'] == broad['campaign_totals']
+        assert narrow['out_of_scope_operators'] == []
+        assert broad['out_of_scope_operators'] == [name for name in broad['operators'] if name not in narrow['operators']]
+    assert any(matrix['out_of_scope_operators'] for matrix in wide['matrices'])
+    assert 'nq-rate-all-operators' in script and 'rateFilters.all_operators = true' in script
 
 
 def test_the_operators_of_a_step_take_the_names_of_their_labels_and_the_focus_operators(client):

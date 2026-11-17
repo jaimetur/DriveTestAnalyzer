@@ -7004,6 +7004,9 @@ def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: st
 
 # The filters that also apply to every call (qualified or not) of the NQ rates, and NQ Calls in Scope Only.
 RATE_FILTERS = ('datasets', 'service', 'campaign', 'operator', 'nr_mode', 'in_scope')
+# A view option of the NQ rates only: with NQ Calls in Scope Only, also the operators out of scope for not being Focus
+# operators, in the regions and NR Modes in scope, to compare them (ticket #165).
+RATE_ALL_OPERATORS = 'all_operators'
 
 
 def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
@@ -7012,7 +7015,9 @@ def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
     Every call counts once, in the most recent of the chosen CDRs that has it (a Final CDR before
     the Daily ones), so a call that is Completed there is no longer Non-Qualified. Only the CDRs,
     Service, Campaign, Operator and NR Mode filters apply: the other filters describe Non-Qualified
-    Calls only. Operators show their Operator Map label.
+    Calls only. Operators show their Operator Map label. With NQ Calls in Scope Only and ``all_operators`` (Show
+    operators out of scope), the operators out of scope only for not being Focus operators are shown too, listed in
+    ``out_of_scope_operators``; the totals leave them out.
     """
     scope = _scope(filters)
     services = _strings(filters.get('service'))
@@ -7060,9 +7065,19 @@ def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
                 if len(_rate_counts_cache) >= RATE_COUNTS_CACHE_SIZE:
                     _rate_counts_cache.pop(next(iter(_rate_counts_cache)))
                 _rate_counts_cache[key] = rows
+    # Show operators out of scope: the operators that are out of scope only for not being Focus operators stay, apart.
+    all_operators = in_scope and filters.get(RATE_ALL_OPERATORS) is True
+    out_of_scope: set[str] = set()
     if in_scope:
         reason = nq_prioritization.scope_of(task_repository, nq_prioritization.load_settings(task_repository))
-        rows = [row[:4] + row[5:] for row in rows if not reason(row[4], row[3], row[2])[0]]
+        kept = []
+        for row in rows:
+            why, kind = reason(row[4], row[3], row[2])
+            if not why or (all_operators and kind == 'operator'):
+                kept.append(row[:4] + row[5:])
+                if why:
+                    out_of_scope.add(str(mapper.map(field_kind('operator'), row[2] or '') or ''))
+        rows = kept
     groups: dict[str, dict[tuple[str, str], list[int]]] = {}
     for row_service, row_campaign, row_operator, row_nr_mode, row_total, row_nq in rows:
         campaign, operator = str(row_campaign or ''), str(mapper.map(field_kind('operator'), row_operator or '') or '')
@@ -7087,6 +7102,8 @@ def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
         def summary(total: int, nq: int) -> dict[str, Any]:
             return {'total': total, 'nq': nq, 'rate': round(nq * 100 / total, 2) if total else None}
 
+        # The totals (Overall, the Total column) add the operators in scope only, as the other panels count them.
+        scoped = {key: value for key, value in cells.items() if key[1] not in out_of_scope}
         return {
             'service': service, 'label': 'All services' if service == 'all' else SERVICE_LABELS.get(service, service),
             'campaigns': campaign_list, 'operators': operator_list,
@@ -7095,18 +7112,22 @@ def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:
                                 if (group := mapping_group(operator, mapping_settings['operator_mapping_groups']))},
             'cells': {campaign: {operator: summary(*cells[(campaign, operator)]) for operator in operator_list
                                  if (campaign, operator) in cells} for campaign in campaign_list},
-            'campaign_totals': {campaign: summary(*map(sum, zip(*(value for (row, _operator), value in cells.items()
-                                                                   if row == campaign)))) for campaign in campaign_list},
+            'campaign_totals': {campaign: summary(*map(sum, zip(*(value for (row, _operator), value in scoped.items()
+                                                                   if row == campaign)))) for campaign in campaign_list
+                                if any(row == campaign for row, _operator in scoped)},
             'operator_totals': {operator: summary(*map(sum, zip(*(value for (_row, column), value in cells.items()
                                                                    if column == operator)))) for operator in operator_list},
-            'total': summary(*map(sum, zip(*cells.values()))) if cells else summary(0, 0),
+            'total': summary(*map(sum, zip(*scoped.values()))) if scoped else summary(0, 0),
+            # The operators shown although out of scope (Show operators out of scope): their calls cannot be drilled into.
+            'out_of_scope_operators': [operator for operator in operator_list if operator in out_of_scope],
         }
 
     ordered = [service for service in (*SERVICES, 'all') if service in groups]
     # "All services" adds calls and data tests: it is listed last, and only with several services.
     if len([service for service in ordered if service != 'all']) < 2:
         ordered = [service for service in ordered if service != 'all']
-    return {'matrices': [matrix(service) for service in ordered], 'filters': list(RATE_FILTERS)}
+    return {'matrices': [matrix(service) for service in ordered], 'filters': list(RATE_FILTERS),
+            RATE_ALL_OPERATORS: all_operators}
 
 
 # The sites of each operator with the most Non-Qualified Calls, and the fewest calls a site needs to be listed.

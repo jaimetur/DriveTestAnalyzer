@@ -3313,9 +3313,13 @@
       return;
     }
     const total = matrix.total;
+    // Show operators out of scope: those operators are shown to compare them, but their calls cannot be drilled into and
+    // Overall and Total leave them out.
+    const outOfScope = new Set(matrix.out_of_scope_operators || []);
+    const outNote = () => node('span', 'Out of scope', 'nq-rate-out-of-scope-note');
     const operatorCards = matrix.operators.map((operator) => {
       const cell = matrix.operator_totals[operator];
-      const card = node('article', undefined, 'nq-rate-card');
+      const card = node('article', undefined, `nq-rate-card${outOfScope.has(operator) ? ' is-out-of-scope' : ''}`);
       // The operator's name in its Operator Maps colour.
       const label = node('span', operator, 'nq-rate-operator');
       if (matrix.operator_colors?.[operator]) label.style.color = matrix.operator_colors[operator];
@@ -3327,18 +3331,23 @@
       fill.style.background = heat(cell?.rate, Math.max(...matrix.operators.map((name) => Number(matrix.operator_totals[name]?.rate || 0))))[0];
       meter.append(fill);
       card.append(meter);
+      if (outOfScope.has(operator)) {
+        card.title = `${operator} is out of scope: shown to compare it, its calls cannot be drilled into`;
+        return card;
+      }
       return drillCard(card, {pairs: [['operator', operator]]});
     });
     const overall = node('article', undefined, 'nq-rate-card nq-rate-card-total');
     overall.append(node('span', 'Overall', 'nq-rate-operator'), node('strong', rateText(total)),
-      node('span', `${number(total.nq)} Non-Qualified of ${number(total.total)} calls`, 'nq-kpi-note'));
+      node('span', `${number(total.nq)} Non-Qualified of ${number(total.total)} calls${outOfScope.size ? ' of the operators in scope' : ''}`, 'nq-kpi-note'));
     $('nq-rate-overview').replaceChildren(overall, ...operatorCards);
     const highest = Math.max(0, ...matrix.campaigns.flatMap((campaign) => Object.values(matrix.cells[campaign] || {}).map((cell) => Number(cell.rate || 0))));
     const head = node('thead');
     const headRow = node('tr');
     // Each operator with the bar of its Operator Maps colour below its name, as in the documents.
     const operatorHead = (operator) => {
-      const cell = node('th', operator);
+      const cell = node('th', operator, outOfScope.has(operator) ? 'is-out-of-scope' : '');
+      if (outOfScope.has(operator)) cell.append(outNote());
       const color = matrix.operator_colors?.[operator];
       if (color) {
         const bar = node('span', '', 'nq-rate-operator-bar');
@@ -3347,11 +3356,11 @@
       }
       return cell;
     };
-    headRow.append(node('th', 'Campaign', 'nq-rate-strong-head'), ...matrix.operators.map(operatorHead), node('th', 'Total', 'nq-rate-strong-head'));
+    headRow.append(node('th', 'Campaign', 'nq-rate-strong-head'), ...matrix.operators.map(operatorHead), node('th', outOfScope.size ? 'Total in scope' : 'Total', 'nq-rate-strong-head'));
     head.append(headRow);
     const body = node('tbody');
-    const cellOf = (cell, pairs, title, isTotal = false) => {
-      const td = node('td', undefined, `nq-rate-cell${isTotal ? ' is-total' : ''}`);
+    const cellOf = (cell, pairs, title, isTotal = false, isOut = false) => {
+      const td = node('td', undefined, `nq-rate-cell${isTotal ? ' is-total' : ''}${isOut ? ' is-out-of-scope' : ''}`);
       const [fill, ink] = heat(cell?.rate, highest);
       const box = node(pairs ? 'button' : 'div', undefined, 'nq-rate-box');
       if (pairs) {
@@ -3371,14 +3380,17 @@
       row.append(node('th', campaignLabel(campaign), 'nq-rate-campaign'));
       matrix.operators.forEach((operator) => {
         const cell = matrix.cells[campaign]?.[operator];
-        row.append(cellOf(cell, cell ? [['campaign', campaign], ['operator', operator]] : null, `${campaignLabel(campaign)} · ${operator}`));
+        const isOut = outOfScope.has(operator);
+        row.append(cellOf(cell, cell && !isOut ? [['campaign', campaign], ['operator', operator]] : null,
+          `${campaignLabel(campaign)} · ${operator}${isOut ? ' (out of scope)' : ''}`, false, isOut));
       });
       row.append(cellOf(matrix.campaign_totals[campaign], [['campaign', campaign]], campaignLabel(campaign), true));
       body.append(row);
     });
     const totals = node('tr', undefined, 'nq-rate-totals');
     totals.append(node('th', 'Total'), ...matrix.operators.map((operator) => cellOf(matrix.operator_totals[operator],
-      [['operator', operator]], operator, true)), cellOf(total, null, 'Every call', true));
+      outOfScope.has(operator) ? null : [['operator', operator]], `${operator}${outOfScope.has(operator) ? ' (out of scope)' : ''}`,
+      true, outOfScope.has(operator))), cellOf(total, null, outOfScope.size ? 'Every call of the operators in scope' : 'Every call', true));
     body.append(totals);
     table.replaceChildren(head, body);
     const legend = $('nq-rate-legend');
@@ -3406,9 +3418,31 @@
     l3Maps.load();
   }
 
+  // Show operators out of scope (only with NQ Calls in Scope Only on): a view option of the panel, remembered in this
+  // browser.
+  const RATE_ALL_OPERATORS_KEY = 'nq-rate-all-operators';
+  let rateAllOperators = (() => { try { return localStorage.getItem(RATE_ALL_OPERATORS_KEY) === '1'; } catch { return false; } })();
+  let rateSwitchBound = false;
+  const syncRateSwitch = (inScope) => {
+    const label = $('nq-rate-all-operators');
+    const input = $('nq-rate-all-operators-input');
+    if (!label || !input) return;
+    label.hidden = !inScope;
+    input.checked = rateAllOperators;
+    if (rateSwitchBound) return;
+    rateSwitchBound = true;
+    input.addEventListener('change', () => {
+      rateAllOperators = input.checked;
+      try { localStorage.setItem(RATE_ALL_OPERATORS_KEY, rateAllOperators ? '1' : '0'); } catch { /* not remembered */ }
+      loadRates();
+    });
+  };
+
   async function loadRates() {
     const filters = currentFilters();
     const rateFilters = Object.fromEntries(RATE_FILTER_KEYS.filter((key) => key in filters).map((key) => [key, filters[key]]));
+    syncRateSwitch(filters.in_scope === true);
+    if (filters.in_scope === true && rateAllOperators) rateFilters.all_operators = true;
     const key = JSON.stringify([rateFilters, state.result?.sync?.synced_at || '']);
     if (key === rateKey) return;
     rateKey = key;

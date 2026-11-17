@@ -788,6 +788,12 @@ span.nq-root-suggestion { cursor: default; }
 .nq-field-select { max-width: 12rem; }
 
 /* NQ rate by campaign and operator: a heat map for management. */
+/* Show operators out of scope beside the service tabs of the NQ Rate; the operators out of scope are dimmed and not clickable. */
+.nq-rate-head-actions { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem .9rem; }
+.nq-rate-head-actions .nq-rate-all-operators[hidden] { display: none; }
+.nq-rate-table th.is-out-of-scope, .nq-rate-card.is-out-of-scope .nq-rate-operator { font-style: italic; }
+.nq-rate-cell.is-out-of-scope .nq-rate-box, .nq-rate-card.is-out-of-scope { opacity: .8; cursor: default; }
+.nq-rate-out-of-scope-note { display: block; font-size: .7rem; font-weight: 600; opacity: .75; }
 .nq-rate-tabs { display: inline-flex; flex-wrap: wrap; gap: .35rem; padding: .25rem; border: 1px solid var(--nq-border); border-radius: 999px; background: var(--nq-softer); }
 .non-qualified-calls .nq-rate-tab, .nq-options-dialog .nq-rate-tab { min-height: 0; padding: .35rem .9rem; border: 0; border-radius: 999px; background: transparent; color: var(--nq-dark); font-size: .82rem; font-weight: 850; box-shadow: none; }
 .non-qualified-calls .nq-rate-tab.is-active, .nq-options-dialog .nq-rate-tab.is-active { background: linear-gradient(135deg, #7d1238, #c8365f); color: #fff; box-shadow: 0 6px 14px rgba(125, 18, 56, .25); }
