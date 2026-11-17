@@ -684,3 +684,5 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .network-insights .ni-source-holdings, .network-insights .ni-source-serving { background: #5b6478; }
 .network-insights .ni-sources-sub { margin: .1rem 0 .5rem; }
 .network-insights .ni-sources-sub .ni-source { font-size: .66rem; padding: .05rem .45rem; }
+.network-insights .ni-scope-sources { display: inline-flex; flex-wrap: wrap; gap: .25rem; margin-left: .35rem; padding-left: .55rem; border-left: 1px solid #c9cde8; vertical-align: middle; }
+.network-insights .ni-scope-sources .ni-source { font-size: .66rem; padding: .05rem .45rem; }

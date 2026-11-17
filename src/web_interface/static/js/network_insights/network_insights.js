@@ -643,7 +643,7 @@
   const cellStatusBlock = (radio, status) => {
     if (!status) return '';
     const dates = (status.snapshot_dates || []).join(', ') || 'its date';
-    return `<section class="ni-cell-status"><h4 class="ni-subtitle">Cell status near the weak areas <span class="form-note">(sites within ${number(status.radius_km, 0)} km of the areas above)</span></h4>${dataSources('inventory')}
+    return `<section class="ni-cell-status"><h4 class="ni-subtitle">Cell status near the weak areas <span class="form-note">(sites within ${number(status.radius_km, 0)} km of the areas above)</span></h4>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>Site</th><th>Network → Host</th><th>Vendor</th><th>Flagged cells</th><th>On air</th><th>Nearest weak area</th><th>Distance km</th></tr></thead>
       <tbody>${(status.rows || []).map(row => `<tr>
         <td><button type="button" class="ni-zoom" data-kind="${radio}-${escapeHtml(row.area_kind)}" data-latitude="${row.latitude}" data-longitude="${row.longitude}" title="Zoom the ${escapeHtml(row.area_kind)} map to the site">${escapeHtml(row.site)}</button></td>
@@ -673,10 +673,10 @@
       return `<section class="ni-technology-section">
         ${multipleSections() ? sectionTitle(section) : ''}
         <div class="ni-map-grid">
-          <section class="ni-map-card"><h3>${label} Coverage (mean RSRP per grid square)</h3>${dataSources('cdr', 'inventory')}<div class="ni-chart-card ni-map-canvas"><canvas id="ni-${radio}-coverage-map" role="img" aria-label="${label} coverage map"></canvas></div>
-            <h4>Weakest coverage areas</h4>${dataSources('cdr')}<div class="table-wrap ni-table-wrap ni-hotspot-wrap"><table class="ni-table ni-hotspots">${hotspotTable(`${radio}-coverage`, section.maps.coverage_hotspots, 'dBm')}</table></div></section>
-          <section class="ni-map-card"><h3>${label} Interference (mean SINR per grid square)</h3>${dataSources('cdr', 'inventory')}<div class="ni-chart-card ni-map-canvas"><canvas id="ni-${radio}-interference-map" role="img" aria-label="${label} interference map"></canvas></div>
-            <h4>Highest interference areas</h4>${dataSources('cdr')}<div class="table-wrap ni-table-wrap ni-hotspot-wrap"><table class="ni-table ni-hotspots">${hotspotTable(`${radio}-interference`, section.maps.interference_hotspots, 'dB')}</table></div></section>
+          <section class="ni-map-card"><h3>${label} Coverage (mean RSRP per grid square)</h3><div class="ni-chart-card ni-map-canvas"><canvas id="ni-${radio}-coverage-map" role="img" aria-label="${label} coverage map"></canvas></div>
+            <h4>Weakest coverage areas</h4><div class="table-wrap ni-table-wrap ni-hotspot-wrap"><table class="ni-table ni-hotspots">${hotspotTable(`${radio}-coverage`, section.maps.coverage_hotspots, 'dBm')}</table></div></section>
+          <section class="ni-map-card"><h3>${label} Interference (mean SINR per grid square)</h3><div class="ni-chart-card ni-map-canvas"><canvas id="ni-${radio}-interference-map" role="img" aria-label="${label} interference map"></canvas></div>
+            <h4>Highest interference areas</h4><div class="table-wrap ni-table-wrap ni-hotspot-wrap"><table class="ni-table ni-hotspots">${hotspotTable(`${radio}-interference`, section.maps.interference_hotspots, 'dB')}</table></div></section>
         </div>
         ${cellStatusBlock(radio, section.maps.cell_status)}
       </section>`;
@@ -693,7 +693,6 @@
   let clusterInventories = null;
   const renderSites = () => {
     const observed = $('ni-sites-source').value === 'observed';
-    setDataSources('ni-sites-sources', observed ? 'cdr' : 'inventory');
     const missing = analysis?.missing_inventory_operators || [];
     $('ni-sites-pending').hidden = !observed || !missing.length;
     $('ni-sites-pending').innerHTML = missing.length
@@ -774,7 +773,7 @@
   // The ladders read the primary bandwidth of the CDRs, or the total of every carrier of the CA Appendix.
   let ladderTitle = primaryLadderTitle;
   let ladderSource = 'primary';
-  const ladderFrame = (body, caption = '', attributes = '') => `<div class="ni-ladder"${attributes}><div class="ni-ladder-head"><h3 class="ni-ladder-title">${escapeHtml(ladderTitle)}</h3>${ladderSource === 'ca' ? dataSources('ca', 'cdr_data') : dataSources('cdr_data')}${caption ? `<p class="ni-ladder-caption">${escapeHtml(caption)}</p>` : ''}</div>${body}</div>`;
+  const ladderFrame = (body, caption = '', attributes = '') => `<div class="ni-ladder"${attributes}><div class="ni-ladder-head"><h3 class="ni-ladder-title">${escapeHtml(ladderTitle)}</h3>${caption ? `<p class="ni-ladder-caption">${escapeHtml(caption)}</p>` : ''}</div>${body}</div>`;
   const renderBandwidth = () => {
     const bandwidth = analysis?.spectrum?.bandwidth;
     const table = $('ni-band-bandwidth');
@@ -1104,25 +1103,29 @@
     if (chosen.length) items.push({kind: 'environment', ...pill(chosen, 'Environment', 'Environments')});
     return items;
   };
-  const scopePills = (items, key) => `<span class="ni-scope-pills" data-scope="${escapeHtml(key)}">${items.map(item =>
-    `<span class="ni-scope-pill is-${item.kind}" title="${escapeHtml(item.title)}">${escapeHtml(item.label)}</span>`).join('')}</span>`;
+  // The scope of a chart or table, followed by the data sources it is filled from (see network_insights.DATA_SOURCES).
+  const scopePills = (items, key, sources = []) => `<span class="ni-scope-pills" data-scope="${escapeHtml(key)}">${items.map(item =>
+    `<span class="ni-scope-pill is-${item.kind}" title="${escapeHtml(item.title)}">${escapeHtml(item.label)}</span>`).join('')}${sources.length ? `<span class="ni-scope-sources" aria-label="Data sources">${sources.map(source => {
+      const [label, origin] = config.data_sources?.[source] || [source, ''];
+      return `<span class="ni-source ni-source-${source}" title="${escapeHtml(origin)}">${escapeHtml(label)}</span>`;
+    }).join('')}</span>` : ''}</span>`;
   // A title ends with the pills (its text alone is kept for the larger views); a chart or table without a title of its
   // own has them in a line above it.
-  const applyScope = (element, items, mode) => {
-    const key = JSON.stringify(items);
+  const applyScope = (element, items, mode, sources = []) => {
+    const key = JSON.stringify([items, sources]);
     if (mode === 'title') {
       const current = element.querySelector(':scope > .ni-scope-pills');
       if (current?.dataset.scope === key) return;
       current?.remove();
       if (element.dataset.title === undefined) element.dataset.title = element.textContent.replace(/\s+/g, ' ').trim();
-      element.insertAdjacentHTML('beforeend', scopePills(items, key));
+      element.insertAdjacentHTML('beforeend', scopePills(items, key, sources));
       return;
     }
     const previous = element.previousElementSibling;
     const row = previous?.classList.contains('ni-scope-row') ? previous : null;
     if (row?.firstElementChild?.dataset.scope === key) return;
     row?.remove();
-    element.insertAdjacentHTML('beforebegin', `<div class="ni-scope-row">${scopePills(items, key)}</div>`);
+    element.insertAdjacentHTML('beforebegin', `<div class="ni-scope-row">${scopePills(items, key, sources)}</div>`);
   };
   const applyScopes = () => {
     const all = selector => [...document.querySelectorAll(selector)];
@@ -1133,7 +1136,27 @@
       return !previous?.matches('h3, h4');
     });
     const targets = [];
-    const add = (elements, items, mode) => { if (items) for (const element of elements) if (element) targets.push([element, items, mode]); };
+    // The data sources of each chart or table, by where it is.
+    const sourcesOf = element => {
+      const text = element.textContent || '';
+      if (element.closest('#ni-map-sections')) return /Cell status/.test(text) ? ['inventory'] : element.matches('h4') ? ['cdr'] : ['cdr', 'inventory'];
+      if (element.closest('#ni-rf-sections') || element.closest('#ni-overview')) return ['cdr'];
+      if (element.closest('#ni-serving')) return element.matches('.ni-kpi-grid') ? ['cdr', 'inventory', 'serving']
+        : /NR cell of the NSA|MIMO/.test(text) ? ['cdr_data', 'inventory'] : ['cdr', 'inventory'];
+      if (element.closest('#ni-nr')) return ['cdr', 'inventory'];
+      if (element.closest('#ni-total-bandwidth')) return ladderSource === 'ca' ? ['ca', 'cdr_data'] : ['cdr_data'];
+      if (element.closest('#ni-deployment')) {
+        const section = element.closest('section.ni-inventory[data-ni-source]');
+        if (section) return section.dataset.niSource === 'observed' ? ['cdr'] : ['inventory'];
+        return ['region', 'cluster'].includes(snapshotPayload?.group) ? ['inventory', 'polygons'] : ['inventory'];
+      }
+      return {
+        'ni-observed-title': ['cdr'], 'ni-band-bandwidth-title': ['cdr_data'], 'ni-licensed-title': ['holdings'],
+        'ni-deployed-title': ['inventory'], 'ni-density-title': ['inventory', 'polygons'], 'ni-nr-duplex-title': ['inventory'],
+      }[element.id] || (element.closest('#ni-snapshot-panel') ? ['inventory']
+        : element.contains($('ni-sites-table')) ? ($('ni-sites-source').value === 'observed' ? ['cdr'] : ['inventory']) : []);
+    };
+    const add = (elements, items, mode) => { if (items) for (const element of elements) if (element) targets.push([element, items, mode, sourcesOf(element)]); };
     const measured = analysis && analysedFilters ? scopeItems(analysedFilters) : null;
     const wholeInventory = scopeItems({}, {environments: false});
     add([$('ni-overview').querySelector(':scope > :not(.ni-scope-row)')], measured, 'row');
@@ -1152,7 +1175,7 @@
     for (const section of all('#ni-deployment section.ni-inventory[data-ni-source]')) {
       add([section.querySelector(':scope > h3')], scopeItems(requestBody(), {environments: section.dataset.niSource === 'observed'}), 'title');
     }
-    for (const [element, items, mode] of targets) applyScope(element, items, mode);
+    for (const [element, items, mode, sources] of targets) applyScope(element, items, mode, sources);
   };
   let polishPending = false;
   new MutationObserver(() => {
@@ -1550,7 +1573,7 @@
   const shareBar = (value, tone = '') => value === null || value === undefined ? '—'
     : `<span class="ni-share ${tone}"><span style="width:${Math.max(0, Math.min(100, value))}%"></span></span> ${number(value)}%`;
   const pendingSnapshot = '<p class="ni-pending-box"><strong>Pending input.</strong> Upload a Network Inventory (Cell Configuration KMZ packages included) in Workspace: its cells describe the serving cells of the samples.</p>';
-  const breakdownTable = (title, rows, label) => `<section class="ni-mini-table"><h4>${escapeHtml(title)}</h4>${dataSources('cdr', 'inventory')}
+  const breakdownTable = (title, rows, label) => `<section class="ni-mini-table"><h4>${escapeHtml(title)}</h4>
     <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>${escapeHtml(label)}</th><th>Samples</th><th>Median km</th><th>Overshooting</th></tr></thead>
     <tbody>${rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.value)}</td><td class="num">${integer(row.samples)}</td><td class="num">${number(row.median_km, 2)}</td><td class="num">${row.overshoot_share === null || row.overshoot_share === undefined ? '—' : `${number(row.overshoot_share)}%`}</td></tr>`).join('') || '<tr><td colspan="5" class="form-note">No sample was matched with an inventory cell.</td></tr>'}</tbody></table></div></section>`;
   // The NR cell of the NSA samples, found from their NR PCI and band/SSB frequency around the LTE anchor.
@@ -1558,7 +1581,7 @@
     const leg = serving.nr_leg;
     if (!leg) return '';
     const group = escapeHtml(analysis.group_label || 'All samples');
-    return `<h4>NR cell of the NSA samples <span class="form-note">(CDR Data: NR PCI and SSB NR-ARFCN of the samples anchored on LTE)</span></h4>${dataSources('cdr_data', 'inventory')}
+    return `<h4>NR cell of the NSA samples <span class="form-note">(CDR Data: NR PCI and SSB NR-ARFCN of the samples anchored on LTE)</span></h4>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${group}</th><th>Samples with NR PCI</th><th>NR cell found</th><th>On the anchor site</th><th>Only candidate nearby</th><th>Nearest of several</th><th>Median km</th><th>P90 km</th><th>NR vendors</th></tr></thead>
       <tbody>${leg.rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td class="num">${integer(row.with_nr_pci)}</td><td>${shareBar(row.found_share)}</td>
         <td class="num">${number(row.anchor_site_share)}%</td><td class="num">${number(row.only_candidate_share)}%</td><td class="num">${number(row.nearest_share)}%</td>
@@ -1572,7 +1595,7 @@
     const rows = serving.mimo;
     if (!rows) return '';
     const group = escapeHtml(analysis.group_label || 'All samples');
-    return `<h4>MIMO: inventory TX antennas and reported rank <span class="form-note">(CDR Data: Rank Index and NR maximum MIMO layers)</span></h4>${dataSources('cdr_data', 'inventory')}
+    return `<h4>MIMO: inventory TX antennas and reported rank <span class="form-note">(CDR Data: Rank Index and NR maximum MIMO layers)</span></h4>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${group}</th><th>Technology</th><th>TX antennas</th><th>Inventory field</th><th>Samples</th><th>Mean rank</th><th>Time per rank</th><th>Rank 2+</th><th>Mean max layers</th><th>Rank use</th></tr></thead>
       <tbody>${rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${technologyChip(row.technology)}</td><td>${escapeHtml(row.mimo)}</td>
         <td>${escapeHtml((row.modes || []).join(', ') || '—')}</td><td class="num">${integer(row.samples)}</td>
@@ -1586,7 +1609,7 @@
     const serving = analysis?.serving;
     if (!analysis) { host.innerHTML = '<p class="form-note">No analysis yet.</p>'; return; }
     if (!serving) { host.innerHTML = pendingSnapshot; return; }
-    host.innerHTML = `${dataSources('cdr', 'inventory', 'serving')}<div class="ni-kpi-grid">${serving.summary.map(row => `<article class="ni-operator-card" style="--ni-operator:${analysis.colours[row.operator] || '#6D46A8'}">
+    host.innerHTML = `<div class="ni-kpi-grid">${serving.summary.map(row => `<article class="ni-operator-card" style="--ni-operator:${analysis.colours[row.operator] || '#6D46A8'}">
         <h3>${escapeHtml(row.operator)}${row.matched ? '' : ' <span class="ni-card-flag">No inventory</span>'}</h3>
         <dl>
           <div><dt>Serving cell found</dt><dd>${number(row.matched_share)}% <small>${integer(row.matched)} of ${integer(row.with_cell)}</small></dd></div>
@@ -1596,7 +1619,7 @@
           <div><dt>Hosted by another network</dt><dd>${number(row.hosted_elsewhere_share)}%</dd></div>
           <div><dt>Samples</dt><dd>${integer(row.samples)}</dd></div>
         </dl>${row.matched ? '' : '<p class="ni-card-foot">The snapshot has no cells of the networks that serve this group: upload their Network Inventory in Workspace.</p>'}</article>`).join('')}</div>
-      ${dataSources('cdr', 'inventory')}<div class="ni-chart-grid"><div class="ni-cdf-block"><div class="ni-chart-card"><canvas id="ni-serving-cdf" role="img" aria-label="Cumulative distribution of the distance to the serving site"></canvas></div>
+      <div class="ni-chart-grid"><div class="ni-cdf-block"><div class="ni-chart-card"><canvas id="ni-serving-cdf" role="img" aria-label="Cumulative distribution of the distance to the serving site"></canvas></div>
         ${percentileTable('Distance to the serving site percentiles', serving.summary.map(row => ({row, values: [row.p10_km, row.median_km, row.p90_km]})), 'km', 2)}</div>
         ${serving.vendor_distance_cdf ? `<div class="ni-cdf-block"><div class="ni-chart-card"><canvas id="ni-serving-vendor-cdf" role="img" aria-label="Cumulative distribution of the distance to the serving site by RAN vendor"></canvas></div>
         ${percentileTable('Distance to the serving site by RAN vendor percentiles', (serving.vendor_distances || []).map(row => ({row, values: [row.p10_km, row.median_km, row.p90_km]})), 'km', 2, {heading: 'RAN vendor (all groups)', colours: serving.vendor_colours})}</div>` : ''}</div>
@@ -1606,7 +1629,7 @@
         ${breakdownTable('By serving network', serving.by_network || [], 'Serving Network')}
         ${breakdownTable('By host network', serving.by_host, 'Host Network')}
       </div>
-      <h4>Overshooting cells <span class="form-note">(the cells that served the most samples beyond ${number(serving.overshoot_km)} km)</span></h4>${dataSources('cdr', 'inventory')}
+      <h4>Overshooting cells <span class="form-note">(the cells that served the most samples beyond ${number(serving.overshoot_km)} km)</span></h4>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Cell</th><th>Site</th><th>Band</th><th>Vendor</th><th>Network → Host</th><th>Samples beyond</th><th>Samples served</th><th>Median km</th><th>Max km</th></tr></thead>
       <tbody>${serving.overshooting_cells.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.cell)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.band)}</td><td>${escapeHtml(row.vendor)}</td><td>${escapeHtml(row.network)} → ${escapeHtml(row.host)}</td><td class="num">${integer(row.samples_beyond)}</td><td class="num">${integer(row.samples)}</td><td class="num">${number(row.median_km, 2)}</td><td class="num">${number(row.max_km, 2)}</td></tr>`).join('') || `<tr><td colspan="10" class="form-note">No sample was served from farther than ${number(serving.overshoot_km)} km.</td></tr>`}</tbody></table></div>
       <p class="form-note ni-note">Cells farther than ${number(serving.max_distance_km)} km from a sample are never taken as its serving cell (Workspace Config → Serving Networks).</p>
@@ -1621,12 +1644,12 @@
     if (!analysis) { host.innerHTML = '<p class="form-note">No analysis yet.</p>'; return; }
     if (!nr) { host.innerHTML = pendingSnapshot; return; }
     const leg = nr.rows.some(row => 'nr_found_share' in row);
-    host.innerHTML = `${dataSources('cdr', 'inventory')}<div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Samples on LTE cells</th><th>On sites with NR</th><th>Without NR there</th><th>NR gap on 5G sites</th><th>Without NR on other sites</th>${leg ? '<th>NR cell found</th><th>NR on the anchor site</th><th>Median km to the NR site</th>' : ''}</tr></thead>
+    host.innerHTML = `<div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Samples on LTE cells</th><th>On sites with NR</th><th>Without NR there</th><th>NR gap on 5G sites</th><th>Without NR on other sites</th>${leg ? '<th>NR cell found</th><th>NR on the anchor site</th><th>Median km to the NR site</th>' : ''}</tr></thead>
       <tbody>${nr.rows.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td class="num">${integer(row.anchored)}</td><td class="num">${integer(row.on_nr_sites)}</td><td class="num">${integer(row.without_nr_on_nr_sites)}</td><td>${shareBar(row.gap_share, 'is-warning')}</td><td>${shareBar(row.without_nr_elsewhere_share)}</td>${leg ? `<td>${shareBar(row.nr_found_share)}</td><td>${shareBar(row.nr_on_anchor_share)}</td><td class="num">${number(row.nr_median_km, 2)}</td>` : ''}</tr>`).join('') || `<tr><td colspan="${leg ? 9 : 6}" class="form-note">No sample was served by an LTE cell of the snapshot.</td></tr>`}</tbody></table></div>
-      <h4>5G sites with the most samples without NR</h4>${dataSources('cdr', 'inventory')}
+      <h4>5G sites with the most samples without NR</h4>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>Site</th><th>Vendor</th><th>Samples without NR</th><th>Samples anchored there</th><th>Position</th></tr></thead>
       <tbody>${nr.sites.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.vendor)}</td><td class="num">${integer(row.samples_without_nr)}</td><td class="num">${integer(row.samples)}</td><td>${row.latitude === null ? '—' : `${number(row.latitude, 4)}, ${number(row.longitude, 4)}`}</td></tr>`).join('') || '<tr><td colspan="6" class="form-note">Every sample anchored on a 5G site measured NR.</td></tr>'}</tbody></table></div>
-      ${nr.nr_sites ? `<h4>NR sites serving the most NSA samples <span class="form-note">(the NR cell found for each sample, see Serving Cells)</span></h4>${dataSources('cdr', 'inventory')}
+      ${nr.nr_sites ? `<h4>NR sites serving the most NSA samples <span class="form-note">(the NR cell found for each sample, see Serving Cells)</span></h4>
       <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(analysis.group_label || 'All samples')}</th><th>NR site</th><th>Vendor</th><th>Samples</th><th>From the anchor site</th><th>Median km</th><th>Position</th></tr></thead>
       <tbody>${nr.nr_sites.map(row => `<tr><td>${swatch(row.operator)}${escapeHtml(row.operator)}</td><td>${escapeHtml(row.site)}</td><td>${escapeHtml(row.vendor)}</td><td class="num">${integer(row.samples)}</td><td>${shareBar(row.from_anchor_share)}</td><td class="num">${number(row.median_km, 2)}</td><td>${row.latitude === null ? '—' : `${number(row.latitude, 4)}, ${number(row.longitude, 4)}`}</td></tr>`).join('') || '<tr><td colspan="7" class="form-note">No NR cell was found for the NSA samples.</td></tr>'}</tbody></table></div>` : ''}`;
   };
@@ -1807,7 +1830,7 @@
     if (!tables.length) { host.innerHTML = snapshotPayload ? '<p class="form-note">No cell of the snapshot matches the Technology and status choices.</p>' : pendingSnapshot; return; }
     host.innerHTML = tables.map((table, index) => {
       const maximum = table.rows.reduce((value, row) => Math.max(value, row.sites), 1);
-      return `<section class="ni-inventory ni-network-table" style="--ni-operator:${snapshotPayload.colours?.[table.operator] || 'var(--ni-color)'}"><header class="ni-section-head"><h3><span class="ni-network-name"><span class="ni-swatch"></span>${escapeHtml(table.operator)}</span> <span>${integer(table.totals.sites)} sites · ${integer(table.totals.cells)} cells (${integer(table.totals.lte_cells)} LTE, ${integer(table.totals.nr_cells)} NR)</span></h3>${['region', 'cluster'].includes(snapshotPayload?.group) ? dataSources('inventory', 'polygons') : dataSources('inventory')}
+      return `<section class="ni-inventory ni-network-table" style="--ni-operator:${snapshotPayload.colours?.[table.operator] || 'var(--ni-color)'}"><header class="ni-section-head"><h3><span class="ni-network-name"><span class="ni-swatch"></span>${escapeHtml(table.operator)}</span> <span>${integer(table.totals.sites)} sites · ${integer(table.totals.cells)} cells (${integer(table.totals.lte_cells)} LTE, ${integer(table.totals.nr_cells)} NR)</span></h3>
         <button type="button" class="ni-secondary-action ni-export-action" data-ni-deployment-csv="${index}">Export CSV</button></header>
         <div class="table-wrap ni-table-wrap"><table class="ni-table"><thead><tr><th>${escapeHtml(table.group_label)}</th><th>Sites</th><th>Cells</th><th>LTE cells</th><th>NR cells</th><th></th></tr></thead><tbody>${table.rows.map(row => `<tr>
           <td>${escapeHtml(row.group)}</td><td class="num">${integer(row.sites)}</td><td class="num">${integer(row.cells)}</td><td class="num">${integer(row.lte_cells)}</td><td class="num">${integer(row.nr_cells)}</td>
@@ -1828,7 +1851,7 @@
     const filters = inventory.filters || {};
     const active = Object.keys(filters).length;
     return `<section class="ni-inventory" data-ni-inventory="${escapeHtml(inventory.operator)}" data-ni-operator-label="${escapeHtml(inventory.operator_label || inventory.operator)}" data-ni-source="${escapeHtml(inventory.source || 'inventory')}" data-ni-filters="${escapeHtml(JSON.stringify(filters))}">
-      <h3>${escapeHtml(inventory.operator_label || inventory.operator)} · ${siteTableTitle(inventory.source)}</h3>${dataSources(inventory.source === 'observed' ? 'cdr' : 'inventory')}
+      <h3>${escapeHtml(inventory.operator_label || inventory.operator)} · ${siteTableTitle(inventory.source)}</h3>
       <div class="ni-map-toolbar">
         <button type="button" class="ni-secondary-action ni-export-action" data-ni-inventory-export>Export CSV</button>
         ${active ? `<button type="button" class="ni-secondary-action" data-ni-filters-clear>Clear ${integer(active)} filter${active === 1 ? '' : 's'}</button>` : ''}

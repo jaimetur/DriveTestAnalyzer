@@ -4586,6 +4586,8 @@ body:has(dialog.vendor-mapping-dialog[open]) { overflow: hidden; }
 .dataset-card-network-inventory { border-top: 5px solid #6941a4; }
 .dataset-card-geospatial { border-top: 5px solid #2e8b57; }
 .dataset-card-ca-appendix { border-top: 5px solid #6a4fb3; }
+.queue-ca-summary { display: flex; flex-wrap: wrap; gap: 0.3rem; max-width: 100%; }
+.queue-ca-summary .queue-vendor-source { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .dataset-card-other { border-top: 5px solid #7b8790; }
 .dataset-card-final .dataset-card-count { background: #1d4f8f; }
 .dataset-card-weekly .dataset-card-count { background: #7b5cc4; }
