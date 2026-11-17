@@ -2039,11 +2039,15 @@
   .scoring-methodologies-dialog { overscroll-behavior: contain; }
   .scoring-methodologies-dialog::backdrop { background: rgba(14,26,38,.5); }
   .scoring-methodologies-dialog:focus { outline: none; }
-  .scoring-methodologies-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; padding: .45rem .9rem; border-bottom: 1px solid var(--line); border-top: 5px solid #087c83; }
-  .scoring-methodologies-head h3 { margin: 0; color: #087c83; font-size: 1.05rem; }
-  .scoring-methodologies-head .scoring-config-dialog-close { width: 1.9rem; height: 1.9rem; font-size: 1.1rem; }
+  .scoring-methodologies-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; padding: .5rem .9rem; background: linear-gradient(135deg,#14532d,#0b3b2a); }
+  .scoring-methodologies-head h3 { margin: 0; color: #fff; font-size: 1.05rem; }
+  .scoring-methodologies-head .scoring-methodologies-head-actions a { color: #d7f5e5; }
+  .scoring-methodologies-head .scoring-config-dialog-close { width: 1.9rem; height: 1.9rem; border-color: #a5281b; background: #c0392b; color: #fff; font-size: 1.1rem; }
+  .scoring-methodologies-head .scoring-config-dialog-close:hover { background: #a5281b; }
+  .scoring-methodologies-foot { display: flex; justify-content: flex-end; padding: .55rem .9rem; border-top: 1px solid var(--line); background: #f7f9fc; }
+  button.scoring-methodologies-close-button { min-height: 2.3rem; padding: .35rem 1.2rem; border: 1px solid var(--line-strong); background: #fff; color: var(--text); font-size: .85rem; font-weight: 700; box-shadow: none; }
   .scoring-methodologies-head-actions { display: flex; align-items: center; gap: .6rem; }
-  .scoring-methodologies-head-actions a { color: var(--brand); font-size: .8rem; font-weight: 700; text-decoration: underline; }
+  .scoring-methodologies-head-actions a { font-size: .8rem; font-weight: 700; text-decoration: underline; }
   .scoring-methodologies-dialog iframe { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--bg, #f5f1e8); }
   /* The dialog of one block. */
   .scoring-config-dialog { display: none; flex-direction: column; width: min(56rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); max-height: calc(100dvh - 2rem); padding: 0; overflow: hidden; border: 0; border-radius: 18px; background: var(--panel-strong); box-shadow: var(--shadow-strong); }
@@ -2541,6 +2545,7 @@
       </div>
     </div>
     <iframe title="Scoring Methodologies" data-scoring-methodologies-frame></iframe>
+    <div class="scoring-methodologies-foot"><button type="button" class="scoring-methodologies-close-button" data-scoring-methodologies-close>Close</button></div>
   </dialog>
   <dialog class="scoring-config-dialog" data-scoring-config-dialog aria-labelledby="scoring-config-dialog-title">
     <div class="scoring-config-dialog-head" data-scoring-config-dialog-head>

@@ -13108,7 +13108,9 @@
     // The page below stays where it is while the editor is open.
     document.documentElement.classList.add('scoring-methodologies-open');
   });
-  methodologiesDialog?.querySelector('[data-scoring-methodologies-close]')?.addEventListener('click', () => methodologiesDialog.close());
+  for (const button of methodologiesDialog?.querySelectorAll('[data-scoring-methodologies-close]') || []) {
+    button.addEventListener('click', () => methodologiesDialog.close());
+  }
   methodologiesDialog?.addEventListener('close', () => document.documentElement.classList.remove('scoring-methodologies-open'));
 
   // The values change through the lists of the app too: the marks follow once they have been applied.
