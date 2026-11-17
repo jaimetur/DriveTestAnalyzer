@@ -84,7 +84,7 @@ def selection_lines(filters: dict[str, Any], dataset_names: dict[str, str], gran
         lines.append(f"Search: {filters['search']}")
     if not lines:
         lines.append('Filters: every Non-Qualified Call of the workspace')
-    lines.append(f'Progress periods: {GRANULARITY_LABELS.get(granularity, "Month")}')
+    lines.append(f'Progress periods: {GRANULARITY_LABELS.get(granularity, "Week")}')
     lines.append(f'Generated: {datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")}')
     return lines
 

@@ -6745,11 +6745,14 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
     queued = [row for row in calls if str(row['call_key']) in queued_keys]
     queued_attended = sum(1 for row in queued if str(row['call_key']) in first_followup)
     queued_closed = sum(1 for row in queued if str(row['status']).casefold() in closed_names)
+    # Of the calls in a queue not attended, those already given a team or an analyst (the Assigned of Lifecycle & Phases,
+    # out of the queue): the others are its In Queues.
+    queued_assigned = sum(1 for row in queued if str(row['call_key']) not in first_followup and (row['team'] or row['analyst']))
     return {
         'granularity': granularity,
         'summary': {
             'total': total, 'attended': len(attended), 'queued': len(queued), 'queued_attended': queued_attended,
-            'not_attended': len(queued) - queued_attended,
+            'not_attended': len(queued) - queued_attended, 'not_attended_assigned': queued_assigned,
             'not_attended_out_of_queue': (total - len(queued)) - (len(attended) - queued_attended),
             'open': len(open_calls), 'closed': closed_total, 'queued_closed': queued_closed,
             'closure_rate': round(queued_closed * 100 / len(queued), 1) if queued else 0.0,
@@ -9449,7 +9452,7 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
         'total': len(rows), 'queued': sum(queued.values()), 'pipeline': pipeline, 'modes': {'auto': modes.get('auto', 0), 'manual': modes.get('manual', 0)},
         'open': sum(item['count'] for item in pipeline if item['status'] in open_statuses), 'open_statuses': open_statuses,
         'open_tracked': sum(item['tracked'] for item in pipeline if item['status'] in open_statuses),
-        # Not Attended: the calls in a queue in the first status, nobody has followed them up yet.
+        # In Queues: the calls in a queue in the first status, waiting for somebody (nobody has them yet).
         'not_attended': {'status': waiting['status'], 'count': waiting['count'], 'tracked': waiting['tracked'],
                          'color': waiting['color']} if waiting else None,
         'rca': {'identified': identified, 'not_identified': len(rows) - identified},

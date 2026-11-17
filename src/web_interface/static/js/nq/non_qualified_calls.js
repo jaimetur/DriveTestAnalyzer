@@ -2469,7 +2469,7 @@
     $('nq-progress-kpis').replaceChildren(
       // The rates count only the calls in a queue: the tracked calls (in no queue) are shown apart.
       drillCard(kpiCard('Attended', number(summary.attended), `${percent(summary.queued_attended, summary.queued)} of the calls in a queue`, 'open'), {pairs: [['state', 'attended']]}),
-      drillCard(kpiCard('Not Attended', number(summary.not_attended), `In a queue · ${number(summary.not_attended_out_of_queue)} more tracked`, 'total'), {pairs: [['state', 'queued_not_attended']]}),
+      drillCard(kpiCard('Not Attended', number(summary.not_attended), `In a queue${summary.not_attended_assigned ? ` (${number(summary.not_attended_assigned)} assigned)` : ''} · ${number(summary.not_attended_out_of_queue)} more tracked`, 'total'), {pairs: [['state', 'queued_not_attended']]}),
       drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.queued_closed)} of ${number(summary.queued)} in a queue closed`, 'closed'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('First Follow-up', days(summary.avg_days_to_first_follow_up), 'Average from the call', 'team'), {pairs: [['state', 'attended']]}),
       drillCard(kpiCard('Time to Close', days(summary.avg_days_to_close), 'Average from the call', 'commented'), {pairs: [['state', 'closed']]}),
@@ -2851,10 +2851,12 @@
   const WIDE_PHASE_VALUES = 12;
   // The tracked calls (in no queue) of a count, shown apart from it.
   const trackedNote = (tracked) => (tracked ? ` · +${number(tracked)} tracked` : '');
-  // The calls in a queue in the first status, in its colour: a click shows only them.
+  // In Queues: the calls in a queue in the first status, waiting for somebody (an assigned call has left its queue), in
+  // the colour of that status: a click shows only them.
+  const IN_QUEUES = 'In Queues';
   const notAttendedCard = (waiting, base) => {
-    const card = kpiCard(waiting.status, number(waiting.count),
-      `${percent(waiting.count, base)} not followed up yet${trackedNote(waiting.tracked)}`);
+    const card = kpiCard(IN_QUEUES, number(waiting.count),
+      `${percent(waiting.count, base)} waiting, not assigned yet${trackedNote(waiting.tracked)}`);
     if (waiting.color) card.style.borderTopColor = waiting.color;
     return drillCard(card, {pairs: [['status', waiting.status], ['state', 'in_queue']]});
   };
@@ -2907,7 +2909,9 @@
       step.classList.toggle('is-active', (filters.status || []).length === 1 && filters.status[0] === item.status);
       // The status, its calls and their age, as tall in every card, so that the rules start on one line.
       const top = node('div', undefined, 'nq-pipeline-head');
-      top.append(node('span', item.status, 'nq-pipeline-name'), node('strong', number(item.count)),
+      // The first status is In Queues: its calls wait in their queue for somebody.
+      const name = life.not_attended && item.status === life.not_attended.status ? IN_QUEUES : item.status;
+      top.append(node('span', name, 'nq-pipeline-name'), node('strong', number(item.count)),
         node('span', `${percent(item.count, queued)}${item.avg_age_days === null ? '' : ` · ${item.avg_age_days} d old on average`}${trackedNote(item.tracked)}`, 'nq-kpi-note'));
       step.append(top);
       const triggers = ruleTriggers(item.status, life.rules || []);

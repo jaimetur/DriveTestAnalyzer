@@ -524,6 +524,7 @@ def test_teams_members_progress_shared_filters_and_reporting_artifact(client, tm
     # Not Attended and the rates count only the calls in a queue; the tracked ones are counted apart.
     summary = progress['summary']
     assert summary['not_attended'] + summary['queued_attended'] == summary['queued'] <= summary['total']
+    assert 0 <= summary['not_attended_assigned'] <= summary['not_attended']
     assert summary['not_attended'] + summary['not_attended_out_of_queue'] == summary['total'] - summary['attended']
     assert all(0 <= period['queued_backlog'] <= period['open_backlog'] for period in progress['periods'])
     waiting = client.post('/api/non-qualified-calls/progress', json={'filters': {'state': ['queued_not_attended']}}).json()
