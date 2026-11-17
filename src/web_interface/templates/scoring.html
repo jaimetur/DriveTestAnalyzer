@@ -54,8 +54,9 @@
   .scoring-hero-badge { display: inline-flex; align-items: center; gap: .45rem; padding: .5rem .85rem; border: 0; border-radius: 999px; background: linear-gradient(128deg, #143653, #176e77); color: #fff; font-size: .78rem; font-weight: 800; white-space: nowrap; box-shadow: 0 6px 14px rgba(20, 54, 83, .22); }
   .scoring-controls-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .scoring-filter-grid { display: grid; grid-template-columns: minmax(12rem,15rem) minmax(0,1fr); gap: 1rem; align-items: start; }
-  .scoring-context-filter-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: .65rem; }
-  @media(max-width:1500px) { .scoring-context-filter-grid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
+  .scoring-context-filter-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .65rem; }
+  /* The operator and vendor filters on a line, the area filters (Region, Cluster, City) on the next one. */
+  .scoring-context-filter-grid > label:has(> select[data-scoring-context-filter="Region"]) { grid-column-start: 1; }
   .scoring-context-filter-grid > label { display: grid; min-width: 0; gap: .3rem; color: var(--muted); font-size: .76rem; font-weight: 750; }
   .scoring-context-filter-grid select[multiple] { width: 100%; min-height: 2.35rem; }
   .scoring-context-filter-note { margin: .45rem .1rem 0; color: var(--muted); font-size: .7rem; }
