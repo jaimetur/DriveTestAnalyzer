@@ -13016,6 +13016,37 @@
     else if (event.target.closest('[data-scoring-config-apply]')) closeConfigBlock('apply');
     else if (event.target.closest('[data-scoring-config-apply-calculate]')) closeConfigBlock('calculate');
   });
+  // A list opened in a dialog (Context Filters near its foot, for example) shows whole: the dialog scrolls it into sight,
+  // and when it cannot, the list opens upwards if there is more room above, as tall as the room it has.
+  function fitDialogList(menu) {
+    const box = menu.closest('.scoring-config-dialog-body, .scoring-edit-dialog');
+    if (!box || menu.hidden) return;
+    menu.classList.remove('opens-upwards');
+    menu.style.removeProperty('max-height');
+    const margin = 8;
+    let overflow = menu.getBoundingClientRect().bottom - (box.getBoundingClientRect().bottom - margin);
+    if (overflow > 0) box.scrollTop += Math.min(overflow, box.scrollHeight - box.clientHeight - box.scrollTop);
+    const bounds = box.getBoundingClientRect();
+    overflow = menu.getBoundingClientRect().bottom - (bounds.bottom - margin);
+    if (overflow <= 0) return;
+    const field = (menu.parentElement || menu).getBoundingClientRect();
+    const below = bounds.bottom - margin - field.bottom - 7;
+    const above = field.top - 7 - bounds.top - margin;
+    if (above > below) {
+      menu.classList.add('opens-upwards');
+      menu.style.maxHeight = `${Math.max(160, above)}px`;
+    } else menu.style.maxHeight = `${Math.max(160, below)}px`;
+  }
+  for (const dialog of [configDialog, editDialog]) {
+    if (!dialog) continue;
+    new MutationObserver(records => {
+      for (const {target} of records) {
+        if (target instanceof Element && target.matches('.multiselect-menu, .searchable-select-menu') && !target.hidden) {
+          window.setTimeout(() => fitDialogList(target), 0);
+        }
+      }
+    }).observe(dialog, {attributes: true, attributeFilter: ['hidden'], subtree: true});
+  }
   // The values change through the lists of the app too: the marks follow once they have been applied.
   for (const type of ['change', 'input']) {
     configDialog?.addEventListener(type, () => window.setTimeout(markConfigDialog, 0));

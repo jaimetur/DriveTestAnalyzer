@@ -2023,6 +2023,8 @@
   }
   /* The areas of the trends follow Country Areas while Same as Country Areas is ticked. */
   [data-scoring-trend-areas-fields].is-same { opacity: .55; pointer-events: none; }
+  /* A list of a dialog opening upwards when there is no room below it (see fitDialogList). */
+  :is(.scoring-config-dialog, .scoring-edit-dialog) :is(.multiselect-menu, .searchable-select-menu).opens-upwards { top: auto; bottom: calc(100% + .45rem); }
   /* The dialog of one block. */
   .scoring-config-dialog { display: none; flex-direction: column; width: min(56rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); max-height: calc(100dvh - 2rem); padding: 0; overflow: hidden; border: 0; border-radius: 18px; background: var(--panel-strong); box-shadow: var(--shadow-strong); }
   .scoring-config-dialog[open] { display: flex; }
