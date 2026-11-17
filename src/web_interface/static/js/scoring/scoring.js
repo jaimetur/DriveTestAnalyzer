@@ -914,13 +914,22 @@
     return trendAreasSame.checked && !(countryAreasEnabled && !countryAreasEnabled.checked);
   }
 
-  // The areas of the trends when they are their own (none when they follow Country Areas).
+  // The areas of the trends when they are their own (none when they follow Country Areas, or are the same ones).
   function selectedTrendAreas() {
     if (trendAreasFollowCountry() || !trendBreakdownSelect || !trendCitiesSelect) return {};
     const chosen = [...trendCitiesSelect.selectedOptions].map(option => option.value).filter(Boolean);
+    if (trendAreasEqualCountry()) return {};
     return {trend_breakdown: String(trendBreakdownSelect.value || 'Region'),
       trend_cities: chosen.filter(value => value !== MAIN_CITIES_TOKEN),
       ...(chosen.includes(MAIN_CITIES_TOKEN) ? {trend_main_cities: true} : {})};
+  }
+
+  // Whether the areas of the trends are those of Country Areas.
+  function trendAreasEqualCountry() {
+    if (typeof trendBreakdownSelect === 'undefined' || !trendBreakdownSelect || !trendCitiesSelect) return true;
+    const key = values => values.map(value => value.toLocaleLowerCase()).sort().join('|');
+    return trendBreakdownSelect.value === (areaSummaryBreakdown?.value || 'Region')
+      && key([...trendCitiesSelect.selectedOptions].map(option => option.value).filter(Boolean)) === key(chosenAreaCities());
   }
 
   // The areas of the trends shown as those of Country Areas.
@@ -942,6 +951,15 @@
   function syncTrendAreas() {
     if (typeof trendAreasSame === 'undefined' || !trendAreasSame) return;
     const countryOn = !countryAreasEnabled || countryAreasEnabled.checked;
+    // Country Areas switched off: the box is unticked and cannot be ticked; switched on again, it is ticked when the
+    // areas of the trends are still those of Country Areas.
+    if (!countryOn) {
+      trendAreasSame.checked = false;
+      trendAreasSame.dataset.lockedOff = 'true';
+    } else if (trendAreasSame.dataset.lockedOff) {
+      delete trendAreasSame.dataset.lockedOff;
+      trendAreasSame.checked = trendAreasEqualCountry();
+    }
     trendAreasSame.disabled = !countryOn;
     trendAreasSame.closest('label')?.setAttribute('title', countryOn ? ''
       : 'Country Areas is switched off: the trends keep areas of their own');
