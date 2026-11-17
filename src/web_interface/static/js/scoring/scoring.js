@@ -12624,8 +12624,7 @@
   function configSummaries() {
     const methodology = configSelectText(scoringProfileSelect).replace(/\s*\(.*\)\s*$/, '');
     const reference = configSelectText(baselineInput);
-    const environment = configSelectText(environmentSelect);
-    const setup = [['Methodology', methodology], ['GAP reference', reference], ['Environment', environment],
+    const setup = [['Methodology', methodology], ['GAP reference', reference],
       ['Postal Codes', areaSummaryPostalCodes?.checked ? (POSTAL_MAP_LABELS[areaSummaryPostalMap?.value] || 'Full postcodes') : '']];
     const campaigns = configOptionTexts(contextFilterSelects.get('Campaign'));
     const areas = ['Region', 'Cluster', 'City'].flatMap(key => configOptionTexts(contextFilterSelects.get(key)));

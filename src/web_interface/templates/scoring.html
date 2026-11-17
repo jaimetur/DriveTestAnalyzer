@@ -1803,7 +1803,6 @@
   .scoring-config-edit-foot .scoring-actions button svg { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; }
   .scoring-config-edit-foot .scoring-actions button[hidden] { display: none; }
   .scoring-edit-dialog .scoring-config-section { display: grid; gap: .8rem; }
-  .scoring-edit-dialog [data-scoring-config-view-only] { display: none; }
   .scoring-config-section-title { margin: .2rem 0 0; font-size: 1.02rem; color: var(--brand-3); }
   .scoring-config-dialog .scoring-config-section-title { display: none; }
   .scoring-config-edit-foot { display: none; }
@@ -1817,8 +1816,6 @@
   .scoring-config-section .scoring-config-shortcuts svg * { fill: none; stroke: currentColor; }
   .scoring-config-section .scoring-config-row { display: flex; flex-wrap: wrap; gap: .7rem; }
   .scoring-config-section .scoring-config-row > label { flex: 1 1 16rem; min-width: 0; }
-  .scoring-config-section [data-result-environment-control] { display: grid; gap: .3rem; }
-  .scoring-config-section [data-result-environment-control] select { width: 100%; }
   /* A value of the dialog that differs from the scoring shown. */
   .scoring-config-section .is-config-changed { position: relative; border-radius: 10px; outline: 2px solid #e0a43a; outline-offset: 3px; background: #fff6e2; }
   .scoring-config-section .is-config-changed::after { content: 'changed'; position: absolute; top: -.55rem; right: .4rem; padding: 0 .35rem; border-radius: 6px; background: #e0a43a; color: #3d2700; font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
@@ -1942,6 +1939,18 @@
   .scoring-report-menu-list a svg { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; margin-top: .1rem; color: #b85a17; }
   .scoring-report-menu-list a > span { display: grid; gap: .1rem; }
   .scoring-report-menu-list small { color: var(--muted); font-weight: 500; }
+  /* Tablets: the choices and a compact Report button stay on one line; the choices shrink to the width left. */
+  @media(min-width:641px) and (max-width:1100px) {
+    .scoring-results-panel .scoring-results-view { flex-wrap: nowrap; }
+    .scoring-results-view .scoring-results-controls { flex: 1 1 auto; min-width: 0; }
+    .scoring-results-view .scoring-results-selector-row { flex-wrap: nowrap; width: auto; min-width: 0; }
+    .scoring-results-view .scoring-results-selector-row .scoring-environment-filter { flex: 1 1 auto; min-width: 0; }
+    .scoring-results-view .scoring-results-selector-row .scoring-environment-filter select { min-width: 0; width: 100%; }
+    .scoring-results-view .scoring-results-selector-row [data-result-scoring-control] { flex: 0 0 auto; }
+    .scoring-results-view .scoring-results-selector-row [data-result-scoring-control] select { width: auto; }
+    .scoring-results-panel .scoring-results-view .scoring-results-tools { flex: 0 0 auto; }
+    .scoring-results-view .scoring-report-menu-formats { display: none; }
+  }
   /* Phones: the Scoring choice and a compact Report button share one line. */
   @media(max-width:640px) {
     .scoring-results-panel .scoring-results-view { flex-wrap: nowrap; align-items: center; gap: .5rem; }
@@ -1960,6 +1969,16 @@
     .scoring-report-menu > summary { min-height: 2.35rem; padding: .35rem .75rem; font-size: .76rem; box-shadow: none; }
     .scoring-report-menu-formats { display: none; }
     .scoring-report-menu-list { right: 0; left: auto; }
+    /* With the Environment, both choices stack in their box, each with its label (Scoring and Environment), and the
+       Report button goes below them. */
+    .scoring-results-panel .scoring-results-view:has([data-result-environment-control]:not([hidden])) { flex-wrap: wrap; }
+    .scoring-results-view .scoring-results-controls:has([data-result-environment-control]:not([hidden])) { flex: 1 1 100%; }
+    .scoring-results-view .scoring-results-controls:has([data-result-environment-control]:not([hidden])) .scoring-results-selector-row { flex-direction: column; align-items: stretch; width: 100%; box-sizing: border-box; }
+    .scoring-results-view .scoring-results-controls:has([data-result-environment-control]:not([hidden])) .scoring-environment-filter:not([hidden]) { display: grid; grid-template-columns: 6.2rem minmax(0, 1fr); align-items: center; gap: .4rem; font-size: .74rem; }
+    .scoring-results-view .scoring-results-controls:has([data-result-environment-control]:not([hidden])) [data-result-scoring-control] select { width: 100%; transform: none; margin: 0; }
+    .scoring-results-panel .scoring-results-view:has([data-result-environment-control]:not([hidden])) .scoring-results-tools { flex: 1 1 100%; margin-left: 0; }
+    .scoring-results-panel .scoring-results-view:has([data-result-environment-control]:not([hidden])) .scoring-report-menu,
+    .scoring-results-panel .scoring-results-view:has([data-result-environment-control]:not([hidden])) .scoring-report-menu > summary { width: 100%; box-sizing: border-box; justify-content: center; }
   }
   /* Country Areas and Scoring Trends can be switched off: their fields fade and their card says Off. */
   .scoring-config-switch { display: flex; align-items: flex-start; gap: .55rem; margin-bottom: .8rem; padding: .6rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: .82rem; cursor: pointer; }
@@ -2151,15 +2170,6 @@
                   <option value="place">One point per place</option>
                   <option value="own">Own file</option>
                 </select>
-              </label>
-        </div>
-      </div>
-      {# The Environment of the results: it filters what is shown at once (nothing is calculated again). #}
-      <div class="scoring-picker scoring-config-group" data-scoring-config-view-only>
-        <div class="scoring-picker-head"><strong>Environment</strong><span>Shown at once: nothing is calculated again</span></div>
-        <div class="scoring-scope-row scoring-config-row">
-          <label class="scoring-scope-control" data-result-environment-control>Environment
-                <select data-result-environment aria-label="Filter scoring tables, charts and GAP analysis by environment; defaults to the first complete environment when all environments are incomplete" disabled><option value="all">All Environments</option></select>
               </label>
         </div>
       </div>
@@ -2385,7 +2395,7 @@
             </details>
           </div>
           <div class="scoring-config-pills" role="group" aria-label="Configuration of the scoring">
-            <button type="button" class="scoring-config-pill is-setup" data-scoring-config-open="setup" title="Methodology, GAP reference, Points Lost and Environment: the whole panel"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 1">1</span>Scoring Setup</span><span class="scoring-config-pill-value" data-scoring-config-summary="setup"></span><span class="scoring-config-card-lines" data-scoring-config-details="setup"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
+            <button type="button" class="scoring-config-pill is-setup" data-scoring-config-open="setup" title="Methodology, GAP reference and Points Lost: the whole panel"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 1">1</span>Scoring Setup</span><span class="scoring-config-pill-value" data-scoring-config-summary="setup"></span><span class="scoring-config-card-lines" data-scoring-config-details="setup"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
             <button type="button" class="scoring-config-pill is-context" data-scoring-config-open="context"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 2">2</span>Context</span><span class="scoring-config-pill-value" data-scoring-config-summary="context"></span><span class="scoring-config-card-lines" data-scoring-config-details="context"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
             <button type="button" class="scoring-config-pill is-split" data-scoring-config-open="split"><span class="scoring-config-pill-label"><span class="scoring-config-step" aria-label="Step 3">3</span>Break down by</span><span class="scoring-config-pill-value" data-scoring-config-summary="split"></span><span class="scoring-config-card-lines" data-scoring-config-details="split"></span><span class="scoring-config-pill-edit" aria-hidden="true">✎</span></button>
             <div class="scoring-config-pill-wrap is-areas">
@@ -2422,6 +2432,10 @@
                   <option value="best_network">Best Network</option>
                   <option value="most_reliable">Most Reliable</option>
                 </select>
+              </label>
+              {# The Environment of the results: a view option, shown at once (nothing is calculated again). #}
+              <label class="scoring-environment-filter" data-result-environment-control>Environment
+                <select data-result-environment aria-label="Filter scoring tables, charts and GAP analysis by environment; defaults to the first complete environment when all environments are incomplete" disabled><option value="all">All Environments</option></select>
               </label>
               <label class="scoring-environment-filter scoring-theme-filter" title="The colours of every chart and table of the results and of the PowerPoint and Word exports">Theme
                 <select data-scoring-theme-select aria-label="Colour theme of the Scoring &amp; GAP Analysis charts, tables and exports">

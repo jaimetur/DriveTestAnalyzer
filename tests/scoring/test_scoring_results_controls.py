@@ -244,9 +244,10 @@ def test_results_controls_are_grouped_with_icons_and_unique_environment_heading(
     view = markup.split('<div class="scoring-results-primary scoring-results-view">', 1)[1]
     assert view.index('data-scoring-results-selector-row') < view.index('data-scoring-results-value-row') < view.index('class="scoring-results-tools"')
     assert view.index('data-show-kpi-values') < view.index('data-show-gap-values')
-    # The Environment is in Scoring Setup, with the other choices of the whole panel.
+    # The Environment is a view option beside the Scoring choice, not part of Scoring Setup.
     environment = tree.xpath('//*[@data-result-environment-control]')[0]
-    assert environment.xpath('ancestor::section[@data-scoring-config-section="setup"]')
+    assert not environment.xpath('ancestor::section[@data-scoring-config-section="setup"]')
+    assert environment.xpath('ancestor::div[@data-scoring-results-selector-row]')
     tools = view.split('class="scoring-results-tools"', 1)[1]
     assert 'data-export-scoring' not in tools and 'data-export-gap' not in tools
     anchor = re.search(r'<a\b[^>]*data-export-ppt[^>]*>(.*?)</a>', tools, re.S)
@@ -970,9 +971,10 @@ def test_environment_selector_precedes_value_toggles_and_gap_layout_is_condition
     selector_row = re.search(r'<div class="scoring-results-selector-row"[^>]*>(.*?)</div>', template, re.S)
     value_row = re.search(r'<div class="scoring-results-value-row"[^>]*>(.*?)</div>', template, re.S)
     assert selector_row and value_row
-    # The Environment is chosen in Scoring Setup (shown at once), before the values of the tables.
+    # The Environment is chosen beside the Scoring choice (shown at once), before the values of the tables.
     setup = template.split('data-scoring-config-section="setup"', 1)[1].split('data-scoring-config-section="context"', 1)[0]
-    assert 'data-result-environment-control' in setup
+    assert 'data-result-environment-control' not in setup
+    assert template.index('data-result-scoring-control') < template.index('data-result-environment-control')
     assert 'data-scoring-table-mode' not in template
     assert template.index('data-result-environment-control') < template.index('data-show-kpi-values')
     assert template.index('data-scoring-results-selector-row') < template.index('data-show-kpi-values')
