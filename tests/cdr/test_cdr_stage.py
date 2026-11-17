@@ -128,6 +128,28 @@ def test_a_cumulative_daily_cdr_replaces_the_previous_ones_in_the_combined_table
     assert combined_ids() == {second}
 
 
+def test_a_cumulative_daily_cdr_that_drops_a_few_calls_still_replaces_the_previous_one(client, tmp_path):
+    login(client)
+    calls = [f'0x{position:02X}' for position in range(40)]
+    # The newer cumulative CDR leaves out one call of the older one (the provider invalidated it): 1 of 40 is missing.
+    first = add_cdr(tmp_path, 'UK_Voice_20260921.xlsx', 'voice', voice(calls, '2026-09-21'), 'daily')
+    second = add_cdr(tmp_path, 'UK_Voice_20260922.xlsx', 'voice', voice([*calls[1:], '0xNEW'], '2026-09-22'), 'daily')
+    # Incremental CDRs share no calls, or too few of them: the third one, with 3 of the 40 calls, stays.
+    third = add_cdr(tmp_path, 'UK_Voice_20260923.xlsx', 'voice', voice([*calls[:3], '0xOWN'], '2026-09-23'), 'daily')
+    core.sync_combined_cdr_inclusion()
+    inclusion = combined_inclusion(core.repository)
+    assert inclusion[second]['included'] is True
+    assert inclusion[third]['included'] is True
+    # Only the newest Daily CDR is checked for the first one: the third holds too few of its calls.
+    assert inclusion[first]['included'] is True
+    core.repository.delete_dataset(third)
+    core.sync_combined_cdr_inclusion()
+    inclusion = combined_inclusion(core.repository)
+    assert inclusion[first]['included'] is False
+    assert inclusion[first]['reason'] == 'Every call but 1 is in the newer Daily CDR UK_Voice_20260922.xlsx'
+    assert combined_ids() == {second}
+
+
 def test_a_weekly_cdr_replaces_the_daily_cdrs_it_contains_until_the_final_cdr_arrives(client, tmp_path):
     login(client)
     daily = add_cdr(tmp_path, 'UK_Voice_20260921.xlsx', 'voice', voice(['0xA', '0xB'], '2026-09-21'), 'daily')

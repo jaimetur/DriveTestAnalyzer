@@ -46,6 +46,9 @@ _DAILY_WORDS = re.compile(r'(?<![a-z])(daily|diario|diaria|dia|day|incremental|c
 _DATE = re.compile(r'(?<!\d)(20\d{2})[-_.]?(0[1-9]|1[0-2])[-_.]?(0[1-9]|[12]\d|3[01])(?!\d)')
 _STATE_KEY = 'cdr_stage_facts'
 _CONTAINMENT_KEY = 'cdr_daily_containment'
+# A newer cumulative CDR may leave out a few calls of an older one (the provider invalidates them on review): it
+# still contains the older CDR when at most this share of its calls is missing. Incremental CDRs share no calls.
+_CONTAINMENT_MISSING_SHARE = 0.05
 _START_COLUMNS = ('event_start_time', 'Call_Start_Time', 'Test_Start_Time')
 
 
@@ -191,8 +194,9 @@ def _join_ids(connection: Any, dataset_id: int) -> set[str] | None:
         f'SELECT DISTINCT {_quote(column)} FROM {_quote(table)} WHERE TRIM(COALESCE({_quote(column)}, \'\')) <> \'\'')}
 
 
-def _contained(repository: Any, older: Any, newer: Any, memo: dict[int, set[str] | None]) -> bool:
-    """Whether every call (JOIN_ID) of an older Weekly or Daily CDR is in a newer one, cached per revision pair."""
+def _contained(repository: Any, older: Any, newer: Any, memo: dict[int, set[str] | None]) -> int | None:
+    """How many calls (JOIN_IDs) of an older Weekly or Daily CDR a newer one leaves out when it contains the older CDR
+    (at most _CONTAINMENT_MISSING_SHARE of them), or None when it does not; cached per revision pair."""
     key = f"{int(older['id'])}:{int(newer['id'])}"
     signature = f'{_revision(older)}#{_revision(newer)}'
     try:
@@ -201,17 +205,19 @@ def _contained(repository: Any, older: Any, newer: Any, memo: dict[int, set[str]
         cached = {}
     cached = cached if isinstance(cached, dict) else {}
     entry = cached.get(key)
-    if isinstance(entry, dict) and entry.get('signature') == signature:
-        return bool(entry.get('contained'))
+    # Entries without 'missing' were worked out when every call had to be in the newer CDR: work them out again.
+    if isinstance(entry, dict) and entry.get('signature') == signature and 'missing' in entry:
+        return int(entry['missing']) if entry.get('contained') else None
     with repository.connection() as connection:
         for dataset_id in (int(older['id']), int(newer['id'])):
             if dataset_id not in memo:
                 memo[dataset_id] = _join_ids(connection, dataset_id)
     older_ids, newer_ids = memo[int(older['id'])], memo[int(newer['id'])]
-    contained = bool(older_ids) and newer_ids is not None and older_ids <= newer_ids
-    cached[key] = {'signature': signature, 'contained': contained}
+    missing = len(older_ids - newer_ids) if older_ids and newer_ids is not None else None
+    contained = missing is not None and missing <= len(older_ids) * _CONTAINMENT_MISSING_SHARE
+    cached[key] = {'signature': signature, 'contained': contained, 'missing': missing if missing is not None else 0}
     repository.set_workspace_state(_CONTAINMENT_KEY, json.dumps(cached))
-    return contained
+    return missing if contained else None
 
 
 # Within a block of remembered_inclusion (one request that resolves the CDRs of a Design several times), the inclusion of
@@ -341,10 +347,14 @@ def _combined_inclusion(repository: Any) -> dict[int, dict[str, Any]]:
         # The newest CDR (a cumulative one has every call so far) and every newer Weekly CDR (which holds
         # the calls of its week even when newer incremental Daily CDRs follow it).
         candidates = list(dict.fromkeys([*newer[:1], *(other_id for other_id in newer if info[other_id]['stage'] == 'weekly')]))
-        container = next((other_id for other_id in candidates if _contained(repository, by_id[dataset_id], by_id[other_id], memo)), None)
+        container, missing = next(((other_id, left_out) for other_id in candidates
+                                   if (left_out := _contained(repository, by_id[dataset_id], by_id[other_id], memo)) is not None),
+                                  (None, 0))
         if container is not None:
             label = CDR_STAGE_LABELS[info[container]['stage']]
-            item.update(included=False, reason=f'Every call is in the newer {label} CDR {names[container]}', replaced_by=container)
+            reason = (f'Every call is in the newer {label} CDR {names[container]}' if not missing else
+                      f'Every call but {missing} is in the newer {label} CDR {names[container]}')
+            item.update(included=False, reason=reason, replaced_by=container, missing_calls=missing)
     # A Daily CDR whose dates a Weekly CDR covers (not one excluded by hand) holds no call the Weekly CDR has not.
     weeklies = [dataset_id for dataset_id, item in info.items() if item['stage'] == 'weekly' and manual(item) is not False]
     for dataset_id, item in info.items():
