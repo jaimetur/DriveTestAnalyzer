@@ -989,7 +989,9 @@ def test_gap_value_choice_is_sent_only_to_powerpoint_export():
     assert "const gapOption = kind === 'ppt' ? `&show_gap_values=${showGapValues() ? 'true' : 'false'}&theme=${encodeURIComponent(activeTheme?.id || 'netcheck')}` : '';" in script
     assert "link.href = enabled ? `${exportBase}/${encodeURIComponent(savedFilterId)}/export/${kind}?${query}${gapOption}${scoringOption}` : '#';" in script
     assert "const scoringOption = kind !== 'ppt' && typeof effectiveScoring === 'function'" in script
-    assert "const query = `table_mode=${encodeURIComponent(selectedTableMode())}&gap_layout=${encodeURIComponent(selectedGapLayout())}&environment=${encodeURIComponent(selectedEnvironment || 'all')}`;" in script
+    assert "const query = `table_mode=${encodeURIComponent(selectedTableMode())}&gap_layout=${encodeURIComponent(selectedGapLayout())}&environment=${encodeURIComponent(selectedEnvironment || 'all')}`" in script
+    # The KPI order of the GAP tables and the KPI GAP Profile goes to the PowerPoint and Word only.
+    assert "+ (kind === 'ppt' ? `&gap_kpi_order=${encodeURIComponent(gapKpiOrder)}` : '');" in script
 
 
 def test_export_selected_scoring_report_asks_for_scorings_environments_and_format():

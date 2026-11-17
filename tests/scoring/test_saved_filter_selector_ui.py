@@ -339,6 +339,7 @@ const selectedTableMode = () => 'expanded';
 const selectedGapLayout = () => 'end';
 const selectedEnvironment = 'all';
 const showGapValues = () => false;
+const gapKpiOrder = 'all';
 let selectionUnmatched = false;
 ''' + _function_source(script, 'setExportLinks') + r'''
 setExportLinks('21', false);
@@ -361,6 +362,8 @@ process.stdout.write(JSON.stringify({unavailable, available, reset, unmatched, c
                for link in result['unavailable'])
     assert all(link['hidden'] is False and link['disabled'] == 'false' and link['tabIndex'] == 0
                and link['href'].startswith('/scoring/saved-filters/21/export/') for link in result['available'])
+    # Only the PowerPoint and Word take the KPI order of the GAP tables and the KPI GAP Profile.
+    assert ['gap_kpi_order=all' in link['href'] for link in result['available']] == [False, False, True]
     assert result['reset'] == ['true', 'true', 'true']
     assert result['unmatched'] == ['false', 'false', 'false']
     assert result['closed'] == ['true', 'true', 'true']

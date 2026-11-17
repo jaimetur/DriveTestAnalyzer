@@ -1598,11 +1598,14 @@ def test_multilevel_hierarchy_export_uses_editable_nested_tables_and_one_chart_p
     expected_gap_kpis = {metric['kpi'] for metric in METRICS}
     for slide in individual_gap_slides:
         operator_gap_table = next(shape.table for shape in slide.shapes if shape.has_table)
-        # Ordered by GAP: no sections, each KPI with its category.
-        assert len(operator_gap_table.rows) == gap_header_rows + len(METRICS) + 1
+        # Ordered by GAP within each category (the default KPI order): one section per category, as All vs EE.
+        assert len(operator_gap_table.rows) == gap_header_rows + len(METRICS) + len(gap_categories) + 1
         assert len(operator_gap_table.columns) == 1 + len(contexts)
+        operator_sections = _section_rows(operator_gap_table, gap_header_rows)
+        assert [_label_name(operator_gap_table.cell(row, 0).text) for row in operator_sections] == gap_categories
         operator_gap_kpis = [_label_name(operator_gap_table.cell(row_index, 0).text)
-                             for row_index in range(gap_header_rows, len(operator_gap_table.rows) - 1)]
+                             for row_index in range(gap_header_rows, len(operator_gap_table.rows) - 1)
+                             if row_index not in operator_sections]
         assert len(operator_gap_kpis) == len(METRICS)
         assert set(operator_gap_kpis) == expected_gap_kpis
         assert all(not kpi.casefold().endswith(' total') for kpi in operator_gap_kpis)
