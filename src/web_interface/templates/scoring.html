@@ -1961,6 +1961,9 @@
   .scoring-config-pill.is-off { background: repeating-linear-gradient(135deg,#fff,#fff 6px,#f4f5f7 6px,#f4f5f7 12px); }
   .scoring-config-pill.is-off .scoring-config-pill-value, .scoring-config-pill.is-off .scoring-config-card-line span { color: var(--muted); font-style: italic; }
   .scoring-result-tab[hidden] { display: none !important; }
+  /* Their entries in the sections menus hide too (also the copies of the sections bar and of the phone menu). */
+  html[data-scoring-hide-geographical-areas] :is(a[href$="#scoring-results-geographical-areas"], li:has(> a[href$="#scoring-results-geographical-areas"])),
+  html[data-scoring-hide-trends] :is(a[href$="#scoring-results-trends"], li:has(> a[href$="#scoring-results-trends"])) { display: none !important; }
   /* The switch of the Country Areas and Scoring Trends cards, in their top right corner. */
   .scoring-config-pill-wrap { position: relative; display: flex; min-width: 0; }
   .scoring-config-pill-wrap > button.scoring-config-pill { flex: 1 1 auto; padding-right: 3.3rem; }

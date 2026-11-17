@@ -12315,7 +12315,9 @@
       'scoring-results-points-lost': 'points', 'scoring-results-methodology-impact': 'impact'}[
       decodeURIComponent(window.location.hash.slice(1))];
     if (!name) return;
-    root.querySelector(`[data-result-tab="${name}"]`)?.click();
+    // A tab hidden for the scoring shown (Country Areas or Scoring Trends switched off) opens Summary instead.
+    const tabButton = root.querySelector(`[data-result-tab="${name}"]`);
+    (tabButton?.hidden ? root.querySelector('[data-result-tab="summary"]') : tabButton)?.click();
     // Shown once: a reload then returns to the tab and position being read instead of this one.
     window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
     window.requestAnimationFrame(() => {
@@ -12580,6 +12582,8 @@
       if (!button) continue;
       const hide = shownSummary[part] === false;
       button.hidden = hide;
+      // Their entries in the sections menus (the tab menu, Modules & Sections, the sections bar) hide with them.
+      document.documentElement.toggleAttribute(`data-scoring-hide-${tab}`, hide);
       if (hide && button.getAttribute('aria-selected') === 'true') root.querySelector('[data-result-tab="summary"]')?.click();
     }
     // The scoring shown is the configuration and its result is up to date: Open Scoring and its message say nothing new.
