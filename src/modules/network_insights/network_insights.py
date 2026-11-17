@@ -698,6 +698,17 @@ BANDWIDTH_SCOPES = {'download': 'Download tests', 'all': 'All Data tests'}
 ALL_ENVIRONMENTS = 'All environments'
 # The bandwidth the ladders read: the primary bandwidth the CDRs report, or the total of every LTE and NR carrier of the
 # CA Appendix (see ca_appendix), for the tests that have it.
+# The data sources a panel, table or chart of the page is filled from, shown as labels under its title: (label, where it
+# comes from).
+DATA_SOURCES = {
+    'cdr': ('CDRs', 'The Data, Voice and Speech CDRs of the Analysis Selection'),
+    'cdr_data': ('CDR Data', 'The Data CDRs of the Analysis Selection'),
+    'inventory': ('Network Inventory', 'The inventory snapshot of every network (Workspace → Network Inventories)'),
+    'ca': ('CA Appendix', 'The CA Appendix of the tests, when the workspace has one (Workspace → CA Appendix)'),
+    'holdings': ('Spectrum Holdings', 'Workspace Config → Spectrum Holdings'),
+    'serving': ('Serving Networks', 'Workspace Config → Serving Networks'),
+    'polygons': ('Region & Cluster polygons', 'Workspace → Geographic Datasets'),
+}
 BANDWIDTH_SOURCES = {'primary': 'Primary bandwidth (CDR)', 'ca': 'Total bandwidth, every carrier (CA Appendix)'}
 CA_LADDER_TITLE = 'Total bandwidth of each test: every LTE and NR carrier'
 
@@ -2099,6 +2110,7 @@ def install_network_insights_routes(core: Any) -> None:
                 'band_classes': BAND_CLASSES,
                 'bandwidth_scopes': BANDWIDTH_SCOPES,
                 'bandwidth_sources': BANDWIDTH_SOURCES,
+                'data_sources': DATA_SOURCES,
                 'bandwidth_title': BANDWIDTH_LADDER_TITLE,
                 'nr_duplex_splits': NR_DUPLEX_SPLITS,
                 'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},

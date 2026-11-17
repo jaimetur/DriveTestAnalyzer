@@ -682,3 +682,5 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .network-insights .ni-source-ca { background: #6a4fb3; }
 .network-insights .ni-source-polygons { background: #0c8599; }
 .network-insights .ni-source-holdings, .network-insights .ni-source-serving { background: #5b6478; }
+.network-insights .ni-sources-sub { margin: .1rem 0 .5rem; }
+.network-insights .ni-sources-sub .ni-source { font-size: .66rem; padding: .05rem .45rem; }

@@ -8,7 +8,11 @@ Every panel, and every chart, map, ladder and table in it, downloads as a PNG im
 
 After **Launch Analysis**, the panels are grouped in three categories, each a panel that collapses with its panels: **Summary** (Overview and Key Findings), **Radio Performance** (Coverage & Interference Maps, RF Quality, Latency & Interactivity, Serving Cells and 5G Availability) and **Network & Spectrum** (Network Snapshot, Network Deployment, Cluster Sites Density and Spectrum). In the floating section bar and in the sections menu of the tab, each category goes to its panel and its arrow opens the list of its panels.
 
-Under its title, each panel names its **data sources** as coloured labels (hover one for where it comes from):
+Each panel names its **data sources** as coloured labels under its title (hover one for where it comes from):
+
+- **Panels:** every source the panel reads, as in the table below.
+- **Tables and charts:** in a panel with several sources, each table or chart names its own (for example *Weakest coverage areas*: CDRs; *Cell status near the weak areas*: Network Inventory).
+- **Labels that follow a choice:** the Cluster Sites Density table and Network Deployment (Observed Sites/Cells → CDRs; split by Region or Cluster → polygons too), and the ladders and locations of Spectrum (Bandwidth: CA Appendix).
 
 | Source | Panels |
 | --- | --- |
