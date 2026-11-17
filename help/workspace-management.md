@@ -40,7 +40,7 @@ The open workspace is one for the whole server: opening another one changes it f
 > [!IMPORTANT]
 > **Only admins and super-admins upload datasets.** The other roles see a card in **Data Ingestion** that says so instead of the upload area, and the server rejects their uploads; `user-editor` accounts still manage the datasets of the workspace (see the read-only note of [Combined CDR Tables](#combined-cdr-tables) for `user-viewer`).
 
-Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `CSV` files or their `ZIP` for Layer3 Logs, `KMZ` and `KML` files (alone or in a `ZIP` package) for Cell Configuration inventories, and `GeoJSON`, `JSON` or zipped shapefiles for Regions, Clusters and Vendors. Only successfully processed datasets can be used by Design, Chart Builder or Reporting.
+Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `CSV` files or their `ZIP` for Layer3 Logs, an `XLSX` workbook, `CSV` files or their `ZIP` for the CA Appendix, `KMZ` and `KML` files (alone or in a `ZIP` package) for Cell Configuration inventories, and `GeoJSON`, `JSON` or zipped shapefiles for Regions, Clusters and Vendors. Only successfully processed datasets can be used by Design, Chart Builder or Reporting.
 
 ### Supported Input Types
 
@@ -53,6 +53,7 @@ Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `CSV` fi
 - Clusters — Geospatial
 - Vendors — Geospatial
 - Layer3 Logs — the parsed drivetest logs of the tests of each campaign; see [Layer3 Logs](#layer3-logs).
+- CA Appendix — the Carrier Aggregation details of each test that NetCheck delivers every quarter; see [CA Appendix](#ca-appendix).
 - Other supported dataset — offered on upload, and as **Other Datasets** in the Dataset Type filter, only while the workspace has such datasets.
 
 ### Upload Workflow
@@ -244,6 +245,7 @@ The **Datasets** panel shows in its header, before Collapse, how many campaigns 
 - **Final CDRs**, **Weekly CDRs** and **Daily CDRs** (the last two fold and are shown only when there are CDRs of their type), at full width, grouped by campaign, with the Campaign, NR Mode, CDR Type, CDR Stage and Active? columns; Rows sit above Columns and Uploaded above Updated in one column each, and each of them keeps its own sort button in the header.
 - **Multivendor Mappings** (the cells that give the CDRs their Vendor, with the **Operators** and the **Snapshot** date of each one), **Network Inventories** (the network inventory of each operator: every cell with its vendor, site and configuration, with its **Operator** and **Snapshot** date; the VFUK and 3UK files of earlier versions are here too) and **Geographic Datasets** (Region, Cluster and Vendor polygons, with their **Type**), in one row on a wide window, with compact rows: the dataset with its type and rows, its status with its progress and last update, and its actions. Reference datasets have no analysis or mappings to apply, so their actions are **Preview**, **Reprocess** and **Delete**.
 - **Layer3 Logs**, at full width: one dataset per campaign and NR Mode, with its Campaign (and the Campaign of its rows), NR Mode, Operators, Sessions (over its JoinIDs and the NQ calls of the workspace that have a session in it), Rows, Size, status, last update (its time under its date) and actions, in the font sizes of the other cards so the table fits a laptop window; the header counts their campaigns and sessions and gives their size.
+- **CA Appendix** (the Carrier Aggregation details of the tests, see [CA Appendix](#ca-appendix)), beside the reference cards, with compact rows: each CA Appendix with its tests, fields and the operators of its tests; the note of the card says how many tests of how many CDRs have its fields now.
 - **Other Datasets** (other supported datasets), when there are any.
 - **Combined CDR tables**, the generated read-only query sources, with their Rows over Columns, status (**Ready**, **Updating**, **Recalculating**, **Queued**, **Missing Rows** or **Recalc Needed**), progress and last update; they mix NR Modes and come from no file, so they have no NR Mode, Size or Uploaded columns.
 
@@ -462,6 +464,22 @@ The **Layer3 Logs** are the parsed drivetest logs of the tests of each campaign,
 - Uploading a delivery again under the same name replaces its campaigns. A delivery with another name adds its datasets, and a session that appears in several of them is read from the newest.
 - **Preview** shows the rows of a dataset, read-only, from its Parquet source; **Reprocess** reads that source again and **Delete** removes the dataset, its source and its sessions.
 - Layer3 Logs travel like the CDRs: in full backups, full workspace packages and transfers of the workspace database and its input files, not in light backups.
+
+### CA Appendix
+
+The **CA Appendix** is the quarterly NetCheck file with the Carrier Aggregation details of each test (`20261017_NET CHECK_DATA CA Appendix_Q3 2026.xlsx`): one row per test, keyed by its `JOIN_ID`.
+
+- **What it has:** the aggregated LTE and NR bandwidth, DL and UL carriers and band combinations of the test; per carrier (LTE PCC, SCC1–4; NR PCC, SCC1–5) its band, bandwidth, channel, PCI and radio and scheduling statistics; the eNodeBs and gNodeBs that served it.
+- **What it lacks:** Campaign, cell identities and positions. Each test takes Campaign, NR Mode, Operator and every other field from the CDR test with the same `JOIN_ID`.
+- **Upload:** the file as it comes (`XLSX`, `CSV` files or their `ZIP`; one per quarter, NSA and SA together), type **CA Appendix**. A name with `Appendix` (or `Apendix`) is proposed with that type.
+- **Storage:** read as it streams (a quarter is over 1 GB and about 700,000 tests: around 6 minutes) and kept as Parquet in the input folder, never in the workspace database.
+- **Fields of the CDRs:** every column except the identity of the test becomes a `CA_` field of the CDR tests with its `JOIN_ID` (`CA_Main_Total_Bandwidth_DL`, `CA_NR_SCC1_Main_Band`…):
+  - `Main` values (`value(seconds)`, held longest) become their value; numeric columns are numbers; timelines stay text.
+  - `CA_eNodeB_ID` and `CA_gNodeB_ID` are the first nodes of the test; `CA_eNodeB_Changes` and `CA_gNodeB_Changes` count its node changes.
+  - Written in the background (**CA Appendix fields of the CDRs** in the background tasks card) when a CA Appendix or CDR is processed, reprocessed or deleted. CDRs without matching tests keep no `CA_` column; for a `JOIN_ID` in several files the newest wins.
+- **Where it is used:** **PPT Designer** (section *CA Appendix* in Chart Builder), Query Builder, CDR Analysis and the AI Assistant, with the filters of the CDR; Network Insights → [Spectrum](network-insights.md#spectrum).
+- **Actions:** **Preview** reads its Parquet source; **Reprocess** reads it again; **Delete** removes it, and the CDRs lose its fields in the background.
+- **Transfers:** like the CDRs and Layer3 Logs, in full backups, full workspace packages and transfers, not in light backups.
 
 ### Auto-calculated Fields
 

@@ -93,6 +93,8 @@ from src.modules.core.email_delivery import DEFAULT_LINK_DAYS, DEFAULT_MAX_ATTAC
 from src.modules.network.network_inventory import DEFAULT_NETWORK_BY_KIND, INVENTORY_DATASET_KINDS, MULTIVENDOR_MAPPING_KIND, SNAPSHOT_DATASET_KINDS, build_inventory_cells, effective_snapshot_date, list_mapping_snapshots, mapping_operators, network_family, normalise_snapshot_date
 from src.modules.cdr.l3_dt_logs import KIND as L3_DT_LOGS_KIND, dataset_summary as l3_dataset_summary, forget_datasets as l3_forget_datasets
 from src.modules.cdr.l3_dt_logs import preview_frame as l3_preview_frame, source_columns as l3_source_columns
+from src.modules.cdr.ca_appendix import KIND as CA_APPENDIX_KIND, dataset_summary as ca_dataset_summary, forget_datasets as ca_forget_datasets
+from src.modules.cdr.ca_appendix import preview_frame as ca_preview_frame, source_columns as ca_source_columns
 from src.modules.network.serving_cells import suggest_mapping_operators, vendor_mapping_signature
 from src.modules.cdr.ingestion import CDR_IGNORED_SHEET_KEYS, add_three_gcid_column, add_vfuk_gcid_column, apply_operator_mappings, ensure_fixed_cdr_fields, get_dataset_source_columns, get_excel_sheet_columns, infer_dataset_kind, load_dataset, summarise_dataset
 from src.modules.network.geospatial import assign_clusters, assign_regions, polygon_vendor_endpoints, validate_cluster_mapping, validate_region_mapping, validate_vendor_polygons, vendor_polygon_operators
@@ -429,9 +431,10 @@ INPUT_KIND_LABELS = {
     'clusters': 'Clusters — Geospatial',
     'vendors': 'Vendors — Geospatial',
     'l3_dt_logs': 'Layer3 Logs',
+    CA_APPENDIX_KIND: 'CA Appendix',
     'generic': 'Other',
 }
-UPLOAD_DATASET_KINDS = frozenset({'data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', MULTIVENDOR_MAPPING_KIND, 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'generic'})
+UPLOAD_DATASET_KINDS = frozenset({'data', 'voice', 'speech', 'mapping_vodafone', 'mapping_three', MULTIVENDOR_MAPPING_KIND, 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', CA_APPENDIX_KIND, 'generic'})
 # The datasets chosen as a mapping of the Vendor: a Multivendor Mapping gives only that, VFUK and 3UK are Network Inventories too.
 MAPPING_DATASET_KINDS = frozenset({'mapping_vodafone', 'mapping_three', MULTIVENDOR_MAPPING_KIND})
 # The datasets that other datasets use: they are processed first.
@@ -4100,6 +4103,9 @@ def serialize_dataset_row(row) -> dict[str, Any]:
         item['campaign_key'] = ' '.join(filter(None, (item['campaign'], item['l3'].get('nr_mode'))))
         # The NQ calls of the workspace that have a session in it (see add_l3_nq_calls).
         item['l3_nq_calls'] = None
+    if item.get('dataset_kind') == CA_APPENDIX_KIND:
+        # The tests, fields and operators of the CA Appendix (the CDRs that take its fields: add_ca_appendix_matches).
+        item['ca'] = ca_dataset_summary(item)
     if item.get('dataset_kind') in SNAPSHOT_DATASET_KINDS:
         # The date of the network the inventory describes: chosen, else in its file name, else its upload date.
         item['snapshot_date'] = str(item.get('snapshot_date') or '')[:10]
@@ -4197,6 +4203,16 @@ def add_l3_nq_calls(datasets: list[dict[str, Any]], task_repository: Repository 
     for dataset in datasets:
         if dataset.get('dataset_kind') == L3_DT_LOGS_KIND and dataset.get('is_ready'):
             dataset['l3_nq_calls'] = counts.get(int(dataset['id']), 0)
+
+
+def ca_appendix_matches(task_repository: Repository | None = None) -> dict[str, Any]:
+    """The CDRs whose tests have CA Appendix fields, and how many tests, for the CA Appendix card."""
+    from src.modules.cdr.ca_appendix import matched_by_appendix
+
+    try:
+        return matched_by_appendix(task_repository or repository)
+    except sqlite3.Error:
+        return {'cdrs': [], 'tests': 0}
 
 
 def add_row_campaigns(datasets: list[dict[str, Any]], task_repository: Repository | None = None) -> None:
@@ -4480,6 +4496,17 @@ def queue_map_area_fill(task_repository: Repository) -> None:
     from src.modules.network.map_area_columns import queue_fill
     try:
         # Stopped at once when the application stops (its shutdown waits for the running job).
+        queue_fill(task_repository, lambda run: _submit_workspace_job(task_repository, run, phase=6),
+                   APP_SHUTTING_DOWN.is_set)
+    except RuntimeError:  # The scheduler is shutting down.
+        pass
+
+
+def queue_ca_appendix_fill(task_repository: Repository) -> None:
+    """Write the CA Appendix fields in the CDRs whose fields are not those of the current CA Appendices (in the
+    background, after the calculations waiting)."""
+    from src.modules.cdr.ca_appendix import queue_fill
+    try:
         queue_fill(task_repository, lambda run: _submit_workspace_job(task_repository, run, phase=6),
                    APP_SHUTTING_DOWN.is_set)
     except RuntimeError:  # The scheduler is shutting down.
@@ -5023,6 +5050,9 @@ def enqueue_dataset_processing(
                         start_combined_cdr_recreation_job(task_workspace, completed_kind, username)
                         queue_scoring_history(task_repository)
                         queue_cdr_store(task_repository)
+                    elif completed and str(completed['status']) == 'ready' and completed_kind == CA_APPENDIX_KIND:
+                        # The CDRs whose tests it has take its fields (the worker only wrote the CA Appendix).
+                        queue_ca_appendix_fill(task_repository)
                 except Exception as exc:
                     task_repository.update_dataset_profile(
                         dataset_id, status='failed',
@@ -5389,6 +5419,22 @@ def rebuild_dataset_artifacts(
             'df': None, 'summary': None, 'analysis': None, 'filter_options': {}, 'vendor_mapping_error': None,
             'region_mapping_error': None, 'vendor_values_complete': False, 'dataset_kind': L3_DT_LOGS_KIND,
             'l3_dt_logs': delivery,
+        }
+    if forced_dataset_kind == CA_APPENDIX_KIND:
+        # A CA Appendix never goes through SQLite: it is written as a Parquet source and its fields are derived from
+        # it; the CDRs whose tests it has take them in the background (see ca_appendix).
+        from src.modules.cdr import ca_appendix
+
+        task_repository.update_dataset_profile(dataset_id, processing_step='Reading the CA Appendix')
+        delivery = ca_appendix.process_delivery(
+            task_repository, dataset_id, dataset_path, progress=progress_callback,
+            normalization_version=DATASET_NORMALIZATION_VERSION)
+        task_repository.add_log(str(task_repository.get_dataset(dataset_id)['uploaded_by'] or ''), 'ca_appendix_processed',
+                                json.dumps({'dataset_id': dataset_id, 'source': dataset_path.name, **delivery}, ensure_ascii=False))
+        return {
+            'df': None, 'summary': None, 'analysis': None, 'filter_options': {}, 'vendor_mapping_error': None,
+            'region_mapping_error': None, 'vendor_values_complete': False, 'dataset_kind': CA_APPENDIX_KIND,
+            'ca_appendix': delivery,
         }
     field_profile = workspace_field_profile(task_repository)
     if cluster_mapping_dataset_id is None:
@@ -14914,6 +14960,7 @@ def render_admin_template(
     from src.modules.assistant.assistant import TABLE_TITLES as ASSISTANT_TABLE_TITLES
     from src.modules.scoring.scoring_exclusions import TABLE_TITLES as SCORING_EXCLUSION_TABLE_TITLES
     from src.modules.cdr.l3_dt_logs import TABLE_TITLES as L3_DT_LOGS_TABLE_TITLES
+    from src.modules.cdr.ca_appendix import TABLE_TITLES as CA_APPENDIX_TABLE_TITLES
 
     friendly_tables = {
         WORKSPACE_REGISTRY_TABLE: 'Workspace Registry',
@@ -14965,6 +15012,7 @@ def render_admin_template(
         **SCORING_EXCLUSION_TABLE_TITLES,
         **CDR_STORE_TABLE_TITLES,
         **L3_DT_LOGS_TABLE_TITLES,
+        **CA_APPENDIX_TABLE_TITLES,
     }
     global_database_tables = (set(repository.list_global_database_tables()) - {'report_templates'}) if active_workspace else set()
     for table_name in repository.list_database_tables() if active_workspace else []:
@@ -16595,6 +16643,7 @@ def workspace(
             'vendor_polygon_datasets': vendor_polygon_datasets,
             'network_inventory_datasets': network_inventory_datasets,
             'multivendor_mapping_datasets': multivendor_mapping_datasets,
+            'ca_appendix_matches': ca_appendix_matches(),
             'vendor_source_operators': vendor_source_operators(
                 vodafone_mapping_datasets, three_mapping_datasets, network_inventory_datasets, vendor_polygon_datasets,
                 multivendor_mappings=multivendor_mapping_datasets),
@@ -17089,6 +17138,30 @@ def _place_tests_when_idle() -> None:
 
 
 register_idle_task(_place_tests_when_idle, MAP_AREA_FILL_IDLE_SECONDS)
+
+
+def _ca_appendix_fill_tasks(workspace: Workspace) -> list[dict[str, Any]]:
+    """The writing of the CA Appendix fields in the CDRs."""
+    from src.modules.cdr.ca_appendix import fill_tasks
+    return fill_tasks(workspace.database_path)
+
+
+BACKGROUND_TASK_PROVIDERS.append(_ca_appendix_fill_tasks)
+
+
+def _fill_ca_fields_when_idle() -> None:
+    """Write the CA Appendix fields of the active workspace's CDRs whose fields are not those of its CA Appendices
+    (a CDR processed again, or copied after it was processed, included)."""
+    if not active_workspace or APP_SHUTTING_DOWN.is_set():
+        return
+    from src.modules.cdr.ca_appendix import stale_datasets
+    task_repository = Repository(active_workspace.database_path, global_db_path=repository.global_db_path,
+                                 workspace_registry_db_path=workspace_registry.registry_path)
+    if stale_datasets(task_repository):
+        queue_ca_appendix_fill(task_repository)
+
+
+register_idle_task(_fill_ca_fields_when_idle, MAP_AREA_FILL_IDLE_SECONDS)
 
 
 def _fill_cdr_facets_when_idle() -> None:
@@ -18735,8 +18808,11 @@ def preview_dataset(
     dataset = refresh_selected_dataset_if_stale(dataset) or dataset
     dataset = ensure_mapping_gcid(dataset)
     # A Layer3 Logs dataset is read, read-only, from its Parquet source: its rows are never in SQLite.
-    l3_preview = dataset['dataset_kind'] == L3_DT_LOGS_KIND
-    available_columns = l3_source_columns(dataset['stored_path']) if l3_preview else repository.list_dataset_row_columns(dataset_id)
+    # So is a CA Appendix.
+    ca_preview = dataset['dataset_kind'] == CA_APPENDIX_KIND
+    l3_preview = dataset['dataset_kind'] == L3_DT_LOGS_KIND or ca_preview
+    available_columns = ((ca_source_columns if ca_preview else l3_source_columns)(dataset['stored_path']) if l3_preview
+                         else repository.list_dataset_row_columns(dataset_id))
     if dataset['dataset_kind'] in MAPPING_DATASET_KINDS:
         available_columns = [column for column in available_columns if not str(column).casefold().startswith('unnamed')]
     available_identities = {column_identity(column) for column in available_columns}
@@ -18804,7 +18880,7 @@ def preview_dataset(
         )
     else:
         preview_frame = (
-            l3_preview_frame(dataset['stored_path'], preview_columns, row_limit) if l3_preview
+            (ca_preview_frame if ca_preview else l3_preview_frame)(dataset['stored_path'], preview_columns, row_limit) if l3_preview
             else repository.load_dataset_rows(dataset_id, preview_columns, preview_filters))
         if dataset['dataset_kind'] in MAPPING_DATASET_KINDS:
             _initial_labels, initial_kinds, _initial_rules = _preview_column_metadata(
@@ -20795,8 +20871,11 @@ async def chart_builder_fields(request: Request, user: SessionUser = Depends(cur
     if not any(_normalise_catalogue_dimension_name(column) == _normalise_catalogue_dimension_name(NR_MODE_FIELD) for column in columns):
         columns.append('NR Mode')
         categories.setdefault(_normalise_catalogue_dimension_name('NR Mode'), categories.get('campaign', 'Other fields'))
+    # The fields the CDR tests take from a CA Appendix (see ca_appendix) have a section of their own.
+    from src.modules.cdr.ca_appendix import LABEL as CA_APPENDIX_LABEL, is_ca_field
     fields = [{'name': column, 'type': types.get(_normalise_catalogue_dimension_name(column), 'text'),
-               'category': categories.get(_normalise_catalogue_dimension_name(column), 'Other fields')}
+               'category': categories.get(_normalise_catalogue_dimension_name(column),
+                                          CA_APPENDIX_LABEL if is_ca_field(column) else 'Other fields')}
               for column in sorted(columns, key=str.casefold) if _normalise_catalogue_dimension_name(column) not in hidden]
     dimensions = load_workspace_calculated_dimensions()
     # The fields most charts split or filter by are read while the first field is chosen.
@@ -24419,6 +24498,9 @@ def delete_workspace_datasets(
     repository.remove_orphaned_reporting_rows()
     # The sessions and derived files of deleted Layer3 Logs datasets.
     l3_forget_datasets(repository)
+    # The derived files of deleted CA Appendices; the CDRs that had their fields lose them in the background.
+    ca_forget_datasets(repository)
+    queue_ca_appendix_fill(repository)
     queue_combined_cdr_inclusion_sync(user.username)
     invalidate_workspace_size_cache()
     resolved_paths = {str(path.resolve()) for path in deleted_paths}
@@ -24459,6 +24541,9 @@ def delete_dataset(dataset_id: int, return_to: str = Form(''), user: SessionUser
     repository.remove_orphaned_reporting_rows()
     # The sessions and derived files of deleted Layer3 Logs datasets.
     l3_forget_datasets(repository)
+    # The derived files of deleted CA Appendices; the CDRs that had their fields lose them in the background.
+    ca_forget_datasets(repository)
+    queue_ca_appendix_fill(repository)
     if str(dataset_payload.get('dataset_kind') or '').casefold() in CDR_DATASET_KINDS:
         # Deleting a Final CDR brings back the Daily CDRs it replaced.
         queue_combined_cdr_inclusion_sync(user.username)

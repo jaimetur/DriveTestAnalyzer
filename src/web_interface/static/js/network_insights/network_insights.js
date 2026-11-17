@@ -18,7 +18,7 @@
   const selectionControls = ['ni-nr-mode', 'ni-technology', 'ni-group', 'ni-coverage-threshold',
     'ni-interference-threshold', 'ni-nr-coverage-threshold', 'ni-nr-interference-threshold', 'ni-grid',
     'ni-deployment-group', 'ni-sites-source', 'ni-snapshot', 'ni-overshoot', 'ni-deployment-technology',
-    'ni-bandwidth-tests', 'ni-nr-duplex-split'];
+    'ni-bandwidth-tests', 'ni-bandwidth-source', 'ni-nr-duplex-split'];
   for (const id of selectionControls) {
     const control = $(id);
     const value = savedSelection.controls?.[id];
@@ -763,7 +763,10 @@
   // Bandwidth per band and primary bandwidth (LTE + NR) of the CDR Data tests: the download tests or every test.
   const bandwidthWidth = value => `${Number(value).toLocaleString('en-US', {maximumFractionDigits: 1})} MHz`;
   // The primary bandwidth chart carries its own title and, under it, the line that explains its figures, as a slide does.
-  const ladderTitle = config.bandwidth_title || 'Primary bandwidth of each test: LTE + NR';
+  const primaryLadderTitle = config.bandwidth_title || 'Primary bandwidth of each test: LTE + NR';
+  // The ladders read the primary bandwidth of the CDRs, or the total of every carrier of the CA Appendix.
+  let ladderTitle = primaryLadderTitle;
+  let ladderSource = 'primary';
   const ladderFrame = (body, caption = '', attributes = '') => `<div class="ni-ladder"${attributes}><div class="ni-ladder-head"><h3 class="ni-ladder-title">${escapeHtml(ladderTitle)}</h3>${caption ? `<p class="ni-ladder-caption">${escapeHtml(caption)}</p>` : ''}</div>${body}</div>`;
   const renderBandwidth = () => {
     const bandwidth = analysis?.spectrum?.bandwidth;
@@ -777,9 +780,20 @@
     }
     const scope = bandwidth.scopes[$('ni-bandwidth-tests').value] ? $('ni-bandwidth-tests').value : 'download';
     const view = bandwidth.scopes[scope];
+    // The total bandwidth of the CA Appendix, when some tests of the selection have one.
+    const sourceControl = $('ni-bandwidth-source');
+    for (const option of sourceControl.options) {
+      option.disabled = option.value === 'ca' && !view.ca;
+      option.title = option.disabled ? 'No test of this selection has its JOIN_ID in a CA Appendix of the workspace' : '';
+    }
+    ladderSource = sourceControl.value === 'ca' && view.ca ? 'ca' : 'primary';
+    ladderTitle = ladderSource === 'ca' ? (bandwidth.ca_title || 'Total bandwidth of each test: every LTE and NR carrier') : primaryLadderTitle;
+    const ladderView = ladderSource === 'ca' ? view.ca : view;
     $('ni-bandwidth-status').textContent = view.tests
       ? (scope === 'download' ? `${integer(view.tests)} download tests of the CDR Data.` : `${integer(view.tests)} CDR Data tests of every type.`)
+        + (view.ca ? ` ${integer(view.ca.tests)} of them have the total bandwidth of a CA Appendix.` : '')
       : 'No CDR Data tests in this selection: only CDR Data reports bandwidths.';
+    renderCarrierAggregation(view.carrier_aggregation, bandwidth);
     // Bandwidth per band: one column per bandwidth seen, the samples of each band and their share of the band.
     // A bandwidth with no samples, or under 3% of the known samples of every band, is left out (its samples are Other),
     // unless it is the only bandwidth of a band (as network_insights.shown_bandwidths, for the exports).
@@ -806,14 +820,39 @@
         <td class="num">${row.unknown ? integer(row.unknown) : '—'}</td><td class="num">${row.typical_bandwidth_mhz ? bandwidthWidth(row.typical_bandwidth_mhz) : '—'}</td></tr>`).join('')}</tbody>`
       : '<tbody><tr><td class="form-note">The selected tests report no serving bands.</td></tr></tbody>';
     const split = $('ni-ladder-split').value;
-    const splitLadders = view.split_ladders || {};
+    const splitLadders = ladderView.split_ladders || {};
     for (const option of $('ni-ladder-split').options) {
       option.disabled = option.value !== 'group' && !splitLadders[option.value];
       option.title = option.disabled ? 'The tests of this selection have no serving cell of the Vendor Mapping with this field' : '';
     }
-    const ladders = split !== 'group' && splitLadders[split] ? splitLadders[split] : view.ladders;
+    const ladders = split !== 'group' && splitLadders[split] ? splitLadders[split] : ladderView.ladders;
     renderLadders(host, bandwidth, ladders, scope, split !== 'group' && splitLadders[split] ? $('ni-ladder-split').selectedOptions[0].textContent : '');
-    renderLocationStrips(view.locations, bandwidth);
+    renderLocationStrips(ladderView.locations, bandwidth);
+  };
+  // Carrier aggregation of the CDR Data tests with a CA Appendix: carriers and bandwidths per group, band combinations
+  // and the eNodeBs and gNodeBs observed with their carriers.
+  const renderCarrierAggregation = (ca, bandwidth) => {
+    const host = $('ni-carrier-aggregation');
+    if (!ca) {
+      host.innerHTML = '<p class="form-note">No test of this selection has its JOIN_ID in a CA Appendix of the workspace. Upload the CA Appendix of the campaign in Workspace (type CA Appendix) to see the carriers each test aggregated.</p>';
+      return;
+    }
+    const swatch = column => `<span class="ni-swatch" style="background:${escapeHtml(bandwidth.column_colours?.[column] || '#6D46A8')}"></span>`;
+    const mhz = value => value === null || value === undefined ? '—' : `${number(value, 0)} MHz`;
+    const percent = value => value === null || value === undefined ? '—' : `${number(value)}%`;
+    const series = themeColours?.series || ['#5B7A99', '#A9C4DB', '#8BA88E', '#C9B27C', '#B48C7C'];
+    const carrierBar = row => `<span class="ni-band-share-bar ni-ca-carrier-bar">${row.carrier_shares.map((share, index) => share ? `<span style="flex:0 0 ${share}%;background:${series[index % series.length]}" title="${escapeHtml(`${row.column} · ${ca.carrier_classes[index]}: ${number(share)}% (${integer(row.carrier_counts[index])} tests)`)}">${share >= 9 ? index + 1 + (index === 4 ? '+' : '') : ''}</span>` : '').join('')}</span>`;
+    const summary = `<div class="table-wrap ni-table-wrap"><table class="ni-table ni-ca-table"><thead><tr><th>${escapeHtml(bandwidth.column_label)}</th><th>Tests with CA data</th><th>DL carriers (1 → 5+)</th><th>Mean carriers</th><th>LTE CA</th><th>NR CA</th><th>Total BW, median</th><th>LTE BW, median</th><th>NR BW, median</th><th>${number(bandwidth.wide_from_mhz ?? 100, 0)} MHz+</th></tr></thead>
+      <tbody>${ca.summary.map(row => `<tr><td>${swatch(row.column)}${escapeHtml(row.column)}</td><td class="num">${integer(row.with_ca)} <small>${percent(row.coverage)}</small></td><td>${carrierBar(row)}</td>
+        <td class="num">${row.mean_carriers === null ? '—' : number(row.mean_carriers)}</td><td class="num">${percent(row.lte_ca_share)}</td><td class="num">${percent(row.nr_ca_share)}</td>
+        <td class="num"><strong>${mhz(row.median_total_mhz)}</strong></td><td class="num">${mhz(row.median_lte_mhz)}</td><td class="num">${mhz(row.median_nr_mhz)}</td><td class="num">${percent(row.wide_share)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="ni-band-share-legend">${ca.carrier_classes.map((label, index) => `<span><i style="background:${series[index % series.length]}"></i>${escapeHtml(label)}</span>`).join('')}</p>`;
+    const combinations = ca.combinations.length ? `<h4 class="ni-subtitle">Band combinations used for longest</h4><div class="ni-ca-combinations">${ca.combinations.map(row => `<section class="ni-band-share-card"><h4>${swatch(row.column)}${escapeHtml(row.column)} <small>${integer(row.tests)} tests · ${integer(row.distinct)} combinations</small></h4>
+      <table class="ni-table ni-ca-combination-table"><tbody>${row.combinations.map(item => `<tr><td>${escapeHtml(item.bands)}</td><td class="num">${integer(item.tests)}</td><td><span class="ni-share"><span style="width:${item.share}%"></span></span> ${number(item.share)}%</td></tr>`).join('')}${row.others ? `<tr><td class="form-note">Other combinations</td><td class="num">${integer(row.others)}</td><td></td></tr>` : ''}</tbody></table></section>`).join('')}</div>` : '';
+    const nodes = ca.nodes.length ? `<h4 class="ni-subtitle">eNodeBs and gNodeBs observed with their carriers</h4><div class="table-wrap ni-table-wrap"><table class="ni-table ni-ca-table"><thead><tr><th>${escapeHtml(bandwidth.column_label)}</th><th>Technology</th><th>Nodes</th><th>Cells (channel, PCI)</th><th>Carriers per node</th><th>Nodes with 2+ carriers</th><th>Bands: nodes with it · bandwidth</th></tr></thead>
+      <tbody>${ca.nodes.map(row => `<tr><td>${swatch(row.column)}${escapeHtml(row.column)}</td><td>${technologyChip(row.technology)}</td><td class="num">${integer(row.nodes)}</td><td class="num">${integer(row.cells)}</td><td class="num">${number(row.mean_carriers)}</td><td class="num">${percent(row.multi_carrier_share)}</td>
+        <td><div class="ni-ca-bands">${row.bands.map(band => `<span class="ni-ca-band" title="${escapeHtml(`${band.band}: ${integer(band.nodes)} nodes (${number(band.share)}%), mostly ${mhz(band.bandwidth_mhz)}; ${band.channel_count} channel${band.channel_count === 1 ? '' : 's'}, most seen ${band.channels.join(', ')}`)}"><strong>${escapeHtml(band.band)}</strong> ${number(band.share, 0)}% · ${mhz(band.bandwidth_mhz)}</span>`).join('')}${row.other_bands ? `<span class="form-note">+${row.other_bands} more</span>` : ''}</div></td></tr>`).join('')}</tbody></table></div>` : '';
+    host.innerHTML = `<p class="form-note">${integer(ca.tests)} CDR Data tests of this selection have a CA Appendix.</p>${summary}${combinations}${nodes}`;
   };
   // Download tests by location: per City (the most measured ones) and group, the share of the tests under 25 MHz and the
   // share that failed or reached 5 Mbit/s or less, each cell shaded by its share.
@@ -833,7 +872,7 @@
           return `<td class="num ni-strip-cell${few ? ' is-few' : ''}" style="--ni-strip:${colour};--ni-strip-share:${Math.min(1, cell[key] / peak)}" title="${escapeHtml(`${row.column} · ${city}: ${number(cell[key])}% of ${integer(key === 'narrow_share' ? cell.known : cell.judged)} download tests${few ? ` (under ${locations.min_tests} tests)` : ''}`)}">${number(cell[key], 0)}%</td>`;
         }).join('')}</tr>`).join('')}</tbody></table></div><p class="form-note">${escapeHtml(note)}</p></div>`;
     };
-    host.innerHTML = strip('narrow_share', `Share of the download tests under ${locations.narrow_below_mhz} MHz of primary bandwidth (LTE + NR)`, '181,19,43',
+    host.innerHTML = strip('narrow_share', `Share of the download tests under ${locations.narrow_below_mhz} MHz of ${ladderSource === 'ca' ? 'total bandwidth (every carrier, CA Appendix)' : 'primary bandwidth (LTE + NR)'}`, '181,19,43',
       'Of the tests with a known bandwidth. Hatched: under the minimum of tests.')
       + strip('slow_share', `Share of the download tests failed or at ${locations.slow_mbps} Mbit/s or less`, '232,65,79',
         'Failed: the result is not completed; slow: the mean data rate of the test. Hatched: under the minimum of tests.');
@@ -843,7 +882,7 @@
   const ladderCaption = (bandwidth, ladders, scope) => {
     const narrow = bandwidth.narrow_below_mhz;
     const highlights = ladders.highlights || [];
-    return `Each ladder splits the ${scope === 'download' ? 'download tests' : 'CDR Data tests'} with a known bandwidth by their primary bandwidth (the LTE carriers and the NR primary cell; the CDRs do not report the NR secondary carriers), widest at the bottom; the number beside it is the share under ${narrow} MHz (dark red) and the one below it the share at ${bandwidth.wide_from_mhz ?? 100} MHz or more.${highlights.length
+    return `Each ladder splits the ${scope === 'download' ? 'download tests' : 'CDR Data tests'} with a known bandwidth by their ${ladderSource === 'ca' ? 'total bandwidth (every LTE and NR carrier of the CA Appendix, NR secondary carriers included)' : 'primary bandwidth (the LTE carriers and the NR primary cell; the CDRs do not report the NR secondary carriers)'}, widest at the bottom; the number beside it is the share under ${narrow} MHz (dark red) and the one below it the share at ${bandwidth.wide_from_mhz ?? 100} MHz or more.${highlights.length
       ? ` Most under ${narrow} MHz: ${highlights.map(item => `${item.environment}, ${item.column} (${number(item.narrow_share, 0)}%)`).join('; ')}.` : ''}`;
   };
   // Primary bandwidth: per group (column) and environment (row), one block per bandwidth class, widest at the bottom,
@@ -908,8 +947,9 @@
     // The legend, widest class first, under the ladders.
     const legendTop = header + rows.length * rowHeight + 22;
     // The classes follow the legend title, which is wider than the row labels.
-    let legendX = Math.max(labelWidth, 12 + 'Primary bandwidth, MHz (LTE + NR)'.length * 8.6 + 18);
-    parts.push(`<text class="ni-ladder-legend-title" x="12" y="${legendTop + 6}" dominant-baseline="middle">Primary bandwidth, MHz (LTE + NR)</text>`);
+    const legendTitle = ladderSource === 'ca' ? 'Total bandwidth, MHz (every carrier)' : 'Primary bandwidth, MHz (LTE + NR)';
+    let legendX = Math.max(labelWidth, 12 + legendTitle.length * 8.6 + 18);
+    parts.push(`<text class="ni-ladder-legend-title" x="12" y="${legendTop + 6}" dominant-baseline="middle">${legendTitle}</text>`);
     classes.forEach(item => {
       parts.push(`<rect x="${legendX}" y="${legendTop - 2}" width="16" height="16" rx="2" fill="${item.colour}"></rect><text class="ni-ladder-legend" x="${legendX + 22}" y="${legendTop + 6}" dominant-baseline="middle">${escapeHtml(item.label)}</text>`);
       legendX += 34 + item.label.length * 8.2;
@@ -975,6 +1015,7 @@
   };
   $('ni-nr-duplex-split').addEventListener('change', () => { void loadNrDuplex(); });
   $('ni-bandwidth-tests').addEventListener('change', renderBandwidth);
+  $('ni-bandwidth-source').addEventListener('change', renderBandwidth);
   $('ni-ladder-split').addEventListener('change', renderBandwidth);
   // Key Findings: their footnotes end with the scope and Campaigns of the analysis.
   const renderFindings = () => {

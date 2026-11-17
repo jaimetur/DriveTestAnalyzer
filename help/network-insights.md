@@ -8,6 +8,17 @@ Every panel, and every chart, map, ladder and table in it, downloads as a PNG im
 
 After **Launch Analysis**, the panels are grouped in three categories, each a panel that collapses with its panels: **Summary** (Overview and Key Findings), **Radio Performance** (Coverage & Interference Maps, RF Quality, Latency & Interactivity, Serving Cells and 5G Availability) and **Network & Spectrum** (Network Snapshot, Network Deployment, Cluster Sites Density and Spectrum). In the floating section bar and in the sections menu of the tab, each category goes to its panel and its arrow opens the list of its panels.
 
+Under its title, each panel names its **data sources** as coloured labels (hover one for where it comes from):
+
+| Source | Panels |
+| --- | --- |
+| **CDRs** (Data, Voice, Speech) | Overview, Coverage & Interference Maps, RF Quality, Serving Cells, 5G Availability, Cluster Sites Density |
+| **CDR Data** | Key Findings, Latency & Interactivity, Spectrum |
+| **Network Inventory** | Coverage & Interference Maps, Serving Cells, 5G Availability, Network Snapshot, Network Deployment, Cluster Sites Density, Spectrum |
+| **CA Appendix** | Spectrum |
+| **Region & Cluster polygons** | Network Deployment, Cluster Sites Density |
+| **Spectrum Holdings**, **Serving Networks** (Workspace Config) | Spectrum, Serving Cells |
+
 > [!NOTE]
 > **Radio views need no extra input.** RSRP, SINR, maps, observed eNodeBs and observed bands come from the processed CDRs. The Network Inventories (Cell Configuration KMZ packages included) and the licensed spectrum are optional inputs that complete the Serving Cells, 5G Availability, Network Snapshot, Network Deployment, Cluster Sites Density and Spectrum panels.
 
@@ -219,12 +230,20 @@ The explanatory note appears only in Observed Sites/Cells mode. A separate yello
 
 **Spectrum observed in the measurements** shows, per group, one bar for LTE and one for NR with the share of its samples served on each band (LTE from the serving EARFCN or the band of the cell trace), each band in a colour of the theme; the line under the bars opens the table of every band with its frequency, duplex mode, class, samples and most frequent downlink bandwidth. PowerPoint and Word show the bars on a slide before that table. Bandwidths are reported only by CDR Data. Observed bands follow the grouping: keep Operator checked to see each operator's own bands.
 
-**Tests**, below it, chooses the CDR Data tests of the two bandwidth views: **Download tests** (the tests with DL in their name, such as FDTT HTTP DL MT and FDFS HTTP(S) DL ST; the default) or **All Data tests**.
+**Tests**, below it, chooses the CDR Data tests of the bandwidth views: **Download tests** (the tests with DL in their name, such as FDTT HTTP DL MT; the default) or **All Data tests**. **Bandwidth**, beside it, chooses what the ladders and locations read:
+
+- **Primary bandwidth (CDR)**, the default.
+- **Total bandwidth, every carrier (CA Appendix)**: every LTE and NR carrier of each test (`CA_Main_Total_Bandwidth_DL`), NR secondary carriers included. Offered when some tests have a [CA Appendix](workspace-management.md#ca-appendix); the other tests count as without a bandwidth.
 
 - **Bandwidth per band** counts, per group, technology and serving band (with its duplex mode), the samples at each downlink bandwidth of its primary carrier (the LTE PCell or the NR PCell), with their share of the band shaded, the samples without a bandwidth and the most frequent bandwidth. A bandwidth gets a column only where it holds at least 3% of the known samples of a band, or is the only bandwidth of a band; the samples of the other bandwidths are counted in **Other** (hover it for their bandwidths), also in PowerPoint and Word.
 - **Primary bandwidth of each test: LTE + NR** adds, for each test, its LTE bandwidth (its mean over the aggregated LTE carriers, `LTE_DL_Test_Bandwidth_Avg`, else its LTE PCell bandwidth, rounded up to 5 MHz as the Reporting field *LTE DL Aggregated BW (MHz)*) and its NR PCell bandwidth, and classes it as **200+**, **140–199**, **100–139**, **60–99**, **40–59**, **25–39** or **under 25 MHz**. A stepped chart shows one ladder per group (the Split by fields other than Environment, as columns) and environment (Cities, Towns, and Roads and railways, as rows): each class is a block as wide as its midpoint and as tall as its share of the tests with a known bandwidth, widest at the bottom; the figure beside it, in the dark red of its block, is the share under 25 MHz, and the label under it the share at 100 MHz or more (*93% at 100 MHz+*), in bold for the largest of the environment. The chart carries this title and, under it in red, a line that explains the ladders and their number and names, for each environment, the group with the largest share under 25 MHz (for example *Most under 25 MHz: Cities, 3 · 2026-Q3 (7%); Roads and railways, O2 · 2026-Q3 (37%)*). Hovering a block shows its share and tests. The tests that report neither bandwidth, and those without an environment when others have one, are left out and counted under the chart; without environments, every test is one row. The CDRs do not report the bandwidth of the NR secondary carriers, so NR carrier aggregation (for example n78 with n28 in SA) is not added: the chart, its legend and the Key Findings call it the **primary bandwidth**, not the total bandwidth of the test.
 - **Ladders per**, above the chart, chooses its columns: each **Group** (the default), each group and **kind of serving site** (the network that owns the cell that served the start of the test and, when another network hosts it, *on* that network, with the NNS sites apart), or each group and **RAN Vendor of the serving cell**. Both splits use the serving cells of the [Vendor Mapping](workspace-management.md#vendor-mapping) and keep the combinations with 20 tests or more of a known bandwidth (up to 12).
 - **Download tests by location** shows, per City (up to the 25 with most tests, each with 15 tests or more in some group) and group, the share of the tests under 25 MHz and the share that failed or reached 5 Mbit/s or less, as shaded cells; a cell with few tests is hatched.
+- **Carrier aggregation of the tests (CA Appendix)**, for the tests of **Tests** that have a [CA Appendix](workspace-management.md#ca-appendix), per group:
+  - **Carriers and bandwidth:** the share with 1, 2, 3, 4 and 5+ DL carriers, the mean carriers, the share with LTE CA and with NR CA, and the median total, LTE and NR bandwidth.
+  - **Band combinations:** the eight used for longest (`B7 + B8 + B1 + B3`, `n78 + B20`) with their tests and share.
+  - **eNodeBs and gNodeBs observed:** per technology, the nodes, cells (channel and PCI), carriers per node, nodes with 2+ carriers and, per band, the share of nodes and the usual bandwidth (its channels on hover). Only tests that stayed on one node count.
+  - It shows what the tests used: it complements the inventory snapshots, which it does not read.
 
 
 ## RF Quality template and Design
@@ -276,6 +295,7 @@ Speech falls back to the `Recording_*` fields when the `Playing_*` fields are ab
 | Cluster or region polygons | Cluster Sites Density (sites per km²), Network Deployment (Region and Cluster) | Upload GeoJSON, JSON or a zipped shapefile as Clusters — Geospatial or Regions — Geospatial in Workspace |
 | Serving Networks | Serving Cells, 5G Availability and the Vendor mapping | [Workspace Config → Serving Networks](workspace-config.md#serving-networks); the defaults cover Vodafone, 3 and Lebara |
 | Licensed spectrum per Operator | Spectrum | [Workspace Config → Spectrum Holdings](workspace-config.md#spectrum-holdings) |
+| Carrier aggregation and total bandwidth of each test | Spectrum (Bandwidth: CA Appendix, Carrier aggregation of the tests) | Upload the quarterly [CA Appendix](workspace-management.md#ca-appendix) of NetCheck in Workspace |
 | NNS site list, if it differs from the inventory eMOCN Scenario | Network Deployment | Include it in the uploaded inventory |
 
 ## Persistence and transfers

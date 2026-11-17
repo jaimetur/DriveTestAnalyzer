@@ -66,6 +66,8 @@ SYNC_PRIORITY = (9, 1)
 STORE_IDLE_SECONDS = 2 * 60
 # The application copies the CDRs by itself (the tests copy them when they need it).
 AUTOMATIC = True
+# The subquery of the keys of one part of a copy, in the SQL of the keyed values of change_copy_columns.
+KEYS_TOKEN = '/*KEYS*/'
 
 
 def quote(name: str) -> str:
@@ -1045,11 +1047,14 @@ def drop_copied_table(repository: Any, dataset_id: int) -> bool:
 
 def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame | None = None, drop: Any = (),
                         should_stop: Callable[[], bool] = lambda: False, *, constants: dict[str, str | None] | None = None,
-                        nr_mode: bool = False, numeric: Any = ()) -> bool:
+                        nr_mode: bool = False, numeric: Any = (), keyed: tuple[str, str, str, list[str]] | None = None) -> bool:
     """Change some columns of a CDR whose copy is its only store in the copy itself, never putting its rows back in its
     table: ``drop`` columns, and set the text columns of ``values`` (ROWID and one column per field, a row for every
-    row of the CDR; a row it lacks gets no value; the ``numeric`` ones are real numbers instead of text) and of
-    ``constants`` (one value for every row), added or in place of the columns of those names; with ``nr_mode`` its rows
+    row of the CDR; a row it lacks gets no value; the ``numeric`` ones are real numbers instead of text), of
+    ``constants`` (one value for every row) and of ``keyed`` (``(sql, column, key, fields)``: the ``fields`` of the
+    DuckDB query ``sql`` for each row whose ``column`` has its ``key``, compared in lower case; ``sql`` reads only the
+    keys of the subquery written ``KEYS_TOKEN`` in it, those of one part of the copy at a time; read by DuckDB, never
+    held in pandas), added or in place of the columns of those names; with ``nr_mode`` its rows
     take the NR Mode the CDR has now. Its empty table follows
     (ALTER TABLE), its manifest says the new columns and its version goes up (as a change of its rows), so the copy
     stays its store. Returns whether it did: not for a CDR whose table holds its rows or that a writer holds (its table
@@ -1082,6 +1087,8 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
         constants = {str(column): value for column, value in (constants or {}).items()}
         written = [] if values is None else [str(column) for column in values.columns if column != ROWID]
         written += [column for column in constants if column not in written]
+        keyed_fields = [str(column) for column in keyed[3] if str(column) not in written] if keyed else []
+        written += keyed_fields
         if any(column in {ROWID, DATASET_ID, NR_MODE} or column.startswith((INT_PREFIX, REAL_PREFIX)) for column in written):
             raise ValueError(f'The CDR {cdr["file_name"]} cannot have a column named like the columns the copy adds.')
         dropped = {str(column) for column in drop} - set(written)
@@ -1104,14 +1111,26 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
             if column in constants:
                 value = constants[column]
                 selected.append(f'CAST({"NULL" if value is None else _sql_text(str(value))} AS VARCHAR) AS {quote(column)}')
+            elif column in keyed_fields:
+                selected.append(f'CAST(k.{quote(column)} AS {new_types[column]}) AS {quote(column)}')
             elif column in written:
                 selected.append(f'CAST(v.{quote(column)} AS {new_types[column]}) AS {quote(column)}')
             else:
                 selected += [f'p.{quote(part)}' for part in stored_parts([column], types)]
-        duck = duckdb.connect(config={'memory_limit': '1GB', 'threads': 2})
+        spill = target.parent / f'.{dataset_id}.{os.getpid()}.spill'
+        duck = duckdb.connect(config={'memory_limit': '2GB' if keyed_fields else '1GB', 'threads': 2,
+                                      'temp_directory': str(spill)})
         try:
             joined = ''
-            from_values = [column for column in written if column not in constants]
+            keyed_part = ''
+            if keyed_fields:
+                sql, key_column, key, _fields = keyed
+                own_key = f'lower(TRIM(CAST(p.{quote(str(key_column))} AS VARCHAR)))'
+                # The values of the keys of one part at a time (KEYS_TOKEN in ``sql``): a part joins a table of its own
+                # size, never the values of the whole CDR (hundreds of columns for each of its rows).
+                keyed_part = sql
+                joined += f' LEFT JOIN keyed_values k ON k.{quote(key)} = {own_key}'
+            from_values = [column for column in written if column not in constants and column not in keyed_fields]
             if from_values:
                 frame = values[[ROWID, *from_values]].copy()
                 frame[ROWID] = frame[ROWID].astype('int64')
@@ -1124,6 +1143,10 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
                 if should_stop():
                     shutil.rmtree(temporary, ignore_errors=True)
                     return False
+                if keyed_part:
+                    duck.execute('DROP TABLE IF EXISTS keyed_values')
+                    duck.execute('CREATE TEMP TABLE keyed_values AS ' + keyed_part.replace(
+                        KEYS_TOKEN, f'(SELECT {own_key} FROM read_parquet({_sql_text(part)}) p)'))
                 duck.execute(f'COPY (SELECT {", ".join(selected)} FROM read_parquet({_sql_text(part)}) p{joined} '
                              f'ORDER BY p.{quote(ROWID)}) TO {_sql_text(temporary / part.name)} (FORMAT parquet, COMPRESSION zstd)')
             rows = int(duck.execute(f'SELECT COUNT(*) FROM read_parquet({_sql_text(temporary / "*.parquet")})').fetchone()[0])
@@ -1132,6 +1155,7 @@ def change_copy_columns(repository: Any, dataset_id: int, values: pd.DataFrame |
             raise
         finally:
             duck.close()
+            shutil.rmtree(spill, ignore_errors=True)
         if rows != int(manifest.get('rows', rows)):
             shutil.rmtree(temporary, ignore_errors=True)
             raise RuntimeError(f'The changed copy of CDR {dataset_id} does not have the rows of its copy.')

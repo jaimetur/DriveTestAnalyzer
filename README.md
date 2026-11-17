@@ -34,7 +34,7 @@ After login, the application opens **Help Home** by default.
 ## Capabilities
 
 - Upload and process `CSV`, `XLS`, `XLSX` and `XLSM` files.
-- Classify CDR-Data, CDR-Voice, CDR-Speech, Layer3 Logs, Multivendor Mappings, Network Inventories (tabular or Cell Configuration KMZ/KML packages) and Region, Cluster and Vendor polygons (`GeoJSON`, `JSON` or zipped shapefiles).
+- Classify CDR-Data, CDR-Voice, CDR-Speech, Layer3 Logs, the CA Appendix, Multivendor Mappings, Network Inventories (tabular or Cell Configuration KMZ/KML packages) and Region, Cluster and Vendor polygons (`GeoJSON`, `JSON` or zipped shapefiles).
 - Combine operator workbook sheets and materialise normalised reporting fields.
 - Preview complete datasets with pagination and Excel-style column filters.
 - Analyse one processed CDR in CDR Analysis.

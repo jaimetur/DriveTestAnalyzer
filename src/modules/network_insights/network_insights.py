@@ -53,8 +53,8 @@ from src.modules.network.serving_cells import load_serving_networks, serving_fam
 
 NETWORK_INSIGHTS_KINDS = ('data', 'voice', 'speech')
 # Bump when the normalised samples or the analysis payload change shape.
-SAMPLES_CACHE_VERSION = 10
-ANALYSIS_CACHE_VERSION = 30
+SAMPLES_CACHE_VERSION = 11
+ANALYSIS_CACHE_VERSION = 31
 # Analyses kept in the workspace cache (each a few MB) and in memory, to show them again without calculating them.
 ANALYSES_KEPT = 500
 ANALYSES_IN_MEMORY = 24
@@ -271,6 +271,14 @@ def normalise_samples(frame: pd.DataFrame, kind: str, columns: dict[str, str]) -
                   'nr_time', 'test_duration'):
         source = columns.get(field)
         result[field] = pd.to_numeric(frame[source], errors='coerce') if source in frame.columns else math.nan
+    # The CA Appendix fields of the tests that have them (see ca_appendix).
+    for field in CA_NUMBER_FIELDS:
+        source = columns.get(field)
+        result[field] = pd.to_numeric(frame[source], errors='coerce') if source in frame.columns else math.nan
+    source = columns.get('ca_bands')
+    result['ca_bands'] = (frame[source].astype(object).where(frame[source].notna(), '').astype(str).str.strip()
+                          if source in frame.columns else '')
+    result['ca_lte_cells'], result['ca_nr_cells'] = ca_carrier_cells(frame, columns)
     for field in ('test_result', 'type_of_test', 'serving_network', 'serving_host', 'serving_scenario'):
         source = columns.get(field)
         values = frame[source] if source in frame.columns else pd.Series('', index=frame.index)
@@ -688,18 +696,241 @@ WIDE_BANDWIDTH_MHZ = 100.0
 BANDWIDTH_LADDER_TITLE = 'Primary bandwidth of each test: LTE + NR'
 BANDWIDTH_SCOPES = {'download': 'Download tests', 'all': 'All Data tests'}
 ALL_ENVIRONMENTS = 'All environments'
+# The bandwidth the ladders read: the primary bandwidth the CDRs report, or the total of every LTE and NR carrier of the
+# CA Appendix (see ca_appendix), for the tests that have it.
+BANDWIDTH_SOURCES = {'primary': 'Primary bandwidth (CDR)', 'ca': 'Total bandwidth, every carrier (CA Appendix)'}
+CA_LADDER_TITLE = 'Total bandwidth of each test: every LTE and NR carrier'
+
+# The CA Appendix fields of the CDR Data tests that have them (see ca_appendix): the total DL bandwidth and carriers of
+# each test, LTE and NR secondary carriers included, its band combination and the eNodeB and gNodeB that served it.
+CA_NUMBER_FIELDS = {
+    'ca_total_bandwidth': 'CA_Main_Total_Bandwidth_DL', 'ca_lte_bandwidth': 'CA_Main_Total_LTE_Bandwidth_DL',
+    'ca_nr_bandwidth': 'CA_Main_Total_NR_Bandwidth_DL', 'ca_carriers': 'CA_Main_Total_Number_carrier_DL',
+    'ca_lte_carriers': 'CA_Main_Total_Number_of_LTE_carrier_DL', 'ca_nr_carriers': 'CA_Main_Total_Number_of_NR_carrier_DL',
+    'ca_enodeb': 'CA_eNodeB_ID', 'ca_gnodeb': 'CA_gNodeB_ID', 'ca_enodeb_changes': 'CA_eNodeB_Changes',
+    'ca_gnodeb_changes': 'CA_gNodeB_Changes',
+}
+CA_TEXT_FIELDS = {'ca_bands': 'CA_Main_Bands_Combination'}
+# The carriers of a test in the CA Appendix and, of each, the value it had for longest.
+CA_CARRIERS = (('LTE', 'LTE_PCC'), *(('LTE', f'LTE_SCC{index}') for index in range(1, 5)),
+               ('NR', 'NR_PCC'), *(('NR', f'NR_SCC{index}') for index in range(1, 6)))
+CA_CARRIER_PARTS = ('Main_Band', 'Main_DL_EARFCN', 'Main_Bandwidth', 'Main_PCI')
+CA_CARRIER_CLASSES = ('1 carrier', '2 carriers', '3 carriers', '4 carriers', '5+ carriers')
+CA_TOP_COMBINATIONS = 8
+CA_TOP_NODE_BANDS = 8
 
 
-def total_bandwidth(samples: pd.DataFrame) -> pd.Series:
+def ca_sample_columns(available: Iterable[str]) -> dict[str, str]:
+    """The source columns of the CA Appendix fields of the samples (see CA_NUMBER_FIELDS and CA_CARRIERS)."""
+    lookup = {str(column).casefold(): str(column) for column in available}
+    resolved = {field: lookup[column.casefold()] for field, column in {**CA_NUMBER_FIELDS, **CA_TEXT_FIELDS}.items()
+                if column.casefold() in lookup}
+    for _technology, carrier in CA_CARRIERS:
+        for part in CA_CARRIER_PARTS:
+            column = lookup.get(f'ca_{carrier}_{part}'.casefold())
+            if column:
+                resolved[f'ca_{carrier}_{part}'.casefold()] = column
+    return resolved
+
+
+def ca_band_label(value: Any, technology: str) -> str:
+    """B3 or n78 from the band of a CA Appendix carrier (LTE E-UTRA 3, NR BAND 78 or 78)."""
+    text = str(value if value is not None else '').strip()
+    if not text or text.casefold() in {'nan', 'none'}:
+        return ''
+    try:
+        number = int(float(text))
+    except ValueError:
+        found = re.findall(r'\d+', text)
+        if not found:
+            return text
+        number = int(found[-1])
+        technology = 'NR' if 'nr' in text.casefold() else 'LTE' if 'e-utra' in text.casefold() or 'lte' in text.casefold() else technology
+    # Band 0 or 999 is a placeholder of the export, no band.
+    if number <= 0 or number >= 999:
+        return ''
+    return f'n{number}' if technology == 'NR' else f'B{number}'
+
+
+def ca_combination_label(value: Any) -> str:
+    """A band combination of the CA Appendix as bands (``LTE E-UTRA 7/NR BAND 78`` → ``B7 + n78``)."""
+    parts = [part.strip() for part in str(value or '').split('/') if part.strip()]
+    return ' + '.join(ca_band_label(part, 'NR' if 'nr' in part.casefold() else 'LTE') for part in parts)
+
+
+def _number_text(value: Any) -> str:
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return ''
+    number = float(value)
+    return str(int(number)) if number.is_integer() else f'{number:g}'
+
+
+def ca_carrier_cells(frame: pd.DataFrame, columns: dict[str, str]) -> tuple[list[tuple[str, ...]], list[tuple[str, ...]]]:
+    """The LTE and NR carriers of each test of the CA Appendix as ``band|channel|bandwidth|PCI`` (the values each one
+    had for longest), the primary first."""
+    result = {}
+    for technology in ('LTE', 'NR'):
+        parts = []
+        for own, carrier in CA_CARRIERS:
+            if own != technology:
+                continue
+            key = carrier.casefold()
+            band_column = columns.get(f'ca_{key}_main_band')
+            if band_column not in frame.columns:
+                continue
+            bands = frame[band_column].astype(object).where(frame[band_column].notna(), '')
+            labels = bands.map({value: ca_band_label(value, technology) for value in pd.unique(bands)})
+            parts_text = {}
+            for part in ('main_dl_earfcn', 'main_bandwidth', 'main_pci'):
+                column = columns.get(f'ca_{key}_{part}')
+                values = pd.to_numeric(frame[column], errors='coerce') if column in frame.columns else pd.Series(math.nan, index=frame.index)
+                parts_text[part] = values.map({value: _number_text(value) for value in pd.unique(values)}).fillna('')
+            if technology == 'LTE':
+                # The band and the channel the carrier had for longest are given apart: the band of an LTE channel is
+                # the band of its EARFCN.
+                channel_bands = parts_text['main_dl_earfcn'].map(
+                    {value: lte_band_for_earfcn(value) for value in pd.unique(parts_text['main_dl_earfcn'])})
+                labels = channel_bands.where(channel_bands != '', labels)
+            token = labels.astype(str)
+            for part in ('main_dl_earfcn', 'main_bandwidth', 'main_pci'):
+                token = token + '|' + parts_text[part]
+            parts.append(token.where(labels != '', ''))
+        shared: dict[tuple[str, ...], tuple[str, ...]] = {}
+        rows = []
+        for values in zip(*parts) if parts else ((),) * len(frame):
+            cells = tuple(dict.fromkeys(value for value in values if value))
+            rows.append(shared.setdefault(cells, cells))
+        result[technology] = rows
+    return result['LTE'], result['NR']
+
+
+def _median(values: pd.Series) -> float | None:
+    values = values.dropna()
+    return round(float(values.median()), 1) if len(values) else None
+
+
+def _mean(values: pd.Series) -> float | None:
+    values = values.dropna()
+    return round(float(values.mean()), 2) if len(values) else None
+
+
+def ca_has_data(tests: pd.DataFrame) -> bool:
+    return 'ca_total_bandwidth' in tests and bool((tests['ca_total_bandwidth'].notna() | tests['ca_carriers'].notna()).any())
+
+
+def ca_carriers_summary(tests: pd.DataFrame, columns: pd.Series, column_order: list[str]) -> list[dict[str, Any]]:
+    """Per group, the tests with CA Appendix fields: how many DL carriers they aggregated (LTE and NR), their total,
+    LTE and NR bandwidth and the share with LTE or NR carrier aggregation."""
+    rows = []
+    known_ca = tests['ca_total_bandwidth'].notna() | tests['ca_carriers'].notna()
+    for column in column_order:
+        part = tests.loc[columns.loc[tests.index] == column]
+        if part.empty:
+            continue
+        known = part.loc[known_ca.loc[part.index]]
+        carriers = known['ca_carriers'].dropna().clip(lower=1)
+        counts = [int((carriers == number).sum()) for number in range(1, 5)] + [int((carriers >= 5).sum())]
+        rows.append({
+            'column': column, 'tests': int(len(part)), 'with_ca': int(len(known)),
+            'coverage': round(len(known) / len(part) * 100, 1) if len(part) else None,
+            'carrier_counts': counts,
+            'carrier_shares': [round(count / len(carriers) * 100, 1) if len(carriers) else 0.0 for count in counts],
+            'mean_carriers': _mean(carriers), 'mean_lte_carriers': _mean(known['ca_lte_carriers']),
+            'mean_nr_carriers': _mean(known['ca_nr_carriers']),
+            'lte_ca_share': _share(known['ca_lte_carriers'].dropna() >= 2) if known['ca_lte_carriers'].notna().any() else None,
+            'nr_ca_share': _share(known['ca_nr_carriers'].dropna() >= 2) if known['ca_nr_carriers'].notna().any() else None,
+            'median_total_mhz': _median(known['ca_total_bandwidth']),
+            'median_lte_mhz': _median(known['ca_lte_bandwidth']), 'median_nr_mhz': _median(known['ca_nr_bandwidth']),
+            'wide_share': _share(known['ca_total_bandwidth'].dropna() >= WIDE_BANDWIDTH_MHZ) if known['ca_total_bandwidth'].notna().any() else None,
+        })
+    return rows
+
+
+def ca_band_combinations(tests: pd.DataFrame, columns: pd.Series, column_order: list[str],
+                         top: int = CA_TOP_COMBINATIONS) -> list[dict[str, Any]]:
+    """Per group, the band combinations the tests used for longest (CA Appendix), the most used first."""
+    rows = []
+    for column in column_order:
+        values = tests.loc[columns.loc[tests.index] == column, 'ca_bands'].astype(str)
+        values = values[values != '']
+        if values.empty:
+            continue
+        counts = values.map({value: ca_combination_label(value) for value in pd.unique(values)}).value_counts()
+        shown = counts.head(top)
+        rows.append({'column': column, 'tests': int(len(values)),
+                     'combinations': [{'bands': name, 'tests': int(count), 'share': round(count / len(values) * 100, 1),
+                                       'carriers': name.count('+') + 1} for name, count in shown.items()],
+                     'others': int(counts.iloc[top:].sum()), 'distinct': int(len(counts))})
+    return rows
+
+
+def ca_observed_nodes(tests: pd.DataFrame, columns: pd.Series, column_order: list[str],
+                      top: int = CA_TOP_NODE_BANDS) -> list[dict[str, Any]]:
+    """Per group and technology, the eNodeBs and gNodeBs the tests observed (CA Appendix) with the carriers seen on each:
+    its bands, channels, bandwidths and cells (channel and PCI). Only the tests served by one node of the technology
+    throughout count, so every carrier is that node's."""
+    rows = []
+    for technology, node_field, changes_field, cells_field in (('LTE', 'ca_enodeb', 'ca_enodeb_changes', 'ca_lte_cells'),
+                                                                ('NR', 'ca_gnodeb', 'ca_gnodeb_changes', 'ca_nr_cells')):
+        if node_field not in tests:
+            continue
+        steady = tests[node_field].notna() & (tests[changes_field].fillna(0) == 0) & tests[cells_field].map(bool)
+        for column in column_order:
+            part = tests.loc[steady & (columns.loc[tests.index] == column)]
+            if part.empty:
+                continue
+            exploded = pd.DataFrame({'node': part[node_field].to_numpy(), 'cell': part[cells_field].to_numpy()}).explode('cell')
+            exploded = exploded[exploded['cell'].notna() & (exploded['cell'] != '')]
+            if exploded.empty:
+                continue
+            split = exploded['cell'].str.split('|', expand=True).reindex(columns=range(4), fill_value='')
+            exploded = exploded.assign(band=split[0], channel=split[1], bandwidth=split[2], pci=split[3])
+            carriers = exploded.drop_duplicates(['node', 'band', 'channel'])
+            per_node = carriers.groupby('node').size()
+            nodes = int(per_node.size)
+            bands = []
+            for band, group in carriers.groupby('band', sort=False):
+                widths = pd.to_numeric(group['bandwidth'], errors='coerce').dropna()
+                channels = group['channel'].replace('', pd.NA).dropna().value_counts()
+                bands.append({'band': band, 'nodes': int(group['node'].nunique()),
+                              'share': round(group['node'].nunique() / nodes * 100, 1),
+                              'bandwidth_mhz': float(widths.mode().iloc[0]) if len(widths) else None,
+                              'channels': [str(channel) for channel in channels.index[:3]], 'channel_count': int(channels.size)})
+            bands.sort(key=lambda item: (-item['nodes'], item['band']))
+            rows.append({
+                'column': column, 'technology': technology, 'tests': int(len(part)), 'nodes': nodes,
+                'cells': int(exploded.drop_duplicates(['node', 'channel', 'pci']).shape[0]),
+                'mean_carriers': round(float(per_node.mean()), 2), 'multi_carrier_share': round(float((per_node >= 2).mean()) * 100, 1),
+                'bands': bands[:top], 'other_bands': max(0, len(bands) - top),
+            })
+    return rows
+
+
+def carrier_aggregation(tests: pd.DataFrame, columns: pd.Series, column_order: list[str]) -> dict[str, Any] | None:
+    """The Carrier Aggregation of the CDR Data tests with CA Appendix fields, per group (None without any)."""
+    if not ca_has_data(tests):
+        return None
+    return {'tests': int((tests['ca_total_bandwidth'].notna() | tests['ca_carriers'].notna()).sum()),
+            'carrier_classes': list(CA_CARRIER_CLASSES),
+            'summary': ca_carriers_summary(tests, columns, column_order),
+            'combinations': ca_band_combinations(tests, columns, column_order),
+            'nodes': ca_observed_nodes(tests, columns, column_order)}
+
+
+def total_bandwidth(samples: pd.DataFrame, source: str = 'primary') -> pd.Series:
     """The primary DL bandwidth of each test, LTE and NR together (MHz); NaN when the test reports neither.
 
     LTE is the mean bandwidth of the test over its aggregated carriers (else its PCell bandwidth) rounded up to 5 MHz,
     as the Reporting field LTE DL Aggregated BW (MHz); NR is the bandwidth of its NR PCell, since the CDRs do not
-    report the bandwidth of the NR secondary carriers.
+    report the bandwidth of the NR secondary carriers. With ``source`` ``ca``, the total DL bandwidth of every LTE and NR
+    carrier the CA Appendix gives (NaN for the tests without it).
     """
     def positive(field: str) -> pd.Series:
         values = samples[field] if field in samples else pd.Series(math.nan, index=samples.index)
         return pd.to_numeric(values, errors='coerce').where(lambda series: series > 0)
+
+    if source == 'ca':
+        return positive('ca_total_bandwidth')
 
     lte = positive('lte_aggregated_bandwidth')
     lte = np.ceil(lte.where(lte.notna(), positive('lte_bandwidth')) / 5) * 5
@@ -716,12 +947,12 @@ def bandwidth_classes(totals: pd.Series) -> pd.Series:
     return pd.Series(positions, index=totals.dropna().index)
 
 
-def bandwidth_ladders(samples: pd.DataFrame, columns: pd.Series, column_order: list[str]) -> dict[str, Any]:
+def bandwidth_ladders(samples: pd.DataFrame, columns: pd.Series, column_order: list[str], source: str = 'primary') -> dict[str, Any]:
     """The share of tests in each total-bandwidth class per group (column) and environment (row).
 
     Tests without an environment are left out when some tests have one; without any, every test is one row.
     """
-    totals = total_bandwidth(samples)
+    totals = total_bandwidth(samples, source)
     environments = samples['environment'].fillna('').astype(str) if 'environment' in samples else pd.Series('', index=samples.index)
     rows = sorted({value for value in environments if value}, key=environment_order)
     without_environment = int((environments == '').sum()) if rows else 0
@@ -775,11 +1006,12 @@ def failed_tests(samples: pd.DataFrame) -> pd.Series:
     return (results != '') & ~results.str.casefold().str.contains('complet')
 
 
-def split_columns(samples: pd.DataFrame, columns: pd.Series, column_order: list[str], field: str) -> tuple[pd.Series, list[str]]:
+def split_columns(samples: pd.DataFrame, columns: pd.Series, column_order: list[str], field: str,
+                  source: str = 'primary') -> tuple[pd.Series, list[str]]:
     """The groups of the ladders split by a field of the serving cell (the kind of site or the RAN Vendor): each group and
     value with enough tests of a known bandwidth, the groups in their order and their values by tests."""
     values = samples[field].fillna('').astype(str) if field in samples else pd.Series('', index=samples.index)
-    known = total_bandwidth(samples).notna() & (values != '') & ~values.str.casefold().isin({'unknown', 'n/a'})
+    known = total_bandwidth(samples, source).notna() & (values != '') & ~values.str.casefold().isin({'unknown', 'n/a'})
     combined = (columns.loc[samples.index].astype(str) + ' · ' + values).where(known, '')
     counts = combined[combined != ''].value_counts()
     kept = [name for name, count in counts.items() if count >= MIN_SPLIT_LADDER_TESTS]
@@ -788,13 +1020,13 @@ def split_columns(samples: pd.DataFrame, columns: pd.Series, column_order: list[
     return combined, order[:MAX_SPLIT_LADDER_COLUMNS]
 
 
-def location_strips(tests: pd.DataFrame, columns: pd.Series, column_order: list[str]) -> dict[str, Any]:
+def location_strips(tests: pd.DataFrame, columns: pd.Series, column_order: list[str], source: str = 'primary') -> dict[str, Any]:
     """The download tests of every City (the most measured ones) per group: the share of tests under 25 MHz in total
     (of those with a known bandwidth) and the share that failed or reached 5 Mbit/s or less."""
     cities = tests['city'].fillna('').astype(str) if 'city' in tests else pd.Series('', index=tests.index)
     if cities.eq('').all() or tests.empty:
         return {'cities': [], 'rows': []}
-    totals = total_bandwidth(tests)
+    totals = total_bandwidth(tests, source)
     failed = failed_tests(tests)
     rates = pd.to_numeric(tests['mean_data_rate'], errors='coerce') if 'mean_data_rate' in tests else pd.Series(math.nan, index=tests.index)
     slow = failed | (rates <= SLOW_DOWNLOAD_MBPS)
@@ -1660,7 +1892,11 @@ def install_network_insights_routes(core: Any) -> None:
                 return cached
         # Each CDR's samples are stored on their own, so adding or removing a
         # CDR from the selection only reads the CDRs not analysed before.
-        revisions = {row['id']: row['updated_at'] for row in ready_cdrs(task_repository)}
+        # The CA Appendix fields written in a CDR (see ca_appendix) change its samples too.
+        from src.modules.cdr.ca_appendix import fill_stamps
+
+        stamps = fill_stamps(task_repository)
+        revisions = {row['id']: f"{row['updated_at']}|{stamps.get(row['id'], '')}" for row in ready_cdrs(task_repository)}
         # The samples hold mapped Operators and Vendors: a change of either map reads them again.
         settings = task_repository.chart_mapping_settings()
         mappings = {'operator': settings.get('operator_mappings'), 'vendor': settings.get('vendor_mappings')}
@@ -1733,6 +1969,8 @@ def install_network_insights_routes(core: Any) -> None:
             for dataset_id in ids:
                 source_columns.update(task_repository.list_dataset_row_columns(dataset_id))
             columns = resolve_source_columns(source_columns, kind, profile)
+            # The CA Appendix fields the CDR tests were given (see ca_appendix).
+            columns.update(ca_sample_columns(source_columns))
             requested = list(dict.fromkeys(columns.values()))
             if set(ids) <= cdr_store.fresh_copies(task_repository.db_path, ids):
                 # The columnar copies of the CDRs give the rows of their combined table, without copying the radio
@@ -1860,6 +2098,7 @@ def install_network_insights_routes(core: Any) -> None:
                 'spectrum_summary': licensed_spectrum_summary(holdings),
                 'band_classes': BAND_CLASSES,
                 'bandwidth_scopes': BANDWIDTH_SCOPES,
+                'bandwidth_sources': BANDWIDTH_SOURCES,
                 'bandwidth_title': BANDWIDTH_LADDER_TITLE,
                 'nr_duplex_splits': NR_DUPLEX_SPLITS,
                 'can_edit': user.role in {'user-editor', 'admin', 'super-admin'},
@@ -2199,10 +2438,24 @@ def install_network_insights_routes(core: Any) -> None:
                                  'ladders': bandwidth_ladders(tests, columns.loc[tests.index], column_order),
                                  'split_ladders': split_ladders,
                                  'locations': location_strips(tests, columns, column_order)}
+                if ca_has_data(tests):
+                    # The same views on the total bandwidth of every carrier the CA Appendix gives, and its Carrier
+                    # Aggregation.
+                    ca_split = {}
+                    for name, field in (('site_type', 'site_type'), ('vendor', 'vendor')):
+                        split, order = split_columns(tests, columns, column_order, field, 'ca')
+                        if order:
+                            ca_split[name] = bandwidth_ladders(tests, split, order, 'ca')
+                    scopes[scope]['ca'] = {
+                        'tests': int(tests['ca_total_bandwidth'].notna().sum()),
+                        'ladders': bandwidth_ladders(tests, columns.loc[tests.index], column_order, 'ca'),
+                        'split_ladders': ca_split, 'locations': location_strips(tests, columns, column_order, 'ca')}
+                    scopes[scope]['carrier_aggregation'] = carrier_aggregation(tests, columns, column_order)
             return {
                 'classes': [{'label': label, 'lower': lower, 'upper': upper, 'colour': colour, 'width': width}
                             for label, lower, upper, colour, width in BANDWIDTH_CLASSES],
                 'title': BANDWIDTH_LADDER_TITLE, 'narrow_below_mhz': NARROW_BANDWIDTH_MHZ, 'wide_from_mhz': WIDE_BANDWIDTH_MHZ,
+                'ca_title': CA_LADDER_TITLE, 'sources': BANDWIDTH_SOURCES,
                 'scopes': scopes,
                 'scope_labels': BANDWIDTH_SCOPES,
                 'column_label': ' → '.join(GROUPINGS[field] for field in column_groups) or 'All samples',

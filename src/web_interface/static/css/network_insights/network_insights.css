@@ -662,3 +662,23 @@ body:has(dialog.ni-expand-dialog[open]){overflow:hidden}
 .network-insights[data-ni-theme="heatmap"] .ni-matrix tbody th{background:#f4f7f9!important;border:0}
 .network-insights[data-ni-theme="midnight"] .ni-matrix td.is-own{background:#123527!important;color:#e6edf7}
 .network-insights[data-ni-theme="midnight"] .ni-matrix td small{color:#9fb1cc}
+
+/* Carrier aggregation of the tests (CA Appendix). */
+.ni-ca-carrier-bar { min-width: 8rem; }
+.network-insights .ni-table.ni-ca-table th { white-space: normal; min-width: 4.5rem; }
+.ni-ca-combinations { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: .75rem; }
+.ni-ca-combination-table { width: 100%; }
+.ni-ca-combination-table td:first-child { white-space: normal; }
+.ni-ca-combination-table .ni-share { width: 3rem; }
+.ni-ca-bands { display: flex; flex-wrap: wrap; gap: .25rem .6rem; white-space: normal; max-width: 21rem; }
+.ni-ca-band { white-space: nowrap; font-size: .82rem; }
+.network-insights .ni-note-list ul { margin: 0; padding-left: 1.1rem; }
+.network-insights .ni-note-list li { margin: .15rem 0; }
+/* The data sources of each panel, under its title. */
+.network-insights .ni-sources { display: flex; flex-wrap: wrap; gap: .3rem; margin: .35rem 0 0; }
+.network-insights .ni-source { padding: .1rem .5rem; border-radius: 999px; font-size: .72rem; font-weight: 700; line-height: 1.5; color: #fff; background: #5b6478; white-space: nowrap; }
+.network-insights .ni-source-cdr, .network-insights .ni-source-cdr_data { background: #1971c2; }
+.network-insights .ni-source-inventory { background: #2b8a3e; }
+.network-insights .ni-source-ca { background: #6a4fb3; }
+.network-insights .ni-source-polygons { background: #0c8599; }
+.network-insights .ni-source-holdings, .network-insights .ni-source-serving { background: #5b6478; }

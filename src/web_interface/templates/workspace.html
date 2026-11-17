@@ -181,7 +181,7 @@
       <p class="lede">Bring the source files that feed every product workflow into one managed workspace: {{ (upload_cdr_profile | default({})).label | default('NetCheck CDR', true) }} workbooks (Data, Voice and Speech), Layer3 Logs (the parsed drivetest logs of each campaign), and Vodafone UK (VFUK) or Three UK (3UK) Multivendor Mappings. Workspace proposes a type from each filename, lets you confirm it per file and, for CDRs, can apply an existing mapping or one uploaded in the same batch. Batch mappings are processed before their selected CDRs.</p>
       {% if user.role not in ['user-editor', 'admin', 'super-admin'] %}<p class="form-note workspace-read-only-note">The user-viewer role can explore the workspace datasets and generate jobs, but cannot delete, reprocess or map datasets.</p>{% endif %}
       {% if user.role in ['admin', 'super-admin'] %}
-      <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-multivendor-mapping-count="{{ multivendor_mapping_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}' data-cdr-profile='{{ upload_cdr_profile | default({}) | tojson }}' data-flex-areas='{{ flex_area_names | default([]) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list %} data-other-datasets{% endif %}>
+      <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-multivendor-mapping-count="{{ multivendor_mapping_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}' data-cdr-profile='{{ upload_cdr_profile | default({}) | tojson }}' data-flex-areas='{{ flex_area_names | default([]) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'ca_appendix']) | list %} data-other-datasets{% endif %}>
       <label class="dropzone-field" data-upload-dropzone>
         <span class="dropzone-title">Drop workbooks or browse</span>
         <span class="dropzone-copy">Accepted: CSV, XLS, XLSX, XLSM, GeoJSON, JSON, ZIP (shapefile or KMZ package), KMZ, KML</span>
@@ -239,7 +239,7 @@
       <label class="queue-type-filter-control">Dataset Type
         <select data-queue-type-filter>
           <option value="">All Types</option>
-          {% set has_other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list | length > 0 %}
+          {% set has_other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'ca_appendix']) | list | length > 0 %}
           {% set queue_type_options = [
             ('data', 'CDR-Data'),
             ('speech', 'CDR-Speech'),
@@ -251,7 +251,8 @@
             ('regions', 'Regions — Geospatial'),
             ('clusters', 'Clusters — Geospatial'),
             ('vendors', 'Vendors — Geospatial'),
-            ('l3_dt_logs', 'Layer3 Logs')
+            ('l3_dt_logs', 'Layer3 Logs'),
+            ('ca_appendix', 'CA Appendix')
           ] %}
           {% for kind, label in queue_type_options %}
           <option value="{{ kind }}" {% if kind not in input_kind_options %}disabled{% endif %}>{{ label }}</option>
@@ -519,6 +520,9 @@
             <td data-label="Dataset" data-queue-sort-value="{{ dataset.file_name }}" data-queue-sort-cell="dataset">
               <div class="queue-dataset-name" data-queue-file-name>{{ dataset.file_name }}</div>
               {% if not geospatial %}<div class="queue-dataset-kind" data-queue-kind data-queue-sort-value="{{ dataset.input_kind_label }}">{{ dataset.input_kind_label }}</div>{% endif %}
+              {% if dataset.dataset_kind == 'ca_appendix' and dataset.ca %}
+              <div class="queue-vendor-source" title="Tests (JOIN_IDs) and CA_ fields of this CA Appendix, and the operators of its tests">{{ '{:,}'.format(dataset.ca.join_ids or 0) }} tests · {{ dataset.ca.fields or 0 }} fields{% if dataset.ca.operators %} · {{ dataset.ca.operators.keys() | join(', ') }}{% endif %}</div>
+              {% endif %}
               {% if dataset.dataset_kind in ['network_inventory', 'mapping_vodafone', 'mapping_three'] %}
               {% set operator_choice = dataset.operator_choice | default(dataset.dataset_operator or '') %}
               <select class="queue-operator-pill queue-operator-pill-inline" data-dataset-dataset-operator-select data-update-url="/workspace/datasets/{{ dataset.id }}/dataset-operator" aria-label="Operator of {{ dataset.file_name }}" title="The Operator of this Network Inventory, or Multi-operator to take each cell's owner from its Network column; map the CDRs again to apply a change">
@@ -569,7 +573,9 @@
     {% set vendor_datasets = datasets | selectattr('dataset_kind', 'in', ['mapping_vodafone', 'mapping_three', 'network_inventory']) | list %}
     {% set geo_datasets = datasets | selectattr('dataset_kind', 'in', ['regions', 'clusters', 'vendors']) | list %}
     {% set l3_datasets = datasets | selectattr('dataset_kind', 'equalto', 'l3_dt_logs') | list %}
-    {% set other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list %}
+    {% set ca_datasets = datasets | selectattr('dataset_kind', 'equalto', 'ca_appendix') | list %}
+    {% set ca_matches = ca_appendix_matches | default({}) %}
+    {% set other_datasets = datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs', 'ca_appendix']) | list %}
     <div class="dataset-cards">
       {# The campaigns of the CDRs, offered while a Campaign is written. #}
       <datalist id="cdr-campaign-options">{% for campaign in datasets | selectattr('dataset_kind', 'in', cdr_kinds) | map(attribute='campaign') | select | unique | sort %}<option value="{{ campaign }}"></option>{% endfor %}</datalist>
@@ -708,12 +714,13 @@
           ('multivendor-mappings', 'Multivendor Mappings', 'They give CDR samples the Vendor of their serving cells, only for the Operators of each one: the other Operators keep their name as Vendor (for example O2 - All), and no Network Inventory gives them one. A Multivendor Mapping does not change the network that the other modules read.', mapping_datasets),
           ('network-inventory', 'Network Inventories', 'The network inventories of the operators: every cell with its vendor, site and configuration. Network Insights and Non-Qualified Calls read the newest one of every network; those that give the Vendor of the CDRs are tagged Used for Vendor Mapping.', vendor_datasets),
           ('geospatial', 'Geographic Datasets', 'Region, Cluster and Vendor polygons that map CDR samples and inventory sites to their area, and CDR samples to the Vendor of each Operator.', geo_datasets),
+          ('ca-appendix', 'CA Appendix', 'Carrier Aggregation details of each test, keyed by JOIN_ID. The matching CDR tests get them as CA_ fields for every module.' ~ (' ' ~ '{:,}'.format(ca_matches.tests) ~ ' tests of ' ~ (ca_matches.cdrs | length) ~ ' CDR' ~ ('' if (ca_matches.cdrs | length) == 1 else 's') ~ ' have them now.' if ca_matches.tests else ''), ca_datasets),
           ('other', 'Other Datasets', 'Other supported datasets.', other_datasets),
         ] %}
         {% if card_key != 'other' or card_datasets %}
         <section class="dataset-card dataset-card-compact dataset-card-{{ card_key }}" data-dataset-card="{{ card_key }}">
           <header class="dataset-card-head">
-            <div><p class="eyebrow">Reference data</p><h3><span class="dataset-card-icon dataset-card-icon-{{ card_key }}" aria-hidden="true"><svg viewBox="0 0 24 24">{% if card_key == 'multivendor-mappings' %}<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>{% elif card_key == 'network-inventory' %}<path d="M12 8.6 7.6 21.5M12 8.6l4.4 12.9"/><path d="M9.9 14.8h4.2M8.8 18.2h6.4M10.8 11.6h2.4"/><circle cx="12" cy="6.6" r="1.4"/><path d="M8.7 3.6a4.4 4.4 0 0 0 0 6M15.3 3.6a4.4 4.4 0 0 1 0 6M6.2 1.9a7.6 7.6 0 0 0 0 9.4M17.8 1.9a7.6 7.6 0 0 1 0 9.4"/>{% elif card_key == 'geospatial' %}<path d="M3 11.5 7 9.5l3 1 .5 4.5-7 1.5z" fill="currentColor" fill-opacity=".36" stroke-width="1.2"/><path d="m10 10.5 3.5-1.5 4 1-2 5.5-5 -.5z" fill="currentColor" fill-opacity=".14" stroke-width="1.2"/><path d="m17.5 10 3.5 2-1 4.5-4.5-1z" fill="currentColor" fill-opacity=".46" stroke-width="1.2"/><path d="m20 16.5 1 3-4 2-5-1 3.5-5z" fill="currentColor" fill-opacity=".22" stroke-width="1.2"/><path d="m3.5 16.5 7-1.5 5 .5-3.5 5-4 1.5-4-1.5z" fill="currentColor" fill-opacity=".3" stroke-width="1.2"/><path d="M3 11.5 7 9.5l3 1 3.5-1.5 4 1 3.5 2-1 4.5 1 3-4 2-5-1-4 1.5-4-1.5-.5-4z" fill="none"/><path d="M12 12.4s-4.4-3.8-4.4-7a4.4 4.4 0 0 1 8.8 0c0 3.2-4.4 7-4.4 7z" fill="#e5f1ea"/><circle cx="12" cy="5.3" r="1.6"/>{% else %}<path d="M3.5 7a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>{% endif %}</svg></span>{{ card_title }} <span class="dataset-card-count">{{ card_datasets | length }}</span></h3></div>
+            <div><p class="eyebrow">{{ 'Test details' if card_key == 'ca-appendix' else 'Reference data' }}</p><h3><span class="dataset-card-icon dataset-card-icon-{{ card_key }}" aria-hidden="true"><svg viewBox="0 0 24 24">{% if card_key == 'ca-appendix' %}<path d="M4 20V14M8 20V10M12 20V6M16 20V9M20 20V4"/><path d="M3 20h18"/>{% elif card_key == 'multivendor-mappings' %}<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>{% elif card_key == 'network-inventory' %}<path d="M12 8.6 7.6 21.5M12 8.6l4.4 12.9"/><path d="M9.9 14.8h4.2M8.8 18.2h6.4M10.8 11.6h2.4"/><circle cx="12" cy="6.6" r="1.4"/><path d="M8.7 3.6a4.4 4.4 0 0 0 0 6M15.3 3.6a4.4 4.4 0 0 1 0 6M6.2 1.9a7.6 7.6 0 0 0 0 9.4M17.8 1.9a7.6 7.6 0 0 1 0 9.4"/>{% elif card_key == 'geospatial' %}<path d="M3 11.5 7 9.5l3 1 .5 4.5-7 1.5z" fill="currentColor" fill-opacity=".36" stroke-width="1.2"/><path d="m10 10.5 3.5-1.5 4 1-2 5.5-5 -.5z" fill="currentColor" fill-opacity=".14" stroke-width="1.2"/><path d="m17.5 10 3.5 2-1 4.5-4.5-1z" fill="currentColor" fill-opacity=".46" stroke-width="1.2"/><path d="m20 16.5 1 3-4 2-5-1 3.5-5z" fill="currentColor" fill-opacity=".22" stroke-width="1.2"/><path d="m3.5 16.5 7-1.5 5 .5-3.5 5-4 1.5-4-1.5z" fill="currentColor" fill-opacity=".3" stroke-width="1.2"/><path d="M3 11.5 7 9.5l3 1 3.5-1.5 4 1 3.5 2-1 4.5 1 3-4 2-5-1-4 1.5-4-1.5-.5-4z" fill="none"/><path d="M12 12.4s-4.4-3.8-4.4-7a4.4 4.4 0 0 1 8.8 0c0 3.2-4.4 7-4.4 7z" fill="#e5f1ea"/><circle cx="12" cy="5.3" r="1.6"/>{% else %}<path d="M3.5 7a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>{% endif %}</svg></span>{{ card_title }} <span class="dataset-card-count">{{ card_datasets | length }}</span></h3></div>
             <p class="form-note">{{ card_note }}</p>
           </header>
           <div class="table-wrap queue-table-wrap">
@@ -1187,6 +1194,7 @@
     ['voice', `${cdrLabel} — Voice`],
     ['speech', `${cdrLabel} — Speech`],
     ['l3_dt_logs', 'Layer3 Logs'],
+    ['ca_appendix', 'CA Appendix'],
     ['multivendor_mapping', 'Multivendor Mapping'],
     ['network_inventory', 'Network Inventory'],
     ['regions', 'Regions — Geospatial'],
@@ -1202,6 +1210,7 @@
     voice: '<path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
     speech: '<path d="M4 12h2M8 8v8M12 5v14M16 9v6M20 11v2"/>',
     l3_dt_logs: '<path d="M4 18c3-1 3-6 6-6s3 4 6 3 2-7 4-9"/><circle cx="4" cy="18" r="1.6"/><circle cx="20" cy="6" r="1.6"/><path d="M8 21h8"/>',
+    ca_appendix: '<path d="M4 20V14M8 20V10M12 20V6M16 20V9M20 20V4"/><path d="M3 20h18"/>',
     mapping_vodafone: '<path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/>',
     network_inventory: '<circle cx="12" cy="9" r="1.6"/><path d="M12 10.6V21M9 21l3-9 3 9M8.6 5.6a4.8 4.8 0 0 0 0 6.8M15.4 5.6a4.8 4.8 0 0 1 0 6.8"/>',
     regions: '<path d="M12 21s-6-5.3-6-11a6 6 0 0 1 12 0c0 5.7-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/>',
@@ -1261,6 +1270,9 @@
 
   function inferType(fileName) {
     const normalized = String(fileName || '').toLowerCase().replace(/[_-]+/g, ' ');
+    // The CA Appendix of a quarter (20261017_NET CHECK_DATA CA Appendix_Q3 2026.xlsx, 20260619_CA_Q2_apendix.xlsx),
+    // before the CDR words its name also has.
+    if (/\bapp?endix\b/.test(normalized) && /\.(csv|xlsx|xlsm|zip|parquet)$/.test(normalized)) return 'ca_appendix';
     // A provider other than NetCheck names each CDR after its service (Voice_M2M_Calls, HTTP_File_DL...).
     if (isSummaryFile(fileName)) return '';
     const service = (cdrProfile.kind_words || []).find(([word]) => nameWords(fileName).includes(` ${word} `));
