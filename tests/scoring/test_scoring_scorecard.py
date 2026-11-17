@@ -480,8 +480,8 @@ def test_gap_of_one_operator_follows_its_latest_campaign_and_fills_the_slide():
     from src.modules.reporting.pptx_compose import title_parts
 
     job, result = synthetic_result(levels=('Operator', 'Campaign'))
-    # (The deck has only the GAP Analysis.)
-    job = {**job, '_export_panels': export_panels_only('gap.all_operators', 'gap.individual')}
+    # (The deck has only the GAP Analysis; its KPIs across all categories, as the KPI order of the page can ask.)
+    job = {**job, '_export_panels': export_panels_only('gap.all_operators', 'gap.individual'), '_gap_kpi_order': 'all'}
     deck = Presentation(BytesIO(export_scoring_powerpoint(job, result, TEMPLATE, scorings=['best_network'],
                                                           environments=['Combined'])))
     gap_slides = [slide for slide in deck.slides if title_parts(slide)[0].startswith('GAP Analysis')]
@@ -499,7 +499,8 @@ def test_gap_of_one_operator_follows_its_latest_campaign_and_fills_the_slide():
     values = [number(row.cells[len(campaigns)].text_frame.text) for row in list(table.rows)[2:-1]]
     known = [value for value in values if value is not None]
     assert known == sorted(known) and values[:len(known)] == known
-    assert any(shape.has_text_frame and shape.text_frame.text.startswith('KPIs ordered by GAP in the latest campaign')
+    assert any(shape.has_text_frame
+               and shape.text_frame.text.startswith('KPIs ordered by GAP in the latest campaign across all categories')
                for shape in individual.shapes)
     for slide in gap_slides:
         table_shape = next(shape for shape in slide.shapes if shape.has_table)

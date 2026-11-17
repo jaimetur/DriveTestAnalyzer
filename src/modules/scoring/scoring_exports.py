@@ -57,7 +57,7 @@ from src.modules.scoring.scoring_act_slides import (
 from src.modules.scoring.scoring_vendors import normalize_scoring_vendor_result
 from src.modules.scoring.scoring_views import (
     THRESHOLD_COLORS, _hierarchy_display_value, gap_priority_order_key, latest_campaign_columns, build_scoring_views, nr_mode_result,
-    refresh_baseline_warning, scoring_coverage_notes,
+    order_gap_kpi_rows, refresh_baseline_warning, scoring_coverage_notes,
 )
 from src.modules.scoring.scoring_pptx_allocation import (
     _environment_display_label, add_maximum_allocation_donut, category_maximum_allocations,
@@ -351,6 +351,9 @@ def _add_individual_gap_notes(slide, matrix: dict, rows: list[dict]) -> None:
     columns = matrix.get('hierarchy_columns') or []
     order = ('KPIs ordered by GAP in the latest campaign' if len(latest_campaign_columns(columns)) < len(columns)
              else 'KPIs ordered by GAP')
+    if matrix.get('gap_kpi_order'):
+        # (The hierarchy tables follow the KPI order of the page, see _hierarchy_gap_projection.)
+        order += ' across all categories' if matrix['gap_kpi_order'] == 'all' else ' within each category'
     box = _text(
         slide, f'{order}\n\nAverage KPI GAP: {value_text} points\n\n'
         f'Average total KPI GAP: {total_text} points\n\n'
@@ -2140,8 +2143,10 @@ def _merge_category_cells(table, metrics: list[dict], start_row: int,
         first = last + 1
 
 
-def _hierarchy_gap_projection(matrix: dict, columns: list[dict]) -> dict:
-    """Keep a selected set of leaves in a hierarchy GAP view."""
+def _hierarchy_gap_projection(matrix: dict, columns: list[dict], kpi_order: str = 'category') -> dict:
+    """Keep a selected set of leaves in a hierarchy GAP view. One operator's KPIs are ordered by their GAP in the latest
+    campaign within each category or across all categories (``kpi_order``); several operators keep the order of the
+    methodology, or across all categories are ordered by their mean GAP in the latest campaign."""
     projected = deepcopy(matrix)
     leaf_ids = [column['id'] for column in columns]
     projected['hierarchy_columns'] = deepcopy(columns)
@@ -2159,13 +2164,13 @@ def _hierarchy_gap_projection(matrix: dict, columns: list[dict]) -> dict:
         for row in projected.get('rows', [])
     ]
     compared = [column for column in columns if not column.get('is_reference')]
-    if len({column['operator'] for column in compared}) == 1:
-        # One operator: its KPIs ordered by their GAP in the latest campaign.
-        if projected.get('table_mode') == 'summary':
+    if projected.get('table_mode') == 'summary':
+        # (A summary keeps its category rows: one operator's are ordered by their GAP in the latest campaign.)
+        if len({column['operator'] for column in compared}) == 1:
             projected['rows'].sort(key=lambda row: gap_priority_order_key(row, compared))
-        else:
-            kpis = [row for row in projected['rows'] if row.get('row_type') != 'category']
-            projected['rows'] = sorted(kpis, key=lambda row: gap_priority_order_key(row, compared))
+    elif len({column['operator'] for column in compared}) == 1 or kpi_order == 'all':
+        projected['rows'] = order_gap_kpi_rows(projected['rows'], compared, kpi_order=kpi_order)
+    projected['gap_kpi_order'] = kpi_order
     projected['total'] = {
         'gaps': {leaf_id: matrix.get('total', {}).get('gaps', {}).get(leaf_id) for leaf_id in leaf_ids},
         'gap_partial': {leaf_id: matrix.get('total', {}).get('gap_partial', {}).get(leaf_id, False)
@@ -2763,7 +2768,7 @@ def _add_insight_slides(presentation, views: dict, environment: str, scoring: st
                 presentation, profiles, scoring_label=label, subtitle=subtitle,
                 environment_labels=environment_labels,
                 new_slide=_slide, operator_colors={name: style.get('color') for name, style in styles.items()},
-                scope=scope,
+                scope=scope, kpi_order=views.get('_gap_kpi_order') or 'category',
             )
         return
     if stage == 'points':
@@ -2900,6 +2905,8 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
     views['_export_environment'] = 'all' if combined_only else environment
     # The operators each section of the page has enabled, when the export comes from the page (see _add_insight_slides).
     views['_operator_choices'] = job.get('_operator_choices') or {}
+    # The KPI order of the GAP tables and the KPI GAP Profile chosen on the page (see order_gap_kpi_rows).
+    views['_gap_kpi_order'] = job.get('_gap_kpi_order') or 'category'
     views['_panel_operators'] = panel_operators
     boundary_cache: dict[str, dict] = {}
 
@@ -3063,7 +3070,8 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                     all_columns = [column for column in compared_columns
                                    if all_base(column['operator'], _operator_label(gap_matrix, column['operator']))]
                     if all_columns and _option(options, 'gap', 'all_operators'):
-                        all_matrix = _hierarchy_gap_projection(_table_for_mode(gap_matrix, 'expanded'), all_columns)
+                        all_matrix = _hierarchy_gap_projection(_table_for_mode(gap_matrix, 'expanded'), all_columns,
+                                                               views.get('_gap_kpi_order') or 'category')
                         _hierarchy_gap_tables(presentation, [all_matrix], title=f'GAP Analysis — All vs {reference}')
                     if _option(options, 'gap', 'individual'):
                         for operator in dict.fromkeys(column['operator'] for column in compared_columns
@@ -3072,7 +3080,8 @@ def _add_scoring_block(presentation, job: dict[str, Any], result: dict[str, Any]
                             operator_columns = [column for column in gap_matrix['hierarchy_columns']
                                                 if column['operator'] == operator]
                             operator_matrix = _hierarchy_gap_projection(_table_for_mode(gap_matrix, 'expanded'),
-                                                                        operator_columns)
+                                                                        operator_columns,
+                                                                        views.get('_gap_kpi_order') or 'category')
                             _hierarchy_gap_tables(
                                 presentation, [operator_matrix],
                                 title=f'GAP Analysis — {operator} vs {reference}', show_priority=True,

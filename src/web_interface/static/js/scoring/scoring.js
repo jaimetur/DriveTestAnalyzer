@@ -185,6 +185,8 @@
         nrLayout: stored.nr_layout === 'grouped' ? 'grouped' : 'interleaved',
         // NSA and SA share the charts by default (nr_charts of earlier versions kept the former default, separate).
         nrCharts: stored.nr_charts_view === 'separate' ? 'separate' : 'same',
+        // The KPIs of the GAP tables and the KPI GAP Profile ordered by GAP within each category (default) or across all.
+        gapKpiOrder: stored.gap_kpi_order === 'all' ? 'all' : 'category',
         gapComparisons: stored.gap_comparisons && typeof stored.gap_comparisons === 'object'
           && !Array.isArray(stored.gap_comparisons)
           ? Object.fromEntries(Object.entries(stored.gap_comparisons).filter(([, value]) => (
@@ -226,6 +228,7 @@
         gap_layout: selectedGapLayout(),
         nr_layout: typeof selectedNrLayout === 'undefined' ? 'interleaved' : selectedNrLayout,
         nr_charts_view: typeof selectedNrCharts === 'undefined' ? 'same' : selectedNrCharts,
+        gap_kpi_order: typeof gapKpiOrder === 'undefined' ? 'category' : gapKpiOrder,
         gap_comparisons: typeof gapComparisonSelections === 'undefined'
           ? {} : Object.fromEntries(gapComparisonSelections),
         // Location, operators and analysis of the KPI GAP Profile and Points Lost Map, and the other insight selectors.
@@ -495,6 +498,13 @@
   const resultCache = new Map();
   const contextSelections = new Map();
   const gapComparisonSelections = new Map(Object.entries(restoredScoringViewState.gapComparisons || {}));
+  // The KPI order of the GAP tables and the KPI GAP Profile: by GAP within each category ('category') or across all
+  // categories ('all'). The GAP setting of Scoring Setup and the choice of each table are the same one, shown at once
+  // (nothing is calculated again) and followed by the PowerPoint and Word of the scoring shown.
+  let gapKpiOrder = restoredScoringViewState.gapKpiOrder === 'all' ? 'all' : 'category';
+  const GAP_KPI_ORDERS = [['category', 'Within each category'], ['all', 'Across all categories']];
+  const gapKpiOrderSetting = document.querySelector('[data-gap-kpi-order-setting]');
+  if (gapKpiOrderSetting) gapKpiOrderSetting.value = gapKpiOrder;
   const scoringValueObservers = new Map();
   const deletedSavedFilterIds = new Set();
   const deletingSavedFilterIds = new Set();
@@ -3004,7 +3014,8 @@
       link.hidden = false;
       link.setAttribute('aria-disabled', String(!enabled));
       link.tabIndex = enabled ? 0 : -1;
-      const query = `table_mode=${encodeURIComponent(selectedTableMode())}&gap_layout=${encodeURIComponent(selectedGapLayout())}&environment=${encodeURIComponent(selectedEnvironment || 'all')}`;
+      const query = `table_mode=${encodeURIComponent(selectedTableMode())}&gap_layout=${encodeURIComponent(selectedGapLayout())}&environment=${encodeURIComponent(selectedEnvironment || 'all')}`
+        + (kind === 'ppt' ? `&gap_kpi_order=${encodeURIComponent(gapKpiOrder)}` : '');
       const gapOption = kind === 'ppt' ? `&show_gap_values=${showGapValues() ? 'true' : 'false'}&theme=${encodeURIComponent(activeTheme?.id || 'netcheck')}` : '';
       // CSV files carry the selected scoring; PowerPoint and Word carry both scorings.
       const scoringOption = kind !== 'ppt' && typeof effectiveScoring === 'function'
@@ -3774,7 +3785,9 @@
 
   // ``latestValuesForRow`` (the GAPs of the latest campaign) orders first; ``valuesForRow`` (every GAP shown) breaks
   // the ties and orders the KPIs without a GAP in the latest campaign, which go after the others.
-  function orderGapRows(rows, valuesForRow, sortByGap = true, latestValuesForRow = null) {
+  // The KPI rows ordered by GAP, lowest first: within each category (its categories in their order) when ``byCategory``,
+  // else across all categories.
+  function orderGapRows(rows, valuesForRow, sortByGap = true, latestValuesForRow = null, byCategory = false) {
     const gapMean = (item, valuesOf) => {
       const values = valuesOf(item)
         .filter(value => value !== null && value !== undefined
@@ -3794,8 +3807,35 @@
       return 0;
     };
     const kpis = rows.filter(item => item?.row_type !== 'category');
-    if (sortByGap) kpis.sort(compare);
-    return kpis;
+    if (!sortByGap) return kpis;
+    if (!byCategory) return kpis.sort(compare);
+    const groups = new Map();
+    for (const item of kpis) {
+      const key = String(item?.category ?? '');
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    return [...groups.values()].flatMap(group => group.sort(compare));
+  }
+
+  // The KPI order choice of a GAP table or the KPI GAP Profile (the GAP setting of Scoring Setup).
+  function gapKpiOrderControl() {
+    const label = document.createElement('label');
+    label.className = 'scoring-environment-filter scoring-insight-select scoring-gap-kpi-order';
+    label.append(document.createTextNode('KPI order'));
+    const select = document.createElement('select');
+    select.dataset.gapKpiOrder = '';
+    select.setAttribute('aria-label', 'Order the KPIs by GAP within each category or across all categories');
+    select.title = 'The KPIs ordered by GAP, lowest first, within each category or across all categories (the GAP setting of Scoring Setup)';
+    for (const [value, text] of GAP_KPI_ORDERS) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = text;
+      select.append(option);
+    }
+    select.value = gapKpiOrder;
+    label.append(select);
+    return label;
   }
 
   // The hierarchy columns of the latest campaign (all of them when they have one campaign or none).
@@ -3815,13 +3855,16 @@
     });
   }
 
+  // ``sortByGap``: true, 'latest' (by the GAP in the latest campaign) or {latest, mean} (mean: of several operators).
   function appendGapOrderNotice(parent, sortByGap = true) {
     if (!sortByGap) return;
     const notice = document.createElement('p');
     notice.className = 'scoring-priority-order-notice';
     const text = document.createElement('strong');
-    text.textContent = sortByGap === 'latest' ? 'KPIs are ordered by GAP in the latest campaign, from lowest to highest.'
-      : 'KPIs are ordered by GAP, from lowest to highest.';
+    const latest = sortByGap === 'latest' || sortByGap?.latest === true;
+    const mean = sortByGap?.mean === true;
+    text.textContent = `KPIs are ordered by ${mean ? 'their mean GAP' : 'GAP'}${latest ? ' in the latest campaign' : ''}`
+      + `${gapKpiOrder === 'all' ? ' across all categories' : ' within each category'}, from lowest to highest.`;
     notice.append(text);
     parent.append(notice);
   }
@@ -4836,12 +4879,14 @@
     const columns = comparison === 'all'
       ? allColumns
       : allColumns.filter(column => hierarchyColumnOperator(column) === selectedOperator);
-    const sortByGap = comparison !== 'all';
-    // One operator: its KPIs ordered by their GAP in the latest campaign.
+    // One operator: its KPIs ordered by their GAP in the latest campaign, within each category or across all categories
+    // (the KPI order). All operators keep the order of the methodology within each category, or across all categories
+    // are ordered by their mean GAP in the latest campaign.
+    const sortByGap = comparison !== 'all' || gapKpiOrder === 'all';
     const latestColumns = latestCampaignColumns(columns);
     const rows = orderGapRows(Array.isArray(tableData.rows) ? tableData.rows : [],
       item => columns.map(column => firstValue(item?.gaps || {}, [column.id], null)), sortByGap,
-      item => latestColumns.map(column => firstValue(item?.gaps || {}, [column.id], null)));
+      item => latestColumns.map(column => firstValue(item?.gaps || {}, [column.id], null)), gapKpiOrder === 'category');
     const comparisonLabel = comparison === 'all' ? `All vs ${baseline}` : `${selectedOperator} vs ${baseline}`;
     const scaleRows = rows.flatMap(item => columns.map(column => ({gap_points: firstValue(item?.gaps || {}, [column.id], null)})))
       .filter(item => item.gap_points !== null && item.gap_points !== undefined && Number.isFinite(Number(item.gap_points)));
@@ -4863,7 +4908,7 @@
       appendFocusOptions(select, operators.map(operator => [`operator:${operator}`, `${operator} vs ${baseline}`, operator, operator]));
       select.value = comparison;
       label.append(select);
-      controls.append(label);
+      controls.append(label, gapKpiOrderControl());
       pane.append(controls);
     }
     const note = document.createElement('p');
@@ -4880,7 +4925,8 @@
       pane.append(empty);
       return;
     }
-    appendGapScaleAside(gapInfo, tableData, scaleRows, sortByGap && (latestColumns.length < columns.length ? 'latest' : true));
+    appendGapScaleAside(gapInfo, tableData, scaleRows, sortByGap && {latest: latestColumns.length < columns.length,
+      mean: new Set(columns.map(hierarchyColumnOperator)).size > 1});
 
     const blocks = [{label: comparisonLabel, className: 'scoring-gap-group', headerClass: 'scoring-gap-header', column: 'gap', columns}];
     const wrapper = document.createElement('div');
@@ -4997,7 +5043,7 @@
     const rows = orderGapRows((Array.isArray(selected?.rows) ? selected.rows : []).filter(row => (
       row?.row_type === 'category' || row?.row_type === 'kpi'
       || (row?.gap_points !== null && row?.gap_points !== undefined && String(row.gap_points).trim() !== '' && Number.isFinite(Number(row.gap_points)))
-    )), item => [item?.gap_points]);
+    )), item => [item?.gap_points], true, null, gapKpiOrder === 'category');
     if (!rows.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
@@ -5137,7 +5183,7 @@
     }));
     select.value = comparison;
     label.append(select);
-    controls.append(label);
+    controls.append(label, gapKpiOrderControl());
     pane.append(controls);
 
     appendContextHeader(pane, selected, 'gap-summary');
@@ -5152,10 +5198,12 @@
     const comparisons = comparison === 'all'
       ? operators
       : operators.filter(operator => `operator:${operator}` === comparison);
-    const sortByGap = comparison !== 'all';
+    // (All operators keep the order of the methodology within each category, as the hierarchy table.)
+    const sortByGap = comparison !== 'all' || gapKpiOrder === 'all';
     const rows = orderGapRows(Array.isArray(selected.rows) ? selected.rows : [],
-      item => comparisons.map(operator => firstValue(item?.gaps || {}, [operator], null)), sortByGap);
-    appendGapScaleAside(gapInfo, selected, rows, comparison !== 'all');
+      item => comparisons.map(operator => firstValue(item?.gaps || {}, [operator], null)), sortByGap, null,
+      gapKpiOrder === 'category');
+    appendGapScaleAside(gapInfo, selected, rows, sortByGap && {mean: comparisons.length > 1});
     if (!comparisons.length || !rows.length) {
       const empty = document.createElement('div');
       empty.className = 'scoring-empty';
@@ -7592,6 +7640,13 @@
               cell.replaceChildren(label);
             }
           }
+          if (content.category) {
+            // A KPI listed out of its category (the KPI GAP Profile across all categories) carries its category.
+            const tag = document.createElement('span');
+            tag.className = 'scoring-kpi-category';
+            tag.textContent = content.category;
+            cell.prepend(tag);
+          }
           if (content.title) cell.title = content.title;
           if (content.className) cell.className = content.className;
           if (content.style) Object.assign(cell.style, content.style);
@@ -7678,7 +7733,19 @@
     name.textContent = profile.label;
     banner.append(name, kind === 'maximum' ? ' · points lost per KPI' : ` · GAP to ${profile.reference_label} per KPI`);
     const tableRows = [];
-    for (const group of ordered) {
+    // The KPI GAP Profile across all categories (the GAP setting): every KPI in one list, lowest GAP first, each with
+    // its category.
+    if (kind !== 'maximum' && gapKpiOrder === 'all') {
+      const kpis = rows.map((row, index) => ({row, index}))
+        .sort((left, right) => ((Number(left.row[totalKey]) || 0) - (Number(right.row[totalKey]) || 0)) || left.index - right.index);
+      for (const {row} of kpis) {
+        tableRows.push([{text: row.kpi, className: 'scoring-insight-kpi', kpiType: row.kpi_type,
+          category: `${row.category} · ${row.service}`},
+          ...profile.columns.map(column => gapBarCell(row[valueKey]?.[column], scales[column], {loss: false})),
+          gapBarCell(row[totalKey], scale, {loss: false, total: true})]);
+      }
+    }
+    for (const group of (kind !== 'maximum' && gapKpiOrder === 'all') ? [] : ordered) {
       tableRows.push([{text: `${group.category} · ${group.service}`, className: 'scoring-insight-group'},
         ...profile.columns.map(column => ({text: insightNumber(group.rows.reduce((sum, row) => sum + (Number(row[valueKey]?.[column]) || 0), 0), 2),
           className: 'scoring-insight-number scoring-insight-group'})),
@@ -7771,6 +7838,7 @@
     heading.className = 'scoring-table-section-title';
     heading.textContent = 'KPI GAP Profile';
     const {controls, inScope, chosen} = gapInsightControls(pane, profiles);
+    controls.append(gapKpiOrderControl());
     appendResultScope(heading, inScope[0]?.context);
     section.append(heading, controls);
     const grid = document.createElement('div');
@@ -7788,7 +7856,9 @@
         note.append(index ? '; ' : '', insightStrong(profile.label, safeHexColor(profile.color)), ' is ',
           insightStrong(`${gap >= 0 ? '+' : ''}${insightNumber(gap, 2)} points`), ` against ${profile.reference_label}`);
       });
-      note.append('. The GAP of a KPI is the points of the operator minus those of the reference; each category sums its KPIs, the categories furthest behind first.');
+      note.append(gapKpiOrder === 'all'
+        ? '. The GAP of a KPI is the points of the operator minus those of the reference; the KPIs of every category in one list, the furthest behind first.'
+        : '. The GAP of a KPI is the points of the operator minus those of the reference; each category sums its KPIs, the categories furthest behind first.');
       section.append(note);
     }
     pane.append(section);
@@ -11489,7 +11559,22 @@
   campaignFilterSelect?.addEventListener('multiselect:options-updated', () => {
     campaignChoice = [...campaignFilterSelect.selectedOptions].map(option => option.value);
   });
+  // The KPI order of the GAP tables and the KPI GAP Profile, from a table or the GAP setting of Scoring Setup (in its
+  // dialog, out of the page, hence its own listener): every choice shows it at once and the exports follow it.
+  function setGapKpiOrder(value) {
+    const next = value === 'all' ? 'all' : 'category';
+    const changed = next !== gapKpiOrder;
+    gapKpiOrder = next;
+    if (gapKpiOrderSetting && gapKpiOrderSetting.value !== next) gapKpiOrderSetting.value = next;
+    if (!changed) return;
+    persistScoringViewState();
+    if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
+    if (currentResults) renderResult(currentResults, selectedSavedFilter);
+    if (currentResultsSavedFilterId) setExportLinks(currentResultsSavedFilterId, true);
+  }
+  gapKpiOrderSetting?.addEventListener('change', () => setGapKpiOrder(gapKpiOrderSetting.value));
   root.addEventListener('change', event => {
+    if (event.target === gapKpiOrderSetting) return;
     if ([environmentSelect, scoringKindSelect, showKpiValuesToggle, showGapValuesToggle, gapLayoutSelect, nrLayoutSelect, nrChartsSelect].includes(event.target)) {
       if (event.target === environmentSelect) selectedEnvironment = environmentSelect.value;
       if (event.target === nrLayoutSelect) selectedNrLayout = nrLayoutSelect.value === 'grouped' ? 'grouped' : 'interleaved';
@@ -11572,6 +11657,10 @@
     if (event.target === gapLayoutSelect && currentResults) {
       renderResult(currentResults, selectedSavedFilter);
       setExportLinks(currentResultsSavedFilterId, true);
+      return;
+    }
+    if (event.target.matches?.('[data-gap-kpi-order]')) {
+      setGapKpiOrder(event.target.value);
       return;
     }
     const gapSummaryOperator = event.target.closest('[data-gap-summary-operator]');
@@ -12625,6 +12714,7 @@
     const methodology = configSelectText(scoringProfileSelect).replace(/\s*\(.*\)\s*$/, '');
     const reference = configSelectText(baselineInput);
     const setup = [['Methodology', methodology], ['GAP reference', reference],
+      ['KPI order', (GAP_KPI_ORDERS.find(([value]) => value === gapKpiOrder) || GAP_KPI_ORDERS[0])[1]],
       ['Postal Codes', areaSummaryPostalCodes?.checked ? (POSTAL_MAP_LABELS[areaSummaryPostalMap?.value] || 'Full postcodes') : '']];
     const campaigns = configOptionTexts(contextFilterSelects.get('Campaign'));
     const areas = ['Region', 'Cluster', 'City'].flatMap(key => configOptionTexts(contextFilterSelects.get(key)));

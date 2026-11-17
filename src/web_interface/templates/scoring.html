@@ -1042,6 +1042,10 @@
   .scoring-comparison-controls select { width: auto; min-width: 12rem; max-width: min(100%, 30rem); min-height: 2.15rem; padding: .35rem 2rem .35rem .6rem; font-size: .78rem; }
   .scoring-gap-comparison-controls select { border: 1px solid #c8842f; background-color: #fff2c9; color: #49300c; font-weight: 800; box-shadow: 0 1px 2px rgba(119,74,16,.12); }
   .scoring-gap-comparison-controls select:focus-visible { outline: 3px solid rgba(200,132,47,.28); outline-offset: 2px; }
+  /* The KPI order of the GAP tables and the KPI GAP Profile (the GAP setting of Scoring Setup): a plain choice beside the
+     GAP comparison; in the KPI GAP Profile each KPI listed across all categories carries its category above its name. */
+  .scoring-gap-comparison-controls .scoring-gap-kpi-order select { border: 1px solid var(--line); background-color: #fff; color: inherit; font-weight: 700; box-shadow: none; }
+  .scoring-insight-table .scoring-kpi-category { display: inline-block; margin: 0 0 .1rem; padding: .05rem .38rem; border-radius: 5px; background: #eef2f6; color: #3d4c58; font-size: .6rem; font-weight: 750; letter-spacing: .03em; }
   /* The choices of operators of Scoring (the Operator filter of the Calculation panel and the operator choices of the
      results; not the GAP reference) in the blue of the Operators, stronger than the other fields. */
   :is([data-scoring-workspace] select[data-scoring-context-filter="Operator"] + .multiselect-shell > .multiselect-trigger,
@@ -2154,6 +2158,14 @@
               {% else %}<option value="EE" selected>EE</option>{% endif %}
               {# NSA vs SA only: each operator in SA compared with itself in NSA (SA minus NSA). #}
               <option value="@same-operator-nsa" data-nsa-vs-sa-reference hidden disabled title="NSA vs SA: the GAP of each operator in SA to itself in the NSA campaign of the same quarter">Same operator in NSA</option>
+            </select>
+          </label>
+          {# How the KPIs of the GAP tables and the KPI GAP Profile are ordered: shown at once (nothing is calculated again),
+             the same choice as the KPI order of those tables, and followed by the PowerPoint and Word of the scoring shown. #}
+          <label class="scoring-scope-control" aria-labelledby="scoring-gap-kpi-order-title" title="The KPIs of the GAP tables and the KPI GAP Profile ordered by GAP, lowest first: within each category or across all categories. Shown at once: nothing is calculated again."><span id="scoring-gap-kpi-order-title">KPI order</span>
+            <select data-gap-kpi-order-setting aria-labelledby="scoring-gap-kpi-order-title">
+              <option value="category" selected>Within each category</option>
+              <option value="all">Across all categories</option>
             </select>
           </label>
         </div>

@@ -70,6 +70,48 @@ process.stdout.write(JSON.stringify({
     assert set(result['types']) == {'kpi'}
 
 
+def test_gap_row_order_within_each_category_or_across_all_categories():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    program = r'''
+const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+''' + _function_source(script, 'orderGapRows') + r'''
+const within = orderGapRows(payload.rows, item => [item.gap_points], true, null, true);
+const across = orderGapRows(payload.rows, item => [item.gap_points], true, null, false);
+process.stdout.write(JSON.stringify({within: within.map(row => row.kpi_code), across: across.map(row => row.kpi_code)}));
+'''
+    rows = [
+        {'row_type': 'kpi', 'category': 'A', 'kpi_code': 'A1', 'gap_points': 3},
+        {'row_type': 'kpi', 'category': 'B', 'kpi_code': 'B1', 'gap_points': -5},
+        {'row_type': 'kpi', 'category': 'A', 'kpi_code': 'A2', 'gap_points': -1},
+        {'row_type': 'category', 'category': 'A', 'kpi_code': '', 'gap_points': 1},
+        {'row_type': 'kpi', 'category': 'B', 'kpi_code': 'B2', 'gap_points': 2},
+    ]
+    result = _run_node_json(program, {'rows': rows})
+
+    assert result['within'] == ['A2', 'A1', 'B1', 'B2']
+    assert result['across'] == ['B1', 'A2', 'B2', 'A1']
+
+
+def test_gap_kpi_order_is_a_gap_setting_shared_with_the_gap_tables_and_the_kpi_gap_profile():
+    script = SCORING_SCRIPT.read_text(encoding='utf-8')
+    template = (PROJECT_ROOT / 'src/web_interface/templates/scoring.html').read_text(encoding='utf-8')
+    setup = template.split('data-scoring-config-section="setup"', 1)[1].split('data-scoring-config-section="context"', 1)[0]
+    # The GAP setting of Scoring Setup, beside the GAP reference operator; shown at once, so not a value to calculate.
+    gap_group = setup.split('<strong>GAP Analysis</strong>', 1)[1].split('<strong>Points Lost</strong>', 1)[0]
+    assert 'data-gap-kpi-order-setting' in gap_group
+    assert '<option value="category" selected>Within each category</option>' in gap_group
+    assert '<option value="all">Across all categories</option>' in gap_group
+    setting = gap_group[gap_group.index('KPI order') - 400:gap_group.index('data-gap-kpi-order-setting')]
+    assert 'data-scoring-config-key' not in setting
+    # Each GAP table and the KPI GAP Profile offer the same choice, and the exports follow it.
+    for name in ('renderHierarchyGapViews', 'renderGapSummaryViews'):
+        assert 'controls.append(label, gapKpiOrderControl());' in _function_source(script, name)
+    assert 'controls.append(gapKpiOrderControl());' in _function_source(script, 'renderKpiGapProfiles')
+    assert "gapKpiOrder === 'all'" in _function_source(script, 'profileTable')
+    assert '&gap_kpi_order=${encodeURIComponent(gapKpiOrder)}' in _function_source(script, 'setExportLinks')
+    assert 'gap_kpi_order: typeof gapKpiOrder' in script
+
+
 def test_gap_renderers_have_no_category_or_overall_total_footer():
     script = SCORING_SCRIPT.read_text(encoding='utf-8')
     for name in ('renderGapViews', 'renderGapSummaryViews', 'renderHierarchyGapViews'):

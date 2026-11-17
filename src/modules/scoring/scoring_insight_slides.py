@@ -461,10 +461,13 @@ def _environment_label(name: str, labels: dict[str, str]) -> str:
     return labels.get(name) or name
 
 
-def _profile_rows(profile: dict[str, Any], kind: str) -> list[tuple[str, dict[str, Any]]]:
-    """The rows of a profile table: each category (the ones that lose most first) and then its KPIs."""
+def _profile_rows(profile: dict[str, Any], kind: str, kpi_order: str = 'category') -> list[tuple[str, dict[str, Any]]]:
+    """The rows of a profile table: each category (the ones that lose most first) and then its KPIs; for the GAP to the
+    reference across all categories (``kpi_order`` ``all``), every KPI in one list, lowest GAP first."""
     rows = profile['to_maximum'] if kind == 'maximum' else profile['to_reference']
     total_key = 'total_gap_to_maximum' if kind == 'maximum' else 'total_gap_to_reference'
+    if kind != 'maximum' and kpi_order == 'all':
+        return [('kpi', row) for row in sorted(rows, key=lambda row: row[total_key] or 0)]
     groups: dict[tuple, list[dict[str, Any]]] = {}
     for row in rows:
         groups.setdefault((row['service'], row.get('category') or ''), []).append(row)
@@ -477,8 +480,10 @@ def _profile_rows(profile: dict[str, Any], kind: str) -> list[tuple[str, dict[st
 
 
 def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, width: float,
-                   environment_labels: dict[str, str], header_color: str) -> None:
-    lines = _profile_rows(profile, kind)
+                   environment_labels: dict[str, str], header_color: str, kpi_order: str = 'category') -> None:
+    lines = _profile_rows(profile, kind, kpi_order)
+    # Listed out of their categories, the KPIs carry their category.
+    across = kind != 'maximum' and kpi_order == 'all'
     columns = profile['columns']
     title = (f"{profile['label']} · points lost per KPI" if kind == 'maximum'
              else f"{profile['label']} · GAP to {profile['reference_label']} per KPI")
@@ -548,7 +553,10 @@ def _profile_table(slide, profile: dict[str, Any], *, kind: str, left: float, wi
             _cell(table.cell(row_index, len(widths) - 1), _points(sum(item[total_key] or 0 for item in row['rows']), 2), size=size,
                   bold=True, fill=fill, align=PP_ALIGN.RIGHT)
             continue
-        _cell(table.cell(row_index, 0), row.get('kpi') or '', size=size, fill='#FFFFFF', kpi_type=row.get('kpi_type') or '')
+        kpi_text = row.get('kpi') or ''
+        if across and row.get('category'):
+            kpi_text = f"{row['category']} · {kpi_text}"
+        _cell(table.cell(row_index, 0), kpi_text, size=size, fill='#FFFFFF', kpi_type=row.get('kpi_type') or '')
         table.cell(row_index, 0).margin_left = Inches(.14)
         for column, value in [*((1 + offset, row[gap_key].get(name)) for offset, name in enumerate(columns)),
                               (len(widths) - 1, row[total_key])]:
@@ -583,9 +591,11 @@ def _profile_note(slide, runs: list[tuple[str, bool, str | None]]) -> None:
 
 def add_kpi_gap_profile_slides(presentation, profiles: list[dict[str, Any]], *, scoring_label: str, subtitle: str,
                                environment_labels: dict[str, str], new_slide: Callable,
-                               operator_colors: dict[str, str], scope: ScopeLabels | None = None) -> None:
-    """The GAP of each compared operator to the reference per KPI, grouped by category, two operators per slide (the
-    points they lose against the maximum are in the Points Lost slides, see add_points_per_kpi_slides)."""
+                               operator_colors: dict[str, str], scope: ScopeLabels | None = None,
+                               kpi_order: str = 'category') -> None:
+    """The GAP of each compared operator to the reference per KPI, grouped by category (or in one list across all
+    categories, ``kpi_order`` ``all``), two operators per slide (the points they lose against the maximum are in the
+    Points Lost slides, see add_points_per_kpi_slides)."""
     compared = [profile for profile in _block_profiles(profiles) if profile['operator'] != profile['reference']]
     for pair in _profile_pairs(compared):
         first = pair[0]
@@ -597,11 +607,13 @@ def add_kpi_gap_profile_slides(presentation, profiles: list[dict[str, Any]], *, 
         for index, profile in enumerate(pair):
             header = profile.get('color') or operator_colors.get(profile['operator']) or '#C8102E'
             _profile_table(slide, profile, kind='reference', left=.35 + index * 6.43, width=6.2 if len(pair) == 2 else 12.6,
-                           environment_labels=environment_labels, header_color=header)
+                           environment_labels=environment_labels, header_color=header, kpi_order=kpi_order)
             gap = sum(row['total_gap_to_reference'] for row in profile['to_reference'])
             runs += [('; ' if index else '', False, None), (profile['label'], True, header), (' is ', False, None),
                      (f'{gap:+,.2f} points', True, None), (f" against {profile['reference_label']}", False, None)]
-        runs.append(('. The GAP of a KPI is the points of the operator minus those of the reference; each category sums its '
+        runs.append(('. The GAP of a KPI is the points of the operator minus those of the reference; the KPIs of every '
+                     'category in one list, the furthest behind first.' if kpi_order == 'all' else
+                     '. The GAP of a KPI is the points of the operator minus those of the reference; each category sums its '
                      'KPIs, the categories furthest behind first.', False, None))
         _profile_note(slide, runs)
 

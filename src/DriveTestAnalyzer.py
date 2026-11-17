@@ -21982,10 +21982,15 @@ def scoring_saved_filter_export(
     all_operators: bool = False,
     nr_layout: str | None = None,
     nr_charts: str | None = None,
+    gap_kpi_order: str | None = None,
     user: SessionUser = Depends(current_user),
 ) -> Response:
     if table_mode is not None and table_mode not in {'expanded', 'summary'}:
         raise HTTPException(status_code=400, detail='Table mode must be expanded or summary.')
+    # The KPI order of the GAP tables and the KPI GAP Profile of the page: within each category or across all of them.
+    from src.modules.scoring.scoring_views import GAP_KPI_ORDERS
+    if gap_kpi_order is not None and gap_kpi_order not in GAP_KPI_ORDERS:
+        raise HTTPException(status_code=400, detail='The KPI order must be category or all.')
     # NSA vs SA: each NR Mode on its own, as the results of the page show it (see scoring_exports.export_scoring_report).
     from src.modules.scoring.scoring_reports import NR_CHARTS, NR_LAYOUTS
     if (nr_layout is not None and nr_layout not in NR_LAYOUTS) or (nr_charts is not None and nr_charts not in NR_CHARTS):
@@ -22034,6 +22039,7 @@ def scoring_saved_filter_export(
             **({'operators': operator_choices} if export_kind in {'ppt', 'word'} and operator_choices else {}),
             **({'all_operators': True} if export_kind in {'ppt', 'word'} and all_operators else {}),
             **({'nr_layout': nr_layout, 'nr_charts': nr_charts or 'same'} if export_kind in {'ppt', 'word'} and nr_layout else {}),
+            **({'gap_kpi_order': gap_kpi_order} if export_kind in {'ppt', 'word'} and gap_kpi_order else {}),
         }))
         return response
     from src.modules.scoring.scoring_views import normalize_result_gaps
@@ -22119,6 +22125,7 @@ def scoring_saved_filter_export(
                 saved_filter['configuration'] = export_configuration or task_repository.get_scoring_configuration()
             export_job = _scoring_export_job_with_catalogue_defaults(task_repository, saved_filter)
             export_job['_operator_choices'] = operator_choices
+            export_job['_gap_kpi_order'] = gap_kpi_order or 'category'
             # The panels the workspace exports and their operators; every operator in the Focus Operators panels when
             # the export dialog asks for it.
             export_job['_export_panels'] = load_export_panels(task_repository)

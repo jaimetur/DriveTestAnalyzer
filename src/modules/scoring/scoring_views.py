@@ -1098,6 +1098,25 @@ def gap_priority_order_key(row: dict[str, Any], columns: list[dict[str, Any]]) -
     return (*latest[:2], *_gap_order_key(row, [column['id'] for column in columns]))
 
 
+# The KPI orders of the GAP tables and the KPI GAP Profile (the GAP setting of Scoring Setup): by GAP within each
+# category, the default, or across all categories.
+GAP_KPI_ORDERS = ('category', 'all')
+
+
+def order_gap_kpi_rows(rows: list[dict[str, Any]], columns: list[dict[str, Any]], *,
+                       kpi_order: str = 'category') -> list[dict[str, Any]]:
+    """The KPI rows of a GAP table ordered by GAP, lowest first (gap_priority_order_key): within each category, its
+    categories in their order, or across all categories when ``kpi_order`` is ``all``."""
+    kpis = [row for row in rows if row.get('row_type') != 'category']
+    if kpi_order == 'all':
+        return sorted(kpis, key=lambda row: gap_priority_order_key(row, columns))
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in kpis:
+        groups.setdefault(str(row.get('category') or ''), []).append(row)
+    return [row for members in groups.values()
+            for row in sorted(members, key=lambda row: gap_priority_order_key(row, columns))]
+
+
 def _priority_order_rows(rows: list[dict[str, Any]], _gap_priority_rank: dict[str, int]) -> list[dict[str, Any]]:
     return sorted(rows, key=_gap_order_key)
 
