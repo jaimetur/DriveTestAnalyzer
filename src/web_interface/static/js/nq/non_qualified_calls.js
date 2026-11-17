@@ -4712,7 +4712,8 @@
   // the top of the call.
   const analystFieldsOf = (key) => state.fields.filter((field) => field.section === key && !['tracking', 'priority'].includes(field.source)
     && !(field.key === 'priority' && field.source === 'user' && field.type === 'list'));
-  // Shown in the header beside the JOIN_ID: the identifier of the analysis in the workbooks of the previous tool.
+  // Not shown in the call nor counted among the fields to fill: the identifier of the analysis in the workbooks of the previous
+  // tool (ticket #164), kept by the import of the Previous NQ Analyses and exported with the call.
   const HEADER_FIELDS = ['unique_id'];
   // The values of the NQ Prioritization about the repeated issue of a call, on a row of their own in Prioritization Info.
   const REPETITION_REFS = ['repeated', 'repetitions', 'repeated_campaigns', 'place_label'];
@@ -4959,7 +4960,7 @@
     const infoTitle = node('span', 'Prioritization Info', 'nq-phase-panel-title');
     infoTitle.append(originBadge('tool'));
     infoPanel.append(infoTitle, ...[infoGrid, repeatGrid].filter((grid) => grid.childElementCount));
-    // The fields of the analysts of General (Unique ID…) follow the Reviewer, saved as soon as they change like it.
+    // The fields of the analysts of General (those added in Fields & Sections) follow the Reviewer, saved as soon as they change like it.
     const generalFields = analystFieldsOf('general').filter((item) => !HEADER_FIELDS.includes(item.key)).map((item) => {
       const block = fieldBlock(item, call);
       block.classList.add('nq-tracking-field', 'nq-tracking-general');
@@ -5676,15 +5677,9 @@
     $('nq-drawer-meta').textContent = [cdrTime(call.start_time), call.city, call.technology, call.test_name].filter((value) => value && value !== '—').join(' · ');
     $('nq-drawer-join-id').textContent = call.join_id || '';
     $('nq-drawer-join').hidden = !call.join_id;
-    // The Unique ID of the analysis in the workbooks of the previous tool, always beside the JOIN_ID that identifies the call
-    // (— when it has none).
-    const uniqueField = state.fields.find((item) => item.key === 'unique_id' && item.section === 'general');
-    const uniqueId = uniqueField ? String(call.fields?.unique_id || call.values?.unique_id || '') : '';
-    $('nq-drawer-unique-label').textContent = uniqueField?.label || 'Unique ID';
-    $('nq-drawer-unique-id').textContent = uniqueId || '—';
-    $('nq-drawer-unique').hidden = !uniqueField;
     // Its identifiers in the provider's tools (NetCheck CloudNM: Session_ID_A and B of a call, Test_ID and Session_id of a
-    // test), after the Unique ID, each with its copy button (— when the call has none).
+    // test), after the JOIN_ID, each with its copy button (— when the call has none). The Unique ID of the previous tool is
+    // a field of General, not of the header.
     $('nq-drawer-provider-ids').replaceChildren(...(call.provider_ids || []).map((item) => {
       const pill = node('p', undefined, 'nq-drawer-join nq-drawer-provider-id');
       pill.title = `The ${item.label} of the call in the CDR, as the tools of the provider identify it`;

@@ -352,11 +352,9 @@
 .nq-drawer-join { display: grid; grid-template-columns: minmax(0, max-content) auto; justify-content: start; align-items: center; gap: .3rem .45rem; margin: .4rem 0 0; color: #ffe6ee; font-size: .74rem; font-weight: 800; letter-spacing: .03em; }
 .nq-drawer-join > span { grid-column: 1 / -1; }
 .nq-drawer-join[hidden] { display: none; }
-/* The JOIN_ID, the Unique ID of the analysis in the previous tool and the IDs in the provider's tools, across the whole
+/* The JOIN_ID and the IDs in the provider's tools, across the whole
    header below the call (not beside the navigation), so that they fit on one row. */
 .nq-drawer-ids { display: flex; flex: 1 0 100%; flex-wrap: wrap; align-items: flex-start; gap: 0 1.4rem; margin-top: -.35rem; }
-/* Its title level with that of the JOIN_ID and its value in a row as tall as the copy button, level with the JOIN_ID. */
-.nq-drawer-unique { grid-template-columns: minmax(0, max-content); grid-template-rows: auto 1.85rem; }
 /* The identifiers of the call in the provider's tools, each like the JOIN_ID (its copy button beside its value). */
 .nq-drawer-provider-ids { display: contents; }
 .nq-drawer-provider-id code { min-height: 1.85rem; display: inline-flex; align-items: center; }
