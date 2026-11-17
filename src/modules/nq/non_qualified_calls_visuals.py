@@ -265,9 +265,13 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
     total = int(summary.get('total') or 0)
     colours = _option_colours(options)
     cards = [
-        ('Attended', _number(summary.get('attended')), f"{_share(summary.get('attended') or 0, total)} have a follow-up", 'open'),
-        ('Not Attended', _number(summary.get('not_attended')), 'No change or comment yet', 'total'),
-        ('Closure Rate', f"{float(summary.get('closure_rate') or 0):.1f}%", f"{_number(summary.get('closed'))} of {_number(total)} closed", 'closed'),
+        # The rates count only the calls in a queue: the tracked calls (in no queue) are shown apart.
+        ('Attended', _number(summary.get('attended')),
+         f"{_share(summary.get('queued_attended') or 0, int(summary.get('queued') or 0))} of the calls in a queue", 'open'),
+        ('Not Attended', _number(summary.get('not_attended')),
+         f"In a queue · {_number(summary.get('not_attended_out_of_queue'))} more tracked", 'total'),
+        ('Closure Rate', f"{float(summary.get('closure_rate') or 0):.1f}%",
+         f"{_number(summary.get('queued_closed'))} of {_number(summary.get('queued'))} in a queue closed", 'closed'),
         ('First Follow-up', _days(summary.get('avg_days_to_first_follow_up')), 'Average from the call', 'team'),
         ('Time to Close', _days(summary.get('avg_days_to_close')), 'Average from the call', 'commented'),
         ('Activity', _number((summary.get('comments') or 0) + (summary.get('changes') or 0)),
@@ -330,7 +334,7 @@ def _workload_card(panel: Panel, left: float, top: float, width: float, height: 
 
 
 def _timeline_panel(periods: list[dict[str, Any]], granularity_label: str) -> BytesIO | None:
-    """Detected, attended and closed calls per period as bars, with the open backlog as a line, like the page."""
+    """Detected, attended and closed calls per period as bars, with the open and queue backlogs as lines, like the page."""
     shown = periods[-24:]
     if not shown:
         return None
@@ -338,14 +342,15 @@ def _timeline_panel(periods: list[dict[str, Any]], granularity_label: str) -> By
     panel.card(0, 0, panel.width, panel.height)
     panel.text(0.2, 0.16, f'Progress per {granularity_label}', 12, bold=True, color=DARK)
     series = [('detected', 'Detected', '#8a6b76'), ('attended', 'Attended', '#e08a1e'), ('closed', 'Closed', '#2e8b57')]
+    lines = [('open_backlog', 'Open backlog', '#b0234f'), ('queued_backlog', 'Queue backlog', '#6a4fd1')]
     legend_x = 3.2
-    for _key, label, colour in [*series, ('open_backlog', 'Open backlog', '#b0234f')]:
+    for _key, label, colour in [*series, *lines]:
         panel.draw.rounded_rectangle([_px(legend_x), _px(0.22), _px(legend_x + 0.14), _px(0.36)], radius=_px(0.03), fill=colour)
         panel.text(legend_x + 0.2, 0.2, label, 9, color=TEXT)
         legend_x += 0.4 + panel.draw.textlength(label, font=_font(9)) / DPI
     left, right, top, bottom = 0.75, panel.width - 0.25, 0.65, panel.height - 0.5
     maximum = max(1, *(max(int(period.get(key) or 0) for key, _label, _colour in series) for period in shown),
-                  *(int(period.get('open_backlog') or 0) for period in shown))
+                  *(int(period.get(key) or 0) for period in shown for key, _label, _colour in lines))
     step = 10 ** max(0, int(math.log10(maximum)) - 1)
     maximum = math.ceil(maximum / step / 4) * step * 4 if maximum > 4 else 4
     for share in (0, 0.25, 0.5, 0.75, 1):
@@ -354,7 +359,7 @@ def _timeline_panel(periods: list[dict[str, Any]], granularity_label: str) -> By
         panel.text(left - 0.08, y, _number(round(maximum * share)), 8, color=MUTED, anchor='rm')
     slot = (right - left) / len(shown)
     bar = min(0.22, (slot - 0.1) / len(series))
-    points = []
+    points: list[list[tuple[int, int]]] = [[] for _line in lines]
     for index, period in enumerate(shown):
         start = left + index * slot + (slot - bar * len(series)) / 2
         for position, (key, _label, colour) in enumerate(series):
@@ -364,13 +369,15 @@ def _timeline_panel(periods: list[dict[str, Any]], granularity_label: str) -> By
                 x = start + position * bar
                 panel.draw.rounded_rectangle([_px(x), _px(bottom - height), _px(x + bar - 0.03), _px(bottom)], radius=_px(0.02), fill=colour)
         centre = left + index * slot + slot / 2
-        points.append((_px(centre), _px(bottom - (bottom - top) * int(period.get('open_backlog') or 0) / maximum)))
+        for line, (key, _label, _colour) in enumerate(lines):
+            points[line].append((_px(centre), _px(bottom - (bottom - top) * int(period.get(key) or 0) / maximum)))
         panel.text(centre, bottom + 0.1, str(period.get('period') or ''), 8, color=MUTED, anchor='ma', width=max(0.5, slot))
-    if len(points) > 1:
-        panel.draw.line(points, fill='#b0234f', width=_px(0.03), joint='curve')
-    for x, y in points:
-        radius = _px(0.04)
-        panel.draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill='#b0234f', outline='white', width=2)
+    for line, (_key, _label, colour) in enumerate(lines):
+        if len(points[line]) > 1:
+            panel.draw.line(points[line], fill=colour, width=_px(0.03), joint='curve')
+        for x, y in points[line]:
+            radius = _px(0.04)
+            panel.draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill=colour, outline='white', width=2)
     return panel.png()
 
 
@@ -942,32 +949,42 @@ def _rule_lines(panel: Panel, left: float, top: float, width: float, bottom: flo
             panel.text(x, y, value, points, bold=True, color=colour, anchor='lm')
 
 
+def _tracked(count: Any) -> str:
+    """The tracked calls (in no queue) of a count, shown apart from it."""
+    return f' · +{_number(count)} tracked' if count else ''
+
+
 def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
     """The indicators and the NQ Call Status pipeline of the page: the calls not attended, Open (the phase statuses, its
     total being theirs) and the closed statuses, each card with its calls, share and age and the rules that set it."""
     total = int(lifecycle.get('total') or 0)
+    # The pipeline and its shares count only the calls in a queue: the tracked calls wait for nobody (shown apart).
+    queued = int(lifecycle.get('queued', total) or 0)
     pipeline = lifecycle.get('pipeline') or []
     closed = sum(item['count'] for item in pipeline if item.get('closed'))
+    closed_tracked = sum(int(item.get('tracked') or 0) for item in pipeline if item.get('closed'))
+    open_tracked = int(lifecycle.get('open_tracked') or 0)
     open_names = list(lifecycle.get('open_statuses') or [])
     open_total = int(lifecycle.get('open', total - closed) or 0)
     modes = lifecycle.get('modes') or {}
     waiting = lifecycle.get('not_attended')
     panel = Panel()
     _kpi_row(panel, [
-        ('Calls', _number(total), 'Selected Non-Qualified Calls', 'total'),
+        ('Calls', _number(total), f'{_number(queued)} in a queue · {_number(total - queued)} tracked', 'total'),
         ('Automatic Status', _number(modes.get('auto', 0)), f"{_share(modes.get('auto', 0), total)} follow the Status Rules", 'team'),
         ('Status by Hand', _number(modes.get('manual', 0)), f"{_share(modes.get('manual', 0), total)} chosen by an analyst", 'commented'),
-        *([(waiting['status'], _number(waiting['count']), f"{_share(waiting['count'], total)} not followed up yet",
+        *([(waiting['status'], _number(waiting['count']),
+            f"{_share(waiting['count'], queued)} not followed up yet{_tracked(waiting.get('tracked'))}",
             waiting.get('color') or '#9aa5ad')] if waiting else []),
-        ('Open', _number(open_total), f'{_share(open_total, total)} attended and not closed', 'open'),
-        ('Closed', _number(closed), f'{_share(closed, total)} closed', 'closed'),
+        ('Open', _number(open_total), f'{_share(open_total, queued)} attended and not closed{_tracked(open_tracked)}', 'open'),
+        ('Closed', _number(closed), f'{_share(closed, queued)} closed{_tracked(closed_tracked)}', 'closed'),
         ('Stalled', _number(lifecycle.get('stalled_total', 0)), f"Open, no change for {lifecycle.get('stalled_days', 14)}+ days", 'attended'),
     ], 0, 0.95, compact=True)
     steps = [*(item for item in pipeline if not item.get('closed')), *(item for item in pipeline if item.get('closed'))]
     # The bar with the share of each status.
     x, bar_top = 0.0, 1.12
     for item in steps:
-        width = panel.width * item['count'] / max(1, total)
+        width = panel.width * item['count'] / max(1, queued)
         if width > 0:
             panel.draw.rectangle([_px(x), _px(bar_top), _px(x + width), _px(bar_top + 0.09)], fill=item.get('color') or '#b8c0c6')
         x += width
@@ -1004,14 +1021,15 @@ def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
         panel.text(x + 0.14, head_top, str(item['status']).upper(), 7.5, bold=True, color=MUTED, width=inner)
         panel.text(x + 0.14, head_top + 0.2, _number(item['count']), 18, bold=True, color=DARK, width=inner)
         age = '' if item.get('avg_age_days') is None else f" · {item['avg_age_days']} d old on average"
-        panel.text(x + 0.14, head_top + 0.62, f"{_share(item['count'], total)}{age}", 7.5, color=MUTED, width=inner)
+        panel.text(x + 0.14, head_top + 0.62, f"{_share(item['count'], queued)}{age}{_tracked(item.get('tracked'))}", 7.5,
+                   color=MUTED, width=inner)
         _dashes(panel, (x + 0.14, rules_top), (x + width - 0.14, rules_top))
         _rule_lines(panel, x + 0.14, rules_top + 0.2, inner, card_bottom - 0.14, item['status'], lifecycle)
         x += width
         if in_group and (index + 1 == len(steps) or steps[index + 1]['status'] not in open_names):
             right = x + pad
             _dashed_frame(panel, frame_left, card_top - 0.24, right - frame_left, card_bottom - card_top + 0.36, RASPBERRY)
-            label = f"{_share(open_total, total)} · attended and not closed: {' + '.join(open_names)}"
+            label = f"{_share(open_total, queued)} · attended and not closed: {' + '.join(open_names)}{_tracked(open_tracked)}"
             label_width = min(right - frame_left - 0.4, 0.95 + panel.draw.textlength(label, font=_font(7.5)) / DPI)
             panel.draw.rounded_rectangle([_px(frame_left + 0.2), _px(card_top - 0.38), _px(frame_left + 0.2 + label_width),
                                           _px(card_top - 0.1)], radius=_px(0.14), fill='white', outline=RASPBERRY,

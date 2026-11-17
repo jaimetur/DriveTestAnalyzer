@@ -505,15 +505,19 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     assert {item['category']: [domain['domain'] for domain in item['domains']] for item in insights['mapped']['script']}[
         'Coverage'] == ['RF']
     lifecycle = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
-    pipeline = {item['status']: item['count'] for item in lifecycle['pipeline']}
+    # The pipeline counts the calls in a queue and adds the tracked ones (in no queue) apart.
+    pipeline = {item['status']: item['count'] + item['tracked'] for item in lifecycle['pipeline']}
+    assert lifecycle['queued'] == sum(item['count'] for item in lifecycle['pipeline'])
     assert pipeline['Under Analysis'] == 2 and 'Open' not in pipeline and pipeline['Not Attended'] == 1
     # Open is the sum of the statuses of the calls somebody has (assigned or attended) not closed yet.
     assert lifecycle['open_statuses'] == ['Assigned', 'Under Analysis', 'Under Implementation', 'Under Planning']
-    assert lifecycle['open'] == sum(pipeline[name] for name in lifecycle['open_statuses'])
+    assert lifecycle['open'] + lifecycle['open_tracked'] == sum(pipeline[name] for name in lifecycle['open_statuses'])
     # Not Attended: the calls in the first status, with its colour.
-    assert lifecycle['not_attended'] == {'status': 'Not Attended', 'count': pipeline['Not Attended'], 'color': '#9aa5ad'}
+    waiting = lifecycle['not_attended']
+    assert waiting['status'] == 'Not Attended' and waiting['color'] == '#9aa5ad'
+    assert waiting['count'] + waiting['tracked'] == pipeline['Not Attended']
     # The stalled calls are open ones: the call not attended, months old, is not stalled.
-    assert lifecycle['stalled_total'] <= lifecycle['open']
+    assert lifecycle['stalled_total'] <= lifecycle['open'] + lifecycle['open_tracked']
     assert all(item['status'] in lifecycle['open_statuses'] for item in lifecycle['stalled'])
     # The Stalled card filters the calls it counts: an open call last changed months ago.
     with core.repository.connection() as connection:
@@ -529,7 +533,7 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     assert closed_or_stalled == 1 + query(client, filters={'state': ['closed']})['total']
     assert query(client, filters={'state': ['attended', 'not_attended']})['total'] == life['total']
     # Open: the calls the Open card counts, in one filter.
-    assert query(client, filters={'state': ['open']})['total'] == life['open']
+    assert query(client, filters={'state': ['open']})['total'] == life['open'] + life['open_tracked']
     assert query(client, filters={'state': ['open']})['total'] == query(client, filters={'status': life['open_statuses']})['total']
     phases = {phase['key']: phase for phase in lifecycle['phases']}
     assert next(item['count'] for item in phases['analysis_status']['items'] if item['value'] == 'Ongoing') == 1

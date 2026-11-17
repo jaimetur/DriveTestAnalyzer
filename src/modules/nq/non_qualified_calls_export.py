@@ -121,10 +121,12 @@ def breakdown_table(breakdown: dict[str, Any], total: int) -> tuple[list[str], l
 def progress_summary_table(summary: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
     return ['Indicator', 'Value'], [
         ['Attended (followed up or commented)', f"{summary['attended']:,}"],
-        ['Not attended yet', f"{summary['not_attended']:,}"],
+        ['Calls in a queue', f"{summary.get('queued', 0):,}"],
+        ['Not attended yet in a queue', f"{summary['not_attended']:,}"],
+        ['Not attended yet, tracked (in no queue)', f"{summary.get('not_attended_out_of_queue', 0):,}"],
         ['Open', f"{summary['open']:,}"],
         ['Closed', f"{summary['closed']:,}"],
-        ['Closure rate', f"{summary['closure_rate']:.1f}%"],
+        ['Closure rate (calls in a queue)', f"{summary['closure_rate']:.1f}%"],
         ['Comments', f"{summary['comments']:,}"],
         ['Follow-up changes', f"{summary['changes']:,}"],
         ['Contributors', f"{summary['contributors']:,}"],
@@ -136,10 +138,10 @@ def progress_summary_table(summary: dict[str, Any]) -> tuple[list[str], list[lis
 def timeline_table(progress: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
     statuses = progress['statuses']
     columns = ['Period', 'Detected', 'Attended', 'Comments', *[f'→ {status}' for status in statuses],
-               'Closed', 'Reopened', 'Open backlog', 'Avg days to close']
+               'Closed', 'Reopened', 'Open backlog', 'Queue backlog', 'Avg days to close']
     rows = [[period['period'], str(period['detected']), str(period['attended']), str(period['comments']),
              *[str(period['statuses'].get(status, 0)) for status in statuses],
-             str(period['closed']), str(period['reopened']), str(period['open_backlog']), _days(period['avg_days_to_close'])]
+             str(period['closed']), str(period['reopened']), str(period['open_backlog']), str(period.get('queued_backlog', 0)), _days(period['avg_days_to_close'])]
             for period in progress['periods']]
     return columns, rows
 

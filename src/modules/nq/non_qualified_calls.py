@@ -445,7 +445,9 @@ ROOT_SOURCES = ('analysts', 'netcheck', 'script', 'dta')
 RCA_FILTER_SOURCES = ('netcheck', 'script', 'dta')
 _ATTENDED_SQL = "(attended_at <> '' OR comment_count > 0)"
 STATE_SQL = {
-    'attended': _ATTENDED_SQL, 'not_attended': f'NOT {_ATTENDED_SQL}', 'with_team': "team <> ''",
+    'attended': _ATTENDED_SQL, 'not_attended': f'NOT {_ATTENDED_SQL}', 'in_queue': "queue <> ''",
+    # Not attended in a queue: the calls waiting in a queue of the NQ Prioritization (the tracked ones are in none).
+    'queued_not_attended': f"(queue <> '' AND NOT {_ATTENDED_SQL})", 'with_team': "team <> ''",
     'assigned': "analyst <> ''", 'commented': 'comment_count > 0', 'labelled': "root_domain <> ''",
     # RCA Identification: a root category or cause is selected.
     'identified': "(root_category <> '' OR root_cause <> '')", 'not_identified': "(root_category = '' AND root_cause = '')",
@@ -6616,7 +6618,7 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
                                 [item['name'] for item in options['statuses'] if item['closed']], list_fields(task_repository))
     with task_repository.connection() as connection:
         calls = connection.execute(
-            f'WITH calls AS ({base}) SELECT call_key, start_time, status, team, analyst, service, result FROM calls{where}',
+            f'WITH calls AS ({base}) SELECT call_key, start_time, status, team, analyst, service, result, queue FROM calls{where}',
             [*base_params, *params],
         ).fetchall()
         keys = [str(row['call_key']) for row in calls]
@@ -6644,13 +6646,15 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         label = period_label(moment, granularity)
         return timeline.setdefault(label, {
             'period': label, 'detected': 0, 'attended': 0, 'comments': 0, 'changes': 0,
-            'closed': 0, 'reopened': 0, 'statuses': {}, 'close_days': [],
+            'closed': 0, 'reopened': 0, 'statuses': {}, 'close_days': [], 'queued_moves': 0,
         })
 
     def follow_up(key: str, moment: datetime | None) -> None:
         if moment is not None and (key not in first_followup or moment < first_followup[key]):
             first_followup[key] = moment
 
+    # The queue backlog counts only the calls in a queue of the NQ Prioritization (the tracked calls wait for nobody).
+    queued_keys = {str(row['call_key']) for row in calls if str(row['queue'] or '')}
     activity: dict[str, dict[str, int]] = {}
     for row in history:
         moment = _parse_time(row['changed_at'])
@@ -6672,9 +6676,11 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
             target['closed'] += 1
             user['closed'] += 1
             closed_at[key] = moment
+            target['queued_moves'] -= key in queued_keys
         elif old_value.casefold() in closed_names and new_value.casefold() not in closed_names:
             target['reopened'] += 1
             closed_at.pop(key, None)
+            target['queued_moves'] += key in queued_keys
     for row in comments:
         moment = _parse_time(row['created_at'])
         follow_up(str(row['call_key']), moment)
@@ -6686,6 +6692,7 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         target = bucket(_parse_time(row['start_time']))
         if target is not None:
             target['detected'] += 1
+            target['queued_moves'] += str(row['call_key']) in queued_keys
     for key, moment in first_followup.items():
         bucket(moment)['attended'] += 1
     # The days to close count from the call (imported analyses follow a call up and close it at once).
@@ -6696,12 +6703,13 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         bucket(closed_at[key])['close_days'].append(days)
 
     periods = []
-    backlog = 0
+    backlog = queued_backlog = 0
     for label in sorted(timeline):
         item = timeline[label]
         backlog += item['detected'] - item['closed'] + item['reopened']
+        queued_backlog += item.pop('queued_moves')
         days = item.pop('close_days')
-        periods.append({**item, 'open_backlog': max(backlog, 0),
+        periods.append({**item, 'open_backlog': max(backlog, 0), 'queued_backlog': max(queued_backlog, 0),
                         'avg_days_to_close': round(sum(days) / len(days), 1) if days else None})
 
     open_calls = [row for row in calls if str(row['status']).casefold() not in closed_names]
@@ -6732,12 +6740,19 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
             response_days.append((first_followup[key] - starts[key]).total_seconds() / 86400)
     total = len(calls)
     closed_total = total - len(open_calls)
+    # The rates count only the calls in a queue of the NQ Prioritization: the tracked calls (and those out of the
+    # queues) wait for nobody, so they are shown apart and left out of them.
+    queued = [row for row in calls if str(row['call_key']) in queued_keys]
+    queued_attended = sum(1 for row in queued if str(row['call_key']) in first_followup)
+    queued_closed = sum(1 for row in queued if str(row['status']).casefold() in closed_names)
     return {
         'granularity': granularity,
         'summary': {
-            'total': total, 'attended': len(attended), 'not_attended': total - len(attended),
-            'open': len(open_calls), 'closed': closed_total,
-            'closure_rate': round(closed_total * 100 / total, 1) if total else 0.0,
+            'total': total, 'attended': len(attended), 'queued': len(queued), 'queued_attended': queued_attended,
+            'not_attended': len(queued) - queued_attended,
+            'not_attended_out_of_queue': (total - len(queued)) - (len(attended) - queued_attended),
+            'open': len(open_calls), 'closed': closed_total, 'queued_closed': queued_closed,
+            'closure_rate': round(queued_closed * 100 / len(queued), 1) if queued else 0.0,
             'comments': sum(1 for row in comments if not row['deleted_at']),
             'changes': len(history), 'contributors': len(activity),
             'avg_days_to_first_follow_up': round(sum(response_days) / len(response_days), 1) if response_days else None,
@@ -9351,12 +9366,15 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     phase fields, the time spent in each status, the most frequent moves and the calls without recent changes."""
     rows, context = _filtered_calls(task_repository, filters, username,
                                     'call_key, start_time, status, status_mode, updated_at, attended_at, comment_count, field_values_json, '
-                                    'service, test_name, session_type, operator, campaign, city, root_category, root_cause')
+                                    'service, test_name, session_type, operator, campaign, city, root_category, root_cause, queue')
     options, definitions = context['options'], context['definitions']
     statuses = options['statuses']
     closed = {item['name'].casefold() for item in statuses if item['closed']}
     now = datetime.now()
     counts: Counter = Counter()
+    # The calls of each status in a queue of the NQ Prioritization: the pipeline and its shares count only them, the
+    # tracked calls (in no queue, waiting for nobody) are shown apart.
+    queued: Counter = Counter()
     ages: dict[str, list[float]] = {}
     modes: Counter = Counter()
     stalled = []
@@ -9366,6 +9384,7 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     for row in rows:
         status = str(row['status'] or '')
         counts[status] += 1
+        queued[status] += bool(str(row['queue'] or ''))
         modes[str(row['status_mode'] or 'auto')] += 1
         started = _parse_time(row['start_time'])
         if started is not None:
@@ -9376,10 +9395,12 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
             stalled.append({'call_key': str(row['call_key']), 'status': status, 'operator': str(row['operator'] or ''),
                             'campaign': str(row['campaign'] or ''), 'city': str(row['city'] or ''),
                             'days': days, 'followed_up': bool(row['attended_at'])})
-    pipeline = [{'status': item['name'], 'color': item['color'], 'closed': item['closed'], 'count': counts.get(item['name'], 0),
+    pipeline = [{'status': item['name'], 'color': item['color'], 'closed': item['closed'], 'count': queued.get(item['name'], 0),
+                 'tracked': counts.get(item['name'], 0) - queued.get(item['name'], 0),
                  'avg_age_days': round(sum(ages.get(item['name'], [])) / len(ages[item['name']]), 1) if ages.get(item['name']) else None}
                 for item in statuses]
-    pipeline += [{'status': name, 'color': '', 'closed': False, 'count': count, 'avg_age_days': None}
+    pipeline += [{'status': name, 'color': '', 'closed': False, 'count': queued.get(name, 0), 'tracked': count - queued.get(name, 0),
+                  'avg_age_days': None}
                  for name, count in counts.items() if name not in {item['name'] for item in statuses}]
     phases = []
     for field in definitions:
@@ -9425,10 +9446,12 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
     open_statuses = [item['status'] for item in pipeline if not item['closed'] and item['status'] != first]
     waiting = next((item for item in pipeline if item['status'] == first and not item['closed']), None)
     return {
-        'total': len(rows), 'pipeline': pipeline, 'modes': {'auto': modes.get('auto', 0), 'manual': modes.get('manual', 0)},
+        'total': len(rows), 'queued': sum(queued.values()), 'pipeline': pipeline, 'modes': {'auto': modes.get('auto', 0), 'manual': modes.get('manual', 0)},
         'open': sum(item['count'] for item in pipeline if item['status'] in open_statuses), 'open_statuses': open_statuses,
-        # Not Attended: the calls in the first status, nobody has followed them up yet.
-        'not_attended': {'status': waiting['status'], 'count': waiting['count'], 'color': waiting['color']} if waiting else None,
+        'open_tracked': sum(item['tracked'] for item in pipeline if item['status'] in open_statuses),
+        # Not Attended: the calls in a queue in the first status, nobody has followed them up yet.
+        'not_attended': {'status': waiting['status'], 'count': waiting['count'], 'tracked': waiting['tracked'],
+                         'color': waiting['color']} if waiting else None,
         'rca': {'identified': identified, 'not_identified': len(rows) - identified},
         'phases': phases, 'time_in_status': time_in_status,
         'moves': [{'from': old, 'to': new, 'count': count} for (old, new), count in moves.most_common(12)],

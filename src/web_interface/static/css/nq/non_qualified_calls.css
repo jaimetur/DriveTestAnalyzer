@@ -602,6 +602,7 @@ body:has(.nq-drawer.is-open) { overflow: hidden; }
 .nq-grid-line { stroke: #f1dfe5; stroke-width: 1; }
 .nq-axis-label { fill: var(--nq-muted); font: 600 10px "Segoe UI", sans-serif; }
 .nq-backlog-line { fill: none; stroke: #b0234f; stroke-width: 2.5; stroke-linejoin: round; }
+.nq-backlog-line.is-queued { stroke: #6a4fd1; stroke-dasharray: 6 4; }
 .nq-stats-table { min-width: 0; }
 .nq-stats-table td.nq-number { font-variant-numeric: tabular-nums; text-align: right; }
 .nq-stats-table tbody tr { cursor: default; }
@@ -621,6 +622,7 @@ body:has(.nq-drawer.is-open) { overflow: hidden; }
 .nq-timeline-zone { fill: transparent; cursor: crosshair; }
 .nq-timeline-zone:hover { fill: rgba(125, 18, 56, .06); }
 .nq-backlog-point { fill: #b0234f; stroke: #fff; stroke-width: 1.5; pointer-events: none; }
+.nq-backlog-point.is-queued { fill: #6a4fd1; }
 .nq-pie-slice { cursor: pointer; transition: stroke-width .12s ease; }
 .nq-pie-slice:hover { stroke-width: 22; }
 
@@ -1270,6 +1272,16 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
 .non-qualified-calls .nq-view-switch a { text-decoration: none; display: inline-flex; flex: 0 0 auto; align-items: center; gap: .45rem; min-height: 0; padding: .5rem 1rem; white-space: nowrap; border: 0; border-radius: 999px; background: transparent; color: rgba(255, 255, 255, .9); font-size: .9rem; font-weight: 850; box-shadow: none; }
 .non-qualified-calls .nq-view-switch a:hover { background: rgba(255, 255, 255, .14); color: #fff; }
 .non-qualified-calls .nq-view-switch a.is-active { background: #fff; color: var(--nq-dark); box-shadow: 0 4px 12px rgba(30, 4, 14, .3); }
+/* Wider screens: the NQ Analysis Configuration in its own row below the bar, at its right, so that every section of
+   the bar fits without scrolling it sideways (where the bar is not docked at the bottom, as app.css docks it). */
+@media (min-width: 641px) and (min-height: 601px), (min-width: 1025px) {
+  .nq-view-dock { flex-direction: column; gap: .3rem; width: max-content; max-width: 100%; margin-inline: auto; }
+  .nq-view-dock .nq-center-wrap { align-self: flex-end; }
+  .nq-view-dock .nq-view-switch { flex: 0 0 auto; }
+  .non-qualified-calls .nq-center-toggle { padding: .45rem .95rem; font-size: .85rem; }
+  .nq-view-dock .nq-view-switch { gap: .2rem; }
+  .non-qualified-calls .nq-view-switch a { gap: .4rem; padding: .5rem .75rem; }
+}
 .nq-view-switch svg { width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nq-view-count { padding: .05rem .5rem; border-radius: 999px; background: rgba(255, 255, 255, .2); font-size: .78rem; }
 .nq-view-switch .is-active .nq-view-count { background: rgba(125, 18, 56, .12); }

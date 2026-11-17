@@ -55,7 +55,7 @@
     not_in_final: 'Only in Weekly or Daily CDRs, while a Final CDR covers its campaign',
     qualified: 'Completed in a more recent CDR',
   };
-  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', with_team: 'With team',
+  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', in_queue: 'In a queue', queued_not_attended: 'Not attended in a queue', with_team: 'With team',
     assigned: 'Assigned', commented: 'Commented', labelled: 'With a root cause', suggested: 'Suggested root cause',
     identified: 'RCA identified', not_identified: 'RCA not identified', open: 'Open', stalled: 'Stalled'};
   // Filters set by clicking the Progress View and the Root Cause Analysis; they have no select of their own.
@@ -70,7 +70,7 @@
   // The map of the open call paints the group that filters the list (set once the map is mounted).
   let refreshCallMap = () => {};
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
-  const FOLLOW_UP_STATES = ['attended', 'not_attended', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
+  const FOLLOW_UP_STATES = ['attended', 'not_attended', 'queued_not_attended', 'in_queue', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
   const HISTORY_LABELS = {status: 'Status', status_auto: 'Status (automatic)', status_mode: 'Status Set', team: 'Team',
     analyst: 'Analyst', reviewer: 'Reviewer', root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause',
@@ -2396,19 +2396,21 @@
     }
     table.replaceChildren(head, body);
   };
-  // Detected, attended and closed calls per period, with the open backlog as a line.
+  // Detected, attended and closed calls per period, with the open backlog and the queue backlog (only the calls in a
+  // queue, no tracked ones) as lines.
   const timelineChart = (periods) => {
     const host = $('nq-timeline-chart');
     const shown = periods.slice(-24);
     if (!shown.length) { host.replaceChildren(node('p', 'No dated activity for this selection.', 'nq-muted')); return; }
     const series = [['detected', 'Detected', '#8a6b76'], ['attended', 'Attended', '#e08a1e'], ['closed', 'Closed', '#2e8b57']];
+    const lines = [['open_backlog', 'Open backlog', '#b0234f', ''], ['queued_backlog', 'Queue backlog', '#6a4fd1', 'is-queued']];
     const width = Math.max(640, shown.length * 64);
     const height = 240;
     const top = 16;
     const bottom = 40;
     const left = 40;
     const plot = height - top - bottom;
-    const maximum = Math.max(1, ...shown.flatMap((period) => [...series.map(([key]) => period[key]), period.open_backlog]));
+    const maximum = Math.max(1, ...shown.flatMap((period) => [...series.map(([key]) => period[key]), ...lines.map(([key]) => period[key] || 0)]));
     const svg = svgNode('svg', {viewBox: `0 0 ${width + left} ${height}`, class: 'nq-timeline-svg', role: 'img', 'aria-label': 'Progress per period'});
     [0, 0.25, 0.5, 0.75, 1].forEach((share) => {
       const y = top + plot * (1 - share);
@@ -2419,7 +2421,7 @@
     });
     const slot = width / shown.length;
     const bar = Math.min(16, (slot - 12) / series.length);
-    const points = [];
+    const points = lines.map(() => []);
     const zones = [];
     shown.forEach((period, index) => {
       const x = left + index * slot + (slot - bar * series.length) / 2;
@@ -2430,25 +2432,27 @@
       });
       // The whole period column answers the pointer with every value of the period.
       const zone = svgNode('rect', {x: left + index * slot, y: top, width: slot, height: plot, class: 'nq-timeline-zone'});
-      const rows = [...series.map(([key, label, color]) => [label, number(period[key]), color]), ['Open backlog', number(period.open_backlog), '#b0234f']];
+      const rows = [...series, ...lines].map(([key, label, color]) => [label, number(period[key] || 0), color]);
       zone.addEventListener('pointermove', (event) => chartTooltip.show(event, period.period, rows));
       zone.addEventListener('pointerleave', chartTooltip.hide);
       zone.addEventListener('click', () => { chartTooltip.hide(); drill([['period', `${$('nq-granularity').value}:${period.period}`]]); });
       zones.push(zone);
-      points.push(`${left + index * slot + slot / 2},${top + plot - (period.open_backlog / maximum) * plot}`);
+      lines.forEach(([key], line) => points[line].push(`${left + index * slot + slot / 2},${top + plot - ((period[key] || 0) / maximum) * plot}`));
       const caption = svgNode('text', {x: left + index * slot + slot / 2, y: height - bottom + 16, 'text-anchor': 'middle', class: 'nq-axis-label'});
       caption.textContent = period.period;
       svg.append(caption);
     });
-    svg.append(svgNode('polyline', {points: points.join(' '), class: 'nq-backlog-line'}));
-    points.forEach((point) => {
-      const [cx, cy] = point.split(',');
-      svg.append(svgNode('circle', {cx, cy, r: 3.5, class: 'nq-backlog-point'}));
+    lines.forEach(([, , , modifier], line) => {
+      svg.append(svgNode('polyline', {points: points[line].join(' '), class: `nq-backlog-line ${modifier}`.trim()}));
+      points[line].forEach((point) => {
+        const [cx, cy] = point.split(',');
+        svg.append(svgNode('circle', {cx, cy, r: 3.5, class: `nq-backlog-point ${modifier}`.trim()}));
+      });
     });
     svg.append(...zones);
     svg.addEventListener('pointerleave', chartTooltip.hide);
     const legend = node('div', undefined, 'nq-chart-legend');
-    [...series, ['open_backlog', 'Open backlog', '#b0234f']].forEach(([, label, color]) => {
+    [...series, ...lines].forEach(([, label, color]) => {
       const item = node('span');
       const swatch = node('span', '', 'nq-swatch');
       swatch.style.background = color;
@@ -2463,9 +2467,10 @@
   const renderProgress = (progress) => {
     const summary = progress.summary;
     $('nq-progress-kpis').replaceChildren(
-      drillCard(kpiCard('Attended', number(summary.attended), `${percent(summary.attended, summary.total)} have a follow-up`, 'open'), {pairs: [['state', 'attended']]}),
-      drillCard(kpiCard('Not Attended', number(summary.not_attended), 'No change or comment yet', 'total'), {pairs: [['state', 'not_attended']]}),
-      drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.closed)} of ${number(summary.total)} closed`, 'closed'), {pairs: [['state', 'closed']]}),
+      // The rates count only the calls in a queue: the tracked calls (in no queue) are shown apart.
+      drillCard(kpiCard('Attended', number(summary.attended), `${percent(summary.queued_attended, summary.queued)} of the calls in a queue`, 'open'), {pairs: [['state', 'attended']]}),
+      drillCard(kpiCard('Not Attended', number(summary.not_attended), `In a queue · ${number(summary.not_attended_out_of_queue)} more tracked`, 'total'), {pairs: [['state', 'queued_not_attended']]}),
+      drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.queued_closed)} of ${number(summary.queued)} in a queue closed`, 'closed'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('First Follow-up', days(summary.avg_days_to_first_follow_up), 'Average from the call', 'team'), {pairs: [['state', 'attended']]}),
       drillCard(kpiCard('Time to Close', days(summary.avg_days_to_close), 'Average from the call', 'commented'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('Activity', number(summary.comments + summary.changes), `${number(summary.comments)} comments · ${number(summary.changes)} changes · ${number(summary.contributors)} users`), {pairs: [['state', 'attended']]}),
@@ -2476,10 +2481,10 @@
     timelineChart(progress.periods);
     const periods = [...progress.periods].reverse();
     statsTable($('nq-timeline-table'), [label, 'Detected', 'Attended', 'Comments', ...progress.statuses.map((status) => `→ ${status}`),
-      'Closed', 'Reopened', 'Open Backlog', 'Avg Days to Close'],
+      'Closed', 'Reopened', 'Open Backlog', 'Queue Backlog', 'Avg Days to Close'],
     periods.map((period) => [period.period, number(period.detected), number(period.attended), number(period.comments),
       ...progress.statuses.map((status) => number(period.statuses[status] || 0)), number(period.closed), number(period.reopened),
-      number(period.open_backlog), period.avg_days_to_close === null ? '—' : period.avg_days_to_close.toFixed(1)]),
+      number(period.open_backlog), number(period.queued_backlog || 0), period.avg_days_to_close === null ? '—' : period.avg_days_to_close.toFixed(1)]),
     {drillRow: (index) => [['period', `${progress.granularity}:${periods[index].period}`]]});
     const agingTotal = progress.aging.reduce((sum, item) => sum + item.count, 0);
     const maxAge = Math.max(1, ...progress.aging.map((item) => item.count));
@@ -2505,7 +2510,7 @@
       workload(progress.analysts.map((row) => ({...row, name: row.name === 'Unassigned' ? row.name : userName(row.name)}))),
       {drillRow: (index) => [['analyst', person(progress.analysts[index].name)]]});
     statsTable($('nq-activity'), ['User', 'Changes', 'Comments', 'Calls Closed'],
-      progress.activity.map((row) => [row.name, number(row.changes), number(row.comments), number(row.closed)]));
+      progress.activity.map((row) => [userName(row.name), number(row.changes), number(row.comments), number(row.closed)]));
   };
   let progressToken = 0;
   async function loadProgress() {
@@ -2844,26 +2849,32 @@
   };
   // A phase field with more values goes in a row of its own (as WIDE_PHASE_VALUES in the reports).
   const WIDE_PHASE_VALUES = 12;
-  // The calls in the first status, in its colour: a click shows only them.
-  const notAttendedCard = (waiting, total) => {
-    const card = kpiCard(waiting.status, number(waiting.count), `${percent(waiting.count, total)} not followed up yet`);
+  // The tracked calls (in no queue) of a count, shown apart from it.
+  const trackedNote = (tracked) => (tracked ? ` · +${number(tracked)} tracked` : '');
+  // The calls in a queue in the first status, in its colour: a click shows only them.
+  const notAttendedCard = (waiting, base) => {
+    const card = kpiCard(waiting.status, number(waiting.count),
+      `${percent(waiting.count, base)} not followed up yet${trackedNote(waiting.tracked)}`);
     if (waiting.color) card.style.borderTopColor = waiting.color;
-    return drillCard(card, {many: ['status', [waiting.status]]});
+    return drillCard(card, {pairs: [['status', waiting.status], ['state', 'in_queue']]});
   };
   const renderLifecycle = (life) => {
     state.life = life;
     const total = life.total;
+    // The pipeline and its shares count only the calls in a queue: the tracked calls wait for nobody.
+    const queued = life.queued ?? total;
     const closed = life.pipeline.filter((item) => item.closed).reduce((sum, item) => sum + item.count, 0);
+    const closedTracked = life.pipeline.filter((item) => item.closed).reduce((sum, item) => sum + (item.tracked || 0), 0);
     $('nq-life-kpis').replaceChildren(
-      drillCard(kpiCard('Calls', number(total), 'Selected Non-Qualified Calls', 'total'), {clear: ['status_mode']}),
+      drillCard(kpiCard('Calls', number(total), `${number(queued)} in a queue · ${number(total - queued)} tracked`, 'total'), {clear: ['status_mode']}),
       drillCard(kpiCard('Automatic Status', number(life.modes.auto), `${percent(life.modes.auto, total)} follow the Status Rules`, 'team'),
         {pairs: [['status_mode', 'auto']]}),
       drillCard(kpiCard('Status by Hand', number(life.modes.manual), `${percent(life.modes.manual, total)} chosen by an analyst`, 'commented'),
         {pairs: [['status_mode', 'manual']]}),
-      ...(life.not_attended ? [notAttendedCard(life.not_attended, total)] : []),
-      drillCard(kpiCard('Open', number(life.open), `${percent(life.open, total)} attended and not closed`, 'open'),
+      ...(life.not_attended ? [notAttendedCard(life.not_attended, queued)] : []),
+      drillCard(kpiCard('Open', number(life.open), `${percent(life.open, queued)} attended and not closed${trackedNote(life.open_tracked)}`, 'open'),
         {pairs: [['state', 'open']]}),
-      drillCard(kpiCard('Closed', number(closed), `${percent(closed, total)} closed`, 'closed'), {pairs: [['state', 'closed']]}),
+      drillCard(kpiCard('Closed', number(closed), `${percent(closed, queued)} closed${trackedNote(closedTracked)}`, 'closed'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('Stalled', number(life.stalled_total), `Open, no change for ${life.stalled_days}+ days`, 'attended'),
         {pairs: [['state', 'stalled']]}),
     );
@@ -2871,7 +2882,7 @@
     // theirs), then the closed statuses.
     const steps = [...life.pipeline.filter((item) => !item.closed), ...life.pipeline.filter((item) => item.closed)];
     const pipeline = $('nq-life-pipeline');
-    pipeline.replaceChildren(stackedBar(steps.map((item) => ({label: item.status, count: item.count, color: item.color})), total));
+    pipeline.replaceChildren(stackedBar(steps.map((item) => ({label: item.status, count: item.count, color: item.color})), queued));
     const flow = node('div', undefined, 'nq-pipeline-steps');
     const openNames = life.open_statuses || [];
     let group = null;
@@ -2882,7 +2893,7 @@
         group = node('div', undefined, 'nq-pipeline-group');
         const head = drillCard(node('div', undefined, 'nq-pipeline-group-head'), {pairs: [['state', 'open']]});
         head.append(node('span', 'Open', 'nq-pipeline-name'), node('strong', number(life.open)),
-          node('span', `${percent(life.open, total)} · attended and not closed: ${openNames.join(' + ')}`, 'nq-kpi-note'));
+          node('span', `${percent(life.open, queued)} · attended and not closed: ${openNames.join(' + ')}${trackedNote(life.open_tracked)}`, 'nq-kpi-note'));
         group.append(head, node('div', undefined, 'nq-pipeline-group-steps'));
         flow.append(group);
       }
@@ -2897,7 +2908,7 @@
       // The status, its calls and their age, as tall in every card, so that the rules start on one line.
       const top = node('div', undefined, 'nq-pipeline-head');
       top.append(node('span', item.status, 'nq-pipeline-name'), node('strong', number(item.count)),
-        node('span', `${percent(item.count, total)}${item.avg_age_days === null ? '' : ` · ${item.avg_age_days} d old on average`}`, 'nq-kpi-note'));
+        node('span', `${percent(item.count, queued)}${item.avg_age_days === null ? '' : ` · ${item.avg_age_days} d old on average`}${trackedNote(item.tracked)}`, 'nq-kpi-note'));
       step.append(top);
       const triggers = ruleTriggers(item.status, life.rules || []);
       if (triggers) step.append(triggers);
