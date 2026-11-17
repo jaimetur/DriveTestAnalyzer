@@ -518,15 +518,19 @@ def test_teams_members_progress_shared_filters_and_reporting_artifact(client, tm
     progress = client.post('/api/non-qualified-calls/progress', json={'filters': {}, 'granularity': 'week'})
     assert progress.status_code == 200, progress.text
     progress = progress.json()
-    assert progress['summary']['total'] == 4 and progress['summary']['attended'] == 1
+    # Every statistic counts the calls in a queue; the tracked ones (in no queue) are counted apart.
+    summary, tracked = progress['summary'], progress['tracked']
+    assert summary['total'] == 4 and summary['attended'] + tracked['attended'] == 1
+    assert tracked['total'] == summary['total'] - summary['queued'] == progress['distributions_tracked']
     assert {item['field'] for item in progress['distributions']} >= {'status', 'team', 'analyst'}
-    assert progress['periods'] and sum(period['detected'] for period in progress['periods']) == 4
-    # Not Attended and the rates count only the calls in a queue; the tracked ones are counted apart.
-    summary = progress['summary']
+    assert progress['periods'] and sum(period['detected'] for period in progress['periods']) == summary['queued']
     assert summary['not_attended'] + summary['queued_attended'] == summary['queued'] <= summary['total']
     assert 0 <= summary['not_attended_assigned'] <= summary['not_attended']
-    assert summary['not_attended'] + summary['not_attended_out_of_queue'] == summary['total'] - summary['attended']
-    assert all(0 <= period['queued_backlog'] <= period['open_backlog'] for period in progress['periods'])
+    assert summary['not_attended_out_of_queue'] == tracked['not_attended'] == tracked['total'] - tracked['attended']
+    assert all(sum(item['count'] for item in distribution['items']) == summary['queued'] for distribution in progress['distributions'])
+    assert all(period['open_backlog'] == period['queued_backlog'] + period['tracked_backlog'] for period in progress['periods'])
+    assert progress['periods'][-1]['tracked_backlog'] == tracked['open']
+    assert client.post('/api/non-qualified-calls/progress', json={'filters': {'state': ['tracked']}}).json()['tracked']['total'] == tracked['total']
     waiting = client.post('/api/non-qualified-calls/progress', json={'filters': {'state': ['queued_not_attended']}}).json()
     assert waiting['summary']['total'] == summary['not_attended'] == summary['in_queues'] + summary['not_attended_assigned']
     for state, key in (('in_queues', 'in_queues'), ('queued_assigned', 'not_attended_assigned')):

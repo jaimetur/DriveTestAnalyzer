@@ -602,7 +602,7 @@ body:has(.nq-drawer.is-open) { overflow: hidden; }
 .nq-grid-line { stroke: #f1dfe5; stroke-width: 1; }
 .nq-axis-label { fill: var(--nq-muted); font: 600 10px "Segoe UI", sans-serif; }
 .nq-backlog-line { fill: none; stroke: #b0234f; stroke-width: 2.5; stroke-linejoin: round; }
-.nq-backlog-line.is-queued { stroke: #6a4fd1; stroke-dasharray: 6 4; }
+.nq-backlog-line.is-tracked { stroke: #8c979e; stroke-dasharray: 6 4; }
 .nq-stats-table { min-width: 0; }
 .nq-stats-table td.nq-number { font-variant-numeric: tabular-nums; text-align: right; }
 .nq-stats-table tbody tr { cursor: default; }
@@ -622,7 +622,7 @@ body:has(.nq-drawer.is-open) { overflow: hidden; }
 .nq-timeline-zone { fill: transparent; cursor: crosshair; }
 .nq-timeline-zone:hover { fill: rgba(125, 18, 56, .06); }
 .nq-backlog-point { fill: #b0234f; stroke: #fff; stroke-width: 1.5; pointer-events: none; }
-.nq-backlog-point.is-queued { fill: #6a4fd1; }
+.nq-backlog-point.is-tracked { fill: #8c979e; }
 .nq-pie-slice { cursor: pointer; transition: stroke-width .12s ease; }
 .nq-pie-slice:hover { stroke-width: 22; }
 

@@ -493,6 +493,9 @@ def test_lifecycle_and_rca_insights_compare_the_three_sources(client, tmp_path):
     assert insights['agreement']['selected_script'] == {'agree': 1, 'compared': 2, 'rate': 50.0}
     assert insights['agreement']['selected_netcheck']['agree'] == 2
     assert insights['confusion']['script']['rows'] and insights['domains']['selected'][0]['domain'] == 'RF'
+    # The columns of each matrix follow the order of its rows, so the matches run along the diagonal.
+    for matrix in insights['confusion'].values():
+        assert matrix['columns'][:len(matrix['rows'])] == matrix['rows']
     # The root domains of each source count the calls it covers.
     assert sum(item['count'] for item in insights['domains']['script']) == 2
     assert sum(item['count'] for item in insights['domains']['netcheck']) == 3
@@ -1943,7 +1946,13 @@ def test_the_progress_view_counts_the_statuses_the_rules_set(client, tmp_path):
     # The Status Rules close the call (Implemented) and move another one Under Implementation, without a status by hand.
     patch(client, calls['0xA1'], {'fields': {'implementation_status': 'Implemented'}})
     patch(client, calls['0xB2'], {'fields': {'implementation_status': 'Under evaluation'}})
+    # The Progress View counts the calls in a queue (the tracked ones apart): the calls wait in the Voice queue.
+    with core.repository.connection() as connection:
+        for call in calls.values():
+            connection.execute(f"INSERT INTO {nq.nq_prioritization.PRIORITY_TABLE} (call_key, queue) VALUES (?, 'Voice') "
+                               "ON CONFLICT(call_key) DO UPDATE SET queue = 'Voice'", (call['call_key'],))
     progress = client.post('/api/non-qualified-calls/progress', json={'filters': {}, 'granularity': 'week'}).json()
+    assert progress['tracked']['total'] == 0
     assert sum(period['closed'] for period in progress['periods']) == 1
     moved = Counter()
     for period in progress['periods']:

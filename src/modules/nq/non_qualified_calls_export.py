@@ -124,7 +124,6 @@ def progress_summary_table(summary: dict[str, Any]) -> tuple[list[str], list[lis
         ['In queues (not attended, not assigned yet)', f"{summary.get('in_queues', summary['not_attended']):,}"],
         ['Assigned, not attended yet (in a queue)', f"{summary.get('not_attended_assigned', 0):,}"],
         ['Attended (followed up or commented)', f"{summary['attended']:,}"],
-        ['Not attended yet, tracked (in no queue)', f"{summary.get('not_attended_out_of_queue', 0):,}"],
         ['Open', f"{summary['open']:,}"],
         ['Closed', f"{summary['closed']:,}"],
         ['Closure rate (calls in a queue)', f"{summary['closure_rate']:.1f}%"],
@@ -133,16 +132,18 @@ def progress_summary_table(summary: dict[str, Any]) -> tuple[list[str], list[lis
         ['Contributors', f"{summary['contributors']:,}"],
         ['Average days from the call to its first follow-up', _days(summary['avg_days_to_first_follow_up'])],
         ['Average days from the call to its closing', _days(summary['avg_days_to_close'])],
+        ['Tracked (in no queue), left out of the other indicators', f"{summary.get('total', 0) - summary.get('queued', 0):,}"],
+        ['Not attended yet, tracked (in no queue)', f"{summary.get('not_attended_out_of_queue', 0):,}"],
     ]
 
 
 def timeline_table(progress: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
     statuses = progress['statuses']
     columns = ['Period', 'Detected', 'Attended', 'Comments', *[f'→ {status}' for status in statuses],
-               'Closed', 'Reopened', 'Open backlog', 'Queue backlog', 'Avg days to close']
+               'Closed', 'Reopened', 'Queue backlog', 'Tracked backlog', 'Avg days to close']
     rows = [[period['period'], str(period['detected']), str(period['attended']), str(period['comments']),
              *[str(period['statuses'].get(status, 0)) for status in statuses],
-             str(period['closed']), str(period['reopened']), str(period['open_backlog']), str(period.get('queued_backlog', 0)), _days(period['avg_days_to_close'])]
+             str(period['closed']), str(period['reopened']), str(period.get('queued_backlog', 0)), str(period.get('tracked_backlog', 0)), _days(period['avg_days_to_close'])]
             for period in progress['periods']]
     return columns, rows
 

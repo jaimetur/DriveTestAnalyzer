@@ -265,11 +265,11 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
     total = int(summary.get('total') or 0)
     colours = _option_colours(options)
     cards = [
-        # The rates count only the calls in a queue: the tracked calls (in no queue) are shown apart.
+        # Every statistic counts the calls in a queue: the tracked calls (in no queue) are shown apart, in the last card.
         # The calls in a queue not attended yet, In Queues and Assigned as Lifecycle & Phases counts them, then the attended.
         ('In Queues', _number(summary.get('in_queues', summary.get('not_attended'))),
-         f"{_share(summary.get('in_queues', summary.get('not_attended')) or 0, int(summary.get('queued') or 0))} of the calls in a queue"
-         f" · {_number(summary.get('not_attended_out_of_queue'))} more tracked", 'total'),
+         f"{_share(summary.get('in_queues', summary.get('not_attended')) or 0, int(summary.get('queued') or 0))} of the calls in a queue",
+         'total'),
         ('Assigned', _number(summary.get('not_attended_assigned')),
          f"{_share(summary.get('not_attended_assigned') or 0, int(summary.get('queued') or 0))} given a team or an analyst, not attended yet",
          'team'),
@@ -281,6 +281,9 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
         ('Time to Close', _days(summary.get('avg_days_to_close')), 'Average from the call', 'commented'),
         ('Activity', _number((summary.get('comments') or 0) + (summary.get('changes') or 0)),
          f"{_number(summary.get('comments'))} comments · {_number(summary.get('changes'))} changes", ''),
+        *([('Tracked', _number(tracked.get('total')),
+            f"Left out: {_number(tracked.get('not_attended'))} not attended · {_number(tracked.get('closed'))} closed", 'commented')]
+          if (tracked := progress.get('tracked')) else []),
     ]
     panels = []
     first = Panel()
@@ -339,7 +342,7 @@ def _workload_card(panel: Panel, left: float, top: float, width: float, height: 
 
 
 def _timeline_panel(periods: list[dict[str, Any]], granularity_label: str) -> BytesIO | None:
-    """Detected, attended and closed calls per period as bars, with the open and queue backlogs as lines, like the page."""
+    """Detected, attended and closed calls in a queue per period as bars, with the queue and tracked backlogs as lines, like the page."""
     shown = periods[-24:]
     if not shown:
         return None
@@ -347,7 +350,7 @@ def _timeline_panel(periods: list[dict[str, Any]], granularity_label: str) -> By
     panel.card(0, 0, panel.width, panel.height)
     panel.text(0.2, 0.16, f'Progress per {granularity_label}', 12, bold=True, color=DARK)
     series = [('detected', 'Detected', '#8a6b76'), ('attended', 'Attended', '#e08a1e'), ('closed', 'Closed', '#2e8b57')]
-    lines = [('open_backlog', 'Open backlog', '#b0234f'), ('queued_backlog', 'Queue backlog', '#6a4fd1')]
+    lines = [('queued_backlog', 'Queue backlog', '#b0234f'), ('tracked_backlog', 'Tracked backlog', '#8c979e')]
     legend_x = 3.2
     for _key, label, colour in [*series, *lines]:
         panel.draw.rounded_rectangle([_px(legend_x), _px(0.22), _px(legend_x + 0.14), _px(0.36)], radius=_px(0.03), fill=colour)

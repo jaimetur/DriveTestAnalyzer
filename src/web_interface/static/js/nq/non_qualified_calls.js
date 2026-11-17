@@ -55,7 +55,7 @@
     not_in_final: 'Only in Weekly or Daily CDRs, while a Final CDR covers its campaign',
     qualified: 'Completed in a more recent CDR',
   };
-  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', in_queue: 'In a queue', queued_not_attended: 'Not attended in a queue', in_queues: 'In Queues', queued_assigned: 'Assigned, not attended yet', with_team: 'With team',
+  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', in_queue: 'In a queue', queued_not_attended: 'Not attended in a queue', in_queues: 'In Queues', queued_assigned: 'Assigned, not attended yet', tracked: 'Tracked (in no queue)', with_team: 'With team',
     assigned: 'Assigned', commented: 'Commented', labelled: 'With a root cause', suggested: 'Suggested root cause',
     identified: 'RCA identified', not_identified: 'RCA not identified', open: 'Open', stalled: 'Stalled'};
   // Filters set by clicking the Progress View and the Root Cause Analysis; they have no select of their own.
@@ -70,7 +70,7 @@
   // The map of the open call paints the group that filters the list (set once the map is mounted).
   let refreshCallMap = () => {};
   // The values of the Follow-up filter (also set by the indicator cards), in their order.
-  const FOLLOW_UP_STATES = ['attended', 'not_attended', 'in_queues', 'queued_assigned', 'in_queue', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
+  const FOLLOW_UP_STATES = ['attended', 'not_attended', 'in_queues', 'queued_assigned', 'in_queue', 'tracked', 'open', 'stalled', 'closed', 'with_team', 'assigned', 'commented', 'labelled',
     'identified', 'not_identified'];
   const HISTORY_LABELS = {status: 'Status', status_auto: 'Status (automatic)', status_mode: 'Status Set', team: 'Team',
     analyst: 'Analyst', reviewer: 'Reviewer', root_domain: 'Root Domain', root_category: 'Root Category', root_cause: 'Root Cause',
@@ -2318,6 +2318,8 @@
     card.append(node('h3', distribution.label));
     const items = distribution.items.slice(0, 10);
     const total = items.reduce((sum, item) => sum + item.count, 0);
+    // The analysts by their first and last name, as everywhere else on the page.
+    const shown = (item) => (distribution.field === 'analyst' && item.value !== 'Unassigned' ? userName(item.value) : item.value);
     const colorFor = (item, index) => (distribution.field === 'status' ? optionColor('status', item.value)
       : distribution.field === 'team' ? optionColor('team', item.value) : '') || PALETTE[index % PALETTE.length];
     const svg = svgNode('svg', {viewBox: '0 0 120 120', class: 'nq-pie-chart', role: 'img', 'aria-label': distribution.label});
@@ -2333,7 +2335,7 @@
       });
       slice.classList.add('nq-pie-slice');
       slice.addEventListener('pointermove', (event) => chartTooltip.show(event, distribution.label,
-        [[item.value, `${number(item.count)} · ${percent(item.count, total)}`, colorFor(item, index)]]));
+        [[shown(item), `${number(item.count)} · ${percent(item.count, total)}`, colorFor(item, index)]]));
       slice.addEventListener('pointerleave', chartTooltip.hide);
       slice.addEventListener('click', () => {
         chartTooltip.hide();
@@ -2353,7 +2355,7 @@
       button.type = 'button';
       const swatch = node('span', '', 'nq-swatch');
       swatch.style.background = colorFor(item, index);
-      button.append(swatch, node('span', item.value, 'nq-pie-label'), node('strong', `${number(item.count)} · ${percent(item.count, total)}`));
+      button.append(swatch, node('span', shown(item), 'nq-pie-label'), node('strong', `${number(item.count)} · ${percent(item.count, total)}`));
       const filterField = {status: 'status', team: 'team', analyst: 'analyst', service: 'service', result: 'result'}[distribution.field];
       button.title = `Show only ${item.value}`;
       button.addEventListener('click', () => {
@@ -2396,14 +2398,14 @@
     }
     table.replaceChildren(head, body);
   };
-  // Detected, attended and closed calls per period, with the open backlog and the queue backlog (only the calls in a
-  // queue, no tracked ones) as lines.
+  // Detected, attended and closed calls in a queue per period, with the backlog of the calls in a queue and that of the
+  // tracked calls (in no queue) apart, as lines.
   const timelineChart = (periods) => {
     const host = $('nq-timeline-chart');
     const shown = periods.slice(-24);
     if (!shown.length) { host.replaceChildren(node('p', 'No dated activity for this selection.', 'nq-muted')); return; }
     const series = [['detected', 'Detected', '#8a6b76'], ['attended', 'Attended', '#e08a1e'], ['closed', 'Closed', '#2e8b57']];
-    const lines = [['open_backlog', 'Open backlog', '#b0234f', ''], ['queued_backlog', 'Queue backlog', '#6a4fd1', 'is-queued']];
+    const lines = [['queued_backlog', 'Queue backlog', '#b0234f', ''], ['tracked_backlog', 'Tracked backlog', '#8c979e', 'is-tracked']];
     const width = Math.max(640, shown.length * 64);
     const height = 240;
     const top = 16;
@@ -2470,24 +2472,28 @@
       // The rates count only the calls in a queue: the tracked calls (in no queue) are shown apart.
       // The calls in a queue not attended yet: In Queues (nobody has them) and Assigned (given a team or an analyst),
       // as Lifecycle & Phases counts them; the tracked ones not attended are told apart.
-      drillCard(kpiCard('In Queues', number(summary.in_queues ?? summary.not_attended), `${percent(summary.in_queues ?? summary.not_attended, summary.queued)} of the calls in a queue · ${number(summary.not_attended_out_of_queue)} more tracked`, 'total'), {pairs: [['state', 'in_queues']]}),
+      drillCard(kpiCard('In Queues', number(summary.in_queues ?? summary.not_attended), `${percent(summary.in_queues ?? summary.not_attended, summary.queued)} of the calls in a queue`, 'total'), {pairs: [['state', 'in_queues']]}),
       drillCard(kpiCard('Assigned', number(summary.not_attended_assigned || 0), `${percent(summary.not_attended_assigned || 0, summary.queued)} given a team or an analyst, not attended yet`, 'team'), {pairs: [['state', 'queued_assigned']]}),
       drillCard(kpiCard('Attended', number(summary.attended), `${percent(summary.queued_attended, summary.queued)} of the calls in a queue`, 'open'), {pairs: [['state', 'attended']]}),
       drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.queued_closed)} of ${number(summary.queued)} in a queue closed`, 'closed'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('First Follow-up', days(summary.avg_days_to_first_follow_up), 'Average from the call', 'team'), {pairs: [['state', 'attended']]}),
       drillCard(kpiCard('Time to Close', days(summary.avg_days_to_close), 'Average from the call', 'commented'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('Activity', number(summary.comments + summary.changes), `${number(summary.comments)} comments · ${number(summary.changes)} changes · ${number(summary.contributors)} users`), {pairs: [['state', 'attended']]}),
+      // The tracked calls (in no queue), left out of every other statistic of the panel.
+      ...(progress.tracked ? [drillCard(kpiCard('Tracked', number(progress.tracked.total),
+        `Left out: ${number(progress.tracked.not_attended)} not attended · ${number(progress.tracked.closed)} closed`, 'commented'),
+      {pairs: [['state', 'tracked']]})] : []),
     );
-    $('nq-pies').replaceChildren(...progress.distributions.map(donut));
+    $('nq-pies').replaceChildren(...progress.distributions.map((distribution) => donut(distribution)));
     const label = GRANULARITY_LABELS[progress.granularity] || 'Week';
     $('nq-timeline-title').textContent = `Progress per ${label}`;
     timelineChart(progress.periods);
     const periods = [...progress.periods].reverse();
     statsTable($('nq-timeline-table'), [label, 'Detected', 'Attended', 'Comments', ...progress.statuses.map((status) => `→ ${status}`),
-      'Closed', 'Reopened', 'Open Backlog', 'Queue Backlog', 'Avg Days to Close'],
+      'Closed', 'Reopened', 'Queue Backlog', 'Tracked Backlog', 'Avg Days to Close'],
     periods.map((period) => [period.period, number(period.detected), number(period.attended), number(period.comments),
       ...progress.statuses.map((status) => number(period.statuses[status] || 0)), number(period.closed), number(period.reopened),
-      number(period.open_backlog), number(period.queued_backlog || 0), period.avg_days_to_close === null ? '—' : period.avg_days_to_close.toFixed(1)]),
+      number(period.queued_backlog || 0), number(period.tracked_backlog || 0), period.avg_days_to_close === null ? '—' : period.avg_days_to_close.toFixed(1)]),
     {drillRow: (index) => [['period', `${progress.granularity}:${periods[index].period}`]]});
     const agingTotal = progress.aging.reduce((sum, item) => sum + item.count, 0);
     const maxAge = Math.max(1, ...progress.aging.map((item) => item.count));
