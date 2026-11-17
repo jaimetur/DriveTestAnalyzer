@@ -5683,6 +5683,24 @@
     $('nq-drawer-unique-label').textContent = uniqueField?.label || 'Unique ID';
     $('nq-drawer-unique-id').textContent = uniqueId || '—';
     $('nq-drawer-unique').hidden = !uniqueField;
+    // Its identifiers in the provider's tools (NetCheck CloudNM: Session_ID_A and B of a call, Test_ID and Session_id of a
+    // test), after the Unique ID, each with its copy button (— when the call has none).
+    $('nq-drawer-provider-ids').replaceChildren(...(call.provider_ids || []).map((item) => {
+      const pill = node('p', undefined, 'nq-drawer-join nq-drawer-provider-id');
+      pill.title = `The ${item.label} of the call in the CDR, as the tools of the provider identify it`;
+      pill.append(node('span', item.label), node('code', item.value || '—'));
+      if (item.value) {
+        const copy = node('button', undefined, 'nq-copy-button');
+        copy.type = 'button';
+        copy.dataset.copyId = item.value;
+        copy.dataset.copyLabel = item.label;
+        copy.title = `Copy the ${item.label}`;
+        copy.setAttribute('aria-label', copy.title);
+        copy.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+        pill.append(copy);
+      }
+      return pill;
+    }));
     $('nq-drawer-l3-ues').textContent = call.l3_log || '';
     $('nq-drawer-l3').hidden = !call.l3_log;
     // Its groups of 2 calls or more, each with what it is, its NR Mode, its ID in the NQ Hotspots, Clustered & Time-Window Issues
@@ -5858,7 +5876,7 @@
     try {
       const {calls} = await api('/api/non-qualified-calls/calls', {method: 'POST', body: JSON.stringify({filters: {join_id: [joinId]}, page_size: 25})});
       if (!calls.length) {
-        toast(`No Non-Qualified Call has the JOIN_ID ${joinId}.`, 'error');
+        toast(`No Non-Qualified Call has the ID ${joinId}.`, 'error');
         return;
       }
       rememberJoinIds([joinId]);
@@ -6521,16 +6539,20 @@
     field.remove();
     if (!copied) throw new Error('The browser did not let the page copy the text.');
   };
-  $('nq-drawer-join-copy').addEventListener('click', async (event) => {
-    const button = event.currentTarget;
+  const copyId = async (button, text, label) => {
     try {
-      await copyText($('nq-drawer-join-id').textContent);
+      await copyText(text);
       button.classList.add('is-copied');
-      toast('JOIN_ID copied.');
+      toast(`${label} copied.`);
       window.setTimeout(() => button.classList.remove('is-copied'), 1500);
     } catch (error) {
       toast(error.message, 'error');
     }
+  };
+  $('nq-drawer-join-copy').addEventListener('click', (event) => copyId(event.currentTarget, $('nq-drawer-join-id').textContent, 'JOIN_ID'));
+  $('nq-drawer-provider-ids').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-copy-id]');
+    if (button) copyId(button, button.dataset.copyId, button.dataset.copyLabel);
   });
   backdrop.addEventListener('click', requestClose);
   // Escape closes the panel, unless a dialog or the prompt for changes not saved yet is open (Escape closes that one).

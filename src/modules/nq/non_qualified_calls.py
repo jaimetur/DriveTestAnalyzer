@@ -2244,9 +2244,28 @@ def indexed_cdr_columns(repository: Any) -> list[str]:
                    if field['source'] == 'cdr' and field['source_ref'].startswith('column:')]
     except Exception:  # noqa: BLE001 - the catalog table may not exist yet while the module tables are created.
         catalog = []
-    # The CDR columns of the CDR Fields Filters (NetCheck's G_Level_1 to G_Level_4).
-    filtered = workspace_field_profile(repository).nq_filter_columns
+    # The CDR columns of the CDR Fields Filters (NetCheck's G_Level_1 to G_Level_4) and the identifiers of the calls in
+    # the provider's tools (shown beside the JOIN_ID and found by the call searches).
+    profile = workspace_field_profile(repository)
+    filtered = [*profile.nq_filter_columns, *provider_id_columns(profile)]
     return list(dict.fromkeys([*columns['cdr'], *columns['export_cdr'], *_user_cdr_columns(repository), *catalog, *filtered]))
+
+
+def provider_id_columns(profile: CdrFieldProfile) -> list[str]:
+    """The CDR columns that identify a call or test in the provider's tools (NetCheck CloudNM), of every CDR type."""
+    return list(dict.fromkeys(column for columns in profile.nq_provider_id_sources.values() for column in columns))
+
+
+def call_provider_ids(profile: CdrFieldProfile, service: str, values: dict[str, Any]) -> list[dict[str, str]]:
+    """The identifiers of a call in the provider's tools, from the CDR values of the call: each column of its CDR type
+    the CDR has (its value, empty when the call has none), named as the CDR names it."""
+    columns = list(values)
+    ids = []
+    for name in profile.nq_provider_id_sources.get(service, ()):
+        column = _resolve_column(columns, (name,))
+        if column is not None:
+            ids.append({'label': name, 'value': _text(values[column])})
+    return ids
 
 
 # The Additional Columns as App Events names them.
@@ -2568,7 +2587,9 @@ def provider_texts(task_repository: Any) -> dict[str, Any]:
     name = CDR_TYPES[workspace_cdr_type(task_repository)]['provider']
     hierarchy = any(profile.nq_field_sources.get(field) for field in ('failure_classification', 'failure_category', 'failure_subcategory'))
     return {'name': name, 'rca': f'{name} RCA', 'definition': profile.nq_definition, 'rca_hierarchy': hierarchy,
-            'join_id': bool(profile.nq_join_sources)}
+            'join_id': bool(profile.nq_join_sources),
+            # The identifiers the call searches find a call by: its JOIN_ID and its IDs in the provider's tools.
+            'call_ids': [*profile.nq_join_sources[:1], *provider_id_columns(profile)]}
 
 
 def _sample_radio(connection: Any, datasets: Any, profile: CdrFieldProfile) -> dict[tuple[str, str, str], dict[str, float]]:
@@ -5874,6 +5895,9 @@ def _resolve_key_filters(task_repository: Any, filters: dict[str, Any]) -> dict[
     if excluded:
         # The operators the Operator Maps exclude are left out of every list, count and export.
         filters = {**filters, '_excluded_operators': excluded}
+    if _strings(filters.get('join_id')):
+        # The calls are also found by their identifiers in the provider's tools (NetCheck CloudNM), kept with every call.
+        filters = {**filters, '_call_id_columns': provider_id_columns(workspace_field_profile(task_repository))}
     if filters.get('in_scope') is True:
         # NQ Calls in Scope Only: the calls out of scope (their region, operator or NR Mode · operator pair) count nowhere.
         filters = {**filters, '_scope_sql': nq_prioritization.scope_sql(task_repository)}
@@ -6026,11 +6050,12 @@ def _filter_sql(filters: dict[str, Any], username: str, closed_statuses: list[st
         scope_clause, scope_params = filters['_scope_sql']
         clauses.append(scope_clause)
         params.extend(scope_params)
-    # The JOIN_IDs typed in their filter, whatever their case.
+    # The JOIN_IDs typed in their filter, whatever their case, or the identifiers of the calls in the provider's tools.
     join_ids = [value.casefold() for value in _strings(filters.get('join_id'))]
     if join_ids:
-        clauses.append('lower(join_id) IN (SELECT value FROM json_each(?))')
-        params.append(json.dumps(join_ids))
+        matches = ['join_id', *(column_filter_sql(f'cdr:{column}') for column in _strings(filters.get('_call_id_columns')))]
+        clauses.append('(' + ' OR '.join(f'lower({expression}) IN (SELECT value FROM json_each(?))' for expression in matches) + ')')
+        params.extend([json.dumps(join_ids)] * len(matches))
     # The CDRs filter chooses the versions in the base query. A call whose latest CDR has it
     # Completed is listed only on request, or while that CDR is not among the chosen ones.
     versions = ['' if value == 'current' else value for value in _strings(filters.get('version')) if value in VERSION_STATES]
@@ -7735,6 +7760,8 @@ def call_detail(task_repository: Any, call_key: str) -> dict[str, Any] | None:
     # CDR columns of the catalog are read from the CDR row itself.
     source_values = {key: _text(source[key]) for key in source.keys()} if source is not None else {}
     call['extra'] = {**source_values, **(call.get('extra') or {})}
+    # Its identifiers in the provider's tools (NetCheck CloudNM: Session_ID_A and B, Test_ID and Session_id), beside its JOIN_ID.
+    call['provider_ids'] = call_provider_ids(workspace_field_profile(task_repository), str(call.get('service') or ''), call['extra'])
     call['values'] = {field['key']: catalog_value(field, call, call.get('rca'), call.get('fields')) for field in definitions}
     # Values of the CDR proposed for the empty fields that name one (for example the failure position).
     call['proposals'] = {field['key']: _text(_call_value(call, field['suggest_from'])) for field in definitions

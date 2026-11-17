@@ -167,7 +167,7 @@ The CDR Field Dictionary shows, for every field the modules read, the columns of
 
 - **Normalised fields**: the fields every CDR row gains when it is processed, with the same name in every CDR type, such as its result, start and end times, setup time, throughput and latency.
 - **CDR-Main fields**: the main fields added to every CDR (Campaign, Operator, Test Name, Technology, Session Type, Call Status...).
-- **Non-Qualified Calls**: the fields of every call, the qualification that makes a call Non-Qualified, the identifier of a call or test (which keeps its follow-up) and the Speech sample inside its call.
+- **Non-Qualified Calls**: the fields of every call, the qualification that makes a call Non-Qualified, the identifier of a call or test (which keeps its follow-up), its IDs in the provider's tools (NetCheck CloudNM: Session_ID_A and Session_ID_B of a call, Test_ID and Session_id of a test; shown beside its JOIN_ID and found by the call searches) and the Speech sample inside its call.
 - **DT Analyzer RCA**: the values of every call that the [DT Analyzer RCA](non-qualified-calls.md#dt-analyzer-rca) rules read.
 - **Network Insights**: the radio, position and test fields of each CDR type (Data, Voice and Speech) and the dimensions the analyses are split by.
 - **Vendor Mapping**: the serving cells of every sample and when it was measured.

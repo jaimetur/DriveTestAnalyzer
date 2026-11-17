@@ -299,7 +299,8 @@ def test_non_qualified_calls_name_the_provider_of_the_cdrs(client):
     login(client)
     assert nq.provider_texts(core.repository) == {
         'name': 'NetCheck', 'rca': 'NetCheck RCA', 'definition': 'whose result is not Completed (Failed, Dropped, Cutoff…)',
-        'rca_hierarchy': True, 'join_id': True}
+        'rca_hierarchy': True, 'join_id': True,
+        'call_ids': ['JOIN_ID', 'Test_ID', 'Session_id', 'Session_ID_A', 'Session_ID_B']}
     page = client.get('/non-qualified-calls').text
     assert 'whose result is not Completed (Failed, Dropped, Cutoff…) in the ready CDRs' in page and '>NetCheck RCA</button>' in page
     core.repository.set_workspace_state(cdr_types.CDR_TYPE_STATE_KEY, 'umlaut')

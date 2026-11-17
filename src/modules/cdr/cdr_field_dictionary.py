@@ -32,6 +32,8 @@ SECTIONS: tuple[tuple[str, str, str], ...] = (
     ('nq_qualification_sources', 'Non-Qualified Calls', 'The qualification of a call: it is Non-Qualified when it does not '
                                                        'hold the qualified value of the CDR type.'),
     ('nq_identifier_sources', 'Non-Qualified Calls', 'The identifier of a call or test, so it keeps its follow-up.'),
+    ('nq_provider_id_sources', 'Non-Qualified Calls', "The identifiers of a call or test in the provider's tools, shown "
+                                                     'beside its JOIN_ID and found by the call searches.'),
     ('nq_sample_sources', 'Non-Qualified Calls', 'A Speech sample inside its call.'),
     ('nq_rca_sources', 'DT Analyzer RCA', 'The values of every call the DT Analyzer RCA rules read.'),
     ('rf_field_aliases', 'Network Insights', 'The radio, position and test fields of each CDR type.'),

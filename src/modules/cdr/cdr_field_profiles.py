@@ -92,6 +92,9 @@ class CdrFieldProfile:
     # The CDR columns Non-Qualified Calls filters by in its CDR Fields Filters, as they come in the CDR (NetCheck's
     # location levels); kept with every call.
     nq_filter_columns: Sources = ()
+    # The identifiers of a call or test in the provider's own tools (NetCheck CloudNM), by CDR type: each column is shown
+    # beside the JOIN_ID of the call and finds the call in the call searches; kept with every call.
+    nq_provider_id_sources: dict[str, Sources] = field(default_factory=dict)
 
 
 _NETCHECK_STATUS = ('status', 'Call_Status', 'Test_Result', 'Test_Status')
@@ -216,6 +219,13 @@ NETCHECK_PROFILE = CdrFieldProfile(
         'data': ('Test_ID', 'Session_id'),
         'voice': ('Session_ID_A', 'Session_id', 'Test_ID'),
         'speech': ('Session_ID_A', 'Session_id'),
+    },
+    # The identifiers of the call or test in NetCheck CloudNM: both sessions of a call (and of its Speech samples), the
+    # test and the session of a data test.
+    nq_provider_id_sources={
+        'data': ('Test_ID', 'Session_id'),
+        'voice': ('Session_ID_A', 'Session_ID_B'),
+        'speech': ('Session_ID_A', 'Session_ID_B'),
     },
     # A Speech sample inside its call.
     nq_sample_sources=('Test_ID', 'Sample_ID', 'Sequence_ID_per_File_ID'),

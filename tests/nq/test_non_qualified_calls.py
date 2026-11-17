@@ -1320,6 +1320,29 @@ def test_follow_up_moves_once_to_the_join_id_call_keys(client, tmp_path):
     assert dataset_id
 
 
+def test_calls_found_and_shown_by_their_netcheck_cloudnm_ids(client, tmp_path):
+    """Ticket #164: the Session_ID_A and Session_ID_B of a call (Test_ID and Session_id of a test) are shown beside its
+    JOIN_ID and find it in the call searches, whatever their case."""
+    enable_module()
+    rows = joined_voice([('0xA1', 322122547208, 'Failed', '2026-09-03 10:00:00'),
+                         ('0xB2', 914828034076, 'Dropped', '2026-09-03 11:00:00')], campaign='UK_Q3_2026')
+    rows['Session_ID_B'] = [326417514504, 919123001372]
+    add_cdr(tmp_path, 'NetCheck_UK_CDR_Voice_2026_Q3.xlsx', 'voice', rows)
+    login(client)
+    assert 'Session_ID_B' in nq.indexed_cdr_columns(core.repository)
+    found = query(client, filters={'join_id': ['919123001372']})
+    assert found['total'] == 1
+    assert query(client, filters={'join_id': ['322122547208', '0xb2']})['total'] == 2
+    assert query(client, filters={'join_id': ['999']})['total'] == 0
+    key = found['calls'][0]['call_key']
+    call = client.get(f'/api/non-qualified-calls/calls/{key}').json()['call']
+    assert call['join_id'] == '0xB2'
+    assert call['provider_ids'] == [{'label': 'Session_ID_A', 'value': '914828034076'},
+                                    {'label': 'Session_ID_B', 'value': '919123001372'}]
+    page = client.get('/non-qualified-calls').text
+    assert 'id="nq-drawer-provider-ids"' in page and 'Find calls by one or more JOIN_ID, Test_ID, Session_id, Session_ID_A, Session_ID_B…' in page
+
+
 def test_join_id_filter_and_reindex(client, tmp_path):
     enable_module()
     rows = joined_voice([('0xA1', 70, 'Failed', '2026-09-03 10:00:00'), ('0xB2', 71, 'Dropped', '2026-09-03 11:00:00'),
