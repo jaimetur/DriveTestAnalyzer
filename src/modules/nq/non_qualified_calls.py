@@ -7002,8 +7002,8 @@ def root_cause_stats(task_repository: Any, filters: dict[str, Any], username: st
     }
 
 
-# The filters that also apply to every call (qualified or not) of the NQ rates.
-RATE_FILTERS = ('datasets', 'service', 'campaign', 'operator', 'nr_mode')
+# The filters that also apply to every call (qualified or not) of the NQ rates, and NQ Calls in Scope Only.
+RATE_FILTERS = ('datasets', 'service', 'campaign', 'operator', 'nr_mode', 'in_scope')
 
 
 def nq_rates(task_repository: Any, filters: dict[str, Any]) -> dict[str, Any]:

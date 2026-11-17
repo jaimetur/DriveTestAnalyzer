@@ -327,7 +327,7 @@ The **NQ Rate by Campaign and Operator** panel, below the NQ Prioritization, is 
 - A click on a cell or card shows only those calls in the other panels; a second click removes the filter.
 
 > [!NOTE]
-> Only the **NR Mode**, **Campaign**, **Service**, **Operator** and **CDR** filters apply: the other filters describe Non-Qualified Calls only, so changing them does not recalculate the panel, and its counts are reused until the CDRs are indexed again.
+> Only the **NR Mode**, **Campaign**, **Service**, **Operator** and **CDR** filters and **NQ Calls in Scope Only** apply: the other filters describe Non-Qualified Calls only, so changing them does not recalculate the panel, and its counts are reused until the CDRs are indexed again.
 
 The PowerPoint and Word exports and the reports of [Reporting](reporting.md) show it after the Executive Summary as one heat map with a column per service (and **All services**, their total) under each operator and the overall NQ rate of the selection at its top right (*Overall 0.9% · 992 NQ calls of 104,304 calls*), on one slide, or on two when the operators or campaigns are many (each slide with half of the operators or of the campaigns).
 

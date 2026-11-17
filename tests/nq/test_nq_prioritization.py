@@ -344,6 +344,12 @@ def test_nq_calls_in_scope_only_leaves_the_calls_out_of_scope_out_of_the_module(
     every_rate = sum(item['total']['nq'] for item in nq.nq_rates(core.repository, {})['matrices'] if item['service'] != 'all')
     scoped_rate = sum(item['total']['nq'] for item in nq.nq_rates(core.repository, {'in_scope': True})['matrices'] if item['service'] != 'all')
     assert scoped_rate < every_rate
+    # The panel of the NQ Rate asks the route with the switch too (ticket #160).
+    routed = client.post('/api/non-qualified-calls/rates', json={'filters': {'in_scope': True}}).json()
+    assert sum(item['total']['nq'] for item in routed['matrices'] if item['service'] != 'all') == scoped_rate
+    assert 'in_scope' in routed['filters']
+    script = (Path(__file__).resolve().parents[2] / 'src/web_interface/static/js/nq/non_qualified_calls.js').read_text()
+    assert "const RATE_FILTER_KEYS = ['datasets', 'service', 'campaign', 'operator', 'nr_mode', 'in_scope'];" in script
     # The switch is kept with the filters (Reset Filters leaves it), and App Events records each change.
     response = client.put('/api/non-qualified-calls/filters', json={'filters': {'in_scope': True}})
     assert response.status_code == 200 and response.json()['filters'] == {'in_scope': True}

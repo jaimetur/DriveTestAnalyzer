@@ -3387,8 +3387,9 @@
       node('span', 'Each cell: NQ rate · Non-Qualified / all calls', 'nq-muted'));
   };
   let rateToken = 0;
-  // The NQ rate depends only on these filters and on the indexed CDRs: other filter changes keep it.
-  const RATE_FILTER_KEYS = ['datasets', 'service', 'campaign', 'operator', 'nr_mode'];
+  // The NQ rate depends only on these filters (and NQ Calls in Scope Only) and on the indexed CDRs: other filter changes
+  // keep it.
+  const RATE_FILTER_KEYS = ['datasets', 'service', 'campaign', 'operator', 'nr_mode', 'in_scope'];
   let rateKey = '';
   // NQ Maps: the Layer3 Logs of the filtered calls (nq_call_map.js mountArea), mounted when first shown and read
   // again when the filters or the calls change.
