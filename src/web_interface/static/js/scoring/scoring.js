@@ -404,6 +404,8 @@
   let shownSelection = null;
   let selectionMatchesShown = true;
   let calculateWhenReady = false;
+  // The Favourite Scoring last shown: a scoring calculated from it (without a star) can still update it.
+  let favouriteBaseId = null;
   // The Geographical Areas & Scoring Trends of the calculation, always included: the Breakdown and Separate cities of both
   // tabs, and the time split and campaigns of the trends.
   const areaSummaryPanel = root.querySelector('[data-scoring-area-summary]');
@@ -12690,6 +12692,12 @@
       }
     }
     calculateButton?.classList.toggle('is-pending', pending);
+    // Calculate Scoring (or Open Scoring) with changes to calculate, Recalculate for the scoring shown: never both.
+    if (!editingSavedFilter && calculateButton && recalculateButton) {
+      const recalc = Boolean(shownSavedFilterId()) && !pending && selectionMatchesShown;
+      recalculateButton.hidden = !recalc;
+      calculateButton.hidden = recalc;
+    }
     renderShowing(pending);
     // The fields of Country Areas and of the Scoring Trends fade while they are switched off.
     for (const [input, part] of [[countryAreasEnabled, 'country_areas'], [trendsEnabled, 'trends']]) {
@@ -12744,6 +12752,7 @@
   const showingName = root.querySelector('[data-scoring-showing-name]');
   const showingStatus = root.querySelector('[data-scoring-showing-status]');
   const showingDetails = root.querySelector('[data-scoring-showing-details]');
+  const showingBase = root.querySelector('[data-scoring-showing-base]');
   const updateFavouriteButton = root.querySelector('[data-scoring-update-favourite]');
   const saveFavouriteButton = root.querySelector('[data-scoring-save-favourite]');
   const canEditFavourites = document.body.dataset.authenticatedRole !== 'user-viewer';
@@ -12763,6 +12772,14 @@
   function renderShowing(pending) {
     const shown = shownSavedFilterId() ? selectedSavedFilter : null;
     const starred = Boolean(shown?.pinned);
+    // The Favourite Scoring a scoring without a star was calculated from: Update Favourite gives it the configuration.
+    if (starred) favouriteBaseId = String(savedFilterIdOf(shown));
+    const base = !shown || starred || !favouriteBaseId ? null
+      : savedFilters.find(record => record.pinned && String(savedFilterIdOf(record)) === favouriteBaseId) || null;
+    if (showingBase) {
+      showingBase.hidden = !base;
+      showingBase.textContent = base ? `from ★ ${savedFilterDisplayName(base)}` : '';
+    }
     if (showingStar) {
       showingStar.hidden = !shown;
       showingStar.textContent = starred ? '★' : '☆';
@@ -12798,12 +12815,14 @@
       showingDetails?.setAttribute('aria-expanded', 'false');
     }
     if (updateFavouriteButton) {
-      updateFavouriteButton.hidden = !canEditFavourites || !starred;
-      updateFavouriteButton.disabled = !pending || submittingCalculation || isActive(shown);
+      updateFavouriteButton.hidden = !canEditFavourites || (!starred && !base);
+      updateFavouriteButton.disabled = (starred && !pending) || submittingCalculation || isActive(shown);
+      updateFavouriteButton.title = base ? `Give this configuration to “${savedFilterDisplayName(base)}” (same name, star and place) and calculate it again`
+        : 'Give the changes to the Favourite Scoring shown (same name, star and place) and calculate it again';
     }
     if (saveFavouriteButton) {
       saveFavouriteButton.hidden = !canEditFavourites || !shown;
-      saveFavouriteButton.disabled = !pending || submittingCalculation;
+      saveFavouriteButton.disabled = (starred && !pending) || submittingCalculation || isActive(shown);
     }
   }
 
@@ -12824,7 +12843,10 @@
     }
   });
   updateFavouriteButton?.addEventListener('click', async () => {
-    const shown = shownSavedFilterId() ? selectedSavedFilter : null;
+    const shownRecord = shownSavedFilterId() ? selectedSavedFilter : null;
+    // The Favourite Scoring shown, or the one the scoring shown was calculated from.
+    const shown = shownRecord?.pinned ? shownRecord
+      : savedFilters.find(record => record.pinned && String(savedFilterIdOf(record)) === favouriteBaseId) || null;
     if (!shown) return;
     const name = savedFilterDisplayName(shown);
     const message = `“${name}” takes the configuration of the strip and is calculated again, with the same name, star and `
@@ -12838,6 +12860,7 @@
   saveFavouriteButton?.addEventListener('click', async () => {
     const shown = shownSavedFilterId() ? selectedSavedFilter : null;
     if (!shown) return;
+    const pending = configChangedBlocks().size > 0;
     const name = await showTextInputDialog('Name of the new Favourite Scoring', {
       eyebrow: 'Favourite Scorings', title: 'Save as new Favourite',
       value: shown.name ? `${shown.name} (copy)` : '', placeholder: 'For example 2026-Q3 London', maxLength: 120,
@@ -12845,6 +12868,17 @@
       note: 'The configuration of the strip is saved as a new Favourite Scoring, right after the one shown (which stays as it is), and calculated.',
     });
     if (name === null || name === undefined) return;
+    if (!pending && !shown.pinned) {
+      // The scoring shown, calculated and without a star, becomes the new Favourite Scoring with that name.
+      try {
+        await requestJson(`${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(shown))}`,
+          {method: 'PATCH', body: JSON.stringify({pinned: true, name: String(name)})});
+        await refreshSavedFilters();
+      } catch (error) {
+        setMessage(error.message || 'The Favourite Scoring could not be saved.', 'error');
+      }
+      return;
+    }
     await createSavedFilter(false, {url: `${savedFiltersUrl}/${encodeURIComponent(savedFilterIdOf(shown))}/duplicate`,
       extra: {name: String(name)}});
   });
@@ -12927,12 +12961,28 @@
     scheduleConfigStrip();
   }
 
-  // Apply & Calculate: Calculate Scoring (or Open Scoring) once the selection has been checked.
-  function calculateConfigWhenReady() {
-    if (!calculateWhenReady || calculationMatchPending || configOpenBlock) return;
-    if (calculateButton.disabled) return;
-    calculateWhenReady = false;
-    calculateButton.click();
+  // Apply & Calculate: once the CDRs of the selection have been chosen and the selection checked (at most a minute),
+  // the scoring is calculated, or the Saved Filter that already has this selection opens. (It never waits on a
+  // button: on a large workspace those checks can take a while.)
+  let calculateWaiting = false;
+  async function calculateConfigWhenReady() {
+    if (!calculateWhenReady || calculateWaiting) return;
+    calculateWaiting = true;
+    try {
+      const started = Date.now();
+      const busy = () => configOpenBlock || calculationMatchPending || submittingCalculation
+        || root.querySelector('[data-scoring-auto-cdrs]')?.getAttribute('aria-busy') === 'true';
+      setMessage('Choosing the CDRs and checking the configuration before calculating…', 'busy');
+      while (calculateWhenReady && busy() && Date.now() - started < 60000) {
+        await new Promise(resolve => window.setTimeout(resolve, 250));
+      }
+      if (!calculateWhenReady) return;
+      calculateWhenReady = false;
+      if (calculateButton.dataset.action === 'open' && !calculateButton.disabled) calculateButton.click();
+      else await createSavedFilter(false);
+    } finally {
+      calculateWaiting = false;
+    }
   }
 
   root.addEventListener('click', event => {

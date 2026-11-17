@@ -2003,6 +2003,8 @@
   .scoring-showing-status[data-kind="pending"] { background: #fff3dc; color: #8a5a00; }
   .scoring-showing-status[data-kind="busy"] { background: #e7f0fc; color: #1f5fbf; }
   .scoring-showing-status[hidden] { display: none; }
+  .scoring-showing-base { color: var(--muted); font-size: .8rem; font-weight: 650; }
+  .scoring-showing-base[hidden] { display: none; }
   button.scoring-showing-details { margin-left: auto; padding: .3rem .7rem; border: 1px solid var(--line-strong); background: #fff; color: var(--text); font-size: .76rem; font-weight: 700; box-shadow: none; }
   button.scoring-showing-details[aria-expanded="true"] { background: #eef1f6; }
   .scoring-strip-top .saved-filter-selector { display: none; }
@@ -2337,6 +2339,7 @@
             <div class="scoring-showing" data-scoring-showing>
               <button type="button" class="scoring-showing-star" data-scoring-showing-star aria-pressed="false" title="Keep it as a Favourite Scoring">☆</button>
               <button type="button" class="scoring-showing-name" data-scoring-showing-name data-saved-filter-navigator-open title="Choose another Favourite Scoring in the Filter Navigator">No scoring is shown</button>
+              <span class="scoring-showing-base" data-scoring-showing-base hidden></span>
               <span class="scoring-showing-status" data-scoring-showing-status hidden></span>
               <button type="button" class="scoring-showing-details" data-scoring-showing-details aria-expanded="false" title="Show or hide the whole card of the scoring shown: its filters, CDRs, Filter ID and buttons">Details</button>
             </div>
