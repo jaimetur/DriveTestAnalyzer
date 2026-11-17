@@ -11240,6 +11240,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                 'prioritization_regions': nq_prioritization.region_choices(repository),
                 # The NR Mode · operator pairs always out of scope (the operators that are not Focus operators), and why.
                 'prioritization_fixed_modes': nq_prioritization.fixed_excluded_modes(repository),
+                # The calls without a Region are out of scope when the calls of the workspace have Regions.
+                'prioritization_no_region': nq_prioritization.regions_mapped(repository),
                 'prioritization_fixed_reason': nq_prioritization.NOT_FOCUS_REASON,
                 # Those of the NR Modes of the Operator Maps (out of scope in every module), and why.
                 'prioritization_map_modes': nq_prioritization.map_excluded_modes(repository),

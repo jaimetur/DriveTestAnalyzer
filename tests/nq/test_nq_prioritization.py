@@ -309,7 +309,9 @@ def test_nq_calls_in_scope_only_leaves_the_calls_out_of_scope_out_of_the_module(
     client = strategized['client']
     region = 'Vendor B'
     with core.repository.connection() as connection:
-        connection.execute(f"UPDATE {nq.NQ_CALL_LATEST_TABLE} SET region = CASE WHEN rowid % 3 = 0 THEN ? ELSE 'Vendor A' END", (region,))
+        # Some calls without a Region too: out of scope, as the other calls have Regions (ticket #160).
+        connection.execute(f"UPDATE {nq.NQ_CALL_LATEST_TABLE} SET region = CASE WHEN rowid % 3 = 0 THEN ? WHEN rowid % 7 = 0 THEN '' "
+                           "ELSE 'Vendor A' END", (region,))
         latest = [dict(row) for row in connection.execute(f'SELECT call_key, region, nr_mode, operator FROM {nq.NQ_CALL_LATEST_TABLE}')]
     set_nr_modes('Three', ['SA'])
     settings = {**nq_prioritization.load_settings(core.repository), 'excluded_regions': [region]}
@@ -326,6 +328,8 @@ def test_nq_calls_in_scope_only_leaves_the_calls_out_of_scope_out_of_the_module(
     reason = nq_prioritization.scope_of(core.repository, nq_prioritization.load_settings(core.repository))
     in_scope = [row for row in latest if not reason(row['region'], row['nr_mode'], row['operator'])[0]]
     assert 0 < len(in_scope) < len(latest)
+    assert all(row['region'] for row in in_scope) and any(not row['region'] for row in latest)
+    assert reason('', 'NSA', 'VF') == (f'{nq_prioritization.OUT_OF_SCOPE} · {nq_prioritization.NO_REGION}', 'region')
     # The table, the panels and the values of the filters take only the calls in scope.
     every = client.post('/api/non-qualified-calls/calls', json={'filters': {}}).json()['total']
     scoped = client.post('/api/non-qualified-calls/calls', json={'filters': {'in_scope': True}}).json()['total']

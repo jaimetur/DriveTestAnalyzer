@@ -2846,11 +2846,29 @@ def excluded_modes_of(repository: Any) -> dict[tuple[str, str], str]:
             for name in aliases.get(item['operator'].casefold(), {item['operator'].casefold()})}
 
 
+# The calls without a Region, out of scope in a workspace whose calls have Regions: nothing tells that they are in a
+# region of the team (ticket #160).
+NO_REGION = 'No Region'
+
+
+def regions_mapped(repository: Any) -> bool:
+    """Whether any Non-Qualified Call of the workspace has a Region (its CDRs are mapped to Regions)."""
+    from src.modules.nq import non_qualified_calls as nq
+
+    with repository.connection() as connection:
+        try:
+            return connection.execute(f"SELECT 1 FROM {nq.NQ_CALL_LATEST_TABLE} WHERE region <> '' LIMIT 1").fetchone() is not None
+        except Exception:  # noqa: BLE001 - before the calls are indexed.
+            return False
+
+
 def scope_of(repository: Any, settings: dict[str, Any]) -> Callable[[Any, Any, Any], tuple[str, str]]:
     """Why a call (region, NR Mode, operator) is out of the queues of every strategy, and its kind (('', '') when it is in
-    scope): its region (Vendor B, 'region'), its operator, not a Focus operator of the Operator Maps (both NR Modes,
-    always, 'operator'), or its NR Mode, which its label in the Operator Maps has no network in (SA · Three, 'mode')."""
+    scope): its region (Vendor B, or none when the calls of the workspace have Regions, 'region'), its operator, not a
+    Focus operator of the Operator Maps (both NR Modes, always, 'operator'), or its NR Mode, which its label in the
+    Operator Maps has no network in (SA · Three, 'mode')."""
     regions = {name.casefold() for name in settings['excluded_regions']}
+    without_region = regions_mapped(repository)
     chosen = excluded_modes_of(repository)
     focus = focus_names(repository)
     label = operator_label(repository)
@@ -2858,6 +2876,8 @@ def scope_of(repository: Any, settings: dict[str, Any]) -> Callable[[Any, Any, A
     def reason(region: Any, nr_mode: Any, operator: Any) -> tuple[str, str]:
         if str(region or '').strip().casefold() in regions:
             return f'{OUT_OF_SCOPE} · {str(region).strip()}', 'region'
+        if without_region and not str(region or '').strip():
+            return f'{OUT_OF_SCOPE} · {NO_REGION}', 'region'
         mode, name = str(nr_mode or '').upper(), str(operator or '').strip()
         if focus is not None and name.casefold() not in focus:
             return ' · '.join(part for part in (OUT_OF_SCOPE, mode, label(name)) if part), 'operator'
@@ -2868,8 +2888,9 @@ def scope_of(repository: Any, settings: dict[str, Any]) -> Callable[[Any, Any, A
 
 def scope_sql(repository: Any, settings: dict[str, Any] | None = None) -> tuple[str, list[Any]]:
     """The calls in scope as an SQL condition on their region, nr_mode and operator columns, as ``scope_of`` tells them
-    apart (NQ Calls in Scope Only): not of a region out of scope, of a Focus operator of the Operator Maps (when the
-    workspace has any), and not of an NR Mode · operator pair out of scope."""
+    apart (NQ Calls in Scope Only): not of a region out of scope nor without a Region (when the calls of the workspace
+    have Regions), of a Focus operator of the Operator Maps (when the workspace has any), and not of an NR Mode · operator
+    pair out of scope."""
     settings = settings or load_settings(repository)
     operator = "lower(trim(COALESCE(operator, '')))"
     clauses: list[str] = []
@@ -2878,6 +2899,8 @@ def scope_sql(repository: Any, settings: dict[str, Any] | None = None) -> tuple[
     if regions:
         clauses.append(f"lower(trim(COALESCE(region, ''))) NOT IN ({', '.join('?' for _ in regions)})")
         params.extend(regions)
+    if regions_mapped(repository):
+        clauses.append("trim(COALESCE(region, '')) <> ''")
     focus = focus_names(repository)
     if focus is not None:
         clauses.append(f"{operator} IN ({', '.join('?' for _ in focus)})")
@@ -3334,7 +3357,7 @@ def panel(repository: Any, filters: Any, username: str, view: str = 'all') -> di
     entries.append({'kind': OUT_OF_SCOPE_KIND, 'name': OUT_OF_SCOPE, 'number': None, 'list': '',
                     'label': 'Regions, operators and NR Mode · operator pairs out of scope', 'conditions': 'The calls of the regions'
                     + (f" ({', '.join(settings['excluded_regions'])})" if settings['excluded_regions'] else '')
-                    + ', of the operators that are not Focus operators and of the NR Mode · operator pairs'
+                    + ' and without a Region, of the operators that are not Focus operators and of the NR Mode · operator pairs'
                     + (f" ({', '.join(modes)})" if modes else '') + ' out of scope',
                     'criterion': 'Out of the queues',
                     'priority': '', 'track_priority': '', 'operators': ''})

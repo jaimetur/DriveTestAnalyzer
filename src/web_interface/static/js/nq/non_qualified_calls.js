@@ -3179,8 +3179,8 @@
     }
   }
 
-  // What is out of scope, beside NQ Calls in Scope Only: the regions, the operators chosen with their NR Mode and the
-  // operators that are not Focus operators.
+  // What is out of scope, beside NQ Calls in Scope Only: the regions (and the calls without one when the calls have
+  // Regions), the operators chosen with their NR Mode and the operators that are not Focus operators.
   function renderScopeSummary() {
     const summary = $('nq-scope-summary');
     if (!summary) return;
@@ -3189,7 +3189,7 @@
     // Each operator out of scope with its NR Mode, or alone when both are.
     const modes = new Map();
     (settings.excluded_modes || []).forEach((item) => modes.set(item.operator, [...(modes.get(item.operator) || []), item.nr_mode]));
-    const parts = [...(settings.excluded_regions || []), ...[...modes].map(([name, nrModes]) => (nrModes.length > 1 ? name : `${name} (${nrModes[0]})`)),
+    const parts = [...(settings.excluded_regions || []), ...(state.prioritizationNoRegion ? ['No Region'] : []), ...[...modes].map(([name, nrModes]) => (nrModes.length > 1 ? name : `${name} (${nrModes[0]})`)),
       ...(fixed.length ? [`not Focus: ${fixed.join(', ')}`] : [])];
     summary.textContent = parts.length ? `Out of scope: ${parts.join(' · ')}` : 'Nothing is out of scope';
   }
@@ -3228,6 +3228,7 @@
       state.focusOperators = payload.focus_operators || [];
       state.prioritizationOperators = payload.prioritization_operators || [];
       state.prioritizationFixedModes = payload.prioritization_fixed_modes || [];
+      state.prioritizationNoRegion = payload.prioritization_no_region === true;
       state.prioritizationFixedReason = payload.prioritization_fixed_reason || '';
       state.prioritizationMapModes = payload.prioritization_map_modes || [];
       state.prioritizationMapReason = payload.prioritization_map_reason || '';
@@ -8462,7 +8463,7 @@
     if (detail.untaken.length) lines.push(item('Taken by no step', total(detail.untaken), 'no step takes their operator', detail.untaken));
     if (stepCounts.out_of_scope) {
       lines.push(item('Out of scope', Number(stepCounts.out_of_scope), 'in no queue and not tracked', [
-        ...scope.regions.map(([name, count]) => [`Region ${name} (every operator)`, count]),
+        ...scope.regions.map(([name, count]) => [name === 'No Region' ? 'Without a Region (every operator)' : `Region ${name} (every operator)`, count]),
         ...(scope.operators || []).map(([name, count]) => [`${name} (not a Focus operator)`, count]),
         ...(scope.modes || []).map(([name, count]) => [name, count])]));
     }
