@@ -13066,6 +13066,12 @@
       const section = doc?.getElementById('scoring-gap-analysis-setup') || environments;
       if (!doc || !section) return;
       if (environments?.tagName === 'DETAILS') environments.open = true;
+      // Its own heading (and Collapse) give way to the heading of the panel: always open.
+      if (section.tagName === 'DETAILS') {
+        section.open = true;
+        const summary = section.querySelector(':scope > summary');
+        if (summary) summary.style.display = 'none';
+      }
       // The embedded page keeps its body from scrolling (made for the template editor): here the editor scrolls
       // inside the panel, and never the page below it.
       if (!doc.getElementById('scoring-methodologies-scroll')) {
@@ -13097,6 +13103,8 @@
     if (!methodologiesFrame.getAttribute('src')) methodologiesFrame.setAttribute('src', METHODOLOGIES_URL);
     else showMethodologyEditorOnly();
     methodologiesDialog.showModal();
+    // (The panel takes the focus, not its first link.)
+    methodologiesDialog.focus();
     // The page below stays where it is while the editor is open.
     document.documentElement.classList.add('scoring-methodologies-open');
   });

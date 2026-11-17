@@ -2038,8 +2038,10 @@
   html.scoring-methodologies-open, html.scoring-methodologies-open body { overflow: hidden; }
   .scoring-methodologies-dialog { overscroll-behavior: contain; }
   .scoring-methodologies-dialog::backdrop { background: rgba(14,26,38,.5); }
-  .scoring-methodologies-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; padding: .7rem 1rem; border-bottom: 1px solid var(--line); border-top: 6px solid #087c83; }
-  .scoring-methodologies-head h3 { margin: .1rem 0 0; color: #087c83; }
+  .scoring-methodologies-dialog:focus { outline: none; }
+  .scoring-methodologies-head { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; padding: .45rem .9rem; border-bottom: 1px solid var(--line); border-top: 5px solid #087c83; }
+  .scoring-methodologies-head h3 { margin: 0; color: #087c83; font-size: 1.05rem; }
+  .scoring-methodologies-head .scoring-config-dialog-close { width: 1.9rem; height: 1.9rem; font-size: 1.1rem; }
   .scoring-methodologies-head-actions { display: flex; align-items: center; gap: .6rem; }
   .scoring-methodologies-head-actions a { color: var(--brand); font-size: .8rem; font-weight: 700; text-decoration: underline; }
   .scoring-methodologies-dialog iframe { flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--bg, #f5f1e8); }
@@ -2530,9 +2532,9 @@
      the values of the scoring shown, the values that differ from it marked. #}
   {# The methodology editor (Workspace Config → Scoring & GAP Analysis Setup), opened from Scoring Methodologies of Scoring
      Setup over the page; the methodologies saved there are those of the next calculation. #}
-  <dialog class="scoring-methodologies-dialog" data-scoring-methodologies-dialog aria-labelledby="scoring-methodologies-title">
+  <dialog class="scoring-methodologies-dialog" data-scoring-methodologies-dialog tabindex="-1" aria-labelledby="scoring-methodologies-title">
     <div class="scoring-methodologies-head">
-      <div><p class="eyebrow">Workspace Config</p><h3 id="scoring-methodologies-title">Scoring Methodologies</h3></div>
+      <h3 id="scoring-methodologies-title">Scoring Methodologies</h3>
       <div class="scoring-methodologies-head-actions">
         <a href="/workspace-config#scoring-methodology-environments" target="_blank" rel="noopener">Open in Workspace Config</a>
         <button type="button" class="scoring-config-dialog-close" data-scoring-methodologies-close aria-label="Close" title="Close">×</button>
