@@ -181,7 +181,7 @@
       <p class="lede">Bring the source files that feed every product workflow into one managed workspace: {{ (upload_cdr_profile | default({})).label | default('NetCheck CDR', true) }} workbooks (Data, Voice and Speech), Layer3 Logs (the parsed drivetest logs of each campaign), and Vodafone UK (VFUK) or Three UK (3UK) Multivendor Mappings. Workspace proposes a type from each filename, lets you confirm it per file and, for CDRs, can apply an existing mapping or one uploaded in the same batch. Batch mappings are processed before their selected CDRs.</p>
       {% if user.role not in ['user-editor', 'admin', 'super-admin'] %}<p class="form-note workspace-read-only-note">The user-viewer role can explore the workspace datasets and generate jobs, but cannot delete, reprocess or map datasets.</p>{% endif %}
       {% if user.role in ['admin', 'super-admin'] %}
-      <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-multivendor-mapping-count="{{ multivendor_mapping_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}' data-cdr-profile='{{ upload_cdr_profile | default({}) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list %} data-other-datasets{% endif %}>
+      <form class="upload-dropzone" action="/datasets-analysis/upload" method="post" enctype="multipart/form-data" data-background-upload data-workspace-id="{{ active_workspace.id }}" data-workspace-name="{{ active_workspace.name }}" data-upload-type-form data-vodafone-mapping-options='{{ vodafone_mapping_datasets | default([]) | tojson }}' data-three-mapping-options='{{ three_mapping_datasets | default([]) | tojson }}' data-region-mapping-options='{{ region_mapping_datasets | default([]) | tojson }}' data-cluster-mapping-options='{{ cluster_mapping_datasets | default([]) | tojson }}' data-vendor-polygon-options='{{ vendor_polygon_datasets | default([]) | tojson }}' data-network-inventory-count="{{ network_inventory_datasets | default([]) | length }}" data-multivendor-mapping-count="{{ multivendor_mapping_datasets | default([]) | length }}" data-vendor-source-operators='{{ vendor_source_operators | default({}) | tojson }}' data-operator-options='{{ operator_options | default([]) | tojson }}' data-cdr-profile='{{ upload_cdr_profile | default({}) | tojson }}' data-flex-areas='{{ flex_area_names | default([]) | tojson }}'{% if datasets | rejectattr('dataset_kind', 'in', ['data', 'voice', 'speech', 'multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory', 'regions', 'clusters', 'vendors', 'l3_dt_logs']) | list %} data-other-datasets{% endif %}>
       <label class="dropzone-field" data-upload-dropzone>
         <span class="dropzone-title">Drop workbooks or browse</span>
         <span class="dropzone-copy">Accepted: CSV, XLS, XLSX, XLSM, GeoJSON, JSON, ZIP (shapefile or KMZ package), KMZ, KML</span>
@@ -292,6 +292,11 @@
                   <button type="button" class="queue-flex-suggestion-button" data-flex-action="dismiss" title="Hide this suggestion until the CDR changes">Not local</button>
                 </span>
                 {% endif %}
+              </div>
+              {% elif dataset.flex_mark_label and user.role in ['user-editor', 'admin', 'super-admin'] %}
+              {# Any CDR that is not Flex can be made Flex, with or without a campaign (see flex_detection.mark_cdr_as_flex). #}
+              <div class="queue-flex-mark" data-flex-suggestion data-update-url="/workspace/datasets/{{ dataset.id }}/flex" data-flex-label="{{ dataset.flex_mark_label }}">
+                <button type="button" class="queue-flex-suggestion-button" data-flex-action="mark" title="A local campaign (a city, a cluster or a region): label its campaign {{ dataset.flex_mark_label }} in Campaign Maps, used only where it is checked by hand">Mark as Flex</button>
               </div>
               {% endif %}
             </td>
@@ -1285,6 +1290,17 @@
     return 'NSA';
   }
 
+  // Mirrors _name_area in src/modules/cdr/flex_detection.py: the longest area of the workspace (a City, Cluster or Region
+  // value of its CDRs) that is a whole word of the file name, else Flex when the name says it.
+  const flexAreas = parseMappingOptions('flexAreas');
+  const flexWords = (text) => ` ${String(text || '').replace(/([a-z])(?=[A-Z])/g, '$1 ').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+  function inferFlexArea(fileName) {
+    const words = flexWords(String(fileName || '').replace(/\.[^.]+$/, ''));
+    const found = flexAreas.filter((area) => flexWords(area).trim() && words.includes(flexWords(area)));
+    if (found.length) return found.reduce((longest, area) => (area.length > longest.length ? area : longest));
+    return words.includes(' flex ') ? 'Flex' : '';
+  }
+
   // Mirrors src/modules/cdr/cdr_stage.py: "final" in the name, then weekly and daily words, then dates
   // (a range is a Final CDR; a single date after the start of the name is a Daily CDR).
   // The export stamp that ends the CDRs of a provider other than NetCheck (..._2025-07-30_16-05-07) is not a
@@ -1384,6 +1400,7 @@
         const isCdr = cdrTypes.has(entry.select.value);
         entry.nrModeField.hidden = !isCdr;
         entry.stageField.hidden = !isCdr;
+        entry.flexField.hidden = !isCdr;
         entry.operatorField.hidden = !['vendors', 'network_inventory'].includes(entry.select.value);
         entry.mappingOperatorsField.hidden = entry.select.value !== 'multivendor_mapping';
         entry.snapshotField.hidden = !['multivendor_mapping', 'mapping_vodafone', 'mapping_three', 'network_inventory'].includes(entry.select.value);
@@ -1467,6 +1484,32 @@
       stageSelect.value = inferCdrStage(file.name);
       stageField.append(stageSelect);
       stageField.hidden = !cdrTypes.has(select.value);
+      // A local campaign (one city, a cluster or a region): preselected when the file name has an area of the
+      // workspace or the word Flex, and changed by the user whatever the tool suggests. It is applied once the CDR is
+      // processed: Flex labels its Campaign values with a Flex label in Campaign Maps.
+      const flexArea = inferFlexArea(file.name);
+      const flexField = document.createElement('label');
+      flexField.className = 'upload-nr-mode-field upload-flex-field';
+      flexField.textContent = 'Flex campaign';
+      flexField.title = 'A Flex campaign is a local one (a city, a cluster or a region), used only where it is checked by hand: never in Latest campaign, Previous campaign or All available campaigns';
+      const flexSelect = document.createElement('select');
+      flexSelect.name = 'flex_choices';
+      flexSelect.setAttribute('aria-label', `Flex campaign for ${file.name}`);
+      // Not Flex is sent only against a suggestion, which it then hides; otherwise the tool may still suggest it later.
+      flexSelect.add(new Option('Not Flex', flexArea ? 'not_flex' : ''));
+      flexSelect.add(new Option('Flex (local)', 'flex'));
+      flexSelect.value = flexArea ? 'flex' : '';
+      const flexNote = document.createElement('small');
+      flexNote.className = 'upload-field-note';
+      const describeFlex = () => {
+        const suggested = Boolean(flexArea) === (flexSelect.value === 'flex');
+        flexNote.textContent = !suggested ? 'Chosen'
+          : flexArea ? (flexArea === 'Flex' ? 'Suggested: Flex in its name' : `Suggested: ${flexArea} in its name`) : 'No area in its name';
+      };
+      flexSelect.addEventListener('change', describeFlex);
+      describeFlex();
+      flexField.append(flexSelect, flexNote);
+      flexField.hidden = !cdrTypes.has(select.value);
       const mappings = document.createElement('div');
       mappings.className = 'upload-vendor-mapping-selectors';
       mappings.hidden = !cdrTypes.has(select.value);
@@ -1543,7 +1586,7 @@
       vendorSourceSelect.add(new Option('Vendor polygons', 'all'));
       vendorSourceSelect.value = vodafoneMappings.length || threeMappings.length || multivendorMappingCount ? '' : 'all';
       vendorSourceField.append(vendorSourceSelect);
-      const entry = {index, file, item, badge, select, nrModeField, stageField, stageSelect, operatorField, operatorSelect, mappingOperatorsField, mappingOperatorsInput, snapshotField, vendorSourceField, vendorSourceSelect, mappings, mappingSelectors: []};
+      const entry = {index, file, item, badge, select, nrModeField, stageField, stageSelect, flexField, operatorField, operatorSelect, mappingOperatorsField, mappingOperatorsInput, snapshotField, vendorSourceField, vendorSourceSelect, mappings, mappingSelectors: []};
       const addMappingSelector = (kind, labelText, fieldName) => {
         const field = document.createElement('label');
         field.textContent = labelText;
@@ -1588,7 +1631,7 @@
       }
       const fields = document.createElement('div');
       fields.className = 'upload-type-fields';
-      fields.append(typeField, nrModeField, stageField, operatorField, mappingOperatorsField, snapshotField);
+      fields.append(typeField, nrModeField, stageField, flexField, operatorField, mappingOperatorsField, snapshotField);
       const dailyFlag = document.createElement('span');
       dailyFlag.className = 'upload-daily-flag';
       dailyFlag.title = 'Received while the campaign runs; the Final CDR of its campaign replaces it in the combined tables';

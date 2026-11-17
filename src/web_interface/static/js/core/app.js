@@ -14051,7 +14051,8 @@ document.addEventListener('change', async (event) => {
   }
 });
 
-// A Final CDR that looks local: Mark as Flex labels its campaign with Flex in Campaign Maps, Not local hides the suggestion.
+// A CDR that looks local, or any CDR that is not Flex: Mark as Flex labels its campaign with Flex in Campaign Maps (a CDR
+// whose rows have no Campaign values takes the Flex campaign itself), Not local hides the suggestion.
 document.addEventListener('click', async (event) => {
   const button = event.target instanceof Element ? event.target.closest('[data-flex-action]') : null;
   const box = button?.closest('[data-flex-suggestion]');
@@ -14060,7 +14061,7 @@ document.addEventListener('click', async (event) => {
   const label = box.dataset.flexLabel || '';
   if (action === 'mark') {
     const accepted = await showConfirmDialog(
-      `Label the campaign of this CDR ${label} in Campaign Maps? A Flex campaign is left out of Latest campaign, Previous campaign and the other automatic choices, and is used only where it is checked by hand.`,
+      `Make the campaign of this CDR the Flex campaign ${label}? Its Campaign values take this label in Campaign Maps (a CDR without them takes it as its campaign). A Flex campaign is left out of Latest campaign, Previous campaign and the other automatic choices, and is used only where it is checked by hand.`,
       {title: 'Mark as Flex', confirmLabel: 'Mark as Flex'},
     );
     if (!accepted) return;

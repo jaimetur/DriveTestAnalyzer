@@ -4218,18 +4218,46 @@ def add_flex_campaigns(datasets: list[dict[str, Any]], task_repository: Reposito
         dataset['flex_campaign'] = int(dataset['id']) in campaigns and is_flex_cdr(campaigns[int(dataset['id'])], dataset.get('campaign'))
 
 
-def add_flex_suggestions(datasets: list[dict[str, Any]], task_repository: Repository | None = None) -> None:
-    """The Final CDRs that look local (see ``flex_detection``), with what their card says and the label proposed; none
-    until the idle task has read the coverage of every Final CDR."""
-    from src.modules.cdr.flex_detection import describe, flex_suggestions
+def flex_area_names() -> list[str]:
+    """The area names of the workspace that make a CDR look local in the upload review (see ``flex_detection``)."""
+    from src.modules.cdr.flex_detection import name_areas
 
     try:
-        suggestions = flex_suggestions(task_repository or repository, read_missing=False)
+        return name_areas(repository) if active_workspace else []
+    except Exception:  # noqa: BLE001 - the review then suggests Flex only from the word Flex.
+        return []
+
+
+def add_flex_suggestions(datasets: list[dict[str, Any]], task_repository: Repository | None = None) -> None:
+    """The CDRs that look local (see ``flex_detection``), with what their card says and the label proposed; none until
+    the idle task has read the coverage of every Final CDR. Every other ready CDR that is not Flex gets the label its
+    Mark as Flex would give (``flex_mark_label``)."""
+    from src.modules.cdr.cdr_auto_selection import cdr_campaigns
+    from src.modules.cdr.flex_detection import _name_area, _words, describe, flex_label, flex_suggestions, name_areas
+
+    task_repository = task_repository or repository
+    try:
+        suggestions = flex_suggestions(task_repository, read_missing=False)
     except Exception:  # noqa: BLE001 - the Workspace still lists its datasets.
         suggestions = {}
     for dataset in datasets:
         suggestion = suggestions.get(int(dataset['id']))
         dataset['flex_suggestion'] = {**suggestion, 'text': describe(suggestion)} if suggestion else None
+        dataset['flex_mark_label'] = ''
+    others = [dataset for dataset in datasets if not dataset['flex_suggestion'] and dataset.get('is_ready')
+              and str(dataset.get('dataset_kind') or '').casefold() in CDR_DATASET_KINDS]
+    if not others:
+        return
+    try:
+        areas = {_words(name): name for name in name_areas(task_repository)}
+        campaigns = cdr_campaigns(task_repository, [int(dataset['id']) for dataset in others])
+        for dataset in others:
+            values = campaigns.get(int(dataset['id'])) or []
+            if not is_flex_cdr(values, dataset.get('campaign')):
+                dataset['flex_mark_label'] = flex_label(values, _name_area(str(dataset['file_name']), areas),
+                                                        dataset['file_name'], dataset.get('campaign') or '')
+    except Exception:  # noqa: BLE001 - the card then has no Mark as Flex.
+        pass
 
 
 def add_workspace_mapping_capabilities(datasets: list[dict[str, Any]]) -> None:
@@ -4791,6 +4819,7 @@ def process_dataset(
             task_repository, workspace, region_mapping_dataset_id,
         )
         if workspace and combined_kind:
+            apply_flex_import_choices(task_repository, username)
             start_combined_cdr_recreation_job(
                 workspace, combined_kind, username, background=True,
             )
@@ -4990,6 +5019,7 @@ def enqueue_dataset_processing(
                         task_workspace and completed and str(completed['status']) == 'ready'
                         and completed_kind in CDR_DATASET_KINDS
                     ):
+                        apply_flex_import_choices(task_repository, username)
                         start_combined_cdr_recreation_job(task_workspace, completed_kind, username)
                         queue_scoring_history(task_repository)
                         queue_cdr_store(task_repository)
@@ -16570,6 +16600,7 @@ def workspace(
                 multivendor_mappings=multivendor_mapping_datasets),
             'operator_options': operator_options(),
             'upload_cdr_profile': upload_cdr_profile(repository),
+            'flex_area_names': flex_area_names(),
             'mappable_cdr_datasets': mappable_cdr_datasets,
             'clearable_cdr_datasets': clearable_cdr_datasets,
             'mappable_region_cdr_datasets': mappable_region_cdr_datasets,
@@ -17084,6 +17115,8 @@ def _read_local_coverage_when_idle(max_seconds: float = 20) -> None:
         if APP_SHUTTING_DOWN.is_set() or monotonic() - started >= max_seconds:
             return
         local_facts(task_repository, [dataset])
+    # The Flex choices of the upload review of CDRs processed while no request applied them.
+    apply_flex_import_choices(task_repository)
 
 
 register_idle_task(_read_local_coverage_when_idle, MAP_AREA_FILL_IDLE_SECONDS)
@@ -22548,6 +22581,16 @@ def validated_upload_selections(
         if str(value or '').strip() and normalize_cdr_stage(value) is None:
             raise HTTPException(status_code=422, detail='Unsupported CDR Stage selection.')
         selected_cdr_stages.append(normalize_cdr_stage(value))
+    # The Flex choice of each CDR in the upload review: flex, not_flex, or blank to leave it to the suggestion.
+    flex_choices = form.get('flex_choices')
+    if flex_choices and len(flex_choices) != len(file_names):
+        raise HTTPException(status_code=422, detail='Choose one Flex campaign value for every uploaded file.')
+    selected_flex_choices: list[str | None] = []
+    for value in flex_choices or [None] * len(file_names):
+        choice = str(value or '').strip().casefold() or None
+        if choice and choice not in {'flex', 'not_flex'}:
+            raise HTTPException(status_code=422, detail='Unsupported Flex campaign selection.')
+        selected_flex_choices.append(choice)
 
     def parse_mapping_selection(values: list[str] | None, label: str) -> list[str | None]:
         if not values:
@@ -22624,6 +22667,7 @@ def validated_upload_selections(
 
     return {
         'kinds': selected_kinds, 'nr_modes': selected_nr_modes, 'cdr_stages': selected_cdr_stages,
+        'flex_choices': selected_flex_choices,
         'vodafone_mappings': selected_vodafone_mappings, 'three_mappings': selected_three_mappings,
         'region_mappings': selected_region_mappings, 'cluster_mappings': selected_cluster_mappings,
         'vendor_polygons': selected_vendor_polygons, 'operators': selected_dataset_operators,
@@ -22666,6 +22710,15 @@ def register_uploaded_datasets(
                     if selected_kind in {'vendors', 'network_inventory'} else None
                 ),
             )
+            # The Flex choice of the upload review, applied once the CDR is processed (see flex_detection).
+            flex_choice = (selections.get('flex_choices') or [None] * (index + 1))[index]
+            if selected_kind in CDR_DATASET_KINDS and flex_choice:
+                from src.modules.cdr.flex_detection import set_import_choices
+
+                set_import_choices(task_repository, {dataset_id: flex_choice})
+                task_repository.add_log(username, 'upload_flex_choice', json.dumps({
+                    'dataset_id': dataset_id, 'file': file_name or destination.name, 'choice': flex_choice,
+                }, ensure_ascii=False))
             # The snapshot date chosen for an inventory; without one it keeps the date in its file name.
             chosen_dates = selections.get('snapshot_dates') or []
             chosen_date = chosen_dates[index] if selected_kind in SNAPSHOT_DATASET_KINDS and index < len(chosen_dates) else None
@@ -22814,6 +22867,7 @@ async def upload_dataset(
     cluster_mapping_dataset_ids: Annotated[list[str] | None, Form()] = None,
     nr_modes: Annotated[list[str] | None, Form()] = None,
     cdr_stages: Annotated[list[str] | None, Form()] = None,
+    flex_choices: Annotated[list[str] | None, Form()] = None,
     vendor_polygon_selections: Annotated[list[str] | None, Form()] = None,
     dataset_operators: Annotated[list[str] | None, Form()] = None,
     snapshot_dates: Annotated[list[str] | None, Form()] = None,
@@ -22865,7 +22919,7 @@ async def upload_dataset(
         'dataset_kinds': dataset_kinds, 'vodafone_mapping_dataset_ids': vodafone_mapping_dataset_ids,
         'three_mapping_dataset_ids': three_mapping_dataset_ids, 'region_mapping_dataset_ids': region_mapping_dataset_ids,
         'cluster_mapping_dataset_ids': cluster_mapping_dataset_ids, 'nr_modes': nr_modes, 'cdr_stages': cdr_stages,
-        'vendor_polygon_selections': vendor_polygon_selections, 'dataset_operators': dataset_operators,
+        'flex_choices': flex_choices, 'vendor_polygon_selections': vendor_polygon_selections, 'dataset_operators': dataset_operators,
         'snapshot_dates': snapshot_dates, 'mapping_operators': mapping_operators,
     })
     saved_files: list[tuple[str, Path]] = []
@@ -23711,10 +23765,10 @@ class DatasetFlexUpdate(BaseModel):
 def update_dataset_flex(
     dataset_id: int, payload: DatasetFlexUpdate, user: SessionUser = Depends(config_editor_user),
 ) -> JSONResponse:
-    """Answer the suggestion of a local campaign of a Final CDR: ``mark`` labels its Campaign values with a Flex label in
-    Campaign Maps, ``dismiss`` hides the suggestion until the CDR changes."""
-    from src.modules.cdr.cdr_auto_selection import cdr_campaigns
-    from src.modules.cdr.flex_detection import dismiss, flex_label, flex_suggestions, mark_as_flex
+    """Make a CDR Flex or answer the suggestion of a local campaign: ``mark`` labels its Campaign values with a Flex label
+    in Campaign Maps (a CDR whose rows have no Campaign values takes the Flex campaign itself), with or without a
+    suggestion; ``dismiss`` hides the suggestion until the CDR changes."""
+    from src.modules.cdr.flex_detection import dismiss, flex_suggestions, mark_cdr_as_flex, proposed_label
 
     if not active_workspace:
         raise HTTPException(status_code=409, detail='Open a workspace before changing its CDRs.')
@@ -23734,25 +23788,45 @@ def update_dataset_flex(
             'dataset_id': dataset_id, 'file': dataset['file_name'], 'action': 'dismiss', 'suggestion': suggestion,
         }, ensure_ascii=False))
         return JSONResponse({'dataset_id': dataset_id, 'action': 'dismiss'})
-    campaigns = cdr_campaigns(repository, [dataset_id]).get(dataset_id) or []
-    label = str(payload.label or '').strip() or suggestion.get('label') or flex_label(campaigns, suggestion.get('area') or '')
+    proposed, campaigns = proposed_label(repository, dataset)
+    label = str(payload.label or '').strip() or proposed
     try:
-        config = mark_as_flex(repository, campaigns, label, user.username)
+        result = mark_cdr_as_flex(repository, dataset, label, campaigns, user.username)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    # Labels, order and the campaigns of every module change: as when Campaign Maps are saved.
+    repository.add_log(user.username, 'update_dataset_flex', json.dumps({
+        'dataset_id': dataset_id, 'file': dataset['file_name'], 'action': 'mark', 'label': label,
+        'campaign': result['campaign'], 'campaigns': campaigns, 'suggestion': suggestion,
+    }, ensure_ascii=False))
+    _after_flex_marked(user.username)
+    return JSONResponse({'dataset_id': dataset_id, 'action': 'mark', 'label': label, 'campaign': result['campaign'],
+                         'exceptions': result['exceptions']})
+
+
+def _after_flex_marked(username: str, task_repository: Repository | None = None) -> None:
+    """After a CDR becomes Flex: labels, order and the campaigns of every module change, as when Campaign Maps are
+    saved, and a Flex Final CDR no longer replaces the Weekly and Daily CDRs of the whole country, nor they it."""
     ANALYSIS_CACHE.clear()
     PREPARED_ANALYSIS_FRAME_CACHE.clear()
     DATAFRAME_CACHE.clear()
     _clear_chart_preview_caches()
-    repository.add_log(user.username, 'update_dataset_flex', json.dumps({
-        'dataset_id': dataset_id, 'file': dataset['file_name'], 'action': 'mark', 'label': label,
-        'campaigns': campaigns, 'suggestion': suggestion,
-    }, ensure_ascii=False))
-    # A Flex Final CDR no longer replaces the Weekly and Daily CDRs of the whole country, nor they it.
-    queue_combined_cdr_inclusion_sync(user.username)
-    return JSONResponse({'dataset_id': dataset_id, 'action': 'mark', 'label': label,
-                         'exceptions': [item['label'] for item in config.get('exceptions') or []]})
+    queue_combined_cdr_inclusion_sync(username, task_repository)
+
+
+def apply_flex_import_choices(task_repository: Repository, username: str = 'system') -> None:
+    """Apply the Flex choices of the upload review to the CDRs processed since (see ``flex_detection``)."""
+    from src.modules.cdr.flex_detection import apply_import_choices
+
+    try:
+        applied = apply_import_choices(task_repository, username)
+    except Exception:  # noqa: BLE001 - tried again by the idle task.
+        return
+    for entry in applied:
+        task_repository.add_log(username, 'update_dataset_flex', json.dumps({
+            **entry, 'action': 'mark' if entry['choice'] == 'flex' else 'dismiss', 'source': 'upload review',
+        }, ensure_ascii=False))
+    if any(entry['choice'] == 'flex' and not entry.get('already_flex') and not entry.get('error') for entry in applied):
+        _after_flex_marked(username, task_repository)
 
 
 @app.post('/dashboard/retry/{dataset_id}', include_in_schema=False)
