@@ -2397,7 +2397,13 @@
               <label class="scoring-config-pill-switch" title="Include Scoring Trends: switched off, it is not calculated and its tab hides"><input type="checkbox" role="switch" data-scoring-part-switch="trends" checked aria-label="Include Scoring Trends"><span aria-hidden="true"></span></label>
             </div>
           </div>
-          {# Calculate, after the steps. #}
+          <div class="scoring-config-pending" data-scoring-config-pending role="status" hidden>
+            <strong>⚠ <span data-scoring-config-pending-text>Changes not calculated yet.</span></strong>
+            <span>The results below still show the previous selection: Calculate Scoring, or Discard the changes.</span>
+            <button type="button" class="scoring-config-discard" data-scoring-config-discard>Discard changes</button>
+          </div>
+          <p class="scoring-note scoring-calculation-message" data-scoring-message role="status" aria-live="polite">Choose at least one CDR to calculate scoring.</p>
+          {# Calculate, after the steps and the notices. #}
           <div class="scoring-actions scoring-strip-actions">
             {# With changes not calculated yet: give them to the Favourite Scoring shown, or keep them as a new one. #}
             <button type="button" class="scoring-update-favourite" data-scoring-update-favourite disabled title="Give the changes to the Favourite Scoring shown (same name, star and place) and calculate it again"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 10.5l4 4 8-9"/></svg><span>Update Favourite</span></button>
@@ -2406,12 +2412,6 @@
             <button type="button" class="scoring-force-button" data-recalculate-scoring disabled><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M16 7a7 7 0 0 0-12-2L2 7m0-5v5h5M4 13a7 7 0 0 0 12 2l2-2m0 5v-5h-5"/></svg><span>Recalculate</span></button>
             <button type="button" class="scoring-close-button" data-close-scoring disabled title="Close the scoring shown (its Saved Filter stays)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2.5" y="3" width="15" height="14" rx="2"/><path d="M7.5 8l5 5M12.5 8l-5 5"/></svg><span>Close Scoring</span></button>
           </div>
-          <div class="scoring-config-pending" data-scoring-config-pending role="status" hidden>
-            <strong>⚠ <span data-scoring-config-pending-text>Changes not calculated yet.</span></strong>
-            <span>The results below still show the previous selection: Calculate Scoring, or Discard the changes.</span>
-            <button type="button" class="scoring-config-discard" data-scoring-config-discard>Discard changes</button>
-          </div>
-          <p class="scoring-note scoring-calculation-message" data-scoring-message role="status" aria-live="polite">Choose at least one CDR to calculate scoring.</p>
         </div>
         <div class="scoring-results-primary scoring-results-view">
           <span class="eyebrow scoring-strip-label">View</span>

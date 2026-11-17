@@ -2996,8 +2996,9 @@
   }
 
   function setExportLinks(savedFilterId, enabled) {
-    // The results hidden by a selection that is no Saved Filter (or closed) are not exported either.
-    enabled = enabled && !selectionUnmatched && !(typeof scoringClosed !== 'undefined' && scoringClosed);
+    // The scoring shown is exported by its Saved Filter, also with changes not calculated yet (its results stay in
+    // sight); not once it is closed.
+    enabled = enabled && !(typeof scoringClosed !== 'undefined' && scoringClosed);
     for (const [kind, link] of Object.entries(exportLinks).flatMap(([name, links]) => [links].flat().map(item => [name, item]))) {
       if (!link) continue;
       link.hidden = false;
@@ -3082,15 +3083,21 @@
     const box = (group, value, label, checked, disabled = false, note = '') => `<label class="scoring-export-choice">`
       + `<input type="checkbox" data-scoring-export-${group} value="${escape(value)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>`
       + `<span>${escape(label)}${note ? ` <small>${escape(note)}</small>` : ''}</span></label>`;
+    // The scorings and the environments are multiselect lists (the app's dropdowns): Best Network, Most Reliable or both,
+    // and All Environments (combined), each environment or several.
+    const option = (value, label, selected, disabled = false) => `<option value="${escape(value)}"`
+      + `${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}>${escape(label)}</option>`;
+    const list = (group, label, options) => `<label class="scoring-export-select"><span>${escape(label)}</span>`
+      + `<select multiple size="1" data-scoring-export-${group} aria-label="${escape(label)}">${options}</select></label>`;
     return `<p>${escape(message)}</p>`
-      + '<fieldset class="scoring-export-choices"><legend>Scorings</legend>'
-      + box('scoring', 'best_network', 'Best Network', true)
-      + box('scoring', 'most_reliable', 'Most Reliable', false, !mostReliable, mostReliable ? '' : '(not calculated for this Saved Filter)')
-      + '</fieldset><fieldset class="scoring-export-choices"><legend>Environments</legend>'
-      + box('environment', 'Combined', 'All Environments', true, false, '(all the environments combined)')
-      + environments.map(environment => box('environment', environment.value, environment.label, false)).join('')
+      + '<div class="scoring-export-selects">'
+      + list('scoring', 'Scorings', option('best_network', 'Best Network', true)
+        + option('most_reliable', mostReliable ? 'Most Reliable Network' : 'Most Reliable Network (not calculated)', false, !mostReliable))
+      + list('environment', 'Environments', option('Combined', 'All Environments (combined)', true)
+        + environments.map(environment => option(environment.value, environment.label, false)).join(''))
+      + '</div>'
       // The panels that export the Focus operators (Workspace Config > Scoring Export Panels) can show every operator.
-      + '</fieldset><fieldset class="scoring-export-choices"><legend>Operators</legend>'
+      + '<fieldset class="scoring-export-choices"><legend>Operators</legend>'
       + box('all-operators', 'true', 'Export All Operators in Focus panels', false, false, '(every operator in the Focus Operators panels)')
       + '</fieldset>';
   }
@@ -3126,19 +3133,24 @@
     const message = 'Export the selected scoring report with the CDRs, Break down by levels and filters it was calculated with. '
       + 'Choose the scorings and the environments to include.';
     const choices = scoringExportChoices();
-    const choice = typeof showConfirmDialog === 'function'
-      ? await showConfirmDialog(message, {
+    const asked = typeof showConfirmDialog === 'function'
+      ? showConfirmDialog(message, {
         title: 'Export Selected Scoring Report', confirmLabel: 'PowerPoint', secondaryLabel: 'Word', cancelLabel: 'Cancel',
         variant: 'document-format', copyHtml: scoringExportDialogHtml(message, choices),
       })
-      : 'confirm';
+      : null;
+    // The dialog is drawn: its lists become the app's multiselect dropdowns.
+    if (asked && typeof setupCustomMultiSelects === 'function') setupCustomMultiSelects();
+    const choice = asked ? await asked : 'confirm';
     if (choice !== 'confirm' && choice !== 'secondary') return;
     const ticked = group => [...document.querySelectorAll(`input[data-scoring-export-${group}]`)]
-      .filter(input => input.checked && !input.disabled).map(input => input.value);
+      .filter(input => input.checked && !input.disabled).map(input => input.value)
+      .concat([...document.querySelectorAll(`select[data-scoring-export-${group}] option`)]
+        .filter(option => option.selected && !option.disabled).map(option => option.value));
     const scorings = typeof showConfirmDialog === 'function' ? ticked('scoring') : ['best_network'];
     const environments = typeof showConfirmDialog === 'function' ? ticked('environment') : ['Combined'];
     if (!scorings.length || !environments.length) {
-      const warning = `Tick at least one ${scorings.length ? 'environment' : 'scoring'} to export.`;
+      const warning = `Choose at least one ${scorings.length ? 'environment' : 'scoring'} to export.`;
       if (typeof showInfoDialog === 'function') showInfoDialog(warning, {title: 'Nothing to export'});
       else window.alert(warning);
       return;
@@ -11693,7 +11705,11 @@
       if (calculationPanelWasClosed) calculationPanel.open = false;
     }
     if (editDialog?.open) editDialog.close();
-    if (typeof messageHome !== 'undefined' && message && messageHome && message.parentElement !== messageHome) messageHome.append(message);
+    if (typeof messageHome !== 'undefined' && message && messageHome && message.parentElement !== messageHome) {
+      // Back above the buttons of the strip.
+      const stripActions = messageHome.querySelector(':scope > .scoring-strip-actions');
+      if (stripActions) stripActions.before(message); else messageHome.append(message);
+    }
     syncSavedFilterEditing();
     if (restore && before) {
       pinnedCdrs = before.pinned;
@@ -12368,7 +12384,7 @@
       void generateScoringReport();
       return;
     }
-    const exportLink = event.target.closest('.scoring-export-actions a, .scoring-table-export a');
+    const exportLink = event.target.closest('.scoring-export-actions a, .scoring-report-menu-list a, .scoring-table-export a');
     if (exportLink?.getAttribute('aria-disabled') === 'true') {
       event.preventDefault();
       return;
