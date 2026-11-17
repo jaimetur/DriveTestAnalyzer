@@ -12536,7 +12536,7 @@
     setup: {step: 1, title: 'Scoring Setup', eyebrow: 'Applies to the whole panel', color: 'setup'},
     context: {step: 2, title: 'Context Filters', eyebrow: 'What is scored', color: 'context'},
     split: {step: 3, title: 'Break down by', eyebrow: 'How the results are broken down', color: 'split'},
-    areas: {step: 4, title: 'Country Areas', eyebrow: 'Whole country · Country Areas tab', color: 'areas', scope: true},
+    areas: {step: 4, title: 'Country Areas', eyebrow: 'Country Areas tab only', color: 'areas', scope: true},
     trends: {step: 5, title: 'Scoring Trends', eyebrow: 'Scoring Trends tab only', color: 'trends'},
   };
   let configOpenBlock = null;
