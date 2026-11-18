@@ -6,7 +6,7 @@
 ## Release: v0.12.7
 ### Release Date: 2026-11-18
 #### ⚠️ Breaking Changes:
-- **Scoring & GAP Analysis:** the Saved Filters are named **Saved Scorings** and the Favourites Filters **Favourite Scorings**, in the interface, the Help and internally (table `saved_scorings`, API `/api/scoring/saved-scorings`, App Events, export, transfer and backup element `scoring-favourite-scorings`): workspaces are migrated in place when they open, and the packages, backups and transfers made with earlier versions are still imported, while those made with this version need a server of this version or later.
+- **Scoring & GAP Analysis:** the Saved Filters are named **Saved Scorings** and the Favourites Filters **Favourite Scorings**, in the interface, the Help and internally (table `saved_scorings`, API `/api/scoring/saved-scorings`, App Events, export, transfer and backup element `scoring-favourite-scorings`): workspaces are migrated in place when they open, and the packages, backups and transfers made with earlier versions are still imported, while those made with this version need a server of this version or later ([ticket #170](https://108.132.147.165:8443/tickets/170)).
 
 #### 🌟 New Features:
 
@@ -17,7 +17,7 @@
 - **Non-Qualified Calls:** a Non-Qualified Calls indexing no longer runs for hours, holding up every other write of the workspace (a Scoring calculation among them), after a Reindex that a restart stopped while it replaced the population of the calls: the indexes of the population missing and the tables a Reindex left are put right once the application starts and as each indexing starts (App Event `nq_population_indexes_restored`), and a Reindex builds the indexes of the population of the tool's schema ([ticket #167](https://108.132.147.165:8443/tickets/167)).
 - **Email Delivery:** the emails sent through an SMTP server carry their `Date` header, without which the spam filters of the recipients (Microsoft 365 among them) took them for spam, and when the SMTP sender is outside Ericsson the access request and **Forgot your password?** dialogs of the login page tell, once they emailed, to look in the **Junk Email** folder and add the sender to **Safe senders**, and every email of a ticket goes in one conversation of the mail clients ([ticket #88](https://108.132.147.165:8443/tickets/88)).
 - **Scoring & GAP Analysis:** a Favourite Scoring already calculated opens at once from the Filter Navigator, also after a restart: its result as served is kept on disk in the Scoring cache of the workspace, prepared in the background once its calculation ends (App Event `scoring_result_kept`) and, when the server is idle, for the Favourite Scorings without one; it opens on its own, without **Open Scoring**, also when the blocks are set to its selection, its name and **Opening…** showing while it loads, and a scoring is always open (**Close Scoring** removed); checking whether a selection is up to date takes a third of the time, and the page asks for each result once ([ticket #168](https://108.132.147.165:8443/tickets/168)).
-- **Reporting:** on phones the report editor ends above the bottom bar, which covered its **Back**, **Close** and **Save** buttons.
+- **Reporting:** on phones the report editor ends above the bottom bar, which covered its **Back**, **Close** and **Save** buttons ([ticket #171](https://108.132.147.165:8443/tickets/171)).
 
 #### 📚 Documentation:
 
