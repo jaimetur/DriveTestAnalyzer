@@ -4379,9 +4379,16 @@ class Repository:
             )
 
     def drop_reporting_table(self, dataset_kind: str) -> None:
+        from src.modules.cdr import cdr_store
+
         table_name = self.reporting_rows_table_name(dataset_kind)
         with self.connection() as conn:
             conn.execute(f'DROP TABLE IF EXISTS {self._quote_identifier(table_name)}')
+            # An emptied combined table keeps its rows in its row map: they go with it, so that Recreate maps again only
+            # the CDRs it includes (a Daily or Weekly CDR replaced by a newer one no longer counts).
+            if self._combined_in_copies(dataset_kind):
+                cdr_store.ensure_combined_tables(conn)
+                conn.execute(f'DELETE FROM {cdr_store.COMBINED_ROWS_TABLE} WHERE kind = ?', (str(dataset_kind),))
 
     def replace_dataset_rows(self, dataset_id: int, df: pd.DataFrame) -> None:
         from src.modules.cdr import cdr_store

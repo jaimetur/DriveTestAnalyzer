@@ -1065,3 +1065,19 @@ def test_a_mapping_of_a_cdr_whose_copy_is_its_only_store_rewrites_only_its_chang
     core.repository.replace_dataset_rows(in_copy, rows.head(2))
     with core.repository.connection() as connection:
         assert in_copy not in cdr_store.shadows(connection)
+
+
+def test_dropping_an_emptied_combined_table_drops_its_row_map(client, tmp_path):
+    """Recreate drops the combined table and maps again only the CDRs it includes: a CDR left out (a Daily replaced by a
+    newer one) no longer counts in it."""
+    first = add_cdr(tmp_path, 'first.csv', 'data', pd.DataFrame({'Operator': ['EE', 'O2'], 'Rate': [1.5, 2]}))
+    second = add_cdr(tmp_path, 'second.csv', 'data', pd.DataFrame({'Operator': ['Three'], 'Rate': [3]}))
+    for dataset_id in (first, second):
+        core.repository.copy_dataset_rows_to_reporting(dataset_id, 'data', ['Operator', 'Rate'])
+    copy_everything()
+    assert cdr_store.empty_combined_table(core.repository, 'data')
+    assert core.repository.reporting_row_count('data') == 3
+    core.repository.drop_reporting_table('data')
+    core.repository.copy_dataset_rows_to_reporting(first, 'data', ['Operator', 'Rate'])
+    assert core.repository.reporting_row_count('data') == core.repository.reporting_row_count('data', first) == 2
+    assert core.repository.reporting_row_count('data', second) == 0
