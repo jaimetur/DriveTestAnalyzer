@@ -491,12 +491,15 @@ body:has(.nq-drawer.is-open) { overflow: hidden; }
 .nq-fields-table td { color: var(--nq-text); overflow-wrap: anywhere; }
 
 /* Statuses and teams dialog */
-.nq-options-dialog { width: min(860px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--nq-border); border-radius: 16px; box-shadow: 0 24px 60px rgba(60, 10, 30, .3); }
+.nq-options-dialog { width: min(1000px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--nq-border); border-radius: 16px; box-shadow: 0 24px 60px rgba(60, 10, 30, .3); }
 .nq-options-dialog::backdrop { background: rgba(40, 8, 20, .35); }
 .nq-options-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 1.3rem; }
 .nq-options-form header h2 { margin: 0 0 .3rem; color: var(--nq-dark); }
 .nq-options-form header p { margin: 0; }
-.nq-options-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 1.2rem; }
+.nq-options-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.2rem; }
+/* A status keeps room for its name: its Closed and In Queue boxes one above the other beside it. */
+.nq-option-flags { display: inline-grid; flex: 0 0 auto; gap: .15rem; }
+.nq-option-list[data-nq-options="statuses"] .nq-option-row input[type="text"] { min-width: 7.5rem; }
 .nq-options-columns h3 { margin: 0 0 .5rem; color: var(--nq-dark); font-size: 1rem; }
 .nq-option-list { display: grid; gap: .45rem; margin: 0 0 .7rem; padding: 0; list-style: none; }
 .nq-option-row { display: flex; align-items: center; gap: .4rem; padding: .35rem .45rem; border: 1px solid var(--nq-border); border-radius: 10px; background: var(--nq-softer); }

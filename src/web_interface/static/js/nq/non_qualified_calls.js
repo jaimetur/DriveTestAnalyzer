@@ -6019,7 +6019,10 @@
       box.addEventListener('change', () => { queueBox.disabled = box.checked; if (box.checked) queueBox.checked = false; });
       queue.append(queueBox, ' In Queue');
       queue.title = 'The prioritized calls with this status are listed in their queue (Next to analyse)';
-      row.append(closed, queue);
+      // Closed and In Queue one above the other, so that the name keeps its room.
+      const flags = node('span', undefined, 'nq-option-flags');
+      flags.append(closed, queue);
+      row.append(flags);
     } else {
       // The members of the team are chosen in their own dialog and saved with the statuses and teams.
       row.members = [...(item.members || [])];
