@@ -16542,20 +16542,13 @@ _help_export_locks: dict[str, Lock] = {}
 _help_export_locks_guard = Lock()
 
 
-@app.get('/api/help/export')
-def export_help_documentation(scope: str = 'guide', doc: str = '', format: str = 'docx',
-                              user: SessionUser | None = Depends(optional_user)) -> Response:
-    """A Help chapter (``scope=guide``) or the whole documentation (``scope=all``) as Word or PDF. The files are kept
-    under the data folder (help-exports) until the chapters, the application version or the exporter change, so the
-    whole documentation is built once per change."""
+def help_export_file(scope: str, doc: str, export_format: str, user: SessionUser | None) -> tuple[Path, bool, str, int, str]:
+    """The Word or PDF file of a Help chapter (``scope=guide``) or of the whole documentation (``scope=all``), built when
+    it is missing: its path, whether it was already there, its title, its number of chapters and the chapter asked for.
+    The files are kept under the data folder (help-exports) until the chapters, the application version or the exporter
+    change, so the whole documentation is built once per change."""
     from src.modules.help import help_export
 
-    started = time_module.monotonic()
-    scope, export_format = str(scope or '').strip().lower(), str(format or '').strip().lower()
-    if scope not in {'guide', 'all'}:
-        raise HTTPException(status_code=400, detail='Scope must be guide or all.')
-    if export_format not in HELP_EXPORT_FORMATS:
-        raise HTTPException(status_code=400, detail='Format must be docx or pdf.')
     module_settings = load_module_labels(repository)
     renamed = renamed_help_chapters(module_settings)
 
@@ -16603,14 +16596,90 @@ def export_help_documentation(scope: str = 'guide', doc: str = '', format: str =
             partial = target.with_suffix(f'.{export_format}.part')
             partial.write_bytes(content)
             partial.replace(target)
-        data = target.read_bytes()
+    return target, cached, file_title, len(chapters), requested
+
+
+@app.get('/api/help/export')
+def export_help_documentation(scope: str = 'guide', doc: str = '', format: str = 'docx',
+                              user: SessionUser | None = Depends(optional_user)) -> Response:
+    """A Help chapter (``scope=guide``) or the whole documentation (``scope=all``) as Word or PDF."""
+    started = time_module.monotonic()
+    scope, export_format = str(scope or '').strip().lower(), str(format or '').strip().lower()
+    if scope not in {'guide', 'all'}:
+        raise HTTPException(status_code=400, detail='Scope must be guide or all.')
+    if export_format not in HELP_EXPORT_FORMATS:
+        raise HTTPException(status_code=400, detail='Format must be docx or pdf.')
+    target, cached, file_title, chapters, requested = help_export_file(scope, doc, export_format, user)
+    data = target.read_bytes()
     seconds = round(time_module.monotonic() - started, 2)
     repository.try_add_log(user.username if user else 'anonymous', 'help_exported', json.dumps({
-        'scope': scope, 'doc': requested, 'chapters': len(chapters), 'format': export_format, 'size_bytes': len(data),
+        'scope': scope, 'doc': requested, 'chapters': chapters, 'format': export_format, 'size_bytes': len(data),
         'cached': 'yes' if cached else 'no', 'seconds': seconds}))
     file_name = f'{file_title}.{export_format}'
     return Response(content=data, media_type=HELP_EXPORT_FORMATS[export_format], headers={
         'Content-Disposition': f"attachment; filename*=UTF-8''{quote(file_name)}", 'Cache-Control': 'no-store'})
+
+
+def help_guide_outline(pdf: Path) -> dict[str, Any]:
+    """The pages of the whole documentation as PDF, grouped by chapter for the slide viewer: the cover and the contents
+    first, then each chapter with its pages, each page named after the last section that starts on it or before it."""
+    import pymupdf
+
+    with pymupdf.open(pdf) as document:
+        total, outline = document.page_count, document.get_toc()
+    chapters = [(title, page - 1) for level, title, page in outline if level == 1 and page >= 1]
+    sections: list[dict[str, Any]] = []
+    starts = [page for _, page in chapters] + [total]
+    if chapters and chapters[0][1] > 0:
+        sections.append({'title': 'Cover and contents', 'pages': [
+            {'index': index, 'title': 'Cover' if index == 0 else 'Contents'} for index in range(chapters[0][1])]})
+    for position, (title, first) in enumerate(chapters):
+        headings = sorted((page - 1, text) for level, text, page in outline
+                          if level <= 3 and first <= page - 1 < starts[position + 1])
+        pages = []
+        for index in range(first, starts[position + 1]):
+            named = [text for page, text in headings if page <= index]
+            pages.append({'index': index, 'title': named[-1] if named else title})
+        sections.append({'title': title, 'pages': pages})
+    if not sections:
+        sections = [{'title': 'Pages', 'pages': [{'index': index, 'title': f'Page {index + 1}'} for index in range(total)]}]
+    return {'pages': total, 'sections': sections}
+
+
+@app.get('/api/help/guide')
+def help_guide(user: SessionUser | None = Depends(optional_user)) -> JSONResponse:
+    """The whole documentation for the slide viewer of Help Home: its pages by chapter and its downloads (PDF, Word)."""
+    started = time_module.monotonic()
+    target, cached, file_title, chapters, _ = help_export_file('all', '', 'pdf', user)
+    outline = help_guide_outline(target)
+    repository.try_add_log(user.username if user else 'anonymous', 'help_guide_opened', json.dumps({
+        'chapters': chapters, 'pages': outline['pages'], 'cached': 'yes' if cached else 'no',
+        'seconds': round(time_module.monotonic() - started, 2)}))
+    return JSONResponse({'title': 'DriveTest Analyzer — Documentation', 'key': target.stem.rsplit('-', 1)[-1], **outline,
+                         'downloads': {'pdf': '/api/help/export?scope=all&format=pdf', 'docx': '/api/help/export?scope=all&format=docx'},
+                         'file_names': {'pdf': f'{file_title}.pdf', 'docx': f'{file_title}.docx'}})
+
+
+@app.get('/api/help/guide/pages/{index}')
+def help_guide_page(index: int, thumb: bool = False, user: SessionUser | None = Depends(optional_user)) -> Response:
+    """A page of the whole documentation as a picture (a small one with ``thumb``), drawn from its PDF once and kept."""
+    from src.modules.reporting.pptx_to_docx import pdf_page_images
+
+    target, _, _, _, _ = help_export_file('all', '', 'pdf', user)
+    folder = target.parent / f'{target.stem}-pages'
+    image = folder / f"page-{index + 1:04d}{'-thumb' if thumb else ''}.png"
+    if not image.is_file():
+        pictures = pdf_page_images(target.read_bytes(), 48 if thumb else 144, [index])
+        if not pictures:
+            raise HTTPException(status_code=404, detail='The documentation has no such page.')
+        folder.mkdir(parents=True, exist_ok=True)
+        for stale in target.parent.glob(f"{target.stem.rsplit('-', 1)[0]}-*-pages"):
+            if stale != folder:
+                shutil.rmtree(stale, ignore_errors=True)
+        partial = image.with_suffix('.png.part')
+        partial.write_bytes(pictures[0])
+        partial.replace(image)
+    return Response(content=image.read_bytes(), media_type='image/png', headers={'Cache-Control': 'public, max-age=86400'})
 
 
 @app.get('/api/documents/{doc_name}')

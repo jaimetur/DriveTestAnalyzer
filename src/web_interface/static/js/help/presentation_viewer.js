@@ -191,9 +191,95 @@
     openViewer(presentation, index);
   }
 
+  // The whole documentation (a ```documentation block of Help Home): a card that opens its PDF page by page in the slide
+  // viewer, by chapter, with its PDF and Word to download. The server builds the PDF when the Help changed (it takes a
+  // while the first time), so the card says it is being prepared until then.
+  let guideData = null;
+  const loadGuide = () => {
+    guideData = guideData || fetch('/api/help/guide', {cache: 'no-cache', credentials: 'same-origin'}).then(async (response) => {
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.detail || 'The documentation could not be prepared.');
+      }
+      return response.json();
+    });
+    guideData.catch(() => { guideData = null; });
+    return guideData;
+  };
+  const guidePresentation = (data, format = 'pdf') => ({
+    id: 'documentation', title: data.title, unit: 'page', kicker: format === 'pdf' ? 'PDF' : 'Word',
+    description: 'Every chapter of the Help in one document, with its contents and numbered sections.',
+    sections: data.sections.map((section) => ({title: section.title, slides: section.pages.map((page) => page.title), pages: section.pages})),
+    download: data.file_names[format], downloadLabel: format === 'pdf' ? 'PDF' : 'Word',
+    urls: {
+      slide: (index, thumb = false) => `/api/help/guide/pages/${index}?v=${encodeURIComponent(data.key)}${thumb ? '&thumb=true' : ''}`,
+      file: data.downloads[format],
+    },
+    link: (index = 0) => `${linkBase || window.location.origin}/documents/view/help?documentation=1${index > 0 ? `&slide=${index + 1}` : ''}`,
+    formats: ['pdf', 'docx'].map((key) => ({
+      label: key === 'pdf' ? 'PDF' : 'Word', current: key === format,
+      select: (index) => openViewer(guidePresentation(data, key), index),
+    })),
+  });
+  function guideCard() {
+    const item = node('article', undefined, 'presentation-card documentation-card');
+    const open = node('button', undefined, 'presentation-card-open');
+    open.type = 'button';
+    open.title = 'Open the whole documentation in the viewer';
+    const cover = node('img', undefined, 'presentation-card-cover');
+    cover.alt = '';
+    cover.hidden = true;
+    const badge = node('span', 'Preparing…', 'presentation-card-badge');
+    const body = node('span', undefined, 'presentation-card-body');
+    body.append(node('strong', 'DriveTest Analyzer — Documentation', 'presentation-card-title'),
+      node('span', 'Every chapter of the Help in one document, with its contents and numbered sections.', 'presentation-card-description'));
+    open.append(cover, badge, body);
+    const actions = node('div', undefined, 'presentation-card-actions');
+    const pdf = node('a', 'Download PDF', 'presentation-card-download');
+    pdf.href = '/api/help/export?scope=all&format=pdf';
+    const word = node('a', 'Download Word', 'presentation-card-download');
+    word.href = '/api/help/export?scope=all&format=docx';
+    actions.append(pdf, word);
+    item.append(open, actions);
+    const ready = loadGuide().then((data) => {
+      cover.src = guidePresentation(data).urls.slide(0, true);
+      cover.hidden = false;
+      badge.textContent = count(data.pages, 'page');
+      return data;
+    }).catch((error) => {
+      badge.textContent = 'Not available';
+      open.title = error.message;
+      throw error;
+    });
+    open.addEventListener('click', async () => {
+      try {
+        const data = await ready;
+        openViewer(guidePresentation(data), 0);
+      } catch (error) {
+        window.alert(error.message);
+      }
+    });
+    return {item, ready};
+  }
+
   // Each ```presentations block of the chapter becomes the cards of its presentations; a direct link opens its
   // presentation in the slide viewer.
   async function enhance(container) {
+    const guides = [...container.querySelectorAll('pre > code.language-documentation')];
+    guides.forEach((code) => {
+      const {item, ready} = guideCard();
+      const block = node('div', undefined, 'presentation-block');
+      const cards = node('div', undefined, 'presentation-gallery');
+      cards.append(item);
+      block.append(cards);
+      code.parentElement.replaceWith(block);
+      // A link to the documentation (?documentation=1&slide=3) opens it at that page.
+      const query = new URLSearchParams(window.location.search);
+      if (query.get('documentation')) {
+        ready.then((data) => openViewer(guidePresentation(data),
+          Math.max(0, (Number.parseInt(query.get('slide') || '1', 10) || 1) - 1))).catch(() => {});
+      }
+    });
     const blocks = [...container.querySelectorAll('pre > code.language-presentations')];
     if (!blocks.length && !linked().id) return;
     let data;

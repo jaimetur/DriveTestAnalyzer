@@ -109,3 +109,29 @@ def test_help_pages_show_the_export_button(client):
     assert 'data-help-export-open' in page.text and 'This guide (Reporting)' in page.text
     assert 'data-help-export-open' in client.get('/documents/view/help').text
     assert 'data-help-export-open' not in client.get('/documents/view/readme').text
+
+
+def test_the_complete_guide_opens_its_pdf_page_by_page_by_chapter(client, monkeypatch):
+    import pymupdf
+
+    def fake_pdf(content, suffix, whole=False):
+        # A PDF of 4 pages: the cover, the contents and two chapters, with the outline LibreOffice writes.
+        document = pymupdf.open()
+        for text in ('Cover', 'Contents', 'I  Reporting', '1  Reports'):
+            document.new_page().insert_text((72, 72), text)
+        document.set_toc([[1, 'I Reporting', 3], [2, '1 Reports', 4]])
+        return document.tobytes()
+
+    monkeypatch.setattr(pptx_to_docx, 'document_pdf', fake_pdf)
+    response = client.get('/api/help/guide')
+    assert response.status_code == 200
+    data = response.json()
+    assert data['pages'] == 4 and data['downloads']['pdf'] == '/api/help/export?scope=all&format=pdf'
+    assert data['sections'] == [
+        {'title': 'Cover and contents', 'pages': [{'index': 0, 'title': 'Cover'}, {'index': 1, 'title': 'Contents'}]},
+        {'title': 'I Reporting', 'pages': [{'index': 2, 'title': 'I Reporting'}, {'index': 3, 'title': '1 Reports'}]}]
+    page = client.get('/api/help/guide/pages/3')
+    assert page.status_code == 200 and page.headers['content-type'] == 'image/png' and page.content.startswith(b'\x89PNG')
+    assert client.get('/api/help/guide/pages/3', params={'thumb': 'true'}).content.startswith(b'\x89PNG')
+    assert client.get('/api/help/guide/pages/9').status_code == 404
+    assert any(row['action'] == 'help_guide_opened' for row in core.repository.list_logs())

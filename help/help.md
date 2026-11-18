@@ -11,6 +11,14 @@ Use this Help centre for detailed workflows, examples and technical rules. For a
 
 Help Navigation groups chapters under General, Main Modules, Administrative Modules and Reference; a chapter can list reports of its own below it, such as the compatibility reports of Benchmarking Providers, each shown in its own design. Help is available without signing in, and **Export** at the top of each page exports its guide or the whole documentation to Word or PDF (see [Web Interfaces](web-interface.md)).
 
+## Complete guide
+
+The whole documentation in one document: open it to read it page by page by chapter, or download it as PDF or Word. **Export** at the top of each page exports one guide.
+
+```documentation
+all
+```
+
 ## Presentations
 
 Click a card to open it, **▶ Slideshow** to play it full screen or **Download PowerPoint** to keep it; [Product Presentations](presentations.md) tells how to use the slide viewer and share a slide.
