@@ -489,6 +489,7 @@
           const dot = holder.querySelector('.user-online-dot');
           if (dot) dot.hidden = !online.has(holder.dataset.userOnline);
         });
+        document.dispatchEvent(new CustomEvent('users-online-changed'));
       }
       state = {...reply, manage: Boolean(reply.manage)};
       leaving = reply.active && reply.leaving ? reply.leaving : null;

@@ -5020,6 +5020,9 @@ body:has(.confirm-overlay:not([hidden]), .ds-overlay:not([hidden]), .dataset-pre
 .admin-stack .users-toolbar select.is-filtering { border-color: #0b7a75; background: #e7f5f3; color: #0a5c58; }
 /* The count of the users listed, as a badge beside Collapse. */
 .admin-stack .users-count { padding: .45rem .8rem; border-color: rgba(126, 31, 39, .6); background: linear-gradient(135deg, #8f2932, #c24a4d); box-shadow: 0 5px 14px rgba(143, 41, 50, .26); color: #fff; font-size: .84rem; font-weight: 800; white-space: nowrap; }
+.admin-stack .users-online-count { display: inline-flex; align-items: center; gap: .3rem; min-height: 0; margin: 0; padding: .45rem .8rem; border: 1px solid rgba(21, 128, 61, .55); border-radius: 999px; background: linear-gradient(135deg, #15803d, #22a35a); box-shadow: 0 5px 14px rgba(21, 128, 61, .24); color: #fff; font-size: .84rem; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.admin-stack .users-online-count::before { content: ''; width: .5rem; height: .5rem; border-radius: 50%; background: #bbf7d0; box-shadow: 0 0 0 2px rgba(255, 255, 255, .35); }
+.admin-stack .users-online-count:hover, .admin-stack .users-online-count.is-sorting { background: linear-gradient(135deg, #116632, #1c8b4c); }
 .admin-stack .users-bulk-bar { position: sticky; top: calc(var(--module-tabs-offset, 0px) + .5rem); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; margin: 0 0 .75rem; padding: .5rem .55rem .5rem 1rem; border-radius: 14px; background: #10314a; color: #fff; box-shadow: 0 14px 30px rgba(16, 33, 49, .28); }
 .admin-stack .users-bulk-bar[hidden] { display: none; }
 .admin-stack .users-bulk-bar strong { margin-right: .4rem; color: #fff; font-size: .85rem; }

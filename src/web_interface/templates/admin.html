@@ -100,7 +100,7 @@
         <h2>Users</h2>
         <p class="summary-description">Every account with its role, <strong>Modules Profile</strong> (the modules it sees), active status and <strong>workspaces</strong> (its Workspace Groups plus individual workspaces). Change any of them in place, or select several users to change them at once. <strong>New user</strong> creates one.</p>
       </div>
-      <div class="summary-inline-actions"><span class="pill users-count" data-users-count role="status">{{ users | length }} users</span><span class="collapse-chip">Collapse</span></div>
+      <div class="summary-inline-actions"><span class="pill users-count" data-users-count role="status">{{ users | length }} users</span>{% set online_now = online_usernames() %}<button type="button" class="pill users-online-count" data-users-sort="online" data-users-sort-first="desc" data-users-online-count title="Users signed in now · click to list them first (again to reverse)" aria-live="polite"><span data-users-online-number>{{ users | selectattr('username') | map(attribute='username') | map('lower') | select('in', online_now) | list | length }}</span> online<span aria-hidden="true" data-users-sort-indicator></span></button><span class="collapse-chip">Collapse</span></div>
     </summary>
     <div class="users-toolbar" role="search">
       <label class="users-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input type="search" placeholder="Search users by name or username" aria-label="Filter users by name or username" data-users-filter-text></label>
@@ -2628,6 +2628,8 @@
     if (key === 'last-login') return cell?.dataset.usersSortValue || '';
     if (key === 'role') return roleRank.indexOf(row.querySelector('[name="role"]')?.value || row.dataset.role);
     if (key === 'active') return row.querySelector('[name="active"]')?.checked ? 1 : 0;
+    // Online: the users signed in now (their green dot), first when sorted from the online pill.
+    if (key === 'online') return row.querySelector('.user-online-dot:not([hidden])') ? 1 : 0;
     if (key === 'profile') return (cell?.querySelector('select')?.selectedOptions[0] || cell)?.textContent.trim() || '';
     return (cell?.querySelector('[data-user-workspaces-summary]') || cell)?.textContent.trim() || '';
   };
@@ -2643,8 +2645,11 @@
     sortButtons.forEach((button) => {
       const active = sorted && button.dataset.usersSort === usersSort.key;
       const direction = usersSort?.direction === 'desc' ? 'descending' : 'ascending';
-      button.closest('th').setAttribute('aria-sort', active ? direction : 'none');
-      button.querySelector('[data-users-sort-indicator]').textContent = active ? (direction === 'descending' ? '↓' : '↑') : '↕';
+      button.closest('th')?.setAttribute('aria-sort', active ? direction : 'none');
+      button.classList.toggle('is-sorting', active);
+      // (The online pill shows its arrow only while it sorts the users.)
+      const indicator = button.querySelector('[data-users-sort-indicator]');
+      if (indicator) indicator.textContent = active ? (direction === 'descending' ? ' ↓' : ' ↑') : (button.closest('th') ? '↕' : '');
     });
     if (!sorted || !usersBody) return;
     const {key} = usersSort;
@@ -2656,7 +2661,17 @@
       || Number(left.dataset.userId) - Number(right.dataset.userId))
       .forEach((row) => usersBody.insertBefore(row, anchor));
   };
-  sortButtons.forEach((button) => button.addEventListener('click', () => {
+  // The online pill counts the users signed in now, and the table follows their dots as they change.
+  const refreshOnline = () => {
+    const number = document.querySelector('[data-users-online-number]');
+    if (number) number.textContent = String(userRows.filter((row) => row.querySelector('.user-online-dot:not([hidden])')).length);
+    if (usersSort?.key === 'online') applyUsersSort();
+  };
+  document.addEventListener('users-online-changed', refreshOnline);
+  sortButtons.forEach((button) => button.addEventListener('click', (event) => {
+    // (The online pill sits in the title bar of the panel: its click sorts, it does not fold the panel.)
+    event.preventDefault();
+    event.stopPropagation();
     const key = button.dataset.usersSort;
     const direction = usersSort?.key === key ? (usersSort.direction === 'desc' ? 'asc' : 'desc') : (button.dataset.usersSortFirst || 'asc');
     usersSort = {key, direction};

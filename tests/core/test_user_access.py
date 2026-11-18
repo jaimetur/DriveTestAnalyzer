@@ -1,6 +1,7 @@
 """Modules Profiles, Workspace Groups, the Users table and Users & Access in Import / Export / Transfer and Backup."""
 import io
 import json
+import re
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -401,6 +402,10 @@ def test_the_users_table_shows_the_last_log_in(client):
     # Every column but Password sorts the table, Last Log-in after User.
     assert page.index('data-users-sort="user"') < page.index('data-users-sort="last-login" data-users-sort-first="desc"') < page.index('<th>Password</th>')
     assert all(f'data-users-sort="{key}"' in page for key in ('role', 'profile', 'active', 'workspaces'))
+    # Beside the users, the pill of those signed in now, which lists them first.
+    online = re.search(r'data-users-online-count[^>]*><span data-users-online-number>(\d+)</span> online', page)
+    assert online and 'data-users-sort="online" data-users-sort-first="desc"' in page
+    assert int(online.group(1)) == sum(1 for name in core.demo_mode.online_usernames() if name in {row['username'].casefold() for row in core.repository.list_users()})
     assert f"<strong>{core.format_local_timestamp('2026-10-01T09:30:00+02:00')[:16]}</strong>" in page
     assert '<small>just now</small>' in page and 'title="demo has not signed in yet">Never</span>' in page
 
