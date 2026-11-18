@@ -469,7 +469,7 @@ def test_nq_tables_appear_in_database_management(client, tmp_path):
         assert f'>{title}<' in page or f'"{title}"' in page, title
 
 
-def test_teams_members_progress_shared_filters_and_reporting_artifact(client, tmp_path):
+def test_teams_members_progress_filters_of_each_user_and_reporting_artifact(client, tmp_path):
     enable_module()
     workspace_user('editor', 'user-editor')
     workspace_user('viewer', 'user-viewer')
@@ -536,12 +536,13 @@ def test_teams_members_progress_shared_filters_and_reporting_artifact(client, tm
     for state, key in (('in_queues', 'in_queues'), ('queued_assigned', 'not_attended_assigned')):
         assert client.post('/api/non-qualified-calls/progress', json={'filters': {'state': [state]}}).json()['summary']['total'] == summary[key]
 
-    # The Filters panel is shared by every user and session of the workspace.
+    # The Filters panel of each user is kept for every session of the user (ticket #177), never for the other users.
     filters = {'service': ['voice'], 'city': ['Leeds'], 'open_only': True, 'search': 'drop', 'unknown': ['x']}
     assert client.put('/api/non-qualified-calls/filters', json={'filters': filters}).status_code == 200
-    login(client, 'viewer', 'viewer123')
     assert client.get('/api/non-qualified-calls/state').json()['saved_filters'] == {
         'city': ['Leeds'], 'open_only': True, 'search': 'drop', 'service': ['voice']}
+    login(client, 'viewer', 'viewer123')
+    assert client.get('/api/non-qualified-calls/state').json()['saved_filters'] == {}
 
     # Reporting Jobs: the Executive Summary and Progress Status artifact with its filters.
     from src.modules.reporting.report_tasks import ARTIFACT_PROVIDERS
@@ -1248,7 +1249,7 @@ def test_cdr_columns_and_optional_columns_of_the_calls_table(client, tmp_path):
     assert [call['extra']['Cellname_A'] for call in filtered] == ['YORK_2']
     assert query(client, filters={'columns': {'join_id': [nq.UNASSIGNED]}})['summary']['total'] >= 0
     saved_filters = client.put('/api/non-qualified-calls/filters', json={'filters': {'columns': {'cdr:Cellname_A': ['YORK_2'], 'bad key': ['x']}}})
-    assert saved_filters.status_code == 200 and nq.saved_filters(core.repository)['columns'] == {'cdr:Cellname_A': ['YORK_2']}
+    assert saved_filters.status_code == 200 and nq.saved_filters(core.repository, 'super')['columns'] == {'cdr:Cellname_A': ['YORK_2']}
     # More CDR columns can be exported to Excel only; the table's are exported too, with Cluster and both vendor identities.
     saved = client.put('/api/non-qualified-calls/table-columns', json={
         'builtin': ['join_id'], 'cdr': ['Cellname_A'], 'export_cdr': ['Cellname_A', 'Call_Status']})
@@ -1843,3 +1844,26 @@ def test_a_reindex_builds_the_indexes_of_the_schema_on_its_population(client, tm
     finally:
         nq.restore_population_indexes = original
     assert expected <= population_indexes()
+
+
+def test_the_filters_of_the_calls_are_of_each_user(client):
+    """Two users change their filters at the same time: each finds their own, never those of the other."""
+    enable_module()
+    login(client)
+    for username in ('eone', 'etwo'):
+        workspace_user(username, 'user-editor')
+    # Before the filters were of each user the workspace shared one selection: it is where a user starts.
+    core.repository.set_workspace_state(nq.SAVED_FILTERS_STATE_KEY, json.dumps({'operator': ['VF']}))
+    login(client, 'eone', 'eone123')
+    assert client.get('/api/non-qualified-calls/state').json()['saved_filters']['operator'] == ['VF']
+    assert client.put('/api/non-qualified-calls/filters', json={'filters': {'operator': ['EE'], 'in_scope': True}}).status_code == 200
+    login(client, 'etwo', 'etwo123')
+    assert client.get('/api/non-qualified-calls/state').json()['saved_filters']['operator'] == ['VF']
+    assert client.put('/api/non-qualified-calls/filters', json={'filters': {'operator': ['O2']}}).status_code == 200
+    login(client, 'eone', 'eone123')
+    assert client.get('/api/non-qualified-calls/state').json()['saved_filters'] == {'operator': ['EE'], 'in_scope': True}
+    assert nq.saved_filters(core.repository, 'ETWO') == {'operator': ['O2']}
+    # The shared selection is not changed by anybody any more, and a rename reaches the filters of every user.
+    assert json.loads(core.repository.get_workspace_state(nq.SAVED_FILTERS_STATE_KEY)) == {'operator': ['VF']}
+    assert nq.saved_filter_keys(core.repository) == [nq.SAVED_FILTERS_STATE_KEY, nq.user_filters_key('eone'), nq.user_filters_key('etwo')]
+

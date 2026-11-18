@@ -1258,7 +1258,7 @@ def _merge_analyst_fields(task_repository: Any) -> None:
             _store_fields(task_repository, nq_catalog.normalize_fields(fields, {field['key']: field for field in list_fields(task_repository)},
                                                                        CATALOG_CALL_FIELDS))
     # The saved filters, Status Rules, reviewed equivalences and table columns of the workspace.
-    for state_key, kind in ((SAVED_FILTERS_STATE_KEY, 'filters'), (STATUS_RULES_STATE_KEY, 'rules'),
+    for state_key, kind in (*((key, 'filters') for key in saved_filter_keys(task_repository)), (STATUS_RULES_STATE_KEY, 'rules'),
                             (ANALYSES_EQUIVALENCES_STATE_KEY, 'equivalences'), (TABLE_COLUMNS_STATE_KEY, 'layout'),
                             (COLUMN_ORDER_STATE_KEY, 'layout')):
         stored = task_repository.get_workspace_state(state_key)
@@ -1419,13 +1419,13 @@ def _move_reviewer_field(task_repository: Any) -> None:
             connection.execute(f"UPDATE {NQ_FIELDS_TABLE} SET source = 'tracking', source_ref = 'reviewer', field_type = 'list', "
                                "options_json = '[]', suggest_from = '', description = ? WHERE field_key = 'reviewer'", (description,))
     # The saved filters (their names of accounts become usernames) and the reviewed equivalences of the workspace.
-    for state_key in (SAVED_FILTERS_STATE_KEY, ANALYSES_EQUIVALENCES_STATE_KEY):
+    for state_key in (*saved_filter_keys(task_repository), ANALYSES_EQUIVALENCES_STATE_KEY):
         stored = task_repository.get_workspace_state(state_key)
         try:
             document = json.loads(stored) if stored else None
         except (TypeError, ValueError):
             continue
-        renamed = _reviewer_filter_moved(document, mapping) if state_key == SAVED_FILTERS_STATE_KEY \
+        renamed = _reviewer_filter_moved(document, mapping) if is_saved_filters_key(state_key) \
             else _renamed_json(document, V41_RENAMES['equivalences'])
         if document is not None and renamed != document:
             task_repository.set_workspace_state(state_key, json.dumps(renamed, ensure_ascii=False))
@@ -1806,13 +1806,15 @@ def _upgrade_analysis_center_v9(task_repository: Any) -> None:
             for item in values.values():
                 item['domain'] = names.get(item['domain'].casefold(), item['domain'])
         _save_equivalences(task_repository, equivalences)
-        try:
-            saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
-        except (TypeError, ValueError):
-            saved = {}
-        if isinstance(saved, dict) and isinstance(saved.get('root_domain'), list):
-            saved['root_domain'] = [names.get(str(value).casefold(), value) for value in saved['root_domain']]
-            task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+        # (The filters of every user, and the shared ones of the workspace.)
+        for filters_key in saved_filter_keys(task_repository):
+            try:
+                saved = json.loads(task_repository.get_workspace_state(filters_key) or '{}')
+            except (TypeError, ValueError):
+                saved = {}
+            if isinstance(saved, dict) and isinstance(saved.get('root_domain'), list):
+                saved['root_domain'] = [names.get(str(value).casefold(), value) for value in saved['root_domain']]
+                task_repository.set_workspace_state(filters_key, json.dumps(saved, ensure_ascii=False, sort_keys=True))
     task_repository.set_workspace_state(ANALYSIS_CENTER_V9_STATE_KEY, '1')
 
 
@@ -1906,13 +1908,15 @@ def _upgrade_analysis_center_v12(task_repository: Any) -> None:
                     if isinstance(condition, dict) and condition.get('field') == old_key:
                         condition['field'] = new_key
             task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
-        try:
-            saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
-        except (TypeError, ValueError):
-            saved = {}
-        if isinstance(saved, dict) and isinstance(saved.get('fields'), dict) and old_key in saved['fields']:
-            saved['fields'][new_key] = saved['fields'].pop(old_key)
-            task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+        # (The filters of every user, and the shared ones of the workspace.)
+        for filters_key in saved_filter_keys(task_repository):
+            try:
+                saved = json.loads(task_repository.get_workspace_state(filters_key) or '{}')
+            except (TypeError, ValueError):
+                saved = {}
+            if isinstance(saved, dict) and isinstance(saved.get('fields'), dict) and old_key in saved['fields']:
+                saved['fields'][new_key] = saved['fields'].pop(old_key)
+                task_repository.set_workspace_state(filters_key, json.dumps(saved, ensure_ascii=False, sort_keys=True))
         equivalences = workspace_equivalences(task_repository)
         if f'field:{old_key}' in equivalences:
             equivalences.setdefault(f'field:{new_key}', {}).update(equivalences.pop(f'field:{old_key}'))
@@ -1961,14 +1965,16 @@ def _upgrade_analysis_center_v13(task_repository: Any) -> None:
                         if isinstance(condition, dict) and condition.get('field') == FISCAL_FIELD and isinstance(condition.get('values'), list):
                             condition['values'] = list(dict.fromkeys(renamed.get(str(value).casefold(), value) for value in condition['values']))
                 task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
-            try:
-                saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
-            except (TypeError, ValueError):
-                saved = {}
-            if names and isinstance(saved, dict) and isinstance((saved.get('fields') or {}).get(FISCAL_FIELD), list):
-                saved['fields'][FISCAL_FIELD] = list(dict.fromkeys(renamed.get(str(value).casefold(), value)
-                                                                   for value in saved['fields'][FISCAL_FIELD]))
-                task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+            # (The filters of every user, and the shared ones of the workspace.)
+            for filters_key in saved_filter_keys(task_repository):
+                try:
+                    saved = json.loads(task_repository.get_workspace_state(filters_key) or '{}')
+                except (TypeError, ValueError):
+                    saved = {}
+                if names and isinstance(saved, dict) and isinstance((saved.get('fields') or {}).get(FISCAL_FIELD), list):
+                    saved['fields'][FISCAL_FIELD] = list(dict.fromkeys(renamed.get(str(value).casefold(), value)
+                                                                       for value in saved['fields'][FISCAL_FIELD]))
+                    task_repository.set_workspace_state(filters_key, json.dumps(saved, ensure_ascii=False, sort_keys=True))
             equivalences = workspace_equivalences(task_repository)
             if names and f'field:{FISCAL_FIELD}' in equivalences:
                 for item in equivalences[f'field:{FISCAL_FIELD}'].values():
@@ -2119,19 +2125,21 @@ def _upgrade_analysis_center_v18(task_repository: Any) -> None:
                 if isinstance(condition, dict) and condition.get('field') == 'implementation_status' and isinstance(condition.get('values'), list):
                     condition['values'] = implementation_values(condition['values'])
         task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
-    try:
-        saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
-    except (TypeError, ValueError):
-        saved = {}
-    chosen = (saved.get('fields') or {}).get('implementation_status') if isinstance(saved, dict) and isinstance(saved.get('fields'), dict) else None
-    if isinstance(chosen, list):
-        moved_filter = [planned_names.get(str(value).casefold(), str(value)) for value in chosen if str(value).casefold() in planning]
-        saved['fields']['implementation_status'] = implementation_values(chosen)
-        if moved_filter:
-            saved['fields']['planned_status'] = list(dict.fromkeys([*saved['fields'].get('planned_status', []), *moved_filter]))
-        if not saved['fields']['implementation_status']:
-            del saved['fields']['implementation_status']
-        task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+    # (The filters of every user, and the shared ones of the workspace.)
+    for filters_key in saved_filter_keys(task_repository):
+        try:
+            saved = json.loads(task_repository.get_workspace_state(filters_key) or '{}')
+        except (TypeError, ValueError):
+            saved = {}
+        chosen = (saved.get('fields') or {}).get('implementation_status') if isinstance(saved, dict) and isinstance(saved.get('fields'), dict) else None
+        if isinstance(chosen, list):
+            moved_filter = [planned_names.get(str(value).casefold(), str(value)) for value in chosen if str(value).casefold() in planning]
+            saved['fields']['implementation_status'] = implementation_values(chosen)
+            if moved_filter:
+                saved['fields']['planned_status'] = list(dict.fromkeys([*saved['fields'].get('planned_status', []), *moved_filter]))
+            if not saved['fields']['implementation_status']:
+                del saved['fields']['implementation_status']
+            task_repository.set_workspace_state(filters_key, json.dumps(saved, ensure_ascii=False, sort_keys=True))
     equivalences = workspace_equivalences(task_repository)
     if 'field:implementation_status' in equivalences:
         for item in equivalences['field:implementation_status'].values():
@@ -2164,15 +2172,17 @@ def _upgrade_analysis_center_v19(task_repository: Any) -> None:
             if isinstance(rule, dict) and str(rule.get('status') or '').casefold() == old.casefold():
                 rule['status'] = new_name
         task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
-    try:
-        saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
-    except (TypeError, ValueError):
-        saved = {}
-    if isinstance(saved, dict) and isinstance(saved.get('status'), list) \
-            and any(str(value).casefold() == old.casefold() for value in saved['status']):
-        saved['status'] = list(dict.fromkeys(name for value in saved['status']
-                                             for name in (group if str(value).casefold() == old.casefold() else [value])))
-        task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+    # (The filters of every user, and the shared ones of the workspace.)
+    for filters_key in saved_filter_keys(task_repository):
+        try:
+            saved = json.loads(task_repository.get_workspace_state(filters_key) or '{}')
+        except (TypeError, ValueError):
+            saved = {}
+        if isinstance(saved, dict) and isinstance(saved.get('status'), list) \
+                and any(str(value).casefold() == old.casefold() for value in saved['status']):
+            saved['status'] = list(dict.fromkeys(name for value in saved['status']
+                                                 for name in (group if str(value).casefold() == old.casefold() else [value])))
+            task_repository.set_workspace_state(filters_key, json.dumps(saved, ensure_ascii=False, sort_keys=True))
     when = now_iso()
     with task_repository.connection() as connection:
         for row in connection.execute(f"SELECT call_key FROM {NQ_CALL_TRACKING_TABLE} WHERE status = ? COLLATE NOCASE AND status_mode = 'manual'",
@@ -2237,14 +2247,16 @@ def _upgrade_analysis_center_v20(task_repository: Any) -> None:
                     if isinstance(condition, dict) and condition.get('field') == 'analysis_status' and isinstance(condition.get('values'), list):
                         condition['values'] = list(dict.fromkeys(renames.get(str(value).casefold(), value) for value in condition['values']))
         task_repository.set_workspace_state(STATUS_RULES_STATE_KEY, json.dumps(rules, ensure_ascii=False))
-    try:
-        saved = json.loads(task_repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}')
-    except (TypeError, ValueError):
-        saved = {}
-    chosen = (saved.get('fields') or {}).get('analysis_status') if isinstance(saved, dict) and isinstance(saved.get('fields'), dict) else None
-    if isinstance(chosen, list) and any(str(value).casefold() in renames for value in chosen):
-        saved['fields']['analysis_status'] = list(dict.fromkeys(renames.get(str(value).casefold(), value) for value in chosen))
-        task_repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+    # (The filters of every user, and the shared ones of the workspace.)
+    for filters_key in saved_filter_keys(task_repository):
+        try:
+            saved = json.loads(task_repository.get_workspace_state(filters_key) or '{}')
+        except (TypeError, ValueError):
+            saved = {}
+        chosen = (saved.get('fields') or {}).get('analysis_status') if isinstance(saved, dict) and isinstance(saved.get('fields'), dict) else None
+        if isinstance(chosen, list) and any(str(value).casefold() in renames for value in chosen):
+            saved['fields']['analysis_status'] = list(dict.fromkeys(renames.get(str(value).casefold(), value) for value in chosen))
+            task_repository.set_workspace_state(filters_key, json.dumps(saved, ensure_ascii=False, sort_keys=True))
     equivalences = workspace_equivalences(task_repository)
     if 'field:analysis_status' in equivalences:
         for item in equivalences['field:analysis_status'].values():
@@ -5170,8 +5182,10 @@ def _upgrade_root_catalog_v47(task_repository: Any) -> dict[str, int]:
                     f'INSERT INTO {NQ_FIELD_VALUES_TABLE} (call_key, field_key, value, updated_by, updated_at) VALUES (?, ?, ?, ?, ?) '
                     'ON CONFLICT(call_key, field_key) DO UPDATE SET value = excluded.value', (call_key, key, value, 'system', when))
                 counts['field_values'] += 1
+        filter_keys = [str(row[0]) for row in connection.execute(
+            'SELECT key FROM workspace_state WHERE key = ? OR key LIKE ?', (SAVED_FILTERS_STATE_KEY, f'{SAVED_FILTERS_STATE_KEY}:%'))]
         for key, translate in ((nq_dta_rca.RULES_STATE_KEY, nq_dta_rca.translate_rules), (STATUS_RULES_STATE_KEY, _translated_status_rules),
-                               (SAVED_FILTERS_STATE_KEY, _translated_filters), (ANALYSES_EQUIVALENCES_STATE_KEY, _translated_equivalences)):
+                               *((key, _translated_filters) for key in filter_keys), (ANALYSES_EQUIVALENCES_STATE_KEY, _translated_equivalences)):
             found = connection.execute('SELECT value FROM workspace_state WHERE key = ?', (key,)).fetchone()
             try:
                 value = json.loads(found[0]) if found and found[0] else None
@@ -5972,8 +5986,26 @@ def _strings(values: Any) -> list[str]:
     return list(dict.fromkeys(str(value) for value in values if value is not None))
 
 
-# The Filters panel is shared: every user of the workspace finds the last selection, in any session.
+# The Filters panel of each user: every user finds their own last selection, in any session, whatever the others choose
+# (each in ``nq_calls_filters:<username>``). A user who has saved none yet starts from the selection the workspace shared
+# before the filters were of each user (``nq_calls_filters``), which nobody changes any more.
 SAVED_FILTERS_STATE_KEY = 'nq_calls_filters'
+
+
+def user_filters_key(username: str) -> str:
+    return f'{SAVED_FILTERS_STATE_KEY}:{str(username or "").casefold()}'
+
+
+def is_saved_filters_key(key: str) -> bool:
+    return key == SAVED_FILTERS_STATE_KEY or key.startswith(f'{SAVED_FILTERS_STATE_KEY}:')
+
+
+def saved_filter_keys(task_repository: Any) -> list[str]:
+    """The saved filters of every user and the shared ones of the workspace, so that a rename reaches them all."""
+    with task_repository.connection() as connection:
+        return [str(row[0]) for row in connection.execute(
+            'SELECT key FROM workspace_state WHERE key = ? OR key LIKE ? ORDER BY key',
+            (SAVED_FILTERS_STATE_KEY, f'{SAVED_FILTERS_STATE_KEY}:%'))]
 # NQ Calls in Scope Only (in_scope): only the calls in the scope of the team, as the Out of Scope settings of the NQ
 # Prioritization tell them apart, in every list, panel, chart, count and share.
 FLAG_FILTERS = ('open_only', 'mine', 'without_comments', 'in_scope')
@@ -6003,19 +6035,24 @@ def normalize_saved_filters(filters: Any) -> dict[str, Any]:
     return saved
 
 
-def saved_filters(repository: Any) -> dict[str, Any]:
+def saved_filters(repository: Any, username: str) -> dict[str, Any]:
+    """The last selection of the user, else the one the workspace shared before."""
+    stored = repository.get_workspace_state(user_filters_key(username))
+    if stored is None or stored == '':
+        stored = repository.get_workspace_state(SAVED_FILTERS_STATE_KEY)
     try:
-        return normalize_saved_filters(json.loads(repository.get_workspace_state(SAVED_FILTERS_STATE_KEY) or '{}'))
+        return normalize_saved_filters(json.loads(stored or '{}'))
     except (TypeError, ValueError):
         return {}
 
 
-def save_filters(repository: Any, filters: Any) -> dict[str, Any]:
+def save_filters(repository: Any, filters: Any, username: str) -> dict[str, Any]:
+    """Keep the selection of the user, never that of the others."""
     saved = normalize_saved_filters(filters)
     # Saved on every change of the Filters panel, and read by no answer kept of the workspace (only by the page as it
     # opens): what was read stays kept.
     with uncounted_workspace_writes():
-        repository.set_workspace_state(SAVED_FILTERS_STATE_KEY, json.dumps(saved, ensure_ascii=False, sort_keys=True))
+        repository.set_workspace_state(user_filters_key(username), json.dumps(saved, ensure_ascii=False, sort_keys=True))
     return saved
 
 
@@ -11546,7 +11583,7 @@ def install_non_qualified_calls_routes(core: Any) -> None:
                 'unassigned': UNASSIGNED, 'page_sizes': list(PAGE_SIZES),
                 'main_cities': list(repository.list_main_cities()),
                 # The page chooses the saved values in its lists, which hold them as they are shown.
-                'saved_filters': _mapped_filters(repository, saved_filters(repository)),
+                'saved_filters': _mapped_filters(repository, saved_filters(repository, user.username)),
                 'root_causes': root_catalog_payload(repository), 'root_cause_defaults': nq_catalog.default_root_catalog(),
                 'root_cause_rule_fields': RULE_FIELDS, 'default_root_cause_rule': DEFAULT_ROOT_CAUSE_RULE,
                 'fields': provider_field_labels(list_fields(repository), repository),
@@ -11990,8 +12027,8 @@ def install_non_qualified_calls_routes(core: Any) -> None:
     @core.app.put('/api/non-qualified-calls/filters')
     def nq_save_filters(payload: QueryPayload, user=Depends(core.current_user)) -> JSONResponse:
         repository = workspace_repository(user)
-        before = saved_filters(repository).get('in_scope') is True
-        filters = save_filters(repository, payload.filters)
+        before = saved_filters(repository, user.username).get('in_scope') is True
+        filters = save_filters(repository, payload.filters, user.username)
         if (filters.get('in_scope') is True) != before:
             # NQ Calls in Scope Only, switched on or off: every panel of the module counts other calls.
             log_action(repository, user, 'nq_calls_scope_only', {'in_scope': filters.get('in_scope') is True})

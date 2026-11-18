@@ -93,7 +93,7 @@ The **Filters** panel restricts the summary, the panels, the table and the expor
 
 **NQ Calls in Scope Only**, a switch above the filters, leaves the calls [out of scope](#prioritization-rules) out of the whole module, as if they were not there: the table, every panel, count and share (the [NQ Rate](#nq-rate-by-campaign-and-operator) counts every call in scope, qualified or not), the exports and the values every filter offers. It replaces the Operator, Region and NR Mode filters you would otherwise apply.
 
-- **Shared:** kept with the other filters for every user of the workspace; **Reset Filters** leaves it as it is.
+- **Yours:** kept with your other filters; **Reset Filters** leaves it as it is.
 - **Beside it:** a line tells what is out of scope (*Out of scope: Vendor B · Three (SA) · not Focus: EE, O2*), and **Out of Scope** opens the same settings as the Out of Scope card of the Prioritization Rules (**Save** applies them to every call at once).
 
 | Group | Filters |
@@ -119,7 +119,7 @@ The **Filters** panel restricts the summary, the panels, the table and the expor
 - **Reset Filters** clears them all but **NQ Calls in Scope Only**.
 
 > [!IMPORTANT]
-> **The selection is shared.** It is saved in the workspace, so every user finds the last filters applied, on any device. **Assigned to me** always means the user viewing the page. An Operator or Vendor saved with a name the [Operator Maps](workspace-config.md#operator-maps) now show differently keeps selecting its calls (Vodafone SM selects VF SM once mapped to it), as do NetCheck RCA values saved with another spelling.
+> **The selection is yours.** Each user finds their own last filters, on any device, whatever the other users choose at the same time; a user who has saved none yet starts from the selection the workspace shared before. **Assigned to me** always means the user viewing the page. An Operator or Vendor saved with a name the [Operator Maps](workspace-config.md#operator-maps) now show differently keeps selecting its calls (Vodafone SM selects VF SM once mapped to it), as do NetCheck RCA values saved with another spelling.
 
 ## App Events of the module
 
@@ -528,7 +528,7 @@ Follow up the calls one by one. The **NQ Calls** panel lists one row per call, w
 **Join ID** (**Call ID** when the CDRs also bring the IDs of the provider's tools), centred in the title bar, finds calls by their IDs:
 
 - **Which IDs:** their `JOIN_ID`, or the IDs of the provider: with NetCheck CDRs, the `Session_ID_A` and `Session_ID_B` of a voice or Speech call and the `Test_ID` and `Session_id` of a data test, as NetCheck CloudNM identifies them.
-- **How:** one or more, separated by commas, spaces or lines (any case), list the calls with exactly those IDs. Kept with the shared selection and shown among the active filters.
+- **How:** one or more, separated by commas, spaces or lines (any case), list the calls with exactly those IDs. Kept with your selection and shown among the active filters.
 - **Recent JOIN_IDs:** below it, as below **Go to a JOIN_ID…** (**Go to a call ID…**) of an open call, a list offers the 10 last searched in either box (in your browser, per workspace), the latest first, narrowed while typing; here a choice replaces the JOIN_ID being typed.
 
 ### Follow up the calls

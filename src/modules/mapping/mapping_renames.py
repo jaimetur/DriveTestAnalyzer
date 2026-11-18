@@ -29,7 +29,18 @@ FILTER_STATE_KEYS = (
     'scoring_report_configurations', 'scoring_calculation_selection_v1', 'nq_calls_filters',
     'ppt_designs_v2', 'ppt_design_sets_v1',
 )
+# The Non-Qualified Calls filters of each user (``nq_calls_filters:<username>``), beside the shared ones.
+USER_FILTER_STATE_PREFIXES = ('nq_calls_filters:',)
 CDR_ANALYSIS_STATE_KEY = 'datasets_analysis_selection_v1'
+
+
+def filter_state_keys(repository: Any) -> list[str]:
+    """The workspace settings that keep filters, with those of each user."""
+    keys = list(FILTER_STATE_KEYS)
+    with repository.connection() as connection:
+        for prefix in USER_FILTER_STATE_PREFIXES:
+            keys += [str(row[0]) for row in connection.execute('SELECT key FROM workspace_state WHERE key LIKE ? ORDER BY key', (f'{prefix}%',))]
+    return keys
 _ALL_SUFFIX = re.compile(r'^(?P<name>.+?)\s+- All(?: Vendors)?$', re.IGNORECASE)
 
 
@@ -118,7 +129,7 @@ def rename_saved_scorings(repository: Any, mapping_type: str, old_name: str, new
     changed = rename_definition_values(repository, lambda definition: rename_in_document(definition, rename), write)
     changed += rename_scoring_saved_scorings(repository, rename, write)
     changed += rename_favourites(repository, rename, write)
-    for state_key in FILTER_STATE_KEYS:
+    for state_key in filter_state_keys(repository):
         stored = repository.get_workspace_state(state_key)
         if not stored:
             continue

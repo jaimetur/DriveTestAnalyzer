@@ -52,6 +52,8 @@ def test_renaming_an_operator_in_the_maps_renames_it_in_report_configurations_an
     repository.set_workspace_state('scoring_report_configurations', json.dumps(
         {'configurations': [{'name': 'National', 'configuration': report}], 'last': report}))
     repository.set_workspace_state('nq_calls_filters', json.dumps({'operator_vendor': ['VF_Ericsson'], 'city': ['VF']}))
+    # The Non-Qualified Calls filters of each user are renamed too.
+    repository.set_workspace_state('nq_calls_filters:eone', json.dumps({'operator': ['VF']}))
 
     response = client.post('/workspace-config/operator-mappings/save', data={
         'original_canonical': 'VF', 'canonical_value': 'VF_UK', 'aliases': 'VF\nVodafone UK'}, follow_redirects=False)
@@ -61,6 +63,7 @@ def test_renaming_an_operator_in_the_maps_renames_it_in_report_configurations_an
     assert configurations['configurations'][0]['configuration']['scenarios'][0]['context_filters']['Operator'] == ['EE', 'VF_UK']
     assert configurations['last']['scenarios'][0]['context_filters']['Operator'] == ['EE', 'VF_UK']
     assert json.loads(repository.get_workspace_state('nq_calls_filters')) == {'operator_vendor': ['VF_UK_Ericsson'], 'city': ['VF']}
+    assert json.loads(repository.get_workspace_state('nq_calls_filters:eone')) == {'operator': ['VF_UK']}
 
 
 def test_renaming_an_operator_renames_it_in_the_scoring_saved_scorings_and_the_favourites(client):
