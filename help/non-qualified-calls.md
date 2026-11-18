@@ -35,7 +35,7 @@ dt-analyzer-rca
 | Set up the module of the workspace | [NQ Analysis Configuration](#nq-analysis-configuration) |
 | <span class="guide-sub">↳ Fields, statuses, teams and their rules</span> | <span class="guide-sub">↳ [Fields and sections](#fields-and-sections) · [Statuses and teams](#statuses-and-teams) · [Status Rules](#status-rules) · [Map Levels](#map-levels)</span> |
 | <span class="guide-sub">↳ Root causes and the DT Analyzer RCA</span> | <span class="guide-sub">↳ [Root Cause Catalog](#root-cause-catalog) · [Root cause recommendation](#root-cause-recommendation) · [DT Analyzer RCA](#dt-analyzer-rca)</span> |
-| Import the Ericsson RCA results or earlier analyses | [Ericsson RCA results](#ericsson-rca-results) · [Previous NQ Analyses](#previous-nq-analyses) · [Link Analysts to Accounts](#link-analysts-to-accounts) |
+| <span class="guide-sub">↳ Import the Ericsson RCA results or earlier analyses</span> | <span class="guide-sub">↳ [Ericsson RCA results](#ericsson-rca-results) · [Previous NQ Analyses](#previous-nq-analyses) · [Link Analysts to Accounts](#link-analysts-to-accounts)</span> |
 | Share the calls in Excel, PowerPoint or Word | [Exports](#exports) · [Scheduled reports](#scheduled-reports) |
 | Keep, transfer and upgrade the analyses | [Storage and portability](#storage-and-portability) · [Workspaces of earlier versions](#workspaces-of-earlier-versions) |
 | Work on a phone or with a large workspace | [On phones](#on-phones) · [Speed with large workspaces](#speed-with-large-workspaces) |
@@ -872,7 +872,7 @@ The imports and Link Analysts to Accounts come after a line.
 > [!TIP]
 > **Every configuration can go back to the values of a new workspace:** **Default Fields & Sections**, **Default Statuses** and **Default Teams**, **Default Rules** (Status Rules, DT Analyzer RCA Rules and Prioritization Rules), **Default Levels** (Map Levels), **Default Catalog** and **Default Rule** (Root Cause Catalog and its suggestion rule), **Default Columns** (table columns) and **Default Equivalences** (Previous NQ Analyses). Each fills its dialog and **Save** applies it, except Default Equivalences, which applies once confirmed; values still used by a call are never removed, nor the catalog values a DT Analyzer RCA rule gives.
 
-## Fields and sections
+### Fields and sections
 
 **Fields & Sections** configures the catalog of fields every call is followed up with, in the order of the Excel export.
 
@@ -901,7 +901,7 @@ The imports and Link Analysts to Accounts come after a line.
 
 **Default Fields & Sections** leaves only the sections and fields of the [default catalog](#default-catalog), in their order, names, colours, settings and list values (a field keeps its values, a list value with the same name its calls); **Save** applies it, naming any other field or value still used by a call to clear or rename first.
 
-### Default catalog
+#### Default catalog
 
 The 37 fields of the meeting workbook and those of the analyses of the previous tool (see [Previous NQ Analyses](#previous-nq-analyses)), in their order but with the DT Analyzer RCA first, then the NetCheck RCA and the Ericsson RCA:
 
@@ -919,12 +919,12 @@ The 37 fields of the meeting workbook and those of the analyses of the previous 
 - **Implementation Team:** the team that implements the measure, which can differ from the Team Responsible.
 - **Planned FY:** the fiscal year a measure is planned for when it has no date, always written FY27: a year or quarter typed or imported becomes its fiscal year (2027 and Q3 2027 are FY27), new fiscal years take their place in order, and other values are refused (the import keeps them in the note).
 
-### Catalog workbook
+#### Catalog workbook
 
 - **Export Catalog** downloads the whole catalog as an Excel workbook easy to edit and import again: **About** (how to edit it), **Sections** (key, name, colour), **Fields** (order, section, name, key, type, source, source reference, table, Excel, summary, required, CDR value proposed, description), **Lists** (a row per value with colour, keywords and **Final**), **Root Catalog** (domains with colour; categories with domain; causes with category and domain, empty when Auto; all with keywords), **Statuses and Teams** (closed statuses, team members) and **Status Rules** (a row per condition).
 - **Import Catalog** reads that workbook, or the field list of the meeting workbook (sections in the first row, field names in the second, kind of values in the fourth, list values from the sixth), and previews what it adds before **Import**: new fields, list values, domains, categories, causes, statuses and teams are added, the sections and Status Rules of the workbook are taken, and nothing is removed.
 
-## Statuses and teams
+### Statuses and teams
 
 **Statuses & Teams** configures the statuses and teams of the workspace, each with a name, a colour and a position.
 
@@ -937,7 +937,7 @@ The 37 fields of the meeting workbook and those of the analyses of the previous 
 - **Removing:** a team still used by a call, or a status still set by hand on a call, cannot be removed: move those calls first, or merge the team into another with **⤳** (Merge into…): on **Save** its calls go to that team, its members join it (a team open to everyone stays so) and it is removed. Calls whose status the rules gave follow the rules again when their status is removed.
 - **Default Statuses** and **Default Teams** leave only the defaults, in their order and colours (one with the same name is kept, with its calls and members, and recoloured); **Save** applies them, then **Default Rules** in [Status Rules](#status-rules) puts the default rules back.
 
-### Team members
+#### Team members
 
 **Members** of each team (*Everyone* or the number of members) chooses the workspace users that belong to it, by first and last name (else username; the filter finds either), the default users first and tagged **default user**, with **Select All / None**; a user can be in several teams. **Save** saves them.
 
@@ -946,7 +946,7 @@ The 37 fields of the meeting workbook and those of the analyses of the previous 
 
 Choosing only the analyst brings the call to their team (the first in the list when several) unless it already has a team they belong to or a team without members.
 
-## Status Rules
+### Status Rules
 
 The **NQ Call Status** is semi-automatic: it follows the **Status Rules** of the workspace until an analyst chooses it by hand. **Status Rules** (NQ Analysis Configuration menu and Lifecycle & Phases panel) lists the rules in order; each sets a status when every one of its conditions holds.
 
@@ -976,7 +976,7 @@ Otherwise the call is **Not Attended**. **Default Rules** shows them again, with
 - **When it applies:** as soon as a field, a comment, the team, the analyst or the root cause changes; saving the rules, fields or statuses applies them to every automatic call at once.
 - **By hand:** a status chosen in the table, the call or the bulk bar stays until **↺ Back to automatic**. The history tells the automatic changes apart, and the Lifecycle & Phases panel, the **Status Set** filter and the Excel export show which calls are automatic.
 
-## Root Cause Catalog
+### Root Cause Catalog
 
 **Root Cause Catalog** configures the catalog the Root Category and Root Cause of each call are chosen from, in four tabs with a filter:
 
@@ -1003,7 +1003,7 @@ Otherwise the call is **Not Attended**. **Default Rules** shows them again, with
 > [!WARNING]
 > **Require a root category to close a call** refuses closing a call without a root category, whether its status is chosen by hand or a change of its fields makes the rules close it.
 
-### Suggestion rule
+#### Suggestion rule
 
 The suggestion rule translates the **NetCheck RCA** of the CDR onto the catalog, and only it: the DT Analyzer RCA follows its own rules, the Ericsson RCA is matched by name and keywords, and the decisions of the analysts never change. **NetCheck RCA Suggestion Rule** (named after the RCA of the provider), at the top of the catalog and in the Root Cause Analysis panel (while its source is NetCheck RCA), shows it to every user; admins and super-admins change:
 
@@ -1016,7 +1016,7 @@ The suggestion rule translates the **NetCheck RCA** of the CDR onto the catalog,
 
 The rule applies at once to the suggestions, the Root Cause Analysis and the recommendations, and never changes the root causes already set.
 
-## Root cause recommendation
+### Root cause recommendation
 
 Every call gets a recommended Root Category, Root Cause and Root Technology, merged from its sources:
 
@@ -1033,7 +1033,7 @@ The category with most weight wins (NetCheck first when it ties with the previou
 > [!NOTE]
 > The recommendation shows in the table, the RCA tab and the Excel export. **Accept** (one call) or **Accept recommendations** (selected calls) sets it; the analysts can also use one source or any other value, and their choices teach the next recommendations.
 
-## DT Analyzer RCA
+### DT Analyzer RCA
 
 The **DT Analyzer RCA** finds the Root Category, Root Cause and root domain of every Non-Qualified call, test and Speech sample from the data of its CDR. It works in every workspace, whatever its CDR type and also when the provider brings an RCA of its own, and comes first wherever the RCA sources are listed: the [Root Cause Sources](#root-cause-sources) and [Root Cause Analysis](#root-cause-analysis) panels and filters, the RCA tab, the [recommendation](#root-cause-recommendation), the fields and the exports.
 
@@ -1070,7 +1070,7 @@ In the RCA tab, the evidence of the DT Analyzer RCA and of the Ericsson RCA show
 > [!NOTE]
 > The averages of the whole call and the radio the logs measured before the failure can differ by several dB: they cover different periods, and the provider's comment may give the NR leg of an EN-DC call while the Ericsson RCA gives the LTE PCell.
 
-### Presentation
+#### Presentation
 
 The DT Analyzer RCA is also a presentation, **DT Analyzer RCA**: its architecture (from the CDR to the Selected Cause), what it reads, how its rules decide, the lack of resources, the network around the call, handovers and service, the result and evidence of each call and how to change the rules. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; it is also in [Product Presentations](presentations.md).
 
@@ -1078,7 +1078,7 @@ The DT Analyzer RCA is also a presentation, **DT Analyzer RCA**: its architectur
 dt-analyzer-rca
 ```
 
-### The network around the call
+#### The network around the call
 
 With a Network Inventory of the networks that serve the operator of the call ([Serving Networks](workspace-config.md#serving-networks)), the DT Analyzer RCA finds, as the [Map of the call](#map-of-the-call) does, the inventory cell of each cell of its trace (its own network first, nearest to where it served the call) and the site of the cell where it ended.
 
@@ -1089,7 +1089,7 @@ With a Network Inventory of the networks that serve the operator of the call ([S
 - **PCI collision:** a cell within 2 km has the technology, PCI and channel of a cell of the call, with interference.
 - **Cells out of service:** cells of the sites of the call are locked, halted or disabled in the inventory, with weak coverage or interference.
 
-### Lack of resources
+#### Lack of resources
 
 The DT Analyzer RCA finds a lack of resources in three ways:
 
@@ -1097,7 +1097,7 @@ The DT Analyzer RCA finds a lack of resources in three ways:
 - **The signalling of the CDR itself:** an access the network rejected (*RRCConnectionReject*, *RRCReject* or *Immediate Assignment Reject* in its failure events), or an RRC Connection Reject the provider reports, gives **Capacity · Access rejected (no resources)**.
 - **The resource blocks of a Data test:** a Cutoff test with its radio measured and good (no radio rule took it) whose primary carrier gave it less than **25 %** of its resource blocks on average gives **Capacity · Cell overload**. A completed test usually gets about two thirds. A server or TCP connection sending little also leaves resource blocks unused, so these rules come after those of the protocols and servers.
 
-### DT Analyzer RCA Rules
+#### DT Analyzer RCA Rules
 
 **DT Analyzer RCA Rules** shows the rules to every user; admins and super-admins change them.
 
@@ -1116,7 +1116,7 @@ The DT Analyzer RCA finds a lack of resources in three ways:
 - **Shown:** the evidence says what was learned and from how many calls (*Learned from the analysts: 3 of the 3 other calls of the rule “Voice failure with good radio”…*), the card of the source says **Learned from the analysts**, and the dialog counts the calls that learned.
 - **When:** after each new decision of the analysts and each indexing (also **Reindex**); turning it off gives every call the root cause of its rule again. The setting travels with the rules.
 
-### Default rules
+#### Default rules
 
 The default rules of the DT Analyzer RCA, in the order they are tried. *All* rules take every service. A text condition holds when the text contains one of its words (`a+b` needs both). *In NR alone* means the technology at the failure is NR without LTE (an SA call); *in 2G or 3G alone*, without LTE nor NR. The domain of each category is in the [Root Cause Catalog](#root-cause-catalog).
 
@@ -1235,7 +1235,7 @@ The default rules of the DT Analyzer RCA, in the order they are tried. *All* rul
 | | **The calls none of them explains** | | | |
 | 99 | Not identified | All | Every call that reaches it | Indeterminate · Unclear |
 
-## Map Levels
+### Map Levels
 
 **Map Levels** shows every user the levels the [map of a call](#map-of-the-call) and [NQ Maps](#nq-maps) colour each measure by; admins and super-admins change them for the workspace. They colour the RSRP and SINR of the CDR samples and of the [Layer3 Logs](#layer3-logs-on-the-map), and the RSRQ and UE Tx Power of the logs (LTE and NR alike), in their points, grid, legend and signalling timeline.
 
@@ -1252,7 +1252,7 @@ The default rules of the DT Analyzer RCA, in the order they are tried. *All* rul
 
 The Map Levels travel with [NQ Calls Configuration](#nq-calls-configuration) and NQ Call Tracking: exports, transfers (the import preview tells the levels that change), backups and restores take those of the package, measure by measure.
 
-## Ericsson RCA results
+### Ericsson RCA results
 
 **Import Ericsson RCA Results** (admins and super-admins) imports the results of the Ericsson RCA: a CSV (comma, semicolon or tab separated) or Excel file with one row per call:
 
@@ -1269,7 +1269,7 @@ The Map Levels travel with [NQ Calls Configuration](#nq-calls-configuration) and
 - **`RCA_Summary.csv`** of the Auto RCA output is read as it is: `JoinID` identifies the call, `Final_RCA_Category` and `Final_RCA_Subcategory` are the suggested category and cause, `RCA_Category` and `RCA_Subcategory` the Initial ones (and suggest when a row has no final values), `RCA_Evidence` the evidence, and `UE` puts the rows of the A and B sides in the fields of each side.
 - **Several rows of one `JOIN_ID`** are combined: a row without a result (no category, or *UNKNOWN* without measurements of the session) is left out when its side has another; the suggestion is the first that names a cause (the A side first; *Other …* or *UNKNOWN* only when none does); the evidence and other columns keep each row's value, labelled with its side (or its number and category).
 
-### Import the results
+#### Import the results
 
 1. Open **NQ Analysis Configuration → Import Ericsson RCA Results**. **Download Template** gives an empty file with these columns and an example row.
 2. **Choose File**. The preview tells how many results match a call, the columns found, the rows without a `JOIN_ID`, the `JOIN_IDs` with several rows and the categories and causes no Root Category or Root Cause of the [Root Cause Catalog](#root-cause-catalog) matches by name or keywords, with the domain proposed (*Other* results of a technology in RAN, *UNKNOWN* without a domain).
@@ -1281,11 +1281,11 @@ The dialog lists the imported files with their results, date and user.
 > [!WARNING]
 > **Replace the previous results** forgets every result imported before, and **Delete every result** removes them all: the calls lose their Ericsson RCA values and recommendations, and keep their selected root cause.
 
-## Previous NQ Analyses
+### Previous NQ Analyses
 
 **Import Previous NQ Analyses** brings the analyses made with the previous tool into the follow-up of the calls without losing any of them. Only admins and super-admins import: the other roles open it read-only (a card says so) and can download the template and the equivalences, but not choose a file, upload or forget equivalences, preview or import. The file is a CSV or an Excel workbook (`.xlsx`, `.xlsm`): every visible sheet with a `JOIN_ID` (or `Call Key`) column in its first three rows is read.
 
-### Import the analyses
+#### Import the analyses
 
 1. Open **NQ Analysis Configuration → Import Previous NQ Analyses** and **Choose File**. **Download Template** gives an empty file with the columns of the catalog in its order.
 2. Optionally review the [equivalences](#equivalences): **Download Equivalences**, change **Maps to** and **Domain**, **Upload Equivalences**.
@@ -1304,7 +1304,7 @@ The dialog lists the imported files with their results, date and user.
 > [!TIP]
 > **Importing a file again adds nothing.** A status from the file is set by hand, the catalog gets only the new values some call takes, and a comment or note the call already has is not added again.
 
-### How the rows are read
+#### How the rows are read
 
 - **One row, one analysis.** A cell with several `JOIN_IDs` (an analysis of an area) gives the analysis to each. A row without `JOIN_ID` that repeats the CDR is matched by the Operator, Campaign and session of the CDR, as the calls without `JOIN_ID` (the WhatsApp calls) are named.
 - **Columns** are matched by the name or key of a field (ignoring case, spaces and underscores) or by the names of the previous workbooks: Final Category/Classification and Final Cause/Subcategory (or Sub Category) are the Selected Root Category and Root Cause; Initial Category/Classification and Initial Cause/Subcategory the Initial ones; Responsible Stream the Team Responsible; Team the Analyst; Analysis Finished the Analysis Status; Status the Planned Status; Evaluation the Implementation Status; Stream responsible the Implementation Team; Action proposal and Site the Implementation Proposals and Implementation Site; Serving Cell, Band and Vendor the fields *… when Failure* (two vendors in one cell, one per line or as Ericsson/Huawei, are Vendor 1 and Vendor 2); Problem / Solution Location the Problem Location; Findings_Bucketization the Findings.
@@ -1316,7 +1316,7 @@ The dialog lists the imported files with their results, date and user.
 - **Calls not in the workspace yet** (a Completed call, or one of a CDR not loaded): the analysis is kept with the identity the call will have and shows as soon as its CDR is indexed.
 - **The Excel export** of Non-Qualified Calls is read too (its first row names the sections; its CDR and Ericsson RCA columns are left out), so a file exported, completed elsewhere and imported again keeps its values.
 
-### How the values are checked
+#### How the values are checked
 
 Values are checked as if chosen in the call, after the reviewed equivalences:
 
@@ -1327,7 +1327,7 @@ Values are checked as if chosen in the call, after the reviewed equivalences:
 - **Root causes:** a Root Category or Root Cause is taken when the catalog has it, or through an equivalence, which can add a new one. The **Domain** of the equivalence (existing, or a new name that becomes a domain) becomes its domain in the catalog, also for an existing value; without one, a new value takes its domain automatically. A call whose Root Category is *Invalidated* gets the Analysis Status *Invalidated* too, and a call with a Root Cause and no Root Category takes the category of the cause.
 - **Analyst** (the Team or Analyst column; an Analyst column after it stays in the note) and **Reviewer:** the user account of the equivalence of the value (Analyst → username, Reviewer → username), else the account with that username, else the only account named as it by first and last name (the whole name, or its first part). Otherwise the name is kept, with the spelling most rows use (Raj Kumar and Rajkumar are one), as an **analyst** or **reviewer without account**, listed in the preview under **Analysts without account** (with their rows) or **Reviewers without account**, to be linked in the equivalences or later with [Link Analysts to Accounts](#link-analysts-to-accounts).
 
-### Equivalences
+#### Equivalences
 
 The equivalences of the previous workbooks, as the analysts reviewed them, are built into the import (the **rules of the tool**: teams, root categories and causes with their domains, and the list values those workbooks write otherwise), so every workspace imports without uploading anything.
 
@@ -1335,7 +1335,7 @@ The equivalences of the previous workbooks, as the analysts reviewed them, are b
 - **Upload Equivalences** after changing Maps to (empty leaves the value out of its field, in the note) and Domain: the rows that differ from the rules of the tool are kept in the workspace, before the rules, for its next imports, and travel with its configuration.
 - **Default Equivalences** forgets, after confirming, every equivalence uploaded for the workspace.
 
-## Link Analysts to Accounts
+### Link Analysts to Accounts
 
 **Link Analysts to Accounts** (admins and super-admins apply it) gives the analysts and reviewers without account, brought by the [Previous NQ Analyses](#previous-nq-analyses), their user accounts: the account becomes the **Analyst** of the calls they analyse and the **Reviewer** of those they reviewed, all at once.
 

@@ -591,7 +591,7 @@ def test_the_help_lists_every_default_rule_in_its_order():
     from pathlib import Path
 
     text = (Path(__file__).resolve().parents[2] / 'help' / 'non-qualified-calls.md').read_text(encoding='utf-8')
-    section = text.split('\n### Default rules\n', 1)[1].split('\n### Root domains, categories and causes\n', 1)[0]
+    section = text.split('\n#### Default rules\n', 1)[1].split('\n### ', 1)[0]
     for number, rule in enumerate(nq_dta_rca.default_rules(), 1):
         assert f"| {number} | {rule['name']} |" in section, rule['name']
 
