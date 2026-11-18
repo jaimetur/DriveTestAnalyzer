@@ -490,3 +490,13 @@ def test_report_emails_name_the_format_of_each_file_so_the_powerpoint_and_word_v
     # Other files name their format too, an unknown one by its extension.
     assert report_tasks.email_file_format('table.xlsx') == ('Excel', '#107C41')
     assert report_tasks.email_file_format('layers.kmz')[0] == 'KMZ'
+
+
+def test_an_smtp_email_carries_the_headers_the_spam_filters_expect():
+    """Ticket #88: without its Date, a message is scored as spam (MISSING_DATE), Microsoft 365 among the filters."""
+    message = email_delivery.build_email(
+        {'from_name': 'DriveTest Analyzer', 'from_address': 'sender@example.com'}, ['user@example.com'],
+        'Test email', 'Text', '<p>Text</p>', [])
+    from email.utils import parsedate_to_datetime
+    assert parsedate_to_datetime(message['Date']).tzinfo is not None
+    assert message['Message-ID'].endswith('@example.com>') and message['From'] == 'DriveTest Analyzer <sender@example.com>'

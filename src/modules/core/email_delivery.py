@@ -19,7 +19,7 @@ import time
 import urllib.error
 import urllib.request
 from email.message import EmailMessage
-from email.utils import formataddr, make_msgid
+from email.utils import formataddr, formatdate, make_msgid
 from pathlib import Path
 from typing import Any
 
@@ -234,6 +234,8 @@ def build_email(settings: dict[str, Any], recipients: list[str], subject: str, t
     if reply_to:
         message['Reply-To'] = reply_to
     message['Message-ID'] = make_msgid(domain=settings['from_address'].rsplit('@', 1)[-1])
+    # (A message without its Date is scored as spam by the filters of the recipients, Microsoft 365 among them.)
+    message['Date'] = formatdate(localtime=True)
     message.set_content(text)
     message.add_alternative(html, subtype='html')
     for file_name, path in attachments:
