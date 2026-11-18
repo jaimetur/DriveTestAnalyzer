@@ -1,28 +1,6 @@
 # Network Insights
 
-Analyse the network behind the measured performance: radio quality (RSRP and SINR), weak-coverage and high-interference areas on a map, the cells that served the samples (their distance, overshooting and hosting network), 5G availability on the sites with NR, the inventory snapshot of every network (owner and host networks, data quality), site density, licensed, deployed and observed spectrum (the sites with NR TDD and NR FDD, the bandwidth of every band and the primary bandwidth of the tests), and network deployment (NNS, eMOCN scenarios, host networks and RAN vendors). Results are split by the dimensions checked in **Split by**; Operator and Campaign are checked by default.
-
-Every panel opens with the question it answers, and its notes explain how to read it.
-
-- **Pills after each title:** as in Scoring & GAP Analysis, the title of every chart and table ends with pills naming its area (the City, Cluster or Region filters, the most specific first, else **National**), its operators (**All Operators** without an Operator filter), its vendors (**All Vendors** without a Vendor filter) and, when chosen, its Environments. A list of over three names shows two and how many more; hovering a pill lists them all. A chart or table without a title of its own has them in a line above it, and its larger view beside its title.
-- **Which filters they name:** the measurement panels, those of the analysis shown; the NR sites by duplex mode and the site tables of Network Deployment, those of their own selection (without Environments, which describe measurements); the panels of the whole inventory (Network Snapshot, the grouped Network Deployment views, the inventory density and the licensed and deployed spectrum), National, All Operators and All Vendors.
-- **Order and colours:** operators and networks appear everywhere in the order and colours of the workspace **Operator Maps**; rows of ignored CDR sheets are excluded.
-- **Long tables** scroll inside their frame under a fixed header.
-- **Larger view:** double-click any chart, map or table to open it filling the screen but a narrow margin: charts and maps are drawn again with their zoom controls, and tables show every row.
-- **Images:** every panel, chart, map, ladder and table downloads as a PNG or copies to the clipboard from the floating buttons at its top right corner, also in the larger view (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_network_insights_image`.
-
-After **Launch Analysis**, the panels are grouped in three collapsible categories: **Summary** (Overview and Key Findings), **Radio Performance** (Coverage & Interference Maps, RF Quality, Latency & Interactivity, Serving Cells and 5G Availability) and **Network & Spectrum** (Network Snapshot, Network Deployment, Cluster Sites Density and Spectrum). In the floating section bar and the sections menu of the tab, each category goes to its panel and its arrow lists its panels.
-
-Each panel names its **data sources** as coloured labels under its title (hover one for where it comes from). In a panel with several sources each table or chart names its own (*Weakest coverage areas*: CDRs; *Cell status near the weak areas*: Network Inventory), and some labels follow a choice: the Cluster Sites Density table and Network Deployment (Observed Sites/Cells → CDRs; split by Region or Cluster → polygons too), and the ladders and locations of Spectrum (Bandwidth: CA Appendix).
-
-| Source | Panels |
-| --- | --- |
-| **CDRs** (Data, Voice, Speech) | Overview, Coverage & Interference Maps, RF Quality, Serving Cells, 5G Availability, Cluster Sites Density |
-| **CDR Data** | Key Findings, Latency & Interactivity, Spectrum |
-| **Network Inventory** | Coverage & Interference Maps, Serving Cells, 5G Availability, Network Snapshot, Network Deployment, Cluster Sites Density, Spectrum |
-| **CA Appendix** | Spectrum |
-| **Region & Cluster polygons** | Network Deployment, Cluster Sites Density |
-| **Spectrum Holdings**, **Serving Networks** (Workspace Config) | Spectrum, Serving Cells |
+Analyse the network behind the measured performance: radio quality and coverage, the cells that served the tests, 5G availability, the inventory, site density, spectrum and network deployment of every operator, split by the dimensions checked in **Split by** (Operator and Campaign by default).
 
 > [!NOTE]
 > **Radio views need no extra input.** RSRP, SINR, maps, observed eNodeBs and observed bands come from the processed CDRs. The Network Inventories (Cell Configuration KMZ packages included) and the licensed spectrum are optional inputs that complete the other panels (see [Pending inputs](#pending-inputs)).
@@ -38,6 +16,7 @@ guide:network-insights.md
 
 | Task or topic | Go to |
 | --- | --- |
+| Read the panels: pills, larger view, images | [How the panels work](#how-the-panels-work) |
 | Run an analysis | [Launch Analysis](#launch-analysis) |
 | <span class="guide-sub">↳ Group the results by area or campaign</span> | <span class="guide-sub">↳ [Grouping](#grouping)</span> |
 | <span class="guide-sub">↳ Choose the theme of the analysis</span> | <span class="guide-sub">↳ [Theme](#theme)</span> |
@@ -59,6 +38,19 @@ guide:network-insights.md
 | Keep and transfer the analyses | [Persistence and transfers](#persistence-and-transfers) |
 | Fix an empty or slow analysis | [Troubleshooting](#troubleshooting) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
+
+## How the panels work
+
+Every panel opens with the question it answers, and its notes explain how to read it.
+
+- **Pills after each title:** as in Scoring & GAP Analysis, the title of every chart and table ends with pills naming its area (the City, Cluster or Region filters, the most specific first, else **National**), its operators (**All Operators** without an Operator filter), its vendors (**All Vendors** without a Vendor filter) and, when chosen, its Environments. A list of over three names shows two and how many more; hovering a pill lists them all. A chart or table without a title of its own has them in a line above it, and its larger view beside its title.
+- **Which filters they name:** the measurement panels, those of the analysis shown; the NR sites by duplex mode and the site tables of Network Deployment, those of their own selection (without Environments, which describe measurements); the panels of the whole inventory (Network Snapshot, the grouped Network Deployment views, the inventory density and the licensed and deployed spectrum), National, All Operators and All Vendors.
+- **Order and colours:** operators and networks appear everywhere in the order and colours of the workspace **Operator Maps**; rows of ignored CDR sheets are excluded.
+- **Long tables** scroll inside their frame under a fixed header.
+- **Larger view:** double-click any chart, map or table to open it filling the screen but a narrow margin: charts and maps are drawn again with their zoom controls, and tables show every row.
+- **Images:** every panel, chart, map, ladder and table downloads as a PNG or copies to the clipboard from the floating buttons at its top right corner, also in the larger view (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)); App Events records each one as `export_network_insights_image`.
+
+After **Launch Analysis**, the panels are grouped in three collapsible categories: **Summary** (Overview and Key Findings), **Radio Performance** (Coverage & Interference Maps, RF Quality, Latency & Interactivity, Serving Cells and 5G Availability) and **Network & Spectrum** (Network Snapshot, Network Deployment, Cluster Sites Density and Spectrum). In the floating section bar and the sections menu of the tab, each category goes to its panel and its arrow lists its panels.
 
 ## Launch Analysis
 
@@ -303,6 +295,19 @@ The **RF Quality (RSRP & SINR)** template and its NSA and SA Designs are [starte
 > NSA uses an LTE anchor and can also provide NR radio measurements. Each chart reads its technology-specific CDR field. NR percentages describe the available valid NR measurements; missing NR values do not count as good coverage or establish NR availability along the entire route. SINR reflects signal quality against both interference and noise.
 
 ## Data sources
+
+Each panel names its **data sources** as coloured labels under its title (hover one for where it comes from). In a panel with several sources each table or chart names its own (*Weakest coverage areas*: CDRs; *Cell status near the weak areas*: Network Inventory), and some labels follow a choice: the Cluster Sites Density table and Network Deployment (Observed Sites/Cells → CDRs; split by Region or Cluster → polygons too), and the ladders and locations of Spectrum (Bandwidth: CA Appendix).
+
+| Source | Panels |
+| --- | --- |
+| **CDRs** (Data, Voice, Speech) | Overview, Coverage & Interference Maps, RF Quality, Serving Cells, 5G Availability, Cluster Sites Density |
+| **CDR Data** | Key Findings, Latency & Interactivity, Spectrum |
+| **Network Inventory** | Coverage & Interference Maps, Serving Cells, 5G Availability, Network Snapshot, Network Deployment, Cluster Sites Density, Spectrum |
+| **CA Appendix** | Spectrum |
+| **Region & Cluster polygons** | Network Deployment, Cluster Sites Density |
+| **Spectrum Holdings**, **Serving Networks** (Workspace Config) | Spectrum, Serving Cells |
+
+The CDR fields each kind of CDR gives:
 
 | Field | CDR Data | CDR Voice (A side) | CDR Speech |
 | --- | --- | --- | --- |
