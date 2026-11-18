@@ -112,9 +112,15 @@ def _call_part(event: dict[str, Any], base_url: str, names: dict[str, str], *, d
     return ''.join(parts)
 
 
+def call_thread(workspace: str, call_key: str) -> str:
+    """The conversation of the emails of one call, so mail clients (Outlook too) put them together."""
+    return f'nq-call-{workspace}-{call_key}'
+
+
 def call_email(app_name: str, workspace: str, actor_name: str, events: dict[str, dict[str, Any]], keys: list[str], base_url: str,
                names: dict[str, str]) -> tuple[str, str]:
-    """The subject and HTML of the email of some calls of a change."""
+    """The subject and HTML of the email of some calls of a change. The email of one call keeps the same subject for
+    every change (what happened leads its title), so its emails are one conversation."""
     shown = keys[:LISTED_CALLS]
     completed = sum(1 for key in shown if events[key]['completed'])
     changed = sum(1 for key in shown if events[key]['changes'])
@@ -130,7 +136,8 @@ def call_email(app_name: str, workspace: str, actor_name: str, events: dict[str,
         parts.append(f'<p>And {len(keys) - len(shown)} more calls.</p>')
     link = ('Open the call', f"{base_url}/non-qualified-calls#call={shown[0]}") if base_url and len(shown) == 1 else (
         ('Open Non-Qualified Calls', f'{base_url}/non-qualified-calls') if base_url else None)
-    subject = f"NQ Calls - {' & '.join(actions) or 'Changed'} - {title} ({workspace})"
+    subject = (f'NQ Call {title} ({workspace})' if len(shown) == 1
+               else f"NQ Calls - {' & '.join(actions) or 'Changed'} - {title} ({workspace})")
     return subject, notifications.email_page(app_name, title, parts, link=link, action=actions)
 
 
@@ -158,7 +165,7 @@ def notify_call_changes(app_repository: Any, app_name: str, workspace: str, acto
             notifications.deliver(app_repository, kind='nq_call', recipients=[address], subject=subject, html_body=body, actor=actor,
                                   details={'workspace': workspace, 'recipient': username, 'calls': len(keys),
                                            'join_ids': [events[key]['state'].get('join_id') or key for key in keys[:20]]},
-                                  switch='notify_nq_calls')
+                                  switch='notify_nq_calls', thread=call_thread(workspace, keys[0]) if len(keys) == 1 else '')
             sent += 1
         return sent
     except Exception as exc:  # noqa: BLE001 - an email never breaks the change it tells of.

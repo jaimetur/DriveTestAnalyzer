@@ -113,6 +113,7 @@ def test_the_reviewer_is_emailed_when_a_call_changes_a_status(prioritized, flow)
     assert len(flow) == 1
     sent = json.dumps(flow[0])
     assert 'Status changed' in sent and 'Analysis Status' in sent and 'Finished' in sent and 'Still empty' in sent
+    assert 'NQ Call ' in flow[0].get('subject', sent)
     assert '/non-qualified-calls#call=' in sent
     assert any(json.loads(row['details']).get('kind') == 'nq_call' for row in core.repository.list_logs() if row['action'] == 'email_sent')
     # Switched off, nothing is sent.
@@ -136,4 +137,6 @@ def test_a_call_is_told_once_when_all_its_fields_are_filled():
     assert nq_call_emails.call_events({'k1': {'complete': True}}, {'k1': state}, {'k1': {'field:findings': ['', 'x']}}, {}, {'status'}) == {}
     assert nq_call_emails.recipients_of(events, ['EJAITUR', 'ebbbbbb']) == {'ebbbbbb': ['k1'], 'ejaitur': ['k1']}
     subject, body = nq_call_emails.call_email('DriveTest Analyzer', 'UK', 'User A', events, ['k1'], 'https://tool', {})
-    assert subject.startswith('NQ Calls - Completed - J1') and 'Every field filled' in body and 'Filled · Analysis' in body
+    # The emails of one call keep its subject, whatever happened (which leads the title), so they are one conversation.
+    assert subject == 'NQ Call J1 · EE · C1 · Data (UK)' and 'Completed' in body and 'Every field filled' in body and 'Filled · Analysis' in body
+    assert nq_call_emails.call_thread('UK', 'k1') == 'nq-call-UK-k1'
