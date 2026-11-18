@@ -8339,7 +8339,11 @@ def analyst_fill_states(task_repository: Any, keys: list[str]) -> dict[str, dict
         return {}
     definitions = list_fields(task_repository)
     counted = fill_fields(definitions)
-    sections = {section['key']: section['label'] for section in list_sections(task_repository)}
+    workspace_sections = list_sections(task_repository)
+    sections = {section['key']: section['label'] for section in workspace_sections}
+    # The colour of each section, as its tab shows it (the header takes that of General).
+    colours = {section['label']: section.get('color', '') for section in workspace_sections}
+    colours['Header'] = next((section.get('color', '') for section in workspace_sections if section['key'] == 'general'), '')
     default = untracked_status(task_repository)
     states: dict[str, dict[str, Any]] = {}
     with task_repository.connection() as connection:
@@ -8375,7 +8379,7 @@ def analyst_fill_states(task_repository: Any, keys: list[str]) -> dict[str, dict
                 states[key] = {'call_key': key, 'join_id': str(row['join_id']), 'operator': str(row['operator']),
                                'campaign': str(row['campaign']), 'service': str(row['service']), 'start_time': str(row['start_time']),
                                'status': str(row['status'] or default), 'priority': str(stored.get('priority') or ''), **tracking,
-                               'filled': filled, 'missing': missing, 'complete': not missing}
+                               'filled': filled, 'missing': missing, 'complete': not missing, 'section_colors': colours}
     return states
 
 

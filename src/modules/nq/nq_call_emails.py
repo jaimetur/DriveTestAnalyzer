@@ -48,6 +48,25 @@ def recipients_of(events: dict[str, dict[str, Any]], every: Iterable[str]) -> di
     return told
 
 
+# The width of the labels of every table of an email, so the values of all its tables line up.
+LABEL_WIDTH = '40%'
+HEADING_COLOUR = '#1E61A3'
+
+
+def _table(rows: list[tuple[str, str]], title: str, colour: str = '') -> str:
+    """A table of labels and values (HTML) under a heading in the colour of its section, a band of that colour on its
+    left; every table has the same label column, so the values of the email line up."""
+    colour = colour or HEADING_COLOUR
+    heading = (f'<p style="margin:22px 0 6px;padding:5px 10px;border-left:4px solid {colour};background:{colour}14;font-size:12px;'
+               f'font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:{colour}">{html.escape(title)}</p>')
+    cells = ''.join(
+        f'<tr><td width="{LABEL_WIDTH}" style="width:{LABEL_WIDTH};padding:7px 14px 7px 10px;border-top:1px solid #e5e9ee;color:#6b7280;'
+        f'vertical-align:top">{html.escape(label)}</td><td style="padding:7px 0;border-top:1px solid #e5e9ee;vertical-align:top;'
+        f'overflow-wrap:anywhere">{value}</td></tr>' for label, value in rows)
+    return (heading + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+            f'style="border-collapse:collapse;table-layout:fixed;width:100%;font-size:14px;border-bottom:1px solid #e5e9ee">{cells}</table>')
+
+
 def _call_title(state: dict[str, Any]) -> str:
     parts = [state.get('join_id') or state['call_key'], state.get('operator'), state.get('campaign'),
              str(state.get('service') or '').title()]
@@ -67,29 +86,29 @@ def _call_part(event: dict[str, Any], base_url: str, names: dict[str, str], *, d
         what.append(notifications.callout('Every field filled', 'Every field of the analysts of this call has a value.',
                                           colour='#2E8B57', background='#EEF8F1'))
     if event['changes']:
-        what.append(notifications.details_table(
+        what.append(_table(
             [(label, f'{html.escape(old or "—")} → <strong>{html.escape(new or "—")}</strong>') for label, old, new in event['changes']],
-            title='What changed'))
+            'What changed', '#B0234F'))
     person = lambda username: html.escape(names.get(str(username).casefold(), str(username)) if username else '—')  # noqa: E731
-    follow = notifications.details_table([
+    follow = _table([
         ('NQ Call Status', html.escape(state['status'] or '—')), ('Team', html.escape(state['team'] or '—')),
         ('Analyst', person(state['analyst'])), ('Reviewer', person(state['reviewer'])),
         ('Root Category', html.escape(state['root_category'] or '—')), ('Root Cause', html.escape(state['root_cause'] or '—')),
         ('Started', html.escape(str(state.get('start_time') or '').replace('T', ' ')[:19] or '—')),
-        ('Analyst fields', html.escape(progress))], title='Follow-up')
+        ('Analyst fields', html.escape(progress))], 'Follow-up')
     parts = [heading, *what, follow]
+    colours = state.get('section_colors') or {}
     if detailed:
         by_section: dict[str, list[tuple[str, str]]] = {}
         for section, label, value in state['filled']:
             by_section.setdefault(section, []).append((label, value))
         for section, rows in by_section.items():
-            parts.append(notifications.details_table([(label, html.escape(value)) for label, value in rows], title=f'Filled · {section}'))
+            parts.append(_table([(label, html.escape(value)) for label, value in rows], f'Filled · {section}', colours.get(section, '')))
         if state['missing']:
             missing: dict[str, list[str]] = {}
             for section, label in state['missing']:
                 missing.setdefault(section, []).append(label)
-            parts.append(notifications.details_table([(section, html.escape(', '.join(labels))) for section, labels in missing.items()],
-                                                     title='Still empty'))
+            parts.append(_table([(section, html.escape(', '.join(labels))) for section, labels in missing.items()], 'Still empty', '#C2410C'))
     return ''.join(parts)
 
 
