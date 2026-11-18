@@ -2480,7 +2480,11 @@
       ...followUpCards({inQueues: (summary.not_attended || 0) + (summary.in_analysis || 0), first: summary.in_queues || 0,
         firstName: progress.first_status, assigned: summary.not_attended_assigned || 0,
         attended: summary.queued_attended ?? summary.attended, base: summary.queued, analysis: summary.in_analysis || 0,
-        finished: summary.analysis_finished || 0, finishedName: progress.finished_status}),
+        finished: summary.analysis_finished || 0, finishedName: progress.finished_status})
+        // Under Implementation after Analysis Finished, before Attended, as in Lifecycle & Phases.
+        .toSpliced(-1, 0, ...(progress.implementation_status ? [drillCard(kpiCard(progress.implementation_status, number(summary.under_implementation || 0),
+          `${percent(summary.under_implementation || 0, summary.queued)} analysed, being evaluated or implemented`, 'team'),
+        {pairs: [['status', progress.implementation_status], ['state', 'in_queue']]})] : [])),
       drillCard(kpiCard('First Follow-up', days(summary.avg_days_to_first_follow_up), 'Average from the call', 'team'), {pairs: [['state', 'attended']]}),
       drillCard(kpiCard('Time to Close', days(summary.avg_days_to_close), 'Average from the call', 'commented'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.queued_closed)} of ${number(summary.queued)} in a queue closed`, 'closed'), {pairs: [['state', 'closed']]}),

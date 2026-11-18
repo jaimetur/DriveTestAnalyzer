@@ -260,7 +260,8 @@ def progress_title(granularity_label: str, subtitle: str) -> SlideTitle:
 
 
 def _follow_up_cards(in_queues: int, first: int, first_name: str, assigned: int, attended: int, analysis: int,
-                     base: int, finished: int = 0, finished_name: str = '') -> list[tuple[str, str, str, str]]:
+                     base: int, finished: int = 0, finished_name: str = '',
+                     implementation: tuple[str, int] = ('', 0)) -> list[tuple[str, str, str, str]]:
     """In Queues (the first status, Assigned and Under Analysis), the first status, Assigned and Attended, as Lifecycle & Phases, Progress
     View and the In Queues badge of the page name and count them."""
     return [('In Queues', _number(in_queues),
@@ -271,6 +272,8 @@ def _follow_up_cards(in_queues: int, first: int, first_name: str, assigned: int,
             ('Under Analysis', _number(analysis), f'{_share(analysis, base)} attended, still in their queue', 'attended'),
             *([(finished_name, _number(finished), f'{_share(finished, base)} analysed, implementation not decided yet', 'closed')]
               if finished_name else []),
+            *([(implementation[0], _number(implementation[1]), f'{_share(implementation[1], base)} analysed, being evaluated or implemented', 'team')]
+              if implementation[0] else []),
             ('Attended', _number(attended), f'{_share(attended, base)} followed up, in any later status', 'open')]
 
 
@@ -285,7 +288,8 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
         *_follow_up_cards(int(summary.get('not_attended') or 0) + int(summary.get('in_analysis') or 0), int(summary.get('in_queues') or 0),
                           str(progress.get('first_status') or ''), int(summary.get('not_attended_assigned') or 0),
                           int(summary.get('queued_attended', summary.get('attended')) or 0), int(summary.get('in_analysis') or 0),
-                          int(summary.get('queued') or 0), int(summary.get('analysis_finished') or 0), str(progress.get('finished_status') or '')),
+                          int(summary.get('queued') or 0), int(summary.get('analysis_finished') or 0), str(progress.get('finished_status') or ''),
+                          implementation=(str(progress.get('implementation_status') or ''), int(summary.get('under_implementation') or 0))),
         ('First Follow-up', _days(summary.get('avg_days_to_first_follow_up')), 'Average from the call', 'team'),
         ('Time to Close', _days(summary.get('avg_days_to_close')), 'Average from the call', 'commented'),
         ('Closure Rate', f"{float(summary.get('closure_rate') or 0):.1f}%",
