@@ -563,7 +563,9 @@ def test_scoring_job_results_cache_force_and_exports(scoring_api):
     assert created.status_code == 200, created.text
     job_id = created.json()['saved_filter']['id']
     assert created.json()['saved_filter']['status'] == 'queued'
-    assert len(scoring_api['submitted']) == 1
+    # (The calculation, then the result as served kept, ticket #168.)
+    calculations = lambda: [job for job in scoring_api['submitted'] if job[1] is saved_filters.calculate_saved_filter]
+    assert len(calculations()) == 1
 
     unfinished_export = client.get(f'/scoring/saved-filters/{job_id}/export/scoring')
     assert unfinished_export.status_code == 409
@@ -577,7 +579,7 @@ def test_scoring_job_results_cache_force_and_exports(scoring_api):
     assert cached.status_code == 200
     assert cached.json()['cached'] is True
     assert cached.json()['saved_filter']['id'] == job_id
-    assert len(scoring_api['submitted']) == 1
+    assert len(calculations()) == 1
 
     _mark_scoring_result_as_legacy(scoring_api['repository'], job_id)
 
@@ -646,7 +648,7 @@ def test_scoring_job_results_cache_force_and_exports(scoring_api):
     # Recalculate calculates the same Saved Filter again.
     assert forced.json()['saved_filter']['id'] == job_id
     assert forced.json()['cached'] is False
-    assert len(scoring_api['submitted']) == 2
+    assert len(calculations()) == 2
     assert len(saved_filters.list_saved_filters(scoring_api['repository'])) == 1
 
 
@@ -995,3 +997,35 @@ def test_scoring_calculations_appear_in_the_background_tasks_with_their_time(sco
     # A finished calculation stays a few seconds, with its calculation time.
     finished = task()
     assert finished['status'] == 'ready' and 74 <= finished['duration_seconds'] <= 80
+
+
+def test_a_favourite_scoring_opens_from_its_result_kept_on_disk(scoring_api, monkeypatch):
+    """Ticket #168: the views of a result take up to a minute to build on the server; they are built once its
+    calculation ends and kept in the Scoring cache of the workspace, so the result opens at once, also after a restart."""
+    client, repository = scoring_api['client'], scoring_api['repository']
+    created = client.post('/api/scoring/saved-filters', json={
+        'dataset_ids': scoring_api['complete_dataset_ids'], 'aggregation_levels': ['Operator', 'Region'],
+        'nr_mode': 'NSA', 'baseline_operator': 'EE'})
+    job_id = created.json()['saved_filter']['id']
+    # The calculation is queued, then the result as served is kept.
+    jobs = [callback for _repository, callback, _args, _kwargs in scoring_api['submitted']]
+    assert jobs == [saved_filters.calculate_saved_filter, app_module._keep_saved_filter_result]
+    saved_filters.calculate_saved_filter(repository, job_id)
+    app_module._keep_saved_filter_result(repository, job_id)
+    kept = list((repository.db_path.resolve().parent / '.cache' / 'scoring' / 'results').glob(f'{job_id}-*.json.gz'))
+    assert len(kept) == 1
+    assert any(row['action'] == 'scoring_result_kept' for row in repository.list_logs())
+    # After a restart (nothing in memory) it opens from the disk, without building its views again.
+    app_module.SCORING_RESULTS_CACHE.clear()
+    monkeypatch.setattr(app_module, '_saved_filter_payload', lambda *args: pytest.fail('The views were built again.'))
+    opened = client.get(f'/api/scoring/saved-filters/{job_id}')
+    assert opened.status_code == 200 and opened.json()['saved_filter']['status'] == 'completed'
+    assert opened.json()['scoring'][0]['weighted_points'] == 4.2
+    # Every Favourite Scoring kept: the idle server keeps none again.
+    saved_filter = saved_filters.get_saved_filter(repository, job_id)
+    assert app_module.saved_filter_result_kept(repository, saved_filter, '')
+    monkeypatch.undo()
+    # A new result of the Saved Filter (recalculated, other Operator Maps) is kept in place of the older one.
+    newer = kept[0].with_name(f'{job_id}-newer.json.gz')
+    app_module._store_saved_filter_result(newer, b'packed')
+    assert list(kept[0].parent.glob(f'{job_id}-*.json.gz')) == [newer] and newer.read_bytes() == b'packed'

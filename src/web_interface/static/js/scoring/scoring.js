@@ -11261,6 +11261,9 @@
   }
 
   let pointsLossTimer = 0;
+  // The Saved Filters whose result is being loaded: choosing one again meanwhile waits for that answer instead of
+  // asking the server to build the same result twice at once (ticket #168).
+  const loadingResults = new Set();
 
   async function loadSavedFilter(savedFilter, force = false, updateSavedFilterList = true) {
     const id = savedFilterIdOf(savedFilter);
@@ -11279,8 +11282,15 @@
       if (isActive(savedFilter)) renderCalculating(savedFilter);
       else renderLoadingResults();
     }
+    if (!force && loadingResults.has(id)) return;
+    loadingResults.add(id);
     try {
-      const payload = await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`);
+      let payload;
+      try {
+        payload = await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`);
+      } finally {
+        loadingResults.delete(id);
+      }
       if (deletedSavedFilterIds.has(id) || selectedSavedFilterId !== id) return;
       const record = payload.saved_filter || payload;
       selectedSavedFilter = record;

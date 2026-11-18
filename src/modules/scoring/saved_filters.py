@@ -32,7 +32,7 @@ from src.modules.scoring.scoring_vendors import scoring_vendor_name, scoring_ven
 from src.modules.cdr.cdr_auto_selection import CAMPAIGN_PRESET_LABELS, campaign_identity, campaign_presets
 from src.modules.cdr.value_patterns import ValueSet
 from src.modules.mapping.operator_roles import EXCLUDE, normalize_mapping_role, out_of_scope_operators
-from src.modules.cdr.cdr_stage import combined_dataset_ids
+from src.modules.cdr.cdr_stage import combined_dataset_ids, remembered_inclusion
 from src.modules.cdr.nr_mode import (
     NR_MODE_COLUMN, NSA_VS_SA, SAME_OPERATOR_NSA, SAME_OPERATOR_NSA_LABEL, SCORING_NR_MODES, campaign_with_nr_mode,
     normalize_nr_mode, normalize_scoring_nr_mode, nr_mode_label, nr_modes_of,
@@ -789,7 +789,14 @@ def _shared(cache: dict[Any, Any] | None, key: Any, compute: Callable[[], Any]) 
     return copy.deepcopy(cache[key])
 
 
-def _prepare_saved_filter(
+def _prepare_saved_filter(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """_prepare_saved_filter_once with the inclusion of the CDRs in the combined tables worked out once: its campaign
+    choices, trends and sources each asked for it, a dozen times on every check of a Favourite Scoring (ticket #168)."""
+    with remembered_inclusion():
+        return _prepare_saved_filter_once(*args, **kwargs)
+
+
+def _prepare_saved_filter_once(
     repository: Repository,
     dataset_ids: list[int],
     levels: list[str],

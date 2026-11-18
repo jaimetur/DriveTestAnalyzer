@@ -442,6 +442,9 @@ _NQ_DESCRIBERS: dict[str, Callable[[Any], str]] = {
     'nq_calls_index_stopped': lambda details: (
         f"Non-Qualified Calls indexing stopped after {details.get('seconds')} s, the indexed calls kept as they were"
         + ('; the Reindex is done at night once the server is idle' if details.get('reindex') else '') + '.'),
+    'scoring_result_kept': lambda details: (
+        f"Result of the Saved Filter {details.get('name') or details.get('saved_filter_id')} prepared and kept, so it opens at once, "
+        f"in {details.get('seconds')} s."),
     'nq_population_indexes_restored': lambda details: (
         f"Non-Qualified Calls population put right after an unfinished Reindex: indexes "
         f"{', '.join(details.get('built_indexes') or []) or 'none'} built, tables "
@@ -667,7 +670,7 @@ _SERVER_ACTIONS = {
                    'map_dataset_vendors', 'map_dataset_vendors_failed', 'map_dataset_regions', 'map_dataset_regions_failed',
                    'vendor_mapping_skipped', 'clear_dataset_vendors', 'clear_dataset_vendors_failed', 'chart_set_rendering_completed',
                    'chart_set_rendering_warning', 'chart_set_published', 'chart_set_generation_failed', 'export_design_ppt_failed',
-                   'export_design_ppt_warning', 'export_netcheck_cdr_report_failed', 'scoring_calculation_failed',
+                   'export_design_ppt_warning', 'export_netcheck_cdr_report_failed', 'scoring_calculation_failed', 'scoring_result_kept',
                    'sync_combined_cdr_tables_completed', 'sync_combined_cdr_tables_failed', 'reporting_job_run',
                    'generate_presentations', 'generate_presentations_failed', 'email_sent', 'email_failed'},
 }

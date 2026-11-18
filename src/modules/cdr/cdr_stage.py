@@ -194,16 +194,23 @@ def _join_ids(connection: Any, dataset_id: int) -> set[str] | None:
         f'SELECT DISTINCT {_quote(column)} FROM {_quote(table)} WHERE TRIM(COALESCE({_quote(column)}, \'\')) <> \'\'')}
 
 
-def _contained(repository: Any, older: Any, newer: Any, memo: dict[int, set[str] | None]) -> int | None:
-    """How many calls (JOIN_IDs) of an older Weekly or Daily CDR a newer one leaves out when it contains the older CDR
-    (at most _CONTAINMENT_MISSING_SHARE of them), or None when it does not; cached per revision pair."""
-    key = f"{int(older['id'])}:{int(newer['id'])}"
-    signature = f'{_revision(older)}#{_revision(newer)}'
+def _stored_containment(repository: Any) -> dict[str, Any]:
+    """The containment of the CDR pairs worked out before (see _contained)."""
     try:
         cached = json.loads(repository.get_workspace_state(_CONTAINMENT_KEY) or '{}')
     except (TypeError, ValueError):
         cached = {}
-    cached = cached if isinstance(cached, dict) else {}
+    return cached if isinstance(cached, dict) else {}
+
+
+def _contained(repository: Any, older: Any, newer: Any, memo: dict[int, set[str] | None],
+               cached: dict[str, Any] | None = None) -> int | None:
+    """How many calls (JOIN_IDs) of an older Weekly or Daily CDR a newer one leaves out when it contains the older CDR
+    (at most _CONTAINMENT_MISSING_SHARE of them), or None when it does not; cached per revision pair (``cached``: the
+    stored pairs, read once by the caller for all of them)."""
+    key = f"{int(older['id'])}:{int(newer['id'])}"
+    signature = f'{_revision(older)}#{_revision(newer)}'
+    cached = _stored_containment(repository) if cached is None else cached
     entry = cached.get(key)
     # Entries without 'missing' were worked out when every call had to be in the newer CDR: work them out again.
     if isinstance(entry, dict) and entry.get('signature') == signature and 'missing' in entry:
@@ -335,6 +342,8 @@ def _combined_inclusion(repository: Any) -> dict[int, dict[str, Any]]:
         item.update(included=True, reason='No Final CDR of its campaign yet')
     # A cumulative Weekly or Daily CDR contains every call of the previous ones of its campaign: only the newest stays.
     memo: dict[int, set[str] | None] = {}
+    # (The stored pairs are read once for all of them, ticket #168.)
+    containment = _stored_containment(repository)
     for dataset_id, item in info.items():
         if not item.get('included') or item['stage'] == 'final' or item['in_combined'] != 'auto':
             continue
@@ -348,7 +357,8 @@ def _combined_inclusion(repository: Any) -> dict[int, dict[str, Any]]:
         # the calls of its week even when newer incremental Daily CDRs follow it).
         candidates = list(dict.fromkeys([*newer[:1], *(other_id for other_id in newer if info[other_id]['stage'] == 'weekly')]))
         container, missing = next(((other_id, left_out) for other_id in candidates
-                                   if (left_out := _contained(repository, by_id[dataset_id], by_id[other_id], memo)) is not None),
+                                   if (left_out := _contained(repository, by_id[dataset_id], by_id[other_id], memo,
+                                                                   containment)) is not None),
                                   (None, 0))
         if container is not None:
             label = CDR_STAGE_LABELS[info[container]['stage']]

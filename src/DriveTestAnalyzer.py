@@ -21316,6 +21316,8 @@ def _queue_saved_filter_calculation(task_repository: Repository, filter_id: int)
     submit_points_loss, work_waiting = _points_loss_submitters(task_repository, filter_id)
     _submit_workspace_job(task_repository, calculate_saved_filter, task_repository, filter_id, submit_points_loss,
                           work_waiting, phase=4)
+    # Its result as served is then built and kept, so it opens at once (ticket #168).
+    _submit_workspace_job(task_repository, _keep_saved_filter_result, task_repository, filter_id, phase=5)
 
 
 def _points_loss_submitters(task_repository: Repository, filter_id: int):
@@ -21346,10 +21348,11 @@ def _calculate_favourites_filters_when_idle() -> None:
         return
     task_repository = Repository(workspace.database_path, global_db_path=repository.global_db_path,
                                  workspace_registry_db_path=workspace_registry.registry_path)
+    not_kept = None
     for saved_filter in list_saved_filters(task_repository):
         if not saved_filter['pinned'] or saved_filter['status'] in ('queued', 'processing'):
             continue
-        queued, _unavailable = refresh_saved_filter(task_repository, saved_filter['id'], 'system')
+        queued, unavailable = refresh_saved_filter(task_repository, saved_filter['id'], 'system')
         if queued:
             _queue_saved_filter_calculation(task_repository, saved_filter['id'])
             task_repository.try_add_log('system', 'scoring_calculation_requested', json.dumps({
@@ -21358,6 +21361,13 @@ def _calculate_favourites_filters_when_idle() -> None:
             }))
             # One at a time: the next one is queued once the application is idle again.
             return
+        if not_kept is None and saved_filter['status'] == 'completed' and not saved_filter_result_kept(
+                task_repository, saved_filter, unavailable):
+            not_kept = saved_filter['id']
+    # Every Favourite Scoring up to date: the result of one not kept as served yet (calculated before ticket #168, or
+    # its cache deleted) is built and kept.
+    if not_kept is not None:
+        _submit_workspace_job(task_repository, _keep_saved_filter_result, task_repository, not_kept, phase=5)
 
 
 register_idle_task(_calculate_favourites_filters_when_idle, FAVOURITES_FILTERS_IDLE_SECONDS)
@@ -21594,6 +21604,101 @@ def saved_filters_update(filter_id: int, payload: SavedFilterUpdate,
 SCORING_RESULTS_CACHE: OrderedDict[tuple, bytes] = OrderedDict()
 SCORING_RESULTS_CACHE_SIZE = 6
 SCORING_RESULTS_CACHE_LOCK = Lock()
+# Building the views of a result takes up to a minute on the server (ticket #168): they are also kept on disk, in the
+# Scoring cache of the workspace, built once its calculation ends, so a Favourite Scoring opens at once, also after a
+# restart.
+SCORING_RESULTS_FOLDER = 'results'
+
+
+def _saved_filter_result_key(task_repository: Repository, saved_filter: dict[str, Any], operator_groups: list[dict],
+                             vendor_groups: list[dict], fallback: dict[str, Any] | None) -> tuple | None:
+    """The key of the result of a Saved Filter as served (None without a completed result)."""
+    if str(saved_filter.get('status') or '') != 'completed':
+        return None
+    fingerprint = hashlib.sha1(json.dumps([operator_groups, vendor_groups, fallback], sort_keys=True,
+                                          default=str).encode('utf-8')).hexdigest()
+    # (With why a result is shown as it was: its CDRs or methodology are gone.)
+    return (str(task_repository.db_path), int(saved_filter['id']), saved_filter.get('updated_at'),
+            saved_filter.get('finished_at'), fingerprint, json.dumps(saved_filter.get('unavailable') or '', default=str))
+
+
+def _saved_filter_result_file(task_repository: Repository, key: tuple) -> Path:
+    digest = hashlib.sha1(json.dumps(list(key[1:]), default=str).encode('utf-8')).hexdigest()[:20]
+    return workspace_cache.of_database(task_repository.db_path, workspace_cache.SCORING) / SCORING_RESULTS_FOLDER / f'{key[1]}-{digest}.json.gz'
+
+
+def _packed_saved_filter_result(task_repository: Repository, saved_filter: dict[str, Any]) -> bytes:
+    """The result of a Saved Filter as served: kept in memory, else on disk, else built (and kept in both)."""
+    operator_groups = task_repository.list_operator_mapping_groups()
+    vendor_groups = task_repository.list_vendor_mapping_groups()
+    fallback = (task_repository.get_scoring_configuration()
+                if not (saved_filter.get('result') or {}).get('configuration') and not saved_filter.get('configuration') else None)
+    key = _saved_filter_result_key(task_repository, saved_filter, operator_groups, vendor_groups, fallback)
+    with SCORING_RESULTS_CACHE_LOCK:
+        packed = SCORING_RESULTS_CACHE.get(key) if key else None
+        if packed is not None:
+            SCORING_RESULTS_CACHE.move_to_end(key)
+            return packed
+    # (A result without its own methodology, shown with the one of the workspace, is not kept on disk.)
+    path = _saved_filter_result_file(task_repository, key) if key and fallback is None else None
+    if path is not None:
+        try:
+            packed = path.read_bytes()
+        except OSError:
+            packed = None
+    if packed is None:
+        payload = _saved_filter_payload(saved_filter, operator_groups, vendor_groups, fallback)
+        packed = gzip.compress(json.dumps(jsonable_encoder(payload), ensure_ascii=False, allow_nan=False,
+                                          separators=(',', ':')).encode('utf-8'), 5)
+        if path is not None:
+            _store_saved_filter_result(path, packed)
+    if key:
+        with SCORING_RESULTS_CACHE_LOCK:
+            SCORING_RESULTS_CACHE[key] = packed
+            while len(SCORING_RESULTS_CACHE) > SCORING_RESULTS_CACHE_SIZE:
+                SCORING_RESULTS_CACHE.popitem(last=False)
+    return packed
+
+
+def _store_saved_filter_result(path: Path, packed: bytes) -> None:
+    """Keep a result on disk (written aside, then moved in place), the older ones of its Saved Filter removed."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for older in path.parent.glob(f'{path.name.split("-", 1)[0]}-*.json.gz'):
+            if older != path:
+                older.unlink(missing_ok=True)
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix='.writing-', delete=False) as handle:
+            handle.write(packed)
+        os.replace(handle.name, path)
+    except OSError:  # The cache is optional: the result is built again next time.
+        logger.warning('The result of a Saved Filter could not be kept in the Scoring cache.', exc_info=True)
+
+
+def saved_filter_result_kept(task_repository: Repository, saved_filter: dict[str, Any], unavailable: Any = '') -> bool:
+    """Whether the result of a completed Saved Filter is kept on disk as served (``unavailable``: what
+    refresh_saved_filter gave for it)."""
+    key = _saved_filter_result_key(task_repository, {**saved_filter, 'unavailable': unavailable},
+                                   task_repository.list_operator_mapping_groups(), task_repository.list_vendor_mapping_groups(),
+                                   None)
+    return key is None or _saved_filter_result_file(task_repository, key).is_file()
+
+
+def _keep_saved_filter_result(task_repository: Repository, filter_id: int) -> None:
+    """Build and keep the result of a Saved Filter as served once its calculation ended (a background job), so it
+    opens at once."""
+    queued, unavailable = refresh_saved_filter(task_repository, filter_id, 'system')
+    if queued:  # (Its CDRs or methodology changed meanwhile: it is calculated again, then kept.)
+        _queue_saved_filter_calculation(task_repository, filter_id)
+        return
+    saved_filter = get_saved_filter(task_repository, filter_id, include_result=True)
+    if not saved_filter or str(saved_filter.get('status') or '') != 'completed':
+        return
+    saved_filter['unavailable'] = unavailable
+    started = time_module.monotonic()
+    _packed_saved_filter_result(task_repository, saved_filter)
+    task_repository.try_add_log('system', 'scoring_result_kept', json.dumps({
+        'saved_filter_id': int(filter_id), 'name': saved_filter.get('name') or '', 'seconds': round(time_module.monotonic() - started, 1)},
+        ensure_ascii=False))
 
 
 @app.get('/api/scoring/saved-filters/{filter_id}')
@@ -21610,28 +21715,7 @@ def saved_filters_result(filter_id: int, request: Request, user: SessionUser = D
         raise HTTPException(status_code=404, detail='Saved Filter not found.')
     # Why a saved result is shown as it was (its CDRs or methodology are gone).
     saved_filter['unavailable'] = unavailable
-    operator_groups = task_repository.list_operator_mapping_groups()
-    vendor_groups = task_repository.list_vendor_mapping_groups()
-    fallback = (task_repository.get_scoring_configuration()
-                if not (saved_filter.get('result') or {}).get('configuration') and not saved_filter.get('configuration') else None)
-    key = None
-    if str(saved_filter.get('status') or '') == 'completed':
-        fingerprint = hashlib.sha1(json.dumps([operator_groups, vendor_groups, fallback], sort_keys=True,
-                                              default=str).encode('utf-8')).hexdigest()
-        key = (str(task_repository.db_path), filter_id, saved_filter.get('updated_at'), saved_filter.get('finished_at'), fingerprint)
-    with SCORING_RESULTS_CACHE_LOCK:
-        packed = SCORING_RESULTS_CACHE.get(key) if key else None
-        if packed is not None:
-            SCORING_RESULTS_CACHE.move_to_end(key)
-    if packed is None:
-        payload = _saved_filter_payload(saved_filter, operator_groups, vendor_groups, fallback)
-        packed = gzip.compress(json.dumps(jsonable_encoder(payload), ensure_ascii=False, allow_nan=False,
-                                          separators=(',', ':')).encode('utf-8'), 5)
-        if key:
-            with SCORING_RESULTS_CACHE_LOCK:
-                SCORING_RESULTS_CACHE[key] = packed
-                while len(SCORING_RESULTS_CACHE) > SCORING_RESULTS_CACHE_SIZE:
-                    SCORING_RESULTS_CACHE.popitem(last=False)
+    packed = _packed_saved_filter_result(task_repository, saved_filter)
     if 'gzip' in request.headers.get('accept-encoding', '').lower():
         return Response(packed, media_type='application/json', headers={'Content-Encoding': 'gzip', 'Vary': 'Accept-Encoding'})
     return Response(gzip.decompress(packed), media_type='application/json')
