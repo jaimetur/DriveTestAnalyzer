@@ -21,44 +21,25 @@ dt-analyzer-rca
 
 | Task or topic | Go to |
 | --- | --- |
-| Know which calls are Non-Qualified | [Which calls are Non-Qualified](#which-calls-are-non-qualified) |
-| Work with Daily and Final CDRs | [Daily and Final CDRs](#daily-and-final-cdrs) |
-| Choose the campaigns, operators and services | [Filters](#filters) |
-| See what the module records in App Events | [App Events of the module](#app-events-of-the-module) |
-| Move between the sections | [Sections bar](#sections-bar) |
-| See how many calls fail | [Summary](#summary) |
+| Know which calls are listed and how the CDRs give them | [Which calls are Non-Qualified](#which-calls-are-non-qualified) · [Daily and Final CDRs](#daily-and-final-cdrs) |
+| Choose the calls and move around the page | [Filters](#filters) · [Sections bar](#sections-bar) |
+| See how many calls fail, where and in which network | [Summary](#summary) · [NQ Maps](#nq-maps) · [NQ Rate by Campaign and Operator](#nq-rate-by-campaign-and-operator) · [Failures by Type, Technology & Serving Cell](#failures-by-type-technology-serving-cell) |
 | Find which calls to analyse first | [NQ Prioritization](#nq-prioritization) |
-| <span class="guide-sub">↳ Prioritize with a strategy</span> | <span class="guide-sub">↳ [Strategies](#strategies)</span> |
-| <span class="guide-sub">↳ Set the prioritization rules</span> | <span class="guide-sub">↳ [Prioritization Rules](#prioritization-rules)</span> |
-| See where the calls fail on the map | [NQ Maps](#nq-maps) |
-| Compare the NQ rate by campaign and operator | [NQ Rate by Campaign and Operator](#nq-rate-by-campaign-and-operator) |
-| Break the failures down by type, technology and cell | [Failures by Type, Technology & Serving Cell](#failures-by-type-technology-serving-cell) |
-| Compare the root cause sources | [Root Cause Sources](#root-cause-sources) |
-| Find out why the calls fail | [Root Cause Analysis](#root-cause-analysis) |
-| Follow the calls through their phases | [Lifecycle & Phases](#lifecycle-phases) |
-| Track the follow-up by team and analyst | [Progress View](#progress-view) |
+| <span class="guide-sub">↳ Prioritize with a strategy and its rules</span> | <span class="guide-sub">↳ [Strategies](#strategies) · [Prioritization Rules](#prioritization-rules)</span> |
+| Find out why the calls fail | [Root Cause Analysis](#root-cause-analysis) · [Root Cause Sources](#root-cause-sources) |
+| Follow up the calls by status, team and analyst | [Lifecycle & Phases](#lifecycle-phases) · [Progress View](#progress-view) |
 | Assign, filter and update the calls | [NQ Calls panel](#nq-calls-panel) |
 | <span class="guide-sub">↳ Change many calls at once</span> | <span class="guide-sub">↳ [Bulk changes](#bulk-changes)</span> |
-| Analyse one call: details, Layer3 Logs and comments | [Call details and activity](#call-details-and-activity) |
+| Analyse one call: details, map, Layer3 Logs and comments | [Call details and activity](#call-details-and-activity) |
 | <span class="guide-sub">↳ Look at the map of the call</span> | <span class="guide-sub">↳ [Map of the call](#map-of-the-call)</span> |
 | Set up the module of the workspace | [NQ Analysis Configuration](#nq-analysis-configuration) |
-| Choose the fields and sections of a call | [Fields and sections](#fields-and-sections) |
-| Set up the statuses and teams | [Statuses and teams](#statuses-and-teams) |
-| Change statuses automatically with rules | [Status Rules](#status-rules) |
-| Edit the root cause catalog | [Root Cause Catalog](#root-cause-catalog) |
-| Understand the recommended root cause | [Root cause recommendation](#root-cause-recommendation) |
-| Use and edit the DT Analyzer RCA | [DT Analyzer RCA](#dt-analyzer-rca) |
-| Set the levels of the map | [Map Levels](#map-levels) |
-| Import the Ericsson RCA results | [Ericsson RCA results](#ericsson-rca-results) |
-| Import the analyses of the previous tool | [Previous NQ Analyses](#previous-nq-analyses) |
-| Link analyst names to accounts | [Link Analysts to Accounts](#link-analysts-to-accounts) |
-| Export the calls to Excel, PowerPoint or Word | [Exports](#exports) |
-| Send the reports on a schedule | [Scheduled reports](#scheduled-reports) |
-| Keep, export and transfer the analyses | [Storage and portability](#storage-and-portability) |
-| Open workspaces of earlier versions | [Workspaces of earlier versions](#workspaces-of-earlier-versions) |
-| Use the module on a phone | [On phones](#on-phones) |
-| Work faster with large workspaces | [Speed with large workspaces](#speed-with-large-workspaces) |
-| Fix missing calls or slow pages | [Troubleshooting](#troubleshooting) |
+| <span class="guide-sub">↳ Fields, statuses, teams and their rules</span> | <span class="guide-sub">↳ [Fields and sections](#fields-and-sections) · [Statuses and teams](#statuses-and-teams) · [Status Rules](#status-rules) · [Map Levels](#map-levels)</span> |
+| <span class="guide-sub">↳ Root causes and the DT Analyzer RCA</span> | <span class="guide-sub">↳ [Root Cause Catalog](#root-cause-catalog) · [Root cause recommendation](#root-cause-recommendation) · [DT Analyzer RCA](#dt-analyzer-rca)</span> |
+| Import the Ericsson RCA results or earlier analyses | [Ericsson RCA results](#ericsson-rca-results) · [Previous NQ Analyses](#previous-nq-analyses) · [Link Analysts to Accounts](#link-analysts-to-accounts) |
+| Share the calls in Excel, PowerPoint or Word | [Exports](#exports) · [Scheduled reports](#scheduled-reports) |
+| Keep, transfer and upgrade the analyses | [Storage and portability](#storage-and-portability) · [Workspaces of earlier versions](#workspaces-of-earlier-versions) |
+| Work on a phone or with a large workspace | [On phones](#on-phones) · [Speed with large workspaces](#speed-with-large-workspaces) |
+| Know what the module records and fix problems | [App Events of the module](#app-events-of-the-module) · [Troubleshooting](#troubleshooting) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Which calls are Non-Qualified
