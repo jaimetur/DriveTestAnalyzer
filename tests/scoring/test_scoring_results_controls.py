@@ -1689,11 +1689,15 @@ const messages = [];
 const requests = [];
 const shown = [];
 const unmatched = [];
+const opened = [];
 const context = {
   calculationMatchKey: '', calculationMatchRevision: 0, calculationMatchTimer: null, calculationMatchRefresh: false,
   calculationMatchPending: false, calculationMatchRecheck: false,
   submittingCalculation: false, savedFiltersUrl: '/api/scoring/saved-filters', editingSavedFilter: null,
   calculateButton: {disabled: false}, recalculateButton: {disabled: false},
+  // The Saved Filter 8 is the one open: a selection that is another one up to date opens it on its own (ticket #168).
+  loadingResults: new Set(), scoringClosed: false, selectedSavedFilterId: '8',
+  useSavedFilter: (record, options) => opened.push([record.id, options.quiet, options.source]),
   selectedLevels: () => ['City'], selectedDatasetIds: () => [12, 14],
   scoringProfileSelect: {value: 'profile-a'}, nrFilter: {value: 'NSA'},
   baselineInput: {value: 'Operator A'}, selectedContextFilters: () => ({Region: ['North']}),
@@ -1784,7 +1788,7 @@ async function main() {
   const rechecked = [requests.length - slowRequests, timers.length - slowTimers,
     context.calculateButton.disabled, context.recalculateButton.disabled];
   process.stdout.write(JSON.stringify({pending, noMatch, completed, active, refreshing, refreshed, staleResponseIgnored, shown,
-    waiting, answered, rechecked, unmatched,
+    waiting, answered, rechecked, unmatched, opened,
     matchUrl: requests[0].args[0], matchPayload: JSON.parse(requests[0].args[1].body)}));
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
@@ -1795,7 +1799,7 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
     # Filters used before: Calculate opens them (calculated again when out of date), Recalculate calculates them again;
     # with their result up to date the button reads Open Scoring.
     assert result['completed'] == [False, False, True,
-                                   'This selection is a Saved Filter with its result up to date: Open Scoring opens it, Recalculate calculates it again.']
+                                   'This selection is a Saved Filter with its result up to date: Open Scoring opens it.']
     assert result['shown'][0] is False and True in result['shown']
     assert result['active'] == [True, True]
     assert result['refreshing'] == [False, True, 3] and result['refreshed'] == [True, True]
@@ -1805,6 +1809,9 @@ main().catch(error => { console.error(error); process.exitCode = 1; });
     assert result['rechecked'] == [1, 1, False, False]
     # Only the selection without a Saved Filter (the first and the stale-check answers) is unmatched.
     assert result['unmatched'] == [True, False, False, False, True, False, False]
+    # A new selection that is another Saved Filter up to date opens it on its own, quietly; the one open (8) does not
+    # open again and a refresh opens nothing (ticket #168).
+    assert result['opened'] == [[11, True, 'selection']]
     assert result['matchUrl'] == '/api/scoring/saved-filters/match'
     assert result['matchPayload'] == {
         'dataset_ids': [12, 14], 'aggregation_levels': ['Operator', 'City'],

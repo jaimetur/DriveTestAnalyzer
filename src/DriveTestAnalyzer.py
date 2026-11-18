@@ -21340,6 +21340,8 @@ def _points_loss_submitters(task_repository: Repository, filter_id: int):
 # yet, are calculated one after another with their Points Lost Maps, so they open at once (after the Scoring History
 # indexing of the idle server, which their calculations read).
 FAVOURITES_FILTERS_IDLE_SECONDS = 3 * 60
+# The results of the Favourite Scorings kept as served each time the application is idle (about 20 s each on the server).
+FAVOURITE_RESULTS_KEPT_PER_ROUND = 6
 
 
 def _calculate_favourites_filters_when_idle() -> None:
@@ -21348,7 +21350,7 @@ def _calculate_favourites_filters_when_idle() -> None:
         return
     task_repository = Repository(workspace.database_path, global_db_path=repository.global_db_path,
                                  workspace_registry_db_path=workspace_registry.registry_path)
-    not_kept = None
+    not_kept: list[int] = []
     for saved_filter in list_saved_filters(task_repository):
         if not saved_filter['pinned'] or saved_filter['status'] in ('queued', 'processing'):
             continue
@@ -21361,13 +21363,13 @@ def _calculate_favourites_filters_when_idle() -> None:
             }))
             # One at a time: the next one is queued once the application is idle again.
             return
-        if not_kept is None and saved_filter['status'] == 'completed' and not saved_filter_result_kept(
-                task_repository, saved_filter, unavailable):
-            not_kept = saved_filter['id']
-    # Every Favourite Scoring up to date: the result of one not kept as served yet (calculated before ticket #168, or
-    # its cache deleted) is built and kept.
-    if not_kept is not None:
-        _submit_workspace_job(task_repository, _keep_saved_filter_result, task_repository, not_kept, phase=5)
+        if len(not_kept) < FAVOURITE_RESULTS_KEPT_PER_ROUND and saved_filter['status'] == 'completed' \
+                and not saved_filter_result_kept(task_repository, saved_filter, unavailable):
+            not_kept.append(saved_filter['id'])
+    # Every Favourite Scoring up to date: the results not kept as served yet (calculated before ticket #168, or their
+    # cache deleted) are built and kept, a few each time the application is idle.
+    for filter_id in not_kept:
+        _submit_workspace_job(task_repository, _keep_saved_filter_result, task_repository, filter_id, phase=5)
 
 
 register_idle_task(_calculate_favourites_filters_when_idle, FAVOURITES_FILTERS_IDLE_SECONDS)

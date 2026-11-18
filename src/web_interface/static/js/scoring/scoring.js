@@ -155,6 +155,9 @@
   applyThemeStyles();
 
   const savedFiltersUrl = root.dataset.savedFiltersUrl || '/api/scoring/saved-filters';
+  // The Saved Filters whose result is being loaded: choosing one again meanwhile waits for that answer instead of
+  // asking the server to build the same result twice at once (ticket #168), and the card says it is opening.
+  const loadingResults = new Set();
   const selectionUrl = root.dataset.selectionUrl || '/api/scoring/selection';
   const exportBase = root.dataset.exportBase || '/scoring/saved-filters';
   const requestedSavedFilterId = new URLSearchParams(window.location.search).get('saved_filter_id');
@@ -1746,8 +1749,12 @@
           const verb = recalculatingSavedFilters.has(String(savedFilterIdOf(existing))) ? 'Recalculating' : 'Calculating';
           text = `${verb} the scoring of the selected CDRs and filters…`;
           kind = 'busy';
+        } else if (existing?.up_to_date && loadingResults.has(String(savedFilterIdOf(existing)))) {
+          text = 'Opening this Saved Filter…';
+          kind = 'busy';
         } else if (existing?.up_to_date) {
-          text = 'This selection is a Saved Filter with its result up to date: Open Scoring opens it, Recalculate calculates it again.';
+          // (Recalculate is offered for the scoring shown, which this selection is not.)
+          text = 'This selection is a Saved Filter with its result up to date: Open Scoring opens it.';
         } else if (existing) {
           text = 'This selection is a Saved Filter: Calculate updates its result with the current CDRs, methodology and Postal Codes map.';
         }
@@ -1769,6 +1776,10 @@
           kind = '';
         }
         showCalculateAction(Boolean(existing?.up_to_date) && !isActive(existing) && !editingSavedFilter);
+        // A new selection that is a Saved Filter with its result up to date (a Favourite Scoring chosen in the blocks)
+        // opens at once, without Open Scoring; not while the scoring is closed, nor the one already open or opening.
+        const openNow = !refresh && existing?.up_to_date && !isActive(existing) && !editingSavedFilter && !scoringClosed
+          && String(savedFilterIdOf(existing)) !== String(selectedSavedFilterId || '');
         showUnmatchedSelection(!existing && !editingSavedFilter);
         if (!editingSavedFilter && typeof shownSavedFilterId === 'function') {
           // The blocks of the strip are compared with the selection of the scoring shown.
@@ -1780,6 +1791,7 @@
         if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
         selectionStatus = {key, text, kind};
         setMessage(text, kind);
+        if (openNow) useSavedFilter(existing, {source: 'selection', quiet: true});
       } catch (error) {
         if (revision === calculationMatchRevision && !submittingCalculation) {
           setMessage(error.message || 'Unable to check the Saved Filters.', 'error');
@@ -11261,9 +11273,6 @@
   }
 
   let pointsLossTimer = 0;
-  // The Saved Filters whose result is being loaded: choosing one again meanwhile waits for that answer instead of
-  // asking the server to build the same result twice at once (ticket #168).
-  const loadingResults = new Set();
 
   async function loadSavedFilter(savedFilter, force = false, updateSavedFilterList = true) {
     const id = savedFilterIdOf(savedFilter);
@@ -11284,12 +11293,14 @@
     }
     if (!force && loadingResults.has(id)) return;
     loadingResults.add(id);
+    if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
     try {
       let payload;
       try {
         payload = await requestJson(`${savedFiltersUrl}/${encodeURIComponent(id)}`);
       } finally {
         loadingResults.delete(id);
+        if (typeof scheduleConfigStrip === 'function') scheduleConfigStrip();
       }
       if (deletedSavedFilterIds.has(id) || selectedSavedFilterId !== id) return;
       const record = payload.saved_filter || payload;
@@ -11958,7 +11969,7 @@
   // Use Filter: the Saved Filter becomes the one of the module, its selection goes to the Calculation panel and its result
   // is loaded. Used from a selector (``fromDropdown``) the page stays there; otherwise it goes to its results. ``source``
   // tells App Events where it was chosen (navigator: the Filter Navigator).
-  async function useSavedFilter(savedFilter, {fromDropdown = null, source = ''} = {}) {
+  async function useSavedFilter(savedFilter, {fromDropdown = null, source = '', quiet = false} = {}) {
     if (editingSavedFilter) stopSavedFilterEdit();
     userSelectedSavedFilter = true;
     selectedSavedFilterId = savedFilterIdOf(savedFilter);
@@ -11983,11 +11994,12 @@
       if (resultsPanel && typeof showSectionAtTop === 'function') showSectionAtTop(resultsPanel);
       else resultsPanel?.scrollIntoView({block: 'start'});
     };
+    // (Opened on its own from the blocks, quiet, the page stays where it is.)
     if (fromDropdown) fromDropdown.querySelector('summary').focus();
-    else showResults();
+    else if (!quiet) showResults();
     persistScoringViewState();
     await loadSavedFilter(savedFilter, true);
-    if (!fromDropdown && selectedSavedFilterId === savedFilterIdOf(savedFilter)) showResults();
+    if (!fromDropdown && !quiet && selectedSavedFilterId === savedFilterIdOf(savedFilter)) showResults();
   }
 
   // The words of a text as the search of the Filter Navigator compares them: in lower case, without accents, split at
@@ -12810,8 +12822,10 @@
     // Calculate Scoring (or Open Scoring) with changes to calculate, Recalculate for the scoring shown: never both.
     if (!editingSavedFilter && calculateButton && recalculateButton) {
       const recalc = Boolean(shownSavedFilterId()) && !pending && selectionMatchesShown;
-      recalculateButton.hidden = !recalc;
-      calculateButton.hidden = recalc;
+      // While a Saved Filter opens, neither: the card says it is opening.
+      const opening = !shownSavedFilterId() && Boolean(selectedSavedFilterId) && loadingResults.has(String(selectedSavedFilterId));
+      recalculateButton.hidden = !recalc || opening;
+      calculateButton.hidden = recalc || opening;
     }
     renderShowing(pending);
     // The fields of Country Areas and of the Scoring Trends fade while they are switched off.
@@ -12886,6 +12900,8 @@
 
   function renderShowing(pending) {
     const shown = shownSavedFilterId() ? selectedSavedFilter : null;
+    // The Saved Filter chosen, while its result loads.
+    const opening = !shown && selectedSavedFilter && loadingResults.has(String(selectedSavedFilterId)) ? selectedSavedFilter : null;
     const starred = Boolean(shown?.pinned);
     // The Favourite Scoring a scoring without a star was calculated from: Update Favourite gives it the configuration.
     if (starred) favouriteBaseId = String(savedFilterIdOf(shown));
@@ -12903,11 +12919,15 @@
       showingStar.title = starred ? 'A Favourite Scoring: click to take it out of the Favourite Scorings'
         : 'Keep it as a Favourite Scoring';
     }
-    if (showingName) showingName.textContent = shown ? savedFilterDisplayName(shown) : 'No scoring is shown';
+    if (showingName) showingName.textContent = shown ? savedFilterDisplayName(shown)
+      : opening ? savedFilterDisplayName(opening) : 'No scoring is shown';
     if (showingStatus) {
       let text = '';
       let kind = '';
-      if (shown && isActive(shown)) {
+      if (opening) {
+        text = 'Opening…';
+        kind = 'busy';
+      } else if (shown && isActive(shown)) {
         const progress = Number(valueOf(shown, ['progress'], 0)) || 0;
         text = `Calculating ${Math.round(progress)} %`;
         kind = 'busy';
