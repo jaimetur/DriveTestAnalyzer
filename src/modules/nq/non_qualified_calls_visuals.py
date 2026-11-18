@@ -992,14 +992,20 @@ def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
         ('Calls', _number(total), f'{_number(queued)} in a queue · {_number(total - queued)} tracked', 'total'),
         ('Automatic Status', _number(modes.get('auto', 0)), f"{_share(modes.get('auto', 0), total)} follow the Status Rules", 'team'),
         ('Status by Hand', _number(modes.get('manual', 0)), f"{_share(modes.get('manual', 0), total)} chosen by an analyst", 'commented'),
-        # Open (Assigned and the phase statuses) before Assigned, the first of its statuses.
-        *(lambda cards: [*cards[:2], ('Open', _number(open_total), f'{_share(open_total, queued)} assigned or attended, not closed{_tracked(open_tracked)}', 'open'),
-                         *cards[2:]])(
+        # In the order a call goes through: In Queues, Not Attended, Open, Assigned, Attended, Under Analysis, Analysis
+        # Finished and Under Implementation (the statuses that have them), as the page.
+        *(lambda cards, implementation: [
+            *cards[:2], ('Open', _number(open_total), f'{_share(open_total, queued)} assigned or attended, not closed{_tracked(open_tracked)}', 'open'),
+            cards[2], cards[-1], *cards[3:-1],
+            *([('Under Implementation', _number(implementation['count']),
+                f"{_share(int(implementation['count'] or 0), queued)} analysed, being evaluated or implemented{_tracked(implementation.get('tracked'))}",
+                'team')] if implementation else [])])(
             _follow_up_cards(int(lifecycle.get('in_queues_now') or 0), int((waiting or {}).get('count') or 0), str((waiting or {}).get('status') or ''),
                              int(lifecycle.get('waiting_now') or 0) - int((waiting or {}).get('count') or 0),
                              queued - int(lifecycle.get('waiting_now') or 0), int(lifecycle.get('analysis_now') or 0), queued,
                              next((int(item.get('count') or 0) for item in pipeline if item.get('status') == lifecycle.get('finished_status')), 0),
-                             str(lifecycle.get('finished_status') or ''))),
+                             str(lifecycle.get('finished_status') or '')),
+            next((item for item in pipeline if item.get('status') == 'Under Implementation'), None)),
         ('Stalled', _number(lifecycle.get('stalled_total', 0)), f"Open, no change for {lifecycle.get('stalled_days', 14)}+ days", 'attended'),
         ('Closed', _number(closed), f'{_share(closed, queued)} closed{_tracked(closed_tracked)}', 'closed'),
     ], 0, 0.95, compact=True)

@@ -481,9 +481,10 @@ The **Lifecycle & Phases** panel follows the filtered calls through their follow
 - **Not Attended** (named after the first status): the prioritized calls nobody has yet.
 - **Open:** assigned or attended and not closed (Assigned plus the phase statuses).
 - **Assigned:** given a team or an analyst, not attended yet.
+- **Attended:** the other prioritized calls, followed up, in any later status; of them:
 - **Under Analysis:** attended and still in their queue; Not Attended, Assigned and Under Analysis add up to In Queues.
 - **Analysis Finished:** the analysis is done and its implementation not decided yet (out of the queues).
-- **Attended:** the other prioritized calls, followed up, in any later status.
+- **Under Implementation:** analysed, the measure being evaluated or implemented.
 - **Stalled:** open without any change for 14 days or more, counted from today; a call leaves it as soon as it changes.
 - **Closed:** in a closed status.
 
