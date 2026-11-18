@@ -5458,9 +5458,12 @@
   // confirmation offers one button per group.
   const groupCopyPill = (field, call, control) => {
     const groups = call.groups || [];
-    const pill = node('button', groups.length > 1 ? 'Copy to group…' : `Copy to ${GROUP_LABELS[groups[0].kind]}`, 'nq-group-copy');
+    // A small icon, so the value of the field stays readable; what it does is on hover.
+    const pill = node('button', undefined, 'nq-group-copy');
+    pill.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 15.5V6.5A2.5 2.5 0 0 1 7.5 4h9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M11.5 14h5M14 11.5v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    pill.setAttribute('aria-label', groups.length > 1 ? 'Copy to group…' : `Copy to ${GROUP_LABELS[groups[0].kind]}`);
     pill.type = 'button';
-    pill.title = `Copy this value of ${field.label} to every call of ${groups.length > 1 ? 'a group of the call: '
+    pill.title = `Copy to group: copy this value of ${field.label} to every call of ${groups.length > 1 ? 'a group of the call: '
       : 'the group of the call: '}${groups.map(groupCopyLabel).join(', ')}`;
     pill.addEventListener('click', async (event) => {
       event.preventDefault();
