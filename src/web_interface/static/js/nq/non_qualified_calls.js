@@ -55,7 +55,7 @@
     not_in_final: 'Only in Weekly or Daily CDRs, while a Final CDR covers its campaign',
     qualified: 'Completed in a more recent CDR',
   };
-  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', in_queue: 'In a queue', queued_not_attended: 'Not attended in a queue', in_queues: 'In Queues', queued_assigned: 'Assigned, not attended yet', queued_analysis: 'Under analysis in a queue', queued_now: 'In Queues', queued_attended: 'Attended', tracked: 'Tracked (in no queue)', with_team: 'With team',
+  const STATE_LABELS = {closed: 'Closed', attended: 'Attended', not_attended: 'Not attended', in_queue: 'In a queue', queued_not_attended: 'Not attended in a queue', in_queues: 'Not Attended', queued_assigned: 'Assigned, not attended yet', queued_analysis: 'Under analysis in a queue', queued_now: 'In Queues', queued_attended: 'Attended', tracked: 'Tracked (in no queue)', with_team: 'With team',
     assigned: 'Assigned', commented: 'Commented', labelled: 'With a root cause', suggested: 'Suggested root cause',
     identified: 'RCA identified', not_identified: 'RCA not identified', open: 'Open', stalled: 'Stalled'};
   // Filters set by clicking the Progress View and the Root Cause Analysis; they have no select of their own.
@@ -2866,12 +2866,15 @@
   // The tracked calls (in no queue) of a count, shown apart from it.
   const trackedNote = (tracked) => (tracked ? ` · +${number(tracked)} tracked` : '');
   // The follow-up of the prioritized calls, with the same names and numbers in Lifecycle & Phases, Progress View and the
-  // In Queues badge of the panels (tickets #172, #173): In Queues, the calls the queues list (the first status, Assigned
-  // and Under Analysis); Assigned, given a team or an analyst and not attended yet; Attended, the calls somebody attended,
+  // In Queues badge of the panels (tickets #172, #173), as the By Status donut: In Queues, the calls the queues list (the
+  // first status, Assigned and Under Analysis); the first status (Not Attended), nobody has them yet; Assigned, given a
+  // team or an analyst and not attended yet; Attended, the calls somebody attended,
   // in any later status.
   const followUpCards = ({inQueues, first, firstName, assigned, attended, analysis, base}) => [
     drillCard(kpiCard('In Queues', number(inQueues), `${percent(inQueues, base)} · ${firstName || 'Not Attended'} ${number(first)} + Assigned ${number(assigned)} + Under Analysis ${number(analysis)}`, 'total'),
       {pairs: [['state', 'queued_now']]}),
+    drillCard(kpiCard(firstName || 'Not Attended', number(first), `${percent(first, base)} nobody has them yet`, 'commented'),
+      {pairs: [['state', 'in_queues']]}),
     drillCard(kpiCard('Assigned', number(assigned), `${percent(assigned, base)} given a team or an analyst, not attended yet`, 'team'),
       {pairs: [['state', 'queued_assigned']]}),
     drillCard(kpiCard('Attended', number(attended), `${percent(attended, base)} followed up, in any later status`, 'open'),

@@ -261,11 +261,12 @@ def progress_title(granularity_label: str, subtitle: str) -> SlideTitle:
 
 def _follow_up_cards(in_queues: int, first: int, first_name: str, assigned: int, attended: int, analysis: int,
                      base: int) -> list[tuple[str, str, str, str]]:
-    """In Queues (the first status, Assigned and Under Analysis), Assigned and Attended, as Lifecycle & Phases, Progress
+    """In Queues (the first status, Assigned and Under Analysis), the first status, Assigned and Attended, as Lifecycle & Phases, Progress
     View and the In Queues badge of the page name and count them."""
     return [('In Queues', _number(in_queues),
              f'{_share(in_queues, base)} · {first_name or "Not Attended"} {_number(first)} + Assigned {_number(assigned)} + Under Analysis {_number(analysis)}',
              'total'),
+            (first_name or 'Not Attended', _number(first), f'{_share(first, base)} nobody has them yet', 'commented'),
             ('Assigned', _number(assigned), f'{_share(assigned, base)} given a team or an analyst, not attended yet', 'team'),
             ('Attended', _number(attended), f'{_share(attended, base)} followed up, in any later status', 'open')]
 

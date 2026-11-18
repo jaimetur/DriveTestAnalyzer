@@ -537,17 +537,18 @@ A click on a bar, on the root domain tag of a category bar (the calls of that do
 
 The **Lifecycle & Phases** panel follows the filtered calls through their follow-up:
 
-- Indicators (in the order a call goes through; the same **In Queues**, **Assigned** and **Attended** as Progress View and the **In Queues** badge of the panels):
+- Indicators (in the order a call goes through; the same **In Queues**, **Not Attended**, **Assigned** and **Attended** as Progress View, the By Status donut and the **In Queues** badge of the panels):
   - **Calls**: how many are in a queue of the NQ Prioritization and how many are tracked, in no queue.
   - **Automatic Status** (following the Status Rules) and **Status by Hand**.
   - **In Queues**: the calls the queues list, in the statuses marked In Queue: the first status, Assigned and Under Analysis (the note gives each, such as *Not Attended 320 + Assigned 25 + Under Analysis 4*). The same number as the badge of the panels.
+  - **Not Attended** (the first status, named after it): the prioritized calls nobody has yet.
   - **Assigned**: the prioritized calls given a team or an analyst, not attended yet.
   - **Attended**: the other prioritized calls, followed up, in any later status.
   - **Open**: assigned or attended and not closed (Assigned plus the phase statuses).
   - **Stalled**: open without any change for 14 days or more, counted from today; a call becomes stalled on its own and leaves it as soon as it changes.
   - **Closed**: in a closed status.
   - These cards and the NQ Call Status Pipeline count only the prioritized calls, their shares too, and add the tracked calls of each one apart (*+12 tracked*), as they wait for nobody.
-  - A click on a card shows only its calls (chips *Follow-up: In Queues*, *Follow-up: Assigned, not attended yet*, *Follow-up: Attended*, *Follow-up: Open*, *Follow-up: Closed*, *Follow-up: Stalled*).
+  - A click on a card shows only its calls (chips *Follow-up: In Queues*, *Follow-up: Not Attended*, *Follow-up: Assigned, not attended yet*, *Follow-up: Attended*, *Follow-up: Open*, *Follow-up: Closed*, *Follow-up: Stalled*).
 - **NQ Call Status Pipeline**: a bar with the share of each status and one card per status, with its calls, share and average age: the calls not attended, then **Open** — a frame around the statuses an assigned or attended call goes through until it is closed (Assigned, Under Analysis, Analysis Finished, Under Implementation and Under Planning), its total being their sum — and then the closed ones; the statuses whose calls the queues list are tagged **In Queue**; a click on a card filters by that status, and a click on Open shows the open calls (the chip *Follow-up: Open*). The rules of every card start on the same line, below its status, calls and age. Each card shows the [Status Rules](#status-rules) that set it: **Rule N** (the order they are tried in) with the field and its values in their colours, for example *Rule 6 · Analysis Status · Ongoing* on Under Analysis, and *When no rule applies* on the first status. A click on a rule shows the calls that meet it.
 - **RCA Identification**: how many calls have a root category or cause selected and how many not, each row drilling down into its calls.
 - One card per list field of the **Analysis**, **Implementation** and **Planning** sections (for example Analysis Status, Implementation Status and Planned Status), side by side: a bar with the share of each value and a row per value that drills down into its calls. Like the pipeline, these cards and RCA Identification count only the calls in a queue (the tracked calls apart); the shares are of the calls in a queue with a value, as the card tells. A field with more than 12 values, such as the Implementation Proposals, takes a row of its own below them, across the panel, its values in columns from the most frequent. Each value has the colour chosen in [Fields & Sections](#fields-and-sections); when no value of a field has one, its values take a palette of different colours.
@@ -568,18 +569,19 @@ The **Progress View**, the last panel, shows how the follow-up advances for the 
 
 - Indicators, by the NQ Call Status of each call, in the order a call goes through, with the names and numbers of Lifecycle & Phases and of the **In Queues** badge:
   - **In Queues**: the calls the queues list, in the statuses marked In Queue: the first status, Assigned and Under Analysis (attended and still in their queue), each in the note.
+  - **Not Attended** (the first status, named after it): nobody has them yet.
   - **Assigned**: given a team or an analyst, not attended yet. A call set back to Not Attended or Assigned is not attended again.
   - **Attended**: the other prioritized calls, followed up, in any later status.
   - Their shares are of the prioritized calls (the tracked calls left out).
   - Then the average days from the call to its first follow-up (**First Follow-up**) and to its closure (**Time to Close**), the **Closure Rate**, the activity and, last, **Tracked**: the tracked calls left out, with how many are not attended and how many closed.
-  - A click on a card shows only its calls (*Follow-up: In Queues*, *Follow-up: Assigned, not attended yet*, *Follow-up: Attended*, *Follow-up: Tracked (in no queue)*). The first follow-up times the answer from the history of the call (its first change other than an assignment, or its first comment).
+  - A click on a card shows only its calls (*Follow-up: In Queues*, *Follow-up: Not Attended*, *Follow-up: Assigned, not attended yet*, *Follow-up: Attended*, *Follow-up: Tracked (in no queue)*). The first follow-up times the answer from the history of the call (its first change other than an assignment, or its first comment).
 - Donut charts **By Status**, **By Team**, **By Analyst** (by first and last name), **By Service** and **By Result**; each legend shows the full name with its count and share; hovering a slice shows its value, count and share, and a click on a slice or a legend entry filters the calls by that value.
 - A timeline per **week** (the default), **month**, **quarter** or **year** of the calls detected, attended, commented, closed and reopened (hover a period to read all its values), with a table that adds the moves to each open status (those to a closed status are the **Closed** column), the backlog at the end of each period of the calls in a queue (**Queue backlog**) and, apart, of the tracked calls (**Tracked backlog**, a dashed grey line), and the average days from the call to its closure. The status changes, closures and reopenings count both the statuses chosen by hand and those the Status Rules set (as when importing analyses, dated by the analysis).
 - The age of the open calls, the workload of each team and analyst (open, closed and total calls) and the recent activity of each user, by their first and last name.
 
 As in the Summary, a click drills down into the calls: a slice or legend entry of a donut, a period of the timeline (in the chart or its table: the calls detected in that period), an age bar (the open calls of that age) or a team or analyst row shows only those calls; click it again to remove that filter. The User Activity table is informative only.
 
-In the PowerPoint and Word, the Progress View slides show the period of the timeline in bold in their title (*Progress View · **Monthly***) and what each one shows in its subtitle: Follow-up Overview, Progress per Month, Age and Workload, Details per Month and User Activity. The Follow-up Overview has the same cards as the page; its table of indicators reads *In Queues (first status + Assigned + Under Analysis)*, *Assigned, not attended yet (in a queue)* and *Attended (followed up, in any later status)*.
+In the PowerPoint and Word, the Progress View slides show the period of the timeline in bold in their title (*Progress View · **Monthly***) and what each one shows in its subtitle: Follow-up Overview, Progress per Month, Age and Workload, Details per Month and User Activity. The Follow-up Overview has the same cards as the page; its table of indicators reads *In Queues (first status + Assigned + Under Analysis)*, *Not attended, nobody has them yet (first status)*, *Assigned, not attended yet (in a queue)* and *Attended (followed up, in any later status)*.
 
 ## NQ Calls panel
 
