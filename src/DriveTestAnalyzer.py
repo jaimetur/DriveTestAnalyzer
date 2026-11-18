@@ -614,7 +614,7 @@ MODULE_PATH_PREFIXES = (
     ('admin', ('/admin', '/api/admin', '/api/import-export')),
     ('config', ('/workspace-config', '/api/workspace-config', '/application-config', '/api/mapping-assignments')),
     ('app-logs', ('/app-logs', '/api/app-logs')),
-    ('help', ('/documents', '/api/documents')),
+    ('help', ('/documents', '/api/documents', '/api/help')),
     ('workspace', ('/workspace', '/api/workspace', '/api/workspaces', '/api/uploads', '/api/datasets', '/dashboard')),
 )
 
@@ -16425,6 +16425,9 @@ def documents_view(request: Request, doc_name: str, user: SessionUser | None = D
             'doc_api_url': f'/api/documents/{normalized}',
             'help_navigation': normalized == 'help',
             'changelog_navigation': normalized == 'changelog',
+            # Help Home exports itself or the whole documentation to Word or PDF.
+            'help_export_doc': HELP_HOME_DOCUMENT if normalized == 'help' else '',
+            'help_export_title': 'Help Home',
             # The link of a presentation shows its title and the picture of its slide where it is shared.
             'link_preview': link_preview(request) if normalized == 'help' else None,
         },
@@ -16435,15 +16438,19 @@ def documents_view(request: Request, doc_name: str, user: SessionUser | None = D
 def help_document_view(request: Request, doc_file: str, user: SessionUser | None = Depends(optional_user)) -> HTMLResponse:
     path = resolve_help_doc_path(doc_file)
     from src.modules.help.presentations import link_preview
+    doc_name = renamed_help_chapters(load_module_labels(repository)).get(doc_file) or HELP_DOCUMENT_LABELS.get(
+        doc_file,
+        help_document_label(doc_file),
+    )
     return render_template(
         request,
         'doc_view.html',
         {
             'user': user,
-            'doc_name': renamed_help_chapters(load_module_labels(repository)).get(doc_file) or HELP_DOCUMENT_LABELS.get(
-                doc_file,
-                help_document_label(doc_file),
-            ),
+            'doc_name': doc_name,
+            # The chapter exports itself or the whole documentation to Word or PDF.
+            'help_export_doc': LEGACY_HELP_DOCUMENTS.get(doc_file, doc_file),
+            'help_export_title': doc_name,
             'back_label': 'Documentation',
             'doc_api_url': f'/api/documents/help/{doc_file}',
             'help_navigation': True,
@@ -16527,6 +16534,83 @@ def get_help_markdown_document(doc_file: str, user: SessionUser | None = Depends
         'path': str(path),
         'content': content,
     }
+
+
+HELP_EXPORT_FORMATS = {'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                       'pdf': 'application/pdf'}
+_help_export_locks: dict[str, Lock] = {}
+_help_export_locks_guard = Lock()
+
+
+@app.get('/api/help/export')
+def export_help_documentation(scope: str = 'guide', doc: str = '', format: str = 'docx',
+                              user: SessionUser | None = Depends(optional_user)) -> Response:
+    """A Help chapter (``scope=guide``) or the whole documentation (``scope=all``) as Word or PDF. The files are kept
+    under the data folder (help-exports) until the chapters, the application version or the exporter change, so the
+    whole documentation is built once per change."""
+    from src.modules.help import help_export
+
+    started = time_module.monotonic()
+    scope, export_format = str(scope or '').strip().lower(), str(format or '').strip().lower()
+    if scope not in {'guide', 'all'}:
+        raise HTTPException(status_code=400, detail='Scope must be guide or all.')
+    if export_format not in HELP_EXPORT_FORMATS:
+        raise HTTPException(status_code=400, detail='Format must be docx or pdf.')
+    module_settings = load_module_labels(repository)
+    renamed = renamed_help_chapters(module_settings)
+
+    def chapter(relative_path: str) -> help_export.Chapter:
+        path = resolve_help_doc_path(relative_path)
+        title = 'Help Home' if relative_path == HELP_HOME_DOCUMENT else renamed.get(relative_path) or HELP_DOCUMENT_LABELS.get(
+            relative_path, help_document_label(relative_path))
+        content = rename_modules_in_help(path.read_text(encoding='utf-8', errors='replace'), path.name, module_settings)
+        return help_export.Chapter(relative_path, title, content)
+
+    if scope == 'guide':
+        requested = LEGACY_HELP_DOCUMENTS.get(str(doc or '').strip(), str(doc or '').strip()) or HELP_HOME_DOCUMENT
+        chapters = [chapter(requested)]
+        file_title = f'DriveTest Analyzer - Help - {chapters[0].title}'
+    else:
+        requested = ''
+        # Every chapter of the Help navigation in its order, without Help Home (an index of the chapters).
+        chapters = [chapter(relative_path) for relative_path in ordered_help_documents(HELP_NAVIGATION_DOCUMENTS, module_settings)
+                    if relative_path != HELP_HOME_DOCUMENT and (PROJECT_ROOT / 'help' / relative_path).is_file()]
+        file_title = 'DriveTest Analyzer - Documentation'
+    key = help_export.export_key(chapters, __version__, scope, requested, export_format)
+    folder = Path(settings.data_dir) / 'help-exports'
+    stem = re.sub(r'[^a-z0-9-]+', '-', f'{scope}-{Path(requested).stem}'.lower()).strip('-')
+    target = folder / f'{stem}-{export_format}-{key}.{export_format}'
+    with _help_export_locks_guard:
+        lock = _help_export_locks.setdefault(f'{stem}-{export_format}', Lock())
+    with lock:
+        cached = target.is_file()
+        if not cached:
+            content = (help_export.chapter_docx(chapters[0], __version__) if scope == 'guide'
+                       else help_export.documentation_docx(chapters, __version__))
+            if export_format == 'pdf':
+                from src.modules.reporting.pptx_to_docx import document_pdf
+
+                content = document_pdf(content, 'docx', whole=True)
+                if not content:
+                    repository.try_add_log(user.username if user else 'anonymous', 'help_export_failed', json.dumps({
+                        'scope': scope, 'doc': requested, 'format': export_format,
+                        'reason': 'PDF conversion unavailable or failed'}))
+                    raise HTTPException(status_code=503, detail='PDF export needs LibreOffice on the server.')
+            folder.mkdir(parents=True, exist_ok=True)
+            # (Earlier files of the same export are replaced.)
+            for stale in folder.glob(f'{stem}-{export_format}-*.{export_format}'):
+                stale.unlink(missing_ok=True)
+            partial = target.with_suffix(f'.{export_format}.part')
+            partial.write_bytes(content)
+            partial.replace(target)
+        data = target.read_bytes()
+    seconds = round(time_module.monotonic() - started, 2)
+    repository.try_add_log(user.username if user else 'anonymous', 'help_exported', json.dumps({
+        'scope': scope, 'doc': requested, 'chapters': len(chapters), 'format': export_format, 'size_bytes': len(data),
+        'cached': 'yes' if cached else 'no', 'seconds': seconds}))
+    file_name = f'{file_title}.{export_format}'
+    return Response(content=data, media_type=HELP_EXPORT_FORMATS[export_format], headers={
+        'Content-Disposition': f"attachment; filename*=UTF-8''{quote(file_name)}", 'Cache-Control': 'no-store'})
 
 
 @app.get('/api/documents/{doc_name}')

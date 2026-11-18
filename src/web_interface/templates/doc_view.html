@@ -8,6 +8,9 @@
         <p class="eyebrow">Documentation</p>
         <h2>{{ doc_name }}</h2>
       </div>
+      {% if help_export_doc %}
+      <button type="button" class="ghost-link doc-export-button" data-help-export-open title="Export this guide or the whole documentation to Word or PDF">Export</button>
+      {% endif %}
       <a class="ghost-link doc-back-link" href="/workspace">{{ back_label }}</a>
     </div>
     <p id="doc-path" class="doc-meta">Loading document...</p>
@@ -54,6 +57,38 @@
     {% endif %}
   </article>
 </section>
+{% if help_export_doc %}
+<style>
+  .doc-toolbar > .doc-export-button { margin-left: auto; cursor: pointer; }
+  .help-export-panel fieldset { margin: 0.9rem 0 0; padding: 0; border: 0; display: grid; gap: 0.4rem; }
+  .help-export-panel legend { margin-bottom: 0.35rem; font-weight: 750; }
+  .help-export-panel label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+  .help-export-panel input[type="radio"] { width: auto; margin: 0; }
+  .help-export-status { margin: 0.9rem 0 0; font-size: 0.9rem; }
+  .help-export-status.is-error { color: #a61b1b; font-weight: 650; }
+</style>
+<div class="confirm-overlay help-export-overlay" data-help-export-overlay hidden>
+  <form class="confirm-panel help-export-panel" role="dialog" aria-modal="true" aria-labelledby="help-export-title" data-help-export-form>
+    <p class="eyebrow">Documentation</p>
+    <h3 id="help-export-title">Export the Help</h3>
+    <fieldset>
+      <legend>Content</legend>
+      <label><input type="radio" name="scope" value="guide" checked> <span>This guide ({{ help_export_title }})</span></label>
+      <label><input type="radio" name="scope" value="all"> <span>All the documentation</span></label>
+    </fieldset>
+    <fieldset>
+      <legend>Format</legend>
+      <label><input type="radio" name="format" value="docx" checked> <span>Word (.docx)</span></label>
+      <label><input type="radio" name="format" value="pdf"> <span>PDF</span></label>
+    </fieldset>
+    <p class="help-export-status" data-help-export-status role="status" hidden></p>
+    <div class="confirm-actions">
+      <button type="button" class="ghost-link confirm-cancel" data-help-export-cancel>Cancel</button>
+      <button type="submit" data-help-export-submit>Export</button>
+    </div>
+  </form>
+</div>
+{% endif %}
 {% endblock %}
 {% block extra_scripts %}
 <script src="{{ static_path('markdown_renderer.js') }}?v={{ asset_version('markdown_renderer.js') }}"></script>
@@ -386,5 +421,84 @@
       .catch(() => { changelogNavLists.forEach((navList) => { navList.innerHTML = '<li>Unable to load releases.</li>'; }); });
   }
 })();
+{% if help_export_doc %}
+// Export: this guide or the whole documentation, as Word or PDF (the whole PDF may take a while the first time).
+(function () {
+  const openButton = document.querySelector('[data-help-export-open]');
+  const overlay = document.querySelector('[data-help-export-overlay]');
+  const form = document.querySelector('[data-help-export-form]');
+  if (!openButton || !overlay || !form) return;
+  const statusEl = form.querySelector('[data-help-export-status]');
+  const submitButton = form.querySelector('[data-help-export-submit]');
+  const doc = {{ help_export_doc | tojson }};
+  let busy = false;
+  let controller = null;
+  function setStatus(text, isError) {
+    statusEl.hidden = !text;
+    statusEl.textContent = text || '';
+    statusEl.classList.toggle('is-error', Boolean(isError));
+  }
+  function close() {
+    if (controller) controller.abort();
+    controller = null;
+    busy = false;
+    submitButton.disabled = false;
+    overlay.hidden = true;
+    openButton.focus();
+  }
+  openButton.addEventListener('click', () => {
+    setStatus('', false);
+    overlay.hidden = false;
+    form.querySelector('input[name="scope"]:checked')?.focus();
+  });
+  form.querySelector('[data-help-export-cancel]').addEventListener('click', close);
+  overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !overlay.hidden) close(); });
+  function fileName(response, fallback) {
+    const header = response.headers.get('Content-Disposition') || '';
+    const encoded = header.match(/filename\*=UTF-8''([^;]+)/i);
+    if (encoded) {
+      try { return decodeURIComponent(encoded[1]); } catch (error) { /* the fallback name is used */ }
+    }
+    const plain = header.match(/filename="([^"]+)"/i);
+    return plain ? plain[1] : fallback;
+  }
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    const scope = form.querySelector('input[name="scope"]:checked')?.value || 'guide';
+    const format = form.querySelector('input[name="format"]:checked')?.value || 'docx';
+    busy = true;
+    submitButton.disabled = true;
+    setStatus(scope === 'all' && format === 'pdf' ? 'Preparing… The whole documentation as PDF may take a while.' : 'Preparing…', false);
+    controller = new AbortController();
+    try {
+      const params = new URLSearchParams({scope, doc, format});
+      const response = await fetch(`/api/help/export?${params}`, {signal: controller.signal, credentials: 'same-origin'});
+      if (!response.ok) {
+        let detail = `Export failed (HTTP ${response.status}).`;
+        try { const data = await response.json(); if (data && data.detail) detail = String(data.detail); } catch (error) { /* keep the status text */ }
+        throw new Error(detail);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = Object.assign(document.createElement('a'), {href: url, download: fileName(response, `DriveTest Analyzer - Help.${format}`)});
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      controller = null;
+      close();
+    } catch (error) {
+      if (error && error.name === 'AbortError') return;
+      setStatus(error && error.message ? error.message : 'Export failed.', true);
+    } finally {
+      busy = false;
+      submitButton.disabled = false;
+      controller = null;
+    }
+  });
+})();
+{% endif %}
 </script>
 {% endblock %}
