@@ -198,6 +198,10 @@
 
 /* Executive summary */
 .nq-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+/* Lifecycle & Phases: its cards in two rows of the same columns (the second row from Attended on). */
+#nq-life-kpis { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+#nq-life-kpis > .nq-kpis-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1400px) { #nq-life-kpis > .nq-kpis-row { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .nq-kpi { display: grid; gap: .2rem; padding: 14px 16px; border: 1px solid var(--nq-border); border-top: 5px solid var(--nq-color); border-radius: 12px; background: #fff; box-shadow: 0 6px 16px rgba(125, 18, 56, .07); }
 .nq-kpi-label { color: var(--nq-muted); font-size: .74rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .nq-kpi strong { color: var(--nq-dark); font-size: 1.85rem; line-height: 1.1; }
@@ -1488,6 +1492,8 @@ button.nq-rate-box:hover { transform: translateY(-1px); box-shadow: 0 6px 14px r
   .nq-view-switch svg { width: .95rem; height: .95rem; }
   .nq-view-count { padding: 0 .35rem; font-size: .68rem; }
   .nq-kpis, .nq-summary-panel .nq-kpis, .nq-rate-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  #nq-life-kpis { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  #nq-life-kpis > .nq-kpis-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .nq-kpi, .nq-rate-card { padding: 10px 11px; }
   .nq-kpi strong, .nq-rate-card strong { font-size: 1.4rem; }
   .nq-kpi-label { font-size: .64rem; overflow-wrap: anywhere; }

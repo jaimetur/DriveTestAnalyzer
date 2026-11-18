@@ -2920,7 +2920,8 @@
     const queued = life.queued ?? total;
     const closed = life.pipeline.filter((item) => item.closed).reduce((sum, item) => sum + item.count, 0);
     const closedTracked = life.pipeline.filter((item) => item.closed).reduce((sum, item) => sum + (item.tracked || 0), 0);
-    $('nq-life-kpis').replaceChildren(
+    // Two rows: the calls, how their status is set and those not attended yet (to Assigned), then from Attended on.
+    const lifeCards = [
       drillCard(kpiCard('Calls', number(total), `${number(queued)} in a queue · ${number(total - queued)} tracked`, 'total'), {clear: ['status_mode']}),
       drillCard(kpiCard('Automatic Status', number(life.modes.auto), `${percent(life.modes.auto, total)} follow the Status Rules`, 'team'),
         {pairs: [['status_mode', 'auto']]}),
@@ -2930,7 +2931,15 @@
       drillCard(kpiCard('Stalled', number(life.stalled_total), `Open, no change for ${life.stalled_days}+ days`, 'attended'),
         {pairs: [['state', 'stalled']]}),
       drillCard(kpiCard('Closed', number(closed), `${percent(closed, queued)} closed${trackedNote(closedTracked)}`, 'closed'), {pairs: [['state', 'closed']]}),
-    );
+    ];
+    const secondRow = lifeCards.findIndex((card) => card.querySelector('.nq-kpi-label')?.textContent === 'Attended');
+    const lifeRow = (cards) => {
+      const row = node('div', undefined, 'nq-kpis-row');
+      row.append(...cards);
+      return row;
+    };
+    $('nq-life-kpis').replaceChildren(...(secondRow > 0 ? [lifeRow(lifeCards.slice(0, secondRow)), lifeRow(lifeCards.slice(secondRow))]
+      : [lifeRow(lifeCards)]));
     // The pipeline: the calls not attended, Open (the phase statuses an attended call goes through, its total being
     // theirs), then the closed statuses.
     const steps = [...life.pipeline.filter((item) => !item.closed), ...life.pipeline.filter((item) => item.closed)];
