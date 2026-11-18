@@ -2927,7 +2927,7 @@ mark.import-count-updated { border-color: #efc26b; background: #fff0cf; color: #
 .doc-markdown .admonition p { margin: .5rem 0 0; }
 .doc-markdown table { min-width: 0; }
 /* A heading reached from a link stops below the bar of the modules that stays at the top of the window, not under it. */
-.doc-markdown :is(h1, h2, h3, h4, h5, h6) { scroll-margin-top: calc(var(--module-tabs-offset, 0px) + 1rem); }
+.doc-markdown :is(h1, h2, h3, h4, h5, h6) { --section-top-offset: 28px; scroll-margin-top: calc(var(--module-tabs-offset, 0px) + 28px); }
 /* The number of each section (1) and subsection (1.1) of a Help chapter, in its heading and in its In this guide index. */
 .doc-markdown .doc-section-number { display: inline-block; min-width: 1.6em; margin-right: .45em; color: #8f2932; font-variant-numeric: tabular-nums; font-weight: 800; }
 .doc-markdown h3 .doc-section-number { min-width: 2.2em; }
