@@ -136,7 +136,28 @@ def test_the_complete_guide_opens_its_pdf_page_by_page_by_chapter(client, monkey
     assert page.status_code == 200 and page.headers['content-type'] == 'image/png' and page.content.startswith(b'\x89PNG')
     assert client.get('/api/help/guide/pages/3', params={'thumb': 'true'}).content.startswith(b'\x89PNG')
     assert client.get('/api/help/guide/pages/9').status_code == 404
+    # Opening it in the viewer is recorded; the card that shows it is not.
+    assert not any(row['action'] == 'help_guide_opened' for row in core.repository.list_logs())
+    assert client.get('/api/help/guide', params={'opened': 'true'}).status_code == 200
     assert any(row['action'] == 'help_guide_opened' for row in core.repository.list_logs())
+
+    # The guide of a chapter: its main sections as the parts of the viewer, its own downloads.
+    def fake_guide_pdf(content, suffix, whole=False):
+        document = pymupdf.open()
+        for text in ('Cover', 'Contents', 'Reporting', 'Reports'):
+            document.new_page().insert_text((72, 72), text)
+        document.set_toc([[1, 'Reporting', 3], [2, '1 Reports', 4]])
+        return document.tobytes()
+
+    monkeypatch.setattr(pptx_to_docx, 'document_pdf', fake_guide_pdf)
+    guide = client.get('/api/help/guide', params={'doc': 'reporting.md'}).json()
+    assert guide['title'] == 'Reporting — Guide' and guide['doc'] == 'reporting.md'
+    assert guide['downloads']['docx'] == '/api/help/export?scope=guide&doc=reporting.md&format=docx'
+    assert guide['sections'] == [
+        {'title': 'Cover and contents', 'pages': [{'index': 0, 'title': 'Cover'}, {'index': 1, 'title': 'Contents'}, {'index': 2, 'title': 'Reporting'}]},
+        {'title': '1 Reports', 'pages': [{'index': 3, 'title': '1 Reports'}]}]
+    assert client.get('/api/help/guide/pages/2', params={'doc': 'reporting.md'}).content.startswith(b'\x89PNG')
+    assert client.get('/api/help/guide', params={'doc': 'missing.md'}).status_code == 404
 
 
 def test_the_main_sections_follow_on_the_same_page_well_apart():

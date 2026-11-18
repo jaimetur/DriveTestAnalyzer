@@ -6,10 +6,11 @@ Administrator Config, the **Admin** tab, centralises portability and dataset adm
 > [!TIP]
 > **Choose a portable component.** Use individual configuration components for settings, workspace packages for workspace content, and Full Environment for deployment-wide migration.
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 administration
+guide:administrator-config.md
 ```
 
 ## Main topics in this guide

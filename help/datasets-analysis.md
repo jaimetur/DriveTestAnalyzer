@@ -8,10 +8,11 @@ CDR Analysis provides on-demand KPI analysis for one processed CDR in the active
 > [!TIP]
 > **Inspect before exporting.** Update Analysis after changing the controls, then inspect sample counts and the filtered records.
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 cdr-analysis
+guide:datasets-analysis.md
 ```
 
 ## Main topics in this guide

@@ -8,10 +8,11 @@ Use **Ticket Center** to report the bugs you find in the tool, suggest improveme
 > [!TIP]
 > **Share a ticket by its link.** The list (`/tickets`) and each ticket (`/tickets/<number>`), with its screenshots and files, open without signing in, read-only, so a link can be sent to anyone who reaches the server. Opening, commenting and editing ask to sign in, and signing in from there returns to the ticket. The addresses of Bugs Report, as the module was called before (`/bugs-report`, `/bugs-report/<number>`), lead to the same pages.
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 ticket-center
+guide:ticket-center.md
 ```
 
 ## Main topics in this guide

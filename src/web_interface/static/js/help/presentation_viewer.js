@@ -142,16 +142,21 @@
   }
 
   // The cards of the presentations `ids` and, while the server generates them, a note for those not there yet.
-  function gallery(ids, data) {
+  // (An entry guide:<chapter>.md is the card of the guide of that chapter, after the presentations.)
+  function gallery(entries, data) {
     const block = node('div', undefined, 'presentation-block');
-    block.dataset.presentationIds = ids.join(' ');
+    block.dataset.presentationIds = entries.join(' ');
+    const guideDocs = entries.filter((entry) => entry.startsWith('guide:')).map((entry) => entry.slice('guide:'.length));
+    const ids = entries.filter((entry) => !entry.startsWith('guide:'));
     const found = ids.map((id) => (data.presentations || []).find((item) => item.id === id)).filter(Boolean);
     const missing = ids.length - found.length;
-    if (found.length) {
+    if (found.length || guideDocs.length) {
       const cards = node('div', undefined, 'presentation-gallery');
       found.forEach((presentation) => cards.append(card(presentation)));
+      guideDocs.forEach((doc) => cards.append(guideCard(doc, 'Guide')));
       block.append(cards);
     }
+    if (!ids.length) return block;
     if (!found.length) {
       const why = data.updating ? 'The server is generating the presentations: they show here in a minute.'
         : data.unavailable ? `The presentations cannot be generated on this server: ${data.unavailable}` : 'The presentations have not been generated yet.';
@@ -191,94 +196,109 @@
     openViewer(presentation, index);
   }
 
-  // The whole documentation (a ```documentation block of Help Home): a card that opens its PDF page by page in the slide
-  // viewer, by chapter, with its PDF and Word to download. The server builds the PDF when the Help changed (it takes a
-  // while the first time), so the card says it is being prepared until then.
-  let guideData = null;
-  const loadGuide = () => {
-    guideData = guideData || fetch('/api/help/guide', {cache: 'no-cache', credentials: 'same-origin'}).then(async (response) => {
+  // A guide: the whole documentation (a ```documentation block of Help Home) or a chapter (an entry guide:<chapter>.md
+  // of a ```presentations block, beside the presentations of its module), as a card that opens its PDF page by page in
+  // the slide viewer, by part, with its PDF and Word to download. The server builds the PDF when the Help changed (it
+  // takes a while the first time), so the card says it is being prepared until then.
+  const guides = new Map();
+  const guideQuery = (doc) => (doc ? `doc=${encodeURIComponent(doc)}` : '');
+  const loadGuide = (doc = '', opened = false) => {
+    const query = [guideQuery(doc), opened ? 'opened=true' : ''].filter(Boolean).join('&');
+    const request = () => fetch(`/api/help/guide${query ? `?${query}` : ''}`, {cache: 'no-cache', credentials: 'same-origin'}).then(async (response) => {
       if (!response.ok) {
         const detail = await response.json().catch(() => ({}));
-        throw new Error(detail.detail || 'The documentation could not be prepared.');
+        throw new Error(detail.detail || 'The guide could not be prepared.');
       }
       return response.json();
     });
-    guideData.catch(() => { guideData = null; });
-    return guideData;
+    if (opened) return request();
+    if (!guides.has(doc)) {
+      const pending = request();
+      pending.catch(() => guides.delete(doc));
+      guides.set(doc, pending);
+    }
+    return guides.get(doc);
   };
+  const guideDescription = (doc) => (doc ? 'This chapter of the Help as a document, with its contents and numbered sections.'
+    : 'Every chapter of the Help in one document, with its contents and numbered sections.');
   const guidePresentation = (data, format = 'pdf') => ({
-    id: 'documentation', title: data.title, unit: 'page', kicker: format === 'pdf' ? 'PDF' : 'Word',
-    description: 'Every chapter of the Help in one document, with its contents and numbered sections.',
+    id: data.doc ? `guide-${data.doc}` : 'documentation', title: data.title, unit: 'page', kicker: format === 'pdf' ? 'PDF' : 'Word',
+    description: guideDescription(data.doc),
     sections: data.sections.map((section) => ({title: section.title, slides: section.pages.map((page) => page.title), pages: section.pages})),
     download: data.file_names[format], downloadLabel: format === 'pdf' ? 'PDF' : 'Word',
     urls: {
-      slide: (index, thumb = false) => `/api/help/guide/pages/${index}?v=${encodeURIComponent(data.key)}${thumb ? '&thumb=true' : ''}`,
+      slide: (index, thumb = false) => `/api/help/guide/pages/${index}?${[guideQuery(data.doc), `v=${encodeURIComponent(data.key)}`, thumb ? 'thumb=true' : '']
+        .filter(Boolean).join('&')}`,
       file: data.downloads[format],
     },
-    link: (index = 0) => `${linkBase || window.location.origin}/documents/view/help?documentation=1${index > 0 ? `&slide=${index + 1}` : ''}`,
+    link: (index = 0) => `${linkBase || window.location.origin}/documents/view/help${data.doc ? `/${data.doc}` : ''}?guide=1${
+      index > 0 ? `&slide=${index + 1}` : ''}`,
     formats: ['pdf', 'docx'].map((key) => ({
       label: key === 'pdf' ? 'PDF' : 'Word', current: key === format,
       select: (index) => openViewer(guidePresentation(data, key), index),
     })),
   });
-  function guideCard() {
+  function guideCard(doc = '', title = '') {
     const item = node('article', undefined, 'presentation-card documentation-card');
     const open = node('button', undefined, 'presentation-card-open');
     open.type = 'button';
-    open.title = 'Open the whole documentation in the viewer';
+    open.title = doc ? 'Open the guide of this chapter in the viewer' : 'Open the whole documentation in the viewer';
     const cover = node('img', undefined, 'presentation-card-cover');
     cover.alt = '';
     cover.hidden = true;
     const badge = node('span', 'Preparing…', 'presentation-card-badge');
     const body = node('span', undefined, 'presentation-card-body');
-    body.append(node('strong', 'DriveTest Analyzer — Documentation', 'presentation-card-title'),
-      node('span', 'Every chapter of the Help in one document, with its contents and numbered sections.', 'presentation-card-description'));
+    const heading = node('strong', title || 'DriveTest Analyzer — Documentation', 'presentation-card-title');
+    body.append(heading, node('span', guideDescription(doc), 'presentation-card-description'));
     open.append(cover, badge, body);
     const actions = node('div', undefined, 'presentation-card-actions');
+    const query = doc ? `scope=guide&doc=${encodeURIComponent(doc)}` : 'scope=all';
     const pdf = node('a', 'Download PDF', 'presentation-card-download');
-    pdf.href = '/api/help/export?scope=all&format=pdf';
+    pdf.href = `/api/help/export?${query}&format=pdf`;
     const word = node('a', 'Download Word', 'presentation-card-download');
-    word.href = '/api/help/export?scope=all&format=docx';
+    word.href = `/api/help/export?${query}&format=docx`;
     actions.append(pdf, word);
     item.append(open, actions);
-    const ready = loadGuide().then((data) => {
+    const ready = loadGuide(doc).then((data) => {
       cover.src = guidePresentation(data).urls.slide(0, true);
       cover.hidden = false;
       badge.textContent = count(data.pages, 'page');
+      heading.textContent = data.title;
       return data;
     }).catch((error) => {
       badge.textContent = 'Not available';
       open.title = error.message;
       throw error;
     });
+    ready.catch(() => {});
     open.addEventListener('click', async () => {
       try {
-        const data = await ready;
-        openViewer(guidePresentation(data), 0);
+        await ready;
+        // (Asked again to record that it was opened; the server keeps it, so it answers at once.)
+        openViewer(guidePresentation(await loadGuide(doc, true)), 0);
       } catch (error) {
         window.alert(error.message);
       }
     });
-    return {item, ready};
+    // A link to the guide (?guide=1&slide=3) opens it at that page.
+    const query_ = new URLSearchParams(window.location.search);
+    if (query_.get('guide') || query_.get('documentation')) {
+      ready.then((data) => openViewer(guidePresentation(data),
+        Math.max(0, (Number.parseInt(query_.get('slide') || '1', 10) || 1) - 1))).catch(() => {});
+    }
+    return item;
   }
 
   // Each ```presentations block of the chapter becomes the cards of its presentations; a direct link opens its
   // presentation in the slide viewer.
   async function enhance(container) {
-    const guides = [...container.querySelectorAll('pre > code.language-documentation')];
-    guides.forEach((code) => {
-      const {item, ready} = guideCard();
+    const documentation = [...container.querySelectorAll('pre > code.language-documentation')];
+    documentation.forEach((code) => {
       const block = node('div', undefined, 'presentation-block');
       const cards = node('div', undefined, 'presentation-gallery');
-      cards.append(item);
+      cards.append(guideCard());
       block.append(cards);
       code.parentElement.replaceWith(block);
-      // A link to the documentation (?documentation=1&slide=3) opens it at that page.
-      const query = new URLSearchParams(window.location.search);
-      if (query.get('documentation')) {
-        ready.then((data) => openViewer(guidePresentation(data),
-          Math.max(0, (Number.parseInt(query.get('slide') || '1', 10) || 1) - 1))).catch(() => {});
-      }
     });
     const blocks = [...container.querySelectorAll('pre > code.language-presentations')];
     if (!blocks.length && !linked().id) return;
@@ -291,12 +311,13 @@
     }
     blocks.forEach((code, position) => {
       // (While they are generated again, the last presentations show.)
-      if (data.updating && position === 0 && (data.presentations || []).length) {
+      const entries = code.textContent.split(/\s+/).filter(Boolean);
+      if (data.updating && position === 0 && (data.presentations || []).length && entries.some((entry) => !entry.startsWith('guide:'))) {
         const note = node('p', 'Updating the presentations: they show the last ones until then.', 'presentation-updating');
         note.dataset.presentationsUpdating = '';
         code.parentElement.before(note);
       }
-      code.parentElement.replaceWith(gallery(code.textContent.split(/\s+/).filter(Boolean), data));
+      code.parentElement.replaceWith(gallery(entries, data));
     });
     openLinked(data);
     if (data.updating) follow(container);

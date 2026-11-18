@@ -5,10 +5,11 @@ Use **Reporting** to design **reports**, each one PowerPoint and Word document w
 > [!NOTE]
 > **Module access.** **Reporting** is in every Modules Profile of a new deployment. Super-admins choose who sees it in **Super Admin → Modules Profiles**. Every user who sees it generates the reports, previews and downloads them, uses History and stops the runs they started; creating, editing, duplicating, renaming and deleting reports and their schedules, and rerunning, stopping any run and deleting runs, requires `user-editor`, `admin` or `super-admin`. A report only includes the sections of the modules activated for the account that generates it (for a run on its schedule, the owner of the schedule).
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 reporting
+guide:reporting.md
 ```
 
 ## Main topics in this guide

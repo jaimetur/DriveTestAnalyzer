@@ -64,4 +64,4 @@ full-presentation
 - **Link preview**: in WhatsApp, Teams, Slack or Outlook the link shows the title, the description and the picture of the slide (the cover for this chapter). WhatsApp on Android opens no link with an IP address: give the server a name and save it as its public address.
 - **Live figures**: the Overview, the One-slider and the Roadmap show the figures of the workspaces chosen in [Super Admin → Presentations](super-admin.md#presentations).
 - **Always up to date**: the server builds every presentation in the background, at its start when one is missing (the Help says it is coming meanwhile), again when its figures or the generator change, and on demand with **Regenerate Presentations** in [Super Admin → Presentations](super-admin.md#presentations).
-- **Where else**: Help Home shows the presentations too, and each module chapter starts with its own.
+- **Where else**: Help Home shows the presentations too, and each module chapter starts with its own beside the guide of the chapter (**Presentation & Guide**, or **Guide** alone).

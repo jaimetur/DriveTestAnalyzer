@@ -10,11 +10,12 @@ Follow up every call and test that did not complete. Non-Qualified Calls brings 
 
 The module is in development, so its main tab can show a red **ALPHA** label (see Interface Settings). On a new deployment it is in the Non-Qualified Calls and All Modules profiles; super-admins choose who sees it in [Super Admin → Modules Profiles](super-admin.md#modules-profiles).
 
-## Presentations
+## Presentations & Guide
 
 ```presentations
 non-qualified-calls
 dt-analyzer-rca
+guide:non-qualified-calls.md
 ```
 
 ## Main topics in this guide

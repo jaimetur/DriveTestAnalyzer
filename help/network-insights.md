@@ -27,10 +27,11 @@ Each panel names its **data sources** as coloured labels under its title (hover 
 > [!NOTE]
 > **Radio views need no extra input.** RSRP, SINR, maps, observed eNodeBs and observed bands come from the processed CDRs. The Network Inventories (Cell Configuration KMZ packages included) and the licensed spectrum are optional inputs that complete the other panels (see [Pending inputs](#pending-inputs)).
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 network-insights
+guide:network-insights.md
 ```
 
 ## Main topics in this guide

@@ -8,10 +8,11 @@ Application Config stores application-wide runtime overrides. It is separate fro
 > [!TIP]
 > **Choose the right configuration page.** Use Workspace Config for Main Cities, chart mappings and scoring methodologies; the PPT Templates are managed in [PPT Designer](ppt-designer.md#ppt-templates).
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 administration
+guide:app-config.md
 ```
 
 ## Main topics in this guide

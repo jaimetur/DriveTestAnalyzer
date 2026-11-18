@@ -29,7 +29,7 @@ STATIC_ROOT = PROJECT_ROOT / 'src' / 'web_interface' / 'static'
 APP_TITLE = 'DriveTest Analyzer'
 # The index of a chapter (its former and current heading): left out of the documents, which have a table of contents.
 INDEX_SECTIONS = {'in this guide', 'main topics in this guide'}
-PRESENTATION_SECTIONS = {'presentation', 'presentations'}
+PRESENTATION_SECTIONS = {'presentation', 'presentations', 'presentation & guide', 'presentations & guide', 'guide'}
 # The H2 sections the Help viewer leaves without a number (and the subsections below them).
 UNNUMBERED_SECTIONS = INDEX_SECTIONS | PRESENTATION_SECTIONS
 HELP_HOME_DOCUMENT = 'help.md'

@@ -8,10 +8,11 @@ Use the **AI Assistant** to ask the active workspace questions in your own words
 > [!NOTE]
 > **Module access.** The AI Assistant is in every Modules Profile and needs a workspace: each workspace has its own conversations and glossary. Super-admins choose who sees it in **Super Admin → Modules Profiles** and can rename it in **Super Admin → Interface Settings**. It answers only once a super-admin enables an AI engine (see [Engines](#engines)).
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 assistant
+guide:assistant.md
 ```
 
 ## Main topics in this guide

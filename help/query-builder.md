@@ -8,10 +8,11 @@ Query Builder runs read-only SQL against selected, processed Data, Voice and Spe
 > [!TIP]
 > **Preview is not execution.** Changing Assistance controls updates the SQL; **Run query** refreshes the results.
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 builders
+guide:query-builder.md
 ```
 
 ## Main topics in this guide

@@ -61,7 +61,7 @@ The dark application bar at the top, in a darker shade of the colour of the modu
 - **Layout:** tables, lists, notes and tips, code and keys keep their look; the presentations are not included (open the chapter in the Help to watch them).
 - **PDF:** made by LibreOffice on the server (without it, the dialog says so). The whole documentation takes a while the first time; each file is kept until the Help or the version changes, so the next exports are immediate.
 - **App Events:** each export is recorded as `help_exported` (content, chapter, format, size, whether it was kept and its time).
-- **Complete guide:** the card on Help Home opens the whole documentation page by page in the slide viewer, by module, with **PDF** and **Word** to download (`help_guide_opened`).
+- **Guides in the viewer:** the **Complete guide** card on Help Home opens the whole documentation page by page in the slide viewer, by module, and the card of the guide of each module, beside its presentation at the start of its chapter (**Presentation & Guide**, or **Guide** when it has none), opens that chapter by section; both with **PDF** and **Word** to download (`help_guide_opened`).
 
 A round button at the bottom left, in the colour of the current module, appears once a page is scrolled down and takes it back to the top.
 

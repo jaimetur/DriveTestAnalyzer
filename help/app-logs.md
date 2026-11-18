@@ -8,6 +8,12 @@ App Logs records meaningful application and workspace events for operational rev
 > [!IMPORTANT]
 > **Server restarts.** Execution Log capture resets when the server restarts; it is not a replacement for persisted workspace events.
 
+## Guide
+
+```presentations
+guide:app-logs.md
+```
+
 ## Main topics in this guide
 
 | Task or topic | Go to |

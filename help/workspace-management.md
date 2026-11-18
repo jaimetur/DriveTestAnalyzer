@@ -5,11 +5,12 @@ Workspace Management is the first operational module. It controls isolated works
 > [!IMPORTANT]
 > **Ready data first.** Wait for CDR processing to finish before analysis. A detected input type and a completed upload do not mean the dataset is ready.
 
-## Presentations
+## Presentations & Guide
 
 ```presentations
 workspace
 workspace-config
+guide:workspace-management.md
 ```
 
 ## Main topics in this guide

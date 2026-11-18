@@ -2,10 +2,11 @@
 
 Super Admin, for the `super-admin` role only, centralises the users and their access, the tabs and labels of the modules and the databases of the application. Portable packages and datasets are in [Administrator Config](administrator-config.md), the **Admin** tab, which admins open too.
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 administration
+guide:super-admin.md
 ```
 
 ## Main topics in this guide

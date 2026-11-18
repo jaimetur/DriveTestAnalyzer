@@ -242,9 +242,13 @@ def test_every_main_module_has_its_presentation_at_the_start_of_its_chapter():
                 'administrator-config': 'administration'}
     for chapter, blocks in chapters.items():
         text = (help_folder / f'{chapter}.md').read_text(encoding='utf-8')
-        block = text.find(f'```presentations\n{blocks}\n```')
+        # The presentations of the module and, beside them, the card of the guide of the chapter (Presentation & Guide).
+        block = text.find(f'```presentations\n{blocks}\nguide:{chapter}.md\n```')
+        assert '& Guide\n\n```presentations' in text, chapter
         tasks = min(index for index in (text.find('\n## Main topics in this guide'), text.find('\n## In this guide')) if index >= 0)
         assert 0 <= block < tasks, chapter
+    # A module without a presentation shows its guide alone (Guide).
+    assert '## Guide\n\n```presentations\nguide:app-logs.md\n```' in (help_folder / 'app-logs.md').read_text(encoding='utf-8')
     # Every slide of a deck drawn from its content.js has its title, section (one after the other) and notes.
     decks = node_json("const { DECKS } = require('./module_decks.js'); console.log(JSON.stringify(DECKS.map((id) => [id, require(`./${id}/content.js`)])));")
     assert [deck_id for deck_id, _deck in decks] == [item for item in ids[5:-1] if item != 'dt-analyzer-rca']

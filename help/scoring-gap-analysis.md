@@ -7,10 +7,11 @@ Each calculation gives the NetCheck **Best Network** scoring, which rates every 
 > [!NOTE]
 > **Start with a saved methodology.** It defines the environments, KPI formulas, thresholds and maximum points. Each result keeps a snapshot of the rules it was calculated with.
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 scoring-gap-analysis
+guide:scoring-gap-analysis.md
 ```
 
 ## Main topics in this guide

@@ -16620,58 +16620,80 @@ def export_help_documentation(scope: str = 'guide', doc: str = '', format: str =
         'Content-Disposition': f"attachment; filename*=UTF-8''{quote(file_name)}", 'Cache-Control': 'no-store'})
 
 
-def help_guide_outline(pdf: Path) -> dict[str, Any]:
-    """The pages of the whole documentation as PDF, grouped by chapter for the slide viewer: the cover and the contents
-    first, then each chapter with its pages, each page named after the last section that starts on it or before it."""
+def help_guide_outline(pdf: Path, level: int = 1) -> dict[str, Any]:
+    """The pages of an exported Help PDF grouped for the slide viewer: the cover and the contents first, then each part
+    (each chapter of the whole documentation, ``level`` 1, or each main section of a guide, ``level`` 2) with its pages,
+    each page named after the last heading that starts on it or before it."""
     import pymupdf
 
     with pymupdf.open(pdf) as document:
         total, outline = document.page_count, document.get_toc()
-    chapters = [(title, page - 1) for level, title, page in outline if level == 1 and page >= 1]
+    parts = [(title, page - 1) for depth, title, page in outline if depth == level and page >= 1]
+    headings = sorted((page - 1, depth, title) for depth, title, page in outline if depth <= level + 1 and page >= 1)
+
+    def page_title(index: int, first: int) -> str:
+        named = [title for page, _, title in headings if first <= page <= index]
+        return named[-1] if named else ('Cover' if index == 0 else 'Contents')
+
     sections: list[dict[str, Any]] = []
-    starts = [page for _, page in chapters] + [total]
-    if chapters and chapters[0][1] > 0:
-        sections.append({'title': 'Cover and contents', 'pages': [
-            {'index': index, 'title': 'Cover' if index == 0 else 'Contents'} for index in range(chapters[0][1])]})
-    for position, (title, first) in enumerate(chapters):
-        headings = sorted((page - 1, text) for level, text, page in outline
-                          if level <= 3 and first <= page - 1 < starts[position + 1])
-        pages = []
-        for index in range(first, starts[position + 1]):
-            named = [text for page, text in headings if page <= index]
-            pages.append({'index': index, 'title': named[-1] if named else title})
-        sections.append({'title': title, 'pages': pages})
-    if not sections:
-        sections = [{'title': 'Pages', 'pages': [{'index': index, 'title': f'Page {index + 1}'} for index in range(total)]}]
-    return {'pages': total, 'sections': sections}
+    starts = [page for _, page in parts] + [total]
+    if not parts or parts[0][1] > 0:
+        end = parts[0][1] if parts else total
+        sections.append({'title': 'Cover and contents', 'pages': [{'index': index, 'title': page_title(index, 0)} for index in range(end)]})
+    for position, (title, first) in enumerate(parts):
+        sections.append({'title': title, 'pages': [{'index': index, 'title': page_title(index, first)}
+                                                   for index in range(first, starts[position + 1])]})
+    return {'pages': total, 'sections': [section for section in sections if section['pages']]}
+
+
+def _help_guide_scope(doc: str) -> tuple[str, str]:
+    """The export of a Help guide card: the whole documentation (no ``doc``) or one chapter."""
+    doc = str(doc or '').strip()
+    if doc and not doc.endswith('.md'):
+        raise HTTPException(status_code=400, detail='Choose a Help chapter.')
+    return ('guide', doc) if doc else ('all', '')
 
 
 @app.get('/api/help/guide')
-def help_guide(user: SessionUser | None = Depends(optional_user)) -> JSONResponse:
-    """The whole documentation for the slide viewer of Help Home: its pages by chapter and its downloads (PDF, Word)."""
+def help_guide(doc: str = '', opened: bool = False, user: SessionUser | None = Depends(optional_user)) -> JSONResponse:
+    """A guide for the slide viewer of the Help: the whole documentation (Help Home) or one chapter (``doc``, beside its
+    presentations), its pages by part and its downloads (PDF, Word). Opening it in the viewer (``opened``) is recorded."""
     started = time_module.monotonic()
-    target, cached, file_title, chapters, _ = help_export_file('all', '', 'pdf', user)
-    outline = help_guide_outline(target)
-    repository.try_add_log(user.username if user else 'anonymous', 'help_guide_opened', json.dumps({
-        'chapters': chapters, 'pages': outline['pages'], 'cached': 'yes' if cached else 'no',
-        'seconds': round(time_module.monotonic() - started, 2)}))
-    return JSONResponse({'title': 'DriveTest Analyzer — Documentation', 'key': target.stem.rsplit('-', 1)[-1], **outline,
-                         'downloads': {'pdf': '/api/help/export?scope=all&format=pdf', 'docx': '/api/help/export?scope=all&format=docx'},
+    scope, requested = _help_guide_scope(doc)
+    try:
+        target, cached, file_title, chapters, requested = help_export_file(scope, requested, 'pdf', user)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Help chapter not found.') from exc
+    outline = help_guide_outline(target, 1 if scope == 'all' else 2)
+    if opened:
+        repository.try_add_log(user.username if user else 'anonymous', 'help_guide_opened', json.dumps({
+            'guide': requested or 'whole documentation', 'chapters': chapters, 'pages': outline['pages'],
+            'cached': 'yes' if cached else 'no', 'seconds': round(time_module.monotonic() - started, 2)}))
+    query = f'scope={scope}' + (f'&doc={quote(requested)}' if requested else '')
+    title = f"{file_title.split(' - Help - ', 1)[-1]} — Guide" if requested else 'DriveTest Analyzer — Documentation'
+    return JSONResponse({'title': title, 'doc': requested,
+                         'key': target.stem.rsplit('-', 1)[-1], **outline,
+                         'downloads': {'pdf': f'/api/help/export?{query}&format=pdf', 'docx': f'/api/help/export?{query}&format=docx'},
                          'file_names': {'pdf': f'{file_title}.pdf', 'docx': f'{file_title}.docx'}})
 
 
 @app.get('/api/help/guide/pages/{index}')
-def help_guide_page(index: int, thumb: bool = False, user: SessionUser | None = Depends(optional_user)) -> Response:
-    """A page of the whole documentation as a picture (a small one with ``thumb``), drawn from its PDF once and kept."""
+def help_guide_page(index: int, doc: str = '', thumb: bool = False, user: SessionUser | None = Depends(optional_user)) -> Response:
+    """A page of a guide (the whole documentation, or the chapter ``doc``) as a picture (a small one with ``thumb``),
+    drawn from its PDF once and kept."""
     from src.modules.reporting.pptx_to_docx import pdf_page_images
 
-    target, _, _, _, _ = help_export_file('all', '', 'pdf', user)
+    scope, requested = _help_guide_scope(doc)
+    try:
+        target, _, _, _, _ = help_export_file(scope, requested, 'pdf', user)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Help chapter not found.') from exc
     folder = target.parent / f'{target.stem}-pages'
     image = folder / f"page-{index + 1:04d}{'-thumb' if thumb else ''}.png"
     if not image.is_file():
         pictures = pdf_page_images(target.read_bytes(), 48 if thumb else 144, [index])
         if not pictures:
-            raise HTTPException(status_code=404, detail='The documentation has no such page.')
+            raise HTTPException(status_code=404, detail='The guide has no such page.')
         folder.mkdir(parents=True, exist_ok=True)
         for stale in target.parent.glob(f"{target.stem.rsplit('-', 1)[0]}-*-pages"):
             if stale != folder:

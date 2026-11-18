@@ -6,10 +6,11 @@ Chart Builder is the ad-hoc chart editor: draw any chart on the processed CDRs, 
 - **Temporary:** its definition creates no PowerPoint report and changes no Report Template.
 - **Kept only on request:** it changes a PPT Design or a PPT Template only when **Add to PPT Design or Template…** puts the chart, with its format, on one of their slides.
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 builders
+guide:chart-builder.md
 ```
 
 ## Main topics in this guide

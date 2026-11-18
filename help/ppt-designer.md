@@ -11,10 +11,11 @@ Build an interactive Design (a PPT Design) from processed Data, Voice and Speech
 > [!NOTE]
 > **A Design is a saved definition, not a copy of your data.** It stores its template, Scope, dates, filters, the values of the template parameters, comments and what it changes of its template's slides. Its CDRs are chosen from its NR Mode and Campaign filter each time it is prepared. Source CDRs and generated caches remain separate.
 
-## Presentation
+## Presentation & Guide
 
 ```presentations
 ppt-designer
+guide:ppt-designer.md
 ```
 
 ## Main topics in this guide
