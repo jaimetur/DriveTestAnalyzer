@@ -532,10 +532,13 @@
         swiped = false;
         return;
       }
-      if (!event.target.closest('.presentation-show-controls')) moveShow(1);
+      // (Read where the click started: Play and Pause redraw their icon, so the element clicked may no longer be inside them.)
+      if (!event.composedPath().some((target) => target instanceof Element && target.matches('.presentation-show-controls'))) moveShow(1);
     });
     layer.addEventListener('pointermove', revealShowControls);
-    layer.querySelectorAll('[data-presentation-show]').forEach((button) => button.addEventListener('click', () => {
+    layer.querySelectorAll('[data-presentation-show]').forEach((button) => button.addEventListener('click', (event) => {
+      // A control never also counts as a click on the slide (which goes to the next one).
+      event.stopPropagation();
       const action = button.dataset.presentationShow;
       if (action === 'previous') moveShow(-1);
       else if (action === 'next') moveShow(1);

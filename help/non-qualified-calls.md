@@ -542,9 +542,9 @@ The **Lifecycle & Phases** panel follows the filtered calls through their follow
   - **Automatic Status** (following the Status Rules) and **Status by Hand**.
   - **In Queues**: the calls the queues list, in the statuses marked In Queue: the first status, Assigned and Under Analysis (the note gives each, such as *Not Attended 320 + Assigned 25 + Under Analysis 4*). The same number as the badge of the panels.
   - **Not Attended** (the first status, named after it): the prioritized calls nobody has yet.
+  - **Open**: assigned or attended and not closed (Assigned plus the phase statuses).
   - **Assigned**: the prioritized calls given a team or an analyst, not attended yet.
   - **Attended**: the other prioritized calls, followed up, in any later status.
-  - **Open**: assigned or attended and not closed (Assigned plus the phase statuses).
   - **Stalled**: open without any change for 14 days or more, counted from today; a call becomes stalled on its own and leaves it as soon as it changes.
   - **Closed**: in a closed status.
   - These cards and the NQ Call Status Pipeline count only the prioritized calls, their shares too, and add the tracked calls of each one apart (*+12 tracked*), as they wait for nobody.
