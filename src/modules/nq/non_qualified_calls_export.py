@@ -153,12 +153,13 @@ def timeline_table(progress: dict[str, Any]) -> tuple[list[str], list[list[str]]
 
 
 def workload_table(title: str, rows: list[dict[str, Any]]) -> tuple[list[str], list[list[str]]]:
-    return [title, 'Open', 'Closed', 'Total'], [[row['name'], str(row['open']), str(row['closed']), str(row['total'])] for row in rows]
+    return [title, 'Open', 'Analysed', 'Closed', 'Total'], [[row['name'], str(row['open']), str(row.get('analysed', 0)), str(row['closed']),
+                                                           str(row['total'])] for row in rows]
 
 
 def activity_table(rows: list[dict[str, Any]]) -> tuple[list[str], list[list[str]]]:
-    return ['User', 'Changes', 'Comments', 'Calls closed'], [
-        [row['name'], str(row['changes']), str(row['comments']), str(row['closed'])] for row in rows
+    return ['User', 'Changes', 'Comments', 'Calls analysed', 'Calls closed'], [
+        [row['name'], str(row['changes']), str(row['comments']), str(row.get('analysed', 0)), str(row['closed'])] for row in rows
     ]
 
 

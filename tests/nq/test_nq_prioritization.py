@@ -1750,6 +1750,13 @@ def test_the_nq_call_status_keeps_a_call_in_its_queue_while_it_is_under_analysis
     progress = client.post('/api/non-qualified-calls/progress', json={'filters': {}}).json()
     assert progress['implementation_status'] == 'Under Implementation' and progress['summary']['under_implementation'] >= 1
     assert change(key, {'fields': {'implementation_status': ''}})['status'] == 'Analysis Finished'
+    # The workload of the analysts and teams and the activity of the users tell the calls analysed, and the long texts of
+    # the tabs count as comments of their author.
+    change(key, {'fields': {'findings': 'Weak coverage near the motorway'}})
+    progress = client.post('/api/non-qualified-calls/progress', json={'filters': {}}).json()
+    assert sum(row['analysed'] for row in progress['teams']) >= 1 and all('analysed' in row for row in progress['analysts'])
+    me = next(row for row in progress['activity'] if row['name'] == 'super')
+    assert me['analysed'] >= 1 and me['comments'] >= 1
     # Set back to Not Attended by hand, it waits in its queue again (ticket #173).
     assert change(key, {'status': 'Not Attended'})['status'] == 'Not Attended'
     data = panel()

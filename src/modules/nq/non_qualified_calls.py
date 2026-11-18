@@ -6884,6 +6884,11 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
                                   keys, order='created_at, id')
     queued_keys = {str(row['call_key']) for row in calls if str(row['queue'] or '')}
     lists = queue_statuses(options, status_rules(task_repository))
+    # Analysed: the calls past their analysis, out of the queues (Analysis Finished, Under Implementation, Under Planning,
+    # Closed by default); the long texts the analysts write in the tabs of a call count with its comments.
+    waiting_or_queued = {name.casefold() for name in (*lists['waiting'], *lists['in_queue'])}
+    lists = {**lists, 'analysed': [item['name'] for item in options['statuses'] if item['name'].casefold() not in waiting_or_queued],
+             'text_fields': [f"field:{field['key']}" for field in list_fields(task_repository) if field['type'] == 'long_text']}
 
     def part(in_queue: bool) -> dict[str, Any]:
         keep = (lambda key: key in queued_keys) if in_queue else (lambda key: key not in queued_keys)
@@ -6961,6 +6966,10 @@ def _progress_of(calls: list[Any], history: list[Any], comments: list[Any], opti
         if moment is not None and (key not in first_followup or moment < first_followup[key]):
             first_followup[key] = moment
 
+    lists = lists or queue_statuses(options, [])
+    analysed_names = {name.casefold() for name in lists.get('analysed', [])}
+    text_fields = set(lists.get('text_fields', []))
+    new_user = lambda: {'changes': 0, 'comments': 0, 'analysed': 0, 'closed': 0}
     activity: dict[str, dict[str, int]] = {}
     for row in history:
         moment = _parse_time(row['changed_at'])
@@ -6968,8 +6977,11 @@ def _progress_of(calls: list[Any], history: list[Any], comments: list[Any], opti
         # Assigning the call (and the status the rules give it then) does not attend it (ticket #122).
         if row['field'] not in ASSIGNMENT_HISTORY_FIELDS:
             follow_up(key, moment)
-        user = activity.setdefault(str(row['changed_by'] or '—'), {'changes': 0, 'comments': 0, 'closed': 0})
+        user = activity.setdefault(str(row['changed_by'] or '—'), new_user())
         user['changes'] += 1
+        # A long text written in a tab of the call (Comments, Description, Findings…) is a comment of the user too.
+        if row['field'] in text_fields and str(row['new_value'] or '').strip():
+            user['comments'] += 1
         target = bucket(moment)
         if target is not None:
             target['changes'] += 1
@@ -6978,6 +6990,9 @@ def _progress_of(calls: list[Any], history: list[Any], comments: list[Any], opti
             continue
         new_value, old_value = str(row['new_value']), str(row['old_value'])
         target['statuses'][new_value] = target['statuses'].get(new_value, 0) + 1
+        # Analysed: the call moved past its analysis by the change of the user.
+        if new_value.casefold() in analysed_names and old_value.casefold() not in analysed_names:
+            user['analysed'] += 1
         if new_value.casefold() in closed_names and old_value.casefold() not in closed_names:
             target['closed'] += 1
             user['closed'] += 1
@@ -6988,7 +7003,7 @@ def _progress_of(calls: list[Any], history: list[Any], comments: list[Any], opti
     for row in comments:
         moment = _parse_time(row['created_at'])
         follow_up(str(row['call_key']), moment)
-        activity.setdefault(str(row['created_by'] or '—'), {'changes': 0, 'comments': 0, 'closed': 0})['comments'] += 1
+        activity.setdefault(str(row['created_by'] or '—'), new_user())['comments'] += 1
         target = bucket(moment)
         if target is not None:
             target['comments'] += 1
@@ -7029,8 +7044,9 @@ def _progress_of(calls: list[Any], history: list[Any], comments: list[Any], opti
         rows: dict[str, dict[str, Any]] = {}
         for row in calls:
             name = str(row[field] or '') or 'Unassigned'
-            entry = rows.setdefault(name, {'name': name, 'open': 0, 'closed': 0, 'total': 0})
+            entry = rows.setdefault(name, {'name': name, 'open': 0, 'analysed': 0, 'closed': 0, 'total': 0})
             entry['total'] += 1
+            entry['analysed'] += str(row['status']).casefold() in analysed_names
             entry['closed' if str(row['status']).casefold() in closed_names else 'open'] += 1
         return sorted(rows.values(), key=lambda entry: (-entry['open'], -entry['total'], entry['name'].casefold()))
 

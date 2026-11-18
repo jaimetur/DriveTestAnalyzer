@@ -2521,15 +2521,17 @@
       row.append(node('span', item.value, 'nq-bar-label'), track, node('span', `${number(item.count)} · ${percent(item.count, agingTotal)}`, 'nq-bar-count'));
       return row;
     }));
-    const workload = (rows) => rows.map((row) => [row.name, number(row.open), number(row.closed), number(row.total)]);
+    // Analysed: the calls past their analysis (Analysis Finished, Under Implementation, Under Planning or Closed).
+    const workload = (rows) => rows.map((row) => [row.name, number(row.open), number(row.analysed || 0), number(row.closed), number(row.total)]);
     const person = (name) => (name === 'Unassigned' ? state.unassigned : name);
-    statsTable($('nq-team-workload'), ['Team', 'Open', 'Closed', 'Total'], workload(progress.teams),
+    statsTable($('nq-team-workload'), ['Team', 'Open', 'Analysed', 'Closed', 'Total'], workload(progress.teams),
       {drillRow: (index) => [['team', person(progress.teams[index].name)]]});
-    statsTable($('nq-analyst-workload'), ['Analyst', 'Open', 'Closed', 'Total'],
+    statsTable($('nq-analyst-workload'), ['Analyst', 'Open', 'Analysed', 'Closed', 'Total'],
       workload(progress.analysts.map((row) => ({...row, name: row.name === 'Unassigned' ? row.name : userName(row.name)}))),
       {drillRow: (index) => [['analyst', person(progress.analysts[index].name)]]});
-    statsTable($('nq-activity'), ['User', 'Changes', 'Comments', 'Calls Closed'],
-      progress.activity.map((row) => [userName(row.name), number(row.changes), number(row.comments), number(row.closed)]));
+    // Comments: those of the Activity tab and the long texts written in the other tabs of the call.
+    statsTable($('nq-activity'), ['User', 'Changes', 'Comments', 'Calls Analysed', 'Calls Closed'],
+      progress.activity.map((row) => [userName(row.name), number(row.changes), number(row.comments), number(row.analysed || 0), number(row.closed)]));
   };
   let progressToken = 0;
   async function loadProgress() {
