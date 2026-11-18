@@ -57,10 +57,11 @@ The dark application bar at the top, in a darker shade of the colour of the modu
 
 **Export the Help.** **Export**, beside **Documentation** at the top of every Help page (also without signing in), opens a dialog to choose **This guide** or **All the documentation**, and **Word (.docx)** or **PDF**:
 
-- **Content:** the headings are numbered as on the page; the index of a chapter (its *Main topics in this guide* table) is replaced by a table of contents of every heading, after the title of the chapter or, for the whole documentation, after a cover with the version and the date, each chapter then starting on a new page. Help Home is left out of the whole documentation.
+- **Content:** a cover with the version and the date, then a table of contents of every heading with its page, on pages of their own (it replaces the *Main topics in this guide* table of a chapter). The headings are numbered as on the page and the sections follow each other on the same page; the title is at the top of every page and its number at the bottom. The whole documentation opens each module with a sub-cover with its number, and leaves out Help Home and Product Presentations.
 - **Layout:** tables, lists, notes and tips, code and keys keep their look; the presentations are not included (open the chapter in the Help to watch them).
 - **PDF:** made by LibreOffice on the server (without it, the dialog says so). The whole documentation takes a while the first time; each file is kept until the Help or the version changes, so the next exports are immediate.
 - **App Events:** each export is recorded as `help_exported` (content, chapter, format, size, whether it was kept and its time).
+- **Complete guide:** the card on Help Home opens the whole documentation page by page in the slide viewer, by module, with **PDF** and **Word** to download (`help_guide_opened`).
 
 A round button at the bottom left, in the colour of the current module, appears once a page is scrolled down and takes it back to the top.
 

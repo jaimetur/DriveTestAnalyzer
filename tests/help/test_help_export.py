@@ -30,7 +30,7 @@ def test_a_guide_exports_to_word_with_numbered_headings_a_contents_and_tables(cl
     # The index of the chapter is left out (and unnumbered); the document has its own table of contents.
     assert not any('in this guide' in heading.lower() for heading in headings)
     # Each entry of the contents ends with its page (a PAGEREF field after a right tab), the contents end with a page break,
-    # every main section after the first starts on a new page, and the footer numbers the pages.
+    # and the footer numbers the pages.
     # A cover first (the chapter in its title), then the contents.
     assert 'DriveTest Analyzer — Help\nReporting' in paragraphs
     contents = paragraphs.index('Contents')
@@ -38,8 +38,6 @@ def test_a_guide_exports_to_word_with_numbered_headings_a_contents_and_tables(cl
     document = Document(BytesIO(response.content))
     xml = document.element.xml
     assert 'PAGEREF' in xml and 'w:updateFields' in document.settings.element.xml
-    second = next(paragraph for paragraph in document.paragraphs if paragraph.text == '2  The report editor')
-    assert second.paragraph_format.page_break_before
     footer = document.sections[0].footer._element.xml
     assert ' PAGE ' in footer and ' NUMPAGES ' in footer
     assert 'Help · Reporting' in document.sections[0].header.paragraphs[0].text
@@ -67,12 +65,16 @@ def test_the_whole_documentation_has_every_chapter_in_navigation_order_and_is_ca
     assert response.status_code == 200
     assert 'DriveTest%20Analyzer%20-%20Documentation.docx' in response.headers['content-disposition']
     headings, _, _ = document_text(response.content)
-    # The chapters are numbered in Roman numerals, their sections as in the Help.
-    chapters = [heading.split('  ', 1) for heading in headings if re.match(r'[IVXLC]+  ', heading)]
-    assert [number for number, _ in chapters[:4]] == ['I', 'II', 'III', 'IV']
+    # The chapters are numbered, their sections as in the Help.
+    # Each chapter opens with its sub-cover: its number above its title, on a page of its own.
+    chapters = [heading.split('\n', 1) for heading in headings if re.match(r'\d+\n', heading)]
+    assert [number for number, _ in chapters[:4]] == ['1', '2', '3', '4']
     titles = [title for _, title in chapters if title in {'Product Overview', 'Workspace Management', 'Reporting', 'Super Admin'}]
     assert titles == ['Product Overview', 'Workspace Management', 'Reporting', 'Super Admin']
     assert not any(heading.endswith('Help Home') for heading in headings)
+    # Without the presentations, which a document cannot play.
+    assert not any(heading.endswith('Product Presentations') for heading in headings)
+    assert not any(heading.endswith(('  Presentation', '  Presentations')) for heading in headings)
 
     again = client.get('/api/help/export', params={'scope': 'all', 'format': 'docx'})
     assert again.status_code == 200 and again.content == response.content
@@ -135,3 +137,12 @@ def test_the_complete_guide_opens_its_pdf_page_by_page_by_chapter(client, monkey
     assert client.get('/api/help/guide/pages/3', params={'thumb': 'true'}).content.startswith(b'\x89PNG')
     assert client.get('/api/help/guide/pages/9').status_code == 404
     assert any(row['action'] == 'help_guide_opened' for row in core.repository.list_logs())
+
+
+def test_the_main_sections_follow_on_the_same_page_well_apart():
+    content = '# Guide\n\nIntro.\n\n## First\n\nShort.\n\n## Second\n\nShort.\n'
+    document = Document(BytesIO(help_export.chapter_docx(help_export.Chapter('guide.md', 'Guide', content), '1.0')))
+    sections = [paragraph for paragraph in document.paragraphs if paragraph.style.name == 'Heading 2']
+    assert [paragraph.text for paragraph in sections] == ['1  First', '2  Second']
+    assert not any(paragraph.paragraph_format.page_break_before for paragraph in sections)
+    assert all(paragraph.paragraph_format.space_before == help_export.SECTION_SPACE for paragraph in sections)

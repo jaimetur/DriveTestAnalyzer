@@ -33,6 +33,13 @@ PRESENTATION_SECTIONS = {'presentation', 'presentations'}
 # The H2 sections the Help viewer leaves without a number (and the subsections below them).
 UNNUMBERED_SECTIONS = INDEX_SECTIONS | PRESENTATION_SECTIONS
 HELP_HOME_DOCUMENT = 'help.md'
+# The chapters the whole documentation leaves out: Help Home (an index of the chapters) and the presentations (only
+# their cards, which a document cannot play).
+NOT_IN_DOCUMENTATION = {HELP_HOME_DOCUMENT, 'presentations.md'}
+# The space above a main section (level 2 heading): sections follow each other on the same page, well apart.
+SECTION_SPACE = Pt(26)
+# The number of a chapter on its sub-cover (the orange of the logo), larger than its title.
+CHAPTER_NUMBER_COLOR = RGBColor(0xE8, 0x6A, 0x10)
 CODE_FONT = 'Consolas'
 CALLOUTS = {
     'NOTE': ('Note', 'E8F0FB', '1F5FAD'),
@@ -84,8 +91,6 @@ class _Context:
     seen: dict[str, int] = field(default_factory=dict)
     chapter: int = 1
     bookmarks: list[int] = field(default_factory=lambda: [0])
-    # The main sections (level 2 headings) written so far: each one after the first starts on a new page.
-    sections: int = 0
 
 
 def heading_id(text: str) -> str:
@@ -285,6 +290,15 @@ class _Writer:
                 pass
         return paragraph
 
+    def spacer(self, container: Any) -> Any:
+        """The paragraph Word needs after a table, small, so a table that ends at the bottom of a page does not push it
+        alone onto the next one."""
+        paragraph = self.paragraph(container)
+        paragraph.paragraph_format.space_before = paragraph.paragraph_format.space_after = Pt(0)
+        paragraph.paragraph_format.line_spacing = Pt(6)
+        paragraph.add_run().font.size = Pt(4)
+        return paragraph
+
     def box(self, container: Any, fill: str) -> Any:
         table = container.add_table(rows=1, cols=1) if hasattr(container, 'add_table') else None
         if table is None:
@@ -389,7 +403,8 @@ class _Writer:
         anchor = ''
         if not in_cell:
             anchor = _next_anchor(text, context.seen)
-            if level == 2 and title.lower() in INDEX_SECTIONS:
+            # The index of the chapter and its presentations (cards a document cannot play) are left out.
+            if level == 2 and title.lower() in UNNUMBERED_SECTIONS:
                 return True
         number = context.numbers.get(anchor) if anchor and level in {2, 3} else None
         label = f'{number}  {title}' if number else title
@@ -400,8 +415,7 @@ class _Writer:
             return False
         paragraph = container.add_heading(label, level=min(level, 4))
         if level == 2:
-            paragraph.paragraph_format.page_break_before = context.sections > 0 or None
-            context.sections += 1
+            paragraph.paragraph_format.space_before = SECTION_SPACE
         context.bookmarks[0] += 1
         _bookmark(paragraph, _bookmark_name(context.chapter, anchor), context.bookmarks[0])
         return False
@@ -463,7 +477,7 @@ class _Writer:
         repeat.set(qn('w:val'), 'true')
         header.append(repeat)
         if hasattr(container, 'add_heading'):
-            self.paragraph(container)
+            self.spacer(container)
 
     def quote(self, container: Any, lines: list[str], context: _Context) -> None:
         callout = re.match(r'^\s*\[!([A-Za-z]+)\]\s*(.*)$', lines[0]) if lines else None
@@ -480,7 +494,7 @@ class _Writer:
         if hasattr(cell, '_tc'):
             self.tidy_cell(cell)
         if hasattr(container, 'add_heading'):
-            self.paragraph(container)
+            self.spacer(container)
 
     def list(self, container: Any, items: list[tuple[int, str, str]], context: _Context) -> None:
         indents: list[int] = []
@@ -577,19 +591,9 @@ def _chapter_lines(chapter: Chapter) -> list[str]:
     return lines[first + 1:] if title_line and len(title_line.group(1)) == 1 else lines
 
 
-def roman(number: int) -> str:
-    """A chapter number in Roman numerals (the whole documentation numbers its chapters I, II, III...)."""
-    text = ''
-    for value, letters in ((1000, 'M'), (900, 'CM'), (500, 'D'), (400, 'CD'), (100, 'C'), (90, 'XC'), (50, 'L'), (40, 'XL'),
-                           (10, 'X'), (9, 'IX'), (5, 'V'), (4, 'IV'), (1, 'I')):
-        count, number = divmod(number, value)
-        text += letters * count
-    return text
-
-
 def chapter_label(chapter: Chapter, position: int | None = None) -> str:
-    """The title of a chapter, after its Roman numeral when it is one of the whole documentation."""
-    return f'{roman(position)}  {chapter.title}' if position else chapter.title
+    """The title of a chapter, after its number when it is one of the whole documentation."""
+    return f'{position}  {chapter.title}' if position else chapter.title
 
 
 def chapter_headings(chapter: Chapter, position: int = 1, numbered_chapter: bool = False) -> list[tuple[int, str, str]]:
@@ -688,6 +692,21 @@ def _table_of_contents(document: Any, entries: list[tuple[int, str, str]]) -> No
 
 
 def _write_title(document: Any, chapter: Chapter, position: int, bookmarks: list[int], numbered: bool = False) -> None:
+    """The title of a chapter; in the whole documentation (``numbered``) on a page of its own, its sub-cover: its number
+    above the title, large, centred and orange, so the change of module is seen at once."""
+    if numbered:
+        for _ in range(8):
+            document.add_paragraph()
+        heading = document.add_heading(level=1)
+        heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        number = heading.add_run(str(position))
+        number.font.size, number.font.color.rgb = Pt(96), CHAPTER_NUMBER_COLOR
+        number.add_break(WD_BREAK.LINE)
+        heading.add_run(chapter.title).font.size = Pt(30)
+        bookmarks[0] += 1
+        _bookmark(heading, _bookmark_name(position, ''), bookmarks[0])
+        document.add_page_break()
+        return
     heading = document.add_heading(chapter_label(chapter, position if numbered else None), level=1)
     bookmarks[0] += 1
     _bookmark(heading, _bookmark_name(position, ''), bookmarks[0])
@@ -695,9 +714,10 @@ def _write_title(document: Any, chapter: Chapter, position: int, bookmarks: list
 
 def _write_body(document: Any, chapter: Chapter, position: int, bookmarks: list[int]) -> None:
     numbered = chapter.file != HELP_HOME_DOCUMENT
+    lines = _chapter_lines(chapter)
     context = _Context(numbered=numbered, numbers=section_numbers(chapter.content, numbered), chapter=position,
                        bookmarks=bookmarks)
-    _Writer(document).blocks(document, _chapter_lines(chapter), context)
+    _Writer(document).blocks(document, lines, context)
 
 
 def _cover(document: Any, title: str, version: str, today: date) -> None:
@@ -737,7 +757,7 @@ def chapter_docx(chapter: Chapter, version: str, today: date | None = None) -> b
 
 def documentation_docx(chapters: list[Chapter], version: str, today: date | None = None) -> bytes:
     """Every Help chapter as one Word document: a cover, the contents and each chapter on a page of its own, the
-    chapters numbered in Roman numerals (I, II...) and their sections as in the Help (1, 1.1...)."""
+    chapters numbered (1, 2...) on their sub-covers and their sections as in the Help (1, 1.1...)."""
     document = _new_document(f'{APP_TITLE} - Documentation')
     _header_and_footer(document, f'{APP_TITLE} {version} · Documentation')
     _cover(document, f'{APP_TITLE} — Documentation', version, today or date.today())

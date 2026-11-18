@@ -16565,9 +16565,9 @@ def help_export_file(scope: str, doc: str, export_format: str, user: SessionUser
         file_title = f'DriveTest Analyzer - Help - {chapters[0].title}'
     else:
         requested = ''
-        # Every chapter of the Help navigation in its order, without Help Home (an index of the chapters).
+        # Every chapter of the Help navigation in its order, without Help Home (an index of the chapters) and the presentations.
         chapters = [chapter(relative_path) for relative_path in ordered_help_documents(HELP_NAVIGATION_DOCUMENTS, module_settings)
-                    if relative_path != HELP_HOME_DOCUMENT and (PROJECT_ROOT / 'help' / relative_path).is_file()]
+                    if relative_path not in help_export.NOT_IN_DOCUMENTATION and (PROJECT_ROOT / 'help' / relative_path).is_file()]
         file_title = 'DriveTest Analyzer - Documentation'
     key = help_export.export_key(chapters, __version__, scope, requested, export_format)
     folder = Path(settings.data_dir) / 'help-exports'
