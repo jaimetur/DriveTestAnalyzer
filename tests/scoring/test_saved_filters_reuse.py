@@ -591,9 +591,11 @@ def test_favourites_filters_out_of_date_are_calculated_while_the_application_is_
         saved_filters.calculate_saved_filter(repository, item['id'])
     queued = []
     monkeypatch.setattr(app_module, '_queue_saved_filter_calculation', lambda _repository, filter_id: queued.append(filter_id))
-    # Up to date: nothing is calculated.
+    kept = []
+    monkeypatch.setattr(app_module, '_submit_workspace_job', lambda _repository, callback, *args, **_kwargs: kept.append((callback, args[1])))
+    # Up to date: nothing is calculated; its result as served, not kept yet, is (ticket #168).
     app_module._calculate_favourites_filters_when_idle()
-    assert queued == []
+    assert queued == [] and kept == [(app_module._keep_saved_filter_result, favourite['id'])]
     # Out of date (here, an older calculation): the Favourite Scoring is calculated again, not the others.
     with repository.connection() as connection:
         connection.execute("UPDATE saved_filters SET result_key = 'older' WHERE id IN (?, ?)", (favourite['id'], other['id']))
