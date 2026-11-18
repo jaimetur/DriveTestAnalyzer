@@ -259,11 +259,14 @@ def progress_title(granularity_label: str, subtitle: str) -> SlideTitle:
     return SlideTitle('Progress View', period, subtitle)
 
 
-def _follow_up_cards(in_queues: int, waiting: int, attended: int, analysis: int, base: int) -> list[tuple[str, str, str, str]]:
-    """In Queues (Not Started + Under Analysis), Not Started and Attended, as Lifecycle & Phases, Progress View and the In Queues
-    badge of the page name and count them."""
-    return [('Not Started', _number(waiting), f'{_share(waiting, base)} nobody attended yet', 'team'),
-            ('In Queues', _number(in_queues), f'{_share(in_queues, base)} · Not Started {_number(waiting)} + Under Analysis {_number(analysis)}', 'total'),
+def _follow_up_cards(in_queues: int, first: int, first_name: str, assigned: int, attended: int, analysis: int,
+                     base: int) -> list[tuple[str, str, str, str]]:
+    """In Queues (the first status, Assigned and Under Analysis), Assigned and Attended, as Lifecycle & Phases, Progress
+    View and the In Queues badge of the page name and count them."""
+    return [('In Queues', _number(in_queues),
+             f'{_share(in_queues, base)} · {first_name or "Not Attended"} {_number(first)} + Assigned {_number(assigned)} + Under Analysis {_number(analysis)}',
+             'total'),
+            ('Assigned', _number(assigned), f'{_share(assigned, base)} given a team or an analyst, not attended yet', 'team'),
             ('Attended', _number(attended), f'{_share(attended, base)} followed up, in any later status', 'open')]
 
 
@@ -275,7 +278,8 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
     cards = [
         # Every statistic counts the calls in a queue: the tracked calls (in no queue) are shown apart, in the last card.
         # The follow-up of the prioritized calls with the names and numbers of the page (tickets #172, #173).
-        *_follow_up_cards(int(summary.get('not_attended') or 0) + int(summary.get('in_analysis') or 0), int(summary.get('not_attended') or 0),
+        *_follow_up_cards(int(summary.get('not_attended') or 0) + int(summary.get('in_analysis') or 0), int(summary.get('in_queues') or 0),
+                          str(progress.get('first_status') or ''), int(summary.get('not_attended_assigned') or 0),
                           int(summary.get('queued_attended', summary.get('attended')) or 0), int(summary.get('in_analysis') or 0),
                           int(summary.get('queued') or 0)),
         ('First Follow-up', _days(summary.get('avg_days_to_first_follow_up')), 'Average from the call', 'team'),
@@ -285,7 +289,7 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
         ('Activity', _number((summary.get('comments') or 0) + (summary.get('changes') or 0)),
          f"{_number(summary.get('comments'))} comments · {_number(summary.get('changes'))} changes", ''),
         *([('Tracked', _number(tracked.get('total')),
-            f"Left out: {_number(tracked.get('not_attended'))} not started · {_number(tracked.get('closed'))} closed", 'commented')]
+            f"Left out: {_number(tracked.get('not_attended'))} not attended · {_number(tracked.get('closed'))} closed", 'commented')]
           if (tracked := progress.get('tracked')) else []),
     ]
     panels = []
@@ -984,7 +988,8 @@ def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
         ('Calls', _number(total), f'{_number(queued)} in a queue · {_number(total - queued)} tracked', 'total'),
         ('Automatic Status', _number(modes.get('auto', 0)), f"{_share(modes.get('auto', 0), total)} follow the Status Rules", 'team'),
         ('Status by Hand', _number(modes.get('manual', 0)), f"{_share(modes.get('manual', 0), total)} chosen by an analyst", 'commented'),
-        *_follow_up_cards(int(lifecycle.get('in_queues_now') or 0), int(lifecycle.get('waiting_now') or 0),
+        *_follow_up_cards(int(lifecycle.get('in_queues_now') or 0), int((waiting or {}).get('count') or 0), str((waiting or {}).get('status') or ''),
+                          int(lifecycle.get('waiting_now') or 0) - int((waiting or {}).get('count') or 0),
                           queued - int(lifecycle.get('waiting_now') or 0), int(lifecycle.get('analysis_now') or 0), queued),
         ('Open', _number(open_total), f'{_share(open_total, queued)} assigned or attended, not closed{_tracked(open_tracked)}', 'open'),
         ('Stalled', _number(lifecycle.get('stalled_total', 0)), f"Open, no change for {lifecycle.get('stalled_days', 14)}+ days", 'attended'),
