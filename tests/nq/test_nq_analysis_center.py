@@ -1265,15 +1265,15 @@ def test_admins_import_the_analyses_of_the_previous_tool_by_join_id(client, tmp_
     assert 'grid-template-rows: auto auto auto auto minmax(0, 1fr); width: min(620px, 100vw);' in styles
     # The phase cards leave out the calls without a value unless Show Empty Status (unchecked) is checked.
     assert '<input type="checkbox" id="nq-life-show-empty"> Show Empty Status</label>' in page
-    assert "const base = phase.drill || showEmpty ? total : items.reduce((sum, item) => sum + item.count, 0);" in script
+    assert "const base = phase.drill || showEmpty ? queued : items.reduce((sum, item) => sum + item.count, 0);" in script
     # The rules of the pipeline cards start on one line, Open frames the phase statuses and the phase cards share a row.
     assert "const top = node('div', undefined, 'nq-pipeline-head');" in script and "'nq-pipeline-group-head'" in script
     assert "style.setProperty('--nq-phase-count'" in script
     # The Root Cause Analysis leaves out the Not classified calls of every source unless shown.
     assert '<input type="checkbox" id="nq-root-show-unclassified"> Show Not classified</label>' in page
     assert "const showUnclassified = $('nq-root-show-unclassified').checked;" in script
-    # The Progress View shows the calls per month by default.
-    assert '<option value="month" selected>Month</option>' in page
+    # The Progress View shows the calls per week by default (ticket #166).
+    assert '<option value="week" selected>Week</option>' in page
     # The Status Rules warn, above the rules, that changing them reclassifies the calls.
     rules_dialog = page.split('id="nq-status-rules-dialog"', 1)[1].split('</dialog>', 1)[0]
     assert rules_dialog.index('class="nq-rules-warning"') < rules_dialog.index('id="nq-status-rules"')
