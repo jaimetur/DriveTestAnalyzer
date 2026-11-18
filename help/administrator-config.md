@@ -17,7 +17,10 @@ administration
 | Task or topic | Go to |
 | --- | --- |
 | Export or import packages of a workspace | [Import / Export / Transfer](#import-export-transfer) |
-| Send to or request from another server | [Transfer to other server](#transfer-to-other-server) · [Request from other server](#request-from-other-server) |
+| <span class="guide-sub">↳ Choose what to export</span> | <span class="guide-sub">↳ [Export targets](#export-targets)</span> |
+| <span class="guide-sub">↳ Import a package</span> | <span class="guide-sub">↳ [Import workflow](#import-workflow)</span> |
+| <span class="guide-sub">↳ Send to another server</span> | <span class="guide-sub">↳ [Transfer to other server](#transfer-to-other-server)</span> |
+| <span class="guide-sub">↳ Request from another server</span> | <span class="guide-sub">↳ [Request from other server](#request-from-other-server)</span> |
 | Manage the datasets | [Datasets Management](#datasets-management) |
 
 ## Import / Export / Transfer

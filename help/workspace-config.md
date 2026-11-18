@@ -20,13 +20,23 @@ workspace-config
 
 | Task or topic | Go to |
 | --- | --- |
-| Name the operators, vendors and campaigns of the CDRs | [Mappings & Reference Data](#mappings-reference-data) · [Campaign Maps](#campaign-maps) |
-| Fix values that are still unassigned | [Unassigned values warning](#unassigned-values-warning) |
-| Add map areas, postal codes or spectrum holdings | [Map Areas](#map-areas) · [Spectrum Holdings](#spectrum-holdings) |
+| Know which workspace is configured | [Access and active workspace](#access-and-active-workspace) |
+| Name the operators, vendors and campaigns of the CDRs | [Mappings & Reference Data](#mappings-reference-data) |
+| <span class="guide-sub">↳ Name the operators and their roles</span> | <span class="guide-sub">↳ [Operator Maps](#operator-maps)</span> |
+| <span class="guide-sub">↳ Name the campaigns</span> | <span class="guide-sub">↳ [Campaign Maps](#campaign-maps)</span> |
+| <span class="guide-sub">↳ Fix values that are still unassigned</span> | <span class="guide-sub">↳ [Unassigned values warning](#unassigned-values-warning)</span> |
+| <span class="guide-sub">↳ Add map areas and postal codes</span> | <span class="guide-sub">↳ [Map Areas](#map-areas)</span> |
+| <span class="guide-sub">↳ Add the spectrum holdings</span> | <span class="guide-sub">↳ [Spectrum Holdings](#spectrum-holdings)</span> |
 | Add fields calculated from the CDR columns | [Auto-calculated Fields](#auto-calculated-fields) |
-| Set up the scoring methodology of the workspace | [Scoring & GAP Analysis Setup](#scoring-gap-analysis-setup) |
-| Choose the panels of the scoring exports | [Scoring Export Panels](#scoring-export-panels) |
+| <span class="guide-sub">↳ Write a field in the editor</span> | <span class="guide-sub">↳ [The editor](#the-editor)</span> |
+| Know the CDR type of the workspace | [CDR type](#cdr-type) |
+| Choose the main cities | [Main Cities](#main-cities) |
 | Copy the configuration to another workspace | [Portable operations](#portable-operations) |
+| Set up the scoring methodology of the workspace | [Scoring & GAP Analysis Setup](#scoring-gap-analysis-setup) |
+| <span class="guide-sub">↳ Set up the environments</span> | <span class="guide-sub">↳ [Methodology Environments](#methodology-environments)</span> |
+| <span class="guide-sub">↳ Define the KPIs, scoring and thresholds</span> | <span class="guide-sub">↳ [KPI Definitions, Scoring & Thresholds](#kpi-definitions-scoring-thresholds)</span> |
+| <span class="guide-sub">↳ Choose the panels of the scoring exports</span> | <span class="guide-sub">↳ [Scoring Export Panels](#scoring-export-panels)</span> |
+| <span class="guide-sub">↳ Teach the AI Assistant the workspace words</span> | <span class="guide-sub">↳ [AI Assistant Glossary](#ai-assistant-glossary)</span> |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Access and active workspace

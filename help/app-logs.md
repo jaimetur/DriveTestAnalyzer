@@ -12,9 +12,12 @@ App Logs records meaningful application and workspace events for operational rev
 
 | Task or topic | Go to |
 | --- | --- |
-| See who did what, and when | [App Events](#app-events) |
-| Follow the background runs and their errors | [Execution Log](#execution-log) |
 | Know which logs I can see | [Access and workspace scope](#access-and-workspace-scope) |
+| See who did what, and when | [App Events](#app-events) |
+| <span class="guide-sub">↳ Filter the events</span> | <span class="guide-sub">↳ [Filters](#filters)</span> |
+| <span class="guide-sub">↳ Read the table of events</span> | <span class="guide-sub">↳ [The table](#the-table)</span> |
+| <span class="guide-sub">↳ Know which actions are recorded</span> | <span class="guide-sub">↳ [What is recorded](#what-is-recorded)</span> |
+| Follow the background runs and their errors | [Execution Log](#execution-log) |
 
 ## Access and workspace scope
 

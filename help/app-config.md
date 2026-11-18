@@ -14,6 +14,15 @@ Application Config stores application-wide runtime overrides. It is separate fro
 administration
 ```
 
+## In this guide
+
+| Task or topic | Go to |
+| --- | --- |
+| Open Application Config | [Access and location](#access-and-location) |
+| Change the runtime settings | [Runtime settings](#runtime-settings) |
+| Set up the email delivery | [Email Delivery](#email-delivery) |
+| <span class="guide-sub">↳ Create the Power Automate flow</span> | <span class="guide-sub">↳ [Create the Power Automate flow](#create-the-power-automate-flow)</span> |
+
 ## Access and location
 
 Open **Config → Application Config** (`/application-config`).

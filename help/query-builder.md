@@ -19,6 +19,7 @@ builders
 | Task or topic | Go to |
 | --- | --- |
 | Build a query without writing SQL | [Assistance Mode](#assistance-mode) |
+| <span class="guide-sub">↳ Read and export the results</span> | <span class="guide-sub">↳ [Results](#results)</span> |
 | Write the SQL myself | [SQL Mode](#sql-mode) |
 | Save a query and reuse it | [Saved queries](#saved-queries) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |

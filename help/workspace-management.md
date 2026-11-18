@@ -16,10 +16,20 @@ workspace-config
 
 | Task or topic | Go to |
 | --- | --- |
-| Create, open or delete a workspace | [Workspace Lifecycle](#workspace-lifecycle) |
+| Create, open, rename or delete a workspace | [Workspace Lifecycle](#workspace-lifecycle) |
 | Upload CDRs, mappings, inventories and polygons | [Data Ingestion](#data-ingestion) |
+| <span class="guide-sub">↳ Follow an upload step by step</span> | <span class="guide-sub">↳ [Upload Workflow](#upload-workflow)</span> |
+| <span class="guide-sub">↳ Name the campaign of a CDR</span> | <span class="guide-sub">↳ [Campaign](#campaign)</span> |
+| <span class="guide-sub">↳ Choose a Final, Weekly or Daily CDR</span> | <span class="guide-sub">↳ [CDR Stage: Final, Weekly and Daily](#cdr-stage-final-weekly-and-daily)</span> |
+| <span class="guide-sub">↳ Upload the vendor of each cell</span> | <span class="guide-sub">↳ [Multivendor Mappings](#multivendor-mappings)</span> |
 | Understand how the NetCheck CDRs are processed | [NetCheck CDR Support](#netcheck-cdr-support) |
+| <span class="guide-sub">↳ Read the cards of the datasets</span> | <span class="guide-sub">↳ [Datasets cards](#datasets-cards)</span> |
+| <span class="guide-sub">↳ Use the combined CDR tables</span> | <span class="guide-sub">↳ [Combined CDR Tables](#combined-cdr-tables)</span> |
+| <span class="guide-sub">↳ Map the vendor of each row</span> | <span class="guide-sub">↳ [Vendor Mapping](#vendor-mapping)</span> |
 | Look at the rows of a CDR and enrich it | [Dataset Inspection and Enrichment](#dataset-inspection-and-enrichment) |
+| <span class="guide-sub">↳ Preview the rows of a dataset</span> | <span class="guide-sub">↳ [Dataset Preview](#dataset-preview)</span> |
+| <span class="guide-sub">↳ Add the Layer3 Logs of a campaign</span> | <span class="guide-sub">↳ [Layer3 Logs](#layer3-logs)</span> |
+| <span class="guide-sub">↳ Add the carrier aggregation appendix</span> | <span class="guide-sub">↳ [CA Appendix](#ca-appendix)</span> |
 | Fix a failed upload | [Troubleshooting](#troubleshooting) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 

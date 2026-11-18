@@ -33,17 +33,30 @@ Each panel names its **data sources** as coloured labels under its title (hover 
 network-insights
 ```
 
-## Choose your task
+## In this guide
 
-| I want to… | Go to |
+| Task or topic | Go to |
 | --- | --- |
 | Run an analysis | [Launch Analysis](#launch-analysis) |
-| Compare the operators at a glance | [Key Findings](#key-findings) · [Overview and RF Quality](#overview-and-rf-quality) |
-| Find weak-coverage or high-interference areas | [Coverage and Interference Maps](#coverage-and-interference-maps) |
-| Find overshooting cells and 5G sites that give no NR | [Serving Cells](#serving-cells) · [5G Availability](#5g-availability) |
-| Compare the spectrum, bandwidth and sites of the operators | [Spectrum](#spectrum) · [Network Deployment](#network-deployment) |
-| Compare the latency of the gaming and video chat tests | [Latency & Interactivity](#latency-interactivity) |
+| <span class="guide-sub">↳ Group the results by area or campaign</span> | <span class="guide-sub">↳ [Grouping](#grouping)</span> |
+| <span class="guide-sub">↳ Choose the theme of the analysis</span> | <span class="guide-sub">↳ [Theme](#theme)</span> |
+| <span class="guide-sub">↳ Combine LTE and NR</span> | <span class="guide-sub">↳ [LTE+NR](#lte-nr)</span> |
+| Compare the coverage and RF quality of the operators | [Overview and RF Quality](#overview-and-rf-quality) |
+| Read the main findings at a glance | [Key Findings](#key-findings) |
 | Export the analysis to PowerPoint or Word | [Export](#export) |
+| Find weak-coverage or high-interference areas | [Coverage and Interference Maps](#coverage-and-interference-maps) |
+| Compare the latency of gaming and video chat | [Latency & Interactivity](#latency-interactivity) |
+| Find overshooting and far serving cells | [Serving Cells](#serving-cells) |
+| Find 5G sites that give no NR | [5G Availability](#5g-availability) |
+| See a snapshot of each network | [Network Snapshot](#network-snapshot) |
+| Compare the sites and technologies deployed | [Network Deployment](#network-deployment) |
+| Compare the density of sites per cluster | [Cluster Sites Density](#cluster-sites-density) |
+| Compare the spectrum and bandwidth of the operators | [Spectrum](#spectrum) |
+| Use the RF Quality template in PPT Designer | [RF Quality template and Design](#rf-quality-template-and-design) |
+| Know which data each panel reads | [Data sources](#data-sources) |
+| Provide the inputs that are still missing | [Pending inputs](#pending-inputs) |
+| Keep and transfer the analyses | [Persistence and transfers](#persistence-and-transfers) |
+| Fix an empty or slow analysis | [Troubleshooting](#troubleshooting) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Launch Analysis

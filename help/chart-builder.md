@@ -12,14 +12,15 @@ Chart Builder is the ad-hoc chart editor: draw any chart on the processed CDRs, 
 builders
 ```
 
-## Choose your task
+## In this guide
 
-| I want to… | Go to |
+| Task or topic | Go to |
 | --- | --- |
-| Build a chart step by step | [Workflow](#workflow) · [Example](#example) |
+| Build a chart step by step | [Workflow](#workflow) |
 | Change the shelves, chart type and format | [Interactive Preview](#interactive-preview) |
-| Filter the rows of the chart | [Filters](#filters) |
 | Keep the chart in a PPT Design or Template | [Add to PPT Design or Template](#add-to-ppt-design-or-template) |
+| Follow an example | [Example](#example) |
+| Filter the rows of the chart | [Filters](#filters) |
 | Make it faster or fix an empty chart | [Performance and troubleshooting](#performance-and-troubleshooting) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 

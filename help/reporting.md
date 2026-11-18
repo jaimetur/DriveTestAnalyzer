@@ -17,10 +17,15 @@ reporting
 | --- | --- |
 | Find and manage the reports | [Reports](#reports) |
 | Create or edit a report | [The report editor](#the-report-editor) |
+| <span class="guide-sub">↳ Choose the campaigns of each module</span> | <span class="guide-sub">↳ [Campaigns of each module](#campaigns-of-each-module)</span> |
+| <span class="guide-sub">↳ Set the options of each module</span> | <span class="guide-sub">↳ [Options of each module](#options-of-each-module)</span> |
+| <span class="guide-sub">↳ Choose the theme and iPhone pictures</span> | <span class="guide-sub">↳ [Theme and iPhone pictures](#theme-and-iphone-pictures)</span> |
 | Generate a report and preview it | [Generate and preview](#generate-and-preview) |
 | Know what the PowerPoint and Word documents contain | [How a report is composed](#how-a-report-is-composed) |
-| Send a report on a schedule by email | [Schedule and email](#schedule-and-email) · [Email delivery](#email-delivery) |
+| Send a report on a schedule by email | [Schedule and email](#schedule-and-email) |
+| Know how the emails are delivered | [Email delivery](#email-delivery) |
 | Find a report generated earlier | [History](#history) |
+| Export, import and transfer the reports | [Portability](#portability) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Reports

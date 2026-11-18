@@ -13,11 +13,19 @@ administration
 | Task or topic | Go to |
 | --- | --- |
 | Know what each role can do | [Roles](#roles) |
-| Give a person access: account, role and modules | [Users](#users) · [Modules Profiles](#modules-profiles) |
+| <span class="guide-sub">↳ Delete items shared by others</span> | <span class="guide-sub">↳ [Deleting shared items](#deleting-shared-items)</span> |
+| Create and manage the user accounts | [Users](#users) |
+| Choose the modules each user sees | [Modules Profiles](#modules-profiles) |
 | Choose which workspaces each user sees | [Workspace Groups](#workspace-groups) |
-| Answer access requests and forgotten passwords | [Access Requests](#access-requests) |
+| Answer access requests | [Access Requests](#access-requests) |
+| <span class="guide-sub">↳ Reset forgotten passwords</span> | <span class="guide-sub">↳ [Forgotten passwords](#forgotten-passwords)</span> |
 | Rename the modules or change the look of the tool | [Interface Settings](#interface-settings) |
+| Choose the figures of the Help presentations | [Presentations](#presentations) |
+| Set up the AI comment writers | [AI Comment Writers](#ai-comment-writers) |
 | Protect, back up or browse the databases | [Database Management](#database-management) |
+| <span class="guide-sub">↳ Protect and schedule the backups</span> | <span class="guide-sub">↳ [Backup Protection](#backup-protection)</span> |
+| <span class="guide-sub">↳ Browse the tables of a database</span> | <span class="guide-sub">↳ [Database Viewer](#database-viewer)</span> |
+| Reset the application | [Reset Application](#reset-application) |
 | Check the platform regularly | [Operational checklist](#operational-checklist) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 

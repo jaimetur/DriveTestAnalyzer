@@ -13,17 +13,34 @@ Each calculation gives the NetCheck **Best Network** scoring, which rates every 
 scoring-gap-analysis
 ```
 
-## Choose your task
+## In this guide
 
-| I want to… | Go to |
+| Task or topic | Go to |
 | --- | --- |
 | Calculate the scoring of a campaign | [Calculate and review](#calculate-and-review) |
-| Reuse a saved or favourite scoring | [Reuse Saved Scorings](#5-reuse-saved-scorings) · [Filter Navigator](#filter-navigator) |
-| Read the scores and the GAPs to the competition | [Results tabs](#results-tabs) · [GAP Analysis](#gap-analysis) |
-| Find where and why points are lost | [Points Lost](#points-lost) · [Points Lost Map](#points-lost-map) |
-| Follow the scoring across campaigns and areas | [Scoring Trends](#scoring-trends) · [Country Areas](#country-areas) |
-| Change the methodology and see what it changes | [Methodology](#methodology) · [Methodology Impact](#methodology-impact) |
-| Share the results as PowerPoint, Word or Excel | [Results exports](#results-exports) |
+| <span class="guide-sub">↳ Choose the NR Mode and the campaign</span> | <span class="guide-sub">↳ [2. Choose the NR Mode and Campaign](#2-choose-the-nr-mode-and-campaign)</span> |
+| <span class="guide-sub">↳ Set the filters, Break down by and reference</span> | <span class="guide-sub">↳ [3. Set filters, Break down by and reference](#3-set-filters-break-down-by-and-reference)</span> |
+| <span class="guide-sub">↳ Reuse a saved or favourite scoring</span> | <span class="guide-sub">↳ [5. Reuse Saved Scorings](#5-reuse-saved-scorings)</span> |
+| Understand filters, Break down by and the GAP reference | [Filters and Break down by](#filters-and-break-down-by) |
+| <span class="guide-sub">↳ Filter by vendor</span> | <span class="guide-sub">↳ [Vendor filtering](#vendor-filtering)</span> |
+| Read the results and choose the scoring settings | [Results and workspace settings](#results-and-workspace-settings) |
+| <span class="guide-sub">↳ Read the summary of the scores</span> | <span class="guide-sub">↳ [Summary](#summary)</span> |
+| <span class="guide-sub">↳ Read the GAPs to the competition</span> | <span class="guide-sub">↳ [GAP Analysis](#gap-analysis)</span> |
+| <span class="guide-sub">↳ Find where and why points are lost</span> | <span class="guide-sub">↳ [Points Lost](#points-lost)</span> |
+| <span class="guide-sub">↳ Follow the scoring across campaigns</span> | <span class="guide-sub">↳ [Scoring Trends](#scoring-trends)</span> |
+| <span class="guide-sub">↳ Compare two methodologies on the same tests</span> | <span class="guide-sub">↳ [Methodology Impact](#methodology-impact)</span> |
+| Leave calls out of the scoring | [Excluded Calls](#excluded-calls) |
+| Change the methodology and its KPIs | [Methodology](#methodology) |
+| <span class="guide-sub">↳ Use named methodologies and portable JSON</span> | <span class="guide-sub">↳ [Named methodologies and portable JSON](#named-methodologies-and-portable-json)</span> |
+| <span class="guide-sub">↳ Configure the environments</span> | <span class="guide-sub">↳ [Configure environments](#configure-environments)</span> |
+| <span class="guide-sub">↳ Edit, add or remove KPIs</span> | <span class="guide-sub">↳ [Editing, replacing, adding and removing KPIs](#editing-replacing-adding-and-removing-kpis)</span> |
+| Find a scoring calculated earlier | [Scoring History](#scoring-history) |
+| Save and share the results | [Persistence and exports](#persistence-and-exports) |
+| <span class="guide-sub">↳ Export to PowerPoint, Word or Excel</span> | <span class="guide-sub">↳ [Results exports](#results-exports)</span> |
+| <span class="guide-sub">↳ Know what the PowerPoint contains</span> | <span class="guide-sub">↳ [What is in the PowerPoint?](#what-is-in-the-powerpoint)</span> |
+| Fix a missing or unexpected score | [Troubleshooting](#troubleshooting) |
+| Look up the methodology JSON and calculation | [Methodology reference](#methodology-reference) |
+| Check the KPI allocation of each methodology | [Supported KPI allocation](#supported-kpi-allocation) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Calculate and review

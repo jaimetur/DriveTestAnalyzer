@@ -17,16 +17,33 @@ Build an interactive Design (a PPT Design) from processed Data, Voice and Speech
 ppt-designer
 ```
 
-## Choose your task
+## In this guide
 
-| I want to… | Go to |
+| Task or topic | Go to |
 | --- | --- |
-| Create a Design from a template | [PPT Designs](#ppt-designs) |
+| Check what a Design needs first | [Before creating a Design](#before-creating-a-design) |
+| Create and manage Designs | [PPT Designs](#ppt-designs) |
+| <span class="guide-sub">↳ Create a Design from a template</span> | <span class="guide-sub">↳ [Create a definition](#create-a-definition)</span> |
+| <span class="guide-sub">↳ Show NSA and SA in one Design</span> | <span class="guide-sub">↳ [NSA & SA in one Design](#nsa-sa-in-one-design)</span> |
 | Choose the campaigns, dates and operators of a Design | [PPT Scope & Filters](#ppt-scope-filters) |
+| <span class="guide-sub">↳ Choose the scope of the CDRs</span> | <span class="guide-sub">↳ [PPT Scope](#ppt-scope)</span> |
+| Understand the preparation and the cache | [Preparation lifecycle and cache](#preparation-lifecycle-and-cache) |
+| <span class="guide-sub">↳ Know what Clear cache removes</span> | <span class="guide-sub">↳ [What Clear cache removes](#what-clear-cache-removes)</span> |
 | Browse the slides and the data behind a chart | [View PPT](#view-ppt) |
-| Change the slides, charts and texts on screen | [Designer](#designer) · [Template parameters](#template-parameters) |
-| Create or edit a PPT Template | [PPT Templates](#ppt-templates) · [Report Template reference](#report-template-reference) |
-| Export the presentation to PowerPoint | [Generate PPT](#generate-ppt) · [PPT Generation Jobs](#ppt-generation-jobs) |
+| <span class="guide-sub">↳ Comment, present and use the floating tools</span> | <span class="guide-sub">↳ [Comments, Presentation and floating tools](#comments-presentation-and-floating-tools)</span> |
+| Change the slides, charts and texts on screen | [Designer](#designer) |
+| <span class="guide-sub">↳ Edit the template or only this Design</span> | <span class="guide-sub">↳ [Template or This Design](#template-or-this-design)</span> |
+| <span class="guide-sub">↳ Add and change the charts of a slide</span> | <span class="guide-sub">↳ [Charts on the slide](#charts-on-the-slide)</span> |
+| <span class="guide-sub">↳ Change the parameters of the template</span> | <span class="guide-sub">↳ [Template parameters](#template-parameters)</span> |
+| Export the presentation to PowerPoint | [Generate PPT](#generate-ppt) |
+| Follow the exports running and done | [PPT Generation Jobs](#ppt-generation-jobs) |
+| Pick charts from the Charts Panel | [Charts Panel](#charts-panel) |
+| Create or edit a PPT Template | [PPT Templates](#ppt-templates) |
+| <span class="guide-sub">↳ Edit a template as a table</span> | <span class="guide-sub">↳ [Table view (Template Editor)](#table-view-template-editor)</span> |
+| Look up the template columns and chart recipes | [Report Template reference](#report-template-reference) |
+| <span class="guide-sub">↳ See the supported chart types</span> | <span class="guide-sub">↳ [Supported chart types](#supported-chart-types)</span> |
+| <span class="guide-sub">↳ Copy a chart recipe</span> | <span class="guide-sub">↳ [Chart recipes](#chart-recipes)</span> |
+| Move, copy and maintain Designs and Templates | [Portability and maintenance](#portability-and-maintenance) |
 | Fix empty charts or a slow preparation | [Troubleshooting](#troubleshooting) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 

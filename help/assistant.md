@@ -19,10 +19,14 @@ assistant
 | Task or topic | Go to |
 | --- | --- |
 | Ask a question about the workspace | [Ask a question](#ask-a-question) |
-| Read the answer, its tables and its charts | [Read an answer](#read-an-answer) · [Charts](#charts) |
-| Know what it reads and what leaves the tool | [What the assistant can read](#what-the-assistant-can-read) · [Privacy: the names sent as codes](#privacy-the-names-sent-as-codes) |
+| Read the answer and its tables | [Read an answer](#read-an-answer) |
+| Get and read charts | [Charts](#charts) |
+| Know what it can read | [What the assistant can read](#what-the-assistant-can-read) |
+| Know what leaves the tool | [Privacy: the names sent as codes](#privacy-the-names-sent-as-codes) |
 | Teach it the words of the workspace | [The glossary of the workspace](#the-glossary-of-the-workspace) |
 | Go back to an earlier conversation | [Conversations](#conversations) |
+| Know which engines answer | [Engines](#engines) |
+| See what is recorded in App Events | [App Events](#app-events) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Ask a question

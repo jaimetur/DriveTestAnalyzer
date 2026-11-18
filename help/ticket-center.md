@@ -18,12 +18,18 @@ ticket-center
 
 | Task or topic | Go to |
 | --- | --- |
-| Report a bug or ask for an improvement | [New Ticket](#new-ticket) |
-| Find and follow my tickets | [All Tickets](#all-tickets) · [The page of a ticket](#the-page-of-a-ticket) |
-| See the state of all the tickets at a glance | [Dashboard](#dashboard) · [Statistics](#statistics) |
+| See the state of all the tickets at a glance | [Dashboard](#dashboard) |
+| Read the statistics of the tickets | [Statistics](#statistics) |
 | See the time spent on the tickets | [Time Spent](#time-spent) |
-| Know how a ticket moves and who can change it | [Types, priorities and statuses](#types-priorities-and-statuses) · [Who can do what](#who-can-do-what) |
+| Report a bug or ask for an improvement | [New Ticket](#new-ticket) |
+| <span class="guide-sub">↳ Format descriptions and comments</span> | <span class="guide-sub">↳ [Writing descriptions and comments](#writing-descriptions-and-comments)</span> |
+| Find and follow the tickets | [All Tickets](#all-tickets) |
+| Read, comment and change a ticket | [The page of a ticket](#the-page-of-a-ticket) |
+| Know the types, priorities and statuses | [Types, priorities and statuses](#types-priorities-and-statuses) |
+| Know who can change a ticket | [Who can do what](#who-can-do-what) |
 | Get the updates by email | [Email updates](#email-updates) |
+| Free the space of old attachments | [Clean up attachments](#clean-up-attachments) |
+| Export, import and transfer the tickets | [Portability](#portability) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Dashboard

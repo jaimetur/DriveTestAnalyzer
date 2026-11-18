@@ -18,11 +18,17 @@ cdr-analysis
 
 | Task or topic | Go to |
 | --- | --- |
-| Pick a CDR and analyse it | [Analysis workflow](#analysis-workflow) · [Analysis Controls](#analysis-controls) |
-| Read the summary and the charts of a CDR | [Dataset Summary](#dataset-summary) · [Charts and Scorecards](#charts-and-scorecards) |
-| Look at the rows behind a result and export them | [Preview and export](#preview-and-export) |
-| Follow an example investigation | [Example investigation](#example-investigation) |
 | Know why a CDR is not listed | [Eligible datasets](#eligible-datasets) |
+| Pick a CDR and analyse it | [Analysis workflow](#analysis-workflow) |
+| Choose the filters and options of the analysis | [Analysis Controls](#analysis-controls) |
+| Read the summary of a CDR | [Dataset Summary](#dataset-summary) |
+| Read the charts and scorecards | [Charts and Scorecards](#charts-and-scorecards) |
+| See the metrics calculated for the CDR | [Processed Metrics](#processed-metrics) |
+| Look at the rows behind a result and export them | [Preview and export](#preview-and-export) |
+| <span class="guide-sub">↳ Inspect the persisted rows</span> | <span class="guide-sub">↳ [Inspect persisted rows](#inspect-persisted-rows)</span> |
+| <span class="guide-sub">↳ Export the analysis</span> | <span class="guide-sub">↳ [Export the analysis](#export-the-analysis)</span> |
+| Follow an example investigation | [Example investigation](#example-investigation) |
+| Make large analyses faster | [Performance](#performance) |
 | Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 
 ## Eligible datasets
