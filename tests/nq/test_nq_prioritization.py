@@ -1740,6 +1740,11 @@ def test_the_nq_call_status_keeps_a_call_in_its_queue_while_it_is_under_analysis
     # Analysis Finished takes it out of the queue.
     assert change(key, {'fields': {'analysis_status': 'Finished'}})['status'] == 'Analysis Finished'
     assert key not in listed(panel())
+    # Its card, before Attended, in Progress View and Lifecycle & Phases.
+    progress = client.post('/api/non-qualified-calls/progress', json={'filters': {}}).json()
+    life = client.post('/api/non-qualified-calls/lifecycle', json={'filters': {}}).json()
+    assert progress['finished_status'] == life['finished_status'] == 'Analysis Finished'
+    assert progress['summary']['analysis_finished'] == next(item['count'] for item in life['pipeline'] if item['status'] == 'Analysis Finished') == 1
     # Set back to Not Attended by hand, it waits in its queue again (ticket #173).
     assert change(key, {'status': 'Not Attended'})['status'] == 'Not Attended'
     data = panel()

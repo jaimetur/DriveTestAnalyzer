@@ -260,7 +260,7 @@ def progress_title(granularity_label: str, subtitle: str) -> SlideTitle:
 
 
 def _follow_up_cards(in_queues: int, first: int, first_name: str, assigned: int, attended: int, analysis: int,
-                     base: int) -> list[tuple[str, str, str, str]]:
+                     base: int, finished: int = 0, finished_name: str = '') -> list[tuple[str, str, str, str]]:
     """In Queues (the first status, Assigned and Under Analysis), the first status, Assigned and Attended, as Lifecycle & Phases, Progress
     View and the In Queues badge of the page name and count them."""
     return [('In Queues', _number(in_queues),
@@ -269,6 +269,8 @@ def _follow_up_cards(in_queues: int, first: int, first_name: str, assigned: int,
             (first_name or 'Not Attended', _number(first), f'{_share(first, base)} nobody has them yet', 'commented'),
             ('Assigned', _number(assigned), f'{_share(assigned, base)} given a team or an analyst, not attended yet', 'team'),
             ('Under Analysis', _number(analysis), f'{_share(analysis, base)} attended, still in their queue', 'attended'),
+            *([(finished_name, _number(finished), f'{_share(finished, base)} analysed, implementation not decided yet', 'closed')]
+              if finished_name else []),
             ('Attended', _number(attended), f'{_share(attended, base)} followed up, in any later status', 'open')]
 
 
@@ -283,7 +285,7 @@ def progress_view_panels(progress: dict[str, Any], options: dict[str, Any], gran
         *_follow_up_cards(int(summary.get('not_attended') or 0) + int(summary.get('in_analysis') or 0), int(summary.get('in_queues') or 0),
                           str(progress.get('first_status') or ''), int(summary.get('not_attended_assigned') or 0),
                           int(summary.get('queued_attended', summary.get('attended')) or 0), int(summary.get('in_analysis') or 0),
-                          int(summary.get('queued') or 0)),
+                          int(summary.get('queued') or 0), int(summary.get('analysis_finished') or 0), str(progress.get('finished_status') or '')),
         ('First Follow-up', _days(summary.get('avg_days_to_first_follow_up')), 'Average from the call', 'team'),
         ('Time to Close', _days(summary.get('avg_days_to_close')), 'Average from the call', 'commented'),
         ('Closure Rate', f"{float(summary.get('closure_rate') or 0):.1f}%",
@@ -995,7 +997,9 @@ def _pipeline_panel(lifecycle: dict[str, Any]) -> BytesIO:
                          *cards[2:]])(
             _follow_up_cards(int(lifecycle.get('in_queues_now') or 0), int((waiting or {}).get('count') or 0), str((waiting or {}).get('status') or ''),
                              int(lifecycle.get('waiting_now') or 0) - int((waiting or {}).get('count') or 0),
-                             queued - int(lifecycle.get('waiting_now') or 0), int(lifecycle.get('analysis_now') or 0), queued)),
+                             queued - int(lifecycle.get('waiting_now') or 0), int(lifecycle.get('analysis_now') or 0), queued,
+                             next((int(item.get('count') or 0) for item in pipeline if item.get('status') == lifecycle.get('finished_status')), 0),
+                             str(lifecycle.get('finished_status') or ''))),
         ('Stalled', _number(lifecycle.get('stalled_total', 0)), f"Open, no change for {lifecycle.get('stalled_days', 14)}+ days", 'attended'),
         ('Closed', _number(closed), f'{_share(closed, queued)} closed{_tracked(closed_tracked)}', 'closed'),
     ], 0, 0.95, compact=True)

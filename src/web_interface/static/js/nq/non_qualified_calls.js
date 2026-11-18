@@ -2479,7 +2479,8 @@
       // The rates count only the prioritized calls: the tracked calls (in no queue) are shown apart.
       ...followUpCards({inQueues: (summary.not_attended || 0) + (summary.in_analysis || 0), first: summary.in_queues || 0,
         firstName: progress.first_status, assigned: summary.not_attended_assigned || 0,
-        attended: summary.queued_attended ?? summary.attended, base: summary.queued, analysis: summary.in_analysis || 0}),
+        attended: summary.queued_attended ?? summary.attended, base: summary.queued, analysis: summary.in_analysis || 0,
+        finished: summary.analysis_finished || 0, finishedName: progress.finished_status}),
       drillCard(kpiCard('First Follow-up', days(summary.avg_days_to_first_follow_up), 'Average from the call', 'team'), {pairs: [['state', 'attended']]}),
       drillCard(kpiCard('Time to Close', days(summary.avg_days_to_close), 'Average from the call', 'commented'), {pairs: [['state', 'closed']]}),
       drillCard(kpiCard('Closure Rate', `${summary.closure_rate.toFixed(1)}%`, `${number(summary.queued_closed)} of ${number(summary.queued)} in a queue closed`, 'closed'), {pairs: [['state', 'closed']]}),
@@ -2870,7 +2871,7 @@
   // first status, Assigned and Under Analysis); the first status (Not Attended), nobody has them yet; Assigned, given a
   // team or an analyst and not attended yet; Attended, the calls somebody attended,
   // in any later status.
-  const followUpCards = ({inQueues, first, firstName, assigned, attended, analysis, base}) => [
+  const followUpCards = ({inQueues, first, firstName, assigned, attended, analysis, finished, finishedName, base}) => [
     drillCard(kpiCard('In Queues', number(inQueues), `${percent(inQueues, base)} · ${firstName || 'Not Attended'} ${number(first)} + Assigned ${number(assigned)} + Under Analysis ${number(analysis)}`, 'total'),
       {pairs: [['state', 'queued_now']]}),
     drillCard(kpiCard(firstName || 'Not Attended', number(first), `${percent(first, base)} nobody has them yet`, 'commented'),
@@ -2880,6 +2881,9 @@
     // Under Analysis: attended and still in their queue; with the two before, they add up to In Queues.
     drillCard(kpiCard('Under Analysis', number(analysis), `${percent(analysis, base)} attended, still in their queue`, 'attended'),
       {pairs: [['state', 'queued_analysis']]}),
+    // Analysis Finished: the analysis is done and its implementation not decided yet (out of the queues).
+    ...(finishedName ? [drillCard(kpiCard(finishedName, number(finished), `${percent(finished, base)} analysed, implementation not decided yet`, 'closed'),
+      {pairs: [['status', finishedName], ['state', 'in_queue']]})] : []),
     drillCard(kpiCard('Attended', number(attended), `${percent(attended, base)} followed up, in any later status`, 'open'),
       {pairs: [['state', 'queued_attended']]}),
   ];
@@ -2899,7 +2903,8 @@
       // Open (Assigned and the phase statuses) goes before Assigned, the first of its statuses.
       ...followUpCards({inQueues: life.in_queues_now || 0, first: life.not_attended?.count || 0, firstName: life.not_attended?.status,
         assigned: (life.waiting_now || 0) - (life.not_attended?.count || 0), attended: queued - (life.waiting_now || 0),
-        base: queued, analysis: life.analysis_now || 0}).toSpliced(2, 0,
+        base: queued, analysis: life.analysis_now || 0, finishedName: life.finished_status,
+        finished: life.pipeline.find((item) => item.status === life.finished_status)?.count || 0}).toSpliced(2, 0,
         drillCard(kpiCard('Open', number(life.open), `${percent(life.open, queued)} assigned or attended, not closed${trackedNote(life.open_tracked)}`, 'open'),
           {pairs: [['state', 'open']]})),
       drillCard(kpiCard('Stalled', number(life.stalled_total), `Open, no change for ${life.stalled_days}+ days`, 'attended'),

@@ -4040,6 +4040,15 @@ def queue_statuses(options: dict[str, list[dict[str, Any]]], rules: list[dict[st
             'first': [first] if first else []}
 
 
+# The status of the calls whose analysis is finished and whose implementation is not decided yet (tickets #172, #173).
+ANALYSIS_FINISHED = 'Analysis Finished'
+
+
+def finished_status(options: dict[str, list[dict[str, Any]]]) -> str:
+    """Analysis Finished as the workspace names it, or '' when it has no such status."""
+    return next((item['name'] for item in options['statuses'] if item['name'].casefold() == ANALYSIS_FINISHED.casefold()), '')
+
+
 def default_status(options: dict[str, list[dict[str, Any]]]) -> str:
     """Untracked calls show the first status."""
     return options['statuses'][0]['name'] if options['statuses'] else 'Open'
@@ -6912,6 +6921,8 @@ def progress_stats(task_repository: Any, filters: dict[str, Any], username: str,
         'statuses': [item['name'] for item in options['statuses'] if not item['closed']],
         # The first status, which names the card of the calls nobody has yet.
         'first_status': lists['first'][0] if lists['first'] else '',
+        # Analysis Finished, when the workspace has that status (its card goes before Attended).
+        'finished_status': finished_status(options),
         'teams': queued['teams'],
         'analysts': queued['analysts'],
         'activity': queued['activity'],
@@ -7040,7 +7051,9 @@ def _progress_of(calls: list[Any], history: list[Any], comments: list[Any], opti
     return {
         'summary': {
             'total': total, 'attended': len(attended), 'not_attended': total - len(attended),
-            'not_attended_assigned': total - len(attended) - in_first, 'in_queues': in_first, 'in_analysis': in_analysis, 'open': len(open_calls), 'closed': closed_total,
+            'not_attended_assigned': total - len(attended) - in_first, 'in_queues': in_first, 'in_analysis': in_analysis,
+            # The calls whose analysis is finished, its implementation not decided yet (the card after Under Analysis).
+            'analysis_finished': sum(1 for row in calls if str(row['status'] or '').casefold() == ANALYSIS_FINISHED.casefold()), 'open': len(open_calls), 'closed': closed_total,
             'closure_rate': round(closed_total * 100 / total, 1) if total else 0.0,
             'comments': sum(1 for row in comments if not row['deleted_at']),
             'changes': len(history), 'contributors': len(activity),
@@ -9753,6 +9766,7 @@ def lifecycle_stats(task_repository: Any, filters: dict[str, Any], username: str
         # The calls of the queues in a status of the queues: those the queues list (waiting or under analysis), and of the
         # prioritized calls those nobody attended yet (Waiting) and the others (Attended), as Progress View counts them.
         'in_queues_now': sum(item['count'] for item in pipeline if item['in_queue']),
+        'finished_status': finished_status(options),
         'waiting_now': sum(item['count'] for item in pipeline if item['status'].casefold() in waiting_names),
         'waiting_statuses': [item['status'] for item in pipeline if item['status'].casefold() in waiting_names and item['count']],
         'analysis_now': sum(item['count'] for item in pipeline if item['in_queue'] and item['status'].casefold() not in waiting_names), 'modes': {'auto': modes.get('auto', 0), 'manual': modes.get('manual', 0)},
