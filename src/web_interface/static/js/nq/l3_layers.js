@@ -1183,7 +1183,7 @@
         if (moment) cursorGroup.setAttribute('transform', `translate(${x(moment.ms).toFixed(1)} 0)`);
         readout.replaceChildren();
         if (!moment) {
-          readout.append(node('span', 'Drag along the timeline (or use the arrow keys) to follow the UE on the map, with its events and messages of each moment.', 'nq-l3-timeline-hint'));
+          readout.append(node('span', 'Drag along the timeline (or use the arrow keys, Shift for 5 s steps, Home/End for the start/end) to follow the UE on the map, with its events and messages of each moment.', 'nq-l3-timeline-hint'));
           return;
         }
         readout.append(node('b', `${clock(moment.ms)} · ${((moment.ms - start) / 1000).toFixed(1)} s`, 'nq-l3-timeline-now'));

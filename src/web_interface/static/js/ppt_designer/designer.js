@@ -280,6 +280,7 @@
     state.element = '';
     state.tab = 'slide';
     $('ds-viewer').classList.add('ds-designing');
+    $('ds-title').title = $('ds-subtitle').title = 'Click to edit';
     // The values of the Rows and Columns of a chart are dragged to another order on the chart itself (canvas_charts.js).
     $('ds-viewer').dataset.chartOrder = 'true';
     $('ds-design-bar').hidden = false;
@@ -361,6 +362,7 @@
     state.active = false;
     state.element = '';
     $('ds-viewer').classList.remove('ds-designing');
+    $('ds-title').removeAttribute('title'); $('ds-subtitle').removeAttribute('title');
     delete $('ds-viewer').dataset.chartOrder;
     lockViewerActions(false);
     $('ds-design-bar').hidden = true;
@@ -1045,6 +1047,7 @@
       const found = findElement(state.slide_set, id);
       card.classList.add('ds-design-card');
       card.classList.toggle('is-selected', id === state.element);
+      card.title = `Click to choose · right-click for Duplicate, Copy, Cut, Delete…${card.classList.contains('ds-element-card') ? '' : ' · double-click to enlarge'}`;
       if (!card.dataset.repeated && !card.querySelector('.ds-design-drag')) {
         const handle = h('span', {class: 'ds-design-drag', draggable: 'true', title: 'Drag to another place of the slide', 'aria-hidden': 'true'}, '⠿');
         handle.addEventListener('dragstart', event => {

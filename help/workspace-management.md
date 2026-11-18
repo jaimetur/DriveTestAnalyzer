@@ -7,8 +7,6 @@ Workspace Management is the first operational module. It controls isolated works
 
 ## Presentations
 
-Two presentations sum the module up: **Workspace**, the isolated workspaces with their CDRs, network inventories and maps (what each one keeps, what it ingests and how it gets every dataset ready for the other modules), and **Workspace Config**, everything to set up in a new workspace before its first analysis (how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)). Select one to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
-
 ```presentations
 workspace
 workspace-config
@@ -24,6 +22,36 @@ workspace-config
 | NetCheck CDR Support | [Open section](#netcheck-cdr-support) |
 | Dataset Inspection and Enrichment | [Open section](#dataset-inspection-and-enrichment) |
 | Troubleshooting | [Open section](#troubleshooting) |
+| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
+
+## Tips & shortcuts
+
+These gestures save clicks while loading and inspecting data. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts); those of the mappings and Auto-calculated Fields are in [Workspace Config](workspace-config.md#tips-shortcuts).
+
+**Loading data**
+
+| To… | Do this |
+| --- | --- |
+| Add files to upload | Drop them on the **Drop workbooks or browse** zone of Data Ingestion, or click it to choose them |
+| Select every CDR of a campaign, week or day | Tick the box of its group in the CDR tables (folded or not) |
+| Select every dataset of a table | Tick the box in its ID header |
+
+**Map of Regions, Clusters and Vendors** (their Preview)
+
+| To… | Do this |
+| --- | --- |
+| Zoom in or out | Mouse wheel |
+| Move the map | Drag it |
+| See every polygon again | Double-click the map |
+| Find a polygon on the map | Hover its name in the legend: its polygon is highlighted |
+
+**Dataset Preview**
+
+| To… | Do this |
+| --- | --- |
+| Scroll a wide table sideways | <kbd>Shift</kbd> + mouse wheel over the table |
+| Read how a field is calculated | Hover its `Derived`, `Auto-calculated` or `Analysis-derived` badge |
+| See the complete rule of a field | Click its badge; <kbd>Esc</kbd>, its close button or a click outside closes the panel |
 
 ## Workspace Lifecycle
 
@@ -32,7 +60,17 @@ The open workspace is one for the whole server: opening another one changes it f
 - Create, open, close, rename, duplicate and delete workspaces. **New workspace** opens a dialog that asks for the name, the **CDR type** (NetCheck CDR by default; Umlaut CDR, P3 CDR and RootMetrics CDR are coming soon), the **Country** and, for super-admins, the **Access**; **Create and open** creates it. A workspace created for one of the 50 listed countries starts with the [Operator Maps](workspace-config.md#operator-maps) of its mobile operators, in their corporate colours; with **None** it starts without Operator Maps.
 - Review the CDR type, country, access and size of each workspace, in that order after its name. The workspaces table changes the **CDR Type** of a workspace without CDRs (a workspace with Data, Voice or Speech CDRs keeps their type) and its **Country** (a new country adds its operators that the Operator Maps do not have yet, and keeps the labels the workspace already has), and super-admins choose in its **Access** selector the Workspace Groups that open it and the users it is granted to individually; **✓** saves the row. Super-admins also give workspaces to groups in [Super Admin → Workspace Groups](super-admin.md#workspace-groups).
 - Keep databases, uploaded files and generated output isolated.
-- A new workspace (and every existing workspace, once, the first time it opens after an update) starts with the starter content shipped with the application that it does not have yet, matched by name so nothing of its own is replaced. It is the content of the UK workspace without what only fits the UK (its regions, London, its cities one by one and its operators): the **NetCheck 2025**, **NetCheck 2026** and **NetCheck 2026-Q3** Scoring methodologies (NetCheck 2026 active; a methodology shipped later reaches every existing workspace once, without changing its active methodology); eight Report Templates, each serving every NR Mode: *NetCheck CDR Report* and *NetCheck CDR Report (Main Cities)*, titled *NetCheck CDR Analysis*, *RF Quality (RSRP & SINR)* and the examples of the application, *DT Analyzer - Tableau Dashboards*, *DT Analyzer - Tableau Charts*, *DT Analyzer - Tableau Charts - Only Maps*, *DT Analyzer - FDFS DL (NSA & SA)* and *DT Analyzer - All Supported Chart Types*; the six Designs of the first three, one per NR Mode (*NSA - NetCheck CDR Report*, *SA - NetCheck CDR Report* and so on), each on the Latest 2 campaigns and the *(Main Cities)* ones on the Main Cities of the workspace, and one [NSA & SA](ppt-designer.md#nsa-sa-in-one-design) Design named like each example but *Only Maps*: *DT Analyzer - Tableau Dashboards*, *DT Analyzer - Tableau Charts* and *DT Analyzer - All Supported Chart Types*, an [example of every chart type](ppt-designer.md#supported-chart-types), on the Latest 2 campaigns of each NR Mode, and *DT Analyzer - FDFS DL (NSA & SA)* on the Latest 3 campaigns in NSA and the Latest campaign in SA (the *FDFS DL (NSA & SA)* and *All Supported Chart Types* examples reach every existing workspace once too, and their earlier versions, *FDFS DL (NSA & SA)*, *All Chart Types* and *DT Analyzer - All Chart Types*, are replaced in place where they are as they were shipped); the Auto-calculated Fields they use (`Call_Family`, `Test_Family`, `Test_Result_Group` and `RAT_Group`) and `NR_Mode_from_RAT` (the [NSA, SA or Others of each sample](#auto-calculated-fields)); five Scoring report configurations (*National*, *National - Best Network Only*, *National - Most Reliable Network Only*, *National & Main Cities* and *National per Vendor*, their Country Areas with the Regions and the Main Cities); seven Query Builder queries (calls, failures, setup time, POLQA, data tests, tests per city and the FDTT throughput of n78 with and without another operator on the same NR-ARFCN); 18 Favourite Scorings (*Latest Campaign*, *Latest 2*, *3* or *4 Campaigns*, *Previous Campaign* and *All Campaigns* of *All Regions*, in NSA, SA and NSA vs SA, with the *Country Areas: Regions & Main Cities*), which take the CDRs of their Campaign choice once the workspace has them; and 12 reports of [Reporting](reporting.md), each in NSA and SA for the whole country (*SCO (@All Campaigns)* and *SCO (@Lastest 4 campaigns)* for Scoring, *SCO+NI+NQ (@Latest 4 campaigns)* with Network Insights and Non-Qualified Calls too, *SCO+NI+NQ+PPT+CDR (@Latest 2 campaigns)* with the Designs and CDR Analysis too, and *Weekly PPT (@Latest campaing)* and *(@Latest 2 campaings)* with the Designs), with the shipped Designs of their NR Mode checked, without a schedule. Every Scoring section scores each campaign with its own methodology. The Favourite Scorings and the reports choose every operator (their Focus operators and the operators they leave out are those of the [Operator Maps](workspace-config.md#operator-maps)); no template, Design or report filters an Operator (nor Vendors by their operator). A new workspace also starts with the Vendor Maps of `assets/labels-vendors/default-vendor-maps.json`, and the workspaces without their own Campaign Maps use `assets/labels-campaigns/default-campaign-map.json`. Deleted or renamed starter content is not added again.
+- **Starter content.** A new workspace (and every existing workspace, once, the first time it opens after an update) starts with the starter content shipped with the application that it does not have yet, matched by name so nothing of its own is replaced. It is the content of the UK workspace without what only fits the UK (its regions, London, its cities one by one and its operators). Deleted or renamed starter content is not added again.
+  - **Scoring methodologies:** **NetCheck 2025**, **NetCheck 2026** and **NetCheck 2026-Q3** (NetCheck 2026 active); a methodology shipped later reaches every existing workspace once, without changing its active methodology. Every Scoring section scores each campaign with its own methodology.
+  - **Report Templates:** eight, each serving every NR Mode: *NetCheck CDR Report* and *NetCheck CDR Report (Main Cities)*, titled *NetCheck CDR Analysis*, *RF Quality (RSRP & SINR)* and the examples of the application, *DT Analyzer - Tableau Dashboards*, *DT Analyzer - Tableau Charts*, *DT Analyzer - Tableau Charts - Only Maps*, *DT Analyzer - FDFS DL (NSA & SA)* and *DT Analyzer - All Supported Chart Types*.
+  - **Designs:** the six Designs of the first three, one per NR Mode (*NSA - NetCheck CDR Report*, *SA - NetCheck CDR Report* and so on), each on the Latest 2 campaigns and the *(Main Cities)* ones on the Main Cities of the workspace; and one [NSA & SA](ppt-designer.md#nsa-sa-in-one-design) Design named like each example but *Only Maps*: *DT Analyzer - Tableau Dashboards*, *DT Analyzer - Tableau Charts* and *DT Analyzer - All Supported Chart Types*, an [example of every chart type](ppt-designer.md#supported-chart-types), on the Latest 2 campaigns of each NR Mode, and *DT Analyzer - FDFS DL (NSA & SA)* on the Latest 3 campaigns in NSA and the Latest campaign in SA. The *FDFS DL (NSA & SA)* and *All Supported Chart Types* examples reach every existing workspace once too, and their earlier versions, *FDFS DL (NSA & SA)*, *All Chart Types* and *DT Analyzer - All Chart Types*, are replaced in place where they are as they were shipped.
+  - **Auto-calculated Fields:** those they use (`Call_Family`, `Test_Family`, `Test_Result_Group` and `RAT_Group`) and `NR_Mode_from_RAT` (the [NSA, SA or Others of each sample](#auto-calculated-fields)).
+  - **Scoring report configurations:** five (*National*, *National - Best Network Only*, *National - Most Reliable Network Only*, *National & Main Cities* and *National per Vendor*), their Country Areas with the Regions and the Main Cities.
+  - **Query Builder queries:** seven (calls, failures, setup time, POLQA, data tests, tests per city and the FDTT throughput of n78 with and without another operator on the same NR-ARFCN).
+  - **Favourite Scorings:** 18 (*Latest Campaign*, *Latest 2*, *3* or *4 Campaigns*, *Previous Campaign* and *All Campaigns* of *All Regions*, in NSA, SA and NSA vs SA, with the *Country Areas: Regions & Main Cities*), which take the CDRs of their Campaign choice once the workspace has them.
+  - **Reports:** 12 reports of [Reporting](reporting.md), each in NSA and SA for the whole country (*SCO (@All Campaigns)* and *SCO (@Lastest 4 campaigns)* for Scoring, *SCO+NI+NQ (@Latest 4 campaigns)* with Network Insights and Non-Qualified Calls too, *SCO+NI+NQ+PPT+CDR (@Latest 2 campaigns)* with the Designs and CDR Analysis too, and *Weekly PPT (@Latest campaing)* and *(@Latest 2 campaings)* with the Designs), with the shipped Designs of their NR Mode checked, without a schedule.
+  - **Operators:** the Favourite Scorings and the reports choose every operator (their Focus operators and the operators they leave out are those of the [Operator Maps](workspace-config.md#operator-maps)); no template, Design or report filters an Operator (nor Vendors by their operator).
+  - **Vendor and Campaign Maps:** a new workspace also starts with the Vendor Maps of `assets/labels-vendors/default-vendor-maps.json`, and the workspaces without their own Campaign Maps use `assets/labels-campaigns/default-campaign-map.json`.
 - Open a workspace before using Design, Reporting or Chart Builder.
 
 ## Data Ingestion
@@ -59,10 +97,14 @@ Workspace accepts `CSV`, `XLS`, `XLSX` and `XLSM` for tabular datasets, `CSV` fi
 ### Upload Workflow
 
 1. Open the target workspace (as an admin or super-admin).
-2. Select one or more files in **Data Ingestion**.
+2. Select one or more files in **Data Ingestion**, or drop them on its **Drop workbooks or browse** zone.
 3. Review the proposed type for every file. The CDR types carry the CDR type of the workspace (*NetCheck CDR — Data*, *Umlaut CDR — Voice*...). In an Umlaut workspace each service workbook is proposed its type from its service (SQ_Samples workbooks are Speech, Calls workbooks Voice and the data services Data), and the All_Data and All_Voice workbooks, which summarise the others, ask for a type and offer **Leave out**, which removes them from the batch.
 4. For CDRs, review the proposed **NR Mode** (NSA or SA), **CDR Stage** (Final, Weekly or Daily) and **Flex campaign** (see [Flex campaigns](#flex-campaigns)) and optionally choose the Vendor source and the ready Regions and Clusters mappings. For Vendor polygons and Network Inventories, review their **Operator** (proposed from the file name). For Multivendor Mappings, choose their **Operators** or leave them to be read from their cells, and review their **Snapshot date**.
-5. Confirm the batch with **Upload and process**. The files upload in the background, in chunks, to the workspace where the upload started: you can keep working, change page or module or open another workspace, and the upload continues from where it was (the floating background task card shows its progress) and its datasets are processed in that workspace. The mappings, polygons and inventories upload first, and each file starts processing as soon as it is uploaded, while the next ones upload; up to **Maximum simultaneous tasks** ([Application Config](app-config.md)) files are processed in parallel, and the CDRs wait for the mappings of their batch. The upload starts at once while the browser keeps a copy of the chosen files until the upload ends, so an upload interrupted by closing the browser continues the next time the application is opened; when the browser cannot keep them (for example a very large batch over its storage quota), the card asks you to keep the page open and leaving the page asks first; **Stop** on its card cancels it.
+5. Confirm the batch with **Upload and process**. The files upload in the background, in chunks, to the workspace where the upload started.
+   - **Keep working:** you can keep working, change page or module or open another workspace, and the upload continues from where it was (the floating background task card shows its progress) and its datasets are processed in that workspace.
+   - **Order:** the mappings, polygons and inventories upload first, and each file starts processing as soon as it is uploaded, while the next ones upload; up to **Maximum simultaneous tasks** ([Application Config](app-config.md)) files are processed in parallel, and the CDRs wait for the mappings of their batch.
+   - **Closing the browser:** the upload starts at once while the browser keeps a copy of the chosen files until the upload ends, so an upload interrupted by closing the browser continues the next time the application is opened. When the browser cannot keep them (for example a very large batch over its storage quota), the card asks you to keep the page open and leaving the page asks first.
+   - **Stop** on its card cancels it.
 6. Follow every item in the **Datasets** panel (Data Processing).
 7. Continue only when the status is **Processed**.
 
@@ -438,9 +480,9 @@ The detailed GCID formulas and first/last-cell resolution rules are documented i
 
 ### Dataset Preview
 
-Preview opens persisted rows in a separate view. Regions, Clusters and Vendors datasets open a map instead: their polygons, each in its own colour and named on the map and in the legend, over the grey outline of their countries. The mouse wheel zooms, dragging pans and a double click shows every polygon again.
+Preview opens persisted rows in a separate view. Regions, Clusters and Vendors datasets open a map instead: their polygons, each in its own colour and named on the map and in the legend, over the grey outline of their countries. The mouse wheel zooms, dragging pans and a double click shows every polygon again; hovering a name in the legend highlights its polygon.
 
-- Default page size is 100 rows and navigation runs against the complete persisted table.
+- Default page size is 100 rows and navigation runs against the complete persisted table. Wide tables scroll sideways with <kbd>Shift</kbd> and the mouse wheel.
 - A searchable Workspace Dataset selector changes the active dataset. Column-name and label selectors can hide fields without filtering rows.
 - Every column menu loads its complete distinct-value list and supports simultaneous Excel-style filters. **Clear N Filters** removes all active value filters.
 - In the preview of a CDR, **Export CSV** downloads every row that matches the active value filters, with all its columns, as `dataset-<id>-preview.csv`; it is recorded in App Events (`export_dataset_preview_csv`).
@@ -448,7 +490,7 @@ Preview opens persisted rows in a separate view. Regions, Clusters and Vendors d
 - `CDR-Main` identifies source CDR fields used most often by filters and charts. `Derived` identifies normalized ingestion fields, `Auto-calculated` identifies workspace-defined rules, and `Analysis-derived` identifies the remaining shared analytical calculations. `CDR-Data`, `CDR-Voice` or `CDR-Speech` identifies other source fields from that CDR type. Each label and field family has its own colour.
 - `PINNED` marks origin, Main, Derived and Auto-calculated fields that remain available across dataset views. `UN_PINNED` marks source-only fields that are present only when supplied by the selected dataset.
 - `NR_Mode`, the NR Mode of the CDR of each row (NSA or SA, chosen when it was uploaded or read from its file name), is a `PINNED` `Derived` field right after Campaign in every table of rows (the preview of a CDR and of the combined CDRs, the rows of a chart in PPT Designer and Chart Builder), filtered and exported like the others, although the CDRs do not keep it.
-- Hover over a `Derived`, `Auto-calculated` or `Analysis-derived` badge to see a formatted tooltip with the field's calculation rule. Select the badge to open the complete rule in a floating details panel.
+- Hover over a `Derived`, `Auto-calculated` or `Analysis-derived` badge to see a formatted tooltip with the field's calculation rule. Select the badge to open the complete rule in a floating details panel; <kbd>Esc</kbd> or a click outside closes it.
 - Use **Filter Labels** to select one or more labels and show only their columns. **All Labels** restores every column category; this column display filter does not change the dataset rows.
 - Mapping previews highlight `GCID` and vendor fields. Their vendor selector uses the vendor alone; inventories keep their source columns and derive it from mapped Vendor values and workspace operator aliases. Preview column filters offer **Operator_Vendor** and **Vendor**. Vendor choices list real vendors first, then Mixed, Other and All groups, then operator-only identities labelled **Operator - All**. The derived column is included with dataset rows in applicable workspace transfers and backups.
 

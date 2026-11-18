@@ -10,8 +10,6 @@ CDR Analysis provides on-demand KPI analysis for one processed CDR in the active
 
 ## Presentation
 
-The presentation **CDR Analysis** sums the module up. On-demand KPI analysis of one processed CDR: its distributions, benchmarks, percentiles and metrics, filtered and exported in seconds. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
-
 ```presentations
 cdr-analysis
 ```
@@ -30,6 +28,28 @@ cdr-analysis
 | Preview and export | [Open section](#preview-and-export) |
 | Example investigation | [Open section](#example-investigation) |
 | Performance | [Open section](#performance) |
+| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
+
+## Tips & shortcuts
+
+The charts and the preview of the rows react to the mouse as below. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+**Charts**
+
+| To… | Do this |
+| --- | --- |
+| Zoom a CDF into a range | Drag a rectangle over it: it narrows the X and Y range and moves both handles of **Visible X Range** |
+| Zoom into some bars | Drag a rectangle over them: the chart widens to fit them and scrolls to them |
+| Go back to the whole chart | The reset button of the zoom controls at its top right corner |
+| Read a value | Hover a bar, or hover a CDF to read the probability of every curve at that value |
+
+**Preview Dataset**
+
+| To… | Do this |
+| --- | --- |
+| Scroll a wide table sideways | <kbd>Shift</kbd> + mouse wheel over the table |
+| Read how a field is calculated | Hover its `Derived`, `Auto-calculated` or `Analysis-derived` badge |
+| See the complete rule of a field | Click its badge; <kbd>Esc</kbd>, its close button or a click outside closes the panel |
 
 ## Eligible datasets
 
@@ -74,7 +94,8 @@ Controls adapt to the selected dataset.
 
 - **CDF Curve** shows the empirical KPI distribution. **Global CDF Comparison** and **Compare CDF by** draw one curve per value of the chosen dimension (Operator by default, listed first), up to eight curves.
 - **Group Benchmark** compares the selected aggregation. Bar labels that do not fit are rotated.
-- Every chart has floating zoom controls in its top-right corner (−, level, + and reset) and, as in PPT Designer, zooms into a rectangle dragged over it: a CDF narrows its X and Y range, and a bar chart widens to fit the selected bars and scrolls to them. Hovering a bar shows its value, and hovering a CDF shows the probability of every curve at that value.
+- **Zoom:** every chart has floating zoom controls in its top-right corner (−, level, + and reset) and, as in PPT Designer, zooms into a rectangle dragged over it: a CDF narrows its X and Y range, and a bar chart widens to fit the selected bars and scrolls to them.
+- **Values:** hovering a bar shows its value, and hovering a CDF shows the probability of every curve at that value.
 - **Visible X Range** has two handles to adjust the start and the end of the CDF axis. By default it starts where the first curve reaches 5% of its samples and ends where every curve reaches 95%, leaving out nearly empty tails; a rectangle zoom moves both handles and reset returns to these defaults.
 - **Grouped Percentiles** and **Processed Metrics** show decimal values with two digits; Processed Metrics lists Cluster after Region. Grouped by Operator, Vendor or Operator_Vendor, the tables, the percentiles, the bars and the CDF curves follow the order of the Operator Maps and Vendor Maps tables of Workspace Config; values that are not in the maps follow alphabetically (mixed groups before operators without a vendor).
 - Metric cards provide compact numerical summaries.
@@ -87,14 +108,14 @@ The table shows the calculated records for the active request. Use it to verify 
 
 ### Inspect persisted rows
 
-**Preview Dataset** opens stored CDR fields in 100-row pages. Use the searchable Dataset selector to switch to another ready dataset.
+**Preview Dataset** opens stored CDR fields in 100-row pages. Use the searchable Dataset selector to switch to another ready dataset, and <kbd>Shift</kbd> with the mouse wheel to scroll a wide table sideways.
 
 | Control | Effect |
 | --- | --- |
 | Column search / field selection | Narrow a wide table without removing rows. |
 | Column value menu | Filter using the complete column's distinct values. Filters on different columns combine. |
 | Label multiselect | Show selected field families: Derived, Auto-calculated, CDR-Main or source CDR type. |
-| Hover / select a field label | Read its rule in a tooltip or the complete rule panel. |
+| Hover / select a field label | Read its rule in a tooltip or the complete rule panel (<kbd>Esc</kbd> closes it). |
 
 | Field family | Preview appearance |
 | --- | --- |
@@ -119,7 +140,11 @@ Empty fixed, derived and Auto-calculated fields remain visible. Stronger header 
 
 Word exports contain the same report as PowerPoint, one landscape page per slide (rendered with LibreOffice when it is installed, as in the Docker image). PowerPoint exports use the workspace PowerPoint template (`assets/powerpoint-templates/Template_VodafoneThree.pptx`): a title slide names the CDR and lists its type, metrics and every filter, the content slides use the template's title layout and the deck ends with its closing slide. Exported documents are also kept in the `output/reports/cdr-analysis/` folder of the workspace, where an identical export of the open CDR is reused instead of generated again.
 
-**Theme**, at the start of the floating section bar of the page (always in sight while reading it), colours the page (its charts, chart and metric cards, statistic tiles, table headers and alternate rows, labels and accents) and the PowerPoint and Word exports with the themes of [Scoring & GAP Analysis](scoring-gap-analysis.md) (**Ericsson** by default, **NetCheck**, **Umlaut**, **Vodafone**, **Midnight**, **Paper** and **Heatmap**): the CDF curves and the bars without an Operator or Vendor colour, the chart cards, the metric cards, the table headers and alternate rows, and the titles and subtitles of the content slides in the title style of the theme (the title slide and the closing slide keep the template look); **Midnight** gives the content slides a night-blue background with the logos in white and every table, card and chart on them dark. Each user keeps one theme per workspace for every themed module (choosing it here chooses it in Scoring & GAP Analysis, Network Insights and PPT Designer too); changing it recolours the page at once, and it is kept for the next visit and the exports, and is recorded in the App Events log.
+**Theme**, at the start of the floating section bar of the page (always in sight while reading it), colours the page and the PowerPoint and Word exports with the themes of [Scoring & GAP Analysis](scoring-gap-analysis.md): **Ericsson** by default, **NetCheck**, **Umlaut**, **Vodafone**, **Midnight**, **Paper** and **Heatmap**.
+
+- **On the page:** its charts, chart and metric cards, statistic tiles, table headers and alternate rows, labels and accents.
+- **In the exports:** the CDF curves and the bars without an Operator or Vendor colour, the chart cards, the metric cards, the table headers and alternate rows, and the titles and subtitles of the content slides in the title style of the theme (the title slide and the closing slide keep the template look). **Midnight** gives the content slides a night-blue background with the logos in white and every table, card and chart on them dark.
+- **One theme per user:** each user keeps one theme per workspace for every themed module (choosing it here chooses it in Scoring & GAP Analysis, Network Insights and PPT Designer too). Changing it recolours the page at once; it is kept for the next visit and the exports, and is recorded in the App Events log.
 
 Analysis filters do not overwrite stored dataset rows. For a complete template-driven report, use PPT Designer.
 

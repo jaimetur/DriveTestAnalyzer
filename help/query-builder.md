@@ -10,8 +10,6 @@ Query Builder runs read-only SQL against selected, processed Data, Voice and Spe
 
 ## Presentation
 
-The presentation **Builders** sums the module up. Ad-hoc exploration of the processed CDRs: Chart Builder draws any chart in the PPT viewer and Query Builder runs read-only SQL. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
-
 ```presentations
 builders
 ```
@@ -24,6 +22,17 @@ builders
 | Assistance Mode | [Open section](#assistance-mode) |
 | SQL Mode | [Open section](#sql-mode) |
 | Saved queries | [Open section](#saved-queries) |
+| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
+
+## Tips & shortcuts
+
+Query Builder has no shortcut of its own to run a query: use **Run query**. The shortcuts that work everywhere, such as typing letters to jump in a dropdown, are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+| To… | Do this |
+| --- | --- |
+| Filter a result column | Its filter button in the header: search its values, tick those to keep and apply |
+| Close a column filter without applying it | <kbd>Esc</kbd>, or click outside it |
+| Copy the page shown to paste it in Excel | **Copy** (tab-separated text) |
 
 ## Assistance Mode
 

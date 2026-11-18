@@ -1488,7 +1488,7 @@
       // A map keeps every site and legend entry of its analysis; the Inventory sites check still applies.
       const full = isMap ? (mapPayloads[canvas.id.replace(/^ni-/, '').replace(/-map$/, '')] || payload) : payload;
       openExpanded(isMap ? 'Map' : 'Chart', heading || payload.title || panelTitle(canvas),
-        isMap ? `${panelTitle(canvas)} · drag to move, wheel or Ctrl/Cmd+drag a rectangle to zoom, Alt/Opt+drag to measure, double-click to zoom in` : panelTitle(canvas), content => {
+        isMap ? `${panelTitle(canvas)} · drag (or middle-button drag) to move, wheel or Ctrl/Cmd+drag a rectangle to zoom, Alt/Opt+drag to measure (Esc or a click clears it), double-click to zoom in` : panelTitle(canvas), content => {
           const card = document.createElement('div');
           card.className = 'ni-chart-card ni-expand-chart';
           const large = document.createElement('canvas');

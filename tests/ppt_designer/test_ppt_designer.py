@@ -1456,7 +1456,7 @@ def test_designs_lifecycle_and_layout(client):
     assert '>Default Filters<' in page.text
     assert '>Additional Filters<' in page.text
     assert '>Clear Filters<' in page.text
-    assert '>Reload Saved Scorings<' in page.text
+    assert '>Reload Saved Filters<' in page.text
     assert 'id="ds-design-name"' not in page.text
     assert 'title="Save and apply the current PPT filters"' in page.text
     assert 'title="Remove all filter restrictions"' in page.text
@@ -1506,7 +1506,7 @@ def test_designs_lifecycle_and_layout(client):
     assert 'id="ds-last" class="ds-slide-nav-button" title="Last slide" aria-label="Last slide"><svg class="ds-slide-arrow-icon"' in page.text
     assert 'id="ds-chart-expanded-overlay"' in page.text
     assert 'class="ds-chart-expanded-meta" id="ds-chart-expanded-meta"' in page.text
-    assert 'id="ds-chart-expanded-close" class="report-chart-viewer-close" title="Close"' in page.text
+    assert 'id="ds-chart-expanded-close" class="report-chart-viewer-close" title="Close (Esc)"' in page.text
     assert 'id="ds-chart-expanded-canvas"' in page.text
     assert 'id="ds-chart-expanded-data"' in page.text
     assert 'id="ds-chart-expanded-zoom"' in page.text
@@ -1517,8 +1517,8 @@ def test_designs_lifecycle_and_layout(client):
     assert 'id="ds-chart-expanded-pan-left"' in page.text
     assert 'id="ds-chart-expanded-pan-right"' in page.text
     assert 'id="ds-chart-expanded-first" title="First chart" aria-label="First chart"><svg class="ds-chart-expanded-arrow-icon"' in page.text
-    assert 'id="ds-chart-expanded-prev" title="Previous chart" aria-label="Previous chart"><svg class="ds-chart-expanded-arrow-icon"' in page.text
-    assert 'id="ds-chart-expanded-next" title="Next chart" aria-label="Next chart"><svg class="ds-chart-expanded-arrow-icon"' in page.text
+    assert 'id="ds-chart-expanded-prev" title="Previous chart (←)" aria-label="Previous chart"><svg class="ds-chart-expanded-arrow-icon"' in page.text
+    assert 'id="ds-chart-expanded-next" title="Next chart (→)" aria-label="Next chart"><svg class="ds-chart-expanded-arrow-icon"' in page.text
     assert 'id="ds-chart-expanded-last" title="Last chart" aria-label="Last chart"><svg class="ds-chart-expanded-arrow-icon"' in page.text
     assert '⏮' not in page.text
     assert '⏭' not in page.text
@@ -1661,7 +1661,7 @@ def test_designs_lifecycle_and_layout(client):
     assert "openTemplateEditor(expandedChart?.focus_row, sourceDefinition)" in design_script
     assert 'const hasAppliedUnsavedFilterChanges = () => Boolean(' in design_script
     assert "confirmLabel: 'Use Current Filters'" in design_script
-    assert "secondaryLabel: 'Use Saved Scorings'" in design_script
+    assert "secondaryLabel: 'Use Saved Filters'" in design_script
     assert 'wideActions: true' in design_script
     assert 'preparation_token: preparationToken' in design_script
     assert "const preview = node('div', undefined, 'ds-ppt-chart-thumbnail');" in design_script
@@ -2041,10 +2041,10 @@ def test_designs_lifecycle_and_layout(client):
     assert "window.createUnifiedDatasetViewer" in design_script
     assert "const reset = node('button', undefined, 'ds-chart-zoom-button ds-chart-zoom-reset');" in design_script
     assert "bind('ds-clear-filters', () => { definition.filters = {Campaign: defaultCampaignFilter(definition.scope, definition.vendor_comparison)}; facets(); filterChanged(); });" in design_script
-    assert "bind('ds-last-saved-scorings', () => {" in design_script
+    assert "bind('ds-last-saved-filters', () => {" in design_script
     assert 'id="ds-reload-universe"' not in page.text
     assert "definition.datasets = structuredClone(saved.datasets || {});" not in design_script
-    # Reload Saved Scorings restores the saved Scope, dates and filters.
+    # Reload Saved Filters restores the saved Scope, dates and filters.
     assert "copyDefinitionFields(definition, savedDesignDefinition(), filterDefinitionFields);" in design_script
     design_css = (Path(__file__).parents[2] / 'src/web_interface/static/css/ppt_designer/ppt_designer.css').read_text(encoding='utf-8')
     assert '.ds-design-status-ready{' in design_css
@@ -2062,7 +2062,7 @@ def test_designs_lifecycle_and_layout(client):
     assert '#ds-apply-filters::before' in design_css
     assert '#ds-save::before' in design_css
     assert '#ds-clear-filters::before' in design_css
-    assert '#ds-last-saved-scorings::before' in design_css
+    assert '#ds-last-saved-filters::before' in design_css
     assert '.ds-slide-content.ds-comments-right .ds-viewer-navigation-footer {' in design_css
     assert 'grid-column:1 / -1;' in design_css
     assert '.ds-slide-content.ds-comments-right>.ds-slide-comments:not([open]) #ds-comments-title {' in design_css
@@ -3085,7 +3085,7 @@ def test_design_selection_uses_direct_sql_predicate(client, monkeypatch):
     assert data.json()['total'] == 2
 
 
-def test_design_profile_facets_show_values_outside_the_saved_scoring(client, monkeypatch):
+def test_design_profile_facets_show_values_outside_the_saved_filter(client, monkeypatch):
     payload = setup_design(client)
     import src.modules.ppt_designer.ppt_designer as designs_module
 

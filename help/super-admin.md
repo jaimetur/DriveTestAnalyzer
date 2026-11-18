@@ -4,8 +4,6 @@ Super Admin centralises the users and their access, the tabs and labels of the m
 
 ## Presentation
 
-The presentation **Administration** sums up Admin and Super Admin: who sees and does what (roles, Modules Profiles, Workspace Groups and Access Requests) and the management of every account in Users, the application and workspace databases with the Database Viewer, the scheduled backups and their restore, the packages and transfers between servers, the configuration of the application at every level (Application Config, Admin Config, Super Admin Config and Workspace Config) and App Events. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
-
 ```presentations
 administration
 ```
@@ -26,6 +24,19 @@ administration
 | Database Management | [Open section](#database-management) |
 | Reset Application | [Open section](#reset-application) |
 | Operational checklist | [Open section](#operational-checklist) |
+| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
+
+## Tips & shortcuts
+
+These gestures speed up the administration pages. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+| To… | Do this |
+| --- | --- |
+| Sort the users | Click the title of a column (but **Password**); click it again to reverse the order |
+| Change many users at once | Tick them, or every listed user with the header box, and use the bar that appears |
+| Reorder the main tabs in **Interface Settings** | Drag a row by its handle (⠿), also on touch, or use its arrows |
+| Open a table in the **Database Viewer** | Type part of its title or database name in the search of the **Table** picker and press <kbd>Enter</kbd> to open the first one found; <kbd>Esc</kbd> closes the picker |
+| Import a package (**Admin → Import / Export / Transfer**) | Drop the ZIP or JSON file on the **Import** zone, or click it to choose it |
 
 ## Roles
 
@@ -64,7 +75,11 @@ The **Users** table edits every account in place and saves each change at once:
 - **Workspaces**: its **Workspace Groups**, each listed with its workspaces, and its **Individual workspaces**. The summary names the groups and counts the individual workspaces. Super-admins grant any workspace individually.
 - **Reset password** and **Delete**.
 
-**New user**, at the end of the bar of search and filters, opens a dialog with the fields of the new user (name, username, email address, password, role, Modules Profile and workspaces), **Cancel** and **Create user**; it shows the initials the user will have and suggests the email `name.surname@ericsson.com` from the first and last name until another address is typed. Above the table, the search and the filters show only the users with a name or username, role, Modules Profile, Workspace Group (or none) or status; the status **Pending access requests** lists the inactive users waiting for activation after an [access request](#access-requests). The badge beside **Collapse** counts the users, or those listed out of them (`10 of 16 users`). Click the title of any column but **Password** to sort the users by it, and again to reverse the order (the arrow beside the title shows it): **User** by name, **Last Log-in** with the most recent first (*Never* stays last), **Role** from `user-viewer` to `super-admin`, **Modules Profile**, **Active** with the active users first and **Workspaces**; the sort follows the changes made in the table and the browser remembers it. Tick users, or every listed user with the header box, and the bar that appears changes them all at once: **Modules Profile…**, **Add to group…**, **Remove from group…**, **Role…**, **Activate** or **Deactivate**. Users that cannot change are left as they are and listed (an admin does not change super-admins, nobody deactivates their own account, and at least one active admin and one active super-admin remain). The Modules Profile of a new user is the default one at first; new users are active, and a new super-admin, or a user who becomes one, sees every module until it is given a profile.
+**New user**, at the end of the bar of search and filters, opens a dialog with the fields of the new user (name, username, email address, password, role, Modules Profile and workspaces), **Cancel** and **Create user**; it shows the initials the user will have and suggests the email `name.surname@ericsson.com` from the first and last name until another address is typed. The Modules Profile of a new user is the default one at first; new users are active, and a new super-admin, or a user who becomes one, sees every module until it is given a profile.
+
+- **Search and filters:** above the table, they show only the users with a name or username, role, Modules Profile, Workspace Group (or none) or status; the status **Pending access requests** lists the inactive users waiting for activation after an [access request](#access-requests). The badge beside **Collapse** counts the users, or those listed out of them (`10 of 16 users`).
+- **Sorting:** click the title of any column but **Password** to sort the users by it, and again to reverse the order (the arrow beside the title shows it): **User** by name, **Last Log-in** with the most recent first (*Never* stays last), **Role** from `user-viewer` to `super-admin`, **Modules Profile**, **Active** with the active users first and **Workspaces**. The sort follows the changes made in the table and the browser remembers it.
+- **Changing several users:** tick users, or every listed user with the header box, and the bar that appears changes them all at once: **Modules Profile…**, **Add to group…**, **Remove from group…**, **Role…**, **Activate** or **Deactivate**. Users that cannot change are left as they are and listed (an admin does not change super-admins, nobody deactivates their own account, and at least one active admin and one active super-admin remain).
 
 ## Modules Profiles
 
@@ -105,7 +120,14 @@ A new deployment starts with five profiles: **Non-Qualified Calls** (**Workspace
 
 Nothing is chosen beforehand: **Submit Request** is enabled once every field is filled in, and the request is not sent without the names, a valid Ericsson email address, a valid signum, matching passwords, a workspace and the modules profile.
 
-**Submit Request** creates the user, inactive, with the `user-editor` role, in the chosen Workspace Groups and with the chosen Modules Profile. A dialog then says that the user has been created but must be activated by the administrator. The email of the request is addressed to the administrator (the author of the application) and copied to the approvers of the deployment and to the requester, with the user, its name, email, role, workspaces and modules profile, the time of the request and the address of the Super Admin page. When [Email Delivery](app-config.md#email-delivery) is set up with **Access requests** checked, the tool sends it at once, on behalf of the requester (replies go to the requester), and the dialog says so; otherwise, or when it cannot be sent, **Request Activation** opens it in the default mail application. The email asks one of the approvers, in an **Approval needed** box that stands out (a block framed by lines, in capitals, in the email opened in the mail application), to approve the request by replying to all, and then, in a box of its own (**After the approval**), the administrator to activate the user once one of them has approved it; the email the tool sends lists the details of the request in a table, each Workspace Group and the Modules Profile in bold with what they open below, and ends with an **Open Super Admin** button (at the Public address of the server when Application Runtime has one, like the other links of the emails): the administrator then activates the user with its **Active** switch in [Users](#users) (or **Activate** of its selection bar), where its profile and workspaces can also be changed. With **Access requests** checked in Email Delivery, the activated user gets an email that says so, with its Modules Profile, its Workspace Groups and a link to sign in, copied to everyone the request was emailed to (the administrator and the approvers). When the signum already has a user, the dialog warns of it as soon as it is typed and asks for its **Current Password** instead of a new one: the request then updates its name and replaces the Workspace Groups and the Modules Profile of that user with the chosen ones (its groups that open no workspace, its individual workspaces and its role stay), deactivates it and ends its open sessions until the administrator activates it again, and the email (**Access Changed**) also lists its previous workspaces and modules profile. Administrator accounts change their access in Super Admin, not with a request. Every request is written to App Logs (`access_request`, or `access_change_request` for an existing user), and every email the tool sends, or fails to send, too (`email_sent`, `email_failed`, with its kind, subject and recipients).
+**Submit Request** creates the user, inactive, with the `user-editor` role, in the chosen Workspace Groups and with the chosen Modules Profile. A dialog then says that the user has been created but must be activated by the administrator.
+
+- **The email of the request:** it is addressed to the administrator (the author of the application) and copied to the approvers of the deployment and to the requester, with the user, its name, email, role, workspaces and modules profile, the time of the request and the address of the Super Admin page.
+- **How it is sent:** when [Email Delivery](app-config.md#email-delivery) is set up with **Access requests** checked, the tool sends it at once, on behalf of the requester (replies go to the requester), and the dialog says so; otherwise, or when it cannot be sent, **Request Activation** opens it in the default mail application.
+- **What it asks:** it asks one of the approvers, in an **Approval needed** box that stands out (a block framed by lines, in capitals, in the email opened in the mail application), to approve the request by replying to all, and then, in a box of its own (**After the approval**), the administrator to activate the user once one of them has approved it. The email the tool sends lists the details of the request in a table, each Workspace Group and the Modules Profile in bold with what they open below, and ends with an **Open Super Admin** button (at the Public address of the server when Application Runtime has one, like the other links of the emails).
+- **Activation:** the administrator activates the user with its **Active** switch in [Users](#users) (or **Activate** of its selection bar), where its profile and workspaces can also be changed. With **Access requests** checked in Email Delivery, the activated user gets an email that says so, with its Modules Profile, its Workspace Groups and a link to sign in, copied to everyone the request was emailed to (the administrator and the approvers).
+- **Existing users:** when the signum already has a user, the dialog warns of it as soon as it is typed and asks for its **Current Password** instead of a new one. The request then updates its name and replaces the Workspace Groups and the Modules Profile of that user with the chosen ones (its groups that open no workspace, its individual workspaces and its role stay), deactivates it and ends its open sessions until the administrator activates it again, and the email (**Access Changed**) also lists its previous workspaces and modules profile. Administrator accounts change their access in Super Admin, not with a request.
+- **App Logs:** every request is written to App Logs (`access_request`, or `access_change_request` for an existing user), and every email the tool sends, or fails to send, too (`email_sent`, `email_failed`, with its kind, subject and recipients).
 
 ### Forgotten passwords
 
@@ -216,7 +238,7 @@ Tables are grouped by ownership:
 - **Individual Datasets**: one materialised table per dataset.
 - **Combined CDR rows**: reporting acceleration tables by CDR type.
 
-The **Table** picker lists the tables of each group by kind (Users & Access, Application, Datasets, PPT Designer & Templates, Scoring & GAP Analysis, Non-Qualified Calls, Reporting, Mappings & Maps, Query Builder, Ticket Center, AI Assistant, Workspace, and the Voice, Data, Speech or other datasets of each individual dataset), each kind in its colour, and its search box finds a table by its title or its database name.
+The **Table** picker lists the tables of each group by kind (Users & Access, Application, Datasets, PPT Designer & Templates, Scoring & GAP Analysis, Non-Qualified Calls, Reporting, Mappings & Maps, Query Builder, Ticket Center, AI Assistant, Workspace, and the Voice, Data, Speech or other datasets of each individual dataset), each kind in its colour, and its search box finds a table by its title or its database name (<kbd>Enter</kbd> opens the first one found, <kbd>Esc</kbd> closes the picker).
 
 PowerPoint history is stored in **PPT Designer jobs** because each row retains its PPT definition and applied filter snapshot.
 

@@ -4521,7 +4521,7 @@
     const action = presentation.active ? (presentation.running ? 'Pause presentation' : 'Resume presentation') : 'Presentation';
     buttons.forEach((button) => {
       button.classList.toggle('is-running', presentation.running);
-      button.title = action;
+      button.title = presentation.active ? `${action} (F8) · F7/F9 previous/next slide · Esc stops it` : 'Presentation (F8)';
       button.setAttribute('aria-label', action);
     });
     $('ds-presentation-start').disabled = presentation.active;
@@ -4892,6 +4892,7 @@
       });
       const data = node('button','', 'ds-chart-data'); data.type = 'button'; data.title = 'View dataset'; data.setAttribute('aria-label', 'View dataset'); data.disabled = !chart.available || (Boolean(pptDesignViewer) && !chart.data_url); data.onclick = safe(async () => { await openChartDataset(chart); });
       const expand = node('button', '', 'ds-chart-expand'); expand.type = 'button'; expand.title = 'Expand chart'; expand.setAttribute('aria-label', 'Expand chart'); expand.disabled = !chart.available; expand.onclick = safe(async event => { event.stopPropagation(); await openExpandedChart(chart, renderedPayload, pptDesignViewer ? 'ppt' : 'design'); });
+      if (chart.available) card.title = 'Double-click to enlarge · Ctrl/Cmd + wheel to zoom · drag a rectangle to zoom into it';
       card.ondblclick = safe(async event => {
         if (!chart.available || event.target.closest('button, a, input, select, label')) return;
         await openExpandedChart(chart, renderedPayload, pptDesignViewer ? 'ppt' : 'design');

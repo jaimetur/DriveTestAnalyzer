@@ -7,8 +7,6 @@ Use **Reporting** to design **reports**, each one PowerPoint and Word document w
 
 ## Presentation
 
-The presentation **Reporting** sums the module up. One PowerPoint or Word document with the parts you choose of every module, generated whenever you want or on its schedule and emailed. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
-
 ```presentations
 reporting
 ```
@@ -26,6 +24,20 @@ reporting
 | Email delivery | [Open section](#email-delivery) |
 | Every report generated, its files and its preview | [Open section](#history) |
 | Portability | [Open section](#portability) |
+| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
+
+## Tips & shortcuts
+
+These keys and gestures speed up the reports. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+| To… | Do this |
+| --- | --- |
+| Switch between **Reports** and **History** | Click the tab, or focus a tab and press <kbd>←</kbd> / <kbd>→</kbd> |
+| Order the modules and sub-modules of a report | Drag them by their handle (⋮⋮); the window scrolls when you drag near its top or bottom edge. Or focus the handle and press <kbd>↑</kbd> / <kbd>↓</kbd> |
+| Add an Operator pattern to the common filters | Type it in the search of **Operators** (`VF*`, `-Three`) and press <kbd>Enter</kbd> |
+| Close an open list of the editor | <kbd>Esc</kbd>, or click outside it |
+| Keep working while a report is generated | **Hide**, <kbd>Esc</kbd> or **×** closes its dialog; **Follow** opens it again |
+| Read a generated report | In its preview, the wheel or <kbd>←</kbd> / <kbd>→</kbd> change the slide (a swipe on a phone); <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+wheel, a pinch or a rectangle dragged over the slide zoom (see [the slide viewer](presentations.md#using-the-slide-viewer)) |
 
 ## Reports
 
@@ -79,9 +91,21 @@ A report builds one document from five sections, by default in this order: **Sco
 
 ## Generate and preview
 
-**Generate**, on the card of a report, or **Save and generate**, in the editor, starts a run of the report now, as the user who pressed it and in the formats of its schedule (PowerPoint and Word for a report without one), listed at once in [History](#history). Its dialog shows its progress and its processing time: **Stop** stops it after the step it is on, and **Hide** (or Escape, or ×) closes the dialog while the report keeps being generated, so you can go on using the application. Meanwhile its card shows **Follow** instead of **Generate**, and History **Follow** in its row, to open the dialog again; when the report is ready, a dialog on any other page of the application offers to open its preview in **Reporting**. **Generate** on other reports while one is being generated queues them, without opening their dialog: the reports are generated one after another, in the order they were asked for, their cards say **Queued** (with **Follow**) until their turn comes, and a dialog tells when each one is ready (one after another when several finish together), also on the other pages. Every user of the module can stop the runs they started, and editors any run.
+**Generate**, on the card of a report, or **Save and generate**, in the editor, starts a run of the report now, as the user who pressed it and in the formats of its schedule (PowerPoint and Word for a report without one), listed at once in [History](#history).
 
-Ready, the report opens by itself in the slide viewer of the [Presentations](presentations.md), to read it online without downloading it: on the left, every section with the picture and title of its slides or pages; in the middle, the slide or page chosen, which the wheel, the arrow keys, **←** and **→** (or a swipe on a phone) change, and Ctrl/Cmd+wheel (or a pinch), a rectangle dragged over it, **+**, **−** and **⤢** zoom. **PowerPoint** and **Word**, at its top, choose the format shown and downloaded among those the run generated, and keep the section shown; **Slideshow** plays it full screen, with a transition; **Copy link** gives the direct link of the slide shown (it opens the viewer for the users of the module); and **Download** downloads the format shown. **Preview**, on the card of a report or in History, opens the same viewer on the run, also after a restart, while the run is kept. What the report warns of, such as the sections that could not be generated and those reused from an earlier export, is listed above the slides. Sections that cannot be generated (for example Scoring without a campaign with Data, Voice and Speech CDRs) are left out; the others stay in the report. So is a Design of PPT Designer or a CDR of CDR Analysis that cannot be generated: its section keeps the others and names it on its cover. The preview needs LibreOffice; without it, the dialog says so and the files are downloaded from History.
+- **Its dialog** shows its progress and its processing time: **Stop** stops it after the step it is on, and **Hide** (or Escape, or ×) closes the dialog while the report keeps being generated, so you can go on using the application.
+- **Following it:** meanwhile its card shows **Follow** instead of **Generate**, and History **Follow** in its row, to open the dialog again; when the report is ready, a dialog on any other page of the application offers to open its preview in **Reporting**.
+- **Several at once:** **Generate** on other reports while one is being generated queues them, without opening their dialog: the reports are generated one after another, in the order they were asked for, their cards say **Queued** (with **Follow**) until their turn comes, and a dialog tells when each one is ready (one after another when several finish together), also on the other pages.
+- **Stopping:** every user of the module can stop the runs they started, and editors any run.
+
+Ready, the report opens by itself in the slide viewer of the [Presentations](presentations.md), to read it online without downloading it:
+
+- **On the left:** every section with the picture and title of its slides or pages.
+- **In the middle:** the slide or page chosen, which the wheel, the arrow keys, **←** and **→** (or a swipe on a phone) change, and Ctrl/Cmd+wheel (or a pinch), a rectangle dragged over it, **+**, **−** and **⤢** zoom.
+- **At its top:** **PowerPoint** and **Word** choose the format shown and downloaded among those the run generated, and keep the section shown; **Slideshow** plays it full screen, with a transition; **Copy link** gives the direct link of the slide shown (it opens the viewer for the users of the module); and **Download** downloads the format shown.
+- **Later:** **Preview**, on the card of a report or in History, opens the same viewer on the run, also after a restart, while the run is kept.
+- **Warnings:** what the report warns of, such as the sections that could not be generated and those reused from an earlier export, is listed above the slides. Sections that cannot be generated (for example Scoring without a campaign with Data, Voice and Speech CDRs) are left out; the others stay in the report. So is a Design of PPT Designer or a CDR of CDR Analysis that cannot be generated: its section keeps the others and names it on its cover.
+- **LibreOffice:** the preview needs it; without it, the dialog says so and the files are downloaded from History.
 
 Each section generated is kept for the next generations: **Reuse generated sections** (checked by default, above the list of reports) uses it again while the application has not been updated and its options, the common filters and the data it reads have not changed (the CDRs, the Operator and Vendor Maps, the Main Cities and, per section, the Designs, the methodologies and the Saved Scorings calculated, the inventory of the analysis, the follow-up of the calls or the CDRs the Campaigns of CDR Analysis choose): a Saved Scoring calculated again generates the Scoring & GAP Analysis section again by itself, by hand and on a schedule alike, so generating the same report in the other format only composes and renders it, and generating it again in the same format also uses the document composed (and the Word pages packed) by the earlier generation and its preview; the dialog names the sections reused and whether the document was too, and so do the files of the run in their email (*Reused from an earlier export*). Uncheck it to generate every section again. Two runs that need the same section at once generate it once. Scoring & GAP Analysis uses the Saved Scoring of the same CDRs, filters, methodology and GAP reference when there is one (a Favourite Scoring first), with its own Split by and National & Area Summary, and Network Insights the analysis already made for the same selection and inputs, so neither is calculated again.
 

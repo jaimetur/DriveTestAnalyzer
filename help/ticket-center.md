@@ -10,8 +10,6 @@ Use **Ticket Center** to report the bugs you find in the tool, suggest improveme
 
 ## Presentation
 
-The presentation **Ticket Center** sums the module up. Report bugs, suggest improvements and ask for new features with screenshots, and follow each ticket until it is resolved. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
-
 ```presentations
 ticket-center
 ```
@@ -32,6 +30,43 @@ ticket-center
 | Email updates | [Open section](#email-updates) |
 | Clean up attachments | [Open section](#clean-up-attachments) |
 | Portability | [Open section](#portability) |
+| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
+
+## Tips & shortcuts
+
+These keys and gestures speed up writing tickets and comments. On a Mac use <kbd>⌘</kbd> where a key says <kbd>Ctrl</kbd> (except <kbd>Ctrl</kbd>+<kbd>Y</kbd>). The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+**Moving around**
+
+| To… | Do this |
+| --- | --- |
+| Change view (New Ticket, All Tickets, Dashboard, Statistics, Time Spent) | Click its tab, or focus a tab and press <kbd>←</kbd> / <kbd>→</kbd> |
+| List the tickets behind a tile, count, bar or cell | Click it |
+
+**Attachments**
+
+| To… | Do this |
+| --- | --- |
+| Attach a screenshot | Paste it with <kbd>Ctrl</kbd>+<kbd>V</kbd> anywhere in the form, not only in the text |
+| Attach files | Drop them on the zone, or click it to choose them |
+
+**Formatting the text** (see [Writing descriptions and comments](#writing-descriptions-and-comments))
+
+| To… | Do this |
+| --- | --- |
+| Bold, italic, code | <kbd>Ctrl</kbd>+<kbd>B</kbd>, <kbd>Ctrl</kbd>+<kbd>I</kbd>, <kbd>Ctrl</kbd>+<kbd>E</kbd> |
+| Strikethrough, highlight | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd> |
+| Add a link | <kbd>Ctrl</kbd>+<kbd>K</kbd> |
+| Numbered list, bullets, tasks | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>7</kbd>, <kbd>8</kbd>, <kbd>9</kbd> |
+| Heading of level 1, 2 or 3 | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, <kbd>2</kbd>, <kbd>3</kbd> |
+| Turn a heading back into text | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>0</kbd> |
+| Undo, redo | <kbd>Ctrl</kbd>+<kbd>Z</kbd>; <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> or <kbd>Ctrl</kbd>+<kbd>Y</kbd> |
+| Nest an item, or bring it back | <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> |
+| Go on in the same item | <kbd>Shift</kbd>+<kbd>Enter</kbd> |
+| Open a link while writing | <kbd>Ctrl</kbd>+click it (a plain click places the caret in it) |
+| Tick a task | Click its box |
+| Post the comment or save the description | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> |
+| Bring formatted text from elsewhere | Paste or drop it: it is read as Markdown |
 
 ## Dashboard
 
@@ -111,7 +146,15 @@ Descriptions and comments are written in Markdown and read the same while they a
 | `---` or `----- Notes -----` | A divider, with its text |
 | Any other line | Text; an indented line under a bullet goes on in it |
 
-In the editor, **Enter** goes on with a list at the level of the item above (a bullet, a number or a task), and on an empty item goes up a level and then out of the list (or out of a card); **Shift+Enter** goes on in the same item; **Tab** and **Shift+Tab** nest an item under the one above it or bring it back; **Backspace** at the start of an item takes it up a level and then makes it text. Pasted text is read as Markdown, copied text keeps its Markdown, and **Ctrl+Z** and **Ctrl+Shift+Z** undo and redo. **Edit the Markdown** shows the text as it is saved, to change it as such, and **How to write it** sums up this table. **Ctrl+Enter** posts a comment or saves the description.
+In the editor:
+
+- **Enter** goes on with a list at the level of the item above (a bullet, a number or a task), and on an empty item goes up a level and then out of the list (or out of a card); **Shift+Enter** goes on in the same item.
+- **Tab** and **Shift+Tab** nest an item under the one above it or bring it back; **Backspace** at the start of an item takes it up a level and then makes it text.
+- **Ctrl+Alt+0** turns a heading back into text.
+- Pasted or dropped text is read as Markdown, and copied text keeps its Markdown.
+- **Ctrl+Z** undoes, and **Ctrl+Shift+Z** (or **Ctrl+Y**) redoes.
+- **Edit the Markdown** shows the text as it is saved, to change it as such, and **How to write it** sums up this table.
+- **Ctrl+Enter** posts a comment or saves the description.
 
 ```text
 Steps to reproduce
@@ -205,7 +248,13 @@ When [Email Delivery](app-config.md#email-delivery) is set up with **Ticket Cent
 
 Whoever commented a ticket gets the emails of its changes from then on, as its reporter does, and the users chosen in **Email Every Ticket To** get those of every ticket, new ones included.
 
-Each one also gets its own comments and changes, so the email tells what was done with its user even when someone else worked with it. Every email of a ticket has the same subject, `DT Analyzer - Ticket #<number>: <title>`, and through an SMTP server they all go in one conversation of the mail clients (Outlook, Gmail and the others); through a Power Automate flow, Outlook shows each one as a conversation of its own. The changes of a ticket made one after another, less than a minute apart, reach each recipient in one email (sent at most 10 minutes after the first change), which shows each change in turn. The title of an email says what happened, large and in its colour, before the number and title of the ticket: **New Ticket**, **New Comment**, **Ticket Updated**, **Comment Edited**, **Comment Deleted**, **New Attachments**, **Attachment Deleted**, the new status of a change of status (**In Progress**, **Waiting for Info**, **Resolved**, **Closed**, **Rejected**, **Back to New**, or **Reopened** when a done or rejected ticket opens again) or **Ticket Deleted**. Each email names who made the change, the status, priority, type and reporter of the ticket, and links its page. The description and the comments read as on the page of the ticket, with their formats (headings, titles, bullets and numbers, tasks, quotes and cards, code, links), and their `#<number>` link to the tickets they mention. The emails go in the background, so they never slow a page down, and App Events records each one sent or not sent (`email_sent`, `email_failed`).
+Each one also gets its own comments and changes, so the email tells what was done with its user even when someone else worked with it.
+
+- **One conversation:** every email of a ticket has the same subject, `DT Analyzer - Ticket #<number>: <title>`, and through an SMTP server they all go in one conversation of the mail clients (Outlook, Gmail and the others); through a Power Automate flow, Outlook shows each one as a conversation of its own.
+- **Grouped changes:** the changes of a ticket made one after another, less than a minute apart, reach each recipient in one email (sent at most 10 minutes after the first change), which shows each change in turn.
+- **Title of the email:** it says what happened, large and in its colour, before the number and title of the ticket: **New Ticket**, **New Comment**, **Ticket Updated**, **Comment Edited**, **Comment Deleted**, **New Attachments**, **Attachment Deleted**, the new status of a change of status (**In Progress**, **Waiting for Info**, **Resolved**, **Closed**, **Rejected**, **Back to New**, or **Reopened** when a done or rejected ticket opens again) or **Ticket Deleted**.
+- **Contents:** each email names who made the change, the status, priority, type and reporter of the ticket, and links its page. The description and the comments read as on the page of the ticket, with their formats (headings, titles, bullets and numbers, tasks, quotes and cards, code, links), and their `#<number>` link to the tickets they mention.
+- **In the background:** the emails go in the background, so they never slow a page down, and App Events records each one sent or not sent (`email_sent`, `email_failed`).
 
 ## Clean up attachments
 

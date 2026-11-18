@@ -309,8 +309,8 @@
     const subdomains = map.subdomains || '';
     return map.url.replace('{s}', subdomains ? subdomains[(x + y) % subdomains.length] : '').replace('{z}', zoom).replace('{x}', x).replace('{y}', y);
   };
-  const HINT = 'Drag to move · wheel or Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure · double-click to zoom in';
-  const PANEL_HINT = 'Drag to move · Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure · double-click to enlarge';
+  const HINT = 'Drag (or middle-button drag) to move · wheel or Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure (Esc or Alt/Opt+click clears it) · double-click to zoom in';
+  const PANEL_HINT = 'Drag (or middle-button drag) to move · Ctrl/Cmd+wheel to zoom · Ctrl/Cmd+drag a rectangle to zoom into it · Alt/Opt+drag to measure (Esc or Alt/Opt+click clears it) · double-click to enlarge';
   // The map of a site (openSiteArea): the radius it opens with, its choices, and how far from the site its own NQ calls
   // still count when the map fits them.
   const SITE_RADII_KM = [0.5, 1, 2, 5, 10];
@@ -1911,6 +1911,7 @@
       if (!measure) return;
       const head = node('header', undefined, 'nq-map-profile-head');
       head.addEventListener('click', () => { profileOpen = !profileOpen; renderProfile(lastProfile); });
+      head.title = 'Click to fold or unfold';
       const fold = node('button', undefined, 'nq-map-profile-title');
       fold.type = 'button';
       fold.setAttribute('aria-expanded', String(profileOpen));
@@ -2960,6 +2961,7 @@
         entry.append(mark, text, open);
         if (item.latitude !== null) {
           entry.tabIndex = 0;
+          entry.title = 'Click to centre the map on it';
           const choose = () => { shared.select({kind: 'failure', item}); panelView.centreOn(item.latitude, item.longitude); };
           entry.addEventListener('click', choose);
           entry.addEventListener('keydown', (event) => { if (event.key === 'Enter') choose(); });

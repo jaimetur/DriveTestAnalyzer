@@ -392,8 +392,9 @@ def test_a_direct_link_opens_its_presentation_in_the_slide_viewer(client):
     assert client.get('/presentations', follow_redirects=False).headers['location'] == '/documents/view/help/presentations.md'
     assert client.get('/presentations/workspace-config?slide=3').status_code == 200
     assert client.get('/api/presentations').json()['link_base'] == ''
-    for chapter in ('help', 'presentations'):
-        assert '**Copy link**, on each card and beside **Close** in the viewer' in (root / 'help' / f'{chapter}.md').read_text(encoding='utf-8')
+    # Product Presentations tells how to share a slide; Help Home points there.
+    assert '**Copy link** (on each card, and beside **Close** in the viewer)' in (root / 'help' / 'presentations.md').read_text(encoding='utf-8')
+    assert '[Product Presentations](presentations.md)' in (root / 'help' / 'help.md').read_text(encoding='utf-8')
 
 
 def test_the_link_of_a_presentation_shows_its_title_and_the_picture_of_its_slide_where_it_is_shared(client):

@@ -9,8 +9,6 @@ Each calculation gives the NetCheck **Best Network** scoring, which rates every 
 
 ## Presentation
 
-The presentation **Scoring & GAP Analysis** sums the module up. KPI scores of every operator with the NetCheck methodology, compared with a reference operator: who wins, by how much and where to win the points back. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
-
 ```presentations
 scoring-gap-analysis
 ```
@@ -20,6 +18,7 @@ scoring-gap-analysis
 | I want to… | Go to |
 | --- | --- |
 | Watch the presentation of the module | [Presentation](#presentation) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 | Calculate or recalculate a comparison | [Calculate and review](#calculate-and-review) |
 | Find a Favourite Scoring among many | [Filter Navigator](#filter-navigator) |
 | Understand filters and Break down by | [Filters and Break down by](#filters-and-break-down-by) |
@@ -36,25 +35,150 @@ scoring-gap-analysis
 | Share results or preserve a workspace | [Persistence and exports](#persistence-and-exports) |
 | Resolve missing results | [Troubleshooting](#troubleshooting) |
 
+## Tips & shortcuts
+
+Gestures and keys that save time in the module. Each one is also described where it belongs below.
+
+**Charts, tables and maps of the results**
+
+| To… | Do this |
+| --- | --- |
+| Open a chart, map or table larger | Double-click it. It takes the whole screen but 5% on each side. This works on **every table of every results tab** (Summary, Scoring Tables, GAP Analysis, Points Lost, Methodology Impact…) |
+| Open a chart larger with the keyboard | Focus the chart card (<kbd>Tab</kbd>) and press <kbd>Enter</kbd> or <kbd>Space</kbd> |
+| Close the larger view | Press <kbd>Esc</kbd>, click outside it or press **×**. While it is open, <kbd>Tab</kbd> stays inside it |
+| Zoom into part of a chart or map | Drag a rectangle over it (also in the larger view). Cards that are not drawn charts zoom up to 8× |
+| Zoom with buttons | Point at the chart or map: **+** (zoom in), **−** (zoom out) and **⤢** (whole view) appear. On a chart narrowed to fit its card, at the whole view **+** and **−** first widen or narrow the chart step by step. On touch: tap the chart to show the buttons for a few seconds |
+| See the values of a bar, segment, cell or donut | Hover it (or focus it) for its tooltip. On touch: not available; read the tables |
+| Save or copy a card as an image | Point at the card: the download (PNG) and camera (copy) buttons appear on its top edge, and an extra pair for the chart or table under the pointer. On touch: tap the card |
+| Copy an image when the browser blocks the clipboard | The image opens in a window: right-click it (on touch: keep it pressed) and choose **Copy Image** |
+
+**Results tabs**
+
+| To… | Do this |
+| --- | --- |
+| Open a results tab from a link or bookmark | Add its name to the address: `/scoring#scoring-results-summary`, `-charts`, `-tables`, `-geographical-areas` (Country Areas), `-trends`, `-gap`, `-points-lost` or `-methodology-impact` |
+| Jump from Where to act to the details | Click a link of the **Deep-dive** column: it opens that section of **Points Lost** |
+| Show or hide an operator in every section | Click its **Operators** chip. One always stays on, and every section of the page follows the same choice |
+| Choose the single operator of Campaign Comparison or Where to act | Click its button in **Focus operators** or **Other operators** |
+
+**Points Lost Map and route maps**
+
+| To… | Do this |
+| --- | --- |
+| Show only the areas of one place | Click its row in the ranking: the map centres and zooms on them. Click it again for all |
+| Add or remove single rows | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click a row |
+| Choose a range of rows | <kbd>Shift</kbd>+click: every row from the last one clicked. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+click adds the range to the rows already chosen |
+| Light the places measured in an area | Click the area on the map (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click adds areas) |
+| Choose several areas at once | <kbd>Shift</kbd>+drag a rectangle: every area it touches is chosen (a plain drag zooms) |
+| Show everything again | Click the same choice again, click outside every area, or press <kbd>Esc</kbd> after a click on the map |
+| See the tests of a place, or the full environment name | Hover a **Per 1,000 tests** or **Type** cell |
+| Zoom a route map onto a stretch | Click its row (or focus it and press <kbd>Enter</kbd>/<kbd>Space</kbd>). Again, or **Whole route**, for the whole route |
+
+**Site Area Map** (from a site of **Sites to review**; the same map as in [Non-Qualified Calls](non-qualified-calls.md#map-of-the-call), where every control is described)
+
+| To… | Do this |
+| --- | --- |
+| Zoom in the floating panel | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+wheel, or pinch. A plain wheel only shows a hint, so the page still scrolls |
+| Open the larger map | Double-click it (on touch: double-tap). Inside the larger map, a double-click zooms in and the plain wheel zooms towards the pointer |
+| Zoom into a rectangle | Hold <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> (the pointer becomes a crosshair) and drag |
+| Measure a distance with the elevation profile | <kbd>Alt</kbd>/<kbd>Option</kbd>+drag: the ruler gives the distance, the bearing and the profile of the ground. <kbd>Esc</kbd> clears it |
+| Move or resize a floating card | Drag its header to move it, drag its corner to resize it; pin it to keep it open, restore it to put it back in its place |
+| Move along the timeline chart | Drag it, or use <kbd>←</kbd>/<kbd>→</kbd> (<kbd>Shift</kbd> for 5 s steps), <kbd>Home</kbd>/<kbd>End</kbd>; <kbd>Esc</kbd> leaves it |
+
+**Scoring Trends and Methodology Impact**
+
+| To… | Do this |
+| --- | --- |
+| Enlarge a single area trend | Double-click its chart in **National & Country Areas Trends**: only that chart opens larger. Double-click the table to enlarge the table |
+| See only the KPIs of one kind of change | Click a count in **What changed in the methodology** (again to undo) |
+| See every row of a long list | Click **Show all N** (and **Show the first N** to shorten it again) |
+
+**Favourite Scorings and Filter Navigator**
+
+| To… | Do this |
+| --- | --- |
+| Keep or remove a Favourite Scoring | Click its star: **☆** keeps it, **★** takes it out |
+| Open the Filter Navigator | Click the scoring name, or anywhere on the **Showing** summary |
+| Move from the search to the tree | <kbd>↓</kbd>. In the tree, <kbd>↑</kbd> on the first item goes back to the search |
+| Move in the tree | <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Home</kbd> <kbd>End</kbd>; <kbd>→</kbd>/<kbd>←</kbd> open and close a branch; <kbd>Enter</kbd> or <kbd>Space</kbd> use the focused item |
+| Use the only match of a search | Press <kbd>Enter</kbd> in the search |
+| Close the list of Favourite Scorings | Press <kbd>Esc</kbd> or click outside it |
+| Clear the search, then close | <kbd>Esc</kbd> once clears it, again closes the dialog |
+| Reorder Favourite Scorings | Drag a card by the tab on its left in **Manage Favourite Scorings** (not for readers) |
+| See the CDR files of a scoring | Hover or click its **CDRs** button |
+| Close a dialog of the configuration | <kbd>Esc</kbd> closes an open list first, then cancels the dialog |
+| Open the methodology editor in its own tab | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click (or <kbd>Shift</kbd>+click) **Scoring Methodologies**: Workspace Config opens in a new tab instead of the panel over the page |
+
 ## Calculate and review
+
+Set what to score, calculate it once, and open it again at once as a Saved Scoring.
 
 ### The Scoring & GAP Analysis panel
 
-Everything happens in the **Scoring & GAP Analysis** panel, with the results below the configuration:
+Everything happens in the **Scoring & GAP Analysis** panel, with the results below the configuration.
 
-- **Two main buttons**, at the top right: **Favourite Scorings** (with how many there are) opens the [Filter Navigator](#filter-navigator) to choose one, and **Context Filters** opens the NR Mode, Campaign, CDRs used and filters. While no scoring is shown, a guide says where to start: reuse a Favourite Scoring (recommended, its button pulses) or, when there is none yet, set the Context Filters (then its button pulses) and Calculate Scoring.
-- **Showing**: the scoring shown on one line: its star (☆ keeps it as a Favourite Scoring, ★ takes it out), its name (the one given, else what it filters, such as *Nationwide · NSA · Latest campaign*; a click opens the [Filter Navigator](#filter-navigator)) and its status (*Calculated* with the date, *Calculating* with its progress, or *Changed · not calculated*). **Details** unfolds its whole card, with its labels, filters and buttons (**CDRs**, **✎**, **⧉**, **☆**). Below the steps, **Update Favourite** gives the changes not calculated yet to the Favourite Scoring shown (same name, star and place, after a confirmation, since it changes for every user of the workspace) and calculates it again, **Save as new Favourite** asks for a name and keeps them as a new Favourite Scoring right after it, which stays as it is (both need changes not calculated yet, and the user-editor role or above), and **Calculate Scoring** (or **Open Scoring**) and **Recalculate** follow. On phones the main buttons and these buttons go two by two on one line.
-- **One numbered block per step of the configuration**, with the values of the scoring shown: **1 Scoring Setup** (the whole panel: Scoring Methodology with a link to **Scoring Methodologies**, GAP reference operator, **KPI order** of the GAP tables and the KPI GAP Profile (shown at once, nothing is calculated again; see [GAP comparison](#gap-analysis)) and Postal Codes in the Points Lost Map; the **Environment** of the results is a view option beside **Scoring** above the results, which applies at once without calculating), **2 Context**, **3 Break down by**, **4 Country Areas** (*whole country*: the Region, Cluster and City of the Context Filters do not apply) and **5 Trends** (Campaigns, Time split and the areas of the trends); each dialog names its step. The **Areas** and **Cities on their own** of Country Areas make the Country Areas tab, and by default the National & Country Areas Trends of the Scoring Trends tab too: **Same as Country Areas**, ticked in Trends, keeps both in step. Untick it to give the trends areas of their own (for example every Region in Country Areas and only London and Manchester in the trends); each tab then keeps its own. With Country Areas switched off the trends always use areas of their own, starting from those of Country Areas. Country Areas and Trends each have a switch in the top right corner of their card (on by default): switched off, they are not calculated (the scoring is quicker; with both off the rows of the whole country are not read either), their card says *Off* and their tab hides from the results of that scoring. On large screens they are cards in two rows, one line per value; on phones and narrow windows, one-line pills.
-- **View**: Best Network or Most Reliable, NSA vs SA, NSA & SA charts and the KPI and GAP values, then **Report (PPT/Word)** with **Export this scoring** and **Custom report…** (see [Persistence and exports](#persistence-and-exports)).
+**Main buttons** (top right):
 
-Clicking a block opens it in a dialog that always starts with the values of the scoring shown (and the changes not calculated yet), marking with **changed** the values that differ from it. **Apply (calculate later)** keeps the changes: the block is marked and the strip says how many blocks changed and are not calculated yet, while the results below still show the previous selection, until **Calculate Scoring** or **Discard changes** (which gives back the values of the scoring shown). **Apply & Calculate** calculates the changes at once, once their CDRs are chosen (or opens the Saved Scoring that already has them). It never changes a Favourite Scoring: the scoring calculated, without a star, reads *from ★ <the Favourite Scoring>* beside its name, **Update Favourite** gives that Favourite Scoring its configuration and **Save as new Favourite** stars it with a name of its own. Only one of **Calculate Scoring** (with changes to calculate) and **Recalculate** (for the scoring shown) is offered at a time. **Cancel**, **×** or **Escape** gives the block back the values it had when it opened (Escape closes an open list first).
+- **Favourite Scorings** (with how many there are): opens the [Filter Navigator](#filter-navigator) to choose one.
+- **Context Filters:** opens the NR Mode, Campaign, CDRs used and filters.
+- **While no scoring is shown,** a guide says where to start: reuse a Favourite Scoring (recommended; its button pulses) or, when there is none yet, set the Context Filters (then its button pulses) and **Calculate Scoring**.
+
+**Showing:** the scoring shown, on one line.
+
+- **Star:** **☆** keeps it as a Favourite Scoring, **★** takes it out.
+- **Name:** the one given, else what it filters, such as *Nationwide · NSA · Latest campaign*. A click opens the [Filter Navigator](#filter-navigator).
+- **Status:** *Calculated* with the date, *Calculating* with its progress, *Changed · not calculated*, or *Opening…* while a scoring loads.
+- **Details:** unfolds its whole card, with its labels, filters and buttons (**CDRs**, **✎**, **⧉**, **☆**).
+
+**Buttons below the steps:**
+
+| Button | What it does |
+| --- | --- |
+| **Update Favourite** | Gives the changes not calculated yet to the Favourite Scoring shown (same name, star and place) and calculates it again. It asks for a confirmation, since it changes it for every user of the workspace |
+| **Save as new Favourite** | Asks for a name and keeps the changes as a new Favourite Scoring, right after the one shown, which stays as it is |
+| **Calculate Scoring** (or **Open Scoring**) | Calculates the changes, or opens the Saved Scoring that already has them |
+| **Recalculate** | Calculates the scoring shown again |
+
+- **Update Favourite** and **Save as new Favourite** need changes not calculated yet and the user-editor role or above.
+- On phones, the main buttons and these buttons go two by two on one line.
+
+**One numbered block per step of the configuration,** with the values of the scoring shown. Each dialog names its step.
+
+| Block | What it holds |
+| --- | --- |
+| **1 Scoring Setup** | Scoring Methodology (with a link to **Scoring Methodologies**), GAP reference operator, **KPI order** of the GAP tables and the KPI GAP Profile (applied at once, nothing is calculated again; see [GAP comparison](#gap-analysis)) and Postal Codes in the Points Lost Map |
+| **2 Context** | NR Mode, Campaign, CDRs used and filters |
+| **3 Break down by** | The levels that split the results |
+| **4 Country Areas** | The areas of the Country Areas tab, scored on the *whole country*: the Region, Cluster and City of the Context Filters do not apply |
+| **5 Trends** | Campaigns, Time split and the areas of the trends |
+
+- **Environment** is not a block: it is a view option beside **Scoring** above the results, and applies at once without calculating.
+- **Areas shared by two tabs:** the **Areas** and **Cities on their own** of Country Areas make the Country Areas tab and, by default, the National & Country Areas Trends of the Scoring Trends tab.
+  - **Same as Country Areas**, ticked in Trends, keeps both in step.
+  - Untick it to give the trends areas of their own (for example every Region in Country Areas and only London and Manchester in the trends). Each tab then keeps its own.
+  - With Country Areas switched off, the trends always use areas of their own, starting from those of Country Areas.
+- **Switching Country Areas or Trends off:** each has a switch in the top right corner of its card (on by default). Switched off, it is not calculated (the scoring is quicker; with both off, the rows of the whole country are not read either), its card says *Off* and its tab hides from the results of that scoring.
+- **Layout:** on large screens the blocks are cards in two rows, one line per value; on phones and narrow windows, one-line pills.
+
+**View:** Best Network or Most Reliable, NSA vs SA, NSA & SA charts and the KPI and GAP values, then **Report (PPT/Word)** with **Export this scoring** and **Custom report…** (see [Persistence and exports](#persistence-and-exports)).
+
+#### Change a block
+
+1. Click a block. Its dialog always starts with the values of the scoring shown (and the changes not calculated yet), and marks with **changed** the values that differ from it.
+2. Choose how to apply:
+   - **Apply (calculate later):** keeps the changes. The block is marked and the strip says how many blocks changed and are not calculated yet. The results below still show the previous selection until **Calculate Scoring** or **Discard changes** (which gives back the values of the scoring shown).
+   - **Apply & Calculate:** calculates the changes at once, once their CDRs are chosen, or opens the Saved Scoring that already has them.
+   - **Cancel**, **×** or <kbd>Esc</kbd>: gives the block back the values it had when it opened (<kbd>Esc</kbd> closes an open list first).
+
+- **A Favourite Scoring is never changed by a calculation.** The scoring calculated, without a star, reads *from ★ <the Favourite Scoring>* beside its name. **Update Favourite** gives that Favourite Scoring its configuration; **Save as new Favourite** stars it with a name of its own.
+- Only one of **Calculate Scoring** (with changes to calculate) and **Recalculate** (for the scoring shown) is offered at a time.
 
 ### 1. Prepare the inputs
 
 1. Open the correct workspace and finish processing the required CDRs.
 2. If no methodology is configured, import one under **Workspace Config → Scoring & GAP Analysis Setup**.
 3. Open **Scoring & GAP Analysis** and press **Context Filters** (or choose a Favourite Scoring with **Favourite Scorings**).
-4. Choose **NSA**, **SA** or **NSA vs SA** in **NR Mode**: NSA vs SA compares the NSA and SA CDRs side by side (see [NSA vs SA](#nsa-vs-sa)).
+4. Choose **NSA**, **SA** or **NSA vs SA** in **NR Mode**. NSA vs SA compares the NSA and SA CDRs side by side (see [NSA vs SA](#nsa-vs-sa)).
 
 > [!IMPORTANT]
 > Every campaign of the calculation needs at least one ready **Data**, **Voice** and **Speech** CDR. Complete CDRs do not guarantee complete KPI measurements: inspect Calculation notes after processing.
@@ -66,97 +190,303 @@ There is no CDR selector: the **NR Mode** and the **Campaign** filter beside it 
 - the **Final** CDR of a campaign before its **Weekly** and **Daily** CDRs, and a Weekly CDR before the Daily ones it contains;
 - or, when it was changed, the **Active?** choice of the CDR in Workspace (see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)).
 
-The Campaign filter offers first **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** (the one before the latest) and **All available campaigns**: the newest one to four campaigns of the NR Mode with Data, Voice and Speech CDRs, the one before the newest, or every one of them, whenever it is used (also those that arrive later). They leave out the [Flex campaigns](workspace-management.md#flex-campaigns) (local campaigns, complete but localised in one region, cluster or city, whose campaign or Campaign Maps label has the word Flex, such as `UK_Flex_2026` or `26-Q2-Flex`) and the [campaigns in progress](workspace-management.md#campaigns-in-progress) (Weekly or Daily CDRs only, without a Final CDR yet, tagged **In progress**): such a campaign is scored only when it is checked by hand. Unlike the other filters, the Campaign filter lists every campaign of the NR Mode whatever the other filters: a campaign they leave no test of (one without tests in the City chosen, for example) is greyed and tagged **No tests with these filters**, and a calculation that includes one says in its warnings that it adds nothing to the results (*26-Q4: no tests with the City filter of this calculation*). Each one stands alone (checking it clears the other one and the campaigns, checking a campaign clears it; **Select All / None** checks or clears the campaigns only). The panel keeps the choice, so it follows the newest campaigns the next time it opens, and a calculation or Saved Scoring uses the campaigns it stands for then. Without a Campaign (**All complete campaigns**), every campaign with Data, Voice and Speech CDRs is scored but the Flex ones; the campaigns that lack a type are named in a note below the CDRs and left out. **CDRs used** lists the CDRs of the calculation by type, newest campaign first, with their stage and campaigns (Weekly and Daily CDRs outlined; four of each type in sight, the rest scrolling), follows every change of the NR Mode or a filter at once, and the badge above the panel counts them.
+**Automatic choices** (listed first in the Campaign filter): each one is resolved whenever it is used, so it also takes campaigns that arrive later.
 
-On first use, and when another NR Mode is chosen, the Campaign is **Latest campaign**: the newest campaign of the NR Mode with Data, Voice and Speech CDRs, also when newer ones arrive. A selection saved before (when CDRs were chosen by hand) opens with the campaigns of its CDRs. Opening a Saved Scoring shows its own CDRs (**CDRs of the opened Saved Scoring**, with **Use automatic CDRs** to choose them again) until the NR Mode or a filter changes: only those with its campaigns, since the rows of its CDRs of other campaigns are left out by its Campaign filter.
+| Choice | Campaigns |
+| --- | --- |
+| **Latest campaign** | The newest campaign of the NR Mode with Data, Voice and Speech CDRs |
+| **Latest 2 campaigns** … **Latest 4 campaigns** | The newest two to four of them |
+| **Previous campaign** | The one before the latest |
+| **All available campaigns** | Every one of them |
+
+- **Left out of the automatic choices:**
+  - the [Flex campaigns](workspace-management.md#flex-campaigns): local campaigns, complete but localised in one region, cluster or city, whose campaign or Campaign Maps label has the word Flex, such as `UK_Flex_2026` or `26-Q2-Flex`;
+  - the [campaigns in progress](workspace-management.md#campaigns-in-progress): Weekly or Daily CDRs only, without a Final CDR yet, tagged **In progress**.
+  - Such a campaign is scored only when it is checked by hand.
+- **Every campaign is listed, whatever the other filters.** Unlike the other filters, the Campaign filter lists every campaign of the NR Mode. A campaign the other filters leave no test of (one without tests in the City chosen, for example) is greyed and tagged **No tests with these filters**. A calculation that includes one says in its warnings that it adds nothing to the results (*26-Q4: no tests with the City filter of this calculation*).
+- **Each automatic choice stands alone:** checking it clears the other one and the campaigns; checking a campaign clears it. **Select All / None** checks or clears the campaigns only.
+- **The choice is kept:** the panel follows the newest campaigns the next time it opens, and a calculation or Saved Scoring uses the campaigns it stands for then.
+- **No Campaign (All complete campaigns):** every campaign with Data, Voice and Speech CDRs is scored but the Flex ones. The campaigns that lack a type are named in a note below the CDRs and left out.
+- **CDRs used:** lists the CDRs of the calculation by type, newest campaign first, with their stage and campaigns. Weekly and Daily CDRs are outlined; four of each type are in sight and the rest scroll. It follows every change of the NR Mode or a filter at once, and the badge above the panel counts them.
+
+**Starting values:**
+
+- **On first use, and when another NR Mode is chosen,** the Campaign is **Latest campaign**, also when newer campaigns arrive.
+- **A selection saved before** (when CDRs were chosen by hand) opens with the campaigns of its CDRs.
+- **Opening a Saved Scoring** shows its own CDRs (**CDRs of the opened Saved Scoring**, with **Use automatic CDRs** to choose them again) until the NR Mode or a filter changes. Only those of its campaigns are shown, since its Campaign filter leaves out the rows of its CDRs of other campaigns.
 
 #### NSA vs SA
 
-When the workspace has NSA and SA CDRs, **NR Mode** also offers **NSA vs SA**: the NSA and SA CDRs of the chosen campaigns scored together, so the scorings, KPI tables, GAP analysis and Scoring Trends show the NSA and SA results of each operator side by side.
+When the workspace has NSA and SA CDRs, **NR Mode** also offers **NSA vs SA**: the NSA and SA CDRs of the chosen campaigns are scored together, so the scorings, KPI tables, GAP analysis and Scoring Trends show the NSA and SA results of each operator side by side.
 
-- **Each NR Mode apart in the results.** Every results tab (Summary, Scoring Charts, Scoring Tables, Country Areas, Scoring Trends, GAP Analysis and Points Lost) shows its tables and charts twice, once for NSA and once for SA, each as an NSA or an SA calculation of the same campaigns shows them: for example the Best Network Scoring Trend and the National & Country Areas Trends of the NSA campaigns and those of the SA campaigns. **NSA vs SA**, beside **Environment** above the results, chooses how: **Each panel: NSA then SA** (the default) puts each panel of NSA right above the same panel of SA, each tagged **NSA** or **SA** (the heading of the tab, the same for both, once), with their filters (such as the operator buttons) once above both, under **NSA & SA**, applying to both (the operators that only SA has join them); **All NSA, then all SA** shows every panel of NSA under **NSA · Non-Standalone** and then every panel of SA under **SA · Standalone**, each with its own filters. **NSA & SA charts** chooses **NSA & SA in the same chart** (the default), where the Scoring Charts show the NSA and SA bars of each operator in each chart and the Scoring Trends one line per operator and NR Mode (SA dashed) on one axis of quarters, where the NSA and SA campaigns of a quarter (2026-Q2 and 2026-Q2-SA) are one point, or **NSA & SA in separate charts**, with the charts of each NR Mode on their own. The browser remembers both choices, which **Export Selected Scoring Report** and **Generate Scoring Report** follow too: their PowerPoint and Word show each NR Mode as the results do, each slide of one NR Mode with **NSA ·** or **SA ·** before its title and, in the same chart, the SA lines of the Scoring Trends dashed. NSA (blue) and SA (magenta) keep their colours in every tab and theme. The Summary starts with **How the measurements ran** of both NR Modes, whose **Campaigns** shows the latest NSA and SA campaigns in large and the other campaigns below them, with the tests of each operator in the latest campaign of each NR Mode. With the GAP reference **Same operator in NSA**, GAP Analysis shows the GAP of SA to NSA once.
+**Each NR Mode apart in the results.** Every results tab (Summary, Scoring Charts, Scoring Tables, Country Areas, Scoring Trends, GAP Analysis and Points Lost) shows its tables and charts twice, once for NSA and once for SA, each as an NSA or an SA calculation of the same campaigns shows them (for example the Best Network Scoring Trend and the National & Country Areas Trends of the NSA campaigns, then those of the SA campaigns). Two view options above the results, beside **Environment**, choose how:
 
-- **Each campaign keeps its NR Mode.** The NSA and SA campaigns are different campaigns (with the default [Campaign Maps](workspace-config.md#campaign-maps), `UK_Q3_NSA_2026` reads 2026-Q3 and `UK_Q3_SA_2026` reads 2026-Q3-SA), so the NSA and SA tests of an operator are never added together, even when the CDRs give both the same operator names (3, EE, O2 (UK)…). The campaign of an SA CDR that does not name SA gets it (`UK_Q2_2026` of an SA CDR is scored as `UK_Q2_2026 SA`), and so does each period of a Daily to Yearly time split (`2026-W07 SA`).
+| Option | Choices |
+| --- | --- |
+| **NSA vs SA** | **Each panel: NSA then SA** (the default): each NSA panel right above the same SA panel, each tagged **NSA** or **SA**, with the heading of the tab once. Their filters (such as the operator buttons) are shown once above both, under **NSA & SA**, and apply to both (the operators that only SA has join them). **All NSA, then all SA**: every NSA panel under **NSA · Non-Standalone**, then every SA panel under **SA · Standalone**, each with its own filters |
+| **NSA & SA charts** | **NSA & SA in the same chart** (the default): the Scoring Charts show the NSA and SA bars of each operator in each chart, and the Scoring Trends one line per operator and NR Mode (SA dashed) on one axis of quarters, where the NSA and SA campaigns of a quarter (2026-Q2 and 2026-Q2-SA) are one point. **NSA & SA in separate charts**: the charts of each NR Mode on their own |
+
+- **Remembered and exported:** the browser remembers both choices. **Export this scoring** and **Custom report…** follow them: their PowerPoint and Word show each NR Mode as the results do, each slide of one NR Mode with **NSA ·** or **SA ·** before its title and, in the same chart, the SA lines of the Scoring Trends dashed.
+- **Colours:** NSA (blue) and SA (magenta) keep their colours in every tab and theme.
+- **Summary:** starts with **How the measurements ran** of both NR Modes. Its **Campaigns** shows the latest NSA and SA campaigns in large and the other campaigns below them, with the tests of each operator in the latest campaign of each NR Mode.
+- **Same operator in NSA:** with this GAP reference, GAP Analysis shows the GAP of SA to NSA once.
+
+**How the NR Modes are scored:**
+
+- **Each campaign keeps its NR Mode.** The NSA and SA campaigns are different campaigns (with the default [Campaign Maps](workspace-config.md#campaign-maps), `UK_Q3_NSA_2026` reads 2026-Q3 and `UK_Q3_SA_2026` reads 2026-Q3-SA). So the NSA and SA tests of an operator are never added together, even when the CDRs give both the same operator names (3, EE, O2 (UK)…).
+  - The campaign of an SA CDR that does not name SA gets it: `UK_Q2_2026` of an SA CDR is scored as `UK_Q2_2026 SA`.
+  - So does each period of a Daily to Yearly time split (`2026-W07 SA`).
 - **Always broken down by Campaign.** Campaign stays checked in **Break down by** and cannot be cleared, and the Scoring Trends time split **All selected CDRs** is not offered.
 - **Latest campaign is a quarter.** Latest campaign, Latest 2 to 4 campaigns and Previous campaign count quarters, each with its NSA and SA campaigns: Latest campaign compares 2026-Q3 NSA with 2026-Q3 SA. Each campaign of each NR Mode needs Data, Voice and Speech CDRs; a quarter without SA CDRs shows NSA only.
-- **Each NR Mode is scored on its own.** The KPIs scored against the best operator of their group, and the GAP against the **GAP reference operator**, compare each operator with the operators of its own NR Mode and campaign, so the NSA figures are those of an NSA calculation and the SA figures those of an SA one. **By campaign** scores the NSA and SA campaigns of a quarter with the methodology of that quarter.
-- **Same operator in NSA.** With NSA vs SA, **GAP reference operator** also offers **Same operator in NSA**: the GAP of each operator in an SA campaign is its points minus its own points in the NSA campaign of the same quarter (or period, with a Daily to Yearly time split), KPI by KPI and in total, in the GAP Analysis tables (*EE vs Same operator in NSA*), the Scoring Tables, the insights and the PowerPoint and Word. The NSA campaigns are the reference, so only the SA campaigns have GAPs; an operator without an NSA campaign of its quarter has none, and the calculation notes say so.
+- **Each NR Mode is scored on its own.** The KPIs scored against the best operator of their group, and the GAP against the **GAP reference operator**, compare each operator with the operators of its own NR Mode and campaign. So the NSA figures are those of an NSA calculation and the SA figures those of an SA one. **By campaign** scores the NSA and SA campaigns of a quarter with the methodology of that quarter.
+- **Same operator in NSA.** With NSA vs SA, **GAP reference operator** also offers **Same operator in NSA**.
+  - The GAP of each operator in an SA campaign is its points minus its own points in the NSA campaign of the same quarter (or period, with a Daily to Yearly time split), KPI by KPI and in total.
+  - It is shown in the GAP Analysis tables (*EE vs Same operator in NSA*), the Scoring Tables, the insights and the PowerPoint and Word.
+  - The NSA campaigns are the reference, so only the SA campaigns have GAPs. An operator without an NSA campaign of its quarter has none, and the calculation notes say so.
 - **Operator names.** An operator lines up in the same row for NSA and SA only when both of its names have the same label in the [Operator Maps](workspace-config.md#operator-maps) (for example a Vodafone named *Vodafone UK* in the NSA CDRs and *Vodafone SM* in the SA ones).
-- The Campaign Map must show NSA and SA campaigns apart: when its label leaves SA out, NSA vs SA asks to show it.
+- **Campaign Map:** it must show NSA and SA campaigns apart. When its label leaves SA out, NSA vs SA asks to show it.
 
-Saved Scorings, their export, import, transfers and backups keep **NSA vs SA**, as does the Scoring section of the reports of [Reporting](reporting.md#the-report-editor) (**Compare NSA vs SA**, whatever the NR Mode of the report), which chooses how its document shows each NR Mode with its own **NSA vs SA** and **NSA & SA charts**. The documents and their file names read **NSA vs SA** (`NSA-vs-SA` in the file name).
+**Where NSA vs SA is kept:** Saved Scorings, their export, import, transfers and backups keep **NSA vs SA**. So does the Scoring section of the reports of [Reporting](reporting.md#the-report-editor) (**Compare NSA vs SA**, whatever the NR Mode of the report), which chooses how its document shows each NR Mode with its own **NSA vs SA** and **NSA & SA charts**. The documents and their file names read **NSA vs SA** (`NSA-vs-SA` in the file name).
 
 ### 3. Set filters, Break down by and reference
 
-1. Restrict **Operators**, **Vendors**, **Regions**, **Clusters** or **Cities** if needed. Every filter lists the values of every CDR of the NR Mode, with the labels of the Operator and Vendor Maps, and only those the other filters leave: choosing Vodafone as Operator leaves in Vendor only the Vendors of Vodafone, and the Campaign the values of its CDRs. A filter's own choice does not narrow its list, a filter with every value checked keeps every new value checked, and a value no CDR has any longer with the other filters is named in a warning. The lists come from the combinations of values each CDR keeps (the **CDR Filter Facets** table, read once per CDR), so they never read the rows of the CDRs.
-2. Choose the **Break down by** levels (Operator, Vendor, Region, **Cluster**, City and Campaign, in the order of the aggregation hierarchy). **Operator** is always included and **Campaign** is checked initially; additional levels split the results into separate combinations. Cluster needs CDRs with a `Cluster` column, filled by the source CDR or by a Cluster mapping.
-3. In the **Country Areas & Scoring Trends** panel, below Break down by (always included), choose in **Country Areas** the areas of the Country Areas and Scoring Trends tabs: the **Breakdown** (**Region** by default, Cluster, City or None, which leaves only the Cities on their own and needs at least one of them; **City** scores every city, or, with a **City** filter, only the cities of the filter and the Cities on their own, which is quicker) and the **Cities on their own**, each scored on its own (**London** by default; **Main Cities** is kept as such, the Main Cities of the workspace each time the Saved Scoring is calculated, which then calculates again when they change), and tick **Postal Codes in the Points Lost Map** to add the Postal Code view of the [Points Lost Map](#points-lost-map) (off by default). In **Scoring Trends** choose the **Campaigns** of the Scoring Trends tab: **All available campaigns** (the default), **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns** or **Previous campaign**, which stand alone and follow the newest campaigns each time the Saved Scoring is calculated, or campaigns; whatever the Campaign filter of the rest of the scoring, the Scoring Trend and the National & Country Areas Trends are calculated with the Data, Voice and Speech CDRs of those campaigns, with the same filters, methodology (By campaign, each campaign with its own) and GAP reference (without campaigns they follow the Campaign filter), with their own **Time split** (All selected CDRs, Campaign, Daily, Weekly, Monthly, Quarterly or Yearly by the start time of each test). Both tabs are always scored on the whole country: with Region, Cluster or City filters, the other tabs show the part of the country they choose while Country Areas and Scoring Trends score the whole country with the other filters (Operator, Vendor…), and both tabs then start with a **Not filtered by area** notice naming the filters they leave out (their tab buttons always show a crossed-out filter icon, which says so on hover) (from the Scoring History this adds a couple of seconds; from the CDR rows, the rows of the whole country are read and scored too, which takes longer than the filtered scoring). The document exports of the job show their slides.
-4. In **GAP reference operator**, in **Scoring Setup**, select the operator to compare against. The initial reference is **EE** (an operator the Operator Maps exclude is never offered). The **Focus operators** are the Operator labels with the **Focus** role in [Workspace Config → Operator Maps](workspace-config.md#operator-maps) (with every name of the CDRs they stand for): the PowerPoint and Word panels set to **Focus Operators** in [Workspace Config → Scoring Export Panels](workspace-config.md#scoring-export-panels) show them (see [What is in the PowerPoint?](#what-is-in-the-powerpoint): by default Where to act, the Biggest levers, the places and locations ranked, the individual GAP comparisons, GAP by part, the KPI GAP Profile, the Points Lost views and the Campaign Comparison; every operator when no label has it; they change no calculation). The page itself offers every operator: in the operator choices of those sections the Focus operators come first, under **Focus operators**, and the others under **Other operators** (for the operator buttons, in two subpanels side by side). The Operator filter of the Context Filters and the operator choices of the results stand out in the blue of the Operators. The operators with the **Exclude** role are left out of every calculation, filter and result, as if every Operator filter left them out, and an operator without a network in an NR Mode (the **NR Modes** of its label, such as Three, which has no SA) has its tests of the CDRs of that NR Mode left out too, in the scores, GAPs, Scoring Trends and Country Areas: with NSA vs SA it keeps its NSA results and has no SA ones, and the heading of each panel names the pairs left out (*Out of scope: SA · Three*). The charts of the operators (**Scoring per Service**, **Scoring per Category** and its **Breakdown**) name them at their foot, on the page and in the PowerPoint and Word (*Out of scope: SA · Three: no network in that NR Mode…*). (The Scoring section of the reports of [Reporting](reporting.md) shows the GAP reference and the methodology in the same order beside its campaigns, and its **Country Areas** and **Scoring Trends** side by side.)
-5. Choose the **Scoring Methodology**, in **Scoring Setup** (its **Scoring Methodologies** link opens the methodology editor of Workspace Config, the Scoring & GAP Analysis Setup, in a panel over the page, 96 % of its width; **Open in Workspace Config** opens the whole page in another tab): **By campaign (each campaign with its methodology)**, the initial choice, scores each campaign with the methodology whose campaigns include it and the others with the default methodology (see [Methodologies by campaign](#methodologies-by-campaign)), so campaigns measured with different rules are compared with their own rules and, with a single methodology, every campaign uses it; or choose one saved methodology for every campaign. With campaigns of different methodologies it needs **Campaign** in the Break down by, and the job names the methodology of each campaign.
+1. **Filters.** Restrict **Operators**, **Vendors**, **Regions**, **Clusters** or **Cities** if needed.
+   - Every filter lists the values of every CDR of the NR Mode, with the labels of the Operator and Vendor Maps, and only those the other filters leave: choosing Vodafone as Operator leaves in Vendor only the Vendors of Vodafone, and in Campaign the values of its CDRs.
+   - A filter's own choice does not narrow its list.
+   - A filter with every value checked keeps every new value checked.
+   - A value no CDR has any longer with the other filters is named in a warning.
+   - The lists come from the combinations of values each CDR keeps (the **CDR Filter Facets** table, read once per CDR), so they never read the rows of the CDRs.
+2. **Break down by.** Choose the levels: Operator, Vendor, Region, **Cluster**, City and Campaign, in the order of the aggregation hierarchy.
+   - **Operator** is always included and **Campaign** is checked initially.
+   - Additional levels split the results into separate combinations.
+   - Cluster needs CDRs with a `Cluster` column, filled by the source CDR or by a Cluster mapping.
+3. **Country Areas & Scoring Trends.** This panel, below Break down by, is always included (see below).
+4. **GAP reference operator** (in **Scoring Setup**). Select the operator to compare against (see [GAP reference, Focus and excluded operators](#gap-reference-focus-and-excluded-operators)).
+5. **Scoring Methodology** (in **Scoring Setup**). See [Scoring Methodology](#scoring-methodology).
 
-The aggregation hierarchy determines the order of the filter controls and of the Break down by levels and headers. It is an application setting shared by every workspace and methodology. **Aggregation hierarchy**, at the right of the Break down by levels, opens a dialog to reorder it; editors save it for everyone. The initial order is **Operator → Vendor → Region → Cluster → City → Campaign**, and saved results keep the order they were calculated with. Operator is always one of the Break down by levels, because each operator is scored, compared with the GAP reference and coloured on its own (without it the tests of every operator would be scored together), but it need not be the first: the levels above it group the operators, so with **City** above Operator the tables and charts show every operator and campaign of each city together, and a Saved Scoring calculated with the previous order shows it when it is calculated again.
+#### Country Areas & Scoring Trends
+
+**Country Areas** chooses the areas of the Country Areas and Scoring Trends tabs:
+
+| Setting | Choices |
+| --- | --- |
+| **Breakdown** | **Region** (the default), Cluster, City or None. None leaves only the Cities on their own and needs at least one of them. **City** scores every city or, with a **City** filter, only the cities of the filter and the Cities on their own, which is quicker |
+| **Cities on their own** | Each city scored on its own. **London** by default. **Main Cities** is kept as such: the Main Cities of the workspace each time the Saved Scoring is calculated, which then calculates again when they change |
+| **Postal Codes in the Points Lost Map** | Adds the Postal Code view of the [Points Lost Map](#points-lost-map) (off by default) |
+
+**Scoring Trends** chooses the **Campaigns** of the Scoring Trends tab:
+
+- **Choices:** **All available campaigns** (the default), **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns** or **Previous campaign**, which stand alone and follow the newest campaigns each time the Saved Scoring is calculated; or chosen campaigns.
+- **Independent of the Campaign filter:** whatever the Campaign filter of the rest of the scoring, the Scoring Trend and the National & Country Areas Trends are calculated with the Data, Voice and Speech CDRs of those campaigns, with the same filters, methodology (By campaign: each campaign with its own) and GAP reference. Without campaigns they follow the Campaign filter.
+- **Time split:** All selected CDRs, Campaign, Daily, Weekly, Monthly, Quarterly or Yearly, by the start time of each test.
+
+**Both tabs are always scored on the whole country.**
+
+- With Region, Cluster or City filters, the other tabs show the part of the country they choose, while Country Areas and Scoring Trends score the whole country with the other filters (Operator, Vendor…).
+- Both tabs then start with a **Not filtered by area** notice naming the filters they leave out. Their tab buttons always show a crossed-out filter icon, which says so on hover.
+- **Cost:** from the Scoring History this adds a couple of seconds. From the CDR rows, the rows of the whole country are read and scored too, which takes longer than the filtered scoring.
+- The document exports of the job show their slides.
+
+#### GAP reference, Focus and excluded operators
+
+- **GAP reference operator:** the initial reference is **EE**. An operator the Operator Maps exclude is never offered.
+- **Focus operators:** the Operator labels with the **Focus** role in [Workspace Config → Operator Maps](workspace-config.md#operator-maps), with every name of the CDRs they stand for.
+  - **In exports:** the PowerPoint and Word panels set to **Focus Operators** in [Workspace Config → Scoring Export Panels](workspace-config.md#scoring-export-panels) show them (see [What is in the PowerPoint?](#what-is-in-the-powerpoint)). By default: Where to act, the Biggest levers, the places and locations ranked, the individual GAP comparisons, GAP by part, the KPI GAP Profile, the Points Lost views and the Campaign Comparison. Every operator is shown when no label has the role. They change no calculation.
+  - **On the page:** every operator is offered. In the operator choices of those sections the Focus operators come first, under **Focus operators**, and the others under **Other operators** (for the operator buttons, in two subpanels side by side).
+  - The Operator filter of the Context Filters and the operator choices of the results stand out in the blue of the Operators.
+- **Excluded operators:** the operators with the **Exclude** role are left out of every calculation, filter and result, as if every Operator filter left them out.
+- **Operators without a network in an NR Mode:** an operator whose label has no network in an NR Mode (the **NR Modes** of its label, such as Three, which has no SA) has its tests of the CDRs of that NR Mode left out too, in the scores, GAPs, Scoring Trends and Country Areas.
+  - With NSA vs SA it keeps its NSA results and has no SA ones.
+  - The heading of each panel names the pairs left out (*Out of scope: SA · Three*).
+  - The charts of the operators (**Scoring per Service**, **Scoring per Category** and its **Breakdown**) name them at their foot, on the page and in the PowerPoint and Word (*Out of scope: SA · Three: no network in that NR Mode…*).
+- **Reports:** the Scoring section of the reports of [Reporting](reporting.md) shows the GAP reference and the methodology in the same order beside its campaigns, and its **Country Areas** and **Scoring Trends** side by side.
+
+#### Scoring Methodology
+
+Choose it in **Scoring Setup**:
+
+- **By campaign (each campaign with its methodology)**, the initial choice: scores each campaign with the methodology whose campaigns include it, and the others with the default methodology (see [Methodologies by campaign](#methodologies-by-campaign)). Campaigns measured with different rules are compared with their own rules; with a single methodology, every campaign uses it.
+  - With campaigns of different methodologies it needs **Campaign** in the Break down by, and the job names the methodology of each campaign.
+- **One saved methodology** for every campaign.
+- **Scoring Methodologies link:** opens the methodology editor of Workspace Config (the Scoring & GAP Analysis Setup) in a panel over the page, 96 % of its width. **Open in Workspace Config** opens the whole page in another tab; so does <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click (or <kbd>Shift</kbd>+click) on the link.
+
+#### Aggregation hierarchy
+
+The aggregation hierarchy sets the order of the filter controls and of the Break down by levels and headers.
+
+- **Shared:** it is an application setting shared by every workspace and methodology.
+- **Change it:** **Aggregation hierarchy**, at the right of the Break down by levels, opens a dialog to reorder it. Editors save it for everyone.
+- **Initial order:** **Operator → Vendor → Region → Cluster → City → Campaign**. Saved results keep the order they were calculated with.
+- **Operator is always a level,** because each operator is scored, compared with the GAP reference and coloured on its own (without it the tests of every operator would be scored together). It need not be the first: the levels above it group the operators. With **City** above Operator, the tables and charts show every operator and campaign of each city together, and a Saved Scoring calculated with the previous order shows it when it is calculated again.
 
 ### 4. Calculate or recalculate
 
-Every selection you calculate becomes a **Saved Scoring**: its CDRs, NR Mode, filters, Break down by levels, GAP reference, methodology and Scoring Trends. Only the Saved Scorings marked with the star (**☆**), the Favourite Scorings, are kept and listed: an unstarred one shows only in the selected card of the Showing card (where **☆** stars it) while it is the one you are looking at, and goes when you calculate or open another (unless it is still calculating or drawing its Points Lost Map). Calculating the same selection again reuses it instead of adding another one.
+Every selection you calculate becomes a **Saved Scoring**: its CDRs, NR Mode, filters, Break down by levels, GAP reference, methodology and Scoring Trends.
+
+- **Only Favourite Scorings are kept and listed:** the Saved Scorings marked with the star (**☆**).
+- **An unstarred one** shows only in the selected card of the Showing card (where **☆** stars it) while it is the one you are looking at. It goes when you calculate or open another, unless it is still calculating or drawing its Points Lost Map.
+- **No duplicates:** calculating the same selection again reuses it instead of adding another one.
 
 | Situation | Action |
 | --- | --- |
-| The selection was never calculated | **Calculate Scoring** calculates it and saves it in **Saved Scorings**; until then, the strip says which blocks changed and are not calculated yet, while the card and the results of the Saved Scoring shown stay (without a scoring shown, the card says *No Saved Scoring matches the configuration*) |
-| The selection was used before | With its result up to date, the button reads **Open Scoring** (with a folder open) and opens its Saved Scoring; when its CDRs, methodology or Operator Maps changed since its result was saved, **Calculate Scoring** calculates it again first; **Recalculate** calculates it again anyway |
-| Its calculation is queued or running | Both actions are disabled until it finishes, and the yellow notice says *Calculating* (or *Recalculating*) *the scoring of the selected CDRs and filters…* until then; while it runs, the results show an animated **Calculating Scoring…** bar, in the colour of the result tab, with its progress and step (for each methodology of a calculation by campaign: checking the Scoring History of its CDRs, then calculating from it or from the rows of the CDRs), and the floating background tasks card shows the calculation with its elapsed time |
-| A scoring is open in Scoring & GAP Analysis | A scoring is always open: the one in use, else the first Favourite Scoring calculated. Opening a Saved Scoring with **Use Filter** is recorded in App Events |
+| The selection was never calculated | **Calculate Scoring** calculates it and saves it in **Saved Scorings**. Until then, the strip says which blocks changed and are not calculated yet, while the card and the results of the Saved Scoring shown stay (without a scoring shown, the card says *No Saved Scoring matches the configuration*) |
+| The selection was used before | With its result up to date, the button reads **Open Scoring** (with a folder open) and opens its Saved Scoring. When its CDRs, methodology or Operator Maps changed since its result was saved, **Calculate Scoring** calculates it again first. **Recalculate** calculates it again anyway |
+| Its calculation is queued or running | Both actions are disabled until it finishes; the yellow notice says *Calculating* (or *Recalculating*) *the scoring of the selected CDRs and filters…*. The results show an animated **Calculating Scoring…** bar, in the colour of the result tab, with its progress and step (for each methodology of a calculation by campaign: checking the Scoring History of its CDRs, then calculating from it or from the rows of the CDRs). The floating background tasks card shows the calculation with its elapsed time |
+| Which scoring is open | A scoring is always open: the one in use, else the first Favourite Scoring calculated. Opening a Saved Scoring with **Use Filter** is recorded in App Events |
 
-A selection is the same when it has the same CDRs, NR Mode, filters, Break down by levels, GAP reference, methodology and Scoring Trends, whatever its CDRs or methodology hold today. Its result, instead, is identified by what it was calculated with: reprocessing a CDR, editing the methodology or changing the Operator Maps makes it out of date.
+- **Same selection:** same CDRs, NR Mode, filters, Break down by levels, GAP reference, methodology and Scoring Trends, whatever its CDRs or methodology hold today.
+- **Out-of-date result:** a result is identified by what it was calculated with, so reprocessing a CDR, editing the methodology or changing the Operator Maps makes it out of date.
 
 > [!TIP]
 > Read the **yellow message at the foot of the strip** when an action is unavailable. It tells whether the selection was used before and explains incomplete selections and other calculation conditions.
 
 ### 5. Reuse Saved Scorings
 
-Choose a Favourite Scoring in the [Filter Navigator](#filter-navigator) (from the **Favourite Scorings** button, the Showing card or its **Navigator** button), or press **Use Filter** on its card in the **Manage Favourite Scorings** panel: it becomes the Saved Scoring shown in the Showing card (from the panel, the page goes to its results), and the module restores its configuration in the blocks of the strip and loads its saved result, with its name and **Opening…** in the Showing card and an animated **Loading Scoring Results…** bar meanwhile. A selection set in the blocks that is a Saved Scoring with its result up to date opens it the same way, without **Open Scoring** (the results are kept ready on the server, on disk in the Scoring cache of the workspace: each result is prepared in the background once its calculation ends, and the idle server prepares those of the Favourite Scorings that have none, so a Favourite Scoring opens at once, also after a restart). A saved result that is out of date (its CDRs were reprocessed, or the methodology or the Operator Maps changed) is calculated again on its own, usually in a moment from the [Scoring History](#scoring-history). When its CDRs or its methodology no longer exist, the saved result is shown as it was and the yellow notice says why.
+**Open a Favourite Scoring** in any of these ways:
 
-The **Manage Favourite Scorings** panel, below the results, starts folded, collapses and expands from its title and stays as you leave it; **Manage Favourite Scorings** at the foot of the Filter Navigator opens it. The lists show the Favourite Scorings in a fixed order: a newly starred one goes first, opening one does not move it, and dragging a card by the tab on its left (the cursor becomes a hand) in the **Favourite Scorings** panel moves it, a horizontal line showing where it will go until it is dropped (the order is the same for every user of the workspace, travels with the Saved Scorings in exports and transfers, and each move is recorded in App Events). Unstarring a Saved Scoring takes it out of the lists. Each card of the panel has a checkbox on top of the tab on its left: **Select all** on top of the panel checks them all, the buttons beside it, grouped with an icon each: **Move Up** and **Move Down** (not for readers) move every checked Saved Scoring one place up or down in the list, those side by side together, as dragging them would (the moved cards light up in amber for a moment where they land, and the page follows the one leading the way), **Use newer CDRs** (with the number of checked Saved Scorings that have newer CDRs) updates each of them with its newer CDRs and calculates them again in the background, while the Saved Scoring being looked at stays open, and **Delete** (with the number of checked Saved Scorings; not for readers) deletes every checked Saved Scoring and its result after one confirmation, keeping their CDRs and the Scoring History, and records each one in App Events. While the panel is scrolled, this bar stays at the top of the window, below the bar of the sections, so its buttons are at hand beside the cards far down the list. The cards of both lists are folded: each one shows its name, with **Use Filter** on its right (the Saved Scoring in use, selected at the top of the module with its results shown, has an **In Use** label there instead), and the blue box of its filters; clicking the card (or its arrow) unfolds the rest of its details and its buttons, and clicking it again folds it. Each list keeps the cards you unfolded while the page is open. A Saved Scoring has labels on top of its card with the values of the fields it filters (its Campaign and NR Mode aside): first the Region, Cluster or City, such as **London** or **Vendor A**, or **Nationwide** when it filters none of them, then the Operator or Vendor, such as **-Three** (every operator but Three); each field has its own colour (Region pink, Cluster green, City amber, Operator blue, Vendor purple, Nationwide slate). Beside it, an outlined tab gives its NR Mode (**NSA** in blue, **SA** in pink, **NSA vs SA** in both), on the selected card at the top of the module too. Unfolded, each card shows:
+- choose it in the [Filter Navigator](#filter-navigator) (from the **Favourite Scorings** button, the Showing card or its **Navigator** button);
+- press **Use Filter** on its card in the **Manage Favourite Scorings** panel (the page then goes to its results);
+- set a selection in the blocks that is a Saved Scoring with its result up to date: it opens the same way, without **Open Scoring**.
 
-- its **name** as a badge on top of the card, after the fold arrow (its **Filter ID** when it has none; the Showing card shows only a given name, and is folded too, with its name, the blue box of its filters and its buttons, where **Details** unfolds the rest) (**✎** edits it in a dialog that shows the filters of the Saved Scoring above the name field: **Save Name** names or renames it, **Enter** saves it and **Escape** cancels, and **Edit Filters** opens it for editing in a dialog, as described below), and, in a blue box with its status, its filters: the date it was last used, NR Mode, Regions, **Clusters** (in their own colour), Cities, Operators, Vendors and Campaigns;
-- the ordered **Break down by** levels, the **GAP Reference**, the **Scoring Methodology** (for **By campaign**, the methodology of each campaign follows the pill), its **Country Areas** (Breakdown and Cities on their own; each Region and London for one saved without them) and its **Scoring Trends** (the campaigns, those of the Saved Scoring when its trends have none of their own and an automatic choice with the campaigns it stood for last time, and the time split), their values as pills, each in its own colour, the **Calculation time** (or the time **Elapsed** while it runs), and on one line how many times it was **Used** (each Calculate Scoring or Recalculate of its selection, each report scenario that uses it, and each opening with **Use Filter**) and **Calculated** (each calculation that finished);
-- **Newer CDRs available** when a Final CDR of the same campaign (or a newer cumulative Weekly or Daily CDR) replaces one of its CDRs: **Use newer CDRs** replaces those CDRs with the newer ones in the same Saved Scoring, which keeps its name, star and place, and calculates it again (a Saved Scoring that already had that selection is merged into it); as editing a Saved Scoring, it needs the user-editor, admin or super-admin role;
-- **Waiting for its CDRs** for a Saved Scoring imported from another workspace whose CDRs are not processed here yet (it finds them by file, whatever their name; one with a Campaign choice such as Latest campaign, like the Favourite Scorings a new workspace starts with, takes the CDRs that choice stands for here);
-- the **CDRs** button (hover or click it to inspect the source files) and, in the bottom right corner, its **Filter ID** (the identifier App Events give it, also on the Showing card) before **✎**, **⧉** to duplicate it (described below), **☆** to keep it (starred, it joins the list first) and **×** to delete it.
+**What happens when it opens:**
 
-The generated PowerPoint is named `yyyymmdd_hhmmss - Scoring & GAP Analysis - <NR Mode> - <Regions> - <Clusters> - <Cities> - <Operators> - <Vendors> - <Campaigns>.pptx` (NSA vs SA reads `NSA-vs-SA`). A complete vendor selection appears as **All Vendors**.
+- It opens at once: it becomes the Saved Scoring shown in the Showing card, and the module restores its configuration in the blocks of the strip and loads its saved result. Meanwhile the Showing card shows its name and **Opening…**, with an animated **Loading Scoring Results…** bar.
+- **Results are kept ready** on the server, on disk in the Scoring cache of the workspace. Each result is prepared in the background once its calculation ends, and the idle server prepares those of the Favourite Scorings that have none, so a Favourite Scoring opens at once, also after a restart.
+- **An out-of-date result** (its CDRs were reprocessed, or the methodology or the Operator Maps changed) is calculated again on its own, usually in a moment from the [Scoring History](#scoring-history).
+- **Missing CDRs or methodology:** the saved result is shown as it was and the yellow notice says why.
 
-A Saved Scoring calculated with **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** or **All available campaigns** keeps that choice instead of the campaigns of that moment: its card shows the choice with the campaigns it stood for last time, and whenever it is opened it takes the campaigns and CDRs the choice stands for then, and is calculated again when they changed.
+#### Manage Favourite Scorings
 
-**Edit Filters** opens every block of the configuration together in a dialog with the selection of the Saved Scoring, under an **Editing Saved Scoring** notice, and the CDRs of its NR Mode and Campaign chosen automatically. Change its NR Mode, Campaign, filters, Break down by, GAP reference, Scoring Trends or methodology; the CDRs follow the NR Mode and Campaign. **Save Changes**, at the foot of the dialog, gives the Saved Scoring that selection and calculates it again, keeping its name, star and place; a Saved Scoring that already had that selection is merged into it. **Cancel Editing**, next to Save Changes, or **Escape** closes the dialog without changing it, and the blocks keep the selection they had before. A Saved Scoring cannot be edited while it is being calculated.
+The **Manage Favourite Scorings** panel, below the results, lists every Favourite Scoring as a card.
 
-**⧉** duplicates a Saved Scoring to save a variant of it as a new one (for example the same filters with Latest 3 campaigns): it asks for the name of the copy (its own name followed by *(copy)*, shown above the filters of the Saved Scoring) and **Edit Filters of the Copy** opens every block in the same dialog with its selection, under a **Duplicating Saved Scoring** notice. Change what the copy needs; **Save as New Filter** (enabled once the selection is no Saved Scoring yet) saves it as a new Favourite Scoring with that name, right after the one copied (first when that one is not starred), and calculates it, while the Saved Scoring copied stays as it was. **Cancel Editing** or **Escape** closes the dialog without a copy.
+- **Fold and open:** it starts folded, collapses and expands from its title and stays as you leave it. **Manage Favourite Scorings** at the foot of the Filter Navigator opens it.
+- **Order:** the lists show the Favourite Scorings in a fixed order. A newly starred one goes first; opening one does not move it.
+- **Reorder by dragging:** drag a card by the tab on its left (the cursor becomes a hand) in the **Favourite Scorings** panel. A horizontal line shows where it will go until it is dropped. The order is the same for every user of the workspace, travels with the Saved Scorings in exports and transfers, and each move is recorded in App Events.
+- **Unstar** a Saved Scoring to take it out of the lists.
 
-Deleting a Saved Scoring removes it and its saved result after confirmation; its CDRs and the Scoring History stay. A running calculation stops at a processing checkpoint or discards its pending result. Viewers can open Saved Scorings but not name, edit, pin or delete them, and editors delete only the Saved Scorings they starred, or those not starred that they calculated last (admins and super-admins delete any); deleting several at once deletes none when one of them belongs to another user. Only admins, super-admins and the user who starred a Saved Scoring unstar it (its star is locked for the others), since an unstarred Saved Scoring goes once another one is calculated or opened.
+**Act on several at once:** each card has a checkbox on top of the tab on its left, and **Select all** on top of the panel checks them all. The buttons beside it, each with an icon:
+
+| Button | What it does |
+| --- | --- |
+| **Move Up** / **Move Down** (not for readers) | Move every checked Saved Scoring one place up or down, those side by side together, as dragging them would. The moved cards light up in amber for a moment where they land, and the page follows the one leading the way |
+| **Use newer CDRs** (with the number of checked Saved Scorings that have newer CDRs) | Updates each of them with its newer CDRs and calculates them again in the background, while the Saved Scoring being looked at stays open |
+| **Delete** (with the number of checked Saved Scorings; not for readers) | Deletes every checked Saved Scoring and its result after one confirmation, keeping their CDRs and the Scoring History, and records each one in App Events |
+
+While the panel is scrolled, this bar stays at the top of the window, below the bar of the sections, so its buttons are at hand beside cards far down the list.
+
+**Folded cards** (in both lists) show:
+
+- the name, with **Use Filter** on its right. The Saved Scoring in use (selected at the top of the module, with its results shown) has an **In Use** label there instead;
+- the blue box of its filters;
+- **labels** on top of the card with the values of the fields it filters (its Campaign and NR Mode aside): first the Region, Cluster or City, such as **London** or **Vendor A**, or **Nationwide** when it filters none of them; then the Operator or Vendor, such as **-Three** (every operator but Three). Each field has its own colour: Region pink, Cluster green, City amber, Operator blue, Vendor purple, Nationwide slate;
+- an outlined tab with its NR Mode: **NSA** in blue, **SA** in pink, **NSA vs SA** in both (on the selected card at the top of the module too).
+
+Click a card (or its arrow) to unfold the rest of its details and its buttons; click again to fold it. Each list keeps the cards you unfolded while the page is open.
+
+**Unfolded, each card shows:**
+
+- **Name:** a badge on top of the card, after the fold arrow (its **Filter ID** when it has none). The Showing card shows only a given name; it is folded too, with its name, the blue box of its filters and its buttons, and **Details** unfolds the rest.
+- **Filters** (in a blue box with its status): the date it was last used, NR Mode, Regions, **Clusters** (in their own colour), Cities, Operators, Vendors and Campaigns.
+- **Settings as pills,** each in its own colour: the ordered **Break down by** levels, the **GAP Reference**, the **Scoring Methodology** (for **By campaign**, the methodology of each campaign follows the pill), its **Country Areas** (Breakdown and Cities on their own; each Region and London for one saved without them) and its **Scoring Trends** (the campaigns, those of the Saved Scoring when its trends have none of their own, an automatic choice with the campaigns it stood for last time, and the time split).
+- **Calculation time** (or the time **Elapsed** while it runs).
+- **Used** and **Calculated,** on one line: **Used** counts each Calculate Scoring or Recalculate of its selection, each report scenario that uses it and each opening with **Use Filter**; **Calculated** counts each calculation that finished.
+- **Newer CDRs available:** when a Final CDR of the same campaign (or a newer cumulative Weekly or Daily CDR) replaces one of its CDRs. **Use newer CDRs** replaces those CDRs with the newer ones in the same Saved Scoring, which keeps its name, star and place, and calculates it again. A Saved Scoring that already had that selection is merged into it. As editing a Saved Scoring, it needs the user-editor, admin or super-admin role.
+- **Waiting for its CDRs:** for a Saved Scoring imported from another workspace whose CDRs are not processed here yet. It finds them by file, whatever their name. One with a Campaign choice such as Latest campaign (like the Favourite Scorings a new workspace starts with) takes the CDRs that choice stands for here.
+- **Buttons:** **CDRs** (hover or click it to inspect the source files) and, in the bottom right corner, its **Filter ID** (the identifier App Events give it, also on the Showing card), then **✎** (rename and edit), **⧉** (duplicate), **☆** (keep it: starred, it joins the list first) and **×** (delete).
+
+**File name of the PowerPoint:** `yyyymmdd_hhmmss - Scoring & GAP Analysis - <NR Mode> - <Regions> - <Clusters> - <Cities> - <Operators> - <Vendors> - <Campaigns>.pptx` (NSA vs SA reads `NSA-vs-SA`). A complete vendor selection appears as **All Vendors**.
+
+**Automatic campaign choices are kept.** A Saved Scoring calculated with **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** or **All available campaigns** keeps that choice instead of the campaigns of that moment. Its card shows the choice with the campaigns it stood for last time. Whenever it is opened it takes the campaigns and CDRs the choice stands for then, and is calculated again when they changed.
+
+#### Rename, edit, duplicate or delete
+
+**✎ Rename or edit.** A dialog shows the filters of the Saved Scoring above the name field.
+
+- **Save Name** names or renames it; <kbd>Enter</kbd> saves it and <kbd>Esc</kbd> cancels.
+- **Edit Filters** opens every block of the configuration together in a dialog with the selection of the Saved Scoring, under an **Editing Saved Scoring** notice, with the CDRs of its NR Mode and Campaign chosen automatically.
+  1. Change its NR Mode, Campaign, filters, Break down by, GAP reference, Scoring Trends or methodology. The CDRs follow the NR Mode and Campaign.
+  2. **Save Changes** (at the foot of the dialog) gives the Saved Scoring that selection and calculates it again, keeping its name, star and place. A Saved Scoring that already had that selection is merged into it.
+  3. **Cancel Editing** (next to Save Changes) or <kbd>Esc</kbd> closes the dialog without changing it; the blocks keep the selection they had before.
+- A Saved Scoring cannot be edited while it is being calculated.
+
+**⧉ Duplicate** saves a variant as a new one (for example the same filters with Latest 3 campaigns).
+
+1. It asks for the name of the copy: its own name followed by *(copy)*, shown above the filters of the Saved Scoring.
+2. **Edit Filters of the Copy** opens every block in the same dialog with its selection, under a **Duplicating Saved Scoring** notice. Change what the copy needs.
+3. **Save as New Filter** (enabled once the selection is no Saved Scoring yet) saves it as a new Favourite Scoring with that name, right after the one copied (first when that one is not starred), and calculates it. The Saved Scoring copied stays as it was.
+4. **Cancel Editing** or <kbd>Esc</kbd> closes the dialog without a copy.
+
+**× Delete** removes the Saved Scoring and its saved result after confirmation; its CDRs and the Scoring History stay. A running calculation stops at a processing checkpoint or discards its pending result.
+
+**Who can do what:**
+
+| Role | Can |
+| --- | --- |
+| Viewers | Open Saved Scorings, but not name, edit, star or delete them |
+| Editors | Delete only the Saved Scorings they starred, or those not starred that they calculated last |
+| Admins and super-admins | Delete any |
+
+- Deleting several at once deletes none when one of them belongs to another user.
+- Only admins, super-admins and the user who starred a Saved Scoring unstar it (its star is locked for the others), since an unstarred Saved Scoring goes once another one is calculated or opened.
 
 #### Filter Navigator
 
-With many Favourite Scorings, **Filter Navigator** finds one without reading every card. It opens from the **Favourite Scorings** button at the top of Scoring & GAP Analysis, from the Showing card (a click on it, or its tree button **Navigator**, which on a phone shows its icon only) and from the button beside the title of the **Manage Favourite Scorings** panel; **Manage Favourite Scorings** at its foot opens that panel. It shows the Favourite Scorings as a tree built from their filters, not from their names:
+With many Favourite Scorings, **Filter Navigator** finds one without reading every card.
 
-- **Area**: the Region, Cluster or City they filter, in the colour of their field, or **Nationwide**, in the order of the list;
-- **NR Mode**: **NSA**, **SA** and **NSA vs SA**, outlined in their colours;
-- **Campaign**: each Favourite Scoring, with its Campaign (an automatic choice such as **Latest 2 campaigns** with the campaigns it stood for when it was last calculated, or its campaigns), the Operator or Vendor it filters, its status when it is not calculated, **In Use** for the one in use and its name below. Two Favourite Scorings that would read alike on a leaf each show the fields that tell them apart (for example **GAP Reference: EE** and **GAP Reference: BT**), or their Filter ID when nothing does.
+**Open it from:**
 
-Each branch gives how many Favourite Scorings it holds; the branches of the one in use open with it, and those you open stay open while the page is open. Choosing a Favourite Scoring uses it, as **Use Filter** on its card (choosing the one in use only closes the dialog): from a dropdown the page stays there, from the panel it goes to its results, and App Events record that it was opened from the Filter Navigator.
+- the **Favourite Scorings** button at the top of Scoring & GAP Analysis;
+- the Showing card: a click on it, or its tree button **Navigator** (on a phone, its icon only);
+- the button beside the title of the **Manage Favourite Scorings** panel.
 
-The search above the tree keeps, as you type, the Favourite Scorings that have every word typed, in any order and at the start of a word, whatever their capitals and accents: in their name, areas, operators and vendors, NR Mode, Campaign and its campaigns, GAP reference, methodology or Filter ID. It marks the words found and the count beside the title gives how many are found. For example, `man sa lat 2` finds the *Latest 2 campaigns* of SA (and of NSA vs SA) in Manchester. A number of one or two digits is a whole word (`2` finds *Latest 2 campaigns*, not 2026-Q3), and words typed one after the other stay together when a Favourite Scoring has them together (`latest camp` finds *Latest campaign*, not *Latest 2 campaigns*).
+**Manage Favourite Scorings** at its foot opens that panel.
 
-With the keyboard, **↓** goes from the search to the tree, **↑ ↓ Home End** move in it, **→** and **←** open and close a branch (or go into it and back to its parent), **Enter** uses the Favourite Scoring focused (in the search, the only one found), and **Escape** clears the search first and then closes the dialog, as **Close** does. With a mouse the search is ready to type in when it opens; on a phone the dialog takes the whole screen and the keyboard waits until you tap the search.
+**The tree** is built from the filters of the Favourite Scorings, not from their names:
+
+| Level | What it shows |
+| --- | --- |
+| **Area** | The Region, Cluster or City they filter, in the colour of their field, or **Nationwide**, in the order of the list |
+| **NR Mode** | **NSA**, **SA** and **NSA vs SA**, outlined in their colours |
+| **Campaign** | Each Favourite Scoring, with its Campaign (an automatic choice such as **Latest 2 campaigns** with the campaigns it stood for when it was last calculated, or its campaigns), the Operator or Vendor it filters, its status when it is not calculated, **In Use** for the one in use and its name below |
+
+- **Look-alike leaves:** two Favourite Scorings that would read alike on a leaf each show the fields that tell them apart (for example **GAP Reference: EE** and **GAP Reference: BT**), or their Filter ID when nothing does.
+- **Branches:** each gives how many Favourite Scorings it holds. The branches of the one in use open with it, and those you open stay open while the page is open.
+- **Choosing a Favourite Scoring** uses it, as **Use Filter** on its card (choosing the one in use only closes the dialog). From a dropdown the page stays there; from the panel it goes to its results. App Events record that it was opened from the Filter Navigator.
+
+**Search.** The box above the tree keeps, as you type, the Favourite Scorings that have every word typed:
+
+- **Matching:** in any order, at the start of a word, whatever their capitals and accents.
+- **Searched fields:** name, areas, operators and vendors, NR Mode, Campaign and its campaigns, GAP reference, methodology and Filter ID.
+- **Feedback:** it marks the words found, and the count beside the title gives how many are found.
+- **Example:** `man sa lat 2` finds the *Latest 2 campaigns* of SA (and of NSA vs SA) in Manchester.
+- **Numbers:** a number of one or two digits is a whole word (`2` finds *Latest 2 campaigns*, not 2026-Q3).
+- **Phrases:** words typed one after the other stay together when a Favourite Scoring has them together (`latest camp` finds *Latest campaign*, not *Latest 2 campaigns*).
+
+**Keyboard:**
+
+| Key | Effect |
+| --- | --- |
+| <kbd>↓</kbd> (in the search) | Goes to the tree |
+| <kbd>↑</kbd> (on the first item) | Goes back to the search |
+| <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Home</kbd> <kbd>End</kbd> | Move in the tree |
+| <kbd>→</kbd> / <kbd>←</kbd> | Open and close a branch, or go into it and back to its parent |
+| <kbd>Enter</kbd> | Uses the Favourite Scoring focused (in the search, the only one found) |
+| <kbd>Esc</kbd> | Clears the search first, then closes the dialog, as **Close** does |
+
+- **With a mouse,** the search is ready to type in when it opens.
+- **On a phone,** the dialog takes the whole screen and the keyboard waits until you tap the search.
 
 ### What is remembered?
 
-- **For each user, in every browser:** CDRs, NR Mode, methodology, filters, Break down by levels, Scoring Trends and GAP reference. These calculation selections save automatically; the selection of one user never changes another's, and a user who has none yet starts from the default one (Latest campaign).
+- **For each user, in every browser:** CDRs, NR Mode, methodology, filters, Break down by levels, Scoring Trends and GAP reference. These calculation selections save automatically. The selection of one user never changes another's, and a user who has none yet starts from the default one (Latest campaign).
 - **Within the browser session:** result tab, environment, display controls, comparison selection and scroll position.
-- **In each Saved Scoring:** its selection, name, pin, uses and calculations, and the source metadata, rules, grouping, result and warnings of its last calculation.
-
-Automatic refreshes of the Saved Scorings do not overwrite edits to the calculation controls. Removed or unready inputs produce a notice when a saved selection is restored.
+- **In each Saved Scoring:** its selection, name, star, uses and calculations, and the source metadata, rules, grouping, result and warnings of its last calculation.
+- **Automatic refreshes** of the Saved Scorings do not overwrite edits to the calculation controls.
+- **Removed or unready inputs** produce a notice when a saved selection is restored.
 
 ## Filters and Break down by
+
+Filters choose which test rows are scored; Break down by chooses how the results are split.
 
 ### Filtering chooses rows; Break down by chooses groups
 
@@ -166,51 +496,75 @@ Automatic refreshes of the Saved Scorings do not overwrite edits to the calculat
 | Break down by | Operator → City → Campaign | Calculate separate results for each operator/city/campaign combination |
 | Omit a Break down by level | Campaign not selected | Pool the selected campaigns' raw rows before calculating KPIs |
 
-Values within a filter combine with **OR**. Different filter fields combine with **AND**. An empty selection means all values. **Main Cities** selects configured workspace cities that exist in the selected CDRs.
-
-The engine pools raw rows before calculating ratios, averages, medians and P90. It does not average KPI results already calculated from separate files.
+- **Values within a filter** combine with **OR**; **different filter fields** combine with **AND**.
+- **An empty selection** means all values.
+- **Main Cities** selects configured workspace cities that exist in the selected CDRs.
+- **Pooling:** the engine pools raw rows before calculating ratios, averages, medians and P90. It does not average KPI results already calculated from separate files.
 
 > [!TIP]
 > Select **Campaign** when you want a separate column or bar for each campaign. Filtering two campaigns alone does not separate their results.
 
 ### Vendor filtering
 
-The **Operator_Vendor** selector filters the `<Operator>_<Vendor>` identity, **Vendor_Operator** the same identity as `<Vendor>_<Operator>` and the **Vendor** selector the vendor alone, using cached per-CDR values; **Cluster** follows Region and **City** offers **Main Cities** first. Choices appear in this order: real vendors, Ericsson (Mixed) (and the former Mixed Vendor), the former Other Vendor, All Vendor(s), operators without assigned vendors labelled **Operator - All**, and finally Mixed (non-Ericsson).
+Three selectors filter vendors, using cached per-CDR values:
 
-**Operator_Vendor** and **Vendor_Operator** stay in sync: selecting values in one selects the same identities in the other.
+| Selector | Filters |
+| --- | --- |
+| **Operator_Vendor** | The `<Operator>_<Vendor>` identity |
+| **Vendor_Operator** | The same identity as `<Vendor>_<Operator>` |
+| **Vendor** | The vendor alone |
 
-Selecting **Ericsson** and **Huawei** includes only those vendor identities from the selected operators. To include an operator with no assigned vendor, also select its **Operator - All** choice, or leave the Vendor filter unrestricted. Vendor mapping stores the suffix in `Operator_Vendor` and `Vendor`; legacy operator-only values without it remain supported.
+- **Operator_Vendor** and **Vendor_Operator** stay in sync: selecting values in one selects the same identities in the other.
+- **Cluster** follows Region, and **City** offers **Main Cities** first.
+- **Order of the choices:** real vendors, Ericsson (Mixed) (and the former Mixed Vendor), the former Other Vendor, All Vendor(s), operators without assigned vendors labelled **Operator - All**, and finally Mixed (non-Ericsson).
 
-The filters add up, and **Vendor** applies to every operator left: Ericsson alone leaves out the other vendors of every operator. To score some vendors of one operator, choose that operator in **Operator** and the vendors in **Vendor**; the other operators, and with them the GAP against the reference operator, are left out. To keep the other operators whole, choose the vendors of that operator in **Operator_Vendor** (or **Vendor_Operator**) together with the values of the other operators. The note under the Context filters says so.
+**How the vendor filters combine:**
 
-The blocks of the configuration keep every filter they show, Cluster, Operator_Vendor and Vendor_Operator included, for the next time it opens; each user keeps their own selection in each workspace (a user without one starts from the latest selection saved in it).
+- **Selecting Ericsson and Huawei** includes only those vendor identities from the selected operators. To include an operator with no assigned vendor, also select its **Operator - All** choice, or leave the Vendor filter unrestricted.
+- **Vendor applies to every operator left,** since the filters add up: Ericsson alone leaves out the other vendors of every operator.
+- **To score some vendors of one operator:** choose that operator in **Operator** and the vendors in **Vendor**. The other operators, and with them the GAP against the reference operator, are left out.
+- **To keep the other operators whole:** choose the vendors of that operator in **Operator_Vendor** (or **Vendor_Operator**) together with the values of the other operators. The note under the Context filters says so.
 
-Legacy saved operator-prefixed selections are normalized to vendor names. The **Operator** filter remains independent. When Vendor is a Break down by level, operators without a vendor still display **All** in that level; web and PowerPoint retain the existing comparison and reference behavior.
+**Stored values and compatibility:**
+
+- Vendor mapping stores the suffix in `Operator_Vendor` and `Vendor`; legacy operator-only values without it remain supported.
+- Legacy saved operator-prefixed selections are normalized to vendor names. The **Operator** filter remains independent.
+- When Vendor is a Break down by level, operators without a vendor still display **All** in that level; web and PowerPoint retain the existing comparison and reference behavior.
+- The blocks of the configuration keep every filter they show, Cluster, Operator_Vendor and Vendor_Operator included, for the next time it opens. Each user keeps their own selection in each workspace (a user without one starts from the latest selection saved in it).
 
 ### How the GAP reference is matched
 
-Each comparison retains the selected environment and Break down by context. For vendor comparisons, the engine tries the same vendor first, then the reference operator's **All** vendor group.
+Each comparison retains the selected environment and Break down by context.
+
+- **Vendor comparisons:** the engine tries the same vendor first, then the reference operator's **All** vendor group.
+- **No match:** no matching reference, or no common valid environment contribution, produces **N/A***.
 
 > [!NOTE]
 > **EE / All can be the reference for Ericsson, Huawei and other vendor groups.** Campaign, City, Region and other selected levels must still match. The fallback does not compare different cities or campaigns.
-
-No matching reference or no common valid environment contribution produces **N/A***.
 
 Filter choices use cached CDR catalogues. If an older CDR lacks expected choices, reprocess it to refresh its catalogue.
 
 ## Results and workspace settings
 
+Read the results of the scoring shown, tab by tab, and choose how they look.
+
 ### Choose a scoring
 
-The **Scoring** selector, beside Environment, switches the tables, charts, GAP analysis, notes and CSV exports between **Best Network** and **Most Reliable**. It appears when the methodology of the result has Most Reliable points; otherwise the result shows only Best Network. The browser remembers the choice for the session.
+The **Scoring** selector, beside Environment, switches the tables, charts, GAP analysis, notes and CSV exports between **Best Network** and **Most Reliable**.
+
+- It appears when the methodology of the result has Most Reliable points; otherwise the result shows only Best Network.
+- The browser remembers the choice for the session.
 
 ### Choose an environment
 
-The **Environment** selector applies to all result tabs and exports. An individual environment shows its own contribution; **All Environments** combines the configured environments.
+The **Environment** selector applies to all result tabs and exports.
 
-Each block of results is a card whose top bar has the colours of its tab (see [Results tabs](#results-tabs)). Changing a result option (an operator, the environment, the scoring or the maps) keeps the card being looked at in its place on the screen, and reloading the page returns to the same place once the results, maps included, are drawn.
+- **An individual environment** shows its own contribution.
+- **All Environments** combines the configured environments.
+- **Incomplete coverage:** when the combined result has incomplete coverage, opening a result prefers an available environment with complete coverage. You can still select All Environments.
+- **Cards keep their place:** each block of results is a card whose top bar has the colours of its tab (see [Results tabs](#results-tabs)). Changing a result option (an operator, the environment, the scoring or the maps) keeps the card being looked at in its place on the screen. Reloading the page returns to the same place once the results, maps included, are drawn.
 
-For the initial NetCheck 2026 allocation:
+For the initial NetCheck 2026 allocation (custom methodologies can change it):
 
 | Environment | Configured maximum |
 | --- | ---: |
@@ -219,11 +573,14 @@ For the initial NetCheck 2026 allocation:
 | Walk | 0 initial points |
 | All Environments | 1,000 points |
 
-Custom methodologies can change these allocations. When the combined result has incomplete coverage, opening a result prefers an available environment with complete coverage. You can still select All Environments.
-
 ### Choose a theme
 
-The **Theme** selector, at the start of the floating section bar of the page (always in sight while reading it), gives every chart and table of the results its colours and the design of its Scoring and GAP cells, and the PowerPoint and Word exports with them. **Ericsson** is the default. One theme serves every themed module (Scoring & GAP Analysis, Network Insights, CDR Analysis and PPT Designer): choosing it in one module chooses it in all of them, each from the start of its floating section bar. Every theme is light except **Midnight**:
+The **Theme** selector gives every chart and table of the results its colours and the design of its Scoring and GAP cells, and the PowerPoint and Word exports with them.
+
+- **Where:** at the start of the floating section bar of the page, always in sight while reading it.
+- **Default:** **Ericsson**.
+- **One theme for every themed module** (Scoring & GAP Analysis, Network Insights, CDR Analysis and PPT Designer): choosing it in one module chooses it in all of them, each from the start of its floating section bar.
+- **Light or dark:** every theme is light except **Midnight**.
 
 | Theme | Colours | Scoring and GAP cells |
 | --- | --- | --- |
@@ -235,7 +592,7 @@ The **Theme** selector, at the start of the floating section bar of the page (al
 | **Paper** | A typeset report: serif type, black rules, italic small-capital sections | Scores underlined in the colour of their band |
 | **Heatmap** | Light panels with a red, amber, green and teal heat scale and outlined subtotals | Soft tiles tinted by the share of the maximum on the scale of their band |
 
-Each theme also styles the titles and subtitles of every content slide of the PowerPoint and Word exports (the covers and transitions keep the Vodafone-Three style of the template):
+**Slide titles.** Each theme also styles the titles and subtitles of every content slide of the PowerPoint and Word exports. The covers and transitions keep the Vodafone-Three style of the template.
 
 | Theme | Titles | Subtitles |
 | --- | --- | --- |
@@ -247,13 +604,33 @@ Each theme also styles the titles and subtitles of every content slide of the Po
 | **Paper** | Georgia, black, what tells the slide apart in dark red italics | Dark red italics |
 | **Heatmap** | Segoe UI, bold, what tells the slide apart in teal | Grey |
 
-A computer without the font of a theme shows its titles in a similar font. A chart or table on several slides of a composed document (*· 1/2*) keeps the plain heading and its part in bold.
+- A computer without the font of a theme shows its titles in a similar font.
+- A chart or table on several slides of a composed document (*· 1/2*) keeps the plain heading and its part in bold.
 
-In every theme a GAP is a bar either side of zero as long as the GAP: red (or the loss colour of the theme) to the left when the operator is behind the reference, green (or its gain colour) to the right when it is ahead; the GAP bars of the KPI GAP Profile and the other insight tables grow the same way, and points lost always grow from the left. Where a GAP bar runs behind its value (in every theme in PowerPoint and Word, in NetCheck and Umlaut on the page, and in the KPI GAP Profile everywhere) the value sits beside the zero line on the side the bar leaves free: left of it when the operator is ahead, right of it when it is behind. In every table the header of a column is aligned like its values (right for numbers), so each column visibly ends where its header does. The National & Country Areas table, the scale of the Points Lost Map (yellow to red in NetCheck, blues in Ericsson, reds in Vodafone, cyan to pink in Midnight, sepia to oxblood in Paper, teal to red in Heatmap) and the tables of the exports follow the theme too. A theme also colours the best and worst operators of the Summary, Voice and Data, the points behind and ahead of the reference, positions, the maximum score allocation donuts (whose outer ring of environments never repeats a colour of the inner ring of Voice and Data or KPI categories) and the slide titles. Operator colours always come from the [Operator Maps](workspace-config.md#operator-maps). The page keeps the theme each user chooses in each workspace, and the choice is registered in App Events. **Export Selected Scoring Report (PPT/Word)** uses the theme of the page; the report editor has its own **Theme** selector (see [Report scenarios](#report-scenarios)). [Network Insights](network-insights.md#theme) offers the same themes, chosen apart.
+**How GAPs are drawn in every theme:**
+
+- **GAP bars:** a bar either side of zero as long as the GAP. Red (or the loss colour of the theme) to the left when the operator is behind the reference; green (or its gain colour) to the right when it is ahead. The GAP bars of the KPI GAP Profile and the other insight tables grow the same way. Points lost always grow from the left.
+- **Value beside the zero line:** where a GAP bar runs behind its value (in every theme in PowerPoint and Word, in NetCheck and Umlaut on the page, and in the KPI GAP Profile everywhere), the value sits on the side the bar leaves free: left of the zero line when the operator is ahead, right of it when it is behind.
+- **Column headers** are aligned like their values (right for numbers), so each column visibly ends where its header does.
+
+**What else follows the theme:**
+
+- the National & Country Areas table;
+- the scale of the Points Lost Map: yellow to red in NetCheck, blues in Ericsson, reds in Vodafone, cyan to pink in Midnight, sepia to oxblood in Paper, teal to red in Heatmap;
+- the tables of the exports;
+- the best and worst operators of the Summary, Voice and Data, the points behind and ahead of the reference, positions and the slide titles;
+- the maximum score allocation donuts, whose outer ring of environments never repeats a colour of the inner ring of Voice and Data or KPI categories.
+
+**Good to know:**
+
+- Operator colours always come from the [Operator Maps](workspace-config.md#operator-maps).
+- The page keeps the theme each user chooses in each workspace, and the choice is registered in App Events.
+- **Report (PPT/Word) → Export this scoring** uses the theme of the page; the report editor has its own **Theme** selector (see [Report scenarios](#report-scenarios)).
+- [Network Insights](network-insights.md#theme) offers the same themes, chosen apart.
 
 ### Area, operators and vendors of each chart and table
 
-The title of every chart and table of the results tabs (Campaign Comparison, the KPI GAP Profile and the Points Lost Map included) ends with three pills: the **area** it shows, its **operators** and its **vendors**, so a copied chart or table still tells them, also in its larger view. The PowerPoint and Word reports name them at the end of the subtitle of each chart and table slide (smaller when the subtitle would not fit on one line).
+The title of every chart and table of the results tabs (Campaign Comparison, the KPI GAP Profile and the Points Lost Map included) ends with three pills: the **area** it shows, its **operators** and its **vendors**. So a copied chart or table still tells them, also in its larger view. The PowerPoint and Word reports name them at the end of the subtitle of each chart and table slide (smaller when the subtitle would not fit on one line).
 
 | Pill | From… | For example |
 | --- | --- | --- |
@@ -261,7 +638,9 @@ The title of every chart and table of the results tabs (Campaign Comparison, the
 | **Operators** | The Operator filter, else `All Operators` | `Operator: EE`, `Operators: EE, O2 UK & 2 more` |
 | **Vendors** | The Vendor of the comparison context, else the Vendor filter (vendors without their operator, as on the Saved Scoring cards), else `All Vendors` | `Vendor: Nokia`, `Vendors: Nokia & Ericsson` |
 
-A list of more than three values keeps the first two and counts the others; hover a pill for all of them. In the PowerPoint, a KPI GAP Profile or Points Lost Map slide that already names its location (for example `City: London · Campaign: 2026-Q2`) does not repeat it. The National & Country Areas card shows every area and has no pills.
+- **Long lists:** a list of more than three values keeps the first two and counts the others; hover a pill for all of them.
+- **No repetition:** in the PowerPoint, a KPI GAP Profile or Points Lost Map slide that already names its location (for example `City: London · Campaign: 2026-Q2`) does not repeat it.
+- **National & Country Areas card:** it shows every area and has no pills.
 
 ### Results tabs
 
@@ -276,30 +655,111 @@ A list of more than three values keeps the first two and counts the others; hove
 | [**Points Lost**](#points-lost) | Where the points go, the points lost per KPI, the Points Lost Map and the points lost per Vendor, per kind of site, per RAN Vendor, per site type (Legacy, eMOCN, NNS), per site and along the Connecting Roads |
 | [**Methodology Impact**](#methodology-impact) | What changes between two methodologies, and what that change does to the scoring, categories, KPIs, geographical areas, GAPs and points lost of each operator |
 
-Opening the page starts on **Summary**, at its top; reloading it (or going Back and Forward, or opening it from the bar at the bottom of a phone) keeps the tab shown and returns to where the page was being read, showing what was in view, dimmed with a loading notice, until the results are drawn there. The menu of the Scoring & GAP Analysis tab lists the eight tabs beside Scoring & GAP Analysis, and the sections bar of the page does too. While the results are scrolled, the bar of the tabs stays at the top of the window, below the sections bar, until the end of the results; choosing another tab there opens it at its start.
+**Moving between tabs:**
 
-A section with several operators has **Operators** chips: the Focus operators are chosen by default (every operator without them), clicking one enables or disables it (its tooltip says so) and one always stays enabled. The chips of every section of the page go together: after a click in one section, every section (also those drawn later) shows its operators as that one does. The PowerPoint and Word show the operators chosen on the page; without a choice, those of each panel in [Scoring Export Panels](workspace-config.md#scoring-export-panels) (the Focus operators or every operator); *<Route>: where the points are*, the individual GAP comparisons and the Campaign Comparison always show the operators of their panel. The sections that compare the operators with the reference show the reference too when it is a Focus operator or is enabled on the page. Sections with four operators show them two above and two below, and GAP by part shows two operators a row. **Export Selected Scoring Report** shows in each section the operators enabled on the page. When the results have several locations or Vendors, a selector chooses the one shown (for example **City: London**), the first by default; sections listed per campaign offer the campaigns chronologically, the latest chosen by default. These choices are kept when the page is reloaded (opening the page again starts from the defaults). Throughout the tabs, in the NetCheck theme, a GAP or a loss behind the reference is red and a lead green, Data points are teal and Voice points amber; the other themes give them their own colours (see [Choose a theme](#choose-a-theme)).
+- **Opening the page** starts on **Summary**, at its top.
+- **Reloading it** (or going Back and Forward, or opening it from the bar at the bottom of a phone) keeps the tab shown and returns to where the page was being read. What was in view stays, dimmed with a loading notice, until the results are drawn there.
+- **Menus:** the menu of the Scoring & GAP Analysis tab lists the eight tabs beside Scoring & GAP Analysis, and so does the sections bar of the page.
+- **Links:** a link ending in `#scoring-results-summary`, `-charts`, `-tables`, `-geographical-areas` (Country Areas), `-trends`, `-gap`, `-points-lost` or `-methodology-impact` opens that tab directly.
+- **Sticky tab bar:** while the results are scrolled, the bar of the tabs stays at the top of the window, below the sections bar, until the end of the results. Choosing another tab there opens it at its start.
 
-Every card of the results tabs (a chart, map, table or panel, such as the panel of the Best Network Scoring chart and its Maximum score per environment & service) shows a blue floating download button (*Download this chart as an image (PNG)*, or this table or panel) on its top edge, at its right, while the pointer is over it, which stays in its place while the pointer moves over the card, and, in a card that holds several charts or tables, the one under the pointer shows one of its own, in light blue and with the usual download icon (the one of the card shows a panel), at its own top right corner; at the right side of the card, it lines up with the button of the card (below it when they would meet) (beside the zoom buttons of a chart or map; they stay at the top of their card, chart or table and show only while it is in sight, without following the scroll down it; on touch screens, a tap shows them for a few seconds, until a tap elsewhere). The button of the card downloads the whole card, with every table and chart it holds, and the one of a chart or table only that one. Beside each download button, on its left, a **screenshot** button (a camera) copies the same image to the clipboard instead, to paste it elsewhere (a presentation, an email or a chat); it turns green a moment once copied. The browser lets a page copy images only at a secure address (https, or the application opened on this computer); elsewhere the screenshot opens in a window, to copy it from the menu of the image (right-click it, or keep it pressed, and choose **Copy Image**) or download it. Each one saves a PNG image of what is shown, with the theme, the operators and choices of the section and the zoom of a chart or map (without the zoom buttons); a table that scrolls sideways is saved with all its columns, and one that scrolls downwards, or a card taller than the window, with all its rows. The file is named after the title and the environment, for example `Best Network Scoring per Service - All Environments.png`, and App Events records each download or copy (`export_scoring_image`, with `destination: clipboard` for a copy or `copy-dialog` when it opened in the window to copy it, or `export_scoring_image_failed` with the reason). A browser that does not let a page save what it draws saves an SVG image instead. The larger view of a chart, map or table (a double-click) has the same buttons in its corner, beside its zoom buttons; its image keeps the title of the view above it, with the pills of its area, operators and vendors (the chart of an area of the National & Country Areas Trends titled with its area, such as *Best Network Trends — London*, also in its own image), and App Events records the tab with *(larger view)*. Network Insights, Non-Qualified Calls, Chart Builder and PPT Designer have the same buttons (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)).
+**Operators chips.** A section with several operators has **Operators** chips.
+
+- **Default:** the Focus operators are chosen (every operator without them).
+- **Click a chip** to enable or disable it (its tooltip says so). One always stays enabled.
+- **Shared across sections:** after a click in one section, every section (also those drawn later) shows its operators as that one does.
+- **Reference:** the sections that compare the operators with the reference show the reference too when it is a Focus operator or is enabled on the page.
+- **Layout:** sections with four operators show them two above and two below; GAP by part shows two operators a row.
+- **In the exports:** the PowerPoint and Word show the operators chosen on the page; without a choice, those of each panel in [Scoring Export Panels](workspace-config.md#scoring-export-panels) (the Focus operators or every operator). *<Route>: where the points are*, the individual GAP comparisons and the Campaign Comparison always show the operators of their panel. **Export this scoring** shows in each section the operators enabled on the page.
+
+**Other selectors:**
+
+- **Locations and Vendors:** when the results have several, a selector chooses the one shown (for example **City: London**), the first by default.
+- **Campaigns:** sections listed per campaign offer the campaigns chronologically, the latest chosen by default.
+- **Kept on reload:** these choices are kept when the page is reloaded; opening the page again starts from the defaults.
+- **Colours:** in the NetCheck theme, a GAP or a loss behind the reference is red and a lead green, Data points are teal and Voice points amber. The other themes give them their own colours (see [Choose a theme](#choose-a-theme)).
+
+#### Larger view, zoom and images
+
+- **Larger view:** double-click a chart, a map or any table of a results tab to open it larger, taking the whole screen but 5% on each side. A focused chart card also opens with <kbd>Enter</kbd> or <kbd>Space</kbd>. <kbd>Esc</kbd>, a click outside it or **×** closes it.
+- **Zoom:** see [Scoring Charts](#scoring-charts).
+
+**Download and copy buttons.** Every card of the results tabs (a chart, map, table or panel, such as the panel of the Best Network Scoring chart and its Maximum score per environment & service) has image buttons:
+
+- **Card button:** a blue floating download button (*Download this chart as an image (PNG)*, or this table or panel) shows on its top edge, at its right, while the pointer is over the card. It stays in its place while the pointer moves over the card, and downloads the whole card, with every table and chart it holds.
+- **Inner chart or table button:** in a card that holds several charts or tables, the one under the pointer shows a button of its own, in light blue with the usual download icon (the one of the card shows a panel), at its own top right corner. At the right side of the card it lines up with the button of the card (below it when they would meet). It downloads only that chart or table.
+- **Where they show:** beside the zoom buttons of a chart or map. They stay at the top of their card, chart or table and show only while it is in sight, without following the scroll down it. On touch screens, a tap shows them for a few seconds, until a tap elsewhere.
+- **Screenshot button** (a camera), on the left of each download button: copies the same image to the clipboard instead, to paste it elsewhere (a presentation, an email or a chat). It turns green a moment once copied.
+  - The browser lets a page copy images only at a secure address (https, or the application opened on this computer).
+  - Elsewhere the screenshot opens in a window: copy it from the menu of the image (right-click it, or keep it pressed, and choose **Copy Image**) or download it.
+
+**What the image holds:**
+
+- A PNG image of what is shown, with the theme, the operators and choices of the section and the zoom of a chart or map (without the zoom buttons).
+- A table that scrolls sideways is saved with all its columns; one that scrolls downwards, or a card taller than the window, with all its rows.
+- **File name:** the title and the environment, for example `Best Network Scoring per Service - All Environments.png`.
+- A browser that does not let a page save what it draws saves an SVG image instead.
+- **In the larger view:** the same buttons are in its corner, beside its zoom buttons. Its image keeps the title of the view above it, with the pills of its area, operators and vendors (the chart of an area of the National & Country Areas Trends is titled with its area, such as *Best Network Trends — London*, also in its own image).
+- **App Events** record each download or copy (`export_scoring_image`, with `destination: clipboard` for a copy or `copy-dialog` when it opened in the window to copy it, or `export_scoring_image_failed` with the reason). For the larger view, they record the tab with *(larger view)*.
+
+Network Insights, Non-Qualified Calls, Chart Builder and PPT Designer have the same buttons (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)).
 
 ### Summary
 
+The Summary tab tells where each operator stands and where to act first.
+
 | Section | What it shows |
 | --- | --- |
-| **How the measurements ran** | The campaigns (the latest one, the reference, with the other analysed campaigns below it, such as *+2 campaigns: 26-Q2, 26-Q1*, the newest first), the first and last day of tests and the days with tests, the cities and Connecting Roads routes, the environments with their points and, per operator, the Data tests, calls and Speech samples scored in each environment of the latest campaign |
-| **Where to act** | For the operator chosen in **Operator** (its buttons in the Focus operators and Other operators subpanels, as in the Campaign Comparison; the first Focus operator by default, else the first compared operator; it also chooses Where to act, by performance owner): a headline and the themes that hold its points lost, the most first (Voice calls, Failed data tests, Below-par data tests), each with what to do (the points of the failed tests and the KPIs that lose most, each with the points of the scoring it loses against its maximum, not the GAP to the reference of GAP Analysis; every figure of points stands out in bold in the loss colour of the theme, as on the slides) and the view of the results to open (the **Deep-dive** column: Points lost per KPI of Voice or Data, Sites to review or Route stretches, each a link that opens its section of **Points Lost**), then the **Sites to review** (the first one to review) and the **Route stretches** (the route that loses most and its first stretch) |
-| **Where to act, by performance owner** | A card per performance owner (the Regions of the CDRs, such as Vendor A, Vendor B, VMO2 North and VMO2 South) in a colour of the theme, the same on every view and slide (VMO2 North, VMO2 South, Vendor B and Vendor A take its first four colours, other owners the next ones by name): its **National points lost** (its part of the operator's National loss, in the tests of its Region; not the score of the Region on its own, which the National & Country Areas Trends show), its main issue (the setting that holds most of them and the points of each environment), its two biggest areas, its High priority sites and where its points are (Cities, Towns, Roads and railways; a Saved Scoring calculated before these were kept asks to be recalculated with **Recalculate**) |
-| **Where each operator stands** | For the latest campaign: every operator ranked by its score, each a bar of its Data and Voice points with its total and its change since the previous campaign. Below, per chosen operator, its score and position, its GAP to the reference split into Data and Voice, how far it is behind the operator above it and ahead of the one below it, its GAP to the reference in every part of the scoring (as in [GAP by part](#gap-by-part)) and a sentence that sums it up |
-| **Position in every environment and service** | Per chosen operator, a matrix of every environment and All Environments by Voice, Data and Overall: each tile is its position among the operators measured (green for the first, light green for the second, light red in between and red for the last) and its share of the points available, and the bar under it the points it missed of those available. All Environments scales the environments measured to the full maximum, as the scoring per location does |
+| **How the measurements ran** | The campaigns (the latest one, the reference, with the other analysed campaigns below it, such as *+2 campaigns: 26-Q2, 26-Q1*, the newest first); the first and last day of tests and the days with tests; the cities and Connecting Roads routes; the environments with their points; and, per operator, the Data tests, calls and Speech samples scored in each environment of the latest campaign |
+| **Where to act** | For the operator chosen in **Operator**: a headline and the themes that hold its points lost, then the **Sites to review** and the **Route stretches** (see below) |
+| **Where to act, by performance owner** | A card per performance owner with its share of the National points lost, main issue, biggest areas, High priority sites and where its points are (see below) |
+| **Where each operator stands** | For the latest campaign: every operator ranked by its score, each a bar of its Data and Voice points with its total and its change since the previous campaign. Below, per chosen operator: its score and position; its GAP to the reference split into Data and Voice; how far it is behind the operator above it and ahead of the one below it; its GAP to the reference in every part of the scoring (as in [GAP by part](#gap-by-part)); and a sentence that sums it up |
+| **Position in every environment and service** | Per chosen operator, a matrix of every environment and All Environments by Voice, Data and Overall. Each tile is its position among the operators measured (green for the first, light green for the second, light red in between and red for the last) and its share of the points available; the bar under it is the points it missed of those available. All Environments scales the environments measured to the full maximum, as the scoring per location does |
 | **Biggest levers** | Per chosen operator, the KPIs where matching the reference wins most points (up to 8), with both values and the points to win |
-| **Cities ranked**, **Towns ranked**, **Roads ranked**, **Railways ranked** | For every operator chosen with their own **Operators** buttons (the Focus operators by default, whatever the operator of Where to act; the PowerPoint and Word follow them), a table per operator with the places of the latest campaign (big cities, medium and small cities, connecting roads and train routes, from `G_Level_3` and `G_Level_2`) ranked by their share of the points (85% or more in the High colour, 75–85% Medium, under 75% Low), with their performance owners and their share of the tests, *(drive + walk)* when both were measured, the change since the previous campaign, their Voice and Data shares and their points lost on one bar scale for every ranking; it needs City in Break down by |
-| **<Route>: where the points are** | For every operator chosen with its own **Operators** buttons (as the other sections: the Focus operators by default, whatever the operator of Where to act; the PowerPoint and Word always show the operators of its panel in Scoring Export Panels, the Focus operators by default, whatever the page chose), one card each on the route that loses most among theirs (or the one chosen in **Route**): the map of its stretches, drawn as the maps of Connecting Roads (each circle sized and coloured from yellow to red by its points lost, the five with the most numbered with their nearest city beside them, the measured cities around it named) with each circle ringed in the colour of its owner; the points of each owner with its share of the tests (and those whose start cell has no Region); the five stretches with the most points and their main owner, and what to review first |
+| **Cities ranked**, **Towns ranked**, **Roads ranked**, **Railways ranked** | A table per operator with the places of the latest campaign ranked by their share of the points (see below). Needs City in Break down by |
+| **<Route>: where the points are** | One card per operator on the route that loses most among theirs, or the one chosen in **Route** (see below) |
 
-The points lost of these views are the points of the scoring lost against the maximum of each KPI (not the GAP to the reference of GAP Analysis); a calculation split by City, Cluster or Region scores each place on the whole maximum, so the points of each place count by its share of the tests (national estimates) and the views add them up. They need the Saved Scoring calculated with this version to tell Cities from Towns, name the owners and the cities around a route (older results rank the places as Cities and routes as Roads).
+**Where to act:**
 
-The days of the tests and the test counts are kept by calculations made with this version; older results leave out the days and count the KPI samples instead until they are calculated again.
+- **Operator:** its buttons are in the Focus operators and Other operators subpanels, as in the Campaign Comparison. The first Focus operator by default, else the first compared operator. It also chooses Where to act, by performance owner.
+- **Themes:** the themes that hold its points lost, the most first (Voice calls, Failed data tests, Below-par data tests), each with:
+  - what to do: the points of the failed tests and the KPIs that lose most, each with the points of the scoring it loses against its maximum (not the GAP to the reference of GAP Analysis). Every figure of points stands out in bold in the loss colour of the theme, as on the slides;
+  - the view of the results to open, in the **Deep-dive** column: Points lost per KPI of Voice or Data, Sites to review or Route stretches, each a link that opens its section of **Points Lost**.
+- **Then:** the **Sites to review** (the first one to review) and the **Route stretches** (the route that loses most and its first stretch).
+
+**Where to act, by performance owner:**
+
+- **Owners:** the Regions of the CDRs, such as Vendor A, Vendor B, VMO2 North and VMO2 South.
+- **Colours:** each owner has a colour of the theme, the same on every view and slide. VMO2 North, VMO2 South, Vendor B and Vendor A take its first four colours; other owners the next ones, by name.
+- **Each card shows:**
+  - its **National points lost:** its part of the operator's National loss, in the tests of its Region. This is not the score of the Region on its own, which the National & Country Areas Trends show;
+  - its main issue: the setting that holds most of them, and the points of each environment;
+  - its two biggest areas and its High priority sites;
+  - where its points are: Cities, Towns, Roads and railways. A Saved Scoring calculated before these were kept asks to be recalculated with **Recalculate**.
+
+**Cities, Towns, Roads and Railways ranked:**
+
+- **Operators:** every operator chosen with their own **Operators** buttons (the Focus operators by default, whatever the operator of Where to act). The PowerPoint and Word follow them.
+- **Places:** big cities, medium and small cities, connecting roads and train routes, from `G_Level_3` and `G_Level_2`.
+- **Ranking:** by their share of the points: 85% or more in the High colour, 75–85% Medium, under 75% Low.
+- **Columns:** their performance owners and their share of the tests, *(drive + walk)* when both were measured, the change since the previous campaign, their Voice and Data shares and their points lost, on one bar scale for every ranking.
+
+**<Route>: where the points are:**
+
+- **Operators:** every operator chosen with its own **Operators** buttons (the Focus operators by default, whatever the operator of Where to act). The PowerPoint and Word always show the operators of its panel in Scoring Export Panels (the Focus operators by default), whatever the page chose.
+- **The map of its stretches,** drawn as the maps of Connecting Roads: each circle sized and coloured from yellow to red by its points lost, the five with the most numbered with their nearest city beside them, the measured cities around it named, and each circle ringed in the colour of its owner.
+- **Below the map:** the points of each owner with its share of the tests (and those whose start cell has no Region), the five stretches with the most points and their main owner, and what to review first.
+
+**About these figures:**
+
+- **Points lost against the maximum:** the points lost of these views are the points of the scoring lost against the maximum of each KPI, not the GAP to the reference of GAP Analysis.
+- **National estimates:** a calculation split by City, Cluster or Region scores each place on the whole maximum, so the points of each place count by its share of the tests, and the views add them up.
+- **Recalculate older results:** telling Cities from Towns, naming the owners and the cities around a route need the Saved Scoring calculated with this version; older results rank the places as Cities and routes as Roads.
+- **Days and test counts** are kept by calculations made with this version. Older results leave out the days and count the KPI samples instead until they are calculated again.
 
 ### Scoring Tables
+
+The Scoring Tables tab shows the scores as a scorecard.
 
 | View | What it shows |
 | --- | --- |
@@ -308,15 +768,44 @@ The days of the tests and the test counts are kept by calculations made with thi
 | **Show KPI values** | Measured KPI values in Breakdown, before the Score columns |
 | **Show GAP values** | GAP columns at the end or next to each compared operator's score |
 
-The Scoring and GAP tables read as a scorecard: the header starts with the operators (in their colour); each group below them (a route, city or campaign, when the results are split by more than one level) is ruled under its name and set apart from the next one by a gap (a line in PowerPoint and Word), so each one shows where it ends; each category opens a section with its subtotal (or its number of KPIs in the GAP tables), and each KPI shows the badge of its type (**R** for Reliable, **D** for Diff) with its weight and maximum points, in place of Category, Type of KPI, Score weight and Max score columns. When the KPIs are ordered by GAP, their categories are no longer together and each KPI carries its category instead. The weighted total closes the table. The PowerPoint and Word tables have the same design.
+**How the Scoring and GAP tables read** (the PowerPoint and Word tables have the same design):
 
-Summary highlights the highest and lowest valid scores **across the whole displayed row**, each inside the box of its cell. Tied extremes can highlight several cells. Equal scores, or fewer than two valid scores, remain neutral.
+- **Header:** starts with the operators, in their colour.
+- **Groups:** each group below them (a route, city or campaign, when the results are split by more than one level) is ruled under its name and set apart from the next one by a gap (a line in PowerPoint and Word), so each one shows where it ends.
+- **Categories:** each category opens a section with its subtotal (or its number of KPIs in the GAP tables).
+- **KPIs:** each KPI shows the badge of its type (**R** for Reliable, **D** for Diff) with its weight and maximum points, in place of Category, Type of KPI, Score weight and Max score columns. When the KPIs are ordered by GAP, their categories are no longer together and each KPI carries its category instead.
+- **Total:** the weighted total closes the table.
 
-Breakdown scores take the colour of their **Low**, **Medium**, **High** and **UltraHigh** bands and show their share of the maximum points as the theme draws it (see [Choose a theme](#choose-a-theme)). The legend of the bands shows each band as its cells look in the theme, on the page and in PowerPoint and Word: Ericsson and Vodafone fill their cells with the colours of the legend, NetCheck and Umlaut draw it as their data bars, Heatmap as its tints, Paper as its underlined text and Midnight as its glowing bars. Category totals remain neutral. Raw measurements are not summed across different KPIs because their units differ. The bar of each GAP is as long as the GAP against the largest GAP of its table, so small GAPs stay quiet and only the large ones stand out.
+**Colours and highlights:**
 
-GAP visibility starts unchecked. It affects Scoring Tables and its PowerPoint tables; dedicated GAP Analysis views remain available.
+- **Summary** highlights the highest and lowest valid scores **across the whole displayed row**, each inside the box of its cell. Tied extremes can highlight several cells. Equal scores, or fewer than two valid scores, remain neutral.
+- **Breakdown** scores take the colour of their **Low**, **Medium**, **High** and **UltraHigh** bands and show their share of the maximum points as the theme draws it (see [Choose a theme](#choose-a-theme)).
+- **The legend of the bands** shows each band as its cells look in the theme, on the page and in PowerPoint and Word: Ericsson and Vodafone fill their cells with the colours of the legend, NetCheck and Umlaut draw it as their data bars, Heatmap as its tints, Paper as its underlined text and Midnight as its glowing bars.
+- **Category totals** remain neutral. Raw measurements are not summed across different KPIs because their units differ.
+- **GAP bars:** the bar of each GAP is as long as the GAP against the largest GAP of its table, so small GAPs stay quiet and only the large ones stand out.
+- **GAP visibility** starts unchecked. It affects Scoring Tables and its PowerPoint tables; dedicated GAP Analysis views remain available.
 
-**Campaign Comparison** appears below the tables when Campaign is a Break down by level with at least two campaigns. Choose the **Operator** with its buttons (in the Focus operators and Other operators subpanels, the first Focus operator by default) and, when it has several combinations of the other levels, its **Group**, the **Baseline campaign** and the **Compared campaign** (by default the previous and the latest campaigns): the table, across the whole card, lists every KPI with its value and points in both campaigns and **Δ Points** (compared minus baseline), from the largest loss to the largest gain in a red–green scale, with the total **Scoring Points Gap**, the sum of the Δ Points shown. When the two campaigns were scored with different methodologies (see [Methodologies by campaign](#methodologies-by-campaign)), a category whose KPIs changed between them (a KPI added or removed, or other maximum points, such as VIDEO STREAM when 2026-Q3 shares the YouTube points with TikTok) is compared as a whole: a row **<category> · methodology changed** with the points of all its KPIs in each campaign and their Δ Points, followed by its KPIs with their values and points but no Δ of their own (**—**), and a note under the table names those categories and the methodology of each campaign. The other categories are compared KPI by KPI, and a KPI measured in only one of the campaigns keeps **N/A** and stays out of the Scoring Points Gap. When every KPI is measured in both campaigns, the Scoring Points Gap is the change of the operator's score between them. The PowerPoint and Word exports compare the two latest campaigns the same way.
+#### Campaign Comparison
+
+**Campaign Comparison** appears below the tables when Campaign is a Break down by level with at least two campaigns.
+
+1. Choose the **Operator** with its buttons (in the Focus operators and Other operators subpanels; the first Focus operator by default).
+2. When it has several combinations of the other levels, choose its **Group**.
+3. Choose the **Baseline campaign** and the **Compared campaign** (by default the previous and the latest campaigns).
+
+**The table** (across the whole card):
+
+- lists every KPI with its value and points in both campaigns and **Δ Points** (compared minus baseline), from the largest loss to the largest gain in a red–green scale;
+- ends with the total **Scoring Points Gap**, the sum of the Δ Points shown. When every KPI is measured in both campaigns, the Scoring Points Gap is the change of the operator's score between them;
+- a KPI measured in only one of the campaigns keeps **N/A** and stays out of the Scoring Points Gap.
+
+**When the two campaigns used different methodologies** (see [Methodologies by campaign](#methodologies-by-campaign)):
+
+- A category whose KPIs changed between them (a KPI added or removed, or other maximum points, such as VIDEO STREAM when 2026-Q3 shares the YouTube points with TikTok) is compared as a whole: a row **<category> · methodology changed** with the points of all its KPIs in each campaign and their Δ Points, followed by its KPIs with their values and points but no Δ of their own (**—**).
+- A note under the table names those categories and the methodology of each campaign.
+- The other categories are compared KPI by KPI.
+
+The PowerPoint and Word exports compare the two latest campaigns the same way.
 
 ### GAP Analysis
 
@@ -329,18 +818,26 @@ GAP visibility starts unchecked. It affects Scoring Tables and its PowerPoint ta
 | Zero | Equal weighted points |
 | **N/A*** | No valid comparison is available |
 
-**GAP comparison** offers **All vs reference** and each individual operator. Individual comparisons order KPI rows from lowest to highest GAP in the latest campaign (with several campaigns; the other campaigns break ties), with the KPIs unavailable in it last, on the page and in the PowerPoint and Word exports. **KPI order**, beside it, chooses **Within each category** (the default: each category keeps its KPIs together, All Operators in KPI definition order) or **Across all categories** (every KPI in one list, lowest GAP first; All Operators by the mean GAP of its operators in the latest campaign; each KPI then carries its category). It is the same choice as **KPI order** in **Scoring Setup → GAP Analysis** and in the KPI GAP Profile: changing it in any of them shows it at once everywhere, without calculating again, it is kept when the page is reloaded and **Export Selected Scoring Report** (PowerPoint and Word) follows it. Saved GAP priorities do not control this display order.
+**GAP comparison** offers **All vs reference** and each individual operator.
 
-Every GAP table ends with **Total KPI GAP**, the sum of the valid KPI GAPs in **each column separately**, in web and PowerPoint.
+- **Individual comparisons** order KPI rows from lowest to highest GAP in the latest campaign (with several campaigns; the other campaigns break ties), with the KPIs unavailable in it last, on the page and in the PowerPoint and Word exports.
+- **KPI order**, beside it:
+  - **Within each category** (the default): each category keeps its KPIs together; All Operators in KPI definition order.
+  - **Across all categories:** every KPI in one list, lowest GAP first; All Operators by the mean GAP of its operators in the latest campaign. Each KPI then carries its category.
+- **One shared KPI order:** it is the same choice as **KPI order** in **Scoring Setup → GAP Analysis** and in the KPI GAP Profile. Changing it in any of them shows it at once everywhere, without calculating again. It is kept when the page is reloaded, and **Export this scoring** (PowerPoint and Word) follows it.
+- Saved GAP priorities do not control this display order.
 
-Individual PowerPoint slides also show:
+**Totals and averages:**
+
+- Every GAP table ends with **Total KPI GAP**, the sum of the valid KPI GAPs in **each column separately**, in web and PowerPoint.
+- Individual PowerPoint slides also show:
 
 | Side note | Calculation |
 | --- | --- |
 | **Average KPI GAP** | Mean of all valid KPI GAP cells displayed on the slide |
 | **Average total KPI GAP** | Calculate each column's KPI sum, then average those column totals |
 
-Columns represent combinations of the selected levels, such as City and Campaign. Columns without any valid GAPs are excluded from the mean of totals.
+- Columns represent combinations of the selected levels, such as City and Campaign. Columns without any valid GAPs are excluded from the mean of totals.
 
 > [!IMPORTANT]
 > **Do not apply KPI weights again to GAP points.** Each KPI GAP already subtracts weighted scoring points. Totals sum those points; averages use them directly.
@@ -349,22 +846,52 @@ Columns represent combinations of the selected levels, such as City and Campaign
 
 #### GAP by part
 
-Below the GAP tables, **GAP by part of the scoring over the campaigns** gives, per chosen operator, its GAP to the reference in every part of the scoring in the latest campaigns (up to six), with the total and, with several campaigns, a bar of the latest one; each cell is shaded red behind the reference and green ahead. With the NetCheck methodologies, whose KPIs are typed Reliable or not, the parts are the **reliability** of Voice and Data (calls and tests that complete, POLQA below 1.6, the lowest throughputs) and their **quality** (speeds, times, speech quality and the higher thresholds); with other methodologies, each category.
+**GAP by part of the scoring over the campaigns**, below the GAP tables, gives per chosen operator its GAP to the reference in every part of the scoring.
+
+- **Campaigns:** the latest ones (up to six), with the total and, with several campaigns, a bar of the latest one.
+- **Shading:** each cell is red behind the reference and green ahead.
+- **Parts:** with the NetCheck methodologies, whose KPIs are typed Reliable or not, the **reliability** of Voice and Data (calls and tests that complete, POLQA below 1.6, the lowest throughputs) and their **quality** (speeds, times, speech quality and the higher thresholds). With other methodologies, each category.
 
 #### KPI GAP Profile
 
-Below them, **KPI GAP Profile** first chooses the location (for example **City: London**, when the results have several; campaigns are listed chronologically, the latest chosen by default) and then one or more **Operators** (the Focus operators by default, as every operator choice of the page; choosing an operator in **GAP comparison** above shows that one until an operator is clicked again, and GAP comparison follows a single chosen operator). Each chosen operator other than the reference gets a table of its **GAP to <reference>** per KPI (operator points − reference points, per environment and in total), two operators side by side. The KPIs are grouped by category, the categories furthest behind first, each with its subtotal; with **KPI order** set to **Across all categories** (beside the operators, the same choice as in GAP comparison and Scoring Setup) every KPI is in one list, the furthest behind first, each with its category. The points each operator loses against the maximum are in [Points lost per KPI](#points-lost-per-kpi). The location and operators are shared with **Points lost per KPI** and the **Points Lost Map**, and they are kept when the page is reloaded (opening the page again starts from the defaults).
+**KPI GAP Profile**, below them, shows each operator's GAP to the reference KPI by KPI.
 
-The columns are the environments of the selected environment (each environment of All Environments) and **Total**. Every column has its own data bars, red below zero and green above, which fade from the colour to white like Excel data bars, with the value beside the zero line on the side its bar leaves free (left of it above zero, right of it below). Each KPI starts with the **R** (Reliable) or **D** (Diff) badge of its type, as in the Score and GAP tables; the Reliable KPIs are the ones of the Most Reliable scoring. A **Total KPI GAP** row closes each table with the total of every column. In All Environments each environment column holds its part of the All Environments points ([scaled](#incomplete-coverage-and-achievable-scoring) when environments have no results), so the columns add up to the Total and to the GAP of the Scoring and GAP tables. The note below names the total GAP of each operator to the reference.
+1. **Location:** for example **City: London**, when the results have several. Campaigns are listed chronologically, the latest chosen by default.
+2. **Operators:** one or more (the Focus operators by default, as every operator choice of the page). Choosing an operator in **GAP comparison** above shows that one until an operator is clicked again, and GAP comparison follows a single chosen operator.
+
+**The tables:**
+
+- **One table per chosen operator** other than the reference, of its **GAP to <reference>** per KPI (operator points − reference points, per environment and in total), two operators side by side.
+- **Order:** the KPIs are grouped by category, the categories furthest behind first, each with its subtotal. With **KPI order** set to **Across all categories** (beside the operators; the same choice as in GAP comparison and Scoring Setup), every KPI is in one list, the furthest behind first, each with its category.
+- **Columns:** the environments of the selected environment (each environment of All Environments) and **Total**.
+- **Data bars:** every column has its own, red below zero and green above, fading from the colour to white like Excel data bars. The value sits beside the zero line on the side its bar leaves free (left of it above zero, right of it below).
+- **Badges:** each KPI starts with the **R** (Reliable) or **D** (Diff) badge of its type, as in the Score and GAP tables. The Reliable KPIs are the ones of the Most Reliable scoring.
+- **Total KPI GAP** closes each table with the total of every column.
+- **All Environments:** each environment column holds its part of the All Environments points ([scaled](#incomplete-coverage-and-achievable-scoring) when environments have no results), so the columns add up to the Total and to the GAP of the Scoring and GAP tables.
+- **Note:** names the total GAP of each operator to the reference.
+
+**Shared choices:**
+
+- The points each operator loses against the maximum are in [Points lost per KPI](#points-lost-per-kpi).
+- The location and operators are shared with **Points lost per KPI** and the **Points Lost Map**. They are kept when the page is reloaded (opening the page again starts from the defaults).
 
 ### Points Lost
 
+The Points Lost tab shows how many points each operator loses against the maximum, how, and where.
+
 | Section | What it shows |
 | --- | --- |
-| **Where the points go** | For the latest campaign, the points each operator loses split by how it loses them (see [Kinds of points lost](#kinds-of-points-lost)), as bars and as a table, with a table under them of what each kind counts and the KPIs of the methodology it holds; hover a bar for the KPIs that lose most |
+| **Where the points go** | For the latest campaign, the points each operator loses split by how it loses them (see [Kinds of points lost](#kinds-of-points-lost)), as bars and as a table, with a table under them of what each kind counts and the KPIs of the methodology it holds. Hover a bar for the KPIs that lose most |
 | [**Points lost per KPI**](#points-lost-per-kpi) | The points each chosen operator, the reference included, loses against the maximum of every KPI |
 | [**Points Lost Map**](#points-lost-map) | Where each operator loses its National points, per City, Region or Cluster, and per Postal Code for the Saved Scorings that ask for it |
 | [**Per Vendor, per kind of site, sites and stretches**](#points-lost-per-vendor-kind-of-site-site-and-stretch) | The points lost shared among the cells that served the tests, also per RAN Vendor and site type for the multivendor analysis |
+
+**Which points are counted:**
+
+- Every section of Points Lost, and Where to act, counts in the points of the environment chosen.
+- **All Environments:** each operator loses the same points in all of them, those of **Where the points go** (scaled to the full maximum when environments have no results, see [Incomplete coverage and achievable scoring](#incomplete-coverage-and-achievable-scoring)).
+- **Each environment on its own** keeps its own points.
+- **Totals:** every table closes with a **Total** row (the map, the sites and the stretches with the total of those listed).
 
 #### Kinds of points lost
 
@@ -377,72 +904,170 @@ Each KPI loses its points in one kind, from its formula and its Type:
 | **Below the threshold** | The calls and tests that completed above that minimum but missed the threshold of another ratio KPI (Diff). They are not Non-Qualified Calls | Call setup time > 10 s, disturbed and impaired calls (classic and WhatsApp), FDTT DL throughput > 5, 20 and 100 Mbit/s, FDTT UL throughput > 3, 10 and 20 Mbit/s, video TTFP ≥ 10 s and irritating playout |
 | **Quality shortfall** | What the averages, medians, 90th percentiles and the packet error ratio miss of their best score; not counted per test | Call setup time, POLQA, FDFS transfer times, FDTT P90 throughput, browsing time to 1 MB, interactivity packet error ratio and median RTT |
 
-The Reliable KPIs (the Most Reliable Network scoring) lose their points as **Not completed (NQ)** or **Below the minimum**, the failed calls and tests of Where to act and of the sites to review. A failed test is counted by every KPI it misses, each in its own kind: a download of 1 Mbit/s misses the 2, 5, 20 and 100 Mbit/s ratios. Most Reliable scores only the Reliable KPIs, so its Where the points go shows those two kinds.
-
-Every section of Points Lost, and Where to act, counts in the points of the environment chosen: in All Environments each operator loses the same points in all of them, those of **Where the points go** (scaled to the full maximum when environments have no results, see [Incomplete coverage and achievable scoring](#incomplete-coverage-and-achievable-scoring)), and each environment on its own keeps its own points. Every table closes with a **Total** row (the map, the sites and the stretches with the total of those listed).
+- **Reliable KPIs** (the Most Reliable Network scoring) lose their points as **Not completed (NQ)** or **Below the minimum**: the failed calls and tests of Where to act and of the sites to review.
+- **A failed test counts in every KPI it misses,** each in its own kind: a download of 1 Mbit/s misses the 2, 5, 20 and 100 Mbit/s ratios.
+- **Most Reliable** scores only the Reliable KPIs, so its Where the points go shows those two kinds.
 
 #### Points lost per KPI
 
-Per chosen operator, the reference included, a table of the points it loses per KPI (KPI maximum points − points scored, per environment and in total), grouped by category, the categories that lose most first, two operators side by side, with red data bars in every column and the **R** or **D** badge of each KPI, closed by a **Total points lost** row with the total of every column. In All Environments each environment column holds its part of the All Environments points, so the Total is the points lost of **Where the points go**. It shares the location and **Operators** of the KPI GAP Profile and the Points Lost Map, and its note names the total points each operator loses.
+Per chosen operator, the reference included, a table of the points it loses per KPI (KPI maximum points − points scored, per environment and in total).
+
+- **Order:** grouped by category, the categories that lose most first.
+- **Layout:** two operators side by side, with red data bars in every column and the **R** or **D** badge of each KPI.
+- **Total points lost** closes it with the total of every column.
+- **All Environments:** each environment column holds its part of the All Environments points, so the Total is the points lost of **Where the points go**.
+- **Shared choices:** it shares the location and **Operators** of the KPI GAP Profile and the Points Lost Map.
+- **Note:** names the total points each operator loses.
 
 #### Points Lost Map
 
-Below the points lost per KPI of All Environments and of each environment, **Points Lost Map** shows where each operator loses its scoring points. It uses the location and **Operators** of the KPI GAP Profile and the points lost per KPI (choosing them in one section chooses them in all; clicking an operator enables or disables it, as its tooltip says, and one always stays enabled; several operators show their maps side by side, the reference operator among them), and adds **Maps per** **City**, **Region**, **Cluster** or **Postal Code** (an option without data in the results, such as Cluster without Clusters, is shown disabled), below the location with **Rank by** and **Colour areas by**, the operators beside them. Each map is headed by its operator, large and in its colour. Its figures are **National points**: the part of the operator's National loss in the tests of each place, so the places add up to the National points lost (a region with most of the tests carries most of them even when it scores best). They are not the score of each place on its own tests, out of its own maximum, which the [National & Country Areas Trends](#scoring-trends) show; the note above each map and its **National points lost** column say so, also in PowerPoint and Word. Drag a rectangle over a map to zoom into it, or use the zoom buttons (zoom in, zoom out, whole map) shown while the pointer is over the map.
+**Points Lost Map**, below the points lost per KPI of All Environments and of each environment, shows where each operator loses its scoring points.
+
+**Controls:**
+
+- **Location and Operators:** those of the KPI GAP Profile and the points lost per KPI; choosing them in one section chooses them in all. Clicking an operator enables or disables it, as its tooltip says, and one always stays enabled. Several operators show their maps side by side, the reference operator among them.
+- **Maps per:** **City**, **Region**, **Cluster** or **Postal Code**. An option without data in the results (such as Cluster without Clusters) is shown disabled.
+- **Rank by** and **Colour areas by:** below the location, with the operators beside them (see below).
+- **Heading:** each map is headed by its operator, large and in its colour.
+- **Zoom:** drag a rectangle over a map to zoom into it, or use the zoom buttons (zoom in, zoom out, whole map) shown while the pointer is over the map. Double-click the map to open it larger.
+
+**National points.** The figures are the part of the operator's National loss in the tests of each place, so the places add up to the National points lost. A region with most of the tests carries most of them even when it scores best.
+
+- They are not the score of each place on its own tests, out of its own maximum, which the [National & Country Areas Trends](#scoring-trends) show.
+- The note above each map and its **National points lost** column say so, also in PowerPoint and Word.
 
 **Rank by** chooses the figure that ranks the places and colours the map:
 
-- **National points lost** (the default): the National points each place loses, so the places measured most (such as London or the longest routes) tend to rank first.
-- **Points lost per 1,000 tests**: the National points each place loses per 1,000 of its tests (its Voice calls and Data tests, not the Speech samples), so a place does not rank high only because it was measured more. Only the places with 500 tests or more are ranked; the others are left out of this ranking.
+| Choice | Ranks by |
+| --- | --- |
+| **National points lost** (the default) | The National points each place loses, so the places measured most (such as London or the longest routes) tend to rank first |
+| **Points lost per 1,000 tests** | The National points each place loses per 1,000 of its tests (its Voice calls and Data tests, not the Speech samples), so a place does not rank high only because it was measured more. Only the places with 500 tests or more are ranked; the others are left out of this ranking |
 
-The ranking shows both figures, **National points lost** and **Per 1,000 tests** (hover it for the tests of the place), with the bars on the one chosen. Results calculated before this version keep no tests per place: **Points lost per 1,000 tests** is disabled until the Saved Scoring is calculated again.
+- The ranking shows both figures, **National points lost** and **Per 1,000 tests** (hover it for the tests of the place), with the bars on the one chosen.
+- Results calculated before this version keep no tests per place: **Points lost per 1,000 tests** is disabled until the Saved Scoring is calculated again.
 
-With **Maps per** City, **Colour areas by** (one choice above every map) chooses how the map areas are coloured (with **Points lost per 1,000 tests**, only the first one, with the rate of each city or route):
+**Colour areas by** (with **Maps per** City; one choice above every map) chooses how the map areas are coloured. With **Points lost per 1,000 tests**, only the first one is offered, with the rate of each city or route.
 
-- **Points of the city or route that loses most in each area** (the default): each area takes the whole points of the city or Connecting Roads route that loses most among those measured in it (a city or route belongs to every area holding at least 2% of its tests), so a whole route takes its colour and London colours every London area.
-- **Points lost in each area by the city or route that loses most there**: each area takes the points really lost in it by the city or route that loses most there, so a route shows where along its way it loses its points, and a city spread over many small areas, such as London, colours each one with what it loses there.
+| Choice | Each area takes… |
+| --- | --- |
+| **Points of the city or route that loses most in each area** (the default) | The whole points of the city or Connecting Roads route that loses most among those measured in it. A city or route belongs to every area holding at least 2% of its tests, so a whole route takes its colour and London colours every London area |
+| **Points lost in each area by the city or route that loses most there** | The points really lost in it by the city or route that loses most there. A route shows where along its way it loses its points, and a city spread over many small areas, such as London, colours each one with what it loses there |
 
-In All Environments, the **Type** column of the ranking under each City map names, in short (for example City or Roads; hover it for the full name), the environments where each city or route loses points; per Region or Cluster it does not, since they hold tests of every environment. Each area keeps its colour while rows or areas are chosen (the others are only dimmed), and changing **Colour areas by** keeps them chosen, so both colourings can be compared.
+- **Type column:** in All Environments, the **Type** column of the ranking under each City map names, in short (for example City or Roads; hover it for the full name), the environments where each city or route loses points. Per Region or Cluster it does not, since they hold tests of every environment.
+- **Colours stay** while rows or areas are chosen (the others are only dimmed), and changing **Colour areas by** keeps them chosen, so both colourings can be compared.
 
-Click a row of the ranking to show its areas alone on the map, which centres and zooms on them; Ctrl/⌘-click adds or removes single rows and Shift+click chooses every row from the last one clicked. Click an area of the map, or hold Shift and drag a rectangle to choose several, to leave lit the rows measured there and dim the others. Clicking the same choice again, clicking outside every area or pressing Esc shows everything again. In All Environments the ranking names, beside each area, the environments where it loses points (most first).
+**Choose places on the map and in the ranking:**
 
-**Maps per Postal Code** is there for the Saved Scorings calculated with **Postal Codes in the Points Lost Map**, the option of the **Country Areas** of Scoring Setup. It is off by default, so that you run it when you need it, for example once per quarter on the latest campaign: the card of such a Saved Scoring says which map it uses in **Postal Codes**, and the other Saved Scorings neither read nor keep postal codes.
+| To… | Do this |
+| --- | --- |
+| Show a place's areas alone | Click its row in the ranking: the map centres and zooms on them |
+| Add or remove single rows | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click |
+| Choose every row from the last one clicked | <kbd>Shift</kbd>+click (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+click adds them to the rows already chosen) |
+| Leave lit the rows measured in an area | Click the area (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click adds areas), or hold <kbd>Shift</kbd> and drag a rectangle to choose several |
+| Show everything again | Click the same choice again, click outside every area or press <kbd>Esc</kbd> |
 
-**Postal Codes map**, which appears with that option, chooses the map of this Saved Scoring among those of [Workspace Config → Map Areas](workspace-config.md#postal-codes): **Full postcodes** (the default), **One point per place** or **Own file**, offered once the workspace has one. With another map it is the same Saved Scoring, not a new one: **Calculate** replaces its result, and a map drawn before with the same CDRs and methodology comes back at once. The note under the maps says which map they use. It shows the same table (**Postal Code**, **Type**, **National points lost**, **Per 1,000 tests** and **Share**) and the map coloured per postal code, with the **Postal Codes** of [Workspace Config → Map Areas](workspace-config.md#postal-codes). The table lists the first 30, and **Download all … postal codes (CSV)** saves every one of them, which App Events records.
+In All Environments the ranking names, beside each area, the environments where it loses points (most first).
 
-- **The areas are approximate**, not official borders: they are worked out from the postal code points of GeoNames, so a test near a border can fall in the neighbouring code and the figures can differ from those of an official map. With **One point per place**, codes that share their only point, usually in the centre of a city, are one area (for example `28070, 28071 +6 · Madrid`).
-- **A postal code holds few tests**, some tens per operator and quarter in the UK, so use this view to rank and locate the losses, not as a score per code. **Points lost per 1,000 tests** ranks the postal codes with 100 tests or more.
-- **In transfers:** the option and its map travel with the Favourite Scorings. With or without it, and with any map, a filter is the same one, so the filter of the destination takes the option and its map and draws its postal codes when it is calculated again, without adding another filter; a filter with the option keeps it, with its map, when the package does not bring it.
-- **Its countries:** a calculation downloads into the workspace the map it chooses for the countries of its tests that lack it. When a map is not available (a download fails, or the country has no Own file), another one of the country stands in and a note above the maps says so, or the copy included with the application, as in the United Kingdom. A country without any is named in a note, and its tests are left out of this view until its postal codes are downloaded or imported and the scoring is calculated again.
+**How the points are placed:**
+
+- **Loss per KPI:** each KPI loses its maximum points minus the points scored, and the loss is shared among the tests that cause it.
+  - Ratio KPIs: every test that misses the KPI (a failed call, a POLQA below 1.6, a transfer below its threshold…) weighs one.
+  - Averages, medians and P90: each test weighs what it misses the KPI's High threshold by.
+  - Packet loss: the packets lost.
+- **Place of each test:** the City of its CDR row (a Connecting Roads route is a City value such as *Manchester to Sheffield*, with every test of the drive between both cities), and the map area of its country that contains its coordinates (kept in the rows of its CDR, see [Map Areas](workspace-config.md#map-areas)). The result keeps the points each city or route loses in each area.
+- **A country without Map Areas** is coloured as one area, the whole country, and a note above the maps names it.
+- **Same points as the scoring:** the map uses the points of the selected scoring (Best Network or Most Reliable).
+- **Recalculate after adding Map Areas.** Results calculated before this version only offer the first way of colouring.
 
 | View | Map | Ranking |
 | --- | --- | --- |
-| **per City** | The **map areas** of the countries of the tests, coloured from yellow to red as chosen in **Colour areas by**: the [Map Areas](workspace-config.md#map-areas) of the workspace or the ones shipped with the application for its main markets (for example the UK **ITL3 areas**, the NUTS3 level, the provinces of Spain or the counties of the USA), and the whole country for any other; hover an area for its points and its cities and routes | The cities (`City`, or `G_Level_4`) and Connecting Roads routes (for example *Sheffield to Leeds*) that lose most, with their points and share |
+| **per City** | The **map areas** of the countries of the tests, coloured from yellow to red as chosen in **Colour areas by**: the [Map Areas](workspace-config.md#map-areas) of the workspace or the ones shipped with the application for its main markets (for example the UK **ITL3 areas**, the NUTS3 level, the provinces of Spain or the counties of the USA), and the whole country for any other. Hover an area for its points and its cities and routes | The cities (`City`, or `G_Level_4`) and Connecting Roads routes (for example *Sheffield to Leeds*) that lose most, with their points and share |
 | **per Cluster / Region** | The polygons of the workspace's **Clusters** or **Regions** dataset applied to the CDRs, coloured the same way | The clusters or regions that lose most |
 
-How the points are placed: each KPI loses its maximum points minus the points scored, and the loss is shared among the tests that cause it. For ratio KPIs every test that misses the KPI (a failed call, a POLQA below 1.6, a transfer below its threshold…) weighs one; for averages, medians and P90 each test weighs what it misses the KPI's High threshold by; for packet loss, the packets lost. Each test belongs to the City of its CDR row (a Connecting Roads route is a City value such as *Manchester to Sheffield*, with every test of the drive between both cities) and to the map area of its country that contains its coordinates (kept in the rows of its CDR, see [Map Areas](workspace-config.md#map-areas)), and the result keeps the points each city or route loses in each area. A country without Map Areas is coloured as one area, the whole country, and a note above the maps names it. The map uses the same points as the selected scoring (Best Network or Most Reliable); calculate the Saved Scorings again after adding Map Areas; results calculated before this version only offer the first way of colouring.
+- **Sources and licences** of the areas shipped with the application, such as the ITL3 boundaries of the Office for National Statistics, are listed in `assets/map-areas/README.md`.
+- **Your own clusters:** import a Clusters GeoJSON in Workspace Management and apply it to the CDRs before calculating. The job keeps a simplified copy of its polygons.
 
-The sources and licences of the areas shipped with the application, such as the ITL3 boundaries of the Office for National Statistics, are listed in `assets/map-areas/README.md`. To map your own clusters, import a Clusters GeoJSON in Workspace Management and apply it to the CDRs before calculating: the job keeps a simplified copy of its polygons.
+##### Maps per Postal Code
+
+**Maps per Postal Code** is there for the Saved Scorings calculated with **Postal Codes in the Points Lost Map**, the option of the **Country Areas** of Scoring Setup.
+
+- **Off by default,** so that you run it when you need it, for example once per quarter on the latest campaign. The card of such a Saved Scoring says which map it uses in **Postal Codes**; the other Saved Scorings neither read nor keep postal codes.
+- **Postal Codes map** (shown with that option) chooses the map of this Saved Scoring among those of [Workspace Config → Map Areas](workspace-config.md#postal-codes): **Full postcodes** (the default), **One point per place**, or **Own file** once the workspace has one.
+  - With another map it is the same Saved Scoring, not a new one: **Calculate** replaces its result, and a map drawn before with the same CDRs and methodology comes back at once.
+  - The note under the maps says which map they use.
+- **Table and map:** the same table (**Postal Code**, **Type**, **National points lost**, **Per 1,000 tests** and **Share**) and the map coloured per postal code, with the **Postal Codes** of [Workspace Config → Map Areas](workspace-config.md#postal-codes).
+- **Download:** the table lists the first 30, and **Download all … postal codes (CSV)** saves every one of them, which App Events records.
+
+> [!NOTE]
+> **The areas are approximate**, not official borders. They are worked out from the postal code points of GeoNames, so a test near a border can fall in the neighbouring code and the figures can differ from those of an official map. With **One point per place**, codes that share their only point, usually in the centre of a city, are one area (for example `28070, 28071 +6 · Madrid`).
+
+- **A postal code holds few tests,** some tens per operator and quarter in the UK, so use this view to rank and locate the losses, not as a score per code. **Points lost per 1,000 tests** ranks the postal codes with 100 tests or more.
+- **In transfers:** the option and its map travel with the Favourite Scorings. With or without it, and with any map, a filter is the same one: the filter of the destination takes the option and its map and draws its postal codes when it is calculated again, without adding another filter. A filter with the option keeps it, with its map, when the package does not bring it.
+- **Its countries:** a calculation downloads into the workspace the map it chooses for the countries of its tests that lack it.
+  - When a map is not available (a download fails, or the country has no Own file), another one of the country stands in and a note above the maps says so, or the copy included with the application, as in the United Kingdom.
+  - A country without any is named in a note, and its tests are left out of this view until its postal codes are downloaded or imported and the scoring is calculated again.
 
 #### Points lost per Vendor, kind of site, site and stretch
 
-The points lost of each test are also shared among the cells that served its start, from the serving cells the CDRs get from the [Vendor Mapping](workspace-management.md#vendor-mapping) with Network Inventories (`Vendor`, `Serving_Network`, `Serving_Host_Network`, `Serving_eMOCN_Scenario` and `Serving_Site_ID`), with the scope and **Operators** of each section:
+The points lost of each test are also shared among the cells that served its start. The serving cells come from the [Vendor Mapping](workspace-management.md#vendor-mapping) with Network Inventories (`Vendor`, `Serving_Network`, `Serving_Host_Network`, `Serving_eMOCN_Scenario` and `Serving_Site_ID`). Each section has its own scope and **Operators**.
 
 | Section | What it shows |
 | --- | --- |
-| **Points lost per Vendor of the serving cell** | Per operator, the points lost on the cells of each RAN Vendor with their share of the points lost and of the tests of the operator, the environments where they are lost and the cities and routes that lose most; **Not identified** gathers the tests without a serving cell in the inventories. When the Saved Scoring splits the scoring by **Vendor**, each Vendor is scored on its own tests, so the table of each operator holds every Vendor at once (no Vendor selector), the Vendor that costs the operator most first: **Points lost**, what it costs the operator (the points lost by its own scoring in proportion to its share of the tests of the operator), with its **Share of points**; **Own scoring**, the points lost by the scoring of the Vendor on its own tests, which compare directly with the other Vendors; its share of the tests of the operator, where and in which cities it loses most (weighted the same way), with Unknown and the Mixed Vendors in grey. The rows add up to **All vendors (weighted by tests)**, the average of the Vendors weighted by their tests. As scoring is not linear (thresholds and caps per KPI), this total is close to, but not always equal to, the points the operator loses scored on all its tests at once: for that exact figure shared among the Vendors, use the Saved Scoring without the Vendor split and its **Points lost per RAN Vendor**. An operator without a Vendor (EE, or an Operator left out of the Multivendor Mappings) has the one row **All** |
+| **Points lost per Vendor of the serving cell** | Per operator, the points lost on the cells of each RAN Vendor with their share of the points lost and of the tests of the operator, the environments where they are lost and the cities and routes that lose most. **Not identified** gathers the tests without a serving cell in the inventories. With a Vendor split, see below |
 | **Points lost per kind of serving site** | The same per kind of site: the network that owns it and, when another network hosts its RAN, *on* that network (Beacon, MORAN), with the NNS sites apart |
-| **Points lost per RAN Vendor (host and vendor)** | For the multivendor analysis, per operator, the points lost per RAN Vendor with the network that hosts it (`VF_Hosted_Ericsson`, `VMO2_Hosted_Nokia`, `3UK_Hosted_Huawei`…): each call or test belongs to the class of all its serving cells (the first, those it changed to and the last), **MIX** when they differ. The table has a column **Host network** (`VF_Hosted`, `VMO2_Hosted`, `3UK_Hosted`), one cell for all the Vendors it hosts, the network that loses most first, and a column **Vendor**, its Vendors from the one that loses most (**MIX** and **Not identified** have no Vendor), with a rule between the networks. With their share of the points lost, the calls and tests of each one and their share, the points lost per 1,000 calls and tests (from 100 of them), where they are lost and the cities and routes that lose most; **Not identified** gathers the tests without a serving cell in the inventories. When the Saved Scoring splits the scoring by **Vendor**, every Vendor of the operator is in its one table: each Vendor is scored on its own tests and its points lost count in proportion to its tests, so the rows add up to **All vendors (weighted by tests)**, the total of the Points lost per Vendor. Only the Operators that receive a Vendor have one (see [Multivendor Mappings](workspace-management.md#multivendor-mappings)) |
+| **Points lost per RAN Vendor (host and vendor)** | For the multivendor analysis, per operator, the points lost per RAN Vendor with the network that hosts it (`VF_Hosted_Ericsson`, `VMO2_Hosted_Nokia`, `3UK_Hosted_Huawei`…). See below |
 | **Points lost per site type (Legacy, eMOCN, NNS)** | The same per site type: the network that owns the serving site with its eMOCN scenario as the inventory names it (`VF_eMOCN_S1`, `3UK_eMOCN_S0_CWP`…), `<network>_NNS`, or `<network>_Legacy` without a scenario, with VF, 3UK and VMO2 for the Vodafone, Three and Telefonica networks; **MIX** when its serving cells differ |
-| **Sites to review** | Per operator, the sites that lose most (up to 25) with their network, Vendor, city or route, points lost, failed tests (the calls and tests that missed the Reliable KPIs: not completed, or completed below the minimum) and points lost in the earlier campaigns. **High** priority: 1 point or more lost and losses on the same site in an earlier campaign; **Medium**: one of the two; **Low**: neither. An operator none of whose serving cells is in the cell inventories has no site to review: a note says so, with its points lost that cannot be assigned to sites. For the users of Non-Qualified Calls each site is a link: it opens, in a floating panel over the page, the [map of the site](non-qualified-calls.md#map-of-a-site) with its NQ calls and those of the sites around it, and below the map the table of their `JOIN_ID`s |
-| **Connecting Roads: where along each route the points are** | For every chosen operator at once (its **Operators** buttons, two operators a row), on the **Route** chosen among the routes of those operators (the six that lose most of each, the route where they lose most first), a map of the route on the map areas (ITL3 in the UK) with the measured cities around it named and a circle per stretch of about 20 km whose area and colour (from yellow to red, on the scale of the theme) tell its points lost; the stretches that lose most (up to eight) are numbered on the map with the nearest city of the measurements beside them (for example *14 km north-east of Leeds*) and listed with their main Vendor. The Route stretches slides draw the same map |
+| **Sites to review** | Per operator, the sites that lose most (up to 25). See below |
+| **Connecting Roads: where along each route the points are** | A map per route with a circle per stretch of about 20 km. See below |
 
-On both route maps (Connecting Roads and *<Route>: where the points are*), choosing a stretch in the table beside the map zooms the map in on it and rings its circle; choosing it again, or **Whole route** on the map, shows the whole route again. Double-clicking a route map opens it larger, as the other maps, charts and tables of the results. Every **Operator** selector and list of operators of the results follows the order of the Operator Maps.
+**Points lost per Vendor, with the scoring split by Vendor.** Each Vendor is scored on its own tests, so the table of each operator holds every Vendor at once (no Vendor selector), the Vendor that costs the operator most first.
 
-The geography of every section is that of the Saved Scoring: split it by Region (in the UK, the performance owners such as Vendor A, Vendor B, VMO2 North and VMO2 South), City or route, and choose it in the selector of the section. The selectors of the sections of Points Lost (Where the points go, the points lost per Vendor, kind of site, RAN Vendor and site type, Sites to review and Route stretches) go together: choosing a Vendor, Region or City in one chooses it in the others (a section without Vendors follows the Region or City); split by Vendor, **Ericsson** is chosen by default. The RAN Vendor and the site type need CDRs whose Vendor was mapped with this version: until then their sections ask to map the Vendor of the CDRs again and calculate the scoring again.
+- **Points lost:** what it costs the operator (the points lost by its own scoring, in proportion to its share of the tests of the operator), with its **Share of points**.
+- **Own scoring:** the points lost by the scoring of the Vendor on its own tests, which compare directly with the other Vendors.
+- **Also:** its share of the tests of the operator, and where and in which cities it loses most (weighted the same way), with Unknown and the Mixed Vendors in grey.
+- **Total:** the rows add up to **All vendors (weighted by tests)**, the average of the Vendors weighted by their tests. As scoring is not linear (thresholds and caps per KPI), this total is close to, but not always equal to, the points the operator loses scored on all its tests at once. For that exact figure shared among the Vendors, use the Saved Scoring without the Vendor split and its **Points lost per RAN Vendor**.
+- **An operator without a Vendor** (EE, or an Operator left out of the Multivendor Mappings) has the one row **All**.
 
-A share of the points lost well above the share of the tests is red. These sections need results calculated with this version from CDRs with serving cells: older results show a note asking to calculate the Saved Scoring again.
+**Points lost per RAN Vendor (host and vendor):**
+
+- **Class of each call or test:** the class of all its serving cells (the first, those it changed to and the last), **MIX** when they differ.
+- **Columns:** **Host network** (`VF_Hosted`, `VMO2_Hosted`, `3UK_Hosted`), one cell for all the Vendors it hosts, the network that loses most first; then **Vendor**, its Vendors from the one that loses most (**MIX** and **Not identified** have no Vendor), with a rule between the networks.
+- **Figures:** their share of the points lost, the calls and tests of each one and their share, the points lost per 1,000 calls and tests (from 100 of them), where they are lost and the cities and routes that lose most.
+- **Not identified** gathers the tests without a serving cell in the inventories.
+- **With the scoring split by Vendor,** every Vendor of the operator is in its one table: each Vendor is scored on its own tests and its points lost count in proportion to its tests, so the rows add up to **All vendors (weighted by tests)**, the total of the Points lost per Vendor.
+- Only the Operators that receive a Vendor have one (see [Multivendor Mappings](workspace-management.md#multivendor-mappings)).
+
+**Sites to review:**
+
+- **Columns:** each site's network, Vendor, city or route, points lost, failed tests (the calls and tests that missed the Reliable KPIs: not completed, or completed below the minimum) and points lost in the earlier campaigns.
+- **Priority:** **High**: 1 point or more lost and losses on the same site in an earlier campaign. **Medium**: one of the two. **Low**: neither.
+- **No inventory match:** an operator none of whose serving cells is in the cell inventories has no site to review. A note says so, with its points lost that cannot be assigned to sites.
+- **Site Area Map:** for the users of Non-Qualified Calls, each site is a link. It opens, in a floating panel over the page, the [map of the site](non-qualified-calls.md#map-of-a-site) with its NQ calls and those of the sites around it, and below the map the table of their `JOIN_ID`s. The map navigates as the [map of a call](non-qualified-calls.md#map-of-the-call): <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+wheel or a pinch zooms, a double-click opens it larger, <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+drag zooms into a rectangle and <kbd>Alt</kbd>/<kbd>Option</kbd>+drag measures with the elevation profile (see [Tips & shortcuts](#tips-shortcuts)).
+
+**Connecting Roads: where along each route the points are:**
+
+- **Operators:** every chosen operator at once (its **Operators** buttons), two operators a row.
+- **Route:** chosen among the routes of those operators (the six that lose most of each), the route where they lose most first.
+- **Map:** the route on the map areas (ITL3 in the UK), with the measured cities around it named, and a circle per stretch of about 20 km whose area and colour (from yellow to red, on the scale of the theme) tell its points lost.
+- **Stretches:** those that lose most (up to eight) are numbered on the map with the nearest city of the measurements beside them (for example *14 km north-east of Leeds*) and listed with their main Vendor.
+- The Route stretches slides draw the same map.
+
+**Route maps** (Connecting Roads and *<Route>: where the points are*):
+
+- Choosing a stretch in the table beside the map (a click, or <kbd>Enter</kbd>/<kbd>Space</kbd> on a focused row) zooms the map in on it and rings its circle. Choosing it again, or **Whole route** on the map, shows the whole route again.
+- Double-clicking a route map opens it larger, as the other maps, charts and tables of the results.
+
+**Shared rules of these sections:**
+
+- **Operator order:** every **Operator** selector and list of operators of the results follows the order of the Operator Maps.
+- **Geography:** that of the Saved Scoring. Split it by Region (in the UK, the performance owners such as Vendor A, Vendor B, VMO2 North and VMO2 South), City or route, and choose it in the selector of the section.
+- **Selectors go together:** the selectors of the sections of Points Lost (Where the points go, the points lost per Vendor, kind of site, RAN Vendor and site type, Sites to review and Route stretches) are linked. Choosing a Vendor, Region or City in one chooses it in the others (a section without Vendors follows the Region or City). Split by Vendor, **Ericsson** is chosen by default.
+- **Red share:** a share of the points lost well above the share of the tests is red.
+- **Recalculate older results:** these sections need results calculated with this version from CDRs with serving cells; older results show a note asking to calculate the Saved Scoring again. The RAN Vendor and the site type need CDRs whose Vendor was mapped with this version: until then their sections ask to map the Vendor of the CDRs again and calculate the scoring again.
 
 ### Scoring Charts
+
+The Scoring Charts tab compares the operators' points as bars and shows how the maximum is allocated.
 
 | Chart | Use it to… |
 | --- | --- |
@@ -451,66 +1076,132 @@ A share of the points lost well above the share of the tests is red. These secti
 | **Best Network / Most Reliable Network Scoring per Category (Breakdown)** | Compare operators directly within each category |
 | **Maximum score allocation donuts** | Inspect configured environment, service and category maxima and shares |
 
-Voice and Speech KPIs contribute to **Voice**; Data KPIs contribute to **Data**, regardless of category names. Allocation donuts show **maximum available allocation**, not earned scores. Chart titles and donuts follow the selected scoring.
+- **Voice and Data:** Voice and Speech KPIs contribute to **Voice**; Data KPIs contribute to **Data**, regardless of category names.
+- **Donuts** show the **maximum available allocation**, not earned scores.
+- **Titles and donuts** follow the selected scoring.
+- **Labels and colours:** Operator Mapping supplies labels, order and colors. Campaign labels display year-quarter, such as **2026-Q1**, while stored campaign names and CSV identifiers remain unchanged.
 
-Hover bars, segments, totals or donut sectors for values and context. Double-click a chart, a map or a table of Scoring Tables and GAP Analysis to open it larger, taking the whole screen but 5% on each side. Charts and maps zoom into a rectangle dragged with the mouse, or with the zoom buttons (zoom in, zoom out, whole view) shown while the pointer is over them (on touch screens, a tap shows them for a few seconds, until a tap elsewhere), also in the larger view. The Scoring per Service, per Category and per Category (Breakdown) charts always show every bar in the width of their card, at the height they have with ten bars, and never scroll sideways, so no City (or other first level) is cut: with more bars, the bars are narrower and the gaps between their groups smaller, their totals smaller or turned 90° above the bar, the labels of their parts a little smaller than the totals (turned 90° too when they do not fit across, else left to the tooltip), and the labels of each level under the bars at one size, in up to two lines, or all of them turned 90° in a taller row when one does not fit whole across. With many bars some labels may still overlap: zooming into an area shows them larger. The Scoring and GAP tables with many columns (such as four operators of four campaigns) narrow their columns to fit the page. Operator Mapping supplies labels, order and colors.
+**Read and zoom:**
 
-A single Break down by level uses normal axis labels; multiple levels use separate header rows. The Scoring per Service and per Category charts leave a gap between the bars of each operator or, when a level above Operator in the aggregation hierarchy has several values (such as City), between those of each of its values. Campaign labels display year-quarter, such as **2026-Q1**, while stored campaign names and CSV identifiers remain unchanged.
+- **Tooltips:** hover bars, segments, totals or donut sectors for values and context.
+- **Larger view:** double-click a chart, a map or any table of the results to open it larger, taking the whole screen but 5% on each side. A focused chart card also opens with <kbd>Enter</kbd> or <kbd>Space</kbd>; <kbd>Esc</kbd> or a click outside closes it.
+- **Zoom:** charts and maps zoom into a rectangle dragged with the mouse, or with the zoom buttons (zoom in, zoom out, whole view) shown while the pointer is over them, also in the larger view. On touch screens, a tap shows the buttons for a few seconds, until a tap elsewhere.
+
+**Many bars:**
+
+- The Scoring per Service, per Category and per Category (Breakdown) charts always show every bar in the width of their card, at the height they have with ten bars, and never scroll sideways, so no City (or other first level) is cut.
+- With more bars:
+  - the bars are narrower and the gaps between their groups smaller;
+  - their totals are smaller, or turned 90° above the bar;
+  - the labels of their parts are a little smaller than the totals (turned 90° too when they do not fit across, else left to the tooltip);
+  - the labels of each level under the bars keep one size, in up to two lines, or all of them turn 90° in a taller row when one does not fit whole across.
+- With many bars some labels may still overlap: zooming into an area shows them larger. On a narrowed chart, at the whole view, **+** and **−** first widen or narrow it step by step.
+- The Scoring and GAP tables with many columns (such as four operators of four campaigns) narrow their columns to fit the page.
+
+**Levels and gaps:**
+
+- A single Break down by level uses normal axis labels; multiple levels use separate header rows.
+- The Scoring per Service and per Category charts leave a gap between the bars of each operator or, when a level above Operator in the aggregation hierarchy has several values (such as City), between those of each of its values.
 
 ### Country Areas
 
+The Country Areas tab scores the whole country and each area of **Country Areas**, whatever the area filters of the Saved Scoring.
+
 | Section | What it shows |
 | --- | --- |
-| **Scoring Nationwide** | First: the scoring of the whole country (its own calculation, of every test, also with Region, Cluster or City filters), on a card across the panel with larger bars and text, as the cards below. When the Saved Scoring splits the scoring by **Vendor**, one card holds a column per operator (in the order of the Operator Maps) and a row per Vendor, each Vendor always on its own row (**All**, for the operators without a Vendor such as EE, first, then the Vendors by name, the Mixed ones and Unknown): where the operator was measured with the Vendor, a small card with its bar, its position among the operators of the Vendor and its points behind the first |
-| **Scoring per City / Cluster / Region** | When City, Cluster or Region is a Break down by level with 2 to 12 values: one card per value with its operators from the highest score, each a bar of its Data points (teal) and Voice points (amber) with its rank, its total and, behind the first, its distance to it, labelled with the operator names of the mapping table (hover a bar for its points). Break down by **Vendor**, a set of cards per Vendor, named in the pills of its title (**Vendor: Ericsson**) |
+| **Scoring Nationwide** | First: the scoring of the whole country (its own calculation, of every test, also with Region, Cluster or City filters), on a card across the panel with larger bars and text, as the cards below. Split by **Vendor**, see below |
+| **Scoring per City / Cluster / Region** | When City, Cluster or Region is a Break down by level with 2 to 12 values: one card per value with its operators from the highest score. Each operator is a bar of its Data points (teal) and Voice points (amber) with its rank, its total and, behind the first, its distance to it, labelled with the operator names of the mapping table (hover a bar for its points). Split by **Vendor**, a set of cards per Vendor, named in the pills of its title (**Vendor: Ericsson**) |
 | **Cities ranked** (**Cities and routes ranked** when the City level has Connecting Roads routes, or Clusters, Regions) | Per chosen operator, every location of the latest campaign from its highest share of the points available (**Points %**), with its change since the previous campaign, its Voice % and Data %, its points lost and, when the tests have serving cells, the Vendors of the cells that served them. **Country Areas** chooses Region, Cluster or City (the largest by default; it heads the first column and names the notes below the tables, also in PowerPoint and Word) and **Group** the combination of the other levels |
-| **Each operator against the reference per region** (or per city, per city or route when the City level has routes, or per cluster, the level chosen above) | Per chosen operator other than the reference, its GAP to it in each region (city, or cluster), overall and in Voice and Data, in points of percentage of the points available, as bars to the left (behind) or to the right (ahead), from the location furthest behind |
+| **Each operator against the reference per region** (or per city, per city or route when the City level has routes, or per cluster: the level chosen above) | Per chosen operator other than the reference, its GAP to it in each region (city, or cluster), overall and in Voice and Data, in points of percentage of the points available, as bars to the left (behind) or to the right (ahead), from the location furthest behind |
 
-Calculated on the whole country, the cards and rankings of this tab never take the Region, Cluster or City filters of the Saved Scoring: the pills of their titles say **National**, with the Operator and Vendor filters and the Vendor of each set of cards. The cards and rankings go from the largest level to the smallest, after the scoring Nationwide: Region, then Cluster, then City, also in PowerPoint and Word, and group the other levels: with several campaigns, one set of cards per campaign shows the latest one. In All Environments each card adds the environments measured in that location and scales them to the full maximum (1,000 points in NetCheck 2026), so a city measured only in Drive - City is comparable with the others, as the NetCheck per-city rankings do; the note above the cards says so and gives the maximum and its Voice and Data parts. A single environment shows its own points.
+**Scoring Nationwide split by Vendor:** one card holds a column per operator (in the order of the Operator Maps) and a row per Vendor, each Vendor always on its own row: **All** first (for the operators without a Vendor, such as EE), then the Vendors by name, the Mixed ones and Unknown. Where the operator was measured with the Vendor, a small card shows its bar, its position among the operators of the Vendor and its points behind the first.
 
-Whatever the Break down by, the tab shows the areas of **Country Areas** in the strip: each area of its **Areas** and each of the **Cities on their own** (when its CDRs have tests there), scored on the whole country with the filters other than Region, Cluster and City, so it shows the cards and ranking of the breakdown and the card of each of those cities. A Saved Scoring calculated before is calculated again when it is opened; results calculated before this show a note to calculate them again. From the Scoring History these calculations add about a second; from the CDR rows they take about as long as the scoring itself, unless the calculation (without area filters and split by the same levels) or its National & Country Areas Trends (with the campaigns of the calculation) already scored them, whose calculations they then reuse.
+**How the tab is calculated:**
+
+- **Whole country:** the cards and rankings of this tab never take the Region, Cluster or City filters of the Saved Scoring. The pills of their titles say **National**, with the Operator and Vendor filters and the Vendor of each set of cards.
+- **Order:** after the scoring Nationwide, from the largest level to the smallest: Region, then Cluster, then City, also in PowerPoint and Word. They group the other levels: with several campaigns, one set of cards per campaign shows the latest one.
+- **All Environments:** each card adds the environments measured in that location and scales them to the full maximum (1,000 points in NetCheck 2026), so a city measured only in Drive - City is comparable with the others, as the NetCheck per-city rankings do. The note above the cards says so and gives the maximum and its Voice and Data parts.
+- **A single environment** shows its own points.
+- **Areas shown:** whatever the Break down by, the tab shows the areas of **Country Areas** in the strip: each area of its **Areas** and each of the **Cities on their own** (when its CDRs have tests there), scored on the whole country with the filters other than Region, Cluster and City. So it shows the cards and ranking of the breakdown and the card of each of those cities.
+- **Older results:** a Saved Scoring calculated before is calculated again when it is opened; results calculated before this show a note to calculate them again.
+- **Cost:** from the Scoring History these calculations add about a second. From the CDR rows they take about as long as the scoring itself, unless the calculation (without area filters and split by the same levels) or its National & Country Areas Trends (with the campaigns of the calculation) already scored them, whose calculations they then reuse.
 
 ### Scoring Trends
 
-The charts of this tab use the campaigns and time split of the **Trends** block of the strip (the campaigns of the Campaign filter when it has none), whatever the campaigns of the other tabs, and the areas of its **Country Areas**.
+The Scoring Trends tab follows each operator's score over the campaigns or periods.
+
+- **Campaigns and time split:** those of the **Trends** block of the strip (the campaigns of the Campaign filter when it has none), whatever the campaigns of the other tabs.
+- **Areas:** those of its **Country Areas**.
+- **Fewer than two campaigns or periods:** the tab says how to get them.
 
 | Section | What it shows |
 | --- | --- |
-| **Best Network / Most Reliable Network Scoring Trend** | With two campaigns or more: each operator's total points per campaign, one line per operator ending in its name and latest score (the reference thicker), the score of every other point next to it in the colour of the operator (a score too close to the one above it goes below its point), with the latest campaign shaded. With campaigns of its own it is the **Scoring Trend Nationwide** (pill **National**): the National scoring of those campaigns (or of the periods of the time split of the National & Country Areas Trends), of the whole country whatever the Region, Cluster and City filters, as a note below it says; otherwise it offers one series per combination of the other Break down by levels in its selector, with the same points as the scoring per location |
-| **Best Network / Most Reliable Network Trends — National & Country Areas** | The National scoring, then each area of the breakdown (Regions or Clusters), then the cities, each group with its names in its own colour (as the titles of its charts) and a thick rule between groups, with the operators of each area from the highest score, each with its score in the latest campaign or period, its change from the previous one and its GAP to the best operator of the area (**Δ vs best**; the best one tagged **Best**, whatever the GAP reference of the calculation), and a trend chart per area on the same scale, as tall as the table beside them (labels tilted when they do not fit), with the pills of its area, operators and vendors, the score of every point and the scores at the end of the lines kept apart, titled in one colour for National, another for the breakdown and another for the cities; a double click on a chart or on the table enlarges it alone (a single separate city next to National, several after the breakdown). An area not measured in the latest campaign or period is listed without a score, and its chart shows the earlier ones |
+| **Best Network / Most Reliable Network Scoring Trend** | With two campaigns or more: each operator's total points per campaign (see below) |
+| **Best Network / Most Reliable Network Trends — National & Country Areas** | A table with the National scoring, then each area of the breakdown, then the cities, and a trend chart per area (see below) |
 
-Without two campaigns or periods, the tab says how to get them.
+**Scoring Trend:**
+
+- **Lines:** one per operator, ending in its name and latest score; the reference is thicker.
+- **Points:** the score of every other point next to it in the colour of the operator (a score too close to the one above it goes below its point). The latest campaign is shaded.
+- **With campaigns of its own** it is the **Scoring Trend Nationwide** (pill **National**): the National scoring of those campaigns (or of the periods of the time split of the National & Country Areas Trends), of the whole country whatever the Region, Cluster and City filters, as a note below it says.
+- **Otherwise** it offers one series per combination of the other Break down by levels in its selector, with the same points as the scoring per location.
+
+**Trends — National & Country Areas:**
+
+- **Table:** the National scoring, then each area of the breakdown (Regions or Clusters), then the cities. Each group has its names in its own colour (as the titles of its charts) and a thick rule between groups.
+- **Per area:** the operators from the highest score, each with its score in the latest campaign or period, its change from the previous one, and its GAP to the best operator of the area (**Δ vs best**; the best one tagged **Best**, whatever the GAP reference of the calculation).
+- **Charts:** a trend chart per area on the same scale, as tall as the table beside them (labels tilted when they do not fit), with the pills of its area, operators and vendors, the score of every point and the scores at the end of the lines kept apart. Titles are in one colour for National, another for the breakdown and another for the cities.
+- **Enlarge one:** a double-click on a chart or on the table enlarges it alone (a single separate city next to National, several after the breakdown).
+- **Missing areas:** an area not measured in the latest campaign or period is listed without a score, and its chart shows the earlier ones.
 
 ### Methodology Impact
 
-**Methodology Impact** shows what a change of methodology does to the results, and nothing else: the same tests are scored with both methodologies, so every difference comes from the methodology and none from the network. It keeps the scope of the open Saved Scoring (its NR Mode, filters and GAP reference) and follows the **Scoring**, **Environment** and **Operators** chosen in the page; its Break down by does not matter, and it starts with every operator enabled.
+**Methodology Impact** shows what a change of methodology does to the results, and nothing else: the same tests are scored with both methodologies, so every difference comes from the methodology and none from the network.
 
-Choose what to compare at the top of the tab:
+- **Scope:** it keeps the scope of the open Saved Scoring (its NR Mode, filters and GAP reference) and follows the **Scoring**, **Environment** and **Operators** chosen in the page.
+- **Break down by** does not matter, and it starts with every operator enabled.
+
+**Choose what to compare** at the top of the tab:
 
 | Compare | What is scored |
 | --- | --- |
-| **The methodologies of two campaigns** | **From campaign** and **To campaign** only choose the methodologies, those that apply to each one (the selectors name them). The tests are those of the To campaign. It starts with the latest campaign of the Saved Scoring and the nearest earlier one with another methodology. |
-| **Two methodologies** | The tests of **Tests of the campaign** with **First methodology** and **Second methodology**, any two methodologies of the workspace. |
+| **The methodologies of two campaigns** | **From campaign** and **To campaign** only choose the methodologies, those that apply to each one (the selectors name them). The tests are those of the To campaign. It starts with the latest campaign of the Saved Scoring and the nearest earlier one with another methodology |
+| **Two methodologies** | The tests of **Tests of the campaign** with **First methodology** and **Second methodology**, any two methodologies of the workspace |
 
-A Saved Scoring of NSA vs SA adds **NR Mode**: the comparison is of one NR Mode at a time, and when its GAP reference is Same operator in NSA, the reference is EE. The first methodology is **A** and the second one **B** in every panel, and every difference is B minus A. When both campaigns have the same methodology, the tab says so: there is nothing to compare.
+- **NSA vs SA:** a Saved Scoring of NSA vs SA adds **NR Mode**: the comparison is of one NR Mode at a time. When its GAP reference is Same operator in NSA, the reference is EE.
+- **A and B:** the first methodology is **A** and the second one **B** in every panel, and every difference is B minus A.
+- **Same methodology:** when both campaigns have the same methodology, the tab says so: there is nothing to compare.
 
-The comparison is calculated in the background the first time, with its progress in the tab (from the Scoring History when it holds the CDRs and KPIs, else from the rows of the CDRs; the maps always read the rows of the tests), and kept in the cache of the workspace, so it opens at once afterwards. It is calculated again when its CDRs, methodologies, filters or Operator Maps change. When it fails, the tab says why and **Calculate again** tries it again; when only the maps fail, the tab says so and shows the rest. Each request, calculation, failure and export is registered in App Events.
+**How it is calculated:**
+
+- **First time in the background,** with its progress in the tab: from the Scoring History when it holds the CDRs and KPIs, else from the rows of the CDRs. The maps always read the rows of the tests.
+- **Kept** in the cache of the workspace, so it opens at once afterwards. It is calculated again when its CDRs, methodologies, filters or Operator Maps change.
+- **Failures:** when it fails, the tab says why and **Calculate again** tries it again. When only the maps fail, the tab says so and shows the rest.
+- **App Events:** each request, calculation, failure and export is registered.
 
 | Panel | What it shows |
 | --- | --- |
 | **The comparison** | The two methodologies face to face, **A** and **B**, with the tests they score. A headline with how much the scoring moves, and short cards: who gains, who loses, the positions, the sides that change against the reference, the category and KPI that move most, where it hits most and the areas with a new leader. Below them, a link to each panel |
-| **What changed in the methodology** | How many KPIs are new, removed, with other points, thresholds, formula or filters, score mapping or definition, and how many stay the same: **click a count to see only those KPIs**. The points of each category and environment in A and in B, face to face. Then every KPI that changes, per category, with its points in A and in B and each value that changes side by side, with the environments it applies to, and the general settings. A KPI keeps its identity by its code and name, so a renamed KPI is shown as changed, not as removed and added |
-| **Scoring of each operator** | Each operator in All Environments with its difference, its points in A and in B and its position; **Who is ahead of whom**, the ranking with A joined to the ranking with B, where a line that crosses another is a position that changes; **Why each operator moves**, its difference split into points moved between KPIs (what it gains or loses at the same score, because a KPI is worth other points), other thresholds, formula or filters (what scores differently with the new maximum), new KPIs and removed KPIs; and each operator in each environment |
+| **What changed in the methodology** | How many KPIs are new, removed, with other points, thresholds, formula or filters, score mapping or definition, and how many stay the same: **click a count to see only those KPIs** (again to undo). The points of each category and environment in A and in B, face to face. Then every KPI that changes, per category, with its points in A and in B and each value that changes side by side, with the environments it applies to, and the general settings. A KPI keeps its identity by its code and name, so a renamed KPI is shown as changed, not as removed and added |
+| **Scoring of each operator** | Each operator in All Environments with its difference, its points in A and in B and its position. **Who is ahead of whom**: the ranking with A joined to the ranking with B, where a line that crosses another is a position that changes. **Why each operator moves**: its difference split into points moved between KPIs (what it gains or loses at the same score, because a KPI is worth other points), other thresholds, formula or filters (what scores differently with the new maximum), new KPIs and removed KPIs. And each operator in each environment |
 | **Impact per category** | A card per category that moves, those that move most first: for each operator a bar with A and a bar with B, each as long as the maximum of the category in that methodology, and the difference. The panel names the categories that are not affected |
 | **KPIs affected** | The KPIs that give and take the most points from each operator, and every KPI with the difference of each operator and its points in A and in B (hover a cell for the value and the score of the KPI) |
-| **Maps** | In **Map per**, a map per City and route, Region, Cluster, map area or Postal Code (with the Postal Codes of the workspace), and in **Measure**: **National points**, what each area gives or takes of the National scoring of the operator, which add up to its difference; **National points per 1,000 tests**, so an area does not move only because it was measured more; or **Scoring of the area**. A map per operator, side by side, with how many areas are better and worse with B and those that gain and lose most |
+| **Maps** | **Map per**: a map per City and route, Region, Cluster, map area or Postal Code (with the Postal Codes of the workspace). **Measure**: **National points** (what each area gives or takes of the National scoring of the operator, which add up to its difference), **National points per 1,000 tests** (so an area does not move only because it was measured more) or **Scoring of the area**. A map per operator, side by side, with how many areas are better and worse with B and those that gain and lose most |
 | **Impact per area** | Each Region, Cluster or City with the difference of each operator and its scoring in A and in B, those that move most first, and who leads it, marking the areas where the leader changes. On the whole country, as the Country Areas; in All Environments the environments measured in an area are scaled to the full maximum |
 | **GAP** | The GAP of each operator against the reference with A and with B, as two bars from the reference, and how much it moves, then per category and per KPI. **Changes side** marks an operator that goes from ahead of the reference to behind it, or the other way round |
 | **Points Lost** | The points each operator loses with A and with B, by [kind of loss](#kinds-of-points-lost), then per category and per KPI. More points lost are shown in red |
 
-The colours of the tables are the difference, B minus A: green when the operator gains and red when it loses, stronger the larger it is, with the value in A and in B below it. A KPI or category that one methodology does not have counts as **none** there, so the differences of the KPIs add up to that of their category and of the scoring. Hover a chart or map for its values.
+**Reading the panels:**
 
-**Export to CSV**, **Export to PowerPoint** and **Export to Word** at the top of the tab export the comparison shown, in the theme of the page. The CSV holds every value of every panel in every environment, the maps included; the documents show the panels that [Scoring Export Panels](workspace-config.md#scoring-export-panels) exports, for the Environment and Operators chosen in the page, with the maps per area of up to four operators per slide. These panels are part of the documents of this tab only, not of the other Scoring documents or the reports of [Reporting](reporting.md).
+- **Colours** are the difference, B minus A: green when the operator gains and red when it loses, stronger the larger it is, with the value in A and in B below it.
+- **Missing KPIs or categories:** a KPI or category that one methodology does not have counts as **none** there, so the differences of the KPIs add up to that of their category and of the scoring.
+- **Values:** hover a chart or map for its values. Long lists show the first rows: **Show all N** shows every one and **Show the first N** shortens it again. The links of **The comparison** jump to each panel, and the maps zoom like the other maps (a dragged rectangle or the zoom buttons).
+
+**Export:** **Export to CSV**, **Export to PowerPoint** and **Export to Word** at the top of the tab export the comparison shown, in the theme of the page.
+
+- **CSV:** every value of every panel in every environment, the maps included.
+- **Documents:** the panels that [Scoring Export Panels](workspace-config.md#scoring-export-panels) exports, for the Environment and Operators chosen in the page, with the maps per area of up to four operators per slide.
+- These panels are part of the documents of this tab only, not of the other Scoring documents or the reports of [Reporting](reporting.md).
 
 ### Incomplete coverage and achievable scoring
 
@@ -519,9 +1210,9 @@ The pale yellow **Calculation notes** card lists affected combinations, missing 
 > [!WARNING]
 > **Missing points are not redistributed.** An incomplete result keeps the original weights and configured benchmark maximum. Available contributions are not scaled up to a complete score.
 
-**Environments without results in any series are scaled.** When the filters leave an environment without results for every operator and series of the calculation (for example, City = London only covers Drive - City), the Combined scores use the environments with results and scale them to the full maximum scoring: an environment without results gets 0 points and the others share its points in proportion, the same for every operator, so GAPs stay comparable. An orange **Scaled results** card explains which environments were scaled and the factor applied (with a methodology per campaign, once when every methodology scales the same way, otherwise once per methodology, named with its campaigns); scaled values are not marked as incomplete. The *Maximum score per environment* donuts show the configured points of every environment struck through beside the points finally allocated, and the PowerPoint and Word exports show the same notice in orange on their first page. Every view of All Environments counts in these scaled points: Where the points go, the points lost per KPI, the KPI GAP Profile, the Points Lost maps, Vendors, kinds of site, sites and stretches and Where to act give each operator the points lost of its Combined score, also in PowerPoint and Word, while each environment on its own keeps its own points. When an environment has results in any series it is never scaled, and the series without it keep their partial score and their notes. Saved results are scaled when they are opened, without calculating them again.
+**Example:** **VF_UK / Samsung / Q1: maximum 583.2645 of 650 points**, with the unavailable KPI names listed below. Another campaign can have a different achievable maximum because different KPIs are missing.
 
-Example: **VF_UK / Samsung / Q1: maximum 583.2645 of 650 points**, with the unavailable KPI names listed below. Another campaign can have a different achievable maximum because different KPIs are missing.
+**How incomplete values look:**
 
 - Incomplete numeric values appear **in bold red with `*`**.
 - Unavailable values appear **as N/A*** in the same style.
@@ -529,40 +1220,85 @@ Example: **VF_UK / Samsung / Q1: maximum 583.2645 of 650 points**, with the unav
 - All Environments GAP uses valid environment contributions common to both sides. A subset is partial; no common contribution is unavailable.
 - Tooltips explain partial GAP coverage; PowerPoint slide notes include the coverage details.
 
-All Environments raw KPI values are calculated from pooled source rows, not averaged from environment KPI values. Older results without these saved measurements show N/A until recalculated. Weighted scoring points still sum the separately calculated environment contributions.
+**Environments without results in any series are scaled.** When the filters leave an environment without results for every operator and series of the calculation (for example, City = London only covers Drive - City):
+
+- **Scaling:** the Combined scores use the environments with results and scale them to the full maximum scoring. An environment without results gets 0 points and the others share its points in proportion, the same for every operator, so GAPs stay comparable.
+- **Scaled results card** (orange): explains which environments were scaled and the factor applied. With a methodology per campaign, once when every methodology scales the same way, otherwise once per methodology, named with its campaigns. Scaled values are not marked as incomplete.
+- **Donuts:** the *Maximum score per environment* donuts show the configured points of every environment struck through beside the points finally allocated.
+- **Exports:** the PowerPoint and Word exports show the same notice in orange on their first page.
+- **Every view of All Environments** counts in these scaled points: Where the points go, the points lost per KPI, the KPI GAP Profile, the Points Lost maps, Vendors, kinds of site, sites and stretches and Where to act give each operator the points lost of its Combined score, also in PowerPoint and Word. Each environment on its own keeps its own points.
+- **Not scaled:** an environment with results in any series is never scaled, and the series without it keep their partial score and their notes.
+- **Saved results** are scaled when they are opened, without calculating them again.
+
+**All Environments raw KPI values** are calculated from pooled source rows, not averaged from environment KPI values. Older results without these saved measurements show N/A until recalculated. Weighted scoring points still sum the separately calculated environment contributions.
 
 ## Excluded Calls
 
-The **Excluded Calls** panel, below the Scoring & GAP Analysis panel and above the Manage Favourite Scorings panel (listed after Scoring & GAP Analysis in the floating section bar and in the sections menus of the module, which open it), keeps lists of calls left out of every scoring of the workspace: the Saved Scorings with their Country Areas, Scoring Trends and Points Lost, the scoring reports and the reports of [Reporting](reporting.md). Each call is identified by its NetCheck **JOIN_ID**, and its rows are left out of the CDRs the list applies to: the Voice call with the Speech samples of the same call, or the Data test. Its header says how many lists are switched on and how many calls they hold.
+Keep lists of calls that every scoring of the workspace leaves out, such as the calls of a faulty test phone.
+
+- **Where:** the **Excluded Calls** panel, below the Scoring & GAP Analysis panel and above the Manage Favourite Scorings panel. It is listed after Scoring & GAP Analysis in the floating section bar and in the sections menus of the module, which open it.
+- **What it leaves out:** the calls of the lists, from every scoring of the workspace: the Saved Scorings with their Country Areas, Scoring Trends and Points Lost, the scoring reports and the reports of [Reporting](reporting.md).
+- **How a call is identified:** by its NetCheck **JOIN_ID**. Its rows are left out of the CDRs the list applies to: the Voice call with the Speech samples of the same call, or the Data test.
+- **Header:** says how many lists are switched on and how many calls they hold.
 
 | Action | How |
 | --- | --- |
-| Import a list | **Import Excluded Calls (CSV/Excel)**, then **Choose File**: a CSV (comma, semicolon or tab separated), TXT or Excel file with a **JOIN_ID** column (**JOINT_ID** or **Call Key** are read too) and, optionally, a **Reason** column (or Comment or Note); a file of a single column without a header is a list of JOIN_IDs. The dialog says how many JOIN_IDs it read and the repeated or empty ones it leaves out. Give the list a **Name** (the name of the file by default) and a **Reason**, and choose its **CDRs**. **Download Template** gives a file with the columns. A list keeps up to 100,000 calls. |
-| Choose its CDRs | Without CDRs (**All CDRs**) the list applies to every CDR of the workspace, also to those processed later. Assigned to some CDRs, it applies to them and, for a Voice or Speech CDR, to the Speech or Voice CDR of the same campaign, stage and NR Mode, whose samples carry the JOIN_IDs of the same calls (listed with a **+**). The CDRs are kept by file name, so they follow the list to other workspaces. |
-| Switch a list on or off | The **On** switch: a list switched off keeps its calls but leaves nothing out, so the scorings with and without them can be compared. |
-| Edit, download or delete | ✎ changes the name, reason and CDRs (to change its calls, import the file as another list), ⇩ downloads the calls of the list (CSV) and 🗑 deletes it after confirmation. |
+| Import a list | **Import Excluded Calls (CSV/Excel)**, then **Choose File**: a CSV (comma, semicolon or tab separated), TXT or Excel file with a **JOIN_ID** column (**JOINT_ID** or **Call Key** are read too) and, optionally, a **Reason** column (or Comment or Note). A file of a single column without a header is a list of JOIN_IDs. The dialog says how many JOIN_IDs it read and the repeated or empty ones it leaves out. Give the list a **Name** (the name of the file by default) and a **Reason**, and choose its **CDRs**. **Download Template** gives a file with the columns. A list keeps up to 100,000 calls |
+| Choose its CDRs | Without CDRs (**All CDRs**) the list applies to every CDR of the workspace, also to those processed later. Assigned to some CDRs, it applies to them and, for a Voice or Speech CDR, to the Speech or Voice CDR of the same campaign, stage and NR Mode, whose samples carry the JOIN_IDs of the same calls (listed with a **+**). The CDRs are kept by file name, so they follow the list to other workspaces |
+| Switch a list on or off | The **On** switch: a list switched off keeps its calls but leaves nothing out, so the scorings with and without them can be compared |
+| Edit, download or delete | **✎** changes the name, reason and CDRs (to change its calls, import the file as another list), **⇩** downloads the calls of the list (CSV) and **🗑** deletes it after confirmation |
 
-**Found in the CDRs** gives the calls of each list found in its CDRs and their rows (the count of each CDR under **By CDR**), and **N not found** downloads the JOIN_IDs found in none of them. The calls are found in the background, one reading of each CDR, when a list is imported or changed and when a CDR is processed (**Scoring History indexing** among the background tasks says *Finding the Excluded Calls in <CDR>*); meanwhile the panel says *Finding the calls in N CDRs…* and every scoring leaves the calls out all the same.
+**Finding the calls in the CDRs:**
 
-The scorings follow the lists at once: when a list is imported, switched on or off, changed or deleted, the Saved Scorings of the CDRs whose calls it changes are calculated again when they are opened (the Favourite Scorings also while the application is idle), and those of the other CDRs keep their results. The warnings of a result name the lists and the calls and CDR rows they leave out, for example *Excluded Calls: 4 calls (20 CDR rows) are left out of this scoring by the list “Faulty test phone Q3”.*, and they go with the notes of its PowerPoint slides.
+- **Found in the CDRs** gives the calls of each list found in its CDRs and their rows (the count of each CDR under **By CDR**). **N not found** downloads the JOIN_IDs found in none of them.
+- The calls are found in the background, one reading of each CDR, when a list is imported or changed and when a CDR is processed. **Scoring History indexing** among the background tasks says *Finding the Excluded Calls in <CDR>*.
+- Meanwhile the panel says *Finding the calls in N CDRs…* and every scoring leaves the calls out all the same.
 
-Everyone with the workspace sees the lists; those who can edit the Scoring Methodologies (editors and administrators) import, change and delete them, and each action is recorded in App Events. The [NQ Prioritization](non-qualified-calls.md#nq-prioritization) of Non-Qualified Calls follows them too: an excluded call loses no scoring points (Excluded from Scoring). The lists are kept in the **Scoring Exclusion Lists**, **Scoring Excluded Calls** and **Scoring Exclusion Matches** tables of Database Management and travel as the **Scoring Excluded Calls** element of Admin → Import / Export / Transfer, with Full Workspace transfers and with backups: importing or restoring them replaces the lists the workspace has (found by their identity, so a list renamed on the source server is renamed here too, or else by their name) and adds the others, each list belonging to its creator when that user is active in the destination (otherwise to the user who imports it).
+**Effect on the scorings:**
+
+- The scorings follow the lists at once. When a list is imported, switched on or off, changed or deleted, the Saved Scorings of the CDRs whose calls it changes are calculated again when they are opened (the Favourite Scorings also while the application is idle). Those of the other CDRs keep their results.
+- The warnings of a result name the lists and the calls and CDR rows they leave out, for example *Excluded Calls: 4 calls (20 CDR rows) are left out of this scoring by the list “Faulty test phone Q3”.* They go with the notes of its PowerPoint slides.
+- The [NQ Prioritization](non-qualified-calls.md#nq-prioritization) of Non-Qualified Calls follows them too: an excluded call loses no scoring points (Excluded from Scoring).
+
+**Rights, storage and transfers:**
+
+- **Who:** everyone with the workspace sees the lists. Those who can edit the Scoring Methodologies (editors and administrators) import, change and delete them, and each action is recorded in App Events.
+- **Tables:** **Scoring Exclusion Lists**, **Scoring Excluded Calls** and **Scoring Exclusion Matches** in Database Management.
+- **Transfers:** the **Scoring Excluded Calls** element of Admin → Import / Export / Transfer, with Full Workspace transfers and with backups. Importing or restoring them replaces the lists the workspace has (found by their identity, so a list renamed on the source server is renamed here too, or else by their name) and adds the others. Each list belongs to its creator when that user is active in the destination, otherwise to the user who imports it.
 
 ## Methodology
 
-A methodology contains the complete environment, KPI, weighting, threshold and priority setup. Open **Workspace Config → Scoring & GAP Analysis Setup** to edit it; the **Scoring Methodologies** shortcut of the Calculation and Results panels opens it directly. The aggregation hierarchy is not part of a methodology (see [Set filters, Break down by and reference](#3-set-filters-split-by-and-reference)).
+A methodology contains the complete environment, KPI, weighting, threshold and priority setup.
+
+- **Where to edit it:** **Workspace Config → Scoring & GAP Analysis Setup**. The **Scoring Methodologies** link of **Scoring Setup** opens it directly in a panel over the page (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click opens Workspace Config in a new tab).
+- **Not part of it:** the aggregation hierarchy (see [Aggregation hierarchy](#aggregation-hierarchy)).
 
 ### Named methodologies and portable JSON
 
-Open **Workspace Config → Scoring & GAP Analysis Setup**. Select a methodology or use **Create Methodology** / **Duplicate Methodology** to prepare another one.
+1. Open **Workspace Config → Scoring & GAP Analysis Setup**.
+2. Select a methodology, or use **Create Methodology** / **Duplicate Methodology** to prepare another one.
 
-The selector's name identifies the methodology. **Methodology title** is an optional editable description preserved in transfers.
+- **Name:** the selector's name identifies the methodology.
+- **Methodology title:** an optional editable description, preserved in transfers.
 
 #### Methodologies by campaign
 
-**Applies to campaigns** gives the campaigns a methodology was made for: choose its first campaign in **From** and its last one in **To** among the quarters of the workspace's campaigns, or **No start (every earlier campaign)** and **No end (every later campaign)** to leave either end open; **Save Methodology** saves them with the rest of the methodology. The campaigns of two methodologies cannot overlap, so each campaign has one methodology. With no start and no end the methodology is not tied to any campaign. For example, **NetCheck 2026** with No start to 2026-Q2 and **NetCheck 2026-Q3** from 2026-Q3 to No end.
+**Applies to campaigns** gives the campaigns a methodology was made for.
 
-A calculation **By campaign** scores each campaign with the methodology whose campaigns include it (by year and quarter) and the other campaigns with the default methodology. Each campaign then totals the full score of its own methodology, and a KPI that only some methodologies have (such as TikTok from 2026-Q3) appears only in their campaigns. The Campaign Comparison compares each category whose KPIs changed between the methodologies of its two campaigns as a whole (see [Scoring Tables](#scoring-tables)). The campaigns of each methodology are exported, transferred and backed up with it.
+1. Choose its first campaign in **From** and its last one in **To**, among the quarters of the workspace's campaigns. **No start (every earlier campaign)** and **No end (every later campaign)** leave either end open.
+2. **Save Methodology** saves them with the rest of the methodology.
+
+- **No overlap:** the campaigns of two methodologies cannot overlap, so each campaign has one methodology.
+- **No start and no end:** the methodology is not tied to any campaign.
+- **Example:** **NetCheck 2026** with No start to 2026-Q2, and **NetCheck 2026-Q3** from 2026-Q3 to No end.
+
+**A calculation By campaign:**
+
+- scores each campaign with the methodology whose campaigns include it (by year and quarter), and the other campaigns with the default methodology;
+- each campaign then totals the full score of its own methodology, and a KPI that only some methodologies have (such as TikTok from 2026-Q3) appears only in their campaigns;
+- the Campaign Comparison compares each category whose KPIs changed between the methodologies of its two campaigns as a whole (see [Campaign Comparison](#campaign-comparison)).
+
+The campaigns of each methodology are exported, transferred and backed up with it.
 
 #### One complete save
 
@@ -576,9 +1312,9 @@ The toolbar and the sibling panels offer the same **Save Methodology** action:
 > [!NOTE]
 > **Save Methodology commits all pending settings together.** The buttons are convenient entry points to one complete save, not separate panel-specific saves. The shared status above the panels indicates saved or pending changes.
 
-Selecting a methodology does not change the workspace default. **Set Default** chooses the methodology initially offered for future calculations. You can choose another saved methodology for each calculation.
-
-The default methodology cannot be deleted until another is set as default. Only admins, super-admins and the user who created a methodology (or imported it into the workspace) delete it; for the other users **Delete Methodology** is disabled, and a save or import that would remove it is refused. Saved results keep their captured rules; opened again after the methodology is edited, they are calculated with its new rules, and after it is deleted they are shown as they were.
+- **Default methodology:** selecting a methodology does not change the workspace default. **Set Default** chooses the methodology initially offered for future calculations; you can choose another saved methodology for each calculation.
+- **Deleting:** the default methodology cannot be deleted until another is set as default. Only admins, super-admins and the user who created a methodology (or imported it into the workspace) delete it. For the other users **Delete Methodology** is disabled, and a save or import that would remove it is refused.
+- **Saved results** keep their captured rules. Opened again after the methodology is edited, they are calculated with its new rules; after it is deleted, they are shown as they were.
 
 #### Save versus export
 
@@ -594,7 +1330,13 @@ The default methodology cannot be deleted until another is set as default. Only 
 > [!TIP]
 > Save pending edits before exporting. Duplicate a methodology before revising a benchmark, and export or back up the collection before replacing it through Admin.
 
-The editor import merges by methodology ID. Duplicate names with different IDs are rejected. Admin Import / Transfer and backup restores merge too: they replace the methodologies with the same ID (or the ID they came with, or else the same name), add the others and keep those only the workspace has and its default methodology (see [Matching and creators](administrator-config.md#matching-and-creators)); methodologies whose campaigns overlap are refused, so nothing is imported until one of them changes its campaigns.
+**How imports merge:**
+
+- **Editor import:** merges by methodology ID. Duplicate names with different IDs are rejected.
+- **Admin Import / Transfer and backup restores:** merge too. They replace the methodologies with the same ID (or the ID they came with, or else the same name), add the others, and keep those only the workspace has and its default methodology (see [Matching and creators](administrator-config.md#matching-and-creators)).
+- **Overlapping campaigns:** methodologies whose campaigns overlap are refused, so nothing is imported until one of them changes its campaigns.
+
+The JSON format is described in [Portable JSON reference](#portable-json-reference).
 
 ### Configure environments
 
@@ -609,14 +1351,17 @@ Select the environment and use **CDR filters**:
 | **G_Level_1** | Required first-level source value | Drive |
 | **G_Level_2** | Optional second-level source value | City |
 
-With Drive and City selected, only rows matching **both** values are included. Leaving G_Level_2 empty includes every second-level value for the selected G_Level_1.
-
-These source values are different from geographic Region/City filters. Changing an environment's display name does not change its matching rule.
+- With Drive and City selected, only rows matching **both** values are included.
+- Leaving G_Level_2 empty includes every second-level value for the selected G_Level_1.
+- These source values are different from geographic Region/City filters.
+- Changing an environment's display name does not change its matching rule.
 
 > [!WARNING]
 > **Environment source rules cannot overlap.** Two environments cannot select the same first/second-level combination. An unrestricted second level also conflicts with a narrower environment using the same first level.
 
-Available choices come from ready workspace CDR catalogues. Saved source values remain selectable even when absent from current CDRs. Configuration exports carry the selected values; available choices at the destination come from its own CDRs.
+- **Available choices** come from ready workspace CDR catalogues.
+- **Saved source values** remain selectable even when absent from current CDRs.
+- **Configuration exports** carry the selected values; available choices at the destination come from its own CDRs.
 
 #### Create, rename or delete
 
@@ -624,9 +1369,9 @@ Available choices come from ready workspace CDR catalogues. Saved source values 
 2. The new environment copies KPI thresholds and relative shares from the reference.
 3. Review the copied rules, then **Save Methodology**.
 
-**Rename Environment** preserves KPI contexts, weights, thresholds and source filters. Historical numeric results stay unchanged; supported result views can display the current environment name.
-
-**Delete Environment** removes its contexts from the draft. Keep at least one environment and a positive overall allocation. Names must be unique, ignoring case; **Combined** is reserved.
+- **Rename Environment** preserves KPI contexts, weights, thresholds and source filters. Historical numeric results stay unchanged; supported result views can display the current environment name.
+- **Delete Environment** removes its contexts from the draft. Keep at least one environment and a positive overall allocation.
+- **Names** must be unique, ignoring case; **Combined** is reserved.
 
 > [!WARNING]
 > **Copied thresholds need review for their new context.** The initial Walk environment has zero points and City-derived rules. Validate it before assigning benchmark points.
@@ -663,29 +1408,34 @@ Distribution changes points, not formulas or thresholds. Relative shares can be 
 | **Most Reliable points** | The maximum points of a Reliable KPI in the Most Reliable scoring; editable only on Reliable KPIs |
 | **Thresholds / score anchors** | Measurement boundaries and normalized score awarded at each boundary |
 
-KPI Type does not change the formula, mapping or GAP arithmetic; it only decides which KPIs take part in the Most Reliable scoring. Calculation basis is read-only information derived from the formula; it does not set the denominator.
+- **KPI Type** does not change the formula, mapping or GAP arithmetic; it only decides which KPIs take part in the Most Reliable scoring.
+- **Calculation basis** is read-only information derived from the formula; it does not set the denominator.
 
 #### Points and weights
 
 - **Points:** edit a KPI's absolute maximum.
 - **Weight (%):** edit its environment share; the environment total stays fixed and other KPI shares adjust proportionally.
 - **Global weight:** read-only KPI points divided by the total points across all environments.
-
-Category totals refresh from their KPI allocations. Setting a KPI to zero points keeps its definition without adding a scoring contribution.
+- **Category totals** refresh from their KPI allocations.
+- **Zero points:** setting a KPI to zero points keeps its definition without adding a scoring contribution.
 
 #### Add, move, replace or remove
 
-Category controls move whole categories or insert a category below the current one. KPI row controls insert a definition below that row, move it within its category or delete it.
-
-To replace a KPI, revise its label, formula, filters, source, thresholds and points. If you add a replacement as a new row, remove the old contribution deliberately to avoid counting both.
+- **Category controls** move whole categories or insert a category below the current one.
+- **KPI row controls** insert a definition below that row, move it within its category or delete it.
+- **To replace a KPI,** revise its label, formula, filters, source, thresholds and points. If you add a replacement as a new row, remove the old contribution deliberately to avoid counting both.
 
 **Example:** replace `PCT90(Mean_Data_Rate)` with `AVG(Mean_Data_Rate)`, rename the KPI to mean throughput and review its thresholds. Keep or change its FDTT/DL/Completed filters intentionally.
 
-Codes remain stable when rows move. New KPIs receive the next unused K number; deleted codes are not recycled. Renaming a code in the editor remaps its saved priority reference. When editing JSON manually, update `gap_priority` references too.
+**Codes:**
+
+- Codes remain stable when rows move.
+- New KPIs receive the next unused K number; deleted codes are not recycled.
+- Renaming a code in the editor remaps its saved priority reference. When editing JSON manually, update `gap_priority` references too.
 
 #### Priorities
 
-The priority editor supports moving a KPI up/down, to the first/last position or to a specified position. Category membership remains visible.
+The priority editor moves a KPI up/down, to the first/last position or to a specified position. Category membership remains visible.
 
 > [!NOTE]
 > **GAP priorities are saved settings.** Current individual GAP tables sort by signed GAP, while All Operators uses KPI definition order. Editing priority does not change these display orders.
@@ -700,7 +1450,8 @@ The priority editor supports moving a KPI up/down, to the first/last position or
 | Sum / count | `SUM(field)` / `COUNT(field)` |
 | Supported conditional ratio | `100 * SUM(Call_Status == "Completed") / COUNT(Call_Status)` |
 
-Conditions support the implemented comparisons, `AND`, `CONTAINS(...)` and `IS NOT NULL`. Filters use JSON objects; values inside a field select its permitted source values:
+- **Conditions** support the implemented comparisons, `AND`, `CONTAINS(...)` and `IS NOT NULL`.
+- **Filters** use JSON objects; values inside a field select its permitted source values:
 
 ```json
 {
@@ -709,16 +1460,19 @@ Conditions support the implemented comparisons, `AND`, `CONTAINS(...)` and `IS N
 }
 ```
 
-The Interactivity packet-error formula has explicit IFNULL behavior for lost, discarded, corrupted and unsent packets. Missing optional loss components count as zero in that formula. `Packets_Sent` remains required and its sum must be positive; missing or zero sent packets produce N/A.
+- **Interactivity packet-error formula:** it has explicit IFNULL behavior for lost, discarded, corrupted and unsent packets. Missing optional loss components count as zero in that formula. `Packets_Sent` remains required and its sum must be positive; missing or zero sent packets produce N/A.
 
 > [!CAUTION]
 > **Formulas use a supported expression allowlist.** Arbitrary Python, SQL or Tableau expressions are not executed. Other absent source fields do not become optional because the packet-loss formula supports IFNULL.
 
-Limits: **256 KPIs**, **32 environments** per methodology and **64 methodologies** per workspace. New fields or unsupported operations require engine support, not just a JSON edit.
+**Limits:** **256 KPIs**, **32 environments** per methodology and **64 methodologies** per workspace. New fields or unsupported operations require engine support, not just a JSON edit.
 
 ### Most Reliable Network scoring
 
-NetCheck publishes two rankings. **Best Network** rates every KPI. **Most Reliable** rates only the reliability KPIs (the KPIs marked with `*` in the NetCheck reports, whose KPI Type is **Reliable**), with its own maximum points, and uses the same formulas, thresholds, score anchors and mapping as Best Network: each KPI keeps its normalized score and only its maximum points change.
+NetCheck publishes two rankings:
+
+- **Best Network** rates every KPI.
+- **Most Reliable** rates only the reliability KPIs (the KPIs marked with `*` in the NetCheck reports, whose KPI Type is **Reliable**), with its own maximum points. It uses the same formulas, thresholds, score anchors and mapping as Best Network: each KPI keeps its normalized score and only its maximum points change.
 
 | | Best Network | Most Reliable |
 | --- | --- | --- |
@@ -730,23 +1484,341 @@ NetCheck publishes two rankings. **Best Network** rates every KPI. **Most Reliab
 #### Configure it
 
 1. Open **Workspace Config → Scoring & GAP Analysis Setup** and the methodology.
-2. In **KPI Definitions, Scoring & Thresholds**, set **Type** to **Reliable** for the KPIs of the Most Reliable scoring (the NetCheck 2026 methodology already does) and enter their **Most Reliable points** in each environment (see [Most Reliable reference points](#most-reliable-reference-points)). The column can only be edited on Reliable KPIs. The line above the table counts the Reliable KPIs and their points in the selected environment and in all environments, and warns about Reliable KPIs without points.
+2. In **KPI Definitions, Scoring & Thresholds**, set **Type** to **Reliable** for the KPIs of the Most Reliable scoring (the NetCheck 2026 methodology already does) and enter their **Most Reliable points** in each environment (see [Most Reliable reference points](#most-reliable-reference-points)).
+   - The column can only be edited on Reliable KPIs.
+   - The line above the table counts the Reliable KPIs and their points in the selected environment and in all environments, and warns about Reliable KPIs without points.
 3. **Save Methodology**, then calculate or recalculate the scoring.
 
-Most Reliable points are part of the methodology: changing them gives the methodology a different identity, so the saved results of the Saved Scorings that use it are calculated again when they are opened. The Most Reliable results are derived from the saved KPI scores of the result, so they never read the CDRs again. A new environment or a new KPI starts without Most Reliable points. A KPI whose Type is not Reliable never takes part, even if it had Most Reliable points (they are dropped when the methodology is saved).
+**Good to know:**
 
-Most Reliable points copied with two decimals can miss an environment's total by a few hundredths (650.02 for 650): when the Most Reliable total of an environment is within 0.1 points of its Best Network total, its Most Reliable points are scaled to match it exactly.
+- **Part of the methodology:** changing Most Reliable points gives the methodology a different identity, so the saved results of the Saved Scorings that use it are calculated again when they are opened.
+- **No new reading of the CDRs:** the Most Reliable results are derived from the saved KPI scores of the result.
+- **New environments and KPIs** start without Most Reliable points.
+- **Only Reliable KPIs:** a KPI whose Type is not Reliable never takes part, even if it had Most Reliable points (they are dropped when the methodology is saved).
+- **Rounding:** Most Reliable points copied with two decimals can miss an environment's total by a few hundredths (650.02 for 650). When the Most Reliable total of an environment is within 0.1 points of its Best Network total, its Most Reliable points are scaled to match it exactly.
 
 > [!NOTE]
 > **Environments without Most Reliable points contribute nothing to it.** The Most Reliable maximum of an environment is the sum of its KPIs' Most Reliable points; All Environments adds them, and [environments without results are scaled](#incomplete-coverage-and-achievable-scoring) the same way as in Best Network.
+
+## Scoring History
+
+The **Scoring History** keeps, in the workspace database, the components of every scoring KPI of every ready Data, Voice and Speech CDR, so a calculation does not read the CDR rows again.
+
+**What it keeps:**
+
+- **Groups:** the tests of each CDR grouped by day (of their start time), campaign, operator, vendor, environment, Region, Cluster and City (every city, not only the Main Cities).
+- **Per group and KPI** of the workspace methodologies, what the KPI needs to be calculated again over any set of groups: the sums and counts of its ratios and averages, and a mergeable sketch of the values of its medians and 90th percentiles (approximate, within a quarter of a percent).
+- **No scores:** scores and points are never stored. They are calculated with the thresholds of the methodology chosen, so any methodology, period (days, weeks, months, quarters, campaigns or years) and area can be scored from the same history.
+
+**When it is filled:** as a background task, shown in the floating background tasks card (**Scoring History indexing**), after the other background work:
+
+- as soon as a CDR finishes processing;
+- when the workspace is opened (for the CDRs it does not hold yet);
+- once nobody has used the application for two minutes (the pages refreshing themselves do not count).
+
+- **Before it is ready:** a calculation it cannot do yet reads the rows of the CDRs and says why in its progress, for example *(from the CDR rows: the Scoring History is still indexing 3 of its 18 CDRs)*. The Points Lost Map reads only what the map needs from those rows, without calculating the scores again.
+- **Each CDR is read once.** It is read again only when it is processed again (or its Vendor, Region or Cluster mapping changes), when a methodology adds a KPI it has not indexed, or when an [Excluded Calls](#excluded-calls) list that leaves calls of it out changes.
+- **Excluded Calls:** the history of a CDR leaves out the calls of the Excluded Calls lists switched on, so a CDR is indexed once they are found in it, and a calculation of its CDRs reads their rows meanwhile (*the Excluded Calls are still being found in 2 of its 18 CDRs*).
+
+**How a CDR is identified:**
+
+- By the SHA-256 of its whole source file (about half a second per GB, kept until the file changes, also when it only moves, as in a renamed or duplicated workspace, or arrives with an import or transfer of its workspace) and the signature of its processing.
+- Never by its name or ID, so renaming a CDR, reordering the IDs or transferring the workspace keeps its history.
+- The history of a deleted CDR is kept as a record; a CDR processed again replaces the history of its former processing.
+- Each source records its stage (Daily, Weekly or Final), campaigns and days, so a Final CDR can supersede the Daily and Weekly CDRs it contains.
+
+**Calculations from the history.** A calculation is calculated from the history in seconds, with its National & Country Areas Trends (from the CDRs of their own campaigns when they have some), when:
+
+- all its CDRs are indexed at their current processing;
+- its **Break down by** uses Operator, Vendor, Region, Cluster, City, Campaign or Dataset Type;
+- its filters are Region, Cluster, City, Operator, Vendor, Operator_Vendor or Campaign.
+
+Its scores, tables and charts show at once. Any other job reads the CDR rows as before.
+
+**The Points Lost Map** needs the rows of each test, so it is prepared next from the CDRs, in a job of its own: **Points Lost Map #N** among the background tasks.
+
+- **Queue:** it runs after the calculations waiting, so they do not wait for it. While it is drawn it gives way to the work of the workspace queued before it (such as the calculation of another Saved Scoring) after the CDR or group of tests it is on, then goes on. The results show *Preparing the Points Lost Map…* and update themselves.
+- **Own processes:** it is drawn in processes of their own, so the application keeps answering while it runs and gets its memory back when it ends.
+  - The rows of each CDR type are read at once from the [columnar copies](workspace-management.md#columnar-copy-of-the-cdrs) of the CDRs, and every group of tests is mapped at once (each KPI weighs every test once).
+  - Each methodology draws its Data tests in one process and its Voice and Speech tests in another, up to four processes at a time, the ones with the most tests first.
+  - The parts are put together in the order of the CDR types, so the map is the same as drawing them one after the other.
+  - A Saved Scoring of 9 campaigns with a methodology per campaign takes about 10 to 12 seconds.
+- **Its card** shows a progress bar and the step it is on (the CDR being read, such as *CDR 3 of 18*, then the CDR type and KPI being mapped, and with a methodology per campaign which methodology), and about how long it has left once it has advanced enough.
+- **Stop:** ends it at once. Its scores, tables and charts stay, and the results say the map was stopped. It is drawn again once nobody has used the application for three minutes (the stopped maps of the open workspace one after another, logged in App Events).
+- **Priority:** the Saved Scoring being looked at goes first: its calculation and its map move ahead of the others queued in the workspace.
+
+**Shared calculations:**
+
+- **Cache:** the National & Country Areas Trends and the Points Lost Map of each methodology are kept in the cache folder of the workspace (`.cache/scoring`, the most recently used up to 1 GB).
+- **Reuse:** any Saved Scoring (or the same one calculated again) with the same CDRs at the same processing, methodology, options, Operator Maps and Map Areas reuses them. Saved Scorings that share their Scoring Trends (such as *All available campaigns*) calculate them once. With a methodology per campaign each campaign keeps its map, so *Latest 2 campaigns* takes those of *Latest campaign* and *Previous campaign*.
+- **A map drawn before** is added as soon as the scores are saved, without a job of its own.
+- **Idle calculation of Favourite Scorings:** while nobody uses the application for three minutes, the Favourite Scorings of the open workspace whose result no longer matches their CDRs, methodology or Operator Maps (such as *Latest campaign* once a new campaign is processed), or that have none yet, are calculated one after another with their Points Lost Maps (logged in App Events as calculations of `system`), so they open at once.
+- **What makes them recalculate:** a change of CDR, methodology, Operator Maps, Map Areas or version of the application.
+- **With a methodology per campaign,** each methodology reads only the CDRs of its own campaigns.
+
+**Where it is:** the **Scoring History**, **Scoring History Sources** and **Scoring History Files** tables of Database Management. It is part of the workspace database, so it travels with workspace exports, transfers and backups of the Workspace Database. It has no export of its own because the application rebuilds it from the CDRs.
+
+## Persistence and exports
+
+Export the results as CSV, images, PowerPoint or Word, and know what each save, export and backup keeps.
+
+### Results exports
+
+| Action | Contents |
+| --- | --- |
+| **Export to CSV** above the Scoring table | The scoring table shown: expanded results, category subtotals and totals of the selected scoring and environment |
+| **Export to CSV** above the GAP table | The GAP table shown: expanded GAP results and their existing numeric fields of the selected scoring and environment |
+| **Export to CSV**, **PowerPoint** and **Word** in [Methodology Impact](#methodology-impact) | The comparison shown: every value of its panels (CSV), or the panels that Scoring Export Panels exports (documents) |
+| Floating download and screenshot buttons of each card and of its charts and tables | The card under the pointer, whole, or its chart or table under the pointer, as a PNG image, as it is shown, saved as a file or copied to the clipboard (see [Larger view, zoom and images](#larger-view-zoom-and-images)) |
+| **Report (PPT/Word) → Custom report…** | A report whose content is chosen in the report editor, with the CDRs, filters, Break down by, Country Areas & Scoring Trends, GAP reference, methodology and theme of the page |
+| **Report (PPT/Word) → Export this scoring** | The selected Saved Scoring as it was calculated (its CDRs, Break down by levels and filters), with editable tables and charts, covers and environment transitions (see below) |
+| **Word** | The same slides as the PowerPoint, composed as the Scoring section of a report (see below) |
+| **Slides of the operators** | How several operators share a slide (see below) |
+
+**Export this scoring.** Its dialog (**Export Selected Scoring Report**) asks for:
+
+- the scorings: **Best Network**, and **Most Reliable** when the Saved Scoring has it;
+- the environments: **All Environments** (all of them combined) and each environment, with checkboxes. Best Network and All Environments are ticked;
+- **Export All Operators in Focus panels** (off by default): every operator in the panels of the Focus operators;
+- PowerPoint or Word.
+
+Only the exportable panels of [Scoring Export Panels](workspace-config.md#scoring-export-panels) are included. It exports the Saved Scoring shown without the editor.
+
+**Custom report…** opens the **report editor** (see [Report scenarios](#report-scenarios)) for one report whose content only is chosen there: its scorings, environments and sections, remembered for the next time.
+
+- It has no saved configurations, theme or JSON files.
+- It takes the CDRs used, NR Mode, filters, Break down by, Country Areas & Scoring Trends, GAP reference, methodology and theme of the page. (The reports of [Reporting](reporting.md) keep their own filters.)
+
+A progress dialog stays open while either document is generated.
+
+**Word documents** are composed as the Scoring section of a report of [Reporting](reporting.md#how-a-report-is-composed) (so are the PowerPoint exports, which end with the closing slide):
+
+- **Rendering:** exactly as in PowerPoint, rendered with LibreOffice (included in the Docker image).
+- **Pages:** the report cover on a page of its own with its background, a **Contents** page in the theme of the export, then portrait pages with as many charts and tables of a section as fit, in their order, under the title of each scoring and environment. A view that does not fit whole in what is left of a page (such as the Points Lost per City of every operator) starts the next one.
+- **Without LibreOffice:** one page per slide, with the slide tables and charts rebuilt.
+
+**Slides of the operators:**
+
+- **Shared slides:** Position per environment, Biggest levers, GAP by part and Points Lost per Vendor, per kind of site, per RAN Vendor and per site type show the operators together: up to three side by side, four in two rows of two, and five or six in two rows of three. More share slides of four, so a slide never has one alone.
+- **Latest campaign only:** the slides of a single campaign (KPI GAP Profile, Points Lost, Points lost per KPI, per City, per Vendor and per kind of site, Sites to review and Route stretches).
+- **Details:** the rule of each operator under the table headers spans all its campaigns. The names at the end of the Scoring Trend lines stand apart (a line that ends before the latest campaign is named where it is clearest). Campaign Comparison names each operator in its colour over a rule of its colour.
+
+**CSV:**
+
+- Exports use the saved results; they do not recalculate KPIs. Both **Export to CSV** buttons export the selected Saved Scoring.
+- CSV preserves stored names, numeric values and its schema, with a `cluster` column after `region` for results split by Cluster.
+- The Most Reliable CSV has the same columns with the Most Reliable points (`scoring=most_reliable` in the export address).
+- Its existing category/final GAP aggregates remain valid-KPI means. The **Total KPI GAP** footer is a web/PowerPoint display total; it does not redefine CSV GAP fields.
+- `gap_partial` and `gap_environments` identify partial coverage.
+
+### Report scenarios
+
+A report has one or more **scenarios**, in order: for example *National*, then *London*, then the *Main Cities*, then by Vendor.
+
+- **Up to 20,** which the editor reorders with **↑** and **↓**, duplicates and removes.
+- **Custom report…** opens it with a single scenario that takes the configuration of the strip and the theme of the page, and only chooses its content.
+- **Shared by every scenario:** the CDRs, NR Mode, methodology and GAP reference selected in the Scoring & GAP Analysis strip.
+- **Own to each scenario:** its **filters** (Operator, Operator_Vendor, Vendor_Operator, Vendor, Region, Cluster, City with **Main Cities**, Campaign) and **Break down by** levels.
+
+**Filter lists:**
+
+- Each list has a search box that narrows the values as you type, and **Select All / None** for the listed values. It closes when you click outside it or open another one.
+- **All** keeps no restriction, so the scenario always includes every value of the CDRs when the report is generated, also values that appear in later CDRs (for example a new Operator).
+- **Main Cities** checks the workspace main cities and uses that list when the report is generated.
+- The values stay editable with All or Main Cities checked: changing one keeps exactly the values checked.
+- A closed list shows one chosen value by name and several by their number (for example `2/4 selected` or `Main Cities (5/12)`; hover it to see the values).
+- Campaigns are shown with the workspace [Campaign Maps](workspace-config.md#campaign-maps).
+
+**When the document is generated:**
+
+- Each scenario reuses its Saved Scoring (the same selection used before, with its result up to date) or calculates it, so it can take longer the first time.
+- A Break down by level with a single value (for example **Campaign** when the CDRs hold one campaign, or **City** filtered to one city) splits nothing, so it is left out of the scenario, as it is of every chart, table and document of Scoring & GAP Analysis.
+
+**Content of each scenario.** For each scenario and each scoring (**Best Network** and **Most Reliable Network**, which can be left out), choose:
+
+| Group | Options (default) |
+| --- | --- |
+| Environments | **All Environments only** (default) or All Environments and each environment |
+| Summary | How the measurements ran, Where to act, Where to act by performance owner, Standings, Position per environment and service, Biggest levers against the reference, Cities, Towns, Roads and Railways ranked and The route that loses most (all on) |
+| Scoring Charts | Scoring per Service, per Category and per Category (Breakdown) (all on) |
+| Scoring Tables | Category table and Breakdown table (on), Show KPI values and Show GAP values (off), Campaign comparison (on) |
+| Country Areas | The Scoring Nationwide and per City / Cluster / Region cards (of the whole country, then of the Breakdown and Cities on their own of Country Areas, on the whole country), the locations ranked and each operator against the reference per location (all on) |
+| Scoring Trends | The Scoring Trend (two campaigns or more) and the National & Country Areas Trends (both on) |
+| GAP Analysis | The table of all the operators, the individual tables against the reference, the GAP by part over the campaigns and the KPI GAP Profile (all on) |
+| Points Lost | Where the points go, Points lost per KPI, the Points lost per City / Region map (by points and per 1,000 tests), the Points lost per Postal Code map (of the Saved Scorings with Postal Codes), Points lost per Vendor, per kind of site, per RAN Vendor and per site type, Sites to review and Route stretches (all on) |
+
+- **Exportable panels only:** the editor lists only the panels the workspace exports ([Scoring Export Panels](workspace-config.md#scoring-export-panels)); those that show the Focus operators are tagged **Focus**.
+- **Export All Operators in Focus panels,** beside the title of the editor, shows every operator in them. It is saved with the configuration (off in configurations saved before) and is also an option of the Scoring section of the reports of [Reporting](reporting.md).
+- **Older configurations** saved before the Summary, Country Areas (called Locations before), Scoring Trends and Points Lost groups keep their choices: the cards and the Scoring Trend follow the former Scoring Charts options, the map the former GAP Analysis option and the points lost per KPI the former KPI GAP Profile option.
+
+**Country Areas & Scoring Trends of a scenario.** Below the Break down by levels, each scenario has this panel. It is always included and always scored on the whole country, also in a scenario with Region, Cluster, City or Main Cities filters (scenarios saved without it include it now).
+
+- **Country Areas** chooses the areas of the Country Areas and the National & Country Areas Trends slides:
+  - **Breakdown:** **Region** (the default), Cluster, City or None, which needs Cities on their own;
+  - **Cities on their own:** the cities shown on their own (**London** by default, any other city and the workspace **Main Cities**).
+- **Scoring Trends** chooses:
+  - the **Campaigns** of the trends: **All available campaigns** (the default), **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** (resolved at each report), **Same as the scenario** or **Chosen campaigns** (scenarios saved before keep All available campaigns). Its Scoring Trend and National & Country Areas Trends are calculated with them, whatever the campaigns of the scenario;
+  - the **Time split** of the trends only (see the table below).
+- **Own measurements per area:** the scenario's calculation also scores the National scoring with that time split, the chosen cities and each value of the breakdown, every one with its own measurements. KPI values (rates, medians, P90…) are not additive and their points come from non-linear thresholds, so an area score is not a share of the National points.
+
+| Time split | Effect |
+| --- | --- |
+| **All selected CDRs** | Aggregates every selected CDR into one value (for example 24 weekly CDRs into the score of those 24 weeks) |
+| **Campaign** (the default) | Splits by campaign |
+| **Daily**, **Weekly** (ISO weeks, such as `2026-W07`), **Monthly**, **Quarterly**, **Yearly** | Split by the period of the start time of each test, whatever the CDRs are (daily, weekly or per campaign), so 28 daily CDRs give four weekly points |
+
+**Differences highlighted:** with several scenarios, every setting whose value is not the same in all of them (a filter, a Break down by level, the Scoring Trends, a scoring, its environments or one of its options) is highlighted in amber in each scenario, so what changes from one scenario to another stands out. The highlights follow every change.
+
+**Structure of the document:**
+
+- **Cover:** lists the scenarios.
+- **Several scenarios:** each one opens with its transition (01 National, 02 London…, with its NR Mode and the filters that choose part of the country or of the operators). Then each scoring (1.1 Best Network Scoring, 1.2 Most Reliable Network Scoring) and each environment block (1.1.1, 1.1.2…) has its own transition, and its slide subtitles name the scenario and the scoring.
+- **One scenario:** the scorings are 01, 02 and their environments 1.1, 1.2…
+- **All Environments only:** the subtitles omit *All Environments*; each environment block names its environment.
+- **Show KPI values** adds a **Value** column before each Score of the Breakdown tables.
+
+**Theme:** the **Theme** selector of the editor's toolbar chooses the colours of the document (see [Choose a theme](#choose-a-theme)). A saved configuration keeps its theme, and Default takes the theme of the page.
+
+**Saved configurations:**
+
+- **Remembered:** the editor opens with the scenarios of the last report, remembered as soon as **Generate PowerPoint** or **Generate Word** is pressed. The last configuration used to generate a document opens again in any later session.
+- **Selector:** always tells the saved configuration (or **Default**) whose scenarios are shown, and **<Not saved configuration>** when no saved configuration has them. It follows every change of the scenarios.
+- **Choose one** in the selector to load it at once, **Default** included. **Default** is one scenario with the filters and aggregation of the selected Saved Scoring plus **Campaign** (left out when there is a single campaign). *Default* is always listed, cannot be deleted and is not available as a saved name.
+- **Unsaved changes:** choosing another configuration asks first. **Cancel** keeps them, **Discard changes** loads the chosen configuration and **Save as…** saves them before loading it.
+- **Save, delete, export, import:** the toolbar saves (**Save as…**) and deletes **named configurations** of the workspace, and exports or imports them as JSON. Only admins, super-admins and the user who saved a configuration (or who imported it, when its creator is not a user of this server) delete it; for the other users **Delete** is disabled.
+- **Transfers:** saved configurations travel as the **Scoring & GAP Report Templates** element of Admin's Import / Export / Transfer, with Full Workspace transfers and with backups.
+
+### What is in the PowerPoint?
+
+**Scorings and subtitles:**
+
+- **Both scorings:** when the result has a Most Reliable scoring, each scenario contains a **Best Network Scoring** section and then a **Most Reliable Network Scoring** section. Without Most Reliable points, the document has only the Best Network sections.
+- **Subtitles** name the scoring (and the environment of an environment block, for example *Most Reliable Network — Drive - City*), then the area, operators and vendors of the slide (see [Area, operators and vendors of each chart and table](#area-operators-and-vendors-of-each-chart-and-table)).
+- **Slide notes** carry the notes of that scoring.
+- **Long titles:** cover and transition titles that are wider than the slide are reduced to fit on one line.
+
+**Operators of each panel.** Each block follows the order of the results tabs, as chosen in the scenario, with the exportable panels of [Scoring Export Panels](workspace-config.md#scoring-export-panels). Each panel shows the operators chosen there:
+
+- **Every operator,** or the **Focus operators:** the Operator labels with the **Focus** role in [Operator Maps](workspace-config.md#operator-maps), with every name of the CDRs they stand for. Every operator is shown without them, or when none of the operators of the results is one of them. The reference is shown when it is one of them.
+- **By default the Focus operators are used in:** Where to act and Where to act, by performance owner, the places ranked and the route, Campaign Comparison, the locations ranked and *<operator> against <reference> per <location>*, the individual GAP comparisons, *GAP by part*, the KPI GAP Profile, the points lost per KPI, the points-lost maps (per City, Region…), per Vendor, per kind of site, per RAN Vendor and per site type, *Sites to review* and *Route stretches*. The other slides show every operator.
+- **Export All Operators in Focus panels** shows every operator in all of them.
+- **Choices made on the page** in a section before exporting it are kept, except in the route, the individual GAP comparisons and Campaign Comparison.
+
+**Order of each block:**
+
+1. **Summary**, after the cover of the scoring:
+   - *How the measurements ran*;
+   - *Where to act* and *Where to act, by performance owner*, for the operator chosen in Where to act (else for every Focus operator, the reference included when it is one; every operator but the reference without them);
+   - *Standings*: every operator from the highest score with its Data and Voice points, then a panel per operator with its position, its GAP to the reference by part and a sentence that sums it up;
+   - *Position — per environment* (two operators per slide) and *Biggest levers — vs <reference>* (of the Focus operators, two per slide);
+   - *Cities ranked*, *Towns ranked*, *Roads ranked* and *Railways ranked* for the operators chosen with their own buttons (18 places per slide, *(1 of 2)*…);
+   - *<Route>: where the points are* for the operators of its panel (its map, owners, five stretches and what to review on one slide).
+2. Best Network (or Most Reliable Network) Scoring per Service and per Category, with the maximum score allocation donuts.
+3. Scoring per Category (Breakdown).
+4. Scoring Tables — Summary and Breakdown, then Campaign Comparison.
+5. **Country Areas:** the scoring Nationwide (a card of the whole country across the slide; split by Vendor, a column per operator and a row per Vendor, as the page), the scoring per City / Cluster / Region (of the Breakdown and Cities on their own of Country Areas, on the whole country), then, for every level of the results from the largest to the smallest (Region, Cluster, City; each combination of the other levels), *<Regions> ranked* and *<operator> against <reference> per <region>* for each Focus operator (up to four).
+6. **Scoring Trends:** the Scoring Trend and the National & Country Areas Trends, with the campaigns of the Scoring Trends of the scenario.
+7. All Operators GAP comparison (every operator), then the individual comparison of each Focus operator, *GAP by part — vs <reference>* and the KPI GAP Profile.
+8. **Points Lost:** *Points Lost — where the points go* (with what each kind of loss counts and its KPIs), the points lost per KPI, the points-lost maps (by National points and per 1,000 tests), *Points Lost — per Vendor*, *per kind of site*, *per RAN Vendor* (its Host network in one cell for all its Vendors, as the page) and *per site type* (two operators per slide), *Sites to review* (High priority first) and *Route stretches* (the two routes that lose most of each Focus operator), each table closed by its total row.
+
+**The All Environments block also contains,** when they apply and are chosen:
+
+- **Best Network (or Most Reliable Network) Trends — National & Country Areas** in Scoring Trends:
+  - a table with the National scoring, each area of the breakdown and the cities (six per slide; each group's names in its colour and a thick rule between groups);
+  - with the score of the reference and of the operators to compare in the latest campaign or period of its time split, from the highest score, their change from the previous one (Δ vs, with two or more) and their GAP to the best operator of the area (Δ vs best, the best one tagged BEST);
+  - with several campaigns or periods, a trend chart per area on the same scale;
+  - with **All Environments and each environment**, each environment block has its own.
+- **Scoring per City / Cluster / Region:** a note with the maximum points and up to 12 cards with each operator's Data (teal) and Voice (amber) points as a bar, from the highest score, with the totals, labelled with the operator names of the mapping table, for the latest campaign.
+- **Scoring Trend** first in Scoring Trends: a line chart of the campaigns of the Scoring Trends (with campaigns of their own, *Scoring Trend Nationwide*, of their National scoring on the whole country; otherwise per combination of the other levels, up to six). Each line ends in the name and latest score of its operator, and every other point shows its score.
+- **KPI GAP Profile** after the GAP tables: the GAP to the reference per KPI of two Focus operators per slide.
+  - Grouped by category with their subtotals (or in one list across all categories, as **KPI order** on the page) and closed by a total row, with gradient data bars in every column.
+  - For each combination of the other levels, such as each selected City, Cluster or Region (up to twelve; the latest campaign's when there are more).
+  - The note names the operators in their colour and the totals in bold.
+- **Points lost per KPI** in Points Lost: the same tables with the points each operator loses against the maximum, the reference operator included when it is one of the **Focus operators**.
+- **Points Lost per City** after them: one slide per operator chosen on the page with the KPI GAP Profile, else per Focus operator (the reference operator included when it is one of them).
+  - Headed by the operator in large type; its figures are in National points (a note below the bars says what they are).
+  - The map areas are coloured as the web does by default (the points of the city or route that loses most among those measured in each area, the cities and routes that lose most labelled once, over the grey outline of their countries), with its yellow–red scale.
+  - The cities and routes that lose most are shown as bars (up to 30, each with the environments where it loses points), with the share of the points lost they account for.
+  - Each one is followed by a **Points Lost per City, per 1,000 tests** slide, which colours the map and ranks the places with 500 tests or more by the points lost per 1,000 of their tests (results calculated before this version have only the first one).
+  - A single exported environment gets its own maps.
+  - Workspaces with Clusters or Region Mapping polygons add a **Points Lost per Cluster** or **per Region** slide, each also followed by its per 1,000 tests slide.
+  - Without map areas (a country without Map Areas), the cities are bubbles over the test locations.
+- **Campaign Comparison** at the end: the comparison tables of the Focus operators (every operator without them; the operators chosen on the page do not change it), up to eight operator and level combinations, two per slide. A category whose methodology changed between the two campaigns is one row with its KPIs below it, and the note under the total names it.
+
+**Titles, covers and transitions:**
+
+- **Slide titles** take the colours of the theme (blue in NetCheck), with the part that tells consecutive slides apart in bold and in the accent of the theme: the focus (for example *Best Network Scoring **per City***) or what follows the dash (for example *GAP Analysis — **3 vs EE*** or *Scoring Tables — **Summary***).
+- **Subtitles** name the scoring, the environment, the area, the operators and the vendors in bold, smaller when they would not fit on one line.
+- **Covers and transitions** use the Vodafone-Three red of the template (`Template_VodafoneThree.pptx`), with the Ericsson mark drawn in outline behind them and the Vodafone-Three and Ericsson logos at the top right.
+  - Every cover has the same title and subtitle sizes (54 and 24 pt) and every transition smaller ones (40 and 20 pt), whatever the module. The subtitle starts right below the room of two title lines, so a long title wraps into it.
+  - Each transition shows its counter above its title: 01, 02… for the first level and 2.1, 2.1.1… below it.
+  - A scoring cover or transition has the NR Mode as its subtitle and, under the line of the layout, the **Campaigns**, the Break down by and each filter, with white labels and **bold yellow values**. Long lists can be shortened visually without changing the calculation.
+
+**GAP tables in the export:**
+
+- The export follows Scoring Tables GAP visibility and column placement. Dedicated GAP slides remain included.
+- Individual slides include the Priority arrow, mean KPI GAP and column-averaged total.
+- Every GAP table includes its column totals and, on one line under it, its color scale. It takes the height of the slide down to it, with the largest text its rows fit (the KPIs wider when the GAP columns are few).
+
+### Dense-chart options
+
+| Chart | The export splits it when… |
+| --- | --- |
+| Scoring per Service | More than 20 bars |
+| Scoring per Category | More than 20 bars |
+
+- The export splits these charts on its own, for more readable slides. Splitting preserves complete category groups where applicable and a common Best Network scale.
+- **Groups stay together:** the Scoring per Service and per Category slides keep the bars of each operator together (3, EE and Vodafone first) or, when a level comes above Operator in the aggregation hierarchy, those of each of its values (every operator and campaign of a City). They are divided by the next level only when they do not fit on one slide.
+- **Scoring per Category (Breakdown)** keeps every category on one slide up to 50 bars. Above that, it spreads the categories over as few slides as possible with a similar number of bars each (*Page 1 of 2*), in PowerPoint and Word.
+- **Labels:** scoring bar labels use smaller integers above 40 bars and are hidden above 70. Small stacked segments may omit labels; their values remain in the editable chart.
+
+> [!TIP]
+> Narrow filters or split charts when many combinations make labels too small. Dense tables keep their combinations together, so reducing the scope also improves table readability.
+
+### Save, export and backup are different
+
+| Action | Purpose |
+| --- | --- |
+| **Save Methodology** | Commit edits to the workspace database |
+| **Export Methodology (JSON)** | Download the selected saved methodology |
+| **Admin → Import / Export → Scoring & GAP Analysis Methodologies** | Transfer the complete methodology collection and its default |
+| **Admin → Import / Export → Scoring Excluded Calls** | Transfer the lists of [Excluded Calls](#excluded-calls), with their CDRs by file name |
+| **Workspace database backup / restore** | Preserve methodologies, Saved Scorings with their results and shared selections |
+
+- **Favourite Scorings packages** carry the Saved Scorings without their results, nor the workspace-local CDR selection. In the receiving workspace each Saved Scoring finds its CDRs by the SHA-256 of their files and waits until they are processed there.
+- **Workspace duplication, database exports, transfers and ZIP database backups** preserve the Saved Scorings with their results in the workspace database.
+- **After a restart,** interrupted calculations are kept as failed and can be recalculated.
+- **Processing CDRs calculates nothing on its own** (only the Favourite Scorings are calculated again while the application is idle; see [Scoring History](#scoring-history)). The [Scoring History](#scoring-history) indexes them in the background as soon as they are processed, so their first calculation is quick.
+
+## Troubleshooting
+
+| Symptom | Check or action |
+| --- | --- |
+| No CDRs used | Verify workspace, NR Mode, the Campaign (each campaign needs Data, Voice and Speech CDRs), ready processing status and the Active? choice in Workspace |
+| Calculate is disabled | Read the yellow notice; complete each campaign's three source types, or wait for the running calculation of the same selection |
+| Expected vendor/city choices are missing | Check mappings, the Campaign and the other filters (each filter lists the values they leave); reprocess older incomplete catalogues |
+| GAP is N/A* | Verify the reference and matching context, including common valid environment coverage |
+| Maximum achievable points differ between columns | Read the excluded KPI list for each combination; unavailable contributions can differ |
+| Results differ from another report | Compare methodology revision, filters, Break down by levels, thresholds and coverage |
+| CDR changed during calculation | Wait for processing/mapping to finish and recalculate |
+| Older All Environments KPI values are N/A | Recalculate to save pooled global measurements |
+| A calculation failed after an interruption | Recalculate the Saved Scoring; delete it only if no longer needed |
+
+> [!NOTE]
+> **NR Mode selects the dataset universe.** It does not supply a different SA methodology automatically. Validate copied or customized environment rules before using them for a new benchmark.
+
+## Methodology reference
+
+Detailed reference for methodology files and the calculation engine.
 
 ### Portable JSON reference
 
 #### Envelope and required content
 
-Exchange format **version 3** uses the same envelope for one methodology or a complete collection. Files exported before the rename to DriveTest Analyzer, with the format `dashboard-analytic-scoring-configuration`, are still accepted. A one-methodology export has one item in `profiles`; Admin exports can contain all items.
-
-The internal JSON names `profiles` and `active_profile_id` remain format identifiers. In the interface, these entities are called **methodologies**, and the active ID identifies the default.
+- **Format:** exchange format **version 3** uses the same envelope for one methodology or a complete collection.
+- **Older files:** files exported before the rename to DriveTest Analyzer, with the format `dashboard-analytic-scoring-configuration`, are still accepted. A version-1 file with a single methodology is still accepted. Version-2 exchange envelopes must be replaced with a new export.
+- **One or many:** a one-methodology export has one item in `profiles`; Admin exports can contain all items.
+- **Names:** the internal JSON names `profiles` and `active_profile_id` remain format identifiers. In the interface, these entities are called **methodologies**, and the active ID identifies the default.
 
 The following minimal example contains one KPI. A complete benchmark must include all intended KPI definitions and a context for every configured environment.
 
@@ -810,16 +1882,20 @@ The following minimal example contains one KPI. A complete benchmark must includ
 | `gap_priority` | KPI code order; removed codes are dropped and new codes appended |
 | `next_kpi_number` | High-water mark for generated codes |
 
-Environment totals and positive-point relative weights are derived from KPI maximum points, so exports do not duplicate them. Relative shares for zero-point environments are retained.
-
-`most_reliable_points` is optional; omitted or 0 leaves the KPI out of the Most Reliable scoring of that environment. Files without it are still imported and keep their identity.
-
-Reference filenames, workbook cells, denominator descriptions and Tableau grouping keys are not needed for an operational methodology and are omitted. Optional mapping/anchor settings use supported defaults when omitted; retain explicit settings when customized.
-
-Version-2 exchange envelopes must be replaced with a new export; a version-1 file with a single methodology is still accepted. Existing supported workspace records are normalized on read; this is different from accepting an obsolete exchange envelope.
+- **Derived, not exported:** environment totals and positive-point relative weights are derived from KPI maximum points, so exports do not duplicate them. Relative shares for zero-point environments are retained.
+- **`most_reliable_points`** is optional; omitted or 0 leaves the KPI out of the Most Reliable scoring of that environment. Files without it are still imported and keep their identity.
+- **Omitted on purpose:** reference filenames, workbook cells, denominator descriptions and Tableau grouping keys are not needed for an operational methodology.
+- **Defaults:** optional mapping/anchor settings use supported defaults when omitted; retain explicit settings when customized.
+- **Normalization:** existing supported workspace records are normalized on read; this is different from accepting an obsolete exchange envelope.
 
 > [!IMPORTANT]
-> JSON import/export, ZIP configuration packages, transfers and configuration backup/restore use the same methodology format. The Favourite Scorings travel on their own, as the **Scoring & GAP Favourite Scorings** element of Admin's Import / Export / Transfer, with Full Workspace transfers and with backups, without their results (each one finds its CDRs by file in the receiving workspace, or, with a Campaign choice such as Latest campaign, takes the CDRs it stands for there, and keeps its name and order); the results travel only with the workspace database. The saved configurations of the report editor travel the same way, as the **Scoring & GAP Report Templates** element (one JSON file; importing it replaces the configurations the workspace has, found by their identity or name, and adds the others, see [Matching and creators](administrator-config.md#matching-and-creators)), on top of the editor's **Export JSON** / **Import JSON** buttons. Backups of the Scoring & GAP Analysis Methodologies made before, which carried the Saved Scorings and the report configurations, still restore them; imports and transfers of their packages leave them out.
+> **One format everywhere.** JSON import/export, ZIP configuration packages, transfers and configuration backup/restore use the same methodology format.
+
+**What travels apart from the methodologies:**
+
+- **Favourite Scorings** travel on their own, as the **Scoring & GAP Favourite Scorings** element of Admin's Import / Export / Transfer, with Full Workspace transfers and with backups, without their results. Each one finds its CDRs by file in the receiving workspace (or, with a Campaign choice such as Latest campaign, takes the CDRs it stands for there) and keeps its name and order. The results travel only with the workspace database.
+- **Saved configurations of the report editor** travel the same way, as the **Scoring & GAP Report Templates** element (one JSON file; importing it replaces the configurations the workspace has, found by their identity or name, and adds the others, see [Matching and creators](administrator-config.md#matching-and-creators)), on top of the editor's **Export JSON** / **Import JSON** buttons.
+- **Older backups** of the Scoring & GAP Analysis Methodologies, which carried the Saved Scorings and the report configurations, still restore them; imports and transfers of their packages leave them out.
 
 ### Reference Prep flow and implemented calculation
 
@@ -832,9 +1908,9 @@ Version-2 exchange envelopes must be replaced with a new export; a version-1 fil
 5. Multiply by the KPI's configured maximum points.
 6. Sum weighted points for categories, environments and total scoring.
 
-Operator aliases use the mapping snapshot saved with the result. When Campaign is not selected as a Break down by level, campaign rows are pooled before KPI calculation.
-
-Unlike the source Prep flow's inner joins, the application preserves groups with missing measurements as N/A and reports their incomplete coverage.
+- Operator aliases use the mapping snapshot saved with the result.
+- When Campaign is not selected as a Break down by level, campaign rows are pooled before KPI calculation.
+- Unlike the source Prep flow's inner joins, the application preserves groups with missing measurements as N/A and reports their incomplete coverage.
 
 #### Mapping methods and anchors
 
@@ -846,17 +1922,16 @@ For normalized position `t` between adjacent measurement thresholds:
 | **Quadratic** | `t²` |
 | **Smooth curve** | `3t² − 2t³` |
 
-All methods preserve the configured threshold anchors, direction and score limits. Mapping and Direction are separate settings. The original NetCheck definitions use Linear.
-
-Default NetCheck anchors without Ultra are **Low = 0%**, **Medium = 80%**, **High = 100%**. With Ultra, K20/K25 use **High = 90%** and other supported mappings use **95%**; **Ultra = 100%**. Per-context anchors are editable.
-
-Dynamic best-value Ultra thresholds use all operators in the selected comparison context. Selecting a different operator scope can therefore change a dynamic threshold.
+- All methods preserve the configured threshold anchors, direction and score limits. Mapping and Direction are separate settings. The original NetCheck definitions use Linear.
+- **Default NetCheck anchors without Ultra:** **Low = 0%**, **Medium = 80%**, **High = 100%**.
+- **With Ultra:** K20/K25 use **High = 90%** and other supported mappings use **95%**; **Ultra = 100%**. Per-context anchors are editable.
+- **Dynamic best-value Ultra thresholds** use all operators in the selected comparison context. Selecting a different operator scope can therefore change a dynamic threshold.
 
 #### Combined environments and coverage
 
-All Environments sums configured maxima and separately calculated environment points. Missing measurements do not reduce the configured benchmark or redistribute their allocations.
-
-Global raw KPI values are recalculated from pooled source rows across configured environments. They are not averages of environment KPI measurements. Zero-point environments can contribute raw measurements without adding weighted points.
+- All Environments sums configured maxima and separately calculated environment points. Missing measurements do not reduce the configured benchmark or redistribute their allocations.
+- Global raw KPI values are recalculated from pooled source rows across configured environments. They are not averages of environment KPI measurements.
+- Zero-point environments can contribute raw measurements without adding weighted points.
 
 > [!WARNING]
 > **A zero-point environment does not cause incomplete weighted scoring.** A missing positive-point contribution does. Older results without saved global raw measurements require recalculation to display those values.
@@ -873,149 +1948,8 @@ GAP subtracts **reference weighted points** from **compared operator weighted po
 | Individual PPT Average KPI GAP | Mean of valid displayed KPI GAP cells |
 | Individual PPT Average total KPI GAP | Mean of the displayed columns' KPI sums |
 
-The overall KPI mean uses original KPI rows, not an unweighted mean of category means. No aggregate applies KPI weights a second time.
-
-For All Environments, only valid environment contributions common to both sides are compared. A subset is marked partial; disjoint coverage or a missing reference gives N/A. Column totals with missing/partial contributions carry an asterisk.
-
-
-
-
-## Scoring History
-
-The **Scoring History** keeps, in the workspace database, the components of every scoring KPI of every ready Data, Voice and Speech CDR, so a calculation does not read the CDR rows again:
-
-- **What it keeps**: the tests of each CDR grouped by day (of their start time), campaign, operator, vendor, environment, Region, Cluster and City (every city, not only the Main Cities), and for each group and KPI of the workspace methodologies what the KPI needs to be calculated again over any set of groups: the sums and counts of its ratios and averages, and a mergeable sketch of the values of its medians and 90th percentiles (approximate, within a quarter of a percent). Scores and points are never stored: they are calculated with the thresholds of the methodology chosen, so any methodology, period (days, weeks, months, quarters, campaigns or years) and area can be scored from the same history.
-- **When it is filled**: as a background task, shown in the floating background tasks card (**Scoring History indexing**), after the other background work: as soon as a CDR finishes processing, when the workspace is opened (for the CDRs it does not hold yet) and once nobody has used the application for two minutes (the pages refreshing themselves do not count). A calculation it cannot do yet reads the rows of the CDRs and says why in its progress, for example *(from the CDR rows: the Scoring History is still indexing 3 of its 18 CDRs)*. The Points Lost Map reads only what the map needs from those rows, without calculating the scores again. Each CDR is read once; it is read again only when it is processed again (or its Vendor, Region or Cluster mapping changes), a methodology adds a KPI it has not indexed or an [Excluded Calls](#excluded-calls) list that leaves calls of it out changes. The history of a CDR leaves out the calls of the Excluded Calls lists switched on, so a CDR is indexed once they are found in it, and a calculation of its CDRs reads their rows meanwhile (*the Excluded Calls are still being found in 2 of its 18 CDRs*).
-- **How a CDR is identified**: by the SHA-256 of its whole source file (about half a second per GB, kept until the file changes, also when it only moves, as in a renamed or duplicated workspace, or arrives with an import or transfer of its workspace) and the signature of its processing, never by its name or ID, so renaming a CDR, reordering the IDs or transferring the workspace keeps its history. The history of a deleted CDR is kept as a record; a CDR processed again replaces the history of its former processing. Each source records its stage (Daily, Weekly or Final), campaigns and days, so a Final CDR can supersede the Daily and Weekly CDRs it contains.
-- **Calculations from the history**: a calculation whose CDRs are all indexed at their current processing, whose **Break down by** uses Operator, Vendor, Region, Cluster, City, Campaign or Dataset Type and whose filters are Region, Cluster, City, Operator, Vendor, Operator_Vendor or Campaign is calculated from the history in seconds, with its National & Country Areas Trends (from the CDRs of their own campaigns when they have some). Its scores, tables and charts show at once; the **Points Lost Map**, which needs the rows of each test, is prepared next from the CDRs in a job of its own, **Points Lost Map #N** among the background tasks, after the calculations waiting so they do not wait for it, and while it is drawn it gives way to the work of the workspace queued before it (such as the calculation of another Saved Scoring) after the CDR or group of tests it is on, then goes on (the results show *Preparing the Points Lost Map…* and update themselves). It is drawn in processes of their own, so the application keeps answering while it runs and gets its memory back when it ends: the rows of each CDR type are read at once from the [columnar copies](workspace-management.md#columnar-copy-of-the-cdrs) of the CDRs, every group of tests is mapped at once (each KPI weighs every test once), and each methodology draws its Data tests in one process and its Voice and Speech tests in another, up to four processes at a time, the ones with the most tests first; the parts are put together in the order of the CDR types, so the map is the same as drawing them one after the other: a Saved Scoring of 9 campaigns with a methodology per campaign takes about 10 to 12 seconds. Its card shows a progress bar and the step it is on (the CDR being read, such as *CDR 3 of 18*, then the CDR type and KPI being mapped, and with a methodology per campaign which methodology), about how long it has left once it has advanced enough, and a **Stop** button: stopping ends it at once, its scores, tables and charts stay, the results say the map was stopped, and it is drawn again once nobody has used the application for three minutes (the stopped maps of the open workspace one after another, logged in App Events). The Saved Scoring being looked at goes first: its calculation and its map move ahead of the others queued in the workspace. Any other job reads the CDR rows as before.
-- **Shared calculations**: the National & Country Areas Trends and the Points Lost Map of each methodology are kept in the cache folder of the workspace (`.cache/scoring`, the most recently used up to 1 GB) and reused by any Saved Scoring (or the same one calculated again) with the same CDRs at the same processing, methodology, options, Operator Maps and Map Areas: Saved Scorings that share their Scoring Trends (such as *All available campaigns*) calculate them once, and with a methodology per campaign each campaign keeps its map, so *Latest 2 campaigns* takes those of *Latest campaign* and *Previous campaign*. A map drawn before is added as soon as the scores are saved, without a job of its own. While nobody uses the application for three minutes, the Favourite Scorings of the open workspace whose result no longer matches their CDRs, methodology or Operator Maps (such as *Latest campaign* once a new campaign is processed), or that have none yet, are calculated one after another with their Points Lost Maps (logged in App Events as calculations of `system`), so they open at once. A change of CDR, methodology, Operator Maps, Map Areas or version of the application calculates them again. With a methodology per campaign, each methodology reads only the CDRs of its own campaigns.
-- **Where it is**: the **Scoring History**, **Scoring History Sources** and **Scoring History Files** tables of Database Management. It is part of the workspace database, so it travels with workspace exports, transfers and backups of the Workspace Database; it has no export of its own because the application rebuilds it from the CDRs.
-
-## Persistence and exports
-
-### Results exports
-
-| Action | Contents |
-| --- | --- |
-| **Export to CSV** above the Scoring table | The scoring table shown: expanded results, category subtotals and totals of the selected scoring and environment |
-| **Export to CSV** above the GAP table | The GAP table shown: expanded GAP results and their existing numeric fields of the selected scoring and environment |
-| **Export to CSV**, **PowerPoint** and **Word** in [Methodology Impact](#methodology-impact) | The comparison shown: every value of its panels (CSV), or the panels that Scoring Export Panels exports (documents) |
-| Floating download and screenshot buttons of each card and of its charts and tables | The card under the pointer, whole, or its chart or table under the pointer, as a PNG image, as it is shown, saved as a file or copied to the clipboard (see [Results tabs](#results-tabs)) |
-| **Report (PPT/Word) → Custom report…** | A report whose content is chosen in the report editor, with the CDRs, filters, Break down by, Country Areas & Scoring Trends, GAP reference, methodology and theme of the page |
-| **Report (PPT/Word) → Export this scoring** | The selected Saved Scoring as it was calculated (its CDRs, Break down by levels and filters), with editable tables and charts, covers and environment transitions. Its dialog asks for the scorings (**Best Network**, **Most Reliable**, when the Saved Scoring has it) and the environments (**All Environments**, all of them combined, and each environment) with checkboxes, Best Network and All Environments ticked, **Export All Operators in Focus panels** (off: every operator in the panels of the Focus operators) and PowerPoint or Word. Only the exportable panels of [Scoring Export Panels](workspace-config.md#scoring-export-panels) are included |
-| **Word** | The same slides as the PowerPoint, composed as the Scoring section of a report of [Reporting](reporting.md#how-a-report-is-composed) (so are the PowerPoint exports, which end with the closing slide): exactly as in PowerPoint (rendered with LibreOffice, included in the Docker image), the report cover on a page of its own with its background, a **Contents** page in the theme of the export, then portrait pages with as many charts and tables of a section as fit, in their order (a view that does not fit whole in what is left of a page, such as the Points Lost per City of every operator, starts the next one), under the title of each scoring and environment. Without LibreOffice, one page per slide with the slide tables and charts rebuilt |
-| **Slides of the operators** | Position per environment, Biggest levers, GAP by part and Points Lost per Vendor, per kind of site, per RAN Vendor and per site type show the operators together: up to three side by side, four in two rows of two and five or six in two rows of three (more share slides of four, so a slide never has one alone). The slides of a single campaign (KPI GAP Profile, Points Lost, Points lost per KPI, per City, per Vendor and per kind of site, Sites to review and Route stretches) show the latest campaign only. The rule of each operator under the table headers spans all its campaigns, the names at the end of the Scoring Trend lines stand apart (a line that ends before the latest campaign is named where it is clearest) and Campaign Comparison names each operator in its colour over a rule of its colour |
-
-**Report (PPT/Word) → Custom report…** opens the **report editor** (see [Report scenarios](#report-scenarios)) for one report whose content only is chosen there (its scorings, environments and sections, remembered for the next time), without saved configurations, theme or JSON files: it takes the CDRs used, NR Mode, filters, Break down by, Country Areas & Scoring Trends, GAP reference, methodology and theme of the page (the reports of [Reporting](reporting.md) keep their own filters). **Report (PPT/Word) → Export this scoring** exports the Saved Scoring shown without the editor. A progress dialog stays open while either document is generated.
-
-### Report scenarios
-
-A report has one or more **scenarios** (up to 20, which the editor reorders with **↑** and **↓**, duplicates and removes; **Custom report…** opens it with a single scenario that takes the configuration of the strip and the theme of the page and only chooses its content), in order: for example *National*, then *London*, then the *Main Cities*, then by Vendor. Every scenario uses the CDRs, NR Mode, methodology and GAP reference selected in the Scoring & GAP Analysis strip with its own **filters** (Operator, Operator_Vendor, Vendor_Operator, Vendor, Region, Cluster, City with **Main Cities**, Campaign) and **Break down by** levels. Each filter list has a search box that narrows the values as you type, **Select All / None** for the listed values, and closes when you click outside it or open another one. Its **All** option keeps no restriction, so the scenario always includes every value of the CDRs when the report is generated, also values that appear in later CDRs (for example a new Operator); **Main Cities** checks the workspace main cities and uses that list when the report is generated. The values stay editable with All or Main Cities checked: changing one keeps exactly the values checked. A closed list shows one chosen value by name and several by their number (for example `2/4 selected` or `Main Cities (5/12)`; hover it to see the values); campaigns are shown with the workspace [Campaign Maps](workspace-config.md#campaign-maps). When the document is generated, each scenario reuses its Saved Scoring (the same selection used before, with its result up to date) or calculates it, so it can take longer the first time. A Break down by level with a single value (for example **Campaign** when the CDRs hold one campaign, or **City** filtered to one city) splits nothing, so it is left out of the scenario, as it is of every chart, table and document of Scoring & GAP Analysis.
-
-For each scenario and each scoring (**Best Network** and **Most Reliable Network**, which can be left out), choose:
-
-| Group | Options (default) |
-| --- | --- |
-| Environments | **All Environments only** (default) or All Environments and each environment |
-| Summary | How the measurements ran, Where to act, Where to act by performance owner, Standings, Position per environment and service, Biggest levers against the reference, Cities, Towns, Roads and Railways ranked and The route that loses most (all on) |
-| Scoring Charts | Scoring per Service, per Category and per Category (Breakdown) (all on) |
-| Scoring Tables | Category table and Breakdown table (on), Show KPI values and Show GAP values (off), Campaign comparison (on) |
-| Country Areas | The Scoring Nationwide and per City / Cluster / Region cards (of the whole country, then of the Breakdown and Cities on their own of Country Areas, on the whole country), the locations ranked and each operator against the reference per location (all on) |
-| Scoring Trends | The Scoring Trend (two campaigns or more) and the National & Country Areas Trends (both on) |
-| GAP Analysis | The table of all the operators, the individual tables against the reference, the GAP by part over the campaigns and the KPI GAP Profile (all on) |
-| Points Lost | Where the points go, Points lost per KPI, the Points lost per City / Region map (by points and per 1,000 tests), the Points lost per Postal Code map (of the Saved Scorings with Postal Codes), Points lost per Vendor, per kind of site, per RAN Vendor and per site type, Sites to review and Route stretches (all on) |
-
-The editor lists only the panels the workspace exports ([Scoring Export Panels](workspace-config.md#scoring-export-panels)), those that show the Focus operators tagged **Focus**. **Export All Operators in Focus panels**, beside the title of the editor, shows every operator in them; it is saved with the configuration (off in configurations saved before) and is also an option of the Scoring section of the reports of [Reporting](reporting.md).
-
-Configurations saved before the Summary, Country Areas (called Locations before), Scoring Trends and Points Lost groups keep their choices: the cards and the Scoring Trend follow the former Scoring Charts options, the map the former GAP Analysis option and the points lost per KPI the former KPI GAP Profile option.
-
-Below the Break down by levels, each scenario has a **Country Areas & Scoring Trends** panel, always included and always scored on the whole country, also in a scenario with Region, Cluster, City or Main Cities filters (scenarios saved without it include it now). Its **Country Areas** subpanel chooses the areas of the Country Areas and the National & Country Areas Trends slides: **Breakdown** (**Region**, the default, Cluster, City or None, which needs Cities on their own) and **Cities on their own**, the cities shown on their own (**London** by default, any other city and the workspace **Main Cities**). Its **Scoring Trends** subpanel has the **Campaigns** of the trends, **All available campaigns** (the default), **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** (resolved at each report), **Same as the scenario** or **Chosen campaigns** (scenarios saved before keep All available campaigns), with which its Scoring Trend and National & Country Areas Trends are calculated whatever the campaigns of the scenario, and the **Time split** of the trends only: **All selected CDRs** aggregates every selected CDR into one value (for example 24 weekly CDRs into the score of those 24 weeks), **Campaign** (the default) splits by campaign, and **Daily**, **Weekly** (ISO weeks, such as `2026-W07`), **Monthly**, **Quarterly** and **Yearly** split by the period of the start time of each test, whatever the CDRs are (daily, weekly or per campaign), so 28 daily CDRs give four weekly points. The scenario's calculation then also scores the National scoring with that time split, the chosen cities and each value of the breakdown, every one with its own measurements: KPI values (rates, medians, P90…) are not additive and their points come from non-linear thresholds, so an area score is not a share of the National points.
-
-With several scenarios, every setting whose value is not the same in all of them (a filter, a Break down by level, the Scoring Trends, a scoring, its environments or one of its options) is highlighted in amber in each scenario, so what changes from one scenario to another stands out; the highlights follow every change.
-
-The document starts with a cover listing the scenarios; with several scenarios each one opens with its transition (01 National, 02 London…, with its NR Mode and the filters that choose part of the country or of the operators), then each scoring (1.1 Best Network Scoring, 1.2 Most Reliable Network Scoring) and each environment block (1.1.1, 1.1.2…) has its own transition, and its slide subtitles name the scenario and the scoring; with one scenario the scorings are 01, 02 and their environments 1.1, 1.2… With All Environments only, the subtitles omit *All Environments*; each environment block names its environment. Show KPI values adds a **Value** column before each Score of the Breakdown tables.
-
-The **Theme** selector of the editor's toolbar chooses the colours of the document (see [Choose a theme](#choose-a-theme)): a saved configuration keeps its theme and Default takes the theme of the page.
-
-The editor opens with the scenarios of the last report, remembered as soon as **Generate PowerPoint** or **Generate Word** is pressed. Its selector always tells the saved configuration (or **Default**) whose scenarios are the ones shown, and **<Not saved configuration>** when no saved configuration has them; it follows every change of the scenarios. The editor's toolbar saves (**Save as…**) and deletes **named configurations** of the workspace (only admins, super-admins and the user who saved a configuration, or who imported it when its creator is not a user of this server, delete it; for the other users **Delete** is disabled), and exports or imports them as JSON; they also travel as the **Scoring & GAP Report Templates** element of Admin's Import / Export / Transfer, with Full Workspace transfers and with backups. Choosing a configuration in its selector loads it at once, **Default** included (one scenario with the filters and aggregation of the selected Saved Scoring plus **Campaign**, which is left out when there is a single campaign; *Default* is always listed, cannot be deleted and is not available as a saved name). When the scenarios have unsaved changes, choosing another configuration asks first: **Cancel** keeps them, **Discard changes** loads the chosen configuration and **Save as…** saves them before loading it. The last configuration used to generate a document opens again in any later session. Saved configurations travel as the **Scoring & GAP Report Templates** element in Import / Export, transfers and backups.
-
-Exports use the saved results; they do not recalculate KPIs. Both **Export to CSV** buttons export the selected Saved Scoring.
-
-CSV preserves stored names, numeric values and its schema, with a `cluster` column after `region` for results split by Cluster; the Most Reliable CSV has the same columns with the Most Reliable points (`scoring=most_reliable` in the export address). Its existing category/final GAP aggregates remain valid-KPI means. The new **Total KPI GAP** footer is a web/PowerPoint display total; it does not redefine CSV GAP fields. `gap_partial` and `gap_environments` identify partial coverage.
-
-### What is in the PowerPoint?
-
-When the result has a Most Reliable scoring, each scenario contains both scorings: a **Best Network Scoring** section and then a **Most Reliable Network Scoring** section. Slide subtitles name the scoring (and the environment of an environment block, for example *Most Reliable Network — Drive - City*), then the area, operators and vendors of the slide (see [Area, operators and vendors of each chart and table](#area-operators-and-vendors-of-each-chart-and-table)), and slide notes carry the notes of that scoring. Without Most Reliable points the document has only the Best Network sections. Cover and transition titles that are wider than the slide are reduced to fit on one line.
-
-Each block follows the order of the results tabs, as chosen in the scenario, with the exportable panels of [Scoring Export Panels](workspace-config.md#scoring-export-panels). Each panel shows the operators chosen there: every operator, or the **Focus operators** (the Operator labels with the **Focus** role in [Operator Maps](workspace-config.md#operator-maps), with every name of the CDRs they stand for; every operator without them, or when none of the operators of the results is one of them; the reference when it is one of them). By default they choose the operators of Where to act and Where to act, by performance owner, the places ranked and the route, Campaign Comparison, the locations ranked and *<operator> against <reference> per <location>*, the individual GAP comparisons, *GAP by part*, the KPI GAP Profile, the points lost per KPI, the points-lost maps (per City, Region…), per Vendor, per kind of site, per RAN Vendor and per site type, *Sites to review* and *Route stretches*, and the other slides show every operator. **Export All Operators in Focus panels** shows every operator in all of them. A choice made in a section of the page before exporting it is kept, except in the route, the individual GAP comparisons and Campaign Comparison:
-
-1. **Summary**, after the cover of the scoring: *How the measurements ran*, then for the operator chosen in Where to act (else for every Focus operator, the reference included when it is one; every operator but the reference without them) *Where to act* and *Where to act, by performance owner*, then *Standings* (every operator from the highest score with its Data and Voice points, then a panel per operator with its position, its GAP to the reference by part and a sentence that sums it up), *Position — per environment* (two operators per slide), *Biggest levers — vs <reference>* (of the Focus operators, two per slide), *Cities ranked*, *Towns ranked*, *Roads ranked* and *Railways ranked* for the operators chosen with their own buttons (18 places per slide, *(1 of 2)*…) and *<Route>: where the points are* for the operators of its panel (its map, owners, five stretches and what to review on one slide).
-2. Best Network (or Most Reliable Network) Scoring per Service and per Category, with the maximum score allocation donuts.
-3. Scoring per Category (Breakdown).
-4. Scoring Tables — Summary and Breakdown, then Campaign Comparison.
-5. **Country Areas**: the scoring Nationwide (a card of the whole country across the slide; split by Vendor, a column per operator and a row per Vendor, as the page), the scoring per City / Cluster / Region (of the Breakdown and Cities on their own of Country Areas, on the whole country), then for every level of the results from the largest to the smallest (Region, Cluster, City; each combination of the other levels), *<Regions> ranked* and *<operator> against <reference> per <region>* for each Focus operator (up to four).
-6. **Scoring Trends**: the Scoring Trend and the National & Country Areas Trends, with the campaigns of the Scoring Trends of the scenario.
-7. All Operators GAP comparison (every operator), then the individual comparison of each Focus operator, *GAP by part — vs <reference>* and the KPI GAP Profile.
-8. **Points Lost**: *Points Lost — where the points go* (with what each kind of loss counts and its KPIs), the points lost per KPI, the points-lost maps (by National points and per 1,000 tests), *Points Lost — per Vendor*, *per kind of site*, *per RAN Vendor* (its Host network in one cell for all its Vendors, as the page) and *per site type* (two operators per slide), *Sites to review* (High priority first) and *Route stretches* (the two routes that lose most of each Focus operator), each table closed by its total row.
-
-The All Environments block also contains, when they apply and are chosen:
-
-- **Best Network (or Most Reliable Network) Trends — National & Country Areas** in Scoring Trends: a table with the National scoring, each area of the breakdown and the cities (six per slide; each group's names in its colour and a thick rule between groups), with the score of the reference and of the operators to compare in the latest campaign or period of its time split, from the highest score, their change from the previous one (Δ vs, with two or more) and their GAP to the best operator of the area (Δ vs best, the best one tagged BEST), and with several campaigns or periods a trend chart per area on the same scale. With **All Environments and each environment**, each environment block has its own.
-- **Scoring per City / Cluster / Region**: a note with the maximum points and up to 12 cards with each operator's Data (teal) and Voice (amber) points as a bar, from the highest score, with the totals, labelled with the operator names of the mapping table, for the latest campaign.
-- **Scoring Trend** first in Scoring Trends: a line chart of the campaigns of the Scoring Trends (with campaigns of their own, *Scoring Trend Nationwide*, of their National scoring on the whole country; otherwise per combination of the other levels, up to six), each line ending in the name and latest score of its operator and every other point with its score.
-- **KPI GAP Profile** after the GAP tables: the GAP to the reference per KPI of two Focus operators per slide, grouped by category with their subtotals (or in one list across all categories, as **KPI order** on the page) and closed by a total row, with gradient data bars in every column, for each combination of the other levels, such as each selected City, Cluster or Region (up to twelve; the latest campaign's when there are more). The note names the operators in their colour and the totals in bold.
-- **Points lost per KPI** in Points Lost: the same tables with the points each operator loses against the maximum, the reference operator included when it is one of the **Focus operators**.
-- **Points Lost per City** after them: one slide per operator chosen on the page with the KPI GAP Profile, else per Focus operator (the reference operator included when it is one of them), headed by the operator in large type, its figures in National points (a note below the bars says what they are), with the map areas coloured as the web does by default (the points of the city or route that loses most among those measured in each area, the cities and routes that lose most labelled once, over the grey outline of their countries) and its yellow–red scale, and the cities and routes that lose most as bars (up to 30, each with the environments where it loses points), with the share of the points lost they account for. Each one is followed by a **Points Lost per City, per 1,000 tests** slide, which colours the map and ranks the places with 500 tests or more by the points lost per 1,000 of their tests (results calculated before this version have only the first one). A single exported environment gets its own maps. Workspaces with Clusters or Region Mapping polygons add a **Points Lost per Cluster** or **per Region** slide, each also followed by its per 1,000 tests slide. Without map areas (a country without Map Areas) the cities are bubbles over the test locations.
-- **Campaign Comparison** at the end: the comparison tables of the Focus operators (every operator without them; the operators chosen on the page do not change it), up to eight operator and level combinations, two per slide; a category whose methodology changed between the two campaigns is one row with its KPIs below it, and the note under the total names it.
-
-Slide titles take the colours of the theme (blue in NetCheck), with the part that tells consecutive slides apart in bold and in the accent of the theme: the focus (for example *Best Network Scoring **per City***) or what follows the dash (for example *GAP Analysis — **3 vs EE*** or *Scoring Tables — **Summary***). Subtitles name the scoring, the environment, the area, the operators and the vendors in bold, smaller when they would not fit on one line.
-
-Covers and transitions use the Vodafone-Three red of the template (`Template_VodafoneThree.pptx`) with the Ericsson mark drawn in outline behind them and the Vodafone-Three and Ericsson logos at the top right. Every cover has the same title and subtitle sizes (54 and 24 pt) and every transition smaller ones (40 and 20 pt), whatever the module; the subtitle starts right below the room of two title lines, so a long title wraps into it. Each transition shows its counter above its title: 01, 02… for the first level and 2.1, 2.1.1… below it. A scoring cover or transition has the NR Mode as its subtitle and, under the line of the layout, the **Campaigns**, the Break down by and each filter, with white labels and **bold yellow values**. Long lists can be shortened visually without changing the calculation.
-
-The export follows Scoring Tables GAP visibility and column placement. Dedicated GAP slides remain included. Individual slides include the Priority arrow, mean KPI GAP and column-averaged total; every GAP table includes its column totals and, on one line under it, its color scale, and takes the height of the slide down to it with the largest text its rows fit (the KPIs wider when the GAP columns are few).
-
-### Dense-chart options
-
-| Chart | The export splits it when… |
-| --- | --- |
-| Scoring per Service | More than 20 bars |
-| Scoring per Category | More than 20 bars |
-
-The export splits these charts on its own, for more readable slides. Splitting preserves complete category groups where applicable and a common Best Network scale. The Scoring per Service and per Category slides keep the bars of each operator together (3, EE and Vodafone first) or, when a level comes above Operator in the aggregation hierarchy, those of each of its values (every operator and campaign of a City), divided by the next level only when they do not fit on one slide. **Scoring per Category (Breakdown)** keeps every category on one slide up to 50 bars and, above that, spreads the categories over as few slides as possible with a similar number of bars each (*Page 1 of 2*), in PowerPoint and Word. Scoring bar labels use smaller integers above 40 bars and are hidden above 70. Small stacked segments may omit labels; their values remain in the editable chart.
-
-> [!TIP]
-> Narrow filters or split charts when many combinations make labels too small. Dense tables keep their combinations together, so reducing the scope also improves table readability.
-
-### Save, export and backup are different
-
-| Action | Purpose |
-| --- | --- |
-| **Save Methodology** | Commit edits to the workspace database |
-| **Export Methodology (JSON)** | Download the selected saved methodology |
-| **Admin → Import / Export → Scoring & GAP Analysis Methodologies** | Transfer the complete methodology collection and its default |
-| **Admin → Import / Export → Scoring Excluded Calls** | Transfer the lists of [Excluded Calls](#excluded-calls), with their CDRs by file name |
-| **Workspace database backup / restore** | Preserve methodologies, Saved Scorings with their results and shared selections |
-
-Favourite Scorings packages carry the Saved Scorings without their results, nor the workspace-local CDR selection: in the receiving workspace each Saved Scoring finds its CDRs by the SHA-256 of their files and waits until they are processed there. Workspace duplication, database exports, transfers and ZIP database backups preserve the Saved Scorings with their results in the workspace database.
-
-After a restart, interrupted calculations are kept as failed and can be recalculated. Processing CDRs calculates nothing on its own (only the Favourite Scorings are calculated again while the application is idle; see [Scoring History](#scoring-history)): the [Scoring History](#scoring-history) indexes them in the background as soon as they are processed, so their first calculation is quick.
-
-## Troubleshooting
-
-| Symptom | Check or action |
-| --- | --- |
-| No CDRs used | Verify workspace, NR Mode, the Campaign (each campaign needs Data, Voice and Speech CDRs), ready processing status and the Active? choice in Workspace |
-| Calculate is disabled | Read the yellow notice; complete each campaign's three source types, or wait for the running calculation of the same selection |
-| Expected vendor/city choices are missing | Check mappings, the Campaign and the other filters (each filter lists the values they leave); reprocess older incomplete catalogues |
-| GAP is N/A* | Verify the reference and matching context, including common valid environment coverage |
-| Maximum achievable points differ between columns | Read the excluded KPI list for each combination; unavailable contributions can differ |
-| Results differ from another report | Compare methodology revision, filters, Break down by levels, thresholds and coverage |
-| CDR changed during calculation | Wait for processing/mapping to finish and recalculate |
-| Older All Environments KPI values are N/A | Recalculate to save pooled global measurements |
-| A calculation failed after an interruption | Recalculate the Saved Scoring; delete it only if no longer needed |
-
-> [!NOTE]
-> **NR Mode selects the dataset universe.** It does not supply a different SA methodology automatically. Validate copied or customized environment rules before using them for a new benchmark.
+- The overall KPI mean uses original KPI rows, not an unweighted mean of category means. No aggregate applies KPI weights a second time.
+- For All Environments, only valid environment contributions common to both sides are compared. A subset is marked partial; disjoint coverage or a missing reference gives N/A. Column totals with missing/partial contributions carry an asterisk.
 
 ## Supported KPI allocation
 
@@ -1036,11 +1970,9 @@ The Git-ignored local `assets/scoring/netcheck_2026.json` is an optional referen
 
 #### Initial allocation and matching
 
-The workbook contains 32 KPI definitions in each of DriveCity and DriveConnectionroad, rows 4–35. Its maximum allocations were checked against the extracted rules; City totals **650** and Road **350** points.
-
-The current Road selector uses **G_Level_1 = Drive**, **G_Level_2 = Connecting Roads**. The workbook sheet name is provenance, not the current source selector. Known legacy Road definitions are corrected without changing their points; explicit customized names/selectors are preserved.
-
-Walk is a zero-point extension with City-derived starting thresholds. It needs validation before assigning points.
+- **Workbook:** 32 KPI definitions in each of DriveCity and DriveConnectionroad, rows 4–35. Its maximum allocations were checked against the extracted rules: City totals **650** and Road **350** points.
+- **Road selector:** the current Road selector uses **G_Level_1 = Drive**, **G_Level_2 = Connecting Roads**. The workbook sheet name is provenance, not the current source selector. Known legacy Road definitions are corrected without changing their points; explicit customized names/selectors are preserved.
+- **Walk** is a zero-point extension with City-derived starting thresholds. It needs validation before assigning points.
 
 #### Documented differences
 
@@ -1052,10 +1984,8 @@ Walk is a zero-point extension with City-derived starting thresholds. It needs v
 - The PDF's Drive/Walk allocation totals 675 points; this mapping uses the workbook's 1,000-point City/Road allocation.
 - The earlier example PPT uses different Q4 weights; it supplies layout guidance, not a numeric golden for the current mapping.
 - POLQA low-quality calculation uses **LQ <= 1.6**, despite the source label. Call setup threshold uses **> 10 seconds**, rather than the older example PPT's > 15 seconds.
-
-The source Prep flow has 18 aggregation steps and 17 inner joins. The application calculates the supported formulas directly from processed rows and retains missing comparisons visibly.
-
-Regression fixtures cover representative formulas and mapping examples. Full numerical parity with an external Prep/Excel output still requires matching source data and an independently verified result.
+- The source Prep flow has 18 aggregation steps and 17 inner joins. The application calculates the supported formulas directly from processed rows and retains missing comparisons visibly.
+- Regression fixtures cover representative formulas and mapping examples. Full numerical parity with an external Prep/Excel output still requires matching source data and an independently verified result.
 
 ### Per-KPI reference points
 
@@ -1098,7 +2028,14 @@ This is the **original NetCheck 2026 reference**, not a promise that a customize
 
 ### Most Reliable reference points
 
-The NetCheck 2026 Most Reliable scoring rates 10 KPIs with **650** points in Drive - City and **350** in Drive - Connecting Roads (Voice 350, Data 650, **1,000** in total); the KPIs underlined in the NetCheck Q2 2026 report are the same. Each KPI has global points (for example 141.75 for the classic call success ratio) split 65% City and 35% Road, as in Best Network. `Netcheck_Score_Mapping_2026Q2_Mostreliable_Drive_City_Road.xlsx` writes these points by hand rounded to two decimals, which adds up to 1,000.04; neither the workbooks nor the reports give a formula to derive them, so they are part of the methodology. Thresholds and score anchors are the Best Network ones. Enter these values in the Most Reliable points column:
+The NetCheck 2026 Most Reliable scoring rates 10 KPIs.
+
+- **Points:** **650** in Drive - City and **350** in Drive - Connecting Roads (Voice 350, Data 650, **1,000** in total). The KPIs underlined in the NetCheck Q2 2026 report are the same.
+- **Split:** each KPI has global points (for example 141.75 for the classic call success ratio) split 65% City and 35% Road, as in Best Network.
+- **Source:** `Netcheck_Score_Mapping_2026Q2_Mostreliable_Drive_City_Road.xlsx` writes these points by hand, rounded to two decimals, which adds up to 1,000.04. Neither the workbooks nor the reports give a formula to derive them, so they are part of the methodology.
+- **Thresholds and score anchors** are the Best Network ones.
+
+Enter these values in the Most Reliable points column:
 
 | Code | Category | KPI | City points | Road points |
 |---|---|---|---:|---:|
@@ -1117,7 +2054,12 @@ Regression tests reproduce the workbook's City and Road totals for each operator
 
 ### NetCheck 2025
 
-The campaigns up to Q1 2026 follow the NET CHECK 2025/26 Benchmarking Methodology. The **NetCheck 2025** methodology, shipped with the application beside NetCheck 2026, has the KPIs, thresholds and Data points of NetCheck 2026 with two differences, from its drive test ranking (Drive - City 65 %, Drive - Connecting Roads 35 %): K3 is **CALL SETUP TIME > 15 s [%]** (calls whose setup takes more than 15 s, with the same thresholds 3 % / 0.6 % / 0 %) instead of > 10 s, and the voice points give the classic calls 252 points and WhatsApp calls 84 (NetCheck 2026: 203 and 133). Its Most Reliable points are those of NetCheck 2026.
+The campaigns up to Q1 2026 follow the NET CHECK 2025/26 Benchmarking Methodology. The **NetCheck 2025** methodology, shipped with the application beside NetCheck 2026, has the KPIs, thresholds and Data points of NetCheck 2026 with two differences, from its drive test ranking (Drive - City 65 %, Drive - Connecting Roads 35 %):
+
+- **K3** is **CALL SETUP TIME > 15 s [%]** (calls whose setup takes more than 15 s, with the same thresholds 3 % / 0.6 % / 0 %) instead of > 10 s.
+- **Voice points:** the classic calls get 252 points and WhatsApp calls 84 (NetCheck 2026: 203 and 133).
+
+Its Most Reliable points are those of NetCheck 2026.
 
 | Code | KPI | City points | Road points |
 |---|---|---:|---:|
@@ -1132,11 +2074,18 @@ The campaigns up to Q1 2026 follow the NET CHECK 2025/26 Benchmarking Methodolog
 | K9 | WHATSAPP POLQA [MOS] | 3.0333 | 1.6333 |
 | K10 | WHATSAPP DISTURBED & IMPAIRED CALL [%] | 6.0667 | 3.2667 |
 
-The shipped methodologies say the campaigns they apply to, so **By campaign** scores each campaign with its own: NetCheck 2025 up to 2026-Q1, NetCheck 2026 for 2026-Q2 and NetCheck 2026-Q3 from 2026-Q3. A new workspace starts with NetCheck 2026 as its active methodology; an existing workspace receives NetCheck 2025 once, with its campaigns unless they overlap those of one of its methodologies (then without them: set them in **Applies to campaigns**).
+- **Campaigns of the shipped methodologies:** they say the campaigns they apply to, so **By campaign** scores each campaign with its own: NetCheck 2025 up to 2026-Q1, NetCheck 2026 for 2026-Q2 and NetCheck 2026-Q3 from 2026-Q3.
+- **New workspace:** starts with NetCheck 2026 as its active methodology.
+- **Existing workspace:** receives NetCheck 2025 once, with its campaigns unless they overlap those of one of its methodologies (then without them: set them in **Applies to campaigns**).
 
 ### NetCheck 2026-Q3
 
-From Q3 2026 NetCheck adds TikTok to Video Streaming. The **NetCheck 2026-Q3** methodology, shipped with the application beside NetCheck 2026, keeps the 20 % of Video Streaming but divides it between YouTube (13 %) and TikTok (7 %), following the NetCheck Q3 ranking templates (Best Network and Most Reliable, National and City). K28, K29 and K30 become the YouTube KPIs (`Test_Name` = `YouTube`, as every Video Streaming test of the earlier campaigns) and K33, K34 and K35 the same KPIs for TikTok (`Test_Name` = `TikTok`), with the same thresholds; every other KPI and the 650 City and 350 Road points of both scorings are those of NetCheck 2026. Choose it in the Scoring & GAP Analysis strip for the Q3 campaigns.
+From Q3 2026 NetCheck adds TikTok to Video Streaming. The **NetCheck 2026-Q3** methodology is shipped with the application beside NetCheck 2026:
+
+- **Video Streaming:** keeps its 20 % but divides it between YouTube (13 %) and TikTok (7 %), following the NetCheck Q3 ranking templates (Best Network and Most Reliable, National and City).
+- **KPIs:** K28, K29 and K30 become the YouTube KPIs (`Test_Name` = `YouTube`, as every Video Streaming test of the earlier campaigns), and K33, K34 and K35 the same KPIs for TikTok (`Test_Name` = `TikTok`), with the same thresholds.
+- **Everything else:** every other KPI and the 650 City and 350 Road points of both scorings are those of NetCheck 2026.
+- **Use:** choose it in the Scoring & GAP Analysis strip for the Q3 campaigns.
 
 | Code | KPI | City points | Road points | Most Reliable City / Road |
 |---|---|---:|---:|---:|

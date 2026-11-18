@@ -12,8 +12,6 @@ Open **Config → Workspace Config** from the main navigation at `/workspace-con
 
 ## Presentation
 
-The presentation **Workspace Config** goes through everything to set up in a new workspace before its first analysis: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
-
 ```presentations
 workspace-config
 ```
@@ -38,6 +36,33 @@ workspace-config
 | Scoring & GAP Analysis Setup | [Open section](#scoring-gap-analysis-setup) |
 | Scoring Export Panels | [Open section](#scoring-export-panels) |
 | AI Assistant Glossary | [Open section](#ai-assistant-glossary) |
+| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
+
+## Tips & shortcuts
+
+These keys and gestures speed up the mappings and the Auto-calculated Fields. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+**Operator and Vendor Maps**
+
+| To… | Do this |
+| --- | --- |
+| See the CDRs or the names behind a CDR count, a name chip or a **Merges N** badge | Hover it |
+| Keep that list open | Click it; **×**, <kbd>Esc</kbd> or a click outside closes it |
+| Type a new label in the list of a name | Choose **+ New label…**, type it and press <kbd>Enter</kbd> (<kbd>Esc</kbd> cancels) |
+| Save one label | Press <kbd>Enter</kbd> in it (**Save Labels** saves every changed label) |
+
+**Auto-calculated Fields**
+
+| To… | Do this |
+| --- | --- |
+| Open a field from its card | Click the card, or focus it and press <kbd>Enter</kbd> or <kbd>Space</kbd> |
+| Move through the **⋯** menu | <kbd>↑</kbd> / <kbd>↓</kbd>; <kbd>Esc</kbd> closes it |
+| Save the field | <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd> |
+| Insert a field in a formula | Type `[` and choose it |
+| Indent a line of a formula | <kbd>Tab</kbd> adds two spaces (while no suggestion list is open) |
+| Add a value to a condition with several values | Type it and press <kbd>Enter</kbd> or <kbd>,</kbd> |
+| Remove the last value of that condition | <kbd>Backspace</kbd> in its empty box |
+| Close the suggestions, then the editor | <kbd>Esc</kbd> (the editor asks first while the field has changes not saved) |
 
 ## Access and active workspace
 
@@ -57,9 +82,19 @@ Operator Maps set how the Operators are named, ordered and coloured in every fil
 - **Merges N**: the label stands for N names of the CDRs that coincide in the same campaign and NR Mode (in a CDR of that campaign with that NR Mode, or in CDRs of the same campaign and NR Mode), where they are added up as one Operator. Hover it to see the others and the campaigns where they coincide, for example `26-Q2 (NSA)`.
 - **Assigned**: the label stands for this name only, or also for names that are never in the same campaign and NR Mode as this one (hover it to see them), which are therefore never added up: for example `Vodafone UK` in the NSA campaigns and `Vodafone SM` in an SA campaign can share `VF`.
 
-Choose the label of each name in its list: one of the Operator labels of subpanel 2, or **+ New label…**, which lets you type a new label (Enter to accept, Esc to cancel) that every list then offers too. Press **Save assignments**; a new label is added at the end of subpanel 2. Each name therefore keeps its own label unless you give several names the same one: for example `Vodafone UK` → `VF`, `Vodafone SA` → `VF-SA` and `Vodafone VoNR` → `VF-VoNR` keep the three apart, while two spellings of the same network (`Vodafone` and `Vodafone UK`) can share `VF`. A name that is itself one of the labels (for example `EE`, shown as `EE`) cannot be changed here: rename that label in subpanel 2. Saving asks for confirmation when a label would add up names of the CDRs that it did not add up before (names that coincide in a campaign and NR Mode, which the dialog names), when a name leaves a label that saved filters use (they no longer include it, and the dialog says how many use it), and when a new label contains `_`, which also separates Operator and Vendor in `Operator_Vendor` values such as `VF_Ericsson`.
+Choose the label of each name in its list, then press **Save assignments**:
 
-**2 · Operator labels** lists one row per label with its **Order**, **Colour**, **Label**, **Role**, **NR Modes**, **Possible names in the CDRs** and **Actions**. The possible names are how the label can be written in the CDRs of the different campaigns, shown as chips: highlighted with the number of CDRs when the current CDRs have them, grey when they are names of other campaigns, and ordered from the name in most CDRs (alphabetically when they tie). Hovering a chip, a CDRs count or a **Merges N** badge shows its CDRs or names at once; clicking it keeps them in a floating panel until it is closed (×, Esc or a click outside). **×** removes a name and **Add a name** with **+** adds one; a name of another label moves to this one at once. Under the label, **Merges N** tells that it adds up N names of the current CDRs that coincide in the same campaign and NR Mode. The label also stands for the name written like itself, so it need not be added. Saving a label asks for the same confirmation as subpanel 1.
+- **The list:** one of the Operator labels of subpanel 2, or **+ New label…**, which lets you type a new label (Enter to accept, Esc to cancel) that every list then offers too. A new label is added at the end of subpanel 2 when you save.
+- **Keeping names apart:** each name keeps its own label unless you give several names the same one: for example `Vodafone UK` → `VF`, `Vodafone SA` → `VF-SA` and `Vodafone VoNR` → `VF-VoNR` keep the three apart, while two spellings of the same network (`Vodafone` and `Vodafone UK`) can share `VF`.
+- **Names that are labels:** a name that is itself one of the labels (for example `EE`, shown as `EE`) cannot be changed here: rename that label in subpanel 2.
+- **Confirmation:** saving asks for confirmation when a label would add up names of the CDRs that it did not add up before (names that coincide in a campaign and NR Mode, which the dialog names), when a name leaves a label that saved filters use (they no longer include it, and the dialog says how many use it), and when a new label contains `_`, which also separates Operator and Vendor in `Operator_Vendor` values such as `VF_Ericsson`.
+
+**2 · Operator labels** lists one row per label with its **Order**, **Colour**, **Label**, **Role**, **NR Modes**, **Possible names in the CDRs** and **Actions**:
+
+- **Possible names in the CDRs:** how the label can be written in the CDRs of the different campaigns, shown as chips: highlighted with the number of CDRs when the current CDRs have them, grey when they are names of other campaigns, and ordered from the name in most CDRs (alphabetically when they tie). **×** removes a name and **Add a name** with **+** adds one; a name of another label moves to this one at once. The label also stands for the name written like itself, so it need not be added.
+- **Hover and click:** hovering a chip, a CDRs count or a **Merges N** badge shows its CDRs or names at once; clicking it keeps them in a floating panel until it is closed (×, Esc or a click outside).
+- **Merges N:** under the label, it tells that it adds up N names of the current CDRs that coincide in the same campaign and NR Mode.
+- **Saving** a label asks for the same confirmation as subpanel 1.
 
 Use **New Operator label** (or **New Vendor label**) to create a label in a dialog with its colour, role, NR Modes and possible names, and **Add label** (one per line; comma and semicolon separators are accepted too). Change a label's name, role, NR Modes, possible names or colour and press **Save Labels**, below the table, to save every changed label at once (Enter in a label saves that one). **Move up** and **Move down** set its position in Operator charts and in Subscriber dimensions; the first and last rows cannot move beyond the table. **Delete** removes the label after confirmation, and its names are shown as they are until they get another label.
 
@@ -68,7 +103,14 @@ The **Role** beside each label is **Include** (yellow, the default: the operator
 - **Focus**: the label, with every name of the CDRs it stands for, is one of the **Focus operators** of [Scoring & GAP Analysis](scoring-gap-analysis.md#persistence-and-exports): Where to act, the locations ranked, the individual GAP comparisons, GAP by part, the KPI GAP Profile and the Points Lost views of its PowerPoint and Word (from the page and the reports of [Reporting](reporting.md)) are those of the Focus operators, and the operator choices of those sections of the page list them first (every operator when no label is a Focus operator). The comments that **Generate comments** writes for the slides of [PPT Designer](ppt-designer.md#generated-comments) follow the Focus operators too.
 - **Exclude**: the operator is left out of every analysis, filter, chart and report of the workspace (Scoring & GAP Analysis, CDR Analysis, PPT Designer, the Chart Builder, Network Insights, Non-Qualified Calls and the reports of [Reporting](reporting.md)), as if every Operator filter left it out (as `NOT Lebara` does, see [Operator patterns](web-interface.md#operator-patterns)), so the Operator filters can stay at All; no Operator list or GAP reference offers it, and its names stay in subpanel 1. Saved Scorings are calculated again when the excluded operators change. At least one label must stay included: a Role that would exclude every label goes back to the one it had, and saving, deleting or importing labels that would leave every label excluded is refused without changing them.
 
-The **NR Modes** beside each label are those the operator has a network in: **NSA and SA** (the default), **NSA only** (blue) or **SA only** (magenta), recorded in App Events when they change. An operator without a network in an NR Mode, such as Three, which has no SA, has its tests of the CDRs of that NR Mode out of scope: in the SA CDRs its tests run on LTE and EN-DC, which its NSA CDRs already measure. Those tests are left out of every analysis, filter, chart and report of the workspace (Scoring & GAP Analysis with its Scoring Trends and Country Areas, CDR Analysis, PPT Designer, the Chart Builder, Network Insights and the reports of [Reporting](reporting.md)), and the Operator filters do not offer the operator for the CDRs of that NR Mode alone; its tests of the other NR Mode stay. In [Non-Qualified Calls](non-qualified-calls.md#nq-prioritization) those calls are out of scope (*Out of scope · SA · Three*). Saved Scorings with CDRs of that NR Mode are calculated again when the NR Modes change, and the headings of their panels name the pairs out of scope (*Out of scope: SA · Three*). A **Suggested: NSA only** note appears under the NR Modes of a label whose Non-Qualified Calls of the SA campaigns barely ran on NR SA (under 10 %); it is never applied on its own. A label with the Role **Exclude** is left out in both NR Modes whatever its NR Modes. Under **NSA only** or **SA only**, a red note names the NR Mode out of scope (*SA out of scope in every module*), and in subpanel 1 the names of the CDRs of the label show its NR Modes (blue *NSA only*, magenta *SA only*) beside its Role, also while they are changed and not saved yet.
+The **NR Modes** beside each label are those the operator has a network in: **NSA and SA** (the default), **NSA only** (blue) or **SA only** (magenta), recorded in App Events when they change.
+
+- **Tests out of scope:** an operator without a network in an NR Mode, such as Three, which has no SA, has its tests of the CDRs of that NR Mode out of scope: in the SA CDRs its tests run on LTE and EN-DC, which its NSA CDRs already measure. Those tests are left out of every analysis, filter, chart and report of the workspace (Scoring & GAP Analysis with its Scoring Trends and Country Areas, CDR Analysis, PPT Designer, the Chart Builder, Network Insights and the reports of [Reporting](reporting.md)), and the Operator filters do not offer the operator for the CDRs of that NR Mode alone; its tests of the other NR Mode stay.
+- **Non-Qualified Calls:** in [Non-Qualified Calls](non-qualified-calls.md#nq-prioritization) those calls are out of scope (*Out of scope · SA · Three*).
+- **Saved Scorings:** those with CDRs of that NR Mode are calculated again when the NR Modes change, and the headings of their panels name the pairs out of scope (*Out of scope: SA · Three*).
+- **Suggestion:** a **Suggested: NSA only** note appears under the NR Modes of a label whose Non-Qualified Calls of the SA campaigns barely ran on NR SA (under 10 %); it is never applied on its own.
+- **Exclude wins:** a label with the Role **Exclude** is left out in both NR Modes whatever its NR Modes.
+- **Notes:** under **NSA only** or **SA only**, a red note names the NR Mode out of scope (*SA out of scope in every module*), and in subpanel 1 the names of the CDRs of the label show its NR Modes (blue *NSA only*, magenta *SA only*) beside its Role, also while they are changed and not saved yet.
 
 **Out of scope in this workspace**, above the subpanels, sums up what is left out: in **Every module**, the labels with the Role Exclude and the NR Mode · operator pairs of the NR Modes; in **Non-Qualified Calls only**, the regions of the Out of Scope settings of the NQ Prioritization and the operators that are not Focus operators, which the other modules keep.
 
@@ -214,7 +256,7 @@ The editor lists the fields on the left, in the order they are worked out: a fie
 
 Text comparisons ignore case. A value with spaces or symbols is quoted (`'NR SA'`, `\'` for a quote). In `MATCHES '(^|/)NR(/|$)'`, `(^|/)` is the start of the text or a `/`, and `(/|$)` a `/` or the end of the text: the pattern finds `NR` as one item of a list such as `NR/LTE` or `LTE/NR/GSM`, but not inside `LTE-5GNR`.
 
-**Save** (or Ctrl+S) saves the field alone and updates the CDR tables in the background, as its card and the [CDR Tables Updates](workspace-management.md#cdr-tables-updates) card of [Workspace Management](workspace-management.md) show: only its column, and those of the fields that read it, in every individual and combined CDR table of its types. There is nothing else to save, and closing the editor asks only while the field has changes not saved. **Delete** removes a field and its column (refused while another field reads it), and **Duplicate** opens a copy below it, saved when it is saved.
+**Save** (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd>) saves the field alone and updates the CDR tables in the background, as its card and the [CDR Tables Updates](workspace-management.md#cdr-tables-updates) card of [Workspace Management](workspace-management.md) show: only its column, and those of the fields that read it, in every individual and combined CDR table of its types. There is nothing else to save, and closing the editor (its close button, a click outside it or <kbd>Esc</kbd>, which first hides an open suggestion list) asks only while the field has changes not saved. In a formula, <kbd>Tab</kbd> indents with two spaces; in a condition with several values, <kbd>Backspace</kbd> in the empty box removes the last chip. **Delete** removes a field and its column (refused while another field reads it), and **Duplicate** opens a copy below it, saved when it is saved.
 
 The update compares the fields with those the CDR tables hold, as the last complete update left them. A save that changes no CDR, such as a new order, updates nothing, and an update stopped half-way, or a change imported meanwhile, is caught up by the next one. An update left pending (fields imported or restored, saved while another update ran, or one a restart cut) starts on its own within half a minute, without anyone opening [Workspace Management](workspace-management.md); after a failed one the next try waits ten minutes, and one stopped by hand waits for **Re-materialize All Fields**. **Re-materialize All Fields**, in the **⋯** menu of the panel, works every field out again in every CDR table: it is only needed to repair them, for example after an interrupted update, and is disabled while any CDR table update runs. The tool remains usable while an update runs; the **CDR Tables Updates** card shows one bar per active task, with the current table, phase and row operations.
 
@@ -250,7 +292,7 @@ For global runtime settings, see [Application Config](app-config.md). Super Admi
 
 ## Scoring & GAP Analysis Setup
 
-A methodology defines the complete scoring setup: its title, environments, KPI definitions and weights and KPI priorities. Select or create a methodology before editing its settings. The aggregation hierarchy is an application setting ordered from **Split by** of [Scoring & GAP Analysis](scoring-gap-analysis.md#3-set-filters-split-by-and-reference), not part of a methodology.
+A methodology defines the complete scoring setup: its title, environments, KPI definitions and weights and KPI priorities. Select or create a methodology before editing its settings. The aggregation hierarchy is an application setting ordered from **Split by** of [Scoring & GAP Analysis](scoring-gap-analysis.md#3-set-filters-break-down-by-and-reference), not part of a methodology.
 
 ### Methodology controls
 

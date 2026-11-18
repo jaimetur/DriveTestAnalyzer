@@ -20,8 +20,6 @@ The assistant reads the workspace with the same calculations as its modules, ans
 
 ## Presentation
 
-The presentation **AI Assistant** sums the module up. Ask the workspace in your own words and get the answer in seconds, calculated by the tool itself, with every figure traced and no customer name sent to the AI engine. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
-
 ```presentations
 assistant
 ```
@@ -39,6 +37,22 @@ assistant
 | Conversations | [Open section](#conversations) |
 | Engines | [Open section](#engines) |
 | App Events | [Open section](#app-events) |
+| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
+
+## Tips & shortcuts
+
+These keys and gestures speed up the chat. The shortcuts that work everywhere are in [Web Interfaces](web-interface.md#tips-shortcuts).
+
+| To… | Do this |
+| --- | --- |
+| Ask the question | <kbd>Enter</kbd> (or **Ask**) |
+| Start a new line in the question | <kbd>Shift</kbd>+<kbd>Enter</kbd> |
+| Rename the conversation | **Rename**, type the name and press <kbd>Enter</kbd> (or click elsewhere); <kbd>Esc</kbd> cancels |
+| Hide or show a series of a chart | Click its entry in the legend |
+| Zoom into part of a chart | Drag a rectangle over its plot area; once zoomed, drag to move around |
+| See a chart larger | **Expand**; <kbd>Esc</kbd>, **Close** or a click outside closes it |
+| Close a dialog of the chat (feedback, glossary term, what was sent) | <kbd>Esc</kbd>, or click outside it |
+| Go back to the last line while an answer arrives | The round arrow at the bottom right of the chat |
 
 ## Ask a question
 
@@ -78,7 +92,7 @@ Each answer starts with the direct answer and then the detail, with its [charts]
 
 ## Charts
 
-Ask for a chart (*draw*, *plot*, *show a chart of…*) and the answer shows it above its tables; the assistant also adds one when a chart says more than a table, such as the points of several operators. The charts are drawn by the same chart painter as PPT Designer and Network Insights: hover a bar, a point or a slice to read its value, drag a rectangle to zoom, select a legend entry to hide its series. Above each chart, **Expand** opens it larger and **Download PNG** saves it as a picture.
+Ask for a chart (*draw*, *plot*, *show a chart of…*) and the answer shows it above its tables; the assistant also adds one when a chart says more than a table, such as the points of several operators. The charts are drawn by the same chart painter as PPT Designer and Network Insights: hover a bar, a point or a slice to read its value, drag a rectangle to zoom, select a legend entry to hide its series. Above each chart, **Expand** opens it larger (<kbd>Esc</kbd> or a click outside closes it) and **Download PNG** saves it as a picture.
 
 The engine never gives the figures of a chart: it only names the data the tools gave for the question and how to draw it, and the tool draws it from that data, with the real names. A chart can show:
 
@@ -128,7 +142,14 @@ The assistant only reads; it changes nothing in the workspace. When asked to cha
 
 ## Privacy: the names sent as codes
 
-The names of the workspace — those of its Operator Maps (with their aliases), CDRs (operators, vendors, regions, clusters, cities and campaigns), methodologies and the workspace itself — the user names and full names of the users of the tool (and the names of the analysts of the Non-Qualified Calls without account), and the names of well-known operators and vendors are replaced by codes everywhere: in the question, the workspace context, the glossary, the conversation so far and every result, also inside identifiers joined by underscores (a test name `Vodafone_Voice_MO` is sent as `OP1_Voice_MO`). A campaign is shown in the answers, their tables (also inside a value such as *EE - UK_Q2_2026*) and their charts with its label of the Campaign Maps, as in every module; its label is another spelling of it in the questions, unless it is written as a quarter (2026-Q3), which is sent as it is. Two-letter names (EE, O2, VF) are taken as names only in capitals, and names that are also common words (Three) only with a capital. The user names that are also words (generic accounts such as *super* or *demo*) are coded only as the values of user columns, such as the analyst of a call. The codes of a conversation never change: a name that appears later takes the next free code, so earlier answers keep meaning the same thing. Before every request the tool checks that no known name is left; if one were, nothing is sent and the chat says so.
+Every name of the workspace is replaced by a code before anything is sent:
+
+- **Which names:** those of its Operator Maps (with their aliases), CDRs (operators, vendors, regions, clusters, cities and campaigns), methodologies and the workspace itself; the user names and full names of the users of the tool (and the names of the analysts of the Non-Qualified Calls without account); and the names of well-known operators and vendors.
+- **Where:** everywhere: in the question, the workspace context, the glossary, the conversation so far and every result, also inside identifiers joined by underscores (a test name `Vodafone_Voice_MO` is sent as `OP1_Voice_MO`).
+- **Campaigns:** a campaign is shown in the answers, their tables (also inside a value such as *EE - UK_Q2_2026*) and their charts with its label of the Campaign Maps, as in every module; its label is another spelling of it in the questions, unless it is written as a quarter (2026-Q3), which is sent as it is.
+- **Short names and words:** two-letter names (EE, O2, VF) are taken as names only in capitals, and names that are also common words (Three) only with a capital. The user names that are also words (generic accounts such as *super* or *demo*) are coded only as the values of user columns, such as the analyst of a call.
+- **Stable codes:** the codes of a conversation never change: a name that appears later takes the next free code, so earlier answers keep meaning the same thing.
+- **Last check:** before every request the tool checks that no known name is left; if one were, nothing is sent and the chat says so.
 
 What still travels: the words of the question that are not names (a name the workspace does not have, or a misspelled one, travels as written), figures, dates, quarters, KPI and category names of the methodology, the instructions of the assistant, and the values a query or a chart reads that are not names (JOIN_IDs, site and cell IDs, test names without the names of the workspace, KPI values). Which provider receives them, and under which terms, is chosen by the super-admins of the deployment (see [Engines](#engines)).
 
@@ -144,7 +165,7 @@ The terms travel with **Admin → Import / Export** and **Transfers** (element *
 
 While a question is answered you can scroll up to read the conversation: the chat stays where you leave it, and the round arrow at its bottom right (marked with a dot when the answer arrives) takes you back to the last line. While you are at the last line, the chat follows the steps and the answer.
 
-The list on the left holds your conversations of the active workspace, the latest first; only you see them. **New conversation** starts another one (the first question names it); **Rename** and **Delete**, above the chat, rename it or delete it with its answers. The page reopens the conversation you had open. Conversations stay in the workspace database: they are not exported, transferred or backed up on their own, only with a full copy of the workspace database.
+The list on the left holds your conversations of the active workspace, the latest first; only you see them. **New conversation** starts another one (the first question names it); **Rename** and **Delete**, above the chat, rename it (type the name in place: Enter saves it, Esc cancels) or delete it with its answers. The page reopens the conversation you had open. Conversations stay in the workspace database: they are not exported, transferred or backed up on their own, only with a full copy of the workspace database.
 
 ## Engines
 

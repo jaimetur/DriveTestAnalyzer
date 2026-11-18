@@ -3235,7 +3235,34 @@
       const overAxis = !overLegend && canvas.dataset.legendMenu === 'true' && Boolean((renderStates.get(canvas)?.axisHits || []).length) && Boolean(axisItemAt(canvas, event));
       canvas.classList.toggle('ds-chart-legend-hover', overLegend);
       canvas.style.cursor = overLegend ? 'pointer' : (overAxis ? 'context-menu' : '');
+      setGestureHint(canvas, gestureHint(canvas, event, overLegend));
     });
+    canvas.addEventListener('pointerleave', () => setGestureHint(canvas, ''));
+  }
+
+  // Hover hint (title of the canvas) of what a legend entry or an axis label does where the chart is shown: the Designer
+  // (on the chart chosen) and Chart Builder format them, elsewhere a legend entry hides or shows its series.
+  const formatOnClickHost = canvas => Boolean(canvas.closest?.('[data-chart-builder-canvas], .ds-designing .ds-design-card.is-selected'));
+  function gestureHint(canvas, event, overLegend) {
+    const format = formatOnClickHost(canvas), menu = canvas.dataset.legendMenu === 'true';
+    if (overLegend) return format ? 'Click to format this series' : `Click to hide or show this series${menu ? ' · right-click for Keep only, Hide, Show…' : ''}`;
+    const order = valueOrderHost(canvas) && cameraFor(canvas).zoom === 1;
+    if (!format && !menu && !order) return '';
+    const axis = format ? globalThis.getCanvasChartAxisAt?.(canvas, event) : null;
+    const item = axis?.kind === 'numeric' ? null : axisItemAt(canvas, event);
+    const parts = [];
+    if (axis) parts.push(axis.kind === 'numeric' ? 'Click to set the range of this axis' : 'Click to choose the values of this axis');
+    const field = order && item?.value ? valueOrderField(models.get(canvas), item) : null;
+    if (field && field.values.length > 1) parts.push('drag to reorder the values');
+    if (menu && item?.value) parts.push('right-click for Keep only, Hide, Show…');
+    const text = parts.join(' · ');
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+  // Changed only when the target under the pointer changes; removed elsewhere so it does not stick.
+  function setGestureHint(canvas, text) {
+    if ((canvas.dataset.gestureHint || '') === text) return;
+    if (text) { canvas.dataset.gestureHint = text; canvas.title = text; }
+    else { delete canvas.dataset.gestureHint; canvas.removeAttribute('title'); }
   }
 
   function selectionStartAllowed(canvas, event) {

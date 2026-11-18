@@ -13,15 +13,7 @@ Help Navigation groups chapters under General, Main Modules, Administrative Modu
 
 ## Presentations
 
-Present DriveTest Analyzer with its presentations:
-
-- **Overview**, the complete deck: the tool, the teams it serves, its architecture and its platform, a slide for each module in the order of their tabs (two for Scoring & GAP Analysis) and the roadmap, closing with the one-slider.
-- **Architecture**, on four slides: the architecture of the solution, from the inputs the teams upload (CDRs, Network Inventories, Multivendor Mapping, Geospatial, Layer3 Logs and the Ericsson RCA results) through the server that processes, stores and analyses them to the web app, the reports and the emails, with the services outside the server (AI engine, map services and other DT Analyzer servers); and that of the DT Analyzer RCA, from the CDR to the Selected Cause: what it reads, its rules engine and results, the other RCA sources of the recommendation with their weights, where its results go and when it runs; and the deployment of the solution, on AWS as it runs today and as a proposal in the Ericsson cloud, each with its ways in and out, its containers, storage and admin access and the connections between them (the two architecture slides of the Benchmarking Providers Roadmap).
-- **Benchmarking Providers Roadmap**, in the design of its own deck: how the tool is being adapted to Umlaut, P3 and RootMetrics CDRs, the status and time plan of each phase, how it is built inside, how it runs on AWS and could run in the Ericsson cloud, and what is needed to finish (see [Benchmarking Providers](benchmarking-providers.md)).
-- **One-slider**, on a single slide: the most important of the tool, with its figures, modules, teams, platform and what comes next.
-- **Roadmap**, on a single slide: what the tool brings today, such as the AI Assistant, the columnar store on DuckDB, Tableau connected to the workspace, slide comments written by GenAI and the Layer3 Logs, and what comes next, such as the Germany pilot, Umlaut CDRs, the Active Tests community, Network Insights improvements, automatic emails, TEMS logs, health monitoring and P3 and RootMetrics CDRs.
-
-Select a presentation to open it in the slide viewer (its slides on the left and, below the slide, the zoom buttons and **▶ Slideshow**, the arrows of the previous and next slide, **Close** and **Download PowerPoint**; the wheel and the arrow keys also change slide, Ctrl/Cmd+wheel zooms and Escape closes it; on a phone or tablet, swipe the slide to change it, pinch it to zoom and double-tap it for the whole slide, and the viewer fits the part of the screen the browser leaves visible, with the arrows of the slides first), play it full screen with **▶ Slideshow**, choosing the seconds per slide and the transition, or download it with **Download PowerPoint**. **Copy link**, on each card and beside **Close** in the viewer, copies the short link of the presentation (in the viewer, of the slide shown), such as `/presentations/full-presentation?slide=3`, to send it: opening it opens the presentation at that slide in the slide viewer of [Product Presentations](presentations.md), also without signing in. The link has the **Public address** of the server when [Application Config](app-config.md) has one, otherwise the address the application was opened with. Where the link is shared (WhatsApp, Teams, Slack, Outlook…), its preview shows the title of the presentation, its description and the picture of that slide (the link of [Product Presentations](presentations.md), the cover of the Full Presentation), when the app can reach the server; WhatsApp on Android opens no link with an IP address (nor shows its preview), so give the server a name and save it as its public address. While a presentation is open, the address of the page is that link too. The server generates every presentation, with the pictures of its slides, always in the background, so the application never waits for them: at its start when one is missing (until it is ready, the Help says it is coming), again when their figures or the generator change, and on demand with **Regenerate Presentations** in [Super Admin → Presentations](super-admin.md#presentations). The figures of the Overview, the One-slider and the Roadmap are live: those of the workspaces chosen there.
+Click a card to open it, **▶ Slideshow** to play it full screen or **Download PowerPoint** to keep it; [Product Presentations](presentations.md) tells how to use the slide viewer and share a slide.
 
 ```presentations
 overview
@@ -32,8 +24,6 @@ roadmap
 ```
 
 ### Module presentations
-
-Each main module also has a presentation of its own, in a design of its own, at the start of its chapter: [Workspace Management](workspace-management.md), with **Workspace Config** after it (everything to set up in a new workspace: how operators, vendors and campaigns are named, coloured and ordered, the map areas of its countries, its networks and its methodology; see [Workspace Config](workspace-config.md)), [CDR Analysis](datasets-analysis.md), [Network Insights](network-insights.md), [PPT Designer](ppt-designer.md), [Scoring & GAP Analysis](scoring-gap-analysis.md), [Non-Qualified Calls](non-qualified-calls.md) with the **DT Analyzer RCA** beside it (how it finds the root cause of every Non-Qualified Call: its architecture, what it reads, its rules, the lack of resources, the network around the call and the evidence it gives), [Reporting](reporting.md), [Builders](chart-builder.md), [AI Assistant](assistant.md) and [Ticket Center](ticket-center.md), and **Administration** after them (Admin and Super Admin: users and access, the databases, backups, packages and transfers, the configuration of the application at every level and App Events; see [Super Admin](super-admin.md)). They open in the same slide viewer and download as PowerPoint.
 
 ```presentations
 workspace
@@ -53,7 +43,7 @@ administration
 
 ### Full presentation
 
-The **Full Presentation** joins every presentation in one deck, with their slides as they are, each in a section named after it: the Overview, the Benchmarking Providers Roadmap, the presentation of every main module (with Workspace Config after Workspace and Network Insights after CDR Analysis) and of Administration, the DT Analyzer RCA and the Roadmap. It opens in the same slide viewer and downloads as PowerPoint.
+Every presentation above in one deck, each in a section of its own.
 
 ```presentations
 full-presentation

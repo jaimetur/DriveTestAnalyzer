@@ -9,8 +9,6 @@ The module is in development, so its main tab can show a red **ALPHA** label (se
 
 ## Presentations
 
-Two presentations sum the module up: **Non-Qualified Calls**, the NQ Analysis Center (which calls to analyse first, how it groups the failures that belong together in time windows, clusters and hotspots, why they failed, where, and who follows them up), and **DT Analyzer RCA**, the RCA of its own that finds the root cause of every call (see [DT Analyzer RCA](#dt-analyzer-rca)). Select one to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
-
 ```presentations
 non-qualified-calls
 dt-analyzer-rca
@@ -21,6 +19,7 @@ dt-analyzer-rca
 | I want to… | Go to |
 | --- | --- |
 | Watch the presentations of the module and of the DT Analyzer RCA | [Presentations](#presentations) |
+| Learn the tips and shortcuts: the maps, the ruler and elevation profile, the signalling timeline, the call, the table and the charts | [Tips & shortcuts](#tips-shortcuts) |
 | Know which calls are listed and how they are indexed | [Which calls are Non-Qualified](#which-calls-are-non-qualified) |
 | Understand Daily, cumulative and Final CDRs of the same call | [Daily and Final CDRs](#daily-and-final-cdrs) |
 | Choose the calls I work with | [Filters](#filters) |
@@ -52,6 +51,103 @@ dt-analyzer-rca
 | Send the reports on a schedule | [Scheduled reports](#scheduled-reports) |
 | Copy the follow-up to another workspace or server | [Storage and portability](#storage-and-portability) |
 | Solve a problem | [Troubleshooting](#troubleshooting) |
+
+## Tips & shortcuts
+
+The gestures and keys that save time on this page. Use ⌘ instead of Ctrl and Option instead of Alt on a Mac.
+
+**Maps** — the map of a call (in the call and larger), [NQ Maps](#nq-maps) and the [map of a site](#map-of-a-site) share them.
+
+| To… | Do this |
+| --- | --- |
+| Move the map | Drag it, with the left or the middle button (the middle button moves it even while you hold <kbd>Ctrl</kbd>). On touch: one finger. |
+| Zoom the map in the call or in the NQ Maps panel | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + wheel, or pinch the trackpad. The wheel alone scrolls the page, and a short note says how to zoom. On touch: pinch with two fingers (it also moves the map). |
+| Zoom the larger map or the map of a site | The wheel alone zooms towards the pointer. |
+| Zoom into an area | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + drag a rectangle. |
+| Open the map larger | Double-click the map in the call or in NQ Maps (on touch: double tap), or **Map of the call** in the Failure Details and Call Details tabs. |
+| Zoom in ×2 | Double-click the larger map or the map of a site (on touch: double tap). |
+| Close the larger map or the map of a site | <kbd>Esc</kbd>, or click outside it. |
+| See every place again | **Fit**; **−** and **+** zoom out and in. |
+| Know which gesture is ready | Hold <kbd>Alt</kbd> and the pointer turns into a ruler; hold <kbd>Ctrl</kbd>/<kbd>⌘</kbd> and it turns into a crosshair. |
+| Read an element | Hover it: up to 18 of its values. Where several NQ calls failed at one point, the first line reads *At this point: N NQ calls*. |
+| Choose an element | Click it: its panel opens and the distance measured is cleared. A click beside every element keeps the chosen one; its **×** closes it. |
+| Move the panel of the element chosen in the larger map | Drag its title. It stays there for the next elements. |
+| Move, resize or keep open **CDR Info**, **LOGS Info** or **Legend** | Drag the header to move the card and its corner to resize it. **Restore** puts it back; the **pin** keeps it open on every map. A click on the header folds it; a click outside folds it unless it is pinned. |
+| Change the map under the layers | **Map**, at the right of the controls above the map. |
+
+**Elevation profile & ruler**
+
+| To… | Do this |
+| --- | --- |
+| Measure a distance and its bearing | <kbd>Alt</kbd> + drag on the map. The **elevation profile** of the ground between both ends opens over the bottom of the map. Needs a keyboard. |
+| Read a point of the profile | Hover the profile: the distance, elevation and slope of that point, marked on the map. |
+| Keep only the figures of the profile | Click its header (again to unfold it). |
+| Clear the ruler | <kbd>Esc</kbd>, a plain click on the map, the **×** of the profile, or <kbd>Alt</kbd> + click without moving. |
+
+**Layer3 signalling timeline** — below the map of a call with [Layer3 Logs](#layer3-logs-on-the-map).
+
+| To… | Do this |
+| --- | --- |
+| Follow the UE along the session | Drag along the timeline: the cursor shows where each UE was, and the map follows it. |
+| Step through the session | Click the timeline (or reach it with <kbd>Tab</kbd>), then <kbd>←</kbd>/<kbd>→</kbd> for 0.5 s, <kbd>Shift</kbd> + <kbd>←</kbd>/<kbd>→</kbd> for 5 s. |
+| Jump to the start or the end of the session | <kbd>Home</kbd> / <kbd>End</kbd>. |
+| Remove the cursor | <kbd>Esc</kbd>, or the **×** of the cursor. |
+| Find a message or event on the map | Hover its marker: a ring shows its place. Click it to centre the map on it and read its values. |
+| Fold or hide the timeline | Click its header to fold it; its **×** hides it, and **Signalling timeline** in **LOGS Info** shows it again. |
+| Follow one carrier or cell | **+** of a layer in **LOGS Info** lists it by channel, each with its switch and its PCIs as chips. |
+
+**Call panel**
+
+| To… | Do this |
+| --- | --- |
+| Close the call | <kbd>Esc</kbd>, a click outside it, or **×**. It asks first when changes are not saved. |
+| Go to the previous or next call of the list | **‹** / **›** in the header. |
+| Open any call | Paste its `JOIN_ID` (or call ID) in **Go to a JOIN_ID…**. In the **Recent JOIN_IDs** list: <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd>, <kbd>Esc</kbd>. |
+| Copy the `JOIN_ID` or the IDs of the provider | The copy button beside each one. |
+| Show a cell of the call on the map | Click (or <kbd>Enter</kbd>) a cell in **Cells of the call**, below the map: the map centres on its site. |
+| Show another NQ call on the map | Click (or <kbd>Enter</kbd>) it in **Non-Qualified Calls around**: the map centres on it. **Open** opens it. |
+| Show a test of its drive on the map | Click its row in **Its drive**. |
+| Show where a Diagnosis hint points | Click the hint (a site, or the moment of the Layer3 Logs). |
+| Post a comment | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Enter</kbd>. |
+| Leave only what the analysts fill | **Only the fields the analysts fill**, above the tabs (remembered in the browser). |
+
+**NQ Calls table**
+
+| To… | Do this |
+| --- | --- |
+| Find calls by their IDs | Paste one or more IDs in **Join ID**, separated by commas, spaces or lines. |
+| Sort by a column | Click a header name (or <kbd>Enter</kbd> / <kbd>Space</kbd>); again to reverse it. **Default order** comes back. |
+| Move a column | Drag its header onto another one. **Default column order** comes back. |
+| Filter a column | The funnel beside its name. <kbd>Esc</kbd> or a click outside closes it. |
+| Choose a value in the row (status, team, analyst, root cause…) | Type to search, <kbd>↑</kbd>/<kbd>↓</kbd> to move, <kbd>Enter</kbd> takes the first match (or **+ Add “…”** when nothing matches), <kbd>Esc</kbd> closes. |
+| Read the seconds of a call, or the subcategory of a failure | Hover its start time, or its failure. |
+| Change many calls at once | Tick their checkboxes, or the header checkbox for the whole page. |
+| Open a call | Click its row, or **›** beside its comments. |
+
+**Charts & indicators**
+
+| To… | Do this |
+| --- | --- |
+| Filter by a card, bar, slice or legend entry | Click it (or <kbd>Enter</kbd> / <kbd>Space</kbd> on a card); click it again to remove the filter. |
+| Filter by the root domain of a root category | Click the domain tag on its bar in **Root Cause Analysis**. |
+| Read every value of a period | Hover the period in the Progress View timeline; click it to filter the calls detected then. |
+| Open a stalled call | Click (or <kbd>Enter</kbd>) its row in **Stalled Open Calls**. |
+| Reorder the Priority groups of a strategy | Drag the **⠿** handle, or focus it and press <kbd>↑</kbd>/<kbd>↓</kbd>. |
+| Open the configuration | Hover **NQ Analysis Configuration** (<kbd>Esc</kbd> closes it). |
+| Save or copy a panel, chart or table as an image | Hover it (on touch: tap it) and use its image buttons. |
+
+**Text editors** — comments and long texts, as in [Ticket Center](ticket-center.md#writing-descriptions-and-comments).
+
+| To… | Do this |
+| --- | --- |
+| Bold, italic, code, link | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>B</kbd>, <kbd>I</kbd>, <kbd>E</kbd>, <kbd>K</kbd> |
+| Strikethrough, highlight | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd>, <kbd>H</kbd> |
+| Numbered list, bullets, tasks | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>7</kbd>, <kbd>8</kbd>, <kbd>9</kbd> |
+| Heading 1 to 3, or back to text | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Alt</kbd> + <kbd>1</kbd>–<kbd>3</kbd>, or <kbd>0</kbd> |
+| Nest a line or bring it back | <kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd>; <kbd>Enter</kbd> goes on at the same level. |
+| Undo, redo | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Z</kbd>, <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> |
+| Open a link in the text | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + click it. |
+| Post the comment, or save the comment edited | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Enter</kbd> |
 
 ## Which calls are Non-Qualified
 
@@ -144,7 +240,7 @@ Every panel, and its KPIs, charts and tables (a table with its title, such as a 
 
 ## Sections bar
 
-A bar above the Filters, which stays at the top of the window while you scroll, goes back to the top of the page with its first entry, an arrow, and to each panel of the page: **Filters**, **NQ Hotspots** ([NQ Hotspots, Clustered & Time-Window Issues](#nq-hotspots-clustered-time-window-issues)), **NQ Queues** (NQ Prioritization & Queues), **NQ Maps** ([NQ Maps](#nq-maps)), **NQ Calls** (the [NQ Calls](#nq-calls-panel) table, with the number of calls that match the filters), **Summary**, **NQ Rate** (NQ Rate by Campaign and Operator), **Failures** (Failures by Type, Technology & Serving Cell), **RCA Sources** (Root Cause Sources), **Root Causes** (Root Cause Analysis), **Lifecycle** (Lifecycle & Phases) and **Progress** (Progress View). Every panel stays on the page; the chosen one opens at the top, right below the bar (unfolded if it was folded), and stays there while its data arrives, and the bar marks the panel being read as you scroll. Every panel shows, in a badge below its **Collapse** button, how many calls match the filters (such as *774 Filtered Calls*) and, beside it and standing out, how many of them are in a queue of the NQ Prioritization (such as *316 In Queues*: the tracked calls left out), and the chips of the active filters as soon as they change; while a panel waits for its data it shows an animated **Loading…** bar below them, as Scoring & GAP Analysis while it calculates, over its previous content. A click on a chart filters the calls as usual, and the bar tells how many calls are left. On a narrow window the bar scrolls sideways, keeping the marked panel in sight. Below it, at its right (beside it on a phone), **NQ Analysis Configuration** opens the configuration of the workspace (see [NQ Analysis Configuration](#nq-analysis-configuration)).
+A bar above the Filters, which stays at the top of the window while you scroll, goes back to the top of the page with its first entry, an arrow, and to each panel of the page: **Filters**, **NQ Hotspots** ([NQ Hotspots, Clustered & Time-Window Issues](#nq-hotspots-clustered-time-window-issues)), **NQ Queues** (NQ Prioritization & Queues), **NQ Maps** ([NQ Maps](#nq-maps)), **NQ Calls** (the [NQ Calls](#nq-calls-panel) table, with the number of calls that match the filters), **Summary**, **NQ Rate** (NQ Rate by Campaign and Operator), **Failures** (Failures by Type, Technology & Serving Cell), **RCA Sources** (Root Cause Sources), **Root Causes** (Root Cause Analysis), **Lifecycle** (Lifecycle & Phases) and **Progress** (Progress View). Every panel stays on the page; the chosen one opens at the top, right below the bar (unfolded if it was folded), and stays there while its data arrives, and the bar marks the panel being read as you scroll. Every panel shows, in a badge below its **Collapse** button, how many calls match the filters (such as *774 Filtered Calls*) and, beside it and standing out, how many of them the queues of the NQ Prioritization list (such as *316 In Queues*: the prioritized calls in a status marked In Queue, by default Not Attended, Assigned and Under Analysis; the tracked calls left out), and the chips of the active filters as soon as they change; while a panel waits for its data it shows an animated **Loading…** bar below them, as Scoring & GAP Analysis while it calculates, over its previous content. A click on a chart filters the calls as usual, and the bar tells how many calls are left. On a narrow window the bar scrolls sideways, keeping the marked panel in sight. Below it, at its right (beside it on a phone), **NQ Analysis Configuration** opens the configuration of the workspace (see [NQ Analysis Configuration](#nq-analysis-configuration)).
 
 Opening the page starts at its top; reloading it (or going Back and Forward, or opening it from the bar at the bottom of a phone) returns to where the page was being read, showing what was in view, dimmed with a loading notice in the colour of the module, until the calls and every panel on screen are drawn there, whatever order they arrive in. Changing the filters (typing a JOIN_ID, removing a chip, clicking a card or a value of a chart), or the page, order or rows of the list, keeps the panel you are using, or else the one you are reading, where it was while every panel on screen is drawn again, so the page never moves to another section; a panel left much shorter (a JOIN_ID leaves a few rows) stays in view, and scrolling meanwhile leaves the page where you take it.
 
@@ -172,8 +268,8 @@ The **NQ Prioritization & Queues** panel, right below the NQ Hotspots, Clustered
 The panel shows, for the filtered calls, a row of cards and three subpanels:
 
 - Cards with the **Prioritized** and **Track only** calls, the calls with a **High Scoring Impact** (and the points the filtered calls lose), the **Repeated Issues** (and their clusters) and the calls **Next to analyse** (in each queue). A click on a card shows only those calls; a second click removes the filter.
-- **Strategy**: a tab per list of the strategy, with the filtered calls of each in a badge: **List 1 · Weekly CDRs** (blue; **Weekly & Final CDRs** when the strategy has no list 2), **List 2 · Final CDRs** (purple) and **Outside the lists** (grey: the calls **Out of scope** and those no step takes, **No step**); it opens on the list with the most calls and keeps the tab chosen. Each step, in its order, shows its fields in their colours: its Priority, its Step (its number in a pill of a colour of its own, the same in the queues; a click shows its calls), its NR Mode (SA purple, NSA green), its Call Type (in the colour of its queue), its Area (Cities raspberry, Connecting Roads indigo, Any grey), its Condition (AND, OR and the parentheses in the colour of the module; what the step takes in full on hover), its Operators, the filtered calls it took (where the rules show #Calls), their **Follow-up** in a stacked bar over the calls of the step: **Waiting** (open and not attended yet, as in the queues; in the colour of the module, with their number beside the bar), **In progress** (attended, still open; amber) and **Closed** (green), with every number on hover, the scoring points they lose in a blue bar, as long as the points of the step against the step that loses the most in the tab (PowerPoint and Word show the open and waiting calls and the points as numbers) and, last, its Queue (Voice blue, Data teal, Tracked grey). A note tells the calls waiting for their prioritization and the campaigns not scored yet, with the reason (the badge at the top right gives it on hover too).
-- **Next to analyse**: the **Voice queue** and the **Data queue**, each in a subpanel of its own, one above the other across the panel and in the colour of the queue, with its team, its waiting calls and its calls under analysis in badges (the **Unique queue** alone for a strategy of one queue, such as Vodafone Proposal). A prioritized call is in its queue while its **NQ Call Status** is marked **In Queue** in [Statuses & Teams](#statuses-and-teams) (Not Attended, Assigned and Under Analysis by default): first the calls under analysis, with their status in its colour before their owner in **Owner** (such as *Under Analysis · User A.*), then the first calls waiting for somebody (20 by default, set in the rules) in the order its analysts take them (see [Strategies](#strategies)); a call given a team or an analyst (status **Assigned**) still waits in its queue until somebody attends it, an attended call stays while its status is In Queue and leaves the queue with the next one (Analysis Finished, Under Implementation, Under Planning or Closed by default), and a call whose status is set back to Not Attended or Assigned waits in its queue again. Each call is listed with their position, JOIN_ID, Priority (in its colour), its step right after it as the Strategy subpanel shows it, each in a column of its own and in its colours: **Step** (its number, in a pill of a colour of its own, as in the Strategy subpanel), **NR Mode**, **Call Type** and **Condition** (its list, Weekly or Final, and what it takes on hover), operator, campaign (as the [Campaign Maps](workspace-config.md#campaign-maps) name it, such as *2026-Q3-SA*), Owner, Expected Gain, Scoring Impact, **Actions** (Take and Assign) and, last, **Select**. **Tracked**, in the last subpanel and folded, lists the same way the open calls only a tracked step takes, in no team queue. An empty queue or list says so in a label (such as *No call is waiting in the Voice queue.*). Each table fits its card without scrolling sideways: the JOIN_ID always on one line, and when the card is narrow the other columns and the headers go on two lines. A click on a call opens it. The queues chosen in **Queues by hotspots** (the Data queue by default) list their **hotspots** instead of their calls: each hotspot with at least the **Minimum hotspot size** of failures of the queue among the filtered calls (3 by default; only the first ones up to Next to analyse are listed, and the badge then tells how many of them, such as *20 of 29 hotspots*, beside the waiting calls of all its hotspots, such as *143 calls in hotspots*; the calls of a hotspot are analysed together, so a hotspot with calls prioritized in the queue takes along its **Track only** calls, which keep their Priority, count in its size and Waiting, are taken or assigned with it and are no longer listed among the tracked calls; a hotspot with prioritized calls in two of these queues goes to the one with most of them), in the order of its first waiting call, with its position, Hotspot ID with its sites and period below it, Priority, Step, NR Mode, Call Type and Condition (of that first call), operator, campaign, **Waiting · Owner** (its calls waiting of its calls in the queue, such as *3 of 5*, and below who has the waiting ones, each analyst, else each team, with how many calls, such as *2 · User A.* (an analyst by first name and initial, the whole name on hover; two at most, the others in *+2 more* on hover, *No owner yet* when nobody has them), how many of its calls are *Track only*, and its calls in the queue that no longer wait: *in progress*, attended and still open, and *closed*), Expected Gain (of its waiting calls together), Scoring Impact (the highest), Actions and Select; a click on its ID filters the calls, and the queues, by the hotspot, as in [NQ Hotspots](#nq-hotspots-clustered-time-window-issues). The other waiting calls of the queue, out of such a hotspot, are listed one by one in **Individual failures**, folded below its hotspots.
+- **Strategy**: a tab per list of the strategy, with the filtered calls of each in a badge: **List 1 · Weekly CDRs** (blue; **Weekly & Final CDRs** when the strategy has no list 2), **List 2 · Final CDRs** (purple) and **Outside the lists** (grey: the calls **Out of scope** and those no step takes, **No step**); it opens on the list with the most calls and keeps the tab chosen. Each step, in its order, shows its fields in their colours: its Priority, its Step (its number in a pill of a colour of its own, the same in the queues; a click shows its calls), its NR Mode (SA purple, NSA green), its Call Type (in the colour of its queue), its Area (Cities raspberry, Connecting Roads indigo, Any grey), its Condition (AND, OR and the parentheses in the colour of the module; what the step takes in full on hover), its Operators, the filtered calls it took (where the rules show #Calls), their **Follow-up** in a stacked bar over the calls of the step: **Not Started** (open and not attended yet, by their NQ Call Status; in the colour of the module, with their number beside the bar), **In progress** (attended, still open; amber) and **Closed** (green), with every number on hover, the scoring points they lose in a blue bar, as long as the points of the step against the step that loses the most in the tab (PowerPoint and Word show the open and waiting calls and the points as numbers) and, last, its Queue (Voice blue, Data teal, Tracked grey). A note tells the calls waiting for their prioritization and the campaigns not scored yet, with the reason (the badge at the top right gives it on hover too).
+- **Next to analyse**: the **Voice queue** and the **Data queue**, each in a subpanel of its own, one above the other across the panel and in the colour of the queue, with its team, its calls not started and its calls under analysis in badges (*48 not started · 4 under analysis*) (the **Unique queue** alone for a strategy of one queue, such as Vodafone Proposal). A prioritized call is in its queue while its **NQ Call Status** is marked **In Queue** in [Statuses & Teams](#statuses-and-teams) (Not Attended, Assigned and Under Analysis by default): first the calls under analysis, with their status in its colour before their owner in **Owner** (such as *Under Analysis · User A.*), then the first calls waiting for somebody (20 by default, set in the rules) in the order its analysts take them (see [Strategies](#strategies)); a call given a team or an analyst (status **Assigned**) still waits in its queue until somebody attends it, an attended call stays while its status is In Queue and leaves the queue with the next one (Analysis Finished, Under Implementation, Under Planning or Closed by default), and a call whose status is set back to Not Attended or Assigned waits in its queue again. Each call is listed with their position, JOIN_ID, Priority (in its colour), its step right after it as the Strategy subpanel shows it, each in a column of its own and in its colours: **Step** (its number, in a pill of a colour of its own, as in the Strategy subpanel), **NR Mode**, **Call Type** and **Condition** (its list, Weekly or Final, and what it takes on hover), operator, campaign (as the [Campaign Maps](workspace-config.md#campaign-maps) name it, such as *2026-Q3-SA*), Owner, Expected Gain, Scoring Impact, **Actions** (Take and Assign) and, last, **Select**. **Tracked**, in the last subpanel and folded, lists the same way the open calls only a tracked step takes, in no team queue. An empty queue or list says so in a label (such as *No call is waiting in the Voice queue.*). Each table fits its card without scrolling sideways: the JOIN_ID always on one line, and when the card is narrow the other columns and the headers go on two lines. A click on a call opens it. The queues chosen in **Queues by hotspots** (the Data queue by default) list their **hotspots** instead of their calls: each hotspot with at least the **Minimum hotspot size** of failures of the queue among the filtered calls (3 by default; only the first ones up to Next to analyse are listed, and the badge then tells how many of them, such as *20 of 29 hotspots*, beside the waiting calls of all its hotspots, such as *143 calls in hotspots*; the calls of a hotspot are analysed together, so a hotspot with calls prioritized in the queue takes along its **Track only** calls, which keep their Priority, count in its size and Waiting, are taken or assigned with it and are no longer listed among the tracked calls; a hotspot with prioritized calls in two of these queues goes to the one with most of them), in the order of its first waiting call, with its position, Hotspot ID with its sites and period below it, Priority, Step, NR Mode, Call Type and Condition (of that first call), operator, campaign, **Waiting · Owner** (its calls waiting of its calls in the queue, such as *3 of 5*, and below who has the waiting ones, each analyst, else each team, with how many calls, such as *2 · User A.* (an analyst by first name and initial, the whole name on hover; two at most, the others in *+2 more* on hover, *No owner yet* when nobody has them), how many of its calls are *Track only*, and its calls in the queue that no longer wait: *in progress*, attended and still open, and *closed*), Expected Gain (of its waiting calls together), Scoring Impact (the highest), Actions and Select; a click on its ID filters the calls, and the queues, by the hotspot, as in [NQ Hotspots](#nq-hotspots-clustered-time-window-issues). The other waiting calls of the queue, out of such a hotspot, are listed one by one in **Individual failures**, folded below its hotspots.
 - **Who takes each call**: above the queues, four views with their waiting calls, and how many of them are in each queue (such as *All · 342 (Voice 117 · Data 225)*): **All**, **Unassigned** (no team and no analyst), **My team** (the calls without an analyst of the teams you are a member of: their team, or the team of their queue when they have none) and **Assigned to me** (you are their analyst); the panel remembers the view on this browser. **Owner** tells who has each call: its analyst (in bold), its team, or the team of its queue (in italics) while it has none. **Take** (editors, a green button) asks first and then makes you the analyst of a call without one (on a hotspot, of every waiting call of it without an analyst), and the calls take your team: your only team, or the one you choose in the confirmation when you are a member of several (a user of no team leaves each call its team); a call another analyst took a moment before is left as it is and a message names them. **Assign** (admins, a purple button), beside Take, opens a dialog to give that call, or the waiting calls of that hotspot, a team and / or an analyst (a team with members offers only them; *Keep* leaves what each call has, *No team* / *No analyst* takes it away). To assign several at once, admins tick them in **Select**, the last column (**All** in its header ticks or clears every row of the table, only the calls of the rows listed: its tooltip tells how many), and **Assign** them from the bar above the queues. An assigned call keeps waiting, in the status **Assigned**, until somebody attends it. App Events records every Take and Assign.
 - **Scoring Impact**: the calls of each level, and the scoring points the calls lose in each KPI and environment.
 
@@ -292,11 +388,51 @@ The values are calculated in the background once the server is idle (after the i
 
 ## NQ Maps
 
-The **NQ Maps** panel, right below the NQ Prioritization & Queues (and in the sections bar as **NQ Maps**), draws on one map every NQ call of the filters (but the Ping tests) and the [Layer3 Logs](workspace-management.md#layer3-logs) of those that have a session in them. It is the [map of a call](#map-of-the-call) for all of them: the same information, cards, legend, controls and navigation (drag to move it, Ctrl/Cmd + wheel or a pinch to zoom, Ctrl/Cmd + drag a rectangle to zoom into, Alt/Opt + drag to measure with the elevation profile of the ground, − / + / **Fit** for every NQ call with a log, **Map** above it for the map type and the image buttons, which take its cards and legend too), without the groups of a call (hotspot, clusters, time windows). Above it (and above the larger map), **Colour NQ calls by** (*Call type* by default; *Root cause domain*, the one decided else that of the DT Analyzer RCA; *Campaign*; *Operator*; or *Site*, the site their CDR gives, each in a colour of its own, the legend naming the twelve with most NQ calls), **Operators** (the Focus operators of the [Operator Maps](workspace-config.md#operator-maps) by default, or every operator) and **Call types** (a list of check boxes, one for each call type of the NQ calls: *Voice*, *WhatsApp*, *Data*…; every one checked by default, **Every call type** checks them all again and at least one stays checked; only the NQ calls of the types checked are drawn, counted and listed, and your browser keeps the choice), then how many NQ calls the filters have, how many have a log and how many sessions; the filters of the page choose them (a campaign, an operator, a root cause…), and it is read again when they change. A **double-click** (a double tap on a phone or tablet) opens it larger, over the whole width of the window but 2 % on each side. The map opens where you left it (your browser keeps its place and zoom).
+See every filtered NQ call, and the Layer3 Logs of those that have them, on one map.
 
-- **CDR Info**, the card over the top left of the map: the **NQ calls** of the filters as diamonds where they failed (hollow those without Layer3 Logs; those on one point one mark with how many they are), the **Sites** of the networks that serve their operators (from zoom level 11), the **RSRP / SINR (from CDR samples)** of the CDRs of their campaigns in the area shown (from zoom level 13, an even sample of 20,000 when there are more; each measure with its switch) and the **Route** (off until switched on, **Drive of each CDR (estimated, between its tests)**): the drive of each CDR sketched as the map of a call sketches the drive of its car, winding grey roads only between its tests close in time and place (2 minutes and 2 km at most, at a speed a car can drive), thin and below everything; the real way of each session is the route of its log. The NQ calls are drawn over the routes and the layers of the logs.
-- **LOGS Info**, the card beside it, with the layers of the logs: zoomed out (below zoom level 13) a **grid** of the average of the metric chosen (**Grid of**: the RSRP, RSRQ, SINR or UE Tx Power of the LTE or NR PCell, SCell or neighbour cells; LTE PCell RSRP by default), each cell in the colour of its level in the [Map Levels](#map-levels) (hovering a cell tells its average, its lowest value and how many points it has); the **Events** of the area from zoom level 10, over the grid; from zoom level 13 the **points of the layers on** in the area shown (the first 80,000), read again as the map moves; and the **Route** of each session, the GPS of its log drawn as a road with its direction. It keeps the layers of the maps of the calls: a layer switched on in one is on in the other.
-- A click on an NQ call, on a point of a log or on a route shows its values with **Open this call**, which opens it, and the **Signalling timeline** of that call below the map (over the larger map), with its cursor (see [Layer3 Logs on the map](#layer3-logs-on-the-map)).
+The **NQ Maps** panel is right below the NQ Prioritization & Queues (**NQ Maps** in the sections bar).
+
+- **What it draws:** every NQ call of the filters (but the Ping tests) and the [Layer3 Logs](workspace-management.md#layer3-logs) of those that have a session in them.
+- **Like the map of a call:** it is the [map of a call](#map-of-the-call) for all of them, with the same information, cards, legend, controls and navigation, without the groups of a call (hotspot, clusters, time windows).
+- **Which calls:** the filters of the page choose them (a campaign, an operator, a root cause…), and the map is read again when they change.
+- **Where it opens:** where you left it (your browser keeps its place and zoom).
+
+**Navigation** (see [Tips & shortcuts](#tips-shortcuts)):
+
+| To… | Do this |
+| --- | --- |
+| Move it | Drag it. |
+| Zoom | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + wheel, or a pinch (the wheel alone in the larger map). |
+| Zoom into an area | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + drag a rectangle. |
+| Measure, with the elevation profile of the ground | <kbd>Alt</kbd>/<kbd>Option</kbd> + drag. |
+| Zoom out, in, or show every NQ call with a log | **−**, **+**, **Fit**. |
+| Open it larger | Double-click it (on a phone or tablet, double tap): it takes the whole width of the window but 2 % on each side. |
+| Choose the map type, or download it | **Map** above it; the image buttons take its cards and legend too. |
+
+**Above the map** (and above the larger map):
+
+| Control | What it does |
+| --- | --- |
+| **Colour NQ calls by** | *Call type* (the default); *Root cause domain* (the one decided, else that of the DT Analyzer RCA); *Campaign*; *Operator*; or *Site* (the site their CDR gives). Each value takes a colour of its own; the legend names the twelve with most NQ calls. |
+| **Operators** | The Focus operators of the [Operator Maps](workspace-config.md#operator-maps) (the default), or every operator. |
+| **Call types** | A check box for each call type of the NQ calls (*Voice*, *WhatsApp*, *Data*…), every one checked by default. Only the NQ calls of the types checked are drawn, counted and listed. **Every call type** checks them all again; at least one stays checked. Your browser keeps the choice. |
+
+Then a line says how many NQ calls the filters have, how many have a log and how many sessions.
+
+**The cards over the map:**
+
+- **CDR Info**, over the top left of the map:
+  - **NQ calls:** the NQ calls of the filters as diamonds where they failed; hollow those without Layer3 Logs; those on one point make one mark with how many they are. They are drawn over the routes and the layers of the logs.
+  - **Sites:** the sites of the networks that serve their operators, from zoom level 11.
+  - **RSRP / SINR (from CDR samples):** the samples of the CDRs of their campaigns in the area shown, from zoom level 13 (an even sample of 20,000 when there are more), each measure with its switch.
+  - **Route** (off until switched on), **Drive of each CDR (estimated, between its tests)**: the drive of each CDR, sketched as the map of a call sketches the drive of its car. Winding grey roads join only its tests close in time and place (2 minutes and 2 km at most, at a speed a car can drive), thin and below everything. The real way of each session is the route of its log.
+- **LOGS Info**, beside it, with the layers of the logs:
+  - **Grid**, zoomed out (below zoom level 13): the average of the metric chosen in **Grid of** (the RSRP, RSRQ, SINR or UE Tx Power of the LTE or NR PCell, SCell or neighbour cells; LTE PCell RSRP by default). Each cell takes the colour of its level in the [Map Levels](#map-levels); hover it for its average, its lowest value and how many points it has.
+  - **Events** of the area, from zoom level 10, over the grid.
+  - **Points of the layers on**, from zoom level 13, in the area shown (the first 80,000), read again as the map moves.
+  - **Route** of each session: the GPS of its log drawn as a road with its direction.
+  - **Shared with the maps of the calls:** a layer switched on in one is on in the other.
+- **A click** on an NQ call, a point of a log or a route shows its values with **Open this call**, which opens it, and the **Signalling timeline** of that call below the map (over the larger map), with its cursor (see [Layer3 Logs on the map](#layer3-logs-on-the-map)).
 
 The map of each call shows the same information focused on it: its own log, and, with **Logs of the NQ calls around** in its card **LOGS Info**, those of the NQ calls of its map (its groups and its area), faded below its own.
 
@@ -304,7 +440,12 @@ App Events records the map opened and each change of what it shows (`nq_l3_maps`
 
 ### Map of a site
 
-The **map of a site** shows the NQ calls of one site and of the sites around it. It opens from a site of **Sites to review** in [Scoring & GAP Analysis](scoring-gap-analysis.md#points-lost), in a floating panel over that page, or from a link to Non-Qualified Calls (its **Open in Non-Qualified Calls** button opens the same map here). It is the larger map of NQ Maps, with the same cards, legend, controls and navigation (the wheel zooms, a double-click zooms in), centred on the site:
+The **map of a site** shows the NQ calls of one site and of the sites around it.
+
+- **Where it opens:** from a site of **Sites to review** in [Scoring & GAP Analysis](scoring-gap-analysis.md#points-lost), in a floating panel over that page, or from a link to Non-Qualified Calls (its **Open in Non-Qualified Calls** button opens the same map here).
+- **How it works:** it is the larger map of NQ Maps, with the same cards, legend, controls and navigation, centred on the site. The wheel zooms, a double-click zooms in, and <kbd>Esc</kbd> or a click outside it closes it (see [Tips & shortcuts](#tips-shortcuts)).
+
+What it shows and chooses:
 
 - The site is ringed, where the Network Inventory places it (else where its tests were), with a dashed circle of the **Radius** around it.
 - **Radius** (500 m to 10 km, 1 km the first time) chooses the area whose NQ calls the table below lists; the map fits it.
@@ -313,7 +454,14 @@ The **map of a site** shows the NQ calls of one site and of the sites around it.
 - **Call types** shows on the map and in the table only the NQ calls of the call types checked (every one by default). Your browser keeps the radius and these choices for the next site.
 - Its NQ calls are those of the campaign of the table of the site (or of the campaigns of the scoring when the table has none); the line above the map says how many there are and how many have Layer3 Logs.
 
-Below the map, a table lists the NQ calls **of the site**, wherever they failed, and those of other sites (or without a site) **within the radius**, of the operators shown: the site first, then the nearest. For each one: its mark on the map, `JOIN_ID`, site (*This site* for those of the site), distance to the site, operator, call type, campaign, start, result, failure, status and root cause (the one decided, else that of the DT Analyzer RCA). A click on a column title sorts the table by it. A click on a `JOIN_ID` shows the call on the map with its panel and its **Signalling timeline**; **Open** opens the call (from Scoring & GAP Analysis in a tab of its own, so the map stays open; here the map closes and the call opens). **Copy the JOIN_IDs** copies the `JOIN_ID` of every call of the table, one per line. The map and the table download as images or copy as screenshots with their image buttons.
+Below the map, a table lists, of the operators shown, the NQ calls **of the site**, wherever they failed, and those of other sites (or without a site) **within the radius**: the site first, then the nearest.
+
+- **Columns:** its mark on the map, `JOIN_ID`, site (*This site* for those of the site), distance to the site, operator, call type, campaign, start, result, failure, status and root cause (the one decided, else that of the DT Analyzer RCA).
+- **Sort:** click a column title (▲); again to reverse it (▼), a third time to go back to the order above.
+- **Show a call:** click its `JOIN_ID` to show it on the map with its panel and its **Signalling timeline**.
+- **Open a call:** **Open**. From Scoring & GAP Analysis it opens in a tab of its own, so the map stays open; here the map closes and the call opens.
+- **Copy the JOIN_IDs:** copies the `JOIN_ID` of every call of the table, one per line.
+- **Images:** the map and the table download as images or copy as screenshots with their image buttons.
 
 App Events records each map of a site opened, and each change of what it shows, as `nq_l3_maps` (scope *map of a site*), with the site, its network, operator, campaigns, radius, the page it was opened from, how many NQ calls its CDRs give it and, when it opens, whether the Network Inventory places it. A link to a call (`/non-qualified-calls#call=<call key>`) opens that call.
 
@@ -378,7 +526,7 @@ Each tab shows:
 - **Root Domains by Technology**: a bar for each technology split in the colours of its root domains (with their legend above; a part wide enough shows its calls) and its total.
 - **eNB / gNB with most calls**: the node of the last cell of each call's `Cell_ID` chain (the cell where it ended): identities above 28 bits are NR cells (gNB = NCI / 16384, for 22-bit gNodeB IDs), LTE cells give their eNB (ECI / 256) and smaller identities are 2G/3G cells. The site ID, host network and vendor are those most of its calls have in the Network Inventories and cell mappings of the workspace, found as for the place of the [repeated issues](#repeated-issues) (in a network that serves the operator, near the call); otherwise the vendor is the call's.
 
-A click on a bar, on the name of a group, on the name or a slice of a donut, on a domain of a Technology bar, or on an eNB/gNB row shows only those calls (for example the NSA calls of RF), and a second click removes the filter. The domains, categories and causes filter the calls of the chosen source (for example the calls the Ericsson RCA puts in Coverage).
+A click on a bar, on the root domain tag of a category bar (the calls of that domain), on the name of a group, on the name or a slice of a donut, on a domain of a Technology bar, or on an eNB/gNB row shows only those calls (for example the NSA calls of RF), and a second click removes the filter. The domains, categories and causes filter the calls of the chosen source (for example the calls the Ericsson RCA puts in Coverage).
 
 > [!TIP]
 > **Show Not classified**, below the indicators, is unchecked by default for every source: the bars, donuts and technology bars count only the calls the source gives a root cause, their shares and totals being of those calls. Check it to add the Not classified calls. **Export PPT** and **Export Word** follow this checkbox, and the reports of [Reporting](reporting.md) have an option of their own, unchecked by default.
@@ -389,7 +537,17 @@ A click on a bar, on the name of a group, on the name or a slice of a donut, on 
 
 The **Lifecycle & Phases** panel follows the filtered calls through their follow-up:
 
-- Indicators: the calls (how many are in a queue of the NQ Prioritization and how many are tracked, in no queue), how many have an **Automatic Status** (following the Status Rules) and a **Status by Hand**, how many are **In Queues** (the calls in the first status, in its colour: they wait in their queue, nobody has them yet; a call given a team or an analyst leaves its queue and is Assigned, part of Open), **Open** (assigned or attended and not closed: the sum of Assigned and the phase statuses) and closed — these and the cards and bar of the NQ Call Status Pipeline count only the calls in a queue, their shares too, and add the tracked calls of each one apart (*+12 tracked*), as they wait for nobody — and how many are **Stalled** (open without any change for 14 days or more, counted from today: a call becomes stalled on its own and leaves it as soon as it changes). A click on Automatic, By Hand, Not Attended, Open, Closed or Stalled shows only those calls (In Queues those in a queue, with the chip *Follow-up: In a queue*; Open and Stalled with the chips *Follow-up: Open* and *Follow-up: Stalled*).
+- Indicators (in the order a call goes through; the same **Not Started**, **In Queues** and **Attended** as Progress View and the **In Queues** badge of the panels):
+  - **Calls**: how many are in a queue of the NQ Prioritization and how many are tracked, in no queue.
+  - **Automatic Status** (following the Status Rules) and **Status by Hand**.
+  - **Not Started**: the prioritized calls nobody attended yet, the first status and Assigned (the note gives each, such as *Not Attended 320 · Assigned 25*).
+  - **In Queues**: the calls the queues list, **Not Started** plus **Under Analysis** (the statuses marked In Queue). The same number as the badge of the panels.
+  - **Attended**: the other prioritized calls, followed up, in any later status.
+  - **Open**: assigned or attended and not closed (Assigned plus the phase statuses).
+  - **Stalled**: open without any change for 14 days or more, counted from today; a call becomes stalled on its own and leaves it as soon as it changes.
+  - **Closed**: in a closed status.
+  - These cards and the NQ Call Status Pipeline count only the prioritized calls, their shares too, and add the tracked calls of each one apart (*+12 tracked*), as they wait for nobody.
+  - A click on a card shows only its calls (chips *Follow-up: In Queues*, *Follow-up: Not Started*, *Follow-up: Attended*, *Follow-up: Open*, *Follow-up: Closed*, *Follow-up: Stalled*).
 - **NQ Call Status Pipeline**: a bar with the share of each status and one card per status, with its calls, share and average age: the calls not attended, then **Open** — a frame around the statuses an assigned or attended call goes through until it is closed (Assigned, Under Analysis, Analysis Finished, Under Implementation and Under Planning), its total being their sum — and then the closed ones; the statuses whose calls the queues list are tagged **In Queue**; a click on a card filters by that status, and a click on Open shows the open calls (the chip *Follow-up: Open*). The rules of every card start on the same line, below its status, calls and age. Each card shows the [Status Rules](#status-rules) that set it: **Rule N** (the order they are tried in) with the field and its values in their colours, for example *Rule 6 · Analysis Status · Ongoing* on Under Analysis, and *When no rule applies* on the first status. A click on a rule shows the calls that meet it.
 - **RCA Identification**: how many calls have a root category or cause selected and how many not, each row drilling down into its calls.
 - One card per list field of the **Analysis**, **Implementation** and **Planning** sections (for example Analysis Status, Implementation Status and Planned Status), side by side: a bar with the share of each value and a row per value that drills down into its calls. Like the pipeline, these cards and RCA Identification count only the calls in a queue (the tracked calls apart); the shares are of the calls in a queue with a value, as the card tells. A field with more than 12 values, such as the Implementation Proposals, takes a row of its own below them, across the panel, its values in columns from the most frequent. Each value has the colour chosen in [Fields & Sections](#fields-and-sections); when no value of a field has one, its values take a palette of different colours.
@@ -408,20 +566,39 @@ The PowerPoint and Word exports and the reports of [Reporting](reporting.md) sho
 
 The **Progress View**, the last panel, shows how the follow-up advances for the filtered calls in a queue of the NQ Prioritization. The tracked calls (Track only, in no queue) wait for nobody: every statistic of the panel leaves them out and counts them apart, so they do not blur the follow-up.
 
-- Indicators, by the NQ Call Status of each call as Lifecycle & Phases counts them: the calls nobody has attended yet, in two cards, **In Queues** (the first status) and **Assigned** (given a team or an analyst, not attended yet), the calls **Under Analysis** (attended and still in their queue, in a status marked In Queue), then the calls **Attended** (in any other status: a call set back to Not Attended or Assigned is not attended again), the **Closure Rate**, the average days from the call to its first follow-up and to its closure (**Time to Close**), the activity and, last, **Tracked**: the tracked calls left out, with how many are not attended and closed. A click on In Queues, Assigned, Under Analysis or Tracked shows only those calls (*Follow-up: In Queues*, *Follow-up: Assigned, not attended yet*, *Follow-up: Under analysis in a queue* or *Follow-up: Tracked (in no queue)*). The first follow-up times the answer from the history of the call (its first change other than an assignment, or its first comment).
+- Indicators, by the NQ Call Status of each call, in the order a call goes through, with the names and numbers of Lifecycle & Phases and of the **In Queues** badge:
+  - **Not Started**: the prioritized calls nobody attended yet, the first status and Assigned (named in the note). A call set back to Not Attended or Assigned is Not Started again.
+  - **In Queues**: the calls the queues list, **Not Started** plus **Under Analysis** (attended and still in a status marked In Queue).
+  - **Attended**: the other prioritized calls, followed up, in any later status.
+  - Their shares are of the prioritized calls (the tracked calls left out).
+  - Then the average days from the call to its first follow-up (**First Follow-up**) and to its closure (**Time to Close**), the **Closure Rate**, the activity and, last, **Tracked**: the tracked calls left out, with how many are not started and how many closed.
+  - A click on a card shows only its calls (*Follow-up: In Queues*, *Follow-up: Not Started*, *Follow-up: Attended*, *Follow-up: Tracked (in no queue)*). The first follow-up times the answer from the history of the call (its first change other than an assignment, or its first comment).
 - Donut charts **By Status**, **By Team**, **By Analyst** (by first and last name), **By Service** and **By Result**; each legend shows the full name with its count and share; hovering a slice shows its value, count and share, and a click on a slice or a legend entry filters the calls by that value.
 - A timeline per **week** (the default), **month**, **quarter** or **year** of the calls detected, attended, commented, closed and reopened (hover a period to read all its values), with a table that adds the moves to each open status (those to a closed status are the **Closed** column), the backlog at the end of each period of the calls in a queue (**Queue backlog**) and, apart, of the tracked calls (**Tracked backlog**, a dashed grey line), and the average days from the call to its closure. The status changes, closures and reopenings count both the statuses chosen by hand and those the Status Rules set (as when importing analyses, dated by the analysis).
 - The age of the open calls, the workload of each team and analyst (open, closed and total calls) and the recent activity of each user, by their first and last name.
 
 As in the Summary, a click drills down into the calls: a slice or legend entry of a donut, a period of the timeline (in the chart or its table: the calls detected in that period), an age bar (the open calls of that age) or a team or analyst row shows only those calls; click it again to remove that filter. The User Activity table is informative only.
 
-In the PowerPoint and Word, the Progress View slides show the period of the timeline in bold in their title (*Progress View · **Monthly***) and what each one shows in its subtitle: Follow-up Overview, Progress per Month, Age and Workload, Details per Month and User Activity.
+In the PowerPoint and Word, the Progress View slides show the period of the timeline in bold in their title (*Progress View · **Monthly***) and what each one shows in its subtitle: Follow-up Overview, Progress per Month, Age and Workload, Details per Month and User Activity. The Follow-up Overview has the same cards as the page; its table of indicators reads *In Queues (Not Started + Under Analysis)*, *Not Started (nobody attended yet)* and *Attended (followed up, in any later status)*.
 
 ## NQ Calls panel
 
-The **NQ Calls** panel (named so in the sections bar too) lists in its table one row per call with its start time (to the minute; hover it for the seconds) and service (and, for a Speech call, its number of Non-Qualified samples), Operator and Vendor, Region and Cluster, City and Campaign, test and technology, result with the failure classification and category (hover a failure to read its subcategory and comment) and the CDR version badge, then the RCA fields chosen as columns (none by default; Ericsson RCA Suggested Cause and NetCheck RCA Suggested Cause show in italics the suggested category of their source, named below it, when the source gives no cause, as most results of the Auto RCA output of the Ericsson RCA), its Root Category and Root Cause, the other fields chosen as columns (by default Analysis Status and Implementation Status), its **Global Status**, its team and analyst and its comments.
+Follow up the calls one by one. The **NQ Calls** panel (named so in the sections bar too) lists one row per call, with these columns in this order:
 
-**Join ID** (**Call ID** when the CDRs also bring the IDs of the calls in the provider's tools), centred in the title bar of the panel, finds calls by their `JOIN_ID` or by those IDs (in NetCheck CDRs, the `Session_ID_A` and `Session_ID_B` of a voice or Speech call and the `Test_ID` and `Session_id` of a data test, as NetCheck CloudNM identifies them): type or paste one or more, separated by commas, spaces or lines (whatever their case), to list the calls with exactly those IDs; it is kept with the shared selection and shown among the active filters. Below it, as below **Go to a JOIN_ID…** (**Go to a call ID…**) of an open call, which takes the same IDs, a list offers the **Recent JOIN_IDs**: the 10 last searched in either box (in your browser, for each workspace), the latest first, narrowed while typing; a click, or the arrow keys and Enter, chooses one (here it takes the place of the JOIN_ID being typed).
+- **Start time** (to the minute; hover it for the seconds) and **service** (for a Speech call, also its number of Non-Qualified samples).
+- **Operator** and **Vendor**, **Region** and **Cluster**, **City** and **Campaign**, **test** and **technology**.
+- **Result**, with the failure classification and category (hover a failure to read its subcategory and comment) and the CDR version badge.
+- **The RCA fields chosen as columns** (none by default). Ericsson RCA Suggested Cause and NetCheck RCA Suggested Cause show in italics the suggested category of their source, named below it, when the source gives no cause, as most results of the Auto RCA output of the Ericsson RCA.
+- Its **Root Category** and **Root Cause**.
+- **The other fields chosen as columns** (by default Analysis Status and Implementation Status).
+- Its **Global Status**, its **team** and **analyst**, and its **comments**.
+
+**Join ID** (**Call ID** when the CDRs also bring the IDs of the calls in the provider's tools), centred in the title bar of the panel, finds calls by their IDs:
+
+- **Which IDs:** their `JOIN_ID`, or the IDs of the provider. In NetCheck CDRs these are the `Session_ID_A` and `Session_ID_B` of a voice or Speech call and the `Test_ID` and `Session_id` of a data test, as NetCheck CloudNM identifies them.
+- **How:** type or paste one or more, separated by commas, spaces or lines (whatever their case), to list the calls with exactly those IDs.
+- **Kept:** with the shared selection, and shown among the active filters.
+- **Recent JOIN_IDs:** below it, as below **Go to a JOIN_ID…** (**Go to a call ID…**) of an open call, which takes the same IDs, a list offers the 10 last searched in either box (in your browser, for each workspace), the latest first, narrowed while typing. A click, or the arrow keys and <kbd>Enter</kbd>, chooses one; here it takes the place of the JOIN_ID being typed.
 
 ### Follow up the calls
 
@@ -430,22 +607,57 @@ The **NQ Calls** panel (named so in the sections bar too) lists in its table one
 3. Click a row to open the call, fill the fields of its sections and comment it (see [Call details and activity](#call-details-and-activity)).
 4. Select several rows to change all of them at once (see [Bulk changes](#bulk-changes)).
 
-Users with the `user-editor`, `admin` or `super-admin` role change the **Status**, **Team**, **Analyst**, **Root Category** and **Root Cause** directly in the row, each from a list that shows every value as a pill in its colour (with a search box for long lists, and the arrow keys to move; the list of a list field of the analysts always has the search box, and a value typed there that the list lacks is offered first as **+ Add “…”**, which adds it to the values of the field and chooses it); each value keeps the colour of its status, team or root domain (a root category is filled with the colour of its domain, a root cause outlined with it). The status, team, analyst and root cause lists widen with the window. `user-viewer` accounts see the same information read-only.
+**Changing values in the row.** Users with the `user-editor`, `admin` or `super-admin` role change the **Status**, **Team**, **Analyst**, **Root Category** and **Root Cause** directly in the row; `user-viewer` accounts see the same information read-only.
 
-The analysts are shown by the first and last name of their account (its username when it has none) in the table, the call, the bulk bar, the Analyst filter and the Progress View, sorted by that name; the lists of analysts start with the default users of the application (super, admin and demo), tagged **default user**, with a line before the other users. An **analyst without account** (a name the [Previous NQ Analyses](#previous-nq-analyses) brought, until [Link Analysts to Accounts](#link-analysts-to-accounts) links it) is shown with its name in italics in a dashed pill, tagged **No account** in the lists; it counts in the filters and the statistics, but only user accounts can be chosen as the Analyst of a call.
+- **The lists:** each value shows as a pill in its colour, with a search box for long lists and the arrow keys to move. <kbd>Enter</kbd> takes the first value found.
+- **List fields of the analysts:** their list always has the search box. A value typed there that the list lacks is offered first as **+ Add “…”**, which adds it to the values of the field and chooses it.
+- **Colours:** each value keeps the colour of its status, team or root domain. A root category is filled with the colour of its domain, a root cause outlined with it.
+- **Width:** the status, team, analyst and root cause lists widen with the window.
 
-The Root Category, the Root Cause and the Root Technology are chosen each from a list (search it by name; the current value is ticked), and the Root Category always follows the category of the Root Cause: choosing a cause gives the call its category, and choosing another category clears a cause that is not one of its causes. The lists are grouped by domain: the values the RCA sources of the call propose come first, then (in the list of causes) the causes of the chosen category, then every domain in the order of the catalog, the causes of each domain under each of its categories. While a call has no root category and cause, its recommended ones are shown below them, small, with the RCA they come from above them (every source in its tooltip) and a dot for the confidence of the recommendation (green high, amber medium, grey low), and a click accepts them (see [Root cause recommendation](#root-cause-recommendation)).
+**Analysts.** They are shown by the first and last name of their account (its username when it has none) in the table, the call, the bulk bar, the Analyst filter and the Progress View, sorted by that name.
+
+- **Default users first:** the lists of analysts start with the default users of the application (super, admin and demo), tagged **default user**, with a line before the other users.
+- **Analysts without account:** a name the [Previous NQ Analyses](#previous-nq-analyses) brought, until [Link Analysts to Accounts](#link-analysts-to-accounts) links it. It is shown with its name in italics in a dashed pill, tagged **No account** in the lists. It counts in the filters and the statistics, but only user accounts can be chosen as the Analyst of a call.
+
+**Root Category, Root Cause and Root Technology.** Each is chosen from a list: search it by name; the current value is ticked.
+
+- **Category follows cause:** choosing a cause gives the call its category, and choosing another category clears a cause that is not one of its causes.
+- **Order of the lists:** grouped by domain. First the values the RCA sources of the call propose, then (in the list of causes) the causes of the chosen category, then every domain in the order of the catalog, the causes of each domain under each of its categories.
+- **Recommendation:** while a call has no root category and cause, its recommended ones are shown below them, small, with the RCA they come from above them (every source in its tooltip) and a dot for the confidence (green high, amber medium, grey low). A click accepts them (see [Root cause recommendation](#root-cause-recommendation)).
 
 > [!IMPORTANT]
 > **Choosing a status sets it by hand.** The list then offers **↺ Back to automatic** to give it back to the Status Rules. Below the status, each row tells whether it is **Auto** or set **By hand** and when its follow-up last changed and who changed it (hover it for the exact time).
 
-List and Yes / No fields entered by the analysts and shown in the table are chosen in the row too, from the same coloured lists; the other fields entered by the analysts are filled in the section of the call, and the fields from the CDR, the Ericsson RCA or derived from the call are shown read only. The **›** button beside the comments opens the call. The Comments column shows how many comments a call has and its latest comment; click it to read the thread or add a comment.
+**Other fields in the row.**
+
+- **List and Yes / No fields** entered by the analysts and shown in the table are chosen in the row too, from the same coloured lists.
+- **Other fields of the analysts** are filled in the section of the call.
+- **Fields from the CDR, the Ericsson RCA or derived from the call** are shown read only.
+- **›**, beside the comments, opens the call.
+- **Comments column:** how many comments a call has and its latest comment; click it to read the thread or add a comment.
 
 ### Columns
 
-Every column header is topped with the colour of its group, as in the Excel export: the columns of the call (and the optional and CDR columns) with that of the call, each field with that of its section, and the team and analyst, root category and cause, status and comments with that of the section of their follow-up field. The default columns fit screens of 1600 px and wider without scrolling sideways: long values wrap on two lines or are shortened and shown whole when you hover them, the time of a call goes below its date, and the Comments column shows the number of comments, and the latest one when you hover it (the cards of phones show it). Related values share a column, one below the other, so the table fits in the panel. The **Prioritization** and the **Priority** of a call share a column too when both are shown, the Prioritization above the Priority (chosen in the row), each name of its header sorting and filtering by its own field. After the root category and cause, the workspace layout of a new workspace shows the Prioritization with the Priority, the Repeated Issue, the Scoring Points Lost, the Analysis Status and the Implementation Status; the Scoring Impact and the other fields are shown with **Columns**. Drag a column header onto another to move that column before or after it, in your own [layout](#table-layouts): columns added later take their default place, and **Default column order**, shown while the order differs from the default one, puts every column of your layout back. Reloading the page returns to the position it was scrolled to. By default the calls are listed by **Priority** (P1 first, in the order of the values of the Priority; the Priority set by hand, else the one the NQ Prioritization gives, the calls without one last), then by **Scoring Points Lost** (the calls that lose most first), then the most recent first; a header name sorts them by its column instead, and **Default order**, shown while a column sorts them, brings back the default order. The table is paginated with 10 (by default), 25, 50 or 100 rows per page, chosen in **Rows per page**, also with All panels.
+Choose and arrange the columns of the table.
 
-Every name of a column header (for example *Service*, *Result*, *Team* or *Analyst*) sorts the table when clicked, and the funnel beside it opens, right below the header, that field's values to filter by them: search them by name, tick them (**Select All / None** ticks or clears the values shown; root categories and causes are grouped under their domain) and **Apply**. A column filter is the same selection as the Filters panel and its chip: the funnel is filled while that field is filtered.
+**How the columns look.**
+
+- **Colours:** every column header is topped with the colour of its group, as in the Excel export. The columns of the call (and the optional and CDR columns) take that of the call, each field that of its section, and the team and analyst, root category and cause, status and comments that of the section of their follow-up field.
+- **Fit:** the default columns fit screens of 1600 px and wider without scrolling sideways. Long values wrap on two lines or are shortened and shown whole when you hover them, and the time of a call goes below its date.
+- **Comments:** the Comments column shows the number of comments, and the latest one when you hover it (the cards of phones show it).
+- **Shared columns:** related values share a column, one below the other, so the table fits in the panel. The **Prioritization** and the **Priority** of a call share a column too when both are shown, the Prioritization above the Priority (chosen in the row); each name of its header sorts and filters by its own field.
+- **Default columns of a new workspace:** after the root category and cause, the workspace layout shows the Prioritization with the Priority, the Repeated Issue, the Scoring Points Lost, the Analysis Status and the Implementation Status. The Scoring Impact and the other fields are shown with **Columns**.
+- **Scroll position:** reloading the page returns to the position it was scrolled to.
+
+**Order of the columns.** Drag a column header onto another to move that column before or after it, in your own [layout](#table-layouts). Columns added later take their default place. **Default column order**, shown while the order differs from the default one, puts every column of your layout back.
+
+**Order of the calls.**
+
+- **By default:** by **Priority** (P1 first, in the order of the values of the Priority; the Priority set by hand, else the one the NQ Prioritization gives; the calls without one last), then by **Scoring Points Lost** (the calls that lose most first), then the most recent first.
+- **By a column:** every name of a column header (for example *Service*, *Result*, *Team* or *Analyst*) sorts the table when clicked; again to reverse it. **Default order**, shown while a column sorts them, brings back the default order.
+- **Pages:** 10 (by default), 25, 50 or 100 rows per page, chosen in **Rows per page**, also with All panels.
+
+**Filter a column.** The funnel beside a header name opens, right below the header, that field's values: search them by name, tick them (**Select All / None** ticks or clears the values shown; root categories and causes are grouped under their domain) and **Apply**. A column filter is the same selection as the Filters panel and its chip: the funnel is filled while that field is filtered.
 
 **Columns**, a button of the table after **Default column order** (for every user), chooses the columns of your own [layout](#table-layouts), only for you: the optional columns shown after Result / Failure (Session Type (CDR) before Test / Technology) and those of your Excel export:
 
@@ -453,9 +665,22 @@ Every name of a column header (for example *Service*, *Result*, *Team* or *Analy
 - The fields of the Analysis Center, grouped by section, each one a column of the table (**Table**; the follow-up fields always have theirs) and of your Excel export (**Excel**).
 - The columns of the CDRs (for example `Cellname_A`, `Region_A` or `Auto_RCA_Category_A`), which show the value of the CDR version shown for each call. Each CDR column can go to the **Table** (up to 12), and then also to the Excel export, or to **Excel** only (up to 100 more). A CDR column that no layout showed before indexes the calls again.
 
-**Default Columns** returns to the columns of a new workspace (no optional or CDR columns, and the Table and Excel of the fields of the [default catalog](#default-catalog): Prioritization, Priority, Repeated Issue, Scoring Points Lost, Analysis Status and Implementation Status in the table, every field in Excel), **Copy Workspace Layout** to the columns, Excel and column order of the workspace layout, and **Save** applies them to your layout.
+Its buttons:
 
-Every optional column sorts the table and has its filter: Region and Cluster use their filters of the Filters panel, `JOIN_ID`, NR Mode, Cell ID, Direction, Session Type, End Time, CDR (which chooses CDRs) and Layer3 Logs (**Empty** lists the calls without a log) add theirs under **Additional Columns Filters**, and the CDR columns filter from their header only; every one offers **Empty** for the calls without a value. The Filters panel shows the **General Filters**, then the **NQ Analysis Fields Filters** and the **Additional Columns Filters**.
+| Button | What it does |
+| --- | --- |
+| **Default Columns** | Returns to the columns of a new workspace: no optional or CDR columns, and the Table and Excel of the fields of the [default catalog](#default-catalog) (Prioritization, Priority, Repeated Issue, Scoring Points Lost, Analysis Status and Implementation Status in the table, every field in Excel). |
+| **Copy Workspace Layout** | Returns to the columns, Excel and column order of the workspace layout. |
+| **Save** | Applies them to your layout. |
+
+**Filters of the optional columns.** Every optional column sorts the table and has its filter:
+
+- **Region and Cluster** use their filters of the Filters panel.
+- **`JOIN_ID`, NR Mode, Cell ID, Direction, Session Type, End Time, CDR** (which chooses CDRs) **and Layer3 Logs** (**Empty** lists the calls without a log) add theirs under **Additional Columns Filters**.
+- **The CDR columns** filter from their header only.
+- **Every one** offers **Empty** for the calls without a value.
+
+The Filters panel shows the **General Filters**, then the **NQ Analysis Fields Filters** and the **Additional Columns Filters**.
 
 ### Table layouts
 
@@ -470,66 +695,341 @@ A change made while the workspace layout is shown makes it your own layout (when
 
 ### Bulk changes
 
-Select several rows with their checkboxes, or every row of the page with the header checkbox, to set the status (or **↺ Back to automatic**), team, analyst, root category, root cause or a list or Yes / No field of the analysts (**Set field…**) of all of them at once from the bar that appears above the table, over the row with the number of calls (it does not move the table) and stays at the top of the window while you scroll the table. The selection stays after each change, so several changes can be applied to the same calls; **Clear selection** empties it. **Accept recommendations** gives the selected calls without a root category and cause their recommended ones and leaves the others as they are.
+Change many calls at once.
+
+1. Select several rows with their checkboxes, or every row of the page with the header checkbox.
+2. In the bar that appears above the table, set the status (or **↺ Back to automatic**), team, analyst, root category, root cause or a list or Yes / No field of the analysts (**Set field…**) of all of them.
+3. Apply more changes if needed: the selection stays after each change. **Clear selection** empties it.
+
+- **The bar** shows over the row with the number of calls (it does not move the table) and stays at the top of the window while you scroll the table.
+- **Accept recommendations** gives the selected calls without a root category and cause their recommended ones and leaves the others as they are.
 
 ## Call details and activity
 
-Click a row to open its details beside the table. The header shows the service, result, CDR version, Operator, Campaign, time and place of the call and its `JOIN_ID` with a button that copies it (after it, the IDs of the call in the provider's tools, each with a button that copies it (— when the call has none): the `Session_ID_A` and `Session_ID_B` of a NetCheck voice or Speech call and the `Test_ID` and `Session_id` of a data test, which identify it in NetCheck CloudNM; beside them, **Layer3 Logs** with the UEs of the call that have a session in the [Layer3 Logs](workspace-management.md#layer3-logs) of the workspace, when it has one, and its **Groups**: its hotspot, its clusters, then its time-window issue, on a row of their own across the header (the three on one row when they fit, each card wrapping its text; else on as many rows as they need, in that order), of 2 calls or more, each with what it is, its NR Mode and its ID in the [NQ Hotspots, Clustered & Time-Window Issues](#nq-hotspots-clustered-time-window-issues) panel (such as *Hotspot SA H-0C1BCE*), in the colours of their groups on the map of the call (hotspot orange, cluster green, time window blue), and below what it holds: its sites (the places of its calls with how many failed at each, the most first: how many sites, then each one below on a line of its own, indented — *2 sites:* / *11 at Site 1154 (Vodafone)* / *4 at Site 3522 (Vodafone)* —, or *At Site 1154 (Vodafone)* when every call failed there; the first three, and every one on hover) and, at its bottom, as pills: how far its calls reach for a hotspot and a cluster (*within 310 m*, the circle the map of the call draws around them), how long it lasted for a hotspot and a time-window issue (*within 2 h 46 min*) and, last, its period for a hotspot and a time-window issue (from its first to its last call: *24 Sep 14:42–26 Sep 10:14*; a pill that does not fit goes on the line above), with how many calls it holds in a pill over its top right corner (*17 calls*); the hotspot card, which tells more, is wider than the others; hovering one also tells what it groups. A click on one filters the list of calls by its group after you confirm it, in place of any other group filtered (it stands out, tinted and ringed in its colour, with a *Filtering the list* tab on its top edge); a click on the group already filtered removes its filter after you confirm it. A call is in one of each at most. Every group keeps to one NR Mode, as the steps of the strategies take them: a hotspot and a time-window issue also to one campaign, and a cluster to its campaign and those of its Cluster period); beside them, **‹** and **›** go to the previous and next call of the list (with the position of the call, such as 12 of 1,268, turning the pages of the table when needed; when the filters change while a call is open, the table shows the page that holds it, so that they keep going through the calls of the filters), and **Go to a JOIN_ID…** opens the call of a JOIN_ID pasted there, whatever the filters (both ask first when the call has [changes not saved yet](#tabs-of-the-call)), and **Map** shows the [map of the call](#map-of-the-call). While a call is open the wheel scrolls only its details, never the page below them. On a short screen (a laptop, or a large zoom of the browser), where the header and the follow-up fields of the call leave its tabs little room, the whole panel scrolls, its tabs staying at the top while you scroll; on a large screen the header and the follow-up fields stay in place and only the tab scrolls. Across the bottom of the header, **Analyst fields** shows how many of the fields the analysts fill in the whole call have a value (Team, Analyst, Reviewer, Root Category and Root Cause of the header and every field of the analysts of its tabs but the Initial Classification of the RCA tab, marked **Analyst (Optional)**, with the changes not saved yet; the NQ Call Status and the Priority, set automatically, are not counted): a bar that is full, with *Complete* and a gold trophy (**All fields filled**, popping in as the last one is filled), once they all do, and the empty ones on hover; the counters follow the changes not saved yet; below it, **Header** counts those of the header and **Tabs**, above the tabs beside **Only the fields the analysts fill**, those of every tab together (dark green labels, with a check once complete), as each tab counts its own. The header is followed by its **NQ Call Status** (with **Auto** or **By hand**) and its **Priority** (given by the [NQ Prioritization](#nq-prioritization), **Auto**, until somebody chooses another one, **By hand**) on a line, then its team, analyst and reviewer on the next, the fields of the analysts added to the General section in Fields & Sections (saved as soon as they change; the **Unique ID** of the Previous NQ Analyses is not shown in the call, but kept and exported with it), Root Category and Root Cause (with the domain they give the call, and the recommendation while it has none), a **Prioritization Info** subpanel with the values of the [NQ Prioritization](#nq-prioritization) of the call, read only (the fields *From the NQ Prioritization* of Fields & Sections, in their order: Prioritization, Prioritization Rule, Prioritization Queue, Expected Gain, Scoring Impact, Scoring Points Lost, Scoring KPIs Lost, Repeated Issue, Repetitions, Repeated Campaigns and Repetition Place, these four of its repeated issue together on a row below the others, but the Hotspot ID, Time-Window ID and Cluster ID, which its Groups show; the Prioritization Rule, here and in the table, shows what its step takes, such as *SA Voice · Medium impact*, with the list of the step in a tag below it, **WEEKLY** for list 1 or **FINAL** for list 2, and its number in another beside that one, such as **STEP 3**), its phases in a **Phases** subpanel, one card per phase with its name above its value — **Map Analysis** (the place where the call failed, such as *Site 70086 (Vodafone)*, or *No position*), **RCA Identification** (the root category, or *Recommended* or *Not started*), **Failure Details** (*Not started*, *In progress* or *Completed* with how many of its fields of the analysts are filled in) and the first list field of the Analysis, Implementation and Planning sections, each in the colour of its section (a click opens its tab) — and who changed the call last.
+Analyse one call: click a row to open its details beside the table.
 
-Every field of the call shows **where its value comes from** in a small mark below its name (beside it in the header): a dot of its colour, as the cards of the [Filters](#filters), and the name of the source — **CDR** (blue) for the values of the CDR, **DT Analyzer RCA**, **NetCheck RCA** and **Ericsson RCA** (amber) for what each RCA found (their fields drop the name of the RCA from their own), **DT Analyzer** (violet) for what the tool fills (the NQ Call Status of the Status Rules, and once for the whole **Prioritization Info** subpanel) and **Analyst** (green) for what the analysts fill, also the fields the tool fills in or proposes a value for (filling them is still the analysts' decision): **Analyst (Suggested)** when the CDR proposes a value for the field of that call, such as Serving Cell when Failure, with the proposed value on hover. The value of every field takes the palette of its mark (a blue tint for the CDR, amber for the RCAs, violet for DT Analyzer and Prioritization Info, green for the analysts, also Team, Analyst, Reviewer and Root Category · Root Cause of the header and the Final Root Cause Decision, while the NQ Call Status and the Priority keep the colour of their value); the fields the analysts fill have a green pencil before their name and a dashed green border while they are empty, so what is still to be filled stands out. Above the tabs, **Source** lists the marks, each kind in a dashed frame of its colour (the three RCAs, the CDR, DT Analyzer, the analysts), and **Only the fields the analysts fill** leaves in the tabs only the fields of the analysts, hiding the subpanels left without them, such as those of the RCA sources (remembered in the browser).
+**The header of the call** shows:
+
+- **The call:** its service, result, CDR version, Operator, Campaign, time and place.
+- **`JOIN_ID`**, with a button that copies it.
+- **The IDs of the call in the provider's tools**, each with a button that copies it (— when the call has none): the `Session_ID_A` and `Session_ID_B` of a NetCheck voice or Speech call and the `Test_ID` and `Session_id` of a data test, which identify it in NetCheck CloudNM.
+- **Layer3 Logs:** the UEs of the call that have a session in the [Layer3 Logs](workspace-management.md#layer3-logs) of the workspace, when it has one.
+- **Groups:** its hotspot, its clusters and its time-window issue (see below).
+- **‹** and **›:** the previous and next call of the list, with the position of the call (such as 12 of 1,268), turning the pages of the table when needed. When the filters change while a call is open, the table shows the page that holds it, so that they keep going through the calls of the filters.
+- **Go to a JOIN_ID…:** opens the call of a JOIN_ID pasted there, whatever the filters. It and **‹** / **›** ask first when the call has [changes not saved yet](#tabs-of-the-call).
+- **Map:** shows the [map of the call](#map-of-the-call).
+
+**Groups of the call.** Its hotspot, its clusters, then its time-window issue, of 2 calls or more, on a row of their own across the header: the three on one row when they fit (each card wrapping its text), else on as many rows as they need, in that order.
+
+- **Each card:** what it is, its NR Mode and its ID in the [NQ Hotspots, Clustered & Time-Window Issues](#nq-hotspots-clustered-time-window-issues) panel (such as *Hotspot SA H-0C1BCE*), in the colour of its group on the map of the call (hotspot orange, cluster green, time window blue). The hotspot card, which tells more, is wider than the others; hovering a card also tells what it groups.
+- **Its sites:** the places of its calls with how many failed at each, the most first: how many sites, then each one on a line of its own, indented (*2 sites:* / *11 at Site 1154 (Vodafone)* / *4 at Site 3522 (Vodafone)*), or *At Site 1154 (Vodafone)* when every call failed there. The first three show, and every one on hover.
+- **Pills at its bottom:** how far its calls reach, for a hotspot and a cluster (*within 310 m*, the circle the map of the call draws around them); how long it lasted, for a hotspot and a time-window issue (*within 2 h 46 min*); and last its period, for a hotspot and a time-window issue (from its first to its last call: *24 Sep 14:42–26 Sep 10:14*). A pill that does not fit goes on the line above.
+- **Size:** how many calls it holds, in a pill over its top right corner (*17 calls*).
+- **Filter by a group:** a click on a card filters the list of calls by its group after you confirm it, in place of any other group filtered. The card stands out, tinted and ringed in its colour, with a *Filtering the list* tab on its top edge. A click on the group already filtered removes its filter after you confirm it.
+- **Rules:** a call is in one of each at most. Every group keeps to one NR Mode, as the steps of the strategies take them; a hotspot and a time-window issue also to one campaign, and a cluster to its campaign and those of its Cluster period.
+
+**Scrolling.**
+
+- **The wheel** scrolls only the details of the open call, never the page below them.
+- **On a short screen** (a laptop, or a large zoom of the browser), where the header and the follow-up fields leave the tabs little room, the whole panel scrolls, its tabs staying at the top.
+- **On a large screen** the header and the follow-up fields stay in place and only the tab scrolls.
+
+**Analyst fields**, across the bottom of the header, shows how many of the fields the analysts fill in the whole call have a value.
+
+- **What it counts:** Team, Analyst, Reviewer, Root Category and Root Cause of the header and every field of the analysts of its tabs, with the changes not saved yet. It leaves out the Initial Classification of the RCA tab, marked **Analyst (Optional)**, and the NQ Call Status and the Priority, set automatically.
+- **Complete:** once they all have a value the bar is full, with *Complete* and a gold trophy (**All fields filled**, popping in as the last one is filled). Hover it for the empty ones.
+- **Header and Tabs:** below it, **Header** counts those of the header and **Tabs**, above the tabs beside **Only the fields the analysts fill**, those of every tab together (dark green labels, with a check once complete), as each tab counts its own. The counters follow the changes not saved yet.
+
+**The follow-up fields**, below the header, in this order:
+
+1. **NQ Call Status** (with **Auto** or **By hand**) and **Priority** (given by the [NQ Prioritization](#nq-prioritization), **Auto**, until somebody chooses another one, **By hand**), on one line.
+2. **Team**, **Analyst** and **Reviewer**, on the next line.
+3. **The fields of the analysts added to the General section** in Fields & Sections, saved as soon as they change. The **Unique ID** of the Previous NQ Analyses is not shown in the call, but kept and exported with it.
+4. **Root Category** and **Root Cause**, with the domain they give the call, and the recommendation while it has none.
+5. **Prioritization Info:** the values of the [NQ Prioritization](#nq-prioritization) of the call, read only (see below).
+6. **Phases:** one card per phase, with its name above its value, each in the colour of its section; a click opens its tab (see below).
+7. **Who changed the call last.**
+
+**Prioritization Info** shows the fields *From the NQ Prioritization* of Fields & Sections, in their order: Prioritization, Prioritization Rule, Prioritization Queue, Expected Gain, Scoring Impact, Scoring Points Lost, Scoring KPIs Lost, Repeated Issue, Repetitions, Repeated Campaigns and Repetition Place.
+
+- **Repeated issue:** its four fields are together on a row below the others.
+- **Not shown here:** the Hotspot ID, Time-Window ID and Cluster ID, which its Groups show.
+- **Prioritization Rule** (here and in the table): what its step takes, such as *SA Voice · Medium impact*, with the list of the step in a tag below it (**WEEKLY** for list 1, **FINAL** for list 2) and its number in another beside it, such as **STEP 3**.
+
+**Phases:**
+
+| Phase | Value |
+| --- | --- |
+| **Map Analysis** | The place where the call failed, such as *Site 70086 (Vodafone)*, or *No position*. |
+| **RCA Identification** | The root category, or *Recommended* or *Not started*. |
+| **Failure Details** | *Not started*, *In progress* or *Completed*, with how many of its fields of the analysts are filled in. |
+| **Analysis**, **Implementation**, **Planning** | The first list field of each section. |
+
+**Where each value comes from.** Every field of the call shows its source in a small mark below its name (beside it in the header): a dot of its colour, as the cards of the [Filters](#filters), and the name of the source.
+
+| Mark | Colour | Values |
+| --- | --- | --- |
+| **CDR** | Blue | The values of the CDR. |
+| **DT Analyzer RCA**, **NetCheck RCA**, **Ericsson RCA** | Amber | What each RCA found. Their fields drop the name of the RCA from their own. |
+| **DT Analyzer** | Violet | What the tool fills: the NQ Call Status of the Status Rules, and once for the whole **Prioritization Info** subpanel. |
+| **Analyst** | Green | What the analysts fill, also the fields the tool fills in or proposes a value for (filling them is still the analysts' decision). |
+| **Analyst (Suggested)** | Green | The CDR proposes a value for the field of that call, such as Serving Cell when Failure; hover it for the proposed value. |
+
+- **Value colours:** the value of every field takes the palette of its mark: a blue tint for the CDR, amber for the RCAs, violet for DT Analyzer and Prioritization Info, green for the analysts. Team, Analyst, Reviewer and Root Category · Root Cause of the header and the Final Root Cause Decision are green too; the NQ Call Status and the Priority keep the colour of their value.
+- **Still to fill:** the fields the analysts fill have a green pencil before their name and a dashed green border while they are empty, so what is still to be filled stands out.
+- **Source**, above the tabs, lists the marks, each kind in a dashed frame of its colour (the three RCAs, the CDR, DT Analyzer, the analysts).
+- **Only the fields the analysts fill** leaves in the tabs only the fields of the analysts, hiding the subpanels left without them, such as those of the RCA sources (remembered in the browser).
 
 ### Tabs of the call
 
-Below, the tabs of the call on one line, raised buttons each in the colour of its section. The sections are the numbered steps of the analysis of a call, in their order and joined by a line (**1 Activity**, **2 Map Analysis**, **3 RCA**, **4 Failure Details**, **5 Analysis**, **6 Implementation & Planning**); **Call Details**, a reference rather than a step, closes the row after a separator, with an *i* instead of a number. The tab open is tinted in its colour, its number filled. Each tab counts, as *filled/total*, the fields of the analysts that already have a value (hover it to read it); the RCA tab shows ✓ once a root category or cause is chosen and ★ while a recommendation waits. Lists and Yes / No fields are chosen from the same coloured lists as in the table, as tall as the text boxes.
+The tabs of the call follow the steps of its analysis, on one line below the follow-up fields.
+
+- **Steps:** raised buttons, each in the colour of its section, numbered in their order and joined by a line: **1 Activity**, **2 Map Analysis**, **3 RCA**, **4 Failure Details**, **5 Analysis**, **6 Implementation & Planning**.
+- **Call Details:** a reference rather than a step, closes the row after a separator, with an *i* instead of a number.
+- **The tab open** is tinted in its colour, its number filled.
+- **Counters:** each tab counts, as *filled/total*, the fields of the analysts that already have a value (hover it to read it). The RCA tab shows ✓ once a root category or cause is chosen and ★ while a recommendation waits.
+- **Lists and Yes / No fields** are chosen from the same coloured lists as in the table, as tall as the text boxes.
 
 | Tab | Content |
 | --- | --- |
-| **Activity** (the General section) | The **Call Activity Log** of the call — a timeline of its comments with their author (by first and last name) and time and every change of status, team, analyst, root category, root cause or field with the previous and new values; a status moved by the Status Rules reads *The status followed the Status Rules…* after the change that moved it. Write in the comment box (it reaches the bottom of the panel when the activity leaves room) and press **Add Comment** or Ctrl+Enter to share a comment with every user of the workspace. Comments are written as they read, in the Markdown of the [descriptions and comments of Ticket Center](ticket-center.md#writing-descriptions-and-comments) (bullets, numbered lists, titles, bold, cards…), and accept up to 5000 characters; the Comments column of the table shows the latest one without its Markdown. |
+| **Activity** (the General section) | The **Call Activity Log**: a timeline of the comments of the call, with their author (by first and last name) and time, and every change of status, team, analyst, root category, root cause or field with the previous and new values. A status moved by the Status Rules reads *The status followed the Status Rules…* after the change that moved it. Below, the comment box (see below). |
 | **Map Analysis** | The [map of the call](#map-of-the-call): where it failed, its cells and sites, the sites and Non-Qualified Calls around and the RSRP / SINR of the tests around. |
-| **RCA** | First the **Analysts** subpanel, with their **Initial Classification** (the fields of the analysts of the section, such as Initial Root Category and Initial Root Cause, saved with **Save RCA**) and their **Final Root Cause Decision** — the selected Root Category and Root Cause, the recommendation with its confidence and the sources that agree on it (**Accept** sets it), and a card per source with what it says (the rule of the DT Analyzer RCA first, then the NetCheck category → subcategory and the Ericsson RCA category → cause) and the catalog values it maps to — a source with evidence shows **See the evidence ↓**, centred just above the divider of that footer (the dividers of every card stay aligned), which scrolls to its evidence in the subpanel of the source below and highlights it, instead of repeating it — with **Use as Final Decision** (green, centred at its foot) to make them the final Root Category and Root Cause. Then, below **Values of the RCA sources**, a subpanel per source named after it — **DT Analyzer RCA** first, then the **NetCheck RCA** fields and the **Ericsson RCA** (a workspace moves its DT Analyzer RCA fields before the others once, and Fields & Sections can change their order) — with four values per row (each pair of the Ericsson RCA on one row), read only, and last the other columns of the Ericsson RCA file of the call, their names in the colour of the Ericsson RCA. |
-| **Failure Details**, **Analysis** and **Implementation & Planning** | The fields of each section (Implementation and Planning in one tab, each in its own subpanel), with their description when you hover them; Failure Details starts with **Map of the call**, which opens the [map of the call](#map-of-the-call) larger, and also shows the **Last Cell ID** (the last cell of the Cell ID chain of the CDR, where the call ended) and the **Failure Comment** NetCheck writes in the CDR. Editors change the fields of the analysts; an empty field that proposes a CDR value (for example Failure Latitude and Longitude) offers **Use the CDR value**. Fields from the CDR, the Ericsson RCA, the DT Analyzer RCA or derived from the call are shown read only, with their source. |
+| **RCA** | The **Analysts** subpanel, then the **Values of the RCA sources** (see below). |
+| **Failure Details**, **Analysis** and **Implementation & Planning** | The fields of each section (Implementation and Planning in one tab, each in its own subpanel), with their description when you hover them. Failure Details starts with **Map of the call**, which opens the [map of the call](#map-of-the-call) larger, and also shows the **Last Cell ID** (the last cell of the Cell ID chain of the CDR, where the call ended) and the **Failure Comment** NetCheck writes in the CDR. Editors change the fields of the analysts; an empty field that proposes a CDR value (for example Failure Latitude and Longitude) offers **Use the CDR value**. Fields from the CDR, the Ericsson RCA, the DT Analyzer RCA or derived from the call are shown read only, with their source. |
 | **Call Details** (in grey) | **Map of the call**, which opens the [map of the call](#map-of-the-call) larger, then the CDRs that contain the call (when there are several), the main fields of the call (with its `JOIN_ID`, root domain, category and cause), its location (opened in OpenStreetMap) and its CDR, followed by every non-empty field of the original CDR row, which you can filter by name or value. |
+
+**Comment a call** (Activity tab):
+
+1. Write in the comment box. It reaches the bottom of the panel when the activity leaves room.
+2. Press **Add Comment**, or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Enter</kbd>, to share it with every user of the workspace.
+
+- **Format:** comments are written as they read, in the Markdown of the [descriptions and comments of Ticket Center](ticket-center.md#writing-descriptions-and-comments) (bullets, numbered lists, titles, bold, cards…); see the keys in [Tips & shortcuts](#tips-shortcuts).
+- **Length:** up to 5000 characters.
+- **In the table:** the Comments column shows the latest one without its Markdown.
+
+**The RCA tab:**
+
+- **Analysts** subpanel:
+  - **Initial Classification:** the fields of the analysts of the section, such as Initial Root Category and Initial Root Cause, saved with **Save RCA**.
+  - **Final Root Cause Decision:** the selected Root Category and Root Cause, and the recommendation with its confidence and the sources that agree on it (**Accept** sets it).
+  - **A card per source** with what it says (the rule of the DT Analyzer RCA first, then the NetCheck category → subcategory and the Ericsson RCA category → cause) and the catalog values it maps to, with **Use as Final Decision** (green, centred at its foot) to make them the final Root Category and Root Cause.
+  - **See the evidence ↓**, on a source with evidence, centred just above the divider of that footer (the dividers of every card stay aligned): it scrolls to its evidence in the subpanel of the source below and highlights it, instead of repeating it.
+- **Values of the RCA sources:** a subpanel per source, named after it: **DT Analyzer RCA** first, then the **NetCheck RCA** fields and the **Ericsson RCA**. A workspace moves its DT Analyzer RCA fields before the others once, and Fields & Sections can change their order.
+  - Four values per row (each pair of the Ericsson RCA on one row), read only.
+  - Last, the other columns of the Ericsson RCA file of the call, their names in the colour of the Ericsson RCA.
 
 **Save** in any tab saves the changed fields of every tab together; the sections tell how many changes are unsaved.
 
-Changes not saved yet are never lost without asking: leaving a tab that has any (fields changed, or in Activity a comment not posted or being edited), closing the call (with **×**, Escape or a click outside it) and going to another call (**‹**, **›**, **Go to a JOIN_ID…** or a Speech sample) ask first, saying what is pending: **Save** saves it (and posts the comment) and goes on, **Discard** drops it and goes on, and **Continue Editing** (or Escape) stays where you were.
+**Changes not saved yet are never lost without asking.** These ask first, saying what is pending:
+
+- Leaving a tab that has any (fields changed, or in Activity a comment not posted or being edited).
+- Closing the call (with **×**, <kbd>Esc</kbd> or a click outside it).
+- Going to another call (**‹**, **›**, **Go to a JOIN_ID…** or a Speech sample).
+
+| Answer | What happens |
+| --- | --- |
+| **Save** | Saves it (and posts the comment) and goes on. |
+| **Discard** | Drops it and goes on. |
+| **Continue Editing** (or <kbd>Esc</kbd>) | Stays where you were. |
 
 > [!TIP]
-> **Long texts read as bullets, also while they are edited.** The Description, the Findings, the Proposed Measure and the other long texts show each line as a bullet, nested under the line above it as deep as it is indented (a dot, then a circle, then a square), a short line ending with a colon, or followed by a list, that is not indented (*Problem Statement:*) as the title of the lines below it, and a line of dashes (*------Jorge------*) as a divider with its text. They are written in Markdown, as the [descriptions and comments of Ticket Center](ticket-center.md#writing-descriptions-and-comments), so they also take numbered lists at any level, headings, bold, italic, cards (`> [!TIP]`) and code. A click places the caret in the text, which stays as it reads: while it has the focus its toolbar shows above it and it grows taller (the Description and the Findings, one below the other, the tallest; the Proposed Measure two lines); **Tab** nests a line and **Enter** goes on at its level. An empty text shows a guide in grey of how to write it until you type. The long texts from the CDR or the Ericsson RCA read the same way.
+> **Long texts read as bullets, also while they are edited.** The Description, the Findings, the Proposed Measure and the other long texts are written in Markdown, as the [descriptions and comments of Ticket Center](ticket-center.md#writing-descriptions-and-comments).
+
+- **Bullets:** each line shows as a bullet, nested under the line above it as deep as it is indented (a dot, then a circle, then a square).
+- **Titles:** a short line that is not indented and ends with a colon, or is followed by a list (*Problem Statement:*), is the title of the lines below it.
+- **Dividers:** a line of dashes (*------Text------*) is a divider with its text.
+- **More formats:** numbered lists at any level, headings, bold, italic, cards (`> [!TIP]`) and code.
+- **Editing:** a click places the caret in the text, which stays as it reads. While it has the focus its toolbar shows above it and it grows taller (the Description and the Findings, one below the other, the tallest; the Proposed Measure two lines). <kbd>Tab</kbd> nests a line and <kbd>Enter</kbd> goes on at its level.
+- **Empty text:** shows a guide in grey of how to write it until you type.
+- **From the CDR or the Ericsson RCA:** the long texts read the same way.
 
 For a Speech call, **Call Details** starts with its **Speech Samples**: its Non-Qualified samples with their result, failure, status, root category and cause and comments; open one to follow it up on its own (status, team, analyst, root cause, fields and comments), and **‹ Back to the call** returns to the call.
 
 ### Map of the call
 
-The **Map Analysis** step of the call, and **Map** in its header, show, in place of the follow-up fields above the tabs (so the map takes their height), the map of the area where the call failed on OpenStreetMap, with what helps its analysis; **Map** pressed again returns to the tab shown before. **Map of the call** in Failure Details and Call Details opens the same map larger at once. The map follows the call shown: **‹**, **›**, **Go to a JOIN_ID…** and **Open** of a call around it show the map of that call.
+See where a call failed and what was around it, on OpenStreetMap.
+
+- **Open it:** the **Map Analysis** step of the call, or **Map** in its header, shows the map in place of the follow-up fields above the tabs (so the map takes their height). **Map** pressed again returns to the tab shown before.
+- **Open it larger at once:** **Map of the call** in Failure Details and Call Details.
+- **It follows the call shown:** **‹**, **›**, **Go to a JOIN_ID…** and **Open** of a call around it show the map of that call.
+
+**Navigation** — as the maps of [Network Insights](network-insights.md#coverage-and-interference-maps) (all the gestures in [Tips & shortcuts](#tips-shortcuts)):
+
+| To… | Do this |
+| --- | --- |
+| Move the map | Drag it (also with the middle button). On a phone or tablet: one finger. |
+| Zoom towards the pointer | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + wheel, or a pinch of the trackpad. The wheel alone scrolls the call, and a note says how to zoom. On a phone or tablet: pinch with two fingers, which zooms towards their middle and also moves the map. |
+| Zoom into an area | <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + drag a rectangle. |
+| Measure a distance and its bearing | <kbd>Alt</kbd>/<kbd>Option</kbd> + drag. It opens the **elevation profile** of the ground between its ends (see below). |
+| Zoom out, in, or fit | **−**, **+** and **Fit**, at the top right. **Fit** shows the whole radius and the shapes of its groups, and every NQ call of its groups and of its site wherever it is. |
+| Open it larger | Double-click it (on a phone or tablet, double tap). <kbd>Esc</kbd> or a click outside closes it. |
+| Read an element | Hover it. |
+| Choose an element | Click it: its panel opens (see below). A click beside every element keeps the one chosen; its **×** closes it. |
+
+**The larger map:**
+
+- **Title:** its call type (*Voice*, *WhatsApp*, *Data* or *Ping*) as a pill above the title (its operator, campaign and `JOIN_ID`); the title of its images names the call type too.
+- **Zoom:** the wheel alone zooms too, and a double-click (or double tap) zooms in.
+- **Panel of the element chosen:** it floats on the right, off the cards; drag its title anywhere over the map, where it stays for the next element chosen. On the map in the call it shows below the map.
+
+**Elevation profile**, as Google Earth shows it, in a panel over the bottom of the map:
+
+- **Figures:** the elevation along the distance, its start and end, lowest and highest point, its climb and descent and its steepest slope.
+- **Hover it:** the distance, elevation and slope of each point, marked on the map.
+- **Fold it:** a click anywhere on its header folds it to its figures or unfolds it.
+- **Clear it:** a click on the map, <kbd>Esc</kbd>, its **×**, or <kbd>Alt</kbd>/<kbd>Option</kbd> + click without moving.
+- **Source:** the elevation comes from the Terrain Tiles of AWS Open Data.
+
+**The panel of the element chosen:**
+
+| Element | What its panel shows |
+| --- | --- |
+| **The call** | Its call type, operator, campaign, the sites where it started and ended and, below them, its cells. |
+| **A Non-Qualified Call** | Its call type (Voice, WhatsApp, Data or Ping), operator, campaign, how it relates to the call (its groups, a cluster or a time-window issue of its hotspot, and whether it joins a cluster to a time-window issue), how far it is, the sites where it started and ended (those of its first and last cells; for its start, else, the serving site the CDR gives) and, below them, its cells, and **Open this call**. |
+| **A site** | Its operator (as the Operator Maps name the operator of its network) and its vendor first, then its role in the call and its cells, with every cell (technology, band, channel, PCI, azimuth, beamwidth, state and its role in the call). |
+| **A cell** (hover its sector) | Its operator and vendor first, then its role in the call, site, identity, technology and band, channel, PCI, azimuth, beamwidth, height and state; the same order on NQ Maps. |
+| **A test** | The campaign and CDR it comes from and its RSRP and SINR. |
+
+The cells of the call and of each Non-Qualified Call are its **Start cell** and **End cell** (its **Serving cell** when one served all of it), its **Handover cells** on a line of their own and the NR cell of an NSA call. Those of the operator of the call are named by their inventory name (such as *70002-L3 (LTE B3)*), the others by technology, band and identity (*LTE B20 · 30001001*, *GSM 900 · LAC 876 · CI 37171*).
+
+**Above the map** (and above the larger map), on one line:
+
+| Control | What it does |
+| --- | --- |
+| **Radius** | 500 m to 10 km: chooses the area. A call opens with the radius that holds every NQ call of its hotspot and its cluster (rounded up to 100 m, marked *(groups)* in the list), or with 1 km when it is in neither. The radius chosen holds while the call stays open. |
+| **Colour NQ calls by** | What their colour tells: *Site*, *Call type*, *Root cause domain*, *Campaign* or *Operator* (each operator in the colour the [Operator Maps](workspace-config.md#operator-maps) give it), as on NQ Maps. |
+| **And Group** | A switch, when the call is of a group: the outlines of its groups. |
+| **Operators** | The NQ calls of its operator only, of the Focus operators of the [Operator Maps](workspace-config.md#operator-maps) (**Focus operators only**, the default when the workspace has some; its tooltip names them) or of every operator. |
+| **Call types** | The call types of the NQ calls around (*Voice*, *WhatsApp*, *Data*…), every one checked by default: only those checked are drawn, counted in the card over the map and listed; the call itself always. Your browser keeps the choice. |
+| **Map** | The map under the layers (see below). |
+
+Your choices (except the radius) are kept in your browser for the next calls.
+
+**What the map shows:**
 
 | On the map | What it shows |
 | --- | --- |
-| **This call** | A pin where it failed (where it ended), taller than its mark of NQ call with all the outlines of its groups so that it is seen first, and its estimated way (its switch **Way of the call (estimated)** in the section Route of CDR Info) drawn as a winding road in its colour, with a white edge, a dashed white centre line and an arrow towards where it went (its bends are a sketch, not the streets it took; hovering it tells how far it went, how long it lasted and which way it took), with **START** (green) where it started and **END** (red) where it ended, beside them. A Voice call gives where it started (a green dot) and where it ended: its road joins them. A Data test gives only where it started and how far it went (its `Test_Distance`): its pin marks where it started (*This test (where it started; it failed on its way)*) and its road is simulated, those metres from where it started along the way of its car (towards its tests after it, else on from the one before it, straight on past them), with the arrow where it ended; when the way of its car is unknown, a dashed circle of that distance around where it started marks the zone where it went. **The drive of its car**, estimated too (its own switch **Drive of its car (estimated, 15 min before and after)**, beside that of the way of the call), goes on around it as grey roads from test to test, each with an arrow towards where it was heading, through the tests of its drive (see *Its drive* below) that a car could have driven to one after the other (at up to about 145 km/h, so that those of another car measuring nearby at the same time are left out), joined to the road of the call: the one from its test before it ends where the call started and the one to its next test starts where it ended (hovering one tells from where to where, how long before or after and how far). The radius around it is dashed. |
-| **Cells of the call** | Each cell of its Cell ID trace, in order (*Served the start*, *Handover*, *Served the end*, or *Served the whole call*), with the PCI the CDR gives it; a cell the trace repeats in a row (a new TAC, or a moment on a cell without identity it came back from) is one cell, never a handover; each at its site of the Network Inventory: the cell of a network that serves its operator ([Serving Networks](workspace-config.md#serving-networks), its own network first) nearest to where it served the call within the distance of the Serving Networks (30 km by default), else, farther, the one with the PCI and channel the CDR gives it (an identity alone farther may be another cell with that number, while a cell on a high mast serves a call on high ground from much farther): its label then says how far it is (*N54810231 (LTE B20) · 36.5 km away*) and the Diagnosis judges its serving distance. **Cells of the call** and its tooltips (on its site, its sector and its handover arrows) say why such a far cell is the real one: its ECI (NCI), PCI and EARFCN (NR-ARFCN) are those of the CDR and of that cell in the Network Inventory, and, when the call has Layer3 Logs, that they measured that PCI and channel too. A solid line joins where the call started to the cell of its start (green) and where it failed to the cell of its end, or of the whole call (red), and each **handover** is a cyan arrow from the cell before it to the cell after it, numbered with the order of that cell (as the **Cells of the call** list and the badges of the sites): from sector to sector when the map shows the sectors (from zoom level 14, with **Sites** on), else from the side of each site where its cell points; the arrows between the same two cells (back and forth) go side by side, and hovering the number of an arrow tells the cells and sites it joins. Every line has a white edge, so it shows over the shapes of the groups, and two lines with the same ends go side by side. The CDR does not record where each handover took place: a dashed ring numbered as its arrow marks beside the road of the call (on its left, away from the direction arrows of the logs) where each one took place, with its own switch **Handovers on its way (estimated)** in the section Route of CDR Info and on the real way of the UE when its log draws it, an estimate by the time the call spent on each band (its RAT timeline: that of the A side of a Voice call, the PCell one of a Data test; the cells of a band sharing its time, at an even speed), or spread evenly in their order when that timeline does not match its cells; on a Data test they lie on its simulated way, and it has none without one. A badge with its order marks the site and its sector is drawn in the colour of its role, at every zoom level, the cells of its start and of its end named at the tip of their sector. The site where it started is ringed in green and the one where it ended (where it failed) in red, both rings when one site served all of it. When the inventory does not hold the cell of its start or of its end near the call (the 2G and 3G cells, which the Network Inventory does not list, or a cell missing from it within that distance), the dashed ring marks the nearest site of those networks to where it started or failed, an estimate the legend names as such, and a note above the map names its cells as the CDR gives them (such as *GSM 900 · LAC 876 · CI 37171*). The legend lists only the roles the cells of the call have: a call served by one cell has no start line nor handover arrow. An NSA call of a Data CDR adds its **NR leg (by PCI)**: the NR cell with its NR PCI (and NR-ARFCN) on the site of its LTE anchor, else the nearest within 5 km. |
-| **Sites** | The inventory sites of the networks that serve its operator within the radius (and those of its cells wherever they are), as triangles in the colour of their vendor ([Vendor Maps](workspace-config.md#vendor-maps)), the sites where the call started and ended ringed (see above), their sectors (azimuth and beamwidth) drawn from zoom level 14 and their Site ID from level 15 (those where the call started and ended at every level). A dashed sector marks a cell with the PCI and channel of a cell of the call (a PCI collision or confusion to check). |
-| **NQ calls** | The other Non-Qualified Calls around it (their latest version), as stars (the diamonds are the PCIs and signalling of the logs), larger than on NQ Maps: those of its [groups](#nq-hotspots-clustered-time-window-issues) and of the other clusters and time-window issues of its hotspot, those of its operator at its **site** (always and wherever they are: the site counts every campaign, NR Mode and call type, while a hotspot and a time-window issue keep to its campaign and NR Mode and a cluster to its NR Mode, its campaign and those of the Cluster period, without the Ping tests) and the others of the operators chosen in **Operators**. **Colour NQ calls by** chooses what their colour tells, as on [NQ Maps](#nq-maps): *Site* (the default: the site their CDR gives, each in a colour of its own and those of the site of the call in burgundy; the legend names the twelve sites with most NQ calls, the site of the call first), *Call type*, *Root cause domain* (the one decided, else that of the DT Analyzer RCA), *Campaign* or *Operator*. **And Group**, a switch beside it when the call is of a group, adds over that colour an outline in the shape of the NQ call (a star) for each group of the call it is of, in the colour of the group: its **cluster** green innermost, then its **time-window issue** blue outside it, each that of the call alone (the calls the card over the map counts *in its cluster* and *in its time window*, not the other clusters and time-window issues of its hotspot, unless one of them filters the list; a call of both has two outlines; never its hotspot, which every NQ call of its groups is of); each group has its own switch in **CDR Info**, which shows or hides its shapes on the map and its outlines. When the list of calls is filtered by its cluster or its time-window issue (with its card in the header or its ID in the panel), the map shows that group alone, with its shape: the calls of its other groups, their shapes and the hotspot zone leave it, and the legend names the group. The calls on one point make one mark with how many they are (*×11*), its colour that of the most related one. The legend shows only what the map shows. Their campaigns are those of **Campaigns**, at the top of the card **CDR Info** (see below). The map leaves out the Ping tests, as NQ Maps does, and everything of the other NR Mode (NSA and SA fail along different paths): its NQ calls and its samples (no group joins both NR Modes). |
-| **Groups and hotspot zone** | Its groups as the Groups slide of the presentation draws them, in the legend under **Groups of the call**: a green circle around the NQ calls of each cluster (lighter than the green of the site where the call started) and a blue ellipse along those of each time-window issue that make its hotspot, its own whole (a cluster with the calls of the campaigns of its Cluster period) and bolder, those of the other calls of its hotspot with its calls (the other clusters and time windows dashed). Each shape is the smallest that holds its calls, so every NQ call of its groups is inside one (a call of its hotspot in neither takes a circle of the whole hotspot), the call itself too where it failed. A dashed line joins the failures of each time-window issue in their order, each within the Time window and the Time-window distance of the one before, and a badge in its colour numbers them (1, 2, 3…): the line of its own time window is blue and that of each other one of its hotspot has a colour of its own, as the legend lists them, so that crossing lines can be told apart; **Time-window paths**, a switch of the card **CDR Info**, shows or hides the lines and their numbers (the browser remembers the choice). Its hotspot is the zone in orange that they make together, outlined by a wide orange edge between two white ones so that its final area stands out (the lines of the groups and of the zone go over the sectors of the sites, so that none hides them); a small card over the bottom left of the map counts the **NQ calls on the map** (the call itself too) and how many are **in its hotspot**, **in its cluster** and **in its time window**: their envelope with the **Hotspot join** OR of the [Prioritization Rules](#prioritization-rules), where its clusters and its time-window issues meet with AND. The legend lists its own shapes with their calls and size (*Its cluster: 5 NQ calls within 134 m*, *Its time window: 4 NQ calls along 616 m*), how many of the other calls of its hotspot and the zone. |
+| **This call** | A pin where it failed, its estimated way and the drive of its car (see below). The radius around it is dashed. |
+| **Cells of the call** | Each cell of its Cell ID trace at its site, the lines to them and its handovers (see below). |
+| **Sites** | The inventory sites of the networks that serve its operator within the radius (and those of its cells wherever they are), as triangles in the colour of their vendor ([Vendor Maps](workspace-config.md#vendor-maps)). The sites where the call started and ended are ringed (see below). Their sectors (azimuth and beamwidth) are drawn from zoom level 14 and their Site ID from level 15 (those where the call started and ended at every level). A dashed sector marks a cell with the PCI and channel of a cell of the call (a PCI collision or confusion to check). |
+| **NQ calls** | The other Non-Qualified Calls around it, as stars (see below). |
+| **Groups and hotspot zone** | Its clusters, time-window issues and hotspot, as the Groups slide of the presentation draws them (see below). |
 | **RSRP / SINR (from CDR samples)** | The tests around it, completed or not, with their LTE RSRP, LTE SINR, NR RSRP or NR SINR (the average of the test) in the [Map Levels](#map-levels) of the workspace (by default the levels of the [Network Insights maps](network-insights.md#coverage-and-interference-maps), with *Extremely poor* below −120 dBm), the same as those of the [Layer3 Logs](#layer3-logs-on-the-map), or their result. The legend titles each measure shown with its unit (*LTE RSRP (dBm)*, *LTE SINR (dB)*, *NR RSRP (dBm)*, *NR SINR (dB)*) and gives its levels without it. They start hidden: each measure has its switch in the card **CDR Info**, with how many tests have it, in the shapes of the layers of the KMZ files (a circle for RSRP, an inverted triangle for SINR, a square for the result; NR with a black dot), several at once side by side at each test. Their CDRs are those of **Campaigns** (see below). |
 
-Above the map (and above the larger map), on one line, **Radius** (500 m to 10 km) chooses the area: a call opens with the radius that holds every NQ call of its hotspot and its cluster (rounded up to 100 m, marked *(groups)* in the list), or with 1 km when it is in neither, and the radius chosen holds while the call stays open; **Colour NQ calls by** what their colour tells (*Site*, *Call type*, *Root cause domain*, *Campaign* or *Operator*, each operator in the colour the [Operator Maps](workspace-config.md#operator-maps) give it, as on NQ Maps), **And Group** the outlines of its groups (a switch, when it is of one) and **Operators** those of its operator only, of the Focus operators of the [Operator Maps](workspace-config.md#operator-maps) (**Focus operators only**, the default when the workspace has some; its tooltip names them) or of every operator, **Call types** the call types of the NQ calls around (*Voice*, *WhatsApp*, *Data*…, every one checked by default: only those checked are drawn, counted in the card over the map and listed, the call itself always; your browser keeps the choice), and **Map** the map under the layers (see below).
+**This call:**
 
-Two cards side by side over the top left of the map (one below the other on a narrow map), folded each time a map opens, switch what it shows by where it comes from, each with a switch in its header for all of it (a click anywhere on its header folds or unfolds it, and a click outside it, on the map or on the other card, folds it) and its layers in sections, all unfolded at first, that fold with a click on their header (the browser remembers which):
+- **Pin:** where it failed (where it ended), taller than its mark of NQ call with all the outlines of its groups, so that it is seen first.
+- **Its way (estimated)** (switch **Way of the call (estimated)** in the section Route of **CDR Info**): a winding road in its colour, with a white edge, a dashed white centre line and an arrow towards where it went, with **START** (green) where it started and **END** (red) where it ended, beside them. Its bends are a sketch, not the streets it took; hovering it tells how far it went, how long it lasted and which way it took.
+- **A Voice call** gives where it started (a green dot) and where it ended: its road joins them.
+- **A Data test** gives only where it started and how far it went (its `Test_Distance`). Its pin marks where it started (*This test (where it started; it failed on its way)*), and its road is simulated: those metres from where it started along the way of its car (towards its tests after it, else on from the one before it, straight on past them), with the arrow where it ended. When the way of its car is unknown, a dashed circle of that distance around where it started marks the zone where it went.
+- **The drive of its car (estimated)** (its own switch **Drive of its car (estimated, 15 min before and after)**, beside that of the way of the call): grey roads from test to test around it, each with an arrow towards where it was heading.
+  - It goes through the tests of its drive (see *Its drive* below) that a car could have driven to one after the other, at up to about 145 km/h, so that those of another car measuring nearby at the same time are left out.
+  - It joins the road of the call: the road from its test before ends where the call started, and the road to its next test starts where it ended.
+  - Hovering a road tells from where to where, how long before or after and how far.
 
-- **CDR Info**: **Campaigns**, at its top, chooses the campaigns of everything the map draws from the CDRs (its NQ calls and their list, the RSRP / SINR samples, the **Radio around the call**, the Diagnosis hints and its drive, the drive of its car and **Its drive**): *Selected campaigns* (the default: every CDR of the campaigns chosen in the Campaign filter of the page, of every campaign while none is chosen) or *Call campaign* (every CDR of its campaign), always of the NR Mode of the call and Voice, Speech and Data CDRs together; the Diagnosis hints and the Decisions at its place count the NQ calls of every campaign. Then its sections: **RSRP / SINR** (the samples of the CDRs, see above), **NQ calls** (the NQ calls around and its groups when it has them: **Hotspot zone**, **Clusters**, **Time windows** and **Time-window paths**, each switching its shapes on the map and its outlines on the NQ calls), **Sites** (when a Network Inventory places them: **Sites**, **Start and end cells**, the solid lines from where it started and failed to the cells of its start and end, and the dotted one to the NR cell of an NSA call, and **Cell path**, its cells and handover arrows) and **Route** (its way and that of its car), each layer with its switch and how many it shows.
-- **LOGS Info**: the layers of its [Layer3 Logs](#layer3-logs-on-the-map), when it has some.
+**Cells of the call:**
 
-The legend waits folded in the **Legend** card over the bottom right of the map: a click on its header unfolds it upwards over the map (above the panels over its bottom and below the zoom buttons, scrolling when it is longer; in the images of the map while it is unfolded). It has a box for each: **CDR Info** and **LOGS Info**. Unfolded, **CDR Info** and **LOGS Info** open wide in a row of their own below the folded card, which stays where it was (CDR Info with its sections in three columns: RSRP / SINR, Sites & Cells with Route below it, and NQ calls). The three cards — **CDR Info**, **LOGS Info** and **Legend** — float once unfolded: dragging the header moves the card over the map (a click on it still folds it), dragging its corner (the bottom right one of CDR Info and LOGS Info, the top left one of Legend) makes it smaller or larger, and the **restore** button of its header, shown once it was moved or resized, puts it back in its place with its own size. A click outside folds it back in its place, keeping the size it was given while the map is open — unless the **pin** of its header pins it: then it stays unfolded, also on the next maps (kept in your browser), until a click on its header folds it. **Map**, at the right end of the controls above the map, chooses the map under the layers, the same on every map of the page: *OpenStreetMap (original)*, *OpenStreetMap in grey (light)* (the default: its streets under a white veil, so that the samples, events and calls stand out), *Plain (no labels)*, *Terrain (elevation)* (contour lines and hill shading, OpenTopoMap), *Topographic*, *Satellite* and *Dark* (Esri). Your choices (except the radius) are kept in your browser for the next calls.
+- **Each cell of its Cell ID trace, in order:** *Served the start*, *Handover*, *Served the end*, or *Served the whole call*, with the PCI the CDR gives it. A cell the trace repeats in a row (a new TAC, or a moment on a cell without identity it came back from) is one cell, never a handover.
+- **Where each cell is placed:** at its site of the Network Inventory. It is the cell of a network that serves its operator ([Serving Networks](workspace-config.md#serving-networks), its own network first) nearest to where it served the call, within the distance of the Serving Networks (30 km by default).
+- **Far cells:** else, farther, the cell with the PCI and channel the CDR gives it. An identity alone farther may be another cell with that number, while a cell on a high mast serves a call on high ground from much farther. Its label then says how far it is (*N54810231 (LTE B20) · 36.5 km away*) and the Diagnosis judges its serving distance.
+  - **Why it is the real one:** **Cells of the call** and its tooltips (on its site, its sector and its handover arrows) say it: its ECI (NCI), PCI and EARFCN (NR-ARFCN) are those of the CDR and of that cell in the Network Inventory, and, when the call has Layer3 Logs, they measured that PCI and channel too.
+- **Lines:** a solid line joins where the call started to the cell of its start (green), and where it failed to the cell of its end, or of the whole call (red).
+- **Handover arrows:** each **handover** is a cyan arrow from the cell before it to the cell after it, numbered with the order of that cell (as the **Cells of the call** list and the badges of the sites).
+  - From sector to sector when the map shows the sectors (from zoom level 14, with **Sites** on), else from the side of each site where its cell points.
+  - The arrows between the same two cells (back and forth) go side by side; hovering the number of an arrow tells the cells and sites it joins.
+  - Every line has a white edge, so it shows over the shapes of the groups, and two lines with the same ends go side by side.
+- **Where each handover took place (estimated):** the CDR does not record it. A dashed ring numbered as its arrow marks it beside the road of the call (on its left, away from the direction arrows of the logs), with its own switch **Handovers on its way (estimated)** in the section Route of **CDR Info**, and on the real way of the UE when its log draws it.
+  - It is estimated by the time the call spent on each band (its RAT timeline: that of the A side of a Voice call, the PCell one of a Data test; the cells of a band sharing its time, at an even speed), or spread evenly in their order when that timeline does not match its cells.
+  - On a Data test they lie on its simulated way; it has none without one.
+- **Sites of the cells:** a badge with its order marks the site, and its sector is drawn in the colour of its role, at every zoom level; the cells of its start and of its end are named at the tip of their sector. The site where it started is ringed in green and the one where it ended (where it failed) in red, both rings when one site served all of it.
+- **Cells not in the inventory:** when the inventory does not hold the cell of its start or of its end near the call (the 2G and 3G cells, which the Network Inventory does not list, or a cell missing from it within that distance), the dashed ring marks the nearest site of those networks to where it started or failed, an estimate the legend names as such. A note above the map names its cells as the CDR gives them (such as *GSM 900 · LAC 876 · CI 37171*).
+- **Legend:** it lists only the roles the cells of the call have; a call served by one cell has no start line nor handover arrow.
+- **NR leg (by PCI):** an NSA call of a Data CDR adds the NR cell with its NR PCI (and NR-ARFCN) on the site of its LTE anchor, else the nearest within 5 km.
 
-The map navigates like the maps of [Network Insights](network-insights.md#coverage-and-interference-maps): drag to move it, **Ctrl/Cmd + wheel** (or a pinch of the trackpad) to zoom towards the pointer, on a phone or tablet two fingers pinching it to zoom towards their middle (which also moves it) and one finger moving it (the wheel alone scrolls the call, and a note says how to zoom), Ctrl/Cmd + drag a rectangle to zoom into it, Alt/Opt + drag to measure a distance and its bearing with the **elevation profile** of the ground between its ends, as Google Earth shows it (a panel over the bottom of the map with the elevation along the distance, its start and end, lowest and highest point, its climb and descent and its steepest slope; hovering it tells the distance, elevation and slope of each point and marks it on the map; the elevation comes from the Terrain Tiles of AWS Open Data; a click anywhere on its header folds it to its figures or unfolds it; a click on the map, Escape or its **×** clears it), and **−**, **+** and **Fit** (the whole radius and the shapes of its groups, and every NQ call of its groups and of its site wherever it is) at its top right. A **double-click** (a double tap on a phone or tablet) opens it larger, with its call type (*Voice*, *WhatsApp*, *Data* or *Ping*) as a pill above its title (its operator, campaign and `JOIN_ID`; the title of its images names the call type too), where the wheel alone zooms too and a double-click (or double tap) zooms in. Hovering an element shows its details; a click chooses it and opens its panel (below the map; over the larger map it floats on the right, off the cards, and its title drags it anywhere over the map, where it stays for the next element chosen): the call (with its call type, operator, campaign, the sites where it started and ended and, below them, its cells), a Non-Qualified Call with its call type (Voice, WhatsApp, Data or Ping), operator, campaign, how it relates to the call (its groups, a cluster or a time-window issue of its hotspot, and whether it joins a cluster to a time-window issue), how far it is, the sites where it started and ended (those of its first and last cells; for its start, else, the serving site the CDR gives) and, below them, its cells, and **Open this call**, a site (its operator, as the Operator Maps name the operator of its network, and its vendor first, then its role in the call and its cells) with every cell (technology, band, channel, PCI, azimuth, beamwidth, state and its role in the call), a cell (hovering its sector: its operator and vendor first, then its role in the call, site, identity, technology and band, channel, PCI, azimuth, beamwidth, height and state; the same order on NQ Maps) or a test with the campaign and CDR it comes from and its RSRP and SINR. The cells of the call and of each Non-Qualified Call are its **Start cell** and **End cell** (its **Serving cell** when one served all of it), its **Handover cells** on a line of their own and the NR cell of an NSA call, by their inventory name for those of the operator of the call (such as *70002-L3 (LTE B3)*), else by technology, band and identity (*LTE B20 · 30001001*, *GSM 900 · LAC 876 · CI 37171*). A click beside every element keeps the one chosen; its **×** closes it.
+**NQ calls around it:**
 
+- **Marks:** stars (the diamonds are the PCIs and signalling of the logs), larger than on NQ Maps, of their latest version.
+- **Which ones:**
+  - those of its [groups](#nq-hotspots-clustered-time-window-issues) and of the other clusters and time-window issues of its hotspot;
+  - those of its operator at its **site**, always and wherever they are: the site counts every campaign, NR Mode and call type, while a hotspot and a time-window issue keep to its campaign and NR Mode, and a cluster to its NR Mode, its campaign and those of the Cluster period, without the Ping tests;
+  - the others of the operators chosen in **Operators**.
+- **Colour NQ calls by** chooses what their colour tells, as on [NQ Maps](#nq-maps):
+  - *Site* (the default): the site their CDR gives, each in a colour of its own and those of the site of the call in burgundy; the legend names the twelve sites with most NQ calls, the site of the call first.
+  - *Call type*, *Root cause domain* (the one decided, else that of the DT Analyzer RCA), *Campaign* or *Operator*.
+- **And Group**, a switch beside it when the call is of a group, adds over that colour an outline in the shape of the NQ call (a star) for each group of the call it is of, in the colour of the group.
+  - Its **cluster** green innermost, then its **time-window issue** blue outside it; a call of both has two outlines.
+  - Each is that of the call alone: the calls the card over the map counts *in its cluster* and *in its time window*, not the other clusters and time-window issues of its hotspot, unless one of them filters the list. Never its hotspot, which every NQ call of its groups is of.
+  - Each group has its own switch in **CDR Info**, which shows or hides its shapes on the map and its outlines.
+- **One group filtering the list:** when the list of calls is filtered by its cluster or its time-window issue (with its card in the header or its ID in the panel), the map shows that group alone, with its shape. The calls of its other groups, their shapes and the hotspot zone leave it, and the legend names the group.
+- **Stacked calls:** the calls on one point make one mark with how many they are (*×11*), its colour that of the most related one. Hovering it starts with *At this point: N NQ calls*.
+- **Legend:** shows only what the map shows.
+- **Campaigns:** those of **Campaigns**, at the top of the card **CDR Info** (see below).
+- **Left out:** the Ping tests, as NQ Maps does, and everything of the other NR Mode (NSA and SA fail along different paths): its NQ calls and its samples (no group joins both NR Modes).
+
+**Groups and hotspot zone** (in the legend under **Groups of the call**):
+
+- **Clusters:** a green circle around the NQ calls of each cluster, lighter than the green of the site where the call started.
+- **Time-window issues:** a blue ellipse along the NQ calls of each time-window issue that make its hotspot.
+- **Its own groups:** whole (a cluster with the calls of the campaigns of its Cluster period) and bolder; those of the other calls of its hotspot with its calls, the other clusters and time windows dashed.
+- **Size:** each shape is the smallest that holds its calls, so every NQ call of its groups is inside one (a call of its hotspot in neither takes a circle of the whole hotspot), the call itself too where it failed.
+- **Time-window paths:** a dashed line joins the failures of each time-window issue in their order, each within the Time window and the Time-window distance of the one before, and a badge in its colour numbers them (1, 2, 3…). The line of its own time window is blue and that of each other one of its hotspot has a colour of its own, as the legend lists them, so that crossing lines can be told apart. **Time-window paths**, a switch of the card **CDR Info**, shows or hides the lines and their numbers (the browser remembers the choice).
+- **Hotspot:** the zone in orange that they make together, outlined by a wide orange edge between two white ones so that its final area stands out. The lines of the groups and of the zone go over the sectors of the sites, so that none hides them.
+- **Counter card** over the bottom left of the map: the **NQ calls on the map** (the call itself too) and how many are **in its hotspot**, **in its cluster** and **in its time window**: their envelope with the **Hotspot join** OR of the [Prioritization Rules](#prioritization-rules), where its clusters and its time-window issues meet with AND.
+- **Legend:** its own shapes with their calls and size (*Its cluster: 5 NQ calls within 134 m*, *Its time window: 4 NQ calls along 616 m*), how many of the other calls of its hotspot, and the zone.
+
+**The cards over the map.** Two cards side by side over the top left of the map (one below the other on a narrow map) switch what it shows by where it comes from:
+
+- **CDR Info:**
+  - **Campaigns**, at its top, chooses the campaigns of everything the map draws from the CDRs: its NQ calls and their list, the RSRP / SINR samples, the **Radio around the call**, the Diagnosis hints and its drive, the drive of its car and **Its drive**. *Selected campaigns* (the default) takes every CDR of the campaigns chosen in the Campaign filter of the page (of every campaign while none is chosen); *Call campaign* every CDR of its campaign. Always of the NR Mode of the call, and Voice, Speech and Data CDRs together. The Diagnosis hints and the Decisions at its place count the NQ calls of every campaign.
+  - **RSRP / SINR:** the samples of the CDRs (see above).
+  - **NQ calls:** the NQ calls around and its groups when it has them: **Hotspot zone**, **Clusters**, **Time windows** and **Time-window paths**, each switching its shapes on the map and its outlines on the NQ calls.
+  - **Sites** (when a Network Inventory places them): **Sites**; **Start and end cells**, the solid lines from where it started and failed to the cells of its start and end, and the dotted one to the NR cell of an NSA call; and **Cell path**, its cells and handover arrows.
+  - **Route:** its way and that of its car.
+  - Each layer with its switch and how many it shows.
+- **LOGS Info:** the layers of its [Layer3 Logs](#layer3-logs-on-the-map), when it has some.
+
+How the cards behave:
+
+- **Folded at first:** each time a map opens. Each has a switch in its header for all of it.
+- **Fold or unfold:** a click anywhere on its header. A click outside it, on the map or on the other card, folds it.
+- **Sections:** its layers are in sections, all unfolded at first, that fold with a click on their header (the browser remembers which).
+
+**Legend.** It waits folded in the **Legend** card over the bottom right of the map.
+
+- **Unfold it:** a click on its header unfolds it upwards over the map, above the panels over its bottom and below the zoom buttons, scrolling when it is longer. It is in the images of the map while it is unfolded.
+- **Boxes:** **CDR Info** and **LOGS Info**. Unfolded, they open wide in a row of their own below the folded card, which stays where it was (CDR Info with its sections in three columns: RSRP / SINR, Sites & Cells with Route below it, and NQ calls).
+
+**Floating cards.** **CDR Info**, **LOGS Info** and **Legend** float once unfolded:
+
+| To… | Do this |
+| --- | --- |
+| Move a card over the map | Drag its header (a click on it still folds it). |
+| Make it smaller or larger | Drag its corner: the bottom right one of CDR Info and LOGS Info, the top left one of Legend. |
+| Put it back in its place with its own size | **Restore**, in its header, shown once it was moved or resized. |
+| Fold it back | A click outside, keeping the size it was given while the map is open. |
+| Keep it open, also on the next maps | The **pin** of its header (kept in your browser), until a click on its header folds it. |
+
+**Map types.** **Map**, at the right end of the controls above the map, chooses the map under the layers, the same on every map of the page:
+
+- *OpenStreetMap (original)*.
+- *OpenStreetMap in grey (light)*, the default: its streets under a white veil, so that the samples, events and calls stand out.
+- *Plain (no labels)*.
+- *Terrain (elevation)*: contour lines and hill shading, OpenTopoMap.
+- *Topographic*, *Satellite* and *Dark* (Esri).
 
 #### Layer3 Logs on the map
 
-A call with a session in the [Layer3 Logs](workspace-management.md#layer3-logs) of the workspace (its `JOIN_ID`; **Layer3 Logs** in its header says which UEs) shows on its map every layer of the KMZ files the NQ team opened in Google Earth, read from the imported logs (no KMZ file is imported), with the same points: checked against the 2,382 KMZ files of UK Q3 2026, every layer of every file has the same points by channel and PCI.
+Follow the real way and the radio of the UE of a call from its Layer3 Logs.
+
+A call with a session in the [Layer3 Logs](workspace-management.md#layer3-logs) of the workspace (found by its `JOIN_ID`; **Layer3 Logs** in its header says which UEs) shows on its map every layer of the KMZ files the NQ team opened in Google Earth.
+
+- **Read from the imported logs:** no KMZ file is imported.
+- **Same points:** checked against the 2,382 KMZ files of UK Q3 2026, every layer of every file has the same points by channel and PCI.
+
+On the map:
 
 - **Its real way**: the GPS positions of the log of the UE replace the sketch of its way, drawn as a road in the colour of the logs, from **START**, where its log starts, to **END**, where it ends (the pin stays where the CDR says it failed); the green dot where the CDR says it started and the rings of its handovers stay, the rings along that way by their estimated time. The map fits the whole way of the UE. With the route of the logs off (or the card switched off), the map shows the way of the CDR again.
-- **LOGS Info**, the card over the top left of the map beside **CDR Info** (and in its images), lists the layers by section, each with its switch, its marker and how many points it has; the switch of its header shows or hides them all (its routes too), and its title folds it, wider unfolded: Route, Signalling and RAN side by side (their notes below their names, long names on two lines), then a matrix for each technology the logs have (LTE, NR; side by side when the card is wide enough, one below the other otherwise):
+- **LOGS Info**, the card over the top left of the map beside **CDR Info** (and in its images), lists the layers by section, each with its switch, its marker and how many points it has. The switch of its header shows or hides them all (its routes too), and its title folds it. Unfolded it is wider: Route, Signalling and RAN side by side (their notes below their names, long names on two lines), then a matrix for each technology the logs have (LTE, NR; side by side when the card is wide enough, one below the other otherwise):
   - **Signalling timeline**, a switch at its top, shows or hides the timeline of the call (below); the **×** of the timeline hides it too, and this switch shows it again.
   - **Route**: **Route (GPS)** (the real way of the UE, from the GPS of its log) and **Direction of travel** (arrows beside the road of the way of the UE, on the right of where it went so that neither hides the other, worked out from its positions).
   - **Signalling**: **Events** (4G, 5G EN-DC, 5G NR, Other) and **L3 Signaling** (LTE-NAS, LTE-RRC, NR-NAS, NR-RRC, SIP, Other), each point a message or event with its details.
@@ -538,10 +1038,47 @@ A call with a session in the [Layer3 Logs](workspace-management.md#layer3-logs) 
   - **+** unfolds a layer (below the matrix, for those of LTE and NR) by channel (as the KMZ files name it, such as *EARFCN 1363 (B3, 1821.3 MHz)* or *NRARFCN 628032 (n78, 3420.48 MHz)*), each with its own switch and its PCIs as chips, so one carrier or one cell can be followed along the way.
   - A voice call has a session for each end: **Both**, **UE A** or **UE B** chooses which one the map shows.
   - **Hide all** switches every layer off, **Default layers** comes back to the layers the map opens with (the route, the PCell RSRP of LTE and NR, as the KMZ files open, and the events). The card keeps its layers for the next calls.
-- **Markers and colours** are those of the legend of the KMZ files: a circle for RSRP, a triangle for RSRQ, an inverted triangle for SINR, a pentagon for UE Tx Power, a square for a channel and the RAN Configuration, a diamond for a PCI and the L3 messages, a hexagon for an event and an arrow for the direction; NR points have a black dot in the middle. RSRP, RSRQ, SINR and UE Tx Power take the [Map Levels](#map-levels) of the workspace, RSRP and SINR those of the RSRP / SINR samples of the CDRs, so both sources share one legend. By default, RSRP *Excellent* (≥ −80 dBm, dark green), *Good* (−90 to −80), *Fair* (−100 to −90), *Poor* (−110 to −100), *Very poor* (−120 to −110) and *Extremely poor* (below −120 dBm, dark red), SINR *Excellent* (≥ 20 dB), *Good* (13 to 20), *Fair* (5 to 13), *Poor* (0 to 5) and *Bad* (below 0). RSRQ takes the ranges of the KMZ files in the six levels of the RSRP, with their names and colours: *Excellent* (≥ −10 dB), *Good* (−14 to −10), *Fair* (−16 to −14), *Poor* (−20 to −16), *Very poor* (−24 to −20) and *Extremely poor* (below −24 dB). UE Tx Power takes the ranges and colours of the KMZ files, the other way round (blue below −10 dBm, dark red from 24 dBm), named by their range alone; a channel or a PCI keeps its colour on every map. The **LOGS Info** box of the legend shows the route and the ranges of the layers on, each measure with its unit in its title (*RSRQ (dB)*).
+
+**Markers** are those of the legend of the KMZ files; NR points have a black dot in the middle:
+
+| Marker | Layer |
+| --- | --- |
+| Circle | RSRP |
+| Triangle | RSRQ |
+| Inverted triangle | SINR |
+| Pentagon | UE Tx Power |
+| Square | A channel and the RAN Configuration |
+| Diamond | A PCI and the L3 messages |
+| Hexagon | An event |
+| Arrow | The direction |
+
+**Colours:** RSRP, RSRQ, SINR and UE Tx Power take the [Map Levels](#map-levels) of the workspace; RSRP and SINR those of the RSRP / SINR samples of the CDRs, so both sources share one legend. A channel or a PCI keeps its colour on every map. By default:
+
+| Measure | Levels |
+| --- | --- |
+| RSRP | *Excellent* (≥ −80 dBm, dark green), *Good* (−90 to −80), *Fair* (−100 to −90), *Poor* (−110 to −100), *Very poor* (−120 to −110), *Extremely poor* (below −120 dBm, dark red) |
+| SINR | *Excellent* (≥ 20 dB), *Good* (13 to 20), *Fair* (5 to 13), *Poor* (0 to 5), *Bad* (below 0) |
+| RSRQ | The ranges of the KMZ files in the six levels of the RSRP, with their names and colours: *Excellent* (≥ −10 dB), *Good* (−14 to −10), *Fair* (−16 to −14), *Poor* (−20 to −16), *Very poor* (−24 to −20), *Extremely poor* (below −24 dB) |
+| UE Tx Power | The ranges and colours of the KMZ files, the other way round (blue below −10 dBm, dark red from 24 dBm), named by their range alone |
+
+- **Legend:** its **LOGS Info** box shows the route and the ranges of the layers on, each measure with its unit in its title (*RSRQ (dB)*).
 - Hovering a point tells its values (time, UE, RAN Configuration, channel, PCI, RSRP, RSRQ, SINR, UE Tx Power, ECI or NCI; the name, group and summary of an event; the layer, direction and SIP response of an L3 message); a click shows them below the map, where **All the fields of this record** reads every value of the record of the log (the IMSI of the test SIM is never shown).
 
-- **Signalling timeline**, below the map (and in its images): for each UE shown, the RSRP of its LTE PCell (blue) and NR PCell (purple, dashed) over the time of its session, against the colour bands of the legend, and below them its **Events**, **RRC**, **NAS** and **SIP** messages one after another, in the colours of their groups; the failures, re-establishments, rejects, releases and SIP errors (4xx to 6xx) are larger and ringed in red, and a dashed red line marks where the session ended with its status (*Failed*, *Dropped*, *Cutoff*). The axis counts the seconds from its first record. Hovering a point tells what it is and rings its place on the map; a click centres the map on it and shows its values below the map. A click anywhere on its header folds or unfolds it, its **×** hides it (the switch **Signalling timeline** of LOGS Info shows it again), and over the larger map it floats over the bottom of the map (below the elevation profile when there is one); the cards unfolded end above these panels and scroll there. Its **cursor** follows the session: drag along the timeline (or use the arrow keys once it has the focus, Shift for 5 s steps, Escape to remove it) and the map shows where each UE was at that moment, heading where it went, with its events and messages of the last 3 seconds ringed where they happened (the latest named); the map moves to keep the UE on it, and above the chart the time, the RSRP of its LTE and NR PCell and its latest messages show; its **×** removes it.
+- **Signalling timeline**, below the map (and in its images), for each UE shown:
+  - **RSRP:** that of its LTE PCell (blue) and NR PCell (purple, dashed) over the time of its session, against the colour bands of the legend.
+  - **Messages:** below them, its **Events**, **RRC**, **NAS** and **SIP** messages one after another, in the colours of their groups. The failures, re-establishments, rejects, releases and SIP errors (4xx to 6xx) are larger and ringed in red, and a dashed red line marks where the session ended with its status (*Failed*, *Dropped*, *Cutoff*).
+  - **Axis:** the seconds from its first record.
+  - **Hover a point:** what it is, and a ring at its place on the map. **Click it:** the map centres on it and shows its values below the map.
+  - **Fold, hide:** a click anywhere on its header folds or unfolds it; its **×** hides it (the switch **Signalling timeline** of LOGS Info shows it again).
+  - **Over the larger map:** it floats over the bottom of the map, below the elevation profile when there is one; the cards unfolded end above these panels and scroll there.
+- **Cursor of the timeline:** it follows the session. The map shows where each UE was at that moment, heading where it went, with its events and messages of the last 3 seconds ringed where they happened (the latest named). The map moves to keep the UE on it, and above the chart the time, the RSRP of its LTE and NR PCell and its latest messages show.
+
+| To… (cursor) | Do this |
+| --- | --- |
+| Move the cursor | Drag along the timeline. |
+| Step 0.5 s or 5 s | Once the timeline has the focus, <kbd>←</kbd>/<kbd>→</kbd>, or <kbd>Shift</kbd> + <kbd>←</kbd>/<kbd>→</kbd>. |
+| Go to the start or the end of the session | <kbd>Home</kbd> / <kbd>End</kbd>. |
+| Remove the cursor | <kbd>Esc</kbd>, or its **×**. |
 
 - **Logs of the NQ calls around**, a switch at the bottom of the card **LOGS Info**, adds the logs of the other NQ calls of its map (those of its groups and its area) with the same layers, faded below its own, as [NQ Maps](#nq-maps) shows them.
 
@@ -549,8 +1086,12 @@ App Events records the layers read (`nq_call_l3_layers`, with the call, its JOIN
 
 Below the map:
 
-- **This call**: its result, failure, phase, technology, times and serving site (that of the cell that served its end, else its start), its cells in order with their site and distance (a click shows the site on the map), the radio of the call (the Min, Avg and Max of each RSRP, RSRQ, SINR, transmit power, BLER, CQI… of the CDR row) and its other cell, handover and serving fields.
-- **Non-Qualified Calls around**: those of its hotspot, cluster and time-window issue, at its site, and the others (of the campaigns chosen in **Campaigns**), with how many each and how many within the radius, the call itself included (in its hotspot, cluster or time-window issue when they hold 2 calls or more), those of its groups and site first, nearest first, each with its tags and **Open** (a click shows it on the map). The map brings every NQ call of its campaign within the radius, and of its groups and its site, and the 600 nearest of the other campaigns: with **Every campaign**, the header tells how many more of the other campaigns were left out.
+- **This call**: its result, failure, phase, technology, times and serving site (that of the cell that served its end, else its start), its cells in order with their site and distance (a click, or <kbd>Enter</kbd>, centres the map on the site), the radio of the call (the Min, Avg and Max of each RSRP, RSRQ, SINR, transmit power, BLER, CQI… of the CDR row) and its other cell, handover and serving fields.
+- **Non-Qualified Calls around**: those of its hotspot, cluster and time-window issue, at its site, and the others (of the campaigns chosen in **Campaigns**).
+  - **Counts:** how many each, and how many within the radius, the call itself included (in its hotspot, cluster or time-window issue when they hold 2 calls or more).
+  - **Order:** those of its groups and site first, nearest first, each with its tags and **Open**.
+  - **Show one on the map:** click it (or <kbd>Enter</kbd>): the map centres on it.
+  - **How many the map brings:** every NQ call of its campaign within the radius, and of its groups and its site, and the 600 nearest of the other campaigns. With **Every campaign**, the header tells how many more of the other campaigns were left out.
 - **Diagnosis hints**: what the map suggests, each finding marked *To check*, *Worth a look*, *Fine* or *Note* (the first ones first; a click on one about a site shows it on the map):
   - **Coverage** and **Interference**: the average RSRP and SINR of the call against the levels of Network Insights (LTE weak below −110 dBm, interfering below 0 dB; NR below −115 dBm and −3 dB). A low SINR with a good RSRP points at interference, a low SINR with a weak RSRP at the coverage. A **Coverage hole** (to check) is a weak coverage, or no RSRP at all, where the nearest site of the networks serving the operator is at least 1.5 times its inter-site distance away.
   - **Serving distance**: the site of the cell where the call ended against its inter-site distance (ISD, the mean distance to its 3 nearest sites of its network; see [The network around the call](#the-network-around-the-call)): flagged from twice its ISD and 1 km (overshooting), or beyond its ISD when a site three times nearer was there (a missing neighbour or overshooting). A site without others of its network within 40 km is judged by fixed distances instead: 5 km, or 1.5 km with a site three times nearer.
@@ -562,7 +1103,10 @@ Below the map:
   - **Handovers**: **Ping-pong handovers** when the call went back to a cell it had left, with how many handovers in how much distance and time and the cells it went back to (to check when it went back twice or more within 500 m, as no cell dominates there), many handovers (4 or more), how many and the cell it ended on, and the NR leg of an NSA call not found.
   - **Layer3 Logs** (with a teal edge, for a call with a log): what its log shows in its last seconds — an **SCG failure**, an **RRC re-establishment**, a **SIP error** or a **reject** of the network (to check), a **stronger neighbour without a handover** (a neighbour of the serving channel 6 dB above it for 3 seconds: to check, worth a look when there were handover attempts), a **handover** right before the failure, the **coverage** (RSRP below −115 dBm) or **interference** (SINR below −3 dB) of LTE and NR at the failure, the **UE at maximum power** and a **high BLER**, and the records without measurements; *Fine* when it shows none of them. A click on one shows its moment of the log on the map (its point, centred and selected).
 - **Decisions at its place**: the Root Category and Root Cause already chosen for the other NQ calls at its site and in its hotspot, the most frequent first, with their calls, campaigns, statuses and some of their JOIN_IDs; **Use** gives this call the same Root Category and Root Cause (editors). It also counts those still without a root cause.
-- **Its drive**: the tests of its operator 15 minutes before and after the call and within 30 km (from the CDRs of **RSRP / SINR samples from**), each with its time from the call, test, result, RSRP, SINR and distance, the call itself marked and those not completed in red, to see whether the radio got worse before it and whether the next tests recovered (a click shows one on the map). The map draws the way of the car through them.
+- **Its drive**: the tests of its operator 15 minutes before and after the call and within 30 km (from the CDRs of **Campaigns**), to see whether the radio got worse before it and whether the next tests recovered.
+  - **Each test:** its time from the call, test, result, RSRP, SINR and distance; the call itself marked and those not completed in red.
+  - **Show one on the map:** click its row: the map centres on it.
+  - The map draws the way of the car through them.
 - **Serving site health**: the calls that started on its serving site (the site ringed in red, else in green) in each campaign and NR Mode (their latest version) and how many were Non-Qualified, against the NQ rate of its operator on every site (in orange from 1.5 times, in red from twice that rate) and that of every operator on the site, with the cells of the site.
 - **Radio around the call**: per operator (its operator first), the tests within the radius, how many did not complete, the median LTE and NR RSRP and SINR and the share of values below −110 dBm and 0 dB, then the sites around, the nearest one, the cells with the PCI and channel of a cell of the call and the Network Inventory used (the newest snapshot of each network).
 

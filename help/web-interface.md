@@ -27,6 +27,78 @@ The UI uses a shared header, module tabs, panels, dialogs and tables. Read [Prod
 | Laptop screens | [Open section](#laptop-screens) |
 | Small screens | [Open section](#small-screens) |
 | PPT navigation and overlays | [Open section](#ppt-navigation-and-overlays) |
+| Learn the tips and shortcuts | [Open section](#tips-shortcuts) |
+
+## Tips & shortcuts
+
+These gestures and keys work on every page. Each module adds its own: see **Module tips** at the end of this section.
+
+**Moving around**
+
+| To… | Do this |
+| --- | --- |
+| Go back to the top of the page | Click the logo in the header, or the round button at the bottom left that appears once the page is scrolled down |
+| Go back to the top of the module you are in | Click its tab again. <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+click or <kbd>Shift</kbd>+click opens it as an ordinary link (a new tab or window) |
+| Jump to a section of a module | Hover its tab, or focus it with <kbd>Tab</kbd>, and choose the section. <kbd>Esc</kbd> or scrolling closes the list |
+| Reveal the collapsed **Modules & Sections** tab | Move the pointer within 44 px of the window edge: the left edge on screens 1200 px wide or more, the right edge below. It recedes when the pointer leaves. On touch: touch within 30 px of that edge; it hides again after 5 seconds |
+
+**On a phone (bottom bar)**
+
+| To… | Do this |
+| --- | --- |
+| Show every module in rows | Swipe up on the bar, or tap the handle at its top |
+| Go back to one row | Swipe down on the bar, or tap the handle again |
+| Close **Menu**, **Builders** or **Config** | <kbd>Esc</kbd>, or tap outside the list |
+
+**Dropdowns of the application**
+
+| To… | Do this |
+| --- | --- |
+| Open a dropdown from the keyboard | Focus it and press <kbd>Space</kbd>, <kbd>Enter</kbd>, <kbd>↑</kbd>, <kbd>↓</kbd> or <kbd>F4</kbd> |
+| Jump to an option | Type its first letters (in a list without a search box) |
+| Move through the options | <kbd>↑</kbd> / <kbd>↓</kbd>; <kbd>Home</kbd> / <kbd>End</kbd> for the first and the last |
+| Choose the option marked | <kbd>Enter</kbd> |
+| Close without choosing | <kbd>Esc</kbd> or <kbd>Tab</kbd> |
+| Narrow a searchable list | Type in its search box; <kbd>↓</kbd> goes from the search into the list |
+| Add an Operator pattern | Type it in the search of an **Operator** filter (`VF*`, `NOT Lebara`) and press <kbd>Enter</kbd> (see [Operator patterns](#operator-patterns)) |
+
+**Dialogs**
+
+| To… | Do this |
+| --- | --- |
+| Accept a dialog that asks for a text | <kbd>Enter</kbd> |
+| Cancel a dialog | <kbd>Esc</kbd>, or click outside it |
+
+**Charts, maps and tables**
+
+| To… | Do this |
+| --- | --- |
+| Download or copy a picture of a card, chart, map or table | Hover it and use the two buttons at its top right corner. On touch: tap it to show them for a few seconds (see [Images of charts and tables](#images-of-charts-and-tables)) |
+| Hide or show a series of a chart | Click its entry in the legend; click it again to show it |
+| Zoom into part of a chart | Drag a rectangle over its plot area (not over its title) with the mouse; once zoomed, drag to move around |
+
+**Panels of the tasks in the background**
+
+| To… | Do this |
+| --- | --- |
+| Move a panel out of the way | Drag it by its header (not on phones); the browser remembers where |
+| Put it back in its place | Its button with four corners (**Return panel to its default position**) |
+| Minimize it or open it again | **−** / **+** |
+
+**Module tips**
+
+- [Workspace Management](workspace-management.md#tips-shortcuts) and [Workspace Config](workspace-config.md#tips-shortcuts)
+- [CDR Analysis](datasets-analysis.md#tips-shortcuts)
+- [PPT Designer](ppt-designer.md#tips-shortcuts)
+- [Scoring & GAP Analysis](scoring-gap-analysis.md#tips-shortcuts)
+- [Network Insights](network-insights.md#tips-shortcuts)
+- [Non-Qualified Calls](non-qualified-calls.md#tips-shortcuts)
+- [Reporting](reporting.md#tips-shortcuts)
+- [Chart Builder](chart-builder.md#tips-shortcuts) and [Query Builder](query-builder.md#tips-shortcuts)
+- [AI Assistant](assistant.md#tips-shortcuts)
+- [Ticket Center](ticket-center.md#tips-shortcuts)
+- [Super Admin](super-admin.md#tips-shortcuts)
+- [The slide viewer of the presentations](presentations.md#using-the-slide-viewer)
 
 ## Navigation
 
@@ -61,7 +133,16 @@ In the header, the logo of the application takes the page back to its top, its n
 
 Help Home opens by default after login. The login page also offers **Request Access** to new users (see [Super Admin › Access Requests](super-admin.md#access-requests)) and, when [Email Delivery](app-config.md#email-delivery) is set up, **Forgot your password?** (see [Forgotten passwords](super-admin.md#forgotten-passwords)). The menu of the user badge, at the top right, has **Change password** and **Email address**, the address the emails of the tool go to (empty: none). Help, the Readme, the Changelog and the tickets of Ticket Center are also available without signing in, with a prominent **Sign in** button at the top right that returns to the page after signing in. Every module except Workspace and Ticket Center requires an open workspace. After five wrong passwords in a row for a username, its next tries wait (30 seconds, then longer, up to five minutes), also for the password an access request asks an existing account for; a right password, or half an hour, starts over.
 
-Hovering a tab, or focusing it with the keyboard, opens below it the list of its sections, each with an icon and in the colour of the module: the panels of each main module (for example Scoring Calculation, Scoring & GAP Analysis and Favourite Scorings in Scoring & GAP Analysis, where Scoring & GAP Analysis lists beside it Summary, Scoring Charts, Scoring Tables, Country Areas, Scoring Trends, GAP Analysis and Points Lost to open that results tab; on small screens these lists appear below their page, indented), App Events and Execution Log in App Logs, the panels of Admin and Super Admin, the chapters of the Readme and the latest releases of the Changelog. Help lists Help Home and, beside each group, the chapters of General, Main Modules, Administrative Modules and Reference (with the Readme and the Changelog), and ends with **About**, the credits of the application: its logo, name, version, release date and author. Choosing one opens that page with that section at its top (the Scoring & GAP Analysis entries bring the results tabs there), unfolding it when it was folded, and keeps it there while the page fills its panels, until you scroll — in Non-Qualified Calls until every panel is drawn, however long a large workspace takes (a reload then returns to where the page was being read, with its results tab); clicking the tab itself still opens the module, at its top when it is the page being shown. **Builders** and **Config** open their menu on hover too, and so does the **User** badge, with **Change password**, **Email address**, while an LLM writer of the generated comments takes each user's key, **API keys** (your own keys for the LLM writers that Super Admin sets to each user's key, see [AI Comment Writers](super-admin.md#ai-comment-writers)) and, for admins and super-admins, **Start Demo Mode…** (see [Demo Mode](#demo-mode)).
+**Section lists of the tabs.** Hovering a tab, or focusing it with the keyboard, opens below it the list of its sections, each with an icon and in the colour of the module (<kbd>Esc</kbd> or scrolling closes it):
+
+- **Main modules:** their panels, for example Scoring Calculation, Scoring & GAP Analysis and Favourite Scorings in Scoring & GAP Analysis, where Scoring & GAP Analysis lists beside it Summary, Scoring Charts, Scoring Tables, Country Areas, Scoring Trends, GAP Analysis and Points Lost to open that results tab. On small screens these lists appear below their page, indented.
+- **App Logs:** App Events and Execution Log.
+- **Admin and Super Admin:** their panels.
+- **Readme and Changelog:** the chapters of the Readme and the latest releases of the Changelog.
+- **Help:** Help Home and, beside each group, the chapters of General, Main Modules, Administrative Modules and Reference (with the Readme and the Changelog), ending with **About**, the credits of the application: its logo, name, version, release date and author.
+- **Choosing a section:** opens that page with that section at its top (the Scoring & GAP Analysis entries bring the results tabs there), unfolding it when it was folded, and keeps it there while the page fills its panels, until you scroll. In Non-Qualified Calls it stays there until every panel is drawn, however long a large workspace takes (a reload then returns to where the page was being read, with its results tab).
+- **Clicking the tab itself:** still opens the module, at its top when it is the page being shown.
+- **Builders, Config and the User badge:** open their menu on hover too. The **User** badge has **Change password**, **Email address**, **API keys** while an LLM writer of the generated comments takes each user's key (your own keys for the LLM writers that Super Admin sets to each user's key, see [AI Comment Writers](super-admin.md#ai-comment-writers)) and, for admins and super-admins, **Start Demo Mode…** (see [Demo Mode](#demo-mode)).
 
 The tabs stay at the top of the window while you scroll, so you can change module from anywhere in a page (unless they would take more than a third of the window); on small screens the menu bar stays there instead. When the window is tall enough for the application bar and the tabs (or the menu bar) to take no more than a third of it, the application bar stays at the top too, above them.
 
@@ -121,7 +202,7 @@ Starting, changing, extending and ending the demo, every user warned, signed out
 
 Single-select and multi-select controls share a compact searchable style.
 
-- Type in the search field to narrow values.
+- Type in the search field to narrow values. In a list without a search field, typing the first letters of a value jumps to it.
 - Multi-select controls preserve the order in which values are selected when order has meaning.
 - **Select all / none** toggles the currently available options.
 - Open menus are layered above their active dialog and positioned against their field.
@@ -171,7 +252,7 @@ After signing in and while signed in, a super-admin is told in the same style as
 
 Every authenticated page polls active background work (every 2 seconds while work runs, every 8 seconds otherwise and every 30 seconds in a hidden tab) and shows compact floating cards until it finishes. Work for the open workspace appears at the lower right. Work for one or more other accessible workspaces appears in differently coloured lower-left cards, grouped by workspace name; changing the active workspace moves each running task to the appropriate side.
 
-Each card preserves its expanded or minimized state when moving between modules or reloading the page.
+Each card preserves its expanded or minimized state when moving between modules or reloading the page. Except on phones, drag a card by its header to move it out of the way (the browser remembers where); its button with four corners puts it back in its default position.
 
 Each card shows the task, its current stage and progress when the job reports one. The red circular **Stop Job** control is available only for interruptible work in a workspace the user can access and asks for confirmation before requesting a stop.
 
@@ -204,7 +285,16 @@ The interface targets compact screens around the iPhone 17 base viewport (`402 �
 
 - The application bar is two short lines: the name of the tool with its version and, under it, the active workspace, the user and **Logout**. The header of each module is short: its title of the size of the title of a panel and two lines of its description (its Help chapter has it whole).
 
-- Instead of the rows of tabs, a bar at the bottom of the screen (phones up to 640 px wide, and phones in landscape) holds every main module you have, in the order of their tabs, the one open marked in its colour, then **Config**, **App Logs**, **Help**, **Changes** (the Changelog), **Readme**, **Slides** ([Product Presentations](presentations.md)) and **Roadmap**, with **Menu** last. When they do not fit in one row, every page shows them in one row that scrolls sideways (the side where more modules wait fades, and the module open is in sight) while **Menu** stays fixed at its end. A swipe up on the bar, or a tap on the handle at its top, shows every module in rows of six with **Menu** at the end of the last one, and a swipe down (or a tap on the handle) returns to one row; a swipe up or down on the bar never scrolls the page, and the next page starts with one row again. **Builders** opens above the bar the list of its builders (Chart Builder and Query Builder), and **Config** the list of the configuration pages of your role (Application Config and Workspace Config, Administrator Config for admins and Super Admin for super-admins), each in the colour of its module; a user without them has no **Config**. A module (or a page of Builders or Config) chosen in the bar opens where you left it; the module open, chosen again, goes back to the top of its page. **Menu** opens, from the top of the screen down to the bar, the tree of **Modules & Sections**: Main Modules, Administrative Modules and Documentation, each module with its sections and their parts, the module of the page open and marked, and **About**. While it is open its button shows **×** and **Close** and closes it; choosing a module or a section goes there and closes it too, as do the **×** of its header and Escape. The buttons of the bar are large enough to read and tap at a glance. The sections bar of the page floats just above it and fits the screen without scrolling sideways: it shows the section being read (**Sections** at the top of the page) between **‹** and **›**, which go to the previous and the next section, and a tap on it opens above the bar, in the colour of the bar, the list of every section of the page with its parts, the one being read marked (a section whose panel is hidden, such as the Charts Panel of PPT Designer before any PPT is generated, is left out; the views of Ticket Center, shown one at a time, are all listed, and each opens its view); the colour theme of the themed modules is its palette icon at the start. Once the page is scrolled down, the button back to the top stands at its left, in the same row. What floats at the bottom of the page (the tasks in the background, the card of the unassigned values) stands above both bars, and the Modules & Sections tab stays at the right edge, above them.
+- **Bar of the modules.** Instead of the rows of tabs, a bar at the bottom of the screen (phones up to 640 px wide, and phones in landscape) holds every main module you have, in the order of their tabs, the one open marked in its colour, then **Config**, **App Logs**, **Help**, **Changes** (the Changelog), **Readme**, **Slides** ([Product Presentations](presentations.md)) and **Roadmap**, with **Menu** last. Its buttons are large enough to read and tap at a glance.
+  - **One row or every module:** when they do not fit in one row, every page shows them in one row that scrolls sideways (the side where more modules wait fades, and the module open is in sight) while **Menu** stays fixed at its end. A swipe up on the bar, or a tap on the handle at its top, shows every module in rows of six with **Menu** at the end of the last one, and a swipe down (or a tap on the handle) returns to one row. A swipe up or down on the bar never scrolls the page, and the next page starts with one row again.
+  - **Builders and Config:** **Builders** opens above the bar the list of its builders (Chart Builder and Query Builder), and **Config** the list of the configuration pages of your role (Application Config and Workspace Config, Administrator Config for admins and Super Admin for super-admins), each in the colour of its module; a user without them has no **Config**.
+  - **Opening a module:** a module (or a page of Builders or Config) chosen in the bar opens where you left it; the module open, chosen again, goes back to the top of its page.
+  - **Menu:** opens, from the top of the screen down to the bar, the tree of **Modules & Sections**: Main Modules, Administrative Modules and Documentation, each module with its sections and their parts, the module of the page open and marked, and **About**. While it is open its button shows **×** and **Close** and closes it; choosing a module or a section goes there and closes it too, as do the **×** of its header and Escape.
+- **Sections bar.** The sections bar of the page floats just above the bar of the modules and fits the screen without scrolling sideways. It shows the section being read (**Sections** at the top of the page) between **‹** and **›**, which go to the previous and the next section.
+  - A tap on it opens above the bar, in the colour of the bar, the list of every section of the page with its parts, the one being read marked. A section whose panel is hidden, such as the Charts Panel of PPT Designer before any PPT is generated, is left out; the views of Ticket Center, shown one at a time, are all listed, and each opens its view.
+  - The colour theme of the themed modules is its palette icon at the start.
+  - Once the page is scrolled down, the button back to the top stands at its left, in the same row.
+- **What floats at the bottom.** The tasks in the background and the card of the unassigned values stand above both bars, and the Modules & Sections tab stays at the right edge, above them.
 - Added to the Home Screen of the phone (in Safari, **Share** › **Add to Home Screen**), the tool opens as an application on the whole screen, without the bars of the browser, so the bar of the modules stays still at the bottom while you scroll; in the browser, the bars of the browser come and go as you scroll and the bar of the modules moves with them. Its sign-in is its own: sign in once in it.
 - Panels use reduced side margins and never widen the page: wide content scrolls inside its own container.
 - Forms stack vertically, filters go two per row and action buttons are as wide as their text, sharing a row.

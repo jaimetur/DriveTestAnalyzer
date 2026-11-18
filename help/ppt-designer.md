@@ -1,13 +1,17 @@
 # PPT Designer
 
-Build an interactive Design (a PPT Design) from processed Data, Voice and Speech CDRs, following a PPT Template of the workspace or starting blank. Apply one dataset selection to its slides, explore the charts, change them on screen in the Designer, then export the result to PowerPoint. The PPT Templates themselves are managed and edited here too.
+Build an interactive Design (a PPT Design) from processed Data, Voice and Speech CDRs and export it to PowerPoint.
+
+- **Start:** follow a PPT Template of the workspace, or start blank.
+- **Explore:** apply one dataset selection to every slide and explore the live charts.
+- **Change:** edit slides and charts on screen in the [Designer](#designer).
+- **Export:** generate the PowerPoint in the background.
+- **Templates:** the PPT Templates themselves are managed and edited here too.
 
 > [!NOTE]
-> **A Design is a saved definition, not a copy of your data.** It stores its template, Scope, dates, filters, the values of the template parameters, comments and what it changes of its template's slides; its CDRs are chosen from its NR Mode and Campaign filter each time it is prepared. Source CDRs and generated caches remain separate.
+> **A Design is a saved definition, not a copy of your data.** It stores its template, Scope, dates, filters, the values of the template parameters, comments and what it changes of its template's slides. Its CDRs are chosen from its NR Mode and Campaign filter each time it is prepared. Source CDRs and generated caches remain separate.
 
 ## Presentation
-
-The presentation **PPT Designer** sums the module up. Interactive Designs from Report Templates: one selection of CDRs on every slide, live charts to explore and PowerPoint exports generated in the background. Select it to open it in the slide viewer, play it full screen or download its PowerPoint; every presentation is also in [Product Presentations](presentations.md).
 
 ```presentations
 ppt-designer
@@ -18,6 +22,7 @@ ppt-designer
 | I want to… | Go to |
 | --- | --- |
 | Watch the presentation of the module | [Presentation](#presentation) |
+| Learn the tips and shortcuts | [Tips & shortcuts](#tips-shortcuts) |
 | Create or change a Design | [PPT Designs](#ppt-designs) |
 | Choose the campaigns, dates and comparison scope | [PPT Scope & Filters](#ppt-scope-filters) |
 | Understand Apply versus Save | [Apply, Save, Clear and Reload](#apply-save-clear-and-reload) |
@@ -30,6 +35,84 @@ ppt-designer
 | Review exported jobs or charts | [PPT Generation Jobs](#ppt-generation-jobs) / [Charts Panel](#charts-panel) |
 | Resolve empty charts or preparation problems | [Troubleshooting](#troubleshooting) |
 
+## Tips & shortcuts
+
+Gestures and keys that save time. Keys work while the viewer has the focus and you are not typing in a field.
+
+### Viewer and larger view
+
+| To… | Do this |
+| --- | --- |
+| Go to the next slide | <kbd>→</kbd>, <kbd>↓</kbd>, <kbd>Page Down</kbd> or <kbd>Space</kbd>, or turn the mouse wheel down over the slide (one slide per turn). On touch: swipe left. |
+| Go to the previous slide | <kbd>←</kbd>, <kbd>↑</kbd> or <kbd>Page Up</kbd>, or turn the wheel up over the slide. On touch: swipe right. |
+| Go to the first or last slide | <kbd>Home</kbd> or <kbd>End</kbd> |
+| Read the value of a point | Point at it: a tooltip names its label, series and value (on a CDF, its cumulative %) |
+| See the tools of a chart (**Dataset**, **Expand**, **Zoom**) | Point at the chart or focus it. On touch: tap it; they show for 3 seconds. |
+| Open a chart larger | Double-click it, or **Expand** |
+| Go to the next or previous chart of the larger view | <kbd>→</kbd> or <kbd>←</kbd>. On touch: swipe left or right. |
+| Close the larger view or a dialog | <kbd>Esc</kbd>, or click the dark backdrop around it |
+| Zoom a chart at the pointer | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + mouse wheel, or pinch on the touchpad |
+| Zoom into one area of a chart | With the mouse, drag a rectangle over the plot (at 100%; not from the title or the legend) |
+| Move around a zoomed chart | Drag it, or use its direction arrows |
+| Hide or show a value on every slide | Click its entry in the legend |
+| Keep only, hide or show values of a legend or an axis | Right-click a legend entry or an axis label. In the menu, <kbd>→</kbd> opens a **Show** submenu, <kbd>←</kbd> goes back and <kbd>Esc</kbd> closes it. |
+| Undo the last hide or show | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd>, or **Hidden (N)** → **Undo** |
+| Copy or download a chart or the slide as an image | Point at the chart for its copy and download buttons; the slide has two blue buttons beside the slide selector. On touch: tap; the buttons show for 5 seconds. |
+| Add a slide comment | Type it and press <kbd>Enter</kbd>; an edited comment is saved with <kbd>Enter</kbd> or by leaving it |
+| Close the viewer | <kbd>Esc</kbd>, when no Presentation runs and no dialog is open |
+
+### During a Presentation
+
+| To… | Do this |
+| --- | --- |
+| Start the Presentation at once | <kbd>F8</kbd> (with the settings of the **Presentation mode** dialog) |
+| Pause or resume it | <kbd>F8</kbd> or <kbd>Space</kbd>, or the floating Pause/Resume button |
+| Go to the previous or next slide and keep playing | <kbd>F7</kbd> or <kbd>F9</kbd>, the arrow and Page keys, the wheel or a swipe |
+| Stop it | <kbd>Esc</kbd> or **Stop presentation** |
+
+> [!TIP]
+> **Buttons stop, keys do not.** **First / Previous / Next / Last**, the slide selector and opening a chart larger stop the Presentation; keys, the wheel and swipes move through it while it keeps playing.
+
+### In the Designer
+
+| To… | Do this |
+| --- | --- |
+| Choose a chart, KPI card, text box or picture | Click it |
+| Open its menu (Duplicate, Copy, Cut, Paste, Delete, Fill the free places…) | Right-click it, or its **⋯** menu in the panel |
+| Open the menu of a slide | Right-click its thumbnail at the left, or its **⋯** menu |
+| Move a slide | Drag its thumbnail |
+| Move a chart, or swap two charts | Drag its **⠿** handle onto a free place or onto another chart |
+| Copy, cut or paste the element chosen | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>C</kbd>, <kbd>X</kbd>, <kbd>V</kbd> (it is pasted on the first free place of the slide shown, also on another slide) |
+| Delete the element chosen | <kbd>Delete</kbd> or <kbd>Backspace</kbd> |
+| Undo or redo | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd>; <kbd>Shift</kbd>+<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Y</kbd> |
+| Edit the slide title or subtitle in place | Click it in the header of the viewer; <kbd>Enter</kbd> or leaving it keeps it, <kbd>Esc</kbd> cancels |
+| Widen or narrow the panel | Drag its left edge (kept for your next visits); double-click the edge for its usual width; with the edge focused, <kbd>←</kbd>/<kbd>→</kbd> change it by 24 px |
+| Pick a grid layout | Point at the cells of **Grid** to preview its rows × columns, then click |
+| Step back | <kbd>Esc</kbd> leaves a field, then closes a menu, then Chart Type, then leaves the element chosen; a click outside the charts and the panel also leaves it |
+
+### Charts in the Designer
+
+These work on the chart already chosen.
+
+| To… | Do this |
+| --- | --- |
+| Change the colour, width, line or opacity of a series | Click its entry in the legend. On a chart not chosen, the click hides the series in the whole Design, as in the viewer. |
+| Change the range of a numeric axis | Click its labels: drag the two ends of the slider (**Automatic** gives it back) |
+| Choose the values of a text axis | Click its labels: untick values, **Only** one, or **Show all** |
+| Change the order of the values of Rows or Columns | Drag an axis label, header or row label before or after another; a purple bar shows where it goes (**Default order** gives it back) |
+| Put a field before, after or in place of a pill | Drop it near the edge of the pill, or on its middle to replace it |
+| Choose the chart type | Click the **Chart Type** tab on the right edge of the chart; <kbd>Esc</kbd> or a click outside closes it, and the wheel scrolls it |
+| Draw the chart again from its CDRs | **Refresh chart**, shown over the chart while designing |
+
+### Adjust places
+
+| To… | Do this |
+| --- | --- |
+| Resize rows or columns | Drag the lines between them |
+| Choose several places (to **Merge** them) | Click a place, then <kbd>Shift</kbd>+click another: the places between them are chosen |
+| Empty the places chosen | <kbd>Delete</kbd> or <kbd>Backspace</kbd>, or **Delete** |
+| Put a place back in an empty cell | Click its **+** |
+
 ## Before creating a Design
 
 1. Open the correct workspace and process the required CDR types.
@@ -37,39 +120,90 @@ ppt-designer
 3. For Multivendor Comparison, persist Vendor mappings first.
 4. Open **PPT Designer**.
 
-**user-editor**, **admin** and **super-admin** create, import, duplicate, edit and delete PPT Designs (within [Who changes a Design](#who-changes-a-design)), manage PPT Templates and open **Edit PPT Template** and **Auto-Calculated Fields** from the viewer. A **user-viewer** opens a Design, applies other filters, generates its PPT and exports the Design.
+| Role | What they can do |
+| --- | --- |
+| **user-editor**, **admin**, **super-admin** | Create, import, duplicate, edit and delete PPT Designs (within [Who changes a Design](#who-changes-a-design)), manage PPT Templates, and open **Edit PPT Template** and **Auto-Calculated Fields** from the viewer |
+| **user-viewer** | Open a Design, apply other filters, generate its PPT and export the Design |
 
 > [!TIP]
-> For a first comparison: create a Design (it compares the newest two campaigns of its NR Mode), choose its Scope, Campaign and other filters, apply them, then open **View PPT**. Inspect the charts before generating a PPT.
+> **First comparison:** create a Design (it compares the newest two campaigns of its NR Mode), choose its Scope, Campaign and other filters, apply them, then open **View PPT**. Inspect the charts before generating a PPT.
 
 Designs use the same template schema and renderer as Reporting. Detailed template authoring is covered in [Report Template reference](#report-template-reference).
 
 ## PPT Designs
 
+The library of the workspace: create, open, export and order the Designs.
+
 ### Create a definition
 
-**Create PPT Design**, above the list of the Designs, opens a dialog with the fields of the new Design:
+1. Click **Create PPT Design**, above the list of the Designs.
+2. Enter its **PPT Name** (**My New PPT Design** is offered).
+3. Select the **NR Mode** of the CDRs it reads: **NSA**, **SA** or **NSA & SA** for both (see [NSA & SA in one Design](#nsa-sa-in-one-design)).
+4. Select a **PPT Template**. The button beside it opens the **gallery** of the templates of the workspace (see below).
+5. Click **Create**. **Cancel**, **×** or <kbd>Esc</kbd> close the dialog without creating it.
 
-1. Enter its **PPT Name** (**My New PPT Design** is offered).
-2. Select the **NR Mode** of the CDRs it reads (**NSA**, **SA** or **NSA & SA** for both, see [NSA & SA in one Design](#nsa-sa-in-one-design)) and a **PPT Template**. When the NR Mode leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), their tests are left out of the Design, and its CDRs used and the viewer, beside its Campaign and Scope, name them (*Out of scope: SA · Three*). Any template serves every NR Mode: its titles name the NR Mode of the Design where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone).
-   The button beside **PPT Template** opens the **gallery** of the templates of the workspace: a card for each one with its first slides in small, as it lays them out (the picture of each chart type in its place, the covers and transitions in colour), how many slides and charts it has and **Default** on the default one, and **None — blank PPT** first; a click on a card chooses that template (**Esc** or **×** leaves the choice as it was).
-3. Click **Create** (**Cancel**, **×** or Escape close the dialog without creating it). The saved definition opens in PPT Scope & Filters; with **None — blank PPT** as its PPT Template, it opens in its [Designer](#designer) instead, with only its cover, where its slides are added (it follows no template; **More → Save as template…** makes one of it). **Import PPT Design** imports a standalone JSON definition of a Design; the ZIP that **Export Design** downloads is imported through Admin Import (see [Portability and maintenance](#portability-and-maintenance)).
+What happens next:
 
-Names are unique in the workspace, whatever the NR Mode each Design reads: an NSA and an SA Design of the same template need names of their own (for example **NSA - NetCheck CDR Report** and **SA - NetCheck CDR Report**). The library sorts NSA first, then by name.
+- **With a template:** the saved definition opens in PPT Scope & Filters.
+- **With None — blank PPT:** it opens in its [Designer](#designer) with only its cover, where its slides are added. It follows no template; **More → Save as template…** makes one of it.
+
+The template gallery:
+
+- A card for each template, with its first slides in small as it lays them out (the picture of each chart type in its place, the covers and transitions in colour).
+- Each card shows how many slides and charts it has, and **Default** on the default one; **None — blank PPT** comes first.
+- A click on a card chooses that template; <kbd>Esc</kbd> or **×** leaves the choice as it was.
+
+NR Mode and operators:
+
+- **Out of scope operators:** when the NR Mode leaves operators out of scope (the **NR Modes** of their labels in the [Operator Maps](workspace-config.md#operator-maps), such as Three, which has no SA), their tests are left out of the Design. Its CDRs used and the viewer name them beside its Campaign and Scope (*Out of scope: SA · Three*).
+- **Titles name the NR Mode:** any template serves every NR Mode. Its titles write the NR Mode of the Design where they use `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone).
+
+Importing:
+
+- **Import PPT Design** imports a standalone JSON definition of a Design.
+- The ZIP that **Export Design** downloads is imported through Admin Import (see [Portability and maintenance](#portability-and-maintenance)).
+
+> [!NOTE]
+> **Names are unique in the workspace**, whatever the NR Mode each Design reads: an NSA and an SA Design of the same template need names of their own (for example **NSA - NetCheck CDR Report** and **SA - NetCheck CDR Report**).
 
 ### NSA & SA in one Design
 
-A Design of NR Mode **NSA & SA** reads the CDRs of both NR Modes, so a slide can put NSA and SA charts side by side and a chart can draw NSA and SA series together. Every row of the combined CDR tables keeps the NR Mode of its CDR in the **NR Mode** field (NSA or SA), so the NSA and SA tests of an operator are never added together:
+A Design of NR Mode **NSA & SA** reads the CDRs of both NR Modes, so a slide can put NSA and SA charts side by side and a chart can draw NSA and SA series together. Every row of the combined CDR tables keeps the NR Mode of its CDR in the **NR Mode** field (NSA or SA), so the NSA and SA tests of an operator are never added together.
 
-- **Campaign filters.** PPT Scope & Filters shows **Campaign (NSA)**, which chooses the NSA CDRs, and **Campaign (SA)**, which chooses the SA ones; each offers the campaigns of its NR Mode and its own Latest choices, resolved among them (for example Latest 3 campaigns in NSA and Latest campaign in SA). A Design saved without Campaign (SA), or generated in a report of [Reporting](reporting.md), uses its Campaign filter for both NR Modes, each Latest choice among the campaigns of each NR Mode.
-- **The NR Mode of a chart.** A template row keeps one NR Mode with the filter `NR Mode IN (SA)` (or `NSA`), and then reads only the CDRs of that NR Mode (an SA chart reads no NSA CDR); without it the chart reads every NR Mode the Design reads. The NR Mode of the Design decides: an NSA or SA Design only shows charts of its own NR Mode, and NSA and SA charts together need a Design of NSA & SA. In a Design that does not read the NR Mode of a chart, the chart says so instead of showing data, and its title names the NR Mode it shows where it writes `{NR Mode}`.
-- **NR Mode in splits and legends.** **NR Mode** is a field of Rows Split, Columns Split, Legend and the Dynamic Rows/Columns Field (a dynamic grid can place the NSA chart above the SA one). A chart that reads both NR Modes and is split neither by NR Mode nor by Campaign (the SA campaigns name their mode, such as 2026-Q3-SA) gets NR Mode as the last level of the split that holds its legend, and of its legend; Lines, Dual Lines, Areas, 100% Stacked Areas and Bars and Line get it in Rows, as their series, since their Columns are the horizontal axis.
-- **Look of the series.** Each operator keeps its colour in both NR Modes: its SA series use a lighter tint of it, and SA lines are dashed when dashes do not already tell operators apart; the CDF campaign line widths are ranked inside each operator and NR Mode, so the newest NSA and the newest SA campaigns are both thick.
-- **Fields of one NR Mode.** A chart that uses a KPI, filter or split field that only the CDRs of one NR Mode have shows a note naming the NR Mode without samples (*The SA CDRs have no Mean_Data_Rate: no SA samples.*), and the template editor warns about it.
+- **Campaign filters:**
+  - PPT Scope & Filters shows **Campaign (NSA)**, which chooses the NSA CDRs, and **Campaign (SA)**, which chooses the SA ones.
+  - Each offers the campaigns of its NR Mode and its own Latest choices, resolved among them (for example Latest 3 campaigns in NSA and Latest campaign in SA).
+  - A Design saved without Campaign (SA), or generated in a report of [Reporting](reporting.md), uses its Campaign filter for both NR Modes, each Latest choice among the campaigns of each NR Mode.
+- **The NR Mode of a chart:**
+  - A template row keeps one NR Mode with the filter `NR Mode IN (SA)` (or `NSA`), and then reads only the CDRs of that NR Mode (an SA chart reads no NSA CDR). Without it, the chart reads every NR Mode the Design reads.
+  - The NR Mode of the Design decides: an NSA or SA Design only shows charts of its own NR Mode, and NSA and SA charts together need a Design of NSA & SA.
+  - In a Design that does not read the NR Mode of a chart, the chart says so instead of showing data, and its title names the NR Mode it shows where it writes `{NR Mode}`.
+- **NR Mode in splits and legends:**
+  - **NR Mode** is a field of Rows Split, Columns Split, Legend and the Dynamic Rows/Columns Field (a dynamic grid can place the NSA chart above the SA one).
+  - A chart that reads both NR Modes and is split neither by NR Mode nor by Campaign (the SA campaigns name their mode, such as 2026-Q3-SA) gets NR Mode as the last level of the split that holds its legend, and of its legend.
+  - Lines, Dual Lines, Areas, 100% Stacked Areas and Bars and Line get it in Rows, as their series, since their Columns are the horizontal axis.
+- **Look of the series:**
+  - Each operator keeps its colour in both NR Modes: its SA series use a lighter tint of it, and SA lines are dashed when dashes do not already tell operators apart.
+  - The CDF campaign line widths are ranked inside each operator and NR Mode, so the newest NSA and the newest SA campaigns are both thick.
+- **Fields of one NR Mode:** a chart that uses a KPI, filter or split field that only the CDRs of one NR Mode have shows a note naming the NR Mode without samples (*The SA CDRs have no Mean_Data_Rate: no SA samples.*), and the template editor warns about it.
 
-The PPT file names and the viewer header name the NR Mode **NSA & SA**. Every workspace receives once the example template **DT Analyzer - FDFS DL (NSA & SA)** and its Design of the same name (Latest 3 campaigns in NSA, Latest campaign in SA): a slide with the FDFS DL throughput CDF of NSA, that of SA and the FDFS DL transfer time of every campaign of both NR Modes.
+The PPT file names and the viewer header name the NR Mode **NSA & SA**.
 
-An existing or imported Design **RF Quality (RSRP & SINR)** can use the workspace template **RF Quality (RSRP & SINR)**, with separate LTE and NR RSRP/SINR CDF, average, distribution, threshold and quality-map slides for Data, Voice and Speech, followed by the NSA NetCheck black-logo closing slide. Each chart family starts with an All CDR types slide pooling valid Data, Voice and Speech observations, followed by the separate types; LTE and NR remain separate. CDF slides use a two-by-two layout with LTE and NR above their contour histograms (5 dB RSRP bins; 1 dB SINR bins). Histograms show percentages per series, match CDF colours and campaign widths, and retain multivendor line patterns; red-to-green background bands match the quality-class slides. Grouped-bar histogram slides follow each CDF/contour slide for All CDR types, Data, Voice and Speech. Their `Title + 2 rows + dynamic columns + comments down` layout and `Dynamic Columns Field = Operator` create one column per selected Operator on the same slide, with LTE above NR and comments beneath. Every bin has one bar per Campaign, ordered oldest to newest: the newest uses the Operator colour and older Campaigns use progressively lighter shades. Percentages use the same valid-sample denominator and bin widths as the contour histograms. NR shares use valid NR measurements and do not measure availability across the entire route. Its NR Mode is NSA and its Campaign **Latest 2 campaigns**, so it uses the CDRs of the newest NSA campaigns; edit or delete it like any other Design. See [Network Insights](network-insights.md#rf-quality-template-and-design).
+**Example:** every workspace receives once the example template **DT Analyzer - FDFS DL (NSA & SA)** and its Design of the same name (Latest 3 campaigns in NSA, Latest campaign in SA): a slide with the FDFS DL throughput CDF of NSA, that of SA and the FDFS DL transfer time of every campaign of both NR Modes.
+
+### RF Quality Design
+
+An existing or imported Design **RF Quality (RSRP & SINR)** can use the workspace template **RF Quality (RSRP & SINR)**. Its NR Mode is NSA and its Campaign **Latest 2 campaigns**, so it uses the CDRs of the newest NSA campaigns; edit or delete it like any other Design. See [Network Insights](network-insights.md#rf-quality-template-and-design).
+
+- **Slides:** separate LTE and NR RSRP/SINR CDF, average, distribution, threshold and quality-map slides for Data, Voice and Speech, followed by the NSA NetCheck black-logo closing slide.
+- **All CDR types first:** each chart family starts with an All CDR types slide pooling valid Data, Voice and Speech observations, followed by the separate types; LTE and NR remain separate.
+- **CDF slides:** a two-by-two layout with LTE and NR above their contour histograms (5 dB RSRP bins; 1 dB SINR bins).
+- **Contour histograms:** percentages per series, the CDF colours and campaign widths, and the multivendor line patterns; red-to-green background bands match the quality-class slides.
+- **Grouped-bar histogram slides:** follow each CDF/contour slide for All CDR types, Data, Voice and Speech.
+  - Their `Title + 2 rows + dynamic columns + comments down` layout and `Dynamic Columns Field = Operator` create one column per selected Operator on the same slide, with LTE above NR and comments beneath.
+  - Every bin has one bar per Campaign, ordered oldest to newest: the newest uses the Operator colour and older Campaigns use progressively lighter shades.
+  - Percentages use the same valid-sample denominator and bin widths as the contour histograms.
+- **NR shares** use valid NR measurements and do not measure availability across the entire route.
 
 ### Row actions
 
@@ -84,32 +218,63 @@ An existing or imported Design **RF Quality (RSRP & SINR)** can use the workspac
 
 **Close** leaves the active definition without deleting it. Deleting a Design does not delete its CDRs, template or generated PPT jobs.
 
-The library lists the Designs in the order of the workspace. Users who can change Designs drag a Design by the tab on the left of its name (or press the up and down arrow keys on the tab) to move it, and the new order is saved at once for every user of the workspace, without changing any Design. Until a Design is first moved the library is sorted by NR Mode (NSA, NSA & SA, SA) and then by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order); Designs created, duplicated or imported later go to the end. App Events record each new order (`reorder_designs`, with the names in the order before and after), and exports, transfers and backups of the Designs carry it (see [Import / Export / Transfer](administrator-config.md)).
+**Order of the library:**
 
-**Created by** and **Last Updated by** name the user who created each Design and the last one who changed it (by their first and last name, or their username when they have none), and **Last Updated** shows the date and time of that change (a dash when no date is recorded, as in a starter Design of a new workspace that nobody has changed). A change is one to its name, NR Mode or template, its Scope and filters, its slides in the Designer or its comments, or a template renamed or deleted that changes it; opening a Design, generating its PPT or moving it in the library is not. A Design changed before these columns existed shows the last change its App Events recorded, or its creator when they recorded none. Exports, transfers and backups carry both names, given the same way (see [Matching and creators](administrator-config.md#matching-and-creators)).
+- The library lists the Designs in the order of the workspace.
+- Users who can change Designs drag a Design by the tab on the left of its name (or press <kbd>↑</kbd> and <kbd>↓</kbd> on the tab) to move it. The new order is saved at once for every user of the workspace, without changing any Design.
+- Until a Design is first moved, the library is sorted by NR Mode (NSA, NSA & SA, SA) and then by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order).
+- Designs created, duplicated or imported later go to the end.
+- App Events record each new order (`reorder_designs`, with the names in the order before and after), and exports, transfers and backups of the Designs carry it (see [Import / Export / Transfer](administrator-config.md)).
+
+**Created by, Last Updated by and Last Updated:**
+
+- **Created by** and **Last Updated by** name the user who created each Design and the last one who changed it, by their first and last name (or their username when they have none).
+- **Last Updated** shows the date and time of that change: a dash when no date is recorded, as in a starter Design of a new workspace that nobody has changed.
+- **What counts as a change:** its name, NR Mode or template, its Scope and filters, its slides in the Designer or its comments, or a template renamed or deleted that changes it. Opening a Design, generating its PPT or moving it in the library is not.
+- A Design changed before these columns existed shows the last change its App Events recorded, or its creator when they recorded none.
+- Exports, transfers and backups carry both names, given the same way (see [Matching and creators](administrator-config.md#matching-and-creators)).
 
 ### Who changes a Design
 
-A Design is changed (its name, NR Mode and template, its Scope and filters with **Save Filters**, its slides in the [Designer](#designer) and the comments saved in it) and deleted only by the user who created it and by super-admins. Admins also change and delete the Designs created by user-editors, but not those of another admin or super-admin, nor the starter Designs, which belong to `super`; a user-editor changes only the Designs they created, and a user-viewer none. For the other users those controls are disabled, with a tooltip that names who changes the Design: they still open it, apply other filters, generate its PPT and export it; a user-editor, admin or super-admin also duplicates it as a Design of their own. [PPT Templates](#ppt-templates) follow the same rule. App Events record each refused change as `ppt_designer_change_refused`, with the Design or template, the action, its creator and the reason.
+A Design is changed and deleted only by the user who created it and by super-admins. A change is one to its name, NR Mode and template, its Scope and filters with **Save Filters**, its slides in the [Designer](#designer) or the comments saved in it.
+
+| Role | Changes and deletes |
+| --- | --- |
+| **super-admin** | Every Design |
+| **admin** | The Designs they created and those of user-editors; not those of another admin or super-admin, nor the starter Designs, which belong to `super` |
+| **user-editor** | Only the Designs they created |
+| **user-viewer** | None |
+
+- **For the other users** those controls are disabled, with a tooltip that names who changes the Design. They still open it, apply other filters, generate its PPT and export it.
+- **Duplicate:** a user-editor, admin or super-admin also duplicates it as a Design of their own.
+- [PPT Templates](#ppt-templates) follow the same rule.
+- App Events record each refused change as `ppt_designer_change_refused`, with the Design or template, the action, its creator and the reason.
 
 ### Change name, NR Mode or template
 
-Edit the name in the table (column **PPT Name**) and confirm with the green check (on a phone, in **⋯ → Edit details** of its card). NR Mode and **PPT Template** have their own selectors, independent of each other: the NR Mode chooses the CDRs the Design reads and keeps its template, and any template serves every NR Mode. A Design created blank shows **None — blank PPT**: choosing a template makes it follow that template, and its own slides are replaced by those of the template after a warning.
+- **Name:** edit it in the table (column **PPT Name**) and confirm with the green check (on a phone, in **⋯ → Edit details** of its card).
+- **NR Mode** and **PPT Template** have their own selectors, independent of each other: the NR Mode chooses the CDRs the Design reads and keeps its template, and any template serves every NR Mode.
+- **A Design created blank** shows **None — blank PPT**: choosing a template makes it follow that template, and its own slides are replaced by those of the template after a warning.
 
 > [!WARNING]
-> **Changing NR Mode or Template invalidates the prepared charts.** The application rebuilds them. An NR Mode change keeps the campaigns of an NR Mode the Design still reads (NSA to NSA & SA keeps the Campaign as Campaign (NSA)) and sets the others to the newest campaigns of the new mode (the campaigns of the other mode do not apply); the titles of the template name the new NR Mode. A template-only change keeps the Campaign.
+> **Changing NR Mode or Template invalidates the prepared charts.** The application rebuilds them.
+> An NR Mode change keeps the campaigns of an NR Mode the Design still reads (NSA to NSA & SA keeps the Campaign as Campaign (NSA)) and sets the others to the newest campaigns of the new mode (the campaigns of the other mode do not apply); the titles of the template name the new NR Mode.
+> A template-only change keeps the Campaign.
 
 The Scope, date settings, other filters, custom fields and comments are preserved. Only CDRs of the active NR Mode participate.
 
 ### Session and unsaved changes
 
-The browser remembers the last open Design and page position during the authenticated session. The main filter panel starts collapsed for a new session; its open/closed state is remembered while that session remains active.
-
-Leaving with unsaved Scope, date or filter changes requires **Save Filters**, **Discard** or **Cancel**; after **Save Filters** nothing is left unsaved or unapplied, also while the saved filters are still being applied (the Design is prepared), so closing the filters, opening the viewer or leaving asks nothing. Management-only name, NR Mode and Template inputs do not trigger false filter warnings.
-
-Logging out clears temporary open-Design, preview and scroll state. Saved definitions remain in the workspace.
+- **Remembered:** the browser remembers the last open Design and page position during the authenticated session.
+- **Filter panel:** the main filter panel starts collapsed for a new session; its open/closed state is remembered while that session remains active.
+- **Unsaved filters:** leaving with unsaved Scope, date or filter changes asks for **Save Filters**, **Discard** or **Cancel**.
+- **After Save Filters** nothing is left unsaved or unapplied, also while the saved filters are still being applied (the Design is prepared), so closing the filters, opening the viewer or leaving asks nothing.
+- Management-only name, NR Mode and Template inputs do not trigger false filter warnings.
+- **Logging out** clears temporary open-Design, preview and scroll state. Saved definitions remain in the workspace.
 
 ## PPT Scope & Filters
+
+Choose which CDRs, campaigns, dates and values the slides of a Design show.
 
 **PPT Filters**, at the top of the viewer of a Design, opens this panel over its slides; a Design just created, duplicated or imported opens in its viewer with it. The table of the Designs never opens the filters.
 
@@ -120,11 +285,27 @@ A Design has no CDR selector: the **Campaign** filter (the first Default Filter)
 - the **Final** CDR of a campaign before its **Weekly** and **Daily** CDRs, and a Weekly CDR before the Daily ones it contains;
 - or, when it was changed, the **Active?** choice of the CDR in Workspace (see [CDR Stage](workspace-management.md#cdr-stage-final-weekly-and-daily)).
 
-Besides the campaigns, the Campaign filter offers first four choices made again whenever the Design is prepared or exported, so it follows the campaigns that arrive later: **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** (the one before the latest) and **All available campaigns** (every campaign of the NR Mode at that moment, also those that arrive after it is saved, unlike every campaign checked by hand). With a single campaign, Previous campaign chooses none. None of them counts the [Flex campaigns](workspace-management.md#flex-campaigns) (local campaigns, complete but localised in one region, cluster or city, whose campaign or Campaign Maps label has the word Flex, such as `26-Q2-Flex`), nor the [campaigns in progress](workspace-management.md#campaigns-in-progress) (Weekly or Daily CDRs only, without a Final CDR yet), nor does a Campaign filter without campaigns count the Flex ones: such a campaign is used only when it is checked by hand. Each one stands alone: checking it clears the other one and the campaigns, checking a campaign clears it, and **Select All / None** checks or clears the campaigns only. A new Design compares its **Latest 2 campaigns** (**Latest campaign** in Multivendor Comparison with Operator_Vendor), as its newest CDRs did before; changing the Scope or vendor comparison updates a Campaign that still has the default of the former one. CDRs without Campaign values are used when no campaign is chosen.
+**Automatic campaign choices.** Besides the campaigns, the Campaign filter offers these choices first. They are made again whenever the Design is prepared or exported, so they follow the campaigns that arrive later:
 
-**CDRs Used**, below the Scope, lists by type (Data, Voice and Speech, each showing about three CDRs and scrolling the rest) the CDRs the current selection chooses, newest campaign first, with their stage and campaigns (Weekly and Daily CDRs outlined). It follows every change of the NR Mode or filters at once, before they are applied, and says when the filters must be applied to use them. The Campaign, Operator, Vendor, Region, Cluster and City lists follow the selection the same way, and an open list stays open while values are checked.
+| Choice | Chooses |
+| --- | --- |
+| **Latest campaign** | The newest campaign |
+| **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns** | The newest two, three or four campaigns |
+| **Previous campaign** | The one before the latest; with a single campaign, none |
+| **All available campaigns** | Every campaign of the NR Mode at that moment, also those that arrive after it is saved (unlike every campaign checked by hand) |
 
-Designs saved before chose their CDRs by hand: they take, once, the campaigns of those CDRs as their Campaign filter (keeping a Campaign filter they already had), and the Designs without saved CDRs (which used the newest ones) take **Latest 2 campaigns**, or **Latest campaign** for Multivendor Operator_Vendor.
+- **Flex and in-progress campaigns are not counted:** none of these choices counts the [Flex campaigns](workspace-management.md#flex-campaigns) (local campaigns, complete but localised in one region, cluster or city, whose campaign or Campaign Maps label has the word Flex, such as `26-Q2-Flex`), nor the [campaigns in progress](workspace-management.md#campaigns-in-progress) (Weekly or Daily CDRs only, without a Final CDR yet). Nor does a Campaign filter without campaigns count the Flex ones: such a campaign is used only when it is checked by hand.
+- **Each choice stands alone:** checking it clears the other one and the campaigns, checking a campaign clears it, and **Select All / None** checks or clears the campaigns only.
+- **Default:** a new Design compares its **Latest 2 campaigns** (**Latest campaign** in Multivendor Comparison with Operator_Vendor), as its newest CDRs did before. Changing the Scope or vendor comparison updates a Campaign that still has the default of the former one.
+- CDRs without Campaign values are used when no campaign is chosen.
+
+**CDRs Used**, below the Scope:
+
+- Lists by type (Data, Voice and Speech, each showing about three CDRs and scrolling the rest) the CDRs the current selection chooses, newest campaign first, with their stage and campaigns (Weekly and Daily CDRs outlined).
+- Follows every change of the NR Mode or filters at once, before they are applied, and says when the filters must be applied to use them.
+- The Campaign, Operator, Vendor, Region, Cluster and City lists follow the selection the same way, and an open list stays open while values are checked.
+
+Designs saved before chose their CDRs by hand: they take, once, the campaigns of those CDRs as their Campaign filter (keeping a Campaign filter they already had). The Designs without saved CDRs (which used the newest ones) take **Latest 2 campaigns**, or **Latest campaign** for Multivendor Operator_Vendor.
 
 ### PPT Scope
 
@@ -133,14 +314,12 @@ Designs saved before chose their CDRs by hand: they take, once, the campaigns of
 | **Operator Comparison** | Normalized Operator values | Latest 2 campaigns |
 | **Multivendor Comparison** | Operator/vendor hierarchy | Latest 2 campaigns (Vendor Only), Latest campaign (Operator_Vendor) |
 
-The Scope and vendor comparison are applied and saved with the filters. The viewer's Scope control asks for confirmation before rendering its charts again.
+- **Saved with the filters:** the Scope and vendor comparison are applied and saved with the filters. The viewer's Scope control asks for confirmation before rendering its charts again.
+- **Vendor comparison:** **Select Comparison Scope** shows **Vendor comparison** beside Scope when Multivendor Comparison is chosen. **Vendor (All Operators Combined)** is first and is the default when entering multivendor scope; **Operator_Vendor** keeps each operator separate.
+- **Every test of the NR Mode:** each row keeps the NR Mode of its CDR (its **NR Mode** field). A Design of an NR Mode reads every Data, Voice and Speech test of the CDRs of that NR Mode, whatever RAT or call mode it ran on (an EPS fallback call of an SA CDR is an SA test). Use the **RAT** filter for a narrower technology selection.
 
 > [!IMPORTANT]
 > **Multivendor requires mapped Vendors.** The workspace must have at least two distinct cached Vendors, and the chosen CDRs must satisfy the mapping/comparison requirements. A single-vendor selection cannot produce a Multivendor comparison.
-
-Each row keeps the NR Mode of its CDR (its **NR Mode** field): a Design of an NR Mode reads every Data, Voice and Speech test of the CDRs of that NR Mode, whatever RAT or call mode it ran on (an EPS fallback call of an SA CDR is an SA test). Use the **RAT** filter for a narrower technology selection.
-
-**Select Comparison Scope** shows **Vendor comparison** beside Scope when Multivendor Comparison is chosen. **Vendor (All Operators Combined)** is first and is the default when entering multivendor scope; **Operator_Vendor** keeps each operator separate.
 
 ### Dates
 
@@ -152,7 +331,9 @@ Each row keeps the NR Mode of its CDR (its **NR Mode** field): a Design of an NR
 | **Newest** | Resolve the last available date from the chosen CDRs during preparation |
 | A chosen calendar day | Use that fixed date |
 
-**Use oldest** / **Use newest** restore automatic bounds. The fields display their resolved dates, such as `Oldest (2026-01-01)`. Date to includes the whole selected day. Navigating calendar months does not change the date until you select a day.
+- **Use oldest** / **Use newest** restore automatic bounds. The fields display their resolved dates, such as `Oldest (2026-01-01)`.
+- **Date to** includes the whole selected day.
+- Navigating calendar months does not change the date until you select a day.
 
 > [!TIP]
 > Use automatic date bounds when you want the CDRs of new campaigns included without adjusting dates. Use fixed dates for a reproducible time window.
@@ -165,13 +346,24 @@ Each row keeps the NR Mode of its CDR (its **NR Mode** field): a Design of an NR
 | **Filtered rows** | Rows remaining after dates and PPT filters |
 | **Chart rows** | Rows remaining after that chart's template filters as well |
 
-Without date or adaptive-filter restrictions, the ready summary reuses the effective Design count so both agree. When the chosen CDRs hold only the chosen campaigns, the Campaign filter needs no restriction on their rows, so the selection keeps these known counts.
-
-An empty chart can coexist with nonempty Filtered rows: its source type or chart-specific filters may exclude the remaining rows.
+- Without date or adaptive-filter restrictions, the ready summary reuses the effective Design count so both agree.
+- When the chosen CDRs hold only the chosen campaigns, the Campaign filter needs no restriction on their rows, so the selection keeps these known counts.
+- An empty chart can coexist with nonempty Filtered rows: its source type or chart-specific filters may exclude the remaining rows.
 
 ### Default filters and aliases
 
-The default order is **Campaign → Operator → Operator_Vendor → Vendor_Operator → Vendor → Market → Region → Cluster → City → RAT → Session Type → Call Status** (Campaign first, after Date from and Date to, because it chooses the CDRs), and the City selector offers **Main Cities** first. **Operator_Vendor** filters the `<Operator>_<Vendor>` identity, **Vendor_Operator** the same identity as `<Vendor>_<Operator>` (both stay in sync) and **Vendor** the vendor alone, using cached per-CDR values. Vendor choices list real vendors first, followed by Ericsson (Mixed) (and the former Mixed Vendor), Mixed (non-Ericsson) (and the former Other Vendor), All Vendor(s), and operators without vendors labelled **Operator - All**. Operators without a vendor are stored as `Operator - All` in both columns. Every vendor filter, including PPT export, expanded charts and template filters, uses these columns; the former `Vendor_Only`, `Vendor V3` and `OP_Vendor` filter names are accepted as aliases, and operator-prefixed values in a Vendor filter are resolved to the vendor name using workspace operator aliases. The comparison mode still controls whether charts group by Operator_Vendor or by Vendor (All Operators Combined). Technology is not an adaptive filter because NR Mode belongs to the definition.
+**Order:** **Campaign → Operator → Operator_Vendor → Vendor_Operator → Vendor → Market → Region → Cluster → City → RAT → Session Type → Call Status**. Campaign comes first, after Date from and Date to, because it chooses the CDRs.
+
+**Vendor filters:**
+
+- **Operator_Vendor** filters the `<Operator>_<Vendor>` identity, **Vendor_Operator** the same identity as `<Vendor>_<Operator>` (both stay in sync) and **Vendor** the vendor alone, using cached per-CDR values.
+- **Vendor choices** list real vendors first, followed by Ericsson (Mixed) (and the former Mixed Vendor), Mixed (non-Ericsson) (and the former Other Vendor), All Vendor(s), and operators without vendors labelled **Operator - All**. Operators without a vendor are stored as `Operator - All` in both columns.
+- **Everywhere:** every vendor filter, including PPT export, expanded charts and template filters, uses these columns.
+- **Aliases:** the former `Vendor_Only`, `Vendor V3` and `OP_Vendor` filter names are accepted, and operator-prefixed values in a Vendor filter are resolved to the vendor name using workspace operator aliases.
+- The comparison mode still controls whether charts group by Operator_Vendor or by Vendor (All Operators Combined).
+- Technology is not an adaptive filter because NR Mode belongs to the definition.
+
+**Source columns of the filters:**
 
 | Visible filter | Source columns in priority order |
 | --- | --- |
@@ -183,17 +375,25 @@ The default order is **Campaign → Operator → Operator_Vendor → Vendor_Oper
 
 Aliases resolve per row: an empty higher-priority field falls back to the next column. Hover or keyboard-focus the filter to inspect its aliases.
 
-Each multiselect supports search, individual values and **Select All / None**. City offers **Main Cities** first: saved as such (not as the cities of that moment), it is the Main Cities of Workspace Config whenever the Design is prepared, exported or generated in a report of [Reporting](reporting.md), so changing the Main Cities changes the Design too (every city while the workspace has none). It stands alone: checking it clears the cities and checking a city clears it. Designs saved before with exactly the Main Cities of the workspace take the Main Cities choice once.
+**Choosing values:**
+
+- Each multiselect supports search, individual values and **Select All / None**.
+- **Main Cities:** City offers **Main Cities** first. It is saved as such (not as the cities of that moment) and is the Main Cities of Workspace Config whenever the Design is prepared, exported or generated in a report of [Reporting](reporting.md), so changing the Main Cities changes the Design too (every city while the workspace has none).
+  - It stands alone: checking it clears the cities and checking a city clears it.
+  - Designs saved before with exactly the Main Cities of the workspace take the Main Cities choice once.
+- **Every value = unrestricted:** selecting every value individually also makes the field unrestricted, even when only one value is available. An unrestricted field includes new values from later-added CDRs automatically and displays **All values**.
+- Applying or saving a changed Campaign reloads the choices of its CDRs.
+- Menus stay open while selecting and close after pointer exit.
+- Older truncated catalogues are completed from source rows.
 
 > [!NOTE]
-> **The filters list the values of every CDR of the NR Mode and follow each other.** Campaign lists every campaign of the Design's NR Mode (with the labels of the Campaign Maps), and Operator, Operator_Vendor, Vendor_Operator, Vendor, Region, Cluster and City the values of the chosen CDRs, each with the labels of the Operator and Vendor Maps and only those the other filters leave: choosing Vodafone as Operator leaves in Vendor only the Vendors of Vodafone. A filter's own choice does not narrow its list. These lists come from the combinations of values each CDR keeps (the **CDR Filter Facets** table), read once when the CDR is processed (or, for older CDRs, in the background the first time they are needed), so filling them never reads the rows of the CDRs; until a CDR has them, its catalogue values are offered.
+> **The filters list the values of every CDR of the NR Mode and follow each other.**
+> Campaign lists every campaign of the Design's NR Mode (with the labels of the Campaign Maps).
+> Operator, Operator_Vendor, Vendor_Operator, Vendor, Region, Cluster and City list the values of the chosen CDRs, each with the labels of the Operator and Vendor Maps and only those the other filters leave: choosing Vodafone as Operator leaves in Vendor only the Vendors of Vodafone. A filter's own choice does not narrow its list.
+> These lists come from the combinations of values each CDR keeps (the **CDR Filter Facets** table), read once when the CDR is processed (or, for older CDRs, in the background the first time they are needed), so filling them never reads the rows of the CDRs; until a CDR has them, its catalogue values are offered.
 
 > [!CAUTION]
 > **Selecting no values returns no rows.** Selecting all values removes the restriction. This differs from modules where an empty filter means “all”. Use Clear Filters to remove restrictions deliberately.
-
-Selecting every value individually also makes the field unrestricted, even when only one value is available. An unrestricted field includes new values from later-added CDRs automatically and displays **All values**.
-
-Applying or saving a changed Campaign reloads the choices of its CDRs. Menus stay open while selecting and close after pointer exit. Older truncated catalogues are completed from source rows.
 
 ### Additional Filters
 
@@ -201,9 +401,9 @@ Applying or saving a changed Campaign reloads the choices of its CDRs. Menus sta
 2. Choose a CDR column or an applicable workspace Auto-calculated Field.
 3. Use **Add Filter**, then select its values.
 
-Values load against the current CDRs, dates and other filters without preparing the whole Design. The circular **×** removes an additional filter or hides a default filter after confirmation; the field picker can restore a hidden default.
-
-Auto-calculated Fields apply to their declared CDR types. They are materialized into the relevant combined CDR table when first needed.
+- Values load against the current CDRs, dates and other filters without preparing the whole Design.
+- The circular **×** removes an additional filter or hides a default filter after confirmation; the field picker can restore a hidden default.
+- Auto-calculated Fields apply to their declared CDR types. They are materialized into the relevant combined CDR table when first needed.
 
 ### Apply, Save, Clear and Reload
 
@@ -212,7 +412,7 @@ Auto-calculated Fields apply to their declared CDR types. They are materialized 
 | **Apply Filters** | Scope, vendor comparison, dates and filters | No |
 | **Save Filters** | Scope, vendor comparison, dates, filters, additional and hidden fields, and applies them | Yes |
 | **Clear Filters** | Removes every restriction but the Campaign, which returns to its default (Latest 2 campaigns) | No |
-| **Reload Saved Scorings** | Restores the saved Scope, dates and filters | No |
+| **Reload Saved Filters** | Restores the saved Scope, dates and filters | No |
 
 **Apply Filters** and **Save Filters** are enabled as soon as a filter changes, also while the Design is being prepared (when it opens, after its NR Mode changes or while other filters are applied): the new preparation replaces the one running.
 
@@ -232,11 +432,14 @@ The Scope and dates are part of the filters, so they follow the same choice.
 
 ## Preparation lifecycle and cache
 
+How a Design is prepared, kept in the cache and warmed up while the server is idle.
+
 ### What happens while preparing?
 
-Preparations run in the background and the browser follows progress. A new request replaces the same user's previous request; stale responses are ignored. An equivalent selection prepared earlier in the session restores without recalculation.
-
-The viewer opens immediately with a yellow **Preparing PPT dataset** card until its requested slides are ready. User-requested tasks appear in the floating task card and can provide **Interrupt task**.
+- **In the background:** preparations run in the background and the browser follows progress. A new request replaces the same user's previous request; stale responses are ignored.
+- **Reuse:** an equivalent selection prepared earlier in the session restores without recalculation.
+- **Viewer opens at once:** with a yellow **Preparing PPT dataset** card until its requested slides are ready.
+- **Task card:** user-requested tasks appear in the floating task card and can provide **Interrupt task**.
 
 | Status | Meaning |
 | --- | --- |
@@ -250,26 +453,60 @@ View PPT, its PPT Filters and PPT export are available at any time.
 
 ### Warm-up while the server is idle
 
-After 5 minutes without anyone using the application (and with no other background work), the server **warms up** the open workspace: one after another, every PPT Design, and every PPT Template as PPT Templates → **Edit** opens it (with the NR Mode and Campaign of each user who opened one, else NSA and Latest 2 campaigns), is prepared and the models of its charts are worked out and kept in the cache folder of the workspace, so after a restart they open at once with their charts drawn. A chart keeps its model while the chart, its CDR selection and the mappings stay the same: a Design or template that changed works out again only its changed charts, and one whose CDRs or filters changed all of them; with nothing changed since the last warm-up, there is nothing to do. **Warming up PPT Designs** shows in the floating task card with the Design or template and the chart it is at, and its **Interrupt task** button stops it after the chart it works out. It also pauses by itself as soon as someone uses the application or other background work starts, and it goes on from where it was the next time the server is idle (what it kept is not worked out again). Charts a selection cannot draw are left to the viewer, which says why, and Designs without CDRs of their selection are skipped. App Events record each warm-up (`design_warmup_started`, `design_warmup_finished` with its charts worked out and kept and the size of the cache folder) and each stop (`stop_design_warmup`).
+After 5 minutes without anyone using the application (and with no other background work), the server **warms up** the open workspace, so after a restart Designs open at once with their charts drawn.
 
-Opening, refreshing or exporting a Design that was not warmed up (or whose CDRs, filters or template changed since) prepares it from the [columnar copies](workspace-management.md#columnar-copy-of-the-cdrs) of its CDRs. The charts that aggregate their rows (CDFs, histograms, averages, stacked and grouped bars) are grouped by DuckDB on the copies, each distinct combination of the chart's fields once with its number of rows; maps, scatter plots, tables and chart data views read their rows from the column cache in memory. Changing the Campaign, dates, filters or comparison mode recalculates the charts from the columns already in memory without reading the CDRs again.
+- **What it prepares:** one after another, every PPT Design, and every PPT Template as PPT Templates → **Edit** opens it (with the NR Mode and Campaign of each user who opened one, else NSA and Latest 2 campaigns). The models of their charts are worked out and kept in the cache folder of the workspace.
+- **Only what changed:** a chart keeps its model while the chart, its CDR selection and the mappings stay the same. A Design or template that changed works out again only its changed charts, and one whose CDRs or filters changed all of them; with nothing changed since the last warm-up, there is nothing to do.
+- **Progress:** **Warming up PPT Designs** shows in the floating task card with the Design or template and the chart it is at. Its **Interrupt task** button stops it after the chart it works out.
+- **Pauses by itself** as soon as someone uses the application or other background work starts, and goes on from where it was the next time the server is idle (what it kept is not worked out again).
+- **Skipped:** charts a selection cannot draw are left to the viewer, which says why, and Designs without CDRs of their selection are skipped.
+- **App Events:** each warm-up (`design_warmup_started`, `design_warmup_finished` with its charts worked out and kept and the size of the cache folder) and each stop (`stop_design_warmup`).
+
+**Without warm-up:** opening, refreshing or exporting a Design that was not warmed up (or whose CDRs, filters or template changed since) prepares it from the [columnar copies](workspace-management.md#columnar-copy-of-the-cdrs) of its CDRs.
+
+- The charts that aggregate their rows (CDFs, histograms, averages, stacked and grouped bars) are grouped by DuckDB on the copies, each distinct combination of the chart's fields once with its number of rows.
+- Maps, scatter plots, tables and chart data views read their rows from the column cache in memory.
+- Changing the Campaign, dates, filters or comparison mode recalculates the charts from the columns already in memory without reading the CDRs again.
 
 ### What Clear cache removes
 
 Combined CDR tables remain the source for filters and chart data. Selection records keep counts, facets and reproducible predicates; the cache does not copy CDR rows into a separate projection database.
 
-PPT charts read the materialized combined CDR tables through a per-CDR column cache kept in memory. Each column a chart needs is read once per CDR, together with the PPT filter columns (the default filters, the Design's custom fields and the event date): from the [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) of each CDR when every copy of the selection holds its CDR as it is, else from SQLite. A column worked out by an expression is worked out once per distinct value, giving the value SQLite gives: the day of each time is written directly where it is certain, and by SQLite in memory otherwise. The RF fields (coordinates, RSRP and SINR) are read as the numbers the CDRs hold, without turning them into text and back (a value that is no number stays text, without its spaces at both ends, and blank text is no value). Any combination of CDRs, dates, filters and comparison mode is then assembled in memory without querying the CDRs again. `CDR-All` pools the Data, Voice and Speech tables without rereading the original uploaded files.
+**Column cache in memory:**
 
-Preparing a changed universe also counts its rows from these filter columns, and reuses the distinct filter values of each CDR until that CDR changes, instead of reading the CDRs again. The assembled rows are exactly the rows SQLite returns, with the same values and types. Maps, scatter plots, tables and chart data views also keep SQLite's row order. When SQLite would return them in an order the cache cannot reproduce, for example while filtering a single City, those charts read SQLite directly. Charts reading the same fields share one read, and charts with the same source, filters and measure share one filtering pass.
+- PPT charts read the materialized combined CDR tables through a per-CDR column cache kept in memory.
+- Each column a chart needs is read once per CDR, together with the PPT filter columns (the default filters, the Design's custom fields and the event date): from the [columnar copy](workspace-management.md#columnar-copy-of-the-cdrs) of each CDR when every copy of the selection holds its CDR as it is, else from SQLite.
+- A column worked out by an expression is worked out once per distinct value, giving the value SQLite gives: the day of each time is written directly where it is certain, and by SQLite in memory otherwise.
+- The RF fields (coordinates, RSRP and SINR) are read as the numbers the CDRs hold, without turning them into text and back (a value that is no number stays text, without its spaces at both ends, and blank text is no value).
+- Any combination of CDRs, dates, filters and comparison mode is then assembled in memory without querying the CDRs again. `CDR-All` pools the Data, Voice and Speech tables without rereading the original uploaded files.
+- Preparing a changed universe also counts its rows from these filter columns, and reuses the distinct filter values of each CDR until that CDR changes, instead of reading the CDRs again.
+- The assembled rows are exactly the rows SQLite returns, with the same values and types. Maps, scatter plots, tables and chart data views also keep SQLite's row order. When SQLite would return them in an order the cache cannot reproduce, for example while filtering a single City, those charts read SQLite directly.
+- Charts reading the same fields share one read, and charts with the same source, filters and measure share one filtering pass.
+- The column cache keeps up to 1 GB in memory by default, removing the least recently used columns first; `DRIVETEST_ANALYZER_COLUMN_CACHE_MEMORY_MB` changes this limit.
 
-Preview manifests (the preparation of a Design) and Canvas models (the drawn data of each chart) are kept in memory and, as compressed files, in the `.cache/ppt-designer` folder of the workspace (`preparations/` and `charts/`), keyed by dataset revisions, selection, scope, template and format, mappings and renderer version: other sessions and PPT exports reuse them, and after a restart a Design already prepared opens at once with the charts already drawn, while anything that changed is worked out again. Each file is written under a temporary name and renamed once complete, so a chart is never kept half written; a file that cannot be read (cut by a crash or a full disk) is deleted and worked out again, and temporary files left by a write cut short are deleted. The folder keeps up to 1 GB, the least recently used files removed first (`DRIVETEST_ANALYZER_PPT_CHART_CACHE_MB` changes this limit), and files nothing has used for 30 days are removed. The folder is left out of backups, exports and transfers, moves with its workspace when it is renamed and is deleted with it, and **Clear workspace cache** empties it (set aside at once, deleted in the background). What earlier versions kept in the workspace database (the PPT Preparation Cache and PPT Chart Models Cache tables) moves to the folder when the workspace opens (App Event `ppt_design_cache_moved_to_folder`), and the tables are dropped. The column cache keeps up to 1 GB in memory by default, removing the least recently used columns first, and `DRIVETEST_ANALYZER_COLUMN_CACHE_MEMORY_MB` changes this limit. The `.design-data-cache` and `.design-chart-cache` folders of earlier versions are removed when a workspace opens.
+**Cache folder of the workspace:**
+
+- Preview manifests (the preparation of a Design) and Canvas models (the drawn data of each chart) are kept in memory and, as compressed files, in the `.cache/ppt-designer` folder of the workspace (`preparations/` and `charts/`).
+- They are keyed by dataset revisions, selection, scope, template and format, mappings and renderer version: other sessions and PPT exports reuse them, and after a restart a Design already prepared opens at once with the charts already drawn, while anything that changed is worked out again.
+- Each file is written under a temporary name and renamed once complete, so a chart is never kept half written. A file that cannot be read (cut by a crash or a full disk) is deleted and worked out again, and temporary files left by a write cut short are deleted.
+- The folder keeps up to 1 GB, the least recently used files removed first (`DRIVETEST_ANALYZER_PPT_CHART_CACHE_MB` changes this limit), and files nothing has used for 30 days are removed.
+- The folder is left out of backups, exports and transfers, moves with its workspace when it is renamed and is deleted with it.
+- **Clear workspace cache** empties it (set aside at once, deleted in the background).
+- **Earlier versions:** what they kept in the workspace database (the PPT Preparation Cache and PPT Chart Models Cache tables) moves to the folder when the workspace opens (App Event `ppt_design_cache_moved_to_folder`), and the tables are dropped. The `.design-data-cache` and `.design-chart-cache` folders of earlier versions are removed when a workspace opens.
 
 > [!WARNING]
 > **Workspace Clear cache cancels active user-requested work and removes derived cache only.** It preserves PPT definitions, combined CDRs, templates and generated jobs. The warm-up rebuilds the cache the next time the server is idle.
 
-Canvas models are created when a chart is viewed, refreshed or requested for PPT, or by the warm-up. The charts of the open slide are calculated first and appear as each one is ready. After they load, nearby slides silently prefetch one chart at a time in the order next, previous, two ahead, two behind. A prefetch waits while the charts of a newly opened slide are calculated, so moving to another slide never queues it behind prefetched charts. Opening an individual chart uses the chart sequence instead. Closing the viewer stops scheduling further work.
+**When charts are calculated:**
+
+- Canvas models are created when a chart is viewed, refreshed or requested for PPT, or by the warm-up.
+- The charts of the open slide are calculated first and appear as each one is ready.
+- After they load, nearby slides silently prefetch one chart at a time in the order next, previous, two ahead, two behind. A prefetch waits while the charts of a newly opened slide are calculated, so moving to another slide never queues it behind prefetched charts.
+- Opening an individual chart uses the chart sequence instead. Closing the viewer stops scheduling further work.
 
 ## View PPT
+
+Explore the slides and charts of a Design, live on its CDRs.
 
 Open **View PPT** from the library or filter panel (**Edit Design** opens it in the Designer). It does not expand the main filters panel automatically; use **PPT Filters** for the floating controls.
 
@@ -280,8 +517,7 @@ The viewer preserves the template's 16:9 layout and uses approximately 96% of th
 - Slide titles and golden-yellow subtitles display in capitals.
 - Campaigns, Scope, Regions and Cities identify the applied selection.
 - Export snapshots show the selection captured by that PPT job.
-
-Campaign labels are compact, such as **26-Q2**, **26-Q2-NSA** or **26-Q2-SA** (see [Campaign ordering](technical-considerations.md#campaign-ordering)). Older CDRs may populate cached campaign labels a few seconds after first opening.
+- Campaign labels are compact, such as **26-Q2**, **26-Q2-NSA** or **26-Q2-SA** (see [Campaign ordering](technical-considerations.md#campaign-ordering)). Older CDRs may populate cached campaign labels a few seconds after first opening.
 
 ### Slides and navigation
 
@@ -290,54 +526,87 @@ Campaign labels are compact, such as **26-Q2**, **26-Q2-NSA** or **26-Q2-SA** (s
 | Slide selector | Jump to a template slide; searchable choices show the number, a purple title and a teal subtitle separated by a bold ● |
 | Slides at the left | Every slide in small, as in the presentations of the [Help](help.md#presentations): the covers and transitions as in the viewer and the charts of the others once calculated, with their number and title; the slide shown is marked, and choosing one shows it (on wide screens; phones keep the slide selector) |
 | **Presentation**, **First / Previous / Next / Last** | Below the slide and its comments: play the slides or move through them |
-| Keyboard and wheel | ← ↑ Page Up go back and → ↓ Page Down (or Space) go forward, Home and End go to the first and last slide, when focus is outside editable controls; the wheel over the slide goes to the previous or next slide, one per turn |
+| Keyboard, wheel and swipe | <kbd>←</kbd> <kbd>↑</kbd> <kbd>Page Up</kbd> go back and <kbd>→</kbd> <kbd>↓</kbd> <kbd>Page Down</kbd> (or <kbd>Space</kbd>) go forward, <kbd>Home</kbd> and <kbd>End</kbd> go to the first and last slide, when focus is outside editable controls; the wheel over the slide goes to the previous or next slide, one per turn; on touch, a swipe left or right goes to the next or previous slide (not on a zoomed chart) |
 | **Scope** | Switch Operator/Multivendor after confirmation |
 | **PPT Filters** | Edit the live selection in a floating panel |
 | **Generate PPT** | Export the selection |
 | **Refresh Design** | Refresh the PPT preparation |
 
-On wide screens these controls share one row above the slide: the slide selector with the two image buttons of the slide beside it, then **Scope**, **PPT Filters** and **Open Designer** with their names, and **Refresh Design**, **Auto-Calculated Fields**, **Edit PPT Template** and, the last one, **Generate PPT** as icons (point at one to read its name). While designing, the slides at the left take the place of the slide selector.
+- **On wide screens** these controls share one row above the slide: the slide selector with the two image buttons of the slide beside it, then **Scope**, **PPT Filters** and **Open Designer** with their names, and **Refresh Design**, **Auto-Calculated Fields**, **Edit PPT Template** and, the last one, **Generate PPT** as icons (point at one to read its name).
+- **While designing**, the slides at the left take the place of the slide selector.
+- **Changing Scope** renders the charts again with the PPT filters (a Campaign that still has the default of the former Scope takes the default of the new one). Multivendor is unavailable when the workspace has fewer than two Vendors.
+- **Narrow screens** wrap actions and adapt navigation to the available space.
 
-**Theme**, at the start of the floating section bar of the page, colours the charts and the slide titles of the viewer and of the PPTs with the colour themes of [Scoring & GAP Analysis](scoring-gap-analysis.md) (**Ericsson** by default, **NetCheck**, **Umlaut**, **Vodafone**, **Midnight**, **Paper** and **Heatmap**): the charts take its font and its colours for text, axes, grid lines, table headers and alternate rows (the colours of operators, vendors and thresholds stay as they are), and the slide title and subtitle of the viewer (still in capitals) and the titles and subtitles of the content slides of the PPT take its title style, the part that tells the slide apart in its focus style; **Midnight** paints the charts and the content slides night blue (with the logos in white) and turns their tables, text and comments light on dark. Title and Transition slides keep the template look. Each user keeps one theme per workspace for every themed module (choosing it here chooses it in Scoring & GAP Analysis, Network Insights and CDR Analysis too); changing it restyles the viewer and redraws the charts at once, is kept for the next visit and the PPTs generated afterwards, and is recorded in the App Events log.
+**Theme**, at the start of the floating section bar of the page, colours the charts and the slide titles of the viewer and of the PPTs with the colour themes of [Scoring & GAP Analysis](scoring-gap-analysis.md): **Ericsson** by default, **NetCheck**, **Umlaut**, **Vodafone**, **Midnight**, **Paper** and **Heatmap**.
 
-Changing Scope renders the charts again with the PPT filters (a Campaign that still has the default of the former Scope takes the default of the new one). Multivendor is unavailable when the workspace has fewer than two Vendors.
+- **Charts** take its font and its colours for text, axes, grid lines, table headers and alternate rows; the colours of operators, vendors and thresholds stay as they are.
+- **Titles:** the slide title and subtitle of the viewer (still in capitals) and the titles and subtitles of the content slides of the PPT take its title style, the part that tells the slide apart in its focus style.
+- **Midnight** paints the charts and the content slides night blue (with the logos in white) and turns their tables, text and comments light on dark.
+- Title and Transition slides keep the template look.
+- **One theme per workspace:** each user keeps one theme per workspace for every themed module (choosing it here chooses it in Scoring & GAP Analysis, Network Insights and CDR Analysis too). Changing it restyles the viewer and redraws the charts at once, is kept for the next visit and the PPTs generated afterwards, and is recorded in the App Events log.
 
-Title and Transition slides preserve the template text and look as in the exported PPT: the Vodafone-Three red with the Ericsson mark, the Vodafone-Three and Ericsson logos at the top right, light titles with the room of two lines and the yellow subtitle below them. A title cover shows Campaigns above its decorative divider, with Scope, Regions and Cities beneath it, in white with bold labels; each Title or Transition slide after it shows its counter (01, 02…), as in the PPT. An End Slide shows the Ericsson mark and name centred on white, as the closing slide of the PPT, without counter. Chart rows preserve template order and placeholder geometry.
+**How slides look:**
 
-In grids with three or more rows or four or more columns, each chart's title appears as text above the chart, in the viewer and in the PPT, so it stays readable in small cells. Dynamic grids show the row or column value (for example the Operator) in bold before the title, such as **EE** · LTE RSRP histogram.
+- **Title and Transition slides** preserve the template text and look as in the exported PPT: the Vodafone-Three red with the Ericsson mark, the Vodafone-Three and Ericsson logos at the top right, light titles with the room of two lines and the yellow subtitle below them.
+- **Title cover:** Campaigns above its decorative divider, with Scope, Regions and Cities beneath it, in white with bold labels. Each Title or Transition slide after it shows its counter (01, 02…), as in the PPT.
+- **End Slide:** the Ericsson mark and name centred on white, as the closing slide of the PPT, without counter.
+- **Chart rows** preserve template order and placeholder geometry.
+- **Large grids:** in grids with three or more rows or four or more columns, each chart's title appears as text above the chart, in the viewer and in the PPT, so it stays readable in small cells. Dynamic grids show the row or column value (for example the Operator) in bold before the title, such as **EE** · LTE RSRP histogram.
+- **Axis labels** and aggregation headers are never truncated, in the viewer or in the PPT. Each axis level wraps onto two lines, uses a smaller size or turns vertical, and the chart reserves the room it needs.
 
-Axis labels and aggregation headers are never truncated, in the viewer or in the PPT. Each axis level wraps onto two lines, uses a smaller size or turns vertical, and the chart reserves the room it needs.
+**Comments area:**
 
-Layouts ending in **comments right** place comments beside the charts; **comments down** places them below. Their comments area is always kept in the PPT. When the slide leaves places of its grid free (for example three charts on a 2 x 2 grid, or a **New chart** not finished yet, which the PPT leaves empty), the comments take the largest block of free places (the lowest, then the rightmost) and the charts take the same grid without comments, so they also use the room of the comments. A slide without comments shows the area with a dashed frame and a muted *Comments* prompt to write over. Layouts without comments use the full chart area and have no comments: the viewer and the Designer show no Comments panel on their slides, and generated comments (for one slide, all slides, the Kiro brief or the Auto comments of the PPT) leave them out. Narrow screens wrap actions and adapt navigation to the available space.
+- Layouts ending in **comments right** place comments beside the charts; **comments down** places them below. Their comments area is always kept in the PPT.
+- When the slide leaves places of its grid free (for example three charts on a 2 x 2 grid, or a **New chart** not finished yet, which the PPT leaves empty), the comments take the largest block of free places (the lowest, then the rightmost) and the charts take the same grid without comments, so they also use the room of the comments.
+- A slide without comments shows the area with a dashed frame and a muted *Comments* prompt to write over.
+- Layouts without comments use the full chart area and have no comments: the viewer and the Designer show no Comments panel on their slides, and generated comments (for one slide, all slides, the Kiro brief or the Auto comments of the PPT) leave them out.
 
 ### Live and expanded chart controls
 
-Hover or focus a chart for **Dataset**, **Expand**, **Refresh** and **Zoom**; while the [Designer](#designer) is open only **Dataset** shows, and the chart itself is changed from its panel. The controls also remain accessible on touch devices.
+Point at or focus a chart for **Dataset**, **Expand** and **Zoom** (on touch, a tap shows them for 3 seconds). While the [Designer](#designer) is open only **Dataset** and **Refresh chart** show, and the chart itself is changed from its panel.
 
 | Gesture / action | Result |
 | --- | --- |
 | **Expand** or double-click | Open the focused chart in the expanded viewer |
+| <kbd>←</kbd> / <kbd>→</kbd> in the expanded viewer (on touch, a swipe) | The previous or next chart |
 | **− / + / 1:1** | Zoom between 100% and 400%, or reset |
-| Ctrl/Cmd + wheel (or a pinch of the touchpad) | Zoom the chart under the pointer, at the pointer |
-| Drag a rectangle at 100% | Zoom into the selected plot area |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + wheel (or a pinch of the touchpad) | Zoom the chart under the pointer, at the pointer |
+| Drag a rectangle at 100% (with the mouse) | Zoom into the selected plot area |
 | Drag when zoomed | Pan the chart |
 | Direction arrows when zoomed | Move the camera; arrows disable at boundaries |
+| Point at a data point | A tooltip with its label, series and value |
 | Click a legend entry | Hide or show that value in every slide of the Design; a hidden entry stays faded and struck through |
-| Right-click a legend entry or an axis label | **Keep only**, **Hide** or **Show**, **Hide All** and **Show All** for that legend or axis level; the menu also lists the values hidden in the rest of the Design (an axis menu, those of its level too), each opening a **Show** submenu when the pointer moves over it |
+| Right-click a legend entry or an axis label | **Keep only**, **Hide** or **Show**, **Hide All** and **Show All** for that legend or axis level; the menu also lists the values hidden in the rest of the Design (an axis menu, those of its level too), each opening a **Show** submenu when the pointer moves over it (or with <kbd>→</kbd>; <kbd>←</kbd> goes back) |
 | **Hidden (N)**, in the viewer | Shown while a value is hidden: lists every hidden value of the Design to **Show** it, **Show all** and **Undo** the last hide or show, even when nothing is left on the chart to click |
-| **Ctrl/Cmd+Z** | Undoes the last hide or show; in the Designer, its **Undo** does so when it was the last change |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> | Undoes the last hide or show; in the Designer, its **Undo** does so when it was the last change |
 
-Hiding a value applies to the whole Design. Every series, bar, stacked segment, row, column and category where the value appears, at any aggregation level, disappears and the chart closes the gap: hiding Operator VF_SA also hides each VF_SA Campaign, for example. In dynamic grids, the cards of a hidden value (such as an Operator) leave the slide and the remaining cards fill a smaller grid. A slide whose cards are all hidden offers **Show hidden values** and is left out of the PPT.
+**Hidden values:**
 
-The legend state lasts for the browser session and also applies in the expanded viewer. **Generate PPT** exports the charts as you see them, and the PPT job's viewer shows the same state. Relaunching a PPT job keeps the state it was created with. In Network Insights, clicking a legend entry hides or shows it in that chart only.
+- **Whole Design:** hiding a value applies to the whole Design. Every series, bar, stacked segment, row, column and category where the value appears, at any aggregation level, disappears and the chart closes the gap: hiding Operator VF_SA also hides each VF_SA Campaign, for example.
+- **Dynamic grids:** the cards of a hidden value (such as an Operator) leave the slide and the remaining cards fill a smaller grid. A slide whose cards are all hidden offers **Show hidden values** and is left out of the PPT.
+- **How long:** the legend state lasts for the browser session and also applies in the expanded viewer.
+- **In the PPT:** **Generate PPT** exports the charts as you see them, and the PPT job's viewer shows the same state. Relaunching a PPT job keeps the state it was created with.
+- In Network Insights, clicking a legend entry hides or shows it in that chart only.
 
-The slide of the viewer, each of its charts and the chart of the expanded viewer download as a PNG image or copy to the clipboard as a screenshot (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)): the whole slide from the two blue buttons beside the slide chooser, above the slide, with its comments below it when it has some (as plain text); each chart (also when it is the only one of its slide) from the floating buttons at the left of its controls, on the same row; the chart of the expanded viewer from the buttons above it. So do the Charts Panel and each of its thumbnails. App Events records each one as `export_design_image`, with the slide or the Design and date of the PowerPoint job.
+**Images:** the slide of the viewer, each of its charts and the chart of the expanded viewer download as a PNG image or copy to the clipboard as a screenshot (see [Images of charts and tables](web-interface.md#images-of-charts-and-tables)).
 
-The expanded viewer has the actions of the viewer above the chart (its image, **PPT Filters**, and **Auto-Calculated Fields** and **Edit PPT Template** as icons named by their tooltips), chart navigation and a red Close control. Compact portrait/landscape layouts fit navigation and the chart to the viewport; the Comments drawer stays accessible at the bottom.
+- **The whole slide:** from the two blue buttons beside the slide chooser, above the slide, with its comments below it when it has some (as plain text).
+- **Each chart** (also when it is the only one of its slide): from the floating buttons at the left of its controls, on the same row.
+- **The chart of the expanded viewer:** from the buttons above it.
+- So do the Charts Panel and each of its thumbnails.
+- App Events records each one as `export_design_image`, with the slide or the Design and date of the PowerPoint job.
+
+**The expanded viewer:**
+
+- Has the actions of the viewer above the chart: its image, **PPT Filters**, and **Auto-Calculated Fields** and **Edit PPT Template** as icons named by their tooltips.
+- Has chart navigation and a red Close control; <kbd>Esc</kbd> or a click on the backdrop also closes it. Opening it stops a running Presentation.
+- Compact portrait/landscape layouts fit navigation and the chart to the viewport; the Comments drawer stays accessible at the bottom.
 
 ### Edit a chart definition
 
-The charts of a PPT Design are changed on screen in the [Designer](#designer) (**Open Designer**), for the Design or for its template; **Edit PPT Template**, the pencil at the top of the viewer and of the expanded viewer, opens its template as a table at the row of the chart. Template and calculated-field editing require **user-editor**, **admin** or **super-admin**.
+- **On screen:** the charts of a PPT Design are changed in the [Designer](#designer) (**Open Designer**), for the Design or for its template.
+- **As a table:** **Edit PPT Template**, the pencil at the top of the viewer and of the expanded viewer, opens its template as a table at the row of the chart.
+- Template and calculated-field editing require **user-editor**, **admin** or **super-admin**.
 
 The [Report Template reference](#report-template-reference) describes supported chart types, filters, aggregations, legends and layouts.
 
@@ -360,18 +629,32 @@ Active columns are highlighted. Value choices respond to the other column filter
 
 | Tool | Behavior |
 | --- | --- |
-| Slide comments | Add, edit or remove; Enter or leaving an edit saves immediately |
+| Slide comments | Add, edit or remove; <kbd>Enter</kbd> or leaving an edit saves immediately |
 | Generated comments | The icons after the slide navigation: comments for the open slide from the figures of its charts (reviewed before they are added) or for all slides, and a menu with the writer and the Kiro brief |
-| **Presentation** | Opens the **Presentation mode** settings: **Seconds per slide** (1 to 300, 5 by default), **Transition duration (seconds)** (0.1 to 10, 1 by default), **Transition effect** (None, Random, Blinds, Blur, Bounce, Curtain, Fade, Flip by default, Mosaic, Rise, Slide from left, Slide from right, Soft rotate, Wipe or Zoom) and **Show comments** (Yes by default), then **Start presentation** advances the slides on its own; **Stop presentation** ends it |
+| **Presentation** | Opens the **Presentation mode** settings, then **Start presentation** advances the slides on its own; **Stop presentation** ends it (see below) |
 | Pause/Resume and Stop | Floating controls remain available in Presentation mode |
 | **PPT Filters** | Change applied selection without automatically saving defaults |
 | **Auto-Calculated Fields** | Open the shared workspace manager for permitted editors |
 
-Manual navigation stops Presentation. Its settings adapt to compact landscape screens. Backdrop/Escape closes unchanged dialogs; pending Filters, Template or calculated-field edits require a decision first.
+**Presentation mode settings:**
+
+| Setting | Values |
+| --- | --- |
+| **Seconds per slide** | 1 to 300, 5 by default |
+| **Transition duration (seconds)** | 0.1 to 10, 1 by default |
+| **Transition effect** | None, Random, Blinds, Blur, Bounce, Curtain, Fade, Flip (default), Mosaic, Rise, Slide from left, Slide from right, Soft rotate, Wipe or Zoom |
+| **Show comments** | Yes (default) or No |
+
+- **Keys:** <kbd>F8</kbd> starts the Presentation with these settings, or pauses and resumes it; <kbd>Space</kbd> also pauses and resumes it; <kbd>F7</kbd> and <kbd>F9</kbd> (or the arrow keys, the wheel and swipes) go to the previous and next slide while it keeps playing; <kbd>Esc</kbd> stops it.
+- **What stops it:** the **First / Previous / Next / Last** buttons, the slide selector and opening a chart larger.
+- Its settings adapt to compact landscape screens.
+- Backdrop/Escape closes unchanged dialogs; pending Filters, Template or calculated-field edits require a decision first.
 
 #### Generated comments
 
-For editors, three icons follow the slide navigation, set apart like **Presentation** before it (on a phone, on a row of their own below it); hovering each one names it. **Generate comments for this slide** (the sparkle) writes analysis comments for the open slide from the same figures its charts draw: the filters, splits, PPT filters, dynamic grid cards and legend items hidden in the viewer apply, and the excluded operators are never named.
+For editors, three icons follow the slide navigation, set apart like **Presentation** before it (on a phone, on a row of their own below it); hovering each one names it.
+
+**Generate comments for this slide** (the sparkle) writes analysis comments for the open slide from the same figures its charts draw: the filters, splits, PPT filters, dynamic grid cards and legend items hidden in the viewer apply, and the excluded operators are never named.
 
 | Chart type | What the comments read |
 | --- | --- |
@@ -390,19 +673,68 @@ For editors, three icons follow the slide navigation, set apart like **Presentat
 
 Dual Lines, Bars and Line, Symbol Map, Filled Map, Treemap, Packed Bubbles, Sankey and Gantt get no generated comments: write theirs by hand.
 
-The comments compare the latest campaign of each group with the previous one and every operator with the leader, from the point of view of the **Focus** operators of the [Operator Maps](workspace-config.md#operator-maps) (without Focus operators they follow the leader), compare the vendors of each operator in Multivendor and, in a chart split by NR Mode, each operator in SA with itself in NSA (the newest campaign of each NR Mode), and read the charts of a slide together: an NR KPI against the same LTE KPI for every operator, the KPI of a chart of SA against the same KPI of a chart of NSA (their titles name the NR Mode, such as CDF_NSA and CDF_SA), and the operators of a slide that gives each operator its own chart. Each KPI is read with its unit and its better side (RSRP and SINR in dB, higher LQ, Mean Data Rate and scores are better, lower durations, times, RTT and error ratios are better), a group with fewer than 10 samples is not named, and a difference too small to matter (1 dB for RSRP and SINR, 0.1 for LQ, 5% for the other KPIs, or a share difference that is not statistically significant) reads as *stable* or *on par*. A slide gets up to four comments (three in the **comments right** layouts), the best one of every chart first.
+**What the comments compare:**
 
-The suggestions replace the list of comments until you decide: untick or edit them, then **Add selected comments** adds them after the existing comments of the slide (saved at once, like the comments you write), or **Discard** leaves the slide as it was. Comments added from Generate comments keep a **Generated** tag (hover it to see when and by which writer); edited by hand, a comment is yours. When the slide is open with another selection (other campaigns, filters or CDRs, such as a new campaign with **Latest 2 campaigns**) than the one its generated comments were written for, the panel says they are out of date: generate them again. The CDRs count by what they hold (their type, stage, campaigns and rows), so a Design transferred to another server where the same CDRs were uploaded, or a CDR processed again, keeps its comments up to date.
+- **Campaigns and leader:** the latest campaign of each group with the previous one, and every operator with the leader, from the point of view of the **Focus** operators of the [Operator Maps](workspace-config.md#operator-maps) (without Focus operators they follow the leader).
+- **Vendors:** the vendors of each operator in Multivendor.
+- **NR Modes:** in a chart split by NR Mode, each operator in SA with itself in NSA (the newest campaign of each NR Mode).
+- **Charts of a slide together:** an NR KPI against the same LTE KPI for every operator, the KPI of a chart of SA against the same KPI of a chart of NSA (their titles name the NR Mode, such as CDF_NSA and CDF_SA), and the operators of a slide that gives each operator its own chart.
+- **Units and better side:** each KPI is read with its unit and its better side (RSRP and SINR in dB; higher LQ, Mean Data Rate and scores are better; lower durations, times, RTT and error ratios are better).
+- **Small groups and small differences:** a group with fewer than 10 samples is not named, and a difference too small to matter (1 dB for RSRP and SINR, 0.1 for LQ, 5% for the other KPIs, or a share difference that is not statistically significant) reads as *stable* or *on par*.
+- **How many:** a slide gets up to four comments (three in the **comments right** layouts), the best one of every chart first.
 
-**Generate comments for all slides** (the sparkle on a stack of slides) writes the comments of every slide in one go, in the background, following its progress slide by slide: on **Only Slides Without Comments**, in place of the generated comments keeping those written by hand (**Replace Generated Comments**), or in place of every comment (**Replace Every Comment**); a summary says how many slides were written and kept.
+**Review the suggestions:**
 
-**Writers.** The rules always read the charts, on the server. When Super Admin enables them in [AI Comment Writers](super-admin.md#ai-comment-writers), the menu of the third icon (**⋯**) picks the writer, which the tooltips of the other two name: **Rules**, **Kiro CLI** (the default LLM) or **Claude**, each with the API key of the server or with your own (user menu → **API keys**), as Super Admin chooses; what it writes is charged to the account of the key. An LLM writer receives the facts of the charts and the rules comments, rewrites them in a more natural way and connects them; every figure it writes must be one of the facts and it must not name a hidden item, otherwise that comment is left out, and when none keeps to the facts, or the writer fails, the rules comments are shown with a note saying why. With the **Kiro Brief** enabled, the same menu offers **Download Kiro brief**, which downloads the facts of every slide for Kiro IDE (a folder with the facts, the style guide, also as a Kiro steering file, and the comments.json Kiro fills in) and **Import Kiro comments** reads back comments.json and facts.json (or the folder zipped again), checks every figure and writes the comments with the same three choices as Generate comments for all slides.
+1. The suggestions replace the list of comments until you decide.
+2. Untick or edit them.
+3. **Add selected comments** adds them after the existing comments of the slide (saved at once, like the comments you write), or **Discard** leaves the slide as it was.
+
+- **Generated tag:** comments added from Generate comments keep a **Generated** tag (hover it to see when and by which writer); edited by hand, a comment is yours.
+- **Out of date:** when the slide is open with another selection (other campaigns, filters or CDRs, such as a new campaign with **Latest 2 campaigns**) than the one its generated comments were written for, the panel says they are out of date: generate them again.
+- The CDRs count by what they hold (their type, stage, campaigns and rows), so a Design transferred to another server where the same CDRs were uploaded, or a CDR processed again, keeps its comments up to date.
+
+**Generate comments for all slides** (the sparkle on a stack of slides) writes the comments of every slide in one go, in the background, following its progress slide by slide. A summary says how many slides were written and kept.
+
+| Choice | Writes |
+| --- | --- |
+| **Only Slides Without Comments** | Only the slides without comments |
+| **Replace Generated Comments** | In place of the generated comments, keeping those written by hand |
+| **Replace Every Comment** | In place of every comment |
+
+**Writers:**
+
+- **Rules** always read the charts, on the server.
+- **LLM writers:** when Super Admin enables them in [AI Comment Writers](super-admin.md#ai-comment-writers), the menu of the third icon (**⋯**) picks the writer, which the tooltips of the other two name: **Rules**, **Kiro CLI** (the default LLM) or **Claude**. Each uses the API key of the server or your own (user menu → **API keys**), as Super Admin chooses; what it writes is charged to the account of the key.
+- **How an LLM writer works:** it receives the facts of the charts and the rules comments, rewrites them in a more natural way and connects them. Every figure it writes must be one of the facts and it must not name a hidden item, otherwise that comment is left out. When none keeps to the facts, or the writer fails, the rules comments are shown with a note saying why.
+- **Kiro Brief:** when enabled, the same menu offers:
+  - **Download Kiro brief:** downloads the facts of every slide for Kiro IDE (a folder with the facts, the style guide, also as a Kiro steering file, and the comments.json Kiro fills in).
+  - **Import Kiro comments:** reads back comments.json and facts.json (or the folder zipped again), checks every figure and writes the comments with the same three choices as Generate comments for all slides.
 
 App Events records each generation (slide, writer asked and writer that wrote, model, charts read and skipped, suggestions, comments left out, tokens of Claude and time taken), the comments added from it, Generate comments for all slides, the Kiro briefs exported and the Kiro comments imported.
 
 ## Designer
 
-**Open Designer**, at the top of the viewer, turns it into a slide editor (the button reads **Close Designer**, in amber, while it is open, and closes it; it asks about the changes only when something differs from what is saved, so changes undone or made back by hand leave nothing to save). While it is open, **Generate PPT** and the presentation wait for it to close, and the tools over the charts (images, expand, zoom) are hidden but **Refresh chart**, shown only while designing, which works that chart out again from its CDRs and draws it again, and View dataset; **PPT Filters**, the Scope, the theme, **Refresh Design** (which lays the slides being edited out again on the charts it renders again), **Auto-Calculated Fields** and **Edit PPT Template** stay. The slides at the left become the slides being edited, the charts of the slide shown can be chosen and moved, and the panel at the right shows the slide or the chart chosen. Its head says where it is (**Slide 2 › Chart 1**: click the slide to see it again; the chart button, **Charts** while none is chosen, lists the charts of the slide to choose one), what a change reaches (**This Design** or the template) and how the slide or chart differs from the template; its **⋯** menu holds the actions of the slide or chart. Drag the left edge of the panel to widen it, or narrow it again (double-click gives it its usual width); a wide panel shows the fields of a chart beside its shelves. Every change is drawn at once on the CDRs the Design already prepared; nothing is stored until **Save**.
+Change the slides, layouts and charts of a Design on screen, for this Design or for its template.
+
+**Open and close:**
+
+- **Open Designer**, at the top of the viewer, turns it into a slide editor. The button reads **Close Designer**, in amber, while it is open, and closes it.
+- Closing asks about the changes only when something differs from what is saved, so changes undone or made back by hand leave nothing to save.
+- Every change is drawn at once on the CDRs the Design already prepared; nothing is stored until **Save**.
+
+**What changes in the viewer while designing:**
+
+- **Generate PPT** and the presentation wait for it to close.
+- The tools over the charts (images, expand, zoom) are hidden but **Refresh chart**, shown only while designing, which works that chart out again from its CDRs and draws it again, and View dataset.
+- **PPT Filters**, the Scope, the theme, **Refresh Design** (which lays the slides being edited out again on the charts it renders again), **Auto-Calculated Fields** and **Edit PPT Template** stay.
+- The slides at the left become the slides being edited, and the charts of the slide shown can be chosen and moved.
+- The slide title and subtitle in the header can be clicked to edit them in place (<kbd>Enter</kbd> or leaving keeps, <kbd>Esc</kbd> cancels).
+
+**The panel at the right** shows the slide or the chart chosen:
+
+- **Its head** says where it is (**Slide 2 › Chart 1**: click the slide to see it again; the chart button, **Charts** while none is chosen, lists the charts of the slide to choose one), what a change reaches (**This Design** or the template) and how the slide or chart differs from the template.
+- **Its ⋯ menu** holds the actions of the slide or chart (a right click on a chart or a slide thumbnail opens the same menu).
+- **Its width:** drag the left edge of the panel to widen it, or narrow it again; double-click gives it its usual width, and <kbd>←</kbd>/<kbd>→</kbd> on the focused edge change it by 24 px. The width is kept for your next visits. A wide panel shows the fields of a chart beside its shelves.
 
 | From | To | How |
 | --- | --- | --- |
@@ -419,7 +751,9 @@ A Design does not copy its template: it follows it live and keeps only **what it
 | **This Design** | Changes this Design only, kept as its differences from the template: a slide hidden or added, a title, a layout, the place, type or any setting of a chart, the conditions added to or removed from its Filters |
 | **Template · N Designs** | Changes the template: Save asks to confirm and names the other Designs that take the change |
 
-A difference of a Design wins over the template. When the template changes the same thing afterwards, the slide or chart shows **Template changed**: **Differences** offers **Take template** or **Keep mine**. Conditions added to or removed from the Filters of a chart are kept one by one, so the other conditions of the template still reach the Design.
+- **A difference of a Design wins** over the template.
+- **Template changed:** when the template changes the same thing afterwards, the slide or chart shows **Template changed**: **Differences** offers **Take template** or **Keep mine**.
+- **Filters one by one:** conditions added to or removed from the Filters of a chart are kept one by one, so the other conditions of the template still reach the Design.
 
 | Mark | Meaning |
 | --- | --- |
@@ -428,14 +762,38 @@ A difference of a Design wins over the template. When the template changes the s
 | **Template changed** (red) | The template changed what the Design had changed |
 | **Hidden here**, **Optional · off** (grey) | A slide of the template this Design leaves out |
 
-**Differences** shows a card for each slide and chart the Design changes, with a chip for each property it changes (its title, place, format, chart type, hidden…): the arrow of a chip takes the template back for it, **Reset all** for every one of the card; the menu of a slide or chart also has **Reset Slide to template** / **Reset Chart to template** and **Apply Slide to template** / **Apply Chart to template** (the template takes it, and every Design of the template with it).
+**Differences** shows a card for each slide and chart the Design changes, with a chip for each property it changes (its title, place, format, chart type, hidden…):
+
+- The arrow of a chip takes the template back for it; **Reset all** for every one of the card.
+- The menu of a slide or chart also has **Reset Slide to template** / **Reset Chart to template** and **Apply Slide to template** / **Apply Chart to template** (the template takes it, and every Design of the template with it).
 
 ### Slides
 
-- The slides at the left show each slide in small as it is laid out (its charts, KPI cards, text boxes, pictures, or its cover), drawn again when the slide, the other slides or the data change; a slide left out of the Design shows its places only.
-- Choose a slide at the left; its **⋯** menu (or a right click) offers **New Slide after**, **Duplicate Slide**, **Hide Slide in this Design** / **Show Slide again**, **Delete Slide** (Template scope, or a slide of this Design), **Make Slide optional (off by default)** and, for an optional slide, **Show Slide in this Design**. **+ New slide** adds a content, title, transition or end slide.
-- Drag a slide to move it: in Template scope any slide, in This Design scope the slides of this Design (those of the template keep their order).
-- The panel of a slide has three subpanels, **Titles**, **Layout** and **Elements** (its charts, KPI cards, text boxes and pictures, to choose one): it changes its title and subtitle (**{ }** inserts a field or a parameter, see [Fields in titles and text boxes](#fields-in-titles-and-text-boxes)) and the **layout**: a grid of up to 6 × 6 places, with comments below, to the right or none, and the other layouts of the slide master. A layout with fewer places than the slide has charts removes the last ones, after asking. **Adjust places…** starts from a layout ready to use (two above and one as wide as both below, one wide above and two or three below, a tall one beside two or three, three above and two below…), gives the grid rows and columns more or fewer (up to 6 rows and 12 columns), resizes its rows and columns by dragging the lines between them and merges neighbouring places into one (a chart over two columns) or splits them again; **Delete** (or the Delete key) empties the places chosen, leaving their cells empty (a **+** puts a place back in an empty cell), and **Center** puts the place chosen midway in the empty cells beside it, adding the lines of the grid it needs (a chart centred below two others: delete the place beside it, then Center); the elements keep their places in reading order, a place merged with a free one keeps its element, and the element of a place deleted goes to a free place (or, with none, is removed after a confirmation). **Reset places** gives the layout its places back. The **⋯** menu of a chart with free places beside it offers **Fill the free places beside the chart**: it spans them in its row (else in its column), as a chart below two others that takes the whole width.
+- **Thumbnails:** the slides at the left show each slide in small as it is laid out (its charts, KPI cards, text boxes, pictures, or its cover), drawn again when the slide, the other slides or the data change; a slide left out of the Design shows its places only.
+- **Slide menu:** choose a slide at the left; its **⋯** menu (or a right click) offers:
+  - **New Slide after**, **Duplicate Slide**;
+  - **Hide Slide in this Design** / **Show Slide again**;
+  - **Delete Slide** (Template scope, or a slide of this Design);
+  - **Make Slide optional (off by default)** and, for an optional slide, **Show Slide in this Design**.
+- **+ New slide** adds a content, title, transition or end slide.
+- **Move a slide:** drag it. In Template scope any slide; in This Design scope the slides of this Design (those of the template keep their order).
+
+**The panel of a slide** has three subpanels:
+
+- **Titles:** its title and subtitle (**{ }** inserts a field or a parameter, see [Fields in titles and text boxes](#fields-in-titles-and-text-boxes)). You can also click them in the header of the viewer to edit them in place.
+- **Layout:** a grid of up to 6 × 6 places (point at the cells to preview it), with comments below, to the right or none, and the other layouts of the slide master. A layout with fewer places than the slide has charts removes the last ones, after asking.
+- **Elements:** its charts, KPI cards, text boxes and pictures, to choose one.
+
+**Adjust places…** changes the places of the layout:
+
+- **Start from a ready layout:** two above and one as wide as both below, one wide above and two or three below, a tall one beside two or three, three above and two below…
+- **Rows and columns:** give the grid more or fewer (up to 6 rows and 12 columns), and resize them by dragging the lines between them.
+- **Merge and Split:** click a place, then <kbd>Shift</kbd>+click another to choose the places between them, then **Merge** them into one (a chart over two columns); **Split** gives a merged place its cells back.
+- **Delete** (or <kbd>Delete</kbd> / <kbd>Backspace</kbd>) empties the places chosen, leaving their cells empty; a **+** puts a place back in an empty cell.
+- **Center** puts the place chosen midway in the empty cells beside it, adding the lines of the grid it needs (a chart centred below two others: delete the place beside it, then Center).
+- **Where the elements go:** they keep their places in reading order, a place merged with a free one keeps its element, and the element of a place deleted goes to a free place (or, with none, is removed after a confirmation).
+- **Reset places** gives the layout its places back.
+- **Fill the free places beside the chart**, in the **⋯** menu of a chart with free places beside it, spans them in its row (else in its column), as a chart below two others that takes the whole width.
 
 ### Fields in titles and text boxes
 
@@ -453,18 +811,74 @@ The template keeps the fields, so each Design of it writes its own selection. Pa
 
 ### Charts on the slide
 
-- Click a chart to build it, as in Tableau: its title is written in the head of the panel (**{ }** inserts a field), and its **Data** has three subpanels, **Chart**, **Filters** and **Fields** (the fields to drag to the other two). It chooses its **Source** (Data, Voice, Speech or RF All: the CDRs the chart reads) and its **NR Mode**, one button per result: a PPT Design of NSA or SA reads only its CDRs, so its NR Mode is chosen and the other one is greyed until NR Mode NSA & SA is chosen in PPT Filters; one of NSA & SA offers **NSA & SA**, **NSA** or **SA**; in Template scope **PPT Mode** follows the NR Mode of each Design of the template (a chart that keeps **NSA** or **SA** has the filter `NR Mode IN (SA)`), then drag the fields of the source, grouped by the sections of the CDR Field Dictionary and told apart as dimensions (blue `Abc`) and measures (green `#`), with **NR_Mode** (the NR Mode of the CDR of each row, NSA or SA) beside Campaign, to its shelves: **Measure** (its menu chooses the aggregation), **Rows**, **Columns**, **Legend**, **Filters** and **One chart per** (one chart for each value of a field, side by side in the place of this one: small multiples, in the viewer and in the PPT). A field dropped on the middle of a pill takes its place, and near its edges or between pills it goes there: while dragging, a bar between the pills shows where it will go (or the pill it replaces is outlined). A time (such as `Test_Start_Time`) dropped on Rows or Columns is grouped by day, `DAY(Test_Start_Time)`: its pill chooses **By hour**, **By day**, **By week**, **By month** or **Exact time**, and the chart types along time (Lines, Areas…) draw it as a time axis. A field dropped on Filters opens its values in the Design's selection with their samples (Include, Exclude, Contains), or a numeric condition, or a parameter of the template (**Use parameter**); the filters of the Design show first on the shelf, locked. **Chart Type**, the tab in the colour of the theme on the right edge of the chart chosen, inside its place on the slide (it pulses when the chart is chosen; while the chart is not drawn yet, it waits on the edge of the panel), opens the chart types over the slide beside the chart (over the whole slide when there is no room beside it for six types in a row) as pictures with their names on a lilac panel, grouped by what they show, each group a card with its name (Distribution, Comparison, Trends, Composition, Hierarchies and flows, Tables, Maps and Scorecards; see [Supported chart types](#supported-chart-types)), as many cards on a row as fit, the cards of a row filling it and as tall as its tallest one, the pictures as large as show every type without scrolling and the panel as wide as its rows (the wheel over it scrolls it instead of going through the slides): those the shelves cannot draw are greyed and cannot be chosen (a chart without a measure yet, such as a new one, takes any of them), the line above them says what the one pointed at needs (a Map, a latitude and a longitude on Measure, a third measure colouring its points), the **Chart** subpanel (and the form of a KPI card) says what the one chosen needs (ticked in green once it is given), and when the measures rule the chosen type out another one is proposed (a type chosen before its fields is kept while they are dropped); the settings of the chosen type are set under the types (Threshold, Buckets, Bin Size, Whiskers, Target, Direction, Sort or Date Bin). Choosing a chart type closes it, as its tab, **×**, **Esc** or a click outside it do. **KPI Card**, under Scorecards, turns the chart into a [KPI card](#kpi-cards-text-boxes-and-pictures) of its first measure, with its source, title and filters (an average for a number, the share of a value otherwise); a KPI card has Chart Type too, and another chart type turns it back into a chart, its settings kept for a later return. The chart is drawn again a moment after each change.
-- **Format** (beside **Data**) changes how the chart looks, in the viewer and in the PPT alike (the same renderer draws both), in four groups, open at first, that close and open on their own (a closed group says what it holds):
-  - **Series:** click an entry of its legend on the chart, or the series in the list, to change its colour, line width, line (solid, dashed, dotted: its dashes and round dots grow with the line width) and opacity. The colours of Operator and Vendor Maps stay until a series is given one: **Default** gives one series its colour back, **Default colours** every series. **Copy line of this series** copies its line width, line and opacity (not its colour, which tells the series apart), and **Paste line of** *that series*, on another series of this chart or of another one, gives it the same.
-  - **Legend:** its place (top, bottom, left, right or hidden) and the size, colour and bold of its text.
-  - **Labels:** their place and the size, colour and bold of their text.
-  - **Axes:** the titles of the X and Y axes and the decimals of the X axis of a CDF. Click the labels of an axis on the chart to change it there: a numeric axis opens a slider with two ends for its range (**Automatic** gives it back), a text axis the list of its values to untick those the chart leaves out (kept as a `NOT IN` condition of its Filters), **Only** one of them or **Show all**. As in Tableau, drag a value of the Rows or Columns on the chart (an axis label, a header, a row label or a row of a table) before or after another value of its field to change their order: a bar shows where it goes, the order applies to every level and pane where the field is, in the viewer and the PPT, and it is kept in the Format of the chart (values that appear later go after those ordered); **Default order**, in the card of the values of that field, gives it its own order back.
-  - **Copy format of this chart** copies the format of the chart chosen (its series colours, legend, labels, axes and axis ranges); on another chart, **Paste format of** *that chart* gives it the same format.
-- The **⋯** menu of a chart offers **New Chart**, **Duplicate Chart**, **Copy Chart**, **Cut Chart**, **Paste Chart on this slide** and **Delete Chart** (a KPI card, a text box or an image names itself the same way). **New Chart** puts an empty chart on the slide (the source of the chart chosen, no fields and no chart type, so any chart type can be chosen) and **Duplicate Chart** a copy of it; a slide without a free place gets one first, a column more on its adjusted places, else the layout of its kind with the fewest places that leaves one free (its rows when it can). Until its shelves can draw it (a measure, a chart type and a Rows or Columns split; a KPI card, its field), a chart reads no CDR: the slide shows its empty place, the PPT leaves it empty, and its row in the template is a `Chart in progress` that keeps what it has in its `Format` column; its **Filters** subpanel also leaves out the rows whose measure is empty (**Leave out empty values**) or 0 (**Leave out zeros**).
-- Drag a chart by its **⠿** handle onto another chart to swap their places, or onto a free place to move it there. A free place of the layout shows **+ Add**: a chart (empty, as **New Chart**), a KPI card, a text box, a picture, or one copied or cut before (**Paste Chart**).
-- To take a chart to another slide, copy it (**Copy Chart**, or choose it and press Ctrl/Cmd+C) or cut it (**Cut Chart** or Ctrl/Cmd+X: it leaves its slide, which keeps at least one element), choose the other slide and paste it (**Paste Chart** in the **⋯** menu of the slide or of a chart of it, **+ Add** on a free place, or Ctrl/Cmd+V): it goes on the first free place, or on a place more as with **New Chart**, with its fields, filters and format, as an element of its own (only in this Design in This Design scope).
-- **Delete Chart** removes a chart (in This Design scope, a chart of the template is hidden in this Design).
-- **Ctrl/Cmd+Z** and **Shift+Ctrl/Cmd+Z** undo and redo; **Delete** removes the chart chosen; **Esc** closes a menu or Chart Type, then leaves the chart chosen (in a field of the panel, it leaves the field), as a click anywhere in the viewer outside the charts, the panel and the bar of the Designer does.
+Click a chart to build it, as in Tableau. Its title is written in the head of the panel (**{ }** inserts a field).
+
+#### Data: source, NR Mode and shelves
+
+Its **Data** has three subpanels: **Chart**, **Filters** and **Fields** (the fields to drag to the other two).
+
+1. **Source:** Data, Voice, Speech or RF All (the CDRs the chart reads).
+2. **NR Mode**, one button per result:
+   - A PPT Design of NSA or SA reads only its CDRs, so its NR Mode is chosen and the other one is greyed until NR Mode NSA & SA is chosen in PPT Filters.
+   - One of NSA & SA offers **NSA & SA**, **NSA** or **SA**.
+   - In Template scope, **PPT Mode** follows the NR Mode of each Design of the template (a chart that keeps **NSA** or **SA** has the filter `NR Mode IN (SA)`).
+3. **Drag the fields** of the source to its shelves. They are grouped by the sections of the CDR Field Dictionary and told apart as dimensions (blue `Abc`) and measures (green `#`), with **NR_Mode** (the NR Mode of the CDR of each row, NSA or SA) beside Campaign.
+
+| Shelf | Use |
+| --- | --- |
+| **Measure** | The KPI; its menu chooses the aggregation |
+| **Rows**, **Columns** | The splits of the chart |
+| **Legend** | The fields the legend explains |
+| **Filters** | A field dropped here opens its values in the Design's selection with their samples (Include, Exclude, Contains), or a numeric condition, or a parameter of the template (**Use parameter**); the filters of the Design show first on the shelf, locked |
+| **One chart per** | One chart for each value of a field, side by side in the place of this one: small multiples, in the viewer and in the PPT |
+
+- **Where a field goes:** dropped on the middle of a pill it takes its place; near its edges or between pills it goes there. While dragging, a bar between the pills shows where it will go (or the pill it replaces is outlined).
+- **Times:** a time (such as `Test_Start_Time`) dropped on Rows or Columns is grouped by day, `DAY(Test_Start_Time)`. Its pill chooses **By hour**, **By day**, **By week**, **By month** or **Exact time**, and the chart types along time (Lines, Areas…) draw it as a time axis.
+- The chart is drawn again a moment after each change.
+
+#### Chart Type
+
+**Chart Type** is the tab in the colour of the theme on the right edge of the chart chosen, inside its place on the slide. It pulses when the chart is chosen; while the chart is not drawn yet, it waits on the edge of the panel.
+
+- **Where it opens:** over the slide beside the chart (over the whole slide when there is no room beside it for six types in a row).
+- **How it looks:** the chart types as pictures with their names on a lilac panel, grouped by what they show, each group a card with its name (Distribution, Comparison, Trends, Composition, Hierarchies and flows, Tables, Maps and Scorecards; see [Supported chart types](#supported-chart-types)). As many cards fit on a row as possible, the cards of a row fill it and are as tall as its tallest one, the pictures are as large as show every type without scrolling and the panel is as wide as its rows. The wheel over it scrolls it instead of going through the slides.
+- **Greyed types:** those the shelves cannot draw are greyed and cannot be chosen. A chart without a measure yet, such as a new one, takes any of them.
+- **What a type needs:** the line above them says what the one pointed at needs (a Map, a latitude and a longitude on Measure, a third measure colouring its points). The **Chart** subpanel (and the form of a KPI card) says what the one chosen needs, ticked in green once it is given.
+- **Proposed type:** when the measures rule the chosen type out, another one is proposed (a type chosen before its fields is kept while they are dropped).
+- **Settings of the type** are set under the types: Threshold, Buckets, Bin Size, Whiskers, Target, Direction, Sort or Date Bin.
+- **Closing:** choosing a chart type closes it, as its tab, **×**, <kbd>Esc</kbd> or a click outside it do.
+- **KPI Card**, under Scorecards, turns the chart into a [KPI card](#kpi-cards-text-boxes-and-pictures) of its first measure, with its source, title and filters (an average for a number, the share of a value otherwise). A KPI card has Chart Type too, and another chart type turns it back into a chart, its settings kept for a later return.
+
+#### Format
+
+**Format** (beside **Data**) changes how the chart looks, in the viewer and in the PPT alike (the same renderer draws both). It has four groups, open at first, that close and open on their own (a closed group says what it holds).
+
+- **Series:** click an entry of its legend on the chart already chosen, or the series in the list, to change its colour, line width, line (solid, dashed, dotted: its dashes and round dots grow with the line width) and opacity.
+  - On a chart not chosen yet, a click on its legend hides the series in the whole Design, as in the viewer.
+  - The colours of Operator and Vendor Maps stay until a series is given one: **Default** gives one series its colour back, **Default colours** every series.
+  - **Copy line of this series** copies its line width, line and opacity (not its colour, which tells the series apart), and **Paste line of** *that series*, on another series of this chart or of another one, gives it the same.
+- **Legend:** its place (top, bottom, left, right or hidden) and the size, colour and bold of its text.
+- **Labels:** their place and the size, colour and bold of their text.
+- **Axes:** the titles of the X and Y axes and the decimals of the X axis of a CDF.
+  - **Click the labels of an axis** on the chart to change it there: a numeric axis opens a slider with two ends for its range (**Automatic** gives it back); a text axis the list of its values to untick those the chart leaves out (kept as a `NOT IN` condition of its Filters), **Only** one of them or **Show all**.
+  - **Drag to reorder (as in Tableau):** drag a value of the Rows or Columns on the chart (an axis label, a header, a row label or a row of a table) before or after another value of its field. A bar shows where it goes; the order applies to every level and pane where the field is, in the viewer and the PPT, and it is kept in the Format of the chart (values that appear later go after those ordered). **Default order**, in the card of the values of that field, gives it its own order back.
+- **Copy format of this chart** copies the format of the chart chosen (its series colours, legend, labels, axes and axis ranges); on another chart, **Paste format of** *that chart* gives it the same format.
+
+#### Add, move, copy and delete charts
+
+- **⋯ menu of a chart** (or a right click on it): **New Chart**, **Duplicate Chart**, **Copy Chart**, **Cut Chart**, **Paste Chart on this slide** and **Delete Chart**. A KPI card, a text box or an image names itself the same way.
+- **New Chart** puts an empty chart on the slide (the source of the chart chosen, no fields and no chart type, so any chart type can be chosen); **Duplicate Chart** puts a copy of it. A slide without a free place gets one first: a column more on its adjusted places, else the layout of its kind with the fewest places that leaves one free (its rows when it can).
+- **Chart in progress:** until its shelves can draw it (a measure, a chart type and a Rows or Columns split; a KPI card, its field), a chart reads no CDR. The slide shows its empty place, the PPT leaves it empty, and its row in the template is a `Chart in progress` that keeps what it has in its `Format` column.
+- **Empty values and zeros:** its **Filters** subpanel also leaves out the rows whose measure is empty (**Leave out empty values**) or 0 (**Leave out zeros**).
+- **Move or swap:** drag a chart by its **⠿** handle onto another chart to swap their places, or onto a free place to move it there.
+- **Free places** of the layout show **+ Add**: a chart (empty, as **New Chart**), a KPI card, a text box, a picture, or one copied or cut before (**Paste Chart**).
+- **To another slide:**
+  1. Copy it (**Copy Chart**, or choose it and press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>C</kbd>) or cut it (**Cut Chart** or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>X</kbd>: it leaves its slide, which keeps at least one element).
+  2. Choose the other slide.
+  3. Paste it: **Paste Chart** in the **⋯** menu of the slide or of a chart of it, **+ Add** on a free place, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>V</kbd>. It goes on the first free place, or on a place more as with **New Chart**, with its fields, filters and format, as an element of its own (only in this Design in This Design scope).
+- **Delete Chart** (or <kbd>Delete</kbd> / <kbd>Backspace</kbd>) removes a chart; in This Design scope, a chart of the template is hidden in this Design.
+- **Undo and redo:** <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> undoes; <kbd>Shift</kbd>+<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Y</kbd> redoes.
+- **Esc** closes a menu or Chart Type, then leaves the chart chosen (in a field of the panel, it leaves the field), as a click anywhere in the viewer outside the charts, the panel and the bar of the Designer does.
 
 A change the template cannot hold (a chart without a KPI or a split, for example) is refused with the reason and undone.
 
@@ -472,17 +886,27 @@ A change the template cannot hold (a chart without a KPI or a split, for example
 
 | Element | What it shows | In the PPT |
 | --- | --- | --- |
-| **KPI card** | One figure of the latest campaign of the Design: Average, Median, Percentile, Count of samples, Share of a value (%), or Share below / above a threshold (%), of a measure of a source with its filters; compared with the previous campaign, the best competitor (with **One card per** Operator, for example) or a target, green or red as it improves (**Higher is better**); its colour band (**Good from**, **Poor from**) and its **Trend over the campaigns**. The cards keep their shape in a place of any proportions: a wide place shows one row of up to four cards, a tall or square one the columns that give the largest cards | Drawn by the same renderer as in the viewer |
+| **KPI card** | One figure of the latest campaign of the Design (see below) | Drawn by the same renderer as in the viewer |
 | **Text box** | Text written with the editor of the tickets (bold, lists, headings), its size, alignment and colour, with fields and parameters | A text box of its own, bold, bullets and headings kept |
 | **Image** | A PNG, JPEG or GIF picture of up to 8 MB (an SVG can be saved as PNG first), fitted in its place keeping its ratio | A picture of its own |
+
+**KPI card:**
+
+- **Figure:** Average, Median, Percentile, Count of samples, Share of a value (%), or Share below / above a threshold (%), of a measure of a source with its filters.
+- **Compared with:** the previous campaign, the best competitor (with **One card per** Operator, for example) or a target, green or red as it improves (**Higher is better**).
+- **Colour band** (**Good from**, **Poor from**) and **Trend over the campaigns**.
+- **Shape:** the cards keep their shape in a place of any proportions: a wide place shows one row of up to four cards, a tall or square one the columns that give the largest cards.
 
 Pictures are kept in the table **PPT Images** and travel with the PPT Designs and PPT Templates whose slides use them, in exports, transfers and backups (an import adds those the workspace does not have; the CSV of a template downloaded alone names them only). Text boxes and pictures read no CDR.
 
 ### Save, drafts and the other actions
 
 - **Save** stores the template (Template scope) and the differences of the Design. If another user saved the template since you opened the Designer, Save asks you to reload it first.
-- What is not saved yet is kept on the server, for you only, as a draft (table **PPT Drafts**): opening the Designer again offers to restore it or discard it. **Discard** goes back to what is saved. Drafts are not part of exports, transfers or backups.
-- **More** offers **Save Design as…** (a Design of your own that follows the same template with the changes shown), **Save as template…** (the slides shown as a new template) and **Detach from template…** (the Design keeps the slides it shows as its own and no longer follows its template; choosing a template for it again in PPT Designs follows that template as it is).
+- **Drafts:** what is not saved yet is kept on the server, for you only, as a draft (table **PPT Drafts**): opening the Designer again offers to restore it or discard it. **Discard** goes back to what is saved. Drafts are not part of exports, transfers or backups.
+- **More** offers:
+  - **Save Design as…**: a Design of your own that follows the same template with the changes shown.
+  - **Save as template…**: the slides shown as a new template.
+  - **Detach from template…**: the Design keeps the slides it shows as its own and no longer follows its template; choosing a template for it again in PPT Designs follows that template as it is.
 - Deleting a template that Designs follow detaches them first, so none of them breaks.
 - Generate PPT and the reports of [Reporting](reporting.md) use the slides of the Design as saved. The comments of a slide stay with it when its title changes.
 
@@ -504,18 +928,43 @@ App Events record what each user does in the Designer, each event read as a sent
 - `design_slides_saved`: the slides saved, with every change against what was saved before (of the Design, and of its template when the Template scope was saved too); `report_template_saved_from_designer` names the Designs that follow that template.
 - `design_draft_discarded`, with the changes discarded; `report_template_slide_ids_assigned`, `design_detached`, `report_template_saved_from_design` and `design_image_uploaded`.
 
-The other changes of a Design are recorded with what they changed as well: `save_design` (Save Filters: each part of its selection from what to what, such as its NR Mode, Campaign, filters and dates), `rename_design` (the name before and after), `change_design_template`, `delete_design` (its name and template), `design_chart_added`, `design_chart_refreshed` and `save_design_comments` (the comments added and removed on each slide). Opening a Design in the viewer is recorded as `design_opened`.
+The other changes of a Design are recorded with what they changed as well:
+
+- `save_design` (Save Filters: each part of its selection from what to what, such as its NR Mode, Campaign, filters and dates);
+- `rename_design` (the name before and after), `change_design_template`, `delete_design` (its name and template);
+- `design_chart_added`, `design_chart_refreshed` and `save_design_comments` (the comments added and removed on each slide);
+- opening a Design in the viewer is recorded as `design_opened`.
 
 ### Template parameters
 
 A template can declare **parameters**, so that Designs that differ only in a city, a call family or a threshold share one template with no difference of their own (a *City Report* template and its London, Manchester and Cardiff Designs).
 
-- **Parameters** in the bar of the Designer (Template scope) lists them at the left, with their type and where they are used, and shows the one chosen at the right, where it is renamed and deleted; a template without parameters shows a card per type, which adds one, and **+ Add parameter** under the list asks for its type: **Field values** (the values of any field of the CDRs or an Auto-calculated Field, chosen from the groups of fields as in the chart builder, with a search; one or several; none chosen means All), **Number** (default, minimum, maximum, step) or **Text**. A parameter cannot take the name of a built-in token (`{Cities}`, `{Operators}`…): the first ones are named Chosen Cities, Threshold and Note. **How to use it** gives the condition to write (`City IN ({Chosen Cities})`), to copy or add to the filters of the chart chosen. A parameter in use cannot be deleted, and renaming one renames its uses.
-- Write `{Name}` in a chart filter (`City IN ({City})`; with All the condition is left out), a numeric setting (`LQ < {Threshold}`, `Threshold = {Threshold}`, an axis range) or a title (`Voice quality in {City}`).
-- Each Design chooses the values in **PPT Scope & Filters → Parameters**, applied and saved like its filters; until it chooses them, it uses their default values. The section shows only when the template has parameters: they are added in the Designer, never there.
+**Declare them** with **Parameters** in the bar of the Designer (Template scope):
+
+- It lists them at the left, with their type and where they are used, and shows the one chosen at the right, where it is renamed and deleted.
+- A template without parameters shows a card per type, which adds one; **+ Add parameter** under the list asks for its type:
+
+| Type | Values |
+| --- | --- |
+| **Field values** | The values of any field of the CDRs or an Auto-calculated Field, chosen from the groups of fields as in the chart builder, with a search; one or several; none chosen means All |
+| **Number** | Default, minimum, maximum, step |
+| **Text** | Any text |
+
+- **Names:** a parameter cannot take the name of a built-in token (`{Cities}`, `{Operators}`…): the first ones are named Chosen Cities, Threshold and Note.
+- **How to use it** gives the condition to write (`City IN ({Chosen Cities})`), to copy or add to the filters of the chart chosen.
+- A parameter in use cannot be deleted, and renaming one renames its uses.
+
+**Use them:** write `{Name}` in a chart filter (`City IN ({City})`; with All the condition is left out), a numeric setting (`LQ < {Threshold}`, `Threshold = {Threshold}`, an axis range) or a title (`Voice quality in {City}`).
+
+**Give them values:**
+
+- Each Design chooses the values in **PPT Scope & Filters → Parameters**, applied and saved like its filters; until it chooses them, it uses their default values.
+- The section shows only when the template has parameters: they are added in the Designer, never there.
 - A report of [Reporting](reporting.md) gives a field-values parameter on a field of its common filters (Operator, Vendor, Region, Cluster, City…) the values chosen there. With values other than the Design's, the PPT goes without its saved comments, written for its own values.
 
 ## Generate PPT
+
+Export the slides of a Design to PowerPoint, with the selection you choose.
 
 ### Choose the export inputs
 
@@ -527,11 +976,18 @@ Open **Generate PPT** from the library, filter panel or viewer. **Select PPT Sco
 | **Main PPT Filters** | Campaigns (which choose the CDRs) and the CDRs they choose, the dates below them (the whole width), then Operators and Vendors, Regions and Cities |
 | **Show All Filters** | Reveal the remaining main filters and Additional Filters |
 
-The export has no CDR selector: **Campaigns** lists every campaign of the Design's NR Mode (with NSA & SA, it chooses the NSA CDRs and the SA ones keep the Campaign (SA) of the Design), with **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** and **All available campaigns** first (each one alone), starts with the Design's Campaign and lists below it, by type, the CDRs it chooses now; both appear as soon as the dialog opens. The other choices load from those CDRs and start with saved filter values, or all available values when unrestricted or no saved values remain available.
+- **Campaigns, no CDR selector:** **Campaigns** lists every campaign of the Design's NR Mode (with NSA & SA, it chooses the NSA CDRs and the SA ones keep the Campaign (SA) of the Design), with **Latest campaign**, **Latest 2 campaigns**, **Latest 3 campaigns**, **Latest 4 campaigns**, **Previous campaign** and **All available campaigns** first (each one alone).
+- It starts with the Design's Campaign and lists below it, by type, the CDRs it chooses now; both appear as soon as the dialog opens.
+- **Other choices** load from those CDRs and start with saved filter values, or all available values when unrestricted or no saved values remain available.
+- **Cities** offers **Main Cities** first, exported as the Main Cities of the workspace.
+- Changing campaigns or dates preserves selected values still available; an All selection includes new values.
+- The browser remembers the dialog's last Scope, Campaigns and dates per Design/user.
 
-Cities offers **Main Cities** first, exported as the Main Cities of the workspace. Changing campaigns or dates preserves selected values still available; an All selection includes new values. The browser remembers the dialog's last Scope, Campaigns and dates per Design/user.
+**Auto comments**, in the Scope of the dialog (or a checkbox of the confirmation when the PPT is generated from the viewer), writes generated comments into this PPT only:
 
-**Auto comments**, in the Scope of the dialog (or a checkbox of the confirmation when the PPT is generated from the viewer), writes generated comments into this PPT only, with the writer the viewer generates comments with (the default one of Super Admin until it is changed in the menu of the comment tools; with more than one writer enabled, the dialog shows it as **Comment writer** beside Auto comments, and a change there is also the viewer's): on the slides without comments, in place of the generated ones or in place of every comment. The Design keeps its own comments; the job's viewer shows those of the PPT, a relaunched job keeps its choice, and App Events records how many slides they were written on.
+- **Writer:** the one the viewer generates comments with (the default one of Super Admin until it is changed in the menu of the comment tools). With more than one writer enabled, the dialog shows it as **Comment writer** beside Auto comments, and a change there is also the viewer's.
+- **Where:** on the slides without comments, in place of the generated ones or in place of every comment.
+- The Design keeps its own comments; the job's viewer shows those of the PPT, a relaunched job keeps its choice, and App Events records how many slides they were written on.
 
 ### Save defaults only when intended
 
@@ -540,12 +996,12 @@ Cities offers **Main Cities** first, exported as the Main Cities of the workspac
 | **Generate PPT** | Export the dialog's selection |
 | **Save Filters** | Also persist its Scope, dates, Campaigns and other filters in the Design |
 
-Save Filters is enabled when the dialog differs from the saved defaults (the vendor comparison counts only in Multivendor Comparison). A complete value selection equals an unrestricted field; saved values absent from the selected CDRs are ignored.
+- Save Filters is enabled when the dialog differs from the saved defaults (the vendor comparison counts only in Multivendor Comparison).
+- A complete value selection equals an unrestricted field; saved values absent from the selected CDRs are ignored.
+- If required, the export prepares the CDRs of its campaigns first.
 
 > [!IMPORTANT]
 > **Export selections take precedence for that job.** You can export applied or dialog-specific filters without saving them as PPT defaults. The job's Filters snapshot records what was exported.
-
-If required, the export prepares the CDRs of its campaigns first.
 
 ### Follow the export
 
@@ -554,18 +1010,22 @@ As soon as the job is queued, from the library or from the viewer, a progress pa
 | Button | Effect |
 | --- | --- |
 | **Cancel Job** | Stop the job, as **Stop export** in [PPT Generation Jobs](#ppt-generation-jobs) |
-| **Run in Background** (or ×, Esc) | Close the panel: the job keeps running and stays in PPT Generation Jobs and Background Tasks |
+| **Run in Background** (or ×, <kbd>Esc</kbd>) | Close the panel: the job keeps running and stays in PPT Generation Jobs and Background Tasks |
 | **Download Again** | Download the PPT once more after it is ready |
 
 When the job ends while the panel is open, the PPT downloads by itself and the panel says it is ready (or why it failed or was cancelled); a job left to run in the background is downloaded from its row in PPT Generation Jobs.
 
 ### Presentation contents and files
 
-The PPT preserves template slides, layouts, chart proportions, titles, legends and saved comments. Every chart and table is laid out in the shape of its place, whatever the layout (one wide chart, four in two rows and two columns, a tall one beside two…), in the PPT, the Word and the viewer alike: nothing is stretched, pies, donuts and bubbles stay round, the maps fill their place showing more around their places, KPI cards take the grid that makes them largest (four cards: two rows of two in a 16:9 place, one row in a wide one, one column in a tall one) and Multi KPI CDF Lines places its CDFs side by side or one above the other. Chart subtitles use blue text; Title/Transition subtitles retain the template's yellow accent.
+The PPT preserves template slides, layouts, chart proportions, titles, legends and saved comments.
 
-Title covers match the viewer: Campaigns appear in orange above the divider; Scope, Regions and Cities appear beneath in green, cyan and pink. Chart subtitles use normal letter spacing.
-
-Generated PPTs, chart PNGs, tooltips and Canvas assets are stored under **output/reports/ppt-designs**.
+- **Shape of each place:** every chart and table is laid out in the shape of its place, whatever the layout (one wide chart, four in two rows and two columns, a tall one beside two…), in the PPT, the Word and the viewer alike.
+  - Nothing is stretched; pies, donuts and bubbles stay round; the maps fill their place showing more around their places.
+  - KPI cards take the grid that makes them largest (four cards: two rows of two in a 16:9 place, one row in a wide one, one column in a tall one).
+  - Multi KPI CDF Lines places its CDFs side by side or one above the other.
+- **Subtitles:** chart subtitles use blue text and normal letter spacing; Title/Transition subtitles retain the template's yellow accent.
+- **Title covers** match the viewer: Campaigns appear in orange above the divider; Scope, Regions and Cities appear beneath in green, cyan and pink.
+- **Where:** generated PPTs, chart PNGs, tooltips and Canvas assets are stored under **output/reports/ppt-designs**.
 
 | Filename part | Contents |
 | --- | --- |
@@ -577,6 +1037,8 @@ Generated PPTs, chart PNGs, tooltips and Canvas assets are stored under **output
 Operators, Vendors and Cities remain in the job Filters snapshot and are omitted from filenames. Long names are shortened only for filesystem limits.
 
 ## PPT Generation Jobs
+
+Follow, download and manage the PowerPoint exports.
 
 Jobs continue on the server after you leave the page or close the [progress panel](#follow-the-export). The table records ID, creator, local date/time, NR Mode, Design, Scope, filters, slide/chart counts, status and progress.
 
@@ -596,15 +1058,19 @@ Excel-style header filters search job columns. The filter snapshot groups CDRs b
 
 ## Charts Panel
 
+Browse the charts of the exported PowerPoint jobs.
+
 ### Find an exported chart
 
 1. Filter by NR Mode, Design, Template, Scope, Region or City.
 2. Select a **PowerPoint Job**.
 3. Open a chart card in the expanded viewer, use **View Filters** to inspect the snapshot, or **View as Design** to open the job in the viewer.
 
-Each filter offers only selections from jobs matching the other active filters. Choices describe complete exported selections. A job with seven cities contributes one City choice containing those seven cities; All Cities/All Regions appears only for jobs exported with those selections.
-
-The job selector identifies its local date/time, NR Mode, Design, Scope and recorded geography. Long lists expose their full values on hover. Polling loads the newest matching completed job; each chart is read and drawn when it comes near the screen, so opening the page reads none of them.
+- **Filters follow each other:** each filter offers only selections from jobs matching the other active filters.
+- **Complete selections:** choices describe complete exported selections. A job with seven cities contributes one City choice containing those seven cities; All Cities/All Regions appears only for jobs exported with those selections.
+- **Job selector:** identifies its local date/time, NR Mode, Design, Scope and recorded geography. Long lists expose their full values on hover.
+- **Loading:** polling loads the newest matching completed job; each chart is read and drawn when it comes near the screen, so opening the page reads none of them.
+- Each thumbnail opens in the expanded viewer with <kbd>Enter</kbd> or <kbd>Space</kbd> as well.
 
 ### Live Design versus saved snapshot
 
@@ -622,38 +1088,76 @@ Permitted editors can open the generating template and Auto-Calculated Fields wi
 
 ## PPT Templates
 
-**PPT Templates**, at the top of the PPT Designs library (for `user-editor`, `admin` and `super-admin`), opens the **PPT Templates Library** of the workspace in a dialog: order, import, create, rename, duplicate, set the default, export, delete and edit its templates. Each action is saved without leaving the dialog, which shows the list updated at once (its message, such as an import done or refused, in a window over it); **New Template** opens the new template in its [Designer](#designer).
+The reusable slide definitions that Designs follow.
 
-Templates belong to the active workspace and are stored in that workspace database's `report_templates` table. Import, export, backup and transfer packages serialize them as portable CSV files, but those files are package artifacts rather than the live source of record. Obsolete `slides-templates` directories are removed by the current migration and portability flows.
+**PPT Templates**, at the top of the PPT Designs library (for `user-editor`, `admin` and `super-admin`), opens the **PPT Templates Library** of the workspace in a dialog.
 
-The library keeps the templates of the workspace, one of them the default. A template has no NR Mode of its own: it serves the CDRs of any NR Mode, and each Design (or report of [Reporting](reporting.md)) chooses the NR Mode it reads. Its slide titles, subtitles and chart titles name that NR Mode where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone), so one template gives the NSA, the SA and the [NSA & SA](#nsa-sa-in-one-design) decks. PPT Designer also write the selection of each Design where they name it (`{Campaigns}`, `{Operators}`, `{Cities}`…, see [Fields in titles and text boxes](#fields-in-titles-and-text-boxes)). Every row has the **NR Mode** field (that of its CDR): a chart keeps one NR Mode with the filter `NR Mode IN (SA)` (its title's `{NR Mode}` then names that one), and NR Mode can split or label its series in Rows Split, Columns Split, Legend and the Dynamic Rows/Columns Field. Template names are unique in the workspace.
+- **What you do there:** order, import, create, rename, duplicate, set the default, export, delete and edit its templates.
+- **Saved at once:** each action is saved without leaving the dialog, which shows the list updated at once (its message, such as an import done or refused, in a window over it).
+- **New Template** opens the new template in its [Designer](#designer).
 
-PPT Templates belong to PPT Designer, not to Config: their actions use the addresses of PPT Designer (`/ppt-designer/templates/…`; the former `/workspace-config/report-templates/…` ones lead there), need PPT Designer in the user's Modules Profile and are recorded in App Events under PPT Designer, and they follow its rights. A template is changed (saved, renamed, overwritten on import, given copied slides or charts, edited in the [Designer](#designer) or from Chart Builder) and deleted as a Design (see [Who changes a Design](#who-changes-a-design)): by the user who created it and super-admins, and by admins too when a user-editor created it. The other users customize it from the [Designer](#designer) of their own Designs; for them its name, **Delete** and **Edit PPT Template** are disabled, with a tooltip that says why. A user-viewer sees and exports them. The slides of a template (with their charts, and its parameters) are edited from any Design that follows it, and kept in the template's CSV (its `Format` column).
+| Action | What it does |
+| --- | --- |
+| **New Template** | Creates a template with its cover and opens it in its Designer, where its slides are added |
+| **Import** | Imports a template CSV, with an optional template name (see below) |
+| **Edit** (✎) | Opens the template in the viewer and its [Designer](#designer) (see below) |
+| Rename | The name field of the row |
+| **Duplicate** | Creates `- Copy`, with its own identity |
+| **Set default** (★) | Makes it the default of the workspace |
+| **Export** (⬇) | Downloads that individual CSV; portable ZIP export is available under Import / Export / Transfer |
+| **Delete** (×) | Deletes it (see who can, below) |
 
-The library lists the templates in the order of the workspace: drag a template by the tab on the left of its name (or press the up and down arrow keys on the tab) to move it, and the new order is saved at once for every user of the workspace and followed by the **Template** of a new Design. Until a template is first moved the library is sorted by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order); templates created, duplicated or imported later go to the end. App Events record each new order (`reorder_report_templates`, with the order before and after), and exports, transfers and backups carry it (see [Import / Export / Transfer](administrator-config.md)). Its columns show the creation and last update times and **Last Updated by**, the user who last imported, edited, renamed, duplicated or promoted the template.
+**Where templates live:**
 
-Workspaces of earlier versions kept an NSA and an SA library: when they open, each pair of templates that only differed in the titles naming the mode (for example **NSA - NetCheck CDR Report** with *Non-Standalone* and **SA - NetCheck CDR Report** with *Standalone*) becomes one template named without the mode (**NetCheck CDR Report**) whose titles use the tokens, and the Designs and PPT jobs that used either copy use it. A title only one copy named (such as *SA RF Quality Analysis* beside *RF Quality Analysis*) takes `{NR Mode}` in both. The other templates keep their names, an SA one named as an NSA one taking " (SA)". The App Events record it (`report_templates_nr_mode_merged`). Packages and backups of earlier versions are imported the same way.
+- Templates belong to the active workspace and are stored in that workspace database's `report_templates` table.
+- Import, export, backup and transfer packages serialize them as portable CSV files, but those files are package artifacts rather than the live source of record.
+- Obsolete `slides-templates` directories are removed by the current migration and portability flows.
+- New workspaces start without templates.
 
-Available actions:
+**One template for every NR Mode:**
 
-- **New Template**
-- **Import** (a template CSV, with an optional template name)
-- **Edit** (✎)
-- Rename (the name field of the row)
-- **Duplicate**
-- **Set default** (★)
-- **Export** (⬇)
-- **Delete** (×)
+- The library keeps the templates of the workspace, one of them the default. A template has no NR Mode of its own: it serves the CDRs of any NR Mode, and each Design (or report of [Reporting](reporting.md)) chooses the NR Mode it reads.
+- Its slide titles, subtitles and chart titles name that NR Mode where they write `{NR Mode}` (NSA, SA or NSA & SA) or `{NR Mode Name}` (Non-Standalone, Standalone or Non-Standalone & Standalone), so one template gives the NSA, the SA and the [NSA & SA](#nsa-sa-in-one-design) decks.
+- PPT Designer also writes the selection of each Design where they name it (`{Campaigns}`, `{Operators}`, `{Cities}`…, see [Fields in titles and text boxes](#fields-in-titles-and-text-boxes)).
+- Every row has the **NR Mode** field (that of its CDR): a chart keeps one NR Mode with the filter `NR Mode IN (SA)` (its title's `{NR Mode}` then names that one), and NR Mode can split or label its series in Rows Split, Columns Split, Legend and the Dynamic Rows/Columns Field.
+- Template names are unique in the workspace.
 
-**Edit** opens the template in the viewer and its [Designer](#designer) as a PPT of its own, never listed among the PPT Designs: it reads the CDRs of the NR Mode and Campaign it was last opened with (NSA and Latest 2 campaigns the first time; PPT Scope & Filters changes them), every change of the Designer goes to the template (its bar reads **PPT Template** with the number of Designs that follow it), **More** offers only **Save as template…**, and it makes no PPT of its own (its Designs do). **Edit PPT Template**, the pencil at the top of the viewer, shows the template as a table (see [Table view](#table-view-template-editor)), for Find & Replace for example.
+**Rights:**
 
-**New Template** creates a template with its cover and opens it in its Designer, where its slides are added. Import accepts a CSV name or derives it from the filename, can convert a legacy catalogue when prompted and requires explicit overwrite confirmation for a case-insensitive name collision.
+- PPT Templates belong to PPT Designer, not to Config: their actions use the addresses of PPT Designer (`/ppt-designer/templates/…`; the former `/workspace-config/report-templates/…` ones lead there), need PPT Designer in the user's Modules Profile and are recorded in App Events under PPT Designer, and they follow its rights.
+- A template is changed (saved, renamed, overwritten on import, given copied slides or charts, edited in the [Designer](#designer) or from Chart Builder) and deleted as a Design (see [Who changes a Design](#who-changes-a-design)): by the user who created it and super-admins, and by admins too when a user-editor created it.
+- **Owner:** it belongs to the user who created it (with New Template, Import CSV, Duplicate or **Save as template**); one brought by Admin Import / Transfer belongs to its creator on the source server when that user is active here, otherwise to whoever imports it.
+- **The other users** customize it from the [Designer](#designer) of their own Designs; for them its name, **Delete** and **Edit PPT Template** are disabled, with a tooltip that says why. A user-viewer sees and exports them.
+- The slides of a template (with their charts, and its parameters) are edited from any Design that follows it, and kept in the template's CSV (its `Format` column).
 
-Renaming saves when you leave the name field or press Enter; the field keeps its previous name and shows an error if the save fails. Each template has an identity that never changes, and each Design refers to its template by it, so a renamed template stays the template of its Designs (whose names, when they repeat the template name, follow it too); a duplicate gets its own identity. Duplicate creates `- Copy`.
+**Order and columns:**
 
-One template is the default within a workspace. Reporting initially selects that default but does not change it when a user chooses another template for one job. A default template cannot be deleted until another template becomes default. Only the users who change a template delete it (see [Who changes a Design](#who-changes-a-design)): it belongs to the user who created it (with New Template, Import CSV, Duplicate or **Save as template**; one brought by Admin Import / Transfer belongs to its creator on the source server when that user is active here, otherwise to whoever imports it); for the other users **Delete** is disabled and its tooltip says why. New workspaces start without templates.
+- The library lists the templates in the order of the workspace: drag a template by the tab on the left of its name (or press <kbd>↑</kbd> and <kbd>↓</kbd> on the tab) to move it. The new order is saved at once for every user of the workspace and followed by the **Template** of a new Design.
+- Until a template is first moved the library is sorted by name (an NR Mode written in a name, such as `NSA - Report`, is ignored for the order); templates created, duplicated or imported later go to the end.
+- App Events record each new order (`reorder_report_templates`, with the order before and after), and exports, transfers and backups carry it (see [Import / Export / Transfer](administrator-config.md)).
+- Its columns show the creation and last update times and **Last Updated by**, the user who last imported, edited, renamed, duplicated or promoted the template.
 
-The row Export action downloads that individual CSV; portable ZIP export is available under Import / Export / Transfer.
+**Edit** opens the template in the viewer and its [Designer](#designer) as a PPT of its own, never listed among the PPT Designs:
+
+- It reads the CDRs of the NR Mode and Campaign it was last opened with (NSA and Latest 2 campaigns the first time; PPT Scope & Filters changes them).
+- Every change of the Designer goes to the template (its bar reads **PPT Template** with the number of Designs that follow it).
+- **More** offers only **Save as template…**, and it makes no PPT of its own (its Designs do).
+- **Edit PPT Template**, the pencil at the top of the viewer, shows the template as a table (see [Table view](#table-view-template-editor)), for Find & Replace for example.
+
+**Import** accepts a CSV name or derives it from the filename, can convert a legacy catalogue when prompted and requires explicit overwrite confirmation for a case-insensitive name collision.
+
+**Rename:** renaming saves when you leave the name field or press <kbd>Enter</kbd>; the field keeps its previous name and shows an error if the save fails. Each template has an identity that never changes, and each Design refers to its template by it, so a renamed template stays the template of its Designs (whose names, when they repeat the template name, follow it too); a duplicate gets its own identity.
+
+**Default:** one template is the default within a workspace. Reporting initially selects that default but does not change it when a user chooses another template for one job. A default template cannot be deleted until another template becomes default.
+
+**Delete:** only the users who change a template delete it (see [Who changes a Design](#who-changes-a-design)); for the other users **Delete** is disabled and its tooltip says why.
+
+**Templates of earlier versions:** workspaces of earlier versions kept an NSA and an SA library. When they open:
+
+- Each pair of templates that only differed in the titles naming the mode (for example **NSA - NetCheck CDR Report** with *Non-Standalone* and **SA - NetCheck CDR Report** with *Standalone*) becomes one template named without the mode (**NetCheck CDR Report**) whose titles use the tokens, and the Designs and PPT jobs that used either copy use it.
+- A title only one copy named (such as *SA RF Quality Analysis* beside *RF Quality Analysis*) takes `{NR Mode}` in both.
+- The other templates keep their names, an SA one named as an NSA one taking " (SA)".
+- The App Events record it (`report_templates_nr_mode_merged`). Packages and backups of earlier versions are imported the same way.
 
 ### Table view (Template Editor)
 
@@ -669,7 +1173,10 @@ The row Export action downloads that individual CSV; portable ZIP export is avai
 - Edited cells use a light pastel-yellow background.
 - Newly inserted text is highlighted more strongly.
 - A successful save resets all change highlighting.
-- **Find & Replace** (or Ctrl/Cmd+F inside the editor) searches every editable cell of the template. Matching cells are outlined and the current one is highlighted; Enter and Shift+Enter (or Next and Previous) move between them. **Replace** changes every occurrence in the current cell and **Replace All** changes every occurrence in the template after a confirmation. Replacements are ordinary unsaved edits until **Save Template**; **Match case** restricts matching to the exact capitalization.
+- **Find & Replace** (or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>F</kbd> inside the editor) searches every editable cell of the template.
+  - Matching cells are outlined and the current one is highlighted; <kbd>Enter</kbd> and <kbd>Shift</kbd>+<kbd>Enter</kbd> (or Next and Previous) move between them.
+  - **Replace** changes every occurrence in the current cell and **Replace All** changes every occurrence in the template after a confirmation.
+  - Replacements are ordinary unsaved edits until **Save Template**; **Match case** restricts matching to the exact capitalization.
 
 #### Validation
 
@@ -692,9 +1199,13 @@ The row Export action downloads that individual CSV; portable ZIP export is avai
 - **Update Template** applies preview values to the in-memory row; it does not save to disk.
 - **Auto-calculated Fields** opens the shared active-workspace field manager.
 
-**Save Template** validates and persists the complete grid atomically. Design comment reconciliation runs separately when slide identity changes; any required combined CDR update also runs after the save response. The PPT viewer refreshes the saved template when the editor closes. A combined CDR update is queued only when a template adds a source field missing from that CDR table.
+**Saving:**
 
-Removing the last template reference leaves the existing column available for future reuse. Close, Escape and backdrop actions preserve the editor when unsaved changes still require a decision.
+- **Save Template** validates and persists the complete grid atomically.
+- Design comment reconciliation runs separately when slide identity changes; any required combined CDR update also runs after the save response. A combined CDR update is queued only when a template adds a source field missing from that CDR table.
+- The PPT viewer refreshes the saved template when the editor closes.
+- Removing the last template reference leaves the existing column available for future reuse.
+- Close, Escape and backdrop actions preserve the editor when unsaved changes still require a decision.
 
 ## Report Template reference
 
@@ -786,7 +1297,16 @@ Automated rows support:
 - `Symbol Map`, `Filled Map`
 - `Treemap`, `Packed Bubbles`, `Sankey`, `Gantt`
 
-Every workspace receives once the example template **DT Analyzer - All Supported Chart Types** and its Design of the same name (NR Mode **NSA & SA**, the latest 2 campaigns of each NR Mode): after its title slide, eight slides of four charts, a slide with the two maps side by side and a slide of four KPI cards (DL and UL throughput, call setup time and LQ, each one card per operator) draw every chart type above on the CDRs of the workspace, never more than two columns a slide (wider frames would stretch the charts), each with the measure and shelves it suits: the CDF of the DL throughput of the latest two campaigns, NR MCS against NR CQI for Scatter, the hour of the day for Lines, Dual Lines, Areas and Bars and Line, and the CDRs of NSA for the charts that compare the campaigns of one NR Mode (`NR Mode IN (NSA)`: CDF Line, Bullet Graph, Symbol Map and the KPI cards). The charts split by Region leave out the tests of no Region (`Region != (blank)`). Open its Designer to see how each chart is built; deleted, it is not added again. A workspace that received it before as **All Chart Types** (with its Design **NSA - All Chart Types**) or **DT Analyzer - All Chart Types** has them replaced in place when they are as they were shipped (App Event `starter_examples_replaced`); changed, they stay beside the new ones.
+> [!TIP]
+> **See every chart type built:** open the Designer of the example Design **DT Analyzer - All Supported Chart Types** to see how each chart is built.
+
+Every workspace receives once the example template **DT Analyzer - All Supported Chart Types** and its Design of the same name (NR Mode **NSA & SA**, the latest 2 campaigns of each NR Mode):
+
+- **Slides:** after its title slide, eight slides of four charts, a slide with the two maps side by side and a slide of four KPI cards (DL and UL throughput, call setup time and LQ, each one card per operator).
+- **What they draw:** every chart type above on the CDRs of the workspace, never more than two columns a slide (wider frames would stretch the charts), each with the measure and shelves it suits: the CDF of the DL throughput of the latest two campaigns, NR MCS against NR CQI for Scatter, the hour of the day for Lines, Dual Lines, Areas and Bars and Line, and the CDRs of NSA for the charts that compare the campaigns of one NR Mode (`NR Mode IN (NSA)`: CDF Line, Bullet Graph, Symbol Map and the KPI cards).
+- The charts split by Region leave out the tests of no Region (`Region != (blank)`).
+- Deleted, it is not added again.
+- **Earlier names:** a workspace that received it before as **All Chart Types** (with its Design **NSA - All Chart Types**) or **DT Analyzer - All Chart Types** has them replaced in place when they are as they were shipped (App Event `starter_examples_replaced`); changed, they stay beside the new ones.
 
 Choose a KPI and at least one Rows or Columns Split dimension. `CDF Line` creates one curve per complete aggregation combination. Count charts retain empty combinations where required so comparisons remain aligned.
 
@@ -926,7 +1446,12 @@ Change only `Chart type` to `Median Vertical Bars` for the median.
 
 #### Distribution Stacked Vertical Bars
 
-Use explicit numeric ranges with `Buckets = ...`, or ordered upper bounds with `Buckets < ...` / `Buckets <= ...`. Upper-bound mode generates `belowN` categories plus `Above`; use `Rate Bucket` as the final column aggregation. In the [Designer](#designer) and in [Chart Builder](chart-builder.md), `Rate Bucket` and `Buckets` are in the **Distribution classes** group of **Fields**, although they are not columns of the CDRs: drag `Rate Bucket` to the end of **Columns** and `Rate Bucket` or `Buckets` to **Legend**, and write the limits by clicking either pill (with more pills on its shelf, **Limits of the classes…** in its menu) or in the **Buckets** box of **Chart Type**: `1,5,20` for ranges, `< 2,5,20,100` or `<= 2,5,20,100` for `belowN` categories. `Rate Bucket` also goes on **Rows**, and `Buckets` goes only on **Legend**.
+Use explicit numeric ranges with `Buckets = ...`, or ordered upper bounds with `Buckets < ...` / `Buckets <= ...`. Upper-bound mode generates `belowN` categories plus `Above`; use `Rate Bucket` as the final column aggregation.
+
+In the [Designer](#designer) and in [Chart Builder](chart-builder.md), `Rate Bucket` and `Buckets` are in the **Distribution classes** group of **Fields**, although they are not columns of the CDRs:
+
+- **Where they go:** drag `Rate Bucket` to the end of **Columns** and `Rate Bucket` or `Buckets` to **Legend**. `Rate Bucket` also goes on **Rows**, and `Buckets` goes only on **Legend**.
+- **The limits:** write them by clicking either pill (with more pills on its shelf, **Limits of the classes…** in its menu) or in the **Buckets** box of **Chart Type**: `1,5,20` for ranges, `< 2,5,20,100` or `<= 2,5,20,100` for `belowN` categories.
 
 ```text
 Source Dataset: CDR-Data
@@ -1144,7 +1669,13 @@ Operator and Vendor aliases resolve to the canonical values configured in Worksp
 
 The editor offers **121 layouts**: every combination of **1–6 rows × 1–6 columns**, each without comments, with comments below, or with comments to the right (108 fixed grids), plus nine dynamic layouts and `Title Page`, `Title Only`, `Transition` and `Black logo end slide`. The physical layouts appear immediately after `Black Title Page` in the same order as the selector, excluding the virtual dynamic options.
 
-Names follow `Title + N rows + M columns`, optionally followed by `+ comments down` or `+ comments right`. The 108 fixed grids and four structural layouts exist physically in the reference PPT. `Source Dataset = CDR-All` exposes the union of Data, Voice and Speech fields, including normalized RF fields and `CDR_Type`, in cell assistance. The nine dynamic options are virtual: the renderer selects a fixed grid from the distinct values of their row and column fields. The widened Layout cell-assistance selector lists Title Page, Title Only, Transition and Black logo end slide first, followed by the nine dynamic grids and then the fixed grids. Long names stay on one line; narrow screens can scroll horizontally. Structural layouts have blue shading, dynamic layouts purple shading and the selected option yellow shading; selection retains its position without a duplicate at the top. Other native layouts remain internal to structural slides. Historic layout names are normalized on import and in stored templates; exports use the canonical names. Grids without comments use the full chart area.
+- **Names** follow `Title + N rows + M columns`, optionally followed by `+ comments down` or `+ comments right`.
+- **Physical and virtual:** the 108 fixed grids and four structural layouts exist physically in the reference PPT. The nine dynamic options are virtual: the renderer selects a fixed grid from the distinct values of their row and column fields.
+- **Layout selector:** the widened Layout cell-assistance selector lists Title Page, Title Only, Transition and Black logo end slide first, followed by the nine dynamic grids and then the fixed grids. Long names stay on one line; narrow screens can scroll horizontally. Structural layouts have blue shading, dynamic layouts purple shading and the selected option yellow shading; selection retains its position without a duplicate at the top.
+- Other native layouts remain internal to structural slides.
+- **Historic names** are normalized on import and in stored templates; exports use the canonical names.
+- Grids without comments use the full chart area.
+- `Source Dataset = CDR-All` exposes the union of Data, Voice and Speech fields, including normalized RF fields and `CDR_Type`, in cell assistance.
 
 ### Dynamic chart grids
 
@@ -1189,7 +1720,9 @@ PPT Designer was called **PPT Dashboards**, and its Designs **Dashboards**. A wo
 | Slide comments | Generated presentation assets |
 | Its differences from the template, or its own slides once detached | Unsaved Designer drafts |
 
-A Design chooses its CDRs from its NR Mode and Campaign in the workspace where it is opened, so an imported Design uses the CDRs of the destination with the same campaigns (Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign, among its newest ones). Designs exported by earlier versions with CDRs of their own take the campaigns of the CDRs of the destination with the same name and type, or else its newest two campaigns; check the inputs after import. Designs exported when templates had an NR Mode of their own read that NR Mode as part of their selection and use their template as the destination knows it now (its NSA and SA copies merged into one); an SA Design named as an NSA one takes " (SA)".
+- **CDRs of the destination:** a Design chooses its CDRs from its NR Mode and Campaign in the workspace where it is opened, so an imported Design uses the CDRs of the destination with the same campaigns (Latest campaign, Latest 2, 3 and 4 campaigns and Previous campaign, among its newest ones).
+- **Designs with CDRs of their own** (exported by earlier versions) take the campaigns of the CDRs of the destination with the same name and type, or else its newest two campaigns; check the inputs after import.
+- **Designs exported when templates had an NR Mode of their own** read that NR Mode as part of their selection and use their template as the destination knows it now (its NSA and SA copies merged into one); an SA Design named as an NSA one takes " (SA)".
 
 Designs have their own Admin export/import/transfer/backup/restore component: an import or transfer replaces the Designs the destination has (found by their identity, so one renamed on the source server is renamed there too, or by name) and adds the others, and so does a restore (see [Matching and creators](administrator-config.md#matching-and-creators)). Full Workspace and Full Environment include definitions from selected workspaces, with Designs listed after Application Config.
 

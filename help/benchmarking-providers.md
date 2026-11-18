@@ -17,8 +17,6 @@ DriveTest Analyzer was built for the CDRs of NetCheck. It is being adapted to th
 
 ## Presentation
 
-The adaptation is also a presentation, **Benchmarking Providers Roadmap**, in [Product Presentations](presentations.md): the multi-provider model, the status of each phase and its time plan, how the tool is built inside, how it runs as a Docker container on AWS today and how it could run in the Ericsson cloud, and what is needed to complete Umlaut, P3 and RootMetrics. Select it to open it in the slide viewer or download its PowerPoint.
-
 ```presentations
 benchmarking-providers
 ```

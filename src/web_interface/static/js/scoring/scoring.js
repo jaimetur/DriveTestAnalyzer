@@ -6108,6 +6108,7 @@
     heading.title = scope ? [title, ...scope.map(item => item.title)].join(' — ') : title;
     const label = scope ? `${title} — ${scope.map(item => item.label).join(' · ')}` : title;
     card.setAttribute('aria-label', `${label}. Double-click or press Enter to enlarge.`);
+    card.title = 'Double-click or press Enter to enlarge · drag a rectangle to zoom';
     card.dataset.chartMeta = meta || '';
     const scroll = document.createElement('div');
     scroll.className = 'scoring-chart-scroll';
@@ -6935,6 +6936,8 @@
     expandedChartMeta.textContent = meta || '';
     const copy = source.cloneNode(true);
     copy.querySelectorAll?.('.scoring-map-zoom, .scoring-map-zoom-rect').forEach(node => node.remove());
+    // (The larger view does not repeat the hint to enlarge.)
+    [copy, ...(copy.querySelectorAll?.('[data-enlarge-hint]') || [])].filter(node => node.dataset?.enlargeHint).forEach(node => { node.removeAttribute('title'); delete node.dataset.enlargeHint; });
     if (copy.style) copy.style.minWidth = '0';
     if (copy.matches?.('svg')) {
       // A chart takes the whole view, however wide it is on the page (or however it is zoomed there).
@@ -9784,7 +9787,7 @@
     tableBox.append(table);
     const hint = document.createElement('p');
     hint.className = 'scoring-loss-map-hint';
-    hint.textContent = 'Click a row or an area to show it alone; Ctrl/⌘-click adds more, Shift+click chooses the rows in between and Shift+drag selects several areas. Click it again or Esc to show all.';
+    hint.textContent = 'Click a row or an area to show it alone; Ctrl/⌘-click adds more, Shift+click chooses the rows in between (Ctrl/⌘+Shift+click adds them) and Shift+drag selects several areas. A plain drag zooms. Click it again or Esc to show all.';
     content.append(mapBox, tableBox);
     if (entry.title !== 'Postal Code') {
       card.append(title, note, content, hint);
@@ -12574,6 +12577,13 @@
       || [...pane.querySelectorAll('h3, h4')].filter(item => item.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1);
     openExpandedView(table, titleWithoutScope(heading) || 'Scoring table', meta, table, 'Table');
     appendExpandedScope(heading);
+  });
+  // The hint of that double-click, on each table of the results the first time the pointer reaches it.
+  root.addEventListener('pointerover', event => {
+    const table = event.target.closest?.('[data-result-pane] table');
+    if (!table || table.hasAttribute('title') || table.closest('.scoring-chart-card, .scoring-map-zoom, [data-scoring-chart-overlay]')) return;
+    table.title = 'Double-click to enlarge this table';
+    table.dataset.enlargeHint = 'true';
   });
   chartOverlay?.addEventListener('click', event => {
     if (event.target === chartOverlay) closeExpandedChart();
